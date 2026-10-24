@@ -27,6 +27,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { CalendarPicker } from './CalendarPicker';
 import { EventOptionSheet, type EventOption } from './EventOptionSheet';
 import { InlineAction } from './InlineAction';
+import { HelpText } from './HelpText';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -210,10 +211,19 @@ interface Props {
  * is read plain until it changes, and a repeating event is changed one
  * occurrence at a time. `docs/arch/people.md` has the rules.
  *
+ * **A new event is three steps** (When, Where, Details) so each screen holds
+ * one question, while the title stays on top and the header's check adds from
+ * any step with what is filled in. Every field is still mounted state: a step
+ * only decides which rows are drawn (`onStep`), so nothing about how a value
+ * resolves depends on the step. The recap chips on the later steps read back
+ * the earlier answers and jump to them. Where can be skipped with no place, and
+ * its trip rows show greyed out until one is set. An edit has no steps and shows
+ * every field at once.
+ *
  * One component; `grep -n '// ===='` is its table of contents: sheet state,
  * the draft, editing an existing event, calendars, the reset on open, parsing the line, what the event
  * resolves to (remembered values, length, the free slot, conflicts), place
- * suggestions, applying what was read, the write, then the JSX.
+ * suggestions, applying what was read, the write, the steps, then the JSX.
  */
 export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDeleted }: Props) {
   const colors = useColors();
@@ -370,6 +380,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   // The "+ Notes" chip was tapped. Notes already in the field (a seed, an event
   // being edited) show it without this, which is also why only a tap focuses it.
   const [notesOpen, setNotesOpen] = useState(false);
+  // Which of the three steps a new event is on (When, Where, Details). An edit shows every field at once.
+  const [step, setStep] = useState(0);
   // The phrase the tooltip's ✕ was pressed on, by position and text, so a
   // different phrase brings the tooltip back. Same mechanism as quick add.
   const [dismissedSignature, setDismissedSignature] = useState<string | null>(null);
@@ -486,6 +498,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setEndPickerVisible(false);
     setRepeatPickerVisible(false);
     setNotesOpen(false);
+    setStep(0);
     setDismissedSignature(null);
     setPersonOverrides({});
     scaleAnim.setValue(0.95);
@@ -1124,6 +1137,125 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   ];
   const showOriginChip = showTravelChips && travelEstimatesOn && !effectiveTravelSkip;
 
+  // ==== steps ====
+  // A new event walks through When, Where and Details so each screen holds one
+  // question. The check in the header still adds from any step with what is
+  // filled in, and an edit shows every field at once (`onStep` is always true).
+  const stepped = !isEditing;
+  const lastStep = STEP_NAMES.length - 1;
+  const onStep = (n: number) => !stepped || step === n;
+  const goToStep = (n: number) => {
+    haptics.tap();
+    animateLayout();
+    setStep(n);
+    if (n === 0) inputRef.current?.focus();
+    // The place step focuses its own field as it mounts.
+    else if (n === lastStep) Keyboard.dismiss();
+  };
+  // Return and the footer's button: on to the next step, or add on the last.
+  const advance = () => {
+    if (!stepped || step === lastStep) { void next(); return; }
+    // A date is the one thing an event can't be added without, so ask for it here.
+    if (step === 0 && !startChosen) {
+      if (draft.title.trim().length === 0) return;
+      haptics.tap();
+      Keyboard.dismiss();
+      setPickerVisible(true);
+      return;
+    }
+    if (step === 0 && draft.title.trim().length === 0) return;
+    goToStep(step + 1);
+  };
+  // With no place yet the trip rows show but can't be used: a "Leave for" task needs one.
+  const travelRowsShown = stepped ? travelTasksOn && !allDay : showTravelChips;
+  const travelRowsLocked = stepped && !showTravelChips;
+  const stepAdvanceLabel = step === lastStep ? 'Add event' : step === 1 && !effectiveLocation ? 'Skip' : 'Next';
+
+  // The notes field, shown under the chips on the Details step and in its old place for an edit.
+  const notesField = showNotes ? (
+    <View style={styles.locationRow}>
+      <Ionicons name="document-text-outline" size={iconSize.sm} color={colors.textSecondary} />
+      <TextField
+        style={styles.locationInput}
+        placeholder="Notes or link"
+        placeholderTextColor={colors.textTertiary}
+        value={effectiveNotes}
+        onChangeText={value => {
+          if (draft.notesSpan) cutFromLine(draft.notesSpan);
+          setNotesOrLink(value);
+        }}
+        onSubmitEditing={advance}
+        returnKeyType="done"
+        blurOnSubmit={false}
+        autoCapitalize="none"
+        keyboardAppearance={isDark ? 'dark' : 'light'}
+        autoFocus={notesOpen}
+        accessibilityLabel="Notes or link"
+      />
+    </View>
+  ) : null;
+
+  const allDayChip = (
+    <TouchableOpacity
+      style={[styles.toolChip, styles.toolChipWide]}
+      onPress={() => { haptics.tap(); setAllDay(v => !v); }}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="switch"
+      accessibilityLabel="All day"
+      accessibilityState={{ checked: allDay }}
+    >
+      <Ionicons name="sunny-outline" size={iconSize.sm} color={colors.textSecondary} />
+      <Text style={[styles.toolChipText, styles.switchLabel]} numberOfLines={1}>All day</Text>
+      <View style={[styles.switchTrack, allDay && styles.switchTrackOn]}>
+        <View style={[styles.switchKnob, allDay && styles.switchKnobOn]} />
+      </View>
+    </TouchableOpacity>
+  );
+  const busyChip = (
+    <TouchableOpacity
+      style={[styles.toolChip, styles.toolChipWide]}
+      onPress={() => { haptics.tap(); if (draft.availabilitySpan) cutFromLine(draft.availabilitySpan); setAvailabilityPick(isBusy ? 'free' : 'busy'); }}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="switch"
+      accessibilityLabel="Busy"
+      accessibilityHint="On blocks this time on your calendar. Off leaves the time free."
+      accessibilityState={{ checked: isBusy }}
+    >
+      <Ionicons name={isBusy ? 'eye' : 'eye-outline'} size={iconSize.sm} color={colors.textSecondary} />
+      <Text style={[styles.toolChipText, styles.switchLabel]} numberOfLines={1}>Busy</Text>
+      <View style={[styles.switchTrack, isBusy && styles.switchTrackOn]}>
+        <View style={[styles.switchKnob, isBusy && styles.switchKnobOn]} />
+      </View>
+    </TouchableOpacity>
+  );
+  const notesChip = !showNotes ? (
+    <TouchableOpacity
+      style={styles.toolChip}
+      onPress={() => { haptics.tap(); animateLayout(); setNotesOpen(true); }}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel="Add notes or a link"
+    >
+      <Ionicons name="add" size={iconSize.sm} color={colors.textSecondary} />
+      <Text style={styles.toolChipText}>Notes</Text>
+    </TouchableOpacity>
+  ) : null;
+  // An edit changes one occurrence, so there is no repeat to set.
+  const repeatChip = !isEditing ? (
+    <TouchableOpacity
+      style={[styles.toolChip, effectiveRepeat !== null && styles.toolChipSet]}
+      onPress={() => { haptics.tap(); Keyboard.dismiss(); setRepeatPickerVisible(true); }}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={`Repeat: ${effectiveRepeat ? describeEventRepeatShort(effectiveRepeat) : 'never'}`}
+    >
+      <Ionicons name="repeat-outline" size={iconSize.sm} color={effectiveRepeat ? colors.accent : colors.textSecondary} />
+      <Text style={[styles.toolChipText, effectiveRepeat !== null && styles.toolChipTextSet]} numberOfLines={1}>
+        {effectiveRepeat ? describeEventRepeatShort(effectiveRepeat) : 'Repeat'}
+      </Text>
+    </TouchableOpacity>
+  ) : null;
+
   // ==== render. Everything below is JSX ====
   return (
     <SheetModal
@@ -1162,7 +1294,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 placeholderTextColor={colors.textTertiary}
                 value={text}
                 onChangeText={setText}
-                onSubmitEditing={next}
+                onSubmitEditing={advance}
                 returnKeyType="next"
                 maxLength={TITLE_MAX_LENGTH}
                 // iOS's inline completion draws over the overlay; see QuickAddModal.
@@ -1198,6 +1330,22 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               <Ionicons name="checkmark" size={18} color={canAdd ? colors.onAccent : colors.textTertiary} />
             </TouchableOpacity>
           </View>
+
+          {stepped && (
+            <View
+              style={styles.stepRow}
+              accessible
+              accessibilityRole="header"
+              accessibilityLabel={`Step ${step + 1} of ${STEP_NAMES.length}, ${STEP_NAMES[step]}`}
+            >
+              <Text style={styles.stepTitle}>{STEP_NAMES[step]}</Text>
+              <View style={styles.stepDots}>
+                {STEP_NAMES.map((name, i) => (
+                  <View key={name} style={[styles.stepDot, i === step && styles.stepDotOn]} />
+                ))}
+              </View>
+            </View>
+          )}
 
           {activeMatch && (
             <Animated.View
@@ -1259,7 +1407,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
             showsVerticalScrollIndicator={false}
             {...scrollFade.scrollProps}
           >
-            {showSaved && (
+            {onStep(0) && showSaved && (
               <View style={styles.savedBlock}>
                 <View style={styles.savedList}>
                   <TouchableOpacity
@@ -1300,7 +1448,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 </View>
               </View>
             )}
-            {savedEventSuggestions.length > 0 && (
+            {onStep(0) && savedEventSuggestions.length > 0 && (
               <View style={[styles.savedList, styles.savedBlock]}>
                 {savedEventSuggestions.map((event, i) => (
                   <TouchableOpacity
@@ -1320,6 +1468,47 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 ))}
               </View>
             )}
+            {stepped && step > 0 && (
+              <View style={styles.recapRow}>
+                <TouchableOpacity
+                  style={styles.recapChip}
+                  onPress={() => goToStep(0)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={startChosen ? `Starts: ${describeStart(effectiveStart)}. Change` : 'No date yet. Change'}
+                >
+                  <Ionicons name="time-outline" size={13} color={colors.accent} />
+                  <Text style={[styles.recapText, !startChosen && styles.recapTextEmpty]} numberOfLines={1}>
+                    {startChosen ? describeStart(effectiveStart) : 'No date yet'}
+                  </Text>
+                </TouchableOpacity>
+                {effectiveRepeat !== null && (
+                  <TouchableOpacity
+                    style={styles.recapChip}
+                    onPress={() => goToStep(0)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Repeat: ${describeEventRepeatShort(effectiveRepeat)}. Change`}
+                  >
+                    <Ionicons name="repeat-outline" size={13} color={colors.accent} />
+                    <Text style={styles.recapText} numberOfLines={1}>{describeEventRepeatShort(effectiveRepeat)}</Text>
+                  </TouchableOpacity>
+                )}
+                {step > 1 && effectiveLocation !== null && effectiveLocation.trim() !== '' && (
+                  <TouchableOpacity
+                    style={styles.recapChip}
+                    onPress={() => goToStep(1)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Place: ${effectiveLocation}. Change`}
+                  >
+                    <Ionicons name="location-outline" size={13} color={colors.accent} />
+                    <Text style={styles.recapText} numberOfLines={1}>{effectiveLocation}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            {onStep(1) && (<>
             <View style={styles.locationRow}>
               <Ionicons name="location-outline" size={iconSize.sm} color={colors.textSecondary} />
               <TextField
@@ -1332,7 +1521,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 value={draft.location ?? (location || memoryLocation || '')}
                 editable={draft.location === null}
                 onChangeText={setLocation}
-                onSubmitEditing={next}
+                autoFocus={stepped}
+                onSubmitEditing={advance}
                 returnKeyType="next"
                 blurOnSubmit={false}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -1421,36 +1611,19 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               </View>
             )}
 
-            {showNotes && (
-            <View style={styles.locationRow}>
-              <Ionicons name="document-text-outline" size={iconSize.sm} color={colors.textSecondary} />
-              <TextField
-                style={styles.locationInput}
-                placeholder="Notes or link"
-                placeholderTextColor={colors.textTertiary}
-                value={effectiveNotes}
-                onChangeText={value => {
-                  if (draft.notesSpan) cutFromLine(draft.notesSpan);
-                  setNotesOrLink(value);
-                }}
-                onSubmitEditing={next}
-                returnKeyType="done"
-                blurOnSubmit={false}
-                autoCapitalize="none"
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                autoFocus={notesOpen}
-                accessibilityLabel="Notes or link"
-              />
-            </View>
+            </>
             )}
 
-            {namedPeople.length > 0 && (
+            {!stepped && notesField}
+
+            {onStep(0) && namedPeople.length > 0 && (
               <View style={styles.captionRow}>
                 <Ionicons name="people-outline" size={13} color={colors.textSecondary} />
                 <Text style={styles.captionText} numberOfLines={1}>With {namedPeople.join(', ')}</Text>
               </View>
             )}
 
+            {onStep(0) && (
             <View style={styles.whenRow}>
               <TouchableOpacity
                 style={styles.whenBlock}
@@ -1499,7 +1672,9 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 </TouchableOpacity>
               )}
             </View>
+            )}
 
+            {onStep(2) && (
             <View style={styles.toolbar}>
               <TouchableOpacity
                 style={[styles.toolChip, styles.toolChipWide]}
@@ -1526,12 +1701,14 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 </Text>
               </TouchableOpacity>
             </View>
+            )}
 
-            {showTravelChips && (
+            {(stepped ? onStep(1) && travelRowsShown : showTravelChips) && (
               <View style={styles.toolbar}>
                 <TouchableOpacity
-                  style={[styles.toolChip, styles.toolChipWide, (effectiveTravelMode !== null || effectiveTravelSkip) && styles.toolChipSet]}
+                  style={[styles.toolChip, styles.toolChipWide, (effectiveTravelMode !== null || effectiveTravelSkip) && styles.toolChipSet, travelRowsLocked && styles.toolChipLocked]}
                   onPress={() => { haptics.tap(); Keyboard.dismiss(); setTravelModePickerVisible(true); }}
+                  disabled={travelRowsLocked}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityLabel={`Getting there: ${travelChipLabel}`}
@@ -1543,8 +1720,9 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 </TouchableOpacity>
                 {!effectiveTravelSkip && (
                 <TouchableOpacity
-                  style={[styles.toolChip, styles.toolChipWide, effectiveArriveEarly !== null && styles.toolChipSet]}
+                  style={[styles.toolChip, styles.toolChipWide, effectiveArriveEarly !== null && styles.toolChipSet, travelRowsLocked && styles.toolChipLocked]}
                   onPress={() => { haptics.tap(); Keyboard.dismiss(); setArrivePickerVisible(true); }}
+                  disabled={travelRowsLocked}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityLabel={`Arrive: ${describeArrival(shownArriveEarly)}`}
@@ -1575,72 +1753,24 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 )}
               </View>
             )}
-
-            <View style={styles.toolbar}>
-              <TouchableOpacity
-                style={[styles.toolChip, styles.toolChipWide]}
-                onPress={() => { haptics.tap(); setAllDay(v => !v); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="switch"
-                accessibilityLabel="All day"
-                accessibilityState={{ checked: allDay }}
-              >
-                <Ionicons name="sunny-outline" size={iconSize.sm} color={colors.textSecondary} />
-                <Text style={[styles.toolChipText, styles.switchLabel]} numberOfLines={1}>All day</Text>
-                <View style={[styles.switchTrack, allDay && styles.switchTrackOn]}>
-                  <View style={[styles.switchKnob, allDay && styles.switchKnobOn]} />
-                </View>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.toolChip, styles.toolChipWide]}
-                onPress={() => { haptics.tap(); if (draft.availabilitySpan) cutFromLine(draft.availabilitySpan); setAvailabilityPick(isBusy ? 'free' : 'busy'); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="switch"
-                accessibilityLabel="Busy"
-                accessibilityHint="On blocks this time on your calendar. Off leaves the time free."
-                accessibilityState={{ checked: isBusy }}
-              >
-                <Ionicons name={isBusy ? 'eye' : 'eye-outline'} size={iconSize.sm} color={colors.textSecondary} />
-                <Text style={[styles.toolChipText, styles.switchLabel]} numberOfLines={1}>Busy</Text>
-                <View style={[styles.switchTrack, isBusy && styles.switchTrackOn]}>
-                  <View style={[styles.switchKnob, isBusy && styles.switchKnobOn]} />
-                </View>
-              </TouchableOpacity>
-            </View>
-
-            {(!showNotes || !isEditing) && (
-              <View style={styles.toolbar}>
-                {!showNotes && (
-                  <TouchableOpacity
-                    style={styles.toolChip}
-                    onPress={() => { haptics.tap(); animateLayout(); setNotesOpen(true); }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel="Add notes or a link"
-                  >
-                    <Ionicons name="add" size={iconSize.sm} color={colors.textSecondary} />
-                    <Text style={styles.toolChipText}>Notes</Text>
-                  </TouchableOpacity>
-                )}
-                {/* An edit changes one occurrence, so there is no repeat to set. */}
-                {!isEditing && (
-                  <TouchableOpacity
-                    style={[styles.toolChip, effectiveRepeat !== null && styles.toolChipSet]}
-                    onPress={() => { haptics.tap(); Keyboard.dismiss(); setRepeatPickerVisible(true); }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Repeat: ${effectiveRepeat ? describeEventRepeatShort(effectiveRepeat) : 'never'}`}
-                  >
-                    <Ionicons name="repeat-outline" size={iconSize.sm} color={effectiveRepeat ? colors.accent : colors.textSecondary} />
-                    <Text style={[styles.toolChipText, effectiveRepeat !== null && styles.toolChipTextSet]} numberOfLines={1}>
-                      {effectiveRepeat ? describeEventRepeatShort(effectiveRepeat) : 'Repeat'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+            {travelRowsShown && travelRowsLocked && onStep(1) && (
+              <HelpText style={styles.lockedHint}>Choose a place to set how you get there.</HelpText>
             )}
 
-            {conflicts.length > 0 && (
+            {stepped ? (
+              <>
+                {onStep(0) && <View style={styles.toolbar}>{allDayChip}{repeatChip}</View>}
+                {onStep(2) && <View style={styles.toolbar}>{busyChip}{notesChip}</View>}
+                {onStep(2) && notesField}
+              </>
+            ) : (
+              <>
+                <View style={styles.toolbar}>{allDayChip}{busyChip}</View>
+                {(!showNotes || !isEditing) && <View style={styles.toolbar}>{notesChip}{repeatChip}</View>}
+              </>
+            )}
+
+            {onStep(0) && conflicts.length > 0 && (
               <View style={styles.conflictBlock}>
                 <TouchableOpacity
                   style={styles.captionRowTight}
@@ -1667,14 +1797,14 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               </View>
             )}
 
-            {freeSlot !== null && rawStart === freeSlot && (
+            {onStep(0) && freeSlot !== null && rawStart === freeSlot && (
               <View style={styles.captionRow}>
                 <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
                 <Text style={styles.captionText} numberOfLines={1}>The first free time that day</Text>
               </View>
             )}
 
-            {usingMemory && (
+            {onStep(0) && usingMemory && (
               <View style={styles.captionRow}>
                 <Ionicons name="refresh-outline" size={13} color={colors.textSecondary} />
                 <Text style={styles.captionText} numberOfLines={1}>
@@ -1708,6 +1838,33 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
           </ScrollView>
           <ScrollEdgeFade edge="bottom" opacity={scrollFade.bottomOpacity} color={colors.bgSecondary} />
           </View>
+          {stepped && (
+            <View style={styles.footer}>
+              {step > 0 && (
+                <TouchableOpacity
+                  style={[styles.footerBtn, styles.footerBack]}
+                  onPress={() => goToStep(step - 1)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Back to ${STEP_NAMES[step - 1]}`}
+                >
+                  <Text style={styles.footerBackText}>Back</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.footerBtn, styles.footerNext, (busy || draft.title.trim().length === 0) && styles.footerNextDisabled]}
+                onPress={advance}
+                disabled={busy || draft.title.trim().length === 0}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={step === lastStep ? 'Add event' : step === 0 && !startChosen ? 'Next, choose a date' : stepAdvanceLabel}
+              >
+                <Text style={[styles.footerNextText, (busy || draft.title.trim().length === 0) && styles.footerNextTextDisabled]}>
+                  {stepAdvanceLabel}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </Animated.View>
       </View>
       <TitleTokenAccessory
@@ -1812,6 +1969,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 
 const TRAVEL_MODE_LABELS: Record<TravelMode, string> = { driving: 'Car', transit: 'Transit', walking: 'Walking' };
 const TRAVEL_SKIP_KEY = 'skip';
+const STEP_NAMES = ['When', 'Where', 'Details'] as const;
 
 // Mirrors QuickAddModal's card, input and tooltip styles; the notes on why
 // each value is what it is live there.
@@ -1956,6 +2114,37 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   },
   // The date (and the calendar's name) take the room; the other chips keep their width.
   toolChipWide: { flex: 1 },
+  // The trip rows before a place is set: shown so they can be found, not usable yet.
+  toolChipLocked: { opacity: 0.4 },
+  lockedHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: -spacing.xs, marginBottom: spacing.sm },
+  // The step's name and where it sits among the three, between the title and the fields.
+  stepRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
+  stepTitle: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, letterSpacing: 0.8, textTransform: 'uppercase' },
+  stepDots: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  stepDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.controlBorder },
+  stepDotOn: { width: 16, backgroundColor: colors.accentFill },
+  // What the earlier steps decided, each one a tap back to its step.
+  recapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm },
+  recapChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    maxWidth: '100%',
+    paddingHorizontal: spacing.smd,
+    paddingVertical: spacing.xsm,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSubtle,
+  },
+  recapText: { flexShrink: 1, color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
+  recapTextEmpty: { color: colors.textSecondary },
+  footer: { flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs },
+  footerBtn: { minHeight: interaction.pillHeight, borderRadius: radius.full, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md },
+  footerBack: { backgroundColor: colors.bgTertiary },
+  footerBackText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
+  footerNext: { flex: 1, backgroundColor: colors.accentFill },
+  footerNextDisabled: { backgroundColor: colors.bgTertiary },
+  footerNextText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold },
+  footerNextTextDisabled: { color: colors.textTertiary },
   toolChipSet: { backgroundColor: colors.accentSubtle },
   toolChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium, flexShrink: 1 },
   toolChipTextSet: { color: colors.accent },
