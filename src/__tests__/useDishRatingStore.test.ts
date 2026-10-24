@@ -34,6 +34,12 @@ describe('addDish', () => {
     expect(dbInsertDishRating).not.toHaveBeenCalled();
   });
 
+  it('applies a photo given for a dish that is already saved', () => {
+    const first = state().addDish({ name: 'Pad see ew', place: 'Thai Orchid' })!;
+    state().addDish({ name: 'Pad see ew', place: 'Thai Orchid', photo: 'dish-1.jpg' });
+    expect(state().dishes.find(d => d.id === first.id)?.photo).toBe('dish-1.jpg');
+  });
+
   it('returns the dish already saved under that name and place rather than a second row', () => {
     const first = state().addDish({ name: 'Pad see ew', place: 'Thai Orchid', verdict: 'loved' })!;
     const again = state().addDish({ name: 'pad see ew', place: 'thai orchid' })!;
@@ -69,6 +75,17 @@ describe('setVerdict, updateDish and removeDish', () => {
     expect(dbUpdateDishRating).not.toHaveBeenCalled();
   });
 
+  it('folds a dish renamed onto another saved one into a single row', () => {
+    const keep = state().addDish({ name: 'Green curry', place: 'Thai Orchid', verdict: 'loved', note: 'extra spicy' })!;
+    const other = state().addDish({ name: 'Pad see ew', place: 'Thai Orchid', verdict: 'fine', photo: 'dish-9.jpg' })!;
+    state().updateDish(keep.id, { name: 'pad see ew' });
+    expect(state().dishes).toHaveLength(1);
+    expect(state().dishes[0]).toEqual(expect.objectContaining({
+      id: keep.id, name: 'pad see ew', verdict: 'loved', note: 'extra spicy', photo: 'dish-9.jpg',
+    }));
+    expect(dbDeleteDishRating).toHaveBeenCalledWith(other.id);
+  });
+
   it('removes the row from the database and the list', () => {
     const dish = state().addDish({ name: 'Soup' })!;
     state().removeDish(dish.id);
@@ -86,6 +103,12 @@ describe('the rating offer', () => {
     state().addDish({ name: 'Soup', verdict: 'fine' });
     state().offerRating('soup', DAY);
     expect(state().offer).toBeNull();
+  });
+
+  it('survives a reload of the store', () => {
+    state().offerRating('Pad see ew', DAY);
+    state().initialize();
+    expect(state().offer).toEqual(expect.objectContaining({ name: 'Pad see ew' }));
   });
 
   it('saves a new dish with no place when answered', () => {

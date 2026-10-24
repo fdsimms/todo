@@ -1637,7 +1637,7 @@ const taskFieldsShape = {
   }).nullable().optional()
     .describe('Completing it also records a dose of this medicine in the medication log ("take vitamin D"). Undone with the completion by reopen_task. null stops it.'),
   logsMeal: z.object({
-    slot: z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+    slot: z.enum(['breakfast', 'lunch', 'dinner', 'snack', 'other']).describe('other: outside any meal. It cannot go with byTime.'),
     savedMealId: z.string().nullable().optional().describe('A saved meal id (list_saved_meals) to log straight away. Leave it out and the phone asks what was eaten.'),
     byTime: z.boolean().optional().describe('Choose the meal from the time of day it is completed instead, with slot as the fallback.'),
   }).nullable().optional()

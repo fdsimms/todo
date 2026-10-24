@@ -8416,7 +8416,7 @@ export const MEAL_SLOT_LABELS: Record<MealSlot, string> = {
  * 'other' for something eaten outside of one (a supplement, a shake). It is a
  * separate type because `Task.logMealSlot` null already means the feature is
  * off, and a food log entry's own "no meal" is `slot: null`; `logSlotToMealSlot`
- * (src/utils/mealSlotTasks.ts) is the one place the second turns into the first.
+ * (src/utils/mealLog.ts) is the one place the second turns into the first.
  */
 export type LogMealSlot = MealSlot | 'other';
 

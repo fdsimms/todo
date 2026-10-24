@@ -108,6 +108,7 @@ import type {
   GeneratedTaskExtras,
 } from '../../src/types';
 import type { FinishedSessionInput, ProgramInput, SessionPatch, SetInput } from '../../src/store/useWorkoutStore';
+import { dishTextKey } from '../../src/utils/dishRating';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { sectionListPatch } from '../../src/utils/listMode';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
@@ -4518,7 +4519,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const store = useDishRatingStore.getState();
       store.initialize();
       if (!store.dishes.some(d => d.id === id)) throw new Error(`No dish with id ${id}. list_dishes names them.`);
-      if (patch.name !== undefined && !patch.name.trim()) throw new Error('A dish needs a name: what it is called on the menu.');
+      if (patch.name !== undefined && !dishTextKey(patch.name)) throw new Error('A dish needs a name: what it is called on the menu.');
       store.updateDish(id, patch);
       return useDishRatingStore.getState().dishes.find(d => d.id === id)!;
     },

@@ -11205,7 +11205,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   slotWaitingTasks() {
     const { tasks, completionHoldIds } = get();
-    return slotWaitingTasks(liveListRows(tasks, completionHoldIds), getCurrentLogicalDayKey());
+    // The pass's hold fields outlive an archive, a vacation pause or a paused project,
+    // so a held task is listed only if Later would list it too.
+    return slotWaitingTasks(liveListRows(tasks, completionHoldIds), getCurrentLogicalDayKey()).filter(isTaskDeferred);
   },
 
   vacationHiddenTasks() {

@@ -20,8 +20,9 @@ export const COOKWARE_MAX_G = COOKED_WEIGHT_MAX_G;
  * what "No pot" is for.
  */
 export function clampCookwareWeight(grams: number | null): number | null {
-  if (grams === null || !Number.isFinite(grams) || grams <= 0) return null;
-  return Math.min(COOKWARE_MAX_G, Math.round(grams));
+  if (grams === null || !Number.isFinite(grams)) return null;
+  const whole = Math.round(grams);
+  return whole <= 0 ? null : Math.min(COOKWARE_MAX_G, whole);
 }
 
 /** What a typed weight field holds, as a number. Accepts a decimal comma. */

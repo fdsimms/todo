@@ -13,8 +13,10 @@ The rules live in `src/utils/dishRating.ts` with no store or database in them; t
 - **Its own record, not a field on `FoodLogEntry`.** An eaten-out meal has no identity in the food
   log beyond its label, entries are snapshots that can be deleted, and the food log can be switched
   off. A rating is about the dish, and outlives the entry that prompted it. A dish is the pair
-  (place, name) after `groceryNameKey`, so a retyped dish is the same dish; a dish with no place
-  never borrows one from another row of the same name.
+  (place, name) after `dishTextKey` (`groceryNameKey`, plus the letters of other scripts it would
+  drop), so a retyped dish is the same dish; a dish with no place never borrows one from another row
+  of the same name. An edit that makes a dish the same as another folds the two into one row
+  (`mergeDishes`), as `addDish` does for a retyped one.
 - **Three answers and null, no stars.** `loved`, `fine`, `avoid` (`DishVerdict`), the shape
   `ProductRating` has and for its reason: nobody reproduces a 4 versus a 3, and "fine" exists so a
   shrug is not the same as never having tried it. **Null is no opinion, and nothing infers one**,

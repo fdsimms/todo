@@ -8,7 +8,7 @@ import { haptics } from '../utils/haptics';
 import {
   draggedColumn,
   draggedRange,
-  MINUTES_IN_DAY,
+  dayLengthMinutes,
   slotMinutesAt,
   type DayTimeline as DayTimelineData,
   type TimelineDragKind,
@@ -113,6 +113,8 @@ export function MultiDayTimeline({
   columnCountRef.current = columns.length;
   const columnKeysRef = useRef(columns.map(c => c.key));
   columnKeysRef.current = columns.map(c => c.key);
+  const columnStartsRef = useRef(columns.map(c => c.dayStart));
+  columnStartsRef.current = columns.map(c => c.dayStart);
   const callbacks = useRef({ onCreateRange, onRescheduleEvent, onDragStateChange });
   callbacks.current = { onCreateRange, onRescheduleEvent, onDragStateChange };
 
@@ -165,10 +167,12 @@ export function MultiDayTimeline({
         const grant = grantRef.current;
         if (!state || !grant) return;
         const delta = ((e.nativeEvent.pageY - grant.y) / HOUR_HEIGHT) * 60;
-        const range = draggedRange(state.kind, state.origin, delta);
         const toIndex = state.kind === 'move'
           ? draggedColumn(state.fromIndex, e.nativeEvent.pageX - grant.x, columnWidthRef.current, columnCountRef.current)
           : state.fromIndex;
+        // Stopped at the end of the day it is over, which is an hour short or long on a clock-change day.
+        const overStart = columnStartsRef.current[toIndex];
+        const range = draggedRange(state.kind, state.origin, delta, undefined, overStart ? dayLengthMinutes(overStart) : undefined);
         if (range.start === state.range.start && range.end === state.range.end && toIndex === state.toIndex) return;
         // A tick per quarter hour or day crossed, so the snap can be felt.
         haptics.tap();
@@ -307,7 +311,7 @@ export function MultiDayTimeline({
                     ) : undefined}
                     onLongPress={onCreateRange ? e => {
                       const start = slotMinutesAt(e.nativeEvent.locationY, firstMinute, lastMinute, HOUR_HEIGHT);
-                      beginDrag('create', null, index, { start, end: Math.min(MINUTES_IN_DAY, start + PLACEHOLDER_MINUTES) });
+                      beginDrag('create', null, index, { start, end: Math.min(dayLengthMinutes(column.dayStart), start + PLACEHOLDER_MINUTES) });
                     } : undefined}
                     delayLongPress={interaction.delayLongPress}
                     accessibilityRole="button"

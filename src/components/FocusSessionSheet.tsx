@@ -781,13 +781,13 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
             {stepDone && (
               <TouchableOpacity
                 style={styles.secondaryBtn}
-                onPress={handlePauseResume}
+                onPress={taskTimed ? handleTaskTimer : handlePauseResume}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel={running ? 'Pause session' : 'Resume session'}
+                accessibilityLabel={(taskTimed ? taskTimerRunning : running) ? 'Pause session' : 'Resume session'}
               >
-                <Ionicons name={running ? 'pause-circle-outline' : 'play-circle-outline'} size={iconSize.md} color={colors.textSecondary} />
-                <Text style={styles.secondaryLabel}>{running ? 'Pause' : 'Resume'}</Text>
+                <Ionicons name={(taskTimed ? taskTimerRunning : running) ? 'pause-circle-outline' : 'play-circle-outline'} size={iconSize.md} color={colors.textSecondary} />
+                <Text style={styles.secondaryLabel}>{(taskTimed ? taskTimerRunning : running) ? 'Pause' : 'Resume'}</Text>
               </TouchableOpacity>
             )}
 

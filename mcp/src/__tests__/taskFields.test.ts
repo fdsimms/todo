@@ -67,7 +67,12 @@ describe('logging a meal on completion', () => {
   });
 
   it('refuses an unknown slot', () => {
-    expect(errorsOf({ logsMeal: { slot: 'brunch' as never } })).toMatch(/breakfast, lunch, dinner or snack/);
+    expect(errorsOf({ logsMeal: { slot: 'brunch' as never } })).toMatch(/breakfast, lunch, dinner, snack or other/);
+  });
+
+  it('takes Other, but not with a clock-chosen meal', () => {
+    expect(ok({ logsMeal: { slot: 'other', savedMealId: 'm1' } })).toMatchObject({ logMealSlot: 'other', logSavedMealId: 'm1', logMealSlotByTime: false });
+    expect(errorsOf({ logsMeal: { slot: 'other', byTime: true } })).toMatch(/cannot go with slot "other"/);
   });
 });
 
