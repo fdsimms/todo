@@ -178,6 +178,7 @@ export function eventContextRows(
         now: running,
         calendarTag: calendar ? { name: calendar.title, color: calendar.color } : null,
         movedNote: movedNote?.(event) ?? null,
+        ...(event.location?.trim() ? { location: event.location.trim() } : {}),
       },
       allDay: event.allDay,
       start,

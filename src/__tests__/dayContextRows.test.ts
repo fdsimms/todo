@@ -93,6 +93,18 @@ describe('eventContextRows', () => {
     expect(rows.map(r => [r.title, r.movedNote])).toEqual([['Dinner', 'Moved, 2 tasks'], ['Gym', null]]);
   });
 
+  it('carries a trimmed location so the row can offer directions, and nothing when there is none', () => {
+    const rows = eventContextRows(
+      [
+        ev(at(16), at(17), { title: 'Dinner', location: '  1 Main St  ' }),
+        ev(at(18), at(19), { title: 'Gym', id: 'a', location: '   ' }),
+        ev(at(20), at(21), { title: 'Call', id: 'b', location: null }),
+      ],
+      eventOpts,
+    );
+    expect(rows.map(r => r.location)).toEqual(['1 Main St', undefined, undefined]);
+  });
+
   it('drops an event that has already ended', () => {
     const rows = eventContextRows([ev(at(9), at(10)), ev(at(16), at(17))], eventOpts);
     expect(rows.map(r => r.caption)).toEqual(['16:00']);

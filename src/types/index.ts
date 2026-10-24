@@ -9159,6 +9159,11 @@ export interface ContextRow {
    */
   startsIn?: string | null;
   /**
+   * An event's location, verbatim from the calendar, so the row can offer
+   * directions to it. Absent when the event has none, and on every other row.
+   */
+  location?: string | null;
+  /**
    * How a Stay under limit's row reads against it (`limitContextRows`): the
    * glyph goes orange once the day is close and the row red once it is past.
    * Absent on every other row.

@@ -225,6 +225,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, textScale, animation, type Colors } from '../theme';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
 import { haptics } from '../utils/haptics';
+import { openEventDirections } from '../utils/eventDirections';
 import { openElsewhereResult } from '../navigation/openSearchResult';
 import type { ElsewhereResult } from '../utils/searchElsewhere';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
@@ -3990,6 +3991,11 @@ export function TodayScreen() {
           row={item.row}
           onPress={onContextPress}
           cardPosition={contextPositions.get(item.row.id)}
+          onDirections={
+            item.row.kind === 'event' && item.row.location
+              ? () => { void openEventDirections(item.row.sourceId, item.row.location); }
+              : undefined
+          }
           onMarkCooked={
             item.row.kind === 'meal'
               ? () => handleMarkMealCooked(item.row.sourceId, item.row.title)

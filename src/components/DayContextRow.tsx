@@ -11,6 +11,7 @@ import { RING_ORDER, describeRing } from '../utils/activityRings';
 import type { CardPosition } from '../utils/contextCards';
 import { ProgressBar } from './ProgressBar';
 import { CheckPop } from './CheckPop';
+import { PressableScale } from './PressableScale';
 
 interface Props {
   row: ContextRow;
@@ -32,6 +33,11 @@ interface Props {
    * stay their own cards (see `contextCards.ts`).
    */
   cardPosition?: CardPosition;
+  /**
+   * Opens directions to an event's location. Set only for an event row that has
+   * one; it is its own button beside the row's press target, not part of it.
+   */
+  onDirections?: () => void;
 }
 
 /**
@@ -99,7 +105,7 @@ interface Props {
  * already-completed task, which is a worse thing to be mistaken for than a
  * plain one. If these need to recede again, it isn't by half-drawing the card.
  */
-export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Props) {
+export function DayContextRow({ row, onPress, onMarkCooked, cardPosition, onDirections }: Props) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -322,6 +328,15 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition }: Prop
           {row.startsIn ? (
             <Text style={styles.startsIn} numberOfLines={1}>{row.startsIn}</Text>
           ) : null}
+          {onDirections && (
+            <PressableScale
+              onPress={onDirections}
+              hitSlop={10}
+              accessibilityLabel={`Get directions to ${row.location ?? row.title}`}
+            >
+              <Ionicons name="navigate-outline" size={iconSize.md} color={colors.accent} />
+            </PressableScale>
+          )}
         </View>
         {/* Same scrim TaskItem draws over itself while another row is
             spotlighted (focus session, expanded row). This row never

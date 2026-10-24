@@ -158,6 +158,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/estimateCalibration.ts` — MIN_CALIBRATION_SAMPLES, MIN_SANE_RATIO, MAX_SANE_RATIO, EstimateCalibration, calibrationPairs, calibrationFrom, calibratedAssumedMinutes, describeCalibration
 - `src/utils/estimateQueue.ts` — MAX_PENDING_ESTIMATES, PendingEstimateStatus, PendingEstimate, isQueueableFailure, canQueueAnother, findDuplicate, sortPending, awaitingEstimate, describePending, summarizeEstimate
 - `src/utils/eventConflicts.ts` — FREE_SLOT_DAY_START_HOUR, FREE_SLOT_DAY_END_HOUR, overlappingEvents, firstFreeSlot, calendarCovers
+- `src/utils/eventDirections.ts` — openEventDirections
 - `src/utils/eventLength.ts` — EVENT_LENGTH_PRESETS, describeEventLength, lengthToClock
 - `src/utils/eventMemory.ts` — EVENT_MEMORY_KEY, EVENT_MEMORY_LIMIT, RememberedEvent, EventMemory, eventMemoryKey, parseEventMemory, rememberEvent, recallEvent, readEventMemory, writeEventMemory
 - `src/utils/eventPeople.ts` — EventPeopleIndex, EMPTY_EVENT_PEOPLE, eventPeopleKeys, indexEventPeople, peopleForEvent, EventPeopleWrite, planEventPeopleWrite, MovedPeopleLink, movedPeopleLinks, isEventPeopleLinkStale, +8 more
