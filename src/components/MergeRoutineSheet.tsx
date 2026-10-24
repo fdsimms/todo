@@ -86,7 +86,7 @@ export function MergeRoutineSheet({ visible, intoId, onClose }: Props) {
             {`Pick the routine that came before ${into?.name ?? 'this one'}. Its versions and workouts become this routine’s earlier history.`}
           </HelpText>
           {rows.length === 0 ? (
-            <EmptyNote icon="barbell-outline">There are no other routines to merge in.</EmptyNote>
+            <EmptyNote icon="barbell-outline" style={{ marginTop: 0 }}>There are no other routines to merge in.</EmptyNote>
           ) : (
             <View style={styles.card}>
               {rows.map((row, i) => (

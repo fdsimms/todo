@@ -218,7 +218,7 @@ const makeStyles = (colors: Colors, windowWidth: number) => {
     color: colors.textTertiary,
     fontSize: font.xs,
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   wheel: {
     height: 170,

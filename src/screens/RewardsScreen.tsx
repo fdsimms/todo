@@ -1381,7 +1381,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   card: {
     marginHorizontal: spacing.md,
@@ -1513,7 +1513,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
   },
   // A hint owns the gap between it and whatever it introduces; the card or row underneath adds no top margin of its own.
-  sectionHint: { color: colors.textSecondary, fontSize: font.xs, paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
+  sectionHint: { color: colors.textSecondary, fontSize: font.xs, paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   // Sits under its card, so the next section header's own top padding is the only gap wanted below it.
   budgetHint: { paddingTop: spacing.xsm, paddingBottom: 0 },
   historyCard: { marginHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.bgSecondary },

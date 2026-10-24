@@ -509,7 +509,7 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
       <View>
         {renderSectionHeader('Before you go', la.totals.taskCount)}
         {la.days.every(d => d.tasks.length === 0 && d.expected.length === 0) ? (
-          <EmptyNote icon="calendar-outline">Nothing is scheduled between now and then.</EmptyNote>
+          <EmptyNote icon="calendar-outline" style={{ marginTop: 0 }}>Nothing is scheduled between now and then.</EmptyNote>
         ) : (
           la.days
             .filter(d => d.tasks.length > 0 || d.expected.length > 0)
@@ -889,7 +889,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 14,
     paddingBottom: spacing.xs,
   },
-  hint: { color: colors.textTertiary, fontSize: font.xs, paddingHorizontal: spacing.xs },
+  hint: { color: colors.textTertiary, fontSize: font.xs, paddingHorizontal: spacing.xs, paddingBottom: spacing.sm },
 
   proposalRow: {
     flexDirection: 'row',
