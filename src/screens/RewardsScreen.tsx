@@ -967,7 +967,7 @@ export function RewardsScreen() {
           </View>
         </View>
         {budgetMinor !== null && (
-          <Text style={styles.sectionHint}>
+          <Text style={[styles.sectionHint, styles.budgetHint]}>
             {exchange !== null
               ? describeExchangeRate(exchange, currencySymbol)
               : 'The rate is set after a week of completed tasks.'}
@@ -1316,6 +1316,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
   },
   sectionHint: { color: colors.textSecondary, fontSize: font.xs, paddingHorizontal: spacing.md, paddingBottom: spacing.xs },
+  budgetHint: { paddingTop: spacing.xsm },
   historyCard: { marginHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.bgSecondary },
   historyRow: {
     flexDirection: 'row',
