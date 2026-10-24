@@ -170,6 +170,20 @@ interface CalendarState {
   aheadWindowEnd: string | null;
   refreshAhead: () => Promise<void>;
   /**
+   * The grid window: every event over the days the Calendar screen has on
+   * show (a month's 42 cells), for its event dots and agenda past the
+   * fortnight. A **separate read** for the reason the others are: only that
+   * screen draws a far day's meetings, so it reads them when it is shown
+   * rather than widening the read every foreground pays for. `gridStart` and
+   * `gridEnd` say which days it answers for, and only those count as known.
+   */
+  gridEvents: BusyEvent[];
+  gridCalendarsById: Record<string, CalendarInfo>;
+  gridLoaded: boolean;
+  gridStart: string | null;
+  gridEnd: string | null;
+  refreshGrid: (start: Date, end: Date) => Promise<void>;
+  /**
    * The follow-up window: a week back and `FOLLOW_UP_AHEAD_DAYS` ahead, for the
    * event rules that fire after an event ends and may stand down when another
    * is booked. A **separate read** for the reason the other two are: Today's
@@ -230,6 +244,7 @@ export function vacationReturnCalendarIds(s: {
 const windowGuard = createRefreshGuard();
 const pastGuard = createRefreshGuard();
 const aheadGuard = createRefreshGuard();
+const gridGuard = createRefreshGuard();
 const followUpGuard = createRefreshGuard();
 const recentGuard = createRefreshGuard();
 
@@ -249,6 +264,11 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   aheadEvents: [],
   aheadLoaded: false,
   aheadWindowEnd: null,
+  gridEvents: [],
+  gridCalendarsById: {},
+  gridLoaded: false,
+  gridStart: null,
+  gridEnd: null,
   followUpEvents: [],
   followUpLoaded: false,
   recentEvents: [],
@@ -400,6 +420,42 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     set({ aheadEvents, aheadLoaded: true, aheadWindowEnd });
   },
 
+  async refreshGrid(start, end) {
+    const { calendarReadEnabled, calendarIds, vacationMode, vacationHiddenCalendarIds } =
+      useSettingsStore.getState();
+    // The same calendars the fortnight read uses, vacation filter included.
+    const readIds = vacationMode
+      ? calendarIds.filter(id => !vacationHiddenCalendarIds.includes(id))
+      : calendarIds;
+    // Demo mode in the gate, as `refreshAhead` has it: this read is only ever shown.
+    if (!calendarReadEnabled || readIds.length === 0 || Platform.OS !== 'ios' || isDemoModeActive()) {
+      gridGuard.invalidate();
+      set({ gridEvents: [], gridCalendarsById: {}, gridLoaded: false, gridStart: null, gridEnd: null });
+      return;
+    }
+    const token = gridGuard.begin();
+    const result = await fetchEvents(readIds, start, end);
+    if (!gridGuard.isCurrent(token)) return;
+    if (result === null) {
+      set({ gridLoaded: false });
+      return;
+    }
+    const gridStart = start.toISOString();
+    const gridEnd = end.toISOString();
+    const held = get();
+    // Called on every return to the screen and every change to the main
+    // window; a fresh array of the same events would rebuild every cell.
+    if (held.gridLoaded && held.gridStart === gridStart && held.gridEnd === gridEnd
+      && sameBusyEvents(held.gridEvents, result.events)) return;
+    set({
+      gridEvents: result.events,
+      gridCalendarsById: result.calendarsById,
+      gridLoaded: true,
+      gridStart,
+      gridEnd,
+    });
+  },
+
   async refreshFollowUp() {
     const settings = useSettingsStore.getState();
     const readIds = settings.vacationMode
@@ -484,12 +540,14 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     windowGuard.invalidate();
     pastGuard.invalidate();
     aheadGuard.invalidate();
+    gridGuard.invalidate();
     followUpGuard.invalidate();
     recentGuard.invalidate();
     set({
       events: [], vacationReturnEvents: [], vacationReturnLoaded: false, perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false, readFailed: false,
       pastEvents: [], pastLoaded: false, pastReadAt: null,
       aheadEvents: [], aheadLoaded: false, aheadWindowEnd: null,
+      gridEvents: [], gridCalendarsById: {}, gridLoaded: false, gridStart: null, gridEnd: null,
       followUpEvents: [], followUpLoaded: false,
       recentEvents: [], recentLoaded: false,
     });

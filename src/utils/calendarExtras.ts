@@ -1,24 +1,22 @@
-import type { MealPlanEntry, Person, Project, Task } from '../types';
-import { dayKeyOf, getLogicalDayKey } from './dateUtils';
+import type { MealPlanEntry, Person, Project } from '../types';
+import { dayKeyOf } from './dateUtils';
 import { awaySpanOf, isAwayDay, type AwaySpan } from './awayDates';
 import { birthdayInYear, birthdayTitle } from './birthdayTasks';
 import { entriesForDay } from './mealPlan';
-import { isMissed } from './missed';
 
 /**
  * Everything the Calendar screen shows on a day that isn't a task's own date.
  *
  * The task buckets (`calendarMonth.ts`) answer "what lands on this day"; this
  * answers "what else was the app already holding about it": the trip you're on,
- * the meals planned, whose birthday it is, which project is due, and what got
- * done. Each one has its own home elsewhere in the app, and nothing here writes
+ * the meals planned, whose birthday it is and which project is due. Each one has its own home elsewhere in the app, and nothing here writes
  * or derives anything new: it is a read over dates that already exist, the
  * same shape the month grid itself is.
  *
  * Kept apart from the task buckets on purpose. A bucket's marks are task rows
- * and projections, and `dayLoad`, the dots and the outstanding counts all read
- * them as work. None of these is work landing on the day (a completion is work
- * already done), so folding them in would put them into every one of those.
+ * and projections, and `dayLoad` and the outstanding counts read them as work.
+ * None of these is work landing on the day, so folding them in would put them
+ * into every one of those.
  */
 
 /** A project's away span, named, for the trip band and the day's list. */
@@ -36,8 +34,6 @@ export interface DayExtras {
   /** Titled with `birthdayTitle`, so the calendar names it the way the task does. */
   birthdays: { personId: string; title: string }[];
   projectDeadlines: { projectId: string; name: string }[];
-  /** Top-level tasks completed on this logical day, newest first. */
-  completedIds: string[];
 }
 
 /**
@@ -62,7 +58,6 @@ export interface DayExtrasInput {
   meals: readonly MealPlanEntry[];
   people: readonly Person[];
   projects: readonly Project[];
-  tasks: readonly Task[];
   dayResetTime?: string;
 }
 
@@ -74,7 +69,7 @@ export function buildDayExtras(
   days: readonly Date[],
   input: DayExtrasInput,
 ): Map<string, DayExtras> {
-  const { trips, meals, people, projects, tasks, dayResetTime } = input;
+  const { trips, meals, people, projects, dayResetTime } = input;
   const out = new Map<string, DayExtras>();
   if (days.length === 0) return out;
   const keys = days.map(dayKeyOf);
@@ -82,7 +77,7 @@ export function buildDayExtras(
   const at = (key: string): DayExtras => {
     let extras = out.get(key);
     if (!extras) {
-      extras = { key, trips: [], meals: [], birthdays: [], projectDeadlines: [], completedIds: [] };
+      extras = { key, trips: [], meals: [], birthdays: [], projectDeadlines: [] };
       out.set(key, extras);
     }
     return extras;
@@ -122,53 +117,16 @@ export function buildDayExtras(
     if (inGrid.has(key)) at(key).projectDeadlines.push({ projectId: project.id, name: project.title });
   }
 
-  // On the logical day it was completed, the way Logbook groups it: a task
-  // ticked at 1 AM under a 2 AM reset was done on the evening before. Missed
-  // rows are completed in the schema but weren't done, so they stay out.
-  // Filtered to the grid before sorting: the task list holds every
-  // completion ever kept, and a month wants a few dozen of them.
-  const done: { id: string; time: number; key: string }[] = [];
-  for (const t of tasks) {
-    if (!t.completed || !t.completedAt || t.parentId || t.archived || isMissed(t)) continue;
-    const time = Date.parse(t.completedAt);
-    const key = getLogicalDayKey(new Date(time), dayResetTime);
-    if (inGrid.has(key)) done.push({ id: t.id, time, key });
-  }
-  done.sort((a, b) => b.time - a.time);
-  for (const { id, key } of done) at(key).completedIds.push(id);
-
   return out;
 }
 
-/** Whether the "On this day" card has anything to say. Completions are rows, not card lines. */
+/** Whether the "On this day" card has anything to say. */
 export function hasDayNotes(extras: DayExtras | undefined, includeMeals: boolean): boolean {
   if (!extras) return false;
   return extras.trips.length > 0
     || extras.birthdays.length > 0
     || extras.projectDeadlines.length > 0
     || (includeMeals && extras.meals.length > 0);
-}
-
-/**
- * The completed rows for a day's "Completed" section: the day's completions
- * minus any task the day's lists already show. A task due today and ticked
- * today is already on the day as a done row; listing it twice would read as
- * two tasks.
- */
-export function completedRows(
-  extras: DayExtras | undefined,
-  alreadyShown: readonly Task[],
-  taskById: ReadonlyMap<string, Task>,
-): Task[] {
-  if (!extras) return [];
-  const shown = new Set(alreadyShown.map(t => t.id));
-  const out: Task[] = [];
-  for (const id of extras.completedIds) {
-    if (shown.has(id)) continue;
-    const task = taskById.get(id);
-    if (task) out.push(task);
-  }
-  return out;
 }
 
 export interface TripBandSegment {

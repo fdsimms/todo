@@ -7,7 +7,7 @@ import type {
   RecurrenceRule,
   RecurringEventOptions,
 } from 'expo-calendar/legacy';
-import { hasVideoCallLink, type BusyEvent } from './calendarBusy';
+import { hasVideoCallLink, videoCallLink, type BusyEvent } from './calendarBusy';
 import { isDemoModeActive } from './demoState';
 import type { EventRecurrence } from './quickEvent';
 
@@ -878,6 +878,41 @@ export async function updateEventDirect(
   } catch {
     return null;
   }
+}
+
+/**
+ * Moves an event, or one occurrence of a repeating one, to new times: the
+ * Day view's drag and resize. Through `rewriteEvent`, so the location, notes
+ * and alerts the save would otherwise reset are sent back; the title is sent
+ * too, as the event already has it. Resolves the event's id (EventKit can
+ * hand back a new one for a moved occurrence), or null on any failure.
+ */
+export async function rescheduleEventDirect(
+  eventId: string,
+  title: string,
+  start: Date,
+  end: Date,
+  occurrenceStart?: string | null,
+): Promise<string | null> {
+  if (Platform.OS !== 'ios' || isDemoModeActive() || end.getTime() <= start.getTime()) return null;
+  try {
+    if (!(await requestCalendarPermission())) return null;
+    return (await rewriteEvent(eventId, { title, startDate: start, endDate: end }, occurrenceOptions(occurrenceStart))) || eventId;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The video-call link in an event's URL or notes, read for this one event on
+ * a tap (`videoCallLink`), since an event's notes are never kept. Null when
+ * there is none or the event can't be read.
+ */
+export async function readEventJoinLink(eventId: string, occurrenceStart?: string | null): Promise<string | null> {
+  if (Platform.OS !== 'ios' || !eventId || isDemoModeActive()) return null;
+  const event = await readEventForEdit(eventId, occurrenceStart);
+  if (!event) return null;
+  return videoCallLink(event.url, event.notes, event.location);
 }
 
 /**

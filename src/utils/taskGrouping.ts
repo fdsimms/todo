@@ -566,6 +566,24 @@ export function laterVisibleOrder(deferredTasks: Task[]): LaterOrderedTask[] {
     .map(({ task, visibleAt }) => ({ task, visibleAt }));
 }
 
+/**
+ * The task Later should scroll to for a day (the calendar's "open in Later"
+ * link): the first one surfacing on that logical day or after it, so a day
+ * with nothing of its own lands on the next day that has something. Null when
+ * nothing surfaces that late. Tasks waiting for a lighter day are skipped:
+ * their section opens ahead of the dated ones whatever their day.
+ */
+export function laterTaskForDay(
+  order: readonly LaterOrderedTask[],
+  dayKey: string,
+  dayResetTime?: string,
+): Task | null {
+  const todayKey = getLogicalDayKey(new Date(), dayResetTime);
+  const hit = order.find(o =>
+    !isSlotWaiting(o.task, todayKey) && getLogicalDayKey(o.visibleAt, dayResetTime) >= dayKey);
+  return hit?.task ?? null;
+}
+
 /** The Later section the tasks waiting for a lighter day sit in, ahead of the dated ones. */
 export const SLOT_IN_SECTION_TITLE = 'Waiting for a lighter day';
 

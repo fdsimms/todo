@@ -30,9 +30,7 @@ import { calibrationFrom, calibratedAssumedMinutes } from './estimateCalibration
  *   cue, which is a rank, and `snoozeEngine` already ranks on exactly that
  *   basis. `describeDayLoad` folds in none of it: it names real rows and their
  *   real estimates, keeps meeting time as its own clause, and says "at least"
- *   the moment a counted row has no estimate to contribute. The same split
- *   `summarizeDay` makes when it leaves projections out of "3 due" and lets
- *   them caption themselves below.
+ *   the moment a counted row has no estimate to contribute.
  * - **No cue is never "this day is free".** A day the calendar window doesn't
  *   reach (`busyKnown: false`) is a day nothing is known about, and an
  *   unmarked cell means "nothing to say" everywhere else too — the silence
@@ -346,8 +344,8 @@ export function describeDayWeight(weight: DayWeight): string {
  *   are never added to the task total — `describeShops`' rule, and the reason
  *   `weekPlan` keeps "probably have" out of its numbers.
  * - **Count occurrences that have no row.** They're captioned where they're
- *   listed, and a number here that no list underneath accounts for is the thing
- *   `summarizeDay` already declines to print.
+ *   listed, and a number here that no list underneath accounts for is a number
+ *   nobody can check.
  *
  * Returns '' for a day with nothing to report, so a one-line consumer renders
  * nothing at all rather than an empty row.
