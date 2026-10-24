@@ -30,6 +30,8 @@ import { TextField } from './TextField';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { RotatingChevron } from './RotatingChevron';
+import { animateLayout } from '../utils/layoutAnimation';
 
 type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'link';
 
@@ -101,6 +103,8 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
   const patch = (fields: Partial<TitleRule>) => setDraft(prev => ({ ...prev, ...fields }));
 
   const fieldOpen = (key: FieldKey) => openFields[key] ?? false;
+  // The app shortcuts stay folded unless the rule's link already is one: most links are a web address.
+  const [linkAppsOpen, setLinkAppsOpen] = useState(false);
   const toggleField = (key: FieldKey) => setOpenFields(prev => ({ ...prev, [key]: !(prev[key] ?? false) }));
   const closeField = (key: FieldKey) => setOpenFields(prev => ({ ...prev, [key]: false }));
 
@@ -397,9 +401,42 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             if (!fieldOpen('link') && draft.linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === draft.linkUrl)) {
               setCustomLinkText(draft.linkUrl);
             }
+            if (!fieldOpen('link')) {
+              setLinkAppsOpen(!!draft.linkUrl && KNOWN_LINK_APPS.some(app => app.scheme === draft.linkUrl));
+            }
             toggleField('link');
           }}
         >
+          <FieldLabel>Web address</FieldLabel>
+          <View style={styles.linkCustomRow}>
+            <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
+            <TextField
+              style={styles.linkCustomInput}
+              value={customLinkText}
+              onChangeText={setCustomLinkText}
+              onSubmitEditing={commitCustomLink}
+              onBlur={commitCustomLink}
+              placeholder="e.g. https://... or app://"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              spellCheck={false}
+              returnKeyType="done"
+              accessibilityLabel="Custom link URL this rule sets"
+            />
+          </View>
+          <TouchableOpacity
+            style={styles.linkAppsToggle}
+            onPress={() => { haptics.tap(); animateLayout(); setLinkAppsOpen(v => !v); }}
+            accessibilityRole="button"
+            accessibilityLabel="Open an app"
+            accessibilityState={{ expanded: linkAppsOpen }}
+          >
+            <Text style={styles.linkAppsToggleText}>Or open an app</Text>
+            <RotatingChevron open={linkAppsOpen} size={14} color={colors.textSecondary} />
+          </TouchableOpacity>
+          {linkAppsOpen && (
           <View style={styles.pillRow}>
             <TouchableOpacity
               style={[styles.pill, !draft.linkUrl && styles.pillActive]}
@@ -424,25 +461,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               </TouchableOpacity>
             ))}
           </View>
-          <FieldLabel>Web address</FieldLabel>
-          <View style={styles.linkCustomRow}>
-            <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
-            <TextField
-              style={styles.linkCustomInput}
-              value={customLinkText}
-              onChangeText={setCustomLinkText}
-              onSubmitEditing={commitCustomLink}
-              onBlur={commitCustomLink}
-              placeholder="e.g. https://... or app://"
-              placeholderTextColor={colors.textTertiary}
-              keyboardType="url"
-              autoCapitalize="none"
-              autoCorrect={false}
-              spellCheck={false}
-              returnKeyType="done"
-              accessibilityLabel="Custom link URL this rule sets"
-            />
-          </View>
+          )}
         </CollapsibleField>
       </View>
 
@@ -562,6 +581,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   linkAppChipActive: { backgroundColor: colors.accentFill },
   linkAppChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   linkAppChipTextActive: { color: colors.onAccent, fontWeight: '600' },
+  linkAppsToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+  },
+  linkAppsToggleText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   linkCustomRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingTop: spacing.sm,
