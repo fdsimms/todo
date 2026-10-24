@@ -284,16 +284,21 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     const current = prefsFor(get().settings, name);
     let next: MedicationLimit | null = null;
     const amountCap = limit?.maxAmount24h ?? null;
-    if (limit && (limit.minHours !== null || limit.maxPer24h !== null || amountCap)) {
+    const doseCap = limit?.maxDose ?? null;
+    if (limit && (limit.minHours !== null || limit.maxPer24h !== null || amountCap || doseCap)) {
       const before = current.limit?.maxAmount24h ?? null;
+      const doseBefore = current.limit?.maxDose ?? null;
       const capsUnchanged = current.limit
         && current.limit.minHours === limit.minHours
         && current.limit.maxPer24h === limit.maxPer24h
         && before?.amount === amountCap?.amount
-        && before?.unit === amountCap?.unit;
+        && before?.unit === amountCap?.unit
+        && doseBefore?.amount === doseCap?.amount
+        && doseBefore?.unit === doseCap?.unit;
       next = {
         ...limit,
         maxAmount24h: amountCap,
+        maxDose: doseCap,
         since: capsUnchanged && current.limit ? current.limit.since : new Date().toISOString(),
       };
     }

@@ -4,11 +4,13 @@ import type { MedicationLog } from '../types';
 import { useMedicationStore, type DoseInput } from '../store/useMedicationStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { dayKeyOf, getCurrentDayStart } from './dateUtils';
-import { medicationKey, taskSupplyFor } from './medicationLog';
+import { isCountedUnit, medicationKey, taskSupplyFor } from './medicationLog';
 import {
   crossedRefill,
   describeLimit,
   describeSupplyLeft,
+  doseOverMax,
+  formatCapAmount,
   limitStatus,
   prefsFor,
   supplyRemaining,
@@ -79,10 +81,11 @@ export async function allowOkAgainNotification(): Promise<boolean> {
 }
 
 /**
- * Ask before recording a dose the limit you set says is too soon. Resolves
- * true straight away when there is no limit or it allows one now. `planned` is
- * the dose about to be recorded: a limit on a total asks whether that much
- * fits, so the same limit can allow 400 mg and refuse 800 mg.
+ * Ask before recording a dose the limit you set says is too soon or too large.
+ * Resolves true straight away when there is no limit or it allows the dose.
+ * `planned` is the dose about to be recorded: a limit on a total asks whether
+ * that much fits, so the same limit can allow 400 mg and refuse 800 mg, and a
+ * limit on one dose reads its size. The person can always go ahead.
  */
 export function confirmWithinLimit(
   name: string,
@@ -90,13 +93,24 @@ export function confirmWithinLimit(
   planned: { amount: number | null; unit: string | null } | null = null,
 ): Promise<boolean> {
   const { logs, settings } = useMedicationStore.getState();
-  const { limit } = prefsFor(settings, name);
+  const { limit, strength } = prefsFor(settings, name);
   const status = limitStatus(logs, name, limit, now, planned);
-  if (!status.nextOkAt) return Promise.resolve(true);
-  const message = `The limit you set is ${describeLimit(limit)!.toLowerCase()}. `
-    + `The next dose is within it at ${format(status.nextOkAt, 'h:mm a')}.`;
+  // A counted dose is saved with the strength set now (`addLog`), so it is
+  // measured with that strength here too, or "2 tablets" never reads as mg.
+  const over = planned && planned.amount !== null && planned.unit
+    ? doseOverMax(limit, {
+      amount: planned.amount,
+      unit: planned.unit,
+      strength: isCountedUnit(planned.unit) && strength ? { ...strength } : null,
+    })
+    : null;
+  if (!status.nextOkAt && !over) return Promise.resolve(true);
+  const lines: string[] = [];
+  if (over) lines.push(`That is ${formatCapAmount({ amount: over.amount, unit: over.max.unit })} in one dose.`);
+  if (status.nextOkAt) lines.push(`The next dose is within it at ${format(status.nextOkAt, 'h:mm a')}.`);
+  const message = `The limit you set is ${describeLimit(limit)!.toLowerCase()}. ${lines.join(' ')}`;
   return new Promise(resolve => {
-    Alert.alert(`${name.trim()}: too soon`, message, [
+    Alert.alert(`${name.trim()}: ${over && status.nextOkAt ? 'past your limit' : over ? 'more than your limit' : 'too soon'}`, message, [
       { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: () => resolve(false) },
       { text: 'Record anyway', onPress: () => resolve(true) },
     ]);

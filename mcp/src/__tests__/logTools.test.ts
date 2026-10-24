@@ -653,6 +653,17 @@ describe('set_medication_limit and set_medication_supply', () => {
     expect(setMedicationLimit(replica, { name: 'Ibuprofen', clear: true })).toMatchObject({ limit: null });
   });
 
+  it('sets a cap on one dose, keeps it when other caps change, and refuses a bad unit', () => {
+    addMedication(replica, 'Acetaminophen');
+    expect(setMedicationLimit(replica, { name: 'Acetaminophen', minHours: 8, maxDose: { amount: 2, unit: 'tablet' } }).limit)
+      .toBe('At least 8 hours apart, at most 2 tablets in one dose');
+    expect(setMedicationLimit(replica, { name: 'Acetaminophen', maxAmount24h: { amount: 3, unit: 'tablet' } }).limit)
+      .toBe('At least 8 hours apart, at most 2 tablets in one dose, at most 3 tablets in 24 hours');
+    expect(setMedicationLimit(replica, { name: 'Acetaminophen', maxDose: null }).limit)
+      .toBe('At least 8 hours apart, at most 3 tablets in 24 hours');
+    expect(() => setMedicationLimit(replica, { name: 'Acetaminophen', maxDose: { amount: 2, unit: 'furlongs' } })).toThrow(/maxDose.unit/);
+  });
+
   it('refuses a limit that is empty, mixed or out of range, and an unlisted medicine', () => {
     addMedication(replica, 'Naproxen');
     expect(() => setMedicationLimit(replica, { name: 'Naproxen' })).toThrow(/Give minHours/);

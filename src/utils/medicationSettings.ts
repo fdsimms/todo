@@ -67,6 +67,15 @@ export interface MedicationLimit {
    * rule `supplyUseOf` states for a supply). Optional so a map written before it reads unchanged.
    */
   maxAmount24h?: AmountCap | null;
+  /**
+   * Most of one unit in a single dose, or null/absent for no cap. For a label
+   * that says "do not exceed 2 tablets in any dose". Judged by the same
+   * `amountInUnit` as the 24-hour amount cap, so a dose with no amount, or in
+   * another unit with no strength to multiply by, is not measured and never
+   * guessed. Like every limit here it is a suggestion: the app asks before
+   * recording a dose over it and lets the person go ahead.
+   */
+  maxDose?: AmountCap | null;
   /** Send a notification when the next dose is allowed again. */
   notify: boolean;
   /** ISO instant the limit was set; doses before it are never judged. */
@@ -200,7 +209,8 @@ function parseLimit(raw: unknown): MedicationLimit | null {
   const minHours = positiveOrNull(r.minHours, 72);
   const maxPer24h = positiveOrNull(r.maxPer24h, 99);
   const maxAmount24h = parseAmount(r.maxAmount24h, 999999);
-  if (minHours === null && maxPer24h === null && maxAmount24h === null) return null;
+  const maxDose = parseAmount(r.maxDose, 999999);
+  if (minHours === null && maxPer24h === null && maxAmount24h === null && maxDose === null) return null;
   const since = typeof r.since === 'string' && !Number.isNaN(Date.parse(r.since)) ? r.since : null;
   if (!since) return null;
   return {
@@ -209,6 +219,7 @@ function parseLimit(raw: unknown): MedicationLimit | null {
     notify: r.notify === true,
     since,
     ...(maxAmount24h ? { maxAmount24h } : {}),
+    ...(maxDose ? { maxDose } : {}),
   };
 }
 
@@ -384,9 +395,10 @@ export function formatHours(hours: number): string {
   return `${rounded} ${rounded === 1 ? 'hour' : 'hours'}`;
 }
 
-/** "1,200 mg": an amount cap as the label would print it. */
+/** "1,200 mg", "2 tablets": an amount cap as the label would print it. */
 export function formatCapAmount(cap: AmountCap): string {
-  return `${cap.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${cap.unit}`;
+  const plural = cap.amount !== 1 ? DOSE_UNITS.find(u => u.value === cap.unit)?.plural : null;
+  return `${cap.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${plural ?? cap.unit}`;
 }
 
 /** "At least 6 hours apart, at most 4 in 24 hours", or null with no limit. */
@@ -394,6 +406,7 @@ export function describeLimit(limit: MedicationLimit | null): string | null {
   if (!limit) return null;
   const parts: string[] = [];
   if (limit.minHours !== null) parts.push(`at least ${formatHours(limit.minHours)} apart`);
+  if (limit.maxDose) parts.push(`at most ${formatCapAmount(limit.maxDose)} in one dose`);
   if (limit.maxPer24h !== null) parts.push(`at most ${limit.maxPer24h} in 24 hours`);
   if (limit.maxAmount24h) parts.push(`at most ${formatCapAmount(limit.maxAmount24h)} in 24 hours`);
   if (parts.length === 0) return null;
@@ -524,9 +537,24 @@ export function limitStatus(
   return status;
 }
 
+/**
+ * How much of the per-dose cap a dose is over, or null when it is within it,
+ * there is no cap, or the dose can't be measured in the cap's unit (no amount,
+ * or another unit with no strength to multiply by). Not measured is not over.
+ */
+export function doseOverMax(
+  limit: MedicationLimit | null,
+  dose: Pick<MedicationLog, 'amount' | 'unit' | 'strength'>,
+): { max: AmountCap; amount: number } | null {
+  const max = limit?.maxDose ?? null;
+  if (!max) return null;
+  const amount = amountInUnit(dose, max.unit);
+  return amount !== null && amount > max.amount ? { max, amount } : null;
+}
+
 export interface LimitBreach {
   log: MedicationLog;
-  reason: 'spacing' | 'max' | 'amount';
+  reason: 'spacing' | 'max' | 'amount' | 'dose';
 }
 
 /**
@@ -551,6 +579,7 @@ export function limitBreaches(
   for (let i = 0; i < ordered.length; i++) {
     const t = Date.parse(ordered[i].takenAt);
     if (t < since) continue;
+    if (doseOverMax(limit, ordered[i])) { breaches.push({ log: ordered[i], reason: 'dose' }); continue; }
     if (limit.minHours !== null && i > 0) {
       const prev = Date.parse(ordered[i - 1].takenAt);
       if (t - prev < limit.minHours * HOUR_MS) {

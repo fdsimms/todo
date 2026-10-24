@@ -3867,7 +3867,7 @@ function seedAsNeededDoses(today: Date): void {
   // which stamp the supply's count as of now, so the doses above (all in the
   // past) leave it at the number typed here.
   const meds = useMedicationStore.getState();
-  meds.setLimit('Ibuprofen', { minHours: 6, maxPer24h: 3, notify: false, maxAmount24h: { amount: 1200, unit: 'mg' } });
+  meds.setLimit('Ibuprofen', { minHours: 6, maxPer24h: 3, notify: false, maxAmount24h: { amount: 1200, unit: 'mg' }, maxDose: { amount: 400, unit: 'mg' } });
   // Two usual strengths, so the dose sheet shows quick picks and the page shows a default.
   meds.setUsualDoses('Ibuprofen', [{ amount: 400, unit: 'mg' }, { amount: 200, unit: 'mg' }]);
   meds.setSupply('Ibuprofen', { count: 9, unit: 'dose', refillCount: 24, reorderAt: 3 });

@@ -306,7 +306,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/medicationRename.ts` — DoseFill, renamedLogs, renamedSettings, renamedKeys, renamedChain, renamedTask, renamedTemplateItem, splitStrength
 - `src/utils/medicationRenameApply.ts` — renameMedicationEverywhere
 - `src/utils/medicationSchedule.ts` — MedicationSchedule, MAX_SCHEDULE_INTERVAL, parseSchedule, describeSchedule, ScheduleState, ScheduleStatus, scheduleStatus, describeScheduleStatus
-- `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, AmountCap, MedicationLimit, MedicationSupply, SupplementPanel, PanelIngredient, INGREDIENT_UNITS, MAX_PANEL_INGREDIENTS, UsualDose, MedicationPrefs, +22 more
+- `src/utils/medicationSettings.ts` — MEDICATION_SETTINGS_KEY, AmountCap, MedicationLimit, MedicationSupply, SupplementPanel, PanelIngredient, INGREDIENT_UNITS, MAX_PANEL_INGREDIENTS, UsualDose, MedicationPrefs, +23 more
 - `src/utils/medicationSummary.ts` — SummaryPreset, SummaryRange, summaryRange, rangeDays, describeRange, SummaryCandidate, summaryCandidates, missedCountsByMedication, DoseAmount, DoseRun, +15 more
 - `src/utils/metricKit.ts` — DeviceMetricSummary, DEVICE_METRIC_LIMIT, Bucket, histogramBuckets, bucketTotal, bucketMedianMs, parseMetricPayload, parseSummaries, mergeSummaries, collectSummaries, +1 more
 - `src/utils/mirroringDefault.ts` — shouldDefaultMirroringOn
