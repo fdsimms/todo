@@ -21729,7 +21729,7 @@ describe('coins', () => {
   describe('a habit a reward guards', () => {
     const dessert = {
       id: 'dessert', title: 'A dessert', cost: 10, createdAt: '2025-01-01T00:00:00.000Z',
-      linkUrl: null, note: null, oneTime: false, taskId: null, priceMinor: null, guardsTaskId: 'no-dessert', claimEveryDays: null, glyph: null,
+      linkUrl: null, note: null, oneTime: false, taskId: null, priceMinor: null, taxable: false, guardsTaskId: 'no-dessert', claimEveryDays: null, glyph: null,
     };
     const fund = (amount: number) => ({
       id: `fund-${amount}`, kind: 'earn' as const, amount, at: '2025-06-01T10:00:00.000Z',

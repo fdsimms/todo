@@ -271,6 +271,8 @@ export interface ReplicaSettings {
   rewardGoalId: string | null;
   /** Weekly reward spend in minor units, which with the earning rate sets the coin-to-dollar rate. Null when unset. */
   rewardWeeklyBudgetMinor: number | null;
+  /** Sales tax in percent, added to the price of a taxable dollar-priced reward. Null when unset. */
+  rewardSalesTaxPercent: number | null;
   /** How many coin bounties may be live at once. */
   bountyLimit: number;
   /** Days completed tasks are kept, or null for for ever. */
@@ -2192,14 +2194,14 @@ export interface Replica {
    * sit on a screen the person cannot open. Never a wish-list reward: those
    * read their title off a list item and are made in the app.
    */
-  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null; guardsTaskId?: string | null; claimEveryDays?: number | null; glyph?: string | null }): Reward;
+  addReward(title: string, cost: number, details: { linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null; taxable?: boolean; guardsTaskId?: string | null; claimEveryDays?: number | null; glyph?: string | null }): Reward;
   /**
    * Change a reward's cost, or its title, link, note, one-time flag or the
    * habit it guards. A wish-list reward is refused: its title, note and link
    * live on the list item. A guarded habit must be a live "don't do this"
    * habit no other reward guards, on a reward that isn't one-time.
    */
-  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null; guardsTaskId?: string | null; claimEveryDays?: number | null; glyph?: string | null }): Reward;
+  updateReward(id: string, patch: { title?: string; cost?: number; linkUrl?: string | null; note?: string | null; oneTime?: boolean; priceMinor?: number | null; taxable?: boolean; guardsTaskId?: string | null; claimEveryDays?: number | null; glyph?: string | null }): Reward;
   /** Delete a reward. Coins already spent on it stay spent, as in the app. */
   deleteReward(id: string): Reward;
   /**
@@ -4362,6 +4364,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         workoutsEnabled: s.workoutsEnabled,
         rewardGoalId: s.rewardGoalId,
         rewardWeeklyBudgetMinor: s.rewardWeeklyBudgetMinor,
+        rewardSalesTaxPercent: s.rewardSalesTaxPercent,
         bountyLimit: s.bountyLimit,
         completedRetentionDays: s.completedRetentionDays,
         // Read off the table, as requestCalendarEvent does, so the two agree.

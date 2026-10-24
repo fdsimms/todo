@@ -2325,6 +2325,8 @@ describe('demo seed — people', () => {
     expect(rewards.some(r => r.oneTime && !r.taskId)).toBe(true);
     expect(rewards.some(r => r.claimEveryDays === 7)).toBe(true);
     expect(rewards.some(r => r.glyph)).toBe(true);
+    expect(rewards.some(r => r.priceMinor !== null && r.taxable)).toBe(true);
+    expect(useSettingsStore.getState().rewardSalesTaxPercent).not.toBeNull();
     const listId = useSettingsStore.getState().rewardListProjectId;
     const list = useProjectStore.getState().projects.find(p => p.id === listId);
     expect(list?.list).toBe(true);

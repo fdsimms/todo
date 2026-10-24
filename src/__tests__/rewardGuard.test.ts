@@ -14,7 +14,7 @@ const DAY = new Date(2026, 9, 9, 4, 0, 0);
 
 const reward = (over: Partial<Reward> = {}): Reward => ({
   id: 'dessert', title: 'A dessert', cost: 110, createdAt: '2026-01-01T00:00:00.000Z',
-  linkUrl: null, note: null, oneTime: false, taskId: null, priceMinor: null, guardsTaskId: 'no-dessert', claimEveryDays: null, glyph: null,
+  linkUrl: null, note: null, oneTime: false, taskId: null, priceMinor: null, taxable: false, guardsTaskId: 'no-dessert', claimEveryDays: null, glyph: null,
   ...over,
 });
 

@@ -18,6 +18,7 @@ import {
   cleanRewardGlyph,
   coinBalance,
   coinsForPrice,
+  priceWithTax,
   lastClaimedAt,
   latestLossFor,
   sortCoinEntries,
@@ -116,9 +117,10 @@ interface RewardStore {
    * `rate` (coins per dollar). The one place a saved cost moves on its own,
    * and only for a reward whose price is in dollars. `savingForId` (the
    * reward being saved for) is left alone, so the goal doesn't move while you
-   * save toward it. Returns how many changed.
+   * save toward it. A taxable reward is priced with `taxPercent` added.
+   * Returns how many changed.
    */
-  repriceDollarRewards: (rate: number, savingForId?: string | null) => number;
+  repriceDollarRewards: (rate: number, savingForId?: string | null, taxPercent?: number | null) => number;
   /** Deletes the reward. Coins already spent on it stay spent. */
   deleteReward: (id: string) => void;
   /**
@@ -159,7 +161,7 @@ const ANNOUNCE_WINDOW_MS = 60_000;
 export const COIN_BURST_MS = 1500;
 
 /** The optional half of a reward, as the form edits it. */
-export type RewardDetails = Pick<Reward, 'linkUrl' | 'note' | 'oneTime' | 'taskId' | 'priceMinor' | 'guardsTaskId' | 'claimEveryDays' | 'glyph'>;
+export type RewardDetails = Pick<Reward, 'linkUrl' | 'note' | 'oneTime' | 'taskId' | 'priceMinor' | 'taxable' | 'guardsTaskId' | 'claimEveryDays' | 'glyph'>;
 
 /** Blank text is no value, so a cleared field stores null rather than "". */
 function cleanText(text: string | null | undefined): string | null {
@@ -324,6 +326,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
         oneTime,
         taskId,
         priceMinor: details?.priceMinor ?? null,
+        taxable: details?.priceMinor != null && !!details.taxable,
         guardsTaskId: canGuard({ oneTime, taskId }) ? details?.guardsTaskId ?? null : null,
         claimEveryDays: cleanClaimLimit(details?.claimEveryDays, oneTime),
         glyph: taskId ? null : cleanRewardGlyph(details?.glyph),
@@ -342,6 +345,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       const taskId = patch.taskId !== undefined ? patch.taskId : current.taskId;
       const oneTime = !!taskId || (patch.oneTime !== undefined ? patch.oneTime : current.oneTime);
       const guardsTaskId = patch.guardsTaskId !== undefined ? patch.guardsTaskId : current.guardsTaskId;
+      const priceMinor = patch.priceMinor !== undefined ? patch.priceMinor : current.priceMinor;
       const next: Reward = {
         ...current,
         title,
@@ -350,7 +354,9 @@ export const useRewardStore = create<RewardStore>((set, get) => {
         note: patch.note !== undefined ? cleanText(patch.note) : current.note,
         oneTime,
         taskId,
-        priceMinor: patch.priceMinor !== undefined ? patch.priceMinor : current.priceMinor,
+        priceMinor,
+        // Tax belongs to a dollar price, so dropping the price drops it too.
+        taxable: priceMinor !== null && (patch.taxable !== undefined ? patch.taxable : current.taxable),
         // Turning a reward one-time drops the habit it guarded (see canGuard).
         guardsTaskId: canGuard({ oneTime, taskId }) ? guardsTaskId : null,
         // Turning a reward one-time drops its limit, which it has no use for.
@@ -361,12 +367,12 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       set(s => ({ rewards: sortRewards(s.rewards.map(r => (r.id === id ? next : r))) }));
     },
 
-    repriceDollarRewards(rate, savingForId) {
+    repriceDollarRewards(rate, savingForId, taxPercent = null) {
       if (!(rate > 0)) return 0;
       let changed = 0;
       const next = get().rewards.map(r => {
         if (r.priceMinor === null || r.id === savingForId) return r;
-        const cost = coinsForPrice(r.priceMinor, rate);
+        const cost = coinsForPrice(priceWithTax(r.priceMinor, r.taxable, taxPercent), rate);
         if (cost === r.cost) return r;
         changed += 1;
         const updated = { ...r, cost };

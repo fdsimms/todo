@@ -3789,6 +3789,11 @@ function seedRewards(today: Date): void {
     glyph: '🍜',
   });
   rewards.addReward('A new book', 300, { oneTime: true, glyph: '📚' });
+  // A dollar-priced reward with sales tax on it. The cost is the screen's to
+  // reprice from the budget and rate below once there is a week of history.
+  useSettingsStore.getState().setRewardWeeklyBudgetMinor(2500);
+  useSettingsStore.getState().setRewardSalesTaxPercent(8.875);
+  rewards.addReward('Coffee and a pastry', 400, { priceMinor: 650, taxable: true, glyph: '☕' });
   if (takeout) useSettingsStore.getState().setRewardGoalId(takeout.id);
 
   // A wish list feeding the screen: one item already priced as a reward, the

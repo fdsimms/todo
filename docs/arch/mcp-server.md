@@ -1012,6 +1012,7 @@ helpful: each description says "only when they say so", every write previews fir
 app's own passes (the sweeps, the rollover) still never charge anything. A reward's claim limit
 (`claimEveryDays`) is enforced in the store's `claimReward`, so `claim_reward` is refused inside it and
 `get_rewards` reports `availableInDays`.
+A dollar-priced reward can be `taxable`: `create_reward`/`update_reward` add the person's `rewardSalesTaxPercent` to the price before the exchange rate, and refuse (rather than skip the tax) while no rate is set.
 
 - **The rules are the app's.** Claims go through `useRewardStore.claimReward`, bounties through the
   same `canPostBounty` / `bountyLimit` checks as `postBounty`, a miss through `buildCompletion` with

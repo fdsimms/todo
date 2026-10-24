@@ -2224,6 +2224,8 @@ function runInitDatabase(): void {
     "ALTER TABLE recipes ADD COLUMN empty_step_sections TEXT NOT NULL DEFAULT '[]'",
     // NULL on every existing reward: priced in coins only. See Reward.priceMinor.
     'ALTER TABLE rewards ADD COLUMN price_minor INTEGER',
+    // Off on every existing reward: dollar prices were never taxed. See Reward.taxable.
+    'ALTER TABLE rewards ADD COLUMN taxable INTEGER NOT NULL DEFAULT 0',
     // Nullable with no default, for log_meal's reason: NULL is "the setting
     // decides", and a DEFAULT 0 would record every meal ever planned as having
     // declined a freezer reminder. See MealPlanEntry.thawTask.
@@ -8663,6 +8665,7 @@ function rowToReward(row: Record<string, unknown>): Reward {
     oneTime: row.one_time === 1 || !!row.task_id,
     taskId: (row.task_id as string | null) || null,
     priceMinor: row.price_minor == null ? null : Math.max(1, Math.round(Number(row.price_minor)) || 1),
+    taxable: row.price_minor != null && row.taxable === 1,
     guardsTaskId: (row.guards_task_id as string | null) || null,
     claimEveryDays: row.claim_every_days == null ? null : Math.max(1, Math.round(Number(row.claim_every_days)) || 1),
     glyph: (row.glyph as string | null) || null,
@@ -8677,15 +8680,15 @@ export function dbGetAllRewards(): Reward[] {
 
 export function dbInsertReward(reward: Reward): void {
   db.runSync(
-    'INSERT INTO rewards (id, title, cost, created_at, link_url, note, one_time, task_id, price_minor, guards_task_id, claim_every_days, glyph) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [reward.id, reward.title, reward.cost, reward.createdAt, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor, reward.guardsTaskId, reward.claimEveryDays, reward.glyph]
+    'INSERT INTO rewards (id, title, cost, created_at, link_url, note, one_time, task_id, price_minor, taxable, guards_task_id, claim_every_days, glyph) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [reward.id, reward.title, reward.cost, reward.createdAt, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor, reward.taxable ? 1 : 0, reward.guardsTaskId, reward.claimEveryDays, reward.glyph]
   );
 }
 
 export function dbUpdateReward(reward: Reward): void {
   db.runSync(
-    'UPDATE rewards SET title=?, cost=?, link_url=?, note=?, one_time=?, task_id=?, price_minor=?, guards_task_id=?, claim_every_days=?, glyph=? WHERE id=?',
-    [reward.title, reward.cost, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor, reward.guardsTaskId, reward.claimEveryDays, reward.glyph, reward.id]
+    'UPDATE rewards SET title=?, cost=?, link_url=?, note=?, one_time=?, task_id=?, price_minor=?, taxable=?, guards_task_id=?, claim_every_days=?, glyph=? WHERE id=?',
+    [reward.title, reward.cost, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor, reward.taxable ? 1 : 0, reward.guardsTaskId, reward.claimEveryDays, reward.glyph, reward.id]
   );
 }
 

@@ -27,6 +27,10 @@ import {
   earnRatePerDay,
   suggestRewardCost,
   coinsForPrice,
+  formatSalesTaxPercent,
+  MAX_SALES_TAX_PERCENT,
+  parseSalesTaxPercent,
+  priceWithTax,
   coinsPerDollar,
   describeExchangeRate,
   parseWeeklyBudget,
@@ -649,6 +653,34 @@ describe('exchange rate', () => {
     expect(coinsForPrice(450, 10)).toBe(45);
     expect(coinsForPrice(450, 20)).toBe(90);
     expect(coinsForPrice(1, 0.1)).toBe(1);
+  });
+
+  it('adds the sales tax to a taxable price only', () => {
+    expect(priceWithTax(1000, true, 8.875)).toBe(1089);
+    expect(priceWithTax(1000, false, 8.875)).toBe(1000);
+  });
+
+  it('prices a taxable reward as typed while no rate is set', () => {
+    expect(priceWithTax(1000, true, null)).toBe(1000);
+    expect(priceWithTax(1000, true, 0)).toBe(1000);
+  });
+
+  it('reads a stored tax rate, refusing anything that is not a plausible percent', () => {
+    expect(parseSalesTaxPercent('8.875')).toBe(8.875);
+    expect(parseSalesTaxPercent(7)).toBe(7);
+    expect(parseSalesTaxPercent('8.87549')).toBe(8.875);
+    expect(parseSalesTaxPercent('')).toBeNull();
+    expect(parseSalesTaxPercent(null)).toBeNull();
+    expect(parseSalesTaxPercent('0')).toBeNull();
+    expect(parseSalesTaxPercent('-3')).toBeNull();
+    expect(parseSalesTaxPercent('abc')).toBeNull();
+    expect(parseSalesTaxPercent(MAX_SALES_TAX_PERCENT + 1)).toBeNull();
+  });
+
+  it('writes a rate without trailing zeros', () => {
+    expect(formatSalesTaxPercent(7)).toBe('7%');
+    expect(formatSalesTaxPercent(8.875)).toBe('8.875%');
+    expect(formatSalesTaxPercent(6.25)).toBe('6.25%');
   });
 
   it('reads a stored budget, refusing anything that is not a positive amount', () => {
