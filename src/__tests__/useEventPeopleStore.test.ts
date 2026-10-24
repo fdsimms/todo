@@ -68,6 +68,9 @@ beforeEach(() => {
   mockTable = [];
   mockSettings = { [EVENT_PEOPLE_MIGRATION_FLAG]: '1' };
   mockExternalIds.mockResolvedValue({});
+  // The calendar mock's state is shared across tests; one that fills it must
+  // not leak its events into whichever test the random order runs next.
+  Object.assign(useCalendarStore.getState(), { events: [], pastEvents: [], gridEvents: [] });
   (isDemoModeActive as jest.Mock).mockReturnValue(false);
   useEventPeopleStore.setState({ rows: [], links: { byKey: {}, externalIds: {} }, loaded: false });
 });
