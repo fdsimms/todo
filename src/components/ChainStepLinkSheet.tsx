@@ -35,13 +35,6 @@ interface Props {
   visible: boolean;
   /** The step or member being edited; its title is the sheet's subject. */
   step: LinkableItem | null;
-  /**
-   * What the task itself opens, named in the hint so the empty state can say
-   * what leaving it empty actually does. Null for a rotation member, which
-   * inherits nothing: its siblings each point somewhere different, so "no link
-   * of its own" means no link rather than the task's.
-   */
-  taskLinkUrl: string | null;
   kitchenEnabled: boolean;
   /** Applies the step's new link. `onClose` follows it — the host hides the sheet. */
   onSave: (patch: Pick<LinkableItem, 'linkUrl'>) => void;
@@ -62,7 +55,7 @@ interface Props {
  * is. Same chips + custom URL shape as the task-level Link row.
  */
 export function ChainStepLinkSheet({
-  visible, step, taskLinkUrl, kitchenEnabled, onSave, onClose,
+  visible, step, kitchenEnabled, onSave, onClose,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -124,11 +117,6 @@ export function ChainStepLinkSheet({
 
         <Text style={styles.label}>Link</Text>
         <View style={styles.body}>
-          <Text style={styles.hint}>
-            {taskLinkUrl
-              ? "Leave it empty and this step opens the task’s link."
-              : 'Leave it empty and this step opens nothing.'}
-          </Text>
           <FieldLabel style={styles.webLabel}>Web address</FieldLabel>
           <View style={styles.customRow}>
             <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
@@ -214,7 +202,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   body: { paddingHorizontal: spacing.md, gap: spacing.sm },
-  hint: { color: colors.textSecondary, fontSize: font.sm },
   webLabel: { marginTop: spacing.smd, marginBottom: 0 },
   appsRow: {
     flexDirection: 'row',

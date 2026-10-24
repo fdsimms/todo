@@ -4139,7 +4139,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             <ChainStepLinkSheet
               visible={linkStepId !== null}
               step={chainItems.find(c => c.id === linkStepId) ?? null}
-              taskLinkUrl={linkUrl}
               kitchenEnabled={kitchenEnabled}
               onSave={patch => setChainItems(prev => prev.map(
                 c => (c.id === linkStepId ? { ...c, ...patch } : c),
@@ -4157,7 +4156,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               // Null on purpose: a rotation's members are siblings pointing at
               // different places, so one without a link of its own has none,
               // where a chain step sensibly inherits the task's.
-              taskLinkUrl={null}
               kitchenEnabled={kitchenEnabled}
               onSave={patch => setRotationItems(prev => prev.map(
                 r => (r.id === linkMemberId ? { ...r, ...patch } : r),
