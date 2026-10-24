@@ -364,6 +364,32 @@ describe('dollar-priced rewards', () => {
     expect(state().claimReward(r.id)).toMatchObject({ amount: 90 });
   });
 
+  it('adds tax to a taxable price when repricing, and leaves other rewards alone', () => {
+    const taxed = state().addReward('Lunch', 100, { priceMinor: 1000, taxable: true })!;
+    const plain = state().addReward('Coffee', 45, { priceMinor: 450 })!;
+    // $10.00 + 10% = $11.00 at 10 coins a dollar; the untaxed one stays $4.50.
+    expect(state().repriceDollarRewards(10, null, 10)).toBe(1);
+    expect(state().rewards.find(r => r.id === taxed.id)!.cost).toBe(110);
+    expect(state().rewards.find(r => r.id === plain.id)!.cost).toBe(45);
+  });
+
+  it('takes the tax back off when the rate is cleared', () => {
+    const taxed = state().addReward('Lunch', 110, { priceMinor: 1000, taxable: true })!;
+    expect(state().repriceDollarRewards(10, null, null)).toBe(1);
+    expect(state().rewards.find(r => r.id === taxed.id)!.cost).toBe(100);
+  });
+
+  it('keeps tax only with a dollar price', () => {
+    expect(state().addReward('Episode', 10, { taxable: true })!.taxable).toBe(false);
+    const r = state().addReward('Lunch', 110, { priceMinor: 1000, taxable: true })!;
+    expect(r.taxable).toBe(true);
+    state().updateReward(r.id, { taxable: false });
+    expect(state().rewards[0].taxable).toBe(false);
+    state().updateReward(r.id, { taxable: true });
+    state().updateReward(r.id, { priceMinor: null });
+    expect(state().rewards[0].taxable).toBe(false);
+  });
+
   it('clears the price when an edit passes null', () => {
     const r = state().addReward('Coffee', 45, { priceMinor: 450 })!;
     state().updateReward(r.id, { priceMinor: null });

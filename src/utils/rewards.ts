@@ -512,6 +512,39 @@ export function coinsForPrice(priceMinor: number, rate: number): number {
   return cleanCoins((priceMinor / 100) * rate);
 }
 
+// ==== Sales tax on a dollar price ====
+//
+// A reward can be marked taxable, and the typed sales tax rate is then added
+// to its dollar price before the price becomes coins. The rate is the person's
+// own, never looked up from where they are. A taxable reward with no rate set
+// is priced as typed, so the tax is applied only when it can be, and clearing
+// the rate takes it back off at the next repricing.
+
+/** The highest sales tax rate the field accepts, so a slipped digit can't price everything out of reach. */
+export const MAX_SALES_TAX_PERCENT = 25;
+
+/** Reads the stored sales tax rate: a percent above zero up to the cap, to three decimals, or null. */
+export function parseSalesTaxPercent(stored: string | number | null | undefined): number | null {
+  if (stored === null || stored === undefined || stored === '') return null;
+  const n = Number(stored);
+  if (!Number.isFinite(n) || !(n > 0) || n > MAX_SALES_TAX_PERCENT) return null;
+  return Math.round(n * 1000) / 1000;
+}
+
+/** "8.875%" or "7%": the rate as it is typed and shown, without trailing zeros. */
+export function formatSalesTaxPercent(percent: number): string {
+  return `${Number(percent.toFixed(3))}%`;
+}
+
+/**
+ * What a dollar-priced reward costs in minor units once tax is added. The
+ * price as typed when the reward isn't taxable or no rate is set.
+ */
+export function priceWithTax(priceMinor: number, taxable: boolean, taxPercent: number | null): number {
+  if (!taxable || taxPercent === null || !(taxPercent > 0)) return priceMinor;
+  return Math.round(priceMinor * (1 + taxPercent / 100));
+}
+
 /** "About 12 coins per $1", for the line under the budget field. */
 export function describeExchangeRate(rate: number, symbol: string): string {
   const perDollar = rate >= 10 ? Math.round(rate) : Math.round(rate * 10) / 10;

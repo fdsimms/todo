@@ -19,6 +19,8 @@ export interface SerializedReward {
   cost: number;
   /** The dollar price in major units, for a reward priced in money. `cost` is that price at the current rate. */
   price?: number;
+  /** Sales tax is added to `price` before it becomes coins. Absent when the reward isn't taxable. */
+  taxable?: true;
   note?: string;
   link?: string;
   /** Claimed once, then gone from the list. */
@@ -104,6 +106,7 @@ export function getRewards(replica: Replica, input: { historyLimit?: number } = 
       title: shown.title,
       cost: reward.cost,
       ...(reward.priceMinor !== null ? { price: reward.priceMinor / 100 } : {}),
+      ...(reward.priceMinor !== null && reward.taxable ? { taxable: true as const } : {}),
       ...(shown.note ? { note: shown.note } : {}),
       ...(shown.linkUrl ? { link: shown.linkUrl } : {}),
       oneTime: reward.oneTime,
@@ -145,6 +148,8 @@ export interface RewardInput {
   cost?: number;
   /** Dollars (major units, up to two decimals), converted to coins at the person's rate. Null on an update clears it. */
   price?: number | null;
+  /** Add the person's sales tax rate to `price`. Needs a rate set in Rewards. Dropped with the price. */
+  taxable?: boolean;
   note?: string | null;
   link?: string | null;
   oneTime?: boolean;
@@ -183,12 +188,23 @@ function priceToMinor(price: number): number {
   return minor;
 }
 
-function costForPrice(replica: Replica, priceMinor: number): number {
+/** The tax rate to add when `taxable`, refusing rather than quietly skipping it when none is set. */
+function taxFor(replica: Replica, taxable: boolean): number | null {
+  if (!taxable) return null;
+  const percent = replica.settings().rewardSalesTaxPercent;
+  if (percent === null) {
+    throw new Error('taxable needs a sales tax rate: the person has to set one in Rewards under Exchange rate.');
+  }
+  return percent;
+}
+
+function costForPrice(replica: Replica, priceMinor: number, taxable = false): number {
   const rate = exchangeRate(replica);
   if (rate === null) {
     throw new Error('A dollar price needs a coin-to-dollar rate: the person has to set a weekly reward budget in Rewards, and have about a week of completed tasks. Give a cost in coins instead.');
   }
-  return replica.lib().rewards.coinsForPrice(priceMinor, rate);
+  const { rewards: lib } = replica.lib();
+  return lib.coinsForPrice(lib.priceWithTax(priceMinor, taxable, taxFor(replica, taxable)), rate);
 }
 
 /** A new reward. Give a coin cost, or a dollar price the person's own rate converts to one. */
@@ -197,8 +213,10 @@ export function createReward(replica: Replica, input: RewardInput): SerializedRe
     throw new Error('Give either cost (coins) or price (dollars), not both and not neither.');
   }
   const priceMinor = input.price != null ? priceToMinor(input.price) : null;
-  const cost = priceMinor !== null ? costForPrice(replica, priceMinor) : input.cost!;
-  const reward = replica.addReward(input.title, cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime, priceMinor, guardsTaskId: input.guardsHabitId, claimEveryDays: input.claimEveryDays, glyph: input.glyph });
+  if (input.taxable && priceMinor === null) throw new Error('taxable goes with a dollar price. Give price, or leave taxable out.');
+  const taxable = !!input.taxable;
+  const cost = priceMinor !== null ? costForPrice(replica, priceMinor, taxable) : input.cost!;
+  const reward = replica.addReward(input.title, cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime, priceMinor, taxable, guardsTaskId: input.guardsHabitId, claimEveryDays: input.claimEveryDays, glyph: input.glyph });
   return rewardById(replica, reward.id);
 }
 
@@ -213,11 +231,21 @@ export function updateReward(
   // A new price recomputes the coins; a coin cost on its own makes the reward
   // coin-priced, so a stale dollar price can't repaint it later.
   const priceMinor = patch.price != null ? priceToMinor(patch.price) : undefined;
-  const cost = priceMinor !== undefined ? costForPrice(replica, priceMinor) : patch.cost;
+  const current = replica.rewardState().rewards.find(r => r.id === id);
+  // The price the reward ends up with, and whether it is taxed: tax follows the
+  // price, so a coin cost or a null price drops it.
+  const pricedAt = priceMinor !== undefined ? priceMinor : patch.cost !== undefined || patch.price === null ? null : current?.priceMinor ?? null;
+  const taxable = pricedAt !== null && (patch.taxable ?? current?.taxable ?? false);
+  if (patch.taxable && pricedAt === null) throw new Error('taxable goes with a dollar price. Give price, or leave taxable out.');
+  // A change to the tax alone reprices the reward it applies to.
+  const cost = pricedAt !== null && (priceMinor !== undefined || patch.taxable !== undefined)
+    ? costForPrice(replica, pricedAt, taxable)
+    : patch.cost;
   const reward = replica.updateReward(id, {
     ...(patch.title !== undefined ? { title: patch.title } : {}),
     ...(cost !== undefined ? { cost } : {}),
     ...(priceMinor !== undefined ? { priceMinor } : patch.cost !== undefined || patch.price === null ? { priceMinor: null } : {}),
+    ...(patch.taxable !== undefined || priceMinor !== undefined || pricedAt === null ? { taxable } : {}),
     ...(patch.note !== undefined ? { note: patch.note } : {}),
     ...(patch.link !== undefined ? { linkUrl: patch.link } : {}),
     ...(patch.oneTime !== undefined ? { oneTime: patch.oneTime } : {}),
@@ -241,7 +269,9 @@ export function claimReward(replica: Replica, id: string): { claimId: string; re
   if (before && before.priceMinor !== null && !before.taskId) {
     const rate = exchangeRate(replica);
     if (rate !== null) {
-      const fresh = replica.lib().rewards.coinsForPrice(before.priceMinor, rate);
+      const { rewards: lib } = replica.lib();
+      const priced = lib.priceWithTax(before.priceMinor, before.taxable, replica.settings().rewardSalesTaxPercent);
+      const fresh = lib.coinsForPrice(priced, rate);
       if (fresh !== before.cost) replica.updateReward(id, { cost: fresh });
     }
   }

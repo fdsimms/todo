@@ -197,6 +197,23 @@ so the rate is never a number the app invented, and there is no rate until both 
   never a second answer to the same question. A price that can't be converted (no budget yet) blocks
   saving and says why, instead of quietly saving the coin field's value.
 
+## Sales tax on a dollar price
+
+A dollar-priced reward can be marked taxable (`Reward.taxable`, the "Add sales tax" switch under the
+price). The rate is one typed setting (`rewardSalesTaxPercent`, beside the weekly budget under
+Exchange rate). The coins are then the price plus tax at the exchange rate (`priceWithTax` in
+`src/utils/rewards.ts`), through the same `repriceDollarRewards` as the rest.
+
+- **The rate is the person's, never looked up.** Working it out from a location would need a
+  lookup the app doesn't otherwise make, and tax rules vary by item. Nothing is taxed unless a
+  reward is marked and a rate is typed.
+- **No rate means no tax, not an error.** The switch only shows while a rate is set, and a taxable
+  reward with the rate cleared is priced as typed from the next repricing.
+- **Tax belongs to the dollar price.** Dropping the price (or typing coins) clears `taxable`.
+- **The saved-for reward is still skipped on repricing**, so editing the rate doesn't move its
+  goal either; it catches up once it stops being the goal.
+- **The price shown is the price with tax**, since that is what claiming it costs in dollars.
+
 ## A reward's details
 
 - **Link and note** are plain optional fields. The link takes the same values as `Task.linkUrl` (a

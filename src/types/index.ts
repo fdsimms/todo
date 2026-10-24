@@ -2698,6 +2698,13 @@ export interface Reward {
    */
   priceMinor: number | null;
   /**
+   * Add the sales tax rate (`rewardSalesTaxPercent`) to `priceMinor` before it
+   * becomes coins. Only meaningful with a dollar price, and only applied while
+   * a rate is set (`priceWithTax` in `src/utils/rewards.ts`). Always false
+   * without a price.
+   */
+  taxable: boolean;
+  /**
    * The "don't do this" habit this reward is the honest way to have ("No
    * dessert unless claimed" for "A dessert"). A slip logged on it claims the
    * reward when the balance covers it, and otherwise is charged the reward's

@@ -86,6 +86,7 @@ describe('the rewards tools', () => {
       expect(() => createReward(replica, { title: 'Coffee', cost: 5, price: 4.5 })).toThrow(/either cost/);
       expect(() => createReward(replica, { title: 'Coffee' })).toThrow(/either cost/);
       expect(() => createReward(replica, { title: 'Coffee', price: 4.567 })).toThrow(/two decimals/);
+      expect(() => createReward(replica, { title: 'Coffee', cost: 5, taxable: true })).toThrow(/dollar price/);
     });
 
     it('lists a live bounty and says what the miss costs', () => {

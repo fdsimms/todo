@@ -68,6 +68,9 @@ import {
   MAX_GLYPH_CHARS,
   coinBalance,
   coinsForPrice,
+  formatSalesTaxPercent,
+  parseSalesTaxPercent,
+  priceWithTax,
   coinsPerDollar,
   describeExchangeRate,
   describeClaimLimit,
@@ -194,6 +197,8 @@ export function RewardsScreen() {
   const setBountyLimit = useSettingsStore(s => s.setBountyLimit);
   const budgetMinor = useSettingsStore(s => s.rewardWeeklyBudgetMinor);
   const setBudgetMinor = useSettingsStore(s => s.setRewardWeeklyBudgetMinor);
+  const taxPercent = useSettingsStore(s => s.rewardSalesTaxPercent);
+  const setTaxPercent = useSettingsStore(s => s.setRewardSalesTaxPercent);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const withdrawBounty = useTaskStore(s => s.withdrawBounty);
   const postBounty = useTaskStore(s => s.postBounty);
@@ -213,9 +218,10 @@ export function RewardsScreen() {
   // Dollar-priced rewards follow the rate as your earning changes, except the
   // one you're saving for. It catches up once it stops being the goal.
   useEffect(() => {
-    if (enabled && exchange !== null) useRewardStore.getState().repriceDollarRewards(exchange, goalId);
-  }, [enabled, exchange, goalId]);
+    if (enabled && exchange !== null) useRewardStore.getState().repriceDollarRewards(exchange, goalId, taxPercent);
+  }, [enabled, exchange, goalId, taxPercent]);
   const [budgetText, setBudgetText] = useState(() => (budgetMinor === null ? '' : priceToInput(budgetMinor)));
+  const [taxText, setTaxText] = useState(() => (taxPercent === null ? '' : String(taxPercent)));
   const taskById = useMemo(() => new Map(tasks.map(t => [t.id, t])), [tasks]);
   const sourceOf = useCallback((reward: Reward) => (reward.taskId ? taskById.get(reward.taskId) ?? null : null), [taskById]);
 
@@ -325,6 +331,7 @@ export function RewardsScreen() {
   const [draftTitle, setDraftTitle] = useState('');
   const [draftCost, setDraftCost] = useState('');
   const [draftPrice, setDraftPrice] = useState('');
+  const [draftTaxable, setDraftTaxable] = useState(false);
   const [draftNote, setDraftNote] = useState('');
   const [draftLink, setDraftLink] = useState('');
   const [draftOneTime, setDraftOneTime] = useState(false);
@@ -359,7 +366,9 @@ export function RewardsScreen() {
   const parsedPrice = parsePriceInput(draftPrice);
   const priceTyped = draftPrice.trim().length > 0;
   const priceDriven = parsedPrice !== null && exchange !== null;
-  const parsedCost = priceDriven ? coinsForPrice(parsedPrice, exchange) : parseRewardCost(draftCost);
+  // The price with tax added when the reward is taxable and a rate is set.
+  const totalMinor = parsedPrice === null ? null : priceWithTax(parsedPrice, draftTaxable, taxPercent);
+  const parsedCost = priceDriven ? coinsForPrice(totalMinor!, exchange) : parseRewardCost(draftCost);
   // A reward made from a list item takes its title, note and link from the
   // item, so the form doesn't ask for them.
   const draftItem: Task | null = draft?.mode === 'item'
@@ -378,6 +387,7 @@ export function RewardsScreen() {
     setDraftTitle('');
     setDraftCost('');
     setDraftPrice('');
+    setDraftTaxable(false);
     setDraftNote('');
     setDraftLink('');
     setDraftOneTime(false);
@@ -393,6 +403,7 @@ export function RewardsScreen() {
     setDraftTitle(reward?.title ?? '');
     setDraftCost(reward ? String(reward.cost) : '');
     setDraftPrice(reward?.priceMinor != null ? priceToInput(reward.priceMinor) : '');
+    setDraftTaxable(reward?.taxable ?? false);
     setDraftNote(reward?.note ?? '');
     setDraftLink(reward?.linkUrl ?? '');
     setDraftOneTime(reward?.oneTime ?? next.mode === 'item');
@@ -409,20 +420,21 @@ export function RewardsScreen() {
     haptics.tap();
     const store = useRewardStore.getState();
     const priceMinor = priceDriven ? parsedPrice : null;
-    const details = { glyph: cleanRewardGlyph(draftGlyph), note: draftNote, linkUrl: draftLink, oneTime: draftOneTime, priceMinor, guardsTaskId: draftOneTime ? null : draftGuard, claimEveryDays: draftOneTime ? null : fromCadenceParts({ count: limitCount, unit: limitUnit }) || null };
+    const taxable = priceMinor !== null && draftTaxable;
+    const details = { glyph: cleanRewardGlyph(draftGlyph), note: draftNote, linkUrl: draftLink, oneTime: draftOneTime, priceMinor, taxable, guardsTaskId: draftOneTime ? null : draftGuard, claimEveryDays: draftOneTime ? null : fromCadenceParts({ count: limitCount, unit: limitUnit }) || null };
     if (draft.mode === 'new') {
       store.addReward(draftTitle, parsedCost!, details);
     } else if (draft.mode === 'item') {
       // The title is a snapshot for if the item is ever deleted; what shows is
       // the item's own (see rewardDisplay).
-      if (draftItem) store.addReward(draftItem.title, parsedCost!, { taskId: draftItem.id, oneTime: true, priceMinor });
+      if (draftItem) store.addReward(draftItem.title, parsedCost!, { taskId: draftItem.id, oneTime: true, priceMinor, taxable });
     } else {
       store.updateReward(draft.id, draftItem
-        ? { cost: parsedCost!, title: draftItem.title, priceMinor }
+        ? { cost: parsedCost!, title: draftItem.title, priceMinor, taxable }
         : { title: draftTitle, cost: parsedCost!, ...details });
     }
     closeDraft();
-  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, draftGlyph, draftGuard, limitCount, limitUnit, parsedCost, parsedPrice, priceDriven, closeDraft]);
+  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, draftGlyph, draftGuard, limitCount, limitUnit, parsedCost, parsedPrice, priceDriven, draftTaxable, closeDraft]);
 
   // ==== actions on a reward ====
   const addIdea = useCallback((idea: PricedRewardIdea) => {
@@ -713,6 +725,28 @@ export function RewardsScreen() {
       {parsedPrice !== null && exchange === null && (
         <Text style={styles.hint}>Set a weekly budget under Exchange rate to price a reward in dollars.</Text>
       )}
+      {priceDriven && taxPercent !== null && (
+        <View style={styles.switchRow}>
+          <View style={styles.switchText}>
+            <Text style={styles.switchLabel}>Add sales tax</Text>
+            <HelpText style={styles.hint}>
+              {draftTaxable
+                ? `${formatPrice(totalMinor!, currencySymbol)} with ${formatSalesTaxPercent(taxPercent)} tax.`
+                : `Adds ${formatSalesTaxPercent(taxPercent)} to the price.`}
+            </HelpText>
+          </View>
+          <Switch
+            value={draftTaxable}
+            onValueChange={next => {
+              haptics.tap();
+              setDraftTaxable(next);
+            }}
+            trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+            thumbColor={colors.onAccent}
+            accessibilityLabel="Add sales tax"
+          />
+        </View>
+      )}
       {priceDriven ? (
         <Text style={styles.hint}>
           {`${formatCoins(parsedCost!)} at ${describeExchangeRate(exchange, currencySymbol).toLowerCase()}. This changes as the coins you earn change.`}
@@ -910,7 +944,7 @@ export function RewardsScreen() {
             <CoinIcon size={iconSize.sm} color={colors.done} filled />
             <Text style={styles.rewardCost}>
               {[
-                reward.priceMinor !== null ? formatPrice(reward.priceMinor, currencySymbol) : null,
+                reward.priceMinor !== null ? formatPrice(priceWithTax(reward.priceMinor, reward.taxable, taxPercent), currencySymbol) : null,
                 formatCoins(reward.cost),
               ].filter(Boolean).join(' · ')}
             </Text>
@@ -1000,7 +1034,7 @@ export function RewardsScreen() {
         <View style={styles.costRow}>
           <CoinIcon size={iconSize.sm} color={colors.done} filled />
           <Text style={styles.rewardCost}>
-            {[reward.priceMinor !== null ? formatPrice(reward.priceMinor, currencySymbol) : null, formatCoins(reward.cost)].filter(Boolean).join(' · ')}
+            {[reward.priceMinor !== null ? formatPrice(priceWithTax(reward.priceMinor, reward.taxable, taxPercent), currencySymbol) : null, formatCoins(reward.cost)].filter(Boolean).join(' · ')}
           </Text>
         </View>
         {status && <Text style={styles.hint}>{status}</Text>}
@@ -1144,6 +1178,30 @@ export function RewardsScreen() {
             />
           </View>
         </View>
+        <View style={styles.bountyLimit}>
+          <Text style={styles.historyLabel}>Sales tax</Text>
+          <View style={[styles.priceField, styles.budgetInput]}>
+            <TextField
+              style={styles.priceInput}
+              value={taxText}
+              onChangeText={setTaxText}
+              onEndEditing={() => {
+                const percent = parseSalesTaxPercent(taxText.replace('%', '').trim());
+                setTaxPercent(percent);
+                setTaxText(percent === null ? '' : String(percent));
+              }}
+              placeholder="e.g. 8.875"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="decimal-pad"
+              returnKeyType="done"
+              accessibilityLabel="Sales tax percent"
+            />
+            <Text style={styles.priceSymbol}>%</Text>
+          </View>
+        </View>
+        <HelpText style={[styles.sectionHint, styles.budgetHint]}>
+          Rewards marked as taxable have this added to their price.
+        </HelpText>
         {budgetMinor !== null && (
           <Text style={[styles.sectionHint, styles.budgetHint]}>
             {exchange !== null

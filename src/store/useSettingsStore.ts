@@ -122,7 +122,7 @@ import {
   DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, MEAL_PLAN_NUDGE_SLOTS,
 } from '../utils/mealPlanNudge';
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
-import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit, parseWeeklyBudget } from '../utils/rewards';
+import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit, parseSalesTaxPercent, parseWeeklyBudget } from '../utils/rewards';
 import {
   FOCUS_DEFAULTS,
   parseFocusDefaultWorkMinutes,
@@ -599,6 +599,9 @@ interface SettingsStore {
   // rate that prices dollar-priced rewards (see `coinsPerDollar` in
   // src/utils/rewards.ts).
   rewardWeeklyBudgetMinor: number | null;
+  // Sales tax rate in percent, added to a taxable dollar-priced reward. Null
+  // is unset: nothing is taxed. See `priceWithTax` in src/utils/rewards.ts.
+  rewardSalesTaxPercent: number | null;
   // Keep those same apps blocked while a task marked as a gate is outstanding.
   // The other direction from the penalty: not what failing costs afterwards,
   // but what has to happen before the apps unblock at all. See
@@ -2219,6 +2222,7 @@ interface SettingsStore {
   setRewardListProjectId: (id: string | null) => void;
   setBountyLimit: (count: number) => void;
   setRewardWeeklyBudgetMinor: (minor: number | null) => void;
+  setRewardSalesTaxPercent: (percent: number | null) => void;
   setGateShieldEnabled: (on: boolean) => void;
   setPenaltyShieldUntil: (until: string | null, reason?: string | null) => void;
   setCompletedRetentionDays: (days: RetentionDays) => void;
@@ -2581,6 +2585,7 @@ const DEFAULT_SETTINGS = {
   rewardListProjectId: null,
   bountyLimit: DEFAULT_BOUNTY_LIMIT,
   rewardWeeklyBudgetMinor: null,
+  rewardSalesTaxPercent: null,
   gateShieldEnabled: false,
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
@@ -3031,6 +3036,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   rewardListProjectId: null,
   bountyLimit: DEFAULT_BOUNTY_LIMIT,
   rewardWeeklyBudgetMinor: null,
+  rewardSalesTaxPercent: null,
   gateShieldEnabled: false,
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
@@ -3402,6 +3408,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const rewardListProjectId = dbGetSetting('rewardListProjectId') || null;
     const bountyLimit = parseBountyLimit(dbGetSetting('bountyLimit'));
     const rewardWeeklyBudgetMinor = parseWeeklyBudget(dbGetSetting('rewardWeeklyBudgetMinor'));
+    const rewardSalesTaxPercent = parseSalesTaxPercent(dbGetSetting('rewardSalesTaxPercent'));
     const gateShieldEnabled = dbGetSetting('gateShieldEnabled') === 'true';
     const penaltyShieldUntil = dbGetSetting('penaltyShieldUntil') || null;
     const penaltyShieldReason = dbGetSetting('penaltyShieldReason') || null;
@@ -4208,6 +4215,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       restockOfferEnabled,
       rewardGoalId,
       rewardListProjectId,
+      rewardSalesTaxPercent,
       rewardsEnabled,
       rewardWeeklyBudgetMinor,
       runningLowAddsToList,
@@ -5501,6 +5509,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const next = minor !== null && minor > 0 ? Math.round(minor) : null;
     dbSetSetting('rewardWeeklyBudgetMinor', next === null ? '' : String(next));
     set({ rewardWeeklyBudgetMinor: next });
+  },
+
+  setRewardSalesTaxPercent(percent: number | null) {
+    const next = parseSalesTaxPercent(percent);
+    dbSetSetting('rewardSalesTaxPercent', next === null ? '' : String(next));
+    set({ rewardSalesTaxPercent: next });
   },
 
   setGateShieldEnabled(on: boolean) {
