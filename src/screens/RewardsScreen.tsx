@@ -1075,7 +1075,7 @@ export function RewardsScreen() {
         <Text style={styles.sectionHeader}>Rewards</Text>
         {openRewards.length === 0 && draft?.mode !== 'new' && (
           <View style={styles.emptyNote}>
-            <EmptyNote icon="gift-outline">No rewards yet. Add your own, or start from an idea below.</EmptyNote>
+            <EmptyNote icon="gift-outline" style={styles.noteUnderHint}>No rewards yet. Add your own, or start from an idea below.</EmptyNote>
           </View>
         )}
         <View style={styles.grid}>
@@ -1247,7 +1247,7 @@ export function RewardsScreen() {
                 {pickableItems.length === 0 ? (
                   draft?.mode !== 'item' && (
                     <View style={styles.emptyNote}>
-                      <EmptyNote icon="briefcase-outline">{`Every task in ${list.title} is already a reward.`}</EmptyNote>
+                      <EmptyNote icon="briefcase-outline" style={styles.noteUnderHint}>{`Every task in ${list.title} is already a reward.`}</EmptyNote>
                     </View>
                   )
                 ) : (
@@ -1283,7 +1283,7 @@ export function RewardsScreen() {
         <Text style={styles.sectionHeader}>History</Text>
         {history.length === 0 ? (
           <View style={styles.emptyNote}>
-            <EmptyNote icon="time-outline">No coins yet. Complete a task to earn some.</EmptyNote>
+            <EmptyNote icon="time-outline" style={styles.noteUnderHint}>No coins yet. Complete a task to earn some.</EmptyNote>
           </View>
         ) : (
           <View style={styles.historyCard}>
@@ -1484,7 +1484,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   emptyNote: { marginHorizontal: spacing.md },
   // The note introduces the suggested-bounty card right under it, so the two need a gap.
   emptyNoteAboveList: { marginBottom: spacing.smd },
-  // The hint above already leaves `sectionHint`'s gap, so the note's own top margin would double it.
+  // The header or hint above already leaves the gap, so the note's own top margin would double it.
   noteUnderHint: { marginTop: 0 },
   // The same box as `input`, with the currency symbol inside it so the field
   // reads as money before anything is typed (the GroceryItemSheet price field).
