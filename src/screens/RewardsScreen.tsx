@@ -8,13 +8,15 @@ import { format } from 'date-fns/format';
 import { parseISO } from 'date-fns/parseISO';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
-import { CardSheet, type CardAnchor } from '../components/CardSheet';
+import { CardSheet, type CardAnchor, type CloseCard } from '../components/CardSheet';
+import { PressableScale } from '../components/PressableScale';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { EmptyNote } from '../components/EmptyNote';
 import { InlineAction } from '../components/InlineAction';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
 import { CoinIcon } from '../components/CoinIcon';
 import { CoinBurst } from '../components/CoinBurst';
-import { TARGET_ICON } from '../components/TargetIcon';
+import { TARGET_ICON, TargetIcon } from '../components/TargetIcon';
 import { CountStepper } from '../components/CountStepper';
 import { SegmentedControl } from '../components/SegmentedControl';
 import {
@@ -61,6 +63,9 @@ import {
   STREAK_BONUS_EVERY,
   canClaimReward,
   claimWaitDays,
+  cleanRewardGlyph,
+  splitRewardsByWait,
+  MAX_GLYPH_CHARS,
   coinBalance,
   coinsForPrice,
   coinsPerDollar,
@@ -111,6 +116,10 @@ const LIST_PREVIEW = 4;
 /** The coin beside the balance. A hero, so a literal size like the number's own. */
 const BALANCE_COIN_SIZE = 52;
 
+/** The glyph's size on a tile and in the sheet a tile opens. */
+const TILE_GLYPH_SIZE = 38;
+const DETAIL_GLYPH_SIZE = 32;
+
 /** Where a burst launches, below the safe area: around the balance coin. */
 const BURST_ORIGIN_OFFSET = 190;
 
@@ -128,6 +137,29 @@ type Draft =
   | { mode: 'new' }
   | { mode: 'edit'; id: string }
   | { mode: 'item'; taskId: string };
+
+/** One-tap icons in the reward form. Anything else is typed into the field beside them. */
+const GLYPH_CHOICES = ['☕', '🍰', '🎮', '🍿', '🍕', '🛍️', '📚', '🎬'];
+
+/**
+ * The picture on a reward: its emoji, or a gift icon on a tinted tile when it
+ * has none. The emoji is sized as an icon, which is what a literal size is for.
+ */
+function RewardGlyph({ reward, size, styles, colors }: {
+  reward: Reward;
+  size: number;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  if (reward.glyph) {
+    return <Text style={{ fontSize: size, lineHeight: Math.round(size * 1.25) }} accessible={false}>{reward.glyph}</Text>;
+  }
+  return (
+    <View style={[styles.glyphFallback, { width: size + spacing.sm, height: size + spacing.sm }]}>
+      <Ionicons name="gift-outline" size={Math.round(size * 0.6)} color={colors.accent} />
+    </View>
+  );
+}
 
 /** The footer row of a card that shows only part of its list. */
 function ShowMoreRow({ label, onPress, styles }: { label: string; onPress: () => void; styles: ReturnType<typeof makeStyles> }) {
@@ -189,6 +221,9 @@ export function RewardsScreen() {
     () => rewards.filter(r => rewardIsOpen(r, entries, sourceOf(r))),
     [rewards, entries, sourceOf],
   );
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const detailReward = useMemo(() => openRewards.find(r => r.id === detailId) ?? null, [openRewards, detailId]);
+  const shownDetail = useSheetSubject(detailReward);
   const savingGoal = useMemo(
     () => savingForGoal(rewards, entries, goalId, sourceOf),
     [rewards, entries, goalId, sourceOf],
@@ -285,6 +320,7 @@ export function RewardsScreen() {
   const [draftNote, setDraftNote] = useState('');
   const [draftLink, setDraftLink] = useState('');
   const [draftOneTime, setDraftOneTime] = useState(false);
+  const [draftGlyph, setDraftGlyph] = useState('');
   // "Limit claims" (Reward.claimEveryDays): a count and a unit, null count = no limit.
   const [limitCount, setLimitCount] = useState<number | null>(null);
   const [limitUnit, setLimitUnit] = useState<CadenceUnit>('weeks');
@@ -337,6 +373,7 @@ export function RewardsScreen() {
     setDraftNote('');
     setDraftLink('');
     setDraftOneTime(false);
+    setDraftGlyph('');
     setLimitCount(null);
     setLimitUnit('weeks');
     setDraftGuard(null);
@@ -351,6 +388,7 @@ export function RewardsScreen() {
     setDraftNote(reward?.note ?? '');
     setDraftLink(reward?.linkUrl ?? '');
     setDraftOneTime(reward?.oneTime ?? next.mode === 'item');
+    setDraftGlyph(reward?.glyph ?? '');
     setDraftGuard(reward?.guardsTaskId ?? null);
     const limit = toCadenceParts(reward?.claimEveryDays ?? 0);
     setLimitCount(limit.count);
@@ -363,7 +401,7 @@ export function RewardsScreen() {
     haptics.tap();
     const store = useRewardStore.getState();
     const priceMinor = priceDriven ? parsedPrice : null;
-    const details = { note: draftNote, linkUrl: draftLink, oneTime: draftOneTime, priceMinor, guardsTaskId: draftOneTime ? null : draftGuard, claimEveryDays: draftOneTime ? null : fromCadenceParts({ count: limitCount, unit: limitUnit }) || null };
+    const details = { glyph: cleanRewardGlyph(draftGlyph), note: draftNote, linkUrl: draftLink, oneTime: draftOneTime, priceMinor, guardsTaskId: draftOneTime ? null : draftGuard, claimEveryDays: draftOneTime ? null : fromCadenceParts({ count: limitCount, unit: limitUnit }) || null };
     if (draft.mode === 'new') {
       store.addReward(draftTitle, parsedCost!, details);
     } else if (draft.mode === 'item') {
@@ -376,7 +414,7 @@ export function RewardsScreen() {
         : { title: draftTitle, cost: parsedCost!, ...details });
     }
     closeDraft();
-  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, draftGuard, limitCount, limitUnit, parsedCost, parsedPrice, priceDriven, closeDraft]);
+  }, [canSave, draft, draftItem, draftTitle, draftNote, draftLink, draftOneTime, draftGlyph, draftGuard, limitCount, limitUnit, parsedCost, parsedPrice, priceDriven, closeDraft]);
 
   // ==== actions on a reward ====
   const addIdea = useCallback((idea: PricedRewardIdea) => {
@@ -521,6 +559,38 @@ export function RewardsScreen() {
           returnKeyType="next"
           accessibilityLabel="Reward"
         />
+      )}
+      {!draftItem && (
+        <>
+          <Text style={styles.fieldLabel}>Icon</Text>
+          <HelpText style={styles.hint}>Shown on the reward’s tile. Leave it blank to use a gift icon.</HelpText>
+          <View style={styles.presetRow}>
+            {GLYPH_CHOICES.map(g => (
+              <TouchableOpacity
+                key={g}
+                style={[styles.presetChip, draftGlyph === g && styles.presetChipActive]}
+                onPress={() => {
+                  haptics.tap();
+                  setDraftGlyph(draftGlyph === g ? '' : g);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityState={{ selected: draftGlyph === g }}
+                accessibilityLabel={`Icon ${g}`}
+              >
+                <Text style={styles.glyphChipText}>{g}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TextField
+            style={[styles.input, styles.glyphInput]}
+            value={draftGlyph}
+            onChangeText={text => setDraftGlyph(Array.from(text).slice(0, MAX_GLYPH_CHARS).join(''))}
+            placeholder="e.g. 🍰"
+            placeholderTextColor={colors.textTertiary}
+            accessibilityLabel="Icon"
+          />
+        </>
       )}
       {/* How often you'd want it only prices a reward that comes back; a one-time one is claimed once. */}
       {!draftOneTime && <Text style={styles.fieldLabel}>How often do you want it?</Text>}
@@ -773,10 +843,10 @@ export function RewardsScreen() {
     </View>
   );
 
-  const renderReward = (reward: Reward) => {
-    if (draft?.mode === 'edit' && draft.id === reward.id) {
-      return <React.Fragment key={reward.id}>{renderDraft()}</React.Fragment>;
-    }
+  // What a tile opens: everything the old row card held, in a sheet. Every
+  // action closes the sheet first, so an alert or the draft form never opens
+  // over it.
+  const renderRewardDetail = (reward: Reward, close: CloseCard) => {
     const shown = rewardDisplay(reward, sourceOf(reward));
     const affordable = canClaimReward(balance, reward.cost);
     const pace = describeRewardPace(rate, reward.cost);
@@ -787,9 +857,12 @@ export function RewardsScreen() {
     const sourceList = source ? projects.find(p => p.id === source.projectId) ?? list : null;
     const guardHabit = reward.guardsTaskId && canGuard(reward) ? taskById.get(reward.guardsTaskId) : undefined;
     return (
-      <View key={reward.id} style={styles.card}>
+      <View style={styles.detailBody}>
         <View>
-          <Text style={styles.rewardTitle}>{shown.title}</Text>
+          <View style={styles.detailHeader}>
+            <RewardGlyph reward={reward} size={DETAIL_GLYPH_SIZE} styles={styles} colors={colors} />
+            <Text style={[styles.rewardTitle, styles.detailTitle]}>{shown.title}</Text>
+          </View>
           {reward.taskId && <Text style={styles.hint}>{`From ${sourceList?.title ?? 'your project'}`}</Text>}
           {shown.note && <Text style={styles.note}>{shown.note}</Text>}
           <View style={styles.costRow}>
@@ -812,7 +885,7 @@ export function RewardsScreen() {
           <InlineAction
             label="Claim"
             icon="gift-outline"
-            onPress={() => (waitDays > 0
+            onPress={() => close(() => (waitDays > 0
               ? Alert.alert(
                 `${shown.title} isn’t available yet`,
                 `${describeClaimLimit(reward.claimEveryDays!)}. ${describeClaimWait(waitDays)}.`,
@@ -822,7 +895,7 @@ export function RewardsScreen() {
               : Alert.alert(
                 'Not enough coins',
                 `${shown.title} costs ${formatCoins(reward.cost)}. You have ${formatCoins(balance)}, so you need ${formatCoins(reward.cost - balance)} more.`,
-              ))}
+              )))}
             // Dimmed rather than disabled: a disabled pill swallows the tap
             // without saying why.
             style={!affordable || waitDays > 0 ? { opacity: 0.4 } : undefined}
@@ -837,24 +910,63 @@ export function RewardsScreen() {
               label={knownLinkAppFor(shown.linkUrl)?.name ?? 'Open'}
               icon={linkIconFor(shown.linkUrl) as never}
               variant="neutral"
-              onPress={() => openLink(shown.linkUrl!)}
+              onPress={() => close(() => openLink(shown.linkUrl!))}
               accessibilityLabel={`Open ${knownLinkAppFor(shown.linkUrl)?.name ?? 'the link'} for ${shown.title}`}
             />
           )}
           <InlineAction
             icon={TARGET_ICON}
             variant={isGoal ? 'accent' : 'neutral'}
-            onPress={() => toggleGoal(reward)}
+            onPress={() => close(() => toggleGoal(reward))}
             accessibilityLabel={isGoal ? `Stop saving for ${shown.title}` : `Save for ${shown.title}`}
           />
           <InlineAction
             icon="create-outline"
             variant="neutral"
-            onPress={() => openDraft({ mode: 'edit', id: reward.id }, reward)}
+            onPress={() => close(() => openDraft({ mode: 'edit', id: reward.id }, reward))}
             accessibilityLabel={`Edit ${shown.title}`}
           />
         </View>
       </View>
+    );
+  };
+
+  // One tile per open reward. The tap opens `renderRewardDetail`; the tile
+  // itself says only what you need to choose: the icon, the name, the price
+  // and, for one that can't be claimed, why.
+  const renderTile = (reward: Reward, resting: boolean) => {
+    const shown = rewardDisplay(reward, sourceOf(reward));
+    const affordable = canClaimReward(balance, reward.cost);
+    const waitDays = claimWaitDays(reward, entries, getCurrentDayStart());
+    const isGoal = goal?.id === reward.id;
+    const status = resting
+      ? sentence(describeClaimWait(waitDays)).replace('Available again', 'Back')
+      : !affordable
+      ? `Need ${formatCoins(reward.cost - balance)} more`
+      : reward.oneTime
+      ? 'One time'
+      : null;
+    return (
+      <PressableScale
+        key={reward.id}
+        style={[styles.tile, isGoal && styles.tileGoal, (resting || !affordable) && styles.tileDim]}
+        onPress={() => setDetailId(reward.id)}
+        accessibilityLabel={[shown.title, formatCoins(reward.cost), status, isGoal ? 'Saving for this' : null].filter(Boolean).join('. ')}
+        accessibilityHint="Opens the reward"
+      >
+        <View style={styles.tileTop}>
+          <RewardGlyph reward={reward} size={TILE_GLYPH_SIZE} styles={styles} colors={colors} />
+          {isGoal && <TargetIcon size={iconSize.sm} color={colors.accent} />}
+        </View>
+        <Text style={styles.tileTitle} numberOfLines={3}>{shown.title}</Text>
+        <View style={styles.costRow}>
+          <CoinIcon size={iconSize.sm} color={colors.done} filled />
+          <Text style={styles.rewardCost}>
+            {[reward.priceMinor !== null ? formatPrice(reward.priceMinor, currencySymbol) : null, formatCoins(reward.cost)].filter(Boolean).join(' · ')}
+          </Text>
+        </View>
+        {status && <Text style={styles.hint}>{status}</Text>}
+      </PressableScale>
     );
   };
 
@@ -904,6 +1016,12 @@ export function RewardsScreen() {
           )}
         </View>
 
+        {shownDetail && (
+          <CardSheet visible={detailReward !== null} onClose={() => setDetailId(null)} name="RewardDetail">
+            {close => renderRewardDetail(shownDetail, close)}
+          </CardSheet>
+        )}
+
         <CardSheet
           visible={rulesOpen}
           onClose={() => setRulesOpen(false)}
@@ -925,7 +1043,18 @@ export function RewardsScreen() {
             <EmptyNote icon="gift-outline">No rewards yet. Add your own, or start from an idea below.</EmptyNote>
           </View>
         )}
-        {openRewards.map(renderReward)}
+        <View style={styles.grid}>
+          {(() => {
+            const { ready, resting } = splitRewardsByWait(openRewards, entries, getCurrentDayStart());
+            const editing = draft?.mode === 'edit' ? draft.id : null;
+            // The form being edited takes a full row where its tile was.
+            return [...ready.map(r => ({ r, resting: false })), ...resting.map(r => ({ r, resting: true }))].map(({ r, resting: isResting }) => (
+              r.id === editing
+                ? <View key={r.id} style={styles.gridDraft}>{renderDraft()}</View>
+                : renderTile(r, isResting)
+            ));
+          })()}
+        </View>
         {draft?.mode === 'new' ? renderDraft() : (
           <View style={styles.addRow}>
             <InlineAction label="New reward" icon="add" onPress={() => openDraft({ mode: 'new' })} />
@@ -1231,6 +1360,37 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // long reward name is never truncated to make room for a button.
   rewardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   note: { color: colors.text, fontSize: font.sm, marginTop: spacing.xxs },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: spacing.smd,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.xxs,
+  },
+  gridDraft: { width: '100%', marginHorizontal: -spacing.md },
+  // Two to a row. A width rather than flexGrow, so a lone last tile stays one
+  // column wide instead of stretching across.
+  tile: {
+    width: '48.5%',
+    minHeight: 150,
+    padding: spacing.smd,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    gap: spacing.xs,
+  },
+  tileGoal: { borderColor: colors.accent },
+  tileDim: { opacity: 0.6 },
+  tileTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'auto' },
+  tileTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium, marginTop: spacing.sm },
+  glyphFallback: { borderRadius: radius.md, backgroundColor: colors.accentSubtle, alignItems: 'center', justifyContent: 'center' },
+  glyphChipText: { fontSize: font.md },
+  glyphInput: { marginTop: spacing.sm, alignSelf: 'flex-start', minWidth: 96 },
+  detailBody: { padding: spacing.md, gap: spacing.sm },
+  detailHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
+  detailTitle: { flex: 1 },
   rewardActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   // Delete (edit only) sits under the Linked habit field, which has no bottom margin of its own.
   draftActions: { marginTop: spacing.md },

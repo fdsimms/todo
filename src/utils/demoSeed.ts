@@ -3725,7 +3725,7 @@ function seedRewards(today: Date): void {
     polarity: 'negative',
     effort: 1,
   });
-  const episode = rewards.addReward('An episode of a show', 15, { guardsTaskId: noShows.id });
+  const episode = rewards.addReward('An episode of a show', 15, { guardsTaskId: noShows.id, glyph: '📺' });
   // Every optional field shows up once: a link and a note on takeout, and a
   // one-time reward. Takeout is also the goal, so the balance card has
   // progress to draw.
@@ -3733,8 +3733,9 @@ function seedRewards(today: Date): void {
     linkUrl: 'ubereats://',
     note: 'The Thai place on 5th. Get the pad see ew.',
     claimEveryDays: 7,
+    glyph: '🍜',
   });
-  rewards.addReward('A new book', 300, { oneTime: true });
+  rewards.addReward('A new book', 300, { oneTime: true, glyph: '📚' });
   if (takeout) useSettingsStore.getState().setRewardGoalId(takeout.id);
 
   // A wish list feeding the screen: one item already priced as a reward, the

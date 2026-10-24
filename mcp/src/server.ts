@@ -4091,6 +4091,7 @@ function registerWriteTools(
       link: z.string().nullable().optional().describe('A URL to open for it.'),
       oneTime: z.boolean().optional().describe('Claimed once, then gone from the list.'),
       guardsHabitId: z.string().min(1).optional().describe('A "don\'t do this" habit (task id) this reward is the honest way to have, e.g. "No dessert unless claimed" for a dessert. A slip logged on it claims this reward, or costs the balance up to its price when it falls short. Not on a oneTime reward.'),
+      glyph: z.string().max(16).optional().describe('One emoji drawn on the reward\'s tile, like "☕" for a coffee. Leave it out for the gift icon.'),
       claimEveryDays: z.number().int().min(1).max(720).optional().describe('Limit claims to once per this many days: 7 for a week, 30 for a month. A claim inside the limit is refused until the days are up. Not on a oneTime reward.'),
     },
     async input => {
@@ -4115,6 +4116,7 @@ function registerWriteTools(
       oneTime: z.boolean().optional(),
       guardsHabitId: z.string().min(1).nullable().optional().describe('The "don\'t do this" habit this reward guards, as on create_reward. Null unlinks it.'),
       claimEveryDays: z.number().int().min(1).max(720).nullable().optional().describe('Limit claims to once per this many days, as on create_reward. Null removes the limit.'),
+      glyph: z.string().max(16).nullable().optional().describe('The emoji on the reward\'s tile, as on create_reward. Null removes it.'),
     },
     async ({ id, ...patch }) => {
       try {

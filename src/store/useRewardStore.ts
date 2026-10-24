@@ -15,6 +15,7 @@ import {
   canClaimReward,
   claimWaitDays,
   cleanClaimLimit,
+  cleanRewardGlyph,
   coinBalance,
   coinsForPrice,
   lastClaimedAt,
@@ -140,7 +141,7 @@ const ANNOUNCE_WINDOW_MS = 60_000;
 export const COIN_BURST_MS = 1500;
 
 /** The optional half of a reward, as the form edits it. */
-export type RewardDetails = Pick<Reward, 'linkUrl' | 'note' | 'oneTime' | 'taskId' | 'priceMinor' | 'guardsTaskId' | 'claimEveryDays'>;
+export type RewardDetails = Pick<Reward, 'linkUrl' | 'note' | 'oneTime' | 'taskId' | 'priceMinor' | 'guardsTaskId' | 'claimEveryDays' | 'glyph'>;
 
 /** Blank text is no value, so a cleared field stores null rather than "". */
 function cleanText(text: string | null | undefined): string | null {
@@ -307,6 +308,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
         priceMinor: details?.priceMinor ?? null,
         guardsTaskId: canGuard({ oneTime, taskId }) ? details?.guardsTaskId ?? null : null,
         claimEveryDays: cleanClaimLimit(details?.claimEveryDays, oneTime),
+        glyph: taskId ? null : cleanRewardGlyph(details?.glyph),
       };
       dbInsertReward(reward);
       set(s => ({ rewards: sortRewards([...s.rewards, reward]) }));
@@ -335,6 +337,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
         guardsTaskId: canGuard({ oneTime, taskId }) ? guardsTaskId : null,
         // Turning a reward one-time drops its limit, which it has no use for.
         claimEveryDays: cleanClaimLimit(patch.claimEveryDays !== undefined ? patch.claimEveryDays : current.claimEveryDays, oneTime),
+        glyph: taskId ? null : patch.glyph !== undefined ? cleanRewardGlyph(patch.glyph) : current.glyph,
       };
       dbUpdateReward(next);
       set(s => ({ rewards: sortRewards(s.rewards.map(r => (r.id === id ? next : r))) }));

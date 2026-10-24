@@ -338,6 +338,20 @@ describe('dollar-priced rewards', () => {
   });
 });
 
+describe('glyph', () => {
+  it('stores a trimmed glyph, clears it on null, and ignores it on a wish list reward', () => {
+    state().addReward('Coffee', 5, { glyph: ' ☕ ' });
+    const r = state().rewards[0];
+    expect(r.glyph).toBe('☕');
+    state().updateReward(r.id, { title: 'Latte' });
+    expect(state().rewards[0].glyph).toBe('☕');
+    state().updateReward(r.id, { glyph: null });
+    expect(state().rewards[0].glyph).toBeNull();
+    state().addReward('Book', 50, { taskId: 'wish', glyph: '📚' });
+    expect(state().rewards.find(x => x.title === 'Book')!.glyph).toBeNull();
+  });
+});
+
 describe('claim limit', () => {
   it('refuses a second claim inside the limit and allows it once undone or elapsed', () => {
     state().addReward('Coffee', 5, { claimEveryDays: 7 });
