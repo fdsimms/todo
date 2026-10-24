@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { NamedIcon, type IconName } from './CoinIcon';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, iconSize, type Colors } from '../theme';
@@ -8,6 +8,8 @@ interface Props {
   icon: IconName;
   /** One or two sentences: what isn't there yet, and what fills it. */
   children: string;
+  /** For a caller whose heading or hint already owns the gap above: `{ marginTop: 0 }`. */
+  style?: StyleProp<ViewStyle>;
 }
 
 /**
@@ -27,12 +29,12 @@ interface Props {
  * what's missing and how to fix it, which is information, and 13pt tertiary
  * measures about 3:1 against this card.
  */
-export function EmptyNote({ icon, children }: Props) {
+export function EmptyNote({ icon, children, style }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
-    <View style={styles.note}>
+    <View style={[styles.note, style]}>
       <NamedIcon name={icon} size={iconSize.md} color={colors.textSecondary} />
       <Text style={styles.text}>{children}</Text>
     </View>

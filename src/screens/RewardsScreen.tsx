@@ -1172,7 +1172,7 @@ export function RewardsScreen() {
         {bounties.length === 0 ? (
           <>
             <View style={[styles.emptyNote, suggestedBounties.length > 0 && styles.emptyNoteAboveList]}>
-              <EmptyNote icon={COIN_ICON}>
+              <EmptyNote icon={COIN_ICON} style={styles.noteUnderHint}>
                 {suggestedBounties.length > 0
                   ? 'No bounties posted. These tasks have been moved the most.'
                   : 'No bounties posted.'}
@@ -1237,7 +1237,7 @@ export function RewardsScreen() {
                 <Text style={styles.sectionHint}>
                   Choose a project, like a wish list, and its tasks can be priced as one-time rewards.
                 </Text>
-                <View style={styles.addRow}>
+                <View style={[styles.addRow, styles.addRowUnderHint]}>
                   <InlineAction label="Choose a project" icon="briefcase-outline" variant="neutral" surface="page" onPress={() => setListPickerOpen(true)} />
                 </View>
               </View>
@@ -1480,9 +1480,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   addRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.md, marginTop: spacing.sm },
   listPrompt: { gap: spacing.xxs },
+  addRowUnderHint: { marginTop: 0 },
   emptyNote: { marginHorizontal: spacing.md },
   // The note introduces the suggested-bounty card right under it, so the two need a gap.
   emptyNoteAboveList: { marginBottom: spacing.smd },
+  // The hint above already leaves `sectionHint`'s gap, so the note's own top margin would double it.
+  noteUnderHint: { marginTop: 0 },
   // The same box as `input`, with the currency symbol inside it so the field
   // reads as money before anything is typed (the GroceryItemSheet price field).
   priceField: {
@@ -1504,14 +1507,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.smd,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
   },
-  sectionHint: { color: colors.textSecondary, fontSize: font.xs, paddingHorizontal: spacing.md, paddingBottom: spacing.xs },
-  budgetHint: { paddingTop: spacing.xsm },
+  // A hint owns the gap between it and whatever it introduces; the card or row underneath adds no top margin of its own.
+  sectionHint: { color: colors.textSecondary, fontSize: font.xs, paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
+  // Sits under its card, so the next section header's own top padding is the only gap wanted below it.
+  budgetHint: { paddingTop: spacing.xsm, paddingBottom: 0 },
   historyCard: { marginHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: colors.bgSecondary },
   historyRow: {
     flexDirection: 'row',
