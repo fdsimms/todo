@@ -1,3 +1,4 @@
+import { offerDishRating } from '../utils/dishOffer';
 import { create } from 'zustand';
 import type { FoodLogEntry, MealSlot } from '../types';
 import {
@@ -182,6 +183,7 @@ export const usePendingEstimateStore = create<PendingEstimateStore>((set, get) =
         mealPlanEntryId: row.mealPlanEntryId,
       });
       if (!written) return null;
+      offerDishRating({ ...written, at: new Date(written.atISO) });
       get().discard(id);
       return written;
     },

@@ -35,7 +35,7 @@ interface DishRatingStore {
    * Session-only on purpose: an unanswered question is not worth carrying to
    * tomorrow, and ignoring it costs nothing (`DishRatingOffer`).
    */
-  offer: { name: string } | null;
+  offer: { name: string; lastHadAt: Date } | null;
   initialize: () => void;
   /**
    * Saves a dish, or returns the one already saved under the same name and
@@ -46,8 +46,12 @@ interface DishRatingStore {
   updateDish: (id: string, patch: DishPatch) => void;
   setVerdict: (id: string, verdict: DishVerdict | null) => void;
   removeDish: (id: string) => void;
-  /** Raises the question for a meal just logged, unless the dish already has an answer. */
-  offerRating: (label: string) => void;
+  /**
+   * Raises the question for a meal just logged, unless the dish already has an
+   * answer. `lastHadAt` is a moment on the logical day the meal belongs to
+   * (`offerDishRating` computes it), which is the day the dish is saved under.
+   */
+  offerRating: (label: string, lastHadAt: Date) => void;
   /** Answers it: rates the saved dish of that name, or saves one with no place. */
   rateOffered: (verdict: DishVerdict) => void;
   dismissOffer: () => void;
@@ -98,8 +102,9 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
     set({ dishes: get().dishes.filter(d => d.id !== id) });
   },
 
-  offerRating(label) {
-    set({ offer: dishOfferFor(get().dishes, label) });
+  offerRating(label, lastHadAt) {
+    const offer = dishOfferFor(get().dishes, label);
+    set({ offer: offer ? { ...offer, lastHadAt } : null });
   },
 
   rateOffered(verdict) {
@@ -107,8 +112,8 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
     set({ offer: null });
     if (!offer) return;
     const known = dishForLabel(get().dishes, offer.name);
-    if (known) get().updateDish(known.id, { verdict, lastHadAt: new Date() });
-    else get().addDish({ name: offer.name, verdict, lastHadAt: new Date() });
+    if (known) get().updateDish(known.id, { verdict, lastHadAt: offer.lastHadAt });
+    else get().addDish({ name: offer.name, verdict, lastHadAt: offer.lastHadAt });
   },
 
   dismissOffer() {

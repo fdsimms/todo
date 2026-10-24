@@ -289,6 +289,7 @@ const SUMMARY_LABELS: { table: string; one: string; many: string }[] = [
   { table: 'mood_logs', one: 'mood log entry', many: 'mood log entries' },
   { table: 'journal_entries', one: 'journal entry', many: 'journal entries' },
   { table: 'workout_sessions', one: 'workout', many: 'workouts' },
+  { table: 'dish_ratings', one: 'rated dish', many: 'rated dishes' },
   { table: 'people', one: 'person', many: 'people' },
   { table: 'templates', one: 'template', many: 'templates' },
   { table: 'categories', one: 'category', many: 'categories' },
