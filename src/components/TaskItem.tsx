@@ -103,7 +103,7 @@ import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
-import { travelDisruptionNote, travelEventOf, travelModeFor, travelRowNote, travelSourceEventId, travelSourceStart, travelWalkUnderFor } from '../utils/travelTasks';
+import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, describeTravelEstimate, travelRowEstimate, travelSourceEventId, travelSourceStart, travelWalkUnderFor } from '../utils/travelTasks';
 import { openEventInSystemCalendar } from '../utils/calendarSync';
 import { alertFailedWithSettings } from '../utils/permissionAlert';
 import { isDemoModeActive } from '../utils/demoState';
@@ -789,11 +789,11 @@ const TaskItemRow = React.memo(function TaskItem({
   const travelDefaultMode = useSettingsStore(s => s.travelMode);
   const travelWalkUnder = useSettingsStore(s => s.travelWalkUnderMinutes);
   const travelEventPrefs = useSettingsStore(s => s.travelEventPrefs);
-  const travelNote = useTravelTimeStore(s => {
+  const travelHeld = useTravelTimeStore(s => {
     if (task.generatedKind !== 'travel' || !task.generatedSourceId) return null;
     const eventId = localTravelEventId(task.generatedSourceId);
     if (!eventId) return null;
-    return travelRowNote(
+    return travelRowEstimate(
       task.generatedSourceId,
       task.location ?? '',
       s.estimates,
@@ -801,6 +801,9 @@ const TaskItemRow = React.memo(function TaskItem({
       travelWalkUnderFor(eventId, travelEventPrefs, travelDefaultMode, travelWalkUnder),
     );
   });
+  const travelNote = travelHeld ? describeTravelEstimate(travelHeld.minutes, travelHeld.mode) : null;
+  const use24HourTime = useSettingsStore(s => s.use24HourTime);
+  const travelArrival = travelArrivalNote(task, travelHeld?.minutes ?? null, ms => formatTimeOfDay(new Date(ms), use24HourTime));
   // The same row's disruption note ("G skipping stops; F delayed"), which is no
   // longer in its title. Worked out from the held MTA snapshot, so a refresh
   // re-renders only travel rows (every other row selects null).
@@ -3966,6 +3969,17 @@ const TaskItemRow = React.memo(function TaskItem({
                 <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
                   {travelNote}
+                </Text>
+              </View>
+            )}
+            {/* When leaving at the reminder gets you there, against the start. On
+                its own line like the MTA note, and in the warning colour only
+                when the arrival is after the start. */}
+            {travelArrival !== null && (
+              <View style={[styles.metaChip, styles.travelDisruptionChip]} accessibilityLabel={travelArrival.text}>
+                <Ionicons name="flag-outline" size={iconSize.xs} color={travelArrival.late ? colors.warningText : colors.textSecondary} />
+                <Text style={travelArrival.late ? styles.travelDisruptionLabel : styles.scheduledLabel} numberOfLines={2}>
+                  {travelArrival.text}
                 </Text>
               </View>
             )}
