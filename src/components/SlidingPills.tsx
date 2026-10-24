@@ -48,6 +48,8 @@ export interface PillHighlight {
   slideFrom: (from: string) => void;
   /** Bumped when the highlight comes to rest: the key for every animated view. */
   epoch: number;
+  /** The pill the highlight is aimed at: where it rests as plain style. */
+  activeKey: string;
 }
 
 export function usePillHighlight(activeKey: string): PillHighlight {
@@ -137,6 +139,7 @@ export function usePillHighlight(activeKey: string): PillHighlight {
     onPillLayout,
     slideFrom,
     epoch,
+    activeKey,
   };
 }
 
@@ -152,8 +155,16 @@ export function PillHighlightLayer({ highlight, keys, restColor, activeColor, ra
   radius: number;
 }) {
   const { x, y, width, height } = highlight;
+  // The resting place is plain style at the active pill's frame, and the
+  // animated style only offsets from it. A cold launch showed the pill row
+  // with the highlight missing (an unselected-looking pill with white label),
+  // so the highlight no longer depends on an animated style having been
+  // applied to be on screen at all.
+  const base = highlight.frames.get(highlight.activeKey) ?? { x: 0, y: 0, width: 0, height: 0 };
+  const baseX = base.x;
+  const baseY = base.y;
   const sliding = useAnimatedStyle(() => ({
-    transform: [{ translateX: x.value }, { translateY: y.value }],
+    transform: [{ translateX: x.value - baseX }, { translateY: y.value - baseY }],
     width: width.value,
     height: height.value,
   }));
@@ -176,7 +187,7 @@ export function PillHighlightLayer({ highlight, keys, restColor, activeColor, ra
         pointerEvents="none"
         style={[
           styles.capsule,
-          { left: 0, top: 0, borderRadius: radius, backgroundColor: activeColor, opacity: highlight.ready ? 1 : 0 },
+          { left: baseX, top: baseY, width: base.width, height: base.height, borderRadius: radius, backgroundColor: activeColor, opacity: highlight.ready ? 1 : 0 },
           sliding,
         ]}
       />
