@@ -17,6 +17,8 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { RotatingChevron } from './RotatingChevron';
+import { animateLayout } from '../utils/layoutAnimation';
 
 /**
  * The minimum a list item has to carry to have a link button, satisfied by
@@ -33,13 +35,6 @@ interface Props {
   visible: boolean;
   /** The step or member being edited; its title is the sheet's subject. */
   step: LinkableItem | null;
-  /**
-   * What the task itself opens, named in the hint so the empty state can say
-   * what leaving it empty actually does. Null for a rotation member, which
-   * inherits nothing: its siblings each point somewhere different, so "no link
-   * of its own" means no link rather than the task's.
-   */
-  taskLinkUrl: string | null;
   kitchenEnabled: boolean;
   /** Applies the step's new link. `onClose` follows it — the host hides the sheet. */
   onSave: (patch: Pick<LinkableItem, 'linkUrl'>) => void;
@@ -60,7 +55,7 @@ interface Props {
  * is. Same chips + custom URL shape as the task-level Link row.
  */
 export function ChainStepLinkSheet({
-  visible, step, taskLinkUrl, kitchenEnabled, onSave, onClose,
+  visible, step, kitchenEnabled, onSave, onClose,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -69,12 +64,17 @@ export function ChainStepLinkSheet({
 
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [customText, setCustomText] = useState('');
+  // Most steps get a web address, so the app pills stay folded until asked
+  // for, or until the step already points at one of them.
+  const [appsOpen, setAppsOpen] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
     const initial = step?.linkUrl ?? null;
     setLinkUrl(initial);
-    setCustomText(initial && !KNOWN_LINK_APPS.some(app => app.scheme === initial) ? initial : '');
+    const isApp = !!initial && KNOWN_LINK_APPS.some(app => app.scheme === initial);
+    setCustomText(initial && !isApp ? initial : '');
+    setAppsOpen(isApp);
   }, [visible, step?.id]);
 
   const dismiss = (after: () => void) => {
@@ -117,30 +117,7 @@ export function ChainStepLinkSheet({
 
         <Text style={styles.label}>Link</Text>
         <View style={styles.body}>
-          <Text style={styles.hint}>
-            {taskLinkUrl
-              ? "Leave it empty and this step opens the task’s link."
-              : 'Leave it empty and this step opens nothing.'}
-          </Text>
-          <View style={styles.chipRow}>
-            {linkAppsFor(kitchenEnabled).map(app => (
-              <TouchableOpacity
-                key={app.scheme}
-                style={[styles.chip, linkUrl === app.scheme && styles.chipActive]}
-                onPress={() => { haptics.tap(); setLinkUrl(app.scheme); setCustomText(''); }}
-              >
-                <Ionicons
-                  name={app.icon as never}
-                  size={13}
-                  color={linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
-                />
-                <Text style={[styles.chipText, linkUrl === app.scheme && styles.chipTextActive]}>
-                  {app.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <FieldLabel>Web address</FieldLabel>
+          <FieldLabel style={styles.webLabel}>Web address</FieldLabel>
           <View style={styles.customRow}>
             <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
             <TextField
@@ -159,6 +136,36 @@ export function ChainStepLinkSheet({
               accessibilityLabel="Custom link URL for this step"
             />
           </View>
+          <TouchableOpacity
+            style={styles.appsRow}
+            onPress={() => { haptics.tap(); animateLayout(); setAppsOpen(v => !v); }}
+            accessibilityRole="button"
+            accessibilityLabel="Open an app"
+            accessibilityState={{ expanded: appsOpen }}
+          >
+            <Text style={styles.appsLabel}>Or open an app</Text>
+            <RotatingChevron open={appsOpen} size={14} color={colors.textSecondary} />
+          </TouchableOpacity>
+          {appsOpen && (
+            <View style={styles.chipRow}>
+              {linkAppsFor(kitchenEnabled).map(app => (
+                <TouchableOpacity
+                  key={app.scheme}
+                  style={[styles.chip, linkUrl === app.scheme && styles.chipActive]}
+                  onPress={() => { haptics.tap(); setLinkUrl(app.scheme); setCustomText(''); }}
+                >
+                  <Ionicons
+                    name={app.icon as never}
+                    size={13}
+                    color={linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
+                  />
+                  <Text style={[styles.chipText, linkUrl === app.scheme && styles.chipTextActive]}>
+                    {app.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       </View>
     </CardSheet>
@@ -195,7 +202,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   body: { paddingHorizontal: spacing.md, gap: spacing.sm },
-  hint: { color: colors.textSecondary, fontSize: font.sm },
+  webLabel: { marginTop: spacing.smd, marginBottom: 0 },
+  appsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+  },
+  appsLabel: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   chip: {
     flexDirection: 'row',
