@@ -2799,6 +2799,41 @@ function seedFoodLog(today: Date): void {
     });
   }
 
+  // A few evenings with a drink whose alcohol a barcode source states, so the
+  // day's total and the entry line show drinks and the Mood screen has days
+  // with and without to compare. A beer's panel is per 100 ml with its alcohol
+  // already converted from the percentage by volume (`readOffNutrition`), kept
+  // on the entry and scaled to the bottle the way the chicken above is, so
+  // nothing is typed in as a figure. As a snack, so it neither fills a planned
+  // dinner nor the seeded nudge's night, and on some days and not others,
+  // since a clean sweep would read as a proof.
+  {
+    const kept = {
+      basis: 'per100ml' as const,
+      servingGrams: null,
+      servingText: '1 bottle (355 ml)',
+      amounts: { calorieKcal: 43, carbsG: 3.6, proteinG: 0.5, fatG: 0, alcoholG: 3.945 },
+      portions: [],
+      source: 'openFoodFacts' as const,
+      sourceId: '0000000000024',
+      recordedAt: subDays(today, 3).toISOString(),
+    };
+    const built = scalePanelToAmount(kept, '355 ml', null, undefined, 'Lager');
+    for (const daysAgo of built ? [3, 6, 9, 13, 20] : []) {
+      const at = subDays(today, daysAgo);
+      at.setHours(21, 0, 0, 0);
+      addEntry({
+        label: 'Lager',
+        quantity: '355 ml',
+        grams: built!.grams,
+        nutrition: built!.nutrition,
+        sourcePanel: kept,
+        slot: 'snack',
+        at,
+      });
+    }
+  }
+
   // A packaged snack with the group a barcode source states, so the window has
   // some ultra-processed calories beside the minimally processed ones. Built the
   // way the chicken above is: a panel the entry keeps, scaled to the amount, so

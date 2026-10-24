@@ -48,6 +48,7 @@ const PLACEHOLDER: Record<NutrientKey, string> = {
   ironMg: 'e.g. 3.6',
   potassiumMg: 'e.g. 115',
   caffeineMg: 'e.g. 0',
+  alcoholG: 'e.g. 14',
   waterMl: 'e.g. 36',
   vitaminAMcg: 'e.g. 900',
   vitaminCMg: 'e.g. 90',

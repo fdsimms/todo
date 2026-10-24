@@ -1,7 +1,7 @@
 import type { FoodLogEntry, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import { NUTRIENT_LABEL } from './foodNutrition';
-import { LIMIT_ROW_NAME, activeLimits, describeLimit, limitStatus, type LimitStatus, type NutritionTargets } from './nutritionTargets';
+import { LIMIT_ROW_NAME, activeLimits, describeLimit, displayFigure, limitStatus, type LimitStatus, type NutritionTargets } from './nutritionTargets';
 
 /**
  * A "don't do" task per Stay under limit: "Stay under 35g sugar · 28g so far".
@@ -57,9 +57,8 @@ export function limitWarningKeyOf(sourceId: string | null | undefined): Nutrient
 }
 
 export function figure(key: NutrientKey, amount: number): string {
-  const unit = NUTRIENT_LABEL[key].unit;
-  const suffix = unit === 'cal' ? ' cal' : unit;
-  return `${(Math.round(amount * 10) / 10).toLocaleString('en-US')}${suffix}`;
+  const shown = displayFigure(key, amount);
+  return `${shown.value.toLocaleString('en-US')}${shown.suffix}`;
 }
 
 export function shortName(key: NutrientKey): string {

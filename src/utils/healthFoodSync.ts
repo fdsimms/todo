@@ -1,5 +1,6 @@
 import type { FoodLogEntry, FoodNutrition, NutrientKey } from '../types';
 import { HEALTH_WRITABLE_NUTRIENTS } from '../types';
+import { healthDrinkCount } from './alcohol';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from './demoState';
 import { healthBridge } from './healthBridge';
@@ -138,6 +139,10 @@ export function writableFoodAmounts(nutrition: FoodNutrition): Partial<Record<Nu
     const value = nutrition.amounts[key];
     if (value === undefined) continue;
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) continue;
+    // A drink count of zero is a sample claiming a meal had no alcohol in it,
+    // written for every sandwich. Alcohol is the one figure where absent and
+    // zero are the same statement (see `alcoholGramsOf`), so it is left out.
+    if (key === 'alcoholG' && value === 0) continue;
     amounts[key] = value;
   }
   return amounts;
@@ -178,7 +183,14 @@ export async function logFoodEntryToHealth(entry: FoodLogEntry): Promise<FoodWri
   const bridge = healthBridge();
   if (!bridge) return { outcome: 'unavailable', sampleIds: [] };
 
-  const sampleIds = await bridge.writeFoodSamples(entry.label, entry.atISO, amounts);
+  // Health has no mass of alcohol, only a count of standard drinks, so the
+  // grams become a count here and travel under the key the bridge reads it by.
+  // The count is always in US drinks whatever size the app displays (see
+  // `healthDrinkCount`).
+  const { alcoholG, ...rest } = amounts;
+  const payload: Record<string, number> = { ...rest };
+  if (alcoholG !== undefined) payload.alcoholDrinks = healthDrinkCount(alcoholG);
+  const sampleIds = await bridge.writeFoodSamples(entry.label, entry.atISO, payload);
   return sampleIds.length > 0
     ? { outcome: 'written', sampleIds }
     : { outcome: 'refused', sampleIds: [] };

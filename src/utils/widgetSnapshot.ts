@@ -36,6 +36,7 @@ import {
   LIMIT_ROW_NAME,
   activeLimits,
   describeLimit,
+  displayFigure,
   limitStatus,
   targetProgress,
   type LimitStatus,
@@ -317,13 +318,12 @@ export function buildWidgetLimits(
   return activeLimits(targets, limits).slice(0, MAX_WIDGET_LIMITS).map(key => {
     const total = totals[key] ?? 0;
     const target = targets[key]!;
-    const unit = NUTRIENT_LABEL[key].unit;
-    const suffix = unit === 'cal' ? ' cal' : unit;
-    const rounded = Math.round(total * 10) / 10;
+    const shownTarget = displayFigure(key, target);
+    const rounded = displayFigure(key, total).value;
     return {
       id: key,
       label: LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label,
-      value: `${rounded.toLocaleString('en-US')} of ${target.toLocaleString('en-US')}${suffix}`,
+      value: `${rounded.toLocaleString('en-US')} of ${shownTarget.value.toLocaleString('en-US')}${shownTarget.suffix}`,
       detail: describeLimit(key, total, targets) ?? '',
       fraction: targetProgress(key, total, targets),
       status: limitStatus(key, total, targets, warnPercent),

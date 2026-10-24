@@ -1,0 +1,4 @@
+{
+  "message": "The food log now counts alcohol in standard drinks. A scanned beer or a described cocktail fills it in on its own, and any entry has an Alcohol row to switch on. You can set a daily drink limit in the Nutrition targets, and the Mood screen compares your mood on days with and without alcohol. Logged drinks can also be written to Apple Health.",
+  "date": "2026-10-24"
+}

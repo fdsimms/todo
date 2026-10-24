@@ -7,6 +7,8 @@ import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors }
 import type { FoodLogEntry, NutrientKey } from '../types';
 import { foodLogEntryEdit, nutrientContributions, type NutrientContribution } from '../utils/foodLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { describeDrinks } from '../utils/alcohol';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { haptics } from '../utils/haptics';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
@@ -48,6 +50,7 @@ interface Props {
 export function NutrientContributorsSheet({ visible, nutrientKey, entries, total, onEdit, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const standardDrinkGrams = useSettingsStore(s => s.standardDrinkGrams);
 
   const contributions = useMemo(
     () => (nutrientKey ? nutrientContributions(entries, nutrientKey) : []),
@@ -62,8 +65,9 @@ export function NutrientContributorsSheet({ visible, nutrientKey, entries, total
           <Text style={styles.rowUnstated}>Not stated</Text>
         ) : (
           <Text style={styles.rowAmount}>
-            {Math.round(item.amount)}
-            {nutrientKey && NUTRIENT_LABEL[nutrientKey].unit !== 'cal' ? NUTRIENT_LABEL[nutrientKey].unit : ''}
+            {nutrientKey === 'alcoholG'
+              ? describeDrinks(item.amount, standardDrinkGrams)
+              : `${Math.round(item.amount)}${nutrientKey && NUTRIENT_LABEL[nutrientKey].unit !== 'cal' ? NUTRIENT_LABEL[nutrientKey].unit : ''}`}
           </Text>
         )}
       </>

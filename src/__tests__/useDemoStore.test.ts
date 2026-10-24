@@ -51,6 +51,7 @@ import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { currentEstimateFactor, describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
 import { foodLastAmounts, helpingAgain, recentUnlinkedHelpings } from '../utils/foodLogRecents';
+import { alcoholGramsOf } from '../utils/alcohol';
 import { isWaterEntry } from '../utils/waterLog';
 import { foodDayInputs, foodKeyNames, hasNutritionData, nutrientAverages, nutritionCounts, produceAverage, sourceMix } from '../utils/nutritionStats';
 import { packageHelping } from '../utils/scanPortion';
@@ -2820,7 +2821,8 @@ describe('demo seed — people', () => {
     // only a rename. With it, Edit reopens on the database's own figures.
     const window = cookingWindow(getLogicalToday(), 30);
     useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
-    const unfiled = useFoodLogStore.getState().windowEntries.find(e => e.sourcePanel);
+    // The per-100 g one: the seeded beer keeps a per-100 ml panel of its own.
+    const unfiled = useFoodLogStore.getState().windowEntries.find(e => e.sourcePanel?.basis === 'per100g');
     expect(unfiled).toBeDefined();
     expect(unfiled?.itemId).toBeNull();
     expect(unfiled?.productId).toBeNull();
@@ -3184,6 +3186,15 @@ describe('demo seed — people', () => {
     expect(totals.reported.calorieKcal).toBe(totals.entries);
     expect(totals.reported.fiberG).toBeGreaterThan(0);
     expect(totals.reported.fiberG! < totals.entries).toBe(true);
+  });
+
+  it('seeds drinks with their alcohol stated, so the day total can show drinks', () => {
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const drinks = seededFood().filter(e => alcoholGramsOf(e.nutrition) > 0);
+    expect(drinks.map(e => e.label)).toEqual(['Lager', 'Lager', 'Lager', 'Lager', 'Lager']);
+    // A bottle of the beer the barcode panel describes: 355 ml of 5% is 14 g.
+    expect(drinks.every(e => Math.round(alcoholGramsOf(e.nutrition)) === 14)).toBe(true);
   });
 
   it('writes no health samples from a seeded entry', () => {

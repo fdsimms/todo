@@ -1046,6 +1046,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'nutritionTargets', groupId: 'kitchen', label: 'Daily targets', section: 'Meals on Today',
     keywords: ['calories', 'protein', 'goal', 'nutrition', 'food log', 'macros', 'aim',
       'limit', 'stay under', 'saturated fat', 'sugar', 'added sugar', 'cholesterol', 'trans fat'] },
+  { id: 'standardDrink', groupId: 'kitchen', label: 'Standard drink', section: 'Meals on Today',
+    keywords: ['alcohol', 'drinks', 'beer', 'wine', 'units', 'grams', 'food log', 'ethanol', 'uk', 'us'] },
   // Simplified mode takes scaling away, and this row with it unless one is set.
   { id: 'householdServings', groupId: 'kitchen', label: 'Usually cooking for', section: 'Meal plan',
     keywords: ['household', 'family', 'people', 'servings', 'serves', 'portions', 'scale', 'batch',

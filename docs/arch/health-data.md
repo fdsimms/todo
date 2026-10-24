@@ -664,6 +664,28 @@ is a real statement. The filter is `writableFoodAmounts`
 (`healthFoodSync.ts`), which is pure and tested for exactly this reason — the
 rest of that file is a native call nothing can test.
 
+### Alcohol is grams in the log, a drink count in Health, and not in the correlation
+
+`NutrientKey` holds `alcoholG`, grams of pure ethanol, because it is the one figure every source can state
+(a database row, a model's estimate, a label's ABV and volume turned into grams by `nutritionParse.ts`).
+Everything a person reads is drinks (`src/utils/alcohol.ts`), at the size they chose in Settings.
+
+Health has no mass of alcohol. Its type is `numberOfAlcoholicBeverages`, a cumulative count of standard
+drinks (iOS 15+, `HKUnit.count()`, read off Apple's page for it), so the write converts:
+
+- **The count is always in US drinks (14 g), whatever size the app displays.** The Health type is "standard
+  drinks" as Apple defines one and has no way to carry a size, so `healthDrinkCount` ignores the setting.
+- **It is saved as a sample of its own, not as a member of the meal's correlation.** Apple's pages for the food
+  correlation do not say whether it accepts a non-dietary type, and a rejected member would cost the whole meal.
+  This was written without a device to run it on, so it is the first thing to check if a logged drink never
+  shows up in Health. A refusal here costs the drink count and never the meal. Its id rides in the same
+  `healthSampleIds` list, which is what lets the retract and the correct-and-rewrite paths remove it.
+- **Zero is never written.** A model answers zero for every non-alcoholic food, and a zero-drink sample on a
+  sandwich is a false statement in a health record. `stripZeroAlcohol` drops it from an estimate and
+  `writableFoodAmounts` refuses it again at the write.
+- **It is not offered to a task.** A task's "log to Health" picker writes through `writeNutrientSample`, whose
+  table has no alcohol row, so the picker leaves it out rather than offer a write that would be dropped.
+
 ### Which nutrients may be written is a second, separate choice
 
 Whether a meal may write *anything* is `healthWriteEnabled`. Which nutrients

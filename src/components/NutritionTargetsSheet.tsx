@@ -1,3 +1,4 @@
+import { DRINK_STEP, drinksFromGrams, gramsFromDrinks } from '../utils/alcohol';
 import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SheetModal } from './SheetModal';
@@ -54,6 +55,9 @@ import { SegmentedControl } from './SegmentedControl';
 import { BUTTON_LABEL } from '../copy/shared';
 
 const MICRO_KEYS = [...VITAMIN_KEYS, ...MINERAL_KEYS];
+
+/** Alcohol's target stepper, in drinks (the stored figure is grams; see `renderTarget`). */
+const ALCOHOL_TARGET_RANGE = { min: 0, max: 20, step: DRINK_STEP, default: 2 };
 
 /** Every nutrient the Food log's own card can show — water has its own card. */
 const PINNABLE_MAIN = EXTERNAL_NUTRIENT_KEYS.filter(k => k !== 'waterMl');
@@ -129,6 +133,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
   const setLimitWarnPercent = useSettingsStore(s => s.setLimitWarnPercent);
   const limitWarningTasks = useSettingsStore(s => s.limitWarningTasks);
   const waterUnit = useSettingsStore(s => s.waterUnit);
+  const standardDrinkGrams = useSettingsStore(s => s.standardDrinkGrams);
   // Whether the weight goal keeps the calorie target in step
   // (autoCalorieTargetKcal): a goal and a complete profile. The row says so,
   // since a figure typed here is replaced the next time Weight refreshes.
@@ -410,9 +415,19 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
         // stepper shows and steps in whichever unit the person picked for
         // water elsewhere in the app (`waterUnit`).
         const isWater = key === 'waterMl';
-        const range = isWater ? waterTargetRange(waterUnit) : NUTRITION_TARGET_RANGES[key];
+        // Alcohol's target is stored in grams like its entries, and the
+        // stepper counts drinks of the person's own size (`standardDrinkGrams`),
+        // so nobody does the arithmetic to set a limit of two.
+        const isAlcohol = key === 'alcoholG';
+        const range = isWater
+          ? waterTargetRange(waterUnit)
+          : isAlcohol ? ALCOHOL_TARGET_RANGE : NUTRITION_TARGET_RANGES[key];
         const unit = NUTRIENT_LABEL[key].unit;
-        const value = isWater ? waterInUnit(targets.waterMl ?? null, waterUnit) : (targets[key] ?? null);
+        const value = isWater
+          ? waterInUnit(targets.waterMl ?? null, waterUnit)
+          : isAlcohol
+            ? (targets.alcoholG === undefined ? null : drinksFromGrams(targets.alcoholG, standardDrinkGrams))
+            : (targets[key] ?? null);
         // waterRange's own range has no default of its own to open on —
         // the reference figure is the ml one below, shown in whichever
         // unit the stepper is in, the same conversion `value`/`onChange`
@@ -421,32 +436,43 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
         // assignable to `start`, which only takes a plain number.
         const start = isWater
           ? waterInUnit(NUTRITION_TARGET_RANGES.waterMl.default, waterUnit) ?? NUTRITION_TARGET_RANGES.waterMl.default
-          : NUTRITION_TARGET_RANGES[key].default;
+          : isAlcohol ? ALCOHOL_TARGET_RANGE.default : NUTRITION_TARGET_RANGES[key].default;
         return (
           <View key={key} style={styles.row}>
             <Text style={styles.rowLabel}>{NUTRIENT_LABEL[key].label}</Text>
             <View style={styles.stepperLine}>
             <CountStepper
               value={value}
-              onChange={next =>
-                set(key, isWater ? (next === null ? null : waterToMl(next, waterUnit)) : next)
-              }
+              onChange={next => {
+                if (isAlcohol) {
+                  // A first alcohol target is a limit: nobody sets one to
+                  // drink more, and the row's own Reach / Stay under choice is
+                  // still there to change it.
+                  if (next !== null && targets.alcoholG === undefined) setDirection(key, 'limit');
+                  set(key, next === null ? null : gramsFromDrinks(next, standardDrinkGrams));
+                  return;
+                }
+                set(key, isWater ? (next === null ? null : waterToMl(next, waterUnit)) : next);
+              }}
               min={range.min}
               max={range.max}
               step={range.step}
               start={start}
               allowNull
               emptyLabel="None"
+              places={isAlcohol ? 1 : undefined}
               format={n =>
                 isWater
                   ? (waterUnit === 'flOz' ? `${n.toLocaleString()} fl oz` : `${n.toLocaleString()}ml`)
-                  : `${n.toLocaleString()}${unit === 'cal' ? '' : unit}`
+                  : isAlcohol
+                    ? (n === 1 ? '1 drink' : `${n.toLocaleString()} drinks`)
+                    : `${n.toLocaleString()}${unit === 'cal' ? '' : unit}`
               }
               label={`${NUTRIENT_LABEL[key].label} target`}
               describeValue={n =>
                 isWater
                   ? `${n} ${waterUnit === 'flOz' ? 'fluid ounces' : 'ml'}`
-                  : `${n} ${unit === 'cal' ? 'calories' : unit}`
+                  : isAlcohol ? `${n} drinks` : `${n} ${unit === 'cal' ? 'calories' : unit}`
               }
             />
             {!NO_DAILY_VALUE.has(key) && targets[key] !== NUTRITION_TARGET_RANGES[key].default && (

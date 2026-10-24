@@ -20,8 +20,10 @@ import {
   targetProgress,
   targetStatus,
   targetedNutrients,
+  displayFigure,
 } from '../utils/nutritionTargets';
 import { HEALTH_WRITABLE_NUTRIENTS, NUTRIENT_KEYS } from '../types';
+import { setDisplayDrinkGrams } from '../utils/alcohol';
 
 describe('NUTRITION_TARGET_RANGES', () => {
   it('covers every nutrient, so no target is unsettable', () => {
@@ -319,5 +321,38 @@ describe('limitsShownOnToday', () => {
 
   it('ignores a hidden nutrient that is not a limit', () => {
     expect(limitsShownOnToday(['satFatG'], ['sodiumMg'])).toEqual(['satFatG']);
+  });
+});
+
+describe('alcohol, shown in drinks', () => {
+  afterEach(() => setDisplayDrinkGrams(14));
+
+  it('reads a figure as drinks at the person\'s size', () => {
+    expect(displayFigure('alcoholG', 21)).toEqual({ value: 1.5, suffix: ' drinks' });
+    expect(displayFigure('alcoholG', 14)).toEqual({ value: 1, suffix: ' drink' });
+    setDisplayDrinkGrams(10);
+    expect(displayFigure('alcoholG', 20)).toEqual({ value: 2, suffix: ' drinks' });
+  });
+
+  it('leaves every other nutrient in its own unit', () => {
+    expect(displayFigure('sodiumMg', 1840.44)).toEqual({ value: 1840.4, suffix: 'mg' });
+    expect(displayFigure('calorieKcal', 1840)).toEqual({ value: 1840, suffix: ' cal' });
+  });
+
+  it('words a total against a limit without grams', () => {
+    expect(describeAgainstTarget('alcoholG', 21, { alcoholG: 28 })).toBe('1.5 of 2 drinks');
+    expect(describeAgainstTarget('alcoholG', 0, { alcoholG: 14 })).toBe('0 of 1 drink');
+  });
+
+  it('says what is left, and when it is over, in drinks', () => {
+    expect(describeLimit('alcoholG', 14, { alcoholG: 28 })).toBe('1 drink left');
+    expect(describeLimit('alcoholG', 7, { alcoholG: 28 })).toBe('1.5 drinks left');
+    expect(describeLimit('alcoholG', 28, { alcoholG: 28 })).toBe('At the limit');
+    expect(describeLimit('alcoholG', 42, { alcoholG: 28 })).toBe('1 drink over');
+  });
+
+  it('says what logging a drink would do, with no noun after the count', () => {
+    const impact = limitImpact({ alcoholG: 14 }, { alcoholG: 21 }, { alcoholG: 28 }, ['alcoholG']);
+    expect(describeLimitImpact(impact[0])).toBe('Puts you at 2.5 of 2 drinks, 0.5 drinks over');
   });
 });

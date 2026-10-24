@@ -1,5 +1,6 @@
 import type { NutrientKey } from '../types';
 import { EXTERNAL_NUTRIENT_KEYS } from '../types';
+import { stripZeroAlcohol } from './alcohol';
 
 /**
  * A model's estimate of what a whole recipe contains, read from its own
@@ -96,6 +97,7 @@ export function readRecipeNutritionEstimate(
     const value = amount(source[key]);
     if (value !== undefined) amounts[key] = value;
   }
+  stripZeroAlcohol(amounts);
   if (Object.keys(amounts).length === 0) return null;
 
   return {

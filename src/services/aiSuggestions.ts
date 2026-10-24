@@ -2659,6 +2659,7 @@ const ESTIMATE_AMOUNTS_SCHEMA = {
     ironMg: { type: 'number', description: 'Iron in milligrams' },
     potassiumMg: { type: 'number', description: 'Potassium in milligrams' },
     caffeineMg: { type: 'number', description: 'Caffeine in milligrams' },
+    alcoholG: { type: 'number', description: 'Alcohol (ethanol) in grams: about 14 for a 12 oz beer, a 5 oz glass of wine or a 1.5 oz shot of spirits. Zero for anything with no alcohol.' },
     waterMl: { type: 'number', description: 'Water in millilitres' },
   },
   required: ESTIMATE_REQUIRED_KEYS,

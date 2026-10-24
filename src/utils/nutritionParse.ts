@@ -53,6 +53,7 @@ export const NUTRIENT_STORED_UNIT: Record<NutrientKey, NutrientSourceUnit> = {
   ironMg: 'mg',
   potassiumMg: 'mg',
   caffeineMg: 'mg',
+  alcoholG: 'g',
   waterMl: 'ml',
   vitaminAMcg: 'ug',
   vitaminCMg: 'mg',
@@ -142,6 +143,8 @@ const PER_100_CEILING: Record<NutrientKey, number> = {
   ironMg: 100_000,
   potassiumMg: 100_000,
   caffeineMg: 100_000,
+  // Pure ethanol is 100 g per 100 g at the very most.
+  alcoholG: 100,
   waterMl: 100,
   // A bound on the impossible, in each key's stored unit: 100 g is 100,000 mg
   // or 100,000,000 mcg. Nothing reads a micronutrient off a source (see
@@ -357,6 +360,9 @@ function readSourceText(value: unknown): string | null {
  * is unreadable either way round, which is why `NutrientKey` has no vitamin D
  * for this to be asked about.
  */
+/** Grams in a millilitre of pure ethanol, which turns a percentage by volume into grams. */
+const ETHANOL_G_PER_ML = 0.789;
+
 const OFF_UNINFORMATIVE_ZERO: ReadonlySet<NutrientKey> = new Set<NutrientKey>(['caffeineMg']);
 
 /**
@@ -378,7 +384,7 @@ const OFF_UNINFORMATIVE_ZERO: ReadonlySet<NutrientKey> = new Set<NutrientKey>(['
  * `sodiumMg` is deliberately absent and handled below.
  */
 
-const OFF_FIELDS: Record<Exclude<NutrientKey, 'sodiumMg' | MicronutrientKey>, { field: string; unit: NutrientSourceUnit }> = {
+const OFF_FIELDS: Record<Exclude<NutrientKey, 'sodiumMg' | 'alcoholG' | MicronutrientKey>, { field: string; unit: NutrientSourceUnit }> = {
   calorieKcal: { field: 'energy-kcal_100g', unit: 'kcal' },
   proteinG: { field: 'proteins_100g', unit: 'g' },
   carbsG: { field: 'carbohydrates_100g', unit: 'g' },
@@ -470,7 +476,7 @@ export function readOffNutrition(
   const nutriments = raw as Record<string, unknown>;
 
   const amounts: Partial<Record<NutrientKey, number>> = {};
-  for (const key of Object.keys(OFF_FIELDS) as Array<Exclude<NutrientKey, 'sodiumMg' | MicronutrientKey>>) {
+  for (const key of Object.keys(OFF_FIELDS) as Array<Exclude<NutrientKey, 'sodiumMg' | 'alcoholG' | MicronutrientKey>>) {
     const { field, unit } = OFF_FIELDS[key];
     const value = readSourceNumber(nutriments[field]);
     if (value === null) continue;
@@ -484,6 +490,15 @@ export function readOffNutrition(
   if (salt !== null) setPer100(amounts, 'sodiumMg', salt / SALT_TO_SODIUM, 'g');
 
   const basis = basisFor(readOffMeasuredUnit(product));
+
+  // Alcohol is stated as a percentage by volume (`alcohol_100g: 5` on a beer),
+  // not as a mass, so it is converted to grams of ethanol per 100 ml. That only
+  // means something against a drink measured in millilitres: a product sold by
+  // weight has no density to convert through, and refusing is the honest answer.
+  const abv = readSourceNumber(nutriments.alcohol_100g);
+  if (abv !== null && abv > 0 && basis === 'per100ml') {
+    setPer100(amounts, 'alcoholG', abv * ETHANOL_G_PER_ML, 'g');
+  }
 
   // A contributor who types the per-serving line into the per-100 field
   // leaves no trace `PER_100_CEILING` above can catch, since the number that
@@ -587,6 +602,11 @@ const FDC_NUTRIENT_KEYS: Record<number, NutrientKey> = {
   1089: 'ironMg',
   1092: 'potassiumMg',
   1057: 'caffeineMg',
+  // Alcohol, ethyl, in grams per 100 g. Taken from the documented nutrient
+  // number rather than read off a live response (FoodData Central was
+  // unreachable when this was added), so it is the first thing to check if a
+  // beer never shows an alcohol figure.
+  221: 'alcoholG',
   1051: 'waterMl',
 };
 

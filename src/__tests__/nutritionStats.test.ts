@@ -1,6 +1,7 @@
 import type { FoodLogEntry, FoodNutritionSource, NutrientKey } from '../types';
 import { cookingWindow, lastDaysOf } from '../utils/cookingStats';
 import {
+  ALCOHOL_DAY_KEY,
   EMPTY_NUTRITION_COUNTS,
   foodDayInputs,
   foodKeyNames,
@@ -717,5 +718,35 @@ describe('niceAxis', () => {
 
   it('survives an empty or zero series', () => {
     expect(niceAxis(0).top).toBeGreaterThan(0);
+  });
+});
+
+describe('alcohol in the food log reads', () => {
+  const lager = (dayKey: string) => entry(dayKey, { label: 'Lager', slot: 'dinner', hour: 20, amounts: { calorieKcal: 150, alcoholG: 14 } });
+
+  it('marks a complete day that stated alcohol, and only that day', () => {
+    const rows = [...fullDay('2026-09-08'), lager('2026-09-08'), ...fullDay('2026-09-09')];
+    const byDay = new Map(foodDayInputs(rows).map(row => [row.dayKey, row]));
+    expect(byDay.get('2026-09-08')!.labels).toContain(ALCOHOL_DAY_KEY);
+    expect(byDay.get('2026-09-09')!.labels).not.toContain(ALCOHOL_DAY_KEY);
+  });
+
+  it('does not mark a stated zero', () => {
+    const rows = [...fullDay('2026-09-08', { amounts: { calorieKcal: 300, alcoholG: 0 } })];
+    expect(foodDayInputs(rows)[0].labels).not.toContain(ALCOHOL_DAY_KEY);
+  });
+
+  it('does not make a thin day a day: one meal with a drink is still refused', () => {
+    expect(foodDayInputs([lager('2026-09-08')])).toEqual([]);
+  });
+
+  it('names the key Alcohol, and only when something stated it', () => {
+    expect(foodKeyNames([lager('2026-09-08')]).get(ALCOHOL_DAY_KEY)).toBe('Alcohol');
+    expect(foodKeyNames([entry('2026-09-08')]).has(ALCOHOL_DAY_KEY)).toBe(false);
+  });
+
+  it('has no average, since only drinking days state it', () => {
+    const rows = [...fullDay('2026-09-08'), lager('2026-09-08')];
+    expect(nutrientAverages(rows, WINDOW).some(row => row.key === 'alcoholG')).toBe(false);
   });
 });

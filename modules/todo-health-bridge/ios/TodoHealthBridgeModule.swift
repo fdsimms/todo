@@ -239,6 +239,12 @@ public class TodoHealthBridgeModule: Module {
         types.insert(type)
       }
     }
+    // The drink count a logged meal may carry (`writeFoodSamples`). Like the
+    // types added after the first thirteen, an install that already answered
+    // the sheet is asked about it when somebody next taps the access row.
+    if let alcohol = Self.alcoholType {
+      types.insert(alcohol)
+    }
     // A finished strength session (`writeWorkout`), its own review in
     // `docs/arch/health-data.md`. `HKWorkoutType` inherits from
     // `HKSampleType`, so it belongs in this set as it stands. Active energy is
@@ -388,6 +394,24 @@ public class TodoHealthBridgeModule: Module {
     ("chlorideMg", .dietaryChloride, HKUnit.gramUnit(with: .milli)),
   ]
 
+  /// The type a drink count is saved under, kept out of `nutrientWriteTable`
+  /// on purpose. It is not a dietary type and its unit is a count of standard
+  /// drinks, where every row of that table is a mass or a volume in the key's
+  /// own unit, and a meal is saved as one food correlation of the table's
+  /// types. **Whether a food correlation accepts this type has not been
+  /// checked** (Apple's pages for the food correlation and for
+  /// `numberOfAlcoholicBeverages` do not say, and this could not be run), so it
+  /// is saved as a sample of its own beside the meal, where a refusal costs the
+  /// drink count and not the meal.
+  ///
+  /// `numberOfAlcoholicBeverages` is `HKQuantityTypeIdentifier`, iOS 15 and
+  /// later, a cumulative count read with `HKUnit.count()`; declaration and
+  /// discussion read off
+  /// https://developer.apple.com/tutorials/data/documentation/healthkit/hkquantitytypeidentifier/numberofalcoholicbeverages.json
+  private static var alcoholType: HKQuantityType? {
+    return HKQuantityType.quantityType(forIdentifier: .numberOfAlcoholicBeverages)
+  }
+
   /// The share type a write-side call is asking about, resolved from the key
   /// the JS side passes.
   ///
@@ -420,6 +444,7 @@ public class TodoHealthBridgeModule: Module {
       ].compactMap { $0 }
     case "nutrition":
       return nutrientWriteTable.compactMap { HKQuantityType.quantityType(forIdentifier: $0.identifier) }
+        + [alcoholType].compactMap { $0 }
     case "workout":
       return [HKObjectType.workoutType()]
     default:
@@ -1083,8 +1108,54 @@ public class TodoHealthBridgeModule: Module {
         let quantity = HKQuantity(unit: entry.unit, doubleValue: value)
         samples.insert(HKQuantitySample(type: type, quantity: quantity, start: when, end: when))
       }
-      guard !samples.isEmpty else {
+      // The drink count, when the meal states one and the person allowed it.
+      // Saved as a sample of its own and never put in the correlation (see
+      // `alcoholType`), so the meal above is written exactly as it was before
+      // this existed and a refusal here costs only the count.
+      var alcoholSample: HKQuantitySample?
+      if let number = parsed["alcoholDrinks"] as? NSNumber,
+         number.doubleValue.isFinite, number.doubleValue > 0,
+         let alcoholType = Self.alcoholType {
+        var allowed = false
+        TodoHealthExceptionCatcher.runCatchingExceptions {
+          allowed = self.store.authorizationStatus(for: alcoholType) == .sharingAuthorized
+        }
+        if allowed {
+          let count = HKQuantity(unit: HKUnit.count(), doubleValue: number.doubleValue)
+          alcoholSample = HKQuantitySample(type: alcoholType, quantity: count, start: when, end: when)
+        }
+      }
+
+      guard !samples.isEmpty || alcoholSample != nil else {
         promise.resolve("[]")
+        return
+      }
+
+      // Resolves the ids of everything that was saved, `"[]"` for nothing.
+      let finish: ([String]) -> Void = { ids in
+        let encoded = (try? JSONSerialization.data(withJSONObject: ids))
+          .flatMap { String(data: $0, encoding: .utf8) }
+        promise.resolve(encoded ?? "[]")
+      }
+      // Saves the drink count after the meal has been answered for, and adds its
+      // id to the list so retracting the entry retracts it too.
+      let saveAlcohol: ([String]) -> Void = { ids in
+        guard let alcohol = alcoholSample else {
+          finish(ids)
+          return
+        }
+        var alcoholStarted = false
+        TodoHealthExceptionCatcher.runCatchingExceptions {
+          self.store.save(alcohol) { success, _ in
+            finish(success ? ids + [alcohol.uuid.uuidString] : ids)
+          }
+          alcoholStarted = true
+        }
+        if !alcoholStarted { finish(ids) }
+      }
+
+      guard !samples.isEmpty else {
+        saveAlcohol([])
         return
       }
 
@@ -1102,18 +1173,16 @@ public class TodoHealthBridgeModule: Module {
       TodoHealthExceptionCatcher.runCatchingExceptions {
         self.store.save(meal) { success, _ in
           guard success else {
-            promise.resolve("[]")
+            saveAlcohol([])
             return
           }
           var ids = [meal.uuid.uuidString]
           ids.append(contentsOf: samples.map { $0.uuid.uuidString })
-          let encoded = (try? JSONSerialization.data(withJSONObject: ids))
-            .flatMap { String(data: $0, encoding: .utf8) }
-          promise.resolve(encoded ?? "[]")
+          saveAlcohol(ids)
         }
         started = true
       }
-      if !started { promise.resolve("[]") }
+      if !started { saveAlcohol([]) }
       #else
       promise.resolve("[]")
       #endif
@@ -1151,9 +1220,12 @@ public class TodoHealthBridgeModule: Module {
         return
       }
 
-      let candidates: [HKObjectType] = Self.nutrientWriteTable.compactMap {
+      var candidates: [HKObjectType] = Self.nutrientWriteTable.compactMap {
         HKQuantityType.quantityType(forIdentifier: $0.identifier)
       }
+      // The drink count a meal saved beside it (`writeFoodSamples`), retracted
+      // with the rest or it would outlive the entry it came from.
+      if let alcohol = Self.alcoholType { candidates.append(alcohol) }
       guard !candidates.isEmpty else {
         promise.resolve(false)
         return

@@ -1,3 +1,4 @@
+import { alcoholGramsOf } from './alcohol';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { FoodLogEntry, FoodNutritionSource, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
@@ -303,6 +304,11 @@ export function nutrientAverages(
   const counted = countedDayTotals(entries, window);
   const out: NutrientAverage[] = [];
   for (const key of NUTRIENT_KEYS) {
+    // Alcohol has no average: it is averaged over the days that stated it, and
+    // only drinking days state it, so "a day" would read as every drinking day's
+    // size while saying nothing of how many days that was. The days with and
+    // without a drink are the Mood screen's `Alcohol` contrast instead.
+    if (key === 'alcoholG') continue;
     let total = 0;
     let days = 0;
     for (const day of counted.values()) {
@@ -489,6 +495,23 @@ export interface FoodNameLookup {
 const ITEM_KEY = 'item:';
 const RECIPE_KEY = 'recipe:';
 
+/**
+ * The food key for "had any alcohol", on a day that states some.
+ *
+ * **It stands for the day, not for a food**, which is why it is a key beside the
+ * foods rather than one of them: "Alcohol" is every lager, glass of wine and
+ * margarita at once, so the contrast reads "days with a drink against days
+ * without" where the per-food ones would split one habit across a dozen names
+ * and leave each below `MIN_CONTRAST_DAYS`. Namespaced like the item and recipe
+ * keys, so a hand-typed food called "alcohol" cannot be mistaken for it.
+ *
+ * It is a presence only, as a symptom is. A day with no figure is a day the log
+ * did not say, and `foodDayInputs` only builds a row for a day logged past one
+ * meal, so the "without" group is days that were logged and stated none. What
+ * stays unfixable is that an unlogged drink looks the same as no drink.
+ */
+export const ALCOHOL_DAY_KEY = 'any:alcohol';
+
 /** The identity a linked entry carries, or null for one linked to nothing. */
 function linkedFoodKey(entry: FoodLogEntry): string | null {
   if (entry.recipeId) return `${RECIPE_KEY}${entry.recipeId}`;
@@ -569,6 +592,7 @@ export function foodKeyNames(
   }
   const out = new Map<string, string>();
   for (const [key, { label }] of latest) out.set(key, nameForFoodKey(key, lookup) ?? label);
+  if (entries.some(entry => alcoholGramsOf(entry.nutrition) > 0)) out.set(ALCOHOL_DAY_KEY, 'Alcohol');
   return out;
 }
 
@@ -741,6 +765,7 @@ export function foodDayInputs(entries: readonly FoodLogEntry[]): FoodDayInput[] 
       const key = keyOf(entry);
       if (key) labels.add(key);
     }
+    if (dayEntries.some(entry => alcoholGramsOf(entry.nutrition) > 0)) labels.add(ALCOHOL_DAY_KEY);
 
     out.push({ dayKey, nutrients, labels: [...labels].sort() });
   }
