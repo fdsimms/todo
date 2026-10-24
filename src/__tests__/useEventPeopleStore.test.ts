@@ -281,3 +281,55 @@ describe('updateEvent and deleteEvent', () => {
 
 // Keep the imports honest: these are asserted through the mock above.
 void dbGetSetting;
+
+describe('followMovedEvents', () => {
+  const row = (over: Partial<EventPeopleLink> = {}): EventPeopleLink => ({
+    id: 'r1',
+    eventKey: 'e1#2099-01-10T18:00:00.000Z',
+    eventStart: '2099-01-10T18:00:00.000Z',
+    eventEnd: '2099-01-10T20:00:00.000Z',
+    title: 'Dinner',
+    personIds: ['p1'],
+    createdAt: '2099-01-01T00:00:00.000Z',
+    ...over,
+  });
+  const moved = event({ start: '2099-01-12T18:00:00.000Z', end: '2099-01-12T20:00:00.000Z' });
+
+  function load(events: BusyEvent[], loaded = true) {
+    Object.assign(useCalendarStore.getState(), {
+      events, loaded, windowStart: '2099-01-01T00:00:00.000Z', windowEnd: '2099-01-20T00:00:00.000Z',
+    });
+  }
+
+  it('moves a link to the slot its event now sits in', () => {
+    mockTable = [row()];
+    useEventPeopleStore.getState().initialize();
+    load([moved]);
+    useEventPeopleStore.getState().followMovedEvents();
+    expect(mockTable).toHaveLength(1);
+    expect(mockTable[0].eventKey).toBe('e1#2099-01-12T18:00:00.000Z');
+    expect(mockTable[0].personIds).toEqual(['p1']);
+    expect(useEventPeopleStore.getState().peopleFor(moved)).toEqual(['p1']);
+  });
+
+  it('keeps people already linked to the new slot', () => {
+    mockTable = [row(), row({ id: 'r2', eventKey: 'e1#2099-01-12T18:00:00.000Z', eventStart: moved.start, personIds: ['p2'] })];
+    useEventPeopleStore.getState().initialize();
+    load([moved]);
+    useEventPeopleStore.getState().followMovedEvents();
+    expect(useEventPeopleStore.getState().peopleFor(moved).sort()).toEqual(['p1', 'p2']);
+    expect(mockTable).toHaveLength(1);
+  });
+
+  it('does nothing while the calendar window is unread, or in demo mode', () => {
+    mockTable = [row()];
+    useEventPeopleStore.getState().initialize();
+    load([], false);
+    useEventPeopleStore.getState().followMovedEvents();
+    expect(mockTable[0].eventKey).toBe('e1#2099-01-10T18:00:00.000Z');
+    load([moved]);
+    (isDemoModeActive as jest.Mock).mockReturnValue(true);
+    useEventPeopleStore.getState().followMovedEvents();
+    expect(mockTable[0].eventKey).toBe('e1#2099-01-10T18:00:00.000Z');
+  });
+});

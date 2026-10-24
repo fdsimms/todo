@@ -4733,7 +4733,7 @@ export function TodayScreen() {
    * no row to land on, so it opens in the editor instead of eating the tap.
    * A subtask lands on its parent, which is the row that exists.
    */
-  const locateTask = (task: Task) => {
+  const locateTask = (task: Task, editorIfMissing = true) => {
     const root = (task.parentId
       ? useTaskStore.getState().tasks.find(t => t.id === task.parentId)
       : undefined) ?? task;
@@ -4755,7 +4755,10 @@ export function TodayScreen() {
       landed = scrollToFlatViewTask(root, home);
     }
     if (!landed || !home) {
-      openEditor(task);
+      // A link that is only a glance (the Leave By card) lands on Today when
+      // the task has no row, rather than opening an editor nobody asked for.
+      if (editorIfMissing) openEditor(task);
+      else if (viewMode !== 'today') setViewMode('today');
       return;
     }
     if (home !== viewMode) {
@@ -4775,7 +4778,7 @@ export function TodayScreen() {
     if (stamp === undefined || stamp === handledLocateTask) return;
     setHandledLocateTask(stamp);
     const task = useTaskStore.getState().tasks.find(t => t.id === route.params?.locateTaskId);
-    if (task) locateTask(task);
+    if (task) locateTask(task, route.params?.locateEditorIfMissing !== false);
   }, [route.params?.locateTask, route.params?.locateTaskId, handledLocateTask]);
 
   // The quiet-projects banner used to sit here, above the pinned block. It's a

@@ -136,6 +136,56 @@ export function planEventPeopleWrite(
   };
 }
 
+export interface MovedPeopleLink {
+  row: EventPeopleLink;
+  /** Where the event sits now. */
+  event: BusyEvent;
+}
+
+/**
+ * Links whose event was moved in the calendar, as far as the window can tell.
+ *
+ * A link is keyed by event and start, so a move made outside the app's own
+ * edit card leaves it on the old slot. Read conservatively, as
+ * `movedLinkedEvents` does, since an id names a whole series:
+ *
+ * - **The old start is still ahead and inside the window**, so its absence
+ *   means something. An occurrence already past, or beyond the window, would be
+ *   missing either way.
+ * - **Nothing in the window carries the old key.**
+ * - **Exactly one live occurrence of that event is in the window.** Two or more
+ *   is a series, and which of them the old one became is a guess. Refused.
+ *
+ * Wrong in the rare case (one occurrence of a series cancelled with another
+ * still in range), where the link jumps to the one that is left.
+ */
+export function movedPeopleLinks(
+  rows: readonly EventPeopleLink[],
+  events: readonly BusyEvent[],
+  externalIds: Readonly<Record<string, string>>,
+  windowStart: Date,
+  windowEnd: Date,
+  now: Date,
+): MovedPeopleLink[] {
+  const from = Math.max(windowStart.getTime(), now.getTime());
+  const to = windowEnd.getTime();
+  const live = events.filter(isLiveEvent);
+  const out: MovedPeopleLink[] = [];
+  for (const row of rows) {
+    const start = Date.parse(row.eventStart);
+    if (!Number.isFinite(start) || start <= from || start > to) continue;
+    const i = row.eventKey.lastIndexOf('#');
+    if (i <= 0) continue;
+    const eventId = row.eventKey.slice(0, i);
+    const sameEvent = live.filter(e => e.id === eventId || externalIds[e.id] === eventId);
+    if (sameEvent.length !== 1) continue;
+    const [event] = sameEvent;
+    if (eventPeopleKeys(event, externalIds).includes(row.eventKey)) continue;
+    out.push({ row, event });
+  }
+  return out;
+}
+
 /**
  * A link is kept until its occurrence falls out of the past-calendar window,
  * not merely until it ends. After the event, the link is what lets the

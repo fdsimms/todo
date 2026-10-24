@@ -5,6 +5,7 @@ import {
   type EventPeopleIndex,
   indexEventPeople,
   legacyEventPeopleRows,
+  movedPeopleLinks,
   peopleForEvent,
   planEventPeopleWrite,
   staleEventPeopleIds,
@@ -62,6 +63,12 @@ interface EventPeopleState {
   initialize: () => void;
   /** Reads server ids for any of these events not already known. */
   resolveExternalIds: (events: readonly Pick<BusyEvent, 'id'>[]) => Promise<void>;
+  /**
+   * Moves a link onto the slot its event now sits in, for an event moved
+   * outside the app (`movedPeopleLinks` has the rules). The edit card does the
+   * same for its own saves in `updateEvent`.
+   */
+  followMovedEvents: () => void;
   peopleFor: (event: Pick<BusyEvent, 'id' | 'start'>) => string[];
   setPeople: (event: Pick<BusyEvent, 'id' | 'start' | 'end' | 'title'>, personIds: readonly string[]) => void;
   /**
@@ -124,12 +131,32 @@ export const useEventPeopleStore = create<EventPeopleState>((set, get) => ({
       calendarSubscribed = true;
       useCalendarStore.subscribe((state, prev) => {
         if (state.events !== prev.events || state.pastEvents !== prev.pastEvents) {
-          void get().resolveExternalIds([...state.events, ...state.pastEvents]);
+          void get().resolveExternalIds([...state.events, ...state.pastEvents]).then(() => get().followMovedEvents());
         }
       });
     }
     const calendar = useCalendarStore.getState();
-    void get().resolveExternalIds([...calendar.events, ...calendar.pastEvents]);
+    void get().resolveExternalIds([...calendar.events, ...calendar.pastEvents]).then(() => get().followMovedEvents());
+  },
+
+  followMovedEvents: () => {
+    if (isDemoModeActive()) return;
+    const calendar = useCalendarStore.getState();
+    // An unread window is not an empty one: every future link would look moved.
+    if (!calendar.loaded || !calendar.windowStart || !calendar.windowEnd) return;
+    const moved = movedPeopleLinks(
+      get().rows, calendar.events, get().links.externalIds,
+      new Date(calendar.windowStart), new Date(calendar.windowEnd), new Date(),
+    );
+    if (moved.length === 0) return;
+    for (const { row, event } of moved) {
+      // Unioned with anyone already on the new slot; the old row goes.
+      const people = [...new Set([...peopleForEvent(get().links, event), ...row.personIds])];
+      dbDeleteEventPeopleLinks([row.id]);
+      const rows = dbGetAllEventPeopleLinks();
+      set({ rows, links: indexEventPeople(rows, get().links.externalIds) });
+      get().setPeople(event, people);
+    }
   },
 
   resolveExternalIds: async events => {

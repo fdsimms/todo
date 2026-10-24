@@ -509,6 +509,65 @@ export interface EventTaskMatch {
   event: BusyEvent;
   /** ISO — when this occurrence ends, which is when its handled entry expires. */
   endsAt: string;
+  /**
+   * The occurrence is this rule's event moved to a new start, whose old
+   * occurrence was already handled. The sweep records it as handled and writes
+   * nothing: the task already exists, at the old time.
+   */
+  carriedOver?: true;
+}
+
+/** The span of the calendar read that `events` came from. */
+export interface EventWindow {
+  start: Date;
+  end: Date;
+}
+
+/**
+ * Whether this occurrence is a handled one moved to a new start.
+ *
+ * A new start is a new occurrence key, so a moved event looked unhandled and
+ * the rule wrote a second task. Read conservatively, as `movedLinkedEvents`
+ * does, since an id names a whole series:
+ *
+ * - **A handled entry for this rule and this event id has a different start**
+ *   that is still ahead.
+ * - **That old occurrence is gone** from the window, and its start was inside
+ *   the window, so its absence means something.
+ * - **Exactly one live occurrence of the id is in the window.** Two or more is
+ *   a series, and which of them the old one became is a guess. Refused.
+ *
+ * Wrong in the rare case (one occurrence of a series cancelled with another
+ * still in range), and then the cost is one task not written.
+ */
+function movedFromHandled(
+  event: BusyEvent,
+  ruleId: string,
+  handled: Readonly<HandledEventTasks>,
+  events: readonly BusyEvent[],
+  now: Date,
+  window: EventWindow,
+): boolean {
+  const ids = new Set([event.externalId || event.id, event.id]);
+  const nowMs = now.getTime();
+  const sameEvent = (e: BusyEvent) => isLiveEvent(e) && (ids.has(e.externalId || e.id) || ids.has(e.id));
+  let sawOld = false;
+  for (const key of Object.keys(handled)) {
+    const parsed = parseEventTaskSourceId(key);
+    if (!parsed || parsed.ruleId !== ruleId) continue;
+    const i = parsed.occurrenceKey.lastIndexOf('|');
+    if (i <= 0 || !ids.has(parsed.occurrenceKey.slice(0, i))) continue;
+    const oldStart = Date.parse(parsed.occurrenceKey.slice(i + 1));
+    if (!Number.isFinite(oldStart) || oldStart <= nowMs) continue;
+    if (oldStart < window.start.getTime() || oldStart > window.end.getTime()) continue;
+    if (eventOccurrenceKeys(event).includes(parsed.occurrenceKey)) continue;
+    const oldStillThere = events.some(e => sameEvent(e) && eventOccurrenceKeys(e).includes(parsed.occurrenceKey));
+    if (oldStillThere) continue;
+    sawOld = true;
+    break;
+  }
+  if (!sawOld) return false;
+  return events.filter(sameEvent).length === 1;
 }
 
 /**
@@ -537,6 +596,7 @@ export function matchedEventTasks(
   events: readonly BusyEvent[],
   now: Date,
   handled: Readonly<HandledEventTasks>,
+  window?: EventWindow,
 ): EventTaskMatch[] {
   const out: EventTaskMatch[] = [];
   const eligible = events
@@ -552,6 +612,12 @@ export function matchedEventTasks(
       if (!ruleMatchesTitle(rule, event.title)) continue;
       if (wasHandled(event, rule.id, handled)) continue;
       const sourceId = eventTaskSourceId(eventOccurrenceKey(event), rule.id);
+      // Before the lead check, so the new key is recorded at once and the old
+      // entry expiring cannot let the task be written for the moved event.
+      if (window && movedFromHandled(event, rule.id, handled, events, now, window)) {
+        out.push({ sourceId, rule, event, endsAt: event.end, carriedOver: true });
+        continue;
+      }
       if (!leadTimeReached(event, rule, now)) continue;
       out.push({ sourceId, rule, event, endsAt: event.end });
     }

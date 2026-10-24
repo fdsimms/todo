@@ -1144,7 +1144,7 @@ describe('task and project links', () => {
   it('scrolls Today to the task instead of opening its editor when asked to locate', () => {
     mockResetToTask.mockClear();
     expect(openInAppUrl('dundundun://task?id=t2&locate=1')).toBe(true);
-    expect(mockResetToLocateTask).toHaveBeenCalledWith('t2');
+    expect(mockResetToLocateTask).toHaveBeenCalledWith('t2', false);
     expect(mockResetToTask).not.toHaveBeenCalled();
   });
 });

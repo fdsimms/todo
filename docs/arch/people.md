@@ -768,7 +768,11 @@ user writes). The rules:
 - **Nothing deletes an event on its own.** `deleteEventDirect` runs only from the card's Delete,
   after a confirm; every other path that loses track of an event drops its pointer instead.
 - **People move with the event** (`useEventPeopleStore.updateEvent`), since a link is keyed by
-  occurrence and a moved event would otherwise leave them on the old slot.
+  occurrence and a moved event would otherwise leave them on the old slot. A move made outside the app is followed by
+  `followMovedEvents` when the calendar reloads, on the rules `movedPeopleLinks` reads a move by: the
+  old start still ahead and inside the window, that occurrence gone, exactly one live occurrence of
+  the event (a series is refused). It re-keys without asking, since a link has no side effects. Two
+  phones can each re-key before they sync; the reader unions the duplicates.
 - **A time block is the same card**: `planTimeBlock` answers whether to open the block for editing
   or propose a new one (the slot `timeBlockFieldsFor` found), and `linkTimeBlock` /
   `unlinkTimeBlock` record what the card saved or deleted. The reconcile that moves a block with
