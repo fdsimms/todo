@@ -896,9 +896,11 @@ export function RewardsScreen() {
         <View>
           <View style={styles.detailHeader}>
             <RewardGlyph reward={reward} size={DETAIL_GLYPH_SIZE} styles={styles} colors={colors} />
-            <Text style={[styles.rewardTitle, styles.detailTitle]}>{shown.title}</Text>
+            <View style={styles.detailTitle}>
+              <Text style={styles.rewardTitle}>{shown.title}</Text>
+              {reward.taskId && <Text style={styles.hint}>{`From ${sourceList?.title ?? 'your project'}`}</Text>}
+            </View>
           </View>
-          {reward.taskId && <Text style={styles.hint}>{`From ${sourceList?.title ?? 'your project'}`}</Text>}
           {shown.note && <Text style={styles.note}>{shown.note}</Text>}
           <View style={styles.costRow}>
             <CoinIcon size={iconSize.sm} color={colors.done} filled />
@@ -906,7 +908,6 @@ export function RewardsScreen() {
               {[
                 reward.priceMinor !== null ? formatPrice(reward.priceMinor, currencySymbol) : null,
                 formatCoins(reward.cost),
-                reward.oneTime ? 'one time' : null,
               ].filter(Boolean).join(' · ')}
             </Text>
           </View>
@@ -978,8 +979,6 @@ export function RewardsScreen() {
       ? sentence(describeClaimWait(waitDays)).replace('Available again', 'Back')
       : !affordable
       ? `Need ${formatCoins(reward.cost - balance)} more`
-      : reward.oneTime
-      ? 'One time'
       : null;
     return (
       <PressableScale
@@ -1423,7 +1422,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   glyphFallback: { borderRadius: radius.md, backgroundColor: colors.accentSubtle, alignItems: 'center', justifyContent: 'center' },
   glyphChipText: { fontSize: font.md },
   glyphInput: { marginTop: spacing.sm, alignSelf: 'flex-start', minWidth: 96 },
-  detailBody: { padding: spacing.md, gap: spacing.sm },
+  detailBody: { padding: spacing.md, gap: spacing.smd },
   detailHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   detailTitle: { flex: 1 },
   rewardActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
