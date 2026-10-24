@@ -1425,7 +1425,7 @@ export function FoodLogEntrySheet({
     if (draft.productId) useGroceryStore.getState().offerProductRating(draft.productId);
     // A meal described in words has no catalog row to rate, so the question is
     // about the dish itself (DishRatingOffer).
-    else if (isEatenOutDraft(draft)) useDishRatingStore.getState().offerRating(draft.label);
+    else if (isEatenOutDraft(draft)) useDishRatingStore.getState().offerRating(draft.label, getLogicalDayKey(at));
     return true;
   };
 

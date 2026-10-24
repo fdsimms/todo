@@ -8,6 +8,7 @@ import {
   findDish,
   groupDishesByPlace,
   isEatenOutDraft,
+  mergeDishes,
   noonOf,
 } from '../utils/dishRating';
 
@@ -18,6 +19,26 @@ function dish(name: string, place: string | null, verdict: DishRating['verdict']
   if (!built) throw new Error('blank fixture');
   return built;
 }
+
+describe('names in another script', () => {
+  it('key to something, so the dish can be saved', () => {
+    expect(buildDishRating({ name: '寿司' }, 'x', NOW)).not.toBeNull();
+    expect(dishKeys('らーめん', null).nameKey).not.toBe('');
+  });
+
+  it('tell two restaurants apart, and a dish with a place from one without', () => {
+    const a = dish('Ramen', '麺屋', null);
+    const b = dish('Ramen', '寿司屋', null);
+    const none = dish('Ramen', null, null);
+    expect(findDish([a], 'Ramen', '寿司屋')).toBeNull();
+    expect(findDish([a, b, none], 'Ramen', '寿司屋')).toBe(b);
+    expect(findDish([a, b, none], 'Ramen', null)).toBe(none);
+  });
+
+  it('keep a Latin name keyed exactly as groceryNameKey has it', () => {
+    expect(dishKeys('Crème brûlée', null).nameKey).toBe('creme brulee');
+  });
+});
 
 describe('dishKeys', () => {
   it('treats case, accents and punctuation as one dish', () => {
@@ -54,7 +75,21 @@ describe('buildDishRating', () => {
   });
 });
 
+describe('mergeDishes', () => {
+  it('keeps what the edited row says and fills the rest from the other', () => {
+    const kept = dish('Soup', 'A', null, new Date(2026, 0, 1));
+    const other = { ...dish('Soup', 'A', 'avoid', new Date(2026, 5, 1)), note: 'cold', photo: 'dish-1.jpg' };
+    const merged = mergeDishes(kept, other);
+    expect(merged).toEqual(expect.objectContaining({ id: kept.id, verdict: 'avoid', note: 'cold', photo: 'dish-1.jpg', lastHadAt: other.lastHadAt }));
+  });
+});
+
 describe('applyDishPatch', () => {
+  it('refuses a name with nothing a label could match', () => {
+    const d = dish('Soup', null, null);
+    expect(applyDishPatch(d, { name: '!!!' }).name).toBe('Soup');
+  });
+
   it('re-keys when the name or place changes', () => {
     const d = dish('Pad see ew', 'Thai Orchid', 'loved');
     const next = applyDishPatch(d, { place: 'Siam Garden' });

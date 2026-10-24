@@ -7,7 +7,7 @@ import { formatTimeOfDay } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import {
   draggedRange,
-  MINUTES_IN_DAY,
+  dayLengthMinutes,
   slotMinutesAt,
   type DayTimeline as DayTimelineData,
   type TimelineDragKind,
@@ -181,7 +181,7 @@ export function DayTimeline({
         const state = dragRef.current;
         if (!state || grantYRef.current === null) return;
         const delta = ((e.nativeEvent.pageY - grantYRef.current) / HOUR_HEIGHT) * 60;
-        const range = draggedRange(state.kind, state.origin, delta);
+        const range = draggedRange(state.kind, state.origin, delta, undefined, dayLengthMinutes(dayStart));
         if (range.start === state.range.start && range.end === state.range.end) return;
         // A tick per quarter hour crossed, so the snap can be felt.
         haptics.tap();
@@ -262,7 +262,7 @@ export function DayTimeline({
             ) : undefined}
             onLongPress={onCreateRange ? e => {
               const start = slotMinutesAt(e.nativeEvent.locationY, firstMinute, lastMinute, HOUR_HEIGHT);
-              beginDrag('create', null, { start, end: Math.min(MINUTES_IN_DAY, start + PLACEHOLDER_MINUTES) });
+              beginDrag('create', null, { start, end: Math.min(dayLengthMinutes(dayStart), start + PLACEHOLDER_MINUTES) });
             } : undefined}
             delayLongPress={interaction.delayLongPress}
             accessibilityRole="button"

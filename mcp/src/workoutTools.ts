@@ -963,13 +963,19 @@ function setsKeepingWhatTheInputCannotSay(
 ): SetInput[] {
   const before = new Map<string, WorkoutSet[]>();
   for (const st of existing) before.set(st.exerciseId, [...(before.get(st.exerciseId) ?? []), st]);
+  // An exercise named in two blocks takes its old sets in order across both,
+  // rather than reading the first set again for the second block.
+  const taken = new Map<string, number>();
   let at = 0;
   return exercises.flatMap(e => {
     const old = before.get(e.exerciseId) ?? [];
-    const superset = old.find(st => st.supersetKey)?.supersetKey ?? null;
+    const from = taken.get(e.exerciseId) ?? 0;
+    taken.set(e.exerciseId, from + e.sets.length);
+    const mine = old.slice(from, from + e.sets.length);
+    const superset = (mine.find(st => st.supersetKey) ?? old.find(st => st.supersetKey))?.supersetKey ?? null;
     return e.sets.map((_, i) => {
       const next = built[at++];
-      const prev = old[i];
+      const prev = mine[i];
       return { ...next, supersetKey: superset, ...(prev?.completedAt ? { completedAt: new Date(new Date(prev.completedAt).getTime() + shiftMs).toISOString() } : {}) };
     });
   });

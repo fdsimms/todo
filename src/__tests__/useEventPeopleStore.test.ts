@@ -40,7 +40,7 @@ jest.mock('../utils/calendarSync', () => ({
 jest.mock('../utils/demoState', () => ({ isDemoModeActive: jest.fn().mockReturnValue(false) }));
 jest.mock('../store/useCalendarStore', () => {
   const refresh = jest.fn().mockResolvedValue(undefined);
-  const state = { refresh, events: [], pastEvents: [] };
+  const state = { refresh, events: [], pastEvents: [], gridEvents: [] };
   return { useCalendarStore: { getState: () => state, subscribe: jest.fn() } };
 });
 jest.mock('../store/useSettingsStore', () => ({
@@ -310,6 +310,25 @@ describe('followMovedEvents', () => {
     expect(mockTable[0].eventKey).toBe('e1#2099-01-12T18:00:00.000Z');
     expect(mockTable[0].personIds).toEqual(['p1']);
     expect(useEventPeopleStore.getState().peopleFor(moved)).toEqual(['p1']);
+  });
+
+  it('keeps the row\'s id when it follows the event, so two devices write the same row', () => {
+    mockTable = [row()];
+    useEventPeopleStore.getState().initialize();
+    load([moved]);
+    useEventPeopleStore.getState().followMovedEvents();
+    expect(mockTable.map(r => r.id)).toEqual(['r1']);
+    expect(mockTable[0].eventStart).toBe(moved.start);
+  });
+
+  it('asks about the server ids of events only the grid read covers', async () => {
+    mockExternalIds.mockResolvedValue({ g1: 'google-grid' });
+    useEventPeopleStore.getState().initialize();
+    Object.assign(useCalendarStore.getState(), { gridEvents: [event({ id: 'g1' })] });
+    useEventPeopleStore.getState().initialize();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mockExternalIds).toHaveBeenCalledWith(expect.arrayContaining(['g1']));
   });
 
   it('keeps people already linked to the new slot', () => {

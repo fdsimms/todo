@@ -398,7 +398,7 @@ jest.mock('todo-eventkit-bridge', () => ({
 }));
 jest.mock('../store/useCalendarStore', () => ({
   // subscribe: useEventPeopleStore follows the calendar to read server ids.
-  useCalendarStore: { getState: jest.fn(() => ({ events: [], pastEvents: [], loaded: false })), subscribe: jest.fn() },
+  useCalendarStore: { getState: jest.fn(() => ({ events: [], pastEvents: [], gridEvents: [], loaded: false })), subscribe: jest.fn() },
 }));
 jest.mock('../store/useWeatherStore', () => ({
   useWeatherStore: { getState: jest.fn(() => ({ snapshot: null, snapshotDayKey: null })) },
@@ -631,7 +631,7 @@ beforeEach(() => {
   (syncDeadlineEvent as jest.Mock).mockResolvedValue({ eventId: null, externalId: null });
   (logTaskCompletionToCalendar as jest.Mock).mockResolvedValue(null);
   const { useCalendarStore } = jest.requireMock('../store/useCalendarStore') as { useCalendarStore: { getState: jest.Mock } };
-  useCalendarStore.getState.mockReturnValue({ events: [], pastEvents: [], loaded: false });
+  useCalendarStore.getState.mockReturnValue({ events: [], pastEvents: [], gridEvents: [], loaded: false });
   const { useWeatherStore } = jest.requireMock('../store/useWeatherStore') as { useWeatherStore: { getState: jest.Mock } };
   useWeatherStore.getState.mockReturnValue({ snapshot: null, snapshotDayKey: null });
   const { useTransitStore } = jest.requireMock('../store/useTransitStore') as { useTransitStore: { getState: jest.Mock } };

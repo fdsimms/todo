@@ -75,6 +75,17 @@ describe('setVerdict, updateDish and removeDish', () => {
     expect(dbUpdateDishRating).not.toHaveBeenCalled();
   });
 
+  it('folds a dish renamed onto another saved one into a single row', () => {
+    const keep = state().addDish({ name: 'Green curry', place: 'Thai Orchid', verdict: 'loved', note: 'extra spicy' })!;
+    const other = state().addDish({ name: 'Pad see ew', place: 'Thai Orchid', verdict: 'fine', photo: 'dish-9.jpg' })!;
+    state().updateDish(keep.id, { name: 'pad see ew' });
+    expect(state().dishes).toHaveLength(1);
+    expect(state().dishes[0]).toEqual(expect.objectContaining({
+      id: keep.id, name: 'pad see ew', verdict: 'loved', note: 'extra spicy', photo: 'dish-9.jpg',
+    }));
+    expect(dbDeleteDishRating).toHaveBeenCalledWith(other.id);
+  });
+
   it('removes the row from the database and the list', () => {
     const dish = state().addDish({ name: 'Soup' })!;
     state().removeDish(dish.id);
@@ -86,10 +97,22 @@ describe('setVerdict, updateDish and removeDish', () => {
 describe('the rating offer', () => {
   it('is raised for an unrated dish and not for a rated one', () => {
     state().offerRating('Pad see ew');
-    expect(state().offer).toEqual({ name: 'Pad see ew' });
+    expect(state().offer).toEqual({ name: 'Pad see ew', dayKey: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
     state().addDish({ name: 'Soup', verdict: 'fine' });
     state().offerRating('soup');
     expect(state().offer).toBeNull();
+  });
+
+  it('stamps "last had" with the day the meal was logged on, not the day it was answered', () => {
+    state().offerRating('Pad see ew', '2026-10-01');
+    state().rateOffered('loved');
+    expect(state().dishes[0].lastHadAt).toBe(new Date(2026, 9, 1, 12).toISOString());
+  });
+
+  it('survives a reload of the store', () => {
+    state().offerRating('Pad see ew');
+    state().initialize();
+    expect(state().offer).toEqual(expect.objectContaining({ name: 'Pad see ew' }));
   });
 
   it('saves a new dish with no place when answered', () => {

@@ -125,7 +125,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dayContextRows.ts` — HealthRowKey, HEALTH_ROW_KEYS, HEALTH_ROW_LABELS, parseHealthRowKeys, serializeHealthRowKeys, ALL_DAY_CAPTION, startsInLabel, eventContextRows, mealContextRows, healthContextRows, +4 more
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, assumedMinutesFor, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, DayShade, +4 more
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
-- `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +4 more
+- `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +5 more
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent, deadlineEventLink, deleteDeadlineEvent, TaskEventSyncPlan, taskEventsAfterSync
 - `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +57 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DeliverableReasoning, DELIVERABLE_REASONING_MAX_LENGTH, cleanDeliverableReasoning, reasoningOf, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, +12 more
@@ -140,7 +140,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/digitRoll.ts` — RollColumn, rollColumns, rollDirection
 - `src/utils/dishPhotoSync.ts` — dishPhotoNames, readDishPhotoForSync, hasDishPhotoForSync, writeDishPhotoFromSync
 - `src/utils/dishPhotos.ts` — DISH_PHOTO_FOLDER, DISH_PHOTO_PREFIX, isDishPhotoName, dishPhotoNamesInUse, unreferencedDishPhotos, dishPhotoUri, sweepDishPhotos
-- `src/utils/dishRating.ts` — DISH_VERDICT_LABELS, DISH_VERDICTS, DishInput, dishKeys, noonOf, buildDishRating, DishPatch, applyDishPatch, findDish, DishPlaceGroup, +5 more
+- `src/utils/dishRating.ts` — DISH_VERDICT_LABELS, DISH_VERDICTS, DishInput, dishTextKey, dishKeys, noonOf, buildDishRating, DishPatch, applyDishPatch, mergeDishes, +8 more
 - `src/utils/doseRecording.ts` — syncOkAgainNotification, allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose, restoreDose
 - `src/utils/dreamQueue.ts` — QueuedDream, QUEUED_DREAM_MAX_LENGTH, parseQueuedDreams
 - `src/utils/dumbbellLoad.ts` — DumbbellEntry, dumbbellsUsed, entryFor, weightScale, shownKg, storedKgFromTyped, storedKgFromShown, formatScaledWeight, weightHeadingSuffix, DUMBBELL_ENTRY_LABELS, +1 more

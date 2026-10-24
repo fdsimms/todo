@@ -31,11 +31,29 @@ export interface DishInput {
   photo?: string | null;
 }
 
+/**
+ * The key for a dish or place name. `groceryNameKey` turns every character
+ * outside Latin letters and digits into a space, so a name written in another
+ * script ("寿司") keys to '' and a restaurant in one would collide with "no
+ * place". The letters it would drop are kept after the Latin part instead. A
+ * name that is Latin throughout keys exactly as `groceryNameKey` has it.
+ */
+export function dishTextKey(text: string): string {
+  const latin = groceryNameKey(text);
+  const other = Array.from(text.toLowerCase()).filter(c => {
+    const code = c.codePointAt(0)!;
+    // Latin and its extensions (diacritics are stripped by groceryNameKey), combining marks.
+    if (code <= 0x024f || (code >= 0x0300 && code <= 0x036f) || (code >= 0x1e00 && code <= 0x1eff)) return false;
+    return /\p{L}/u.test(c);
+  });
+  return [latin, other.join('')].filter(Boolean).join(' ');
+}
+
 /** The two keys a dish is told apart by. A blank place keys as ''. */
 export function dishKeys(name: string, place: string | null | undefined): { nameKey: string; placeKey: string } {
   return {
-    nameKey: groceryNameKey(name),
-    placeKey: place ? groceryNameKey(place) : '',
+    nameKey: dishTextKey(name),
+    placeKey: place ? dishTextKey(place) : '',
   };
 }
 
@@ -89,7 +107,8 @@ export function applyDishPatch(existing: DishRating, patch: DishPatch): DishRati
   const next: DishRating = { ...existing };
   if (patch.name !== undefined) {
     const name = patch.name.trim();
-    if (name) next.name = name;
+    // A name that keys to '' (punctuation only) can never match a food log label.
+    if (name && dishTextKey(name)) next.name = name;
   }
   if (patch.place !== undefined) next.place = trimmedOrNull(patch.place);
   if (patch.verdict !== undefined) next.verdict = patch.verdict;
@@ -102,6 +121,27 @@ export function applyDishPatch(existing: DishRating, patch: DishPatch): DishRati
   next.nameKey = nameKey;
   next.placeKey = placeKey;
   return next;
+}
+
+/**
+ * Two rows that an edit has made the same dish, as one. `kept` is the row the
+ * person edited and wins wherever it says something; what it leaves empty is
+ * filled from `other`, and "last had" is the later of the two.
+ */
+export function mergeDishes(kept: DishRating, other: DishRating): DishRating {
+  const lastHadAt = [kept.lastHadAt, other.lastHadAt].filter((d): d is string => !!d).sort().pop() ?? null;
+  return {
+    ...kept,
+    verdict: kept.verdict ?? other.verdict,
+    note: kept.note ?? other.note,
+    photo: kept.photo ?? other.photo,
+    lastHadAt,
+  };
+}
+
+/** The other saved row with the same name and place as `dish`, if an edit made one. */
+export function dishCollision(dishes: DishRating[], dish: DishRating): DishRating | null {
+  return dishes.find(d => d.id !== dish.id && d.nameKey === dish.nameKey && d.placeKey === dish.placeKey) ?? null;
 }
 
 /** The dish already saved under this name and place, if any. */
@@ -173,7 +213,7 @@ export function groupDishesByPlace(
  * verdict is returned too: the caller decides whether that is worth showing.
  */
 export function dishForLabel(dishes: DishRating[], label: string): DishRating | null {
-  const key = groceryNameKey(label);
+  const key = dishTextKey(label);
   if (!key) return null;
   const matches = dishes.filter(d => d.nameKey === key);
   if (matches.length === 0) return null;
@@ -218,7 +258,7 @@ export function isEatenOutDraft(draft: EatenOutProbe): boolean {
  */
 export function dishOfferFor(dishes: DishRating[], label: string): { name: string } | null {
   const name = label.trim();
-  if (!groceryNameKey(name)) return null;
+  if (!dishTextKey(name)) return null;
   const known = dishForLabel(dishes, name);
   if (known && known.verdict !== null) return null;
   return { name };

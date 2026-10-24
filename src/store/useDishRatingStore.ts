@@ -7,9 +7,12 @@ import {
   dbDeleteDishRating,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { dayKeyToDate, getLogicalDayKey } from '../utils/dateUtils';
 import {
   applyDishPatch,
   buildDishRating,
+  dishCollision,
+  mergeDishes,
   dishForLabel,
   dishOfferFor,
   findDish,
@@ -35,7 +38,7 @@ interface DishRatingStore {
    * Session-only on purpose: an unanswered question is not worth carrying to
    * tomorrow, and ignoring it costs nothing (`DishRatingOffer`).
    */
-  offer: { name: string } | null;
+  offer: { name: string; /** The day the meal was eaten, which "last had" is stamped with. */ dayKey: string } | null;
   initialize: () => void;
   /**
    * Saves a dish, or returns the one already saved under the same name and
@@ -46,8 +49,12 @@ interface DishRatingStore {
   updateDish: (id: string, patch: DishPatch) => void;
   setVerdict: (id: string, verdict: DishVerdict | null) => void;
   removeDish: (id: string) => void;
-  /** Raises the question for a meal just logged, unless the dish already has an answer. */
-  offerRating: (label: string) => void;
+  /**
+   * Raises the question for a meal just logged, unless the dish already has an
+   * answer. `dayKey` is the day the meal was logged on (today, by the person's
+   * own day boundary, when omitted).
+   */
+  offerRating: (label: string, dayKey?: string) => void;
   /** Answers it: rates the saved dish of that name, or saves one with no place. */
   rateOffered: (verdict: DishVerdict) => void;
   dismissOffer: () => void;
@@ -59,7 +66,9 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
   offer: null,
 
   initialize() {
-    set({ dishes: dbGetAllDishRatings(), initialized: true, offer: null });
+    // The pending question survives a reload: a sync that lands while the banner
+    // is up would otherwise take it away.
+    set({ dishes: dbGetAllDishRatings(), initialized: true });
   },
 
   addDish(input) {
@@ -85,9 +94,14 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
   updateDish(id, patch) {
     const existing = get().dishes.find(d => d.id === id);
     if (!existing) return;
-    const next = applyDishPatch(existing, patch);
+    const edited = applyDishPatch(existing, patch);
+    // An edit that makes this the same name and place as another saved dish is
+    // one dish, as addDish treats a retyped one: fold the other row in.
+    const twin = dishCollision(get().dishes, edited);
+    const next = twin ? mergeDishes(edited, twin) : edited;
     dbUpdateDishRating(next);
-    set({ dishes: get().dishes.map(d => (d.id === id ? next : d)) });
+    if (twin) dbDeleteDishRating(twin.id);
+    set({ dishes: get().dishes.filter(d => d.id !== twin?.id).map(d => (d.id === id ? next : d)) });
   },
 
   setVerdict(id, verdict) {
@@ -99,8 +113,9 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
     set({ dishes: get().dishes.filter(d => d.id !== id) });
   },
 
-  offerRating(label) {
-    set({ offer: dishOfferFor(get().dishes, label) });
+  offerRating(label, dayKey) {
+    const offer = dishOfferFor(get().dishes, label);
+    set({ offer: offer ? { ...offer, dayKey: dayKey ?? getLogicalDayKey(new Date()) } : null });
   },
 
   rateOffered(verdict) {
@@ -108,8 +123,9 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
     set({ offer: null });
     if (!offer) return;
     const known = dishForLabel(get().dishes, offer.name);
-    if (known) get().updateDish(known.id, { verdict, lastHadAt: new Date() });
-    else get().addDish({ name: offer.name, verdict, lastHadAt: new Date() });
+    const hadOn = dayKeyToDate(offer.dayKey);
+    if (known) get().updateDish(known.id, { verdict, lastHadAt: hadOn });
+    else get().addDish({ name: offer.name, verdict, lastHadAt: hadOn });
   },
 
   dismissOffer() {

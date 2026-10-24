@@ -363,25 +363,40 @@ export function slotMinutesAt(
 export type TimelineDragKind = 'create' | 'move' | 'resize';
 
 /**
+ * How many minutes a day lasts from `dayStart` to the same wall-clock time the
+ * next day: 1380 on the day the clocks go forward and 1500 on the day they go
+ * back, `MINUTES_IN_DAY` on every other. The timeline counts elapsed minutes
+ * from the day's start, so this is where its last minute is.
+ */
+export function dayLengthMinutes(dayStart: Date): number {
+  const next = new Date(dayStart);
+  next.setDate(next.getDate() + 1);
+  return Math.round((next.getTime() - dayStart.getTime()) / 60000);
+}
+
+/**
  * Where a dragged block sits, in minutes from the day's start, given where it
- * started and how far the finger has gone. Snapped to `SLOT_STEP_MINUTES` the
- * way a tap is, never shorter than one step, and kept inside the day: a moved
- * block stops at either edge with its length intact, and a stretched one
- * stops at the day's end.
+ * started and how far the finger has gone. The distance is snapped to
+ * `SLOT_STEP_MINUTES` the way a tap is, so a block that isn't on the grid
+ * stays where it is until the finger has really moved it, and a stretched one
+ * is never shorter than one step. Kept inside the day (`dayMinutes` long): a
+ * moved block stops at either edge with its own length intact, however short,
+ * and a stretched one stops at the day's end.
  */
 export function draggedRange(
   kind: TimelineDragKind,
   origin: { start: number; end: number },
   deltaMinutes: number,
   step: number = SLOT_STEP_MINUTES,
+  dayMinutes: number = MINUTES_IN_DAY,
 ): { start: number; end: number } {
-  const snap = (m: number) => Math.round(m / step) * step;
+  const moved = Math.round(deltaMinutes / step) * step;
   if (kind === 'move') {
-    const length = Math.max(step, origin.end - origin.start);
-    const start = Math.max(0, Math.min(snap(origin.start + deltaMinutes), MINUTES_IN_DAY - length));
+    const length = Math.max(0, origin.end - origin.start);
+    const start = Math.max(0, Math.min(origin.start + moved, dayMinutes - length));
     return { start, end: start + length };
   }
-  const end = Math.min(MINUTES_IN_DAY, Math.max(origin.start + step, snap(origin.end + deltaMinutes)));
+  const end = Math.min(dayMinutes, Math.max(origin.start + step, origin.end + moved));
   return { start: origin.start, end };
 }
 
