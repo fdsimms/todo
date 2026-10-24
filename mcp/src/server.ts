@@ -2915,13 +2915,14 @@ function registerWriteTools(
 
   server.tool(
     'set_medication_limit',
-    'Set the limit the person gave for a listed medicine, as its page does, or clear it with clear: true. Any of: minHours (fewest hours between two doses), maxPer24h (most doses in any 24 hours), maxAmount24h ({amount, unit}, e.g. 1200 and "mg": the most of one unit in any 24 hours, for a label stated as a total; only doses recorded in that unit are added up). A cap you leave out keeps its current value; null removes it. It is the person\'s own limit, never a prescription and never yours to work out: set it only from figures they gave you, copied from the label or what their doctor told them, and say back what you set. The phone asks before recording a dose that goes past it, and only doses recorded after you set it are judged. The "tell me when it is OK again" notification is a switch on the phone and is left as it is.',
+    'Set the limit the person gave for a listed medicine, as its page does, or clear it with clear: true. Any of: minHours (fewest hours between two doses), maxPer24h (most doses in any 24 hours), maxAmount24h ({amount, unit}, e.g. 1200 and "mg": the most of one unit in any 24 hours, for a label stated as a total; only doses recorded in that unit are added up), maxDose ({amount, unit}, e.g. 2 and "tablet": the most in a single dose, for a label that says "do not exceed 2 tablets" at once). A cap you leave out keeps its current value; null removes it. It is the person\'s own limit, never a prescription and never yours to work out: set it only from figures they gave you, copied from the label or what their doctor told them, and say back what you set. The phone asks before recording a dose that goes past it, and only doses recorded after you set it are judged. The "tell me when it is OK again" notification is a switch on the phone and is left as it is.',
     {
       name: z.string().min(1),
       clear: z.literal(true).optional(),
       minHours: z.number().positive().max(72).nullable().optional(),
       maxPer24h: z.number().int().min(1).max(99).nullable().optional(),
       maxAmount24h: z.object({ amount: z.number().positive(), unit: z.string() }).nullable().optional(),
+      maxDose: z.object({ amount: z.number().positive(), unit: z.string() }).nullable().optional(),
     },
     async input => {
       try {

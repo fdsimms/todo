@@ -1582,7 +1582,12 @@ export interface Replica {
    */
   setMedicationLimit(
     name: string,
-    limit: { minHours?: number | null; maxPer24h?: number | null; maxAmount24h?: { amount: number; unit: string } | null } | null,
+    limit: {
+      minHours?: number | null;
+      maxPer24h?: number | null;
+      maxAmount24h?: { amount: number; unit: string } | null;
+      maxDose?: { amount: number; unit: string } | null;
+    } | null,
   ): { medicine: string; limit: string | null };
   /**
    * Set (or, with null, clear) how many of a listed medicine the person has, as
@@ -5736,6 +5741,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           minHours: limit.minHours === undefined ? current?.minHours ?? null : limit.minHours,
           maxPer24h: limit.maxPer24h === undefined ? current?.maxPer24h ?? null : limit.maxPer24h,
           maxAmount24h: limit.maxAmount24h === undefined ? current?.maxAmount24h ?? null : limit.maxAmount24h,
+          maxDose: limit.maxDose === undefined ? current?.maxDose ?? null : limit.maxDose,
           // The switch needs the phone's notification permission, so it stays as the person left it.
           notify: current?.notify ?? false,
         };

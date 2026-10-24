@@ -4,6 +4,7 @@ import {
   crossedRefill,
   describeLimit,
   describeSupplyLeft,
+  doseOverMax,
   formatHours,
   limitBreaches,
   limitStatus,
@@ -432,8 +433,57 @@ describe('a limit on a total amount', () => {
   });
 });
 
+describe('a limit on one dose', () => {
+  const alone = (maxDose: { amount: number; unit: string }) => limit({ minHours: null, maxPer24h: null, maxDose });
+  const tablets = { amount: 2, unit: 'tablet' };
+
+  it('is a limit on its own, is stated in the unit the label uses, and survives a reload', () => {
+    const parsed = parseMedicationSettings(JSON.stringify({
+      ibuprofen: { limit: { maxDose: tablets, since: '2026-09-01T00:00:00.000Z' } },
+    }));
+    expect(parsed.ibuprofen.limit?.maxDose).toEqual(tablets);
+    expect(describeLimit(alone(tablets))).toBe('At most 2 tablets in one dose');
+    expect(describeLimit(alone({ amount: 1, unit: 'tablet' }))).toBe('At most 1 tablet in one dose');
+    expect(describeLimit(limit({ maxDose: { amount: 400, unit: 'mg' } })))
+      .toBe('At least 6 hours apart, at most 400 mg in one dose, at most 4 in 24 hours');
+  });
+
+  it('reads a dose in the cap unit, or through its stamped strength', () => {
+    expect(doseOverMax(alone(tablets), { amount: 2, unit: 'tablet', strength: null })).toBeNull();
+    expect(doseOverMax(alone(tablets), { amount: 3, unit: 'tablet', strength: null }))
+      .toEqual({ max: tablets, amount: 3 });
+    const mg = alone({ amount: 400, unit: 'mg' });
+    expect(doseOverMax(mg, { amount: 2, unit: 'tablet', strength: { amount: 200, unit: 'mg' } })).toBeNull();
+    expect(doseOverMax(mg, { amount: 3, unit: 'tablet', strength: { amount: 200, unit: 'mg' } }))
+      .toEqual({ max: { amount: 400, unit: 'mg' }, amount: 600 });
+  });
+
+  it('does not call a dose over that it cannot measure', () => {
+    expect(doseOverMax(alone(tablets), { amount: null, unit: null, strength: null })).toBeNull();
+    expect(doseOverMax(alone(tablets), { amount: 800, unit: 'mg', strength: null })).toBeNull();
+    expect(doseOverMax(null, { amount: 9, unit: 'tablet', strength: null })).toBeNull();
+  });
+
+  it('reports a dose that was larger than the cap, once, and never holds the next dose back', () => {
+    const logs = [
+      dose('2026-09-14T06:00', { amount: 2, unit: 'tablet' }),
+      dose('2026-09-14T15:00', { amount: 3, unit: 'tablet' }),
+    ];
+    const breaches = limitBreaches(logs, 'Ibuprofen', alone(tablets));
+    expect(breaches.map(b => b.reason)).toEqual(['dose']);
+    expect(breaches[0].log.takenAt).toBe(new Date('2026-09-14T15:00').toISOString());
+    expect(limitStatus(logs, 'Ibuprofen', alone(tablets), new Date('2026-09-14T15:30')).nextOkAt).toBeNull();
+  });
+
+  it('only judges doses from when the limit was set', () => {
+    const late = limit({ minHours: null, maxPer24h: null, maxDose: tablets, since: new Date('2026-09-14T12:00').toISOString() });
+    const logs = [dose('2026-09-14T06:00', { amount: 5, unit: 'tablet' })];
+    expect(limitBreaches(logs, 'Ibuprofen', late)).toEqual([]);
+  });
+});
+
 describe('strength', () => {
-  const capsules = (at: string, amount: number, strength?: { amount: number; unit: string }): MedicationLog => ({
+  const capsules =(at: string, amount: number, strength?: { amount: number; unit: string }): MedicationLog => ({
     id: at, name: 'Vitamin D', takenAt: new Date(at).toISOString(), dayKey: at.slice(0, 10),
     amount, unit: 'capsule', asNeeded: false, taskId: null, note: null, ...(strength ? { strength } : {}),
   });

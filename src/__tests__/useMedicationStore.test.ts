@@ -446,6 +446,22 @@ describe('how it is taken and the usual amount', () => {
     expect(state().settings.zinc.usualDoses).toHaveLength(6);
   });
 
+  it('sets a limit on one dose, keeps its start time while unchanged, and drops it when cleared', () => {
+    const none = { minHours: null, maxPer24h: null, notify: false };
+    state().setLimit('Ibuprofen', { ...none, maxDose: { amount: 2, unit: 'tablet' } });
+    const first = state().settings.ibuprofen.limit!;
+    expect(first.maxDose).toEqual({ amount: 2, unit: 'tablet' });
+    state().setLimit('Ibuprofen', { ...none, notify: true, maxDose: { amount: 2, unit: 'tablet' } });
+    expect(state().settings.ibuprofen.limit!.since).toBe(first.since);
+    useMedicationStore.setState({
+      settings: { ibuprofen: { limit: { ...first, since: '2026-01-01T00:00:00.000Z' }, supply: null } },
+    });
+    state().setLimit('Ibuprofen', { ...none, maxDose: { amount: 1, unit: 'tablet' } });
+    expect(state().settings.ibuprofen.limit!.since).not.toBe('2026-01-01T00:00:00.000Z');
+    state().setLimit('Ibuprofen', { ...none, maxDose: null });
+    expect(state().settings.ibuprofen).toBeUndefined();
+  });
+
   it('sets a limit on a total, and keeps its start time while the caps are unchanged', () => {
     state().setLimit('Ibuprofen', { minHours: null, maxPer24h: null, notify: false, maxAmount24h: { amount: 1200, unit: 'mg' } });
     const first = state().settings.ibuprofen.limit!;

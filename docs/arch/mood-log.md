@@ -720,6 +720,16 @@ hours, optionally a notification when the next dose is within it) and a
   counted as unmeasured (`LimitStatus.unmeasuredInLast24h`) and said so, never
   converted by any other route. `limitStatus` takes the dose about to be recorded
   (`planned`), since for a total the question is whether *that much* fits.
+- **A limit can cap one dose** (`MedicationLimit.maxDose`, "at most 2 tablets in
+  one dose"), for a label that says "do not exceed 2 at once". It is read with
+  `amountInUnit` like the total, so a dose it cannot measure is not over. It is a
+  suggestion like every other cap: `confirmWithinLimit` asks and "Record anyway"
+  goes ahead, because a bad headache is a reason a person may knowingly take
+  more. It never holds the next dose back (`limitStatus` ignores it, since there
+  is nothing to wait for) and a dose past it is reported in the visit summary as
+  a `'dose'` breach. The planned dose is measured with the strength set now,
+  matching the one `addLog` will stamp, so "3 tablets" reads as mg against a cap
+  in mg.
 - **Usual amounts are a list, and the first is the default** (`usualDoses`,
   `defaultUsualDose`): quick picks in the dose sheet, and what a new dose and the
   round button start from before there is a last dose. This, not a medication

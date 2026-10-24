@@ -543,31 +543,35 @@ export function setMedicationLimit(
     minHours?: number | null;
     maxPer24h?: number | null;
     maxAmount24h?: { amount: number; unit: string } | null;
+    maxDose?: { amount: number; unit: string } | null;
   },
 ): { medicine: string; limit: string | null; note: string } {
-  const given = input.minHours !== undefined || input.maxPer24h !== undefined || input.maxAmount24h !== undefined;
+  const given = input.minHours !== undefined || input.maxPer24h !== undefined
+    || input.maxAmount24h !== undefined || input.maxDose !== undefined;
   if (input.clear && given) throw new Error('Give clear: true on its own, or the caps to set.');
-  if (!input.clear && !given) throw new Error('Give minHours, maxPer24h or maxAmount24h, or clear: true.');
+  if (!input.clear && !given) throw new Error('Give minHours, maxPer24h, maxAmount24h or maxDose, or clear: true.');
   if (input.minHours != null && !(input.minHours > 0 && input.minHours <= 72)) throw new Error('minHours must be between 0 and 72.');
   if (input.maxPer24h != null && !(Number.isInteger(input.maxPer24h) && input.maxPer24h >= 1 && input.maxPer24h <= 99)) {
     throw new Error('maxPer24h must be a whole number from 1 to 99.');
   }
-  const cap = input.maxAmount24h;
-  if (cap != null) {
-    if (!(Number.isFinite(cap.amount) && cap.amount > 0)) throw new Error('maxAmount24h.amount must be a number greater than 0.');
+  for (const field of ['maxAmount24h', 'maxDose'] as const) {
+    const cap = input[field];
+    if (cap == null) continue;
+    if (!(Number.isFinite(cap.amount) && cap.amount > 0)) throw new Error(`${field}.amount must be a number greater than 0.`);
     if (!DOSE_UNITS.some(u => u.value === cap.unit)) {
-      throw new Error(`maxAmount24h.unit must be one of: ${DOSE_UNITS.map(u => u.value).join(', ')}.`);
+      throw new Error(`${field}.unit must be one of: ${DOSE_UNITS.map(u => u.value).join(', ')}.`);
     }
   }
   const out = replica.setMedicationLimit(input.name, input.clear ? null : {
     ...(input.minHours !== undefined ? { minHours: input.minHours } : {}),
     ...(input.maxPer24h !== undefined ? { maxPer24h: input.maxPer24h } : {}),
     ...(input.maxAmount24h !== undefined ? { maxAmount24h: input.maxAmount24h } : {}),
+    ...(input.maxDose !== undefined ? { maxDose: input.maxDose } : {}),
   });
   return {
     ...out,
     note: out.limit
-      ? 'This is the person\'s own limit: the phone asks before a dose that goes past it, and the visit summary reports doses that did. Only doses recorded from now on are judged against it. The notification when the next dose is OK is a switch on the phone.'
+      ? 'This is the person\'s own limit: the phone asks before a dose that goes past it (the person can still record it), and the visit summary reports doses that did. Only doses recorded from now on are judged against it. The notification when the next dose is OK is a switch on the phone.'
       : 'No limit is set for this medicine now.',
   };
 }

@@ -173,6 +173,9 @@ export function MedicationDetailScreen() {
   const [strengthUnit, setStrengthUnit] = useState<string | null>(storedStrength?.unit ?? null);
   const [capAmount, setCapAmount] = useState(storedCap ? String(storedCap.amount) : '');
   const [capUnit, setCapUnit] = useState<string | null>(storedCap?.unit ?? null);
+  const storedDoseCap = prefsFor(settings, medName).limit?.maxDose ?? null;
+  const [doseCapAmount, setDoseCapAmount] = useState(storedDoseCap ? String(storedDoseCap.amount) : '');
+  const [doseCapUnit, setDoseCapUnit] = useState<string | null>(storedDoseCap?.unit ?? null);
   useEffect(() => {
     setUsualAmount('');
     setUsualUnit(null);
@@ -180,6 +183,8 @@ export function MedicationDetailScreen() {
     setStrengthUnit(storedStrength?.unit ?? null);
     setCapAmount(storedCap ? String(storedCap.amount) : '');
     setCapUnit(storedCap?.unit ?? null);
+    setDoseCapAmount(storedDoseCap ? String(storedDoseCap.amount) : '');
+    setDoseCapUnit(storedDoseCap?.unit ?? null);
     // Only when the page switches medication (a rename re-keys it); typing must not reset itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
@@ -244,16 +249,23 @@ export function MedicationDetailScreen() {
   const status = limitStatus(logs, name, limit, new Date());
   const remaining = supplyRemaining(logs, name, supply);
 
-  const updateLimit = (patch: Partial<{ minHours: number | null; maxPer24h: number | null; maxAmount24h: AmountCap | null; notify: boolean }>) => {
+  const updateLimit = (patch: Partial<{ minHours: number | null; maxPer24h: number | null; maxAmount24h: AmountCap | null; maxDose: AmountCap | null; notify: boolean }>) => {
     const next = {
       minHours: limit?.minHours ?? null,
       maxPer24h: limit?.maxPer24h ?? null,
       maxAmount24h: limit?.maxAmount24h ?? null,
+      maxDose: limit?.maxDose ?? null,
       notify: limit?.notify ?? false,
       ...patch,
     };
-    setLimit(name, next.minHours === null && next.maxPer24h === null && next.maxAmount24h === null ? null : next);
+    setLimit(name, next.minHours === null && next.maxPer24h === null && next.maxAmount24h === null && next.maxDose === null ? null : next);
     syncOkAgainNotification(name);
+  };
+
+  const saveDoseCap = (amountText: string, unit: string | null) => {
+    const parsed = Number(amountText.trim());
+    if (amountText.trim() === '') { updateLimit({ maxDose: null }); return; }
+    if (Number.isFinite(parsed) && parsed > 0 && unit) updateLimit({ maxDose: { amount: parsed, unit } });
   };
 
   const saveCap = (amountText: string, unit: string | null) => {
@@ -272,6 +284,8 @@ export function MedicationDetailScreen() {
   const changeStrengthUnit = (next: string | null) => { setStrengthUnit(next); saveStrength(strengthAmount, next); };
   const changeCapAmount = (next: string) => { setCapAmount(next); saveCap(next, capUnit); };
   const changeCapUnit = (next: string | null) => { setCapUnit(next); saveCap(capAmount, next); };
+  const changeDoseCapAmount = (next: string) => { setDoseCapAmount(next); saveDoseCap(next, doseCapUnit); };
+  const changeDoseCapUnit = (next: string | null) => { setDoseCapUnit(next); saveDoseCap(doseCapAmount, next); };
 
   const updateSupply = (patch: Partial<{ count: number | null; unit: string; refillCount: number | null; reorderAt: number }>) => {
     const next = {
@@ -565,6 +579,18 @@ export function MedicationDetailScreen() {
             />
           </View>
           <Text style={styles.fieldHint}>The fewest hours between two doses.</Text>
+          <Text style={[styles.fieldLabel, styles.panelHeading]}>Most in one dose</Text>
+          <DoseAmountField
+            name="MedicationDetail dose cap unit menu"
+            amount={doseCapAmount}
+            onChangeAmount={changeDoseCapAmount}
+            unit={doseCapUnit}
+            onChangeUnit={changeDoseCapUnit}
+            style={styles.amountField}
+          />
+          <Text style={styles.fieldHint}>
+            The most in a single dose, such as 2 tablets. You’re asked before recording more, and you can still record it.
+          </Text>
           <View style={styles.fieldRow}>
             <Text style={styles.fieldLabel}>Most in 24 hours</Text>
             <CountStepper
@@ -616,7 +642,7 @@ export function MedicationDetailScreen() {
           </View>
           <Text style={styles.fieldHint}>
             {!limit
-              ? 'Set hours apart or a most-in-24-hours cap above to turn this on.'
+              ? 'Set hours apart or a cap above to turn this on.'
               : status.nextOkAt
                 ? `Within your limit again at ${format(status.nextOkAt, 'h:mm a')}.`
                 : `${describeLimit(limit)}. ${status.inLast24h} in the last 24 hours.`}
