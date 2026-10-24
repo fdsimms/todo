@@ -5276,6 +5276,17 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(task!.notes).not.toMatch(/\d+(\.\d+)?\s*(kg|lb)/i);
   });
 
+  it('seeds a blood pressure request, and no reading behind it', () => {
+    const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'bloodPressureLog');
+    expect(task).toBeDefined();
+    expect(task!.category).toBe('Health');
+    expect(useSettingsStore.getState().bloodPressureTaskCategory).toBe('Health');
+    expect(task!.generatedSourceId).toBe(dayKeyOf(getCurrentDayStart()));
+    expect(task!.linkUrl).toBe('dundundun://bloodpressure?log=1');
+    // Health is the record, so the notes must never claim a reading.
+    expect(task!.notes).not.toMatch(/\d+\s*\/\s*\d+/);
+  });
+
   it('seeds a weight goal and a sleep goal, and no reading behind either', () => {
     // Both typed in and kept in settings, which is what lets a demo carry them:
     // Health is the record for readings and the demo has none, so each goal is

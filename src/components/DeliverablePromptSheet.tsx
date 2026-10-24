@@ -42,6 +42,11 @@ import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { HelpText } from './HelpText';
 import { CATCH_UP_PROMPT } from '../utils/reachOutTasks';
+import { setPendingCompletionDate } from '../utils/pendingCompletionDate';
+import { keepTailTogether } from '../utils/titleWrap';
+import { addDays } from 'date-fns/addDays';
+import { format } from 'date-fns/format';
+import { isSameDay } from 'date-fns/isSameDay';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -121,6 +126,10 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const inputRef = useRef<TextInput>(null);
   const [draft, setDraft] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  // The day a catch-up really happened, for one logged late. Null is now, which
+  // leaves the completion alone. Only offered while completing: correcting an
+  // answer in the Logbook has no completion to date.
+  const [doneOn, setDoneOn] = useState<Date | null>(null);
   // Why this answer, and what would reopen it. Folded away until asked for,
   // so answering stays one tap; opened already when the row has some.
   const [reasoningOpen, setReasoningOpen] = useState(false);
@@ -159,6 +168,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     const packSeed = !stored ? supplyReorderPackSeed(task, useTaskStore.getState().tasks) : null;
     setDraft(staleForScheduling ? '' : (stored || packSeed || ''));
     setPickerOpen(false);
+    setDoneOn(null);
     const held = reasoningOf(task);
     setWhy(held.why ?? '');
     setRevisitIf(held.revisitIf ?? '');
@@ -180,6 +190,9 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const confirm = (value: string | null) => {
     haptics.success();
     const reasoning = reasoningOpen ? { why, revisitIf } : undefined;
+    // Only a logged catch-up has a day to keep: "Complete without logging"
+    // names nobody, so there is nothing for a date to be the date of.
+    setPendingCompletionDate(task.id, catchUp && mode === 'complete' && value !== null && doneOn ? doneOn.toISOString() : null);
     dismiss(() => onConfirm(value, reasoning));
   };
 
@@ -188,6 +201,15 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     setDraft(d.toISOString());
     setPickerOpen(false);
   };
+
+  const pickDoneOn = (d: Date) => {
+    haptics.tap();
+    // Today is the unset state, so the completion stays exactly as it was.
+    setDoneOn(isSameDay(d, getLogicalToday(dayResetTime)) ? null : noonOf(d));
+    setPickerOpen(false);
+  };
+  const yesterday = addDays(getLogicalToday(dayResetTime), -1);
+  const doneOnIsYesterday = doneOn !== null && isSameDay(doneOn, yesterday);
 
   const dateLabel = normalized ? formatDeliverableValue(kind, normalized) : null;
 
@@ -208,7 +230,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
         mountPicker && (
           <WhenPicker
             visible={pickerOpen}
-            value={normalized ? new Date(normalized) : null}
+            value={catchUp ? doneOn : normalized ? new Date(normalized) : null}
             title={displayTitleFor(task)}
             showTimeOfDay={false}
             showSuggest={false}
@@ -217,7 +239,9 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
             // can't be a day that has been and gone, or the step it places is
             // overdue the moment it arrives.
             allowPast={datesStep === null}
-            onConfirm={date => { if (date) pickDate(date); else setPickerOpen(false); }}
+            // A catch-up already happened, so tomorrow is not a day it can be dated.
+            allowFuture={!catchUp}
+            onConfirm={date => { if (date) (catchUp ? pickDoneOn : pickDate)(date); else setPickerOpen(false); }}
             onCancel={() => setPickerOpen(false)}
           />
         )
@@ -226,7 +250,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onCancel)} minWidth={56} />
-          <Text style={styles.heading} numberOfLines={2}>{displayTitleFor(task)}</Text>
+          <Text style={styles.heading} numberOfLines={2}>{keepTailTogether(displayTitleFor(task))}</Text>
           <SheetHeaderButton
             label={BUTTON_LABEL.save}
             onPress={() => confirm(normalized)}
@@ -352,6 +376,35 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
         )}
         {catchUp && <HelpText style={styles.catchUpHelp}>{CATCH_UP_PROMPT.help}</HelpText>}
 
+        {catchUp && mode === 'complete' && (
+          <>
+            <Text style={styles.label}>When</Text>
+            <View style={[styles.pills, styles.whenPills]}>
+              {[
+                { label: 'Today', selected: doneOn === null, onPress: () => pickDoneOn(getLogicalToday(dayResetTime)) },
+                { label: 'Yesterday', selected: doneOnIsYesterday, onPress: () => pickDoneOn(yesterday) },
+                {
+                  label: doneOn !== null && !doneOnIsYesterday ? format(doneOn, 'EEE, MMM d') : 'Pick a date',
+                  selected: doneOn !== null && !doneOnIsYesterday,
+                  onPress: () => { haptics.tap(); setPickerOpen(true); },
+                },
+              ].map(({ label, selected, onPress }) => (
+                <TouchableOpacity
+                  key={label}
+                  style={[styles.pill, selected && styles.pillSelected]}
+                  onPress={onPress}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`Happened ${label}`}
+                >
+                  <Text style={[styles.pillText, selected && styles.pillTextSelected]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
+
         {reasoningOpen ? (
           <>
             <Text style={styles.label}>Why</Text>
@@ -383,12 +436,15 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
           </>
         ) : null}
 
-        {!reasoningOpen && (
+        {/* A date is a fact about when, not a decision with a reason behind it,
+            so it isn't offered. A date answer that already holds some keeps
+            its fields (reasoningOpen above), so nothing stored is hidden. */}
+        {!reasoningOpen && kind !== 'date' && (
           <View style={styles.extras}>
             {!reasoningOpen && (
               <InlineAction
                 icon="add"
-                label="Add why"
+                label="Add reasoning"
                 variant="neutral"
                 accessibilityLabel="Add why you chose this answer, and what would make you revisit it"
                 onPress={() => { haptics.tap(); setReasoningOpen(true); }}
@@ -507,6 +563,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   pillText: { color: colors.text, fontSize: font.sm },
+  pillSelected: { backgroundColor: colors.accent },
+  pillTextSelected: { color: colors.onAccent },
+  whenPills: { paddingTop: 0 },
   options: { gap: spacing.sm, paddingHorizontal: spacing.md },
   option: {
     flexDirection: 'row',

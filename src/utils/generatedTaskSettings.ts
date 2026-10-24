@@ -439,6 +439,16 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
       { key: 'link', label: 'Link', summary: 'Opens Weight' },
     ],
   },
+  bloodPressureLog: {
+    example: 'Record your blood pressure',
+    noun: 'Blood pressure task',
+    owned: () => [
+      { key: 'title', label: 'Title', summary: 'Record your blood pressure' },
+      { key: 'date', label: 'Date', summary: 'Today', hint: 'Added when Apple Health has no reading for the number of days set above.' },
+      { key: 'notes', label: 'Notes', summary: 'How long since a reading was recorded', hint: 'From Apple Health.' },
+      { key: 'link', label: 'Link', summary: 'Opens Blood pressure' },
+    ],
+  },
   waterShortfall: {
     example: 'Drink 250 ml more water',
     noun: 'Water task',

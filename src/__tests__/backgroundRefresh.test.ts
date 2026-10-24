@@ -93,6 +93,7 @@ const mockTaskState = {
   // during the pass is this call itself, and that's the only part this file
   // is testing.
   checkWeighInTasks: mockRecord('checkWeighInTasks'),
+  checkBloodPressureTasks: mockRecord('checkBloodPressureTasks'),
   checkBirthdayTasks: mockRecord('checkBirthdayTasks'),
   checkPersonDateTasks: mockRecord('checkPersonDateTasks'),
   checkBirthdayGiftTasks: mockRecord('checkBirthdayGiftTasks'),
@@ -259,7 +260,7 @@ describe('runBackgroundRefresh', () => {
       'checkMealThawTasks', 'checkMealLogNudgeTasks',
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'applyWeatherWaits', 'applyRainSkips', 'checkEventTasks',
       'checkTravelTasks', 'checkScreenTimeTasks', 'checkBlockOfferTasks', 'checkHealthTasks',
-      'checkMoodTasks', 'checkJournalTasks', 'checkWaniKaniTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
+      'checkMoodTasks', 'checkJournalTasks', 'checkWaniKaniTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks', 'checkBloodPressureTasks',
       'checkBirthdayTasks', 'checkPersonDateTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'checkWaitingFollowUpTasks',
       'reconcileAllUseUpTasks', 'checkScheduledTemplates',

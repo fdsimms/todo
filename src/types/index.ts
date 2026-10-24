@@ -2880,6 +2880,10 @@ export type GeneratedKind =
   // fires because there is no reading at all. Asking for data and reacting to
   // it are two different permissions, so they are two different switches.
   | 'weighIn'
+  // weighIn's sibling for blood pressure — see src/utils/bloodPressureTasks.ts.
+  // Same position: day-keyed with no source row, bloodPressureLastDayKey for the
+  // rest of the day and bloodPressureDeclinedDayKey for the rest of the window.
+  | 'bloodPressureLog'
   // A water task that follows the food log's target (Task.followWaterTarget),
   // finished for the day before the target rose, becomes a one-off task for
   // what is still owed — see src/utils/waterShortfallTasks.ts. Its source id is

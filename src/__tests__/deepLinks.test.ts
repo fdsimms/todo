@@ -17,6 +17,8 @@ const mockResetToFoodLog = jest.fn();
 const mockOpenScreenByName = jest.fn((_name: string) => true);
 const mockOpenSettingsEntryById = jest.fn((_id: string) => true);
 const mockResetToMedications = jest.fn();
+const mockResetToBloodPressure = jest.fn();
+const mockResetToWeight = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockResetToDeload = jest.fn();
 const mockResetToTask = jest.fn();
@@ -104,6 +106,8 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToJournal: (...args: unknown[]) => mockResetToJournal(...args),
   resetToFoodLog: (...args: unknown[]) => mockResetToFoodLog(...args),
   resetToMedications: (...args: unknown[]) => mockResetToMedications(...args),
+  resetToBloodPressure: (...args: unknown[]) => mockResetToBloodPressure(...args),
+  resetToWeight: (...args: unknown[]) => mockResetToWeight(...args),
   resetToProjectPull: (...args: unknown[]) => mockResetToProjectPull(...args),
   resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
   resetToDeload: (...args: unknown[]) => mockResetToDeload(...args),
@@ -150,6 +154,9 @@ import {
   openUrlScreen,
   settingsUrlEntry,
   isMedicationsUrl,
+  isBloodPressureUrl,
+  bloodPressureUrlWantsLog,
+  isWeightUrl,
   journalUrlKind,
   journalUrlWantsLog,
   journalUrlWantsMic,
@@ -955,6 +962,21 @@ describe('openInAppUrl', () => {
     expect(linkIconFor('dundundun://medications')).toBe('medkit-outline');
     openInAppUrl('dundundun://medications');
     expect(mockResetToMedications).toHaveBeenCalledTimes(1);
+  });
+
+  // The blood pressure request's link: the weight link's shape, and its own screen.
+  it('opens Blood pressure, with the sheet only for log=1, and never as the weight link', () => {
+    expect(isBloodPressureUrl('dundundun://bloodpressure')).toBe(true);
+    expect(isBloodPressureUrl('dundundun://bloodpressure?log=1')).toBe(true);
+    expect(isBloodPressureUrl('dundundun://weight?log=1')).toBe(false);
+    expect(isWeightUrl('dundundun://bloodpressure?log=1')).toBe(false);
+    expect(bloodPressureUrlWantsLog('dundundun://bloodpressure?log=1')).toBe(true);
+    expect(bloodPressureUrlWantsLog('dundundun://bloodpressure')).toBe(false);
+    expect(linkIconFor('dundundun://bloodpressure')).toBe('pulse-outline');
+
+    expect(openInAppUrl('dundundun://bloodpressure?log=1')).toBe(true);
+    expect(mockResetToBloodPressure).toHaveBeenCalledWith(true);
+    expect(mockResetToWeight).not.toHaveBeenCalled();
   });
 
   // The Today widget's food log shortcut — a plain "open this screen" link,

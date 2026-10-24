@@ -66,6 +66,12 @@ import {
   WEIGH_IN_TITLE,
   weighInNotes,
 } from './weightTasks';
+import {
+  BLOOD_PRESSURE_LINK_URL,
+  BLOOD_PRESSURE_TITLE,
+  DEFAULT_BLOOD_PRESSURE_EVERY_DAYS,
+  bloodPressureNotes,
+} from './bloodPressureTasks';
 import { SNACK_NUDGE_NOTES, snackNudgeTitle } from './snackNudgeTasks';
 import { produceNudgeNotes, produceNudgeTitle } from './produceNudgeTasks';
 import { produceFloorNotes, produceFloorTitle } from './produceFloorTasks';
@@ -2032,6 +2038,18 @@ export function seedDemoData(): void {
     linkUrl: WEIGH_IN_LINK_URL,
     category: 'Health',
     ...generatedBy('weighIn', dayKeyOf(today)),
+  });
+
+  // The blood pressure request, seeded directly for the weigh-in's reason, and
+  // with no reading beside it for the same one: Health is the record.
+  useSettingsStore.getState().setBloodPressureTaskCategory('Health');
+  addTask({
+    title: BLOOD_PRESSURE_TITLE,
+    notes: bloodPressureNotes(DEFAULT_BLOOD_PRESSURE_EVERY_DAYS),
+    dueDate: today.toISOString(),
+    linkUrl: BLOOD_PRESSURE_LINK_URL,
+    category: 'Health',
+    ...generatedBy('bloodPressureLog', dayKeyOf(today)),
   });
 
   // A weight goal and a sleep goal. Both are the person's own typed numbers

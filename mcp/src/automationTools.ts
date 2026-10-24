@@ -44,6 +44,7 @@ const NEEDS_ON_PHONE: Partial<Record<GeneratedKind, string>> = {
   calendarReview: 'calendar access',
   health: 'Apple Health access',
   weighIn: 'Apple Health access',
+  bloodPressureLog: 'Apple Health access',
   wanikani: 'their WaniKani API token, saved on the phone (it never syncs, so it can\u2019t be set from here); the phone reads WaniKani only while the app is open',
   blockOffer: 'Rewards switched on, Screen Time access, and apps chosen in the rule\u2019s app group on the phone (the phone starts the block when its task is checked, and groups exist only there, so a rule\u2019s groupId can be read and kept but not set from here)',
   screenTime: 'Screen Time access, and the apps chosen in each rule\u2019s app group on the phone (a rule\u2019s groupId names the group; groups exist only on the phone, so it can be read and kept but not set from here)',

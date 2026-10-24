@@ -1736,6 +1736,28 @@ weight is saved (the tick, and the coins, stay the person's). Both are copied fr
 here: a mood entry recorded late is still roughly true, while a weight that
 was never typed is a number nobody can reconstruct afterwards.
 
+## `bloodPressureLog` — `weighIn` for a cuff
+
+"Record your blood pressure" is `weighIn` over blood pressure, and everything in
+the section above holds: the trigger is a gap in Apple Health rather than a
+cadence, it is its own switch rather than part of `health`, it needs both Health
+switches, it pauses on vacation, and a delete holds for `bloodPressureEveryDays`
+(`bloodPressureDeclinedDayKey`) while a request nobody answered is dropped, not
+declined. Rules live in `src/utils/bloodPressureTasks.ts`, the pass is
+`checkBloodPressureTasks`, and the row links to `dundundun://bloodpressure?log=1`.
+Three differences are worth knowing:
+
+- **It reads whether a reading exists and nothing else.** `readRecentBloodPressure`
+  returns the readings, but the pass only asks whether the list is empty. The
+  fence in `docs/arch/health-data.md` (no verdict on a number) is what lets this
+  generator exist at all, and it is why the notes say only that nothing was
+  recorded.
+- **Its answer is its own.** `bloodPressureAnsweredOn` sits beside
+  `weighInAnsweredOn` in `useHealthStore`, and `markBloodPressureAnswered` is
+  called by `LogBloodPressureSheet`. A weight saved never makes this row ready.
+- **The window is the cuff's, not the day's.** Several readings a day is normal,
+  so one anywhere in the window is an answer. Nothing averages them to decide.
+
 ## `waterShortfall` — the water still owed after the daily task was finished
 
 A daily water task can follow the food log's water target (`Task.followWaterTarget`,
