@@ -300,6 +300,10 @@ export function RewardsScreen() {
     () => (bounties.length === 0 ? suggestedBountyTasks(driftingTaskList(tasks, driftThreshold)) : []),
     [bounties.length, tasks, driftThreshold],
   );
+  // A bare title like "Pick dates" says nothing on its own, so name the
+  // project it belongs to, or its category when it has no project.
+  const taskContext = (task: Task): string | null =>
+    (task.projectId ? projects.find(p => p.id === task.projectId)?.title : null) ?? task.category ?? null;
   const postSuggestedBounty = (task: Task) => {
     const result = postBounty(task.id);
     if (result === 'posted') haptics.success();
@@ -1184,6 +1188,9 @@ export function RewardsScreen() {
                   <View key={task.id} style={[styles.historyRow, i > 0 && styles.historyDivider]}>
                     <View style={styles.historyText}>
                       <Text style={styles.historyLabel}>{task.title}</Text>
+                      {taskContext(task) !== null && (
+                        <Text style={styles.historyMeta}>{taskContext(task)}</Text>
+                      )}
                       <Text style={styles.historyMeta}>
                         {`Moved ${task.postponeCount} times · +${formatCoins(bountyCoinsFor({ ...task, bountyPushes: 0 }))} extra when done`}
                       </Text>
