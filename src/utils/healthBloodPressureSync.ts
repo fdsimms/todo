@@ -2,6 +2,7 @@ import { healthBridge } from './healthBridge';
 import { isDemoModeActive } from './demoState';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isPlausibleReading, MIN_PULSE, MAX_PULSE } from './bloodPressureLog';
+import { isPlausiblePulse } from './pulseLog';
 
 /**
  * Writing a blood pressure reading to Apple Health.
@@ -42,4 +43,24 @@ export async function logBloodPressureToHealth(
   const outcome = await bridge.writeBloodPressureSample(systolic, diastolic, pulse, when.toISOString());
   if (outcome === 'saved') return 'written';
   return outcome === 'pulseRefused' ? 'writtenWithoutPulse' : 'refused';
+}
+
+/** What came of trying to write a pulse on its own. A subset of the reading's results. */
+export type PulseWriteResult = 'written' | 'off' | 'unavailable' | 'invalid' | 'refused';
+
+/**
+ * Writing one pulse to Apple Health with no blood pressure beside it. The same
+ * guards in the same order as `logBloodPressureToHealth`, demo mode first: a
+ * leak would put a real sample in somebody's real Health record.
+ */
+export async function logPulseToHealth(pulse: number, when: Date): Promise<PulseWriteResult> {
+  if (isDemoModeActive()) return 'unavailable';
+  if (!isPlausiblePulse(pulse)) return 'invalid';
+
+  if (!useSettingsStore.getState().healthWriteEnabled) return 'off';
+
+  const bridge = healthBridge();
+  if (!bridge) return 'unavailable';
+
+  return (await bridge.writeHeartRateSample(pulse, when.toISOString())) ? 'written' : 'refused';
 }

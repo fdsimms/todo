@@ -17,6 +17,7 @@ const AUTO_COMPLETE_REASONS: Partial<Record<GeneratedKind, string>> = {
   journalLog: 'Saved your journal entry',
   dreamLog: 'Saved your dream',
   weighIn: 'Recorded your weight',
+  bloodPressureLog: 'Recorded your blood pressure',
   waterShortfall: 'Logged your water',
   snackNudge: 'Logged a snack',
   produceNudge: 'Logged your produce',

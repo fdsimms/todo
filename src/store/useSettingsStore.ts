@@ -41,6 +41,7 @@ import {
   type BodyProfile,
 } from '../utils/energyBudget';
 import { DEFAULT_WEIGH_IN_EVERY_DAYS, clampWeighInEveryDays } from '../utils/weightTasks';
+import { DEFAULT_BLOOD_PRESSURE_EVERY_DAYS, clampBloodPressureEveryDays } from '../utils/bloodPressureTasks';
 import {
   DEFAULT_SNACK_NUDGE_FROM_HOUR,
   DEFAULT_SNACK_NUDGE_SHARE_PERCENT,
@@ -1947,6 +1948,17 @@ interface SettingsStore {
   // settings for the same reason. Written by writeGeneratedOptOut's weighIn
   // case, never by the pass clearing an unanswered request.
   weighInDeclinedDayKey: string | null;
+  // Whether a stretch with no blood pressure reading adds a task to record one.
+  // Off by default, and the same three switches as weighInTasks (this, plus
+  // healthReadEnabled and healthWriteEnabled). See src/utils/bloodPressureTasks.ts.
+  bloodPressureTasks: boolean;
+  bloodPressureTaskCategory: string | null;
+  // Days without a reading before the task is offered, weighInEveryDays' twin.
+  bloodPressureEveryDays: number;
+  // The day key a request was last raised on, and the day one was last deleted
+  // on: weighInLastDayKey and weighInDeclinedDayKey, for the same reasons.
+  bloodPressureLastDayKey: string | null;
+  bloodPressureDeclinedDayKey: string | null;
   // Opt-in, off by default: a one-off task for the water still owed once a water
   // task that follows the food log's target has already been finished for the
   // day and exercise then raised the target. See src/utils/waterShortfallTasks.ts.
@@ -2433,6 +2445,11 @@ interface SettingsStore {
   setWeighInEveryDays: (days: number) => void;
   setWeighInLastDayKey: (dayKey: string | null) => void;
   setWeighInDeclinedDayKey: (dayKey: string | null) => void;
+  setBloodPressureTasks: (on: boolean) => void;
+  setBloodPressureTaskCategory: (category: string | null) => void;
+  setBloodPressureEveryDays: (days: number) => void;
+  setBloodPressureLastDayKey: (dayKey: string | null) => void;
+  setBloodPressureDeclinedDayKey: (dayKey: string | null) => void;
   setWaterShortfallTasks: (on: boolean) => void;
   setWaterShortfallTaskCategory: (category: string | null) => void;
   setWaterShortfallDeclinedDayKey: (dayKey: string | null) => void;
@@ -3235,6 +3252,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   weighInEveryDays: DEFAULT_WEIGH_IN_EVERY_DAYS,
   weighInLastDayKey: null,
   weighInDeclinedDayKey: null,
+  bloodPressureTasks: false,
+  bloodPressureTaskCategory: null,
+  bloodPressureEveryDays: DEFAULT_BLOOD_PRESSURE_EVERY_DAYS,
+  bloodPressureLastDayKey: null,
+  bloodPressureDeclinedDayKey: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
@@ -3802,6 +3824,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       : DEFAULT_WEIGH_IN_EVERY_DAYS;
     const weighInLastDayKey = dbGetSetting('weighInLastDayKey') || null;
     const weighInDeclinedDayKey = dbGetSetting('weighInDeclinedDayKey') || null;
+    const bloodPressureTasks = dbGetSetting('bloodPressureTasks') === 'true';
+    const bloodPressureTaskCategory = dbGetSetting('bloodPressureTaskCategory') || null;
+    // Clamped on read as well as on write, for weighInEveryDays' reason.
+    const storedBloodPressureEveryDays = parseInt(dbGetSetting('bloodPressureEveryDays') ?? '', 10);
+    const bloodPressureEveryDays = Number.isFinite(storedBloodPressureEveryDays)
+      ? clampBloodPressureEveryDays(storedBloodPressureEveryDays)
+      : DEFAULT_BLOOD_PRESSURE_EVERY_DAYS;
+    const bloodPressureLastDayKey = dbGetSetting('bloodPressureLastDayKey') || null;
+    const bloodPressureDeclinedDayKey = dbGetSetting('bloodPressureDeclinedDayKey') || null;
     const screenTimeTasks = dbGetSetting('screenTimeTasks') === 'true';
     const screenTimeTaskCategory = dbGetSetting('screenTimeTaskCategory') || null;
     const storedScreenTimeRules = dbGetSetting('screenTimeRules');
@@ -3941,6 +3972,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       blockOfferRules,
       blockOfferTaskCategory,
       blockOfferTasks,
+      bloodPressureDeclinedDayKey,
+      bloodPressureEveryDays,
+      bloodPressureLastDayKey,
+      bloodPressureTaskCategory,
+      bloodPressureTasks,
       bodyProfile,
       bookEventTaskCategory,
       bookEventTasks,
@@ -5203,6 +5239,32 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWeighInDeclinedDayKey(dayKey: string | null) {
     dbSetSetting('weighInDeclinedDayKey', dayKey ?? '');
     set({ weighInDeclinedDayKey: dayKey });
+  },
+
+  setBloodPressureTasks(on: boolean) {
+    dbSetSetting('bloodPressureTasks', String(on));
+    set({ bloodPressureTasks: on });
+  },
+
+  setBloodPressureTaskCategory(category: string | null) {
+    dbSetSetting('bloodPressureTaskCategory', category ?? '');
+    set({ bloodPressureTaskCategory: category });
+  },
+
+  setBloodPressureEveryDays(days: number) {
+    const clamped = clampBloodPressureEveryDays(days);
+    dbSetSetting('bloodPressureEveryDays', String(clamped));
+    set({ bloodPressureEveryDays: clamped });
+  },
+
+  setBloodPressureLastDayKey(dayKey: string | null) {
+    dbSetSetting('bloodPressureLastDayKey', dayKey ?? '');
+    set({ bloodPressureLastDayKey: dayKey });
+  },
+
+  setBloodPressureDeclinedDayKey(dayKey: string | null) {
+    dbSetSetting('bloodPressureDeclinedDayKey', dayKey ?? '');
+    set({ bloodPressureDeclinedDayKey: dayKey });
   },
 
   setWaterShortfallTasks(on: boolean) {

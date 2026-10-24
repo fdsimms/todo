@@ -38,7 +38,7 @@ export const SCREEN_SETTINGS: Readonly<Record<string, readonly string[]>> = {
   // to that sheet (weight) or edits the same value with a second control (sleep).
   Weight: ['weightUnit', 'healthRead', 'gen:weighIn'],
   Sleep: ['healthRead'],
-  BloodPressure: ['healthRead'],
+  BloodPressure: ['healthRead', 'gen:bloodPressureLog'],
   Logbook: ['retention', 'completionCalendar'],
   Stats: ['weekStartsOn'],
   UnattendedLog: ['backgroundRefreshEnabled', 'retention'],

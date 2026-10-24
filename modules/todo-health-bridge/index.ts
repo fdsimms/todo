@@ -213,6 +213,8 @@ interface TodoHealthNativeModule {
   writeBodyMassSample(kilograms: number, whenISO: string): Promise<boolean>;
   writeBloodPressureSample(systolic: number, diastolic: number, pulse: number, whenISO: string): Promise<string>;
   readBloodPressureSeries(anchorISO: string, days: number): Promise<string>;
+  writeHeartRateSample(pulse: number, whenISO: string): Promise<boolean>;
+  readPulseSeries(anchorISO: string, days: number): Promise<string>;
   writeFoodSamples(label: string, atISO: string, amountsJSON: string): Promise<string>;
   deleteHealthSamples(idsJSON: string): Promise<boolean>;
   writeWorkout(
@@ -330,6 +332,27 @@ export async function writeBloodPressureSample(
  */
 export function readBloodPressureSeries(anchorISO: string, days: number): Promise<string> {
   return degradeOnReject(() => nativeModule!.readBloodPressureSeries(anchorISO, days), '[]');
+}
+
+/**
+ * Save one pulse on its own (beats per minute) to Health as a heart rate sample
+ * filed at `whenISO`. Resolves false for every reason nothing landed: no native
+ * half, sharing refused, or a pulse no one could have (which the caller is
+ * expected to surface, since a mistyped digit would be a permanent false figure
+ * in somebody's Health record).
+ */
+export function writeHeartRateSample(pulse: number, whenISO: string): Promise<boolean> {
+  return degradeOnReject(() => nativeModule!.writeHeartRateSample(pulse, whenISO), false);
+}
+
+/**
+ * The pulses in the window, as the raw JSON the native side wrote
+ * (`[{"at","bpm","kind"}]`, `kind` either `logged` or `resting`), or `"[]"` for
+ * every reason there is nothing to say. Unparsed for the reason
+ * `readBloodPressureSeries` gives. Nothing is cached.
+ */
+export function readPulseSeries(anchorISO: string, days: number): Promise<string> {
+  return degradeOnReject(() => nativeModule!.readPulseSeries(anchorISO, days), '[]');
 }
 
 /**

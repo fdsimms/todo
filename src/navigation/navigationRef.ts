@@ -442,6 +442,22 @@ export function resetToWeight(openLog = false): void {
 }
 
 /**
+ * Where `dundundun://bloodpressure[?log=1]` lands — `resetToWeight`'s shape for
+ * the blood pressure request, `returnTo` handoff included.
+ */
+export function resetToBloodPressure(openLog = false): void {
+  runWhenReady(() => {
+    const returnTo = openLog ? currentTabName() : undefined;
+    navigateToTab(
+      'BloodPressure',
+      openLog
+        ? { openLog: Date.now(), returnTo: returnTo !== 'BloodPressure' ? returnTo : undefined }
+        : undefined
+    );
+  });
+}
+
+/**
  * The Weight screen with its goal sheet open — where the Settings row for a
  * weight goal lands.
  *

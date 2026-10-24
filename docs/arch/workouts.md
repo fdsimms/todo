@@ -134,7 +134,7 @@ New files in `src/utils/`, each with its test in `src/__tests__/`. The first thr
 - sets come back as a new tap kind `set` on the quiet-tap queue, deduped by a set id generated on the watch;
 - a watch-first session (phone in the locker) needs the routine on the watch, and that is the hard part.
 
-**Phase W2, `HKWorkoutSession` on the watch (built in phase 9):** heart rate, measured energy, the app staying in front on the wrist, and the workout ring. It needed the HealthKit entitlement on the watch target, new share and read types, and its own review under `health-data.md` ("Heart rate during a workout"), which keeps resting heart rate and HRV ruled out.
+**Phase W2, `HKWorkoutSession` on the watch (built in phase 9):** heart rate, measured energy, the app staying in front on the wrist, and the workout ring. It needed the HealthKit entitlement on the watch target, new share and read types, and its own review under `health-data.md` ("Heart rate during a workout"), which keeps HRV ruled out (resting heart rate was let in later for a display-only list on the Blood pressure screen).
 
 ### MCP
 
@@ -451,7 +451,7 @@ Phases 1 to 4 and 7 are JS-only and verifiable in the sandbox with tests. Phases
 ## Risks and open questions
 
 - **A rest that ends in quiet hours makes no sound with the app closed.** That is the decision above. If it bites at a 6 AM session, the fix is to make the setting per subject, not to flip the default.
-- **Heart rate is a new kind of read.** Answered in phase 9 by `health-data.md`'s "Heart rate during a workout", written before the code: shown and never interpreted, read only for a workout the watch measured, and the zones' maximum a written carve-out. Resting heart rate and HRV stay ruled out.
+- **Heart rate is a new kind of read.** Answered in phase 9 by `health-data.md`'s "Heart rate during a workout", written before the code: shown and never interpreted, read only for a workout the watch measured, and the zones' maximum a written carve-out. HRV stays ruled out (resting heart rate has its own display-only carve-out, see `health-data.md`).
 - **Which device may retract the watch's workout.** Not documented. The phone asks the watch and never tries itself, so a watch that never runs the app again leaves its workout in Health. A delete made on an iPad reaches the phone by sync, which asks its watch, so it waits for the phone to sync and the watch to hear ("Phase 9, as built").
 - **The 5-minute bound for a Finish tapped on both devices** is a guess at how far apart two taps at the end of one workout land. Too short, a slow watch's copy is rewritten and loses its heart rate, as before this rule; too long, Health keeps a copy whose length is off by that much. An edit of any size is always a rewrite, whatever the bound.
 - **One workout session at a time, across apps.** Measuring the phone's workout ends any other workout app's session, which is why it waits for the workout screen to be opened on the watch; a person who opens it while running Apple's Workout app ends that one. Another app starting a session ends this one, and the workout is then not measured again that launch.

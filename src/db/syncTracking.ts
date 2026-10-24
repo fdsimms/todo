@@ -450,6 +450,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'dreamLogTasks',
   'weekendNudgeTasks',
   'weighInTasks',
+  'bloodPressureTasks',
   'waterShortfallTasks',
   'snackNudgeTasks',
   'produceNudgeTasks',
@@ -634,6 +635,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'weekendNudgePlanThreshold',
   'weighInTaskCategory',
   'weighInEveryDays',
+  'bloodPressureTaskCategory',
+  'bloodPressureEveryDays',
   // The food log's targets and the unit water is counted in. Preferences, and
   // the figures a day's totals are read against; the targets travel with the
   // health record (HEALTH_SYNC_SETTING_KEYS), since a calorie target says

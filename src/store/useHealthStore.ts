@@ -7,6 +7,7 @@ import { measuredMaintenanceKcal } from '../utils/adaptiveExpenditureRead';
 import type { HealthDayInput } from '../utils/moodInsights';
 import { latestWeight, type WeightPoint } from '../utils/weightLog';
 import { parseBloodPressureReadings, type BloodPressureReading } from '../utils/bloodPressureLog';
+import { parsePulseSeries, type PulseEntry } from '../utils/pulseLog';
 import { healthBridge } from '../utils/healthBridge';
 import { useSettingsStore } from './useSettingsStore';
 import { useTaskStore } from './useTaskStore';
@@ -260,6 +261,14 @@ interface HealthState {
   /** Re-read the blood pressure window. Only the Blood pressure screen calls this. */
   refreshBloodPressure: () => Promise<void>;
   /**
+   * The pulses the Blood pressure screen lists over the same window: ones typed
+   * in here and Apple's resting heart rate, oldest first, or null for "not
+   * looked yet". `refreshBloodPressure`'s contract.
+   */
+  pulses: PulseEntry[] | null;
+  loadingPulses: boolean;
+  refreshPulses: () => Promise<void>;
+  /**
    * The day key a weigh-in request was last found answered by a reading in its
    * window, or null. Memory only, and one day key rather than any weight: it is
    * what lets the request's row read ready without reading Health on every
@@ -267,6 +276,9 @@ interface HealthState {
    */
   weighInAnsweredOn: string | null;
   setWeighInAnsweredOn: (dayKey: string | null) => void;
+  /** `weighInAnsweredOn` for the blood pressure request: one day key, memory only. */
+  bloodPressureAnsweredOn: string | null;
+  setBloodPressureAnsweredOn: (dayKey: string | null) => void;
   /**
    * The last `SLEEP_HISTORY_DAYS` of sleep, one entry per day with any, oldest
    * first, or null for "not looked yet" (the third answer the two windows
@@ -287,6 +299,12 @@ interface HealthState {
    * no way to ask at all.
    */
   readRecentWeights: (days: number) => Promise<WeightPoint[] | null>;
+  /**
+   * A short blood pressure window, answered without storing it, for the
+   * `bloodPressureLog` generator. `readRecentWeights`' contract: null when there
+   * was no way to ask, `[]` when Health was asked and had nothing.
+   */
+  readRecentBloodPressure: (days: number) => Promise<BloodPressureReading[] | null>;
   /**
    * Keep the targets that follow body weight (the weight goal's calorie figure
    * and a protein ratio) current without the Weight screen: reads a short
@@ -313,6 +331,7 @@ const historyGuard = createRefreshGuard();
 const weightGuard = createRefreshGuard();
 const sleepGuard = createRefreshGuard();
 const bloodPressureGuard = createRefreshGuard();
+const pulseGuard = createRefreshGuard();
 
 /** Whether a re-read of the history window came back with the days already held. */
 export function sameHealthHistory(held: readonly HealthDayInput[] | null, read: readonly HealthDayInput[]): boolean {
@@ -332,8 +351,12 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   loadingWeight: false,
   bloodPressure: null,
   loadingBloodPressure: false,
+  pulses: null,
+  loadingPulses: false,
   weighInAnsweredOn: null,
   setWeighInAnsweredOn: dayKey => set({ weighInAnsweredOn: dayKey }),
+  bloodPressureAnsweredOn: null,
+  setBloodPressureAnsweredOn: dayKey => set({ bloodPressureAnsweredOn: dayKey }),
   sleepNights: null,
   loadingSleep: false,
 
@@ -558,6 +581,29 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   },
 
   /**
+   * Read the pulse window, on demand: `refreshBloodPressure`'s twin, over the
+   * same days. Written whole even when empty, so revoked access reads as no
+   * data, never as the last data.
+   */
+  async refreshPulses() {
+    const bridge = healthBridge();
+    if (!bridge) return;
+    if (get().loadingPulses) return;
+
+    const anchor = addDays(getCurrentDayStart(), -(BLOOD_PRESSURE_HISTORY_DAYS - 1));
+
+    set({ loadingPulses: true });
+    const token = pulseGuard.begin();
+    try {
+      const json = await bridge.readPulseSeries(anchor.toISOString(), BLOOD_PRESSURE_HISTORY_DAYS);
+      if (!pulseGuard.isCurrent(token)) return;
+      set({ pulses: parsePulseSeries(json) });
+    } finally {
+      set({ loadingPulses: false });
+    }
+  },
+
+  /**
    * Read the sleep window, on demand, as episodes with their times.
    *
    * Its own call rather than more columns on `refreshHistory` for the reason
@@ -620,6 +666,14 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     return points;
   },
 
+  async readRecentBloodPressure(days) {
+    const bridge = healthBridge();
+    if (!bridge) return null;
+    const window = Math.max(1, Math.round(days));
+    const anchor = addDays(getCurrentDayStart(), -(window - 1));
+    return parseBloodPressureReadings(await bridge.readBloodPressureSeries(anchor.toISOString(), window));
+  },
+
   async syncWeightTargets() {
     const wanted = (st: ReturnType<typeof useSettingsStore.getState>) =>
       st.proteinPerWeight !== null || st.weightGoal !== null;
@@ -679,7 +733,8 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     weightGuard.invalidate();
     sleepGuard.invalidate();
     bloodPressureGuard.invalidate();
-    set({ today: null, history: null, weightSeries: null, bloodPressure: null, weighInAnsweredOn: null, sleepNights: null });
+    pulseGuard.invalidate();
+    set({ today: null, history: null, weightSeries: null, bloodPressure: null, pulses: null, weighInAnsweredOn: null, bloodPressureAnsweredOn: null, sleepNights: null });
   },
 }));
 
