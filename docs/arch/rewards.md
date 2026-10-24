@@ -224,6 +224,20 @@ stored in days, a month being 30 as in the nudge cadence). "A dessert, once a we
 - **A slip on a guarded habit inside the limit is a real slip**, charged like one the balance can't
   cover (`planGuardedSlip`): the claim it would have made is refused, so it can't be the way out.
 
+## The grid and a tile's glyph
+
+The Rewards screen draws open rewards as a two-column grid of tiles, not a list of cards. A tile shows
+only what you choose by: the glyph, the name, the price, and why it can't be claimed now. Tapping one
+opens a sheet with everything else (pace, last claim, note, link, Save for, Edit, Claim), so a new
+per-reward fact goes in the sheet, not on the tile.
+
+- **`Reward.glyph` is chosen, never guessed.** One emoji typed or picked in the form; null draws a gift
+  icon. A word list mapping "coffee" to an emoji was rejected because a wrong guess can't be corrected
+  from the screen. A wish list reward has none: the item is what is shown (`addReward` drops it).
+- **Resting rewards go last and dim** (`splitRewardsByWait`), as do ones the balance can't cover yet. A
+  reward in either state still opens its sheet and still explains itself when Claim is tapped.
+- **The form takes a full row where its tile was**, so editing never leaves a half-empty grid row.
+
 ## A reward guarding a habit
 
 A reward can name an "Avoid this" habit it is the honest way to have (`Reward.guardsTaskId`): "No

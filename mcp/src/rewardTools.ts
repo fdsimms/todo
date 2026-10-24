@@ -34,6 +34,8 @@ export interface SerializedReward {
   guardsHabit?: string;
   /** Claimable once per this many days (a week is 7, a month 30). Absent when unlimited. */
   claimEveryDays?: number;
+  /** The emoji on the reward's tile. Absent when it has none. */
+  glyph?: string;
   /** Days until a limited reward can be claimed again. Absent when it can be claimed now. */
   availableInDays?: number;
   /** Whether the balance covers it right now. */
@@ -107,6 +109,7 @@ export function getRewards(replica: Replica, input: { historyLimit?: number } = 
       oneTime: reward.oneTime,
       ...(reward.taskId ? { wishListTaskId: reward.taskId } : {}),
       ...guardOf(replica, reward),
+      ...(reward.glyph ? { glyph: reward.glyph } : {}),
       ...(reward.claimEveryDays && !reward.oneTime ? { claimEveryDays: reward.claimEveryDays } : {}),
       ...(wait > 0 ? { availableInDays: wait } : {}),
       affordable: lib.canClaimReward(balance, reward.cost),
@@ -149,6 +152,8 @@ export interface RewardInput {
   guardsHabitId?: string | null;
   /** Claimable once per this many days (a week is 7, a month 30). Null on an update removes the limit. Not on a oneTime reward. */
   claimEveryDays?: number | null;
+  /** The emoji on the reward's tile, like "☕". Null on an update clears it. */
+  glyph?: string | null;
 }
 
 /** The habit a reward guards, as the serialized reward names it. */
@@ -193,7 +198,7 @@ export function createReward(replica: Replica, input: RewardInput): SerializedRe
   }
   const priceMinor = input.price != null ? priceToMinor(input.price) : null;
   const cost = priceMinor !== null ? costForPrice(replica, priceMinor) : input.cost!;
-  const reward = replica.addReward(input.title, cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime, priceMinor, guardsTaskId: input.guardsHabitId, claimEveryDays: input.claimEveryDays });
+  const reward = replica.addReward(input.title, cost, { note: input.note, linkUrl: input.link, oneTime: input.oneTime, priceMinor, guardsTaskId: input.guardsHabitId, claimEveryDays: input.claimEveryDays, glyph: input.glyph });
   return rewardById(replica, reward.id);
 }
 
@@ -218,6 +223,7 @@ export function updateReward(
     ...(patch.oneTime !== undefined ? { oneTime: patch.oneTime } : {}),
     ...(patch.guardsHabitId !== undefined ? { guardsTaskId: patch.guardsHabitId } : {}),
     ...(patch.claimEveryDays !== undefined ? { claimEveryDays: patch.claimEveryDays } : {}),
+    ...(patch.glyph !== undefined ? { glyph: patch.glyph } : {}),
   });
   return rewardById(replica, reward.id);
 }

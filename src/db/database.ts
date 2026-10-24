@@ -2377,6 +2377,7 @@ function runInitDatabase(): void {
     'ALTER TABLE rewards ADD COLUMN guards_task_id TEXT',
     // Null on every existing reward: none is limited. See Reward.claimEveryDays.
     'ALTER TABLE rewards ADD COLUMN claim_every_days INTEGER',
+    'ALTER TABLE rewards ADD COLUMN glyph TEXT',
     // Null on every existing row: no row has had a second recipe fold into it
     // yet. See GroceryItem.recipeSources.
     'ALTER TABLE grocery_items ADD COLUMN recipe_sources TEXT',
@@ -8664,6 +8665,7 @@ function rowToReward(row: Record<string, unknown>): Reward {
     priceMinor: row.price_minor == null ? null : Math.max(1, Math.round(Number(row.price_minor)) || 1),
     guardsTaskId: (row.guards_task_id as string | null) || null,
     claimEveryDays: row.claim_every_days == null ? null : Math.max(1, Math.round(Number(row.claim_every_days)) || 1),
+    glyph: (row.glyph as string | null) || null,
   };
 }
 
@@ -8675,15 +8677,15 @@ export function dbGetAllRewards(): Reward[] {
 
 export function dbInsertReward(reward: Reward): void {
   db.runSync(
-    'INSERT INTO rewards (id, title, cost, created_at, link_url, note, one_time, task_id, price_minor, guards_task_id, claim_every_days) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [reward.id, reward.title, reward.cost, reward.createdAt, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor, reward.guardsTaskId, reward.claimEveryDays]
+    'INSERT INTO rewards (id, title, cost, created_at, link_url, note, one_time, task_id, price_minor, guards_task_id, claim_every_days, glyph) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [reward.id, reward.title, reward.cost, reward.createdAt, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor, reward.guardsTaskId, reward.claimEveryDays, reward.glyph]
   );
 }
 
 export function dbUpdateReward(reward: Reward): void {
   db.runSync(
-    'UPDATE rewards SET title=?, cost=?, link_url=?, note=?, one_time=?, task_id=?, price_minor=?, guards_task_id=?, claim_every_days=? WHERE id=?',
-    [reward.title, reward.cost, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor, reward.guardsTaskId, reward.claimEveryDays, reward.id]
+    'UPDATE rewards SET title=?, cost=?, link_url=?, note=?, one_time=?, task_id=?, price_minor=?, guards_task_id=?, claim_every_days=?, glyph=? WHERE id=?',
+    [reward.title, reward.cost, reward.linkUrl, reward.note, reward.oneTime ? 1 : 0, reward.taskId, reward.priceMinor, reward.guardsTaskId, reward.claimEveryDays, reward.glyph, reward.id]
   );
 }
 

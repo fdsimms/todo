@@ -79,7 +79,7 @@ describe('confirmSlip', () => {
   describe('on a habit a reward guards', () => {
     const reward = {
       id: 'dessert', title: 'A dessert', cost: 110, createdAt: '', linkUrl: null, note: null,
-      oneTime: false, taskId: null, priceMinor: null, guardsTaskId: 't', claimEveryDays: null,
+      oneTime: false, taskId: null, priceMinor: null, guardsTaskId: 't', claimEveryDays: null, glyph: null,
     };
 
     it('offers the claim, and blocks nothing since no slip is logged', () => {
