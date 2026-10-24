@@ -1400,6 +1400,13 @@ const itemSchema = z.object({
       estimatedMinutes: z.number().int().positive().nullable().optional(),
       asks: z.enum(['text', 'date', 'number', 'yesno']).nullable().optional().describe('A question this step asks when ticked.'),
       answerSchedulesNextStep: z.boolean().optional().describe('With asks "date": the answer dates the next step.'),
+      notes: z.string().nullable().optional().describe('A note for this step alone, shown on the task while the step is current. null clears it; leave it out to keep the current one.'),
+      link: z.string().nullable().optional().describe('What this step\'s link button opens: a web address or an app scheme like "youtube://". null clears it; leave it out to keep the current one.'),
+      medication: z.object({
+        name: z.string().describe('Use the spelling list_medication_logs already has.'),
+        amount: z.number().positive().nullable().optional(),
+        unit: z.string().nullable().optional().describe('E.g. "mg". Give it with amount, or neither.'),
+      }).nullable().optional().describe('Completing this step records a dose of this medicine in the medication log ("morning pills" / "evening pills" steps each log their own). Replaces the task\'s own medication while this step is current. null clears it; leave it out to keep the current one.'),
     })).min(2),
   }).nullable().optional().describe('Steps done one after another, each appearing when the one before is done. On a repeating item the whole chain starts over on the schedule. null removes it.'),
   rotation: z.object({ members: z.array(rotationMemberSchema).min(2) }).nullable().optional()
@@ -1524,6 +1531,13 @@ const taskFieldsShape = {
         .describe('Completing this step asks for an answer of this kind.'),
       answerSchedulesNextStep: z.boolean().optional()
         .describe('With asks: "date", the answer becomes the next step\'s date ("Book haircut" answered with the appointment puts "Get haircut" on that day).'),
+      notes: z.string().nullable().optional().describe('A note for this step alone, shown on the task while the step is current. null clears it; leave it out to keep the current one.'),
+      link: z.string().nullable().optional().describe('What this step\'s link button opens: a web address or an app scheme like "youtube://". null clears it; leave it out to keep the current one.'),
+      medication: z.object({
+        name: z.string().describe('Use the spelling list_medication_logs already has.'),
+        amount: z.number().positive().nullable().optional(),
+        unit: z.string().nullable().optional().describe('E.g. "mg". Give it with amount, or neither.'),
+      }).nullable().optional().describe('Completing this step records a dose of this medicine in the medication log ("morning pills" / "evening pills" steps each log their own). Replaces the task\'s own medication while this step is current. null clears it; leave it out to keep the current one.'),
     })).describe('At least two. One task that becomes each step in turn: completing a step brings up the next.'),
     stepsFollowSchedule: z.boolean().optional()
       .describe('On a repeating chain: each step waits for the next date on the schedule, instead of coming up as soon as the last one is done.'),

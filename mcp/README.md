@@ -321,6 +321,10 @@ chain, a follow-up on a task that doesn't repeat) and clears what the editor cle
 changes type. `newTaskFromDraft` and `updateTask` trust whatever they are handed, so without this
 a model could write a row the app can't render honestly.
 
+A chain step takes its own `notes`, `link` and `medication` there, in `create_task`, `update_task` and
+template items. Leaving one out on an edit keeps the step's stored value and `null` clears it, so
+retiming a step doesn't wipe what was set in the app.
+
 Results about one thing carry `openInApp`, an `https://<server>/open/...` link that opens it in the
 app (the server's MCP instructions ask the model to offer it after a change). On an iPhone the
 domain is associated with the app, so iOS opens the app directly; anywhere else `/open/` serves a

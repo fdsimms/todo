@@ -81,7 +81,7 @@ import { openTasksOf } from '../utils/openTasks';
 import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type DeliverableReasoning } from '../utils/deliverables';
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
-import { chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
+import { activeChainStep, chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
 import { isAnsweredByRecord, recordLogUrl, recordMicUrl } from '../utils/recordTasks';
 import { dictationSupported } from '../utils/speechSupport';
 import { offerBlockStart } from '../utils/blockOfferAccept';
@@ -1588,7 +1588,11 @@ const TaskItemRow = React.memo(function TaskItem({
   // block: no notice kind is timed, recurring, chained or in a series. A
   // notice kind that grew any of those would need this to become a count.
   const hasFollowUpRows = !!task.followUpTaskSourceTitle || followUpTaskRule(task) !== null;
-  const panelSectionAbove = showSubtaskSection || task.notes.length > 0 || hasFollowUpRows;
+  // The task's own notes, then the active chain step's note under them: a
+  // step's note is about the step in hand, so it goes when the step does.
+  const stepNote = activeChainStep(task)?.notes?.trim() ?? '';
+  const shownNotes = stepNote ? (task.notes ? `${task.notes}\n\n${stepNote}` : stepNote) : task.notes;
+  const panelSectionAbove = showSubtaskSection || shownNotes.length > 0 || hasFollowUpRows;
   // What's left in a notice's panel once task management is gone: its notes,
   // any subtasks it already had, and the kind's own inline block. With none of
   // those the panel is empty, so the row doesn't expand at all rather than
@@ -1597,7 +1601,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // Every notice is a generated row, so its panel always holds the link back to
   // its automation (`automationLinkButton`), which is why none is empty now.
   const noticeHasPanel =
-    task.notes.length > 0 || subtasks.length > 0 || task.generatedKind != null;
+    shownNotes.length > 0 || subtasks.length > 0 || task.generatedKind != null;
   const expandable = !notice || noticeHasPanel;
 
   // Back to where the app was told to write this: the generator's row on
@@ -2163,7 +2167,7 @@ const TaskItemRow = React.memo(function TaskItem({
   //    markers off first, and the deadline is the one that matters. So a hidden
   //    copy of the title with its markers is measured (`measuresMarkers`); when
   //    that needs a third line, the markers move to the meta row instead.
-  const hasNotes = task.notes.length > 0;
+  const hasNotes = shownNotes.length > 0;
   const hasTitleMarkers = !nutrientRow && (hasNotes || deadlineDays !== null);
   // A list line is never clamped, so its markers always fit; an edited title
   // has none.
@@ -4688,12 +4692,12 @@ const TaskItemRow = React.memo(function TaskItem({
             {/* Under the subtasks, not above them: with the notes between,
                 the rail drawn from the task's row down to its subtasks
                 started at a paragraph rather than at the task. */}
-            {task.notes.length > 0 && (
+            {shownNotes.length > 0 && (
               <View style={[
                 styles.sectionEnd,
                 (showSubtaskSection || isRotation || hasFollowUpRows) && styles.sectionDivider,
               ]}>
-                <Text style={styles.expandNotes} selectable>{task.notes}</Text>
+                <Text style={styles.expandNotes} selectable>{shownNotes}</Text>
               </View>
             )}
 
@@ -4702,7 +4706,7 @@ const TaskItemRow = React.memo(function TaskItem({
             {(task.attachments ?? []).length > 0 && (
               <View style={[
                 styles.sectionEnd,
-                (task.notes.length === 0 && (showSubtaskSection || isRotation || hasFollowUpRows)) && styles.sectionDivider,
+                (shownNotes.length === 0 && (showSubtaskSection || isRotation || hasFollowUpRows)) && styles.sectionDivider,
               ]}>
                 <View style={styles.expandAttachments}>
                   <TaskAttachmentStrip attachments={task.attachments ?? []} title={task.title} size={52} />

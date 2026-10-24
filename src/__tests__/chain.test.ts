@@ -192,9 +192,18 @@ describe('parseChainItems', () => {
         id: 'c1', title: 'Stretch', estimatedMinutes: null, deliverableKind: null,
         deliverableDatesNextStep: false,
         medicationName: null, medicationAmount: null, medicationUnit: null,
-        linkUrl: null,
+        linkUrl: null, notes: null,
       },
     ]);
+  });
+
+  it('keeps a stored step note and drops a blank one', () => {
+    const [a, b] = parseChainItems([
+      { id: 'c1', title: 'Get cash', notes: 'Bring $60' },
+      { id: 'c2', title: 'Get haircut', notes: '   ' },
+    ]);
+    expect(a.notes).toBe('Bring $60');
+    expect(b.notes).toBeNull();
   });
 
   it('keeps a stored estimate', () => {
@@ -203,7 +212,7 @@ describe('parseChainItems', () => {
         id: 'c1', title: 'Stretch', estimatedMinutes: 5, deliverableKind: null,
         deliverableDatesNextStep: false,
         medicationName: null, medicationAmount: null, medicationUnit: null,
-        linkUrl: null,
+        linkUrl: null, notes: null,
       },
     ]);
   });
@@ -216,7 +225,7 @@ describe('parseChainItems', () => {
         id: 'c1', title: 'Book haircut', estimatedMinutes: null,
         deliverableKind: 'date', deliverableDatesNextStep: true,
         medicationName: null, medicationAmount: null, medicationUnit: null,
-        linkUrl: null,
+        linkUrl: null, notes: null,
       },
     ]);
   });

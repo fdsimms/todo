@@ -27,6 +27,7 @@ How the app thinks about time:
 
 How tasks behave:
 - Completing a repeating task finishes this occurrence and creates the next one. Old occurrences stay as history, so one habit has many completed rows.
+- A chain step can carry its own note, link and medication dose (get_task lists them per step). The note shows on the task, and the link and medication apply, only while that step is the current one. Writing a chain replaces its steps, but a step's note, link or medication left out of the call is kept; pass null to clear one.
 - A task can ask a question when it is completed (asksOnCompletion). Ask the person for the answer before calling complete_task. Pass deliverableValue: null only if they choose to skip it.
 - A "don't do this" habit cannot be completed, and a blocked task is waiting on another task or a person (get_task names them).
 - A task with missed: true is an occurrence marked missed. It also reads completed, but it is not a completion. One with doneByOther: true was completed by somebody else: it reads completed and counts as done for a project, but it is not the person's own completion, earned no coins and left their streak alone. A task with generatedBy was written by the app, not by the person.

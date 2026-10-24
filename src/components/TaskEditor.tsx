@@ -49,6 +49,8 @@ import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
 import { ChainStepMedicationSheet } from './ChainStepMedicationSheet';
 import { StepMedication } from './StepMedication';
 import { StepLink } from './StepLink';
+import { StepNote } from './StepNote';
+import { ChainStepNoteSheet } from './ChainStepNoteSheet';
 import { ChainStepLinkSheet } from './ChainStepLinkSheet';
 import { disclosureValue } from '../theme/textStyles';
 import { RotationWorkoutSheet } from './RotationWorkoutSheet';
@@ -1031,6 +1033,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
   const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
   const [linkStepId, setLinkStepId] = useState<string | null>(null);
+  const [noteStepId, setNoteStepId] = useState<string | null>(null);
   const [linkMemberId, setLinkMemberId] = useState<string | null>(null);
   // Which of the two "write this to a calendar" rows is asking for one.
   const [calendarPickerFor, setCalendarPickerFor] = useState<'completion' | 'deadline' | null>(null);
@@ -4138,6 +4141,16 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               onClose={() => setMedicationStepId(null)}
             />
           </LazySheet>
+          <LazySheet open={noteStepId !== null}>
+            <ChainStepNoteSheet
+              visible={noteStepId !== null}
+              step={chainItems.find(c => c.id === noteStepId) ?? null}
+              onSave={patch => setChainItems(prev => prev.map(
+                c => (c.id === noteStepId ? { ...c, ...patch } : c),
+              ))}
+              onClose={() => setNoteStepId(null)}
+            />
+          </LazySheet>
           <LazySheet open={linkStepId !== null}>
             <ChainStepLinkSheet
               visible={linkStepId !== null}
@@ -5532,6 +5545,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                         const isCurrentStep = actualIdx === chainIndex;
                         return (
                           <View style={styles.chainItemRow}>
+                            <View style={styles.chainItemHeader}>
                             <TouchableOpacity
                               onPress={() => setChainIndex(actualIdx)}
                               hitSlop={6}
@@ -5572,28 +5586,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                                 </Text>
                               </TouchableOpacity>
                             )}
-                            <StepMinutes
-                              value={item.estimatedMinutes}
-                              label={item.title}
-                              onChange={mins => setChainItems(prev => prev.map(
-                                c => (c.id === item.id ? { ...c, estimatedMinutes: mins } : c),
-                              ))}
-                            />
-                            <StepQuestion
-                              step={item}
-                              datesNextStep={item.deliverableDatesNextStep === true}
-                              onPress={() => setQuestionStepId(item.id)}
-                            />
-                            <StepMedication
-                              step={item}
-                              taskMedicationName={medicationName}
-                              onPress={() => setMedicationStepId(item.id)}
-                            />
-                            <StepLink
-                              step={item}
-                              taskLinkUrl={linkUrl}
-                              onPress={() => setLinkStepId(item.id)}
-                            />
                             <TouchableOpacity
                               onPress={() => {
                                 // Track the active step by id (like onReorder above) rather
@@ -5619,6 +5611,32 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                             >
                               <Ionicons name="close" size={14} color={colors.textSecondary} />
                             </TouchableOpacity>
+                            </View>
+                            <View style={styles.chainItemControls}>
+                            <StepMinutes
+                              value={item.estimatedMinutes}
+                              label={item.title}
+                              onChange={mins => setChainItems(prev => prev.map(
+                                c => (c.id === item.id ? { ...c, estimatedMinutes: mins } : c),
+                              ))}
+                            />
+                            <StepQuestion
+                              step={item}
+                              datesNextStep={item.deliverableDatesNextStep === true}
+                              onPress={() => setQuestionStepId(item.id)}
+                            />
+                            <StepMedication
+                              step={item}
+                              taskMedicationName={medicationName}
+                              onPress={() => setMedicationStepId(item.id)}
+                            />
+                            <StepLink
+                              step={item}
+                              taskLinkUrl={linkUrl}
+                              onPress={() => setLinkStepId(item.id)}
+                            />
+                            <StepNote step={item} onPress={() => setNoteStepId(item.id)} />
+                            </View>
                           </View>
                         );
                       }}
@@ -9266,10 +9284,17 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     marginBottom: spacing.sm,
   },
+  // Two lines: the name and remove button on the first, so the name has the
+  // whole row to itself, and the per-step controls under it, lined up with the
+  // name rather than the number.
   chainItemRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingVertical: 7,
+    paddingVertical: spacing.smd,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+  },
+  chainItemHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  chainItemControls: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    marginTop: spacing.sm, marginLeft: 22 + spacing.sm + spacing.xxs * 2,
   },
   chainItemIndexBtn: { padding: spacing.xxs },
   chainItemDot: {
