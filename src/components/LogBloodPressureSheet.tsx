@@ -10,9 +10,10 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
-import { logBloodPressureToHealth } from '../utils/healthBloodPressureSync';
+import { logBloodPressureToHealth, logPulseToHealth } from '../utils/healthBloodPressureSync';
 import { openHealthApp } from '../utils/healthBridge';
 import { parseBloodPressureInput } from '../utils/bloodPressureLog';
+import { parsePulseInput } from '../utils/pulseLog';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { isDemoModeActive } from '../utils/demoState';
 import { EditorSheet } from './EditorSheet';
@@ -20,6 +21,7 @@ import { EditorRow } from './EditorRow';
 import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SegmentedControl } from './SegmentedControl';
 import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -48,6 +50,7 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
   const healthWriteEnabled = useSettingsStore(s => s.healthWriteEnabled);
   const demoActive = useDemoStore(s => s.active);
   const refreshBloodPressure = useHealthStore(s => s.refreshBloodPressure);
+  const refreshPulses = useHealthStore(s => s.refreshPulses);
 
   const [systolicText, setSystolicText] = useState('');
   const [diastolicText, setDiastolicText] = useState('');
@@ -55,6 +58,9 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
   const [day, setDay] = useState<Date>(() => getLogicalToday());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  // A pulse alone, with no blood pressure beside it. The numbers typed for a
+  // reading are kept while it is on, so switching back loses nothing.
+  const [pulseOnly, setPulseOnly] = useState(false);
   const systolicRef = useRef<TextInput>(null);
   const diastolicRef = useRef<TextInput>(null);
   const pulseRef = useRef<TextInput>(null);
@@ -69,12 +75,14 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
   }, [visible]);
 
   const reading = parseBloodPressureInput(systolicText, diastolicText, pulseText);
-  const canSave = reading !== null && !saving;
+  const pulseAlone = parsePulseInput(pulseText);
+  const canSave = (pulseOnly ? pulseAlone !== null : reading !== null) && !saving;
 
   const close = () => {
     setSystolicText('');
     setDiastolicText('');
     setPulseText('');
+    setPulseOnly(false);
     setDay(getLogicalToday());
     setSaving(false);
     onClose();
@@ -89,7 +97,70 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
     navigateToSettingsEntry(navigation, 'healthWrite');
   };
 
+  // The refusals both saves share, said the same way for a reading and for a
+  // pulse on its own. `invalidMessage` is the one line that differs.
+  const reportFailure = (result: 'off' | 'refused' | 'invalid' | 'unavailable', noun: string, invalidMessage: string) => {
+    haptics.error();
+    if (result === 'off') {
+      // The switch this names is one of ours, so the button goes to that row
+      // rather than to the Health app the refusal below opens. The sheet
+      // closes first: it is full screen, and Settings would arrive behind it.
+      Alert.alert(
+        'Logging to Health is off',
+        `Turn on “Log to Health” in Settings to record ${noun === 'pulse' ? 'a pulse' : 'a reading'}.`,
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open Settings', onPress: openWriteSetting },
+        ],
+      );
+      return;
+    }
+    if (result === 'refused') {
+      Alert.alert(
+        'Couldn’t save to Health',
+        noun === 'pulse'
+          ? 'This app isn’t allowed to write heart rate. In Health, go to Sharing, find this app and turn on heart rate.'
+          : 'This app isn’t allowed to write your blood pressure. In Health, go to Sharing, find this app and turn on blood pressure.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open Health', onPress: () => { void openHealthApp(); } },
+        ],
+      );
+      return;
+    }
+    if (result === 'invalid') {
+      Alert.alert(noun === 'pulse' ? 'Check the number' : 'Check the numbers', invalidMessage);
+      return;
+    }
+    // Demo mode refuses the write before the device is ever asked (see
+    // logBloodPressureToHealth), so "this device cannot" would blame the phone for a
+    // refusal that is ours.
+    if (isDemoModeActive()) {
+      Alert.alert('Not available in demo mode', `Demo mode doesn’t use Apple Health, so ${noun === 'pulse' ? 'a pulse' : 'a reading'} can’t be saved here.`);
+      return;
+    }
+    Alert.alert('Health isn’t available', `This device can’t record ${noun === 'pulse' ? 'a pulse' : 'blood pressure'}.`);
+  };
+
+  const savePulse = async () => {
+    if (pulseAlone === null || saving) return;
+    haptics.tap();
+    setSaving(true);
+    // Stamped like a reading: now for today, noon for a backdated day.
+    const when = dayKeyOf(day) === dayKeyOf(getCurrentDayStart()) ? new Date() : day;
+    const result = await logPulseToHealth(pulseAlone, when);
+    setSaving(false);
+    if (result === 'written') {
+      haptics.success();
+      void refreshPulses();
+      close();
+      return;
+    }
+    reportFailure(result, 'pulse', 'Enter the pulse as a whole number of beats per minute.');
+  };
+
   const save = async () => {
+    if (pulseOnly) { void savePulse(); return; }
     if (reading === null || saving) return;
     haptics.tap();
     setSaving(true);
@@ -128,44 +199,11 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
       return;
     }
 
-    haptics.error();
-    if (result === 'off') {
-      // The switch this names is one of ours, so the button goes to that row
-      // rather than to the Health app the refusal below opens. The sheet
-      // closes first: it is full screen, and Settings would arrive behind it.
-      Alert.alert(
-        'Logging to Health is off',
-        'Turn on “Log to Health” in Settings to record a reading.',
-        [
-          { text: 'Not now', style: 'cancel' },
-          { text: 'Open Settings', onPress: openWriteSetting },
-        ],
-      );
-      return;
-    }
-    if (result === 'refused') {
-      Alert.alert(
-        'Couldn’t save to Health',
-        'This app isn’t allowed to write your blood pressure. In Health, go to Sharing, find this app and turn on blood pressure.',
-        [
-          { text: 'Not now', style: 'cancel' },
-          { text: 'Open Health', onPress: () => { void openHealthApp(); } },
-        ],
-      );
-      return;
-    }
-    if (result === 'invalid') {
-      Alert.alert('Check the numbers', 'Enter the top and bottom numbers as whole numbers, with the top one higher. A pulse, if you add one, is beats per minute.');
-      return;
-    }
-    // Demo mode refuses the write before the device is ever asked (see
-    // logBloodPressureToHealth), so "this device cannot" would blame the phone for a
-    // refusal that is ours.
-    if (isDemoModeActive()) {
-      Alert.alert('Not available in demo mode', 'Demo mode doesn’t use Apple Health, so a reading can’t be saved here.');
-      return;
-    }
-    Alert.alert('Health isn’t available', 'This device can’t record blood pressure.');
+    reportFailure(
+      result,
+      'reading',
+      'Enter the top and bottom numbers as whole numbers, with the top one higher. A pulse, if you add one, is beats per minute.',
+    );
   };
 
   return (
@@ -174,7 +212,7 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
       onRequestClose={close}
       // The sheet stays mounted across opens, so a bare `autoFocus` on the
       // field would only ever fire once.
-      onShow={() => systolicRef.current?.focus()}
+      onShow={() => (pulseOnly ? pulseRef : systolicRef).current?.focus()}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
@@ -182,7 +220,7 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
       header={
         <SheetHeader
           bare
-          title="Record blood pressure"
+          title={pulseOnly ? 'Record pulse' : 'Record blood pressure'}
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={close} minWidth={64} />}
           right={<SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} disabled={!canSave} minWidth={64} />}
         />
@@ -226,7 +264,26 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
         </View>
       ) : null}
 
+      <View style={styles.modeRow}>
+        <SegmentedControl
+          options={[
+            { value: false, label: 'Blood pressure' },
+            { value: true, label: 'Pulse only' },
+          ]}
+          value={pulseOnly}
+          onChange={next => {
+            setPulseOnly(next);
+            // The field that was on screen is gone, so the keyboard would
+            // otherwise be left with nothing to type into.
+            requestAnimationFrame(() => (next ? pulseRef : systolicRef).current?.focus());
+          }}
+          label="What to record"
+        />
+      </View>
+
       <View style={styles.card}>
+        {!pulseOnly && (
+          <>
         <View style={styles.field}>
           <Text style={styles.fieldLabel}>Top number (systolic)</Text>
           <View style={styles.inputRow}>
@@ -265,8 +322,10 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
           </View>
         </View>
         <View style={styles.divider} />
+          </>
+        )}
         <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Pulse (optional)</Text>
+          <Text style={styles.fieldLabel}>{pulseOnly ? 'Pulse' : 'Pulse (optional)'}</Text>
           <View style={styles.inputRow}>
             <TextField
               ref={pulseRef}
@@ -316,6 +375,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: spacing.xl },
+  modeRow: { marginBottom: spacing.md },
   card: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,

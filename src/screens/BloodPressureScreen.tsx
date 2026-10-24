@@ -29,6 +29,7 @@ import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSetting
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { pulsesSince, standalonePulses, type PulseEntry } from '../utils/pulseLog';
 import { BloodPressureChart } from '../components/BloodPressureChart';
 import { LogBloodPressureSheet } from '../components/LogBloodPressureSheet';
 import { SegmentedControl } from '../components/SegmentedControl';
@@ -78,6 +79,8 @@ export function BloodPressureScreen() {
   const bloodPressure = useHealthStore(s => s.bloodPressure);
   const loading = useHealthStore(s => s.loadingBloodPressure);
   const refreshBloodPressure = useHealthStore(s => s.refreshBloodPressure);
+  const pulses = useHealthStore(s => s.pulses);
+  const refreshPulses = useHealthStore(s => s.refreshPulses);
 
   const [logOpen, setLogOpen] = useState(false);
   const [rangeDays, setRangeDays] = useState(DEFAULT_RANGE_DAYS);
@@ -87,8 +90,11 @@ export function BloodPressureScreen() {
   // session, so a reading a cuff sent to Health never showed otherwise.
   useFocusEffect(
     useCallback(() => {
-      if (healthReadEnabled) void refreshBloodPressure();
-    }, [healthReadEnabled, refreshBloodPressure]),
+      if (healthReadEnabled) {
+        void refreshBloodPressure();
+        void refreshPulses();
+      }
+    }, [healthReadEnabled, refreshBloodPressure, refreshPulses]),
   );
 
   const readings = useMemo(() => bloodPressure ?? [], [bloodPressure]);
@@ -97,6 +103,13 @@ export function BloodPressureScreen() {
   const inRange = useMemo(() => readingsSince(readings, rangeStart), [readings, rangeStart]);
   const average = useMemo(() => averageReading(inRange), [inRange]);
   const listed = useMemo(() => inRange.slice(-MAX_LISTED).reverse(), [inRange]);
+  // Pulses typed in here and Apple's resting rate, newest first, minus the ones
+  // already shown on a reading's own row.
+  const standalone = useMemo(() => standalonePulses(pulses ?? [], readings), [pulses, readings]);
+  const listedPulses = useMemo(
+    () => pulsesSince(standalone, rangeStart).slice(-MAX_LISTED).reverse(),
+    [standalone, rangeStart],
+  );
 
   // The person's own day boundary: a reading taken at 1 AM with a 2 AM day start
   // belongs to the day before the calendar date it carries.
@@ -187,7 +200,9 @@ export function BloodPressureScreen() {
     );
   }
 
-  if (readings.length === 0) {
+  // A screen with pulses and no readings is still a screen with something to
+  // show, so the empty state is for neither.
+  if (readings.length === 0 && standalone.length === 0) {
     const waiting = loading || bloodPressure === null;
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -254,6 +269,7 @@ export function BloodPressureScreen() {
           />
         </View>
 
+        {readings.length > 0 && (
         <View style={styles.statRow}>
           <View
             style={styles.statCell}
@@ -270,6 +286,7 @@ export function BloodPressureScreen() {
             <Text style={styles.statLabel}>Readings</Text>
           </View>
         </View>
+        )}
 
         {inRange.length > 0 && (
           <View style={styles.card}>
@@ -283,9 +300,11 @@ export function BloodPressureScreen() {
         )}
 
         {listed.length === 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.empty}>Nothing recorded in this range.</Text>
-          </View>
+          readings.length > 0 ? (
+            <View style={styles.card}>
+              <Text style={styles.empty}>Nothing recorded in this range.</Text>
+            </View>
+          ) : null
         ) : (
           <>
             <Text style={styles.sectionTitle}>READINGS</Text>
@@ -307,6 +326,36 @@ export function BloodPressureScreen() {
                   <Text style={styles.rowValue}>
                     {formatReading(reading)}
                     <Text style={styles.rowUnit}> mmHg</Text>
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        {listedPulses.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>PULSE</Text>
+            <View style={[styles.card, styles.listCard]}>
+              {listedPulses.map((pulse: PulseEntry, i) => (
+                <View
+                  key={`${pulse.at.toISOString()}-${pulse.kind}-${i}`}
+                  style={[styles.row, i > 0 && styles.rowDivider]}
+                  accessible
+                  accessibilityLabel={`${pulse.kind === 'resting' ? 'Resting heart rate from Health' : 'Pulse'} ${pulse.bpm} beats per minute, ${dayLabel(pulse.at)}${pulse.kind === 'logged' ? ` at ${timeLabel(pulse.at)}` : ''}`}
+                >
+                  <View style={styles.rowWhen}>
+                    <Text style={styles.rowDay}>{dayLabel(pulse.at)}</Text>
+                    {/* A resting rate is Apple's one figure for the day, so it
+                        carries no time and says whose it is: only the other
+                        kind was typed in here. */}
+                    <Text style={styles.rowTime}>
+                      {pulse.kind === 'resting' ? 'Resting, from Health' : timeLabel(pulse.at)}
+                    </Text>
+                  </View>
+                  <Text style={styles.rowValue}>
+                    {pulse.bpm}
+                    <Text style={styles.rowUnit}> bpm</Text>
                   </Text>
                 </View>
               ))}

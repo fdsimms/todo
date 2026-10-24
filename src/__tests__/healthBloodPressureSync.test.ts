@@ -4,7 +4,11 @@ jest.mock('../store/useSettingsStore', () => ({
 }));
 
 const mockWrite = jest.fn();
-let mockBridge: { writeBloodPressureSample: (s: number, d: number, p: number | null, w: string) => Promise<string> } | null = null;
+const mockWritePulse = jest.fn();
+let mockBridge: {
+  writeBloodPressureSample: (s: number, d: number, p: number | null, w: string) => Promise<string>;
+  writeHeartRateSample: (p: number, w: string) => Promise<boolean>;
+} | null = null;
 jest.mock('../utils/healthBridge', () => ({
   healthBridge: () => mockBridge,
 }));
@@ -14,7 +18,7 @@ jest.mock('../utils/demoState', () => ({
   isDemoModeActive: () => mockDemoActive,
 }));
 
-import { logBloodPressureToHealth } from '../utils/healthBloodPressureSync';
+import { logBloodPressureToHealth, logPulseToHealth } from '../utils/healthBloodPressureSync';
 
 const WHEN = new Date('2026-09-10T08:30:00.000Z');
 
@@ -22,8 +26,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSettings = { healthWriteEnabled: true };
   mockDemoActive = false;
-  mockBridge = { writeBloodPressureSample: mockWrite };
+  mockBridge = { writeBloodPressureSample: mockWrite, writeHeartRateSample: mockWritePulse };
   mockWrite.mockResolvedValue('saved');
+  mockWritePulse.mockResolvedValue(true);
 });
 
 describe('logBloodPressureToHealth', () => {
@@ -69,5 +74,37 @@ describe('logBloodPressureToHealth', () => {
   it('says so when the reading landed and the pulse did not', async () => {
     mockWrite.mockResolvedValue('pulseRefused');
     expect(await logBloodPressureToHealth(118, 76, 64, WHEN)).toBe('writtenWithoutPulse');
+  });
+});
+
+describe('logPulseToHealth', () => {
+  it('writes the pulse and the instant', async () => {
+    expect(await logPulseToHealth(64, WHEN)).toBe('written');
+    expect(mockWritePulse).toHaveBeenCalledWith(64, WHEN.toISOString());
+  });
+
+  it('does nothing when the write setting is off', async () => {
+    mockSettings.healthWriteEnabled = false;
+    expect(await logPulseToHealth(64, WHEN)).toBe('off');
+    expect(mockWritePulse).not.toHaveBeenCalled();
+  });
+
+  it('refuses a number no pulse could be', async () => {
+    expect(await logPulseToHealth(12, WHEN)).toBe('invalid');
+    expect(await logPulseToHealth(64.5, WHEN)).toBe('invalid');
+    expect(mockWritePulse).not.toHaveBeenCalled();
+  });
+
+  it('refuses in demo mode before anything else', async () => {
+    mockDemoActive = true;
+    expect(await logPulseToHealth(64, WHEN)).toBe('unavailable');
+    expect(mockWritePulse).not.toHaveBeenCalled();
+  });
+
+  it('is unavailable with no native half, and reports a refused save', async () => {
+    mockWritePulse.mockResolvedValue(false);
+    expect(await logPulseToHealth(64, WHEN)).toBe('refused');
+    mockBridge = null;
+    expect(await logPulseToHealth(64, WHEN)).toBe('unavailable');
   });
 });
