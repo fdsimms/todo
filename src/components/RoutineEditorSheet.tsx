@@ -578,7 +578,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
       <Text style={styles.groupLabel}>Exercises</Text>
       <View>
         {rows.length === 0 ? (
-          <EmptyNote icon="barbell-outline">No exercises yet. Add the first one below.</EmptyNote>
+          <EmptyNote icon="barbell-outline" style={{ marginTop: 0 }}>No exercises yet. Add the first one below.</EmptyNote>
         ) : (
           <SortableList
             data={rows}

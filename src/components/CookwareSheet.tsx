@@ -186,7 +186,7 @@ export function CookwareSheet({ visible, onClose }: Props) {
       {cookware.length === 0 ? (
         <>
           <Text style={styles.groupLabel}>Your cookware</Text>
-          <EmptyNote icon="restaurant-outline">
+          <EmptyNote icon="restaurant-outline" style={{ marginTop: 0 }}>
             Nothing saved yet. Add a pot or plate above and it will show up next to the weight field.
           </EmptyNote>
         </>
