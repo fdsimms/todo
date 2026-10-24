@@ -5531,6 +5531,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                         const isCurrentStep = actualIdx === chainIndex;
                         return (
                           <View style={styles.chainItemRow}>
+                            <View style={styles.chainItemHeader}>
                             <TouchableOpacity
                               onPress={() => setChainIndex(actualIdx)}
                               hitSlop={6}
@@ -5571,28 +5572,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                                 </Text>
                               </TouchableOpacity>
                             )}
-                            <StepMinutes
-                              value={item.estimatedMinutes}
-                              label={item.title}
-                              onChange={mins => setChainItems(prev => prev.map(
-                                c => (c.id === item.id ? { ...c, estimatedMinutes: mins } : c),
-                              ))}
-                            />
-                            <StepQuestion
-                              step={item}
-                              datesNextStep={item.deliverableDatesNextStep === true}
-                              onPress={() => setQuestionStepId(item.id)}
-                            />
-                            <StepMedication
-                              step={item}
-                              taskMedicationName={medicationName}
-                              onPress={() => setMedicationStepId(item.id)}
-                            />
-                            <StepLink
-                              step={item}
-                              taskLinkUrl={linkUrl}
-                              onPress={() => setLinkStepId(item.id)}
-                            />
                             <TouchableOpacity
                               onPress={() => {
                                 // Track the active step by id (like onReorder above) rather
@@ -5618,6 +5597,31 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                             >
                               <Ionicons name="close" size={14} color={colors.textSecondary} />
                             </TouchableOpacity>
+                            </View>
+                            <View style={styles.chainItemControls}>
+                            <StepMinutes
+                              value={item.estimatedMinutes}
+                              label={item.title}
+                              onChange={mins => setChainItems(prev => prev.map(
+                                c => (c.id === item.id ? { ...c, estimatedMinutes: mins } : c),
+                              ))}
+                            />
+                            <StepQuestion
+                              step={item}
+                              datesNextStep={item.deliverableDatesNextStep === true}
+                              onPress={() => setQuestionStepId(item.id)}
+                            />
+                            <StepMedication
+                              step={item}
+                              taskMedicationName={medicationName}
+                              onPress={() => setMedicationStepId(item.id)}
+                            />
+                            <StepLink
+                              step={item}
+                              taskLinkUrl={linkUrl}
+                              onPress={() => setLinkStepId(item.id)}
+                            />
+                            </View>
                           </View>
                         );
                       }}
@@ -9265,10 +9269,17 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     marginBottom: spacing.sm,
   },
+  // Two lines: the name and remove button on the first, so the name has the
+  // whole row to itself, and the per-step controls under it, lined up with the
+  // name rather than the number.
   chainItemRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingVertical: 7,
+    paddingVertical: spacing.smd,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+  },
+  chainItemHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  chainItemControls: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    marginTop: spacing.sm, marginLeft: 22 + spacing.sm + spacing.xxs * 2,
   },
   chainItemIndexBtn: { padding: spacing.xxs },
   chainItemDot: {

@@ -1581,7 +1581,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   const actualIdx = chainItems.findIndex(c => c.id === chainItem.id);
                   const isCurrentStep = actualIdx === chainIndex;
                   return (
-                    <View style={styles.chainItemRow}>
+                    <View style={styles.chainStepRow}>
+                      <View style={styles.chainStepHeader}>
                       <TouchableOpacity
                         onPress={() => setChainIndex(actualIdx)}
                         hitSlop={6}
@@ -1607,28 +1608,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                           {chainItem.title}
                         </Text>
                       </TouchableOpacity>
-                      <StepMinutes
-                        value={chainItem.estimatedMinutes}
-                        label={chainItem.title}
-                        onChange={mins => setChainItems(prev => prev.map(
-                          c => (c.id === chainItem.id ? { ...c, estimatedMinutes: mins } : c),
-                        ))}
-                      />
-                      <StepQuestion
-                        step={chainItem}
-                        datesNextStep={chainItem.deliverableDatesNextStep === true}
-                        onPress={() => setQuestionStepId(chainItem.id)}
-                      />
-                      <StepMedication
-                        step={chainItem}
-                        taskMedicationName={medicationName}
-                        onPress={() => setMedicationStepId(chainItem.id)}
-                      />
-                      <StepLink
-                        step={chainItem}
-                        taskLinkUrl={null}
-                        onPress={() => setLinkStepId(chainItem.id)}
-                      />
                       <TouchableOpacity
                         onPress={() => {
                           // Same by-id tracking as the SortableList's own
@@ -1653,6 +1632,31 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                       >
                         <Ionicons name="close" size={14} color={colors.textTertiary} />
                       </TouchableOpacity>
+                      </View>
+                      <View style={styles.chainStepControls}>
+                      <StepMinutes
+                        value={chainItem.estimatedMinutes}
+                        label={chainItem.title}
+                        onChange={mins => setChainItems(prev => prev.map(
+                          c => (c.id === chainItem.id ? { ...c, estimatedMinutes: mins } : c),
+                        ))}
+                      />
+                      <StepQuestion
+                        step={chainItem}
+                        datesNextStep={chainItem.deliverableDatesNextStep === true}
+                        onPress={() => setQuestionStepId(chainItem.id)}
+                      />
+                      <StepMedication
+                        step={chainItem}
+                        taskMedicationName={medicationName}
+                        onPress={() => setMedicationStepId(chainItem.id)}
+                      />
+                      <StepLink
+                        step={chainItem}
+                        taskLinkUrl={null}
+                        onPress={() => setLinkStepId(chainItem.id)}
+                      />
+                      </View>
                     </View>
                   );
                 }}
@@ -3269,6 +3273,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chainItemTitleText: { color: colors.text, fontSize: font.md },
   chainItemTitleActive: { color: colors.accent, fontWeight: '600' },
   chainItemDelete: { padding: 4 },
+  // A step is two lines: name and remove first, so the name has the whole row,
+  // then the per-step controls lined up under the name.
+  chainStepRow: {
+    paddingVertical: spacing.smd,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+  },
+  chainStepHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  chainStepControls: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    marginTop: spacing.sm, marginLeft: 22 + spacing.sm + spacing.xxs * 2,
+  },
   chainInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 7 },
   chainInput: {
     flex: 1, color: colors.text, fontSize: font.md,
