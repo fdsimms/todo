@@ -204,6 +204,64 @@ describe('matchedEventTasks', () => {
     expect(matches[0].event.start).toBe(localIso('2026-09-21T14:00'));
   });
 
+  describe('an event moved in the calendar', () => {
+    const window = { start: new Date(localIso('2026-09-20T00:00')), end: new Date(localIso('2026-10-04T00:00')) };
+    const old = event({ start: localIso('2026-09-22T14:00'), end: localIso('2026-09-22T18:00') });
+    const moved = event({ start: localIso('2026-09-24T14:00'), end: localIso('2026-09-24T18:00') });
+    const handled = { [eventTaskSourceId(eventOccurrenceKey(old), 'r1')]: old.end };
+
+    it('is carried over rather than matched again', () => {
+      const out = matchedEventTasks([rule()], [moved], now, handled, window);
+      expect(out).toHaveLength(1);
+      expect(out[0].carriedOver).toBe(true);
+      expect(out[0].sourceId).toBe(eventTaskSourceId(eventOccurrenceKey(moved), 'r1'));
+      expect(out[0].endsAt).toBe(moved.end);
+    });
+
+    it('is carried over even before its lead day, so the new key is recorded at once', () => {
+      const out = matchedEventTasks([rule({ leadDays: 1 })], [moved], now, handled, window);
+      expect(out.map(m => m.carriedOver)).toEqual([true]);
+    });
+
+    it('still matches without a window, as before', () => {
+      const out = matchedEventTasks([rule()], [moved], now, handled);
+      expect(out.map(m => m.carriedOver)).toEqual([undefined]);
+    });
+
+    it('is not a move while the old occurrence is still in the window', () => {
+      const out = matchedEventTasks([rule({ leadDays: 4 })], [old, moved], now, handled, window);
+      expect(out.map(m => m.event.start)).toEqual([moved.start]);
+      expect(out.every(m => !m.carriedOver)).toBe(true);
+    });
+
+    it('refuses a series, where which occurrence moved is a guess', () => {
+      const later = event({ start: localIso('2026-09-29T14:00'), end: localIso('2026-09-29T18:00') });
+      const out = matchedEventTasks([rule({ leadDays: 9 })], [moved, later], now, handled, window);
+      expect(out.every(m => !m.carriedOver)).toBe(true);
+    });
+
+    it('does not read an old start outside the window as a move', () => {
+      const far = event({ start: localIso('2026-10-10T14:00'), end: localIso('2026-10-10T18:00') });
+      const farHandled = { [eventTaskSourceId(eventOccurrenceKey(far), 'r1')]: far.end };
+      const out = matchedEventTasks([rule({ leadDays: 4 })], [moved], now, farHandled, window);
+      expect(out).toHaveLength(1);
+      expect(out.every(m => !m.carriedOver)).toBe(true);
+    });
+
+    it('does not read an old start that has already passed as a move', () => {
+      const past = event({ start: localIso('2026-09-20T08:00'), end: localIso('2026-09-20T08:30') });
+      const pastHandled = { [eventTaskSourceId(eventOccurrenceKey(past), 'r1')]: localIso('2026-09-20T12:00') };
+      const out = matchedEventTasks([rule({ leadDays: 4 })], [moved], now, pastHandled, window);
+      expect(out.every(m => !m.carriedOver)).toBe(true);
+    });
+
+    it('only carries over for the rule that handled it', () => {
+      const rules = [rule({ leadDays: 4 }), rule({ id: 'r2', leadDays: 4, title: 'Print boarding pass' })];
+      const out = matchedEventTasks(rules, [moved], now, handled, window);
+      expect(out.map(m => [m.rule.id, m.carriedOver])).toEqual([['r1', true], ['r2', undefined]]);
+    });
+  });
+
   it('holds a match back until its lead day arrives', () => {
     const far = event({ start: localIso('2026-09-28T14:00'), end: localIso('2026-09-28T18:00') });
     expect(matchedEventTasks([rule({ leadDays: 2 })], [far], now, {})).toEqual([]);

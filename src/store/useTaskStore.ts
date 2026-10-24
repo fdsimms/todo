@@ -8079,7 +8079,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ? matchedFollowUpTasks(settings.eventRules, calendar.followUpEvents, now, handled)
       : [];
     const matches = [
-      ...matchedEventTasks(settings.eventRules, calendar.events, now, handled),
+      ...matchedEventTasks(settings.eventRules, calendar.events, now, handled,
+        calendar.windowStart && calendar.windowEnd
+          ? { start: new Date(calendar.windowStart), end: new Date(calendar.windowEnd) }
+          : undefined),
       ...followUps,
     ];
     const followUpSourceIds = new Set(followUps.map(m => m.sourceId));
@@ -8096,6 +8099,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const nextHandled: HandledEventTasks = { ...handled };
 
     for (const match of matches) {
+      // A moved event whose task was already written: only the record moves.
+      if (match.carriedOver) {
+        nextHandled[match.sourceId] = match.endsAt;
+        continue;
+      }
       const category = ruleCategoryFor(match.rule, settings.eventTaskCategory);
       reconcileGeneratedTask({
         kind: 'eventTask',
