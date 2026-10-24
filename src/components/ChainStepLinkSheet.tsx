@@ -17,6 +17,8 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { RotatingChevron } from './RotatingChevron';
+import { animateLayout } from '../utils/layoutAnimation';
 
 /**
  * The minimum a list item has to carry to have a link button, satisfied by
@@ -69,12 +71,17 @@ export function ChainStepLinkSheet({
 
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [customText, setCustomText] = useState('');
+  // Most steps get a web address, so the app pills stay folded until asked
+  // for, or until the step already points at one of them.
+  const [appsOpen, setAppsOpen] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
     const initial = step?.linkUrl ?? null;
     setLinkUrl(initial);
-    setCustomText(initial && !KNOWN_LINK_APPS.some(app => app.scheme === initial) ? initial : '');
+    const isApp = !!initial && KNOWN_LINK_APPS.some(app => app.scheme === initial);
+    setCustomText(initial && !isApp ? initial : '');
+    setAppsOpen(isApp);
   }, [visible, step?.id]);
 
   const dismiss = (after: () => void) => {
@@ -122,25 +129,7 @@ export function ChainStepLinkSheet({
               ? "Leave it empty and this step opens the task’s link."
               : 'Leave it empty and this step opens nothing.'}
           </Text>
-          <View style={styles.chipRow}>
-            {linkAppsFor(kitchenEnabled).map(app => (
-              <TouchableOpacity
-                key={app.scheme}
-                style={[styles.chip, linkUrl === app.scheme && styles.chipActive]}
-                onPress={() => { haptics.tap(); setLinkUrl(app.scheme); setCustomText(''); }}
-              >
-                <Ionicons
-                  name={app.icon as never}
-                  size={13}
-                  color={linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
-                />
-                <Text style={[styles.chipText, linkUrl === app.scheme && styles.chipTextActive]}>
-                  {app.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <FieldLabel>Web address</FieldLabel>
+          <FieldLabel style={styles.webLabel}>Web address</FieldLabel>
           <View style={styles.customRow}>
             <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
             <TextField
@@ -159,6 +148,36 @@ export function ChainStepLinkSheet({
               accessibilityLabel="Custom link URL for this step"
             />
           </View>
+          <TouchableOpacity
+            style={styles.appsRow}
+            onPress={() => { haptics.tap(); animateLayout(); setAppsOpen(v => !v); }}
+            accessibilityRole="button"
+            accessibilityLabel="Open an app"
+            accessibilityState={{ expanded: appsOpen }}
+          >
+            <Text style={styles.appsLabel}>Or open an app</Text>
+            <RotatingChevron open={appsOpen} size={14} color={colors.textSecondary} />
+          </TouchableOpacity>
+          {appsOpen && (
+            <View style={styles.chipRow}>
+              {linkAppsFor(kitchenEnabled).map(app => (
+                <TouchableOpacity
+                  key={app.scheme}
+                  style={[styles.chip, linkUrl === app.scheme && styles.chipActive]}
+                  onPress={() => { haptics.tap(); setLinkUrl(app.scheme); setCustomText(''); }}
+                >
+                  <Ionicons
+                    name={app.icon as never}
+                    size={13}
+                    color={linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
+                  />
+                  <Text style={[styles.chipText, linkUrl === app.scheme && styles.chipTextActive]}>
+                    {app.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       </View>
     </CardSheet>
@@ -196,6 +215,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   body: { paddingHorizontal: spacing.md, gap: spacing.sm },
   hint: { color: colors.textSecondary, fontSize: font.sm },
+  webLabel: { marginTop: spacing.smd, marginBottom: 0 },
+  appsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+  },
+  appsLabel: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   chip: {
     flexDirection: 'row',
