@@ -138,6 +138,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
 - `src/utils/dictation.ts` — DICTATION_BARS, joinDictation, pushLevel, barHeight, DictationRefusal, dictationRefusal
 - `src/utils/digitRoll.ts` — RollColumn, rollColumns, rollDirection
+- `src/utils/dishOffer.ts` — offerDishRating
 - `src/utils/dishPhotoSync.ts` — dishPhotoNames, readDishPhotoForSync, hasDishPhotoForSync, writeDishPhotoFromSync
 - `src/utils/dishPhotos.ts` — DISH_PHOTO_FOLDER, DISH_PHOTO_PREFIX, isDishPhotoName, dishPhotoNamesInUse, unreferencedDishPhotos, dishPhotoUri, sweepDishPhotos
 - `src/utils/dishRating.ts` — DISH_VERDICT_LABELS, DISH_VERDICTS, DishInput, dishKeys, noonOf, buildDishRating, DishPatch, applyDishPatch, findDish, DishPlaceGroup, +5 more

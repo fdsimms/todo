@@ -14,6 +14,7 @@ import { MEAL_SLOTS, MEAL_SLOT_LABELS, EXTERNAL_NUTRIENT_KEYS, type FoodLogEntry
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useDishRatingStore } from '../store/useDishRatingStore';
 import { DISH_VERDICT_LABELS, dishForLabel } from '../utils/dishRating';
+import { offerDishRating } from '../utils/dishOffer';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { MAX_PENDING_ESTIMATES, isQueueableFailure, type PendingEstimate } from '../utils/estimateQueue';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -633,6 +634,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       mealPlanEntryId: mealPlanEntryId ?? null,
     });
     if (!written) { haptics.error(); return; }
+    offerDishRating({ ...written, at: new Date(written.atISO) });
     // The queued row this was refined from is answered by the entry just
     // written, so it leaves the queue with it rather than offering to log twice.
     if (reviewing) usePendingEstimateStore.getState().discard(reviewing.id);
@@ -891,6 +893,8 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
         at,
       });
     if (!written) { haptics.error(); return 'Couldn’t log this. Try again.'; }
+    // A recalled eaten-out meal is asked about again if it has no answer yet.
+    if (staged.kind === 'recall') offerDishRating({ ...written, at: new Date(written.atISO) });
 
     haptics.success();
     Keyboard.dismiss();

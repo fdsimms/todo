@@ -33,7 +33,12 @@ The rules live in `src/utils/dishRating.ts` with no store or database in them; t
 - **The offer asks, never answers.** `isEatenOutDraft` reads a meal as eaten out when it was
   described and estimated with nothing in the app behind it. It only decides whether to *ask*.
   A dish that already has an answer is never asked about again (`dishOfferFor`), the offer is
-  session-only, and ignoring it writes nothing.
+  session-only, and ignoring it writes nothing. **Every path that writes a described meal calls
+  `offerDishRating`** (`dishOffer.ts`): the food log sheet's own save, the Describe panel's Log, a
+  recalled food, and a queued estimate that is confirmed. The question is about the meal, not the
+  screen it was logged from, and the first version wired only the sheet's save, so it never came
+  after the way most restaurant meals are logged. The dish is dated by the logical day of the
+  meal's own moment (`getDayStart`), never "now".
 - **Recall shows the answer you gave.** A recalled food in the Describe sheet's "You've had this
   before" says "Loved it" when `dishForLabel` finds a rated dish of that name. A dish with no answer
   adds nothing to the row.
