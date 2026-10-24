@@ -3,6 +3,7 @@ import type { BusyEvent } from '../utils/calendarBusy';
 import {
   buildDayTimeline,
   clockToDayMinutes,
+  draggedColumn,
   draggedRange,
   instantToDayMinutes,
   MINUTES_IN_DAY,
@@ -338,5 +339,22 @@ describe('draggedRange', () => {
     expect(draggedRange('resize', block, 38)).toEqual({ start: 9 * 60, end: 10 * 60 + 45 });
     expect(draggedRange('create', block, -300)).toEqual({ start: 9 * 60, end: 9 * 60 + 15 });
     expect(draggedRange('resize', block, 10000)).toEqual({ start: 9 * 60, end: MINUTES_IN_DAY });
+  });
+});
+
+describe('draggedColumn', () => {
+  it('changes day once the finger is past halfway into the next column', () => {
+    expect(draggedColumn(0, 49, 100, 3)).toBe(0);
+    expect(draggedColumn(0, 51, 100, 3)).toBe(1);
+    expect(draggedColumn(2, -160, 100, 3)).toBe(0);
+  });
+
+  it('stays inside the columns drawn', () => {
+    expect(draggedColumn(1, 900, 100, 3)).toBe(2);
+    expect(draggedColumn(1, -900, 100, 3)).toBe(0);
+  });
+
+  it('keeps the event where it was before the columns are laid out', () => {
+    expect(draggedColumn(1, 300, 0, 3)).toBe(1);
   });
 });

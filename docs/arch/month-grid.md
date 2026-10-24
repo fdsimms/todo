@@ -47,10 +47,9 @@ completions, which made it read as one more task list. What it does now:
   the month's grid, two days past it (so 3 Day starting on the grid's last cell has its other
   columns), and in Schedule the two weeks from today. Switching to Schedule moves the month to
   today's, which keeps that range short.
-- **3 Day is read and tap only** (`MultiDayTimeline`). Each column is `buildDayTimeline` for its
-  day on one shared axis; a column's header opens that day in the Day view, which is where an
-  event can be dragged.
-- **Dragging is the Day view's** (`DayTimeline`): a long-press on empty time then a drag down
+- **3 Day** (`MultiDayTimeline`) is `buildDayTimeline` for each day on one shared axis; a
+  column's header opens that day in the Day view.
+- **Dragging works in Day and 3 Day** (`DayTimeline`, `MultiDayTimeline`): a long-press on empty time then a drag down
   makes an event that long (the quick-add card opens with the span), a long-press on an event
   moves it, and its foot's grip stretches it. The arithmetic is `draggedRange` (quarter-hour
   snaps, never shorter than one, kept inside the day). Only an event wholly on the day can be
@@ -60,7 +59,10 @@ completions, which made it read as one more task list. What it does now:
   the people linked to the event over to its new start (the link is keyed by occurrence) and
   writes one occurrence of a repeating event, never the series (`rescheduleEventDirect`, through
   `rewriteEvent`). The moved block is drawn at its new time until the next read brings it back
-  there (`pendingMove`).
+  there (`pendingMove`, matched on the occurrence's start as well as its id, since a repeating
+  event's occurrences share one). In 3 Day a moved block also tracks sideways and lands on the
+  column it is dropped over, at the same clock position (`draggedColumn`, whole columns, past
+  halfway); making and stretching stay on their own day.
 - **Tapping an event opens the event sheet on it** (`TodayEventsSheet`'s `focus`): the sheet
   narrows to that event with its details open, says how soon it starts, and offers Join when its
   URL or notes hold a call link (`videoCallLink`, read on the tap since notes are never kept).

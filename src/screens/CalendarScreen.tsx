@@ -431,18 +431,29 @@ export function CalendarScreen() {
   const selectedAgenda = useMemo(() => agendaFor(selectedKey, selectedDay), [agendaFor, selectedKey, selectedDay]);
 
   /**
-   * An event the Day view just moved, drawn where it was put until the
-   * calendar read comes back with it there. Without it the block jumps back to
-   * its old time for the moment the write and the re-read take. Cleared by the
-   * next read (the effect below), or on a failed write.
+   * An event the Day or 3 Day view just moved, drawn where it was put until
+   * the calendar read comes back with it there. Without it the block jumps
+   * back to its old time for the moment the write and the re-read take.
+   * Cleared by the next read (the effect below), or on a failed write.
    */
-  const [pendingMove, setPendingMove] = useState<{ eventId: string; start: string; end: string } | null>(null);
+  const [pendingMove, setPendingMove] = useState<{ event: BusyEvent; start: string; end: string } | null>(null);
   useEffect(() => { setPendingMove(null); }, [calendarEvents, gridEvents]);
+  /**
+   * A day's events with the pending move applied: the occurrence taken out
+   * (matched on its start too, since every occurrence of a repeating event
+   * shares an id), and put back on whichever day it now starts on.
+   */
+  const withPendingMove = useCallback((shown: BusyEvent[], dayStart: Date): BusyEvent[] => {
+    if (!pendingMove) return shown;
+    const { event } = pendingMove;
+    const rest = shown.filter(e => !(e.id === event.id && e.start === event.start));
+    const startsAt = Date.parse(pendingMove.start);
+    const lands = startsAt >= dayStart.getTime() && startsAt < addDays(dayStart, 1).getTime();
+    return lands ? [...rest, { ...event, start: pendingMove.start, end: pendingMove.end }] : rest;
+  }, [pendingMove]);
   const timelineEvents = useMemo(
-    () => (pendingMove
-      ? selectedDay.shown.map(e => (e.id === pendingMove.eventId ? { ...e, start: pendingMove.start, end: pendingMove.end } : e))
-      : selectedDay.shown),
-    [selectedDay, pendingMove],
+    () => withPendingMove(selectedDay.shown, selectedDayStart),
+    [selectedDay, selectedDayStart, withPendingMove],
   );
   const dayTimeline = useMemo(
     () => buildDayTimeline({
@@ -455,7 +466,7 @@ export function CalendarScreen() {
     [buckets, taskById, selectedKey, selectedDayStart, timelineEvents, sunLocation, projects],
   );
 
-  // ==== the Day view's drags: making, moving and stretching events ====
+  // ==== the Day and 3 Day views' drags: making, moving and stretching events ====
   // True while a drag on the timeline holds the finger; the scroll view is off
   // for that long (see DayTimeline's onDragStateChange).
   const [timelineDragging, setTimelineDragging] = useState(false);
@@ -463,26 +474,38 @@ export function CalendarScreen() {
     const event = selectedDay.shown.find(e => e.id === eventId);
     return event ? colorFor(event.calendarId) : undefined;
   }, [selectedDay, colorFor]);
-  // Only an event wholly on this day: a block the day clipped is part of an
+  // Only an event wholly on its day: a block the day clipped is part of an
   // event, and dragging the part would move or shorten the whole.
-  const canMoveTimelineEvent = useCallback((eventId: string) => {
+  const canMoveEventOn = useCallback((dayKey: string, eventId: string) => {
     if (isDemoModeActive()) return false;
-    const event = selectedDay.shown.find(e => e.id === eventId);
+    const event = eventsForDay(dayKey).shown.find(e => e.id === eventId);
     if (!event || event.allDay) return false;
-    const end = addDays(selectedDayStart, 1).getTime();
-    return Date.parse(event.start) >= selectedDayStart.getTime() && Date.parse(event.end) <= end;
-  }, [selectedDay, selectedDayStart]);
-  const atMinutes = (minutes: number) => new Date(selectedDayStart.getTime() + minutes * 60000);
-  const handleCreateRange = (startMinutes: number, endMinutes: number) => {
-    setNewEventSeed({ start: atMinutes(startMinutes), end: atMinutes(endMinutes) });
+    const dayStart = dayStartOf(dayKey);
+    return Date.parse(event.start) >= dayStart.getTime() && Date.parse(event.end) <= addDays(dayStart, 1).getTime();
+  }, [eventsForDay, dayStartOf]);
+  const canMoveTimelineEvent = useCallback(
+    (eventId: string) => canMoveEventOn(selectedKey, eventId),
+    [canMoveEventOn, selectedKey],
+  );
+  const atMinutesOn = (dayKey: string, minutes: number) => new Date(dayStartOf(dayKey).getTime() + minutes * 60000);
+  const handleCreateRangeOn = (dayKey: string, startMinutes: number, endMinutes: number) => {
+    setNewEventSeed({ start: atMinutesOn(dayKey, startMinutes), end: atMinutesOn(dayKey, endMinutes) });
     setNewEventVisible(true);
   };
-  const handleRescheduleEvent = async (eventId: string, startMinutes: number, endMinutes: number) => {
-    const event = selectedDay.shown.find(e => e.id === eventId);
+  const handleCreateRange = (startMinutes: number, endMinutes: number) =>
+    handleCreateRangeOn(selectedKey, startMinutes, endMinutes);
+  /**
+   * Writes a dragged event's new times. Minutes count from the start of the
+   * day it was dropped on, which in 3 Day can be another day than its own.
+   */
+  const handleRescheduleEventOn = async (
+    eventId: string, fromKey: string, toKey: string, startMinutes: number, endMinutes: number,
+  ) => {
+    const event = eventsForDay(fromKey).shown.find(e => e.id === eventId);
     if (!event) return;
-    const start = atMinutes(startMinutes);
-    const end = atMinutes(endMinutes);
-    setPendingMove({ eventId, start: start.toISOString(), end: end.toISOString() });
+    const start = atMinutesOn(toKey, startMinutes);
+    const end = atMinutesOn(toKey, endMinutes);
+    setPendingMove({ event, start: start.toISOString(), end: end.toISOString() });
     const id = await useEventPeopleStore.getState().moveEvent(event, start, end);
     if (!id) {
       setPendingMove(null);
@@ -494,6 +517,8 @@ export function CalendarScreen() {
     }
     readGrid();
   };
+  const handleRescheduleEvent = (eventId: string, startMinutes: number, endMinutes: number) =>
+    handleRescheduleEventOn(eventId, selectedKey, selectedKey, startMinutes, endMinutes);
   const dayMeals = selectedExtras?.meals ?? NO_MEALS;
 
   // Only drawn on the day you are actually in.
@@ -513,7 +538,7 @@ export function CalendarScreen() {
       const timeline = buildDayTimeline({
         dayStart: dayEvents.start,
         tasks: dayRows(dayDetail(buckets.get(key), taskById)),
-        events: dayEvents.shown,
+        events: withPendingMove(dayEvents.shown, dayEvents.start),
         sunLocation: sunLocationOn(dayEvents.start),
       });
       return {
@@ -528,7 +553,7 @@ export function CalendarScreen() {
     });
     // `sunLocation` and `projects` are deps because sunLocationOn reads both.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, selectedKey, eventsForDay, buckets, taskById, todayKey, sunLocation, projects]);
+  }, [viewMode, selectedKey, eventsForDay, withPendingMove, buckets, taskById, todayKey, sunLocation, projects]);
   // A column's event color, by event id, over all three columns' events.
   const multiDayEventColor = useCallback((eventId: string) => {
     for (const column of multiDayColumns) {
@@ -1109,6 +1134,10 @@ export function CalendarScreen() {
               untimedLinkFor(key, column?.untimed ?? 0)?.onPress();
             }}
             onPressSlot={handlePressSlotOn}
+            canMoveEvent={canMoveEventOn}
+            onCreateRange={isDemoModeActive() ? undefined : handleCreateRangeOn}
+            onRescheduleEvent={handleRescheduleEventOn}
+            onDragStateChange={setTimelineDragging}
           />
         ) : (
           <>
