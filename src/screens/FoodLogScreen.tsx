@@ -70,6 +70,7 @@ import {
 import { effectiveWaterTargetMl, waterExerciseBoostApplies } from '../utils/waterExerciseBoost';
 import { activeEnergyBoostKcal } from '../utils/activeEnergyBoost';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { describeAlcoholGrams, describeDrinks } from '../utils/alcohol';
 import { useHealthStore } from '../store/useHealthStore';
 import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { haptics } from '../utils/haptics';
@@ -246,6 +247,7 @@ export function FoodLogScreen() {
   const nutritionLimits = useSettingsStore(useShallow(s => s.nutritionLimits));
   const limitWarnPercent = useSettingsStore(s => s.limitWarnPercent);
   const waterUnit = useSettingsStore(s => s.waterUnit);
+  const standardDrinkGrams = useSettingsStore(s => s.standardDrinkGrams);
   const setWaterUnit = useSettingsStore(s => s.setWaterUnit);
   const waterExerciseBoost = useSettingsStore(useShallow(s => s.waterExerciseBoost));
   // Both scan entry points (the header action and the entry sheet's Scan
@@ -1187,7 +1189,9 @@ export function FoodLogScreen() {
   // A nutrient's day total as its totals row words it, target included, so the
   // contributors sheet can head its list with the same figure it was opened on.
   const totalText = (key: NutrientKey): string =>
-    describeAgainstTarget(key, totals.total[key], effectiveTargets)
+    key === 'alcoholG'
+      ? describeDrinks(totals.total[key] as number, standardDrinkGrams)
+      : describeAgainstTarget(key, totals.total[key], effectiveTargets)
       ?? `${Math.round(totals.total[key] as number).toLocaleString()}${NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}`;
 
 
@@ -1277,6 +1281,9 @@ export function FoodLogScreen() {
             The reading is quoted too, so a figure that looks wrong
             can be traced to the number it came from rather than to
             this app. */}
+        {key === 'alcoholG' && (totals.total[key] ?? 0) > 0 && (
+          <Text style={styles.boostNote}>{describeAlcoholGrams(totals.total[key] as number)}</Text>
+        )}
         {key === 'calorieKcal' && appliedActiveEnergyKcal > 0 && (
           <Text style={styles.boostNote}>
             +{appliedActiveEnergyKcal.toLocaleString()} cal from{' '}
@@ -2214,7 +2221,8 @@ const FoodLogRow = React.memo(function FoodLogRow({
   const canExpand = statedKeys.length > 0;
   const breakdown = entry.nutrition.breakdown ?? [];
   const openMenu = () => onOpenMenu(entry);
-  const meta = describeFoodLogEntry(entry, waterEntryQuantity(entry, waterUnit));
+  const standardDrinkGrams = useSettingsStore(s => s.standardDrinkGrams);
+  const meta = describeFoodLogEntry(entry, waterEntryQuantity(entry, waterUnit), standardDrinkGrams);
   // Shared by the swipe and the iPhone Mirroring button.
   const swipeSelect = { onSelect: () => onSwipeSelect(entry.id), accessibilityLabel: `Select ${entry.label}` };
 

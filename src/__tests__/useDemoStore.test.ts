@@ -51,6 +51,7 @@ import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { currentEstimateFactor, describeFoodLogEntry, foodLogEntryEdit, foodLogTotals, recallAmount, scalePanelToAmount, wholeEstimate } from '../utils/foodLog';
 import { foodLastAmounts, helpingAgain, recentUnlinkedHelpings } from '../utils/foodLogRecents';
+import { alcoholGramsOf } from '../utils/alcohol';
 import { isWaterEntry } from '../utils/waterLog';
 import { foodDayInputs, foodKeyNames, hasNutritionData, nutrientAverages, nutritionCounts, produceAverage, sourceMix } from '../utils/nutritionStats';
 import { packageHelping } from '../utils/scanPortion';
@@ -3184,6 +3185,14 @@ describe('demo seed — people', () => {
     expect(totals.reported.calorieKcal).toBe(totals.entries);
     expect(totals.reported.fiberG).toBeGreaterThan(0);
     expect(totals.reported.fiberG! < totals.entries).toBe(true);
+  });
+
+  it('seeds a drink with its alcohol stated, so the day total can show drinks', () => {
+    const dayKey = dayKeyOf(subDays(getCurrentDayStart(), 3));
+    useFoodLogStore.getState().loadRange(dayKey, dayKey);
+    const drink = useFoodLogStore.getState().entries.find(e => e.label === 'Margarita');
+    expect(drink).toBeDefined();
+    expect(alcoholGramsOf(drink!.nutrition)).toBe(21);
   });
 
   it('writes no health samples from a seeded entry', () => {

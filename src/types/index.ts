@@ -5503,7 +5503,7 @@ export type NutrientKey =
   | 'calorieKcal' | 'proteinG' | 'carbsG' | 'fatG' | 'satFatG' | 'transFatG'
   | 'cholesterolMg' | 'fiberG' | 'sugarG' | 'addedSugarG' | 'sodiumMg'
   | 'calciumMg' | 'ironMg' | 'potassiumMg'
-  | 'caffeineMg' | 'waterMl'
+  | 'caffeineMg' | 'alcoholG' | 'waterMl'
   | MicronutrientKey;
 
 /**
@@ -5517,7 +5517,7 @@ export const NUTRIENT_KEYS: readonly NutrientKey[] = [
   'calorieKcal', 'fatG', 'satFatG', 'transFatG', 'cholesterolMg',
   'carbsG', 'fiberG', 'sugarG', 'addedSugarG', 'proteinG', 'sodiumMg',
   'calciumMg', 'ironMg', 'potassiumMg',
-  'caffeineMg', 'waterMl',
+  'caffeineMg', 'alcoholG', 'waterMl',
   ...VITAMIN_KEYS, ...MINERAL_KEYS,
 ];
 
@@ -5537,12 +5537,14 @@ export const EXTERNAL_NUTRIENT_KEYS: readonly NutrientKey[] = NUTRIENT_KEYS.filt
 );
 
 /**
- * The nutrients a photographed label can state: all of them. A label photo is a
- * transcription of print, not an estimate and not a source's default, so a
- * supplement's vitamin rows are read like any other and the person checks the
- * fields against the bottle before saving.
+ * The nutrients a photographed label can state: all of them but alcohol. A
+ * label photo is a transcription of print, not an estimate and not a source's
+ * default, so a supplement's vitamin rows are read like any other and the
+ * person checks the fields against the bottle before saving. Alcohol is the
+ * exception because a label prints it as a percentage by volume ("5% vol"),
+ * which this transcription would file as grams.
  */
-export const PRINTED_NUTRIENT_KEYS: readonly NutrientKey[] = NUTRIENT_KEYS;
+export const PRINTED_NUTRIENT_KEYS: readonly NutrientKey[] = NUTRIENT_KEYS.filter(key => key !== 'alcoholG');
 
 /**
  * The nutrients a logged meal can carry into Apple Health: one per row of the

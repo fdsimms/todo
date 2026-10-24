@@ -34,6 +34,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, currentAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, +3 more
 - `src/utils/aiRouting.ts` — AiRoute, OnDeviceEngine, onDeviceEngineFor, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
+- `src/utils/alcohol.ts` — US_STANDARD_DRINK_G, STANDARD_DRINK_SIZES, normalizeStandardDrinkGrams, DRINK_PRESETS, DRINK_STEP, MAX_ENTRY_DRINKS, gramsFromDrinks, drinksFromGrams, describeDrinks, describeAlcoholGrams, +7 more
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
 - `src/utils/allergenGuess.ts` — Allergen, guessAllergens, describeAllergens
 - `src/utils/appGate.ts` — isGateTask, gateGroupFor, outstandingGates, gateShieldWanted, GATE_WINDOW_MINUTES, GATE_ARM_HORIZON_MS, GateWindow, gateWindowFor, PendingGate, nextPendingGate, +1 more

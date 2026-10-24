@@ -115,6 +115,20 @@ import { confirmLargeAmount } from '../utils/confirmLargeAmount';
 import { EstimateAmountSheet } from './EstimateAmountSheet';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
+import { CountStepper } from './CountStepper';
+import { Toggle } from './Toggle';
+import {
+  DRINK_PRESETS,
+  DRINK_STEP,
+  MAX_ENTRY_DRINKS,
+  alcoholGramsOf,
+  describeAlcoholGrams,
+  drinksFromGrams,
+  gramsFromDrinks,
+  presetForDrinks,
+  suggestDrinksForName,
+  withAlcoholG,
+} from '../utils/alcohol';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useFilterField } from '../hooks/useFilterField';
 import { FieldClearButton } from './FieldClearButton';
@@ -555,6 +569,10 @@ export function FoodLogEntrySheet({
   // dish rather than remembered across picks — see `choose`.
   const [dishMeasure, setDishMeasure] = useState<DishMeasure>('servings');
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
+  const standardDrinkGrams = useSettingsStore(s => s.standardDrinkGrams);
+  // The alcohol row's own answer, or null while it has none and the entry's
+  // figures (or a name that is plainly a drink) are speaking for it.
+  const [alcohol, setAlcohol] = useState<{ on: boolean; drinks: number } | null>(null);
   // What the person says about the picked item's pantry stock while logging it.
   // Null leaves the pantry alone. Staged until Add, like the meal, so Cancel
   // discards it; reset whenever the picked food changes (effect below).
@@ -610,6 +628,7 @@ export function FoodLogEntrySheet({
     if (!visible) return;
     searchFilter.seed(initialQuery ?? '');
     setPicked(null);
+    setAlcohol(null);
     setAmount('');
     setAmountUnit(null);
     setAmountNumber('');
@@ -767,6 +786,7 @@ export function FoodLogEntrySheet({
     haptics.tap();
     searchFilter.seed(query);
     setPicked(null);
+    setAlcohol(null);
     setAmount('');
     setAmountUnit(null);
     setAmountNumber('');
@@ -790,6 +810,7 @@ export function FoodLogEntrySheet({
 
   const choose = (candidate: Candidate) => {
     setPicked(candidate);
+    setAlcohol(null);
     const weigh = candidate.kind === 'dish' && candidate.cookedGrams !== null;
     const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
     const recalled = recallFor(candidate);
@@ -895,6 +916,10 @@ export function FoodLogEntrySheet({
       return;
     }
     setPicked(candidate);
+    // The entry's own alcohol, so correcting an amount does not read the food's
+    // panel afresh and drop a figure that was typed onto this entry.
+    const savedAlcoholG = alcoholGramsOf(editing.nutrition);
+    setAlcohol({ on: savedAlcoholG > 0, drinks: drinksFromGrams(savedAlcoholG, standardDrinkGrams) });
     setAmount(plan.amount);
     setRecalledAmount(null);
     if (plan.dishMeasure) setDishMeasure(plan.dishMeasure);
@@ -1122,6 +1147,25 @@ export function FoodLogEntrySheet({
 
   // What this entry would do to a Stay under limit, said before Log is tapped.
   const limitImpacts = useLimitImpact(built?.nutrition.amounts, at, { editing });
+
+  // ==== alcohol: what the entry will say about it ====
+  // The figures already on the entry (a scanned beer, a saved food) speak first
+  // and need no answer. A food with none but a name that is plainly a drink
+  // opens switched on with a usual count, and anything else opens switched off.
+  // Once the person touches the row, their answer is the whole story.
+  const panelAlcoholG = alcoholGramsOf(built?.nutrition);
+  const suggestedDrinks = picked && panelAlcoholG === 0 ? suggestDrinksForName(picked.label) : null;
+  const alcoholDrinks = alcohol !== null
+    ? (alcohol.on ? alcohol.drinks : 0)
+    : panelAlcoholG > 0 ? drinksFromGrams(panelAlcoholG, standardDrinkGrams) : (suggestedDrinks ?? 0);
+  // The stated grams are kept exactly while the row is untouched, so a scanned
+  // 13.9 g is not rounded to a drink and a tenth just by being looked at.
+  const alcoholGrams = alcohol === null && panelAlcoholG > 0
+    ? panelAlcoholG
+    : gramsFromDrinks(alcoholDrinks, standardDrinkGrams);
+  const alcoholStated = panelAlcoholG > 0;
+  // The entry as it will be saved: the built figures with the row's answer in.
+  const finalNutrition = built ? withAlcoholG(built.nutrition, alcoholGrams) : null;
 
   // What's actually offered to weigh, which `weighableLine` decides rather
   // than the shape of the typed amount alone.
@@ -1453,6 +1497,7 @@ export function FoodLogEntrySheet({
       searchFilter.seed(initialQuery ?? '');
       if (picked) pendingBurstFocus.current = true;
       setPicked(null);
+      setAlcohol(null);
       setAmount('');
       setAmountUnit(null);
       setAmountNumber('');
@@ -1522,7 +1567,7 @@ export function FoodLogEntrySheet({
       label: picked.label,
       quantity,
       grams: built.grams,
-      nutrition: built.nutrition,
+      nutrition: finalNutrition ?? built.nutrition,
       // The database's own panel, kept on the entry while no catalog row holds
       // it, so the amount can be corrected later (see FoodLogEntry.sourcePanel).
       // Null for everything else, which on a correction also clears one that
@@ -1613,6 +1658,7 @@ export function FoodLogEntrySheet({
   // no row to attach the panel to — the candidate carries it directly, same
   // as a picked dish carries `servingPanel` rather than pointing at one.
   const handleDbPick = (nutrition: FoodNutrition, description: string) => {
+    setAlcohol(null);
     setPicked(databaseCandidate(`db:${description}`, description, nutrition));
     setRecalledAmount(null);
     const options = foodUnitOptionsFor(nutrition);
@@ -1640,8 +1686,9 @@ export function FoodLogEntrySheet({
         || amount.trim() !== seeded.amount
         || chosenSlot !== seeded.slot
         || answeredExtra
+        || (!!editing && Math.abs(alcoholGrams - alcoholGramsOf(editing.nutrition)) > 0.05)
       : picked
-        ? amount.trim() !== pickedAmountRef.current.trim() || answeredExtra
+        ? amount.trim() !== pickedAmountRef.current.trim() || answeredExtra || alcohol !== null
         : !!amount.trim() || estimateOpen || isDescriptionDraft(query);
     if (!dirty) { Keyboard.dismiss(); onClosed(); return; }
     confirmDiscard(() => { Keyboard.dismiss(); onClosed(); });
@@ -2512,6 +2559,83 @@ export function FoodLogEntrySheet({
               surface="page"
             />
 
+            {/* One row on every entry, so alcohol can be added to anything
+                (a homemade sangria, a pour with no label). It opens already
+                answered when the figures or the food's name say it is a drink,
+                so the usual case needs no tap at all. A picker (`onPickFood`)
+                saves a food for later with no day to count it on, so it has no
+                use for the row. */}
+            {!onPickFood && !!built && (
+              <>
+                <Text style={[styles.label, styles.labelSpaced]}>ALCOHOL</Text>
+                <View style={styles.alcoholCard}>
+                  {!alcoholStated && (
+                    <TouchableOpacity
+                      style={styles.alcoholRow}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => {
+                        haptics.tap();
+                        const on = alcoholDrinks === 0;
+                        setAlcohol({ on, drinks: on ? (suggestedDrinks ?? 1) : 0 });
+                      }}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: alcoholDrinks > 0 }}
+                      accessibilityLabel="Contains alcohol"
+                    >
+                      <View style={styles.alcoholRowText}>
+                        <Text style={styles.alcoholRowTitle}>Contains alcohol</Text>
+                        <HelpText style={styles.alcoholRowHint}>Counts toward your daily drinks.</HelpText>
+                      </View>
+                      <Toggle value={alcoholDrinks > 0} />
+                    </TouchableOpacity>
+                  )}
+                  {!alcoholStated && alcoholDrinks > 0 && (
+                    <View style={[styles.alcoholRow, styles.alcoholRowDivided]}>
+                      <View style={styles.alcoholRowText}>
+                        <SegmentedControl<string | null>
+                          options={DRINK_PRESETS.map(p => ({ value: p.key as string | null, label: p.label }))}
+                          value={presetForDrinks(alcoholDrinks)}
+                          onChange={key => {
+                            const preset = DRINK_PRESETS.find(p => p.key === key);
+                            if (preset) setAlcohol({ on: true, drinks: preset.drinks });
+                          }}
+                          columns={3}
+                          label="Kind of drink"
+                        />
+                      </View>
+                    </View>
+                  )}
+                  {(alcoholStated || alcoholDrinks > 0) && (
+                    <View style={[styles.alcoholRow, !alcoholStated && styles.alcoholRowDivided]}>
+                      <View style={styles.alcoholRowText}>
+                        <Text style={styles.alcoholRowTitle}>Drinks</Text>
+                        {alcoholStated && alcohol === null && (
+                          <Text style={styles.alcoholRowHint}>From this food’s figures.</Text>
+                        )}
+                      </View>
+                      <CountStepper
+                        value={alcoholDrinks}
+                        onChange={next => setAlcohol({ on: (next ?? 0) > 0, drinks: next ?? 0 })}
+                        min={alcoholStated ? 0 : DRINK_STEP}
+                        max={MAX_ENTRY_DRINKS}
+                        step={DRINK_STEP}
+                        places={1}
+                        format={n => (n === 1 ? '1 drink' : `${n} drinks`)}
+                        label="Drinks"
+                        inline
+                      />
+                    </View>
+                  )}
+                </View>
+                {alcoholGrams > 0 && (
+                  <Text style={styles.alcoholNote}>
+                    {describeAlcoholGrams(alcoholGrams)}.
+                    {alcoholStated ? ' Changing it only changes this entry.' : ''}
+                  </Text>
+                )}
+              </>
+            )}
+
             {/* Only for a food that is a catalog row (a dish or a bare database
                 food has no pantry entry to update), and not when correcting an
                 entry that was logged already. */}
@@ -2846,6 +2970,13 @@ function makeStyles(colors: Colors) {
     },
     labelSpaced: { marginTop: spacing.lg },
     pantryField: { marginTop: spacing.lg },
+    alcoholCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
+    alcoholRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 48 },
+    alcoholRowDivided: { borderTopWidth: border.hairline, borderTopColor: colors.separator },
+    alcoholRowText: { flex: 1 },
+    alcoholRowTitle: { fontSize: font.md, color: colors.text },
+    alcoholRowHint: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
+    alcoholNote: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xsm, paddingHorizontal: spacing.xs },
     // Margin on both sides: the label above has none of its own below it, and
     // the amount field below has only spacing.xs of its own.
     measureRow: { marginTop: spacing.sm, marginBottom: spacing.xs },

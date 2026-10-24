@@ -92,6 +92,9 @@ export const NUTRITION_TARGET_RANGES: Record<
   ironMg: { min: 0, max: 60, step: 1, default: 18 },
   potassiumMg: { min: 0, max: 8000, step: 100, default: 4700 },
   caffeineMg: { min: 0, max: 1000, step: 10, default: 400 },
+  // Never offered as a target (the targets sheet leaves it out), so these
+  // numbers are only the record the type asks for.
+  alcoholG: { min: 0, max: 280, step: 7, default: 28 },
   waterMl: { min: 0, max: 6000, step: 250, default: 2000 },
   // The vitamins and minerals open on the same Daily Value a packet prints
   // (the argument above for the three minerals applies unchanged). Ceilings
@@ -126,7 +129,7 @@ export const NUTRITION_TARGET_RANGES: Record<
  * The nutrients a label prints with no %DV, so "Use Daily Value" has no figure to
  * offer and their `default` above is only where a stepper opens.
  */
-export const NO_DAILY_VALUE: ReadonlySet<NutrientKey> = new Set<NutrientKey>(['transFatG']);
+export const NO_DAILY_VALUE: ReadonlySet<NutrientKey> = new Set<NutrientKey>(['transFatG', 'alcoholG']);
 
 /** What a person has set, keyed by nutrient. Empty is the shipping state. */
 export type NutritionTargets = Partial<Record<NutrientKey, number>>;

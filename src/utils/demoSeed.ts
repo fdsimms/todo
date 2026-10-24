@@ -2781,6 +2781,32 @@ function seedFoodLog(today: Date): void {
     });
   }
 
+  // One drink with its alcohol stated, so the day's total and the entry line
+  // show drinks. A described cocktail, which is how a drink with no label
+  // reaches the log: an estimate, marked as one. Three nights back and as a
+  // snack, so it neither fills a planned dinner nor the seeded nudge's night.
+  {
+    const at = subDays(today, 3);
+    at.setHours(21, 0, 0, 0);
+    addEntry({
+      label: 'Margarita',
+      quantity: '1 glass',
+      grams: null,
+      nutrition: {
+        basis: 'perServing',
+        servingGrams: null,
+        servingText: null,
+        amounts: { calorieKcal: 230, carbsG: 14, proteinG: 0, fatG: 0, alcoholG: 21 },
+        source: 'estimated',
+        sourceId: null,
+        portions: [],
+        recordedAt: at.toISOString(),
+      },
+      slot: 'snack',
+      at,
+    });
+  }
+
   // A packaged snack with the group a barcode source states, so the window has
   // some ultra-processed calories beside the minimally processed ones. Built the
   // way the chicken above is: a panel the entry keeps, scaled to the amount, so

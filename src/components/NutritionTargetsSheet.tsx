@@ -542,7 +542,7 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
             />
           )}
 
-          {EXTERNAL_NUTRIENT_KEYS.map(renderTarget)}
+          {EXTERNAL_NUTRIENT_KEYS.filter(key => key !== 'alcoholG').map(renderTarget)}
           <TouchableOpacity
             style={styles.microDisclosure}
             activeOpacity={interaction.activeOpacity}

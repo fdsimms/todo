@@ -22,6 +22,7 @@ import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
 import { CURRENCY_SYMBOLS, CURRENCY_SYMBOL_MAX_LENGTH } from '../../types';
 import { LazySheet } from '../../components/LazySheet';
+import { STANDARD_DRINK_SIZES } from '../../utils/alcohol';
 
 /**
  * The groceries/recipes/meal-plan area's own settings — what it puts on Today,
@@ -45,6 +46,11 @@ const UNIT_SYSTEM_OPTIONS: SegmentOption<UnitSystem>[] = [
   { value: 'us', label: 'US' },
 ];
 
+const STANDARD_DRINK_OPTIONS: SegmentOption<number>[] = STANDARD_DRINK_SIZES.map(size => ({
+  value: size.grams,
+  label: `${size.label} (${size.grams} g)`,
+}));
+
 export function KitchenSettings() {
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const mealsOnToday = useSettingsStore(s => s.mealsOnToday);
@@ -64,6 +70,8 @@ export function KitchenSettings() {
   const setRestockOfferEnabled = useSettingsStore(s => s.setRestockOfferEnabled);
   const tripLiveActivity = useSettingsStore(s => s.tripLiveActivity);
   const setTripLiveActivity = useSettingsStore(s => s.setTripLiveActivity);
+  const standardDrinkGrams = useSettingsStore(s => s.standardDrinkGrams);
+  const setStandardDrinkGrams = useSettingsStore(s => s.setStandardDrinkGrams);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const setUnitSystem = useSettingsStore(s => s.setUnitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
@@ -126,6 +134,21 @@ export function KitchenSettings() {
             : `${targetCount} set. Compared with the day’s total in the food log.`}
           onPress={() => setTargetsOpen(true)}
           accessibilityLabel="Daily nutrition targets"
+        />
+        <SettingsRow
+          entryId="standardDrink"
+          icon="beer-outline"
+          label="Standard drink"
+          hint="How much alcohol counts as one drink in the food log."
+          tight
+        />
+        <SettingsSegments
+          attached
+          options={STANDARD_DRINK_OPTIONS}
+          selected={standardDrinkGrams}
+          onSelect={setStandardDrinkGrams}
+          columns={3}
+          accessibilityLabelFor={o => `Standard drink: ${o.label}`}
         />
         <SettingsRow
           entryId="mealLogPrompt"

@@ -18,8 +18,8 @@ describe('EXTERNAL_NUTRIENT_KEYS', () => {
   it('is every nutrient except the vitamins and minerals', () => {
     const micro = new Set<string>([...VITAMIN_KEYS, ...MINERAL_KEYS]);
     expect(EXTERNAL_NUTRIENT_KEYS).toEqual(NUTRIENT_KEYS.filter(key => !micro.has(key)));
-    expect(EXTERNAL_NUTRIENT_KEYS).toHaveLength(16);
-    expect(NUTRIENT_KEYS).toHaveLength(39);
+    expect(EXTERNAL_NUTRIENT_KEYS).toHaveLength(17);
+    expect(NUTRIENT_KEYS).toHaveLength(40);
   });
 
   it('keeps the vitamin and mineral lists disjoint and complete', () => {

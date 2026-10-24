@@ -6,6 +6,7 @@ import type { ThemeMode } from '../theme';
 import type { WeightUnit } from '../utils/weightLog';
 import type { DumbbellEntry } from '../utils/dumbbellLoad';
 import type { WaterUnit } from '../utils/waterLog';
+import { normalizeStandardDrinkGrams } from '../utils/alcohol';
 import type { PlateInventory } from '../types';
 import { DEFAULT_PLATE_INVENTORY, clampRestSeconds, normalizePlateInventory, parsePlateInventory, parseRestSeconds, DEFAULT_REST_SECONDS } from '../utils/workoutData';
 import { getLogicalToday } from '../utils/dateUtils';
@@ -1201,6 +1202,14 @@ interface SettingsStore {
   waterUnit: WaterUnit;
 
   /**
+   * How many grams of alcohol the food log counts as one drink: 14 (US), 10
+   * (Australia) or 8 (UK). Display only, like `waterUnit`: the log stores grams
+   * of ethanol, so changing it re-reads every entry in the new size and
+   * rewrites nothing. Apple Health is always told in US drinks.
+   */
+  standardDrinkGrams: number;
+
+  /**
    * The Workouts area (docs/arch/workouts.md). Off by default, since a large
    * area nobody asked for is clutter; while off, its screen leaves the menu and
    * the tab bar. Kept out of DEFAULT_SETTINGS for kitchenEnabled's reason:
@@ -2244,6 +2253,7 @@ interface SettingsStore {
   setKeepOpenAfterFoodLog: (on: boolean) => void;
   setWeightUnit: (unit: WeightUnit) => void;
   setWaterUnit: (unit: WaterUnit) => void;
+  setStandardDrinkGrams: (grams: number) => void;
   setWorkoutsEnabled: (on: boolean) => void;
   setWorkoutUnit: (unit: WeightUnit) => void;
   setDumbbellEntry: (entry: DumbbellEntry) => void;
@@ -2616,6 +2626,7 @@ const DEFAULT_SETTINGS = {
   healthWorkoutWriteRefusalSeen: false,
   weightUnit: 'kg' as WeightUnit,
   waterUnit: 'ml' as WaterUnit,
+  standardDrinkGrams: 14,
   workoutUnit: 'kg' as WeightUnit,
   dumbbellEntry: 'each' as DumbbellEntry,
   defaultRestSeconds: DEFAULT_REST_SECONDS,
@@ -3100,6 +3111,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   healthWorkoutWriteRefusalSeen: false,
   weightUnit: 'kg',
   waterUnit: 'ml',
+  standardDrinkGrams: 14,
   workoutsEnabled: false,
   workoutUnit: 'kg',
   dumbbellEntry: 'each',
@@ -3536,6 +3548,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // than to undefined.
     const weightUnit: WeightUnit = dbGetSetting('weightUnit') === 'lb' ? 'lb' : 'kg';
     const waterUnit: WaterUnit = dbGetSetting('waterUnit') === 'flOz' ? 'flOz' : 'ml';
+    const standardDrinkGrams = normalizeStandardDrinkGrams(dbGetSetting('standardDrinkGrams'));
     const workoutsEnabled = dbGetSetting('workoutsEnabled') === 'true';
     // As weightUnit: anything that isn't 'lb' reads as kilograms.
     const workoutUnit: WeightUnit = dbGetSetting('workoutUnit') === 'lb' ? 'lb' : 'kg';
@@ -4168,6 +4181,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       snackNudgeTaskCategory,
       snackNudgeTasks,
       sortOption,
+      standardDrinkGrams,
       stepGoal,
       sunLocation,
       supplyReorderTaskCategory,
@@ -5837,6 +5851,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWaterUnit(unit: WaterUnit) {
     dbSetSetting('waterUnit', unit);
     set({ waterUnit: unit });
+  },
+
+  setStandardDrinkGrams(grams: number) {
+    const next = normalizeStandardDrinkGrams(grams);
+    dbSetSetting('standardDrinkGrams', String(next));
+    set({ standardDrinkGrams: next });
   },
 
   setWorkoutsEnabled(on: boolean) {

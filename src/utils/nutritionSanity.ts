@@ -119,7 +119,9 @@ export function panelWarnings(panel: FoodNutrition): PanelWarning[] {
   }
 
   if (a.calorieKcal !== undefined && a.proteinG !== undefined && a.carbsG !== undefined && a.fatG !== undefined) {
-    const expected = 4 * a.proteinG + 4 * a.carbsG + 9 * a.fatG;
+    // Alcohol carries 7 kcal/g and is none of the three macros, so a beer's
+    // 150 cal against about 13 g of carbs reads as wrong without it.
+    const expected = 4 * a.proteinG + 4 * a.carbsG + 9 * a.fatG + 7 * (a.alcoholG ?? 0);
     const gap = Math.abs(a.calorieKcal - expected);
     if (gap > ENERGY_MIN_GAP_KCAL && gap > expected * ENERGY_TOLERANCE) {
       flag('calorieKcal', `${figure('calorieKcal', a.calorieKcal)} doesn’t match the fat, carbs and protein, which come to about ${fmt(expected)} calories.`);

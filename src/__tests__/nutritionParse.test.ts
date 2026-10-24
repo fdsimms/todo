@@ -705,3 +705,45 @@ describe('what a barcode source never states', () => {
     expect(Object.keys(off?.amounts ?? {})).toEqual(['calorieKcal']);
   });
 });
+
+describe('alcohol', () => {
+  const BEER = {
+    serving_size: '355 ml',
+    product_quantity_unit: 'ml',
+    serving_quantity_unit: 'ml',
+    nutriments: { 'energy-kcal_100g': 43, carbohydrates_100g: 3.6, alcohol_100g: 5 },
+  };
+
+  it('turns an Open Food Facts percentage by volume into grams of ethanol per 100 ml', () => {
+    const read = readOffNutrition(BEER, 'x', RECORDED_AT)!;
+    expect(read.basis).toBe('per100ml');
+    expect(read.amounts.alcoholG).toBeCloseTo(3.945, 3);
+  });
+
+  it('reads no alcohol for a product sold by weight, which has no density to convert through', () => {
+    const read = readOffNutrition(
+      { ...BEER, product_quantity_unit: 'g', serving_quantity_unit: 'g' },
+      'x',
+      RECORDED_AT,
+    )!;
+    expect(read.basis).toBe('per100g');
+    expect('alcoholG' in read.amounts).toBe(false);
+  });
+
+  it('does not read a stated zero percent as a figure', () => {
+    const read = readOffNutrition(
+      { ...BEER, nutriments: { ...BEER.nutriments, alcohol_100g: 0 } },
+      'x',
+      RECORDED_AT,
+    )!;
+    expect('alcoholG' in read.amounts).toBe(false);
+  });
+
+  it('files FoodData Central\'s ethyl alcohol under alcohol', () => {
+    const read = readFdcNutrition(
+      { foodNutrients: [fdcNutrient(1008, 'KCAL', 43), fdcNutrient(221, 'G', 3.9)] },
+      RECORDED_AT,
+    )!;
+    expect(read.amounts.alcoholG).toBe(3.9);
+  });
+});

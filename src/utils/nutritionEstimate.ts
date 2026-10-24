@@ -1,5 +1,6 @@
 import type { NutrientKey, FoodNutrition, FoodBreakdownLine } from '../types';
 import { EXTERNAL_NUTRIENT_KEYS } from '../types';
+import { stripZeroAlcohol } from './alcohol';
 
 /**
  * A model's estimate of what a described meal contains, and the rules about
@@ -255,6 +256,7 @@ export function readBreakdown(value: unknown): EstimateIngredient[] {
       const value = amount((source as Record<string, unknown>)[key]);
       if (value !== undefined) amounts[key] = value;
     }
+    stripZeroAlcohol(amounts);
     if (Object.keys(amounts).length === 0) continue;
     out.push({ label, amounts });
   }
@@ -343,6 +345,7 @@ export function readNutritionEstimate(
     const value = amount(source[key]);
     if (value !== undefined) amounts[key] = value;
   }
+  stripZeroAlcohol(amounts);
   if (Object.keys(amounts).length === 0) return null;
 
   return {

@@ -1,3 +1,4 @@
+import { US_STANDARD_DRINK_G, alcoholGramsOf, describeDrinks } from './alcohol';
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey, SavedMeal, SavedMealItem } from '../types';
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
 import { aisleForName } from './groceryAisles';
@@ -1064,11 +1065,17 @@ export function nutrientContributions(
  * say them: the day's water entry is written in millilitres and shown in the
  * unit the person picked (`waterEntryQuantity`).
  */
-export function describeFoodLogEntry(entry: FoodLogEntry, quantity: string = entry.quantity): string {
+export function describeFoodLogEntry(
+  entry: FoodLogEntry,
+  quantity: string = entry.quantity,
+  drinkGrams: number = US_STANDARD_DRINK_G,
+): string {
   const calories = entry.nutrition.amounts.calorieKcal;
   const parts: string[] = [];
   if (quantity.trim()) parts.push(quantity.trim());
   if (calories !== undefined) parts.push(`${Math.round(calories)} cal`);
+  const alcoholG = alcoholGramsOf(entry.nutrition);
+  if (alcoholG > 0) parts.push(describeDrinks(alcoholG, drinkGrams));
   // A nutrient logged on its own (the day's water, a task's sodium) carries no
   // provenance. Its `manual` source only records that no label or database was
   // asked, and "typed in" read as a claim about how this row got here: a glass

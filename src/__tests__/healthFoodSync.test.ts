@@ -262,3 +262,32 @@ describe('pendingWriteAction', () => {
     expect(pendingWriteAction({ ...logged(0), createdAt: 'not a date' }, now)).toBe('drop');
   });
 });
+
+describe('alcohol', () => {
+  it('is written as a count of US drinks under its own key, never as grams', async () => {
+    mockSettings = { healthWriteEnabled: true, healthWriteNutrients: [...ALL_NUTRIENT_KEYS, 'alcoholG'] };
+    await logFoodEntryToHealth(entry({ calorieKcal: 150, alcoholG: 21 }, 'Lager'));
+    expect(mockWriteFoodSamples).toHaveBeenLastCalledWith(
+      'Lager',
+      '2026-09-10T12:47:00.000Z',
+      { calorieKcal: 150, alcoholDrinks: 1.5 },
+    );
+  });
+
+  it('writes a drink with nothing else stated', async () => {
+    mockSettings = { healthWriteEnabled: true, healthWriteNutrients: [...ALL_NUTRIENT_KEYS, 'alcoholG'] };
+    const result = await logFoodEntryToHealth(entry({ alcoholG: 14 }, 'Shot'));
+    expect(result.outcome).toBe('written');
+    expect(mockWriteFoodSamples).toHaveBeenLastCalledWith('Shot', '2026-09-10T12:47:00.000Z', { alcoholDrinks: 1 });
+  });
+
+  it('never writes a zero count for a meal with no alcohol', () => {
+    expect(writableFoodAmounts(nutrition({ calorieKcal: 600, alcoholG: 0 }))).toEqual({ calorieKcal: 600 });
+  });
+
+  it('is left out when the person excluded it from Health', async () => {
+    mockSettings = { healthWriteEnabled: true, healthWriteNutrients: ALL_NUTRIENT_KEYS };
+    await logFoodEntryToHealth(entry({ calorieKcal: 150, alcoholG: 14 }, 'Lager'));
+    expect(mockWriteFoodSamples).toHaveBeenLastCalledWith('Lager', '2026-09-10T12:47:00.000Z', { calorieKcal: 150 });
+  });
+});
