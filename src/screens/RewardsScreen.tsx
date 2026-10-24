@@ -1429,7 +1429,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rewardActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   // Delete (edit only) sits under the Linked habit field, which has no bottom margin of its own.
   draftActions: { marginTop: spacing.md },
-  draftHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xs },
+  draftHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xs, marginBottom: spacing.smd },
   draftHeaderTitle: {
     flex: 1, textAlign: 'center', color: colors.text,
     fontSize: font.md, fontWeight: fontWeight.semibold,
