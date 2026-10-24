@@ -7,7 +7,6 @@ import {
   dbDeleteDishRating,
 } from '../db/database';
 import { generateId } from '../utils/id';
-import { dayKeyToDate, getLogicalDayKey } from '../utils/dateUtils';
 import {
   applyDishPatch,
   buildDishRating,
@@ -38,7 +37,7 @@ interface DishRatingStore {
    * Session-only on purpose: an unanswered question is not worth carrying to
    * tomorrow, and ignoring it costs nothing (`DishRatingOffer`).
    */
-  offer: { name: string; /** The day the meal was eaten, which "last had" is stamped with. */ dayKey: string } | null;
+  offer: { name: string; lastHadAt: Date } | null;
   initialize: () => void;
   /**
    * Saves a dish, or returns the one already saved under the same name and
@@ -51,10 +50,10 @@ interface DishRatingStore {
   removeDish: (id: string) => void;
   /**
    * Raises the question for a meal just logged, unless the dish already has an
-   * answer. `dayKey` is the day the meal was logged on (today, by the person's
-   * own day boundary, when omitted).
+   * answer. `lastHadAt` is a moment on the logical day the meal belongs to
+   * (`offerDishRating` computes it), which is the day the dish is saved under.
    */
-  offerRating: (label: string, dayKey?: string) => void;
+  offerRating: (label: string, lastHadAt: Date) => void;
   /** Answers it: rates the saved dish of that name, or saves one with no place. */
   rateOffered: (verdict: DishVerdict) => void;
   dismissOffer: () => void;
@@ -113,9 +112,9 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
     set({ dishes: get().dishes.filter(d => d.id !== id) });
   },
 
-  offerRating(label, dayKey) {
+  offerRating(label, lastHadAt) {
     const offer = dishOfferFor(get().dishes, label);
-    set({ offer: offer ? { ...offer, dayKey: dayKey ?? getLogicalDayKey(new Date()) } : null });
+    set({ offer: offer ? { ...offer, lastHadAt } : null });
   },
 
   rateOffered(verdict) {
@@ -123,9 +122,8 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
     set({ offer: null });
     if (!offer) return;
     const known = dishForLabel(get().dishes, offer.name);
-    const hadOn = dayKeyToDate(offer.dayKey);
-    if (known) get().updateDish(known.id, { verdict, lastHadAt: hadOn });
-    else get().addDish({ name: offer.name, verdict, lastHadAt: hadOn });
+    if (known) get().updateDish(known.id, { verdict, lastHadAt: offer.lastHadAt });
+    else get().addDish({ name: offer.name, verdict, lastHadAt: offer.lastHadAt });
   },
 
   dismissOffer() {

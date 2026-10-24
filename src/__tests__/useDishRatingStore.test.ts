@@ -94,45 +94,49 @@ describe('setVerdict, updateDish and removeDish', () => {
   });
 });
 
+const DAY = new Date(2026, 9, 23, 2, 0);
+
 describe('the rating offer', () => {
   it('is raised for an unrated dish and not for a rated one', () => {
-    state().offerRating('Pad see ew');
-    expect(state().offer).toEqual({ name: 'Pad see ew', dayKey: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    state().offerRating('Pad see ew', DAY);
+    expect(state().offer).toEqual({ name: 'Pad see ew', lastHadAt: DAY });
     state().addDish({ name: 'Soup', verdict: 'fine' });
-    state().offerRating('soup');
+    state().offerRating('soup', DAY);
     expect(state().offer).toBeNull();
   });
 
-  it('stamps "last had" with the day the meal was logged on, not the day it was answered', () => {
-    state().offerRating('Pad see ew', '2026-10-01');
-    state().rateOffered('loved');
-    expect(state().dishes[0].lastHadAt).toBe(new Date(2026, 9, 1, 12).toISOString());
-  });
-
   it('survives a reload of the store', () => {
-    state().offerRating('Pad see ew');
+    state().offerRating('Pad see ew', DAY);
     state().initialize();
     expect(state().offer).toEqual(expect.objectContaining({ name: 'Pad see ew' }));
   });
 
   it('saves a new dish with no place when answered', () => {
-    state().offerRating('Pad see ew');
+    state().offerRating('Pad see ew', DAY);
     state().rateOffered('loved');
     expect(state().offer).toBeNull();
     expect(state().dishes).toHaveLength(1);
     expect(state().dishes[0]).toEqual(expect.objectContaining({ name: 'Pad see ew', place: null, verdict: 'loved' }));
   });
 
+  it('dates the dish by the day the meal belongs to, not the moment it was answered', () => {
+    state().offerRating('Pad see ew', DAY);
+    state().rateOffered('loved');
+    const stored = state().dishes[0];
+    expect(new Date(stored.lastHadAt!).getDate()).toBe(23);
+    expect(new Date(stored.lastHadAt!).getHours()).toBe(12);
+  });
+
   it('rates the saved dish of that name rather than adding a second', () => {
     const saved = state().addDish({ name: 'Pad see ew', place: 'Thai Orchid' })!;
-    state().offerRating('Pad see ew');
+    state().offerRating('Pad see ew', DAY);
     state().rateOffered('avoid');
     expect(state().dishes).toHaveLength(1);
     expect(state().dishes.find(d => d.id === saved.id)!.verdict).toBe('avoid');
   });
 
   it('drops the question when dismissed, and writes nothing', () => {
-    state().offerRating('Pad see ew');
+    state().offerRating('Pad see ew', DAY);
     state().dismissOffer();
     expect(state().offer).toBeNull();
     expect(dbInsertDishRating).not.toHaveBeenCalled();

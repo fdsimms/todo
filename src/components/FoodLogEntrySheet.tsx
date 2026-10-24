@@ -41,8 +41,7 @@ import { border, font, fontWeight, iconSize, interaction, radius, spacing, type 
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type ItemProduct, type ItemSubLink, type MealSlot, type Recipe, type SavedMeal, type SavedMealItem } from '../types';
 import { itemFromPick } from '../utils/savedMealReview';
 import { useGroceryStore } from '../store/useGroceryStore';
-import { useDishRatingStore } from '../store/useDishRatingStore';
-import { isEatenOutDraft } from '../utils/dishRating';
+import { offerDishRating } from '../utils/dishOffer';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
 import { subDays } from 'date-fns/subDays';
@@ -1425,7 +1424,7 @@ export function FoodLogEntrySheet({
     if (draft.productId) useGroceryStore.getState().offerProductRating(draft.productId);
     // A meal described in words has no catalog row to rate, so the question is
     // about the dish itself (DishRatingOffer).
-    else if (isEatenOutDraft(draft)) useDishRatingStore.getState().offerRating(draft.label, getLogicalDayKey(at));
+    else offerDishRating({ ...draft, at: draft.at ?? new Date() });
     return true;
   };
 
