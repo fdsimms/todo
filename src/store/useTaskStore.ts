@@ -223,7 +223,7 @@ import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime, draftHasEstimate, estimatedMinutesFor } from '../utils/effort';
-import { isSlotInCandidate, planSlotIns, slotHoldPatch, slotLandPatch, slotReleasePatch, canSlotIn, effectiveSlotIn } from '../utils/slotIn';
+import { isSlotInCandidate, slotWaitingTasks, planSlotIns, slotHoldPatch, slotLandPatch, slotReleasePatch, canSlotIn, effectiveSlotIn } from '../utils/slotIn';
 import {
   ruleEstimateDraft, withRuleEstimate, withGeneratorEstimate, holdsKindEstimate,
 } from '../utils/ruleEstimate';
@@ -452,6 +452,7 @@ import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import {
   isTravelTaskStale,
   matchedTravelTasks,
+  travelEventOf,
   travelOriginKey,
   travelSourceOf,
   travelTaskTitle,
@@ -2507,6 +2508,7 @@ interface TaskStore extends UndoHistoryActions {
   driftingTasks: () => DriftEntry[];
   deferredTasks: () => Task[];
   expiredTasks: () => Task[];
+  slotWaitingTasks: () => Task[];
   vacationHiddenTasks: () => Task[];
   pinnedTasks: () => Task[];
   completedTasks: () => Task[];
@@ -8168,14 +8170,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const now = new Date();
     const nowMs = now.getTime();
 
+    const handled = pruneHandledEventTasks(settings.travelTaskHandled, now);
+
     liveGeneratedTasksOfKind(get().tasks, 'travel')
       .filter(task => {
         const sourceId = travelSourceOf(task);
-        return !sourceId || isTravelTaskStale(sourceId, calendar.events, now);
+        return !sourceId || isTravelTaskStale(sourceId, calendar.events, now, settings.travelEventPrefs);
       })
-      .forEach(task => deleteGeneratedTaskQuietly(task.id));
-
-    const handled = pruneHandledEventTasks(settings.travelTaskHandled, now);
+      .forEach(task => {
+        // A row cleared because its event was turned off is forgotten as well, so
+        // turning the event back on writes it again. A row the user deleted
+        // keeps its handled entry, which is what stops it coming back.
+        const sourceId = travelSourceOf(task);
+        const event = sourceId ? travelEventOf(sourceId, calendar.events) : null;
+        if (sourceId && event && settings.travelEventPrefs[event.id]?.skip) delete handled[sourceId];
+        deleteGeneratedTaskQuietly(task.id);
+      });
     // Through the end of the logical tomorrow, so the evening before is
     // enough to queue a morning reminder. Off getCurrentDayStart rather than
     // the clock: at 1am under a 2am reset, "tomorrow" is still a day away.
@@ -11179,6 +11189,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     return liveListRows(tasks, completionHoldIds)
       .filter(t => !t.parentId && isTaskExpired(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+
+  slotWaitingTasks() {
+    const { tasks, completionHoldIds } = get();
+    return slotWaitingTasks(liveListRows(tasks, completionHoldIds), getCurrentLogicalDayKey());
   },
 
   vacationHiddenTasks() {

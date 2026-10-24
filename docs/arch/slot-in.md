@@ -80,6 +80,14 @@ Turning the setting off releases the task at the next pass (`slotReleasePatch`).
 MCP server also lift a live hold straight away when the answer becomes "Keep the date", since
 otherwise the task would stay hidden until tomorrow for no reason anyone could see.
 
+## Where a held task shows
+
+On Later it sorts under "Waiting for a lighter day" with a "Waiting since" chip. On Today it is a
+footer reveal beside "later today" and "expired" (`SlotWaitingSection`, fed by `slotWaitingTasks`),
+collapsed by default. It is deliberately **not a block at the top of Today**: the feature exists so a
+person doesn't have to look at these tasks, and the rows are the ordinary actionable ones (no drag,
+since a held task has no slot in the category order).
+
 ## From quick add, a template, and Backfill
 
 - **Quick add**: `~` before a date ("call the dentist ~thu") sets the date and `slotIn: true`

@@ -102,6 +102,12 @@ export interface TravelEventPref {
    * "no override" and a Settings default of a saved place has to be overridable.
    */
   originPlaceId: string | null;
+  /**
+   * True when this event gets no "Leave for" task at all ("Don't add a leave-by
+   * task" in the Getting there picker). The other three fields are kept as they
+   * were, so picking a mode again picks up where the event left off.
+   */
+  skip: boolean;
 }
 
 /** `TravelEventPref.originPlaceId` for an event whose trip starts from the phone's position. */
@@ -137,13 +143,14 @@ export function parseTravelEventPrefs(raw: unknown): TravelEventPrefs {
   const out: Record<string, TravelEventPref> = {};
   for (const [eventId, entry] of Object.entries(value as Record<string, unknown>)) {
     if (!eventId || !entry || typeof entry !== 'object') continue;
-    const { mode, arriveEarlyMinutes, originPlaceId } = entry as Record<string, unknown>;
+    const { mode, arriveEarlyMinutes, originPlaceId, skip } = entry as Record<string, unknown>;
     const pref: TravelEventPref = {
       mode: TRAVEL_MODES.find(m => m === mode) ?? null,
       arriveEarlyMinutes: parseArriveEarlyOverride(arriveEarlyMinutes),
       originPlaceId: typeof originPlaceId === 'string' && originPlaceId ? originPlaceId : null,
+      skip: skip === true,
     };
-    if (pref.mode !== null || pref.arriveEarlyMinutes !== null || pref.originPlaceId !== null) out[eventId] = pref;
+    if (pref.mode !== null || pref.arriveEarlyMinutes !== null || pref.originPlaceId !== null || pref.skip) out[eventId] = pref;
   }
   return out;
 }
@@ -453,8 +460,8 @@ export function eventHasLocation(event: Pick<BusyEvent, 'location'>): boolean {
  * its location (a booked conference room beside a Zoom link in the notes). The
  * link is the answer to "where is it": people join from wherever they are.
  */
-export function eventIsTravelEligible(event: BusyEvent, now: Date): boolean {
-  return !event.allDay && !event.videoCall && eventHasLocation(event) && eventIsRuleEligible(event, now);
+export function eventIsTravelEligible(event: BusyEvent, now: Date, prefs: TravelEventPrefs = {}): boolean {
+  return !prefs[event.id]?.skip && !event.allDay && !event.videoCall && eventHasLocation(event) && eventIsRuleEligible(event, now);
 }
 
 /** The moment to leave: the event's start, less the lead. Null for a start that doesn't parse. */
@@ -535,7 +542,7 @@ export function matchedTravelTasks(
 ): TravelMatch[] {
   const out: TravelMatch[] = [];
   const eligible = events
-    .filter(event => eventIsTravelEligible(event, now) && Date.parse(event.start) < horizonEnd.getTime())
+    .filter(event => eventIsTravelEligible(event, now, prefs) && Date.parse(event.start) < horizonEnd.getTime())
     .sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
   for (const event of eligible) {
     // The key a task was already written under wins, so a row filed under the
@@ -610,11 +617,13 @@ export function isTravelTaskStale(
   sourceId: string,
   events: readonly BusyEvent[],
   now: Date,
+  /** An event the user turned its task off for is no longer eligible, so its row goes (quietly, via the sweep). */
+  prefs: TravelEventPrefs = {},
 ): boolean {
   const start = travelSourceStart(sourceId);
   if (start === null) return true;
   if (start <= now.getTime()) return false;
-  return !events.some(event => eventIsTravelEligible(event, now) && eventOccurrenceKeys(event).includes(sourceId));
+  return !events.some(event => eventIsTravelEligible(event, now, prefs) && eventOccurrenceKeys(event).includes(sourceId));
 }
 
 /**

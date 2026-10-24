@@ -612,6 +612,45 @@ function ExpiredSection({
   );
 }
 
+// Collapsible reveal for tasks the slot-in pass is holding back until a day
+// with room. Shaped like ExpiredSection and sat beside it, so a held task is one
+// tap from the list without a block of its own at the top of Today.
+function SlotWaitingSection({
+  tasks,
+  expanded,
+  onToggle,
+  renderWaitingTask,
+  styles,
+  colors,
+}: {
+  tasks: Task[];
+  expanded: boolean;
+  onToggle: () => void;
+  renderWaitingTask: (task: Task) => React.ReactNode;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  if (tasks.length === 0) return null;
+  return (
+    <View style={styles.hiddenSection}>
+      <TouchableOpacity
+        style={styles.hiddenToggle}
+        onPress={onToggle}
+        activeOpacity={interaction.activeOpacity}
+      >
+        <Ionicons name="hourglass-outline" size={13} color={colors.textTertiary} />
+        <Text style={styles.hiddenToggleText}>
+          {expanded ? 'Hide' : 'Show'} {tasks.length} waiting for a lighter day
+        </Text>
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+      </TouchableOpacity>
+      {expanded && tasks.map(task => (
+        <React.Fragment key={task.id}>{renderWaitingTask(task)}</React.Fragment>
+      ))}
+    </View>
+  );
+}
+
 // Id on the view switch's channel while a pill tap is waiting for its list.
 const VIEW_SWITCHING = 'switching';
 
@@ -813,6 +852,7 @@ export function TodayScreen() {
     [unscheduledTasksAll, filterTypes],
   );
   const expiredTasks = useTaskStore(useShallow(s => (showingToday ? s.expiredTasks() : NO_TASKS)));
+  const slotWaitingTasks = useTaskStore(useShallow(s => (showingToday ? s.slotWaitingTasks() : NO_TASKS)));
   const vacationHiddenTasks = useTaskStore(
     useShallow(s => (showingToday || viewMode === 'later' ? s.vacationHiddenTasks() : NO_TASKS)),
   );
@@ -1096,6 +1136,7 @@ export function TodayScreen() {
   }, [showingToday, pinnedTasks.length]);
   const [showHidden, setShowHidden] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
+  const [showSlotWaiting, setShowSlotWaiting] = useState(false);
   // Persisted: folding a section shut is a statement about how you want the
   // list to look, and it used to be forgotten on every cold start. Kept as a
   // Set here (the three call sites below all ask "is this one collapsed") and
@@ -4487,6 +4528,21 @@ export function TodayScreen() {
             setShowExpired(v => !v);
           }}
           renderExpiredTask={renderHiddenTask}
+          styles={styles}
+          colors={colors}
+        />
+      )}
+      {viewMode === 'today' && (
+        <SlotWaitingSection
+          tasks={slotWaitingTasks}
+          expanded={showSlotWaiting}
+          onToggle={() => {
+            haptics.tap();
+            animateLayout();
+            setExpandedTaskId(null);
+            setShowSlotWaiting(v => !v);
+          }}
+          renderWaitingTask={renderHiddenTask}
           styles={styles}
           colors={colors}
         />

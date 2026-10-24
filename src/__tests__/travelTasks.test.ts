@@ -473,13 +473,13 @@ describe('per-event travel overrides', () => {
     expect(parseTravelEventPrefs('not json')).toEqual({});
     expect(parseTravelEventPrefs({ a: { mode: 'rocket', arriveEarlyMinutes: null } })).toEqual({});
     expect(parseTravelEventPrefs({ a: { mode: null, arriveEarlyMinutes: 999 } })).toEqual({
-      a: { mode: null, arriveEarlyMinutes: 60, originPlaceId: null },
+      a: { mode: null, arriveEarlyMinutes: 60, originPlaceId: null, skip: false },
     });
   });
 
   it('keeps an entry that overrides only the starting point', () => {
     expect(parseTravelEventPrefs({ a: { mode: null, arriveEarlyMinutes: null, originPlaceId: 'p1' } })).toEqual({
-      a: { mode: null, arriveEarlyMinutes: null, originPlaceId: 'p1' },
+      a: { mode: null, arriveEarlyMinutes: null, originPlaceId: 'p1', skip: false },
     });
     expect(parseTravelEventPrefs({ a: { originPlaceId: '' } })).toEqual({});
   });
@@ -492,7 +492,7 @@ describe('per-event travel overrides', () => {
 
   it('keeps an explicit on-time pick apart from following the default', () => {
     const parsed = parseTravelEventPrefs({ a: { mode: null, arriveEarlyMinutes: 0, originPlaceId: null } });
-    expect(parsed).toEqual({ a: { mode: null, arriveEarlyMinutes: 0, originPlaceId: null } });
+    expect(parsed).toEqual({ a: { mode: null, arriveEarlyMinutes: 0, originPlaceId: null, skip: false } });
     expect(arriveEarlyFor('a', parsed, 10)).toBe(0);
     expect(arriveEarlyFor('b', parsed, 10)).toBe(10);
   });
@@ -529,6 +529,30 @@ describe('per-event travel overrides', () => {
     expect(match.estimate?.minutes).toBe(12);
   });
 
+  it('keeps an entry that only turns the event off, and nothing else', () => {
+    expect(parseTravelEventPrefs({ a: { skip: true } })).toEqual({
+      a: { mode: null, arriveEarlyMinutes: null, originPlaceId: null, skip: true },
+    });
+    expect(parseTravelEventPrefs({ a: { skip: 'yes' } })).toEqual({});
+    expect(parseTravelEventPrefs({ a: { mode: 'walking', skip: true } }).a).toMatchObject({ mode: 'walking', skip: true });
+  });
+
+  it('writes no task for an event turned off, and still writes one for its neighbor', () => {
+    const skipped = parseTravelEventPrefs({ 'evt-1': { skip: true } });
+    const other = event({ id: 'evt-2' });
+    const matches = matchedTravelTasks(LEADS, [event(), other], NOW, HORIZON, {}, undefined, skipped);
+    expect(matches.map(m => m.event.id)).toEqual(['evt-2']);
+  });
+
+  it('treats a live row for an event turned off as stale, but only while the event is ahead', () => {
+    const skipped = parseTravelEventPrefs({ 'evt-1': { skip: true } });
+    const id = travelSourceId(event());
+    expect(isTravelTaskStale(id, [event()], NOW)).toBe(false);
+    expect(isTravelTaskStale(id, [event()], NOW, skipped)).toBe(true);
+    const during = new Date(Date.parse(event().start) + 60 * 1000);
+    expect(isTravelTaskStale(id, [event()], during, skipped)).toBe(false);
+  });
+
   it('describes arrival in plain words', () => {
     expect(describeArrival(0)).toBe('On time');
     expect(describeArrival(10)).toBe('10 min early');
@@ -561,8 +585,8 @@ describe('walk-under threshold', () => {
 
   it('applies only to an event with no mode of its own and a non-walking Settings mode', () => {
     expect(travelWalkUnderFor('e1', {}, 'driving', 20)).toBe(20);
-    expect(travelWalkUnderFor('e1', { e1: { mode: 'transit', arriveEarlyMinutes: 0, originPlaceId: null } }, 'driving', 20)).toBe(0);
-    expect(travelWalkUnderFor('e1', { e1: { mode: null, arriveEarlyMinutes: 5, originPlaceId: null } }, 'driving', 20)).toBe(20);
+    expect(travelWalkUnderFor('e1', { e1: { mode: 'transit', arriveEarlyMinutes: 0, originPlaceId: null, skip: false } }, 'driving', 20)).toBe(0);
+    expect(travelWalkUnderFor('e1', { e1: { mode: null, arriveEarlyMinutes: 5, originPlaceId: null, skip: false } }, 'driving', 20)).toBe(20);
     expect(travelWalkUnderFor('e1', {}, 'walking', 20)).toBe(0);
   });
 
