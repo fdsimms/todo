@@ -16,10 +16,12 @@ import { dbTaskAttachmentNames } from '../db/database';
 import { readStoredFileBase64, storedFileOnDevice, writeStoredFile } from './recipePhoto';
 import { isSyncImageName } from './syncMerge';
 import { TASK_FILE_FOLDER, isTaskFileName } from './taskFiles';
+import { isDishPhotoName } from './dishPhotos';
 
 /** Which adapter a name a peer sent belongs to. Pure. */
-export function routeStoredFileName(name: string): 'task' | 'recipe' {
-  return isTaskFileName(name) ? 'task' : 'recipe';
+export function routeStoredFileName(name: string): 'task' | 'dish' | 'recipe' {
+  if (isTaskFileName(name)) return 'task';
+  return isDishPhotoName(name) ? 'dish' : 'recipe';
 }
 
 /** Every task file this device's rows name. */

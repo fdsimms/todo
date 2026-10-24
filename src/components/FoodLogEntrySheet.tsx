@@ -41,6 +41,8 @@ import { border, font, fontWeight, iconSize, interaction, radius, spacing, type 
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type ItemProduct, type ItemSubLink, type MealSlot, type Recipe, type SavedMeal, type SavedMealItem } from '../types';
 import { itemFromPick } from '../utils/savedMealReview';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useDishRatingStore } from '../store/useDishRatingStore';
+import { isEatenOutDraft } from '../utils/dishRating';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
 import { subDays } from 'date-fns/subDays';
@@ -1421,6 +1423,9 @@ export function FoodLogEntrySheet({
     // Eating a catalog product is a moment the person has certainly tried it:
     // ask how it was if it hasn't been rated (ProductRatingOffer).
     if (draft.productId) useGroceryStore.getState().offerProductRating(draft.productId);
+    // A meal described in words has no catalog row to rate, so the question is
+    // about the dish itself (DishRatingOffer).
+    else if (isEatenOutDraft(draft)) useDishRatingStore.getState().offerRating(draft.label);
     return true;
   };
 

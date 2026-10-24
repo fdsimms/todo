@@ -12,6 +12,8 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, EXTERNAL_NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useDishRatingStore } from '../store/useDishRatingStore';
+import { DISH_VERDICT_LABELS, dishForLabel } from '../utils/dishRating';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { MAX_PENDING_ESTIMATES, isQueueableFailure, type PendingEstimate } from '../utils/estimateQueue';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -351,6 +353,10 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   // Real data the user already owns beats a guess, so every offer is made
   // before the request rather than after it comes back.
   //
+  // The answers given to restaurant dishes (Dishes), so a food you have had
+  // before can say whether you would order it again.
+  const ratedDishes = useDishRatingStore(s => s.dishes);
+
   // Matched per clause of the description (see `descriptionClauses`), not
   // over the whole string: "31 g baguette, 25g peach jam" is two foods, and
   // matching the whole thing as one query can surface a food that's only in
@@ -1136,7 +1142,11 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
 
   const renderStagedRow = (row: PendingRecallLog, index: number) => {
     const { food } = row;
-    const meta = row.kind === 'recall' ? describeRecall(row.food) : describeCatalogRecall(row.food);
+    const baseMeta = row.kind === 'recall' ? describeRecall(row.food) : describeCatalogRecall(row.food);
+    // Only the answer the person gave, never one inferred: a dish with no
+    // answer yet adds nothing here.
+    const ratedVerdict = row.kind === 'recall' ? dishForLabel(ratedDishes, food.label)?.verdict : null;
+    const meta = ratedVerdict ? `${baseMeta} · ${DISH_VERDICT_LABELS[ratedVerdict]}` : baseMeta;
     if (pendingLog?.kind === row.kind && pendingLog.food.key === food.key && pendingAmount) {
       const ask = askFor(row);
       const write = stagedWrite(row, pendingAmount);

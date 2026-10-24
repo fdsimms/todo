@@ -354,8 +354,10 @@ const RECIPE_IMAGE_DIR = 'recipe-images';
  * - `journal-photos`: a journal entry's photos, which stay on the device and
  *   travel only in backups, as the journal stays off iCloud.
  * - `task-files`: a task's photos and files (`Task.attachments`).
+ * - `dish-photos`: one photo per restaurant dish (`DishRating.photo`), synced
+ *   like a task file and routed by the `dish-` name prefix.
  */
-export type StoredFileFolder = 'recipe-images' | 'journal-photos' | 'task-files';
+export type StoredFileFolder = 'recipe-images' | 'journal-photos' | 'task-files' | 'dish-photos';
 
 export interface RecipeImageAttachment {
   /** file:// URI under the app's document directory — survives a relaunch. */
@@ -406,12 +408,13 @@ function recipeImageDirectory(): import('expo-file-system').Directory {
 }
 
 /**
- * What a new file's name starts with in each folder. Task files say so in their
- * name because they share sync's one flat namespace with the recipe photos, and
+ * What a new file's name starts with in each folder. Task files and dish photos
+ * say so in their name because they share sync's one flat namespace with the recipe photos, and
  * the prefix is how a name a peer sends finds its folder (`taskFileSync.ts`).
  */
 function storedFilePrefix(folder: StoredFileFolder): string {
-  return folder === 'task-files' ? 'task-' : '';
+  if (folder === 'task-files') return 'task-';
+  return folder === 'dish-photos' ? 'dish-' : '';
 }
 
 /** One of the stored-file folders, created on first use. */

@@ -98,6 +98,7 @@ import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useDishRatingStore } from '../store/useDishRatingStore';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { effectiveCookwareType } from '../utils/cookware';
 import { useJournalStore } from '../store/useJournalStore';
@@ -2677,6 +2678,15 @@ describe('demo seed — people', () => {
     const days = buildMoodDays(useMoodStore.getState().logs, [], '00:00');
     const contrast = milestoneMoodContrast(days, dayKeyOf(new Date(milestones[0].date)));
     expect(contrast).not.toBeNull();
+  });
+
+  it('seeds restaurant dishes across places and every answer, plus one with no place', () => {
+    // The Dishes list groups by place and filters by answer, so each of those
+    // needs something to show or the screen reads as a feature the app lacks.
+    const dishes = useDishRatingStore.getState().dishes;
+    expect(new Set(dishes.map(d => d.verdict))).toEqual(new Set(['loved', 'fine', 'avoid']));
+    expect(new Set(dishes.map(d => d.placeKey)).size).toBeGreaterThan(2);
+    expect(dishes.some(d => d.place === null)).toBe(true);
   });
 
   it('seeds a couple of nutrition targets, so the totals read against something', () => {

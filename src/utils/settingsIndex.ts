@@ -1123,6 +1123,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['size', 'space', 'images', 'pictures', 'diary'] },
   { id: 'storageTaskFiles', groupId: 'dataReset', label: 'Task photos and files', section: 'Storage',
     keywords: ['size', 'space', 'images', 'attachments', 'documents', 'pdf'] },
+  { id: 'storageDishPhotos', groupId: 'dataReset', label: 'Dish photos', section: 'Storage',
+    keywords: ['size', 'space', 'images', 'pictures', 'restaurant', 'dishes'] },
   { id: 'optimizeStorage', groupId: 'dataReset', label: 'Compact the database', section: 'Storage',
     keywords: ['vacuum', 'shrink', 'space', 'free', 'size', 'optimize', 'reclaim', 'smaller'] },
   { id: 'demoMode', groupId: 'dataReset', label: 'Demo mode', section: 'Demo',

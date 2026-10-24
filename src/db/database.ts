@@ -14,6 +14,8 @@ import type {
   CoinEntry,
   Reward,
   Milestone,
+  DishRating,
+  DishVerdict,
   Cookware,
   CopyFlag,
   TaskAttachment,
@@ -544,6 +546,22 @@ function runInitDatabase(): void {
       id TEXT PRIMARY KEY NOT NULL,
       label TEXT NOT NULL,
       date TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    -- A restaurant dish and whether you would order it again — see DishRating
+    -- in types/index.ts. No unique key on (place_key, name_key): see the note
+    -- there on why two devices adding one dish are left as two rows.
+    CREATE TABLE IF NOT EXISTS dish_ratings (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      name_key TEXT NOT NULL,
+      place TEXT,
+      place_key TEXT NOT NULL DEFAULT '',
+      verdict TEXT,
+      note TEXT,
+      last_had_at TEXT,
+      photo TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -2862,6 +2880,8 @@ export const BACKUP_TABLES = [
   'mood_logs',
   // Also points at nothing, for the same reason and beside the same neighbor.
   'milestones',
+  // A dish rating points at nothing: its place is typed text, not a row.
+  'dish_ratings',
   // Copy flags point at nothing.
   'copy_flags',
   // Fasts point at nothing either.
@@ -7773,6 +7793,60 @@ export function dbUpdateMilestone(milestone: Milestone): void {
 
 export function dbDeleteMilestone(id: string): void {
   db.runSync('DELETE FROM milestones WHERE id = ?', [id]);
+}
+
+function isDishVerdict(v: unknown): v is DishVerdict {
+  return v === 'loved' || v === 'fine' || v === 'avoid';
+}
+
+/** One dish rating, mapped off its row. An unknown verdict reads as no opinion. */
+function rowToDishRating(row: Record<string, unknown>): DishRating {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    nameKey: row.name_key as string,
+    place: (row.place as string | null) ?? null,
+    placeKey: (row.place_key as string | null) ?? '',
+    verdict: isDishVerdict(row.verdict) ? row.verdict : null,
+    note: (row.note as string | null) ?? null,
+    lastHadAt: (row.last_had_at as string | null) ?? null,
+    photo: (row.photo as string | null) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllDishRatings(): DishRating[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM dish_ratings ORDER BY created_at ASC'
+  );
+  return rows.map(rowToDishRating);
+}
+
+export function dbInsertDishRating(dish: DishRating): void {
+  db.runSync(
+    `INSERT INTO dish_ratings (id, name, name_key, place, place_key, verdict, note, last_had_at, photo, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [dish.id, dish.name, dish.nameKey, dish.place, dish.placeKey, dish.verdict, dish.note, dish.lastHadAt, dish.photo, dish.createdAt]
+  );
+}
+
+export function dbUpdateDishRating(dish: DishRating): void {
+  db.runSync(
+    `UPDATE dish_ratings SET name=?, name_key=?, place=?, place_key=?, verdict=?, note=?, last_had_at=?, photo=? WHERE id=?`,
+    [dish.name, dish.nameKey, dish.place, dish.placeKey, dish.verdict, dish.note, dish.lastHadAt, dish.photo, dish.id]
+  );
+}
+
+export function dbDeleteDishRating(id: string): void {
+  db.runSync('DELETE FROM dish_ratings WHERE id = ?', [id]);
+}
+
+/** Every photo file name a dish row names, for the image sync and the launch sweep. */
+export function dbDishPhotoNames(): string[] {
+  const rows = db.getAllSync<{ photo: string }>(
+    "SELECT photo FROM dish_ratings WHERE photo IS NOT NULL AND photo <> ''"
+  );
+  return [...new Set(rows.map(r => r.photo))];
 }
 
 function rowToCookware(row: Record<string, unknown>): Cookware {

@@ -9,13 +9,19 @@ import type { BackupRow } from './backup';
 import type { StoredFileFolder } from './recipePhoto';
 
 /** The folders a backup carries besides the recipe photos, and the rows that name their files. */
-const SOURCES: { folder: Exclude<StoredFileFolder, 'recipe-images'>; table: string; column: string; key?: string }[] = [
+/**
+ * `plain` marks a column holding one file name rather than a JSON array of
+ * them (a dish's `photo`).
+ */
+const SOURCES: { folder: Exclude<StoredFileFolder, 'recipe-images'>; table: string; column: string; key?: string; plain?: boolean }[] = [
   { folder: 'journal-photos', table: 'journal_entries', column: 'photos' },
   { folder: 'task-files', table: 'tasks', column: 'attachments', key: 'name' },
+  { folder: 'dish-photos', table: 'dish_ratings', column: 'photo', plain: true },
 ];
 
-function namesIn(cell: unknown, key: string | undefined): string[] {
+function namesIn(cell: unknown, key: string | undefined, plain = false): string[] {
   if (typeof cell !== 'string' || !cell) return [];
+  if (plain) return /^[A-Za-z0-9._-]+$/.test(cell) ? [cell] : [];
   try {
     const parsed = JSON.parse(cell);
     if (!Array.isArray(parsed)) return [];
@@ -32,7 +38,7 @@ export function storedFileNamesIn(tables: Record<string, BackupRow[]>): Record<s
   const out: Record<string, string[]> = {};
   for (const source of SOURCES) {
     const names = new Set<string>();
-    for (const row of tables[source.table] ?? []) for (const name of namesIn(row[source.column], source.key)) names.add(name);
+    for (const row of tables[source.table] ?? []) for (const name of namesIn(row[source.column], source.key, source.plain)) names.add(name);
     if (names.size > 0) out[source.folder] = [...names];
   }
   return out;

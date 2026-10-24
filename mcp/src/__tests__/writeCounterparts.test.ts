@@ -43,6 +43,7 @@ const COUNTERPARTS: Record<string, string[]> = {
   log_saved_meal: ['update_food_entry', 'delete_food_entry'],
   log_mood: ['update_mood_log', 'delete_mood_log'],
   add_milestone: ['update_milestone', 'delete_milestone'],
+  add_dish: ['update_dish', 'delete_dish'],
   add_cookware: ['update_cookware', 'delete_cookware'],
   save_routine: ['save_routine', 'delete_routine'],
   save_routine_group: ['save_routine_group', 'delete_routine_group'],

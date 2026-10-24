@@ -97,6 +97,8 @@ only the fallback until the first sync.
 | `log_journal_entry` / `update_journal_entry` / `delete_journal_entry` | **Write.** A journal entry or a dream, in the person's words, with tags and people only when they named them. An entry's day is fixed once written. |
 | `resolve_copy_flag` | **Write.** Closes a copy flag once the copy has been changed in the source, with what it became. |
 | `add_milestone` / `update_milestone` / `delete_milestone` | **Write.** A milestone by label and day; the day is anchored at noon as the app's sheet does. |
+| `list_dishes` | The restaurant dishes the person rated, with place, answer (loved, fine, avoid, or none), note and last day had. |
+| `add_dish` / `update_dish` / `delete_dish` | **Write.** A dish by name and place; the same name and place updates the saved dish. An answer is only one the person gave, and photos are added in the app. |
 | `add_cookware` / `update_cookware` / `delete_cookware` | **Write.** A pot, pan, lid or tub and what it weighs empty. A recipe's `cookedWeightG` stays the food alone, so these never rewrite a recipe. |
 | `list_fasts` | The fast running now and the recent ones that ended, each with its goal and how long it ran. Part of the health record. |
 | `list_exercises` | The exercise library the app ships merged with the person's own exercises and their notes on built-in ones, each with its kind, equipment, muscles, a one-line cue any other names the person gave it and, for a dumbbell exercise, how many dumbbells it is held in (a weight is always one dumbbell's). Filters by a query (which also matches those other names), a muscle or equipment. |
