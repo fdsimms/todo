@@ -57,4 +57,3 @@ The MCP server holds no image files, so a row there only says `hasPhoto`.
 - A count or share of dishes (loved, eaten out) on Stats. If one is added it prints its coverage
   and passes no verdict, as the other counts do (`health-data.md`).
 - A "dinner at X" calendar event offering a rating, and a suggestion drawn from loved dishes.
-- Dish photos in the Storage readout.
