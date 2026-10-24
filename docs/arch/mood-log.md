@@ -927,6 +927,16 @@ silently never appears; making it appear means summing absent caffeine as zero,
 which `foodLog.ts` refuses outright. The demo seed keeps a coffee panel that
 states caffeine precisely so this is visible rather than theoretical.
 
+**Alcohol is the one key that is not a food** (`ALCOHOL_DAY_KEY`, added by `foodDayInputs`). "Alcohol" is every
+lager and margarita at once, so keyed by label it would split one habit across a dozen names and leave each
+below `MIN_CONTRAST_DAYS`. A day carries it when any entry states alcohol above zero, and it rides the same two
+gates as a food: a day logged past one meal, and `MIN_CONTRAST_DAYS` on both sides. So the "without" group is
+days that were logged and stated none, which is as honest as the log lets it be, and the card's own caution
+applies in full: a drink nobody logged reads as no drink. It is how the Mood screen and a symptom's page answer
+"is it the days I drink", and it is deliberately not a nutrient insight: alcohol is not in
+`NUTRIENT_INSIGHT_KEYS`, for caffeine's reason (it is stated on drinking days and on nothing else), and Stats
+leaves it out of its per-day averages for the same one.
+
 ## A symptom against what you ate
 
 `symptomFoodContrasts` is the elimination-diet question, and **the most loaded

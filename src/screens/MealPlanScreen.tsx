@@ -154,7 +154,7 @@ import { describeWeekNutrition, perServing, recipeNutrition, weekNutrition } fro
 import { plannedDayNutrition } from '../utils/plannedDayNutrition';
 import { normalizeScale } from '../utils/recipeScale';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
-import { activeLimits, targetedNutrients } from '../utils/nutritionTargets';
+import { activeLimits, displayFigure, targetedNutrients } from '../utils/nutritionTargets';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
@@ -597,10 +597,10 @@ export function MealPlanScreen() {
       if (logged.length === 0 && (coverage?.size ?? 0) === 0) continue;
       const { totals, uncounted } = plannedDayNutrition(coverage, logged, helpingFor);
       const items = keys.map(k => {
-        const unit = NUTRIENT_LABEL[k].unit;
-        const amount = Math.round((totals[k] ?? 0) * 10) / 10;
+        const amount = displayFigure(k, totals[k] ?? 0).value;
+        const target = displayFigure(k, nutritionTargets[k]!);
         return {
-          text: `${NUTRIENT_LABEL[k].label} ${amount.toLocaleString()} / ${nutritionTargets[k]!.toLocaleString()}${unit === 'cal' ? ' cal' : unit}`,
+          text: `${NUTRIENT_LABEL[k].label} ${amount.toLocaleString()} / ${target.value.toLocaleString()}${target.suffix}`,
           over: (totals[k] ?? 0) > nutritionTargets[k]!,
         };
       });

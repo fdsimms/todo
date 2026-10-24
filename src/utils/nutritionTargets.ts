@@ -1,3 +1,4 @@
+import { drinksFromGrams, getDisplayDrinkGrams } from './alcohol';
 import type { NutrientKey } from '../types';
 import { HEALTH_WRITABLE_NUTRIENTS, NUTRIENT_KEYS } from '../types';
 import { NUTRIENT_LABEL } from './foodNutrition';
@@ -187,9 +188,30 @@ export function describeAgainstTarget(
 ): string | null {
   const target = targets[key];
   if (target === undefined) return null;
+  const shownTarget = displayFigure(key, target);
+  return `${displayFigure(key, total ?? 0).value.toLocaleString()} of ${shownTarget.value.toLocaleString()}${shownTarget.suffix}`;
+}
+
+/**
+ * A figure as a person reads it: the number and the unit that follows it.
+ *
+ * **Alcohol is the one nutrient shown in something other than its stored
+ * unit.** The record holds grams of ethanol and everything a person reads is
+ * standard drinks at their chosen size (`alcohol.ts`), so a target, a
+ * "2 drinks left" and a widget row all go through here rather than printing the
+ * stored number beside a unit. The suffix carries its own leading space where
+ * it needs one, the way `' cal'` always has.
+ */
+export function displayFigure(key: NutrientKey, amount: number): { value: number; suffix: string } {
+  const value = key === 'alcoholG' ? round(drinksFromGrams(amount, getDisplayDrinkGrams())) : round(amount);
+  return { value, suffix: suffixFor(key, value) };
+}
+
+/** The unit after a figure: " cal", "mg", and for alcohol " drink" or " drinks" by the count shown. */
+function suffixFor(key: NutrientKey, shownValue: number): string {
+  if (key === 'alcoholG') return shownValue === 1 ? ' drink' : ' drinks';
   const unit = NUTRIENT_LABEL[key].unit;
-  const suffix = unit === 'cal' ? ' cal' : unit;
-  return `${round(total ?? 0).toLocaleString()} of ${target.toLocaleString()}${suffix}`;
+  return unit === 'cal' ? ' cal' : unit;
 }
 
 /**
@@ -380,10 +402,9 @@ export function describeLimit(
 ): string | null {
   const target = targets[key];
   if (target === undefined) return null;
-  const unit = NUTRIENT_LABEL[key].unit;
-  const suffix = unit === 'cal' ? ' cal' : unit;
-  const diff = round(target - round(total ?? 0));
+  const diff = round(displayFigure(key, target).value - displayFigure(key, total ?? 0).value);
   if (diff === 0) return 'At the limit';
+  const suffix = suffixFor(key, Math.abs(diff));
   return diff > 0
     ? `${diff.toLocaleString()}${suffix} left`
     : `${(-diff).toLocaleString()}${suffix} over`;
@@ -442,12 +463,14 @@ export function limitImpact(
  */
 export function describeLimitImpact(impact: LimitImpact): string {
   const { key, after, target } = impact;
-  const unit = NUTRIENT_LABEL[key].unit;
-  const suffix = unit === 'cal' ? ' cal' : unit;
-  const name = NUTRIENT_LABEL[key].label.toLowerCase();
-  const base = `Puts you at ${round(after).toLocaleString()} of ${target.toLocaleString()}${suffix} ${name}`;
+  const shownAfter = displayFigure(key, after).value;
+  const shownTarget = displayFigure(key, target);
+  // "3 of 4 drinks" already names what it counts, so alcohol drops the noun.
+  const name = key === 'alcoholG' ? '' : ` ${NUTRIENT_LABEL[key].label.toLowerCase()}`;
+  const base = `Puts you at ${shownAfter.toLocaleString()} of ${shownTarget.value.toLocaleString()}${shownTarget.suffix}${name}`;
   if (impact.status !== 'over') return base;
-  return `${base}, ${round(after - target).toLocaleString()}${suffix} over`;
+  const over = round(shownAfter - shownTarget.value);
+  return `${base}, ${over.toLocaleString()}${suffixFor(key, over)} over`;
 }
 
 /**

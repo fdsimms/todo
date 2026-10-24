@@ -1145,8 +1145,6 @@ export function FoodLogEntrySheet({
     return scalePanelToAmount(picked.panel, amount, null, undefined, picked.label);
   }, [picked, amount, dishMeasure, recipes, items, itemProducts, varyingResolved, swaps]);
 
-  // What this entry would do to a Stay under limit, said before Log is tapped.
-  const limitImpacts = useLimitImpact(built?.nutrition.amounts, at, { editing });
 
   // ==== alcohol: what the entry will say about it ====
   // The figures already on the entry (a scanned beer, a saved food) speak first
@@ -1166,6 +1164,11 @@ export function FoodLogEntrySheet({
   const alcoholStated = panelAlcoholG > 0;
   // The entry as it will be saved: the built figures with the row's answer in.
   const finalNutrition = built ? withAlcoholG(built.nutrition, alcoholGrams) : null;
+
+  // What this entry would do to a Stay under limit, said before Log is tapped.
+  // Read off the entry as it will be saved, so a drink the alcohol row just
+  // answered moves an alcohol limit the moment the row does.
+  const limitImpacts = useLimitImpact(finalNutrition?.amounts, at, { editing });
 
   // What's actually offered to weigh, which `weighableLine` decides rather
   // than the shape of the typed amount alone.

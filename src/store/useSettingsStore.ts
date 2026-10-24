@@ -6,7 +6,7 @@ import type { ThemeMode } from '../theme';
 import type { WeightUnit } from '../utils/weightLog';
 import type { DumbbellEntry } from '../utils/dumbbellLoad';
 import type { WaterUnit } from '../utils/waterLog';
-import { normalizeStandardDrinkGrams } from '../utils/alcohol';
+import { normalizeStandardDrinkGrams, setDisplayDrinkGrams } from '../utils/alcohol';
 import type { PlateInventory } from '../types';
 import { DEFAULT_PLATE_INVENTORY, clampRestSeconds, normalizePlateInventory, parsePlateInventory, parseRestSeconds, DEFAULT_REST_SECONDS } from '../utils/workoutData';
 import { getLogicalToday } from '../utils/dateUtils';
@@ -3549,6 +3549,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const weightUnit: WeightUnit = dbGetSetting('weightUnit') === 'lb' ? 'lb' : 'kg';
     const waterUnit: WaterUnit = dbGetSetting('waterUnit') === 'flOz' ? 'flOz' : 'ml';
     const standardDrinkGrams = normalizeStandardDrinkGrams(dbGetSetting('standardDrinkGrams'));
+    setDisplayDrinkGrams(standardDrinkGrams);
     const workoutsEnabled = dbGetSetting('workoutsEnabled') === 'true';
     // As weightUnit: anything that isn't 'lb' reads as kilograms.
     const workoutUnit: WeightUnit = dbGetSetting('workoutUnit') === 'lb' ? 'lb' : 'kg';
@@ -5856,6 +5857,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setStandardDrinkGrams(grams: number) {
     const next = normalizeStandardDrinkGrams(grams);
     dbSetSetting('standardDrinkGrams', String(next));
+    setDisplayDrinkGrams(next);
     set({ standardDrinkGrams: next });
   },
 

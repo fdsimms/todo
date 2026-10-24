@@ -22,6 +22,27 @@ export const STANDARD_DRINK_SIZES: ReadonlyArray<{ grams: number; label: string 
   { grams: 8, label: 'UK' },
 ];
 
+/**
+ * The size the person's figures are shown in, for text built far from any
+ * component (a limit's "2 drinks left", the widget, a warning task).
+ *
+ * A module-level value rather than a parameter on every one of those
+ * functions: a limit's wording is assembled in five places that have no store
+ * to read, and threading the size through all of them is how one of them ends
+ * up still saying grams. The settings store is the only writer
+ * (`setStandardDrinkGrams` and its load), so this never disagrees with the
+ * setting; a test that changes it puts it back.
+ */
+let displayDrinkGrams = US_STANDARD_DRINK_G;
+
+export function setDisplayDrinkGrams(grams: number): void {
+  displayDrinkGrams = normalizeStandardDrinkGrams(grams);
+}
+
+export function getDisplayDrinkGrams(): number {
+  return displayDrinkGrams;
+}
+
 /** A stored size that is not one of the choices reads as the US one. */
 export function normalizeStandardDrinkGrams(raw: unknown): number {
   const n = typeof raw === 'string' ? Number(raw) : raw;

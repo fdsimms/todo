@@ -10,7 +10,7 @@ import { ringsSummaryLine, type ActivityRings } from './activityRings';
 import type { NutrientKey } from '../types';
 import { NUTRIENT_LABEL } from './foodNutrition';
 import {
-  LIMIT_ROW_NAME, activeLimits, describeAgainstTarget, describeLimit, goalNutrientKeys, limitStatus, targetProgress,
+  LIMIT_ROW_NAME, activeLimits, describeAgainstTarget, displayFigure, describeLimit, goalNutrientKeys, limitStatus, targetProgress,
   type NutritionTargets,
 } from './nutritionTargets';
 
@@ -380,17 +380,16 @@ export function limitContextRows(
   return activeLimits(targets, limits).filter(key => !covered.includes(key)).map(key => {
     const total = totals[key] ?? 0;
     const target = targets[key]!;
-    const unit = NUTRIENT_LABEL[key].unit;
-    const suffix = unit === 'cal' ? ' cal' : unit;
+    const shownTarget = displayFigure(key, target);
     const name = LIMIT_ROW_NAME[key] ?? NUTRIENT_LABEL[key].label;
     const status = limitStatus(key, total, targets, opts.warnPercent);
-    const rounded = Math.round(total * 10) / 10;
+    const rounded = displayFigure(key, total).value;
     return {
       id: `limit-${key}`,
       sourceId: '',
       nutrientKey: key,
       kind: 'health' as const,
-      title: `${name} ${rounded.toLocaleString()} of ${target.toLocaleString()}${suffix}, ${describeLimit(key, total, targets)!.replace('At the limit', 'at the limit')}`,
+      title: `${name} ${rounded.toLocaleString()} of ${shownTarget.value.toLocaleString()}${shownTarget.suffix}, ${describeLimit(key, total, targets)!.replace('At the limit', 'at the limit')}`,
       caption: '',
       category: opts.category,
       now: false,

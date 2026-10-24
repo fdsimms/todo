@@ -188,6 +188,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { foodLogTotals } from '../utils/foodLog';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 import { describeAgainstTarget } from '../utils/nutritionTargets';
+import { describeDrinks } from '../utils/alcohol';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { activeLimits, limitsShownOnToday } from '../utils/nutritionTargets';
 import { useWeatherStore } from '../store/useWeatherStore';
@@ -1942,6 +1943,7 @@ export function TodayScreen() {
   };
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const standardDrinkGrams = useSettingsStore(s => s.standardDrinkGrams);
 
   // The morning check-in: recurring tasks whose day already passed with
   // nothing said about them. Shown once per logical day, on this screen's
@@ -2797,8 +2799,10 @@ export function TodayScreen() {
     if (value === undefined) return null;
     const unit = NUTRIENT_LABEL[contributorsKey].unit;
     return describeAgainstTarget(contributorsKey, value, nutritionTargets)
-      ?? `${Math.round(value).toLocaleString()}${unit === 'cal' ? '' : unit}`;
-  }, [contributorsKey, contributorsEntries, nutritionTargets]);
+      ?? (contributorsKey === 'alcoholG'
+        ? describeDrinks(value, standardDrinkGrams)
+        : `${Math.round(value).toLocaleString()}${unit === 'cal' ? '' : unit}`);
+  }, [contributorsKey, contributorsEntries, nutritionTargets, standardDrinkGrams]);
 
   // The Today widget's "Add event" shortcut (openQuickAddEventFromShortcut()
   // in navigationRef.ts, deep link dundundun://addevent) — the event

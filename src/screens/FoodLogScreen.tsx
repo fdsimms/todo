@@ -1189,7 +1189,7 @@ export function FoodLogScreen() {
   // A nutrient's day total as its totals row words it, target included, so the
   // contributors sheet can head its list with the same figure it was opened on.
   const totalText = (key: NutrientKey): string =>
-    key === 'alcoholG'
+    key === 'alcoholG' && effectiveTargets.alcoholG === undefined
       ? describeDrinks(totals.total[key] as number, standardDrinkGrams)
       : describeAgainstTarget(key, totals.total[key], effectiveTargets)
       ?? `${Math.round(totals.total[key] as number).toLocaleString()}${NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}`;
