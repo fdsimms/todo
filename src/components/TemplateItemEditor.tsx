@@ -58,6 +58,8 @@ import { StepMinutes } from './StepMinutes';
 import { StepQuestion } from './StepQuestion';
 import { StepMedication } from './StepMedication';
 import { StepLink } from './StepLink';
+import { StepNote } from './StepNote';
+import { ChainStepNoteSheet } from './ChainStepNoteSheet';
 import { nextChainStepTitle } from '../utils/chain';
 import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
 import { ChainStepMedicationSheet } from './ChainStepMedicationSheet';
@@ -342,6 +344,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
   const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
   const [linkStepId, setLinkStepId] = useState<string | null>(null);
+  const [noteStepId, setNoteStepId] = useState<string | null>(null);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const [chainIndex, setChainIndex] = useState(0);
@@ -992,6 +995,14 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               c => (c.id === medicationStepId ? { ...c, ...patch } : c),
             ))}
             onClose={() => setMedicationStepId(null)}
+          />
+          <ChainStepNoteSheet
+            visible={noteStepId !== null}
+            step={chainItems.find(c => c.id === noteStepId) ?? null}
+            onSave={patch => setChainItems(prev => prev.map(
+              c => (c.id === noteStepId ? { ...c, ...patch } : c),
+            ))}
+            onClose={() => setNoteStepId(null)}
           />
           <ChainStepLinkSheet
             visible={linkStepId !== null}
@@ -1656,6 +1667,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                         taskLinkUrl={null}
                         onPress={() => setLinkStepId(chainItem.id)}
                       />
+                      <StepNote step={chainItem} onPress={() => setNoteStepId(chainItem.id)} />
                       </View>
                     </View>
                   );

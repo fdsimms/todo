@@ -49,6 +49,8 @@ import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
 import { ChainStepMedicationSheet } from './ChainStepMedicationSheet';
 import { StepMedication } from './StepMedication';
 import { StepLink } from './StepLink';
+import { StepNote } from './StepNote';
+import { ChainStepNoteSheet } from './ChainStepNoteSheet';
 import { ChainStepLinkSheet } from './ChainStepLinkSheet';
 import { disclosureValue } from '../theme/textStyles';
 import { RotationWorkoutSheet } from './RotationWorkoutSheet';
@@ -1028,6 +1030,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [questionStepId, setQuestionStepId] = useState<string | null>(null);
   const [medicationStepId, setMedicationStepId] = useState<string | null>(null);
   const [linkStepId, setLinkStepId] = useState<string | null>(null);
+  const [noteStepId, setNoteStepId] = useState<string | null>(null);
   const [linkMemberId, setLinkMemberId] = useState<string | null>(null);
   // Which of the two "write this to a calendar" rows is asking for one.
   const [calendarPickerFor, setCalendarPickerFor] = useState<'completion' | 'deadline' | null>(null);
@@ -4135,6 +4138,16 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               onClose={() => setMedicationStepId(null)}
             />
           </LazySheet>
+          <LazySheet open={noteStepId !== null}>
+            <ChainStepNoteSheet
+              visible={noteStepId !== null}
+              step={chainItems.find(c => c.id === noteStepId) ?? null}
+              onSave={patch => setChainItems(prev => prev.map(
+                c => (c.id === noteStepId ? { ...c, ...patch } : c),
+              ))}
+              onClose={() => setNoteStepId(null)}
+            />
+          </LazySheet>
           <LazySheet open={linkStepId !== null}>
             <ChainStepLinkSheet
               visible={linkStepId !== null}
@@ -5621,6 +5634,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                               taskLinkUrl={linkUrl}
                               onPress={() => setLinkStepId(item.id)}
                             />
+                            <StepNote step={item} onPress={() => setNoteStepId(item.id)} />
                             </View>
                           </View>
                         );

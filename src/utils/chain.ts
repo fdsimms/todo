@@ -115,6 +115,7 @@ export function parseChainItems(raw: unknown): ChainItem[] {
       medicationAmount: paired ? (amount as number) : null,
       medicationUnit: paired ? unit : null,
       linkUrl: typeof c?.linkUrl === 'string' ? c.linkUrl : null,
+      notes: typeof c?.notes === 'string' && c.notes.trim() ? c.notes : null,
     };
   });
 }

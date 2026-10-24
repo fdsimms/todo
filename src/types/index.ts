@@ -231,6 +231,12 @@ export interface ChainItem {
   // step's link at every step. Resolved by `linkFor`, which prefers the
   // active step and falls back to the task.
   linkUrl?: string | null;
+  // A note for *this step* alone, shown on the row while the step is the
+  // active one, under the task's own notes. Per-step for the same reason as the
+  // fields above: `Task.notes` rides `...effective` onto every successor, so a
+  // note about "bring cash" would otherwise sit on every step of the chain.
+  // Null/absent for a step with no note.
+  notes?: string | null;
 }
 
 /**

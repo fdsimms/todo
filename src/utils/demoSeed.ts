@@ -587,7 +587,7 @@ export function seedDemoData(): void {
       // link button would open whatever the task-level Link field carried at
       // every other step too.
       { id: generateId(), title: 'Stretch for five minutes', estimatedMinutes: null, linkUrl: 'youtube://' },
-      { id: generateId(), title: 'Glass of water', estimatedMinutes: null },
+      { id: generateId(), title: 'Glass of water', estimatedMinutes: null, notes: 'Fill the bottle first so it is ready for the day.' },
     ],
   });
   updateTask(morningRoutine.id, { effort: 1 });

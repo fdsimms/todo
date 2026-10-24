@@ -994,7 +994,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
         id: 'ci', title: 'Item A', estimatedMinutes: null, deliverableKind: null,
         deliverableDatesNextStep: false,
         medicationName: null, medicationAmount: null, medicationUnit: null,
-        linkUrl: null,
+        linkUrl: null, notes: null,
       },
     ];
     dbInsertTask(makeTask({ id: 'json', tags, recurrenceDays, chainItems }));
@@ -1013,13 +1013,13 @@ describe('dbInsertTask + rowToTask round-trip', () => {
         id: 'book', title: 'Book haircut', estimatedMinutes: null,
         deliverableKind: 'date' as const, deliverableDatesNextStep: true,
         medicationName: null, medicationAmount: null, medicationUnit: null,
-        linkUrl: null,
+        linkUrl: null, notes: null,
       },
       {
         id: 'get', title: 'Get haircut', estimatedMinutes: null,
         deliverableKind: null, deliverableDatesNextStep: false,
         medicationName: null, medicationAmount: null, medicationUnit: null,
-        linkUrl: null,
+        linkUrl: null, notes: null,
       },
     ];
     dbInsertTask(makeTask({ id: 'chain-q', chainEnabled: true, chainItems }));
@@ -1035,13 +1035,13 @@ describe('dbInsertTask + rowToTask round-trip', () => {
         id: 'am', title: 'Morning pills', estimatedMinutes: null,
         deliverableKind: null, deliverableDatesNextStep: false,
         medicationName: 'Levothyroxine', medicationAmount: 75, medicationUnit: 'mcg',
-        linkUrl: null,
+        linkUrl: null, notes: null,
       },
       {
         id: 'pm', title: 'Evening pills', estimatedMinutes: null,
         deliverableKind: null, deliverableDatesNextStep: false,
         medicationName: 'Magnesium', medicationAmount: 1, medicationUnit: 'tablet',
-        linkUrl: null,
+        linkUrl: null, notes: null,
       },
     ];
     dbInsertTask(makeTask({ id: 'chain-med', chainEnabled: true, chainItems }));
@@ -1081,13 +1081,13 @@ describe('dbInsertTask + rowToTask round-trip', () => {
         id: 'email', title: 'Check email', estimatedMinutes: null,
         deliverableKind: null, deliverableDatesNextStep: false,
         medicationName: null, medicationAmount: null, medicationUnit: null,
-        linkUrl: 'googlegmail://',
+        linkUrl: 'googlegmail://', notes: null,
       },
       {
         id: 'cal', title: 'Check calendar', estimatedMinutes: null,
         deliverableKind: null, deliverableDatesNextStep: false,
         medicationName: null, medicationAmount: null, medicationUnit: null,
-        linkUrl: null,
+        linkUrl: null, notes: null,
       },
     ];
     dbInsertTask(makeTask({ id: 'chain-link', chainEnabled: true, chainItems }));
