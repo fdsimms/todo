@@ -513,9 +513,9 @@ export function resetToTask(taskId: string, handBack = false): void {
  * Unscheduled, Inbox or Archived) and scrolls it into view, rather than
  * opening its editor. Today decides where that is, because it owns the lists.
  */
-export function resetToLocateTask(taskId: string): void {
+export function resetToLocateTask(taskId: string, editorIfMissing = true): void {
   runWhenReady(() => {
-    navigateToTab('Today', { locateTask: Date.now(), locateTaskId: taskId });
+    navigateToTab('Today', { locateTask: Date.now(), locateTaskId: taskId, locateEditorIfMissing: editorIfMissing });
   });
 }
 
