@@ -120,6 +120,8 @@ export interface ChainStepInput {
   notes?: string | null;
   /** What the step's link button opens: a web address or an app scheme such as "youtube://". null clears it; left out on an edit keeps it. */
   link?: string | null;
+  /** What completing this step records in the medication log. The amount and unit go together or not at all. null clears it; left out on an edit keeps the step's own. */
+  medication?: { name: string; amount?: number | null; unit?: string | null } | null;
 }
 
 /**
@@ -127,10 +129,32 @@ export interface ChainStepInput {
  * the step's stored one when the call leaves it out, so an edit that only
  * renames or re-times a step does not wipe what the app was holding for it.
  */
-export function stepTextFields(s: ChainStepInput, kept?: ChainItem): Pick<ChainItem, 'notes' | 'linkUrl'> {
+export function stepTextFields(s: ChainStepInput, kept?: ChainItem): Pick<ChainItem, 'notes' | 'linkUrl' | 'medicationName' | 'medicationAmount' | 'medicationUnit'> {
   const notes = s.notes !== undefined ? (s.notes?.trim() || null) : (kept?.notes ?? null);
   const linkUrl = s.link !== undefined ? (s.link?.trim() || null) : (kept?.linkUrl ?? null);
-  return { ...(notes ? { notes } : {}), ...(linkUrl ? { linkUrl } : {}) };
+  // The medication is one set, resolved as medicationFor does: the name, amount
+  // and unit come from the call or from the stored step, never mixed.
+  const med = s.medication !== undefined
+    ? (s.medication?.name?.trim()
+        ? { name: s.medication.name.trim(), amount: s.medication.amount ?? null, unit: s.medication.unit?.trim() || null }
+        : null)
+    : (kept?.medicationName ? { name: kept.medicationName, amount: kept.medicationAmount ?? null, unit: kept.medicationUnit ?? null } : null);
+  return {
+    ...(notes ? { notes } : {}),
+    ...(linkUrl ? { linkUrl } : {}),
+    ...(med ? { medicationName: med.name, medicationAmount: med.amount, medicationUnit: med.unit } : {}),
+  };
+}
+
+/** Why a step's medication can't be saved, or null. Shared with the template plan's check. */
+export function stepMedicationError(m: ChainStepInput['medication']): string | null {
+  if (!m) return null;
+  if (!m.name?.trim()) return 'medication needs the medicine\'s name.';
+  const hasAmount = m.amount != null;
+  const hasUnit = !!m.unit?.trim();
+  if (hasAmount !== hasUnit) return 'medication.amount and medication.unit go together: give both or neither.';
+  if (hasAmount && !(typeof m.amount === 'number' && m.amount > 0)) return 'medication.amount must be a positive number.';
+  return null;
 }
 
 export interface ChainInput {
@@ -614,6 +638,8 @@ export function taskFieldsPatch(
         if (s.asks != null && !STEP_QUESTION_KINDS.includes(s.asks)) errors.push(`chain.steps[${i}].asks must be one of ${STEP_QUESTION_KINDS.join(', ')}. A step cannot ask a pick-one question.`);
         if (s.answerSchedulesNextStep && s.asks !== 'date') errors.push(`chain.steps[${i}].answerSchedulesNextStep needs asks: "date".`);
         if (s.estimatedMinutes != null && !(isInt(s.estimatedMinutes) && s.estimatedMinutes > 0)) errors.push(`chain.steps[${i}].estimatedMinutes must be a positive whole number.`);
+        const medError = stepMedicationError(s.medication);
+        if (medError) errors.push(`chain.steps[${i}].${medError}`);
       });
       if (input.chain.stepsFollowSchedule && recurrence === 'none') errors.push('chain.stepsFollowSchedule only applies to a chain that repeats.');
       // Step ids are kept by position on an edit: a recorded answer and the

@@ -226,6 +226,18 @@ describe('chain', () => {
     expect(cleared.chainItems![0]).not.toHaveProperty('linkUrl');
   });
 
+  it('gives a step its own medication, keeps it on an edit, and refuses half a dose', () => {
+    const first = ok({ chain: { steps: [{ title: 'Morning pills', medication: { name: ' Sertraline ', amount: 25, unit: 'mg' } }, { title: 'Evening pills' }] } });
+    expect(first.chainItems![0]).toMatchObject({ medicationName: 'Sertraline', medicationAmount: 25, medicationUnit: 'mg' });
+    expect(first.chainItems![1]).not.toHaveProperty('medicationName');
+    const current = { chainItems: first.chainItems, chainIndex: 0, chainEnabled: true } as never;
+    const kept = ok({ chain: { steps: [{ title: 'Morning pills' }, { title: 'Evening pills' }] } }, current);
+    expect(kept.chainItems![0]).toMatchObject({ medicationName: 'Sertraline', medicationAmount: 25, medicationUnit: 'mg' });
+    const cleared = ok({ chain: { steps: [{ title: 'Morning pills', medication: null }, { title: 'Evening pills' }] } }, current);
+    expect(cleared.chainItems![0]).not.toHaveProperty('medicationName');
+    expect(errorsOf({ chain: { steps: [{ title: 'A', medication: { name: 'X', amount: 5 } }, { title: 'B' }] } })).toMatch(/amount and medication.unit go together/);
+  });
+
   it('needs two steps, and refuses what a step cannot carry', () => {
     expect(errorsOf({ chain: { steps: [{ title: 'Only' }] } })).toMatch(/two steps/);
     expect(errorsOf({ chain: { steps: [{ title: 'A', answerSchedulesNextStep: true }, { title: 'B' }] } })).toMatch(/asks: "date"/);

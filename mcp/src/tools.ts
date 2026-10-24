@@ -185,6 +185,7 @@ export interface ChainStepDetail {
   answerSchedulesNextStep?: boolean;
   notes?: string;
   link?: string;
+  medication?: { name: string; amount?: number; unit?: string };
 }
 
 export interface GetTaskResult {
@@ -426,6 +427,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
             ...(s.deliverableDatesNextStep ? { answerSchedulesNextStep: true } : {}),
             ...(s.notes ? { notes: s.notes } : {}),
             ...(s.linkUrl ? { link: s.linkUrl } : {}),
+            ...(s.medicationName ? { medication: { name: s.medicationName, ...(s.medicationAmount != null ? { amount: s.medicationAmount } : {}), ...(s.medicationUnit ? { unit: s.medicationUnit } : {}) } } : {}),
           })),
           ...(task.chainStepOnSchedule ? { stepsFollowSchedule: true } : {}),
         }

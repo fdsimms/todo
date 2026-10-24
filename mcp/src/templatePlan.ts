@@ -46,6 +46,7 @@ import type {
   TemplateScheduleFrequency,
   TimeOfDay,
 } from '../../src/types';
+import { stepMedicationError } from './taskFields';
 import { deliverableOptionsFor } from '../../src/utils/deliverables';
 import { parseSunAnchor, SUN_OFFSET_LIMIT } from '../../src/utils/sunTimes';
 import { RUN_PLACEHOLDER, itemPlaceholders, placeholderKey, wouldCreateCycle } from '../../src/utils/templateUtils';
@@ -124,6 +125,8 @@ export interface ChainStepPlan {
   notes?: string | null;
   /** What the step's link button opens: a web address or an app scheme such as "youtube://". null clears it; left out on an edit keeps it. */
   link?: string | null;
+  /** What completing this step records in the medication log. The amount and unit go together or not at all. null clears it; left out on an edit keeps the step's own. */
+  medication?: { name: string; amount?: number | null; unit?: string | null } | null;
 }
 
 export interface VariantPlan {
@@ -570,6 +573,8 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
       }
       if (step.answerSchedulesNextStep && step.asks !== 'date') errors.push(`item "${label}" chain step ${i + 1} answerSchedulesNextStep needs asks: "date".`);
       positive(step.estimatedMinutes, `chain step ${i + 1} estimatedMinutes`);
+      const medError = stepMedicationError(step.medication);
+      if (medError) errors.push(`item "${label}" chain step ${i + 1} ${medError}`);
     });
   }
   const rotation = item.rotation;
@@ -703,7 +708,7 @@ export function templateToPlan(template: TaskTemplate): TemplatePlan & { id: str
       return {
         ...fields,
         ...(chainEnabled && chainItems.length > 1
-          ? { chain: { steps: chainItems.map(c => ({ title: c.title, estimatedMinutes: c.estimatedMinutes, ...(c.deliverableKind ? { asks: c.deliverableKind as ChainStepPlan['asks'] } : {}), ...(c.deliverableDatesNextStep ? { answerSchedulesNextStep: true } : {}), ...(c.notes ? { notes: c.notes } : {}), ...(c.linkUrl ? { link: c.linkUrl } : {}) })) } }
+          ? { chain: { steps: chainItems.map(c => ({ title: c.title, estimatedMinutes: c.estimatedMinutes, ...(c.deliverableKind ? { asks: c.deliverableKind as ChainStepPlan['asks'] } : {}), ...(c.deliverableDatesNextStep ? { answerSchedulesNextStep: true } : {}), ...(c.notes ? { notes: c.notes } : {}), ...(c.linkUrl ? { link: c.linkUrl } : {}), ...(c.medicationName ? { medication: { name: c.medicationName, amount: c.medicationAmount ?? null, unit: c.medicationUnit ?? null } } : {}) })) } }
           : {}),
         ...(rotationEnabled && rotationItems.length >= 2 ? { rotation: { members: rotationItems.map(rotationMemberToInput) } } : {}),
         ...(gateTargets.has(item.id) ? { key: item.id } : {}),
