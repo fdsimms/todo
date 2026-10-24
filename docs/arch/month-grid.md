@@ -41,14 +41,29 @@ completions, which made it read as one more task list. What it does now:
 - **Its own route, not a fifth Today lens** — see the Navigation note in `CLAUDE.md`. And paging months carries
   the selection with it: an agenda naming a day outside the grid would be about a day the
   buckets don't reach.
-- **The week view is a slice of the same grid, not a second walk.** It draws one row of the
-  month's `DayCell`s over seven agendas, every one resolved from the month's buckets and events.
-  That works because the selected day always sits in the displayed month, so its whole week is
-  inside that month's 42 cells; paging a week goes through `stepDay`, which moves the month along
-  when the week crosses into the next.
-- **Scrolling the week marks the day you're on** (`activeWeekDay`, `src/utils/weekScrollSpy.ts`),
-  but only for a scroll the reader started: the list's own `scrollTo` to a tapped day passes the
-  days between and can stop short of the tapped one at the end of the list.
+- **Four views: Day, 3 Day, Month and Schedule.** Week was dropped for Schedule, the two weeks
+  from today as one list (`scheduleBlocks` folds each run of empty days into one line; today is
+  always its own section). All four read the same buckets and events, built over `rangeDays`:
+  the month's grid, two days past it (so 3 Day starting on the grid's last cell has its other
+  columns), and in Schedule the two weeks from today. Switching to Schedule moves the month to
+  today's, which keeps that range short.
+- **3 Day is read and tap only** (`MultiDayTimeline`). Each column is `buildDayTimeline` for its
+  day on one shared axis; a column's header opens that day in the Day view, which is where an
+  event can be dragged.
+- **Dragging is the Day view's** (`DayTimeline`): a long-press on empty time then a drag down
+  makes an event that long (the quick-add card opens with the span), a long-press on an event
+  moves it, and its foot's grip stretches it. The arithmetic is `draggedRange` (quarter-hour
+  snaps, never shorter than one, kept inside the day). Only an event wholly on the day can be
+  lifted: a block the day clipped is part of an event. The responder is a descendant of the
+  screen's scroll view, so the drag switches that scroll off for its length (`onDragStateChange`),
+  the SortableList rule. A move goes through `moveEvent` in `useEventPeopleStore`, which carries
+  the people linked to the event over to its new start (the link is keyed by occurrence) and
+  writes one occurrence of a repeating event, never the series (`rescheduleEventDirect`, through
+  `rewriteEvent`). The moved block is drawn at its new time until the next read brings it back
+  there (`pendingMove`).
+- **Tapping an event opens the event sheet on it** (`TodayEventsSheet`'s `focus`): the sheet
+  narrows to that event with its details open, says how soon it starts, and offers Join when its
+  URL or notes hold a call link (`videoCallLink`, read on the tap since notes are never kept).
 
 ## Projected occurrences
 
@@ -112,7 +127,7 @@ No schema change and no new column: it's a read over dates that already exist.
 ## What else the grid shows about a day
 
 `calendarExtras.ts` buckets the things the app already knows about a date that aren't a task's own
-date: a project's away span (drawn as a named band under the week row), planned meals (listed under
+date: a project's away span (drawn as a named band under each row of the grid), planned meals (listed under
 the day, not marked on the cell, and read through `entriesInRangeLive`, never the meal store's loaded window, which is only the week
 Meal Plan last opened), birthdays and project deadlines.
 
@@ -126,14 +141,14 @@ Meal Plan last opened), birthdays and project deadlines.
 ## Where a day's events come from
 
 - **One lookup for a day's events, `eventsForDay`,** used by every view. The store's fortnight
-  read answers first, then the grid read (`refreshGrid`, every event over the 42 days on show,
+  read answers first, then the grid read (`refreshGrid`, every event over `rangeDays`,
   taken on focus, on paging and whenever the fortnight read changes), then the trip read 90 days
   out, which holds multi-day events only. A day none of them covers is "not read", never "nothing
   scheduled", and the agenda says which.
 - **The grid read is its own read**, like the trip and past reads: only this screen draws a far
   day's meetings, so it reads them while it is shown rather than widening the read every
   foreground pays for.
-- **Tapping an event opens the day's event sheet** (`TodayEventsSheet`), the one Today opens.
-- **An empty stretch of the day timeline is tappable** (`slotMinutesAt` snaps it down to the quarter
-  hour): a task at that time is seeded with `windowStart`, the field that places a task on the axis,
-  and an event with an hour-long span. Blocks sit above the tap layer and keep their own taps.
+- **An empty stretch of a timeline is tappable**, in the Day view and in each 3 Day column
+  (`slotMinutesAt` snaps it down to the quarter hour): a task at that time is seeded with
+  `windowStart` on the column's day, the field that places a task on the axis, and an event with
+  an hour-long span. Blocks sit above the tap layer and keep their own taps.

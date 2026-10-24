@@ -90,7 +90,9 @@ the two runs compare exactly, which is how to prove a refactor left a target unc
   (`buildWidgetCalendar`, bucketed by day in JS so the extension never has to place an all-day
   event), and the widget draws that when EventKit refuses. If a device shows the widget lagging
   behind the calendar until the app opens, this is why. The calendars, colors, hidden occurrences
-  and timed tasks always come from the snapshot.
+  and timed tasks always come from the snapshot. It has Lock Screen sizes too (rectangular,
+  inline, circular), drawn in `.primary`/`.secondary` only, since the Lock Screen renders an
+  accessory as one vibrant tone.
 - **The widget bundle is two nested bundles** (`TodoWidgetBundle.swift`), because there are more
   than ten widgets and a builder block past ten needs the parameter-pack `buildBlock` an older SDK
   may lack. A new widget goes in `TodoHomeScreenWidgets` or `TodoLiveActivities`, not the outer one.

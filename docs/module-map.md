@@ -73,8 +73,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/bulkDelete.ts` — isMissableOneOff, BulkDeletePrompt, bulkDeletePrompt
 - `src/utils/bulkScopePrompt.ts` — confirmBulkScope, confirmFollowUpScope, confirmGeneratedScope, bulkSetPriorityAsking, bulkSetDifficultyAsking, bulkAddTagsAsking
 - `src/utils/busyEvenings.ts` — BUSY_EVENING_MIN_MINUTES, BusyEvening, busyEveningOn, describeBusyEvening
-- `src/utils/calendarAgenda.ts` — AGENDA_GAP_MINUTES, AgendaItem, DayAgenda, DayAgendaInput, buildDayAgenda, isAgendaItemPast, UntimedTarget, untimedTargetFor, describeUntimed, dayEventColors, +2 more
-- `src/utils/calendarBusy.ts` — BusyEvent, hasVideoCallLink, BusyInterval, isLiveEvent, occupiesTime, allDayRangeMs, busyIntervalsIn, busyMinutesIn, freeGapsIn, freeMinutesIn, +4 more
+- `src/utils/calendarAgenda.ts` — AGENDA_GAP_MINUTES, AgendaItem, DayAgenda, DayAgendaInput, buildDayAgenda, isAgendaItemPast, UntimedTarget, untimedTargetFor, describeUntimed, dayEventColors, +6 more
+- `src/utils/calendarBusy.ts` — BusyEvent, hasVideoCallLink, videoCallLink, BusyInterval, isLiveEvent, occupiesTime, allDayRangeMs, busyIntervalsIn, busyMinutesIn, freeGapsIn, +5 more
 - `src/utils/calendarEventImport.ts` — CalendarEventDraft, draftFromExtractedEvent, EventImportCreateFields, eventImportCreateFields, eventImportQuickSeed, EventTaskFields, eventDayDueDate, taskFieldsFromEvent
 - `src/utils/calendarEventLink.ts` — CalendarEventLink, NO_EVENT_LINK, ExternalEventMatch, readExternalEventId, canReadExternalEventIds, readExternalEventIds, withExternalEventIds, eventsWithExternalId, filledExternalId, uniqueLinks, +7 more
 - `src/utils/calendarExtras.ts` — CalendarTrip, DayExtras, calendarTrips, DayExtrasInput, buildDayExtras, hasDayNotes, TripBandSegment, tripBandLanes
@@ -86,7 +86,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarRequestDrain.ts` — drainCalendarRequests
 - `src/utils/calendarRequests.ts` — CALENDAR_REQUEST_RETENTION_DAYS, CALENDAR_REQUEST_PAST_REASON, CALENDAR_SUGGESTION_STALE_REASON, CALENDAR_REQUEST_REFUSED_REASON, isCalendarRequestWriter, CalendarRequestDrainPlan, planCalendarRequestDrain, suggestionIsStale, eventFieldsForRequest, CALENDAR_CHANGE_NO_EVENT_REASON, +2 more
 - `src/utils/calendarReviewTasks.ts` — CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview, calendarReviewEventsFor
-- `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +23 more
+- `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +25 more
 - `src/utils/capitalize.ts` — capitalize
 - `src/utils/cardAnchor.ts` — CardAnchor, CardPlacement, ANCHOR_GAP, ANCHOR_REACH, ANCHOR_EDGE, cardAnchorPlacement
 - `src/utils/categoryBackfill.ts` — CategoryBackfillFieldId, CategoryBackfillFieldDef, CATEGORY_BACKFILL_FIELDS, isCategoryFieldMissing, isCategoryBackfillDismissed, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField
@@ -125,7 +125,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dayContextRows.ts` — HealthRowKey, HEALTH_ROW_KEYS, HEALTH_ROW_LABELS, parseHealthRowKeys, serializeHealthRowKeys, ALL_DAY_CAPTION, startsInLabel, eventContextRows, mealContextRows, healthContextRows, +4 more
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, assumedMinutesFor, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, DayShade, +4 more
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
-- `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +1 more
+- `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +3 more
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent, deadlineEventLink, deleteDeadlineEvent, TaskEventSyncPlan, taskEventsAfterSync
 - `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +57 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DeliverableReasoning, DELIVERABLE_REASONING_MAX_LENGTH, cleanDeliverableReasoning, reasoningOf, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, +12 more
@@ -629,7 +629,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/weatherTasks.ts` — WEATHER_LINK_URL, WEATHER_RULE_TITLE_MAX_LENGTH, WEATHER_CONDITIONS, WEATHER_AHEAD_FROM_HOUR, weatherConditionLabel, defaultWeatherRules, clearWeatherMarksOnEdit, parseWeatherRules, weatherSourceId, parseWeatherSourceId, +7 more
 - `src/utils/weatherWait.ts` — WEATHER_WAIT_HORIZON_DAYS, dayMatchesCondition, WeatherWaitDecision, decideWeatherWait, weatherWaitLabel, weatherWaitChipText
 - `src/utils/weekPlan.ts` — WeekNight, weekNights, decidableNights
-- `src/utils/weekScrollSpy.ts` — WeekSection, WEEK_SPY_SLOP, activeWeekDay
 - `src/utils/weekendTasks.ts` — WEEKEND_NUDGE_TITLE, WEEKEND_EVENING_SEGMENTS, WeekendWindow, upcomingWeekend, isWeekendNudgeLeadDay, clampWeekendNudgeLeadDays, describeWeekendNudgeLead, weekendNudgeWeekendKey, isWeekendEvening, weekendPlanTitles, +10 more
 - `src/utils/weightGoal.ts` — WeightGoalDirection, WeightGoal, RATE_RANGE, MAX_RATE_KG_PER_WEEK, goalDirection, signedRateKgPerWeek, autoCalorieTargetKcal, WeightGoalProgress, goalProgress, MAINTAIN_BAND_KG, +10 more
 - `src/utils/weightLog.ts` — WeightUnit, MAX_WEIGHT_KG, WeightPoint, WeightReading, kgToUnit, unitToKg, formatWeight, parseWeightInput, weightReadings, latestWeight, +14 more

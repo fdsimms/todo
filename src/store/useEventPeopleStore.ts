@@ -10,7 +10,7 @@ import {
   staleEventPeopleIds,
 } from '../utils/eventPeople';
 import type { EventPeopleLink } from '../types';
-import { deleteEventDirect, saveEventDirect, updateEventDirect, type EventSaveFields } from '../utils/calendarSync';
+import { deleteEventDirect, rescheduleEventDirect, saveEventDirect, updateEventDirect, type EventSaveFields } from '../utils/calendarSync';
 import { isDemoModeActive } from '../utils/demoState';
 import { generateId } from '../utils/id';
 import {
@@ -88,6 +88,13 @@ interface EventPeopleState {
     personIds: readonly string[],
     occurrenceStart?: string | null,
   ) => Promise<string | null>;
+  /**
+   * Moves an event (one occurrence of a repeating one) to new times, the Day
+   * view's drag and resize, and carries the people linked to it along: the
+   * link is keyed by the occurrence's start, so a move without this would
+   * drop who the event is with. Resolves the event's id, or null on failure.
+   */
+  moveEvent: (event: BusyEvent, start: Date, end: Date) => Promise<string | null>;
   /**
    * Deletes an event (one occurrence of a repeating one) and the people links
    * on it. Only ever called from the edit card's Delete, once confirmed.
@@ -183,6 +190,19 @@ export const useEventPeopleStore = create<EventPeopleState>((set, get) => ({
       { id, start: fields.start.toISOString(), end: fields.end.toISOString(), title: fields.title },
       personIds,
     );
+    void useCalendarStore.getState().refresh();
+    return id;
+  },
+
+  moveEvent: async (event, start, end) => {
+    if (isDemoModeActive()) return null;
+    const id = await rescheduleEventDirect(event.id, event.title, start, end, event.start);
+    if (!id) return null;
+    const personIds = peopleForEvent(get().links, event);
+    if (personIds.length > 0) {
+      get().setPeople(event, []);
+      get().setPeople({ id, start: start.toISOString(), end: end.toISOString(), title: event.title }, personIds);
+    }
     void useCalendarStore.getState().refresh();
     return id;
   },

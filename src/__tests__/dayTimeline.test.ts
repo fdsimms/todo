@@ -3,6 +3,7 @@ import type { BusyEvent } from '../utils/calendarBusy';
 import {
   buildDayTimeline,
   clockToDayMinutes,
+  draggedRange,
   instantToDayMinutes,
   MINUTES_IN_DAY,
   slotMinutesAt,
@@ -317,5 +318,25 @@ describe('slotMinutesAt', () => {
   it('keeps the slot inside the drawn span', () => {
     expect(slotMinutesAt(-20, first, last, 56)).toBe(first);
     expect(slotMinutesAt(56 * 30, first, last, 56)).toBe(21 * 60 + 45);
+  });
+});
+
+describe('draggedRange', () => {
+  const block = { start: 9 * 60, end: 10 * 60 };
+
+  it('moves both ends together, snapped to the quarter hour', () => {
+    expect(draggedRange('move', block, 50)).toEqual({ start: 9 * 60 + 45, end: 10 * 60 + 45 });
+    expect(draggedRange('move', block, -7)).toEqual({ start: 9 * 60, end: 10 * 60 });
+  });
+
+  it('stops a moved block at either edge of the day with its length kept', () => {
+    expect(draggedRange('move', block, -2000)).toEqual({ start: 0, end: 60 });
+    expect(draggedRange('move', block, 5000)).toEqual({ start: MINUTES_IN_DAY - 60, end: MINUTES_IN_DAY });
+  });
+
+  it('stretches the end alone for a resize or a new event, never below one step', () => {
+    expect(draggedRange('resize', block, 38)).toEqual({ start: 9 * 60, end: 10 * 60 + 45 });
+    expect(draggedRange('create', block, -300)).toEqual({ start: 9 * 60, end: 9 * 60 + 15 });
+    expect(draggedRange('resize', block, 10000)).toEqual({ start: 9 * 60, end: MINUTES_IN_DAY });
   });
 });

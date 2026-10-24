@@ -165,3 +165,58 @@ export function summarizeAgenda(agenda: DayAgenda): string {
   if (tasks > 0) parts.push(`${tasks} ${tasks === 1 ? 'task' : 'tasks'}`);
   return parts.join(' · ');
 }
+
+/** "45 min", "1 hr", "2 hr 5 min". */
+function describeSpan(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} hr` : `${h} hr ${m} min`;
+}
+
+/**
+ * Where an event stands against now, for the line under its title when it is
+ * opened on its own: "Starts in 46 min", "Now, ends in 20 min". Null for one
+ * that is over, or more than half a day off, where the date and time beside
+ * it already say all there is.
+ */
+export function describeEventTiming(start: Date, end: Date, now: Date): string | null {
+  const untilStart = Math.ceil((start.getTime() - now.getTime()) / 60000);
+  if (untilStart > 0) return untilStart > 12 * 60 ? null : `Starts in ${describeSpan(untilStart)}`;
+  const untilEnd = Math.ceil((end.getTime() - now.getTime()) / 60000);
+  if (untilEnd > 0) return `Now, ends in ${describeSpan(untilEnd)}`;
+  return null;
+}
+
+/** How many days the Schedule view lists, from today: the store's own read of the calendar. */
+export const SCHEDULE_DAYS = 14;
+
+export type ScheduleBlock =
+  | { kind: 'day'; key: string }
+  | { kind: 'quiet'; from: string; to: string; count: number };
+
+/**
+ * The Schedule view's list: each day with something on it as its own
+ * section, and every run of days with nothing folded into one line, so two
+ * weeks read as what's in them rather than as fourteen headings. Today is
+ * always its own section, empty or not, since it is where the list starts.
+ */
+export function scheduleBlocks(
+  days: readonly { key: string; isEmpty: boolean }[],
+  todayKey: string,
+): ScheduleBlock[] {
+  const out: ScheduleBlock[] = [];
+  for (const day of days) {
+    if (!day.isEmpty || day.key === todayKey) {
+      out.push({ kind: 'day', key: day.key });
+      continue;
+    }
+    const last = out[out.length - 1];
+    if (last && last.kind === 'quiet') {
+      out[out.length - 1] = { ...last, to: day.key, count: last.count + 1 };
+    } else {
+      out.push({ kind: 'quiet', from: day.key, to: day.key, count: 1 });
+    }
+  }
+  return out;
+}

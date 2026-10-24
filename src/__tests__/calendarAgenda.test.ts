@@ -4,10 +4,12 @@ import {
   AGENDA_GAP_MINUTES,
   buildDayAgenda,
   dayEventColors,
+  describeEventTiming,
   describeGap,
   describeUntimed,
   summarizeAgenda,
   isAgendaItemPast,
+  scheduleBlocks,
   untimedTargetFor,
 } from '../utils/calendarAgenda';
 
@@ -191,5 +193,51 @@ describe('summarizeAgenda', () => {
 
   it('is empty for an empty day', () => {
     expect(summarizeAgenda(buildDayAgenda({ dayStart: DAY, events: [], tasks: [] }))).toBe('');
+  });
+});
+
+describe('describeEventTiming', () => {
+  const start = new Date(2026, 9, 23, 15);
+  const end = new Date(2026, 9, 23, 16);
+
+  it('counts down to the start', () => {
+    expect(describeEventTiming(start, end, new Date(2026, 9, 23, 14, 14))).toBe('Starts in 46 min');
+    expect(describeEventTiming(start, end, new Date(2026, 9, 23, 12, 55))).toBe('Starts in 2 hr 5 min');
+    expect(describeEventTiming(start, end, new Date(2026, 9, 23, 14))).toBe('Starts in 1 hr');
+  });
+
+  it('says how long is left once it has started', () => {
+    expect(describeEventTiming(start, end, new Date(2026, 9, 23, 15, 40))).toBe('Now, ends in 20 min');
+  });
+
+  it('says nothing for one that is over or far off', () => {
+    expect(describeEventTiming(start, end, new Date(2026, 9, 23, 16))).toBeNull();
+    expect(describeEventTiming(start, end, new Date(2026, 9, 22, 9))).toBeNull();
+  });
+});
+
+describe('scheduleBlocks', () => {
+  const day = (key: string, isEmpty: boolean) => ({ key, isEmpty });
+
+  it('keeps busy days and folds each run of empty ones into a line', () => {
+    expect(scheduleBlocks([
+      day('2026-10-23', false),
+      day('2026-10-24', true),
+      day('2026-10-25', true),
+      day('2026-10-26', false),
+      day('2026-10-27', true),
+    ], '2026-10-23')).toEqual([
+      { kind: 'day', key: '2026-10-23' },
+      { kind: 'quiet', from: '2026-10-24', to: '2026-10-25', count: 2 },
+      { kind: 'day', key: '2026-10-26' },
+      { kind: 'quiet', from: '2026-10-27', to: '2026-10-27', count: 1 },
+    ]);
+  });
+
+  it('always lists today, empty or not', () => {
+    expect(scheduleBlocks([day('2026-10-23', true), day('2026-10-24', true)], '2026-10-23')).toEqual([
+      { kind: 'day', key: '2026-10-23' },
+      { kind: 'quiet', from: '2026-10-24', to: '2026-10-24', count: 1 },
+    ]);
   });
 });

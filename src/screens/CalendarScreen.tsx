@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { useStableCallback } from '../hooks/useStableCallback';
-import { View, Text, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
@@ -30,14 +30,15 @@ import { monthCellSizeFor } from '../utils/frameWidth';
 import { haptics } from '../utils/haptics';
 import { resetToLocateTask, resetToMealPlan, showTodayViewMode } from '../navigation/navigationRef';
 import { openSettingsEntryById } from '../navigation/openScreen';
-import { buildCalendarGrid, buildWeekDays, weekdayHeaders } from '../utils/calendarGrid';
-import { activeWeekDay, type WeekSection } from '../utils/weekScrollSpy';
+import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { dateToHHMM, dayKeyOf, dayKeyToDate, formatTimeOfDay, getDayStart, getLogicalToday, hhmmToDate } from '../utils/dateUtils';
 import { buildDayBuckets, dayDetail, dayRows } from '../utils/calendarMonth';
 import {
   buildDayAgenda,
   dayEventColors,
   describeUntimed,
+  scheduleBlocks,
+  SCHEDULE_DAYS,
   summarizeAgenda,
   untimedTargetFor,
   type DayAgenda,
@@ -45,11 +46,14 @@ import {
 import { completionTapFor } from '../utils/completionTap';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
+import { useEventPeopleStore } from '../store/useEventPeopleStore';
+import { alertFailedWithSettings } from '../utils/permissionAlert';
 import { hiddenEventKey } from '../utils/hiddenEvents';
 import { sameMealPlanEntries, useMealPlanStore } from '../store/useMealPlanStore';
 import { useFocusRefreshedRead } from '../hooks/useFocusRefreshedRead';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { DayTimeline } from '../components/DayTimeline';
+import { MultiDayTimeline, type MultiDayColumn } from '../components/MultiDayTimeline';
 import { buildDayTimeline } from '../utils/dayTimeline';
 import { sunLocationOn } from '../utils/visibilityUtils';
 import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
@@ -59,7 +63,6 @@ import { TimeSlotMenu } from '../components/TimeSlotMenu';
 import type { CardAnchor } from '../components/CardSheet';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
-import { describeWeekRange } from '../utils/mealPlan';
 import { usePersonStore } from '../store/usePersonStore';
 import {
   buildDayExtras,
@@ -88,12 +91,23 @@ const NO_DOTS: readonly string[] = [];
 const TRIP_BAND_HEIGHT = 16;
 const TRIP_BAND_GAP = 2;
 
-type CalendarViewMode = 'month' | 'week' | 'day';
+type CalendarViewMode = 'day' | 'threeDay' | 'month' | 'schedule';
 const VIEW_MODES: { value: CalendarViewMode; label: string }[] = [
-  { value: 'month', label: 'Month' },
-  { value: 'week', label: 'Week' },
   { value: 'day', label: 'Day' },
+  { value: 'threeDay', label: '3 Day' },
+  { value: 'month', label: 'Month' },
+  { value: 'schedule', label: 'Schedule' },
 ];
+/** How many days the 3 Day view draws side by side, from the selected one. */
+const MULTI_DAY_COLUMNS = 3;
+
+/** Every day from `from` to `to`, both included. */
+function daysBetween(from: Date, to: Date): Date[] {
+  const out: Date[] = [];
+  const last = dayKeyOf(to);
+  for (let day = from; dayKeyOf(day) <= last; day = addDays(day, 1)) out.push(day);
+  return out;
+}
 
 /** What the screen knows about one day's events. See `eventsForDay`. */
 interface DayEvents {
@@ -109,7 +123,7 @@ interface DayEvents {
 }
 
 /**
- * The person's calendar, a month, a week or a day at a time.
+ * The person's calendar: a day, three days, a month, or the two weeks ahead.
  *
  * **A view of calendar events first.** The grid marks a day with its events'
  * colors, and a day's list is an agenda: its events and the tasks that have a
@@ -122,21 +136,23 @@ interface DayEvents {
  * Its own route rather than a fifth Today lens; see the Navigation note in
  * CLAUDE.md for why a segmented control shouldn't navigate.
  *
- * Tasks are still bucketed once per month in `calendarMonth.ts` (42 cells each
- * filtering the task list is O(days × tasks) a render), and only to find each
- * day's rows, from which the agenda keeps the timed ones. Events come from
- * three reads: the store's fortnight, the grid read over the 42 days on show,
- * and the multi-day read 90 days out (`eventsForDay`).
+ * Tasks are still bucketed once over the days read (`rangeDays`: the month's
+ * grid and a little past it), since each cell filtering the task list is
+ * O(days × tasks) a render, and only to find each day's rows, from which the
+ * agenda keeps the timed ones. Events come from three reads: the store's two
+ * weeks, the grid read over the same days, and the multi-day read 90 days out
+ * (`eventsForDay`).
  *
- * Three ways to read it, switched by the pill row: the month grid over the
- * selected day's agenda, the week (one row of the same cells over every day of
- * that week as its own agenda), and one day on a clock. All three read the
- * same buckets, which are always built over the selected day's month grid —
- * a week containing any day of a month is inside that month's 42 cells.
+ * Four ways to read it, switched by the pill row: one day on a clock (where
+ * an event can be made, moved or stretched by dragging), three days side by
+ * side on one clock, the month grid over the selected day's agenda, and
+ * Schedule, the two weeks from today as one list. All four read the same
+ * buckets and events.
  *
  * The component is one function; `grep -n '// ===='` is its table of contents:
  * stores and screen state, the month (grid, buckets, events, the selected
- * day's agenda), the week, moving between days and months, tasks and the
+ * day's agenda), the Day view's drags, 3 Day, Schedule, moving between days
+ * and months, tasks and the
  * editor, then the JSX. The header's "+" opens the quick-add event card
  * (`QuickEventSheet`) on the selected day.
  */
@@ -249,17 +265,38 @@ export function CalendarScreen() {
 
   // Keyed rather than a Date, so the memo below only rebuilds when the day turns.
   const logicalTodayKey = dayKeyOf(getLogicalToday());
+  /**
+   * The days tasks and events are read over: the month's grid, two days past
+   * its last cell (the 3 Day view starting there has the rest of its columns),
+   * and in Schedule the two weeks from today. Schedule always opens on today's
+   * month (`switchViewMode`), so the range only stretches by the days the
+   * month's grid stops short of.
+   */
+  const scheduleDays = useMemo(
+    () => Array.from({ length: SCHEDULE_DAYS }, (_, i) => addDays(dayKeyToDate(logicalTodayKey), i)),
+    [logicalTodayKey],
+  );
+  const rangeDays = useMemo(() => {
+    let from = days[0];
+    let to = addDays(days[days.length - 1], MULTI_DAY_COLUMNS - 1);
+    if (viewMode === 'schedule') {
+      if (scheduleDays[0] < from) from = scheduleDays[0];
+      const last = scheduleDays[scheduleDays.length - 1];
+      if (last > to) to = last;
+    }
+    return daysBetween(from, to);
+  }, [days, viewMode, scheduleDays]);
   // Only to find each day's task rows; the agenda keeps the ones with a time.
   // Never projected: a repeat that has no row yet has no time to place it by.
   const buckets = useMemo(
     () => buildDayBuckets(allTasks, {
-      from: days[0],
-      to: days[days.length - 1],
+      from: rangeDays[0],
+      to: rangeDays[rangeDays.length - 1],
       dayResetTime,
       projecting: false,
       projectFrom: dayKeyToDate(logicalTodayKey),
     }),
-    [allTasks, days, dayResetTime, logicalTodayKey],
+    [allTasks, rangeDays, dayResetTime, logicalTodayKey],
   );
 
   const taskById = useMemo(() => new Map(allTasks.map(t => [t.id, t])), [allTasks]);
@@ -268,14 +305,14 @@ export function CalendarScreen() {
    * Everything else the app knows about the grid's days: trips, meals,
    * birthdays and project deadlines (`calendarExtras.ts`).
    *
-   * Built one day wider on each side than the grid, so the first and last
-   * rows can tell whether a trip band carries on past them. The meals come
+   * Built one day wider on each side than the days read, so the grid's first
+   * and last rows can tell whether a trip band carries on past them. The meals come
    * through the range read, never the loaded window alone, which is only the
    * week Meal Plan last opened.
    */
   const wideDays = useMemo(
-    () => [addDays(days[0], -1), ...days, addDays(days[days.length - 1], 1)],
-    [days],
+    () => [addDays(rangeDays[0], -1), ...rangeDays, addDays(rangeDays[rangeDays.length - 1], 1)],
+    [rangeDays],
   );
   // A read that goes past a store to SQLite, so it is taken again on each
   // focus, after another screen may have written; it stays the same array
@@ -297,8 +334,8 @@ export function CalendarScreen() {
   const selectedExtras = extras.get(selectedKey);
 
   /**
-   * The grid read: every event over the 42 days on show, so a day past the
-   * store's fortnight still has its meetings. Taken again on focus, when the
+   * The grid read: every event over the days read (`rangeDays`), so a day
+   * past the store's two weeks still has its meetings. Taken again on focus, when the
    * month changes, and whenever the fortnight read changes, which is the
    * store's own signal that the calendar database moved.
    */
@@ -310,7 +347,7 @@ export function CalendarScreen() {
     noon.setHours(12, 0, 0, 0);
     return getDayStart(noon, dayResetTime);
   }, [dayResetTime]);
-  const gridRangeKey = `${dayKeyOf(days[0])}:${dayKeyOf(days[days.length - 1])}`;
+  const gridRangeKey = `${dayKeyOf(rangeDays[0])}:${dayKeyOf(rangeDays[rangeDays.length - 1])}`;
   const readGrid = useCallback(() => {
     if (!useSettingsStore.getState().calendarReadEnabled) return;
     const [firstKey, lastKey] = gridRangeKey.split(':');
@@ -393,16 +430,70 @@ export function CalendarScreen() {
   const selectedDayStart = selectedDay.start;
   const selectedAgenda = useMemo(() => agendaFor(selectedKey, selectedDay), [agendaFor, selectedKey, selectedDay]);
 
+  /**
+   * An event the Day view just moved, drawn where it was put until the
+   * calendar read comes back with it there. Without it the block jumps back to
+   * its old time for the moment the write and the re-read take. Cleared by the
+   * next read (the effect below), or on a failed write.
+   */
+  const [pendingMove, setPendingMove] = useState<{ eventId: string; start: string; end: string } | null>(null);
+  useEffect(() => { setPendingMove(null); }, [calendarEvents, gridEvents]);
+  const timelineEvents = useMemo(
+    () => (pendingMove
+      ? selectedDay.shown.map(e => (e.id === pendingMove.eventId ? { ...e, start: pendingMove.start, end: pendingMove.end } : e))
+      : selectedDay.shown),
+    [selectedDay, pendingMove],
+  );
   const dayTimeline = useMemo(
     () => buildDayTimeline({
       dayStart: selectedDayStart,
       tasks: dayRows(dayDetail(buckets.get(selectedKey), taskById)),
-      events: selectedDay.shown,
+      events: timelineEvents,
       sunLocation: sunLocationOn(selectedDayStart),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [buckets, taskById, selectedKey, selectedDayStart, selectedDay, sunLocation, projects],
+    [buckets, taskById, selectedKey, selectedDayStart, timelineEvents, sunLocation, projects],
   );
+
+  // ==== the Day view's drags: making, moving and stretching events ====
+  // True while a drag on the timeline holds the finger; the scroll view is off
+  // for that long (see DayTimeline's onDragStateChange).
+  const [timelineDragging, setTimelineDragging] = useState(false);
+  const timelineEventColor = useCallback((eventId: string) => {
+    const event = selectedDay.shown.find(e => e.id === eventId);
+    return event ? colorFor(event.calendarId) : undefined;
+  }, [selectedDay, colorFor]);
+  // Only an event wholly on this day: a block the day clipped is part of an
+  // event, and dragging the part would move or shorten the whole.
+  const canMoveTimelineEvent = useCallback((eventId: string) => {
+    if (isDemoModeActive()) return false;
+    const event = selectedDay.shown.find(e => e.id === eventId);
+    if (!event || event.allDay) return false;
+    const end = addDays(selectedDayStart, 1).getTime();
+    return Date.parse(event.start) >= selectedDayStart.getTime() && Date.parse(event.end) <= end;
+  }, [selectedDay, selectedDayStart]);
+  const atMinutes = (minutes: number) => new Date(selectedDayStart.getTime() + minutes * 60000);
+  const handleCreateRange = (startMinutes: number, endMinutes: number) => {
+    setNewEventSeed({ start: atMinutes(startMinutes), end: atMinutes(endMinutes) });
+    setNewEventVisible(true);
+  };
+  const handleRescheduleEvent = async (eventId: string, startMinutes: number, endMinutes: number) => {
+    const event = selectedDay.shown.find(e => e.id === eventId);
+    if (!event) return;
+    const start = atMinutes(startMinutes);
+    const end = atMinutes(endMinutes);
+    setPendingMove({ eventId, start: start.toISOString(), end: end.toISOString() });
+    const id = await useEventPeopleStore.getState().moveEvent(event, start, end);
+    if (!id) {
+      setPendingMove(null);
+      alertFailedWithSettings(
+        'Couldn’t move the event',
+        'Check that calendar access is on in Settings and that this calendar can be changed, then try again.',
+      );
+      return;
+    }
+    readGrid();
+  };
   const dayMeals = selectedExtras?.meals ?? NO_MEALS;
 
   // Only drawn on the day you are actually in.
@@ -412,65 +503,58 @@ export function CalendarScreen() {
   const nowMinutes = nowMinutesOn(selectedKey, selectedDayStart);
   const reading = calendarReadEnabled && !isDemoModeActive();
 
-  // ==== the week: the selected day's week, one agenda per day ====
-  // Every day of it resolves against the month grid's buckets: the selected
-  // day is always in the displayed month, so its whole week is in the grid.
-  // Keyed on the week rather than the selected day, so marking another day of
-  // the same week (a tap, or scrolling the list) doesn't rebuild the seven.
-  const weekStartKey = dayKeyOf(buildWeekDays(dayKeyToDate(selectedKey), weekStartsOn)[0]);
-  const weekDays = useMemo(
-    () => buildWeekDays(dayKeyToDate(weekStartKey), weekStartsOn),
-    [weekStartKey, weekStartsOn],
-  );
-  const weekAgendas = useMemo(
-    () => weekDays.map(day => {
+  // ==== 3 Day: the selected day and the two after it, on one clock ====
+  const multiDayColumns = useMemo((): MultiDayColumn[] => {
+    if (viewMode !== 'threeDay') return [];
+    return Array.from({ length: MULTI_DAY_COLUMNS }, (_, i) => {
+      const date = addDays(dayKeyToDate(selectedKey), i);
+      const key = dayKeyOf(date);
+      const dayEvents = eventsForDay(key);
+      const timeline = buildDayTimeline({
+        dayStart: dayEvents.start,
+        tasks: dayRows(dayDetail(buckets.get(key), taskById)),
+        events: dayEvents.shown,
+        sunLocation: sunLocationOn(dayEvents.start),
+      });
+      return {
+        key,
+        date,
+        dayStart: dayEvents.start,
+        timeline,
+        isToday: key === todayKey,
+        nowMinutes: key === todayKey ? Math.round((Date.now() - dayEvents.start.getTime()) / 60000) : null,
+        untimed: timeline.unplaced.filter(t => !t.completed).length,
+      };
+    });
+    // `sunLocation` and `projects` are deps because sunLocationOn reads both.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, selectedKey, eventsForDay, buckets, taskById, todayKey, sunLocation, projects]);
+  // A column's event color, by event id, over all three columns' events.
+  const multiDayEventColor = useCallback((eventId: string) => {
+    for (const column of multiDayColumns) {
+      const event = eventsForDay(column.key).shown.find(e => e.id === eventId);
+      if (event) return colorFor(event.calendarId);
+    }
+    return undefined;
+  }, [multiDayColumns, eventsForDay, colorFor]);
+
+  // ==== Schedule: two weeks from today, empty runs folded ====
+  const scheduleItems = useMemo(() => {
+    if (viewMode !== 'schedule') return [];
+    return scheduleDays.map(day => {
       const key = dayKeyOf(day);
       const dayEvents = eventsForDay(key);
-      return { day, key, dayEvents, agenda: agendaFor(key, dayEvents) };
-    }),
-    [weekDays, eventsForDay, agendaFor],
+      const agenda = agendaFor(key, dayEvents);
+      const isEmpty = agenda.items.length === 0 && agenda.allDay.length === 0
+        && agenda.untimed.length === 0 && !hasDayNotes(extras.get(key), true) && dayEvents.known;
+      return { day, key, dayEvents, agenda, isEmpty };
+    });
+  }, [viewMode, scheduleDays, eventsForDay, agendaFor, extras]);
+  const scheduleList = useMemo(
+    () => scheduleBlocks(scheduleItems.map(({ key, isEmpty }) => ({ key, isEmpty })), todayKey),
+    [scheduleItems, todayKey],
   );
-  const weekHasToday = weekAgendas.some(({ key }) => key === todayKey);
-  // Where each day's section starts in the scrolling list, so tapping a day in
-  // the strip can bring its section up. Written from onLayout, read on tap.
   const detailScrollRef = useRef<ScrollView>(null);
-  const weekSectionY = useRef(new Map<string, number>());
-  const viewModeRef = useRef(viewMode);
-  viewModeRef.current = viewMode;
-  // A day whose section should be brought up as soon as it is laid out: set on
-  // arriving at a week (switching to it, or paging), so the list opens on the
-  // day you had selected rather than on the week's first day.
-  const pendingWeekScroll = useRef<string | null>(null);
-  // Scrolling the list marks the day you've scrolled to (activeWeekDay). Only
-  // a scroll the reader started counts: the list's own scrollTo, to a day
-  // tapped in the strip, passes over the days between and may stop short of
-  // the tapped one at the end of the list, and neither should move the mark.
-  const weekSpyLive = useRef(false);
-  const weekViewportHeight = useRef(0);
-  const weekContentHeight = useRef(0);
-  const selectedKeyRef = useRef(selectedKey);
-  selectedKeyRef.current = selectedKey;
-  // The section map keeps the weeks paged past, so the spy reads only this one.
-  const weekKeysRef = useRef<string[]>([]);
-  weekKeysRef.current = weekDays.map(dayKeyOf);
-  const onWeekScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (!weekSpyLive.current || viewModeRef.current !== 'week') return;
-    const sections: WeekSection[] = [];
-    for (const key of weekKeysRef.current) {
-      const y = weekSectionY.current.get(key);
-      if (y !== undefined) sections.push({ key, y });
-    }
-    const key = activeWeekDay(
-      sections,
-      e.nativeEvent.contentOffset.y,
-      weekViewportHeight.current,
-      weekContentHeight.current,
-    );
-    if (key !== null && key !== selectedKeyRef.current) {
-      selectedKeyRef.current = key;
-      setSelectedKey(key);
-    }
-  }, []);
 
   const selectedDate = dayKeyToDate(selectedKey);
 
@@ -491,13 +575,6 @@ export function CalendarScreen() {
     if (!isSameMonth(next, displayMonth)) setDisplayMonth(startOfMonth(next));
   };
 
-  // A week at a time, keeping the weekday you had selected. stepDay already
-  // carries the displayed month along when the week crosses into another.
-  const stepWeek = (delta: number) => {
-    weekSpyLive.current = false;
-    pendingWeekScroll.current = dayKeyOf(addDays(dayKeyToDate(selectedKey), delta * 7));
-    stepDay(delta * 7);
-  };
 
   const stepMonth = (delta: number) => {
     haptics.tap();
@@ -523,21 +600,18 @@ export function CalendarScreen() {
   const selectDay = useCallback((key: string) => {
     haptics.tap();
     setSelectedKey(key);
-    // The week's strip doesn't change the list under it, only where you are
-    // in it. Read through refs so this stays one stable callback.
-    if (viewModeRef.current === 'week') {
-      weekSpyLive.current = false;
-      const y = weekSectionY.current.get(key);
-      if (y !== undefined) detailScrollRef.current?.scrollTo({ y, animated: true });
-    }
   }, []);
 
   const switchViewMode = (mode: CalendarViewMode) => {
     haptics.tap();
-    if (mode === 'week') {
-      pendingWeekScroll.current = selectedKey;
-      weekSpyLive.current = false;
+    // Schedule always starts at today, so the month and the selection follow
+    // it there, which also keeps the days read to today's month.
+    if (mode === 'schedule') {
+      const today = getLogicalToday();
+      setDisplayMonth(startOfMonth(today));
+      setSelectedKey(dayKeyOf(today));
     }
+    detailScrollRef.current?.scrollTo({ y: 0, animated: false });
     setViewMode(mode);
   };
 
@@ -573,9 +647,13 @@ export function CalendarScreen() {
     }
   }, [completeTask, uncompleteTask, enqueue]);
 
-  const openEvent = useCallback((key: string) => {
+  // The event sheet opens on the event tapped, narrowed to it (`focus`); with
+  // no event it lists the day.
+  const [focusEvent, setFocusEvent] = useState<BusyEvent | null>(null);
+  const openEvent = useCallback((key: string, event: BusyEvent | null = null) => {
     haptics.tap();
     setSelectedKey(key);
+    setFocusEvent(event);
     setEventsSheetVisible(true);
   }, []);
 
@@ -605,24 +683,33 @@ export function CalendarScreen() {
   };
   // Stable, because QuickAddModal is memoized and stays mounted while hidden:
   // a fresh prop each render would re-render the hidden sheet with this screen.
-  const onQuickAddClose = useStableCallback(() => { setQuickAddVisible(false); setQuickAddTime(null); });
+  const onQuickAddClose = useStableCallback(() => { setQuickAddVisible(false); setQuickAddTime(null); setSlotDayKey(null); });
   const onQuickAddOpenFull = useStableCallback(handleQuickAddOpenFull);
   // A tapped time on the day view adds a start time (`windowStart`, which is
   // what places a task on the axis) to the day the seed already carries.
   const [quickAddTime, setQuickAddTime] = useState<string | null>(null);
+  // The day a time was tapped on, which in the 3 Day view need not be the
+  // selected one; quick add dates its task from it.
+  const [slotDayKey, setSlotDayKey] = useState<string | null>(null);
+  const quickAddDate = dayKeyToDate(slotDayKey ?? selectedKey);
   const quickAddSeed = useMemo(
-    () => ({ dueDate: dayKeyToDate(selectedKey).toISOString(), ...(quickAddTime ? { windowStart: quickAddTime } : {}) }),
-    [selectedKey, quickAddTime],
+    () => ({ dueDate: dayKeyToDate(slotDayKey ?? selectedKey).toISOString(), ...(quickAddTime ? { windowStart: quickAddTime } : {}) }),
+    [slotDayKey, selectedKey, quickAddTime],
   );
   // The empty-slot menu on the day view, and the event it may seed.
   const [slotMenu, setSlotMenu] = useState<{ at: Date; anchor: CardAnchor } | null>(null);
   const [slotMenuOpen, setSlotMenuOpen] = useState(false);
   const [newEventSeed, setNewEventSeed] = useState<QuickEventSeed | null>(null);
-  const handlePressSlot = useCallback((minutes: number, pageX: number, pageY: number) => {
+  const handlePressSlotOn = useCallback((dayKey: string, minutes: number, pageX: number, pageY: number) => {
     haptics.tap();
-    setSlotMenu({ at: new Date(selectedDayStart.getTime() + minutes * 60000), anchor: { x: pageX, y: pageY } });
+    setSlotDayKey(dayKey);
+    setSlotMenu({ at: new Date(dayStartOf(dayKey).getTime() + minutes * 60000), anchor: { x: pageX, y: pageY } });
     setSlotMenuOpen(true);
-  }, [selectedDayStart]);
+  }, [dayStartOf]);
+  const handlePressSlot = useCallback(
+    (minutes: number, pageX: number, pageY: number) => handlePressSlotOn(selectedKey, minutes, pageX, pageY),
+    [handlePressSlotOn, selectedKey],
+  );
   const handlePressTimelineTask = useCallback((taskId: string) => {
     const task = useTaskStore.getState().tasks.find(t => t.id === taskId);
     if (task) openTask(task);
@@ -783,7 +870,7 @@ export function CalendarScreen() {
           colorFor={colorFor}
           use24Hour={use24Hour}
           nowMinutes={nowMinutesOn(key, dayEvents.start)}
-          onPressEvent={() => openEvent(key)}
+          onPressEvent={event => openEvent(key, event)}
           onPressTask={openTask}
           onToggleTask={toggleTask}
           untimed={untimedLinkFor(key, agenda.untimed.length)}
@@ -794,37 +881,53 @@ export function CalendarScreen() {
     );
   };
 
+  /** "Today", "Tomorrow", or the weekday: a Schedule section's heading. */
+  const scheduleDayName = (key: string, day: Date) => {
+    if (key === todayKey) return 'Today';
+    if (key === dayKeyOf(addDays(dayKeyToDate(todayKey), 1))) return 'Tomorrow';
+    return format(day, 'EEEE');
+  };
+
   /**
-   * The week as seven sections, every day drawn whether or not it holds
-   * anything: a week with a gap in it is read as a week, and a missing
-   * Wednesday would read as the list having skipped it.
+   * Two weeks from today as one list: each day with something on it as its
+   * own section, and every run of days with nothing as a single dim line.
    */
-  const renderWeek = () => weekAgendas.map(({ day, key, dayEvents, agenda }) => {
-    const isToday = key === todayKey;
-    const summary = summarizeAgenda(agenda);
+  const renderSchedule = () => scheduleList.map(block => {
+    if (block.kind === 'quiet') {
+      const from = dayKeyToDate(block.from);
+      const to = dayKeyToDate(block.to);
+      const span = block.count === 1
+        ? format(from, 'EEE, MMM d')
+        : `${format(from, 'EEE, MMM d')} – ${format(to, 'EEE, MMM d')}`;
+      return (
+        <Text key={`quiet-${block.from}`} style={styles.quietRun}>{span} · Nothing scheduled</Text>
+      );
+    }
+    const item = scheduleItems.find(it => it.key === block.key);
+    if (!item) return null;
+    const summary = summarizeAgenda(item.agenda);
     return (
-      <View
-        key={key}
-        style={styles.weekDay}
-        onLayout={e => {
-          const y = e.nativeEvent.layout.y;
-          weekSectionY.current.set(key, y);
-          if (pendingWeekScroll.current === key) {
-            pendingWeekScroll.current = null;
-            detailScrollRef.current?.scrollTo({ y, animated: false });
-          }
-        }}
-      >
+      <View key={item.key} style={styles.scheduleDay}>
         <View style={styles.detailHeading}>
-          <Text style={[styles.weekDayDate, isToday && styles.weekDayDateToday]}>
-            {format(day, 'EEEE, MMM d')}{isToday ? ' · Today' : ''}
+          <Text style={[styles.scheduleDayName, item.key === todayKey && styles.scheduleDayNameToday]}>
+            {scheduleDayName(item.key, item.day)}
+            <Text style={styles.scheduleDayDate}>  {format(item.day, 'MMM d')}</Text>
           </Text>
           {summary !== '' && <Text style={styles.detailSummary}>{summary}</Text>}
         </View>
-        {renderAgendaDay(key, dayEvents, agenda, true)}
+        {renderAgendaDay(item.key, item.dayEvents, item.agenda, true)}
       </View>
     );
   });
+
+  const threeDayLabel = (() => {
+    const first = dayKeyToDate(selectedKey);
+    const last = addDays(first, MULTI_DAY_COLUMNS - 1);
+    return isSameMonth(first, last)
+      ? `${format(first, 'MMM d')} – ${format(last, 'd')}`
+      : `${format(first, 'MMM d')} – ${format(last, 'MMM d')}`;
+  })();
+  const scheduleLabel = `${format(scheduleDays[0], 'MMM d')} – ${format(scheduleDays[scheduleDays.length - 1], 'MMM d')}`;
 
   const selectedSummary = summarizeAgenda(selectedAgenda);
   const selectedUntimed = untimedLinkFor(selectedKey, dayTimeline.unplaced.filter(t => !t.completed).length);
@@ -906,15 +1009,20 @@ export function CalendarScreen() {
           prevAccessibilityLabel="Previous month"
           nextAccessibilityLabel="Next month"
         />
-      ) : viewMode === 'week' ? (
+      ) : viewMode === 'threeDay' ? (
         <PeriodNav
-          label={describeWeekRange(weekDays)}
-          sublabel={weekHasToday ? 'This week' : undefined}
-          onPrev={() => stepWeek(-1)}
-          onNext={() => stepWeek(1)}
-          prevAccessibilityLabel="Previous week"
-          nextAccessibilityLabel="Next week"
+          label={threeDayLabel}
+          sublabel={multiDayColumns.some(c => c.isToday) ? 'Includes today' : undefined}
+          onPrev={() => stepDay(-MULTI_DAY_COLUMNS)}
+          onNext={() => stepDay(MULTI_DAY_COLUMNS)}
+          prevAccessibilityLabel="Previous three days"
+          nextAccessibilityLabel="Next three days"
         />
+      ) : viewMode === 'schedule' ? (
+        // Schedule doesn't page: it is always the two weeks from today.
+        <View style={styles.scheduleRange}>
+          <Text style={styles.scheduleRangeText}>{scheduleLabel}</Text>
+        </View>
       ) : (
         <PeriodNav
           label={format(selectedDate, 'EEEE, MMMM d')}
@@ -966,41 +1074,6 @@ export function CalendarScreen() {
       </View>
       )}
 
-      {viewMode === 'week' && (
-      <View style={styles.calendar}>
-        <View style={styles.dayHeaders}>
-          {dayHeaders.map((d, i) => (
-            <View key={i} style={styles.dayHeaderCell}>
-              <Text maxFontSizeMultiplier={textScale.badge} style={styles.dayHeaderText}>{d}</Text>
-            </View>
-          ))}
-        </View>
-        <View style={styles.weekStrip}>
-          {weekDays.map(day => {
-            const key = dayKeyOf(day);
-            const dots = dotsByDay.get(key);
-            return (
-              <DayCell
-                key={key}
-                dayKey={key}
-                day={day}
-                dots={dots?.colors ?? NO_DOTS}
-                eventCount={dots?.count ?? 0}
-                // A week is read whole: a day across the month line is not a
-                // neighbour's day here the way it is on the month grid.
-                inMonth
-                isToday={key === todayKey}
-                isSelected={key === selectedKey}
-                styles={styles}
-                onSelect={selectDay}
-              />
-            );
-          })}
-        </View>
-        {renderTripBands(weekDays)}
-      </View>
-      )}
-
       {viewMode === 'month' && (
       <View style={styles.detailHeader}>
         <View style={styles.detailHeading}>
@@ -1015,17 +1088,28 @@ export function CalendarScreen() {
       <ScrollView
         refreshControl={pullSearch.refreshControl}
         ref={detailScrollRef}
-        style={[styles.detail, viewMode === 'week' && styles.weekList]}
-        onScroll={viewMode === 'week' ? onWeekScroll : undefined}
-        scrollEventThrottle={viewMode === 'week' ? 32 : undefined}
-        onScrollBeginDrag={() => { weekSpyLive.current = true; }}
-        onLayout={e => { weekViewportHeight.current = e.nativeEvent.layout.height; }}
-        onContentSizeChange={(_, h) => { weekContentHeight.current = h; }}
+        scrollEnabled={!timelineDragging}
+        style={styles.detail}
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
         showsVerticalScrollIndicator={false}
       >
-        {viewMode === 'week' ? renderWeek() : viewMode === 'month' ? (
+        {viewMode === 'schedule' ? renderSchedule() : viewMode === 'month' ? (
           renderAgendaDay(selectedKey, selectedDay, selectedAgenda, true)
+        ) : viewMode === 'threeDay' ? (
+          <MultiDayTimeline
+            columns={multiDayColumns}
+            use24Hour={use24Hour}
+            eventColor={multiDayEventColor}
+            onPressDay={key => { haptics.tap(); setSelectedKey(key); setViewMode('day'); }}
+            onPressEvent={(key, eventId) => openEvent(key, eventsForDay(key).events.find(e => e.id === eventId) ?? null)}
+            onPressAllDay={(key, event) => openEvent(key, event)}
+            onPressTask={taskId => handlePressTimelineTask(taskId)}
+            onPressUntimed={key => {
+              const column = multiDayColumns.find(c => c.key === key);
+              untimedLinkFor(key, column?.untimed ?? 0)?.onPress();
+            }}
+            onPressSlot={handlePressSlotOn}
+          />
         ) : (
           <>
             {renderNotes(selectedExtras, false)}
@@ -1043,11 +1127,16 @@ export function CalendarScreen() {
               use24Hour={use24Hour}
               nowMinutes={nowMinutes}
               onPressTask={handlePressTimelineTask}
-              onPressEvent={() => openEvent(selectedKey)}
+              onPressEvent={eventId => openEvent(selectedKey, selectedDay.events.find(e => e.id === eventId) ?? null)}
               onPressSlot={handlePressSlot}
-              placeholderMinutes={slotMenuOpen && slotMenu
+              placeholderMinutes={slotMenuOpen && slotMenu && (slotDayKey ?? selectedKey) === selectedKey
                 ? Math.round((slotMenu.at.getTime() - selectedDayStart.getTime()) / 60000)
                 : null}
+              eventColor={timelineEventColor}
+              canMoveEvent={canMoveTimelineEvent}
+              onCreateRange={isDemoModeActive() ? undefined : handleCreateRange}
+              onRescheduleEvent={handleRescheduleEvent}
+              onDragStateChange={setTimelineDragging}
             />
             {selectedUntimed && (
               <View style={styles.dayBody}>
@@ -1086,8 +1175,8 @@ export function CalendarScreen() {
           onOpenFull={onQuickAddOpenFull}
           seed={quickAddSeed}
           seedLabel={quickAddTime
-            ? `${format(selectedDate, 'MMM d')}, ${formatTimeOfDay(hhmmToDate(quickAddTime, selectedDate), use24Hour)}`
-            : format(selectedDate, 'MMM d')}
+            ? `${format(quickAddDate, 'MMM d')}, ${formatTimeOfDay(hhmmToDate(quickAddTime, quickAddDate), use24Hour)}`
+            : format(quickAddDate, 'MMM d')}
         />
       </LazySheet>
 
@@ -1123,6 +1212,7 @@ export function CalendarScreen() {
           calendarsById={eventCalendarTags}
           title={format(dayKeyToDate(selectedKey), 'EEEE, MMM d')}
           day={dayKeyToDate(selectedKey)}
+          focus={focusEvent}
         />
       </LazySheet>
       {pullSearch.sheet}
@@ -1286,11 +1376,6 @@ function makeStyles(colors: Colors, textScaleFactor = 1, cellSize = 0) {
       fontSize: font.xxs,
       fontWeight: fontWeight.medium,
     },
-    // One row of the month's cells, so the week reads as a slice of the grid.
-    weekStrip: {
-      flexDirection: 'row',
-      height: cellHeight,
-    },
     dayCell: {
       width: cellSize,
       height: cellHeight,
@@ -1367,21 +1452,39 @@ function makeStyles(colors: Colors, textScaleFactor = 1, cellSize = 0) {
     detail: {
       flex: 1,
     },
-    // The strip sits right above the list, and the list's first day heading
-    // carries no margin of its own.
-    weekList: {
+    // Schedule's line where the other views have their pager.
+    scheduleRange: {
+      minHeight: 44,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.md,
+    },
+    scheduleRangeText: {
+      color: colors.text,
+      fontSize: font.lg,
+      fontWeight: fontWeight.semibold,
+    },
+    scheduleDay: {
       marginTop: spacing.md,
+      marginBottom: spacing.sm,
     },
-    weekDay: {
-      marginBottom: spacing.lg,
-    },
-    weekDayDate: {
+    scheduleDayName: {
       color: colors.text,
       fontSize: font.md,
       fontWeight: fontWeight.semibold,
     },
-    weekDayDateToday: {
+    scheduleDayNameToday: {
       color: colors.accentText,
+    },
+    scheduleDayDate: {
+      color: colors.textSecondary,
+      fontWeight: fontWeight.regular,
+    },
+    // Dim on purpose: a run of empty days is the absence of anything to read.
+    quietRun: {
+      color: colors.textSecondary,
+      fontSize: font.sm,
+      marginHorizontal: spacing.md,
+      marginTop: spacing.md,
     },
     // A day's notes, agenda and task link, a block's gap apart.
     dayBody: {

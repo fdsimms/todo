@@ -6,6 +6,7 @@ import {
   freeGapsIn,
   freeMinutesIn,
   hasVideoCallLink,
+  videoCallLink,
   hasWholeDayBlockIn,
   isLiveEvent,
   nextEventAfter,
@@ -301,6 +302,25 @@ describe('blocksWholeDay / hasWholeDayBlockIn', () => {
     expect(hasWholeDayBlockIn([conference], DAY_START, DAY_END)).toBe(true);
     expect(hasWholeDayBlockIn([conference], DAY_END, new Date(2026, 7, 14))).toBe(false);
     expect(hasWholeDayBlockIn([ev(...ALL_DAY, { allDay: true, availability: 'free' })], DAY_START, DAY_END)).toBe(false);
+  });
+});
+
+describe('videoCallLink', () => {
+  it('reads the whole link out of the notes or the URL', () => {
+    expect(videoCallLink('Join Zoom Meeting:\nhttps://acme.zoom.us/j/912?pwd=x\nMeeting ID: 912'))
+      .toBe('https://acme.zoom.us/j/912?pwd=x');
+    expect(videoCallLink(null, 'https://meet.google.com/abc-defg-hij')).toBe('https://meet.google.com/abc-defg-hij');
+  });
+
+  it('skips links to other hosts and drops a sentence\'s trailing punctuation', () => {
+    expect(videoCallLink('Agenda https://docs.example/a then https://meet.google.com/xyz-abcd-efg.'))
+      .toBe('https://meet.google.com/xyz-abcd-efg');
+    expect(videoCallLink('(https://teams.microsoft.com/l/meetup-join/abc)')).toBe('https://teams.microsoft.com/l/meetup-join/abc');
+  });
+
+  it('is null with no call link', () => {
+    expect(videoCallLink('https://maps.example/x', null, undefined)).toBeNull();
+    expect(videoCallLink()).toBeNull();
   });
 });
 

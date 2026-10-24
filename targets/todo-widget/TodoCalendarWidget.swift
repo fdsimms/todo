@@ -350,7 +350,9 @@ struct CalendarWidgetEntryView: View {
         // the app hasn't refreshed in days asks to be opened.
         let days = (entry.days ?? []).filter { $0.end > entry.date }
         return Group {
-            if let today = days.first {
+            if family == .accessoryInline || family == .accessoryCircular || family == .accessoryRectangular {
+                accessory(days: days)
+            } else if let today = days.first {
                 switch family {
                 case .systemSmall: small(today: today, tomorrow: days.dropFirst().first, palette: palette)
                 case .systemLarge: large(today: today, tomorrow: days.dropFirst().first, palette: palette)
@@ -362,6 +364,67 @@ struct CalendarWidgetEntryView: View {
             }
         }
         .widgetURL(calendarURL(dayKey: days.first?.key))
+    }
+
+    // ---- the Lock Screen: what's next, in the system's own single tone ----
+
+    /// The next line still to come: today's first not yet over, else tomorrow's first.
+    private func nextLine(_ days: [CalendarDayModel]) -> (line: CalendarLine, tomorrow: Bool)? {
+        if let today = days.first, let line = today.remaining(at: entry.date).first { return (line, false) }
+        if days.count > 1, let line = days[1].lines.first { return (line, true) }
+        return nil
+    }
+
+    /// No colours: the Lock Screen draws accessories as one vibrant layer, so
+    /// `.primary` and `.secondary` are all it reads (see AccessoryRing).
+    @ViewBuilder
+    private func accessory(days: [CalendarDayModel]) -> some View {
+        let next = nextLine(days)
+        switch family {
+        case .accessoryInline:
+            if let next {
+                Text("\(next.tomorrow ? "Tomorrow " : "")\(timeText(next.line.start)) \(next.line.title)")
+            } else {
+                Text(entry.message == nil ? "Nothing else today" : "Calendar")
+            }
+        case .accessoryCircular:
+            let date = days.first.flatMap { dayKeyDate($0.key) } ?? entry.date
+            ZStack {
+                AccessoryWidgetBackground()
+                VStack(spacing: -1) {
+                    Text(date.formatted(.dateTime.weekday(.abbreviated)).uppercased())
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Text(date.formatted(.dateTime.day()))
+                        .font(.system(size: 20, weight: .semibold))
+                }
+            }
+        default:
+            VStack(alignment: .leading, spacing: 1) {
+                if let next {
+                    Text(next.line.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text("\(next.tomorrow ? "Tomorrow, " : "")\(spanText(next.line))")
+                        .font(.caption)
+                        .lineLimit(1)
+                    if let detail = next.line.detail, !detail.isEmpty {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                } else {
+                    Text("Calendar")
+                        .font(.headline)
+                    Text(entry.message ?? "Nothing else today")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        }
     }
 
     // ---- small: the date and what's next ----
@@ -692,7 +755,10 @@ struct TodoCalendarWidget: Widget {
         }
         .configurationDisplayName("Calendar")
         .description("Your events and tasks with a time, today and next.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .supportedFamilies([
+            .systemSmall, .systemMedium, .systemLarge,
+            .accessoryRectangular, .accessoryInline, .accessoryCircular,
+        ])
         .contentMarginsDisabled()
     }
 }

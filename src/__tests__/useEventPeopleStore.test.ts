@@ -8,7 +8,7 @@ import {
   dbGetSetting,
   dbSetSetting,
 } from '../db/database';
-import { deleteEventDirect, saveEventDirect, updateEventDirect } from '../utils/calendarSync';
+import { deleteEventDirect, rescheduleEventDirect, saveEventDirect, updateEventDirect } from '../utils/calendarSync';
 import { isDemoModeActive } from '../utils/demoState';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -34,6 +34,7 @@ jest.mock('../db/database', () => ({
 jest.mock('../utils/calendarSync', () => ({
   saveEventDirect: jest.fn(),
   updateEventDirect: jest.fn(),
+  rescheduleEventDirect: jest.fn(),
   deleteEventDirect: jest.fn(),
 }));
 jest.mock('../utils/demoState', () => ({ isDemoModeActive: jest.fn().mockReturnValue(false) }));
@@ -182,6 +183,42 @@ describe('saveEvent', () => {
 
 // Links are keyed by occurrence (id + start), so an edit that moves the event
 // has to move its people with it, or they stay behind on the old slot.
+describe('moveEvent', () => {
+  const before = event();
+  const start = new Date('2099-01-10T19:00:00.000Z');
+  const end = new Date('2099-01-10T21:30:00.000Z');
+
+  beforeEach(() => {
+    mockExternalIds.mockResolvedValue({});
+    useEventPeopleStore.getState().setPeople(before, ['p1']);
+  });
+
+  it('moves the event this occurrence only, and its people with it', async () => {
+    (rescheduleEventDirect as jest.Mock).mockResolvedValue('e1');
+
+    await expect(useEventPeopleStore.getState().moveEvent(before, start, end)).resolves.toBe('e1');
+
+    expect(rescheduleEventDirect).toHaveBeenCalledWith('e1', 'Dinner', start, end, before.start);
+    expect(useEventPeopleStore.getState().peopleFor(before)).toEqual([]);
+    expect(useEventPeopleStore.getState().peopleFor({ id: 'e1', start: start.toISOString() })).toEqual(['p1']);
+    expect(useCalendarStore.getState().refresh).toHaveBeenCalled();
+  });
+
+  it('leaves the links alone when the move fails', async () => {
+    (rescheduleEventDirect as jest.Mock).mockResolvedValue(null);
+
+    await expect(useEventPeopleStore.getState().moveEvent(before, start, end)).resolves.toBeNull();
+
+    expect(useEventPeopleStore.getState().peopleFor(before)).toEqual(['p1']);
+  });
+
+  it('touches nothing in demo mode', async () => {
+    (isDemoModeActive as jest.Mock).mockReturnValueOnce(true);
+    await expect(useEventPeopleStore.getState().moveEvent(before, start, end)).resolves.toBeNull();
+    expect(rescheduleEventDirect).not.toHaveBeenCalled();
+  });
+});
+
 describe('updateEvent and deleteEvent', () => {
   const before = event();
   const moved = { title: 'Dinner', start: new Date('2099-01-11T18:00:00.000Z'), end: new Date('2099-01-11T20:00:00.000Z') };

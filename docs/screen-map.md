@@ -26,7 +26,7 @@ components below.
 - `src/screens/AutomationsScreen.tsx` — GeneratedTasksSection, PressableScale, ScreenHeader, SearchField, SettingsFocus
 - `src/screens/BackfillScreen.tsx` — BirthdayPicker, CategoryPicker, CoinIcon, CountStepper, DetailHeader, EmptyState, FieldLabel, InlineAction, LazySheet, NumberPadAccessory, NutritionPanelSheet, NutritionSearchSheet, +8 more
 - `src/screens/BloodPressureScreen.tsx` — BloodPressureChart, EmptyState, HubPills, LogBloodPressureSheet, ScreenHeader, ScreenSettingsSheet, SegmentedControl
-- `src/screens/CalendarScreen.tsx` — CalendarAgenda, DayTimeline, DeliverablePromptQueue, EmptyNote, LazySheet, PeriodNav, QuickAddModal, QuickEventSheet, ScreenHeader, ScreenSettingsSheet, TaskEditor, TimeSlotMenu, +1 more
+- `src/screens/CalendarScreen.tsx` — CalendarAgenda, DayTimeline, DeliverablePromptQueue, EmptyNote, LazySheet, MultiDayTimeline, PeriodNav, QuickAddModal, QuickEventSheet, ScreenHeader, ScreenSettingsSheet, TaskEditor, +2 more
 - `src/screens/CategoriesScreen.tsx` — CategoryEditor, EmptyState, Fab, HubPills, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet
 - `src/screens/CategoryDetailScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, Fab, LazySheet, PaintSelection, PinIcon, QuickAddModal, ScrollToTopButton, SpotlightOverlay, TaskEditor, +1 more
 - `src/screens/CookbookDetailScreen.tsx` — DetailHeader, EmptyNote, EmptyState, InlineAction, ScrollToTopButton, SearchField, SheetHeader, SheetHeaderButton, SheetModal
@@ -276,6 +276,7 @@ Where each component can appear.
 - `src/components/MoodFace.tsx` — on MoodDayScreen, MoodHistoryScreen, MoodScreen, SymptomDetailScreen
 - `src/components/MoodLogSheet.tsx` — on MoodDayScreen, MoodHistoryScreen, MoodScreen, SymptomDetailScreen
 - `src/components/MorningCheckInSheet.tsx` — on TodayScreen
+- `src/components/MultiDayTimeline.tsx` — on CalendarScreen
 - `src/components/NegativeHoldMenu.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
 - `src/components/NestedTemplatePicker.tsx` — on TemplateDetailScreen
 - `src/components/NewSavedMealSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
