@@ -26,6 +26,8 @@ import {
 } from 'react-native';
 import { pickRecipePhoto, type RecipePhoto } from '../utils/recipePhoto';
 import { alertPermissionOff } from '../utils/permissionAlert';
+import { afterMenuDismissed } from '../utils/sheetModal';
+import { useActionMenu } from '../hooks/useActionMenu';
 import { SheetModal } from './SheetModal';
 import { LimitImpactLines } from './LimitImpactLines';
 import { useLimitImpact } from '../hooks/useLimitImpact';
@@ -1694,27 +1696,46 @@ export function FoodLogEntrySheet({
   };
 
   /**
-   * "Photograph your meal": the camera, then the estimate panel asking about
-   * the photo, with whatever is typed in the field beside it. The model
-   * proposes and nothing is logged until the panel's Log, the same as a typed
-   * estimate.
+   * "Photograph your meal": a new photo or one already in the library, then
+   * the estimate panel asking about the photo, with whatever is typed in the
+   * field beside it. The model proposes and nothing is logged until the
+   * panel's Log, the same as a typed estimate.
    */
-  const startMealPhoto = async () => {
-    haptics.tap();
-    Keyboard.dismiss();
-    const picked = await pickRecipePhoto('camera');
+  const actionMenu = useActionMenu();
+  const takeMealPhoto = async (source: 'camera' | 'library') => {
+    // Started from the action menu, which is still leaving; the system
+    // picker can't present until it has.
+    await afterMenuDismissed();
+    const picked = await pickRecipePhoto(source);
     if (picked.status === 'canceled') return;
     if (picked.status === 'denied') {
-      alertPermissionOff('Camera access is off', 'Turn it on in Settings to photograph a meal, or type what you ate.');
+      alertPermissionOff(
+        source === 'camera' ? 'Camera access is off' : 'Photo access is off',
+        source === 'camera'
+          ? 'Turn it on in Settings to photograph a meal, or type what you ate.'
+          : 'Turn it on in Settings to choose a photo of a meal, or type what you ate.',
+      );
       return;
     }
     if (picked.status === 'failed') {
-      Alert.alert('Couldn’t open the camera', picked.message);
+      Alert.alert(source === 'camera' ? 'Couldn’t open the camera' : 'Couldn’t open that photo', picked.message);
       return;
     }
     setEstimatePhoto(picked.photo);
     setEstimateKey(k => k + 1);
     setEstimateOpen(true);
+  };
+  const startMealPhoto = () => {
+    haptics.tap();
+    Keyboard.dismiss();
+    actionMenu.open({
+      title: 'Photograph your meal',
+      message: 'Take a photo or choose one you already have to estimate what you ate.',
+      actions: [
+        { key: 'camera', label: 'Take a photo', icon: 'camera-outline', onPress: () => { void takeMealPhoto('camera'); } },
+        { key: 'library', label: 'Choose a photo', icon: 'images-outline', onPress: () => { void takeMealPhoto('library'); } },
+      ],
+    });
   };
 
   // Asked every time, with the search field's text as Food: a typed name may
@@ -2588,7 +2609,7 @@ export function FoodLogEntrySheet({
                       colors={colors}
                       icon="restaurant-outline"
                       label="Photograph your meal"
-                      onPress={() => { void startMealPhoto(); }}
+                      onPress={startMealPhoto}
                       wide={startTileCount >= 4}
                     />
                   )}
@@ -2744,6 +2765,7 @@ export function FoodLogEntrySheet({
         onSave={next => { if (figuresLine) writeLinePanel(figuresLine, next); }}
       />
       {overlays}
+      {actionMenu.element}
       <LabelSubjectSheet
         visible={labelAsk}
         initialName={query.trim()}
