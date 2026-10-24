@@ -1001,6 +1001,17 @@ export function RewardsScreen() {
           </Text>
         </View>
         {status && <Text style={styles.hint}>{status}</Text>}
+        {/* Claimable from the tile itself. A tile that can't be claimed yet
+            keeps its reason as text and opens the sheet, which explains it. */}
+        {!resting && affordable && (
+          <InlineAction
+            label="Claim"
+            icon="gift-outline"
+            onPress={() => claim(reward, shown.title)}
+            style={styles.tileClaim}
+            accessibilityLabel={`Claim ${shown.title} for ${formatCoins(reward.cost)}`}
+          />
+        )}
       </PressableScale>
     );
   };
@@ -1418,6 +1429,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   tileGoal: { borderColor: colors.accent },
   tileDim: { opacity: 0.6 },
+  tileClaim: { alignSelf: 'flex-start', marginTop: spacing.xsm },
   tileTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'auto' },
   tileTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium, marginTop: spacing.sm },
   glyphFallback: { borderRadius: radius.md, backgroundColor: colors.accentSubtle, alignItems: 'center', justifyContent: 'center' },
