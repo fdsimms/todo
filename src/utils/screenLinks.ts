@@ -77,6 +77,7 @@ const SCREEN_SYMBOLS: Record<string, string> = {
   MealPlan: 'fork.knife',
   Kitchen: 'refrigerator',
   FoodLog: 'fork.knife.circle',
+  Dishes: 'hand.thumbsup',
   Calendar: 'calendar',
   Logbook: 'checkmark.circle',
   Stats: 'chart.bar',

@@ -8,7 +8,7 @@ const routes = (items: ReturnType<typeof hubMenuItems>) => (items ?? []).map(d =
 
 describe('hubMenuItems', () => {
   it('lists the hub in reverse pill order, so the first screen is nearest the thumb', () => {
-    expect(routes(hubMenuItems('Groceries', FULL))).toEqual(['FoodLog', 'Kitchen', 'MealPlan', 'Recipes', 'Groceries']);
+    expect(routes(hubMenuItems('Groceries', FULL))).toEqual(['Dishes', 'FoodLog', 'Kitchen', 'MealPlan', 'Recipes', 'Groceries']);
   });
 
   it('gives every tab of a hub the same list in the same order', () => {
@@ -109,7 +109,7 @@ describe('hubMenuRelease', () => {
   const items = hubMenuItems('Groceries', FULL)!;
 
   it('opens the row under the finger', () => {
-    expect(hubMenuRelease(items, 1, false)).toEqual({ kind: 'open', route: 'Kitchen' });
+    expect(hubMenuRelease(items, 1, false)).toEqual({ kind: 'open', route: 'FoodLog' });
   });
 
   it('keeps the card open for a long press that never left the button', () => {

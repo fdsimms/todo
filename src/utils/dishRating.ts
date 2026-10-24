@@ -27,6 +27,8 @@ export interface DishInput {
   verdict?: DishVerdict | null;
   note?: string | null;
   lastHadAt?: Date | null;
+  /** A stored file name in the dish-photos folder, or null for none. */
+  photo?: string | null;
 }
 
 /** The two keys a dish is told apart by. A blank place keys as ''. */
@@ -71,12 +73,13 @@ export function buildDishRating(
     verdict: input.verdict ?? null,
     note: trimmedOrNull(input.note),
     lastHadAt: input.lastHadAt ? noonOf(input.lastHadAt) : null,
+    photo: trimmedOrNull(input.photo),
     createdAt: now.toISOString(),
   };
 }
 
 /** What an edit may change. `lastHadAt` takes a Date and is stored as noon. */
-export type DishPatch = Partial<Pick<DishInput, 'name' | 'place' | 'verdict' | 'note' | 'lastHadAt'>>;
+export type DishPatch = Partial<Pick<DishInput, 'name' | 'place' | 'verdict' | 'note' | 'lastHadAt' | 'photo'>>;
 
 /**
  * The row after an edit, re-keyed when the name or place changed. Returns the
@@ -91,6 +94,7 @@ export function applyDishPatch(existing: DishRating, patch: DishPatch): DishRati
   if (patch.place !== undefined) next.place = trimmedOrNull(patch.place);
   if (patch.verdict !== undefined) next.verdict = patch.verdict;
   if (patch.note !== undefined) next.note = trimmedOrNull(patch.note);
+  if (patch.photo !== undefined) next.photo = trimmedOrNull(patch.photo);
   if (patch.lastHadAt !== undefined) {
     next.lastHadAt = patch.lastHadAt ? noonOf(patch.lastHadAt) : null;
   }
@@ -178,4 +182,41 @@ export function dishForLabel(dishes: DishRating[], label: string): DishRating | 
     if (byVerdict !== 0) return byVerdict;
     return (b.lastHadAt ?? '').localeCompare(a.lastHadAt ?? '');
   })[0];
+}
+
+/** The parts of a food log draft that say whether it was food somebody else made. */
+export interface EatenOutProbe {
+  recipeId?: string | null;
+  itemId?: string | null;
+  productId?: string | null;
+  mealPlanEntryId?: string | null;
+  savedMealId?: string | null;
+  taskId?: string | null;
+  nutrition: { source?: string | null };
+}
+
+/**
+ * Whether a logged meal reads as one eaten out: described in words and
+ * estimated, with nothing in the app behind it (no recipe, catalog item,
+ * product, planned meal, saved meal or task). It is the one case with no
+ * database to answer, which is why a rating has nowhere else to come from.
+ * A guess, so it only decides whether to *ask*: nothing is rated on its say.
+ */
+export function isEatenOutDraft(draft: EatenOutProbe): boolean {
+  if (draft.nutrition.source !== 'estimated') return false;
+  return !(draft.recipeId || draft.itemId || draft.productId || draft.mealPlanEntryId || draft.savedMealId || draft.taskId);
+}
+
+/**
+ * The dish to ask about after logging `label`, or null when there is nothing
+ * to ask: a blank label, or a dish that already has an answer. A saved dish
+ * with no answer yet is asked about again, since that is the question it is
+ * missing.
+ */
+export function dishOfferFor(dishes: DishRating[], label: string): { name: string } | null {
+  const name = label.trim();
+  if (!groceryNameKey(name)) return null;
+  const known = dishForLabel(dishes, name);
+  if (known && known.verdict !== null) return null;
+  return { name };
 }

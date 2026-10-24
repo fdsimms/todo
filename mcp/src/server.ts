@@ -107,6 +107,7 @@ import { listErrors, MAX_ERRORS } from './errorTools';
 import { storageReport } from './storageTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
+import { addDish, deleteDish, listDishes, updateDish } from './dishTools';
 import { addCookware, deleteCookware, listCookware, updateCookware } from './cookwareTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { DEFAULT_FAST_LIMIT, MAX_FAST_LIMIT, listFasts } from './fastTools';
@@ -564,6 +565,16 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'The days something changed in the person\'s life that they have marked on the mood log ("Started sertraline", "New job"), each with its date. mood_insights reads mood before and after each one, under its own minimum-days rules; a start and a later stop are two milestones and are never paired. Empty unless the person has turned on Include health logs for the sync server on their phone.',
     {},
     async () => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listMilestones(replica))))
+  );
+
+  server.tool(
+    'list_dishes',
+    'The restaurant dishes the person has rated, each with the place, their answer (loved = would order again, fine, avoid = never again, or null for no opinion yet), a note and the last day they had it. Use it before suggesting somewhere to eat or something to order. A null answer is no opinion, not a middling one.',
+    {
+      verdict: z.enum(['loved', 'fine', 'avoid']).optional().describe('Only dishes with this answer.'),
+      place: z.string().optional().describe('Only dishes at a place whose name contains this text.'),
+    },
+    async input => json(await withFresh(() => listDishes(replica, input)))
   );
 
   server.tool(
@@ -2296,6 +2307,25 @@ function registerWriteTools(
   );
 
   server.tool(
+    'add_dish',
+    'Save a restaurant dish the person had, and optionally whether they would order it again. Only an answer they gave you; never pick one from how they described the meal. A dish already saved under the same name and place is updated instead of duplicated. Photos are added in the app.',
+    {
+      name: z.string().min(1).max(80).describe('What it is called on the menu, e.g. "Pad see ew".'),
+      place: z.string().max(60).optional().describe('The restaurant, as they say it.'),
+      verdict: z.enum(['loved', 'fine', 'avoid']).optional().describe('loved = would order again, fine = it was fine, avoid = never again. Leave out when they gave none.'),
+      note: z.string().max(300).optional().describe('Why, in their words, e.g. "ask for extra spicy".'),
+      date: dayKey.optional().describe('The day they had it, YYYY-MM-DD. Default today.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => addDish(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the dish.' });
+      }
+    }
+  );
+
+  server.tool(
     'resolve_copy_flag',
     'Close a copy flag, by its id from list_copy_flags, once the copy has been changed in the source. Say what it became, or why it was left as it is. Temporary dev tooling.',
     {
@@ -2324,6 +2354,39 @@ function registerWriteTools(
         return json(await withWrite(() => updateMilestone(replica, id, patch)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change the milestone.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_dish',
+    'Change a dish\'s name, place, answer, note or last day had, by its id from list_dishes. Only what you name changes; pass null for the place, answer or note to clear it.',
+    {
+      id: z.string().min(1),
+      name: z.string().min(1).max(80).optional(),
+      place: z.string().max(60).nullable().optional(),
+      verdict: z.enum(['loved', 'fine', 'avoid']).nullable().optional().describe('Null clears the answer back to no opinion.'),
+      note: z.string().max(300).nullable().optional(),
+      date: dayKey.optional().describe('The last day they had it, YYYY-MM-DD.'),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateDish(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the dish.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_dish',
+    'Delete a dish and its rating by its id from list_dishes. There is no archive, and it cannot be restored from here. To only clear the answer, use update_dish with verdict null.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteDish(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the dish.' });
       }
     }
   );

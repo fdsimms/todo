@@ -10,6 +10,8 @@ import { generateId } from '../utils/id';
 import {
   applyDishPatch,
   buildDishRating,
+  dishForLabel,
+  dishOfferFor,
   findDish,
   type DishInput,
   type DishPatch,
@@ -28,6 +30,12 @@ import {
 interface DishRatingStore {
   dishes: DishRating[];
   initialized: boolean;
+  /**
+   * The dish the Food log is asking "would you order it again?" about, or null.
+   * Session-only on purpose: an unanswered question is not worth carrying to
+   * tomorrow, and ignoring it costs nothing (`DishRatingOffer`).
+   */
+  offer: { name: string } | null;
   initialize: () => void;
   /**
    * Saves a dish, or returns the one already saved under the same name and
@@ -38,14 +46,20 @@ interface DishRatingStore {
   updateDish: (id: string, patch: DishPatch) => void;
   setVerdict: (id: string, verdict: DishVerdict | null) => void;
   removeDish: (id: string) => void;
+  /** Raises the question for a meal just logged, unless the dish already has an answer. */
+  offerRating: (label: string) => void;
+  /** Answers it: rates the saved dish of that name, or saves one with no place. */
+  rateOffered: (verdict: DishVerdict) => void;
+  dismissOffer: () => void;
 }
 
 export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
   dishes: [],
   initialized: false,
+  offer: null,
 
   initialize() {
-    set({ dishes: dbGetAllDishRatings(), initialized: true });
+    set({ dishes: dbGetAllDishRatings(), initialized: true, offer: null });
   },
 
   addDish(input) {
@@ -82,5 +96,22 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
   removeDish(id) {
     dbDeleteDishRating(id);
     set({ dishes: get().dishes.filter(d => d.id !== id) });
+  },
+
+  offerRating(label) {
+    set({ offer: dishOfferFor(get().dishes, label) });
+  },
+
+  rateOffered(verdict) {
+    const offer = get().offer;
+    set({ offer: null });
+    if (!offer) return;
+    const known = dishForLabel(get().dishes, offer.name);
+    if (known) get().updateDish(known.id, { verdict, lastHadAt: new Date() });
+    else get().addDish({ name: offer.name, verdict, lastHadAt: new Date() });
+  },
+
+  dismissOffer() {
+    set({ offer: null });
   },
 }));

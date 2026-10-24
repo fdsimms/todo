@@ -32,6 +32,7 @@
  * Suggestions, not verdicts: the result never says the person is doing it
  * wrong, and the server instructions tell the agent the same.
  */
+import { isEatenOutDraft } from '../../src/utils/dishRating';
 import { likelyRoutineCopies } from '../../src/utils/routineVersions';
 import { slotInInUse } from '../../src/utils/slotIn';
 import type { Task } from '../../src/types';
@@ -272,6 +273,19 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
       return logs >= 14 && replica.milestones().length === 0
         ? `${logs} mood check-ins are logged and no milestone is marked.`
         : null;
+    },
+  },
+  {
+    id: 'dish_ratings',
+    title: 'Rating restaurant dishes',
+    benefit: 'Dishes keeps what you ordered at a restaurant and whether you would order it again, so you do not have to remember. The food log asks after a meal you described, and a dish you rated shows its answer when you log it again.',
+    since: '2026-10-24',
+    evidence: ({ replica }) => {
+      if (!replica.settings().kitchenEnabled || replica.dishes().length > 0) return null;
+      const today = replica.todayKey();
+      const eatenOut = replica.foodLogEntries(replica.shiftDayKey(today, -60), today).filter(isEatenOutDraft);
+      const distinct = new Set(eatenOut.map(e => e.label.trim().toLowerCase())).size;
+      return distinct >= 5 ? `${distinct} described meals are in the food log over the last 60 days and no dish is rated.` : null;
     },
   },
   {

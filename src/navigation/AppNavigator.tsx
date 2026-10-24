@@ -47,6 +47,7 @@ import { RewardsScreen } from '../screens/RewardsScreen';
 import { ScreenTimeScreen } from '../screens/ScreenTimeScreen';
 import { RemindersScreen } from '../screens/RemindersScreen';
 import { TemplatesScreen } from '../screens/TemplatesScreen';
+import { DishesScreen } from '../screens/DishesScreen';
 import { RecipesScreen } from '../screens/RecipesScreen';
 import { RecipeDetailScreen } from '../screens/RecipeDetailScreen';
 import { CookbooksScreen } from '../screens/CookbooksScreen';
@@ -155,6 +156,7 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   People: freezeWhenBlurred(PeopleScreen),
   Stacks: freezeWhenBlurred(StacksScreen),
   Templates: freezeWhenBlurred(TemplatesScreen),
+  Dishes: freezeWhenBlurred(DishesScreen),
   Logbook: freezeWhenBlurred(LogbookScreen),
   Stats: freezeWhenBlurred(StatsScreen),
   Mood: freezeWhenBlurred(MoodScreen),

@@ -1431,6 +1431,35 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return milestone;
     },
 
+    // A dish name can be a restaurant and a meal somebody ate, so the recorded
+    // title is the kind, as a milestone's is. The preview still names it: that
+    // is for the person, before the write.
+    addDish(input) {
+      const dish = replica.addDish(input);
+      log({ action: 'created', subject: 'dish', title: 'Dish', taskId: null, recordId: dish.id, note: `Add the dish "${dish.name}"${dish.place ? ` at ${dish.place}` : ''}${dish.verdict ? ` as ${dish.verdict}` : ''}` });
+      return dish;
+    },
+
+    updateDish(id, patch) {
+      const before = replica.dishes().find(d => d.id === id);
+      const dish = replica.updateDish(id, patch);
+      const changes = [
+        ...(before && before.name !== dish.name ? [`name from "${before.name}" to "${dish.name}"`] : []),
+        ...(before && before.place !== dish.place ? [`place from ${before.place ?? 'none'} to ${dish.place ?? 'none'}`] : []),
+        ...(before && before.verdict !== dish.verdict ? [`answer from ${before.verdict ?? 'none'} to ${dish.verdict ?? 'none'}`] : []),
+        ...(before && before.note !== dish.note ? ['the note'] : []),
+        ...(before && before.lastHadAt !== dish.lastHadAt ? ['the last day had'] : []),
+      ];
+      log({ action: 'edited', subject: 'dish', title: 'Dish', taskId: null, recordId: dish.id, note: changes.length ? `Change the dish "${before!.name}": ${changes.join('; ')}` : `Leave the dish "${dish.name}" as it is` });
+      return dish;
+    },
+
+    deleteDish(id) {
+      const dish = replica.deleteDish(id);
+      log({ action: 'cleared', subject: 'dish', title: 'Dish', taskId: null, recordId: dish.id, note: `Delete the dish "${dish.name}"${dish.place ? ` at ${dish.place}` : ''}. It cannot be restored from here.` });
+      return dish;
+    },
+
     // Routines are plans, named by their own names. A workout is health
     // content, so the recorded title is the kind, as a mood entry's is; the
     // preview names it, for the person, before the write.

@@ -561,6 +561,7 @@ function runInitDatabase(): void {
       verdict TEXT,
       note TEXT,
       last_had_at TEXT,
+      photo TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -7809,6 +7810,7 @@ function rowToDishRating(row: Record<string, unknown>): DishRating {
     verdict: isDishVerdict(row.verdict) ? row.verdict : null,
     note: (row.note as string | null) ?? null,
     lastHadAt: (row.last_had_at as string | null) ?? null,
+    photo: (row.photo as string | null) ?? null,
     createdAt: row.created_at as string,
   };
 }
@@ -7822,21 +7824,29 @@ export function dbGetAllDishRatings(): DishRating[] {
 
 export function dbInsertDishRating(dish: DishRating): void {
   db.runSync(
-    `INSERT INTO dish_ratings (id, name, name_key, place, place_key, verdict, note, last_had_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [dish.id, dish.name, dish.nameKey, dish.place, dish.placeKey, dish.verdict, dish.note, dish.lastHadAt, dish.createdAt]
+    `INSERT INTO dish_ratings (id, name, name_key, place, place_key, verdict, note, last_had_at, photo, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [dish.id, dish.name, dish.nameKey, dish.place, dish.placeKey, dish.verdict, dish.note, dish.lastHadAt, dish.photo, dish.createdAt]
   );
 }
 
 export function dbUpdateDishRating(dish: DishRating): void {
   db.runSync(
-    `UPDATE dish_ratings SET name=?, name_key=?, place=?, place_key=?, verdict=?, note=?, last_had_at=? WHERE id=?`,
-    [dish.name, dish.nameKey, dish.place, dish.placeKey, dish.verdict, dish.note, dish.lastHadAt, dish.id]
+    `UPDATE dish_ratings SET name=?, name_key=?, place=?, place_key=?, verdict=?, note=?, last_had_at=?, photo=? WHERE id=?`,
+    [dish.name, dish.nameKey, dish.place, dish.placeKey, dish.verdict, dish.note, dish.lastHadAt, dish.photo, dish.id]
   );
 }
 
 export function dbDeleteDishRating(id: string): void {
   db.runSync('DELETE FROM dish_ratings WHERE id = ?', [id]);
+}
+
+/** Every photo file name a dish row names, for the image sync and the launch sweep. */
+export function dbDishPhotoNames(): string[] {
+  const rows = db.getAllSync<{ photo: string }>(
+    "SELECT photo FROM dish_ratings WHERE photo IS NOT NULL AND photo <> ''"
+  );
+  return [...new Set(rows.map(r => r.photo))];
 }
 
 function rowToCookware(row: Record<string, unknown>): Cookware {

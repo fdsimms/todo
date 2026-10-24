@@ -1538,6 +1538,15 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   ("Milestone"), never by its label, for the reason a mood entry is: "Started sertraline" is health
   content, and the Activity list is about the app. Each milestone is its own split and the tools
   never pair a start with a later stop; the contrast itself is `mood_insights`' to report.
+- **Dishes go through `useDishRatingStore`'s own actions** (`dishTools.ts`), so a blank name is
+  refused as the sheet refuses it, and adding a dish already saved under the same name and place
+  updates that one, which makes a retried call safe. The one rule in the words is that an answer
+  (`loved`, `fine`, `avoid`) is only what the person said: `null` is no opinion, which the tools
+  never read as `fine` and never fill in from how a meal was described. Photos are the app's
+  (`dish-photos`, synced as images), and this server holds no image files, so a row only says
+  `hasPhoto`. The Activity entry is titled by kind ("Dish"), since a dish name can be a place and a
+  meal somebody ate. Unlike milestones, dishes are plain data and reach this server whatever the
+  health-logs switch says.
 - **Cookware goes through `useCookwareStore`'s own actions** (`cookwareTools.ts`), so a blank name
   or a weight at or below zero is refused as the sheet refuses it. It is a convenience for typing a
   dish's weight and nothing points at it: `cookedWeightG` and a leftover's weight are the food

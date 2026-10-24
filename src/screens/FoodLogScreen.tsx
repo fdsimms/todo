@@ -96,6 +96,7 @@ import { useSheetSubject } from '../hooks/useSheetSubject';
 import { SavedMealReviewSheet } from '../components/SavedMealReviewSheet';
 import { PendingEstimatesCard } from '../components/PendingEstimatesCard';
 import { ProductRatingOffer } from '../components/ProductRatingOffer';
+import { DishRatingOffer } from '../components/DishRatingOffer';
 import type { PendingEstimate } from '../utils/estimateQueue';
 import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 import { ProduceContributorsSheet } from '../components/ProduceContributorsSheet';
@@ -1505,6 +1506,7 @@ export function FoodLogScreen() {
       </View>
 
       <ProductRatingOffer />
+      <DishRatingOffer />
 
       {dayEntries.length === 0 ? (
         // Scrolls, because the cards above can take more than the screen: with

@@ -1075,6 +1075,9 @@ export type UnattendedSubject =
   // A milestone on the mood log (`Milestone`). Titled by kind, never by its label, for the
   // reason a mood entry is: the Activity list is about the app, not somebody's health.
   | 'milestone'
+  // A restaurant dish and its rating (`DishRating`). Record only; titled by kind, since a
+  // dish name can be a place and a meal somebody ate.
+  | 'dish'
   // A journal or dream entry (`JournalEntry`). Titled by kind, never by its text, for the same reason.
   | 'journal'
   // A saved view, created or deleted by an agent. The feature is gone; kept so
@@ -2522,6 +2525,12 @@ export interface DishRating {
   note: string | null;
   /** The last time you had it: noon on the picked day, like `Milestone.date`. */
   lastHadAt: string | null;
+  /**
+   * The file name of its one photo in the `dish-photos` folder (`dishPhotos.ts`),
+   * never a path. The file travels through the image sync; the name travels
+   * with the row. Null when there is no photo.
+   */
+  photo: string | null;
   createdAt: string;
 }
 

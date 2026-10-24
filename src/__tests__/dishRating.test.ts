@@ -4,8 +4,10 @@ import {
   buildDishRating,
   dishForLabel,
   dishKeys,
+  dishOfferFor,
   findDish,
   groupDishesByPlace,
+  isEatenOutDraft,
   noonOf,
 } from '../utils/dishRating';
 
@@ -72,6 +74,17 @@ describe('applyDishPatch', () => {
   });
 });
 
+describe('photo', () => {
+  it('starts with none, and a patch sets, keeps and clears it', () => {
+    const d = dish('Soup', null, null);
+    expect(d.photo).toBeNull();
+    const withPhoto = applyDishPatch(d, { photo: 'dish-a.jpg' });
+    expect(withPhoto.photo).toBe('dish-a.jpg');
+    expect(applyDishPatch(withPhoto, { note: 'x' }).photo).toBe('dish-a.jpg');
+    expect(applyDishPatch(withPhoto, { photo: null }).photo).toBeNull();
+  });
+});
+
 describe('findDish', () => {
   it('matches on name and place together, not name alone', () => {
     const a = dish('Margherita', "Luigi's", 'loved');
@@ -120,5 +133,44 @@ describe('dishForLabel', () => {
     const old = dish('Soup', 'B', 'fine', new Date(2026, 0, 1));
     const recent = dish('Soup', 'C', 'fine', new Date(2026, 9, 1));
     expect(dishForLabel([unrated, old, recent], 'soup')).toBe(recent);
+  });
+});
+
+describe('isEatenOutDraft', () => {
+  const described = { nutrition: { source: 'estimated' } };
+
+  it('is a described, estimated meal with nothing in the app behind it', () => {
+    expect(isEatenOutDraft(described)).toBe(true);
+  });
+
+  it('is not once a recipe, item, product, planned meal, saved meal or task is behind it', () => {
+    for (const link of ['recipeId', 'itemId', 'productId', 'mealPlanEntryId', 'savedMealId', 'taskId']) {
+      expect(isEatenOutDraft({ ...described, [link]: 'x' })).toBe(false);
+    }
+  });
+
+  it('is not a food with a real panel', () => {
+    expect(isEatenOutDraft({ nutrition: { source: 'openFoodFacts' } })).toBe(false);
+    expect(isEatenOutDraft({ nutrition: { source: 'manual' } })).toBe(false);
+    expect(isEatenOutDraft({ nutrition: {} })).toBe(false);
+  });
+});
+
+describe('dishOfferFor', () => {
+  it('asks about a dish nobody has rated', () => {
+    expect(dishOfferFor([], '  Pad see ew ')).toEqual({ name: 'Pad see ew' });
+  });
+
+  it('does not ask again once the dish has an answer, at any place', () => {
+    expect(dishOfferFor([dish('Pad see ew', 'Thai Orchid', 'fine')], 'pad see ew')).toBeNull();
+  });
+
+  it('asks about a saved dish that has no answer yet', () => {
+    expect(dishOfferFor([dish('Pad see ew', 'Thai Orchid', null)], 'Pad see ew')).toEqual({ name: 'Pad see ew' });
+  });
+
+  it('asks nothing for a blank label', () => {
+    expect(dishOfferFor([], '   ')).toBeNull();
+    expect(dishOfferFor([], '!!')).toBeNull();
   });
 });
