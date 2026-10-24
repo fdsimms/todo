@@ -398,7 +398,7 @@ jest.mock('todo-eventkit-bridge', () => ({
 }));
 jest.mock('../store/useCalendarStore', () => ({
   // subscribe: useEventPeopleStore follows the calendar to read server ids.
-  useCalendarStore: { getState: jest.fn(() => ({ events: [], pastEvents: [], loaded: false })), subscribe: jest.fn() },
+  useCalendarStore: { getState: jest.fn(() => ({ events: [], pastEvents: [], gridEvents: [], loaded: false })), subscribe: jest.fn() },
 }));
 jest.mock('../store/useWeatherStore', () => ({
   useWeatherStore: { getState: jest.fn(() => ({ snapshot: null, snapshotDayKey: null })) },
@@ -631,7 +631,7 @@ beforeEach(() => {
   (syncDeadlineEvent as jest.Mock).mockResolvedValue({ eventId: null, externalId: null });
   (logTaskCompletionToCalendar as jest.Mock).mockResolvedValue(null);
   const { useCalendarStore } = jest.requireMock('../store/useCalendarStore') as { useCalendarStore: { getState: jest.Mock } };
-  useCalendarStore.getState.mockReturnValue({ events: [], pastEvents: [], loaded: false });
+  useCalendarStore.getState.mockReturnValue({ events: [], pastEvents: [], gridEvents: [], loaded: false });
   const { useWeatherStore } = jest.requireMock('../store/useWeatherStore') as { useWeatherStore: { getState: jest.Mock } };
   useWeatherStore.getState.mockReturnValue({ snapshot: null, snapshotDayKey: null });
   const { useTransitStore } = jest.requireMock('../store/useTransitStore') as { useTransitStore: { getState: jest.Mock } };
@@ -12866,6 +12866,27 @@ describe('deferredTasks', () => {
       tasks: [makeTask({ id: 't1', parentId: 'parent', deferUntil: future.toISOString() })],
     });
     expect(useTaskStore.getState().deferredTasks()).toHaveLength(0);
+  });
+});
+
+describe('slotWaitingTasks', () => {
+  // The pass's hold fields stay on a task after it is archived, and the reveal
+  // on Today must not list what Later wouldn't.
+  const held = (over: Partial<Task> = {}) => {
+    const today = new Date();
+    const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return makeTask({ id: 't1', slotDecidedOn: key(today), deferUntil: tomorrow.toISOString(), dueDate: today.toISOString(), ...over });
+  };
+
+  it('lists a task the pass is holding', () => {
+    useTaskStore.setState({ tasks: [held()] });
+    expect(useTaskStore.getState().slotWaitingTasks().map(t => t.id)).toEqual(['t1']);
+  });
+
+  it('leaves out a held task that was archived since', () => {
+    useTaskStore.setState({ tasks: [held({ archived: true })] });
+    expect(useTaskStore.getState().slotWaitingTasks()).toHaveLength(0);
   });
 });
 

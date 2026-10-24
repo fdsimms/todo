@@ -10,6 +10,8 @@ import { generateId } from '../utils/id';
 import {
   applyDishPatch,
   buildDishRating,
+  dishCollision,
+  mergeDishes,
   dishForLabel,
   dishOfferFor,
   findDish,
@@ -63,7 +65,9 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
   offer: null,
 
   initialize() {
-    set({ dishes: dbGetAllDishRatings(), initialized: true, offer: null });
+    // The pending question survives a reload: a sync that lands while the banner
+    // is up would otherwise take it away.
+    set({ dishes: dbGetAllDishRatings(), initialized: true });
   },
 
   addDish(input) {
@@ -75,6 +79,7 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
       if (input.verdict !== undefined && input.verdict !== null) patch.verdict = input.verdict;
       if (input.note) patch.note = input.note;
       if (input.lastHadAt) patch.lastHadAt = input.lastHadAt;
+      if (input.photo) patch.photo = input.photo;
       if (Object.keys(patch).length > 0) get().updateDish(existing.id, patch);
       return get().dishes.find(d => d.id === existing.id) ?? existing;
     }
@@ -88,9 +93,14 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
   updateDish(id, patch) {
     const existing = get().dishes.find(d => d.id === id);
     if (!existing) return;
-    const next = applyDishPatch(existing, patch);
+    const edited = applyDishPatch(existing, patch);
+    // An edit that makes this the same name and place as another saved dish is
+    // one dish, as addDish treats a retyped one: fold the other row in.
+    const twin = dishCollision(get().dishes, edited);
+    const next = twin ? mergeDishes(edited, twin) : edited;
     dbUpdateDishRating(next);
-    set({ dishes: get().dishes.map(d => (d.id === id ? next : d)) });
+    if (twin) dbDeleteDishRating(twin.id);
+    set({ dishes: get().dishes.filter(d => d.id !== twin?.id).map(d => (d.id === id ? next : d)) });
   },
 
   setVerdict(id, verdict) {

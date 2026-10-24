@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { BusyEvent } from '../utils/calendarBusy';
 import {
   EMPTY_EVENT_PEOPLE,
+  eventPeopleKeys,
   type EventPeopleIndex,
   indexEventPeople,
   legacyEventPeopleRows,
@@ -130,13 +131,16 @@ export const useEventPeopleStore = create<EventPeopleState>((set, get) => ({
     if (!calendarSubscribed) {
       calendarSubscribed = true;
       useCalendarStore.subscribe((state, prev) => {
-        if (state.events !== prev.events || state.pastEvents !== prev.pastEvents) {
-          void get().resolveExternalIds([...state.events, ...state.pastEvents]).then(() => get().followMovedEvents());
+        if (state.events !== prev.events || state.pastEvents !== prev.pastEvents || state.gridEvents !== prev.gridEvents) {
+          void get().resolveExternalIds([...state.events, ...state.pastEvents, ...state.gridEvents]).then(() => get().followMovedEvents());
         }
       });
     }
     const calendar = useCalendarStore.getState();
-    void get().resolveExternalIds([...calendar.events, ...calendar.pastEvents]).then(() => get().followMovedEvents());
+    // The grid read reaches weeks past the fortnight, and a link on one of those
+    // events is keyed by its server id: without it resolved here the event
+    // would look unlinked, and dragging it would leave its people behind.
+    void get().resolveExternalIds([...calendar.events, ...calendar.pastEvents, ...calendar.gridEvents]).then(() => get().followMovedEvents());
   },
 
   followMovedEvents: () => {
@@ -150,8 +154,23 @@ export const useEventPeopleStore = create<EventPeopleState>((set, get) => ({
     );
     if (moved.length === 0) return;
     for (const { row, event } of moved) {
+      const there = peopleForEvent(get().links, event);
+      if (there.length === 0) {
+        // Nobody on the new slot: the same row follows the event, so every device
+        // that notices the move writes the same row rather than a new one of its own.
+        dbUpsertEventPeopleLink({
+          ...row,
+          eventKey: eventPeopleKeys(event, get().links.externalIds)[0],
+          eventStart: event.start,
+          eventEnd: event.end,
+          title: event.title,
+        });
+        const rows = dbGetAllEventPeopleLinks();
+        set({ rows, links: indexEventPeople(rows, get().links.externalIds) });
+        continue;
+      }
       // Unioned with anyone already on the new slot; the old row goes.
-      const people = [...new Set([...peopleForEvent(get().links, event), ...row.personIds])];
+      const people = [...new Set([...there, ...row.personIds])];
       dbDeleteEventPeopleLinks([row.id]);
       const rows = dbGetAllEventPeopleLinks();
       set({ rows, links: indexEventPeople(rows, get().links.externalIds) });

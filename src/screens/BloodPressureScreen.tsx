@@ -13,7 +13,7 @@ import { useDemoStore } from '../store/useDemoStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { dayKeyOf, getCurrentDayStart, getCurrentLogicalDayKey, getLogicalDayKey } from '../utils/dateUtils';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { openHealthApp } from '../utils/healthBridge';
 import {
@@ -98,10 +98,12 @@ export function BloodPressureScreen() {
   const average = useMemo(() => averageReading(inRange), [inRange]);
   const listed = useMemo(() => inRange.slice(-MAX_LISTED).reverse(), [inRange]);
 
-  const todayKey = dayKeyOf(getCurrentDayStart());
+  // The person's own day boundary: a reading taken at 1 AM with a 2 AM day start
+  // belongs to the day before the calendar date it carries.
+  const todayKey = getCurrentLogicalDayKey();
   const yesterdayKey = dayKeyOf(addDays(getCurrentDayStart(), -1));
   const dayLabel = (at: Date): string => {
-    const key = dayKeyOf(at);
+    const key = getLogicalDayKey(at);
     if (key === todayKey) return 'Today';
     if (key === yesterdayKey) return 'Yesterday';
     return format(at, at.getFullYear() === new Date().getFullYear() ? 'EEE, MMM d' : 'MMM d, yyyy');
@@ -266,7 +268,7 @@ export function BloodPressureScreen() {
             <View style={[styles.card, styles.listCard]}>
               {listed.map((reading: BloodPressureReading, i) => (
                 <View
-                  key={reading.at.toISOString()}
+                  key={`${reading.at.toISOString()}-${i}`}
                   style={[styles.row, i > 0 && styles.rowDivider]}
                   accessible
                   accessibilityLabel={`${reading.systolic} over ${reading.diastolic}, ${dayLabel(reading.at)} at ${timeLabel(reading.at)}${reading.pulse !== null ? `, pulse ${reading.pulse}` : ''}`}

@@ -932,18 +932,20 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       : null;
   const typeMoves = rows.map((row, i) => typeMoveOf(row, matches[i]));
   const typeMoveCount = typeMoves.filter(Boolean).length;
-  const applyTypeMove = (row: ScanRow, move: ItemTypeMove) =>
+  const applyTypeMove = (row: ScanRow, move: ItemTypeMove, keepIncluded = false) =>
     patchRow(row.key, {
       name: move.name,
       variantEdit: move.variant,
       typeSuggestion: null,
-      included: true,
+      ...(keepIncluded ? {} : { included: true }),
     });
   const applyAllTypeMoves = () => {
     haptics.tap();
+    // A row the person unchecked stays unchecked: the rename is theirs to accept,
+    // the decision to add the item is not something this button revisits.
     rows.forEach((row, i) => {
       const move = typeMoves[i];
-      if (move) applyTypeMove(row, move);
+      if (move) applyTypeMove(row, move, true);
     });
   };
 

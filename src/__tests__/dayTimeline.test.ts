@@ -3,6 +3,7 @@ import type { BusyEvent } from '../utils/calendarBusy';
 import {
   buildDayTimeline,
   clockToDayMinutes,
+  dayLengthMinutes,
   draggedColumn,
   draggedRange,
   instantToDayMinutes,
@@ -339,6 +340,33 @@ describe('draggedRange', () => {
     expect(draggedRange('resize', block, 38)).toEqual({ start: 9 * 60, end: 10 * 60 + 45 });
     expect(draggedRange('create', block, -300)).toEqual({ start: 9 * 60, end: 9 * 60 + 15 });
     expect(draggedRange('resize', block, 10000)).toEqual({ start: 9 * 60, end: MINUTES_IN_DAY });
+  });
+});
+
+describe('draggedRange off the quarter-hour grid', () => {
+  const offGrid = { start: 9 * 60 + 10, end: 10 * 60 };
+
+  it('leaves a block where it is until the finger has moved it a step', () => {
+    expect(draggedRange('move', offGrid, 2)).toEqual(offGrid);
+    expect(draggedRange('resize', offGrid, -6)).toEqual(offGrid);
+    expect(draggedRange('move', offGrid, 8)).toEqual({ start: 9 * 60 + 25, end: 10 * 60 + 15 });
+  });
+
+  it('moves an event shorter than a step by its own length', () => {
+    expect(draggedRange('move', { start: 600, end: 610 }, 15)).toEqual({ start: 615, end: 625 });
+    expect(draggedRange('move', { start: 600, end: 600 }, 15)).toEqual({ start: 615, end: 615 });
+  });
+
+  it('stops at the end of a day that is not 24 hours long', () => {
+    const springForward = 23 * 60;
+    expect(draggedRange('move', { start: 600, end: 660 }, 5000, undefined, springForward)).toEqual({ start: springForward - 60, end: springForward });
+    expect(draggedRange('resize', { start: 600, end: 660 }, 5000, undefined, springForward)).toEqual({ start: 600, end: springForward });
+  });
+});
+
+describe('dayLengthMinutes', () => {
+  it('is 24 hours on an ordinary day', () => {
+    expect(dayLengthMinutes(new Date(2026, 6, 4))).toBe(MINUTES_IN_DAY);
   });
 });
 

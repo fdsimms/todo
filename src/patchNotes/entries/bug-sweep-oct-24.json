@@ -1,0 +1,4 @@
+{
+  "message": "Fixes from a bug sweep: Go to it now opens a task inside a folded Later stack, \"Use suggested names\" no longer re-checks scanned items you unchecked, archived tasks no longer show under \"waiting for a lighter day\", Pause in a focus session now pauses a timed task's countdown after the step ends, a dish you marked \"avoid\" is no longer asked about again, and a photo added to a dish that already exists is kept. Dish names in other scripts can be saved, renaming a dish onto another one merges them. Dragging an event on the calendar no longer nudges it onto the quarter hour, and a short event keeps its length when moved. The blood pressure screen says Today by your own day start.",
+  "date": "2026-10-24"
+}

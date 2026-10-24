@@ -517,6 +517,35 @@ describe('the workout write tools', () => {
       expect(() => updateWorkout(ledgered, 'gone', { notes: 'x' })).toThrow(/No workout with id gone/);
     });
 
+    it('reads an exercise named in two blocks in order, not the first set twice', () => {
+      const w = logWorkout(ledgered, {
+        startedAt: new Date(2026, 9, 7, 18).toISOString(), durationMinutes: 40,
+        exercises: [{ exerciseId: BENCH, sets: [{ weightKg: 80, reps: 8 }, { weightKg: 80, reps: 8 }] }],
+      }, new Date(2026, 9, 8)).workout;
+      const first = new Date(2026, 9, 7, 18, 10).toISOString();
+      const second = new Date(2026, 9, 7, 18, 20).toISOString();
+      const rows = replica.workoutSets(w.id);
+      mockRaw.runSync('UPDATE workout_sets SET completed_at = ? WHERE id = ?', [first, rows[0].id]);
+      mockRaw.runSync('UPDATE workout_sets SET completed_at = ? WHERE id = ?', [second, rows[1].id]);
+      replica.refresh();
+      updateWorkout(ledgered, w.id, { exercises: [
+        { exerciseId: BENCH, sets: [{ weightKg: 82, reps: 8 }] },
+        { exerciseId: BENCH, sets: [{ weightKg: 84, reps: 8 }] },
+      ] });
+      expect(replica.workoutSets(w.id).map(s => [s.weightKg, s.completedAt])).toEqual([[82, first], [84, second]]);
+    });
+
+    it('moves a kept set time with the start when both are given', () => {
+      const w = log();
+      mockRaw.runSync('UPDATE workout_sets SET completed_at = ? WHERE session_id = ?', [new Date(2026, 9, 7, 18, 20).toISOString(), w.id]);
+      replica.refresh();
+      updateWorkout(ledgered, w.id, {
+        startedAt: new Date(2026, 9, 6, 7).toISOString(),
+        exercises: [{ exerciseId: BENCH, sets: [{ weightKg: 85, reps: 8 }] }],
+      });
+      expect(replica.workoutSets(w.id)[0].completedAt).toBe(new Date(2026, 9, 6, 7, 20).toISOString());
+    });
+
     it('keeps an exercise\'s superset and a set\'s time when its sets are replaced', () => {
       const w = log();
       const done = '2026-10-07T18:20:00.000Z';

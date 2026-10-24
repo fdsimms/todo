@@ -941,7 +941,7 @@ export function updateWorkout(replica: Replica, id: string, input: UpdateWorkout
     ...(input.effort !== undefined ? { effort: input.effort } : {}),
     ...(input.startedAt !== undefined ? { startedAt: start.toISOString() } : {}),
     ...(end ? { endedAt: end.toISOString() } : {}),
-    ...(input.exercises ? { sets: setsKeepingWhatTheInputCannotSay(setsFrom(input.exercises), input.exercises, replica.workoutSets(id)) } : shifted && shifted.length ? { sets: shifted } : {}),
+    ...(input.exercises ? { sets: setsKeepingWhatTheInputCannotSay(setsFrom(input.exercises), input.exercises, replica.workoutSets(id), delta) } : shifted && shifted.length ? { sets: shifted } : {}),
   });
   return { workout: workoutRow(replica, session, sets, namesOf(replica)) };
 }
@@ -958,17 +958,25 @@ function setsKeepingWhatTheInputCannotSay(
   built: SetInput[],
   exercises: NonNullable<LogWorkoutInput['exercises']>,
   existing: readonly WorkoutSet[],
+  /** How far the session's start moved in this same call, which a kept time moves with. */
+  shiftMs = 0,
 ): SetInput[] {
   const before = new Map<string, WorkoutSet[]>();
   for (const st of existing) before.set(st.exerciseId, [...(before.get(st.exerciseId) ?? []), st]);
+  // An exercise named in two blocks takes its old sets in order across both,
+  // rather than reading the first set again for the second block.
+  const taken = new Map<string, number>();
   let at = 0;
   return exercises.flatMap(e => {
     const old = before.get(e.exerciseId) ?? [];
-    const superset = old.find(st => st.supersetKey)?.supersetKey ?? null;
+    const from = taken.get(e.exerciseId) ?? 0;
+    taken.set(e.exerciseId, from + e.sets.length);
+    const mine = old.slice(from, from + e.sets.length);
+    const superset = (mine.find(st => st.supersetKey) ?? old.find(st => st.supersetKey))?.supersetKey ?? null;
     return e.sets.map((_, i) => {
       const next = built[at++];
-      const prev = old[i];
-      return { ...next, supersetKey: superset, ...(prev?.completedAt ? { completedAt: prev.completedAt } : {}) };
+      const prev = mine[i];
+      return { ...next, supersetKey: superset, ...(prev?.completedAt ? { completedAt: new Date(new Date(prev.completedAt).getTime() + shiftMs).toISOString() } : {}) };
     });
   });
 }
