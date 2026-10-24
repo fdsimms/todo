@@ -71,6 +71,7 @@ export const useDishRatingStore = create<DishRatingStore>((set, get) => ({
       if (input.verdict !== undefined && input.verdict !== null) patch.verdict = input.verdict;
       if (input.note) patch.note = input.note;
       if (input.lastHadAt) patch.lastHadAt = input.lastHadAt;
+      if (input.photo) patch.photo = input.photo;
       if (Object.keys(patch).length > 0) get().updateDish(existing.id, patch);
       return get().dishes.find(d => d.id === existing.id) ?? existing;
     }

@@ -941,7 +941,7 @@ export function updateWorkout(replica: Replica, id: string, input: UpdateWorkout
     ...(input.effort !== undefined ? { effort: input.effort } : {}),
     ...(input.startedAt !== undefined ? { startedAt: start.toISOString() } : {}),
     ...(end ? { endedAt: end.toISOString() } : {}),
-    ...(input.exercises ? { sets: setsKeepingWhatTheInputCannotSay(setsFrom(input.exercises), input.exercises, replica.workoutSets(id)) } : shifted && shifted.length ? { sets: shifted } : {}),
+    ...(input.exercises ? { sets: setsKeepingWhatTheInputCannotSay(setsFrom(input.exercises), input.exercises, replica.workoutSets(id), delta) } : shifted && shifted.length ? { sets: shifted } : {}),
   });
   return { workout: workoutRow(replica, session, sets, namesOf(replica)) };
 }
@@ -958,6 +958,8 @@ function setsKeepingWhatTheInputCannotSay(
   built: SetInput[],
   exercises: NonNullable<LogWorkoutInput['exercises']>,
   existing: readonly WorkoutSet[],
+  /** How far the session's start moved in this same call, which a kept time moves with. */
+  shiftMs = 0,
 ): SetInput[] {
   const before = new Map<string, WorkoutSet[]>();
   for (const st of existing) before.set(st.exerciseId, [...(before.get(st.exerciseId) ?? []), st]);
@@ -968,7 +970,7 @@ function setsKeepingWhatTheInputCannotSay(
     return e.sets.map((_, i) => {
       const next = built[at++];
       const prev = old[i];
-      return { ...next, supersetKey: superset, ...(prev?.completedAt ? { completedAt: prev.completedAt } : {}) };
+      return { ...next, supersetKey: superset, ...(prev?.completedAt ? { completedAt: new Date(new Date(prev.completedAt).getTime() + shiftMs).toISOString() } : {}) };
     });
   });
 }

@@ -266,7 +266,7 @@ export function BloodPressureScreen() {
             <View style={[styles.card, styles.listCard]}>
               {listed.map((reading: BloodPressureReading, i) => (
                 <View
-                  key={reading.at.toISOString()}
+                  key={`${reading.at.toISOString()}-${i}`}
                   style={[styles.row, i > 0 && styles.rowDivider]}
                   accessible
                   accessibilityLabel={`${reading.systolic} over ${reading.diastolic}, ${dayLabel(reading.at)} at ${timeLabel(reading.at)}${reading.pulse !== null ? `, pulse ${reading.pulse}` : ''}`}

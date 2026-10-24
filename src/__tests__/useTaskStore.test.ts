@@ -12869,6 +12869,27 @@ describe('deferredTasks', () => {
   });
 });
 
+describe('slotWaitingTasks', () => {
+  // The pass's hold fields stay on a task after it is archived, and the reveal
+  // on Today must not list what Later wouldn't.
+  const held = (over: Partial<Task> = {}) => {
+    const today = new Date();
+    const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return makeTask({ id: 't1', slotDecidedOn: key(today), deferUntil: tomorrow.toISOString(), dueDate: today.toISOString(), ...over });
+  };
+
+  it('lists a task the pass is holding', () => {
+    useTaskStore.setState({ tasks: [held()] });
+    expect(useTaskStore.getState().slotWaitingTasks().map(t => t.id)).toEqual(['t1']);
+  });
+
+  it('leaves out a held task that was archived since', () => {
+    useTaskStore.setState({ tasks: [held({ archived: true })] });
+    expect(useTaskStore.getState().slotWaitingTasks()).toHaveLength(0);
+  });
+});
+
 describe('vacationHiddenTasks', () => {
   const settingsStoreMock = () => {
     const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };

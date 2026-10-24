@@ -134,6 +134,15 @@ describe('dishForLabel', () => {
     const recent = dish('Soup', 'C', 'fine', new Date(2026, 9, 1));
     expect(dishForLabel([unrated, old, recent], 'soup')).toBe(recent);
   });
+
+  it('counts "avoid" as an answer, so it beats a dish with no opinion', () => {
+    const unrated = dish('Lasagna', 'Other', null, new Date(2026, 9, 20));
+    const avoid = dish('Lasagna', 'Luigi', 'avoid', new Date(2026, 0, 1));
+    expect(dishForLabel([unrated, avoid], 'lasagna')).toBe(avoid);
+    // Among answers, the menu order still decides.
+    const loved = dish('Lasagna', 'Third', 'loved', new Date(2026, 0, 1));
+    expect(dishForLabel([avoid, loved, unrated], 'lasagna')).toBe(loved);
+  });
 });
 
 describe('isEatenOutDraft', () => {

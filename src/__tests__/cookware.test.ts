@@ -15,6 +15,11 @@ describe('clampCookwareWeight', () => {
     expect(clampCookwareWeight(NaN)).toBeNull();
   });
 
+  it('refuses a weight that rounds to zero grams', () => {
+    expect(clampCookwareWeight(0.4)).toBeNull();
+    expect(clampCookwareWeight(0.5)).toBe(1);
+  });
+
   it('caps an absurd weight rather than refusing it', () => {
     expect(clampCookwareWeight(999999)).toBe(COOKWARE_MAX_G);
   });

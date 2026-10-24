@@ -177,8 +177,11 @@ export function dishForLabel(dishes: DishRating[], label: string): DishRating | 
   if (!key) return null;
   const matches = dishes.filter(d => d.nameKey === key);
   if (matches.length === 0) return null;
+  // Unlike the menu order above, any answer beats none, "avoid" included, so a
+  // dish already marked never-again isn't asked about again from another place.
+  const answered = (d: DishRating) => (d.verdict === null ? 1 : 0);
   return [...matches].sort((a, b) => {
-    const byVerdict = verdictRank(a.verdict) - verdictRank(b.verdict);
+    const byVerdict = answered(a) - answered(b) || verdictRank(a.verdict) - verdictRank(b.verdict);
     if (byVerdict !== 0) return byVerdict;
     return (b.lastHadAt ?? '').localeCompare(a.lastHadAt ?? '');
   })[0];

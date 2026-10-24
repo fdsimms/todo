@@ -1372,11 +1372,17 @@ export function TodayScreen() {
   // the jump aims at the stack's row key and opens it. Every Later jump goes
   // through here, so none of them can aim at a key that never lays out.
   const jumpToLaterTask = (task: Task) => {
-    const position = laterOrder.findIndex(o => o.task.id === task.id);
+    // deferredTasksAll is empty off the Later view, and a jump from another
+    // sub-view calls this in the same handler that switches to Later, so the
+    // closure's order would have no rows to aim at. Read the store instead.
+    const order = viewMode === 'later'
+      ? laterOrder
+      : laterVisibleOrder(filterByTaskTypes(useTaskStore.getState().deferredTasks(), filterTypes));
+    const position = order.findIndex(o => o.task.id === task.id);
     const limit = Math.max(laterTaskLimit, LATER_SETTLED_TASK_LIMIT, position + 1);
     setLaterTaskLimit(limit);
     const rows = flattenLaterSections(
-      laterDaySections(laterOrder, limit, { cutMidDay: false, foldStacks: !selectionMode }).sections,
+      laterDaySections(order, limit, { cutMidDay: false, foldStacks: !selectionMode }).sections,
       { groupsById: laterGroupsById, fold: !selectionMode },
     );
     const stackRow = rows.find(r => r.type === 'stack' && r.tasks.some(t => t.id === task.id));

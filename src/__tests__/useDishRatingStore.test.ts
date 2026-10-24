@@ -34,6 +34,12 @@ describe('addDish', () => {
     expect(dbInsertDishRating).not.toHaveBeenCalled();
   });
 
+  it('applies a photo given for a dish that is already saved', () => {
+    const first = state().addDish({ name: 'Pad see ew', place: 'Thai Orchid' })!;
+    state().addDish({ name: 'Pad see ew', place: 'Thai Orchid', photo: 'dish-1.jpg' });
+    expect(state().dishes.find(d => d.id === first.id)?.photo).toBe('dish-1.jpg');
+  });
+
   it('returns the dish already saved under that name and place rather than a second row', () => {
     const first = state().addDish({ name: 'Pad see ew', place: 'Thai Orchid', verdict: 'loved' })!;
     const again = state().addDish({ name: 'pad see ew', place: 'thai orchid' })!;
