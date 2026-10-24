@@ -2489,6 +2489,43 @@ export interface Milestone {
 }
 
 /**
+ * Whether you would order a restaurant dish again. Three answers and null, the
+ * same shape and for the same reason as `ProductRating`: nobody reproduces a 4
+ * versus a 3, and "fine" exists so a shrug is not the same as never having
+ * tried it. Null is no opinion yet, and nothing infers one.
+ */
+export type DishVerdict = 'loved' | 'fine' | 'avoid';
+
+/**
+ * A dish somebody else cooked, and whether you would order it again.
+ *
+ * Its own record rather than a field on `FoodLogEntry`: an eaten-out meal has
+ * no identity in the food log beyond its label, entries are snapshots that can
+ * be deleted, and the food log can be switched off entirely. A rating is about
+ * the dish, and is worth keeping when the entry that prompted it is gone.
+ *
+ * `place` is the restaurant as typed, never looked up and never a coordinate.
+ * Both keys are `groceryNameKey` of the typed text, so "Pad See Ew" and "pad
+ * see ew" are one dish; a null place keys as the empty string. Two devices
+ * that add the same dish before they sync end up with two rows, which a
+ * person can see and delete: there is deliberately no natural-key fold here,
+ * because a fold's mistake is a deletion nobody sees.
+ */
+export interface DishRating {
+  id: string;
+  name: string;
+  nameKey: string;
+  place: string | null;
+  placeKey: string;
+  verdict: DishVerdict | null;
+  /** Why, in your own words ("Ask for extra spicy"). Null when there is none. */
+  note: string | null;
+  /** The last time you had it: noon on the picked day, like `Milestone.date`. */
+  lastHadAt: string | null;
+  createdAt: string;
+}
+
+/**
  * One dose of something taken — see `src/utils/medicationLog.ts` and
  * `docs/arch/mood-log.md`.
  *
