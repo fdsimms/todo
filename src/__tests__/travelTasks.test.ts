@@ -10,6 +10,7 @@ import {
   parseTravelEventPrefs,
   travelModeFor,
   travelRowNote,
+  travelArrivalNote,
   describeTravelEstimate,
   estimatedLeadMinutes,
   estimateFor,
@@ -565,6 +566,34 @@ describe('per-event travel overrides', () => {
     expect(travelRowNote('k', '123 Main St', estimates, 'driving')).toBeNull();
     expect(travelRowNote('k', '9 Elm', estimates, 'transit')).toBeNull();
     expect(travelRowNote('missing', '123 Main St', estimates, 'transit')).toBeNull();
+  });
+});
+
+describe('travelArrivalNote', () => {
+  const start = new Date(2026, 9, 5, 14, 30);
+  const task = (leave: Date | null) => ({
+    generatedKind: 'travel' as const,
+    generatedSourceId: `k|${start.toISOString()}`,
+    reminderTime: leave ? leave.toISOString() : null,
+  });
+  const fmt = (ms: number) => { const d = new Date(ms); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
+
+  it('says when you arrive against when it starts', () => {
+    expect(travelArrivalNote(task(new Date(2026, 9, 5, 13, 55)), 31, fmt)).toEqual({ text: 'Arrive 14:26 · starts 14:30', late: false });
+  });
+
+  it('turns to a late note when the arrival is after the start', () => {
+    expect(travelArrivalNote(task(new Date(2026, 9, 5, 14, 7)), 31, fmt)).toEqual({ text: 'Arrive 14:38, 8 min after it starts at 14:30', late: true });
+  });
+
+  it('is not late when arriving exactly at the start', () => {
+    expect(travelArrivalNote(task(new Date(2026, 9, 5, 13, 59)), 31, fmt)?.late).toBe(false);
+  });
+
+  it('is null with no estimate, no leave time, or on a task that is not a travel task', () => {
+    expect(travelArrivalNote(task(new Date(2026, 9, 5, 13, 55)), null, fmt)).toBeNull();
+    expect(travelArrivalNote(task(null), 31, fmt)).toBeNull();
+    expect(travelArrivalNote({ generatedKind: null, generatedSourceId: null, reminderTime: new Date().toISOString() }, 31, fmt)).toBeNull();
   });
 });
 

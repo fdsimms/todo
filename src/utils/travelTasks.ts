@@ -677,7 +677,46 @@ export function travelRowNote(
   mode: TravelMode,
   walkUnder = 0,
 ): string | null {
+  const held = travelRowEstimate(sourceId, location, estimates, mode, walkUnder);
+  return held ? describeTravelEstimate(held.minutes, held.mode) : null;
+}
+
+/** The held estimate `travelRowNote` reads, by the same match, for a row that needs its minutes. */
+export function travelRowEstimate(
+  sourceId: string,
+  location: string,
+  estimates: TravelEstimates,
+  mode: TravelMode,
+  walkUnder = 0,
+): TravelEstimate | null {
   const held = estimates[sourceId];
   if (!held || !modeMatches(held, mode, walkUnder) || held.location !== location.trim()) return null;
-  return describeTravelEstimate(held.minutes, held.mode);
+  return held;
+}
+
+/**
+ * The second line of a "Leave for X" row's trip: when leaving at the task's own
+ * time gets you there, against when the event starts ("Arrive 2:26 PM · starts
+ * 2:30 PM"). Null with no held estimate or no readable leave time or start.
+ * Worked out from the row's leave time at the moment it is drawn, so an edited
+ * reminder moves it, and `late` is true when the arrival is after the start so
+ * the row can say so in the warning colour. `format` turns an instant into a
+ * clock time, which keeps the 12/24-hour setting out of this module.
+ */
+export function travelArrivalNote(
+  task: Pick<Task, 'generatedKind' | 'generatedSourceId' | 'reminderTime'>,
+  minutes: number | null,
+  format: (ms: number) => string,
+): { text: string; late: boolean } | null {
+  const sourceId = travelSourceOf(task);
+  if (!sourceId || minutes === null || !task.reminderTime) return null;
+  const startMs = travelSourceStart(sourceId);
+  const leaveMs = Date.parse(task.reminderTime);
+  if (startMs === null || !Number.isFinite(leaveMs)) return null;
+  const arriveMs = leaveMs + Math.max(1, Math.round(minutes)) * 60000;
+  const lateMinutes = Math.round((arriveMs - startMs) / 60000);
+  if (lateMinutes > 0) {
+    return { text: `Arrive ${format(arriveMs)}, ${lateMinutes} min after it starts at ${format(startMs)}`, late: true };
+  }
+  return { text: `Arrive ${format(arriveMs)} · starts ${format(startMs)}`, late: false };
 }
