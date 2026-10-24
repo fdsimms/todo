@@ -1080,7 +1080,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isTaskUrl(url)) {
     const id = taskUrlId(url);
-    if (id && taskUrlWantsLocate(url)) resetToLocateTask(id);
+    if (id && taskUrlWantsLocate(url)) resetToLocateTask(id, false);
     else if (id) resetToTask(id);
     else resetToToday();
     return true;
