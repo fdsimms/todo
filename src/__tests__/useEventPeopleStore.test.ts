@@ -69,6 +69,9 @@ beforeEach(() => {
   mockSettings = { [EVENT_PEOPLE_MIGRATION_FLAG]: '1' };
   mockExternalIds.mockResolvedValue({});
   (isDemoModeActive as jest.Mock).mockReturnValue(false);
+  // Tests that put events on the shared calendar mock clear them here, or a
+  // test that runs after one (the suite is randomized) reads its events too.
+  Object.assign(useCalendarStore.getState(), { events: [], gridEvents: [] });
   useEventPeopleStore.setState({ rows: [], links: { byKey: {}, externalIds: {} }, loaded: false });
 });
 
