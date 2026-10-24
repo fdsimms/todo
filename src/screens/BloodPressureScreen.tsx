@@ -1,10 +1,10 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useFocusEffect } from '@react-navigation/native';
-import { navigationRef } from '../navigation/navigationRef';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
+import { navigateToTab, navigationRef } from '../navigation/navigationRef';
 import { format } from 'date-fns/format';
 import { addDays } from 'date-fns/addDays';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -110,8 +110,32 @@ export function BloodPressureScreen() {
   };
   const timeLabel = (at: Date) => format(at, use24Hour ? 'HH:mm' : 'h:mm a');
 
-  const openLog = () => { haptics.tap(); setLogOpen(true); };
-  const closeLog = () => setLogOpen(false);
+  // `dundundun://bloodpressure?log=1` — the blood pressure request's link
+  // button. WeightScreen's handshake: stamped with the arrival time and tracked
+  // against what has been handled, so tapping the same row twice opens the sheet
+  // twice, with `returnTo` handing the person back to the tab they came from.
+  const route = useRoute<{
+    key: string;
+    name: string;
+    params?: { openLog?: number; returnTo?: string };
+  }>();
+  const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
+  const [returnTo, setReturnTo] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (route.params?.openLog === undefined || route.params.openLog === handledOpenLog) return;
+    setHandledOpenLog(route.params.openLog);
+    setReturnTo(route.params.returnTo);
+    setLogOpen(true);
+  }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
+
+  const openLog = () => { haptics.tap(); setReturnTo(undefined); setLogOpen(true); };
+  const closeLog = () => {
+    setLogOpen(false);
+    if (returnTo) {
+      navigateToTab(returnTo);
+      setReturnTo(undefined);
+    }
+  };
 
   const header = (
     <>

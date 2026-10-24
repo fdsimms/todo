@@ -5,9 +5,13 @@
  * Same stance as `weightLog.ts`, and for the same reason: Health is the record
  * and this holds no state. **Nothing here interprets a body.** There is no
  * "normal", "elevated" or "high", no category, no colour for a number, no
- * rule metric, no generated task. A reading is two numbers somebody's cuff
+ * rule metric, no task that reacts to a number. A reading is two numbers somebody's cuff
  * showed, and the app writes them down and reads them back. `averageReading`
  * is arithmetic over readings already on screen, and that is as far as it goes.
+ *
+ * The one task the app writes about blood pressure is `bloodPressureTasks.ts`'s
+ * request for a reading, which fires on the *absence* of one and never reads a
+ * value. That is not interpretation, for the reason `weightTasks.ts` gives.
  */
 
 /** One reading, in whole mmHg. */

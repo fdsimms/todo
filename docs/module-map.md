@@ -68,6 +68,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
 - `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerIdsOf, blockerFields, waitIdsOf, answerOpensGate, isNotNeeded, openOccurrenceOf, liveBlockersOf, +17 more
 - `src/utils/bloodPressureLog.ts` — BloodPressureReading, MIN_SYSTOLIC, MAX_SYSTOLIC, MIN_DIASTOLIC, MAX_DIASTOLIC, MIN_PULSE, MAX_PULSE, isPlausibleReading, parseBloodPressureInput, formatReading, +9 more
+- `src/utils/bloodPressureTasks.ts` — BLOOD_PRESSURE_TITLE, DEFAULT_BLOOD_PRESSURE_EVERY_DAYS, BLOOD_PRESSURE_EVERY_DAYS_MIN, BLOOD_PRESSURE_EVERY_DAYS_MAX, clampBloodPressureEveryDays, BLOOD_PRESSURE_LINK_URL, bloodPressureDayKey, wantsBloodPressure, bloodPressureDeclineHolds, bloodPressureNotes
 - `src/utils/brands.ts` — BrandSummary, brandSummaries, planBrandRename
 - `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy, stackCompletionScope
 - `src/utils/bulkDelete.ts` — isMissableOneOff, BulkDeletePrompt, bulkDeletePrompt
@@ -127,7 +128,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +5 more
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent, deadlineEventLink, deleteDeadlineEvent, TaskEventSyncPlan, taskEventsAfterSync
-- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +57 more
+- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isAddEventUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, groceriesLinkUrl, groceriesUrlShop, +59 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DeliverableReasoning, DELIVERABLE_REASONING_MAX_LENGTH, cleanDeliverableReasoning, reasoningOf, DELIVERABLE_META, YES_NO_OPTIONS, DELIVERABLE_OPTIONS_MAX, isTentativeAnswer, RSVP_OPTIONS, +12 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoHold.ts` — runOrHoldForDemo, replayHeldForDemo
@@ -636,7 +637,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/weekendTasks.ts` — WEEKEND_NUDGE_TITLE, WEEKEND_EVENING_SEGMENTS, WeekendWindow, upcomingWeekend, isWeekendNudgeLeadDay, clampWeekendNudgeLeadDays, describeWeekendNudgeLead, weekendNudgeWeekendKey, isWeekendEvening, weekendPlanTitles, +10 more
 - `src/utils/weightGoal.ts` — WeightGoalDirection, WeightGoal, RATE_RANGE, MAX_RATE_KG_PER_WEEK, goalDirection, signedRateKgPerWeek, autoCalorieTargetKcal, WeightGoalProgress, goalProgress, MAINTAIN_BAND_KG, +10 more
 - `src/utils/weightLog.ts` — WeightUnit, MAX_WEIGHT_KG, WeightPoint, WeightReading, kgToUnit, unitToKg, formatWeight, parseWeightInput, weightReadings, latestWeight, +14 more
-- `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, weighInDeclineHolds, weighInNotes
+- `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, dayKeyGap, weighInDeclineHolds, +1 more
 - `src/utils/widgetBridge.ts` — WidgetBridge, widgetBridge
 - `src/utils/widgetCalendar.ts` — WidgetCalendarEvent, WidgetCalendarTask, WidgetCalendarDay, WidgetHiddenEvent, WidgetCalendar, MAX_WIDGET_CALENDAR_EVENTS, MAX_WIDGET_CALENDAR_TASKS, WidgetCalendarDayInput, WidgetCalendarInput, buildWidgetCalendar
 - `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapKind, WATCH_NOTE_MAX, WatchTickValues, WatchDoneSet, QuietTapAction, QuietTapWorkouts, widgetTapNeedsApp, parseQuietTaps, planQuietTaps, +7 more

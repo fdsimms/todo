@@ -57,7 +57,7 @@ describe('recordMicUrl', () => {
 });
 
 describe('isRecordAnswered', () => {
-  const none = { moodLogs: [], journalEntries: [], weighInAnsweredOn: null };
+  const none = { moodLogs: [], journalEntries: [], weighInAnsweredOn: null, bloodPressureAnsweredOn: null };
   const task = (generatedKind: Task['generatedKind'], generatedSourceId: string) =>
     ({ generatedKind, generatedSourceId } as Task);
 
@@ -79,6 +79,14 @@ describe('isRecordAnswered', () => {
     expect(isRecordAnswered(t, none)).toBe(false);
     expect(isRecordAnswered(t, { ...none, weighInAnsweredOn: '2026-08-24' })).toBe(false);
     expect(isRecordAnswered(t, { ...none, weighInAnsweredOn: '2026-08-25' })).toBe(true);
+  });
+
+  it('reads a blood pressure request off its own answered day, not the weigh-in one', () => {
+    const t = task('bloodPressureLog', '2026-08-25');
+    expect(isRecordAnswered(t, none)).toBe(false);
+    expect(isRecordAnswered(t, { ...none, weighInAnsweredOn: '2026-08-25' })).toBe(false);
+    expect(isRecordAnswered(t, { ...none, bloodPressureAnsweredOn: '2026-08-24' })).toBe(false);
+    expect(isRecordAnswered(t, { ...none, bloodPressureAnsweredOn: '2026-08-25' })).toBe(true);
   });
 
   it('is never true for another kind of task', () => {

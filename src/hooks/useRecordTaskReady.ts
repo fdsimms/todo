@@ -5,7 +5,7 @@ import { useMoodStore } from '../store/useMoodStore';
 import { isAnsweredByRecord, isRecordAnswered } from '../utils/recordTasks';
 
 /**
- * Whether the entry a mood, journal, dream or weigh-in task asks for exists, so
+ * Whether the entry a mood, journal, dream, weigh-in or blood pressure task asks for exists, so
  * its row reads ready and the tick completes it (see `recordTasks.ts`).
  *
  * One boolean out of each selector, and every other kind of task selects a
@@ -18,8 +18,9 @@ export function useRecordTaskReady(task: Task): boolean {
     relevant && (task.generatedKind === 'journalLog' || task.generatedKind === 'dreamLog') ? s.entries : EMPTY
   ));
   const weighInAnsweredOn = useHealthStore(s => (relevant && task.generatedKind === 'weighIn' ? s.weighInAnsweredOn : null));
+  const bloodPressureAnsweredOn = useHealthStore(s => (relevant && task.generatedKind === 'bloodPressureLog' ? s.bloodPressureAnsweredOn : null));
   if (!relevant) return false;
-  return isRecordAnswered(task, { moodLogs, journalEntries, weighInAnsweredOn });
+  return isRecordAnswered(task, { moodLogs, journalEntries, weighInAnsweredOn, bloodPressureAnsweredOn });
 }
 
 const EMPTY: never[] = [];

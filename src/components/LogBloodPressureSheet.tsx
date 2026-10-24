@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore } from '../store/useHealthStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { useDemoStore } from '../store/useDemoStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
@@ -107,6 +108,7 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
       // rather than dropped, and the sheet closes because the reading is saved.
       haptics.warning();
       void refreshBloodPressure();
+      useTaskStore.getState().markBloodPressureAnswered(dayKeyOf(day));
       close();
       Alert.alert(
         'Saved without pulse',
@@ -121,6 +123,7 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
     if (result === 'written') {
       haptics.success();
       void refreshBloodPressure();
+      useTaskStore.getState().markBloodPressureAnswered(dayKeyOf(day));
       close();
       return;
     }

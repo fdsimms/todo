@@ -112,7 +112,7 @@ export function wantsWeighIn(points: readonly WeightPoint[]): boolean {
 }
 
 /** Whole calendar days from one day key to another, negative when `to` is earlier. */
-function dayKeyGap(from: string, to: string): number {
+export function dayKeyGap(from: string, to: string): number {
   // Date.UTC over the key's own parts rather than local midnights, so a DST
   // change between the two can't make a day 23 or 25 hours long.
   const utc = (key: string) => {

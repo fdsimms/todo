@@ -390,6 +390,9 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   // actually types, and neither is in the label.
   weighIn: ['scale', 'scales', 'weight', 'body', 'mass', 'kg', 'lb', 'pounds',
     'health', 'track', 'log', 'generated', 'automatic'],
+  // No 'blood pressure': already in this generator's own label.
+  bloodPressureLog: ['bp', 'systolic', 'diastolic', 'mmhg', 'cuff', 'pulse',
+    'heart', 'health', 'track', 'log', 'generated', 'automatic'],
   waterShortfall: ['hydration', 'drink', 'target', 'exercise', 'health', 'food log',
     'generated', 'automatic'],
   snackNudge: ['eat', 'calories', 'kcal', 'hungry', 'afternoon', 'target', 'food log',
@@ -922,6 +925,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['weekend', 'threshold', 'bare', 'already planned', 'movie'] },
   { id: 'weighInEveryDays', requires: 'gen:weighIn', groupId: 'generated', label: 'Ask after', section: 'Ask for a weigh-in',
     keywords: ['weight', 'weigh', 'scale', 'days', 'how often', 'cadence', 'gap', 'interval'] },
+  { id: 'bloodPressureEveryDays', requires: 'gen:bloodPressureLog', groupId: 'generated', label: 'Ask after', section: 'Ask for a blood pressure reading',
+    keywords: ['blood pressure', 'bp', 'cuff', 'days', 'how often', 'cadence', 'gap', 'interval'] },
   { id: 'snackNudgeFromHour', requires: 'gen:snackNudge', groupId: 'generated', label: 'Start suggesting at', section: 'Suggest a snack',
     keywords: ['hour', 'time', 'afternoon', 'when', 'after lunch'] },
   { id: 'snackNudgeSharePercent', requires: 'gen:snackNudge', groupId: 'generated', label: 'Suggest when below', section: 'Suggest a snack',

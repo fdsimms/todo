@@ -162,6 +162,15 @@ import {
   weighInDeclineHolds,
   weighInNotes,
 } from '../utils/weightTasks';
+import {
+  BLOOD_PRESSURE_LINK_URL,
+  BLOOD_PRESSURE_TITLE,
+  bloodPressureDayKey,
+  bloodPressureDeclineHolds,
+  bloodPressureNotes,
+  clampBloodPressureEveryDays,
+  wantsBloodPressure,
+} from '../utils/bloodPressureTasks';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
 import {
   WEEKEND_NUDGE_TITLE,
@@ -864,6 +873,11 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     case 'weighIn':
       useSettingsStore.getState()
         .setWeighInDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
+      return;
+    // weighIn's stamp, for a blood pressure request.
+    case 'bloodPressureLog':
+      useSettingsStore.getState()
+        .setBloodPressureDeclinedDayKey(value === false ? dayKeyOf(getCurrentDayStart()) : null);
       return;
     // A settings stamp for the same reason weighIn's is, and a shorter one: the
     // task is about today's water, so deleting it means "not today". `null` is
@@ -2298,6 +2312,10 @@ interface TaskStore extends UndoHistoryActions {
    * themselves, but their sheets call `autoCompleteRecordTasks`.
    */
   markWeighInAnswered: (dayKey: string) => void;
+  /** `checkWeighInTasks` for blood pressure — see src/utils/bloodPressureTasks.ts. */
+  checkBloodPressureTasks: () => Promise<void>;
+  /** `markWeighInAnswered` for a reading saved on `dayKey`. */
+  markBloodPressureAnswered: (dayKey: string) => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook, streak left exactly as it was.
@@ -3158,6 +3176,7 @@ function recordTaskAnswered(task: Task): boolean {
     moodLogs: useMoodStore.getState().logs,
     journalEntries: useJournalStore.getState().entries,
     weighInAnsweredOn: useHealthStore.getState().weighInAnsweredOn,
+    bloodPressureAnsweredOn: useHealthStore.getState().bloodPressureAnsweredOn,
   });
 }
 
@@ -9215,6 +9234,86 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       get().autoCompleteRecordTasks('weighIn');
     } else {
       void get().checkWeighInTasks().then(() => get().autoCompleteRecordTasks('weighIn'));
+    }
+  },
+
+  /**
+   * The `bloodPressureLog` generator: `checkWeighInTasks` over blood pressure,
+   * line for line, so the reasoning is on that pass and in
+   * src/utils/bloodPressureTasks.ts. Async for the same reason: it asks
+   * HealthKit its own question rather than judging a snapshot.
+   */
+  async checkBloodPressureTasks() {
+    const settings = useSettingsStore.getState();
+    if (generatorPausedForVacation('bloodPressureLog', settings.vacationMode)) return;
+    if (!settings.bloodPressureTasks || !settings.bloodPressureTaskCategory) return;
+    // Both Health switches: the read to know whether to ask, the write so the
+    // sheet can record the answer.
+    if (!settings.healthReadEnabled || !settings.healthWriteEnabled) return;
+    if (isDemoModeActive()) return;
+
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    // An unanswered request from a day that has gone is dropped, not declined.
+    liveGeneratedTasksOfKind(get().tasks, 'bloodPressureLog')
+      .filter(task => bloodPressureDayKey(task) !== todayKey)
+      .filter(task => !isReadyRecordTask(task))
+      .forEach(task => dropGeneratedTask('bloodPressureLog', task.generatedSourceId));
+
+    const everyDays = clampBloodPressureEveryDays(settings.bloodPressureEveryDays);
+
+    // A live request reads ready once a reading lands in its window, however it
+    // got there. A null read says nothing either way.
+    const liveRequest = liveGeneratedTasksOfKind(get().tasks, 'bloodPressureLog')
+      .find(task => bloodPressureDayKey(task) === todayKey);
+    if (liveRequest) {
+      const recent = await useHealthStore.getState().readRecentBloodPressure(everyDays);
+      if (recent !== null) {
+        useHealthStore.getState().setBloodPressureAnsweredOn(wantsBloodPressure(recent) ? null : todayKey);
+      }
+      return;
+    }
+
+    if (settings.bloodPressureLastDayKey === todayKey) return;
+    if (bloodPressureDeclineHolds(settings.bloodPressureDeclinedDayKey, todayKey, everyDays)) return;
+    const readings = await useHealthStore.getState().readRecentBloodPressure(everyDays);
+    // Null is not an empty window: it returns without spending the mark.
+    if (readings === null) return;
+
+    settings.setBloodPressureLastDayKey(todayKey);
+    if (!wantsBloodPressure(readings)) return;
+
+    reconcileGeneratedTask({
+      kind: 'bloodPressureLog',
+      sourceId: todayKey,
+      wanted: true,
+      drift: () => null,
+      draft: () => ({
+        title: BLOOD_PRESSURE_TITLE,
+        notes: bloodPressureNotes(everyDays),
+        dueDate: dueDate.toISOString(),
+        category: settings.bloodPressureTaskCategory,
+        // The link opens the sheet that answers it; ticking the row alone
+        // would complete the task and record nothing.
+        linkUrl: BLOOD_PRESSURE_LINK_URL,
+        ...generatedBy('bloodPressureLog', todayKey),
+      }),
+    });
+  },
+
+  /** `markWeighInAnswered` for a saved blood pressure reading. */
+  markBloodPressureAnswered(dayKey) {
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const live = liveGeneratedTasksOfKind(get().tasks, 'bloodPressureLog')
+      .some(t => bloodPressureDayKey(t) === todayKey);
+    if (!live) return;
+    if (dayKey === todayKey) {
+      useHealthStore.getState().setBloodPressureAnsweredOn(todayKey);
+      get().autoCompleteRecordTasks('bloodPressureLog');
+    } else {
+      void get().checkBloodPressureTasks().then(() => get().autoCompleteRecordTasks('bloodPressureLog'));
     }
   },
 

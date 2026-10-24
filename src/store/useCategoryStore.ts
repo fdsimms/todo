@@ -388,6 +388,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'weekendNudgeTaskCategory', current: s.weekendNudgeTaskCategory, assign: s.setWeekendNudgeTaskCategory };
     case 'weighIn':
       return { key: 'weighInTaskCategory', current: s.weighInTaskCategory, assign: s.setWeighInTaskCategory };
+    case 'bloodPressureLog':
+      return { key: 'bloodPressureTaskCategory', current: s.bloodPressureTaskCategory, assign: s.setBloodPressureTaskCategory };
     case 'waterShortfall':
       return { key: 'waterShortfallTaskCategory', current: s.waterShortfallTaskCategory, assign: s.setWaterShortfallTaskCategory };
     case 'snackNudge':

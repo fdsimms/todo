@@ -451,7 +451,10 @@ differs:
   rather than showing it).
 - **Nothing here interprets a body, and this is the number most tempting to
   interpret.** There is no "normal", "elevated" or "high", no colour on a
-  figure, no category, no goal, no rule metric and no generated task. Public
+  figure, no category, no goal, no rule metric and no task that reacts to a number.
+  The one generated task is the request to record a reading (`bloodPressureLog`,
+  `docs/arch/generated-tasks.md`), which fires on the absence of one and never
+  reads a value, the position `weighIn` is in. Public
   guidelines would make a band easy to draw, and drawing one is the app forming
   an opinion about somebody's body, which is the line weight was allowed across
   only by not crossing. The screen shows the latest reading, the count and
