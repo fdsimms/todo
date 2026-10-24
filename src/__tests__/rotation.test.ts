@@ -512,8 +512,10 @@ describe('rotationPills', () => {
     expect(rotationPills(workouts(['bike']), WED, 1)[1]).toMatchObject({ done: true, progress: null });
   });
 
-  it('caps the count at the member\'s own, however often it is logged', () => {
-    expect(rotationPills(workouts(['run', 'run', 'run', 'run']), WED, 1)[0].progress).toBe('3/3');
+  it('counts past the member\'s own, since a fourth run is a real run', () => {
+    expect(rotationPills(workouts(['run', 'run', 'run']), WED, 1)[0].over).toBe(false);
+    expect(rotationPills(workouts(['run', 'run', 'run', 'run']), WED, 1)[0])
+      .toMatchObject({ done: true, progress: '4/3', over: true });
   });
 
   it('starts clean when the ledger belongs to an earlier week', () => {

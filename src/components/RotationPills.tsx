@@ -79,7 +79,7 @@ export function RotationPills({ task, onPick, onStartWorkout, disabled = false, 
             starts
               ? `Start the ${pill.title} workout${pill.done ? ', already done this week' : pill.progress ? `, ${pill.progress} this week` : ''}`
               : pill.done
-                ? `${pill.title}, already done this week. Log it again.`
+                ? `${pill.title}, ${pill.over && pill.progress ? `${pill.progress} this week` : 'already done this week'}. Log it again.`
                 : `Log ${pill.title}${pill.progress ? `, ${pill.progress} this week` : ''}`
           }
         >
@@ -87,7 +87,7 @@ export function RotationPills({ task, onPick, onStartWorkout, disabled = false, 
           {starts && <Ionicons name="play" size={9} color={pill.done ? colors.textSecondary : colors.accent} />}
           <Text style={[styles.label, pill.done && styles.labelDone]} numberOfLines={1}>
             {pill.title}
-            {!pill.done && pill.progress ? ` ${pill.progress}` : ''}
+            {(!pill.done || pill.over) && pill.progress ? ` ${pill.progress}` : ''}
           </Text>
         </TouchableOpacity>
         );

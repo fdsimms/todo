@@ -338,8 +338,10 @@ export interface RotationPill {
   title: string;
   /** Its count for the period is reached. A done pill can still be tapped to log it again. */
   done: boolean;
-  /** "1/3" for a member done more than once a week, null for one done once. */
+  /** "1/3" for a member done more than once a week, null for one done once. Counts past the target ("4/3"). */
   progress: string | null;
+  /** It has been logged more often than its count, so the pill shows the surplus. */
+  over: boolean;
   /** It names a workout, so its pill starts that rather than logging a pick. */
   hasWorkout: boolean;
 }
@@ -362,7 +364,8 @@ export function rotationPills(
     id: m.item.id,
     title: m.item.title,
     done: m.doneAt !== null,
-    progress: m.perWeek > 1 ? `${Math.min(m.count, m.perWeek)}/${m.perWeek}` : null,
+    progress: m.perWeek > 1 ? `${m.count}/${m.perWeek}` : null,
+    over: m.count > m.perWeek,
     hasWorkout: !!(m.item.workoutRoutineId || m.item.workoutProgramId),
   }));
 }
