@@ -38,6 +38,7 @@ import {
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { useWidgetCompletionStore } from './useWidgetCompletionStore';
+import { claimPendingCompletionDate } from '../utils/pendingCompletionDate';
 import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings, clearGeneratedCategorySettings, setGeneratedCategory } from './useCategoryStore';
 import { renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
 import { renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules } from '../utils/categoryRename';
@@ -4291,7 +4292,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // animation, the question sheet, the direct call for a row not on Today,
     // and the answer-first queue), and this is the one they all pour into.
     if (options?.completedAt === undefined && !missed) {
-      const tappedAt = useWidgetCompletionStore.getState().claimTappedAt(id);
+      // A day the person picked in the catch-up prompt outranks a tap's time.
+      const tappedAt = claimPendingCompletionDate(id) ?? useWidgetCompletionStore.getState().claimTappedAt(id);
       if (tappedAt) options = { ...options, completedAt: tappedAt };
     }
     // The morning check-in and a queued tap complete a task after the fact
