@@ -9,6 +9,7 @@
  * are genuinely separate stores and a leak between them would show up as a
  * real test failure rather than being papered over by a shared handle.
  */
+import { auditCatalog } from '../utils/catalogAudit';
 import { listItemFinder } from '../utils/listMode';
 import { splitIngredientAnd } from '../utils/recipeUtils';
 import { addDays } from 'date-fns/addDays';
@@ -3929,6 +3930,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   // catalog. An afterEach rather than a beforeEach: a nested block runs where
   // it is declared, not last, so starting clean would still leave the write
   // behind for everything below.
+  describe('tidy catalog', () => {
+    afterEach(freshDemo);
+
+    it('seeds a brand in a name and one thing under two names for the audit to find', () => {
+      const { items, itemProducts } = useGroceryStore.getState();
+      const found = auditCatalog(items, itemProducts);
+      expect(found.some(f => f.kind === 'brand_in_name' && f.items[0].name === 'Chobani Greek yogurt')).toBe(true);
+      expect(
+        found.some(f => f.kind === 'same_words' && f.items.map(i => i.name).sort().join('|') === 'Ginger powder|Ground ginger')
+      ).toBe(true);
+    });
+  });
+
   describe('cilantro and coriander, and merging them', () => {
     afterEach(freshDemo);
 

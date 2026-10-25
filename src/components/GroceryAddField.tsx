@@ -24,6 +24,7 @@ import { reAddNotice } from '../utils/groceryAdd';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { buyAgainItems, correctableHaveReason, rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { InlineAction } from './InlineAction';
+import { nameHintFor } from '../utils/catalogNameHint';
 import { resolveGroceryTokens, splitAlternativeNames } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { featureShown } from '../utils/simpleMode';
@@ -174,6 +175,9 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const [rejectedQuantity, setRejectedQuantity] = useState<string | null>(null);
   const [rejectedPrep, setRejectedPrep] = useState<string | null>(null);
   const [rejectedPurpose, setRejectedPurpose] = useState<string | null>(null);
+  // The name whose catalog hint was waved off, kept as the exact typed name for
+  // the same reason as the rejections above.
+  const [dismissedHint, setDismissedHint] = useState<string | null>(null);
 
   // Optional, set explicitly rather than parsed — see newItemRow's own note on
   // why nothing pulls a brand out of typed text. Mirrors QuickAddModal's
@@ -213,6 +217,15 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       purpose: rejectedPurpose,
     });
   }, [text, rejectedQuantity, rejectedPrep, rejectedPurpose]);
+
+  // A brand typed as the name, or a name that is an existing row in other words
+  // (see nameHintFor). Offered, never applied: it only shows while the name
+  // would make a new row, and "Keep this name" is always one tap.
+  const nameHint = useMemo(() => {
+    const name = tokens?.name?.trim();
+    if (!focused || !name || name.length < 3 || dismissedHint === name) return null;
+    return nameHintFor(name, items, itemProducts);
+  }, [focused, tokens, dismissedHint, items, itemProducts]);
 
   const suggestions = useMemo(
     // The "On list" pill each suggestion may carry is about the list being
@@ -429,6 +442,28 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   // otherwise hand its own event object over as the first parameter.
   const submit = useCallback(() => submitWith(true), [submitWith]);
 
+  const swapToGenericName = useCallback((generic: string, maker: string) => {
+    animateLayout();
+    addFilter.setQuery(generic);
+    // The brand becomes the field's own Brand chip, so the add keeps it as a
+    // variant of the generic row instead of losing it.
+    setBrand(maker);
+    setDismissedHint(null);
+  }, []);
+
+  const addAsOtherName = useCallback(
+    (itemId: string, typed: string) => {
+      const target = useGroceryStore.getState().items.find(i => i.id === itemId);
+      if (!target) return;
+      const refused = useGroceryStore.getState().setOtherNames(itemId, [...(target.otherNames ?? []), typed]);
+      // A name another row already claims is refused; leave the field as typed
+      // and let the person pick "Add separately" or change it.
+      if (refused.length > 0) return;
+      submit();
+    },
+    [submit]
+  );
+
   const discardPending = useCallback(() => {
     addFilter.clear();
     setStatus(null);
@@ -506,8 +541,11 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   // offer, the paste status, the matches — or nothing at all.
   const hasTokenChips =
     !!tokens && (tokens.quantityAccepted || tokens.prepAccepted || tokens.purposeAccepted);
+  // A brand hint needs the Brand chip, which simplified mode takes away.
+  const shownNameHint =
+    nameHint && !alternatives && (nameHint.kind !== 'brand' || attributesShown) ? nameHint : null;
   const hasResults =
-    hasTokenChips || !!alternatives || !!status || !!pantryOffer || !!cartOffer
+    hasTokenChips || !!alternatives || !!status || !!pantryOffer || !!cartOffer || !!shownNameHint
     || suggestions.length > 0 || buyAgain.length > 0;
 
   // `results` is pinned off the bottom of everything static above it — see
@@ -722,6 +760,45 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           <Text style={styles.tokenPreview} numberOfLines={1}>
             Adding “{tokens.name}”
           </Text>
+        </View>
+      )}
+
+      {/* A new name that is really a brand, or really a row you already have
+          under other words. One question at a time, so it yields to the either/or
+          offer below. */}
+      {!!shownNameHint && (
+        <View style={styles.nameHint}>
+          <Text style={styles.nameHintTitle}>
+            {shownNameHint.kind === 'brand'
+              ? `${shownNameHint.brand} is a brand`
+              : `You have “${shownNameHint.item.name}”`}
+          </Text>
+          <Text style={styles.nameHintDetail}>
+            {shownNameHint.kind === 'brand'
+              ? shownNameHint.generic
+                ? `Add “${shownNameHint.generic}” and keep ${shownNameHint.brand} as its brand?`
+                : 'Type what it is, like “protein bar”, and the brand stays on it.'
+              : `Same thing? “${tokens?.name}” can be another name for it.`}
+          </Text>
+          <View style={styles.nameHintActions}>
+            {shownNameHint.kind === 'brand' && !!shownNameHint.generic && (
+              <InlineAction
+                label={`Use “${shownNameHint.generic}”`}
+                onPress={() => swapToGenericName(shownNameHint.generic!, shownNameHint.brand)}
+              />
+            )}
+            {shownNameHint.kind === 'same_thing' && (
+              <InlineAction
+                label="Add as another name"
+                onPress={() => addAsOtherName(shownNameHint.item.id, tokens?.name ?? text)}
+              />
+            )}
+            <InlineAction
+              label={shownNameHint.kind === 'same_thing' ? 'Add separately' : 'Keep this name'}
+              variant="neutral"
+              onPress={() => setDismissedHint(tokens?.name?.trim() ?? null)}
+            />
+          </View>
         </View>
       )}
 
@@ -999,6 +1076,29 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
       fontSize: font.xs,
       color: colors.textTertiary,
       marginTop: spacing.xxs,
+    },
+    nameHint: {
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      marginLeft: spacing.xs,
+    },
+    nameHintTitle: {
+      fontSize: font.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.text,
+    },
+    nameHintDetail: {
+      fontSize: font.xs,
+      color: colors.textSecondary,
+      marginTop: spacing.xxs,
+    },
+    nameHintActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
     },
     status: {
       fontSize: font.sm,

@@ -1,4 +1,4 @@
-import { auditCatalog, auditTokens, type AuditFinding } from '../utils/catalogAudit';
+import { auditCatalog, auditTokens, suggestedName, type AuditFinding } from '../utils/catalogAudit';
 import { newItemRow } from '../utils/groceryAdd';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { GroceryItem, ItemProduct } from '../types';
@@ -103,5 +103,26 @@ describe('auditCatalog: pairs', () => {
 
   it('does not pair unrelated names', () => {
     expect(auditCatalog([item('salt'), item('olive oil'), item('rice vinegar')], [])).toEqual([]);
+  });
+});
+
+describe('suggestedName', () => {
+  const only = (rows: GroceryItem[], products: ItemProduct[], kind: AuditFinding['kind']) =>
+    auditCatalog(rows, products).find(f => f.kind === kind)!;
+
+  it('title-cases a shouted name, drops a size and takes a brand out', () => {
+    expect(suggestedName(only([item('PEANUT BUTTER CUPS')], [], 'all_caps'))).toBe('Peanut Butter Cups');
+    expect(suggestedName(only([item('Smokey Dokey -- 6 oz')], [], 'size_in_name'))).toBe('Smokey Dokey');
+    const cleanser = item('CeraVe Foaming Facial Cleanser');
+    expect(suggestedName(only([cleanser], [product(cleanser.id, 'CeraVe')], 'brand_in_name'))).toBe('Foaming Facial Cleanser');
+  });
+
+  it('starts a package title from the name as it stands', () => {
+    expect(suggestedName(only([item('0% Milkfat Strained Non- Fat Strawberry Yogurt')], [], 'package_title'))).toBe('0% Milkfat Strained Non- Fat Strawberry Yogurt');
+  });
+
+  it('leaves nothing when the whole name is the brand', () => {
+    const t = item('tofurky');
+    expect(suggestedName(only([t], [product(t.id, 'Tofurky')], 'brand_in_name'))).toBe('');
   });
 });

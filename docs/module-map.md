@@ -97,7 +97,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +25 more
 - `src/utils/capitalize.ts` — capitalize
 - `src/utils/cardAnchor.ts` — CardAnchor, CardPlacement, ANCHOR_GAP, ANCHOR_REACH, ANCHOR_EDGE, cardAnchorPlacement
-- `src/utils/catalogAudit.ts` — AuditKind, AuditRow, AuditFinding, auditTokens, auditCatalog
+- `src/utils/catalogAudit.ts` — AuditKind, AuditRow, AuditFinding, auditTokens, containsRun, auditCatalog, withoutBrand, suggestedName
+- `src/utils/catalogAuditDismissed.ts` — CATALOG_AUDIT_DISMISSED_KEY, findingKey, parseDismissed, withDismissed, visibleFindings
+- `src/utils/catalogNameHint.ts` — NameHint, nameHintFor
 - `src/utils/categoryBackfill.ts` — CategoryBackfillFieldId, CategoryBackfillFieldDef, CATEGORY_BACKFILL_FIELDS, isCategoryFieldMissing, isCategoryBackfillDismissed, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField
 - `src/utils/categoryLabel.ts` — categoryLabel
 - `src/utils/categoryOrder.ts` — moveCategory, alphabeticalCategories, sortCategoriesByTaskCount

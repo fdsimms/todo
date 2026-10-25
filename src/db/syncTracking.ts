@@ -682,6 +682,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'limitWarningAutoSlips',
   // The goals whose Aim for task was deleted or switched off.
   'goalTargetDeclined',
+  // The Tidy catalog findings the person chose to leave as they are.
+  'catalogAuditDismissed',
   'waterUnit',
   // The weight screen's unit, and the food log's own layout: which nutrients
   // it pins and whether a logged food closes the sheet.
