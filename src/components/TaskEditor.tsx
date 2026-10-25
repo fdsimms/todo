@@ -8763,9 +8763,19 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     if (task.archived) {
                       resumeTasks([task], unarchiveTask);
                     } else {
-                      haptics.success();
-                      archiveTask(task.id);
-                      onClose();
+                      haptics.warning();
+                      Alert.alert(
+                        'Archive this task?',
+                        `“${displayTitleFor(task)}” moves to Archived. Nothing is deleted. You can restore it from there.`,
+                        [
+                          { text: BUTTON_LABEL.cancel, style: 'cancel' },
+                          {
+                            // Not destructive styling: archiving keeps the task.
+                            text: 'Archive',
+                            onPress: () => { archiveTask(task.id); onClose(); },
+                          },
+                        ],
+                      );
                     }
                   }}
                   activeOpacity={interaction.activeOpacity}
