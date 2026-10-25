@@ -17,7 +17,7 @@ import { spacing, radius, font, fontWeight, border, iconSize, interaction, type 
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { PressableScale } from './PressableScale';
-import { SegmentedControl } from './SegmentedControl';
+import { MinutesSegments } from './MinutesSegments';
 import { useEventReminderStore } from '../store/useEventReminderStore';
 import {
   EVENT_REMINDER_OFFSETS,
@@ -60,7 +60,8 @@ import type { TaskTemplate } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /** `null` is the "no reminder" segment — distinct from 0, which is a real offset (at start time). */
-type OffsetChoice = number | null;
+/** A typed reminder runs from a minute to a day before the event. */
+const EVENT_REMINDER_RANGE = { min: 1, max: 24 * 60 };
 
 /** Which of a row's two fold-out panels is open. One at a time across the sheet. */
 type OpenPanel = { key: string; panel: 'reminder' | 'details' | 'people' };
@@ -642,7 +643,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
 
                 {reminderOpen && (
                   <View style={styles.reminderPanel}>
-                    <SegmentedControl<OffsetChoice>
+                    <MinutesSegments
                       label="Reminder"
                       columns={3}
                       value={reminder ? reminder.offsetMinutes : null}
@@ -650,7 +651,9 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
                         if (value === null) clearReminder(event);
                         else setReminder(event, value);
                       }}
-                      options={[
+                      range={EVENT_REMINDER_RANGE}
+                      describe={minutes => describeEventReminderOffset(minutes).replace(' before', '')}
+                      presets={[
                         { value: null, label: 'Off' },
                         ...EVENT_REMINDER_OFFSETS.map(minutes => ({
                           value: minutes,

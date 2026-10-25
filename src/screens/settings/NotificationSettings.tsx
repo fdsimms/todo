@@ -20,7 +20,8 @@ import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
-import { SettingsSegments } from './SettingsSegments';
+import { SettingsMinutesSegments, SettingsSegments } from './SettingsSegments';
+import { shortMinutesLabel } from '../../utils/customMinutes';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { InlineTimePicker } from './InlineTimePicker';
 import { makeSettingsStyles } from './settingsStyles';
@@ -30,6 +31,9 @@ import { navigateToSettingsEntry, openSettingsGroup } from '../../navigation/ope
 
 const REMINDER_LEAD_OPTIONS: SegmentOption<number | null>[] =
   DEFAULT_REMINDER_LEAD_OPTIONS.map(o => ({ value: o.value, label: o.label }));
+
+/** A typed lead time runs from a minute to a day, the same range the MCP server accepts for it. */
+const REMINDER_LEAD_RANGE = { min: 1, max: 24 * 60 };
 
 export function NotificationSettings() {
   const navigation = useNavigation();
@@ -398,15 +402,16 @@ export function NotificationSettings() {
           label="Remind me before"
           hint={defaultReminderLeadMinutes === null
             ? 'Off. Set a reminder on each task yourself'
-            : `New start times get a reminder ${DEFAULT_REMINDER_LEAD_OPTIONS.find(o => o.value === defaultReminderLeadMinutes)?.label.toLowerCase() ?? ''} early`}
+            : `New start times get a reminder ${(DEFAULT_REMINDER_LEAD_OPTIONS.find(o => o.value === defaultReminderLeadMinutes)?.label ?? shortMinutesLabel(defaultReminderLeadMinutes)).toLowerCase()} early`}
           tight
         />
-        <SettingsSegments
+        <SettingsMinutesSegments
           attached
-          options={REMINDER_LEAD_OPTIONS}
+          presets={REMINDER_LEAD_OPTIONS}
           selected={defaultReminderLeadMinutes}
           onSelect={setDefaultReminderLeadMinutes}
-          accessibilityLabelFor={o => `Default reminder lead time ${o.label}`}
+          range={REMINDER_LEAD_RANGE}
+          label="Default reminder lead time"
         />
       </SettingsSection>
 

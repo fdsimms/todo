@@ -3,6 +3,8 @@ import { View } from 'react-native';
 import { useColors } from '../../theme/ThemeContext';
 import { makeSettingsStyles } from './settingsStyles';
 import { SegmentedControl, type SegmentOption } from '../../components/SegmentedControl';
+import { MinutesSegments } from '../../components/MinutesSegments';
+import type { MinutesRange } from '../../utils/customMinutes';
 
 interface Props<T> {
   options: SegmentOption<T>[];
@@ -59,6 +61,30 @@ export function SettingsSegments<T extends string | number | boolean | null>({
         columns={columns}
         label={label}
       />
+    </View>
+  );
+}
+
+interface MinutesProps {
+  presets: SegmentOption<number | null>[];
+  selected: number | null;
+  onSelect: (minutes: number | null) => void;
+  /** What a typed length may be. */
+  range: MinutesRange;
+  label: string;
+  attached?: boolean;
+}
+
+/**
+ * `SettingsSegments` for a length, with a last segment that takes any number in
+ * `range`. Same padding, so the two sit interchangeably in a card.
+ */
+export function SettingsMinutesSegments({ presets, selected, onSelect, range, label, attached }: MinutesProps) {
+  const colors = useColors();
+  const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
+  return (
+    <View style={[styles.segmentRow, attached && styles.segmentRowAttached]}>
+      <MinutesSegments presets={presets} value={selected} onChange={onSelect} range={range} label={label} />
     </View>
   );
 }

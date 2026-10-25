@@ -10,8 +10,11 @@
  */
 import { dbGetSetting, dbSetSetting } from '../db/database';
 
-/** The lengths the menu offers, in minutes. */
+/** The lengths the menu lists, in minutes. Any whole number in `JOURNAL_TIMER_RANGE` can be typed instead. */
 export const JOURNAL_TIMER_MINUTES = [5, 10, 15, 20] as const;
+
+/** What a typed length may be: a minute to two hours. */
+export const JOURNAL_TIMER_RANGE = { min: 1, max: 120 };
 
 export const DEFAULT_JOURNAL_TIMER_MINUTES = 10;
 
@@ -20,8 +23,10 @@ export const JOURNAL_TIMER_SETTING = 'journalTimerMinutes';
 
 /** A stored length, or the default when nothing valid is there. */
 export function parseJournalTimerMinutes(raw: string | null | undefined): number {
-  const minutes = Number(raw);
-  return (JOURNAL_TIMER_MINUTES as readonly number[]).includes(minutes) ? minutes : DEFAULT_JOURNAL_TIMER_MINUTES;
+  const minutes = raw == null || raw.trim() === '' ? NaN : Number(raw);
+  return Number.isInteger(minutes) && minutes >= JOURNAL_TIMER_RANGE.min && minutes <= JOURNAL_TIMER_RANGE.max
+    ? minutes
+    : DEFAULT_JOURNAL_TIMER_MINUTES;
 }
 
 export function readJournalTimerMinutes(): number {
