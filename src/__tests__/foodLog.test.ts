@@ -6,6 +6,8 @@ import {
   convertAmountNumber,
   largeAmountWarning,
   describeFoodLogEntry,
+  foodSearchKeys,
+  typedGrams,
   ESTIMATE_AMOUNTS,
   MAX_ESTIMATE_MULTIPLE,
   currentEstimateCount,
@@ -1651,5 +1653,35 @@ describe('saved meals and the estimator', () => {
     const { savedMealsMatching } = require('../utils/foodLog');
     const meals = [{ id: '1', name: "Za'atar roasted vegetables", items: [], createdAt: '' }];
     expect(savedMealsMatching(meals, '122g zataar roasted vegetables')).toHaveLength(1);
+  });
+});
+
+describe('foodSearchKeys', () => {
+  it('searches nothing for empty text', () => {
+    expect(foodSearchKeys('  ')).toEqual([]);
+  });
+
+  it('also searches the food after a leading amount', () => {
+    expect(foodSearchKeys('10g sugar')).toEqual(['10g sugar', 'sugar']);
+    expect(foodSearchKeys('2 cups oat milk')).toEqual(['2 cups oat milk', 'oat milk']);
+  });
+
+  it('keeps a number that is part of the name', () => {
+    expect(foodSearchKeys('2% milk')).toEqual(['2% milk']);
+    expect(foodSearchKeys('sugar')).toEqual(['sugar']);
+  });
+});
+
+describe('typedGrams', () => {
+  it('reads grams typed before a food', () => {
+    expect(typedGrams('10g sugar')).toBe('10');
+    expect(typedGrams('2.5 grams oat milk')).toBe('2.5');
+  });
+
+  it('reads nothing else', () => {
+    expect(typedGrams('10g')).toBeNull();
+    expect(typedGrams('2 cups sugar')).toBeNull();
+    expect(typedGrams('10 sugar')).toBeNull();
+    expect(typedGrams('gum 10g')).toBeNull();
   });
 });
