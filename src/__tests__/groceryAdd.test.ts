@@ -50,6 +50,15 @@ describe('nextSortOrder', () => {
 });
 
 describe('newItemRow', () => {
+  it('never mints an all-caps name, whichever path brought it', () => {
+    const item = newItemRow({
+      name: 'MILK CHOCOLATE PEANUT BUTTER CUPS', nameKey: 'milk chocolate peanut butter cups', aisle: 'Snacks',
+      sortOrder: 1, createdAt: '2026-03-10T09:00:00.000Z', onList: false,
+    });
+    expect(item.name).toBe('Milk Chocolate Peanut Butter Cups');
+    expect(item.nameKey).toBe('milk chocolate peanut butter cups');
+  });
+
   it('mints a row nobody has done anything to yet', () => {
     const item = newItemRow({
       name: 'Milk', nameKey: 'milk', aisle: 'Dairy', sortOrder: 3,

@@ -82,7 +82,7 @@ import type { DeliverableKind, ExerciseEquipment, MealSlot, TimeOfDay } from '..
 import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
-import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, listBrands, mergeGroceryItems, renameBrand, renameBrands, renameGroceryList, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
+import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, catalogAudit, listBrands, mergeGroceryItems, renameBrand, renameBrands, renameGroceryList, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { deleteCookbook, listCookbooks, logCookTime, mergeCookbooks, renameCookbook } from './recipeTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, copyMeals, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, saveMealAsRecipe, setMealCooked, updateMeal } from './kitchenTools';
@@ -406,6 +406,18 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     "Every brand in the catalog once, with how many variants carry it, the items it appears under, and (only when there is more than one) the spellings in use with their counts. A brand has no record of its own, so this is read off the variants: use it to find 'Quest' and 'QUEST' before rename_brand.",
     {},
     async () => json({ brands: await withFresh(() => listBrands(replica)) })
+  );
+
+  server.tool(
+    'catalog_audit',
+    "Catalog names that look wrong, in one call: a brand where the generic should be (\"tofurky\", \"CeraVe Moisturizing Cream\"), a name copied off a package or shouted in capitals, a size left in the name, rows that use the same words (\"ground ginger\" and \"ginger powder\"), and, only when asked for, pairs that may be a kind of one another (\"onion\" and \"white onion\"). Each finding names the rows, says why and how sure it is, and says which tool fixes it. It writes nothing and decides nothing: a pair the person has already linked (an other name, a kind) is not shown. Fix with update_grocery_item (rename, kindOf), merge_grocery_items or save_grocery_box.",
+    {
+      kinds: z
+        .array(z.enum(['brand_in_name', 'package_title', 'all_caps', 'size_in_name', 'same_words', 'maybe_kind_of']))
+        .optional()
+        .describe('Only these kinds. Without it, everything except maybe_kind_of.'),
+    },
+    async input => json(await withFresh(() => catalogAudit(replica, input)))
   );
 
   server.tool(
