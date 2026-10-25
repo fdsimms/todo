@@ -1,5 +1,6 @@
 import {
   PERF_ENTRY_LIMIT,
+  PERF_PART_LIMIT,
   PERF_RUN_LIMIT,
   appendRun,
   currentEntries,
@@ -10,6 +11,8 @@ import {
   resetPerfLog,
   takeEntries,
   timed,
+  timedPart,
+  summarizeParts,
   type PerfRun,
 } from '../utils/perfLog';
 import { runStartupStep } from '../utils/startup';
@@ -131,5 +134,39 @@ describe('formatPerfReport', () => {
   it('labels a background run', () => {
     const text = formatPerfReport([{ ...run(1), kind: 'background' }], [], now);
     expect(text).toContain('Background run, 2026-10-01');
+  });
+});
+
+describe('parts of a step', () => {
+  it('attaches parts recorded inside a step to that step, slowest first', () => {
+    timed('initialize tasks', () => {
+      timedPart('Grocery', () => 1);
+      timedPart('Recipe', () => 2);
+    });
+    const [entry] = currentEntries();
+    expect(entry.name).toBe('initialize tasks');
+    expect(entry.parts?.map(p => p.name).sort()).toEqual(['Grocery', 'Recipe']);
+    // The next step starts with none.
+    timed('load settings', () => {});
+    expect(currentEntries()[1].parts).toBeUndefined();
+  });
+
+  it('records nothing for work run outside any step', () => {
+    expect(timedPart('Grocery', () => 7)).toBe(7);
+    timed('load settings', () => {});
+    expect(currentEntries()[0].parts).toBeUndefined();
+  });
+
+  it('keeps the slowest parts and sums the rest into one line', () => {
+    const parts = Array.from({ length: PERF_PART_LIMIT + 3 }, (_, i) => ({ name: `s${i}`, ms: i + 1 }));
+    const summary = summarizeParts(parts);
+    expect(summary).toHaveLength(PERF_PART_LIMIT + 1);
+    expect(summary[0].ms).toBe(PERF_PART_LIMIT + 3);
+    expect(summary[summary.length - 1]).toEqual({ name: '3 others', ms: 1 + 2 + 3 });
+  });
+
+  it('prints parts indented under their step in the report', () => {
+    const report = formatPerfReport([], [{ name: 'initialize tasks', ms: 40, parts: [{ name: 'Grocery', ms: 12 }] }]);
+    expect(report).toContain('  initialize tasks: 40 ms\n      Grocery: 12 ms');
   });
 });
