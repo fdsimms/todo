@@ -927,6 +927,8 @@ export interface CompletedResult {
   rolledOver: Task[];
   /** True when a dose was recorded against the medication the task names. */
   loggedDose: boolean;
+  /** The medicines it recorded, main dose first. */
+  loggedDoses: string[];
 }
 
 /** One task the way `fuzzySearch` ranked it, without the highlight ranges. */
@@ -3858,10 +3860,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     // The one cross-store write kept, because it is a record rather than a
     // device effect: a dose taken is a fact about the person, and dropping
     // it would make a medication task completed here invisible in the log
-    // that exists to count exactly these. Read through `medicationFor` so a
-    // chain step carrying its own medication records that one.
-    const dose = missed || mode === 'other' ? null : medication.medicationFor(task);
-    if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date(), useUsualDose: true });
+    // that exists to count exactly these. The same doses the app's
+    // completeTask records: a chain step carrying its own medication records
+    // that one, a target only its main dose, and anything else its extras too.
+    const doses = missed || mode === 'other'
+      ? []
+      : visibility.isQuotaTask(task)
+        ? [medication.medicationFor(task)].filter(d => d !== null)
+        : medication.medicationsFor(task);
+    const doseAt = new Date();
+    for (const dose of doses) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: doseAt, useUsualDose: true });
 
     // Coins, kept for the same reason: the ledger is a record, and a task
     // finished here should earn what it would have earned on the phone.
@@ -3895,7 +3903,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       nextTask: built.nextTask,
       followUpTask: built.followUpTask,
       rolledOver: built.rolledOver,
-      loggedDose: dose !== null,
+      loggedDose: doses.length > 0,
+      loggedDoses: doses.map(d => d.name),
     };
   };
 

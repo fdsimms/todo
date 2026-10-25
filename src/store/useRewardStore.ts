@@ -18,6 +18,8 @@ import {
   cleanRewardGlyph,
   coinBalance,
   coinsForPrice,
+  BALANCE_RESET_LABEL,
+  isBalanceReset,
   priceWithTax,
   lastClaimedAt,
   latestLossFor,
@@ -143,13 +145,7 @@ interface RewardStore {
   unreset: (entryId: string) => void;
 }
 
-/** The label a balance reset's entry carries, and how the history spots one. */
-export const BALANCE_RESET_LABEL = 'Balance reset';
-
-/** A reset belongs to no task and no reward, which no other entry can say. */
-export function isBalanceReset(entry: Pick<CoinEntry, 'taskId' | 'rewardId'>): boolean {
-  return entry.taskId === null && entry.rewardId === null;
-}
+export { BALANCE_RESET_LABEL, isBalanceReset } from '../utils/rewards';
 
 /** How recent an entry's own time has to be for `CoinToast` to announce it. */
 const ANNOUNCE_WINDOW_MS = 60_000;

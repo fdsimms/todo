@@ -297,7 +297,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const c = result.completed;
       const parts = [
         result.nextTask ? `creates the next one${result.nextTask.dueDate ? ` for ${replica.dayKeyOf(result.nextTask.dueDate)}` : ''}` : null,
-        result.loggedDose ? `records a dose of ${c.medicationName ?? 'its medication'}` : null,
+        result.loggedDose ? `records a dose of ${result.loggedDoses.join(' and ')}` : null,
         result.followUpTask ? `adds the follow-up "${result.followUpTask.title}"` : null,
         result.rolledOver.length > 0 ? `starts the next set of dates (${plural(result.rolledOver.length, 'task')})` : null,
         c.deliverableValue !== undefined && c.deliverableValue !== null && c.deliverableValue !== '' ? `records the answer ${snippet(String(c.deliverableValue))}` : null,

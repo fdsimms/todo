@@ -1487,6 +1487,16 @@ describe('the replica', () => {
     expect(replica.completeTask(task2.id, {}).loggedDose).toBe(false);
   });
 
+  it("records a task's extra medicines with its main dose, as the app does, and takes them all back on reopen", () => {
+    const logsFor = (id: string) => mockRaw.getAllSync<{ name: string }>('SELECT name FROM medication_logs WHERE task_id = ?', [id]).map(r => r.name).sort();
+    const task = replica.createTask({ title: 'Morning pills', medicationName: 'Vitamin D', medicationExtras: [{ name: 'Zinc', amount: 15, unit: 'mg' }] });
+    const result = replica.completeTask(task.id, {});
+    expect(result.loggedDoses).toEqual(['Vitamin D', 'Zinc']);
+    expect(logsFor(task.id)).toEqual(['Vitamin D', 'Zinc']);
+    replica.reopenTask(task.id);
+    expect(logsFor(task.id)).toEqual([]);
+  });
+
   it('earns coins for a completion while rewards are on, and nothing while off', () => {
     const coins = () => mockRaw.getAllSync<{ task_id: string; amount: number }>(
       "SELECT task_id, amount FROM coin_entries WHERE kind = 'earn'"

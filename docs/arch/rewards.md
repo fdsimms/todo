@@ -44,11 +44,15 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
 - **One loss has a floor: a guarded slip's charge** (see "A reward guarding a habit" below) takes
   the balance to zero and stops. That charge is the reward's whole price, often far more than a slip
   costs, so the floor keeps it a price rather than a debt. Every other loss still goes below zero.
-- **A reset is an entry, not an edit.** `resetBalance` writes one row that offsets the balance (a spend
-  against a positive balance, an earning against a negative one) with no task and no reward, which is
-  how the history labels it "Reset" (`isBalanceReset`). Deleting the ledger instead would, with
-  last-writer-wins per row, let another device's older rows sync the coins straight back. Its undo
-  removes only that row.
+- **A reset is an entry, not an edit.** `resetBalance` writes one row with no task and no reward (a
+  spend against a positive balance, an earning against a negative one), which is how the history labels
+  it "Reset" (`isBalanceReset`). Deleting the ledger instead would, with last-writer-wins per row, let
+  another device's older rows sync the coins straight back. Its undo removes only that row.
+- **The latest reset is the balance's zero, not an amount taken off it.** `coinBalance` counts only
+  entries dated after it, and the reset's own amount is only what the history shows. Read as an offset,
+  two devices that each reset 100 coins before syncing merged to two offsets and a balance of -100. The
+  cost is that an entry dated before the latest reset (a backdated completion, or another device's row
+  that syncs in late) no longer counts, which is what "reset to 0" means.
 - **Coins never touch the app shield.** See `penaltyCreditFor`: anything that hands out unblocked
   minutes is a rewards feature wearing the penalty's clothes. A reward is a note to yourself, and
   claiming one unlocks nothing in the app.
