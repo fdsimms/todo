@@ -510,7 +510,15 @@ export function SearchScreen() {
   // opens — same "reset on the way out" CalendarScreen uses for its expanded
   // row. Cleared on blur rather than on focus so a handoff from quick search
   // (the `at` effect above) never races this and gets its own query wiped.
-  useFocusEffect(useCallback(() => () => searchFilter.clear(), []));
+  // Only on the way to another tab, though: opening a result that is pushed
+  // over this one (a project, a recipe, a person, Settings) blurs it too, and
+  // Back from there should land on the results you came from, not an empty
+  // field. The root stack's top route says which it was.
+  useFocusEffect(useCallback(() => () => {
+    const root = navigation.getParent()?.getState();
+    if (root && root.routes[root.index]?.name !== 'MainTabs') return;
+    searchFilter.clear();
+  }, [navigation]));
 
   // KeyboardAvoidingView only checks the keyboard's real state once, in its
   // own componentDidMount — after that it trusts keyboardWillShow/

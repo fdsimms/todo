@@ -41,7 +41,6 @@ import type { Person, Task } from '../types';
 import { resetToPeople } from '../navigation/navigationRef';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
-import { BUTTON_LABEL } from '../copy/shared';
 
 const CHECKBOX_SIZE = 22;
 
@@ -322,21 +321,12 @@ export function StuckScreen() {
       {
         key: 'drop',
         label: 'Drop it',
+        // At once, like the picker's own Drop it: nothing is deleted, and
+        // archiveTask puts an undo on the bar.
         onPress: () => {
-          haptics.warning();
-          Alert.alert(
-            'Archive this task?',
-            `“${displayTitleFor(task)}” moves to Archived. Nothing is deleted. You can restore it from there.`,
-            [
-              { text: BUTTON_LABEL.cancel, style: 'cancel' },
-              {
-                // Not destructive styling, for the reason the picker's copy of
-                // this gives: archiving keeps the task.
-                text: 'Archive',
-                onPress: () => { animateLayout(); archiveTask(task.id); },
-              },
-            ],
-          );
+          haptics.tap();
+          animateLayout();
+          archiveTask(task.id);
         },
       },
       // A bounty is aimed at exactly these tasks (see "Bounties" in

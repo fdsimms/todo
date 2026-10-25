@@ -133,6 +133,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { TextField } from '../components/TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { isOpenEnded, listItemFinder, sectionIsList } from '../utils/listMode';
+import { RotatingChevron } from '../components/RotatingChevron';
 
 type RootStackParamList = {
   ProjectDetail: { projectId: string; returnTo?: string };
@@ -2339,7 +2340,7 @@ function ProjectDetailContent() {
                       <Text style={styles.completedToggleText}>
                         {showCompleted ? 'Hide' : 'Show'} {completedProjectTasks.length} {pageIsList ? 'checked' : 'completed'}
                       </Text>
-                      <Ionicons name={showCompleted ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+                      <RotatingChevron open={showCompleted} size={13} color={colors.textTertiary} />
                     </TouchableOpacity>
                     {showCompleted && shownCheckedTasks.map(task => renderCheckedRow(task))}
                   </View>

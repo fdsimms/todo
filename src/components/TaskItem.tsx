@@ -189,6 +189,7 @@ import { useActionMenu } from '../hooks/useActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
 import { PointerView, pointerMenuItem, type PointerMenuItem } from './PointerView';
 import { runningOnMac } from '../utils/runningOnMac';
+import { RotatingChevron } from './RotatingChevron';
 
 /**
  * This device's id for the event a "Leave for X" row was written for. The row
@@ -1718,22 +1719,11 @@ const TaskItemRow = React.memo(function TaskItem({
     resetTimer(task.id);
   };
 
+  // No confirm: discardTimer puts an undo on the bar that restarts the clock
+  // from where it was.
   const handleDiscardTimer = () => {
-    Alert.alert(
-      'Discard timer?',
-      `The elapsed time for “${task.title}” won’t be saved.`,
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: 'Discard',
-          style: 'destructive',
-          onPress: async () => {
-            haptics.warning();
-            discardTimer(task.id);
-          },
-        },
-      ]
-    );
+    haptics.warning();
+    discardTimer(task.id);
   };
 
   // Save and dismiss keyboard whenever the task collapses while title is being edited
@@ -3752,7 +3742,7 @@ const TaskItemRow = React.memo(function TaskItem({
                 accessibilityLabel={`${subtaskDoneCount} of ${subtaskCount} subtasks done`}
               >
                 <Ionicons name="list-outline" size={9} color={colors.textSecondary} />
-                <Text style={styles.subtaskBadgeText} numberOfLines={1}>{subtaskDoneCount}/{subtaskCount}</Text>
+                <AnimatedNumber text={`${subtaskDoneCount}/${subtaskCount}`} value={subtaskDoneCount} style={styles.subtaskBadgeText} />
               </View>
             )}
             {task.generatedKind === 'calendarReview' && (
@@ -3769,7 +3759,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     ? 'No events'
                     : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}
                 </Text>
-                <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={9} color={colors.textSecondary} />
+                <RotatingChevron open={expanded} size={9} color={colors.textSecondary} />
               </View>
             )}
             {supplyLabel !== null && (
@@ -4766,7 +4756,7 @@ const TaskItemRow = React.memo(function TaskItem({
               {chainStepPreview && (
                 <TouchableOpacity
                   style={styles.recurrenceRow}
-                  onPress={() => { haptics.tap(); setChainStepsExpanded(v => !v); }}
+                  onPress={() => { haptics.tap(); animateLayout(); setChainStepsExpanded(v => !v); }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityState={{ expanded: chainStepsExpanded }}
@@ -4789,11 +4779,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     </Text>
                   )}
                   <View style={styles.chainExpandSpacer} />
-                  <Ionicons
-                    name={chainStepsExpanded ? 'chevron-up' : 'chevron-down'}
-                    size={12}
-                    color={colors.textSecondary}
-                  />
+                  <RotatingChevron open={chainStepsExpanded} size={12} color={colors.textSecondary} />
                 </TouchableOpacity>
               )}
 

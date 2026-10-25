@@ -54,6 +54,7 @@ import { useLingering } from '../hooks/useLingering';
 import { ChartGuides, BAR_GUIDE_GAP, useGuideGutter } from '../components/ChartGuides';
 import { countStripScale } from '../utils/stripScale';
 import { BUTTON_LABEL } from '../copy/shared';
+import { resetToTask } from '../navigation/navigationRef';
 
 type RootStackParamList = {
   MedicationDetail: {
@@ -147,7 +148,7 @@ export function MedicationDetailScreen() {
   const storedUsuals = prefsFor(settings, medName).usualDoses ?? [];
   const addDailyTask = () => {
     haptics.success();
-    addTask({
+    const created = addTask({
       title: medName,
       recurrenceType: 'daily',
       dueDate: getCurrentDayStart().toISOString(),
@@ -159,7 +160,12 @@ export function MedicationDetailScreen() {
     });
     Alert.alert(
       'Daily task added',
-      `${medName} is now on Today every day. Checking it off records the dose. Open the task on Today to change the time or schedule.`,
+      `${medName} is now on Today every day. Checking it off records the dose. Edit the task to change the time or schedule.`,
+      [
+        { text: BUTTON_LABEL.done, style: 'cancel' },
+        // Straight to its editor, rather than leaving the way there to the reader.
+        { text: 'Edit task', onPress: () => resetToTask(created.id) },
+      ],
     );
   };
   const storedCap = prefsFor(settings, medName).limit?.maxAmount24h ?? null;

@@ -505,6 +505,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'calendarEventCategory',
   'kitchenEnabled',
   'unitSystem',
+  'cookTextSize',
   'householdServings',
   'currencySymbol',
   // What the kitchen does after a cook and when something runs low.
@@ -792,6 +793,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   device. Wrong, not just useless, on the other. `calendarPeopleHistory`
  *   is a preference rather than an id, but it refines `calendarReadEnabled`
  *   and is worth nothing on a device that isn't reading a calendar.
+ * - `todayEventRowsSeen` — how many event rows Today drew on this device
+ *   today (`eventRowMemo.ts`), a count describing this device's calendar read.
  * - `calendarHistoryHandled` — which past events the user has already answered
  *   about on a person's screen, keyed by EventKit event id. Same objection as
  *   `groceryImportLinks`: an event id names a record on one device, so the

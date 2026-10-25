@@ -51,12 +51,13 @@ import { InlineAction } from './InlineAction';
 import { RecipeChoiceChips } from './RecipeChoiceChips';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { CardSheet } from './CardSheet';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, checkboxRadius, border, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clearCookPosition, restingCookPosition, saveCookPosition } from '../utils/cookPosition';
-import { clampStepIndex, cookNotesPanel, cookSteps, describeStepPosition } from '../utils/cookMode';
+import { clampStepIndex, cookNotesPanel, cookSteps, cookTextMetrics, describeStepPosition, type CookTextSize } from '../utils/cookMode';
 import {
   defaultRepeatRounds,
   formatStepDuration,
@@ -82,6 +83,7 @@ import { ovenSetupsFor } from '../utils/ovenTemp';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from './RotatingChevron';
 
 interface Props {
   visible: boolean;
@@ -134,6 +136,13 @@ interface Props {
    */
   onLogFood?: () => void;
 }
+
+const COOK_TEXT_SIZE_OPTIONS: SegmentOption<CookTextSize>[] = [
+  { value: 'small', label: 'Small' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'large', label: 'Large' },
+  { value: 'xlarge', label: 'Extra large' },
+];
 
 /**
  * Cook mode — the method one step at a time, with the screen kept awake and the
@@ -302,6 +311,9 @@ export function CookModeSheet({
   const hasIngredients = ingredients.length > 0 || blanks.length > 0 || ovenSetups.length > 0;
   const [fillingBlanks, setFillingBlanks] = useState(false);
   const [scaleOpen, setScaleOpen] = useState(false);
+  const [textSizeOpen, setTextSizeOpen] = useState(false);
+  const cookTextSize = useSettingsStore(s => s.cookTextSize);
+  const setCookTextSize = useSettingsStore(s => s.setCookTextSize);
   // Cook mode has no planned meal, so the picker is handed a stand-in for this
   // cooking. Its day only orders "last time" and its id only has to be stable.
   const fillSubject = useMemo(
@@ -652,43 +664,51 @@ export function CookModeSheet({
           backIcon="close"
           backAccessibilityLabel="Leave cook mode"
           actions={
-            // Only when it says something: at 1× the recipe is being read as
-            // written, and a chip repeating that is chrome. When it isn't, this
-            // is the one thing on screen explaining why the amounts in the panel
-            // below aren't the recipe's own numbers.
-            // Tappable when the screen lets the factor change from here, and
-            // then always shown, since it is the only way to reach the picker.
-            isUnscaled(scale) && !cookUnderway && !onScaleChange ? undefined : (
-              <View style={styles.headerActions}>
-                {(!isUnscaled(scale) || onScaleChange) && (
-                  <TouchableOpacity
-                    style={styles.scaleChip}
-                    disabled={!onScaleChange}
-                    onPress={() => setScaleOpen(true)}
-                    activeOpacity={interaction.activeOpacity}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Recipe scale ${formatScale(scale)}`}
-                    accessibilityHint={onScaleChange ? 'Changes how much the recipe makes' : undefined}
-                  >
-                    <Text style={styles.scaleChipText}>{formatScale(scale)}</Text>
-                  </TouchableOpacity>
-                )}
-                {/* Only once a cook is underway (the timer has time on it). */}
-                {cookUnderway && (
-                  <TouchableOpacity
-                    onPress={cancelCook}
-                    activeOpacity={interaction.activeOpacity}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Cancel this cook"
-                    accessibilityHint="Stops the timer without logging a cook time and closes cook mode"
-                  >
-                    <Ionicons name="trash-outline" size={iconSize.md} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            )
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                onPress={() => setTextSizeOpen(true)}
+                activeOpacity={interaction.activeOpacity}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Text size"
+                accessibilityHint="Changes how big the step is drawn"
+              >
+                <Ionicons name="text-outline" size={iconSize.md} color={colors.textSecondary} />
+              </TouchableOpacity>
+              {/* Only when it says something: at 1× the recipe is being read as
+                  written, and a chip repeating that is chrome. When it isn't, this
+                  is the one thing on screen explaining why the amounts in the panel
+                  below aren't the recipe's own numbers.
+                  Tappable when the screen lets the factor change from here, and
+                  then always shown, since it is the only way to reach the picker. */}
+              {(!isUnscaled(scale) || onScaleChange) && (
+                <TouchableOpacity
+                  style={styles.scaleChip}
+                  disabled={!onScaleChange}
+                  onPress={() => setScaleOpen(true)}
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Recipe scale ${formatScale(scale)}`}
+                  accessibilityHint={onScaleChange ? 'Changes how much the recipe makes' : undefined}
+                >
+                  <Text style={styles.scaleChipText}>{formatScale(scale)}</Text>
+                </TouchableOpacity>
+              )}
+              {/* Only once a cook is underway (the timer has time on it). */}
+              {cookUnderway && (
+                <TouchableOpacity
+                  onPress={cancelCook}
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel this cook"
+                  accessibilityHint="Stops the timer without logging a cook time and closes cook mode"
+                >
+                  <Ionicons name="trash-outline" size={iconSize.md} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
           }
         />
 
@@ -958,7 +978,7 @@ export function CookModeSheet({
               <StepText
                 text={step.text}
                 segments={annotated.get(step.id)}
-                style={styles.stepText}
+                style={[styles.stepText, cookTextMetrics(cookTextSize)]}
                 durations={offers}
                 onDurationPress={startOffer}
               />
@@ -1112,11 +1132,7 @@ export function CookModeSheet({
                 <Text style={styles.panelHeaderText}>
                   Ingredients · {checkedCount > 0 ? `${ingredients.length - checkedCount} left` : ingredients.length}
                 </Text>
-                <Ionicons
-                  name={ingredientsOpen ? 'chevron-up' : 'chevron-down'}
-                  size={12}
-                  color={colors.textTertiary}
-                />
+                <RotatingChevron open={ingredientsOpen} size={12} color={colors.textTertiary} />
               </TouchableOpacity>
               {ingredientsOpen && (
                 <ScrollView style={styles.panelList} nestedScrollEnabled>
@@ -1235,11 +1251,7 @@ export function CookModeSheet({
                   Notes
                   {!notesOpen && <Text style={styles.notesPreview}>{` · ${notesPanel.preview}`}</Text>}
                 </Text>
-                <Ionicons
-                  name={notesOpen ? 'chevron-up' : 'chevron-down'}
-                  size={12}
-                  color={colors.textTertiary}
-                />
+                <RotatingChevron open={notesOpen} size={12} color={colors.textTertiary} />
               </TouchableOpacity>
               {notesOpen && (
                 <ScrollView style={styles.panelList} nestedScrollEnabled>
@@ -1400,6 +1412,14 @@ export function CookModeSheet({
         confirmLabel="Start"
         onConfirm={startRepeating}
       />
+      <CardSheet visible={textSizeOpen && visible} onClose={() => setTextSizeOpen(false)} name="CookTextSize" cardStyle={{ padding: spacing.md }}>
+        <SegmentedControl
+          options={COOK_TEXT_SIZE_OPTIONS}
+          value={cookTextSize}
+          onChange={setCookTextSize}
+          label="Text size"
+        />
+      </CardSheet>
       {onScaleChange && (
         <CardSheet visible={scaleOpen && visible} onClose={() => setScaleOpen(false)} name="CookScale" cardStyle={{ padding: spacing.md }}>
           <RecipeScaleChips

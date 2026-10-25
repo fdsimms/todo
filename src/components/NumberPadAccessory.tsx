@@ -33,8 +33,13 @@ export const NUMBER_PAD_ACCESSORY_ID = 'numberPadAccessory';
  * Android's numeric keyboard already ships a dismiss affordance, and
  * `InputAccessoryView` is iOS-only (it warns and renders null elsewhere), so
  * this is a no-op there.
+ *
+ * `onNext`, when given, adds a Next button at the leading edge for a form of
+ * several number fields (a blood pressure reading), since the pad has no
+ * return key to move on with either. The host says what Next does for the
+ * field that is focused, and passes undefined on the last one.
  */
-export function NumberPadAccessory() {
+export function NumberPadAccessory({ onNext }: { onNext?: () => void } = {}) {
   const colors = useColors();
   const instanceId = useId();
   const ios = Platform.OS === 'ios';
@@ -59,7 +64,8 @@ export function NumberPadAccessory() {
   const styles = makeStyles(colors);
   return (
     <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor={colors.bgSecondary}>
-      <View style={styles.bar}>
+      <View style={[styles.bar, onNext && styles.barWithNext]}>
+        {onNext && <SheetHeaderButton label="Next" role="cancel" onPress={onNext} />}
         <SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => Keyboard.dismiss()} />
       </View>
     </InputAccessoryView>
@@ -76,4 +82,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.separator,
   },
+  barWithNext: { justifyContent: 'space-between' },
 });

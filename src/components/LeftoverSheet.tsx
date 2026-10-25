@@ -412,18 +412,15 @@ export function LeftoverSheet({
   };
 
   /**
-   * The one irreversible thing this sheet does, and the only one with no undo
-   * behind it — useLeftoverStore keeps no lastAction queue, unlike tasks,
-   * groceries and the meal plan. Finishing a container can be reopened and a
-   * rename can be retyped; a delete takes the row and its history with it. So
-   * it asks, the same way deleting a recipe does, rather than relying on a
-   * safety net that isn't there.
+   * Deleting takes the row and its history, but `deleteLeftover` files an
+   * undo the bar offers, so it runs at once rather than asking first.
    */
   const handleDeleteLeftover = () => {
     haptics.warning();
     confirmDelete({
       title: `Delete ${leftover?.title ?? 'this leftover'}?`,
-      message: 'This removes it from the fridge and the history. This can’t be undone.',
+      message: 'This removes it from the fridge and the history. You can undo it right after.',
+      undoable: true,
       onConfirm: () => dismiss(onDelete),
     });
   };

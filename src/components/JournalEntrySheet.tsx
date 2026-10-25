@@ -366,6 +366,8 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
     } else {
       const isToday = isSameDay(day, getLogicalToday());
       const sealUntil = canSeal && openOn ? dayKeyOf(openOn) : null;
+      // The list behind the sheet gains a row; let it ease in as the sheet goes.
+      animateLayout();
       const entry = addEntry(kind, text, isToday ? undefined : noonOn(day), sealUntil, { tags, personIds, photos });
       if (entry?.openOn) addSealedNoteReminder(entry);
       // The page answers today's journal or dream task, so its row plays the
@@ -404,7 +406,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
     const id = editing.id;
     confirmDelete({
       title: `Delete this ${copy.one}?`,
-      onConfirm: () => { haptics.warning(); removeEntry(id); dropSealedNoteReminder(id); onClose(); },
+      onConfirm: () => { haptics.warning(); animateLayout(); removeEntry(id); dropSealedNoteReminder(id); onClose(); },
     });
   };
 

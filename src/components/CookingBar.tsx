@@ -10,7 +10,7 @@ import { useFabPresenceStore } from '../store/useFabPresenceStore';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
 import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
-import { FAB_SIZE } from './Fab';
+import { FAB_SIZE, useFabBottom } from './Fab';
 import { cookTimerElapsed, isCookTimerRunning } from '../utils/recipeTimer';
 import { formatStopwatch } from '../utils/effort';
 import { haptics } from '../utils/haptics';
@@ -45,6 +45,7 @@ export function CookingBar() {
   const { colors, shadows } = useTheme();
   const insets = useSafeAreaInsets();
   const barHeight = useBottomBarHeight();
+  const fabBottom = useFabBottom();
   const styles = makeStyles(colors);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const cooking = useRecipeStore(useShallow(s => s.recipes.filter(isCookTimerRunning)));
@@ -73,13 +74,17 @@ export function CookingBar() {
 
   const elapsed = formatStopwatch(cookTimerElapsed(recipe, nowTick));
   // Just above the tab bar, stopping short of the add button's corner when the
-  // screen has one (it rests in the same band, see `FAB_BOTTOM_OFFSET`).
+  // screen has one (it rests in the same band, see `FAB_BOTTOM_OFFSET`). With a button, the bar is
+  // centered on it vertically instead: the wrap is the button's own height, at its bottom.
   const bottom = insets.bottom + barHeight + spacing.sm;
   const clearance = spacing.lg + FAB_SIZE + spacing.sm;
   const sideInset = fabShown ? { [fabHand === 'left' ? 'left' : 'right']: clearance } : null;
 
   return (
-    <View style={[styles.wrap, { bottom }, sideInset]} pointerEvents="box-none">
+    <View
+      style={[styles.wrap, fabShown ? { bottom: fabBottom, height: FAB_SIZE, justifyContent: 'center' } : { bottom }, sideInset]}
+      pointerEvents="box-none"
+    >
       <TouchableOpacity
         style={[styles.bar, glassSupported() ? styles.barGlass : shadows.fab]}
         activeOpacity={interaction.activeOpacity}

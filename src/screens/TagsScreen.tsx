@@ -298,6 +298,7 @@ export function TagsScreen() {
     confirmDelete({
       title: 'Delete tag',
       message: `Remove “${tag}” from all tasks?`,
+      undoable: true,
       onConfirm: () => {
         animateLayout();
         deleteTag(tag);

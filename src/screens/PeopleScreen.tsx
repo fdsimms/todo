@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -186,28 +186,15 @@ export function PeopleScreen() {
     exitSelection();
   };
 
-  // Same confirmation copy as the single-person delete in PersonEditor — this
-  // is that same destructive action, just reached on several rows at once.
+  // No confirm, same as the single-person delete in PersonEditor:
+  // bulkRemovePeople files one undo on the bar for the whole batch, notes
+  // included.
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
-    const count = ids.length;
-    const plural = count === 1 ? 'person' : 'people';
-    Alert.alert(
-      `Delete ${count} ${plural}?`,
-      'Anything you wrote about them is deleted. Tasks that name them are kept, and stop showing their name.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.delete,
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            bulkRemovePeople(ids);
-            exitSelection();
-          },
-        },
-      ]
-    );
+    haptics.warning();
+    animateLayout();
+    bulkRemovePeople(ids);
+    exitSelection();
   };
 
   // A link naming an archived person still has to land somewhere sensible: the

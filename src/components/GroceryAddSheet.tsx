@@ -16,6 +16,9 @@ import type { GroceryItem } from '../types';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 
+/** How long a line left by tapping outside waits in the field to be picked up. */
+const GROCERY_ADD_KEEP_LINE_MS = 10 * 60 * 1000;
+
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -70,6 +73,9 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, intoCart = false,
   const sheetOpacity = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const [addedCount, setAddedCount] = useState(0);
+  // When the sheet was last left by the backdrop rather than Done, and for
+  // which aisle and cart mode. See the open effect.
+  const keptLine = useRef<{ at: number; seedAisle: string | null; intoCart: boolean } | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -77,7 +83,16 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, intoCart = false,
     // The field stays mounted across opens (a Modal hides rather than
     // unmounts), so a line left typed when the sheet was cancelled — see
     // `confirm` below — would otherwise still be sitting there next open.
-    fieldRef.current?.discardPending();
+    // Except straight after a backdrop tap: that's as often a brush as a
+    // cancel, so a plain reopen within GROCERY_ADD_KEEP_LINE_MS for the same
+    // aisle finds the line as it was left, still uncommitted.
+    const kept = keptLine.current;
+    keptLine.current = null;
+    const resume = kept !== null
+      && kept.seedAisle === (seedAisle ?? null)
+      && kept.intoCart === intoCart
+      && Date.now() - kept.at <= GROCERY_ADD_KEEP_LINE_MS;
+    if (!resume) fieldRef.current?.discardPending();
     scaleAnim.setValue(0.95);
     translateYAnim.setValue(16);
     sheetOpacity.setValue(0);
@@ -109,7 +124,12 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, intoCart = false,
   // it must not commit an item nobody asked to add — see #1169's own fix
   // committing on every close, not just Done, for why this needs its own path.
   const confirm = () => {
+    keptLine.current = null;
     fieldRef.current?.commitPending();
+    dismiss();
+  };
+  const dismissKeepingLine = () => {
+    keptLine.current = { at: Date.now(), seedAisle: seedAisle ?? null, intoCart };
     dismiss();
   };
 
@@ -118,7 +138,7 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, intoCart = false,
       visible={visible}
       animationType="none"
       transparent
-      onRequestClose={dismiss}
+      onRequestClose={dismissKeepingLine}
       // Focusing off the `visible` prop races SheetModal's own sibling-Modal
       // sequencing (see SheetModal.tsx): the effect above fires the moment
       // `visible` flips, which can be a commit or more before the native
@@ -131,7 +151,7 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, intoCart = false,
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <SheetScrim onPress={dismiss} />
+      <SheetScrim onPress={dismissKeepingLine} />
       <View style={styles.topContainer} pointerEvents="box-none">
         <Animated.View
           style={[

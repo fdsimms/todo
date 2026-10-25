@@ -46,6 +46,8 @@ interface Props {
   /** Kept by the host through the close, so the page doesn't empty while it slides away. */
   sessionId: string;
   onClose: () => void;
+  /** Opens a routine's editor, for "Save as a routine" to offer the way to it. */
+  onOpenRoutine?: (routineId: string) => void;
 }
 
 const NO_SETS: WorkoutSet[] = [];
@@ -90,7 +92,7 @@ function timeLabel(date: Date, day: Date): string {
  * A page sheet, since nothing on it is dragged. The time picker is raised from
  * inside this sheet's Modal: a sibling sheet would never appear.
  */
-export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
+export function WorkoutDetailSheet({ visible, sessionId, onClose, onOpenRoutine }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const textScale = useTextScale();
@@ -286,7 +288,16 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose }: Props) {
               return;
             }
             haptics.success();
-            Alert.alert('Saved as a routine', `“${result.name}” is in the Routines tab.`);
+            Alert.alert(
+              'Saved as a routine',
+              `“${result.name}” is in the Routines tab.`,
+              onOpenRoutine
+                ? [
+                  { text: BUTTON_LABEL.done, style: 'cancel' },
+                  { text: 'Open routine', onPress: () => onOpenRoutine(result.id) },
+                ]
+                : undefined,
+            );
           },
         },
       ],

@@ -36,6 +36,7 @@ export function useTaskSelection(allTasks: Task[]) {
       confirmDelete({
         title: `Delete ${count} ${plural}?`,
         message: `This deletes ${count} ${plural}. You can undo it right after.`,
+        undoable: true,
         onConfirm: () => {
           bulkDeleteTasks(ids);
           exitSelection();

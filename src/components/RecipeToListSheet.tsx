@@ -47,6 +47,8 @@ import { confirmDiscard } from '../utils/confirmDiscard';
 import { SheetUndoBar } from './SheetUndoBar';
 import { useLingering } from '../hooks/useLingering';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from './RotatingChevron';
+import { animateLayout } from '../utils/layoutAnimation';
 
 // How long the in-sheet "marked in pantry" undo stays up. Same value UndoBar
 // uses for the same reason: long enough to read the label and reach for the
@@ -339,6 +341,7 @@ export function RecipeToListSheet({
 
   const toggleSection = (category: PlanCategory) => {
     haptics.tap();
+    animateLayout();
     setExpandedSections(prev => {
       const next = new Set(prev);
       if (next.has(category)) next.delete(category);
@@ -585,11 +588,7 @@ export function RecipeToListSheet({
                   >
                     <Text style={styles.sectionLabel}>{label} · {rows.length}</Text>
                     {collapsible && (
-                      <Ionicons
-                        name={isOpen ? 'chevron-up' : 'chevron-down'}
-                        size={12}
-                        color={colors.textTertiary}
-                      />
+                      <RotatingChevron open={isOpen} size={12} color={colors.textTertiary} />
                     )}
                   </TouchableOpacity>
                   {isOpen && (

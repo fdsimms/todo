@@ -205,6 +205,18 @@ export const useEventPeopleStore = create<EventPeopleState>((set, get) => ({
     if (isDemoModeActive()) return null;
     const saved = await saveEventDirect(fields);
     if (!saved) return null;
+    // On Today at once, ahead of the people link and the re-read below.
+    useCalendarStore.getState().noteEventSaved({
+      id: saved.id,
+      title: fields.title,
+      start: fields.start.toISOString(),
+      end: fields.end.toISOString(),
+      allDay: fields.allDay === true,
+      calendarId: saved.calendarId,
+      location: fields.location ?? null,
+      status: 'confirmed',
+      availability: fields.availability ?? 'busy',
+    });
 
     if (personIds.length > 0) {
       // The span is what was just written, so there is nothing to read back.

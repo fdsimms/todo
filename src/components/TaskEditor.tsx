@@ -205,6 +205,7 @@ import { ProgressBar } from './ProgressBar';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { RotatingChevron } from './RotatingChevron';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -6223,6 +6224,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               onPress={() => {
                 // Opening with nothing chosen picks the first condition, so the
                 // track never shows a selection the task doesn't have.
+                animateLayout();
                 if (!weatherWait) { setWeatherWait('sunny'); setWeatherWaitOpen(true); setDeferUntil(null); return; }
                 setWeatherWaitOpen(open => !open);
               }}
@@ -6418,6 +6420,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   style={styles.optionRow}
                   onPress={() => {
                     setStreakDraft(liveStreakTask!.streakCount);
+                    animateLayout();
                     setStreakEditorOpen(o => !o);
                   }}
                   activeOpacity={interaction.activeOpacity}
@@ -6437,7 +6440,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       {streakHint(liveStreakTask!)}
                     </Text>
                   </View>
-                  <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
+                  <RotatingChevron open={streakEditorOpen} size={16} color={colors.textSecondary} />
                 </TouchableOpacity>
                 {streakEditorOpen && (
                   <View style={styles.intervalRow}>

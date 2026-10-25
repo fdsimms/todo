@@ -113,7 +113,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/contactsAccess.ts` — ContactsPermission, getContactsPermission, ContactsAccessScope, getContactsAccessScope, requestContactsPermission, toCandidate, searchContacts, fetchLimitedContacts
 - `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactAddress, contactBirthday, contactDates, normalizePhone, alreadyAdded, canSearchContacts, +6 more
 - `src/utils/contextCards.ts` — CardPosition, isCardRow, contextCardPositions, contextSectionSummaries
-- `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookNotesPanel, cookSteps, clampStepIndex, describeStepPosition
+- `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookNotesPanel, cookSteps, clampStepIndex, describeStepPosition, CookTextSize, COOK_TEXT_SIZES, DEFAULT_COOK_TEXT_SIZE, cookTextMetrics, +1 more
 - `src/utils/cookPosition.ts` — CookPosition, saveCookPosition, savedCookPosition, clearCookPosition, CookSetup, saveCookSetup, savedCookSetup, restingCookPosition
 - `src/utils/cookQuestions.ts` — COOK_QUESTION_MAX_LENGTH, COOK_ANSWER_MAX_LINES, COOK_ANSWER_MAX_CHARS, CookContextIngredient, CookQuestionContext, cookQuestionContext, suggestedCookQuestions, clampCookAnswer
 - `src/utils/cookbookRecipes.ts` — CookbookPageKey, cookbookPageKey, compareCookbookRecipes, recipesInCookbook, CookbookLinkEffect, cookbookLinkEffect, pageAfterCookbookLink, CookbookLinkCandidate, COOKBOOK_LINK_LIMIT, cookbookLinkCandidates, +1 more
@@ -126,7 +126,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dailyAgenda.ts` — AgendaCounts, AgendaMeetings, agendaMeetings, agendaDinners, agendaBirthdays, agendaCounts, agendaBody, agendaSpokenBody, nextAgendaTime
 - `src/utils/dailyAgendaSync.ts` — useDailyAgendaSync
 - `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStartMs, getCurrentDayStart, getCurrentLogicalDayKey, getLogicalDayKey, dayKeyOf, dayKeyToDate, deadlineInstant, getTaskDayStart, formatHHMM, +36 more
-- `src/utils/dayContextRows.ts` — HealthRowKey, HEALTH_ROW_KEYS, HEALTH_ROW_LABELS, parseHealthRowKeys, serializeHealthRowKeys, ALL_DAY_CAPTION, startsInLabel, eventContextRows, mealContextRows, healthContextRows, +4 more
+- `src/utils/dayContextRows.ts` — HealthRowKey, HEALTH_ROW_KEYS, HEALTH_ROW_LABELS, parseHealthRowKeys, serializeHealthRowKeys, ALL_DAY_CAPTION, startsInLabel, eventPlaceholderRows, eventContextRows, mealContextRows, +5 more
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, assumedMinutesFor, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, DayShade, +4 more
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/dayTimeline.ts` — MINUTES_IN_DAY, DEFAULT_FIRST_HOUR, DEFAULT_LAST_HOUR, TimelineEntry, DayTimeline, DayTimelineInput, clockToDayMinutes, instantToDayMinutes, buildDayTimeline, SLOT_STEP_MINUTES, +5 more
@@ -165,6 +165,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/eventMemory.ts` — EVENT_MEMORY_KEY, EVENT_MEMORY_LIMIT, RememberedEvent, EventMemory, eventMemoryKey, parseEventMemory, rememberEvent, recallEvent, readEventMemory, writeEventMemory
 - `src/utils/eventPeople.ts` — EventPeopleIndex, EMPTY_EVENT_PEOPLE, eventPeopleKeys, indexEventPeople, peopleForEvent, EventPeopleWrite, planEventPeopleWrite, MovedPeopleLink, movedPeopleLinks, isEventPeopleLinkStale, +8 more
 - `src/utils/eventReminders.ts` — EventReminder, EVENT_REMINDER_OFFSETS, eventReminderKey, reminderFromEvent, reminderTriggerDate, isReminderStale, pruneStaleReminders, describeEventReminderOffset
+- `src/utils/eventRowMemo.ts` — EVENT_ROW_MEMO_KEY, MAX_EVENT_PLACEHOLDERS, EventRowShape, readEventRowMemo, eventRowMemoValue, loadEventRowMemo, saveEventRowMemo
 - `src/utils/eventStoreChanges.ts` — CoalescedTrigger, createCoalescedTrigger, onEventStoreChanged
 - `src/utils/eventTaskLinks.ts` — EventTaskLink, EventTaskLinks, eventTaskKey, tasksForEvent, withEventTasks, rekeyEventTasks, EVENT_TASK_LINK_GRACE_DAYS, pruneStaleEventTaskLinks, parseEventTaskLinks, MovedEvent, +4 more
 - `src/utils/eventTasks.ts` — EVENT_RULE_TITLE_MAX_LENGTH, EVENT_MATCH_MAX_LENGTH, EVENT_MATCH_MIN_LENGTH, EVENT_RULE_MAX_MATCHES, EVENT_LEAD_DAYS_MAX, FOLLOW_UP_LOOKBACK_DAYS, FOLLOW_UP_AHEAD_DAYS, defaultEventRules, parseEventRules, ruleMatchesTitle, +24 more
@@ -351,6 +352,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/ovenTemp.ts` — OvenTempUnit, OVEN_TEMP_UNITS, OVEN_TEMP_RANGE, cleanOvenTemp, formatOvenTemp, parseOvenTemp, ovenTempFor, describeOvenTemp, OvenSetup, ovenSetupsFor
 - `src/utils/paintSelect.ts` — PaintRowRect, PAINT_GUTTER_WIDTH, ROW_HIT_SLOP, isInPaintGutter, rowIdAtY, rowIdsBetween
 - `src/utils/panOil.ts` — PAN_OIL_SHARE, DEEP_FRY_SHARE, isCookingFat, CookMethod, stepsCookMethod, FatCooking, fatCooking, panOilShare
+- `src/utils/pantryBulk.ts` — PantryBulkAction, PantryBulkTargets, partitionPantryEntries, pantryBulkLabel, applyPantryBulk
 - `src/utils/pantryCheckTasks.ts` — MAX_PANTRY_CHECK_TASKS, PANTRY_CHECK_GRACE_DAYS, pantryCheckTitle, pantryCheckItemId, pantryCheckLinkUrl, pantryCheckLapse, pantryCheckAnswers, PantryCheckWant, wantedPantryChecks, stalePantryCheckTasks, +1 more
 - `src/utils/pantryIndex.ts` — PantryIndexEntry, MAX_PANTRY_INDEX_ENTRIES, buildPantryIndex, QueuedDisposal, parseQueuedDisposals, resolveQueuedPantryItem, PlannedDisposal, planQueuedDisposals
 - `src/utils/pantryReview.ts` — PantryReviewAnswer, MAX_PANTRY_REVIEW_CARDS, PANTRY_REVIEW_QUIET_DAYS, PANTRY_PAST_USE_BY_DAYS, PANTRY_GUESS_DOUBT_FRACTION, PantryDoubt, PantryReviewCard, PantryReviewDeck, buildPantryReviewDeck, describeLastPurchase, +2 more
@@ -372,7 +374,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/peopleLocations.ts` — peopleNearLocation, anyoneHasLocation
 - `src/utils/peopleRegistry.ts` — registerPersonSource, registerPersonGroupSource, registerPersonTaskSource, resolvePerson, peopleOn, contactDetailsFor, peoplePageLinkFor, tasksNaming, resolvePersonGroup, groupMembers, +1 more
 - `src/utils/peopleStats.ts` — timeTogetherInRange, describeTimeTogether, taskYearRange
-- `src/utils/perfLog.ts` — PerfEntry, PerfRunKind, PerfRun, PERF_RUN_LIMIT, PERF_ENTRY_LIMIT, perfNow, recordTiming, markMilestone, timed, currentEntries, +5 more
+- `src/utils/perfLog.ts` — PerfEntry, PerfRunKind, PerfRun, PERF_RUN_LIMIT, PERF_ENTRY_LIMIT, PERF_PART_LIMIT, perfNow, summarizeParts, recordTiming, timedPart, +8 more
 - `src/utils/perfReport.ts` — savePerfRun, collectDeviceMetrics, perfReportText
 - `src/utils/permissionAlert.ts` — alertPermissionOff, alertFailedWithSettings
 - `src/utils/personDateTasks.ts` — PERSON_DATE_PRESETS, MAX_PERSON_DATES, PERSON_DATE_LABEL_MAX_LENGTH, personDateSourceId, parsePersonDateSource, isWholePersonDate, personDateInYear, nextPersonDate, personDateTitle, PersonDateWant, +5 more

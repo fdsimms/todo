@@ -5,12 +5,13 @@
 //
 //   ==== <name> ====        the section banners through the logic half
 //   makeStyles              styles, at the bottom
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
+  type TextInput,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
@@ -144,6 +145,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
   // ==== drafts (fields, group rename, flags, pickers) ====
   const [name, setName] = useState('');
+  const quantityInputRef = useRef<TextInput>(null);
+  const prepInputRef = useRef<TextInput>(null);
+  const purposeInputRef = useRef<TextInput>(null);
   const [quantity, setQuantity] = useState('');
   const [prep, setPrep] = useState('');
   const [purpose, setPurpose] = useState('');
@@ -548,6 +552,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           style={styles.input}
           value={name}
           onChangeText={setName}
+          // Return walks name, amount, prep and purpose in the order drawn.
+          returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => quantityInputRef.current?.focus()}
           placeholder="e.g. chicken thighs"
           placeholderTextColor={colors.textTertiary}
           maxLength={GROCERY_NAME_MAX_LENGTH}
@@ -707,9 +715,13 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
         <Text style={styles.groupLabel}>How much</Text>
         <TextField
+          ref={quantityInputRef}
           style={styles.input}
           value={quantity}
           onChangeText={setQuantity}
+          returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => prepInputRef.current?.focus()}
           placeholder="e.g. 2 lb"
           placeholderTextColor={colors.textTertiary}
           maxLength={RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH}
@@ -764,9 +776,13 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
         <Text style={styles.groupLabel}>Prep</Text>
         <TextField
+          ref={prepInputRef}
           style={styles.input}
           value={prep}
           onChangeText={setPrep}
+          returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => purposeInputRef.current?.focus()}
           placeholder="e.g. peeled and sliced"
           placeholderTextColor={colors.textTertiary}
           maxLength={PREP_MAX_LENGTH}
@@ -778,9 +794,11 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
         <Text style={styles.groupLabel}>For</Text>
         <TextField
+          ref={purposeInputRef}
           style={styles.input}
           value={purpose}
           onChangeText={setPurpose}
+          returnKeyType="done"
           placeholder="e.g. margaritas"
           placeholderTextColor={colors.textTertiary}
           maxLength={PREP_MAX_LENGTH}

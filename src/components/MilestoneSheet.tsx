@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { Milestone } from '../types';
@@ -16,6 +16,7 @@ import { getLogicalToday } from '../utils/dateUtils';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { confirmDelete } from '../utils/confirmDelete';
 
 const LABEL_MAX_LENGTH = 80;
 
@@ -85,10 +86,10 @@ export function MilestoneSheet({ visible, milestone, onClose }: Props) {
 
   const handleDelete = () => {
     if (!milestone) { onClose(); return; }
-    Alert.alert('Delete this milestone?', undefined, [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      { text: BUTTON_LABEL.delete, style: 'destructive', onPress: () => { removeMilestone(milestone.id); onClose(); } },
-    ]);
+    confirmDelete({
+      title: 'Delete this milestone?',
+      onConfirm: () => { removeMilestone(milestone.id); onClose(); },
+    });
   };
 
   return (

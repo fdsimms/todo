@@ -136,6 +136,7 @@ import {
   serializeOptionalCount,
 } from '../utils/focusSettings';
 import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
+import { parseCookTextSize, type CookTextSize } from '../utils/cookMode';
 import { MAX_HOUSEHOLD_SERVINGS } from '../utils/recipeScale';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseGeneratedTaskDefaults, hasTaskFieldDefaults } from '../utils/taskFieldDefaults';
@@ -772,6 +773,9 @@ interface SettingsStore {
   // what's stored. Defaults to 'asWritten', so an install upgrading into this
   // reads exactly as it did.
   unitSystem: UnitSystem;
+  // How big cook mode draws the step's sentence. Changed from cook mode's own
+  // header, since that is where someone propping up a phone notices it.
+  cookTextSize: CookTextSize;
   // How many people a planned recipe usually feeds (#2910), which planMeal
   // turns into the new meal's starting scale through the recipe's own servings
   // (see householdScale in src/utils/recipeScale.ts). 0 means not set, and is
@@ -2177,6 +2181,7 @@ interface SettingsStore {
   setConfirmBeforeDeleting: (on: boolean) => void;
   setMealsOnToday: (mode: MealsOnToday) => void;
   setUnitSystem: (system: UnitSystem) => void;
+  setCookTextSize: (size: CookTextSize) => void;
   setHouseholdServings: (servings: number) => void;
   setCurrencySymbol: (symbol: string) => void;
   setMealCookTasks: (on: boolean) => void;
@@ -2620,6 +2625,7 @@ const DEFAULT_SETTINGS = {
   collapsedGroceryGroups: [] as string[],
   mealsOnToday: 'inline' as MealsOnToday,
   unitSystem: 'asWritten' as UnitSystem,
+  cookTextSize: 'large' as CookTextSize,
   householdServings: 0,
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
@@ -3075,6 +3081,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   kitchenEnabled: true,
   mealsOnToday: 'inline',
   unitSystem: 'asWritten',
+  cookTextSize: 'large',
   householdServings: 0,
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
@@ -3463,6 +3470,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const storedUnitSystem = dbGetSetting('unitSystem') as UnitSystem | null;
     const unitSystem: UnitSystem =
       storedUnitSystem && UNIT_SYSTEMS.includes(storedUnitSystem) ? storedUnitSystem : 'asWritten';
+    const cookTextSize = parseCookTextSize(dbGetSetting('cookTextSize'));
     const currencySymbol = parseCurrencySymbol(dbGetSetting('currencySymbol'));
     // Same TEXT-column parse as defaultProjectNudgeCadenceDays: missing or
     // unparseable reads as 0, not set, and a stored count is held to the cap
@@ -4039,6 +4047,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       completionCalendarId,
       confirmBeforeDeleting,
       cookRecapEnabled,
+      cookTextSize,
       currencySymbol,
       currentProgramId,
       customHolidays,
@@ -5695,6 +5704,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setUnitSystem(system: UnitSystem) {
     dbSetSetting('unitSystem', system);
     set({ unitSystem: system });
+  },
+
+  setCookTextSize(size: CookTextSize) {
+    dbSetSetting('cookTextSize', size);
+    set({ cookTextSize: size });
   },
 
   setHouseholdServings(servings: number) {

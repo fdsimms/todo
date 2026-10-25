@@ -10707,6 +10707,24 @@ describe('clearAllPins', () => {
     useTaskStore.getState().clearAllPins();
     expect(dbClearAllPins).toHaveBeenCalledTimes(1);
   });
+
+  it('files an undo that pins back only what was pinned', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', pinned: true }),
+        makeTask({ id: 't2', pinned: true }),
+        makeTask({ id: 't3', pinned: false }),
+      ],
+    });
+    useTaskStore.getState().clearAllPins();
+    const action = useTaskStore.getState().lastAction!;
+    expect(action.label).toBe('Unpinned 2 tasks');
+    expect(action.destructive).toBe(true);
+
+    useTaskStore.getState().undoLastAction();
+    const pinned = useTaskStore.getState().tasks.filter(t => t.pinned).map(t => t.id);
+    expect(pinned).toEqual(['t1', 't2']);
+  });
 });
 
 // ─── pinCategory ───────────────────────────────────────────────────────────
@@ -13572,6 +13590,16 @@ describe('timers', () => {
     expect(task.timerStartedAt).toBeNull();
     expect(task.actualMinutes).toBeNull();
     expect(task.estimatedMinutes).toBeNull();
+  });
+
+  it('discardTimer files an undo that puts the original start back', () => {
+    const started = new Date(Date.now() - 10 * 60000).toISOString();
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', timerStartedAt: started })] });
+    useTaskStore.getState().discardTimer('a');
+    expect(useTaskStore.getState().lastAction!.destructive).toBe(true);
+
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')!.timerStartedAt).toBe(started);
   });
 
   it('discardTimer is a no-op when no timer is running', () => {

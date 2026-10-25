@@ -1815,7 +1815,7 @@ describe('list membership', () => {
 
     useGroceryStore.getState().redoLastUndone();
     expect(useGroceryStore.getState().itemById(milk.id)!.onList).toBe(false);
-    expect(useGroceryStore.getState().lastAction!.label).toBe('Removed 1 item from the list');
+    expect(useGroceryStore.getState().lastAction!.label).toBe('Removed “Milk” from the list');
   });
 });
 

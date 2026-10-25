@@ -63,6 +63,7 @@ import { describeConditionAnswers, liveConditions } from '../utils/templateQuest
 import type { TaskTemplate, TemplateItem } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 import { LazySheet } from '../components/LazySheet';
+import { RotatingChevron } from '../components/RotatingChevron';
 
 type RootStackParamList = {
   TemplateDetail: { templateId: string };
@@ -901,7 +902,7 @@ function TemplateGroupHeader({
       accessibilityRole="button"
       accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${title}, ${count} item${count === 1 ? '' : 's'}`}
     >
-      <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={14} color={colors.textTertiary} />
+      <RotatingChevron open={!collapsed} closed="forward" size={14} color={colors.textTertiary} />
       <Ionicons name="layers-outline" size={14} color={colors.textSecondary} />
       <Text style={styles.groupHeaderText}>{title}</Text>
       <Text style={styles.groupHeaderCount}>{count}</Text>

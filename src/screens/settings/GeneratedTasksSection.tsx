@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Alert, Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import { setGeneratorEnabled } from '../../store/generatorSwitch';
@@ -142,6 +141,7 @@ import { useSettingsFocus } from './SettingsFocus';
 import { navigateToSettingsEntry } from '../../navigation/openSettings';
 import { alertPermissionOff } from '../../utils/permissionAlert';
 import { BUTTON_LABEL } from '../../copy/shared';
+import { RotatingChevron } from '../../components/RotatingChevron';
 
 // Map of this file (one component holding most of it; `grep -n '// ===='` is
 // the table of contents):
@@ -1671,11 +1671,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
                   accessibilityLabel={`${open ? 'Hide' : 'Show'} ${spec.label} options`}
                   accessibilityState={{ expanded: open }}
                 >
-                  <Ionicons
-                    name={open ? 'chevron-up' : 'chevron-down'}
-                    size={16}
-                    color={colors.textSecondary}
-                  />
+                  <RotatingChevron open={open} size={16} color={colors.textSecondary} />
                 </TouchableOpacity>
               ) : undefined}
             />
