@@ -22,6 +22,7 @@ import { TextField } from './TextField';
 import type { RuleTaskLog } from '../types';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from './RotatingChevron';
 
 /** Same constraint EmptyState puts on its own icon. */
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -327,11 +328,7 @@ export function RuleListSheet<T extends EditableRule>({
                         accessibilityRole="button"
                         accessibilityLabel={expanded ? 'Collapse rule' : 'Expand rule'}
                       >
-                        <Ionicons
-                          name={expanded ? 'chevron-up' : 'chevron-down'}
-                          size={iconSize.sm}
-                          color={colors.textTertiary}
-                        />
+                        <RotatingChevron open={expanded} size={iconSize.sm} color={colors.textTertiary} />
                       </TouchableOpacity>
                     </View>
                     {expanded && (

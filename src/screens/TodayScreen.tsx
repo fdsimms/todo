@@ -245,6 +245,7 @@ import { AnimatedNumber } from '../components/AnimatedNumber';
 import { useLingering } from '../hooks/useLingering';
 import { PillHighlightLayer, PillLabel, usePillHighlight } from '../components/SlidingPills';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from '../components/RotatingChevron';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -403,7 +404,7 @@ function SectionHeader({
             {label}
             {collapsed && count !== undefined ? ` (${count})` : ''}
           </Text>
-          <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+          <RotatingChevron open={!collapsed} closed="forward" size={13} color={colors.textTertiary} />
           {collapsed && summary ? (
             <Text style={styles.sectionHeaderSummary} numberOfLines={1}>{summary}</Text>
           ) : null}
@@ -512,7 +513,7 @@ function VacationHiddenSection({
         <Text style={styles.hiddenToggleText}>
           {expanded ? 'Hide' : 'Show'} {tasks.length} hidden on vacation
         </Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+        <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
       </TouchableOpacity>
       {expanded && tasks.map(task => (
         <React.Fragment key={task.id}>{renderHiddenTask(task)}</React.Fragment>
@@ -563,7 +564,7 @@ function LaterTodaySection({
         <Text style={styles.hiddenToggleText}>
           {expanded ? 'Hide' : 'Show'} {totalCount} later today
         </Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+        <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
       </TouchableOpacity>
       {expanded && sections.map(section => (
         <View key={section.key}>
@@ -615,7 +616,7 @@ function ExpiredSection({
         <Text style={styles.hiddenToggleText}>
           {expanded ? 'Hide' : 'Show'} {tasks.length} expired
         </Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+        <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
       </TouchableOpacity>
       {expanded && tasks.map(task => (
         <React.Fragment key={task.id}>{renderExpiredTask(task)}</React.Fragment>
@@ -654,7 +655,7 @@ function SlotWaitingSection({
         <Text style={styles.hiddenToggleText}>
           {expanded ? 'Hide' : 'Show'} {tasks.length} waiting for a lighter day
         </Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+        <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
       </TouchableOpacity>
       {expanded && tasks.map(task => (
         <React.Fragment key={task.id}>{renderWaitingTask(task)}</React.Fragment>
@@ -4372,18 +4373,12 @@ export function TodayScreen() {
               acts on what was picked. */}
           {!selectionMode && (
             <TouchableOpacity
+              // No confirm: clearAllPins puts an undo on the bar that pins the
+              // block back as it was.
               onPress={() => {
-                // One pinned task is a single unpin, which is cheap to redo,
-                // so there is nothing "all" about it worth stopping to confirm.
-                if (pinnedTasks.length === 1) { clearAllPins(); return; }
-                Alert.alert(
-                  'Unpin all tasks?',
-                  'This removes every task from the Pinned Tasks block. The tasks aren’t changed.',
-                  [
-                    { text: BUTTON_LABEL.cancel, style: 'cancel' },
-                    { text: 'Unpin all', style: 'destructive', onPress: clearAllPins },
-                  ],
-                );
+                haptics.tap();
+                animateLayout();
+                clearAllPins();
               }}
               hitSlop={8}
               accessibilityRole="button"
@@ -4492,7 +4487,7 @@ export function TodayScreen() {
                       {band.project.title}
                       {collapsed ? ` (${band.taskCount})` : ''}
                     </Text>
-                    <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+                    <RotatingChevron open={!collapsed} closed="forward" size={13} color={colors.textTertiary} />
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity

@@ -556,11 +556,9 @@ interface MealPlanStore extends UndoHistoryActions {
    *
    * `bulkMoveEntries`, `bulkReplaceItem` and `bulkSetCooked` now register
    * `lastAction` and are offered by shake-to-undo, same as the single-entry
-   * actions above. `bulkDeleteEntries` deliberately does not: its confirm
-   * dialog tells the user outright "This can't be undone" (same call
-   * useRecipeStore.bulkDeleteRecipes makes), and shake-to-undo quietly
-   * reviving a delete the app just promised was permanent would be a lie by
-   * omission — worse than not offering an undo path at all.
+   * actions above. `bulkDeleteEntries` does too, as one destructive entry
+   * for the batch, so the bulk bar's Remove runs without a confirm the way
+   * removing one meal from its sheet always has.
    */
 
   /**
@@ -1290,22 +1288,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const idSet = new Set(ids);
     // Captured before the rows go — the slot each meal occupied is the only
     // thing that says which meal tasks now have nothing behind them.
-    const vacated = ids
+    const removed = ids
       .map(id => get().entries.find(e => e.id === id) ?? dbGetMealPlanEntry(id))
-      .filter((e): e is MealPlanEntry => !!e)
-      .map(e => ({ date: e.date, slot: e.slot }));
+      .filter((e): e is MealPlanEntry => !!e);
+    const vacated = removed.map(e => ({ date: e.date, slot: e.slot }));
     ids.forEach(dropCookTask);
     ids.forEach(dropMealEvent);
     ids.forEach(id => dbDeleteMealPlanEntry(id));
-    // lastAction: null — see the doc comment. The delete registers no undo of
-    // its own *and* takes the slot away from whatever was in it, so a shake
-    // after this can't offer an unrelated action the user has moved on from.
     set(s => ({ entries: s.entries.filter(e => !idSet.has(e.id)) }));
-    // Through the store action rather than a `lastAction: null` in the set
-    // above: with a stack behind it, taking the slot away means clearing the
-    // history, not just its top — nothing under a step that can't be undone
-    // can be undone either, or the steps replay out of order.
-    get().clearUndoHistory();
     // After the delete, never before: reconcileMealSlot reads the slot's
     // current contents off this same `entries` array, and a reconcile run
     // before the filter above still sees the just-removed meal as planned —
@@ -1313,6 +1303,26 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // removeEntry and copyWeek's undo already keep; this was the one path
     // that had it backwards.
     vacated.forEach(e => reconcileMealSlot(get, e));
+    if (removed.length === 0) return;
+    // One entry for the batch, putting each meal back the way removeEntry's
+    // own undo does.
+    get().setLastAction({
+      label: removed.length === 1
+        ? `Removed “${removed[0].title}”`
+        : `Removed ${removed.length} meals`,
+      destructive: true,
+      redo: () => get().bulkDeleteEntries(removed.map(e => e.id)),
+      undo: () => {
+        for (const entry of removed) {
+          dbInsertMealPlanEntry(entry);
+          patchInRange(set, get, entry);
+        }
+        for (const entry of removed) {
+          reconcileMealSlot(get, entry);
+          reconcileMealEvent(entry);
+        }
+      },
+    });
   },
 
   bulkMoveEntries(ids, to) {

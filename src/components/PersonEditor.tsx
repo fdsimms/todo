@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Platform, View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { Platform, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Person, PersonDate } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
@@ -212,19 +212,12 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
     onClose();
   };
 
+  // No confirm: removePersonRow files an undo on the bar that puts back the
+  // person and every note about them.
   const handleDelete = () => {
-    Alert.alert(
-      `Delete ${person.name}?`,
-      'Anything you wrote about them is deleted. Tasks that name them are kept without the name.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.delete,
-          style: 'destructive',
-          onPress: () => { removePersonRow(person.id); onClose(); },
-        },
-      ]
-    );
+    haptics.warning();
+    removePersonRow(person.id);
+    onClose();
   };
 
   const toggleArchived = () => {

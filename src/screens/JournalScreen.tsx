@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -62,6 +62,7 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { BUTTON_LABEL } from '../copy/shared';
 import { LazySheet } from '../components/LazySheet';
+import { animateLayout } from '../utils/layoutAnimation';
 
 /**
  * The labels and people on an entry, under its words. A tag is a button that
@@ -128,6 +129,12 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
   const search = useFilterField();
   // One tag the list is narrowed to, set by tapping a tag on an entry.
   const [tagFilter, setTagFilter] = useState<string | null>(null);
+  // A tag tapped on an entry narrows the list in place, so the rows that
+  // drop out ease away rather than vanishing in one frame.
+  const filterByTag = useCallback((tag: string) => {
+    animateLayout();
+    setTagFilter(tag);
+  }, []);
   const days = useMemo(() => {
     const found = searchJournal(entries, search.query);
     return groupJournalByDay(tagFilter ? entriesWithTag(found, tagFilter) : found);
@@ -395,7 +402,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
           <TouchableOpacity
             style={styles.activeFilter}
             activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); setTagFilter(null); }}
+            onPress={() => { haptics.tap(); animateLayout(); setTagFilter(null); }}
             accessibilityRole="button"
             accessibilityLabel={`Showing only ${tagFilter}. Clear this filter`}
           >
@@ -507,7 +514,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
                       <JournalPhotoStrip photos={entry.photos ?? []} title={format(new Date(entry.loggedAt), 'MMMM d, h:mm a')} size={72} />
                     </View>
                   )}
-                  <EntryMeta entry={entry} personName={personName} onTag={setTagFilter} styles={styles} />
+                  <EntryMeta entry={entry} personName={personName} onTag={filterByTag} styles={styles} />
                 </TouchableOpacity>
               ))}
             </View>

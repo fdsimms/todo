@@ -13,6 +13,7 @@ import { haptics } from '../../utils/haptics';
 import { makeSettingsStyles } from './settingsStyles';
 import { useSettingsFocusFlash } from './SettingsFocus';
 import { Toggle } from '../../components/Toggle';
+import { RotatingChevron } from '../../components/RotatingChevron';
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
@@ -138,11 +139,7 @@ export function SettingsRow({
       )}
       {chevron && <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />}
       {expanded !== undefined && (
-        <Ionicons
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={16}
-          color={colors.textSecondary}
-        />
+        <RotatingChevron open={expanded} size={16} color={colors.textSecondary} />
       )}
     </>
   );

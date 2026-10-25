@@ -71,6 +71,8 @@ import type { Task } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from './RotatingChevron';
+import { animateLayout } from '../utils/layoutAnimation';
 
 interface Props {
   visible: boolean;
@@ -733,7 +735,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
               <View style={styles.breaksHeader}>
                 <TouchableOpacity
                   style={styles.breaksSummary}
-                  onPress={() => { haptics.tap(); setBreaksOpen(v => !v); }}
+                  onPress={() => { haptics.tap(); animateLayout(); setBreaksOpen(v => !v); }}
                   disabled={!breaksEnabled}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
@@ -753,11 +755,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
                   {breaksEnabled && (
                     <View style={styles.breaksEdit}>
                       {!breaksOpen && <Text style={styles.breaksEditText}>Edit</Text>}
-                      <Ionicons
-                        name={breaksOpen ? 'chevron-up' : 'chevron-down'}
-                        size={iconSize.xs}
-                        color={colors.textTertiary}
-                      />
+                      <RotatingChevron open={breaksOpen} size={iconSize.xs} color={colors.textTertiary} />
                     </View>
                   )}
                 </TouchableOpacity>

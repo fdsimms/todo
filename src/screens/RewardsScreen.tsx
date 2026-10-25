@@ -99,6 +99,8 @@ import { AnimatedNumber } from '../components/AnimatedNumber';
 import { HelpText } from '../components/HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from '../components/FieldLabel';
+import { confirmDelete } from '../utils/confirmDelete';
+import { animateLayout } from '../utils/layoutAnimation';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
@@ -481,28 +483,24 @@ export function RewardsScreen() {
 
   const toggleGoal = useCallback((reward: Reward) => {
     haptics.tap();
+    // The goal card under the balance comes and goes with this.
+    animateLayout();
     setGoalId(goalId === reward.id ? null : reward.id);
   }, [goalId, setGoalId]);
 
   const remove = useCallback((reward: Reward, title: string) => {
-    Alert.alert(
-      `Delete “${title}”?`,
-      reward.taskId
+    confirmDelete({
+      title: `Delete “${title}”?`,
+      message: reward.taskId
         ? 'Coins already spent on it aren’t refunded. The task stays in your project.'
         : 'Coins already spent on it aren’t refunded.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.delete,
-          style: 'destructive',
-          onPress: () => {
-            closeDraft();
-            useRewardStore.getState().deleteReward(reward.id);
-            if (useSettingsStore.getState().rewardGoalId === reward.id) setGoalId(null);
-          },
-        },
-      ],
-    );
+      onConfirm: () => {
+        closeDraft();
+        animateLayout();
+        useRewardStore.getState().deleteReward(reward.id);
+        if (useSettingsStore.getState().rewardGoalId === reward.id) setGoalId(null);
+      },
+    });
   }, [setGoalId, closeDraft]);
 
   const confirmReset = useCallback(() => {
@@ -1099,11 +1097,13 @@ export function RewardsScreen() {
             >
               <Text style={styles.goalLabel}>{`Saving for: ${goalShown.title}`}</Text>
               <ProgressBar progress={goalBarFill(balance, goal.cost)} height={8} color={colors.done} decorative />
-              <Text style={styles.goalMeta}>
-                {balance >= goal.cost
+              <AnimatedNumber
+                text={balance >= goal.cost
                   ? 'Ready to claim'
                   : `${Math.max(0, balance)} of ${formatCoins(goal.cost)}`}
-              </Text>
+                value={balance}
+                style={styles.goalMeta}
+              />
             </View>
           )}
         </View>
@@ -1156,7 +1156,7 @@ export function RewardsScreen() {
                 icon="bulb-outline"
                 variant="neutral"
                 surface="page"
-                onPress={() => setIdeasOpen(open => !open)}
+                onPress={() => { haptics.tap(); animateLayout(); setIdeasOpen(open => !open); }}
               />
             )}
           </View>

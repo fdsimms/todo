@@ -258,7 +258,7 @@ export function GroceryItemSheet({
   const [lowAddsToListChoice, setLowAddsToListChoice] = useState<boolean | undefined>(undefined);
   const runningLowAddsToList = lowAddsToListChoice ?? runningLowAddsToListSetting;
   const simpleMode = useSettingsStore(s => s.simpleMode);
-  const removeFromList = useGroceryStore(s => s.removeFromList);
+  const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
   const addExisting = useGroceryStore(s => s.addExisting);
   // The list "Add to list" puts it on: the one being viewed, as Remove's is.
   // Named when it isn't the home list, since this sheet also opens from the
@@ -788,7 +788,11 @@ export function GroceryItemSheet({
       title: `Forget ${item.name}?`,
       message: `This removes it and its history from your catalog. You can undo it right after.${loss ? `\n\n${loss}` : ''}\n\nTo take it off this week’s list instead, use “Remove from list”.`,
       confirmLabel: 'Forget',
+      // The undo puts it back; only a loss line (what else forgetting it
+      // touches) is worth stopping to read first.
+      undoable: !loss,
       onConfirm: () => {
+        animateLayout();
         deleteItem(item.id, { undoable: true });
         haptics.warning();
         Keyboard.dismiss();
@@ -2203,7 +2207,10 @@ export function GroceryItemSheet({
               style={styles.actionRow}
               activeOpacity={interaction.activeOpacity}
               onPress={() => {
-                removeFromList(item.id);
+                // Through the bulk action for its undo: one row off the list is
+                // the same step as twenty, and the bulk bar's has always had one.
+                animateLayout();
+                removeFromListMany([item.id], { registerUndo: true });
                 haptics.tap();
                 Keyboard.dismiss();
                 onClose();

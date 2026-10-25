@@ -18,7 +18,6 @@ import {
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { SegmentedControl } from '../components/SegmentedControl';
@@ -106,6 +105,8 @@ import { LazySheet } from '../components/LazySheet';
 import { TwoPane } from '../components/TwoPane';
 import { useTwoPane } from '../hooks/useTwoPane';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from '../components/RotatingChevron';
+import { AnimatedNumber } from '../components/AnimatedNumber';
 
 /** The collapse and scroll key of one store's section in the store lens. */
 const storeSectionKey = (shopId: string | null) => `store:${shopId ?? 'none'}`;
@@ -1403,6 +1404,9 @@ export function GroceryScreen() {
       title: 'Clear the list?',
       message: 'Everything comes off the list without being marked as bought. Items you’ve bought before or added details to stay in your grocery catalog. Names you only typed for this list are removed.',
       confirmLabel: 'Clear',
+      // clearList files an undo that puts every row back. It also ends a
+      // running trip, which the undo doesn't restart, so mid-shop it asks.
+      undoable: activeTripShop === null,
       onConfirm: () => {
         animateLayout();
         clearList();
@@ -1410,7 +1414,7 @@ export function GroceryScreen() {
         setCartOpen(false);
       },
     });
-  }, [clearList]);
+  }, [clearList, activeTripShop]);
 
   // "Get groceries at X" — a real Task, so it can carry its own reminder and
   // show up on Today, with linkUrl set to the same dundundun://groceries
@@ -1540,11 +1544,7 @@ export function GroceryScreen() {
                 {label}
                 {collapsed ? ` (${row.count})` : ''}
               </Text>
-              <Ionicons
-                name={collapsed ? 'chevron-down' : 'chevron-up'}
-                size={iconSize.sm}
-                color={colors.textTertiary}
-              />
+              <RotatingChevron open={!collapsed} size={iconSize.sm} color={colors.textTertiary} />
             </View>
           </TouchableOpacity>
         );
@@ -1568,11 +1568,7 @@ export function GroceryScreen() {
           >
             <View style={styles.groupSectionHeaderLeft}>
               <Text style={styles.sectionTitle}>{label} ({row.count})</Text>
-              <Ionicons
-                name={collapsed ? 'chevron-down' : 'chevron-up'}
-                size={iconSize.sm}
-                color={colors.textTertiary}
-              />
+              <RotatingChevron open={!collapsed} size={iconSize.sm} color={colors.textTertiary} />
             </View>
           </TouchableOpacity>
         );
@@ -1593,12 +1589,8 @@ export function GroceryScreen() {
             accessibilityState={{ expanded: skippedOpen }}
             accessibilityLabel={`Skipped, ${row.count} ${row.count === 1 ? 'item' : 'items'}`}
           >
-            <Text style={styles.sectionTitle}>Skipped ({row.count})</Text>
-            <Ionicons
-              name={skippedOpen ? 'chevron-up' : 'chevron-down'}
-              size={iconSize.sm}
-              color={colors.textTertiary}
-            />
+            <AnimatedNumber text={`Skipped (${row.count})`} value={row.count} style={styles.sectionTitle} />
+            <RotatingChevron open={skippedOpen} size={iconSize.sm} color={colors.textTertiary} />
           </TouchableOpacity>
         );
       }
@@ -1616,12 +1608,8 @@ export function GroceryScreen() {
             accessibilityState={{ expanded: cartOpen }}
             accessibilityLabel={`In cart, ${row.count} ${row.count === 1 ? 'item' : 'items'}`}
           >
-            <Text style={styles.sectionTitle}>In cart ({row.count})</Text>
-            <Ionicons
-              name={cartOpen ? 'chevron-up' : 'chevron-down'}
-              size={iconSize.sm}
-              color={colors.textTertiary}
-            />
+            <AnimatedNumber text={`In cart (${row.count})`} value={row.count} style={styles.sectionTitle} />
+            <RotatingChevron open={cartOpen} size={iconSize.sm} color={colors.textTertiary} />
           </TouchableOpacity>
         );
       }
@@ -1768,6 +1756,8 @@ export function GroceryScreen() {
                 .join(' · ')
             : undefined
         }
+        // Changes on every check-off, so the counts roll rather than jump.
+        subtitleRolls
         actions={[...actions, {
           icon: 'settings-outline',
           onPress: (e: GestureResponderEvent) =>

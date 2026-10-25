@@ -136,6 +136,7 @@ import type { CardAnchor } from '../components/CardSheet';
 import { resetToMealPlan } from '../navigation/navigationRef';
 import { ProgressBar } from '../components/ProgressBar';
 import { BUTTON_LABEL } from '../copy/shared';
+import { AnimatedNumber } from '../components/AnimatedNumber';
 
 /**
  * A day of eating, read back.
@@ -611,13 +612,13 @@ export function FoodLogScreen() {
   }, [exitSelection, todayKey]);
 
 
-  // Through confirmDelete, so Settings' "Confirm before deleting" answers
-  // for these too; the store raises an undo bar either way.
+  // The store raises an undo bar, so these don't ask first.
   const handleDelete = useCallback((id: string, label: string) => {
     confirmDelete({
       title: `Forget ${label}?`,
       message: 'This removes it from the day’s totals.',
       confirmLabel: 'Forget',
+      undoable: true,
       onConfirm: () => {
         haptics.warning();
         animateLayout();
@@ -712,10 +713,10 @@ export function FoodLogScreen() {
       .map(s => ({
         key: s,
         label: MEAL_SLOT_LABELS[s],
-        onPress: () => moveEntries([entry.id], s),
+        onPress: () => { animateLayout(); moveEntries([entry.id], s); },
       }));
     if (entry.slot !== null) {
-      moveChoices.push({ key: 'other', label: 'Other', onPress: () => moveEntries([entry.id], null) });
+      moveChoices.push({ key: 'other', label: 'Other', onPress: () => { animateLayout(); moveEntries([entry.id], null); } });
     }
     return [
       // Edit reopens the sheet and re-measures, which needs a panel to measure
@@ -778,6 +779,7 @@ export function FoodLogScreen() {
       title: `Forget ${count} ${count === 1 ? 'entry' : 'entries'}?`,
       message: 'This removes them from the day’s totals.',
       confirmLabel: 'Forget',
+      undoable: true,
       onConfirm: () => {
         haptics.warning();
         animateLayout();
@@ -1241,7 +1243,7 @@ export function FoodLogScreen() {
                 `Math.round` and the target with `toLocaleString`, so
                 a heavy day read "1840 of 2,000 cal" — two number
                 formats on one line. */}
-            <Text style={styles.totalValue}>{totalText(key)}</Text>
+            <AnimatedNumber text={totalText(key)} style={styles.totalValue} />
           </View>
         </View>
         {/* Colored by distance from the target, never by direction:
@@ -1418,6 +1420,7 @@ export function FoodLogScreen() {
       <ScreenHeader
         title="Food log"
         overline={format(dayDate, 'EEEE, MMMM d')}
+        subtitleRolls
         subtitle={
           dayEntries.length === 0
             ? undefined
@@ -1661,7 +1664,9 @@ export function FoodLogScreen() {
         />
       )}
 
-      <LazySheet open={addOpen || reviewing !== null}>
+      {/* Warm: adding food is what this screen is for, and the sheet is
+          large enough that building it on the first tap was a visible wait. */}
+      <LazySheet open={addOpen || reviewing !== null} warm>
         <FoodLogEntrySheet
           ref={addSheetRef}
           visible={addOpen || reviewing !== null}

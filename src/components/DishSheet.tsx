@@ -29,6 +29,8 @@ import { DISH_PHOTO_FOLDER, dishPhotoUri } from '../utils/dishPhotos';
 import { DISH_VERDICTS, DISH_VERDICT_LABELS, dishKeys } from '../utils/dishRating';
 import { groceryNameKey } from '../utils/groceryParse';
 import { BUTTON_LABEL } from '../copy/shared';
+import { confirmDelete } from '../utils/confirmDelete';
+import { animateLayout } from '../utils/layoutAnimation';
 
 const NAME_MAX_LENGTH = 80;
 const PLACE_MAX_LENGTH = 60;
@@ -122,6 +124,7 @@ export function DishSheet({ visible, dish, prefillName, onClose }: Props) {
     if (dish) {
       updateDish(dish.id, { name: trimmedName, place, verdict, note, lastHadAt: lastHad, photo });
     } else {
+      animateLayout();
       addDish({ name: trimmedName, place, verdict, note, lastHadAt: lastHad, photo });
     }
     haptics.success();
@@ -130,10 +133,11 @@ export function DishSheet({ visible, dish, prefillName, onClose }: Props) {
 
   const handleDelete = () => {
     if (!dish) { onClose(); return; }
-    Alert.alert('Delete this dish?', 'Its rating and note will be removed.', [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      { text: BUTTON_LABEL.delete, style: 'destructive', onPress: () => { removeDish(dish.id); onClose(); } },
-    ]);
+    confirmDelete({
+      title: 'Delete this dish?',
+      message: 'Its rating and note will be removed.',
+      onConfirm: () => { animateLayout(); removeDish(dish.id); onClose(); },
+    });
   };
 
   // Places already saved that match what is typed, most used first would be a

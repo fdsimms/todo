@@ -88,6 +88,7 @@ import type { ReceiptMatchConfidence } from '../utils/receiptMatch';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from './RotatingChevron';
 
 /** Matches the shopping list's own checkbox, same as the receipt sheet's. */
 const CHECK_SIZE = 22;
@@ -1544,11 +1545,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       ) : (
                         <>
                           {chip && <StatusChip styles={styles} colors={colors} tone={chip.tone} label={chip.label} />}
-                          <Ionicons
-                            name={open ? 'chevron-up' : 'chevron-down'}
-                            size={iconSize.xs}
-                            color={colors.textTertiary}
-                          />
+                          <RotatingChevron open={open} size={iconSize.xs} color={colors.textTertiary} />
                         </>
                       )}
                     </TouchableOpacity>

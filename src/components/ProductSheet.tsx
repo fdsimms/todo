@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   format } from 'date-fns/format';
 import {
-  Alert,
   Keyboard,
   ScrollView,
   StyleSheet,
@@ -36,6 +35,7 @@ import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { confirmDelete } from '../utils/confirmDelete';
 
 interface Props {
   visible: boolean;
@@ -250,23 +250,17 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
     // back by retyping: the rating and the purchase count are the record of
     // having tried it. So it confirms, and the alternative is named — marking
     // it "Never again" keeps exactly the memory that deleting throws away.
-    Alert.alert(
-      `Forget ${describeProduct(editing) ?? 'this one'}?`,
-      'This also forgets its rating and how often you bought it. To avoid buying it again, mark it “Never again” instead.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: 'Forget',
-          style: 'destructive',
-          onPress: () => {
-            haptics.warning();
-            Keyboard.dismiss();
-            deleteProduct(editing.id);
-            onClose();
-          },
-        },
-      ]
-    );
+    confirmDelete({
+      title: `Forget ${describeProduct(editing) ?? 'this one'}?`,
+      message: 'This also forgets its rating and how often you bought it. To avoid buying it again, mark it “Never again” instead.',
+      confirmLabel: 'Forget',
+      onConfirm: () => {
+        haptics.warning();
+        Keyboard.dismiss();
+        deleteProduct(editing.id);
+        onClose();
+      },
+    });
   };
 
   if (!item) return null;

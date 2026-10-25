@@ -223,7 +223,7 @@ export function AppearanceSettings() {
           iconColor={confirmBeforeDeleting ? colors.accent : undefined}
           label="Confirm before deleting"
           hint={confirmBeforeDeleting
-            ? 'Shows an alert before deleting a recipe, template, tag, category, or clearing a list'
+            ? 'Shows an alert before a delete that can’t be undone, like a recipe. Anything you can undo is deleted right away'
             : undefined}
           toggle={confirmBeforeDeleting}
           onPress={() => setConfirmBeforeDeleting(!confirmBeforeDeleting)}

@@ -271,6 +271,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
       message: taskCount > 0
         ? `Remove “${category}” from ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}? They’ll become uncategorized. You can undo it right after.`
         : `Delete “${category}”? You can undo it right after.`,
+      undoable: true,
       onConfirm: () => { Keyboard.dismiss(); animateLayout(); deleteCategory(category); onClose(); },
     });
   };

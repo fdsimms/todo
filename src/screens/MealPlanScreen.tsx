@@ -1395,8 +1395,10 @@ export function MealPlanScreen() {
     haptics.warning();
     confirmDelete({
       title: `Remove ${count} ${plural}?`,
-      message: `${count} ${plural} will be removed from the plan. This can’t be undone.`,
+      message: `${count} ${plural} will be removed from the plan. You can undo it right after.`,
       confirmLabel: 'Remove',
+      // bulkDeleteEntries files one undo for the batch.
+      undoable: true,
       onConfirm: () => {
         const before = entries.filter(e => selectedIds.has(e.id));
         animateLayout();
@@ -1527,11 +1529,7 @@ export function MealPlanScreen() {
                 {!previousDaysExpanded && previousDaysInfo.count > 0 && (
                   <Text style={styles.dayCount}>({previousDaysInfo.count})</Text>
                 )}
-                <Ionicons
-                  name={previousDaysExpanded ? 'chevron-down' : 'chevron-forward'}
-                  size={iconSize.xs}
-                  color={colors.textTertiary}
-                />
+                <RotatingChevron open={previousDaysExpanded} closed="forward" size={iconSize.xs} color={colors.textTertiary} />
                 <View style={styles.previousRule} />
               </TouchableOpacity>
             )}
@@ -1571,11 +1569,7 @@ export function MealPlanScreen() {
                     {collapsed && dayEntries.length > 0 && (
                       <Text style={styles.dayCount}>({dayEntries.length})</Text>
                     )}
-                    <Ionicons
-                      name={collapsed ? 'chevron-forward' : 'chevron-down'}
-                      size={iconSize.xs}
-                      color={colors.textTertiary}
-                    />
+                    <RotatingChevron open={!collapsed} closed="forward" size={iconSize.xs} color={colors.textTertiary} />
                   </TouchableOpacity>
                   {/*
                     Shops this day and nothing else, sitting beside the day's
@@ -2562,9 +2556,9 @@ export function MealPlanScreen() {
           entry={selected}
           title={selected ? titleForEntry(selected, recipesById) : ''}
           weekDays={days}
-          onMove={to => selected && moveEntry(selected.id, to)}
+          onMove={to => { if (!selected) return; animateLayout(); moveEntry(selected.id, to); }}
           onMoveFurther={selected ? () => setMovingFurtherId(selected.id) : undefined}
-          onCopyTo={selected && !selected.leftoverId ? date => copyEntryTo(selected.id, [date]) : undefined}
+          onCopyTo={selected && !selected.leftoverId ? date => { animateLayout(); copyEntryTo(selected.id, [date]); } : undefined}
           onCopyFurther={selected && !selected.leftoverId ? () => setCopyingFurtherId(selected.id) : undefined}
           copiedDays={selected ? daysWithMeal(entries, selected) : undefined}
           onReplace={selected && !isTypedEntry(selected) ? () => setReplacingId(selected.id) : undefined}
@@ -2787,12 +2781,16 @@ export function MealPlanScreen() {
           visible={planningLeftover !== null}
           title={planningLeftover?.title ?? null}
           defaultSlot={earliestUnplannedSlotToday()}
-          onPlan={(dateKey, slot) => planningLeftover ? planMeal({
-            date: dateKey,
-            slot,
-            leftoverId: planningLeftover.id,
-            title: mealTitleForLeftover(planningLeftover),
-          }) : null}
+          onPlan={(dateKey, slot) => {
+            if (!planningLeftover) return null;
+            animateLayout();
+            return planMeal({
+              date: dateKey,
+              slot,
+              leftoverId: planningLeftover.id,
+              title: mealTitleForLeftover(planningLeftover),
+            });
+          }}
           onClose={() => setPlanningLeftover(null)}
         />
       </LazySheet>
@@ -2833,11 +2831,13 @@ export function MealPlanScreen() {
           onSetStoredAt={storedAt => editingLeftover && setLeftoverStoredAt(editingLeftover.id, storedAt)}
           onSetKeepDays={days => editingLeftover && setLeftoverKeepDays(editingLeftover.id, days)}
           onSetWeight={grams => editingLeftover && setLeftoverWeight(editingLeftover.id, grams)}
-          onFinish={outcome => editingLeftover && finishLeftover(editingLeftover.id, outcome)}
+          // Each of these adds or takes a card from the fridge row behind the
+          // sheet, so it animates rather than jumping as the sheet closes.
+          onFinish={outcome => { if (!editingLeftover) return; animateLayout(); finishLeftover(editingLeftover.id, outcome); }}
           onSetFrozen={frozen => editingLeftover && setLeftoverFrozen(editingLeftover.id, frozen)}
-          onSplit={() => editingLeftover && splitLeftover(editingLeftover.id)}
-          onReopen={() => editingLeftover && reopenLeftover(editingLeftover.id)}
-          onDelete={() => editingLeftover && deleteLeftover(editingLeftover.id)}
+          onSplit={() => { if (!editingLeftover) return; animateLayout(); splitLeftover(editingLeftover.id); }}
+          onReopen={() => { if (!editingLeftover) return; animateLayout(); reopenLeftover(editingLeftover.id); }}
+          onDelete={() => { if (!editingLeftover) return; animateLayout(); deleteLeftover(editingLeftover.id); }}
           onClose={() => { setEditingLeftoverId(null); setLoggingLeftover(null); }}
         />
       </LazySheet>

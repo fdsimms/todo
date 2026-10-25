@@ -53,6 +53,8 @@ import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from './RotatingChevron';
+import { animateLayout } from '../utils/layoutAnimation';
 
 const MICRO_KEYS = [...VITAMIN_KEYS, ...MINERAL_KEYS];
 
@@ -534,17 +536,13 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
             <TouchableOpacity
               style={[styles.microDisclosure, styles.pinnedMicroDisclosure]}
               activeOpacity={interaction.activeOpacity}
-              onPress={() => { haptics.tap(); setPinMicroOpen(open => !open); }}
+              onPress={() => { haptics.tap(); animateLayout(); setPinMicroOpen(open => !open); }}
               accessibilityRole="button"
               accessibilityState={{ expanded: pinMicroShown }}
               accessibilityLabel="Vitamins and minerals to show on the Food log"
             >
               <Text style={styles.rowLabel}>Vitamins and minerals</Text>
-              <Ionicons
-                name={pinMicroShown ? 'chevron-up' : 'chevron-down'}
-                size={iconSize.sm}
-                color={colors.textTertiary}
-              />
+              <RotatingChevron open={pinMicroShown} size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>
             {pinMicroShown && (
               <View style={styles.pinnedCard}>
@@ -572,17 +570,13 @@ export function NutritionTargetsSheet({ visible, onClose }: Props) {
           <TouchableOpacity
             style={styles.microDisclosure}
             activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); setMicroOpen(open => !open); }}
+            onPress={() => { haptics.tap(); animateLayout(); setMicroOpen(open => !open); }}
             accessibilityRole="button"
             accessibilityState={{ expanded: microShown }}
             accessibilityLabel="Vitamins and minerals"
           >
             <Text style={styles.rowLabel}>Vitamins and minerals</Text>
-            <Ionicons
-              name={microShown ? 'chevron-up' : 'chevron-down'}
-              size={iconSize.sm}
-              color={colors.textTertiary}
-            />
+            <RotatingChevron open={microShown} size={iconSize.sm} color={colors.textTertiary} />
           </TouchableOpacity>
           {microShown && MICRO_KEYS.map(renderTarget)}
 

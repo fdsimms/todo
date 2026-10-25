@@ -80,6 +80,8 @@ import { PressableScale } from './PressableScale';
 import { SegmentedControl } from './SegmentedControl';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from './RotatingChevron';
+import { animateLayout } from '../utils/layoutAnimation';
 
 /**
  * "Cheeseburger and fries at Five Guys", read into figures to confirm.
@@ -1426,7 +1428,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                 activeOpacity={interaction.activeOpacity}
                 // Opening the list is asking to read it, and with the field
                 // still focused the keyboard would sit over everything it adds.
-                onPress={() => { haptics.tap(); if (!detailsOpen) Keyboard.dismiss(); setDetailsOpen(o => !o); }}
+                onPress={() => { haptics.tap(); if (!detailsOpen) Keyboard.dismiss(); animateLayout(); setDetailsOpen(o => !o); }}
                 accessibilityRole="button"
                 accessibilityState={{ expanded: detailsOpen }}
                 accessibilityLabel="All nutrients and ingredients"
@@ -1435,7 +1437,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                   {otherStated > 0 ? `All nutrients (${otherStated} more)` : 'All nutrients'}
                   {estimate.breakdown.length > 0 ? ' and ingredients' : ''}
                 </Text>
-                <Ionicons name={detailsOpen ? 'chevron-up' : 'chevron-down'} size={iconSize.sm} color={colors.textSecondary} />
+                <RotatingChevron open={detailsOpen} size={iconSize.sm} color={colors.textSecondary} />
               </TouchableOpacity>
 
               {detailsOpen && (

@@ -189,6 +189,7 @@ import { useActionMenu } from '../hooks/useActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
 import { PointerView, pointerMenuItem, type PointerMenuItem } from './PointerView';
 import { runningOnMac } from '../utils/runningOnMac';
+import { RotatingChevron } from './RotatingChevron';
 
 /**
  * This device's id for the event a "Leave for X" row was written for. The row
@@ -1616,7 +1617,7 @@ const TaskItemRow = React.memo(function TaskItem({
     <PressableScale
       style={styles.iconActionBtn}
       onPress={async () => {
-        await haptics.tap();
+        haptics.tap();
         navigateToSettingsEntry(null, automationEntryIdFor(task.generatedKind!));
       }}
       hitSlop={8}
@@ -1718,22 +1719,11 @@ const TaskItemRow = React.memo(function TaskItem({
     resetTimer(task.id);
   };
 
+  // No confirm: discardTimer puts an undo on the bar that restarts the clock
+  // from where it was.
   const handleDiscardTimer = () => {
-    Alert.alert(
-      'Discard timer?',
-      `The elapsed time for “${task.title}” won’t be saved.`,
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: 'Discard',
-          style: 'destructive',
-          onPress: async () => {
-            await haptics.warning();
-            discardTimer(task.id);
-          },
-        },
-      ]
-    );
+    haptics.warning();
+    discardTimer(task.id);
   };
 
   // Save and dismiss keyboard whenever the task collapses while title is being edited
@@ -2582,7 +2572,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // its run, both of which are already on screen. A long press takes it back
   // (handleSlipUndo), the same affordance a logged quota unit has.
   const handleSlip = async () => {
-    await haptics.warning();
+    haptics.warning();
     confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id), useRewardStore.getState().slipGuardFor(task, getCurrentDayStart()));
   };
 
@@ -2624,10 +2614,10 @@ const TaskItemRow = React.memo(function TaskItem({
       // early really would generate the next occurrence off today instead of
       // the task's own day.
       if (task.recurrenceType !== 'hours') {
-        await haptics.error();
+        haptics.error();
         return;
       }
-      await haptics.tap();
+      haptics.tap();
       const minutesEarly = task.deferUntil
         ? Math.max(1, Math.round((new Date(task.deferUntil).getTime() - Date.now()) / 60000))
         : task.recurrenceInterval * 60;
@@ -2650,7 +2640,7 @@ const TaskItemRow = React.memo(function TaskItem({
     // "Make X"/"Eat X" (see mealSlotDrift), so nothing is completed at all;
     // the tap opens the picker instead of running the ordinary completion.
     if (mealSlotChooseSource) {
-      await haptics.tap();
+      haptics.tap();
       setShowMealPicker(true);
       return;
     }
@@ -2660,7 +2650,7 @@ const TaskItemRow = React.memo(function TaskItem({
     // opens the same pull sheet the task's own link button does, which now
     // carries its own Skip for "I looked, there's nothing to bring in".
     if (reviewProjectId) {
-      await haptics.tap();
+      haptics.tap();
       handleOpenLink();
       return;
     }
@@ -2675,7 +2665,7 @@ const TaskItemRow = React.memo(function TaskItem({
     // for. Ticking it before there is one would say it was done when nothing
     // was recorded, so the tap opens the sheet until the row is ready.
     if (recordLog) {
-      await haptics.tap();
+      haptics.tap();
       handleOpenLink(recordLog);
       return;
     }
@@ -2684,7 +2674,7 @@ const TaskItemRow = React.memo(function TaskItem({
     // then runs the ordinary completion, so nothing downstream — the hold, the
     // batched collapse, the recurrence — learns about deliverables at all.
     if (asksOnComplete) {
-      await haptics.tap();
+      haptics.tap();
       setShowDeliverablePrompt(true);
       return;
     }
@@ -2695,7 +2685,7 @@ const TaskItemRow = React.memo(function TaskItem({
     // shipped for). The row still completes immediately either way; only the
     // reminder is conditional.
     if (task.completionTimerMinutes) {
-      await haptics.tap();
+      haptics.tap();
       Alert.alert(
         'Set a reminder?',
         `Remind you about “${displayTitleFor(task)}” in ${formatDuration(task.completionTimerMinutes)}?`,
@@ -2750,7 +2740,7 @@ const TaskItemRow = React.memo(function TaskItem({
   const handleQuotaTap = async () => {
     if (completingRef.current || pacingOutRef.current) return;
     if (completionLocked) {
-      await haptics.error();
+      haptics.error();
       return;
     }
     // The kinds that ride the day out skip the auto-complete at target:
@@ -2802,7 +2792,7 @@ const TaskItemRow = React.memo(function TaskItem({
   const handleRotationTap = async () => {
     if (completingRef.current || pacingOutRef.current) return;
     if (completionLocked) {
-      await haptics.error();
+      haptics.error();
       return;
     }
     if (isNew) markTaskSeen(task.id);
@@ -2812,7 +2802,7 @@ const TaskItemRow = React.memo(function TaskItem({
       await handleRotationPick(rotationPlanned.id);
       return;
     }
-    await haptics.tap();
+    haptics.tap();
     setShowRotationPick(true);
   };
 
@@ -2821,7 +2811,7 @@ const TaskItemRow = React.memo(function TaskItem({
   const handleRotationPillTap = async (itemId: string) => {
     if (completingRef.current || pacingOutRef.current) return;
     if (completionLocked) {
-      await haptics.error();
+      haptics.error();
       return;
     }
     if (isNew) markTaskSeen(task.id);
@@ -2833,7 +2823,7 @@ const TaskItemRow = React.memo(function TaskItem({
   const handleRotationWorkout = async (itemId: string) => {
     if (completingRef.current || pacingOutRef.current) return;
     if (completionLocked) {
-      await haptics.error();
+      haptics.error();
       return;
     }
     const member = task.rotationItems.find(i => i.id === itemId);
@@ -3752,7 +3742,7 @@ const TaskItemRow = React.memo(function TaskItem({
                 accessibilityLabel={`${subtaskDoneCount} of ${subtaskCount} subtasks done`}
               >
                 <Ionicons name="list-outline" size={9} color={colors.textSecondary} />
-                <Text style={styles.subtaskBadgeText} numberOfLines={1}>{subtaskDoneCount}/{subtaskCount}</Text>
+                <AnimatedNumber text={`${subtaskDoneCount}/${subtaskCount}`} value={subtaskDoneCount} style={styles.subtaskBadgeText} />
               </View>
             )}
             {task.generatedKind === 'calendarReview' && (
@@ -3769,7 +3759,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     ? 'No events'
                     : `${calendarReviewEvents.length} ${calendarReviewEvents.length === 1 ? 'event' : 'events'}`}
                 </Text>
-                <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={9} color={colors.textSecondary} />
+                <RotatingChevron open={expanded} size={9} color={colors.textSecondary} />
               </View>
             )}
             {supplyLabel !== null && (
@@ -4766,7 +4756,7 @@ const TaskItemRow = React.memo(function TaskItem({
               {chainStepPreview && (
                 <TouchableOpacity
                   style={styles.recurrenceRow}
-                  onPress={() => { haptics.tap(); setChainStepsExpanded(v => !v); }}
+                  onPress={() => { haptics.tap(); animateLayout(); setChainStepsExpanded(v => !v); }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityState={{ expanded: chainStepsExpanded }}
@@ -4789,11 +4779,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     </Text>
                   )}
                   <View style={styles.chainExpandSpacer} />
-                  <Ionicons
-                    name={chainStepsExpanded ? 'chevron-up' : 'chevron-down'}
-                    size={12}
-                    color={colors.textSecondary}
-                  />
+                  <RotatingChevron open={chainStepsExpanded} size={12} color={colors.textSecondary} />
                 </TouchableOpacity>
               )}
 
@@ -5126,7 +5112,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     <PressableScale
                       style={styles.iconActionBtn}
                       onPress={async () => {
-                        await haptics.impactLight();
+                        haptics.impactLight();
                         startQuotaRun(task.id);
                       }}
                       hitSlop={8}
@@ -5146,7 +5132,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     <PressableScale
                       style={styles.iconActionBtn}
                       onPress={async () => {
-                        await haptics.impactMedium();
+                        haptics.impactMedium();
                         handleMiss();
                       }}
                       hitSlop={8}
@@ -5203,7 +5189,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     <PressableScale
                       style={styles.iconActionBtn}
                       onPress={async () => {
-                        await haptics.tap();
+                        haptics.tap();
                         duplicateTask(task.id);
                       }}
                       hitSlop={8}

@@ -9365,6 +9365,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(id, { archived: true, archivedAt: new Date().toISOString(), pinned: false });
     get().setLastAction({
       label: 'Task archived',
+      // On the bar: archiving takes the task out of every list, and the bar
+      // is what lets the places that archive without asking first do so.
+      announce: true,
       undo: () => get().updateTask(id, { archived: false, archivedAt: null, pinned }),
       redo: redoRestoringRows([id]),
     });
@@ -9419,10 +9422,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   clearAllPins() {
+    const ids = get().tasks.filter(t => t.pinned).map(t => t.id);
     dbClearAllPins();
     set(s => ({
       tasks: s.tasks.map(t => (t.pinned ? { ...t, pinned: false } : t)),
     }));
+    if (ids.length === 0) return;
+    // On the bar, so Today's Clear can run without asking. pinnedOrder is
+    // untouched by the clear, so putting the flag back restores the block in
+    // the order it had.
+    get().setLastAction({
+      label: ids.length === 1 ? 'Unpinned 1 task' : `Unpinned ${ids.length} tasks`,
+      destructive: true,
+      redo: () => get().clearAllPins(),
+      undo: () => {
+        const back = new Set(ids);
+        dbBulkSetPinned(ids, true);
+        set(s => ({ tasks: s.tasks.map(t => (back.has(t.id) ? { ...t, pinned: true } : t)) }));
+      },
+    });
   },
 
   pinCategory(category) {
@@ -9506,8 +9524,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   discardTimer(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.timerStartedAt === null) return;
+    const startedAt = task.timerStartedAt;
     cancelTimerAlarm(id);
     get().updateTask(id, { timerStartedAt: null });
+    // On the bar, so the row's Discard can run without asking. The undo puts
+    // the original start back, so the time spent while it was discarded
+    // counts too, and stops whatever timer started since, the way startTimer
+    // would: only one task times at a time.
+    get().setLastAction({
+      label: 'Timer discarded',
+      destructive: true,
+      redo: () => get().discardTimer(id),
+      undo: () => {
+        const running = get().tasks.find(t => t.timerStartedAt !== null && t.id !== id);
+        if (running) {
+          if (isTimedTask(running)) get().pauseTimer(running.id);
+          else get().stopTimer(running.id);
+        }
+        get().updateTask(id, { timerStartedAt: startedAt });
+        const restored = get().tasks.find(t => t.id === id);
+        if (restored) scheduleTimerAlarm(restored);
+      },
+    });
   },
 
   // Paired with scheduleCompletionTimer (src/utils/notifications.ts), which

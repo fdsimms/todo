@@ -10,6 +10,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import type { Task } from '../types';
+import { RotatingChevron } from './RotatingChevron';
 
 /** How many titles the banner lists before it collapses the rest into "+N more". */
 const PREVIEW_LIMIT = 4;
@@ -114,11 +115,7 @@ export function NewTasksBanner({ tasks, onJumpToTask, onDismiss }: Props) {
           <Text style={styles.text} numberOfLines={1}>
             You have <Text style={styles.count}>{count}</Text> new task{count === 1 ? '' : 's'}
           </Text>
-          <Ionicons
-            name={collapsed ? 'chevron-down' : 'chevron-up'}
-            size={iconSize.sm}
-            color={colors.textSecondary}
-          />
+          <RotatingChevron open={!collapsed} size={iconSize.sm} color={colors.textSecondary} />
         </TouchableOpacity>
         <PressableScale style={styles.button} onPress={handleDismiss} accessibilityLabel="Dismiss new tasks notice">
           <Text style={styles.buttonText}>OK</Text>

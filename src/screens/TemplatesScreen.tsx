@@ -278,6 +278,7 @@ export function TemplatesScreen() {
     confirmDelete({
       title: `Delete ${ids.length} ${plural}?`,
       message: `This deletes ${ids.length} ${plural}. You can undo it right after.`,
+      undoable: true,
       onConfirm: () => {
         animateLayout();
         bulkDeleteTemplates(ids);

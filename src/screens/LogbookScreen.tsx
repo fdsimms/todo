@@ -453,6 +453,7 @@ export function LogbookScreen() {
       title: 'Clear Logbook?',
       message: `This deletes all ${completedTasks.length} completed task${completedTasks.length === 1 ? '' : 's'}. You can undo it right after.`,
       confirmLabel: 'Clear',
+      undoable: true,
       onConfirm: () => {
         animateLayout();
         clearLogbook();
@@ -467,6 +468,7 @@ export function LogbookScreen() {
     confirmDelete({
       title: 'Delete entry?',
       message: `“${displayTitleFor(task)}” will be deleted from the Logbook. You can undo it right after.`,
+      undoable: true,
       onConfirm: () => {
         animateLayout();
         // skipGeneratedOptOut: deleting a logbook entry is deleting history,

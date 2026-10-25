@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { PersonNote, PersonNoteKind } from '../types';
 import { PERSON_NOTE_KINDS } from '../types';
@@ -22,6 +22,7 @@ import { getCurrentDayStart } from '../utils/dateUtils';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { confirmDelete } from '../utils/confirmDelete';
 
 const NOTE_MAX_LENGTH = 240;
 
@@ -89,10 +90,10 @@ export function PersonNoteSheet({ visible, personId, personName, note, initialKi
 
   const handleDelete = () => {
     if (!note) { onClose(); return; }
-    Alert.alert('Delete this note?', undefined, [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      { text: BUTTON_LABEL.delete, style: 'destructive', onPress: () => { removeNote(note.id); onClose(); } },
-    ]);
+    confirmDelete({
+      title: 'Delete this note?',
+      onConfirm: () => { removeNote(note.id); onClose(); },
+    });
   };
 
   const today = getCurrentDayStart();

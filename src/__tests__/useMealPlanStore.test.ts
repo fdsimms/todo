@@ -1723,29 +1723,31 @@ describe('bulkDeleteEntries', () => {
     expect(dbDeleteMealPlanEntry).not.toHaveBeenCalled();
   });
 
-  // The confirm dialog tells the user this can't be undone — see the store's
-  // doc comment. It must not register a lastAction that would quietly
-  // contradict that.
-  it('does not register an undo — the confirm dialog promises it cannot be undone', () => {
+  // The bulk bar's Remove runs without a confirm, so the batch has to come
+  // back in one undo, the way a single removeEntry does.
+  it('files one destructive undo that puts every meal back', () => {
     const a = entry('2026-08-05', 'dinner');
-    loadWeek([a]);
-    useMealPlanStore.getState().bulkDeleteEntries([a.id]);
-    expect(useMealPlanStore.getState().lastAction).toBeNull();
+    const b = entry('2026-08-06', 'lunch');
+    loadWeek([a, b]);
+
+    useMealPlanStore.getState().bulkDeleteEntries([a.id, b.id]);
+
+    const action = useMealPlanStore.getState().lastAction!;
+    expect(action.label).toBe('Removed 2 meals');
+    expect(action.destructive).toBe(true);
+
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(dbInsertMealPlanEntry).toHaveBeenCalledWith(a);
+    expect(dbInsertMealPlanEntry).toHaveBeenCalledWith(b);
+    expect(getEntries().map(e => e.id).sort()).toEqual([a.id, b.id].sort());
   });
 
-  // Not registering one isn't enough on its own: the queue outlives the action
-  // that filled it (UNDO_ACTION_MAX_AGE_MS), so a delete that only declined to
-  // set a lastAction would leave the *previous* one armed — and a shake right
-  // after "This can't be undone" would offer to undo something else entirely.
-  it('clears an undo left by an earlier action rather than leaving it armed', () => {
+  it('names the meal when only one is removed', () => {
     const a = entry('2026-08-05', 'dinner');
     loadWeek([a]);
-    useMealPlanStore.getState().planMeal({ date: '2026-08-06', slot: 'dinner', title: 'Chilli' });
-    expect(useMealPlanStore.getState().lastAction).not.toBeNull();
-
     useMealPlanStore.getState().bulkDeleteEntries([a.id]);
-
-    expect(useMealPlanStore.getState().lastAction).toBeNull();
+    expect(useMealPlanStore.getState().lastAction!.label).toBe(`Removed “${a.title}”`);
   });
 
   // Regression: reconcileMealSlot used to run before the `entries` array had
@@ -2805,7 +2807,7 @@ describe('meal tasks and the undo queue', () => {
     expect(mockTaskState.setLastAction).toHaveBeenCalledWith(null);
   });
 
-  it('leaves nothing armed after a bulk delete that promised it could not be undone', () => {
+  it('arms the bulk delete itself, not whatever came before it', () => {
     loadWeek();
     const a = useMealPlanStore.getState().planMeal({
       date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragu',
@@ -2816,7 +2818,7 @@ describe('meal tasks and the undo queue', () => {
 
     useMealPlanStore.getState().bulkDeleteEntries([a.id, b.id]);
 
-    expect(useMealPlanStore.getState().lastAction).toBeNull();
+    expect(useMealPlanStore.getState().lastAction!.label).toBe('Removed 2 meals');
   });
 });
 

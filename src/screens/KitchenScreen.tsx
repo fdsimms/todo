@@ -1091,6 +1091,9 @@ export function KitchenScreen() {
           autoCapitalize="none"
           returnKeyType={canAdd ? 'done' : 'search'}
           onSubmitEditing={canAdd ? handleAdd : undefined}
+          // An add keeps the keyboard up for the next name (handleAdd clears
+          // the field for exactly that); a search has nothing to keep it for.
+          blurOnSubmit={!canAdd}
           accessibilityLabel="Find something in the pantry, or type a name to add it"
         />
         <FieldClearButton query={query} onClear={clearQuery} />

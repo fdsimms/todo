@@ -1799,7 +1799,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                       ? `Overlaps ${conflicts.length} ${conflicts.length === 1 ? 'event' : 'events'}`
                       : `Overlaps ${conflicts[0].title || 'an event'}, ${describeSpan(conflicts[0])}${conflicts.length > 1 ? ` and ${conflicts.length - 1} more` : ''}`}
                   </Text>
-                  <Ionicons name={conflictsOpen ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textSecondary} />
+                  <RotatingChevron open={conflictsOpen} size={13} color={colors.textSecondary} />
                 </TouchableOpacity>
                 {conflictsOpen && conflicts.map((event, i) => (
                   <View key={`${event.id}-${event.start}-${i}`} style={styles.conflictItem}>

@@ -16,8 +16,8 @@ import { BUTTON_LABEL } from '../copy/shared';
  * repeating task, a meal-plan task or an open one-off can be marked missed
  * instead (a one-off keeps its Logbook row that way), a task on
  * several dates asks whether to delete just this date, and a generated one
- * offers to turn its generator off. Anything else gets the plain confirm,
- * which "Confirm before deleting" can switch off.
+ * offers to turn its generator off. Anything else is deleted at once, with
+ * the undo bar as the way back.
  *
  * The task editor's Delete and a row's trash both call this, so the two can't
  * ask different questions about the same task. `onDone` runs after a delete or
@@ -109,6 +109,8 @@ export function confirmDeleteTask(task: Task, onDone?: () => void): void {
   confirmDelete({
     title: 'Delete task?',
     message: `Delete “${task.title}”?`,
+    // deleteTask files "Task deleted" on the undo bar.
+    undoable: true,
     onConfirm: () => finish(() => store().deleteTask(task.id)),
   });
 }
