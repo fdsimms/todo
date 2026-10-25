@@ -398,7 +398,7 @@ describe('dollar-priced rewards', () => {
 });
 
 describe('glyph', () => {
-  it('stores a trimmed glyph, clears it on null, and ignores it on a wish list reward', () => {
+  it('stores a trimmed glyph, clears it on null, and keeps it on a wish list reward', () => {
     state().addReward('Coffee', 5, { glyph: ' ☕ ' });
     const r = state().rewards[0];
     expect(r.glyph).toBe('☕');
@@ -407,7 +407,12 @@ describe('glyph', () => {
     state().updateReward(r.id, { glyph: null });
     expect(state().rewards[0].glyph).toBeNull();
     state().addReward('Book', 50, { taskId: 'wish', glyph: '📚' });
-    expect(state().rewards.find(x => x.title === 'Book')!.glyph).toBeNull();
+    const book = state().rewards.find(x => x.title === 'Book')!;
+    expect(book.glyph).toBe('📚');
+    state().updateReward(book.id, { cost: 60 });
+    expect(state().rewards.find(x => x.id === book.id)!.glyph).toBe('📚');
+    state().updateReward(book.id, { glyph: null });
+    expect(state().rewards.find(x => x.id === book.id)!.glyph).toBeNull();
   });
 });
 

@@ -329,7 +329,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
         taxable: details?.priceMinor != null && !!details.taxable,
         guardsTaskId: canGuard({ oneTime, taskId }) ? details?.guardsTaskId ?? null : null,
         claimEveryDays: cleanClaimLimit(details?.claimEveryDays, oneTime),
-        glyph: taskId ? null : cleanRewardGlyph(details?.glyph),
+        glyph: cleanRewardGlyph(details?.glyph),
       };
       dbInsertReward(reward);
       set(s => ({ rewards: sortRewards([...s.rewards, reward]) }));
@@ -361,7 +361,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
         guardsTaskId: canGuard({ oneTime, taskId }) ? guardsTaskId : null,
         // Turning a reward one-time drops its limit, which it has no use for.
         claimEveryDays: cleanClaimLimit(patch.claimEveryDays !== undefined ? patch.claimEveryDays : current.claimEveryDays, oneTime),
-        glyph: taskId ? null : patch.glyph !== undefined ? cleanRewardGlyph(patch.glyph) : current.glyph,
+        glyph: patch.glyph !== undefined ? cleanRewardGlyph(patch.glyph) : current.glyph,
       };
       dbUpdateReward(next);
       set(s => ({ rewards: sortRewards(s.rewards.map(r => (r.id === id ? next : r))) }));
