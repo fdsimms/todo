@@ -59,7 +59,7 @@ import { clampStepIndex, cookNotesPanel, cookSteps, describeStepPosition } from 
 import { formatStepDuration, stepDurationOffers, stepTimerExcerpt, type StepDuration } from '../utils/stepTimers';
 import { recipeTimerResetPrompt, showsPrepRow, startCookingPlan } from '../utils/recipeTimer';
 import {
-  applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
+  applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup, type FlatIngredient,
 } from '../utils/recipeComponents';
 import { ingredientHeadings } from '../utils/recipeSections';
 import { blankFillOf, describeBlankRule, recipeBlanksIn } from '../utils/recipeBlanks';
@@ -258,6 +258,18 @@ export function CookModeSheet({
   const pick = (group: ChoiceGroup, optionId: string) => {
     animateLayout();
     onChoicesChange(applyChoice(choices, group, optionId));
+  };
+  // A checklist line only shows the option picked, so on its own "white rice"
+  // reads as an ingredient nobody offered a choice about. This is the line's
+  // own answer to that: the group it was picked from, or null for every line
+  // that isn't one of a choice's options.
+  const choiceLabels = useMemo(
+    () => new Set(choiceGroups.map(group => group.label)),
+    [choiceGroups]
+  );
+  const pickedFrom = (flat: FlatIngredient): string | null => {
+    const label = flat.ingredient.choiceGroup;
+    return label && choiceLabels.has(label) ? `Your pick from ${label}` : null;
   };
   // Which headings each line opens: the component's name where one starts, and
   // the recipe's own section label where one does. Both are inferred from the
@@ -649,12 +661,6 @@ export function CookModeSheet({
         {atMise ? (
           <ScrollView style={styles.stepScrollView} contentContainerStyle={styles.stepScroll}>
             <Text style={styles.miseTitle}>Mise en place</Text>
-            <Text style={styles.miseSubtitle}>
-              {steps.length > 0
-                ? 'Check each one as you set it out, before you start cooking.'
-                : 'Check each one as you set it out. It has no steps yet, so add them in the recipe to read the method here.'}
-              {gatheredCount > 0 ? ` ${gatheredCount} of ${ingredients.length} out.` : ''}
-            </Text>
             {/* Where the recipe offers a choice, it's made here, as the
                 ingredients are gathered — the list below follows the pick. */}
             {choiceGroups.length > 0 && (
@@ -700,6 +706,15 @@ export function CookModeSheet({
                 </View>
               </View>
             )}
+            {/* Over the checklist rather than under the title: it tells you what
+                to do with the rows, and the choices above it are answered, not
+                checked. */}
+            <Text style={styles.miseSubtitle}>
+              {steps.length > 0
+                ? 'Check each one as you set it out, before you start cooking.'
+                : 'Check each one as you set it out. It has no steps yet, so add them in the recipe to read the method here.'}
+              {gatheredCount > 0 ? ` ${gatheredCount} of ${ingredients.length} out.` : ''}
+            </Text>
             {ovenSetups.length > 0 && (
               <View style={[styles.miseCard, styles.miseOven]}>
                 {ovenSetups.map((oven, position) => {
@@ -784,6 +799,7 @@ export function CookModeSheet({
                 const last = position === ingredients.length - 1;
                 const lineKey = `${flat.recipe.id}:${flat.ingredient.id}`;
                 const lineOut = gatheredLines.has(lineKey);
+                const fromChoice = pickedFrom(flat);
                 return (
                   <View key={lineKey}>
                     {!!heading.parentSection && <Text style={styles.miseHeading}>{heading.parentSection}</Text>}
@@ -796,7 +812,7 @@ export function CookModeSheet({
                       onPress={() => toggleGathered(lineKey)}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: lineOut }}
-                      accessibilityLabel={flat.ingredient.name}
+                      accessibilityLabel={[flat.ingredient.name, fromChoice].filter(Boolean).join(', ')}
                     >
                       <CheckPop
                         checked={lineOut}
@@ -811,6 +827,9 @@ export function CookModeSheet({
                           <Text style={styles.miseSwap} numberOfLines={1}>
                             {describeStandingSwap(flat.swappedFrom)}
                           </Text>
+                        )}
+                        {!!fromChoice && (
+                          <Text style={styles.miseSwap} numberOfLines={1}>{fromChoice}</Text>
                         )}
                         {!!flat.ingredient.prep && (
                           <Text style={styles.misePrep}>{flat.ingredient.prep}</Text>
@@ -1096,6 +1115,7 @@ export function CookModeSheet({
                     const rule = position > 0 && !heading.dish && !heading.parentSection && !heading.resume && !!heading.section;
                     const lineKey = `${flat.recipe.id}:${flat.ingredient.id}`;
                     const lineChecked = checkedLines.has(lineKey);
+                    const fromChoice = pickedFrom(flat);
                     return (
                       <View key={lineKey}>
                         {rule && <View style={styles.panelDivider} />}
@@ -1113,7 +1133,7 @@ export function CookModeSheet({
                           onPress={() => toggleLine(lineKey)}
                           accessibilityRole="checkbox"
                           accessibilityState={{ checked: lineChecked }}
-                          accessibilityLabel={flat.ingredient.name}
+                          accessibilityLabel={[flat.ingredient.name, fromChoice].filter(Boolean).join(', ')}
                         >
                           <CheckPop
                             checked={lineChecked}
@@ -1128,6 +1148,9 @@ export function CookModeSheet({
                               <Text style={styles.panelSwap} numberOfLines={1}>
                                 {describeStandingSwap(flat.swappedFrom)}
                               </Text>
+                            )}
+                            {!!fromChoice && (
+                              <Text style={styles.panelSwap} numberOfLines={1}>{fromChoice}</Text>
                             )}
                             {!!flat.ingredient.prep && (
                               <Text style={styles.panelPrep}>{flat.ingredient.prep}</Text>
@@ -1641,13 +1664,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.xxl,
     fontWeight: fontWeight.semibold,
+    marginBottom: spacing.xs,
   },
   miseSubtitle: {
     color: colors.textSecondary,
     fontSize: font.md,
     lineHeight: lineHeight.md,
-    marginTop: spacing.xs,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xs,
   },
   // The end screen's quieter offers, under its explanation. The primary one
   // (Log as cooked) is the footer button, where Next was.
