@@ -131,6 +131,12 @@ const WATCH_HEALTH_SHARE_USAGE =
 const WATCH_HEALTH_UPDATE_USAGE =
   'dundundun saves a strength workout your watch measured to Health, with its heart rate and active energy, when you’ve chosen to save workouts to Apple Health. Deleting the workout in dundundun removes it and its energy.';
 
+// The scheme a complication's widgetURL opens the watch app with
+// (`WatchLink` in TodoWatchComplication.swift, read by TodoWatchApp's
+// onOpenURL). The iPhone app's own scheme: the watch is another device, so the
+// two never meet.
+const WATCH_URL_SCHEME = 'dundundun';
+
 function watchInfoPlist(companionBundleIdentifier) {
   return plist(`${BUNDLE_KEYS}
 	<key>WKApplication</key>
@@ -141,6 +147,15 @@ function watchInfoPlist(companionBundleIdentifier) {
 	<string>${WATCH_HEALTH_SHARE_USAGE}</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>${WATCH_HEALTH_UPDATE_USAGE}</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>${WATCH_URL_SCHEME}</string>
+			</array>
+		</dict>
+	</array>
 	<key>WKBackgroundModes</key>
 	<array>
 		<string>workout-processing</string>

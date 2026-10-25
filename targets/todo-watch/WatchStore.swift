@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import WatchConnectivity
+import WatchKit
 import WidgetKit
 
 // The watch app's whole model: the iPhone's latest snapshot and the taps made
@@ -111,6 +112,20 @@ final class WatchStore: NSObject, ObservableObject {
         record(kind: task.tapsAreUnits ? "unit" : "complete", itemId: task.id, listId: nil, title: nil)
     }
 
+    /// Completes a task with the answer to its question (`WidgetTask.question`),
+    /// or with none: "Complete without an answer", which is nil.
+    func answer(_ task: WidgetTask, with answer: String?) {
+        guard !local.isDone(task) else { return }
+        record(kind: "answer", itemId: task.id, listId: nil, title: nil, answer: answer)
+    }
+
+    /// Moves a task to tomorrow, the swipe on its row. The phone makes the
+    /// same move its own row's Tomorrow does (`quietDeferUpdates`).
+    func deferToTomorrow(_ task: WidgetTask) {
+        guard !local.isDone(task), !local.isDeferred(task) else { return }
+        record(kind: "defer", itemId: task.id, listId: nil, title: nil)
+    }
+
     func check(_ row: WidgetGroceryRow, listId: String?) {
         guard row.canCheck, !local.isChecked(row, listId: listId) else { return }
         record(kind: "grocery", itemId: row.id, listId: listId, title: nil)
@@ -136,8 +151,8 @@ final class WatchStore: NSObject, ObservableObject {
         record(kind: "add", itemId: "", listId: nil, title: trimmed)
     }
 
-    private func record(kind: String, itemId: String, listId: String?, title: String?) {
-        let tap = WatchTap(
+    private func record(kind: String, itemId: String, listId: String?, title: String?, answer: String? = nil) {
+        var tap = WatchTap(
             id: UUID().uuidString,
             kind: kind,
             itemId: itemId,
@@ -146,11 +161,24 @@ final class WatchStore: NSObject, ObservableObject {
             at: Date(),
             sent: false
         )
+        tap.answer = answer
         taps.append(tap)
         WatchTapLog.save(taps)
         WidgetCenter.shared.reloadAllTimelines()
+        Self.playHaptic(for: kind)
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.undoWindow) { [weak self] in
             self?.sendDue(force: false)
+        }
+    }
+
+    /// What a tick feels like on the wrist, so a tap made without looking
+    /// says it landed: one unit of a target or a move to tomorrow clicks, anything checked off
+    /// plays success. A dictated add has the dictation sheet closing to say so.
+    private static func playHaptic(for kind: String) {
+        switch kind {
+        case "unit", "defer": WKInterfaceDevice.current().play(.click)
+        case "complete", "answer", "grocery", "choose": WKInterfaceDevice.current().play(.success)
+        default: break
         }
     }
 

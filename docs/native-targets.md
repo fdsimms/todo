@@ -296,14 +296,26 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   `WatchSession.swift` sends it as the session's application context, compressed. Back: a tap
   is a user-info transfer, which `WatchSession` appends to the widget's own quiet-tap queue (or
   AddTaskIntent's queue, for a dictated task) in the widget's shape, so
-  `processQuietWidgetTaps` applies it with the widget's rules. Two tap kinds exist only for the
+  `processQuietWidgetTaps` applies it with the widget's rules. Four tap kinds exist only for the
   watch: `choose` (settle an either/or on the list the tap names, through `resolveChoice`'s
-  explicit `listId`) and `groceryAdd` (a dictated item, which rides the quiet-tap queue rather
-  than AddTaskIntent's task-title queue so it applies in order with the ticks around it).
+  explicit `listId`), `groceryAdd` (a dictated item, which rides the quiet-tap queue rather
+  than AddTaskIntent's task-title queue so it applies in order with the ticks around it) and
+  `defer` (a row's swipe to tomorrow, which writes `quietDeferUpdates`: the move the app's own
+  Tomorrow makes, dropped rather than applied a day late if the day ended before the drain).
+  `answer` completes a task with the answer to its question, which the watch asks itself when
+  the snapshot's row carries a `question` (`watchQuestionFor`: yes/no, pick one, text, a
+  number, never a date). The drain checks the question again, and an answer that no longer
+  fits is handed to the app to ask again rather than dropped.
 - **The watch pager has no visible way to its second page on its own.** Today is a scrolling
   list, so the Digital Crown scrolls it instead of paging past it, and Groceries was only
-  reachable by a vertical swipe nobody is told about. Today ends in a Groceries row that sets the
-  pager's selection (`TodoWatchApp`'s `page`). A new watch page needs an entry like that.
+  reachable by a vertical swipe nobody is told about. Today's top-leading toolbar button (a cart)
+  sets the pager's selection (`TodoWatchApp`'s `page`), and Groceries has the matching one back.
+  A new watch page needs an entry like that, in the top bar rather than a row at the end of a
+  list, which is where Add sits too: a long list put both out of reach.
+- **Double tap (`handGestureShortcut(.primaryAction)`, watchOS 11) belongs to one control per
+  screen.** Apple resolves it by a leading-to-trailing walk of the scene and says nothing about
+  two claimants, so a screen gives it to exactly one. The workout's Done set, Skip and Go to the
+  set are never on screen together, which is why all three can have it.
 - **A tap can wake the iPhone app to be applied, and that path has no React tree.** With the
   phone in reach the watch also sends each tap as a message, which (unlike the transfer) wakes
   the app in the background; the phone drops the second copy by `watchTapId`. `WatchSession`
@@ -321,6 +333,12 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   that context includes it (`WatchStore.apply`). Before any of that, a tap is held on the watch
   for `WatchStore.undoWindow` behind an Undo button, and sent early if the app leaves the
   screen: once WatchConnectivity has it, the phone will apply it and the watch can't take it back.
+- **The complication extension holds two widgets** (Today and Groceries, one `WidgetBundle`), and
+  each opens the watch app on its own page through `widgetURL` (`WatchLink`, read by
+  `TodoWatchApp`'s `onOpenURL`). The watch app registers the `dundundun` scheme in its own
+  Info.plist for this; the iPhone app's registration doesn't reach another device. Keep the
+  Today widget's `kind` (`TodoWatchToday`) as it is, or every placed complication drops off its
+  watch face.
 - **`TodoWidgetData.swift` is compiled into both watch targets unchanged.** The watch keeps the
   snapshot in its own App Group under the widget's file name, so `loadWidgetSnapshot()` and the
   time-passing helpers (`visibleTasks(at:)`, `isStale`, `changeDates`) work there as they do in
