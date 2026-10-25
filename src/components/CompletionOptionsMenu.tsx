@@ -14,8 +14,8 @@ interface Props {
   onSkip?: () => void;
   /** Records a miss. Moves to the next date when `onSkip` is also given (the task repeats), otherwise closes the task. */
   onMiss?: () => void;
-  /** Completes the occurrence with no coins and no streak change. */
-  onSomeoneElse: () => void;
+  /** Completes the occurrence with no coins and no streak change. Omitted for a task only its own record can complete. */
+  onSomeoneElse?: () => void;
   /** A target's current count, when it has one to take a unit off of. Omit it (or pass 0) and the row is hidden. */
   takeOffCount?: number;
   /** Takes the last logged unit off a target. */
@@ -93,7 +93,7 @@ export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeo
               <Text style={styles.detail}>Moves to the next date. Nothing is recorded.</Text>
             </View>
           </TouchableOpacity>
-          <View style={styles.sep} />
+          {(onMiss || onSomeoneElse) && <View style={styles.sep} />}
         </>
       )}
       {onMiss && (
@@ -111,22 +111,24 @@ export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeo
               <Text style={styles.detail}>{missDetail}</Text>
             </View>
           </TouchableOpacity>
-          <View style={styles.sep} />
+          {onSomeoneElse && <View style={styles.sep} />}
         </>
       )}
-      <TouchableOpacity
-        style={styles.optionRow}
-        onPress={() => choose(haptics.tap, onSomeoneElse)}
-        activeOpacity={interaction.activeOpacity}
-        accessibilityRole="button"
-        accessibilityLabel="Someone else did it. Shows as done in your history, with no coins. Your streak is unchanged."
-      >
-        <Ionicons name="people-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
-        <View style={styles.text}>
-          <Text style={styles.label}>Someone else did it</Text>
-          <Text style={styles.detail}>Shows as done in your history, with no coins. Your streak is unchanged.</Text>
-        </View>
-      </TouchableOpacity>
+      {onSomeoneElse && (
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => choose(haptics.tap, onSomeoneElse)}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel="Someone else did it. Shows as done in your history, with no coins. Your streak is unchanged."
+        >
+          <Ionicons name="people-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
+          <View style={styles.text}>
+            <Text style={styles.label}>Someone else did it</Text>
+            <Text style={styles.detail}>Shows as done in your history, with no coins. Your streak is unchanged.</Text>
+          </View>
+        </TouchableOpacity>
+      )}
       {onNextStep && (
         <>
           <View style={styles.sep} />
