@@ -1,0 +1,1 @@
+{ "message": "A cooking step that says \"every 30 minutes\" can now start a timer that repeats. It rings each time, counts how many times it has gone off (like \"2 of 5\"), and keeps going until you dismiss it, so one more round shows as \"6 of 5\". The number of rounds starts from the step's own time and you can change it, even after it has started.", "date": "2026-10-25" }

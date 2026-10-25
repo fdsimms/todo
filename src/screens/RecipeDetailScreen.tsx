@@ -2458,6 +2458,7 @@ export function RecipeDetailScreen() {
                 onAddTime={() => stepTimers.addTime(timer.id)}
                 onRestart={() => stepTimers.restart(timer.id)}
                 onRemove={() => stepTimers.remove(timer.id)}
+                onSetRepeatTarget={target => stepTimers.setRepeatTarget(timer.id, target)}
               />
             </React.Fragment>
           ))}

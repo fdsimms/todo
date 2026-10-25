@@ -1656,6 +1656,75 @@ describe('scheduleStepAlarm', () => {
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 
+  describe('a repeating timer', () => {
+    // Every 30 minutes, expecting 5, one minute in.
+    const repeating = (overrides: Partial<RecipeStepTimer> = {}) => makeStepTimer({
+      durationSeconds: 30 * 60,
+      repeatTarget: 5,
+      stepExcerpt: '…add 1 cup hot water every 30 minutes',
+      elapsedSeconds: 60,
+      ...overrides,
+    });
+
+    it('arms every ring it is expected to need, one slot each, half an hour apart', async () => {
+      await scheduleStepAlarm(repeating());
+      const calls = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(c => c[0]);
+      expect(calls).toHaveLength(8);
+      expect(calls.map(c => c.identifier)).toEqual([
+        'step-timer:st1', 'step-timer:st1#1', 'step-timer:st1#2', 'step-timer:st1#3',
+        'step-timer:st1#4', 'step-timer:st1#5', 'step-timer:st1#6', 'step-timer:st1#7',
+      ]);
+      const gaps = calls.slice(1).map((c, at) => (c.trigger.date.getTime() - calls[at].trigger.date.getTime()) / 60000);
+      expect(gaps.every(g => g === 30)).toBe(true);
+      expect(Math.round((calls[0].trigger.date.getTime() - Date.now()) / 60000)).toBe(29);
+    });
+
+    it('says which ring each is, so a locked phone tells the cook where they are', async () => {
+      await scheduleStepAlarm(repeating());
+      const calls = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(c => c[0]);
+      expect(calls[0].content.body).toBe('…add 1 cup hot water every 30 minutes: 1 of 5.');
+      expect(calls[5].content.body).toBe('…add 1 cup hot water every 30 minutes: 6 of 5.');
+    });
+
+    it('numbers on from the rings already gone off', async () => {
+      await scheduleStepAlarm(repeating({ elapsedSeconds: 70 * 60 }));
+      const first = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+      expect(first.content.body).toContain('3 of 5');
+    });
+
+    it('arms one native alarm per ring where AlarmKit can deliver them', async () => {
+      mockAlarmKitAvailable = true;
+      await scheduleStepAlarm(repeating());
+      expect(scheduleNativeAlarm).toHaveBeenCalledTimes(8);
+      expect(scheduleNativeAlarm).toHaveBeenNthCalledWith(
+        1,
+        stepTimerAlarmUuid('st1', 0),
+        expect.any(Date),
+        'Sticky, Spicy Tempeh · …add 1 cup hot water every 30 minutes · 1 of 5'
+      );
+      expect(scheduleNativeAlarm).toHaveBeenNthCalledWith(8, stepTimerAlarmUuid('st1', 7), expect.any(Date), expect.stringContaining('8 of 5'));
+      expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    });
+
+    it('cancels every slot it could be holding before laying the new ones down', async () => {
+      await scheduleStepAlarm(repeating());
+      for (const slot of [0, 1, 11]) {
+        expect(cancelNativeAlarm).toHaveBeenCalledWith(stepTimerAlarmUuid('st1', slot));
+      }
+      expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('step-timer:st1#11');
+    });
+
+    it('schedules nothing while paused', async () => {
+      await scheduleStepAlarm(repeating({ startedAt: null }));
+      expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    });
+
+    it('keeps the slot-0 ids a timer that rings once has always used', () => {
+      expect(stepTimerAlarmUuid('st1')).toBe(stepTimerAlarmUuid('st1', 0));
+      expect(stepTimerAlarmUuid('st1', 1)).not.toBe(stepTimerAlarmUuid('st1', 0));
+    });
+  });
+
   it('schedules nothing in demo mode', async () => {
     setDemoModeActive(true);
     await scheduleStepAlarm(makeStepTimer());

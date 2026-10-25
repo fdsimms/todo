@@ -317,3 +317,64 @@ describe('reload', () => {
     expect(useStepTimerStore.getState().timers).toEqual([]);
   });
 });
+
+describe('repeating timers', () => {
+  const EVERY = { ...START, durationSeconds: 30 * 60, repeatTarget: 5 };
+
+  it('starts one that remembers how many rings it expects', () => {
+    const timer = useStepTimerStore.getState().start(EVERY);
+    expect(timer?.repeatTarget).toBe(5);
+    const [saved] = persisted();
+    expect(saved.kind === 'recipe' && saved.repeatTarget).toBe(5);
+  });
+
+  it('starts a plain timer when the target is not a whole number of rings', () => {
+    for (const bad of [0, -1, 2.5, 100, NaN]) {
+      const timer = useStepTimerStore.getState().start({ ...EVERY, repeatTarget: bad });
+      expect(timer).not.toBeNull();
+      expect(timer?.repeatTarget).toBeUndefined();
+    }
+  });
+
+  it('changes the target and re-arms the alarms, since how many are held depends on it', () => {
+    const timer = useStepTimerStore.getState().start(EVERY)!;
+    mockSchedule.mockClear();
+    useStepTimerStore.getState().setRepeatTarget(timer.id, 6);
+    const [saved] = useStepTimerStore.getState().timers;
+    expect(saved.kind === 'recipe' && saved.repeatTarget).toBe(6);
+    expect(mockSchedule).toHaveBeenCalledWith(expect.objectContaining({ id: timer.id, repeatTarget: 6 }));
+  });
+
+  it('refuses a target change that makes no sense, and one on a timer that rings once', () => {
+    const repeating = useStepTimerStore.getState().start(EVERY)!;
+    const plain = useStepTimerStore.getState().start(START)!;
+    useStepTimerStore.getState().setRepeatTarget(repeating.id, 0);
+    useStepTimerStore.getState().setRepeatTarget(plain.id, 4);
+    const [first, second] = useStepTimerStore.getState().timers;
+    expect(first.kind === 'recipe' && first.repeatTarget).toBe(5);
+    expect(second.kind === 'recipe' && second.repeatTarget).toBeUndefined();
+  });
+
+  it('will not add a minute, which would rewrite how many times it has rung', () => {
+    const timer = useStepTimerStore.getState().start(EVERY)!;
+    useStepTimerStore.getState().addTime(timer.id);
+    expect(useStepTimerStore.getState().timers[0].durationSeconds).toBe(30 * 60);
+  });
+
+  it('re-arms a running timer without changing it', () => {
+    const timer = useStepTimerStore.getState().start(EVERY)!;
+    mockSchedule.mockClear();
+    mockSet.mockClear();
+    useStepTimerStore.getState().rearm(timer.id);
+    expect(mockSchedule).toHaveBeenCalledTimes(1);
+    expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it('does not re-arm a paused one', () => {
+    const timer = useStepTimerStore.getState().start(EVERY)!;
+    useStepTimerStore.getState().pause(timer.id);
+    mockSchedule.mockClear();
+    useStepTimerStore.getState().rearm(timer.id);
+    expect(mockSchedule).not.toHaveBeenCalled();
+  });
+});
