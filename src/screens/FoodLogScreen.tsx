@@ -139,6 +139,13 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 
 /**
+ * How long the Food log can be away before an arrival lands back on today.
+ * Long enough to check a recipe or the meal plan mid-entry, short enough that
+ * opening it later in the day starts from today rather than a day left behind.
+ */
+const FOOD_LOG_KEEP_PLACE_MS = 10 * 60 * 1000;
+
+/**
  * A day of eating, read back.
  *
  * **One day at a time, not a week.** A food diary is answered by "what did I
@@ -438,10 +445,13 @@ export function FoodLogScreen() {
   // The screen is a hidden tab and stays mounted for the life of the session,
   // so stepping to another day and then leaving without stepping back would
   // otherwise leave it stranded there on the next visit, and so would leaving
-  // on today and coming back after midnight. Every arrival lands on today,
-  // except the one caller that names a specific day to open (`openEntry`,
-  // e.g. Meal plan's "View in food log") — that request is still pending its
-  // own effect above the first time an arrival sees it.
+  // on today and coming back after midnight. A stale arrival lands on today,
+  // at the top: one after the logical day has turned, or after
+  // FOOD_LOG_KEEP_PLACE_MS away. A quick trip to another tab (checking a
+  // recipe while filling in yesterday) comes back to the day and the scroll
+  // position it left. The one caller that names a specific day to open
+  // (`openEntry`, e.g. Meal plan's "View in food log") is still pending its own
+  // effect above the first time an arrival sees it, and wins either way.
   //
   // Read through a ref so neither caller below re-runs when `handledOpenEntry`
   // changes. As a focus-effect dependency it did: handling an `openEntry`
@@ -454,31 +464,48 @@ export function FoodLogScreen() {
   };
   const landOnTodayRef = useRef(landOnToday);
   landOnTodayRef.current = landOnToday;
+  // When and on which logical day the screen was last left, and whether the
+  // arrival under way is stale. Decided once per arrival, by whichever of the
+  // two effects below runs first, and cleared on the way out.
+  const leftAt = useRef<{ at: number; todayKey: string } | null>(null);
+  const arrivalStale = useRef<boolean | null>(null);
+  const decideArrival = () => {
+    if (arrivalStale.current === null) {
+      const left = leftAt.current;
+      arrivalStale.current = left === null
+        || Date.now() - left.at > FOOD_LOG_KEEP_PLACE_MS
+        || left.todayKey !== dayKeyOf(getCurrentDayStart());
+    }
+    return arrivalStale.current;
+  };
+  const decideArrivalRef = useRef(decideArrival);
+  decideArrivalRef.current = decideArrival;
   // Before the arrival's first frame is drawn. A blurred tab is frozen in an
   // Activity, which re-creates the hidden subtree's effects when it shows it
   // again, so this runs on every arrival from another tab as well as on mount.
   // The focus effect below runs only after that frame, which is a frame of the
   // day left behind (yesterday, after midnight) before today replaced it.
-  useLayoutEffect(() => { landOnTodayRef.current(); }, []);
+  useLayoutEffect(() => {
+    if (decideArrivalRef.current()) landOnTodayRef.current();
+  }, []);
   useFocusEffect(
     useCallback(() => {
       // Again here for an arrival that wasn't frozen (a sheet was still up as
       // the tab was left, see `shouldFreezeTab`). A no-op otherwise.
-      landOnTodayRef.current();
-      // Every arrival lands on today at the top. The list keeps the offset it
-      // was left at while the tab is blurred, and the day it comes back to can
-      // be shorter, so without this it paints scrolled off the top for a
-      // frame before the settled-scroll clamp snaps it back. Reset on the way
-      // out as well, since a blurred tab is frozen and runs nothing until it
-      // is already on screen.
-      const resetScroll = () => foodScrollControl.current?.scrollToOffset(0);
-      // Not on the first arrival: a list that has just mounted is already at
-      // the top, and a scrollTo issued before its first layout moved it
-      // instead, so the content painted off the top and snapped down a beat
-      // later on every cold start.
-      if (arrivedBefore.current) resetScroll();
+      const stale = decideArrivalRef.current();
+      if (stale) landOnTodayRef.current();
+      // A stale arrival lands at the top. The list keeps the offset it was
+      // left at while the tab is blurred, and today can be shorter than the
+      // day it was left on. Not on the first arrival: a list that has just
+      // mounted is already at the top, and a scrollTo issued before its first
+      // layout moved it instead, so the content painted off the top and
+      // snapped down a beat later on every cold start.
+      if (stale && arrivedBefore.current) foodScrollControl.current?.scrollToOffset(0);
       arrivedBefore.current = true;
-      return resetScroll;
+      return () => {
+        leftAt.current = { at: Date.now(), todayKey: dayKeyOf(getCurrentDayStart()) };
+        arrivalStale.current = null;
+      };
     }, []),
   );
 

@@ -126,6 +126,9 @@ import { TITLE_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 
+/** How long a line left by tapping outside a new event waits to be picked up. */
+const QUICK_EVENT_KEEP_TEXT_MS = 10 * 60 * 1000;
+
 const EVENT_TOKEN_ACCESSORY_ID = 'quickEventTitleTokenAccessory';
 /** Long enough that a word being typed is one request, not one per letter. */
 const PLACE_SEARCH_DEBOUNCE_MS = 350;
@@ -294,6 +297,14 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 
   // ==== the draft ====
   const [text, setText] = useState('');
+  // What was typed when the sheet was last left by the backdrop or a swipe
+  // rather than saved. A plain new-event open within QUICK_EVENT_KEEP_TEXT_MS
+  // puts it back, so brushing the backdrop doesn't cost the whole line.
+  const keptText = useRef<{ at: number; text: string } | null>(null);
+  const dismissKeepingText = () => {
+    keptText.current = !isEditing && text.trim() ? { at: Date.now(), text } : null;
+    dismiss();
+  };
   // Passed to the system sheet as typed. Nothing reads or geocodes it here;
   // it only saves retyping an address into Apple's form.
   const [location, setLocation] = useState('');
@@ -482,6 +493,12 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setArrivePickerVisible(false);
     void loadCalendars(defaults.calendarId, false);
     titleCaret.resetCaret(seededText);
+    const kept = keptText.current;
+    keptText.current = null;
+    if (kept && !seed && !editing && Date.now() - kept.at <= QUICK_EVENT_KEEP_TEXT_MS) {
+      setText(kept.text);
+      titleCaret.resetCaret(kept.text);
+    }
     setBusy(false);
     setStartOverride(
       seed?.start ?? (seed?.day ? defaultNewEventSpan(seed.day, getCurrentDayStart(), new Date()).start : null)
@@ -1276,14 +1293,14 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       visible={visible}
       animationType="none"
       transparent
-      onRequestClose={dismiss}
+      onRequestClose={dismissKeepingText}
       onShow={() => inputRef.current?.focus()}
     >
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <SheetScrim onPress={dismiss} label={isEditing ? 'Close event' : 'Close new event'} />
+      <SheetScrim onPress={dismissKeepingText} label={isEditing ? 'Close event' : 'Close new event'} />
       {keyboardHeight > 0 && (
         <View pointerEvents="none" style={[styles.keyboardBacking, { height: keyboardHeight }]} />
       )}
