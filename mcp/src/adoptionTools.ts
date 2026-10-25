@@ -413,7 +413,7 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
   {
     id: 'slot_in',
     title: 'Waiting for a lighter day',
-    benefit: 'A task or a whole category can wait for a day that isn\u2019t already full instead of piling onto a busy one. At least one waiting task still shows every day, longest wait first, and nothing waits more than 3 days.',
+    benefit: 'A task or a whole category can wait for a day that isn\u2019t already full instead of piling onto a busy one. At least one waiting task still shows every day, longest wait first, and nothing waits more than a few days (3 unless you change it).',
     since: '2026-10-19',
     evidence: ({ open, replica }) => {
       if (slotInInUse(open, replica.categories())) return null;

@@ -7793,6 +7793,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       full: weight === 'full' || weight === 'away',
       busyMinutes: BUSY_DAY_MINUTES,
       minutesOf: t => estimatedMinutesFor(t) ?? assumed,
+      maxWaitDays: settings.slotInMaxWaitDays,
     });
     // SKIP_POSTPONE: a hold is the app's decision, not the person putting
     // something off, so it must not climb toward "You've pushed this 3 times".

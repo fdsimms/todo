@@ -44,7 +44,8 @@ all-day conference.
    timer.
 2. **The floor**: the longest-waiting task always lands, even on a full day. Must-land tasks
    don't count toward it, or a task pinned every day would starve the queue.
-3. **The cap**: a task that has waited `SLOT_IN_MAX_WAIT_DAYS` (3) lands whatever the day holds.
+3. **The cap**: a task that has waited `slotInMaxWaitDays` (a setting, Settings › Tasks & projects ›
+   Longest wait; 3 by default, 1 to 14) lands whatever the day holds.
    The floor alone is not enough. `BUSY_DAY_MINUTES` is a fixed line, and for someone with a lot of
    routine every day is over it, so the queue drained one a day while weekly chores arrived faster
    and waits grew past a week. These count toward the light-day limit below.

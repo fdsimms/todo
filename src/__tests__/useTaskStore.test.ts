@@ -7118,6 +7118,7 @@ describe('a task that waits for a lighter day', () => {
       titleRules: [],
       collapsedCategories: [],
       calendarReadEnabled: false,
+      slotInMaxWaitDays: 3,
     });
     categories = [];
     const base = categoryStore.useCategoryStore.getState();

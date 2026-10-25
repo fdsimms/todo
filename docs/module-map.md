@@ -529,7 +529,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/simpleTaskForm.ts` — SIMPLE_QUICK_ADD_CHIPS, isSimpleChip
 - `src/utils/sleepLog.ts` — SleepEpisode, SleepSegment, SleepStages, SLEEP_STAGE_ORDER, SLEEP_STAGE_LABEL, parseSleepEpisodes, SleepNight, sleepNights, sleepReadings, nightsInWindow, +19 more
 - `src/utils/slipConfirm.ts` — SlipGuard, confirmSlip
-- `src/utils/slotIn.ts` — SLOT_IN_LIGHT_DAY_MAX, SLOT_IN_MAX_WAIT_DAYS, canSlotIn, effectiveSlotIn, slotInInUse, slotInFromCategory, isSlotHold, isSlotWaiting, slotWaitingTasks, slotWaitingSinceKey, +10 more
+- `src/utils/slotIn.ts` — SLOT_IN_LIGHT_DAY_MAX, DEFAULT_SLOT_IN_MAX_WAIT_DAYS, MIN_SLOT_IN_MAX_WAIT_DAYS, MAX_SLOT_IN_MAX_WAIT_DAYS, parseSlotInMaxWaitDays, canSlotIn, effectiveSlotIn, slotInInUse, slotInFromCategory, isSlotHold, +13 more
 - `src/utils/snackNudgeTasks.ts` — DEFAULT_SNACK_NUDGE_FROM_HOUR, SNACK_NUDGE_FROM_HOUR_MIN, SNACK_NUDGE_FROM_HOUR_MAX, DEFAULT_SNACK_NUDGE_SHARE_PERCENT, SNACK_NUDGE_SHARE_PERCENT_MIN, SNACK_NUDGE_SHARE_PERCENT_MAX, SNACK_NUDGE_SHARE_PERCENT_STEP, clampSnackNudgeFromHour, clampSnackNudgeSharePercent, describeSnackNudgeHour, +4 more
 - `src/utils/snoozeEngine.ts` — SnoozeSuggestion, AWAY_PENALTY, computeSnoozeSuggestion
 - `src/utils/speechSupport.ts` — dictationSupported

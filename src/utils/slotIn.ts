@@ -23,7 +23,8 @@ import type { Category, GeneratedKind, Task } from '../types';
  *
  * **Everything waiting lands within a few days.** At least one waiting task
  * shows every day, even a full one, the longest wait goes first, and nothing
- * waits more than `SLOT_IN_MAX_WAIT_DAYS`. The one-a-day floor alone wasn't
+ * waits more than the person's longest wait (`slotInMaxWaitDays`, 3 days
+ * unless they change it). The one-a-day floor alone wasn't
  * enough: for someone whose every day is over the busy line, it drained one
  * task a day while weekly chores arrived faster, and the line grew past a
  * week. A deadline always wins: a task is never held past one.
@@ -32,8 +33,24 @@ import type { Category, GeneratedKind, Task } from '../types';
 /** How many waiting tasks a day that isn't busy takes in all, counting the one that always lands. */
 export const SLOT_IN_LIGHT_DAY_MAX = 2;
 
-/** A task that has waited this many days lands whatever the day holds. */
-export const SLOT_IN_MAX_WAIT_DAYS = 3;
+/** A task that has waited this many days lands whatever the day holds, until the person picks another number. */
+export const DEFAULT_SLOT_IN_MAX_WAIT_DAYS = 3;
+
+/** Bounds for the settings stepper. */
+export const MIN_SLOT_IN_MAX_WAIT_DAYS = 1;
+export const MAX_SLOT_IN_MAX_WAIT_DAYS = 14;
+
+/**
+ * A stored longest wait back into a usable number. A missing or unreadable
+ * row reads as the default, never as NaN, which would compare false against
+ * every wait and quietly take the cap away.
+ */
+export function parseSlotInMaxWaitDays(stored: string | null | undefined): number {
+  if (stored === null || stored === undefined || stored.trim() === '') return DEFAULT_SLOT_IN_MAX_WAIT_DAYS;
+  const n = Number(stored);
+  if (!Number.isFinite(n)) return DEFAULT_SLOT_IN_MAX_WAIT_DAYS;
+  return Math.min(MAX_SLOT_IN_MAX_WAIT_DAYS, Math.max(MIN_SLOT_IN_MAX_WAIT_DAYS, Math.round(n)));
+}
 
 /**
  * The generated kinds that may wait. A generated task is usually about a
@@ -182,10 +199,10 @@ export function isSlotInCandidate(
 }
 
 /** Whether the task has waited long enough that it lands whatever the day holds. */
-function waitedTooLong(task: Task, todayKey: string): boolean {
+function waitedTooLong(task: Task, todayKey: string, maxWaitDays: number): boolean {
   const since = slotWaitingSinceKey(task);
   if (since === null) return false;
-  return differenceInCalendarDays(dayKeyToDate(todayKey), dayKeyToDate(since)) >= SLOT_IN_MAX_WAIT_DAYS;
+  return differenceInCalendarDays(dayKeyToDate(todayKey), dayKeyToDate(since)) >= maxWaitDays;
 }
 
 /** Tasks that must show today whatever the day holds. */
@@ -208,6 +225,8 @@ export interface SlotInDay {
   busyMinutes: number;
   /** A task's cost to the day: its estimate, or the stand-in for one with none. */
   minutesOf: (task: Task) => number;
+  /** Days a task may wait before it lands whatever the day holds (`slotInMaxWaitDays`). */
+  maxWaitDays: number;
 }
 
 export interface SlotInPlan {
@@ -228,7 +247,7 @@ export function compareSlotInOrder(a: Task, b: Task): number {
  * Splits today's candidates into the ones that show and the ones that wait.
  *
  * In order: everything `mustLand` names; then the longest-waiting task, which
- * always lands, and every task that has waited `SLOT_IN_MAX_WAIT_DAYS`; then,
+ * always lands, and every task that has waited `maxWaitDays`; then,
  * on a day that isn't busy, more of them up to `SLOT_IN_LIGHT_DAY_MAX` in all,
  * each only while it keeps the day under the busy line. Each one landed counts
  * toward the load the next is judged on, or one light day would collect the
@@ -250,7 +269,7 @@ export function planSlotIns(candidates: readonly Task[], day: SlotInDay): SlotIn
   for (const task of rest) {
     const cost = day.minutesOf(task);
     const fits = !day.full && waitingLanded < SLOT_IN_LIGHT_DAY_MAX && minutes + cost < day.busyMinutes;
-    if (waitingLanded === 0 || waitedTooLong(task, day.todayKey) || fits) {
+    if (waitingLanded === 0 || waitedTooLong(task, day.todayKey, day.maxWaitDays) || fits) {
       land.push(task);
       minutes += cost;
       waitingLanded += 1;
