@@ -505,6 +505,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'calendarEventCategory',
   'kitchenEnabled',
   'unitSystem',
+  'cookTextSize',
   'householdServings',
   'currencySymbol',
   // What the kitchen does after a cook and when something runs low.
