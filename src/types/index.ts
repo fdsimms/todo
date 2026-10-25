@@ -8473,6 +8473,18 @@ export interface RecipeStepTimer extends TimerClock {
    * Absent on a timer started before it existed, which falls back to the label.
    */
   stepExcerpt?: string;
+  /**
+   * Set when the step said "every 30 minutes": the timer then rings every
+   * `durationSeconds` until it is dismissed, and this is how many rings the
+   * recipe expects ("add 1 cup of water every 30 minutes for 2½ hours" is 5).
+   * It is a target for the count to be read against and never a stop: a pot
+   * that needs one more cycle gets a sixth ring and reads "6 of 5". The count
+   * itself is derived from the clock (`stepTimerRings`), never stored.
+   *
+   * Absent for a timer that rings once, which is every timer stored before
+   * this existed.
+   */
+  repeatTarget?: number;
 }
 
 /**

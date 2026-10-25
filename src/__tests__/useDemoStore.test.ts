@@ -94,7 +94,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { sharedLinkLabel } from '../utils/sharedRecipeLinks';
-import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRemaining } from '../utils/stepTimers';
+import { isRepeatingTimer, isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRemaining } from '../utils/stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
@@ -3651,6 +3651,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const step = recipe?.steps.find(s => s.id === timer.stepId);
     expect(timer.stepExcerpt).toBeTruthy();
     expect(step?.text.replace(/\s+/g, ' ')).toContain(timer.stepExcerpt!.replace(/…$/, ''));
+  });
+
+  it('seeds a paused repeating step timer on a step that says "every"', () => {
+    // Cook mode's count ("1 of 3") and the row without +1m exist only for a
+    // timer that repeats, so a demo with none reads as a build that rings once.
+    const repeating = useStepTimerStore.getState().timers.filter(isRepeatingTimer);
+    expect(repeating).toHaveLength(1);
+    const [timer] = repeating;
+    expect(isStepTimerRunning(timer)).toBe(false);
+    const recipe = useRecipeStore.getState().recipeById(timer.recipeId);
+    const step = recipe?.steps.find(s => s.id === timer.stepId);
+    expect(stepDurationOffers(step!).some(offer => offer.every && offer.seconds === timer.durationSeconds)).toBe(true);
+    expect(timer.repeatTarget).toBe(3);
+    expect(timer.stepExcerpt).toBe('…adding a splash of water every 10 minutes');
   });
 
   it('seeds a step whose timer length was set by hand, and steps that read theirs from the text', () => {

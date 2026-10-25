@@ -45,6 +45,7 @@ import { ProgressBar } from './ProgressBar';
 import { RecipeTimerRow } from './RecipeTimerRow';
 import { NumberPadAccessory } from './NumberPadAccessory';
 import { StepTimerRow } from './StepTimerRow';
+import { RepeatTimerSheet } from './RepeatTimerSheet';
 import { StepText } from './StepText';
 import { InlineAction } from './InlineAction';
 import { RecipeChoiceChips } from './RecipeChoiceChips';
@@ -57,10 +58,17 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clearCookPosition, restingCookPosition, saveCookPosition } from '../utils/cookPosition';
 import { clampStepIndex, cookNotesPanel, cookSteps, cookTextMetrics, describeStepPosition, type CookTextSize } from '../utils/cookMode';
-import { formatStepDuration, stepDurationOffers, stepTimerExcerpt, type StepDuration } from '../utils/stepTimers';
+import {
+  defaultRepeatRounds,
+  formatStepDuration,
+  repeatTimerExcerpt,
+  stepDurationOffers,
+  stepTimerExcerpt,
+  type StepDuration,
+} from '../utils/stepTimers';
 import { recipeTimerResetPrompt, showsPrepRow, startCookingPlan } from '../utils/recipeTimer';
 import {
-  applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup,
+  applyChoice, choiceGroupKey, flattenRecipeIngredients, recipeChoiceGroups, type ChoiceGroup, type FlatIngredient,
 } from '../utils/recipeComponents';
 import { ingredientHeadings } from '../utils/recipeSections';
 import { blankFillOf, describeBlankRule, recipeBlanksIn } from '../utils/recipeBlanks';
@@ -268,6 +276,18 @@ export function CookModeSheet({
     animateLayout();
     onChoicesChange(applyChoice(choices, group, optionId));
   };
+  // A checklist line only shows the option picked, so on its own "white rice"
+  // reads as an ingredient nobody offered a choice about. This is the line's
+  // own answer to that: the group it was picked from, or null for every line
+  // that isn't one of a choice's options.
+  const choiceLabels = useMemo(
+    () => new Set(choiceGroups.map(group => group.label)),
+    [choiceGroups]
+  );
+  const pickedFrom = (flat: FlatIngredient): string | null => {
+    const label = flat.ingredient.choiceGroup;
+    return label && choiceLabels.has(label) ? `Your pick from ${label}` : null;
+  };
   // Which headings each line opens: the component's name where one starts, and
   // the recipe's own section label where one does. Both are inferred from the
   // flat list rather than stored on it — see ingredientHeadings.
@@ -422,9 +442,20 @@ export function CookModeSheet({
   // looking at, and the offer is only ever made about the step on screen.
   const offers = useMemo(() => (step === null ? [] : stepDurationOffers(step)), [step]);
 
+  // "Every 30 minutes" asks how many times before it starts: a count to read
+  // the rings against, defaulted from the step's own other time (the 2½ hours
+  // it is spread across) and changed here rather than guessed at. Held as the
+  // offer itself, which is also what keeps the card's text while it fades out.
+  const [repeatOffer, setRepeatOffer] = useState<StepDuration | null>(null);
+  const repeatDefault = useMemo(
+    () => (repeatOffer ? defaultRepeatRounds(offers, repeatOffer) : null),
+    [repeatOffer, offers]
+  );
+
   // One start for the chip under the sentence and the phrase inside it.
   const startOffer = useCallback((offer: StepDuration) => {
     if (step === null) return;
+    if (offer.every) { setRepeatOffer(offer); return; }
     stepTimers.start({
       recipeId: recipe.id,
       recipeName: recipe.name,
@@ -436,6 +467,21 @@ export function CookModeSheet({
       durationSeconds: offer.seconds,
     });
   }, [step, stepTimers, recipe.id, recipe.name, index, steps.length]);
+
+  const startRepeating = useCallback((rounds: number) => {
+    if (step === null || repeatOffer === null) return;
+    stepTimers.start({
+      recipeId: recipe.id,
+      recipeName: recipe.name,
+      stepId: step.id,
+      stepLabel: describeStepPosition(index, steps.length),
+      // The words before the interval ("add 1 cup hot water every 30
+      // minutes"), where the usual excerpt is the start of the clause.
+      stepExcerpt: repeatTimerExcerpt(step.text, repeatOffer),
+      durationSeconds: repeatOffer.seconds,
+      repeatTarget: rounds,
+    });
+  }, [step, repeatOffer, stepTimers, recipe.id, recipe.name, index, steps.length]);
 
   // The whole method at once, unlike the durations above: what a line's amount
   // *means* depends on whether the method spends it in one step or several, so
@@ -669,12 +715,6 @@ export function CookModeSheet({
         {atMise ? (
           <ScrollView style={styles.stepScrollView} contentContainerStyle={styles.stepScroll}>
             <Text style={styles.miseTitle}>Mise en place</Text>
-            <Text style={styles.miseSubtitle}>
-              {steps.length > 0
-                ? 'Check each one as you set it out, before you start cooking.'
-                : 'Check each one as you set it out. This recipe has no steps yet, so add them in the recipe to read the method here.'}
-              {gatheredCount > 0 ? ` ${gatheredCount} of ${ingredients.length} out.` : ''}
-            </Text>
             {/* Where the recipe offers a choice, it's made here, as the
                 ingredients are gathered — the list below follows the pick. */}
             {choiceGroups.length > 0 && (
@@ -720,6 +760,15 @@ export function CookModeSheet({
                 </View>
               </View>
             )}
+            {/* Over the checklist rather than under the title: it tells you what
+                to do with the rows, and the choices above it are answered, not
+                checked. */}
+            <Text style={styles.miseSubtitle}>
+              {steps.length > 0
+                ? 'Check each one as you set it out, before you start cooking.'
+                : 'Check each one as you set it out. This recipe has no steps yet, so add them in the recipe to read the method here.'}
+              {gatheredCount > 0 ? ` ${gatheredCount} of ${ingredients.length} out.` : ''}
+            </Text>
             {ovenSetups.length > 0 && (
               <View style={[styles.miseCard, styles.miseOven]}>
                 {ovenSetups.map((oven, position) => {
@@ -804,6 +853,7 @@ export function CookModeSheet({
                 const last = position === ingredients.length - 1;
                 const lineKey = `${flat.recipe.id}:${flat.ingredient.id}`;
                 const lineOut = gatheredLines.has(lineKey);
+                const fromChoice = pickedFrom(flat);
                 return (
                   <View key={lineKey}>
                     {!!heading.parentSection && <Text style={styles.miseHeading}>{heading.parentSection}</Text>}
@@ -816,7 +866,7 @@ export function CookModeSheet({
                       onPress={() => toggleGathered(lineKey)}
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: lineOut }}
-                      accessibilityLabel={flat.ingredient.name}
+                      accessibilityLabel={[flat.ingredient.name, fromChoice].filter(Boolean).join(', ')}
                     >
                       <CheckPop
                         checked={lineOut}
@@ -831,6 +881,9 @@ export function CookModeSheet({
                           <Text style={styles.miseSwap} numberOfLines={1}>
                             {describeStandingSwap(flat.swappedFrom)}
                           </Text>
+                        )}
+                        {!!fromChoice && (
+                          <Text style={styles.miseSwap} numberOfLines={1}>{fromChoice}</Text>
                         )}
                         {!!flat.ingredient.prep && (
                           <Text style={styles.misePrep}>{flat.ingredient.prep}</Text>
@@ -953,9 +1006,13 @@ export function CookModeSheet({
                   {offers.map(offer => (
                     <InlineAction
                       key={`${offer.start}:${offer.seconds}`}
-                      icon="timer-outline"
-                      label={`Set a ${formatStepDuration(offer.seconds)} timer`}
-                      accessibilityLabel={`Set a ${formatStepDuration(offer.seconds)} timer for ${describeStepPosition(index, steps.length)}`}
+                      icon={offer.every ? 'repeat' : 'timer-outline'}
+                      label={offer.every
+                        ? `Repeat every ${formatStepDuration(offer.seconds)}`
+                        : `Set a ${formatStepDuration(offer.seconds)} timer`}
+                      accessibilityLabel={offer.every
+                        ? `Set a timer repeating every ${formatStepDuration(offer.seconds)} for ${describeStepPosition(index, steps.length)}`
+                        : `Set a ${formatStepDuration(offer.seconds)} timer for ${describeStepPosition(index, steps.length)}`}
                       onPress={() => startOffer(offer)}
                     />
                   ))}
@@ -1112,6 +1169,7 @@ export function CookModeSheet({
                     const rule = position > 0 && !heading.dish && !heading.parentSection && !heading.resume && !!heading.section;
                     const lineKey = `${flat.recipe.id}:${flat.ingredient.id}`;
                     const lineChecked = checkedLines.has(lineKey);
+                    const fromChoice = pickedFrom(flat);
                     return (
                       <View key={lineKey}>
                         {rule && <View style={styles.panelDivider} />}
@@ -1129,7 +1187,7 @@ export function CookModeSheet({
                           onPress={() => toggleLine(lineKey)}
                           accessibilityRole="checkbox"
                           accessibilityState={{ checked: lineChecked }}
-                          accessibilityLabel={flat.ingredient.name}
+                          accessibilityLabel={[flat.ingredient.name, fromChoice].filter(Boolean).join(', ')}
                         >
                           <CheckPop
                             checked={lineChecked}
@@ -1144,6 +1202,9 @@ export function CookModeSheet({
                               <Text style={styles.panelSwap} numberOfLines={1}>
                                 {describeStandingSwap(flat.swappedFrom)}
                               </Text>
+                            )}
+                            {!!fromChoice && (
+                              <Text style={styles.panelSwap} numberOfLines={1}>{fromChoice}</Text>
                             )}
                             {!!flat.ingredient.prep && (
                               <Text style={styles.panelPrep}>{flat.ingredient.prep}</Text>
@@ -1225,6 +1286,7 @@ export function CookModeSheet({
                     onAddTime={() => stepTimers.addTime(timer.id)}
                     onRestart={() => stepTimers.restart(timer.id)}
                     onRemove={() => stepTimers.remove(timer.id)}
+                    onSetRepeatTarget={target => stepTimers.setRepeatTarget(timer.id, target)}
                   />
                 ))}
               </ScrollView>
@@ -1338,6 +1400,18 @@ export function CookModeSheet({
       {/* Rendered inside this Modal so iOS can present it (two sibling Modals
           can't both be up). Quantities in the panel and the step text follow
           the new factor at once, since they read `scale` from the screen. */}
+      <RepeatTimerSheet
+        visible={repeatOffer !== null && visible}
+        onClose={() => setRepeatOffer(null)}
+        name="CookRepeatTimer"
+        heading={repeatOffer ? `Every ${formatStepDuration(repeatOffer.seconds)}` : ''}
+        hint={repeatDefault?.basis
+          ? `${repeatDefault.rounds} comes from the ${repeatDefault.basis.text} in this step.`
+          : 'This step names no other time, so this is a starting point.'}
+        value={repeatDefault?.rounds ?? 1}
+        confirmLabel="Start"
+        onConfirm={startRepeating}
+      />
       <CardSheet visible={textSizeOpen && visible} onClose={() => setTextSizeOpen(false)} name="CookTextSize" cardStyle={{ padding: spacing.md }}>
         <SegmentedControl
           options={COOK_TEXT_SIZE_OPTIONS}
@@ -1661,13 +1735,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.xxl,
     fontWeight: fontWeight.semibold,
+    marginBottom: spacing.xs,
   },
   miseSubtitle: {
     color: colors.textSecondary,
     fontSize: font.md,
     lineHeight: lineHeight.md,
-    marginTop: spacing.xs,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xs,
   },
   // The end screen's quieter offers, under its explanation. The primary one
   // (Log as cooked) is the footer button, where Next was.

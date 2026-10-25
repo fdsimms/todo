@@ -130,10 +130,14 @@ export function alarmChainIds(taskId: string, count: number = ALARM_MAX_RINGS): 
  * one. Namespaced with a `step:` prefix so a step timer and a task can never
  * derive the same alarm id, which would let cancelling one silence the other.
  *
- * A step timer rings once and only once: there is no chain. The whole premise
- * of `'persistent'` is a task you might ignore, and a pan does its own
- * escalating.
+ * A step timer rings once and only once, except a repeating one ("add water
+ * every 30 minutes"), which holds one alarm per upcoming ring. `slot` is the
+ * ring's place in what is armed right now (0 is the next one), not its number
+ * in the cooking: the whole set is cancelled and laid down again whenever the
+ * timer changes, so the slots are reused and a cancel can name all of them
+ * without anything stored. Slot 0 is the id a timer that rings once has
+ * always used.
  */
-export function stepTimerAlarmUuid(timerId: string): string {
-  return taskAlarmUuid(`step:${timerId}`);
+export function stepTimerAlarmUuid(timerId: string, slot: number = 0): string {
+  return taskAlarmUuid(`step:${timerId}`, slot);
 }
