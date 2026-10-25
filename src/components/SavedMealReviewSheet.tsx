@@ -31,7 +31,7 @@ import {
   type ReviewLine,
 } from '../utils/savedMealReview';
 import { confirmDiscard } from '../utils/confirmDiscard';
-import { composeFoodAmount, convertAmountNumber, foodUnitOptionsFor, largeAmountWarning, parseFoodAmount } from '../utils/foodLog';
+import { amountExample, composeFoodAmount, convertAmountNumber, foodUnitOptionsFor, largeAmountWarning, parseFoodAmount } from '../utils/foodLog';
 import { confirmLargeAmount } from '../utils/confirmLargeAmount';
 import type { FoodNutrition, MealSlot, SavedMeal, SavedMealItem } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -302,7 +302,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
                             autoCorrect={false}
                             keyboardType={usingPills ? 'decimal-pad' : 'default'}
                             inputAccessoryViewID={usingPills ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                            placeholder="Amount"
+                            placeholder={usingPills ? 'e.g. 1.5' : `e.g. ${panel ? amountExample(panel) : '1 cup'}`}
                             placeholderTextColor={colors.textTertiary}
                             accessibilityLabel={`Amount of ${line.item.label}`}
                           />
