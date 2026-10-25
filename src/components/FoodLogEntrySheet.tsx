@@ -99,6 +99,7 @@ import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { PantryAnswerField } from './PantryAnswerField';
 import { unfixableQuantityReason, weighableLine, type LineWeighing } from '../utils/ingredientGrams';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
@@ -605,6 +606,9 @@ export function FoodLogEntrySheet({
   // The open estimate's Log button, drawn at the foot of the sheet rather than
   // at the end of the card, which a long estimate pushes below the fold.
   const [estimateLog, setEstimateLog] = useState<EstimateLogAction | null>(null);
+  // The Log button is pinned to the foot of the sheet, which the keyboard covers
+  // while the description is still being typed, so it rides above it.
+  const keyboardHeight = useKeyboardHeight(estimateOpen && !!estimateLog);
   // The earlier estimated helping whose amount is being changed before it is
   // logged again (`openHelping`).
   const [amountHelping, setAmountHelping] = useState<FoodLogEntry | null>(null);
@@ -2829,7 +2833,7 @@ export function FoodLogEntrySheet({
                 rather than among the ways to find a food, because it isn't
                 one: it says what happens after a save. */}
             {estimateOpen && !!estimateLog && (
-              <View style={styles.estimateLogBar}>
+              <View style={[styles.estimateLogBar, { marginBottom: keyboardHeight }]}>
                 <TouchableOpacity
                   style={[styles.estimateLogButton, estimateLog.loading && styles.estimateLogOff]}
                   activeOpacity={interaction.activeOpacity}
