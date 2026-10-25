@@ -1964,7 +1964,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // offered only when there is a next date to move to.
   const completionMenuOffered =
     !selectionMode && !isNegative && !completing && (!showQuotaMeter || meterInteractive) &&
-    !completionLocked && !recordLog;
+    !completionLocked;
   const completionMenuRepeats = task.recurrenceType !== 'none';
   // Missed is open to a one-off task too: it closes with no successor. A
   // meal-plan task is the exception until its own day has come.
@@ -5417,7 +5417,7 @@ const TaskItemRow = React.memo(function TaskItem({
           onClose={() => setShowCompletionMenu(false)}
           onSkip={completionMenuRepeats ? () => { skipNextRecurrence(task.id); afterCompletionMenuChoice(); } : undefined}
           onMiss={canMiss ? () => handleMiss() : undefined}
-          onSomeoneElse={handleSomeoneElse}
+          onSomeoneElse={isAnsweredByRecord(task) ? undefined : handleSomeoneElse}
           takeOffCount={meterInteractive && task.progressCount > 0 ? task.progressCount : undefined}
           onTakeOff={handleQuotaUndo}
           onNextStep={chainStep && chainStepIndex < task.chainItems.length - 1
