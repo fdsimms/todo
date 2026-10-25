@@ -5,6 +5,7 @@ import { PressableScale } from './PressableScale';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, iconSize, animation } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { selectFloatingBarsTop, useFloatingBarStore } from '../store/useFloatingBarStore';
 
 export const SCROLL_TO_TOP_SIZE = 44;
 const SIZE = SCROLL_TO_TOP_SIZE;
@@ -26,6 +27,9 @@ export function ScrollToTopButton({ visible, bottom, onPress }: Props) {
   const colors = useColors();
   const { shadows } = useTheme();
   const hand = useSettingsStore(s => s.fabHand);
+  // The cooking and focus bars float across this corner, so rest above them.
+  const barsTop = useFloatingBarStore(selectFloatingBarsTop);
+  const lifted = barsTop > 0 ? Math.max(bottom, barsTop + spacing.sm) : bottom;
   const opacity = useRef(new Animated.Value(0)).current;
   // Stays mounted a beat after `visible` goes false so the fade-out can play;
   // pointerEvents drops immediately so a fading button can't still be tapped.
@@ -50,7 +54,7 @@ export function ScrollToTopButton({ visible, bottom, onPress }: Props) {
       style={[
         styles.container,
         {
-          bottom,
+          bottom: lifted,
           left: hand === 'left' ? undefined : spacing.lg,
           right: hand === 'left' ? spacing.lg : undefined,
           opacity,

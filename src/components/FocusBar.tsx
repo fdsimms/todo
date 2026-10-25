@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Text, View, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +25,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useBulkBarPresenceStore } from '../store/useBulkBarPresenceStore';
 import { useFabPresenceStore } from '../store/useFabPresenceStore';
+import { useFloatingBarStore } from '../store/useFloatingBarStore';
 import { isCookTimerRunning } from '../utils/recipeTimer';
 import { resetToFocusSession } from '../navigation/navigationRef';
 
@@ -92,6 +93,27 @@ export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
   const pause = useFocusStore(s => s.pause);
   const resume = useFocusStore(s => s.resume);
 
+  // Just above the tab bar like CookingBar, stopping short of the add button's
+  // corner when the screen has one, and one bar higher while CookingBar shows.
+  const fabShown = useFabPresenceStore(s => s.count > 0);
+  const fabHand = useSettingsStore(s => s.fabHand);
+  // CookingBar centers on the add button when there is one, which sits higher.
+  const liftStep = FLOATING_BAR_STEP + (fabShown ? FAB_CENTERED_RISE : 0);
+  const bottom = insets.bottom + barHeight + spacing.sm + (lifted ? liftStep : 0);
+  const clearance = spacing.lg + FAB_SIZE + spacing.sm - spacing.md;
+  const sideInset = fabShown ? { [fabHand === 'left' ? 'marginLeft' : 'marginRight']: clearance } : null;
+
+  // Its top edge, for the scroll-to-top button in the opposite corner to rest above.
+  const [ownHeight, setOwnHeight] = useState(0);
+  const reportBar = useFloatingBarStore(s => s.report);
+  const reporting = floating && !!session;
+  const top = bottom + ownHeight;
+  useEffect(() => {
+    if (!reporting || ownHeight === 0) return;
+    reportBar('focus', top);
+    return () => reportBar('focus', null);
+  }, [reporting, ownHeight, top, reportBar]);
+
   if (!session) return null;
 
   // Stamped on the session at start — see FocusSessionSheet's own note.
@@ -127,19 +149,10 @@ export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
       ? `+${formatStopwatch(-remaining)}`
       : formatStopwatch(remaining);
 
-  // Just above the tab bar like CookingBar, stopping short of the add button's
-  // corner when the screen has one, and one bar higher while CookingBar shows.
-  const fabShown = useFabPresenceStore(s => s.count > 0);
-  const fabHand = useSettingsStore(s => s.fabHand);
-  // CookingBar centers on the add button when there is one, which sits higher.
-  const liftStep = FLOATING_BAR_STEP + (fabShown ? FAB_CENTERED_RISE : 0);
-  const bottom = insets.bottom + barHeight + spacing.sm + (lifted ? liftStep : 0);
-  const clearance = spacing.lg + FAB_SIZE + spacing.sm - spacing.md;
-  const sideInset = fabShown ? { [fabHand === 'left' ? 'marginLeft' : 'marginRight']: clearance } : null;
-
   return (
     <View
       style={floating ? [styles.container, styles.floating, shadows.fab, { bottom }, sideInset] : styles.container}
+      onLayout={e => setOwnHeight(e.nativeEvent.layout.height)}
     >
       <TouchableOpacity
         style={styles.summary}
