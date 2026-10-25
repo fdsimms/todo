@@ -21,14 +21,19 @@ import type { Category, GeneratedKind, Task } from '../types';
  * Moving tasks while someone is looking at the list is the opposite of what
  * this is for.
  *
- * **Everything waiting eventually lands.** At least one waiting task shows
- * every day, even a full one, and the longest wait goes first, so the queue
- * drains at a day's pace no matter how busy the days are. A deadline always
- * wins: a task is never held past one.
+ * **Everything waiting lands within a few days.** At least one waiting task
+ * shows every day, even a full one, the longest wait goes first, and nothing
+ * waits more than `SLOT_IN_MAX_WAIT_DAYS`. The one-a-day floor alone wasn't
+ * enough: for someone whose every day is over the busy line, it drained one
+ * task a day while weekly chores arrived faster, and the line grew past a
+ * week. A deadline always wins: a task is never held past one.
  */
 
 /** How many waiting tasks a day that isn't busy takes in all, counting the one that always lands. */
 export const SLOT_IN_LIGHT_DAY_MAX = 2;
+
+/** A task that has waited this many days lands whatever the day holds. */
+export const SLOT_IN_MAX_WAIT_DAYS = 3;
 
 /**
  * The generated kinds that may wait. A generated task is usually about a
@@ -147,9 +152,23 @@ export function slotWaitingSinceKey(
 }
 
 /**
+ * Whether the pass let this task through on an earlier day and it is still
+ * sitting where it landed: not done yet, and not moved to a later day since.
+ * It stays on Today rather than being decided again, or each morning it would
+ * be the longest wait and take the day's one landing for itself, and nothing
+ * behind it would move until it was done.
+ */
+function landedEarlier(task: Task, todayKey: string): boolean {
+  if (!task.slotDecidedOn || task.slotDecidedOn >= todayKey || isSlotHold(task)) return false;
+  const day = effectiveDayKey(task);
+  return day !== null && day <= task.slotDecidedOn;
+}
+
+/**
  * Whether today's pass should decide this task: it can wait, it is set to,
- * its day has come, and nothing has decided it today. A defer to a later day
- * that isn't the pass's is the person's own, and the task isn't due yet.
+ * its day has come, nothing has decided it today, and it isn't still on Today
+ * from an earlier landing. A defer to a later day that isn't the pass's is the
+ * person's own, and the task isn't due yet.
  */
 export function isSlotInCandidate(
   task: Task,
@@ -157,9 +176,16 @@ export function isSlotInCandidate(
   todayKey: string,
 ): boolean {
   if (!canSlotIn(task) || !effectiveSlotIn(task, categories)) return false;
-  if (task.slotDecidedOn === todayKey) return false;
+  if (task.slotDecidedOn === todayKey || landedEarlier(task, todayKey)) return false;
   const day = effectiveDayKey(task);
   return day !== null && day <= todayKey;
+}
+
+/** Whether the task has waited long enough that it lands whatever the day holds. */
+function waitedTooLong(task: Task, todayKey: string): boolean {
+  const since = slotWaitingSinceKey(task);
+  if (since === null) return false;
+  return differenceInCalendarDays(dayKeyToDate(todayKey), dayKeyToDate(since)) >= SLOT_IN_MAX_WAIT_DAYS;
 }
 
 /** Tasks that must show today whatever the day holds. */
@@ -202,10 +228,11 @@ export function compareSlotInOrder(a: Task, b: Task): number {
  * Splits today's candidates into the ones that show and the ones that wait.
  *
  * In order: everything `mustLand` names; then the longest-waiting task, which
- * always lands so nothing waits for ever; then, on a day that isn't busy,
- * more of them up to `SLOT_IN_LIGHT_DAY_MAX` in all, each only while it keeps
- * the day under the busy line. Each one landed counts toward the load the next is judged on, or
- * one light day would collect the whole queue and stop being light.
+ * always lands, and every task that has waited `SLOT_IN_MAX_WAIT_DAYS`; then,
+ * on a day that isn't busy, more of them up to `SLOT_IN_LIGHT_DAY_MAX` in all,
+ * each only while it keeps the day under the busy line. Each one landed counts
+ * toward the load the next is judged on, or one light day would collect the
+ * whole queue and stop being light.
  */
 export function planSlotIns(candidates: readonly Task[], day: SlotInDay): SlotInPlan {
   const land: Task[] = [];
@@ -223,13 +250,26 @@ export function planSlotIns(candidates: readonly Task[], day: SlotInDay): SlotIn
   for (const task of rest) {
     const cost = day.minutesOf(task);
     const fits = !day.full && waitingLanded < SLOT_IN_LIGHT_DAY_MAX && minutes + cost < day.busyMinutes;
-    if (waitingLanded === 0 || fits) {
+    if (waitingLanded === 0 || waitedTooLong(task, day.todayKey) || fits) {
       land.push(task);
       minutes += cost;
       waitingLanded += 1;
     } else hold.push(task);
   }
   return { land, hold };
+}
+
+/**
+ * Splits tasks that became candidates after today's pass had already run (a
+ * catch-up written once the last one was done) into land and hold. Landing
+ * them would put them on Today ahead of tasks that have waited for days, so
+ * while anything is waiting they wait too, and tomorrow's pass decides them
+ * with the rest. With nothing waiting there is no one to skip ahead of.
+ */
+export function planLateArrivals(arrivals: readonly Task[], anyWaiting: boolean, todayKey: string): SlotInPlan {
+  if (!anyWaiting) return { land: [...arrivals], hold: [] };
+  const land = arrivals.filter(t => mustLand(t, todayKey));
+  return { land, hold: arrivals.filter(t => !land.includes(t)) };
 }
 
 /** The write for a task the pass lets through today. */

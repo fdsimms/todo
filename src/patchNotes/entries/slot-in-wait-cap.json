@@ -1,0 +1,1 @@
+{ "message": "Tasks set to wait for a lighter day now wait 3 days at most. A waiting task that shows up but isn't done stays on Today without blocking the next one, and new catch-up tasks wait their turn behind ones already waiting.", "date": "2026-10-25" }

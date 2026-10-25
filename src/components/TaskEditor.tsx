@@ -130,7 +130,7 @@ import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estim
 import { previewCategoryDefault, previewSeededFields } from '../utils/taskFieldDefaults';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
-import { canSlotIn, isSlotWaiting, slotInFromCategory } from '../utils/slotIn';
+import { canSlotIn, isSlotWaiting, slotInFromCategory, SLOT_IN_MAX_WAIT_DAYS } from '../utils/slotIn';
 import { PillGroup } from './PillGroup';
 import { RoutinePickerList } from './RoutinePicker';
 import { EmptyNote } from './EmptyNote';
@@ -5791,8 +5791,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 icon="hourglass-outline"
                 summary={slotInShown ? 'Wait' : 'Keep the date'}
                 hint={slotInCategory !== null
-                  ? `Wait moves this to the next day that isn’t full, but at least one waiting task still shows every day. Set for every task in ${slotInCategory}.`
-                  : "Wait moves this to the next day that isn’t full, but at least one waiting task still shows every day."}
+                  ? `Wait moves this to the next day that isn’t full, but never more than ${SLOT_IN_MAX_WAIT_DAYS} days. Set for every task in ${slotInCategory}.`
+                  : `Wait moves this to the next day that isn’t full, but never more than ${SLOT_IN_MAX_WAIT_DAYS} days.`}
                 expanded={fieldOpen('slotIn')}
                 onToggle={() => toggleField('slotIn')}
               >
