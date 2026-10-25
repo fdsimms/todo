@@ -2710,6 +2710,25 @@ export function FoodLogEntrySheet({
                 </PressableScale>
               )}
             </View>
+            {/* Under the field, not at the foot of the sheet: the keyboard is up
+                nearly every time this half is open, and a bar at the foot sat
+                behind it. */}
+            {!!allowBurst && !editing && (
+              <View style={styles.burstRow}>
+                <Text style={styles.burstLabel}>Log several</Text>
+                {burstAdded.length > 0 && (
+                  <Text style={styles.burstCount}>
+                    {burstAdded.length} added
+                  </Text>
+                )}
+                <Switch
+                  value={keepOpenAfterFoodLog}
+                  onValueChange={next => { haptics.tap(); setKeepOpenAfterFoodLog(next); }}
+                  trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+                  accessibilityLabel="Log several. Keep this open after each food"
+                />
+              </View>
+            )}
             {/* The ways to start that need no text, as one row of tiles. They
                 are only here while the field is empty: once something is typed
                 the keyboard is up and the space under the field belongs to
@@ -2821,22 +2840,6 @@ export function FoodLogEntrySheet({
                 >
                   <Text style={styles.estimateLogText}>{estimateLog.label}</Text>
                 </TouchableOpacity>
-              </View>
-            )}
-            {!!allowBurst && !editing && (
-              <View style={styles.burstFooter}>
-                <Text style={styles.burstLabel}>Log several</Text>
-                {burstAdded.length > 0 && (
-                  <Text style={styles.burstCount}>
-                    {burstAdded.length} added
-                  </Text>
-                )}
-                <Switch
-                  value={keepOpenAfterFoodLog}
-                  onValueChange={next => { haptics.tap(); setKeepOpenAfterFoodLog(next); }}
-                  trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-                  accessibilityLabel="Log several. Keep this open after each food"
-                />
               </View>
             )}
           </>
@@ -3067,7 +3070,7 @@ function makeStyles(colors: Colors) {
       textAlignVertical: 'top',
       paddingTop: spacing.xsm,
     },
-    // The "Log several" switch, a bar across the foot of the search half.
+    // Under an open estimate: the button that logs it, a bar across the foot.
     estimateLogBar: {
       paddingHorizontal: spacing.md,
       paddingTop: spacing.smd,
@@ -3084,16 +3087,17 @@ function makeStyles(colors: Colors) {
     },
     estimateLogOff: { opacity: interaction.activeOpacity * 0.6 },
     estimateLogText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
-    burstFooter: {
+    // The "Log several" switch, a card under the search field.
+    burstRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
+      marginHorizontal: spacing.md,
+      marginBottom: spacing.md,
       paddingHorizontal: spacing.md,
-      paddingTop: spacing.smd,
-      paddingBottom: spacing.lg,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.separator,
+      paddingVertical: spacing.sm,
       backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
     },
     burstLabel: { flex: 1, color: colors.text, fontSize: font.md },
     scanButton: {
