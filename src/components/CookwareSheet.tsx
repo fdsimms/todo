@@ -49,7 +49,7 @@ function TypeChip({ name, kind, onSelect, label }: {
       onSelect={key => onSelect(kindOfKey(key))}
       noun={label}
       name={`CookwareType:${name}`}
-      labelOverride={kind ? undefined : `${cookwareTypeOf(name)} (from the name)`}
+      labelOverride={kind ? undefined : cookwareTypeOf(name)}
     />
   );
 }
@@ -254,14 +254,16 @@ export function CookwareSheet({ visible, onClose }: Props) {
                       </>
                     )}
                   </View>
-                  <View style={styles.typeRow}>
-                    <TypeChip
-                      name={c.name}
-                      kind={c.kind}
-                      onSelect={kind => updateCookware(c.id, { kind })}
-                      label={`Type of ${c.name}`}
-                    />
-                  </View>
+                  {editingId === c.id && (
+                    <View style={styles.typeRow}>
+                      <TypeChip
+                        name={c.name}
+                        kind={c.kind}
+                        onSelect={kind => updateCookware(c.id, { kind })}
+                        label={`Type of ${c.name}`}
+                      />
+                    </View>
+                  )}
                 </View>
               ))}
             </View>
