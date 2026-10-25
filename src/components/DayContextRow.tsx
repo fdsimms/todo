@@ -332,6 +332,14 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition, onDire
                 <Text style={[styles.caption, styles.placeholderText]}> </Text>
                 <View style={[styles.placeholderBar, styles.placeholderCaptionBar]} />
               </View>
+              {/* The location line a real row draws under its time, for a row
+                  that had one, so this holds the same height. */}
+              {row.placeholder.withLocation && (
+                <View>
+                  <Text style={[styles.caption, styles.placeholderText]}> </Text>
+                  <View style={[styles.placeholderBar, styles.placeholderLocationBar]} />
+                </View>
+              )}
             </View>
           </View>
         </View>
@@ -576,6 +584,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   placeholderTitleBar: { width: '52%' },
   placeholderCaptionBar: { width: '34%' },
+  placeholderLocationBar: { width: '44%' },
   captionNow: {
     color: colors.accent,
     fontWeight: fontWeight.medium,

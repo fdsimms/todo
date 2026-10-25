@@ -552,15 +552,15 @@ describe('eventContextRows call and travel', () => {
 });
 
 describe('eventPlaceholderRows', () => {
-  it('makes that many blank event rows under the calendar category, with distinct keys', () => {
-    const rows = eventPlaceholderRows(2, 'Calendar');
+  it('makes one blank event row per remembered shape, under the calendar category, with distinct keys', () => {
+    const rows = eventPlaceholderRows([{ withLocation: false }, { withLocation: true }], 'Calendar');
     expect(rows).toHaveLength(2);
-    expect(rows.every(r => r.kind === 'event' && r.placeholder === true && r.category === 'Calendar')).toBe(true);
+    expect(rows.every(r => r.kind === 'event' && r.category === 'Calendar')).toBe(true);
+    expect(rows.map(r => r.placeholder)).toEqual([{ withLocation: false }, { withLocation: true }]);
     expect(new Set(rows.map(r => r.id)).size).toBe(2);
   });
 
-  it('makes none for a zero or negative count', () => {
-    expect(eventPlaceholderRows(0, 'Calendar')).toEqual([]);
-    expect(eventPlaceholderRows(-1, 'Calendar')).toEqual([]);
+  it('makes none when nothing was remembered', () => {
+    expect(eventPlaceholderRows([], 'Calendar')).toEqual([]);
   });
 });

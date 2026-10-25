@@ -480,6 +480,20 @@ export function FoodLogScreen() {
   };
   const decideArrivalRef = useRef(decideArrival);
   decideArrivalRef.current = decideArrival;
+  // The moment a place left behind goes stale, the screen resets itself while
+  // it is still hidden: back to today, at the top. Deciding only on the way
+  // back in drew one frame of the old scroll offset first, since a frozen tab
+  // runs nothing until it is already on screen. A plain timer rather than an
+  // effect for the same reason: freezing tears effects down, and this has to
+  // outlive the freeze. Cleared on the next arrival. A screen that unmounts
+  // with one pending gets a harmless no-op, since the scroll control is gone.
+  const staleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetWhileAway = () => {
+    landOnTodayRef.current();
+    if (arrivedBefore.current) foodScrollControl.current?.scrollToOffset(0);
+  };
+  const resetWhileAwayRef = useRef(resetWhileAway);
+  resetWhileAwayRef.current = resetWhileAway;
   // Before the arrival's first frame is drawn. A blurred tab is frozen in an
   // Activity, which re-creates the hidden subtree's effects when it shows it
   // again, so this runs on every arrival from another tab as well as on mount.
@@ -490,6 +504,10 @@ export function FoodLogScreen() {
   }, []);
   useFocusEffect(
     useCallback(() => {
+      if (staleTimer.current !== null) {
+        clearTimeout(staleTimer.current);
+        staleTimer.current = null;
+      }
       // Again here for an arrival that wasn't frozen (a sheet was still up as
       // the tab was left, see `shouldFreezeTab`). A no-op otherwise.
       const stale = decideArrivalRef.current();
@@ -503,8 +521,16 @@ export function FoodLogScreen() {
       if (stale && arrivedBefore.current) foodScrollControl.current?.scrollToOffset(0);
       arrivedBefore.current = true;
       return () => {
-        leftAt.current = { at: Date.now(), todayKey: dayKeyOf(getCurrentDayStart()) };
+        const now = Date.now();
+        leftAt.current = { at: now, todayKey: dayKeyOf(getCurrentDayStart()) };
         arrivalStale.current = null;
+        // Whichever comes first: the keep-place window running out, or the
+        // logical day turning over.
+        const untilNextDay = addDays(getCurrentDayStart(), 1).getTime() - now;
+        staleTimer.current = setTimeout(() => {
+          staleTimer.current = null;
+          resetWhileAwayRef.current();
+        }, Math.max(0, Math.min(FOOD_LOG_KEEP_PLACE_MS, untilNextDay)));
       };
     }, []),
   );

@@ -84,8 +84,8 @@ describe('contextSectionSummaries', () => {
   it('says nothing for a section of placeholders still waiting on the calendar', () => {
     const items = [
       header('Calendar'),
-      ctx(row('event-placeholder-0', 'event', { title: '', caption: '', placeholder: true })),
-      ctx(row('event-placeholder-1', 'event', { title: '', caption: '', placeholder: true })),
+      ctx(row('event-placeholder-0', 'event', { title: '', caption: '', placeholder: { withLocation: false } })),
+      ctx(row('event-placeholder-1', 'event', { title: '', caption: '', placeholder: { withLocation: false } })),
     ];
     expect(contextSectionSummaries(items).has('Calendar')).toBe(false);
   });

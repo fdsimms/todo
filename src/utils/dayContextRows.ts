@@ -109,12 +109,15 @@ export function startsInLabel(start: number, now: number): string | null {
 
 /**
  * Blank rows standing in for today's events until the calendar read lands on
- * a cold launch, as many as Today drew last time (`eventRowMemo.ts`), so the
- * tasks below don't jump down when the events arrive. Filed under the
- * calendar's category like the rows they stand in for.
+ * a cold launch, one per row Today drew last time and the same shape
+ * (`eventRowMemo.ts`), so the tasks below don't jump down when the events
+ * arrive. Filed under the calendar's category like the rows they stand in for.
  */
-export function eventPlaceholderRows(count: number, category: string | null): ContextRow[] {
-  return Array.from({ length: Math.max(0, count) }, (_, i) => ({
+export function eventPlaceholderRows(
+  shapes: readonly { withLocation: boolean }[],
+  category: string | null,
+): ContextRow[] {
+  return shapes.map((shape, i) => ({
     id: `event-placeholder-${i}`,
     sourceId: '',
     kind: 'event' as const,
@@ -123,7 +126,7 @@ export function eventPlaceholderRows(count: number, category: string | null): Co
     category,
     now: false,
     calendarTag: null,
-    placeholder: true,
+    placeholder: { withLocation: shape.withLocation },
   }));
 }
 

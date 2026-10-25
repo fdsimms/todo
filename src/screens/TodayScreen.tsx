@@ -2818,7 +2818,7 @@ export function TodayScreen() {
     if (calendarLoaded || calendarReadFailed) setEventReadSettled(true);
   }, [calendarLoaded, calendarReadFailed]);
   useEffect(() => {
-    if (rememberedEventRows === 0) return;
+    if (rememberedEventRows.length === 0) return;
     const timer = setTimeout(() => setEventReadSettled(true), EVENT_PLACEHOLDER_MAX_MS);
     return () => clearTimeout(timer);
   }, [rememberedEventRows]);
@@ -2869,7 +2869,7 @@ export function TodayScreen() {
       : []),
     [calendarReadEnabled, calendarLoaded, demoActive, calendarEvents, todayCalendarDayEnd]
   );
-  const showEventPlaceholders = rememberedEventRows > 0
+  const showEventPlaceholders = rememberedEventRows.length > 0
     && !eventReadSettled
     && calendarReadEnabled
     && calendarIds.length > 0
@@ -3037,12 +3037,13 @@ export function TodayScreen() {
   ]);
 
   // What the next cold launch holds space for: the event rows just drawn from
-  // a read that landed. Written as the count changes, so a day whose meetings
-  // have ended holds none.
+  // a read that landed, and which of them had a location line. Written as they
+  // change, so a day whose meetings have ended holds none.
   useEffect(() => {
     if (!calendarLoaded || !calendarReadEnabled || demoActive) return;
-    const count = contextRows.filter(r => r.kind === 'event' && !r.placeholder).length;
-    saveEventRowMemo(todayKey, count);
+    saveEventRowMemo(todayKey, contextRows
+      .filter(r => r.kind === 'event' && !r.placeholder)
+      .map(r => ({ withLocation: !!r.location })));
   }, [contextRows, calendarLoaded, calendarReadEnabled, demoActive, todayKey]);
 
   // Every row the current layout *has*, before anything the user has folded
