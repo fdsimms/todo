@@ -7,6 +7,7 @@ import {
   largeAmountWarning,
   describeFoodLogEntry,
   foodSearchKeys,
+  typedGrams,
   ESTIMATE_AMOUNTS,
   MAX_ESTIMATE_MULTIPLE,
   currentEstimateCount,
@@ -1668,5 +1669,19 @@ describe('foodSearchKeys', () => {
   it('keeps a number that is part of the name', () => {
     expect(foodSearchKeys('2% milk')).toEqual(['2% milk']);
     expect(foodSearchKeys('sugar')).toEqual(['sugar']);
+  });
+});
+
+describe('typedGrams', () => {
+  it('reads grams typed before a food', () => {
+    expect(typedGrams('10g sugar')).toBe('10');
+    expect(typedGrams('2.5 grams oat milk')).toBe('2.5');
+  });
+
+  it('reads nothing else', () => {
+    expect(typedGrams('10g')).toBeNull();
+    expect(typedGrams('2 cups sugar')).toBeNull();
+    expect(typedGrams('10 sugar')).toBeNull();
+    expect(typedGrams('gum 10g')).toBeNull();
   });
 });

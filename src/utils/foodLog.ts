@@ -894,6 +894,16 @@ export function foodSearchKeys(query: string): string[] {
 }
 
 /**
+ * The grams a search was typed with ("10g sugar", "10 grams sugar"), as the
+ * number text a gram amount holds; null when it starts with anything else, so
+ * "2 cups sugar" or "10 sugar" pre-fills nothing rather than a guess.
+ */
+export function typedGrams(query: string): string | null {
+  const match = /^\s*(\d+(?:\.\d+)?)\s*(?:g|grams?)\s+\S/i.exec(query);
+  return match ? match[1] : null;
+}
+
+/**
  * The saved meals whose name contains what was typed, for the add-food search.
  * Compared on `groceryNameKey` like the catalog rows beside them, so "Protein
  * shake" is found by "shakes". Nothing typed matches nothing: the search only

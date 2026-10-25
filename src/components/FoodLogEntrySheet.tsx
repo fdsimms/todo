@@ -66,6 +66,7 @@ import {
   parseFoodAmount,
   convertAmountNumber,
   foodSearchKeys,
+  typedGrams,
   largeAmountWarning,
   recallAmount,
   describeRecalledAmount,
@@ -818,6 +819,19 @@ export function FoodLogEntrySheet({
     setAlcohol(null);
     const weigh = candidate.kind === 'dish' && candidate.cookedGrams !== null;
     const options = candidate.kind === 'food' && candidate.panel ? foodUnitOptionsFor(candidate.panel) : [];
+    // An amount typed with the food ("10g sugar") outranks last time's.
+    const gramOption = candidate.kind === 'food' ? options.find(o => o.key === 'g') : undefined;
+    const typed = gramOption ? typedGrams(query) : null;
+    if (gramOption && typed) {
+      const start = composeFoodAmount(typed, gramOption);
+      setRecalledAmount(null);
+      pickedAmountRef.current = start;
+      setDishMeasure('servings');
+      setAmount(start);
+      setAmountUnit(gramOption.key);
+      setAmountNumber(typed);
+      return;
+    }
     const recalled = recallFor(candidate);
     setRecalledAmount(recalled?.amount ?? null);
     pickedAmountRef.current = recalled ? recalled.amount : (candidate.kind === 'dish' && !weigh ? '1' : '');
