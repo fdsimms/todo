@@ -1,7 +1,7 @@
 import type { GroceryListEntry, Task, WorkoutSet, WorkoutSetKind } from '../types';
 import type { WatchSessionInput } from '../store/useWorkoutStore';
 import type { WeightUnit } from './weightLog';
-import { completionTapFor, offersMealLogOnCompletion } from './completionTap';
+import { completionTapFor, offersMealLogOnCompletion, type CompletionTap } from './completionTap';
 import { workoutTaskEffect } from './workoutTask';
 import { storedKgFromShown } from './dumbbellLoad';
 import { WORKOUT_SET_KINDS, weightFromDisplay, weightToDisplay } from './workoutData';
@@ -240,17 +240,37 @@ export interface QuietTapWorkouts {
 }
 
 /**
- * Whether a widget tap on this task has to bring the app forward to be done
- * right: anything a tap in the app answers with a sheet, a picker, a refusal or
- * a follow-up question rather than a plain tick or one unit.
+ * Why a widget tap on this task has to bring the app forward: the tap the app
+ * would answer with (`CompletionTap`), or one of the two follow-ups a plain
+ * tick still raises there. The watch names it in the message it shows.
  */
-export function widgetTapNeedsApp(task: Task, mealLogPrompt: boolean): boolean {
+export type WidgetNeedsAppReason =
+  | Exclude<CompletionTap, 'complete' | 'log-unit'>
+  /** "Set a reminder?" after it's completed (`completionTimerMinutes`). */
+  | 'timer'
+  /** "What did you eat?" after it's completed. */
+  | 'meal-log';
+
+/**
+ * Why a widget tap on this task has to bring the app forward to be done
+ * right, or null when it can be applied quietly: anything a tap in the app
+ * answers with a sheet, a picker, a refusal or a follow-up question rather
+ * than a plain tick or one unit.
+ */
+export function widgetTapNeedsAppReason(task: Task, mealLogPrompt: boolean): WidgetNeedsAppReason | null {
   const tap = completionTapFor(task);
-  if (tap === 'log-unit') return false;
-  if (tap !== 'complete') return true;
+  if (tap === 'log-unit') return null;
+  if (tap !== 'complete') return tap;
   // Both of these still complete the task, but follow it with a question the
   // app asks in its own UI: "Set a reminder?" and "what did you eat?".
-  return Boolean(task.completionTimerMinutes) || offersMealLogOnCompletion(task, mealLogPrompt);
+  if (task.completionTimerMinutes) return 'timer';
+  if (offersMealLogOnCompletion(task, mealLogPrompt)) return 'meal-log';
+  return null;
+}
+
+/** Whether a widget tap on this task has to bring the app forward (`widgetTapNeedsAppReason`). */
+export function widgetTapNeedsApp(task: Task, mealLogPrompt: boolean): boolean {
+  return widgetTapNeedsAppReason(task, mealLogPrompt) !== null;
 }
 
 /**

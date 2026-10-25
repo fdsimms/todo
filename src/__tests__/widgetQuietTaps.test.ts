@@ -8,6 +8,7 @@ import {
   tapsToRequeue,
   tickValuesFromWatch,
   widgetTapNeedsApp,
+  widgetTapNeedsAppReason,
   workoutHandOffTaps,
   type QuietTap,
   type QuietTapWorkouts,
@@ -207,6 +208,23 @@ describe('widgetTapNeedsApp', () => {
     expect(widgetTapNeedsApp(task({ deliverableKind: 'text' }), true)).toBe(true);
     expect(widgetTapNeedsApp(task({ completionTimerMinutes: 60 }), true)).toBe(true);
     expect(widgetTapNeedsApp(task({ logMealSlot: 'lunch' }), true)).toBe(true);
+  });
+});
+
+describe('widgetTapNeedsAppReason', () => {
+  it('is null for a tap that applies quietly', () => {
+    expect(widgetTapNeedsAppReason(baseTask, true)).toBeNull();
+    expect(widgetTapNeedsAppReason(target(), true)).toBeNull();
+  });
+
+  it('names what the app would do with the tap', () => {
+    expect(widgetTapNeedsAppReason(task({ deliverableKind: 'text' }), true)).toBe('ask');
+    expect(widgetTapNeedsAppReason(task({ polarity: 'negative' }), true)).toBe('slip');
+  });
+
+  it('names the follow-up a plain tick raises in the app', () => {
+    expect(widgetTapNeedsAppReason(task({ completionTimerMinutes: 60 }), true)).toBe('timer');
+    expect(widgetTapNeedsAppReason(task({ logMealSlot: 'lunch' }), true)).toBe('meal-log');
   });
 });
 

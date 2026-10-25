@@ -259,6 +259,8 @@ struct WorkoutCurrentPage: View {
 /// The exercise, which set, the load card while it is offered, its one or
 /// two numbers (the Crown turns the outlined one; tapping the other moves the
 /// Crown to it), the set's note, and Done set with the pencil beside it.
+/// Done set, Skip and Go to the set each take double tap; only one of them is
+/// ever on screen, which is what lets them share it.
 struct WorkoutSetView: View {
     @EnvironmentObject private var store: WatchStore
     let screen: WatchWorkoutScreen
@@ -335,6 +337,9 @@ struct WorkoutSetView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(palette.done)
+                // Double tap (Series 9 and later) logs the set, so a hand
+                // holding a weight needs no finger on the screen.
+                .handGestureShortcut(.primaryAction)
                 // Dictation, as Add task on Today does.
                 TextFieldLink(prompt: Text("Note")) {
                     Image(systemName: "pencil")
@@ -568,6 +573,7 @@ struct WorkoutRestView: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(palette.done)
+                        .handGestureShortcut(.primaryAction)
                         .accessibilityLabel("Skip rest")
                     }
                 } else {
@@ -579,6 +585,7 @@ struct WorkoutRestView: View {
                         .foregroundStyle(palette.orange)
                     nextLine
                     Button("Go to the set") { store.goToSet(from: screen) }
+                        .handGestureShortcut(.primaryAction)
                 }
             }
         }

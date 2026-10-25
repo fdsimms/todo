@@ -45,11 +45,16 @@ struct WidgetTask: Codable, Identifiable {
     /// app). True when absent: a snapshot from before the field existed gets
     /// the checkbox it always had.
     let needsApp: Bool
+    /// Why `needsApp` is set (`WidgetNeedsAppReason` in the app: "ask",
+    /// "timer", "slip" and so on), which the Apple Watch says when the row is
+    /// tapped. Nil on a row that doesn't need the app, and on a snapshot from
+    /// before the field existed.
+    let needsAppReason: String?
 
     enum CodingKeys: String, CodingKey {
         case id, title, priority, pinned, dueDate, category, streakCount, recurrenceType
         case targetCount, progressCount, targetUnit, eventTitle, visibleAt
-        case reminderTime, needsApp
+        case reminderTime, needsApp, needsAppReason
     }
 
     init(from decoder: Decoder) throws {
@@ -69,6 +74,7 @@ struct WidgetTask: Codable, Identifiable {
         visibleAt = try c.decodeIfPresent(String.self, forKey: .visibleAt)
         reminderTime = try c.decodeIfPresent(String.self, forKey: .reminderTime)
         needsApp = try c.decodeIfPresent(Bool.self, forKey: .needsApp) ?? true
+        needsAppReason = try c.decodeIfPresent(String.self, forKey: .needsAppReason)
     }
 
     var reminderDate: Date? { reminderTime.flatMap(isoDate) }

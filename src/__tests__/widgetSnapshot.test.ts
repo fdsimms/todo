@@ -144,6 +144,11 @@ describe('toWidgetTask', () => {
     expect(toWidgetTask(makeTask({ deliverableKind: 'text' })).needsApp).toBe(true);
   });
 
+  it('says why a row has to open the app', () => {
+    expect(toWidgetTask(makeTask()).needsAppReason).toBeNull();
+    expect(toWidgetTask(makeTask({ deliverableKind: 'text' })).needsAppReason).toBe('ask');
+  });
+
   describe('eventTitle', () => {
     const start = new Date('2026-10-06T15:00').toISOString();
     const evt: BusyEvent = {

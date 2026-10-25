@@ -302,8 +302,14 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   than AddTaskIntent's task-title queue so it applies in order with the ticks around it).
 - **The watch pager has no visible way to its second page on its own.** Today is a scrolling
   list, so the Digital Crown scrolls it instead of paging past it, and Groceries was only
-  reachable by a vertical swipe nobody is told about. Today ends in a Groceries row that sets the
-  pager's selection (`TodoWatchApp`'s `page`). A new watch page needs an entry like that.
+  reachable by a vertical swipe nobody is told about. Today's top-leading toolbar button (a cart)
+  sets the pager's selection (`TodoWatchApp`'s `page`), and Groceries has the matching one back.
+  A new watch page needs an entry like that, in the top bar rather than a row at the end of a
+  list, which is where Add sits too: a long list put both out of reach.
+- **Double tap (`handGestureShortcut(.primaryAction)`, watchOS 11) belongs to one control per
+  screen.** Apple resolves it by a leading-to-trailing walk of the scene and says nothing about
+  two claimants, so a screen gives it to exactly one. The workout's Done set, Skip and Go to the
+  set are never on screen together, which is why all three can have it.
 - **A tap can wake the iPhone app to be applied, and that path has no React tree.** With the
   phone in reach the watch also sends each tap as a message, which (unlike the transfer) wakes
   the app in the background; the phone drops the second copy by `watchTapId`. `WatchSession`

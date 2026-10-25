@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import WatchConnectivity
+import WatchKit
 import WidgetKit
 
 // The watch app's whole model: the iPhone's latest snapshot and the taps made
@@ -149,8 +150,20 @@ final class WatchStore: NSObject, ObservableObject {
         taps.append(tap)
         WatchTapLog.save(taps)
         WidgetCenter.shared.reloadAllTimelines()
+        Self.playHaptic(for: kind)
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.undoWindow) { [weak self] in
             self?.sendDue(force: false)
+        }
+    }
+
+    /// What a tick feels like on the wrist, so a tap made without looking
+    /// says it landed: one unit of a target clicks, anything checked off
+    /// plays success. A dictated add has the dictation sheet closing to say so.
+    private static func playHaptic(for kind: String) {
+        switch kind {
+        case "unit": WKInterfaceDevice.current().play(.click)
+        case "complete", "grocery", "choose": WKInterfaceDevice.current().play(.success)
+        default: break
         }
     }
 
