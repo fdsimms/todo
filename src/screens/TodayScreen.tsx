@@ -105,7 +105,8 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
-import { createStore, useStore, type StoreApi } from 'zustand';
+import { useStore } from 'zustand';
+import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
 import { MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
 import { SuggestedPinsSheet } from '../components/SuggestedPinsSheet';
 import { MorningCheckInSheet } from '../components/MorningCheckInSheet';
@@ -140,8 +141,7 @@ import {
   type FabDropIntent,
 } from '../utils/fabDrop';
 import { SortableList } from '../components/SortableList';
-import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
-import { QuickAddModal } from '../components/QuickAddModal';
+import type { TaskDraft } from '../components/TaskEditor';
 import { InboxSortSheet } from '../components/InboxSortSheet';
 import { QuickSearchModal } from '../components/QuickSearchModal';
 import { EventImportSheet } from '../components/EventImportSheet';
@@ -943,15 +943,13 @@ export function TodayScreen() {
   );
 
   // The quick-add and editor sheets' open state lives in a store of its own
-  // per screen rather than in this component's state, and the sheets render
-  // from it through TodayQuickAddSheet / TodayEditorSheet below. Opening one
-  // then re-renders the sheet and not this whole screen (every row of the day
-  // with it) in the commit that has to mount the sheet. The setters keep their
+  // rather than in this component's state (see SheetHosts), so opening one
+  // re-renders the sheet and not this whole screen. The setters keep their
   // useState names, so every caller reads as it did.
-  const [quickAddStore] = useState(() => createStore<QuickAddSheetState>(() => QUICK_ADD_CLOSED));
+  const quickAddStore = useSheetStore<QuickAddSheetState>(QUICK_ADD_CLOSED);
   const setQuickAddVisible = useCallback((visible: boolean) => quickAddStore.setState({ visible }), [quickAddStore]);
   const setQuickAddType = useCallback((type: TaskKind) => quickAddStore.setState({ type }), [quickAddStore]);
-  const setQuickAddSeed = useCallback((seed: QuickAddSeed | undefined) => quickAddStore.setState({ seed }), [quickAddStore]);
+  const setQuickAddSeed = useCallback((seed: QuickAddSheetState['seed']) => quickAddStore.setState({ seed }), [quickAddStore]);
   const setQuickAddSeedLabel = useCallback((seedLabel: string | null) => quickAddStore.setState({ seedLabel }), [quickAddStore]);
   const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1007,7 +1005,7 @@ export function TodayScreen() {
   // while something here depends on it: the two-pane layout, which lights the
   // row being edited and shows a placeholder beside the list, and an itinerary
   // import waiting for the editor to close before opening the next entry.
-  const [editorStore] = useState(() => createStore<EditorSheetState>(() => EDITOR_CLOSED));
+  const editorStore = useSheetStore<EditorSheetState>(EDITOR_CLOSED);
   const setEditorVisible = useCallback((visible: boolean) => editorStore.setState({ visible }), [editorStore]);
   const setEditingTask = useCallback((task: Task | null) => editorStore.setState({ task }), [editorStore]);
   const setEditorInitialDraft = useCallback((draft: Partial<TaskDraft> | null) => editorStore.setState({ draft }), [editorStore]);
@@ -5840,7 +5838,7 @@ export function TodayScreen() {
           />
         )}
 
-        <TodayQuickAddSheet
+        <QuickAddSheetHost
           store={quickAddStore}
           onClose={onQuickAddClose}
           onOpenFull={onQuickAddOpenFull}
@@ -5917,7 +5915,7 @@ export function TodayScreen() {
 
         {/* A sheet over the list, unless there is room for it beside it (below). */}
         {!twoPane && (
-          <TodayEditorSheet store={editorStore} onClose={closeEditor} />
+          <EditorSheetHost store={editorStore} onClose={closeEditor} />
         )}
 
         <LazySheet open={filterVisible}>
@@ -6191,76 +6189,12 @@ export function TodayScreen() {
               subtitle="Its details open here. Tap the pencil on a task, or add a new one."
             />
           )}
-          <TodayEditorSheet store={editorStore} onClose={closeEditor} inline />
+          <EditorSheetHost store={editorStore} onClose={closeEditor} inline />
         </>
       )}
     />
   );
 }
-
-// ==== the quick-add and editor sheets, rendered from their own stores ====
-// See quickAddStore in the screen above for why they aren't screen state.
-
-type QuickAddSeed = {
-  category?: string | null;
-  groupId?: string;
-  pinned?: boolean;
-  dueDate?: string | null;
-  timeSegments?: TimeOfDay[];
-  windowStart?: string | null;
-  windowEnd?: string | null;
-};
-
-type QuickAddSheetState = {
-  visible: boolean;
-  type: TaskKind;
-  seed: QuickAddSeed | undefined;
-  seedLabel: string | null;
-};
-
-const QUICK_ADD_CLOSED: QuickAddSheetState = { visible: false, type: 'task', seed: undefined, seedLabel: null };
-
-const TodayQuickAddSheet = React.memo(function TodayQuickAddSheet({
-  store,
-  ...props
-}: { store: StoreApi<QuickAddSheetState> } & Omit<
-  React.ComponentProps<typeof QuickAddModal>,
-  'visible' | 'seed' | 'seedLabel' | 'initialType'
->) {
-  const { visible, type, seed, seedLabel } = useStore(store, useShallow(st => st));
-  return (
-    <LazySheet open={visible} warm>
-      <QuickAddModal {...props} visible={visible} seed={seed} seedLabel={seedLabel} initialType={type} />
-    </LazySheet>
-  );
-});
-
-type EditorSheetState = {
-  visible: boolean;
-  task: Task | null;
-  draft: Partial<TaskDraft> | null;
-};
-
-const EDITOR_CLOSED: EditorSheetState = { visible: false, task: null, draft: null };
-
-/** The sheet over the list, or with `inline`, the pane beside it. */
-const TodayEditorSheet = React.memo(function TodayEditorSheet({
-  store,
-  onClose,
-  inline = false,
-}: {
-  store: StoreApi<EditorSheetState>;
-  onClose: () => void;
-  inline?: boolean;
-}) {
-  const { visible, task, draft } = useStore(store, useShallow(st => st));
-  if (inline) return <TaskEditor inline visible={visible} task={task} initialDraft={draft} onClose={onClose} />;
-  return (
-    <LazySheet open={visible} warm>
-      <TaskEditor visible={visible} task={task} initialDraft={draft} onClose={onClose} />
-    </LazySheet>
-  );
-});
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },

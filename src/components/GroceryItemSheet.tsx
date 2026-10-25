@@ -8,6 +8,7 @@
 // The open-ended pill grids here go through PillGroup, which caps itself past
 // eight; see docs/arch/groceries.md for what aisles, shops and substitutes mean.
 import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { LazySheet } from './LazySheet';
 import {
   format } from 'date-fns/format';
 import {
@@ -179,7 +180,12 @@ interface Props {
  * anywhere in groceries, so deleting a catalog row is behind a confirm rather
  * than on a swipe.
  */
-export function GroceryItemSheet({
+// Memoized: a screen keeps it mounted once opened (LazySheet), and without this
+// every render of the grocery list, each check-off among them, re-rendered the
+// closed sheet and its fifty-odd store reads.
+export const GroceryItemSheet = React.memo(GroceryItemSheetBody);
+
+function GroceryItemSheetBody({
   visible, itemId, onClose, onOpenRecipe, onOpenSettings, recipeExists, initialField, inline = false,
 }: Props) {
   // ==== store bindings ====
@@ -2295,51 +2301,63 @@ export function GroceryItemSheet({
           GroceryCatalogSheet nests this sheet: a Modal presents from the view
           controller its React parent belongs to, so a sibling would be asking
           the screen's controller to present a second sheet while this one is
-          already up. */}
-      <ProductSheet
-        visible={productSheet !== null}
-        itemId={item.id}
-        editingProductId={productSheet === 'add' ? null : productSheet}
-        onClose={() => setProductSheet(null)}
-      />
-      <SubstituteSheet
-        visible={subSheet !== null}
-        itemId={item.id}
-        editingSubItemId={subSheet === 'add' ? null : subSheet}
-        onClose={() => setSubSheet(null)}
-      />
-      <MergeItemSheet
-        visible={mergeSheetOpen}
-        itemId={item.id}
-        initialPickedId={nameCollisionId}
-        onClose={() => { setMergeSheetOpen(false); setNameCollisionId(null); }}
-        onMerged={survivorId => {
-          setMergeSheetOpen(false);
-          setNameCollisionId(null);
-          // The row this sheet is open for lost the merge — nothing left to
-          // show, so the whole sheet closes rather than rendering over a
-          // deleted item.
-          if (survivorId !== item.id) onClose();
-        }}
-      />
-      <NutritionSearchSheet
-        visible={nutritionSearchOpen}
-        itemName={item.name}
-        onClose={() => setNutritionSearchOpen(false)}
-        onPick={nutrition => setItemNutrition(item.id, nutrition)}
-        onOpenSettings={entryId => {
-          setNutritionSearchOpen(false);
-          onClose();
-          onOpenSettings(entryId);
-        }}
-      />
-      <NutritionPanelSheet
-        visible={nutritionPanelOpen}
-        foodName={item.name}
-        nutrition={item.nutrition}
-        onClose={() => setNutritionPanelOpen(false)}
-        onSave={nutrition => setItemNutrition(item.id, nutrition)}
-      />
+          already up. Each mounts the first time it opens (LazySheet): most
+          opens of this sheet use none of them, and two of them sort the whole
+          catalog. */}
+      <LazySheet open={productSheet !== null}>
+        <ProductSheet
+          visible={productSheet !== null}
+          itemId={item.id}
+          editingProductId={productSheet === 'add' ? null : productSheet}
+          onClose={() => setProductSheet(null)}
+        />
+      </LazySheet>
+      <LazySheet open={subSheet !== null}>
+        <SubstituteSheet
+          visible={subSheet !== null}
+          itemId={item.id}
+          editingSubItemId={subSheet === 'add' ? null : subSheet}
+          onClose={() => setSubSheet(null)}
+        />
+      </LazySheet>
+      <LazySheet open={mergeSheetOpen}>
+        <MergeItemSheet
+          visible={mergeSheetOpen}
+          itemId={item.id}
+          initialPickedId={nameCollisionId}
+          onClose={() => { setMergeSheetOpen(false); setNameCollisionId(null); }}
+          onMerged={survivorId => {
+            setMergeSheetOpen(false);
+            setNameCollisionId(null);
+            // The row this sheet is open for lost the merge — nothing left to
+            // show, so the whole sheet closes rather than rendering over a
+            // deleted item.
+            if (survivorId !== item.id) onClose();
+          }}
+        />
+      </LazySheet>
+      <LazySheet open={nutritionSearchOpen}>
+        <NutritionSearchSheet
+          visible={nutritionSearchOpen}
+          itemName={item.name}
+          onClose={() => setNutritionSearchOpen(false)}
+          onPick={nutrition => setItemNutrition(item.id, nutrition)}
+          onOpenSettings={entryId => {
+            setNutritionSearchOpen(false);
+            onClose();
+            onOpenSettings(entryId);
+          }}
+        />
+      </LazySheet>
+      <LazySheet open={nutritionPanelOpen}>
+        <NutritionPanelSheet
+          visible={nutritionPanelOpen}
+          foodName={item.name}
+          nutrition={item.nutrition}
+          onClose={() => setNutritionPanelOpen(false)}
+          onSave={nutrition => setItemNutrition(item.id, nutrition)}
+        />
+      </LazySheet>
       <NumberPadAccessory />
     </ItemSheetModal>
   );
