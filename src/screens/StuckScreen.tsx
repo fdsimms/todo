@@ -171,6 +171,8 @@ export function StuckScreen() {
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
+  // Stable, so the closed (memoized) editor doesn't re-render with this screen.
+  const closeTaskEditor = useCallback(() => setEditorVisible(false), []);
   const [breakdownId, setBreakdownId] = useState<string | null>(null);
   // The blocker whose completion is waiting on an answer — a task that asks
   // one when it's ticked off (Task.deliverableKind) must ask here too, or
@@ -588,7 +590,7 @@ export function StuckScreen() {
         <TaskEditor
           visible={editorVisible}
           task={editingTask}
-          onClose={() => setEditorVisible(false)}
+          onClose={closeTaskEditor}
         />
       </LazySheet>
       {shownBreakdownId && (

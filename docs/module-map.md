@@ -21,6 +21,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/activityRings.ts` — ActivityRing, RingId, ActivityRings, RING_META, RING_ORDER, parseActivitySummary, ringFraction, isRingClosed, describeRing, ringsAccessibilityLabel, +1 more
 - `src/utils/adaptiveExpenditure.ts` — EXPENDITURE_WINDOW_DAYS, MIN_EXPENDITURE_DAYS, MIN_EXPENDITURE_WEIGH_INS, MIN_EXPENDITURE_SPAN_DAYS, KCAL_PER_KG, MeasuredExpenditure, ExpenditureShortfall, ExpenditureImplausible, ExpenditureResult, measuredExpenditure, +2 more
 - `src/utils/adaptiveExpenditureRead.ts` — readMeasuredExpenditure, measuredMaintenanceKcal
+- `src/utils/afterPaint.ts` — DeferredHandle, TRANSITION_SETTLE_MS, runAfterPaint, runAfterTransition
 - `src/utils/agendaSpeech.ts` — AGENDA_SPEECH_RATE, speakAgenda, stopSpeakingAgenda
 - `src/utils/agentCatalogRevert.ts` — CATALOG_REVERT_FIELDS, CatalogItemSnapshot, catalogSnapshot, catalogRevertOf, deletedItemRevert, CatalogRecordState, CatalogRecordPlan, catalogRecordPlan
 - `src/utils/agentNotes.ts` — AGENT_NOTES_KEY, AGENT_NOTES_LIMIT, AGENT_NOTE_MAX_LENGTH, AgentNote, parseAgentNotes, AgentNoteChange, addAgentNote, editAgentNote, removeAgentNote, readAgentNotes, +1 more

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { InteractionManager } from 'react-native';
 import { useSheetMount } from '../hooks/useSheetMount';
+import { runAfterTransition } from '../utils/afterPaint';
 
 /**
  * Mounts a sheet the first time it opens, and keeps it from then on.
@@ -45,7 +45,7 @@ export function LazySheet({
     // Effects run again each time a frozen tab comes back; once warmed there
     // is nothing left to schedule.
     if (!warm || warmed) return;
-    const handle = InteractionManager.runAfterInteractions(() => setWarmed(true));
+    const handle = runAfterTransition(() => setWarmed(true));
     return () => handle.cancel();
   }, [warm, warmed]);
   return opened || warmed ? <>{children}</> : null;
