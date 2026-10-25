@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import type { FoodLogEntry } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -25,6 +25,7 @@ import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -229,6 +230,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
                   value={fieldText}
                   onChangeText={text => { setTyped(text); }}
                   keyboardType="decimal-pad"
+                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   returnKeyType="done"
                   selectTextOnFocus
                   placeholder="e.g. 150"
@@ -302,6 +304,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
           </Text>
         </View>
       </View>
+      <NumberPadAccessory />
     </CardSheet>
   );
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, type GestureResponderEvent, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, Platform, type GestureResponderEvent, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Reanimated, { useAnimatedStyle, useSharedValue, withSequence, withSpring } from 'react-native-reanimated';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -9,6 +9,7 @@ import { parseISO } from 'date-fns/parseISO';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { CardSheet, type CardAnchor, type CloseCard } from '../components/CardSheet';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { PressableScale } from '../components/PressableScale';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { EmptyNote } from '../components/EmptyNote';
@@ -715,6 +716,7 @@ export function RewardsScreen() {
           placeholder="e.g. 4.50"
           placeholderTextColor={colors.textTertiary}
           keyboardType="decimal-pad"
+          inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
           returnKeyType="done"
           accessibilityLabel="Price in dollars"
         />
@@ -759,6 +761,7 @@ export function RewardsScreen() {
           placeholder="Cost in coins"
           placeholderTextColor={colors.textTertiary}
           keyboardType="number-pad"
+          inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
           returnKeyType="done"
           accessibilityLabel="Cost in coins"
         />
@@ -1173,6 +1176,7 @@ export function RewardsScreen() {
               placeholder="e.g. 20"
               placeholderTextColor={colors.textTertiary}
               keyboardType="decimal-pad"
+              inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               returnKeyType="done"
               accessibilityLabel="Weekly reward budget"
             />
@@ -1193,6 +1197,7 @@ export function RewardsScreen() {
               placeholder="e.g. 8.875"
               placeholderTextColor={colors.textTertiary}
               keyboardType="decimal-pad"
+              inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               returnKeyType="done"
               accessibilityLabel="Sales tax percent"
             />
@@ -1413,6 +1418,7 @@ export function RewardsScreen() {
       />
       <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
+      <NumberPadAccessory />
     </View>
   );
 }

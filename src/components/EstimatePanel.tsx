@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -9,6 +10,7 @@ import {
 } from 'react-native';
 import { subDays } from 'date-fns/subDays';
 import { useColors } from '../theme/ThemeContext';
+import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, EXTERNAL_NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
@@ -1019,6 +1021,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                 value={amount.weight}
                 onChangeText={text => editPending({ weight: text })}
                 keyboardType="decimal-pad"
+                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 selectTextOnFocus
                 placeholder="Amount"
                 placeholderTextColor={colors.textTertiary}
@@ -1068,6 +1071,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                   value={fieldText}
                   onChangeText={text => editPending({ typed: text })}
                   keyboardType="decimal-pad"
+                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   selectTextOnFocus
                   placeholder="Amount"
                   placeholderTextColor={colors.textTertiary}
@@ -1128,6 +1132,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                 value={fieldText}
                 onChangeText={text => editPending({ typed: text })}
                 keyboardType="decimal-pad"
+                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 selectTextOnFocus
                 placeholder="Or enter a percent"
                 placeholderTextColor={colors.textTertiary}

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
@@ -74,6 +75,7 @@ export function MaxHeartRateSheet({ visible, onClose }: Props) {
             placeholder="Beats per minute"
             placeholderTextColor={colors.textTertiary}
             keyboardType="number-pad"
+            inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
             autoFocus
             returnKeyType="done"
             onSubmitEditing={save}
@@ -90,6 +92,7 @@ export function MaxHeartRateSheet({ visible, onClose }: Props) {
               : `Leave it empty for no zones. With a year of birth in Settings › Apple Health, it uses ${AGE_ESTIMATE_BASE} minus your age instead.`}
           </HelpText>
         </View>
+        <NumberPadAccessory />
       </View>
     </CardSheet>
   );
