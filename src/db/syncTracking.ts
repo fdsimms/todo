@@ -343,6 +343,10 @@ export const SYNC_EXCLUDED_TABLES = [
   // signal, and a cache believed only against a fingerprint of ingredient
   // lines (utils/recipeEstimateQueue.ts) that another device may have edited.
   'pending_recipe_estimates',
+  // Alarms (see Alarm in types). An alarm belongs to the phone it rings on: a
+  // nap alarm set on the phone must not also ring on the iPad, and a device
+  // that turns one off says nothing about another's.
+  'alarms',
 ] as const;
 
 /**

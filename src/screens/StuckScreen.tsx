@@ -21,6 +21,9 @@ import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSetting
 import { EmptyState } from '../components/EmptyState';
 import { TaskGroupTray } from '../components/TaskGroupTray';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
+import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
+import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
+import { hasMission } from '../utils/missions';
 import { PostponeCheckActions, type PostponeCheckAction } from '../components/PostponeCheckBanner';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { usePullToSearch } from '../hooks/usePullToSearch';
@@ -177,6 +180,9 @@ export function StuckScreen() {
   // one when it's ticked off (Task.deliverableKind) must ask here too, or
   // finishing it from this screen quietly loses the answer.
   const [promptTask, setPromptTask] = useState<Task | null>(null);
+  // Only for a blocker with a mission: the queue's mission sheet checks it off,
+  // and asks its question after, which this screen's own prompt can't.
+  const { enqueue, queueProps } = useAnswerFirstCompletion();
   // Both sheets hold their subject so they can close through `visible`
   // rather than by leaving the tree while still on screen. See
   // useSheetSubject.
@@ -281,6 +287,11 @@ export function StuckScreen() {
   }, [updateTask, setLastAction]);
 
   const finishBlocker = (blocker: Task) => {
+    if (hasMission(blocker)) {
+      haptics.tap();
+      enqueue([blocker.id]);
+      return;
+    }
     if (asksOnCompletion(blocker)) {
       haptics.tap();
       setPromptTask(blocker);
@@ -575,6 +586,7 @@ export function StuckScreen() {
           onCancel={() => setPromptTask(null)}
         />
       )}
+      <DeliverablePromptQueue {...queueProps} />
 
       <LazySheet open={editorVisible} warm>
         <TaskEditor

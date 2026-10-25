@@ -72,6 +72,8 @@ export interface TaskSummaryInput {
   phone?: string;
   email?: string;
   asks?: DeliverableKind;
+  /** The mission to do before it can be checked off, described ("20 pushups"). See Task.mission. */
+  mission?: string;
 }
 
 const PROPER_FIRST_WORD = new Set([
@@ -219,6 +221,11 @@ function opensSentence(i: TaskSummaryInput): Clause[] {
 }
 
 function finishSentence(i: TaskSummaryInput): Clause[] {
+  const pushups = i.mission ? v(i.mission, 'mission') : null;
+  if (pushups && i.asks) {
+    return [[w('takes '), pushups, w(' and asks for '), v(ASKS[i.asks], 'deliverable'), w(' when you check it off')]];
+  }
+  if (pushups) return [[w('takes '), pushups, w(' to check off')]];
   return i.asks ? [[w('asks for '), v(ASKS[i.asks], 'deliverable'), w(' when you check it off')]] : [];
 }
 

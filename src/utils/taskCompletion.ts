@@ -65,6 +65,7 @@ import { parseMealSlotSource, mealSlotStepTimeSegments } from './mealSlotTasks';
 import { derivedId, spawnSeed } from './syncIds';
 import { advanceQuotaRamp } from './quotaRamp';
 import { newTaskFromDraft, buildSeriesRow } from './taskDraft';
+import { describeMission, hasMission, normalizeMission } from './missions';
 
 /** The five things a caller can say about a completion. Identical to `completeTask`'s. */
 export interface CompletionOptions {
@@ -106,6 +107,11 @@ export interface CompletionOptions {
    * one) is offered a day as for any other completion.
    */
   byOther?: boolean;
+  /**
+   * The task's mission was done (see missions.ts). Set only by the mission
+   * sheet; see `completionRefusal` for why nothing else completes one.
+   */
+  missionDone?: boolean;
   completedAt?: string;
   /**
    * Confirmed override for an `'hours'` recurrence's own not-yet-due lock
@@ -185,6 +191,15 @@ export interface CompletionRows {
  *   lock a caller can confirm past with `options.logEarly` — see
  *   `CompletionOptions.logEarly`.
  */
+/**
+ * Whether this completion would check off a task without doing its mission:
+ * true for any completion of one except the counter's own, a missed mark, or
+ * one somebody else did.
+ */
+export function missionOwed(task: Task, options?: Pick<CompletionOptions, 'missed' | 'byOther' | 'missionDone'>): boolean {
+  return hasMission(task) && !options?.missed && !options?.byOther && !options?.missionDone;
+}
+
 export function completionRefusal(task: Task, options?: CompletionOptions): string | null {
   if (task.completed) return 'That task is already completed.';
   if (isNegativeTask(task)) {
@@ -194,6 +209,12 @@ export function completionRefusal(task: Task, options?: CompletionOptions): stri
   // nothing recorded. A missed mark claims nothing and still goes through.
   if (isAnsweredByRecord(task) && !options?.missed && !options?.recorded) {
     return 'That task is answered by saving the entry it asks for, so it has no manual completion. Record the entry instead.';
+  }
+  // The mission is the completion, so only the sheet that ran it can
+  // make one. A missed mark and "someone else did it" claim nothing about
+  // the mission and say so in the record, so they still go through.
+  if (missionOwed(task, options)) {
+    return `That task is checked off by doing its mission (${describeMission(normalizeMission(task.mission)!)}), which only the phone can count. Ask the person to check it off on their phone, or mark it missed.`;
   }
   if (isRecurrenceNotYetDue(task)) {
     if (task.recurrenceType === 'hours' && options?.logEarly) return null;

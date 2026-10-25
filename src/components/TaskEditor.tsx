@@ -90,7 +90,7 @@ import {
 import {
   HEALTH_TARGET_LABELS, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES, describeHealthGoalAmount, followsRingGoal,
 } from '../utils/healthTarget';
-import type { HealthTargetMetric } from '../types';
+import type { AlarmMission, HealthTargetMetric } from '../types';
 import { editorRowShown, featureShown, hiddenResultsNote, taskKindsForMode } from '../utils/simpleMode';
 import { QUOTA_RAMP_MAX_EVERY, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_TARGET, canRampQuota, describeQuotaRamp } from '../utils/quotaRamp';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
@@ -119,6 +119,10 @@ import { logSlotToMealSlot, slotForHour } from '../utils/mealLog';
 import { categoryLabel } from '../utils/categoryLabel';
 import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useShallow } from 'zustand/react/shallow';
+import { useAlarmStore } from '../store/useAlarmStore';
+import { describeSound } from '../utils/alarmSounds';
+import { NEXT_ALARM_LINK } from '../utils/morningAlarm';
+import { alarmAlertTitle } from '../utils/alarms';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
 import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate, getCurrentLogicalDayKey } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
@@ -200,11 +204,14 @@ import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 import { TaskCheckbox } from './TaskCheckbox';
 import { LazySheet } from './LazySheet';
+import { RingtonePickerSheet } from './RingtonePickerSheet';
 import { NewSavedMealSheet } from './NewSavedMealSheet';
 import { ProgressBar } from './ProgressBar';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { describeMission, normalizeMission } from '../utils/missions';
+import { MissionPicker } from './MissionPicker';
 import { RotatingChevron } from './RotatingChevron';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
@@ -385,7 +392,7 @@ function serializeExtraRows(rows: readonly MedicationExtraRow[]): string {
     .map(r => [r.name.trim(), r.amount.trim(), r.unit]));
 }
 
-type FieldKey = 'kind' | 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication' | 'logMealSlot' | 'slotIn' | 'placeReminder';
+type FieldKey = 'kind' | 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'mission' | 'logHealthValue' | 'medication' | 'logMealSlot' | 'slotIn' | 'placeReminder';
 
 // "If the day is full" (Task.slotIn). Keep the date first: it is what every
 // task does unless told otherwise.
@@ -782,6 +789,12 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [deferUntil, setDeferUntil] = useState<Date | null>(null);
   const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [reminderKind, setReminderKind] = useState<ReminderKind>('notification');
+  // What an alarm reminder rings with (Task.alarmSound); kept while the kind
+  // isn't an alarm and only saved with one.
+  const [alarmSound, setAlarmSound] = useState<string | null>(null);
+  const [ringtonesOpen, setRingtonesOpen] = useState(false);
+  const alarmSounds = useAlarmStore(useShallow(st => st.sounds));
+  const editorAlarms = useAlarmStore(useShallow(st => st.alarms));
   const [reminderOffsetDays, setReminderOffsetDays] = useState<number | null>(null);
   const [reminderTracksVisibility, setReminderTracksVisibility] = useState(false);
   const [reminderTimeAnchor, setReminderTimeAnchor] = useState<'wallClock' | 'fixed'>('wallClock');
@@ -838,8 +851,13 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // in the draft; save turns it into a post or a withdrawal.
   const [bounty, setBounty] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  // Tomorrow's alarm (Task.alarmLink, morningAlarm.ts).
+  const [alarmLink, setAlarmLink] = useState<string | null>(null);
+  const [alarmLinkLeavesOpen, setAlarmLinkLeavesOpen] = useState(false);
+  const [showAlarmLinkPicker, setShowAlarmLinkPicker] = useState(false);
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
   const [completionTimerNote, setCompletionTimerNote] = useState<string | null>(null);
+  const [mission, setMission] = useState<AlarmMission | null>(null);
   const [logHealthMetric, setLogHealthMetric] = useState<NutrientKey | null>(null);
   const [logHealthAmount, setLogHealthAmount] = useState<number | null>(null);
   // Display-only, and not read from the task: logHealthAmount is always held
@@ -1280,6 +1298,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setReminderKind(task.reminderKind ?? 'notification');
+      setAlarmSound(task.alarmSound ?? null);
+      setRingtonesOpen(false);
       setReminderOffsetDays(task.reminderOffsetDays ?? null);
       setReminderTracksVisibility(task.reminderTracksVisibility ?? false);
       setReminderTimeAnchor(task.reminderTimeAnchor ?? 'wallClock');
@@ -1321,8 +1341,12 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setStreakCountsUnits(task.streakCountsUnits ?? false);
       setLinkUrl(task.linkUrl ?? null);
+      setAlarmLink(task.alarmLink ?? null);
+      setAlarmLinkLeavesOpen(task.alarmLinkLeavesOpen ?? false);
+      setShowAlarmLinkPicker(false);
       setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
       setCompletionTimerNote(task.completionTimerNote ?? null);
+      setMission(normalizeMission(task.mission));
       setLogHealthMetric(task.logHealthMetric ?? null);
       setLogHealthAmount(task.logHealthAmount ?? null);
       setMedicationName(task.medicationName ?? null);
@@ -1361,7 +1385,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setAttachments([]); setReminderPlaceId(null); setReminderPlaceOn('arrive'); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind(initialDraft?.reminderKind ?? 'notification'); setReminderTimeAnchor(initialDraft?.reminderTimeAnchor ?? 'wallClock'); setReminderOffsetDays(initialDraft?.reminderOffsetDays ?? null); setReminderTracksVisibility(initialDraft?.reminderTracksVisibility ?? false); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind(initialDraft?.reminderKind ?? 'notification'); setAlarmSound(null); setRingtonesOpen(false); setReminderTimeAnchor(initialDraft?.reminderTimeAnchor ?? 'wallClock'); setReminderOffsetDays(initialDraft?.reminderOffsetDays ?? null); setReminderTracksVisibility(initialDraft?.reminderTracksVisibility ?? false); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1395,8 +1419,12 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setShowStreak(initialDraft?.polarity === 'negative');
       setStreakRequiresWindow(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
+      setAlarmLink(null);
+      setAlarmLinkLeavesOpen(false);
+      setShowAlarmLinkPicker(false);
       setCompletionTimerMinutes(initialDraft?.completionTimerMinutes ?? null);
       setCompletionTimerNote(initialDraft?.completionTimerNote ?? null);
+      setMission(null);
       setLogHealthMetric(initialDraft?.logHealthMetric ?? null);
       setLogHealthAmount(initialDraft?.logHealthAmount ?? null);
       setMedicationName(initialDraft?.medicationName ?? null);
@@ -1501,6 +1529,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       deferUntil: task?.deferUntil ?? null,
       reminderTime: task ? (task.reminderTime ?? null) : (initialDraft?.reminderTime?.toISOString() ?? null),
       reminderKind: task?.reminderKind ?? 'notification',
+      alarmSound: task?.reminderKind === 'alarm' || task?.reminderKind === 'persistent' ? (task.alarmSound ?? null) : null,
       reminderOffsetDays: task?.reminderOffsetDays ?? null,
       reminderTracksVisibility: task?.reminderTracksVisibility ?? false,
       reminderTimeAnchor: task?.reminderTimeAnchor ?? 'wallClock',
@@ -1553,8 +1582,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
       streakCountsUnits: task?.streakCountsUnits ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
+      alarmLink: task?.alarmLink ?? null,
+      alarmLinkLeavesOpen: task?.alarmLinkLeavesOpen ?? false,
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
       completionTimerNote: task ? (task.completionTimerNote ?? null) : (initialDraft?.completionTimerNote ?? null),
+      mission: task ? normalizeMission(task.mission) : null,
       logHealthMetric: task ? (task.logHealthMetric ?? null) : (initialDraft?.logHealthMetric ?? null),
       logHealthAmount: task ? (task.logHealthAmount ?? null) : (initialDraft?.logHealthAmount ?? null),
       medicationName: task ? (task.medicationName ?? null) : (initialDraft?.medicationName ?? null),
@@ -2319,6 +2351,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
+      alarmSound: reminderTime && (reminderKind === 'alarm' || reminderKind === 'persistent') ? alarmSound : null,
       reminderOffsetDays,
       reminderTracksVisibility,
       reminderTimeAnchor,
@@ -2396,8 +2429,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       streakRequiresWindow: recurrenceType !== 'none' && streakRequiresWindow,
       streakCountsUnits: recurrenceType !== 'none' && quotaPeriod === 'week' && targetCount !== null && streakCountsUnits,
       linkUrl: resolveLinkUrl(),
+      alarmLink,
+      alarmLinkLeavesOpen: alarmLink !== null && alarmLinkLeavesOpen,
       completionTimerMinutes,
       completionTimerNote,
+      mission,
       logHealthMetric,
       logHealthAmount,
       medicationName: resolveMedicationName(),
@@ -3277,6 +3313,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
+      alarmSound: reminderTime && (reminderKind === 'alarm' || reminderKind === 'persistent') ? alarmSound : null,
       reminderOffsetDays,
       reminderTracksVisibility,
       reminderTimeAnchor,
@@ -3300,8 +3337,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       streakRequiresWindow,
       streakCountsUnits,
       linkUrl,
+      alarmLink,
+      alarmLinkLeavesOpen: alarmLink !== null && alarmLinkLeavesOpen,
       completionTimerMinutes,
       completionTimerNote,
+      mission,
       logHealthMetric,
       logHealthAmount,
       medicationName,
@@ -3760,6 +3800,14 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ')
     : undefined;
   const linkValue = knownLinkAppFor(linkUrl)?.name ?? (linkUrl ?? undefined);
+  const alarmLinkValue = alarmLink === null
+    ? undefined
+    : alarmLink === NEXT_ALARM_LINK
+      ? 'Tomorrow’s alarm'
+      : (() => {
+          const a = editorAlarms.find(x => x.id === alarmLink);
+          return a ? alarmAlertTitle(a) : 'Tomorrow’s alarm';
+        })();
   const workoutValue = workoutProgramId
     ? workoutPrograms.find(p => p.id === workoutProgramId)?.name ?? 'A deleted program'
     : workoutRoutineId
@@ -3793,6 +3841,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     phone: phoneNumber ?? undefined,
     email: emailAddress ?? undefined,
     asks: deliverableKind ?? undefined,
+    mission: mission ? describeMission(mission) : undefined,
   });
 
   const openField = (key: FieldKey) => {
@@ -3829,6 +3878,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     phone: () => { setPhoneText(phoneNumber ?? ''); setShowPhoneField(true); },
     email: () => { setEmailText(emailAddress ?? ''); setShowEmailField(true); },
     deliverable: () => openField('deliverable'),
+    mission: () => openField('mission'),
   };
   const openFromSummary = (key: string) => {
     setRowsMounted(true);
@@ -3979,6 +4029,14 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           {/* Each picker below mounts the first time it opens in this editing
               session, rather than all sixteen in the commit that opens the
               editor, which most edits then never touch. See LazySheet. */}
+          <LazySheet open={ringtonesOpen}>
+            <RingtonePickerSheet
+              visible={visible && ringtonesOpen}
+              value={alarmSound}
+              onChange={setAlarmSound}
+              onClose={() => setRingtonesOpen(false)}
+            />
+          </LazySheet>
           <LazySheet open={pickerMode !== 'none'}>
             <RemindMePicker
               visible={pickerMode !== 'none'}
@@ -6110,7 +6168,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           },
           {
             key: 'remindMe', label: 'Remind me', set: !!reminderTime,
-            keywords: ['reminder', 'notification', 'notify', 'alert', 'alarm', 'ping', 'time'],
+            keywords: ['reminder', 'notification', 'notify', 'alert', 'alarm', 'ping', 'time', 'ringtone', 'sound'],
             node: (
               <>
             <EditorRow
@@ -6130,6 +6188,14 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTracksVisibility(false); setReminderTimeAnchor('wallClock'); setReminderTouched(true); } : undefined}
             />
+            {!!reminderTime && (reminderKind === 'alarm' || reminderKind === 'persistent') && (
+              <EditorRow
+                icon="musical-note-outline"
+                label="Ringtone"
+                value={describeSound(alarmSound, alarmSounds)}
+                onPress={() => setRingtonesOpen(true)}
+              />
+            )}
             {/* An alarm rings through AlarmKit, which has its own permission. */}
             <RemindersOffNote
               enabled={visible && !!reminderTime && reminderKind !== 'alarm'}
@@ -8017,6 +8083,64 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             ),
           }] : []),
           {
+            key: 'alarmLink', label: 'Alarm', set: alarmLink !== null || showAlarmLinkPicker,
+            keywords: ['alarm', 'wake', 'morning', 'tomorrow', 'set alarm', 'bedtime'],
+            node: (
+              <>
+            <EditorRow
+              icon="alarm-outline"
+              label="Alarm"
+              hint="Show tomorrow’s alarm on the task, to keep it or change its time."
+              value={alarmLinkValue}
+              expanded={showAlarmLinkPicker}
+              onPress={() => setShowAlarmLinkPicker(v => !v)}
+              onClear={alarmLink ? () => { setAlarmLink(null); setShowAlarmLinkPicker(false); } : undefined}
+            />
+            {showAlarmLinkPicker && (
+              <View style={styles.workoutPicker}>
+                <PillGroup
+                  noun="alarm"
+                  options={[
+                    {
+                      key: '__none__', label: 'None', pinned: true, selected: alarmLink === null,
+                      onPress: () => { haptics.tap(); setAlarmLink(null); setShowAlarmLinkPicker(false); },
+                    },
+                    {
+                      key: NEXT_ALARM_LINK, label: 'Tomorrow’s alarm', pinned: true, selected: alarmLink === NEXT_ALARM_LINK,
+                      onPress: () => { haptics.tap(); setAlarmLink(NEXT_ALARM_LINK); },
+                    },
+                    ...editorAlarms.filter(a => !a.quick).map(a => ({
+                      key: a.id,
+                      label: `${alarmAlertTitle(a)} · ${formatTimeOfDay(new Date(2000, 0, 1, a.hour, a.minute), use24HourTime)}`,
+                      selected: alarmLink === a.id,
+                      onPress: () => { haptics.tap(); setAlarmLink(a.id); },
+                    })),
+                  ]}
+                />
+                <HelpText style={styles.workoutPickerHint}>
+                  Tomorrow’s alarm is whichever of your alarms rings first that morning.
+                </HelpText>
+                {alarmLink !== null && (
+                  <TouchableOpacity
+                    style={styles.alarmLinkToggleRow}
+                    onPress={() => { haptics.tap(); setAlarmLinkLeavesOpen(v => !v); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: !alarmLinkLeavesOpen }}
+                  >
+                    <View style={styles.alarmLinkToggleText}>
+                      <Text style={styles.alarmLinkToggleLabel}>Check off when the alarm is set</Text>
+                      <HelpText style={styles.workoutPickerHint}>Keeping or changing the alarm checks off the task. Off, you check it off yourself.</HelpText>
+                    </View>
+                    <Toggle value={!alarmLinkLeavesOpen} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+              </>
+            ),
+          },
+          {
             key: 'link', label: 'Link', set: !!linkUrl || showLinkPicker,
             keywords: ['url', 'website', 'open', 'app', 'address'],
             node: (
@@ -8305,6 +8429,26 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               )}
             </CollapsibleField>
               </>
+            ),
+          },
+          // Gates the tick itself: checking the task off opens the mission,
+          // and completeTask refuses any other way of completing it. Mostly
+          // wanted with an alarm reminder, which then rings back every 15
+          // seconds after Stop until it's done (see utils/missions.ts).
+          {
+            key: 'mission', label: 'Mission', set: mission !== null,
+            keywords: ['mission', 'pushup', 'push-up', 'exercise', 'alarm', 'wake', 'dismiss', 'challenge', 'workout', 'proximity'],
+            node: (
+              <CollapsibleField
+                label="Mission"
+                icon="barbell-outline"
+                summary={mission ? describeMission(mission) : undefined}
+                hint="Checking this off opens the mission, and it’s done once the mission is. An alarm on this task rings again every 15 seconds after you stop it, until then."
+                expanded={fieldOpen('mission')}
+                onToggle={() => toggleField('mission')}
+              >
+                <MissionPicker value={mission} onChange={setMission} />
+              </CollapsibleField>
             ),
           },
           // Another "what does completing this mean" question, and — like
@@ -9184,6 +9328,9 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   workoutNewRow: { flexDirection: 'row', marginTop: spacing.smd },
   workoutPickerHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xs, marginBottom: spacing.smd },
+  alarmLinkToggleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingVertical: spacing.xs },
+  alarmLinkToggleText: { flex: 1, minWidth: 0 },
+  alarmLinkToggleLabel: { color: colors.text, fontSize: font.md },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,

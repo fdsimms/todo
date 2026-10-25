@@ -11,6 +11,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import type { Task } from '../types';
+import { hasMission } from '../utils/missions';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -118,15 +119,20 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
                           >
                             <Ionicons name="close" size={iconSize.sm} color={colors.red} />
                           </TouchableOpacity>
-                          <TouchableOpacity hitSlop={8}
-                            style={[styles.choiceBtn, styles.choiceBtnYes]}
-                            activeOpacity={interaction.activeOpacity}
-                            onPress={() => answerYes(task)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Did ${task.title}`}
-                          >
-                            <Ionicons name="checkmark" size={iconSize.sm} color={colors.done} />
-                          </TouchableOpacity>
+                          {/* Yesterday's mission can't be done now, and
+                              completeTask refuses a tick the mission didn't
+                              make, so a task with one offers only the miss. */}
+                          {!hasMission(task) && (
+                            <TouchableOpacity hitSlop={8}
+                              style={[styles.choiceBtn, styles.choiceBtnYes]}
+                              activeOpacity={interaction.activeOpacity}
+                              onPress={() => answerYes(task)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Did ${task.title}`}
+                            >
+                              <Ionicons name="checkmark" size={iconSize.sm} color={colors.done} />
+                            </TouchableOpacity>
+                          )}
                         </View>
                       </View>
                       {i < group.tasks.length - 1 && <View style={styles.sep} />}

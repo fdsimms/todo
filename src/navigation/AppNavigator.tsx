@@ -82,6 +82,7 @@ import { LogMealPrompt } from '../components/LogMealPrompt';
 import { HealthWriteRefusedNotice } from '../components/HealthWriteRefusedNotice';
 import { LogMealEntrySheet } from '../components/LogMealEntrySheet';
 import { CookRecap } from '../components/CookRecap';
+import { AlarmMissionHost } from '../components/AlarmMissionHost';
 import { WorkoutModeHost } from '../components/WorkoutModeHost';
 import { CookingBar } from '../components/CookingBar';
 import { FocusFloatingBar } from '../components/FocusBar';
@@ -743,6 +744,9 @@ export default function AppNavigator() {
             useKeyboardInsetScroll, which needs a navigation object. Mounted
             once so a task row on any screen opens the one sheet. */}
         <WorkoutModeHost />
+        {/* The mission an alarm is owed (missions.ts), over whatever screen is
+            up. Mounted once for the reason workout mode is. */}
+        <AlarmMissionHost />
         {/* The cook recap and the use-up leftover sheet, for the same reason:
             both render CookwareWeighIn, whose CookwareSheet is an EditorSheet
             and so reads a navigation object. Mounted once, here, rather than

@@ -1,6 +1,7 @@
 import type { Task } from '../types';
 import { asksOnCompletion } from './deliverables';
 import { isRecurrenceNotYetDue } from './visibilityUtils';
+import { hasMission } from './missions';
 
 /**
  * Which tasks in a set would lose an answer if the set were completed in one
@@ -36,6 +37,28 @@ import { isRecurrenceNotYetDue } from './visibilityUtils';
  */
 export function tasksAskingOnCompletion(tasks: readonly Task[]): Task[] {
   return tasks.filter(t => !t.completed && !isRecurrenceNotYetDue(t) && asksOnCompletion(t));
+}
+
+/**
+ * The tasks here that have a mission (`Task.mission`), in the
+ * order given, with the same two guards as `tasksAskingOnCompletion`.
+ *
+ * Unlike a question these have no "complete anyway": `completeTask` refuses
+ * one its mission didn't check off, so a bulk path that completed them with
+ * the rest would leave them open with nothing said. They always go to the
+ * mission instead (`DeliverablePromptQueue`, which runs them one at a time).
+ */
+export function tasksWithMission(tasks: readonly Task[]): Task[] {
+  return tasks.filter(t => !t.completed && !isRecurrenceNotYetDue(t) && hasMission(t));
+}
+
+/**
+ * Whether a path completing this one task with a person present hands it to
+ * the queue (`useAnswerFirstCompletion`'s `enqueue`) rather than calling
+ * `completeTask` itself: a question to ask, or a mission to do.
+ */
+export function completesThroughQueue(task: Task): boolean {
+  return asksOnCompletion(task) || hasMission(task);
 }
 
 /** What the confirm says, for `count` tasks that would go unanswered. */

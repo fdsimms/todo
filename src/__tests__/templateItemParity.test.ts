@@ -100,12 +100,18 @@ const NOT_SEEDED: Record<string, string[]> = {
   // A saved place is the person's own, synced in settings, and a template run
   // on another install would name a place that isn't there.
   'a place among the person\'s own saved places': ['reminderPlaceId', 'reminderPlaceOn'],
+  // A template has no alarm reminder to ring (reminderKind isn't offered
+  // either), so it has nothing a sound could belong to.
+  'rings only with an alarm reminder': ['alarmSound'],
+  // Alarms are device-only, so a template can't name one, and "tomorrow's
+  // alarm" is set on the task it's needed on.
+  'an alarm on one phone': ['alarmLink', 'alarmLinkLeavesOpen'],
   'not offered on a template yet': [
     'showStreak', 'streakRequiresWindow', 'streakCountsUnits', 'deadlineMonthDay', 'deadlineOnCalendar', 'logCompletionToCalendar',
     'reminderKind', 'reminderTracksVisibility', 'reminderTimeAnchor', 'quotaIntervalMinutes', 'quotaAlwaysVisible', 'quotaRestAfterLog', 'quotaLoggedDayKey',
     'timedMinutes', 'followUpTaskEveryN', 'followUpTaskTitle', 'followUpTaskDraft', 'followUpTaskOneAtATime',
     'followUpTaskAtEnd', 'seriesMonthDays', 'seriesRepeatMonths', 'seriesDefaults', 'slipAllowance',
-    'quotaRampHits', 'medicationExtras',
+    'quotaRampHits', 'medicationExtras', 'mission',
   ],
 };
 

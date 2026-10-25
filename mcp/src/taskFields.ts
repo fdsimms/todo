@@ -20,6 +20,7 @@
  * templatePlan.ts gives.
  */
 import type {
+  AlarmMission,
   ChainItem,
   DeliverableKind,
   Difficulty,
@@ -42,6 +43,8 @@ import { isRotationTask, MAX_ROTATION_PER_WEEK, MIN_ROTATION_ITEMS, rotationItem
 import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
 import { canWaitForWeather } from '../../src/utils/weatherCondition';
 import { isSlotHold } from '../../src/utils/slotIn';
+import { PUSHUP_MAX_COUNT } from '../../src/utils/pushupCounter';
+import { normalizeMission } from '../../src/utils/missions';
 import { formatSunAnchor, parseSunAnchor, SUN_OFFSET_LIMIT } from '../../src/utils/sunTimes';
 import { localDateInput } from './timeZone';
 
@@ -277,6 +280,12 @@ export interface TaskFieldsInput {
   weatherWait?: WeatherConditionInput | null;
   pinned?: boolean;
   pinEachOccurrence?: boolean;
+  /**
+   * What has to be done on the phone before the task can be checked off (a
+   * pushup count today). Only the phone can run it, so a task with one can't
+   * be completed from here. null removes it.
+   */
+  mission?: AlarmMission | null;
   deliverableKind?: DeliverableKind | null;
   deliverableOptions?: string[];
   repeat?: RepeatInput;
@@ -508,6 +517,12 @@ export function taskFieldsPatch(
   }
   if (input.pinned !== undefined) patch.pinned = input.pinned;
   if (input.pinEachOccurrence !== undefined) patch.pinEachOccurrence = input.pinEachOccurrence;
+  if (input.mission !== undefined) {
+    const mission = input.mission === null ? null : normalizeMission(input.mission);
+    if (input.mission !== null && (mission === null || mission.count !== input.mission.count)) {
+      errors.push(`mission must be { kind: 'pushups', count } with a whole count from 1 to ${PUSHUP_MAX_COUNT}, or null.`);
+    } else patch.mission = mission;
+  }
   if (input.deliverableKind !== undefined) {
     if (input.deliverableKind !== null && !DELIVERABLE_KINDS.includes(input.deliverableKind)) {
       errors.push(`deliverableKind must be one of ${DELIVERABLE_KINDS.join(', ')}, or null.`);

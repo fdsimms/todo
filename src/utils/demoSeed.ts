@@ -119,6 +119,7 @@ import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
 import { generateId } from './id';
 import { writeAgentNotes } from './agentNotes';
+import { useAlarmStore } from '../store/useAlarmStore';
 
 // Seeds a whole plausible-looking task list into whatever database is
 // currently active. Demo mode points the db at a throwaway file first (see
@@ -1227,6 +1228,45 @@ export function seedDemoData(): void {
     reminderTime: setHours(addDays(today, 1), 8).toISOString(),
     reminderKind: 'persistent',
     effort: 1,
+  });
+
+  // The same alarm with pushups to do before it can be checked off
+  // (Task.mission). Seeded for the same reason: nothing on the row
+  // says a task can ask for pushups until one does.
+  addTask({
+    title: 'Get up',
+    notes: 'Rings until 20 pushups are counted.',
+    category: 'Health',
+    dueDate: addDays(today, 1).toISOString(),
+    reminderTime: setHours(addDays(today, 1), 7).toISOString(),
+    reminderKind: 'persistent',
+    mission: { kind: 'pushups', count: 20 },
+    // A built-in tone, so the editor's Ringtone row under Remind me shows one.
+    alarmSound: 'rise',
+    effort: 1,
+  });
+
+  // A task pointing at tomorrow's alarm (Task.alarmLink), so its row shows
+  // the Wake up alarm below and opens the card to keep or change it.
+  addTask({
+    title: 'Set alarm for morning',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    alarmLink: 'next',
+    effort: 1,
+  });
+
+  // An alarm of its own (not a task) with a mission, so the Alarms &
+  // Reminders screen shows what one looks like. Through the store, which puts
+  // nothing on the device in demo mode (syncAlarmToDevice).
+  useAlarmStore.getState().saveAlarm({
+    label: 'Wake up',
+    hour: 7,
+    minute: 0,
+    repeatDays: [1, 2, 3, 4, 5],
+    mission: { kind: 'pushups', count: 20 },
+    // A built-in tone, so the editor's Ringtone row shows one picked.
+    sound: 'chime',
   });
 
   // --- A task given several dates (a series) -------------------------------

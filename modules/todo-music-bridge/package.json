@@ -1,0 +1,7 @@
+{
+  "name": "todo-music-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module that picks a song from the Apple Music library and plays it, for an alarm's wake-up song.",
+  "main": "index.ts",
+  "private": true
+}

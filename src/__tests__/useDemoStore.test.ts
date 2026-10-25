@@ -13,6 +13,7 @@ import { listItemFinder } from '../utils/listMode';
 import { splitIngredientAnd } from '../utils/recipeUtils';
 import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
+import { useAlarmStore } from '../store/useAlarmStore';
 import { useDemoStore } from '../store/useDemoStore';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { isCleanToday, isFailedToday } from '../utils/negativeHabits';
@@ -332,6 +333,17 @@ jest.mock('../utils/notifications', () => ({
 // Same reason: useTaskStore.ts reaches calendarSync.ts (real react-native
 // import) both directly (deleteCalendarEvent) and via deadlineCalendarSync.ts
 // (syncDeadlineEvent).
+// The native alarm bridge doesn't load under Jest, and demo mode puts nothing
+// on the device anyway (syncAlarmToDevice).
+jest.mock('../utils/alarmSoundDevice', () => ({
+  pickSoundFile: jest.fn().mockResolvedValue({ status: 'canceled' }),
+  installImportedSound: jest.fn().mockResolvedValue(false),
+  removeImportedSound: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('../utils/alarmSchedule', () => ({
+  syncAlarmToDevice: jest.fn().mockResolvedValue(false),
+  removeAlarmFromDevice: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('../utils/calendarSync', () => ({
   deleteCalendarEvent: jest.fn().mockResolvedValue(undefined),
 }));
@@ -1534,6 +1546,24 @@ describe('demo mode', () => {
     expect(persistent.length).toBeGreaterThan(0);
     // A reminder kind only means anything with a time attached to it.
     expect(persistent.every(t => t.reminderTime !== null)).toBe(true);
+  });
+
+  it('seeds an alarm of its own, with a mission', () => {
+    useDemoStore.getState().enterDemoMode();
+    const alarms = useAlarmStore.getState().alarms;
+
+    expect(alarms.some(a => a.mission?.kind === 'pushups' && a.repeatDays.length > 0)).toBe(true);
+    expect(alarms.some(a => a.sound === 'chime')).toBe(true);
+    expect(useTaskStore.getState().tasks.some(t => t.alarmLink === 'next')).toBe(true);
+  });
+
+  it('seeds an alarm that takes pushups to check off', () => {
+    useDemoStore.getState().enterDemoMode();
+    const pushups = useTaskStore.getState().tasks.filter(t => t.mission);
+
+    expect(pushups.length).toBeGreaterThan(0);
+    expect(pushups.every(t => t.reminderKind === 'persistent')).toBe(true);
+    expect(pushups.some(t => t.alarmSound === 'rise')).toBe(true);
   });
 
   it('seeds a reminder set as "N days before due" rather than a fixed instant', () => {

@@ -1,6 +1,7 @@
 import type { Task } from '../types';
 import { deliverableKindFor } from './deliverables';
 import { isQuotaTask } from './visibilityUtils';
+import { hasMission } from './missions';
 
 /**
  * `isGroceriesUrl` and `groceriesUrlShop` from deepLinks.ts, passed in rather
@@ -45,7 +46,7 @@ export function tripTasksToComplete(
     if (!url || !links.isGroceriesUrl(url)) return false;
     const stop = links.groceriesUrlShop(url);
     if (stop !== null && stop !== shopId) return false;
-    if (task.polarity === 'negative' || isQuotaTask(task) || deliverableKindFor(task) !== null) return false;
+    if (task.polarity === 'negative' || isQuotaTask(task) || deliverableKindFor(task) !== null || hasMission(task)) return false;
     return isVisible(task);
   });
 }

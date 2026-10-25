@@ -663,7 +663,7 @@ export function CalendarScreen() {
     } else if (tap === 'complete') {
       haptics.success();
       completeTask(task.id);
-    } else if (tap === 'ask') {
+    } else if (tap === 'ask' || tap === 'mission') {
       haptics.tap();
       enqueue([task.id]);
     } else {

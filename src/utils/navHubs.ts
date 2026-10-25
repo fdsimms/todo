@@ -280,8 +280,8 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
     destination: {
       route: 'Reminders',
       icon: 'alarm-outline',
-      label: 'Reminders',
-      keywords: ['upcoming', 'alerts', 'notifications', 'alarm'],
+      label: 'Alarms & Reminders',
+      keywords: ['upcoming', 'alerts', 'notifications', 'clock', 'wake up', 'nap', 'mission', 'pushups'],
     },
   },
   // Every task the app writes without being asked, and the switch for each.

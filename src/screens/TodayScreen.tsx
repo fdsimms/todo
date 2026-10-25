@@ -77,7 +77,6 @@ import {
 import { nutrientsCoveredByTasks } from '../utils/nutrientTaskBar';
 import { dragRange } from '../utils/reorder';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
-import { asksOnCompletion } from '../utils/deliverables';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -233,7 +232,7 @@ import { openElsewhereResult } from '../navigation/openSearchResult';
 import type { ElsewhereResult } from '../utils/searchElsewhere';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useScreenSettings } from '../hooks/useScreenSettings';
-import { stackCompletionScope } from '../utils/bulkCompletion';
+import { completesThroughQueue, stackCompletionScope } from '../utils/bulkCompletion';
 import { animateLayout } from '../utils/layoutAnimation';
 import { projectMoveTargets } from '../utils/projectList';
 import { emitNowTick } from '../utils/nowTick';
@@ -1357,7 +1356,7 @@ export function TodayScreen() {
           useTaskStore.getState().logQuotaUnit(id);
           return;
         }
-        if (asksOnCompletion(task)) {
+        if (completesThroughQueue(task)) {
           enqueue([id]);
           return;
         }
