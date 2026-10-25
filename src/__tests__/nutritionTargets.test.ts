@@ -5,7 +5,9 @@ import {
   activeLimits,
   describeAgainstTarget,
   describeLimit,
+  describeLimitFigures,
   describeLimitImpact,
+  limitImpactLabel,
   limitImpact,
   limitStatus,
   limitsShownOnToday,
@@ -292,6 +294,12 @@ describe('limitImpact', () => {
     const [impact] = limitImpact({ satFatG: 6 }, { satFatG: 12 }, targets, [...limits]);
     expect(impact).toMatchObject({ after: 18, status: 'over', crosses: true });
     expect(describeLimitImpact(impact)).toBe('Puts you at 18 of 16g saturated fat, 2g over');
+  });
+
+  it('gives a row its figures and name without the sentence around them', () => {
+    const [impact] = limitImpact({ satFatG: 6 }, { satFatG: 12 }, targets, [...limits]);
+    expect(describeLimitFigures(impact)).toBe('18 of 16g');
+    expect(limitImpactLabel(impact)).toBe('Saturated fat');
   });
 
   it('does not call a day already over a crossing', () => {

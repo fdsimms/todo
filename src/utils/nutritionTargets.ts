@@ -474,6 +474,21 @@ export function describeLimitImpact(impact: LimitImpact): string {
 }
 
 /**
+ * "16.8 of 16 g", the figures half of `describeLimitImpact` for a row that
+ * already names the nutrient in its own label and says "over" by colour.
+ */
+export function describeLimitFigures(impact: LimitImpact): string {
+  const shownAfter = displayFigure(impact.key, impact.after).value;
+  const shownTarget = displayFigure(impact.key, impact.target);
+  return `${shownAfter.toLocaleString()} of ${shownTarget.value.toLocaleString()}${shownTarget.suffix}`;
+}
+
+/** The nutrient's own name for a row label: "Saturated fat", or "Alcohol" for drinks. */
+export function limitImpactLabel(impact: LimitImpact): string {
+  return impact.key === 'alcoholG' ? 'Alcohol' : NUTRIENT_LABEL[impact.key].label;
+}
+
+/**
  * What the Food log's totals card shows before "Show every nutrient" is
  * tapped, on an install that has never chosen otherwise — the same pair the
  * card always showed before this was configurable.
