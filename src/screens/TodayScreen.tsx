@@ -5111,9 +5111,8 @@ export function TodayScreen() {
     }] : []),
     // Suggested pins and starting a focus session live in the "…" menu now (two
     // more icon-only buttons on a screen whose job is the list). A *running*
-    // focus session keeps its header button whatever the mode says, the same
-    // call the recipe-timer dot on the More tab makes about `kitchenEnabled`:
-    // only starting a new one is tucked away.
+    // focus session keeps its header button whatever the mode says: only
+    // starting a new one is tucked away.
     ...(viewMode === 'today' && focusSession
       ? [{
           icon: 'hourglass-outline' as const,

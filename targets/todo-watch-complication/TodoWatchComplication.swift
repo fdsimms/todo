@@ -1,8 +1,9 @@
 import SwiftUI
 import WidgetKit
 
-// The watch face complication: how many of today's tasks are left, and the
-// next one.
+// The watch face complications: how many of today's tasks are left and the
+// next one, and how many groceries are left to buy. Each opens the watch app
+// on its own page (`WatchLink`, read by TodoWatchApp's onOpenURL).
 //
 // It reads what the watch app keeps in the watch's App Group: the snapshot
 // (widget_data.json, through the shared TodoWidgetData.swift) and the taps made
@@ -43,7 +44,7 @@ struct ComplicationProvider: TimelineProvider {
             guard let snapshot, !snapshot.isStale(at: date) else {
                 return ComplicationEntry(date: date, remaining: nil, next: nil)
             }
-            let open = snapshot.todayRows(at: date).filter { !local.isDone($0) }
+            let open = snapshot.todayRows(at: date).filter { !local.isDone($0) && !local.isDeferred($0) }
             return ComplicationEntry(date: date, remaining: open.count, next: open.first?.title)
         }
     }
@@ -54,7 +55,9 @@ struct ComplicationView: View {
     let entry: ComplicationEntry
 
     var body: some View {
-        content.containerBackground(for: .widget) { Color.clear }
+        content
+            .containerBackground(for: .widget) { Color.clear }
+            .widgetURL(WatchLink.today)
     }
 
     private var count: String {
@@ -113,7 +116,136 @@ struct ComplicationView: View {
     }
 }
 
+// ==== Groceries ====
+
+struct GroceryEntry: TimelineEntry {
+    let date: Date
+    /// Nil before the phone has sent a grocery list, shown as a dash.
+    let remaining: Int?
+    let listName: String?
+    /// The first few rows still to buy, for the rectangular family.
+    let next: [String]
+}
+
+struct GroceryProvider: TimelineProvider {
+    func placeholder(in context: Context) -> GroceryEntry {
+        GroceryEntry(date: Date(), remaining: 4, listName: "Groceries", next: ["Milk", "Eggs", "Bread"])
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (GroceryEntry) -> Void) {
+        completion(Self.entry(at: Date()))
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<GroceryEntry>) -> Void) {
+        // Nothing here changes with the clock: every new snapshot and every
+        // tap reloads it, as with the Today one.
+        completion(Timeline(entries: [Self.entry(at: Date())], policy: .never))
+    }
+
+    private static func entry(at date: Date) -> GroceryEntry {
+        guard let list = loadWidgetSnapshot().snapshot?.groceries?.lists.first else {
+            return GroceryEntry(date: date, remaining: nil, listName: nil, next: [])
+        }
+        let local = LocalTapState(WatchTapLog.load())
+        let open = local.visibleRows(list).filter { !local.isChecked($0, listId: list.id) }
+        return GroceryEntry(
+            date: date,
+            remaining: local.remaining(list),
+            listName: list.name,
+            next: open.prefix(3).map(\.name)
+        )
+    }
+}
+
+struct GroceryComplicationView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: GroceryEntry
+
+    var body: some View {
+        content
+            .containerBackground(for: .widget) { Color.clear }
+            .widgetURL(WatchLink.groceries)
+    }
+
+    private var count: String {
+        entry.remaining.map { "\($0)" } ?? "–"
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch family {
+        case .accessoryCircular:
+            ZStack {
+                AccessoryWidgetBackground()
+                VStack(spacing: 0) {
+                    Image(systemName: "cart")
+                        .font(.caption)
+                    Text(count)
+                        .font(.headline)
+                }
+            }
+        case .accessoryCorner:
+            Image(systemName: "cart")
+                .widgetLabel(entry.remaining.map { "\($0) to buy" } ?? "Groceries")
+        case .accessoryInline:
+            Text(inlineText)
+        default:
+            VStack(alignment: .leading, spacing: 2) {
+                Text(headline)
+                    .font(.headline)
+                    .widgetAccentable()
+                if !entry.next.isEmpty {
+                    Text(entry.next.joined(separator: ", "))
+                        .font(.body)
+                        .lineLimit(2)
+                } else if entry.remaining == nil {
+                    Text("Open dundundun on your iPhone")
+                        .font(.footnote)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var headline: String {
+        guard let remaining = entry.remaining else { return "Groceries" }
+        return remaining == 0 ? "Nothing to buy" : "\(remaining) to buy"
+    }
+
+    private var inlineText: String {
+        guard let remaining = entry.remaining else { return "Groceries" }
+        return remaining == 1 ? "1 item to buy" : "\(remaining) items to buy"
+    }
+}
+
+// ==== The bundle ====
+
+/// Where a complication opens the watch app. The watch app's own scheme,
+/// registered in its Info.plist (`watchInfoPlist` in plugins/withWatchApp.js).
+enum WatchLink {
+    static let today = URL(string: "dundundun://watch/today")!
+    static let groceries = URL(string: "dundundun://watch/groceries")!
+}
+
 @main
+struct TodoWatchComplications: WidgetBundle {
+    var body: some Widget {
+        TodoWatchComplication()
+        GroceryComplication()
+    }
+}
+
+struct GroceryComplication: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "TodoWatchGroceries", provider: GroceryProvider()) { entry in
+            GroceryComplicationView(entry: entry)
+        }
+        .configurationDisplayName("Groceries")
+        .description("How many items are left on your grocery list.")
+        .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline, .accessoryCorner])
+    }
+}
+
 struct TodoWatchComplication: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "TodoWatchToday", provider: ComplicationProvider()) { entry in

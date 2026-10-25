@@ -1,7 +1,10 @@
 import type { GroceryListEntry, Task, WorkoutSet, WorkoutSetKind } from '../types';
 import type { WatchSessionInput } from '../store/useWorkoutStore';
 import type { WeightUnit } from './weightLog';
-import { completionTapFor, offersMealLogOnCompletion } from './completionTap';
+import { completionTapFor, offersMealLogOnCompletion, type CompletionTap } from './completionTap';
+import { getLogicalTomorrow } from './dateUtils';
+import { scheduleMoveUpdates } from './taskMoves';
+import { deliverableKindFor, deliverableOptionsFor, normalizeDeliverableValue } from './deliverables';
 import { workoutTaskEffect } from './workoutTask';
 import { storedKgFromShown } from './dumbbellLoad';
 import { WORKOUT_SET_KINDS, weightFromDisplay, weightToDisplay } from './workoutData';
@@ -44,8 +47,11 @@ export interface QuietTap {
    * widget sends these for every target row, so a run of taps is a run of
    * units), `grocery` puts an item in the cart on one list, `choose` picks one
    * option of an either/or on one list (the others come off it), and
-   * `groceryAdd` adds `title` to one list. Only the Apple Watch sends the last
-   * two: the widget draws no checkbox on an either/or and has no text entry.
+   * `groceryAdd` adds `title` to one list, `defer` moves a task to
+   * tomorrow, and `answer` completes a task with the answer to its question
+   * (`answer`, absent for "complete without an answer"). Only the Apple Watch
+   * sends the last four: the widget draws no checkbox on an either/or, has no
+   * text entry, no swipe and no way to ask.
    */
   kind: QuietTapKind;
   /**
@@ -58,6 +64,8 @@ export interface QuietTap {
   id: string;
   /** The words to add, for `groceryAdd` only. */
   title?: string;
+  /** The answer as said on the watch, for `answer` only; absent when it was completed without one. */
+  answer?: string;
   /** The grocery list the row was on; null is the home list. Tasks carry null. */
   listId: string | null;
   /** When the tap happened, ISO. */
@@ -136,13 +144,13 @@ export interface QuietTap {
  * watch dealt with a workout the phone asked it to retract, named by `id`).
  */
 export type QuietTapKind =
-  | 'complete' | 'unit' | 'grocery' | 'choose' | 'groceryAdd'
+  | 'complete' | 'unit' | 'grocery' | 'choose' | 'groceryAdd' | 'defer' | 'answer'
   | 'set' | 'restAdd' | 'restSkip' | 'finish' | 'watchSession'
   | 'setNote' | 'addSet' | 'addExercise' | 'moveExercise' | 'superset' | 'useSuggestion'
   | 'measuring' | 'healthWorkout' | 'healthRetracted';
 
 const QUIET_TAP_KINDS: readonly QuietTapKind[] = [
-  'complete', 'unit', 'grocery', 'choose', 'groceryAdd', 'set', 'restAdd', 'restSkip', 'finish', 'watchSession',
+  'complete', 'unit', 'grocery', 'choose', 'groceryAdd', 'defer', 'answer', 'set', 'restAdd', 'restSkip', 'finish', 'watchSession',
   'setNote', 'addSet', 'addExercise', 'moveExercise', 'superset', 'useSuggestion', 'measuring', 'healthWorkout', 'healthRetracted',
 ];
 
@@ -160,7 +168,7 @@ const SESSION_KINDS: ReadonlySet<QuietTapKind> = new Set([
 export const WATCH_NOTE_MAX = 500;
 
 /** The kinds that tick a task, and so the only ones a drain can hand to the app. */
-const TASK_KINDS: ReadonlySet<QuietTapKind> = new Set(['complete', 'unit']);
+const TASK_KINDS: ReadonlySet<QuietTapKind> = new Set(['complete', 'unit', 'answer']);
 
 /** A set's numbers from the watch, in kilograms. Only what the watch sent; the rest of the set stays as it is. */
 export interface WatchTickValues {
@@ -179,8 +187,14 @@ export interface WatchDoneSet {
 }
 
 export type QuietTapAction =
-  | { type: 'complete'; id: string; at: string }
+  /**
+   * `deliverableValue` is set only for a question answered on the watch (null
+   * for "complete without an answer"); absent, the tap asked nothing.
+   */
+  | { type: 'complete'; id: string; at: string; deliverableValue?: string | null }
   | { type: 'logUnit'; id: string }
+  /** Move the task to tomorrow (`quietDeferUpdates`). */
+  | { type: 'deferTask'; id: string }
   /** Needs a person after all: run it through the opening intent's path. */
   | {
       type: 'handToApp';
@@ -240,17 +254,64 @@ export interface QuietTapWorkouts {
 }
 
 /**
- * Whether a widget tap on this task has to bring the app forward to be done
- * right: anything a tap in the app answers with a sheet, a picker, a refusal or
- * a follow-up question rather than a plain tick or one unit.
+ * Why a widget tap on this task has to bring the app forward: the tap the app
+ * would answer with (`CompletionTap`), or one of the two follow-ups a plain
+ * tick still raises there. The watch names it in the message it shows.
  */
-export function widgetTapNeedsApp(task: Task, mealLogPrompt: boolean): boolean {
+export type WidgetNeedsAppReason =
+  | Exclude<CompletionTap, 'complete' | 'log-unit'>
+  /** "Set a reminder?" after it's completed (`completionTimerMinutes`). */
+  | 'timer'
+  /** "What did you eat?" after it's completed. */
+  | 'meal-log';
+
+/**
+ * Why a widget tap on this task has to bring the app forward to be done
+ * right, or null when it can be applied quietly: anything a tap in the app
+ * answers with a sheet, a picker, a refusal or a follow-up question rather
+ * than a plain tick or one unit.
+ */
+export function widgetTapNeedsAppReason(task: Task, mealLogPrompt: boolean): WidgetNeedsAppReason | null {
   const tap = completionTapFor(task);
-  if (tap === 'log-unit') return false;
-  if (tap !== 'complete') return true;
+  if (tap === 'log-unit') return null;
+  if (tap !== 'complete') return tap;
   // Both of these still complete the task, but follow it with a question the
   // app asks in its own UI: "Set a reminder?" and "what did you eat?".
-  return Boolean(task.completionTimerMinutes) || offersMealLogOnCompletion(task, mealLogPrompt);
+  if (task.completionTimerMinutes) return 'timer';
+  if (offersMealLogOnCompletion(task, mealLogPrompt)) return 'meal-log';
+  return null;
+}
+
+/** A question the Apple Watch can ask and send the answer to. Its title is the task's. */
+export interface WatchQuestion {
+  kind: 'text' | 'number' | 'yesno' | 'choice';
+  /** The buttons, for 'yesno' and 'choice'; empty for the dictated kinds. */
+  options: string[];
+}
+
+/**
+ * The question the watch can ask in place of sending the person to the
+ * phone, or null when the tap still needs the app. Only a plain "asks on
+ * completion" qualifies: nothing else in the way (a reminder offer, the meal
+ * question), not a date (which can schedule the next chain step and wants
+ * the calendar), and not a catch-up, whose prompt also asks which day it
+ * happened. A pick-one with fewer than two options is a text answer, as in
+ * the app's own prompt.
+ */
+export function watchQuestionFor(task: Task, mealLogPrompt: boolean): WatchQuestion | null {
+  if (completionTapFor(task) !== 'ask') return null;
+  if (task.completionTimerMinutes || offersMealLogOnCompletion(task, mealLogPrompt)) return null;
+  if (task.generatedKind === 'reachOut') return null;
+  const kind = deliverableKindFor(task);
+  if (kind === null || kind === 'date') return null;
+  const options = deliverableOptionsFor(task);
+  if (kind === 'choice' && options.length === 0) return { kind: 'text', options: [] };
+  return { kind, options };
+}
+
+/** Whether a widget tap on this task has to bring the app forward (`widgetTapNeedsAppReason`). */
+export function widgetTapNeedsApp(task: Task, mealLogPrompt: boolean): boolean {
+  return widgetTapNeedsAppReason(task, mealLogPrompt) !== null;
 }
 
 /**
@@ -280,6 +341,9 @@ export function parseQuietTaps(json: string): QuietTap[] {
       const words = typeof title === 'string' ? title.trim() : '';
       if (words === '') continue;
       tap.title = words;
+    }
+    if (kind === 'answer' && typeof fields.answer === 'string' && fields.answer.trim() !== '') {
+      tap.answer = fields.answer.trim();
     }
     if (SESSION_KINDS.has(kind as QuietTapKind)) {
       // Every workout tap names the phone's session it was made on: a stale
@@ -603,6 +667,31 @@ export function planQuietTaps(
     const task = working.get(tap.id) ?? byId.get(tap.id);
     if (!task || task.completed || task.archived) continue;
 
+    if (tap.kind === 'answer') {
+      settled.add(tap.id);
+      // Asked again by the app rather than dropped when the watch's question
+      // no longer holds (the task changed since) or the answer doesn't read as
+      // one (a number that isn't): what was said is never silently lost.
+      const question = watchQuestionFor(task, mealLogPrompt);
+      const value = question && tap.answer !== undefined ? normalizeDeliverableValue(question.kind, tap.answer) : null;
+      if (!question || (tap.answer !== undefined && value === null)) {
+        actions.push({ type: 'handToApp', id: tap.id, at: tap.at });
+      } else {
+        actions.push({ type: 'complete', id: tap.id, at: tap.at, deliverableValue: value });
+      }
+      continue;
+    }
+
+    if (tap.kind === 'defer') {
+      // "Tomorrow" said on a day that has since ended would land a day late,
+      // so it's dropped rather than guessed at; the task comes back to the
+      // watch with the next snapshot.
+      if (!isCurrentDay(tap.at)) continue;
+      settled.add(tap.id);
+      actions.push({ type: 'deferTask', id: tap.id });
+      continue;
+    }
+
     const tapKind = completionTapFor(task);
     if (tapKind === 'log-unit') {
       if (!isCurrentDay(tap.at)) continue;
@@ -621,6 +710,20 @@ export function planQuietTaps(
     }
   }
   return actions;
+}
+
+/**
+ * What moving a task to tomorrow from the watch writes: the same move a row's
+ * Tomorrow in the app makes (noon of the logical tomorrow, through
+ * `scheduleMoveUpdates`, so a repeating task is held by `deferUntil` and keeps
+ * its schedule), and a pin comes off, since the row's own move drops it when
+ * the day changes.
+ */
+export function quietDeferUpdates(task: Task, dayResetTime?: string): Partial<Task> {
+  const tomorrow = getLogicalTomorrow(dayResetTime);
+  tomorrow.setHours(12, 0, 0, 0);
+  const updates = scheduleMoveUpdates(task, tomorrow, dayResetTime);
+  return task.pinned ? { ...updates, pinned: false } : updates;
 }
 
 /**

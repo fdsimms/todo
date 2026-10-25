@@ -57,15 +57,23 @@ export function prepTimerElapsed(recipe: PrepTimerState, now: number = Date.now(
   return bankedElapsedSeconds(recipe.prepTimerStartedAt, recipe.prepTimerElapsedSeconds, now);
 }
 
+export type KitchenTimerKind = 'cook' | 'prep';
+
 /**
- * Is a cook or prep segment currently in flight for this recipe? Drives the
- * "a timer is running" ambient indicator (the tab bar dot) that stays visible
- * once you've navigated away from the recipe itself — a cook/prep timer is a
- * stopwatch and never rings, so this is the only thing standing between
- * starting one and forgetting it's still going.
+ * The one running timer `CookingBar` names, or null when none is. A cook
+ * timer wins over a prep timer, on any recipe: the dish on the stove is the
+ * one you're likelier to need to get back to. A cook/prep timer is a
+ * stopwatch and never rings, so that bar is the only thing standing between
+ * starting one and forgetting it's still going once you've left the recipe.
  */
-export function hasRunningRecipeTimer(recipe: CookTimerState & PrepTimerState): boolean {
-  return isCookTimerRunning(recipe) || isPrepTimerRunning(recipe);
+export function activeKitchenTimer<R extends CookTimerState & PrepTimerState>(
+  recipes: readonly R[],
+): { recipe: R; kind: KitchenTimerKind } | null {
+  const cooking = recipes.find(isCookTimerRunning);
+  if (cooking) return { recipe: cooking, kind: 'cook' };
+  const prepping = recipes.find(isPrepTimerRunning);
+  if (prepping) return { recipe: prepping, kind: 'prep' };
+  return null;
 }
 
 // ==== cook mode ====

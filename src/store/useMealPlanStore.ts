@@ -1241,8 +1241,8 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   },
 
   finishCookForRecipe(recipeId) {
-    // A cooking that is finished ends its timer: CookingBar, the tab dot and
-    // the Live Activity all read "timer running" as "still cooking", so a run
+    // A cooking that is finished ends its timer: CookingBar and the Live
+    // Activity all read "timer running" as "still cooking", so a run
     // left going kept announcing a dish that was already on the table. A no-op
     // when nothing is running or banked, and the Live Activity's Done already
     // stops it first (deepLinks), so the elapsed run is banked exactly once.

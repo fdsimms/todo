@@ -11,15 +11,15 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
 import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
 import { FAB_SIZE, useFabBottom } from './Fab';
-import { cookTimerElapsed, isCookTimerRunning } from '../utils/recipeTimer';
+import { activeKitchenTimer, cookTimerElapsed, isCookTimerRunning, isPrepTimerRunning, prepTimerElapsed } from '../utils/recipeTimer';
 import { formatStopwatch } from '../utils/effort';
 import { haptics } from '../utils/haptics';
 import { resetToRecipeDetail } from '../navigation/navigationRef';
 import { GlassLayer, glassSupported } from './GlassLayer';
 
 /**
- * "Cooking Chili · 4:12", floating just above the tab bar on every screen while a
- * recipe's cook timer is running — the one way back into Cook Mode once
+ * "Cooking Chili · 4:12" (or "Prepping Chili"), floating just above the tab bar on every screen while a
+ * recipe's cook or prep timer is running — the one way back into Cook Mode once
  * RecipeDetailScreen is left behind. A shopping trip gets `ActiveTripBanner`
  * on the four kitchen screens because there's always a kitchen screen to
  * stand on mid-shop; a cook has no equivalent "somewhere relevant" — the
@@ -30,16 +30,17 @@ import { GlassLayer, glassSupported } from './GlassLayer';
  * bar (`PersistentTripBar`) was tried for the shopping trip and removed for
  * showing on screens a trip had nothing to do with. Cooking doesn't have that
  * problem the same way — every screen is somewhere you might be while
- * something's on the stove — but the fix stays narrow anyway: cook timers
- * only, not prep (prep keeps the tab-icon dot it already had, `hasRunning-
- * RecipeTimer`'s doc comment), and gated on `kitchenEnabled` the same as that
- * dot, so turning kitchen features off doesn't leave a bar pointing at a
- * screen the drawer no longer lists.
+ * something's on the stove — but the fix stays narrow anyway: it is gated on
+ * `kitchenEnabled`, so turning kitchen features off doesn't leave a bar
+ * pointing at a screen the drawer no longer lists.
  *
- * Names only the *first* recipe with a running cook timer. Two cooking at
- * once is real but rare, and nothing here refuses it — a second row or a
- * count would be a lot of chrome for a case that still has the tab dot as a
- * fallback.
+ * Prep timers show here too. They used to get only an unlabelled dot on the
+ * More tab, which said something was running but not what, or where to stop it.
+ *
+ * Names only one timer (`activeKitchenTimer`: a cook timer first, else a prep
+ * timer). Two at once is real but rare, and nothing here refuses it — a
+ * second row or a count would be a lot of chrome; finishing the one shown
+ * brings up the next.
  */
 export function CookingBar() {
   const { colors, shadows } = useTheme();
@@ -48,8 +49,10 @@ export function CookingBar() {
   const fabBottom = useFabBottom();
   const styles = makeStyles(colors);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
-  const cooking = useRecipeStore(useShallow(s => s.recipes.filter(isCookTimerRunning)));
-  const recipe = cooking[0];
+  const timing = useRecipeStore(useShallow(s => s.recipes.filter(r => isCookTimerRunning(r) || isPrepTimerRunning(r))));
+  const active = activeKitchenTimer(timing);
+  const recipe = active?.recipe;
+  const prep = active?.kind === 'prep';
   // Its offset above the tab bar is where a bulk bar's count and close button
   // land, so it steps aside while one is up rather than covering them.
   const bulkSelecting = useBulkBarPresenceStore(s => s.count > 0);
@@ -68,11 +71,12 @@ export function CookingBar() {
     setNowTick(Date.now());
     const interval = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(interval);
-  }, [shown, recipe?.timerStartedAt]);
+  }, [shown, recipe?.id, prep]);
 
   if (!shown) return null;
 
-  const elapsed = formatStopwatch(cookTimerElapsed(recipe, nowTick));
+  const elapsed = formatStopwatch(prep ? prepTimerElapsed(recipe, nowTick) : cookTimerElapsed(recipe, nowTick));
+  const verb = prep ? 'Prepping' : 'Cooking';
   // Just above the tab bar, stopping short of the add button's corner when the
   // screen has one (it rests in the same band, see `FAB_BOTTOM_OFFSET`). With a button, the bar is
   // centered on it vertically instead: the wrap is the button's own height, at its bottom.
@@ -90,12 +94,12 @@ export function CookingBar() {
         activeOpacity={interaction.activeOpacity}
         onPress={() => { haptics.tap(); resetToRecipeDetail(recipe.id, { openCookMode: true }); }}
         accessibilityRole="button"
-        accessibilityLabel={`Cooking ${recipe.name}, ${elapsed} elapsed. Return to cook mode`}
+        accessibilityLabel={`${verb} ${recipe.name}, ${elapsed} elapsed. Return to cook mode`}
       >
         <GlassLayer interactive style={styles.glassRadius} />
-        <Ionicons name="flame" size={iconSize.sm} color={colors.orangeText} />
+        <Ionicons name={prep ? 'timer-outline' : 'flame'} size={iconSize.sm} color={colors.orangeText} />
         <Text style={styles.text} numberOfLines={1}>
-          Cooking <Text style={styles.name}>{recipe.name}</Text>
+          {verb} <Text style={styles.name}>{recipe.name}</Text>
         </Text>
         <Text style={styles.elapsed}>{elapsed}</Text>
         <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />

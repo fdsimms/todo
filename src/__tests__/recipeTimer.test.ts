@@ -3,7 +3,7 @@ import {
   cookTimerElapsed,
   isPrepTimerRunning,
   prepTimerElapsed,
-  hasRunningRecipeTimer,
+  activeKitchenTimer,
   recipeTimerClock,
   recipeTimerResetPrompt,
   showsPrepRow,
@@ -115,21 +115,31 @@ describe('prep timer', () => {
   });
 });
 
-// ─── hasRunningRecipeTimer ───
+// ─── activeKitchenTimer ───
 
-describe('hasRunningRecipeTimer', () => {
-  it('is false when neither the cook nor prep segment is in flight', () => {
-    expect(hasRunningRecipeTimer({ ...idle(), ...idlePrep() })).toBe(false);
+describe('activeKitchenTimer', () => {
+  const recipe = (id: string, cook: CookTimerState, prep: PrepTimerState) => ({ id, ...cook, ...prep });
+
+  it('is null when no recipe has a segment in flight', () => {
+    expect(activeKitchenTimer([recipe('a', idle(), idlePrep())])).toBeNull();
+    expect(activeKitchenTimer([])).toBeNull();
   });
 
-  it('is true while the cook segment is running, regardless of prep', () => {
-    expect(hasRunningRecipeTimer({ ...running(60), ...idlePrep() })).toBe(true);
+  it('names a running cook timer', () => {
+    const r = recipe('a', running(60), idlePrep());
+    expect(activeKitchenTimer([r])).toEqual({ recipe: r, kind: 'cook' });
   });
 
-  it('is true while the prep segment is running, regardless of cook', () => {
-    expect(hasRunningRecipeTimer({ ...idle(), ...runningPrep(30) })).toBe(true);
+  it('names a running prep timer when nothing is cooking', () => {
+    const r = recipe('a', idle(), runningPrep(30));
+    expect(activeKitchenTimer([r])).toEqual({ recipe: r, kind: 'prep' });
   });
 
+  it('prefers a cook timer over a prep timer on an earlier recipe', () => {
+    const prepping = recipe('a', idle(), runningPrep(30));
+    const cooking = recipe('b', running(60), idlePrep());
+    expect(activeKitchenTimer([prepping, cooking])).toEqual({ recipe: cooking, kind: 'cook' });
+  });
 });
 
 // ─── recipeTimerClock ───

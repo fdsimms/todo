@@ -3244,7 +3244,7 @@ describe('finishCookForRecipe', () => {
     expect(useMealPlanStore.getState().cookRecap).toBeNull();
   });
 
-  // CookingBar, the tab dot and the Live Activity all read a running cook timer
+  // CookingBar and the Live Activity both read a running cook timer
   // as "still cooking", so finishing the cook has to end it.
   it('stops the recipe’s cook timer, with or without a plan entry', () => {
     planToday([entry(today, 'dinner', { recipeId: 'r1', title: 'Ragu' })]);

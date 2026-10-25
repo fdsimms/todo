@@ -29,7 +29,7 @@ import { occupiesTime, type BusyEvent } from './calendarBusy';
 import { eventTaskEventOf } from './eventTasks';
 import { addDays } from 'date-fns/addDays';
 import type { WidgetCalendar } from './widgetCalendar';
-import { widgetTapNeedsApp } from './widgetQuietTaps';
+import { watchQuestionFor, widgetTapNeedsAppReason, type WatchQuestion, type WidgetNeedsAppReason } from './widgetQuietTaps';
 import { formatDose, medicationStats, repeatDose } from './medicationLog';
 import { NUTRIENT_LABEL } from './foodNutrition';
 import {
@@ -138,6 +138,17 @@ export interface WidgetTask {
    * row is checked off from the widget without leaving the home screen.
    */
   needsApp: boolean;
+  /**
+   * Why `needsApp` is set, or null when it isn't. The watch says it in the
+   * message a tap on the row shows; the iPhone widget just opens the app.
+   */
+  needsAppReason: WidgetNeedsAppReason | null;
+  /**
+   * The question the Apple Watch asks itself rather than sending the person
+   * to the phone (`watchQuestionFor`), or null. Only ever set on a row whose
+   * `needsAppReason` is 'ask'; the iPhone widget ignores it and opens the app.
+   */
+  question: WatchQuestion | null;
 }
 
 /**
@@ -396,6 +407,7 @@ export function toWidgetTask(
   // app rather than a question skipped.
   mealLogPrompt = true,
 ): WidgetTask {
+  const needsAppReason = widgetTapNeedsAppReason(task, mealLogPrompt);
   return {
     id: task.id,
     title: displayTitleFor(task),
@@ -413,7 +425,9 @@ export function toWidgetTask(
     // the calendar wasn't read (a background refresh).
     eventTitle: events ? eventTaskEventOf(task, events)?.title || null : null,
     reminderTime: task.reminderTime,
-    needsApp: widgetTapNeedsApp(task, mealLogPrompt),
+    needsApp: needsAppReason !== null,
+    needsAppReason,
+    question: watchQuestionFor(task, mealLogPrompt),
   };
 }
 

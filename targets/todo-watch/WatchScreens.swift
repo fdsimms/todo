@@ -1,7 +1,8 @@
 import SwiftUI
 
-// The watch's two pages. Colors are WidgetPalette.dark (TodoWidgetData.swift),
-// the app's own dark tokens, since a watch face is always dark.
+// The watch's two pages, and the sheet a task's question is asked in. Colors
+// are WidgetPalette.dark (TodoWidgetData.swift), the app's own dark tokens,
+// since a watch face is always dark.
 
 // ==== Today ====
 
@@ -10,6 +11,8 @@ struct TodayView: View {
     let openGroceries: () -> Void
     /// A row whose tap has to happen on the phone, shown as an alert.
     @State private var needsPhone: WidgetTask?
+    /// A row whose question is being asked here (`WidgetTask.question`).
+    @State private var asking: WidgetTask?
 
     var body: some View {
         NavigationStack {
@@ -17,6 +20,7 @@ struct TodayView: View {
             // day turns over, without the phone writing again.
             TimelineView(.everyMinute) { context in
                 List {
+                    pendingAdds
                     // The workout, at the top while the Workouts area is on
                     // (or one is going here). A pushed screen, not a pager
                     // page, so the Crown stays this list's.
@@ -24,22 +28,52 @@ struct TodayView: View {
                         WorkoutTodayRow()
                     }
                     tasks(at: context.date)
-                    addSection
-                    groceriesLink
                 }
                 .undoBar()
             }
             .navigationTitle("Today")
+            // Add and Groceries sit in the top corners rather than after the
+            // list: under twenty tasks, Add was twenty rows of scrolling away,
+            // and the pager's swipe to Groceries is something nothing says.
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: openGroceries) {
+                        Image(systemName: "cart")
+                    }
+                    .accessibilityLabel(groceriesLabel)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    TextFieldLink(prompt: Text("New task")) {
+                        Image(systemName: "plus")
+                            .foregroundStyle(WidgetPalette.dark.accent)
+                    } onSubmit: { title in
+                        store.add(title)
+                    }
+                    .accessibilityLabel("Add task")
+                }
+            }
         }
-        .alert("Finish on iPhone", isPresented: needsPhoneShown, presenting: needsPhone) { _ in
+        .sheet(item: $asking) { task in
+            if let question = task.question {
+                TaskQuestionView(task: task, question: question)
+                    .environmentObject(store)
+            }
+        }
+        .alert(needsPhone.map { NeedsPhoneCopy($0.needsAppReason).title } ?? "", isPresented: needsPhoneShown, presenting: needsPhone) { _ in
             Button("OK", role: .cancel) {}
-        } message: { _ in
-            Text("This task has a follow-up step, so check it off in dundundun on your iPhone.")
+        } message: { task in
+            Text(NeedsPhoneCopy(task.needsAppReason).message)
         }
     }
 
     private var needsPhoneShown: Binding<Bool> {
         Binding(get: { needsPhone != nil }, set: { if !$0 { needsPhone = nil } })
+    }
+
+    private var groceriesLabel: String {
+        guard let list = store.snapshot?.groceries?.lists.first else { return "Groceries" }
+        let remaining = store.local.remaining(list)
+        return remaining > 0 ? "Groceries, \(remaining) left" : "Groceries"
     }
 
     @ViewBuilder
@@ -48,17 +82,31 @@ struct TodayView: View {
             if snapshot.isStale(at: now) {
                 WatchNote(text: "This list is out of date. Open dundundun on your iPhone to refresh it.")
             } else {
-                let rows = snapshot.todayRows(at: now)
                 let local = store.local
+                let rows = snapshot.todayRows(at: now).filter { !local.isDeferred($0) }
                 if rows.isEmpty {
                     WatchNote(text: "Nothing left for today.")
                 }
                 ForEach(rows) { task in
                     TaskRowView(task: task, done: local.isDone(task), progress: local.progress(task)) {
-                        if task.needsApp {
+                        if task.question != nil {
+                            asking = task
+                        } else if task.needsApp {
                             needsPhone = task
                         } else {
                             store.tap(task)
+                        }
+                    }
+                    // Moving a task asks nothing, so a row that has to be
+                    // checked off on the phone can still go to tomorrow here.
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        if !local.isDone(task) {
+                            Button {
+                                store.deferToTomorrow(task)
+                            } label: {
+                                Label("Tomorrow", systemImage: "arrow.turn.up.right")
+                            }
+                            .tint(WidgetPalette.dark.accent)
                         }
                     }
                 }
@@ -66,44 +114,86 @@ struct TodayView: View {
                 if done > 0 {
                     WatchNote(text: "\(done) done today")
                 }
+                laterToday(snapshot.laterTodayRows(at: now).filter { !local.isDeferred($0) })
             }
         } else {
             WatchNote(text: "Open dundundun on your iPhone to load your tasks.")
         }
     }
 
-    private var groceriesLink: some View {
-        Section {
-            Button(action: openGroceries) {
-                HStack {
-                    Label("Groceries", systemImage: "cart")
-                    Spacer()
-                    if let remaining = store.snapshot?.groceries?.lists.first?.remaining, remaining > 0 {
-                        Text("\(remaining)")
-                            .foregroundStyle(WidgetPalette.dark.textSecondary)
-                    }
+    /// What reaches Today later on: a deferred task, a time window not yet
+    /// open. Read only: the watch ticks off only what is on Today, and the
+    /// minute timeline moves each one up into the list when its time comes.
+    @ViewBuilder
+    private func laterToday(_ rows: [WidgetTask]) -> some View {
+        if !rows.isEmpty {
+            Section("Later today") {
+                ForEach(rows.prefix(Self.laterTodayLimit)) { task in
+                    LaterTodayRow(task: task)
+                }
+                if rows.count > Self.laterTodayLimit {
+                    WatchNote(text: "\(rows.count - Self.laterTodayLimit) more later today")
                 }
             }
         }
     }
 
-    private var addSection: some View {
-        Section {
-            TextFieldLink(prompt: Text("New task")) {
-                Label("Add task", systemImage: "plus")
-                    .foregroundStyle(WidgetPalette.dark.accent)
-            } onSubmit: { title in
-                store.add(title)
-            }
-            ForEach(Array(store.local.added.enumerated()), id: \.offset) { _, title in
-                Label(title, systemImage: "arrow.up.circle")
-                    .foregroundStyle(.secondary)
-            }
-        } footer: {
-            if !store.local.added.isEmpty {
+    private static let laterTodayLimit = 5
+
+    /// Tasks dictated here and not yet on the phone, at the top so the one
+    /// just added is where the eye is when the dictation sheet closes.
+    @ViewBuilder
+    private var pendingAdds: some View {
+        if !store.local.added.isEmpty {
+            Section {
+                ForEach(Array(store.local.added.enumerated()), id: \.offset) { _, title in
+                    Label(title, systemImage: "arrow.up.circle")
+                        .foregroundStyle(.secondary)
+                }
+            } footer: {
                 Text("Added to your Inbox when dundundun next opens on your iPhone.")
             }
         }
+    }
+}
+
+/// What a row that needs the phone says when it's tapped, by the phone's
+/// reason for it (`WidgetNeedsAppReason` in the app). A phone too old to send
+/// one gets the general line.
+struct NeedsPhoneCopy {
+    let title: String
+    let message: String
+
+    init(_ reason: String?) {
+        switch reason {
+        case "ask":
+            self.init("Finish on iPhone", "This task asks a question when you check it off. Answer it in dundundun on your iPhone.")
+        case "timer":
+            self.init("Finish on iPhone", "This task offers to set a reminder when you check it off. Check it off in dundundun on your iPhone.")
+        case "meal-log":
+            self.init("Finish on iPhone", "This task asks what you ate when you check it off. Check it off in dundundun on your iPhone.")
+        case "pick":
+            self.init("Finish on iPhone", "This task takes turns between several things. Pick the one you did in dundundun on your iPhone.")
+        case "pick-meal":
+            self.init("Finish on iPhone", "Choose the meal for this task in dundundun on your iPhone.")
+        case "review-project":
+            self.init("Finish on iPhone", "This task opens a review of its project. Do the review in dundundun on your iPhone.")
+        case "start-block":
+            self.init("Finish on iPhone", "This task starts an app block before it pays out. Start it in dundundun on your iPhone.")
+        case "open-log":
+            self.init("Finish on iPhone", "This task is checked off by saving an entry. Save it in dundundun on your iPhone.")
+        case "slip":
+            self.init("Nothing to check off", "This is a habit you're avoiding, so it counts the days you go without it. To log a slip, use dundundun on your iPhone.")
+        case "locked":
+            self.init("Not due yet", "This task repeats, and its next day hasn't come yet. It can be checked off then.")
+        default:
+            self.init("Finish on iPhone", "Check this task off in dundundun on your iPhone.")
+        }
+    }
+
+    private init(_ title: String, _ message: String) {
+        self.title = title
+        self.message = message
     }
 }
 
@@ -123,8 +213,8 @@ struct TaskRowView: View {
                         .strikethrough(done)
                         .lineLimit(3)
                         .foregroundStyle(done ? WidgetPalette.dark.textSecondary : WidgetPalette.dark.text)
-                    if let detail {
-                        Text(detail)
+                    if let detailText {
+                        detailText
                             .font(.footnote)
                             .foregroundStyle(WidgetPalette.dark.textSecondary)
                     }
@@ -136,8 +226,21 @@ struct TaskRowView: View {
 
     private var symbol: String {
         if done { return "checkmark.circle.fill" }
+        if task.question != nil { return "questionmark.circle" }
         if task.needsApp { return "iphone" }
         return "circle"
+    }
+
+    /// The reminder's clock time, as the app's row and the iPhone widget show
+    /// it (dropped once the row is done), then the detail below.
+    private var detailText: Text? {
+        let reminder = done ? nil : task.reminderDate
+        switch (reminder, detail) {
+        case let (time?, detail?): return Text("\(Text(time, style: .time)) · \(detail)")
+        case let (time?, nil): return Text(time, style: .time)
+        case let (nil, detail?): return Text(detail)
+        case (nil, nil): return nil
+        }
     }
 
     /// A target's count, or the calendar event a task was written for.
@@ -147,6 +250,98 @@ struct TaskRowView: View {
             return "\(min(progress, target)) of \(target)\(unit)"
         }
         return task.eventTitle
+    }
+}
+
+/// A task that reaches Today later on, and when. Not a button: it can't be
+/// checked off until it's on Today.
+struct LaterTodayRow: View {
+    let task: WidgetTask
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock")
+                .foregroundStyle(WidgetPalette.dark.textSecondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(task.title)
+                    .lineLimit(2)
+                    .foregroundStyle(WidgetPalette.dark.text)
+                if let at = task.visibleAtDate {
+                    Text(at, style: .time)
+                        .font(.footnote)
+                        .foregroundStyle(WidgetPalette.dark.textSecondary)
+                }
+            }
+        }
+        .listRowBackground(Color.clear)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// A task's question, asked here instead of on the phone: a button per
+/// answer for Yes/No and Pick one, dictation for text and a number, and the
+/// app's own way out, "Complete without an answer". The task's title is the
+/// question, as in the app's prompt.
+struct TaskQuestionView: View {
+    @EnvironmentObject private var store: WatchStore
+    @Environment(\.dismiss) private var dismiss
+    let task: WidgetTask
+    let question: WidgetQuestion
+    /// Why the last dictated answer wasn't taken, shown under the field.
+    @State private var refused: String?
+
+    var body: some View {
+        List {
+            Text(task.title)
+                .font(.headline)
+                .foregroundStyle(WidgetPalette.dark.text)
+                .listRowBackground(Color.clear)
+            if question.options.isEmpty {
+                TextFieldLink(prompt: Text(question.kind == "number" ? "Number" : "Answer")) {
+                    Label("Answer", systemImage: "mic")
+                        .foregroundStyle(WidgetPalette.dark.accent)
+                } onSubmit: { text in
+                    submit(text)
+                }
+                if let refused {
+                    Text(refused)
+                        .font(.footnote)
+                        .foregroundStyle(WidgetPalette.dark.orange)
+                        .listRowBackground(Color.clear)
+                }
+            } else {
+                ForEach(question.options, id: \.self) { option in
+                    Button(option) { send(option) }
+                }
+            }
+            Button {
+                send(nil)
+            } label: {
+                Text("Complete without an answer")
+                    .foregroundStyle(WidgetPalette.dark.textSecondary)
+            }
+        }
+    }
+
+    /// A dictated answer. A number that doesn't read as one is refused here,
+    /// with the reason, rather than sent for the phone to refuse
+    /// (`normalizeDeliverableValue` there takes the same shape).
+    private func submit(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if question.kind == "number" {
+            let bare = trimmed.filter { !$0.isWhitespace && $0 != "," }
+            guard bare.range(of: #"^-?\d+(\.\d+)?$"#, options: .regularExpression) != nil else {
+                refused = "“\(trimmed)” isn't a number. Say just the number."
+                return
+            }
+        }
+        send(trimmed)
+    }
+
+    private func send(_ answer: String?) {
+        store.answer(task, with: answer)
+        dismiss()
     }
 }
 
@@ -168,20 +363,23 @@ struct GroceriesView: View {
             } else {
                 List {
                     WatchNote(text: "Open dundundun on your iPhone to load your grocery list.")
-                    todayLink(openToday)
                 }
                 .undoBar()
                 .navigationTitle("Groceries")
+                .toolbar { todayButton(openToday) }
             }
         }
     }
 }
 
-private func todayLink(_ action: @escaping () -> Void) -> some View {
-    Section {
+/// The way back to Today from the top corner, mirroring Today's cart button:
+/// the pager has no visible way back on its own.
+private func todayButton(_ action: @escaping () -> Void) -> some ToolbarContent {
+    ToolbarItem(placement: .topBarLeading) {
         Button(action: action) {
-            Label("Today", systemImage: "checklist")
+            Image(systemName: "checklist")
         }
+        .accessibilityLabel("Today")
     }
 }
 
@@ -190,14 +388,28 @@ struct GroceryListView: View {
     let list: WidgetGroceryList
     var tripShopName: String? = nil
     var otherLists: [WidgetGroceryList] = []
-    /// Set on the first list only; the pager has no visible way back to Today.
+    /// Set on the first list only (a list pushed from it has a back button
+    /// there instead); the pager has no visible way back to Today.
     var openToday: (() -> Void)? = nil
     /// An either/or row, which is chosen (the other options come off) rather than ticked.
     @State private var choiceRow: WidgetGroceryRow?
 
     var body: some View {
         let rows = store.local.visibleRows(list)
+        let adds = store.local.groceryAdds(listId: list.id)
         List {
+            // Dictated here and not yet on the phone, at the top for the same
+            // reason as Today's.
+            if !adds.isEmpty {
+                Section {
+                    ForEach(Array(adds.enumerated()), id: \.offset) { _, title in
+                        Label(title, systemImage: "arrow.up.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                } footer: {
+                    Text("Added to the list when dundundun next opens on your iPhone.")
+                }
+            }
             if let tripShopName {
                 WatchNote(text: "Shopping at \(tripShopName)")
             }
@@ -216,26 +428,6 @@ struct GroceryListView: View {
             if list.remaining > list.rows.count {
                 WatchNote(text: "\(list.remaining - list.rows.count) more items aren't shown here.")
             }
-            Section {
-                TextFieldLink(prompt: Text("New item")) {
-                    Label("Add item", systemImage: "plus")
-                        .foregroundStyle(WidgetPalette.dark.accent)
-                } onSubmit: { title in
-                    store.addGrocery(title, listId: list.id)
-                }
-                ForEach(Array(store.local.groceryAdds(listId: list.id).enumerated()), id: \.offset) { _, title in
-                    Label(title, systemImage: "arrow.up.circle")
-                        .foregroundStyle(.secondary)
-                }
-            } footer: {
-                if !store.local.groceryAdds(listId: list.id).isEmpty {
-                    Text("Added to the list when dundundun next opens on your iPhone.")
-                }
-            }
-
-            if let openToday {
-                todayLink(openToday)
-            }
 
             if !otherLists.isEmpty {
                 Section("Other lists") {
@@ -246,7 +438,7 @@ struct GroceryListView: View {
                             HStack {
                                 Text(other.name)
                                 Spacer()
-                                Text("\(other.remaining)")
+                                Text("\(store.local.remaining(other))")
                                     .foregroundStyle(WidgetPalette.dark.textSecondary)
                             }
                         }
@@ -256,6 +448,20 @@ struct GroceryListView: View {
         }
         .undoBar()
         .navigationTitle(list.name)
+        .toolbar {
+            if let openToday {
+                todayButton(openToday)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                TextFieldLink(prompt: Text("New item")) {
+                    Image(systemName: "plus")
+                        .foregroundStyle(WidgetPalette.dark.accent)
+                } onSubmit: { title in
+                    store.addGrocery(title, listId: list.id)
+                }
+                .accessibilityLabel("Add item")
+            }
+        }
         .confirmationDialog(
             choiceRow.map { "Choose \($0.name)?" } ?? "",
             isPresented: choiceShown,

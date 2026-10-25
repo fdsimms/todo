@@ -461,7 +461,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeSources.ts` — foldRecipeSources, incomingSourcesOf, currentSourcesOf, RecipeLedger, recipeLedgerFor, sourcesAfterMerge
 - `src/utils/recipeSourcesCodec.ts` — parseRecipeSources, serializeRecipeSources
 - `src/utils/recipeTags.ts` — cleanRecipeTag, normalizeRecipeTags, parseRecipeTags, allRecipeTags, recipeTagCounts, filterRecipesByTags, formatTagList, toggleRecipeTag
-- `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, isCookTimerRunning, cookTimerElapsed, isPrepTimerRunning, prepTimerElapsed, hasRunningRecipeTimer, showsPrepRow, startCookingPlan, RecipeTimerReading, +2 more
+- `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, isCookTimerRunning, cookTimerElapsed, isPrepTimerRunning, prepTimerElapsed, KitchenTimerKind, activeKitchenTimer, showsPrepRow, startCookingPlan, +3 more
 - `src/utils/recipeUrl.ts` — normalizeRecipeUrl, recipeImportedFrom, decodeEntities, htmlToText, metaContent, PageRecipe, parseIsoDuration, parseRecipeJsonLd, focusRecipeText, recipeToPlainText, +2 more
 - `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, AndSplitPart, splitIngredientAnd, ingredientDedupeKey, duplicateIngredientIn, blockedIngredientNote, alreadyInRecipeNote, blockedReviewRows, +66 more
 - `src/utils/recordTasks.ts` — isAnsweredByRecord, recordLogUrl, recordMicUrl, RecordContext, isRecordAnswered
@@ -658,7 +658,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, dayKeyGap, weighInDeclineHolds, +1 more
 - `src/utils/widgetBridge.ts` — WidgetBridge, widgetBridge
 - `src/utils/widgetCalendar.ts` — WidgetCalendarEvent, WidgetCalendarTask, WidgetCalendarDay, WidgetHiddenEvent, WidgetCalendar, MAX_WIDGET_CALENDAR_EVENTS, MAX_WIDGET_CALENDAR_TASKS, WidgetCalendarDayInput, WidgetCalendarInput, buildWidgetCalendar
-- `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapKind, WATCH_NOTE_MAX, WatchTickValues, WatchDoneSet, QuietTapAction, QuietTapWorkouts, widgetTapNeedsApp, parseQuietTaps, planQuietTaps, +7 more
+- `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapKind, WATCH_NOTE_MAX, WatchTickValues, WatchDoneSet, QuietTapAction, QuietTapWorkouts, WidgetNeedsAppReason, widgetTapNeedsAppReason, WatchQuestion, +12 more
 - `src/utils/widgetSnapshot.ts` — SnapshotCaps, WIDGET_CAPS, WATCH_CAPS, WidgetTask, WidgetUpcomingTask, WidgetGroceryList, WidgetGroceryRow, WidgetGroceries, WidgetMeal, WidgetKitchenItem, +19 more
 - `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
 - `src/utils/workoutCell.ts` — setFieldMax, parseRepsTarget, parseSetCell

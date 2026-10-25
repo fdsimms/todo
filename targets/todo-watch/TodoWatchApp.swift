@@ -44,6 +44,15 @@ struct TodoWatchApp: App {
             }
             .tabViewStyle(.verticalPage)
             .environmentObject(store)
+            // A complication opens its own page (`WatchLink` in
+            // TodoWatchComplication.swift): dundundun://watch/groceries.
+            .onOpenURL { url in
+                switch url.lastPathComponent {
+                case "groceries": page = .groceries
+                case "today": page = .today
+                default: break
+                }
+            }
         }
         // A tap held for its undo window goes as soon as the app leaves the
         // screen: lowered wrist, Undo out of reach, nothing left to wait for.
