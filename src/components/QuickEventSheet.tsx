@@ -874,6 +874,19 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     titleCaret.moveCaret(next);
   };
 
+  // Whichever single tooltip is up, applied: the bubble's own tap and the
+  // accessory bar's checkmark both come here. An ambiguous "@name" offers a row
+  // of people instead of one thing to accept, so it has no checkmark; a
+  // suggestion with exactly one person is one thing to accept.
+  const soleMentionCandidate = mentionSuggestion?.candidates.length === 1
+    ? mentionSuggestion.candidates[0]
+    : null;
+  const applyActiveParse = () => {
+    if (phrase) applyPhrase();
+    else if (soleMentionCandidate) applyMentionSuggestion(soleMentionCandidate);
+  };
+  const confirmVisible = phrase !== null || soleMentionCandidate !== null;
+
   // A date picked by hand replaces the one the line reads, so the words that
   // read it go too rather than being left in the title saying something else.
   const pickStart = (date: Date, lengthMinutes?: number) => {
@@ -1331,22 +1344,6 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
             </TouchableOpacity>
           </View>
 
-          {stepped && (
-            <View
-              style={styles.stepRow}
-              accessible
-              accessibilityRole="header"
-              accessibilityLabel={`Step ${step + 1} of ${STEP_NAMES.length}, ${STEP_NAMES[step]}`}
-            >
-              <Text style={styles.stepTitle}>{STEP_NAMES[step]}</Text>
-              <View style={styles.stepDots}>
-                {STEP_NAMES.map((name, i) => (
-                  <View key={name} style={[styles.stepDot, i === step && styles.stepDotOn]} />
-                ))}
-              </View>
-            </View>
-          )}
-
           {activeMatch && (
             <Animated.View
               style={[styles.tooltipRow, {
@@ -1397,6 +1394,22 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 )}
               </View>
             </Animated.View>
+          )}
+
+          {stepped && (
+            <View
+              style={styles.stepRow}
+              accessible
+              accessibilityRole="header"
+              accessibilityLabel={`Step ${step + 1} of ${STEP_NAMES.length}, ${STEP_NAMES[step]}`}
+            >
+              <Text style={styles.stepTitle}>{STEP_NAMES[step]}</Text>
+              <View style={styles.stepDots}>
+                {STEP_NAMES.map((name, i) => (
+                  <View key={name} style={[styles.stepDot, i === step && styles.stepDotOn]} />
+                ))}
+              </View>
+            </View>
           )}
 
           {/* The card's height is capped to the room above the keyboard, so what
@@ -1871,8 +1884,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         nativeID={EVENT_TOKEN_ACCESSORY_ID}
         tokens={EVENT_TOKENS}
         onInsert={insertToken}
-        onConfirm={applyPhrase}
-        confirmVisible={phrase !== null}
+        onConfirm={applyActiveParse}
+        confirmVisible={confirmVisible}
       />
       <CalendarPicker
         visible={pickerVisible}

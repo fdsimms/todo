@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+import { View, Text, StyleSheet, Alert, Platform } from 'react-native';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { EditorSheet } from './EditorSheet';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -150,6 +151,7 @@ export function MedicationRenameSheet({ visible, name, onClose, onRenamed }: Pro
             placeholder="e.g. 200"
             placeholderTextColor={colors.textTertiary}
             keyboardType="decimal-pad"
+            inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
             accessibilityLabel="Amount"
           />
           <SegmentedControl
@@ -163,6 +165,7 @@ export function MedicationRenameSheet({ visible, name, onClose, onRenamed }: Pro
           {needsUnit && <Text style={styles.error}>Pick a unit for that amount.</Text>}
         </View>
       )}
+      <NumberPadAccessory />
     </EditorSheet>
   );
 }

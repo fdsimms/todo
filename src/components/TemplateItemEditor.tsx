@@ -83,7 +83,7 @@ import { TaskSummaryCard } from './TaskSummaryCard';
 import { buildTaskSummary } from '../utils/taskSummary';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { EditorJumpTracker, type ScrollMetrics } from '../utils/editorJump';
-import { NumberPadAccessory } from './NumberPadAccessory';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { CountStepper } from './CountStepper';
 import { SunBoundPanel } from './SunBoundPanel';
 import {
@@ -2786,6 +2786,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               placeholder="e.g. (555) 010-0199"
               placeholderTextColor={colors.textTertiary}
               keyboardType="phone-pad"
+              inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               returnKeyType="done"
               accessibilityLabel="Phone number"
             />

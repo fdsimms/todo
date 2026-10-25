@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { MedicationLog } from '../types';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { EditorSheet } from './EditorSheet';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { EditorRow } from './EditorRow';
 import { PillGroup } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
@@ -282,6 +283,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
       }
       footer={
         <>
+        <NumberPadAccessory />
         <WhenPicker
           visible={showDatePicker}
           value={day}
@@ -350,6 +352,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
           placeholder="e.g. 400"
           placeholderTextColor={colors.textTertiary}
           keyboardType="decimal-pad"
+          inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
           accessibilityLabel="Amount"
         />
         <SegmentedControl

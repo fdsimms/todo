@@ -2076,12 +2076,17 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const acceptActiveTitleBanner = () => {
     if (activeParsedSchedule) applyParsedSchedule();
     else if (activeCategoryTags) applyCategoryTagsBanner();
+    else if (soleTitleMentionCandidate) applyTitleMentionSuggestion(soleTitleMentionCandidate);
     else if (activeTitleSuggestion) applyTitleSuggestion();
   };
-  // A mention's banner is a row of people to pick from, so it has no single
-  // thing for the checkmark to accept.
-  const titleBannerAcceptable = titleVisible && !titleMentionSuggestion
-    && (!!activeParsedSchedule || !!activeCategoryTags || !!activeTitleSuggestion);
+  // A mention's banner is a row of people to pick from, so the checkmark only
+  // has something to accept when there is exactly one, the same as quick add.
+  const soleTitleMentionCandidate = titleMentionSuggestion?.candidates.length === 1
+    ? titleMentionSuggestion.candidates[0]
+    : null;
+  const titleBannerAcceptable = titleVisible
+    && (!titleMentionSuggestion || soleTitleMentionCandidate !== null)
+    && (!!activeParsedSchedule || !!activeCategoryTags || !!activeTitleSuggestion || soleTitleMentionCandidate !== null);
 
   // The banner's own ✕ — same as dismissParsedSchedule, just hides the
   // banner. Unlike the schedule phrase, a "#word" naming a real category/tag
