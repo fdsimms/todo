@@ -229,8 +229,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.regular,
   },
   sep: {
-    height: border.hairline,
-    backgroundColor: colors.separator,
+    // The card is a translucent blur, so the hairline `separator` all but vanishes on it: a full
+    // point in the stronger outline colour keeps rows with two-line details visibly apart.
+    height: border.sm,
+    backgroundColor: colors.controlBorder,
     marginLeft: spacing.md,
   },
 });
