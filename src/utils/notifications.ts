@@ -33,7 +33,7 @@ import { resolveActiveTrip } from './activeTrip';
 import type { Shop } from '../types';
 import type { EventReminder } from './eventReminders';
 import { reminderTriggerDate } from './eventReminders';
-import { hasPushupChallenge } from './pushupCounter';
+import { hasMission, nativeMissionForTask } from './missions';
 
 export { isAlarmKitAvailable, requestAlarmAuthorization };
 
@@ -55,6 +55,10 @@ function usesAlarmKit(task: Task): boolean {
  * alert, and where that isn't available the honest degrade is one reminder.
  */
 function ringCountFor(task: Task): number {
+  // A task with a mission rings once: its Stop brings it back every 15
+  // seconds until the mission is done (missions.ts), which makes the
+  // pre-laid chain a second loop on top of the first.
+  if (hasMission(task)) return 1;
   return task.reminderKind === 'persistent' && usesAlarmKit(task) ? ALARM_MAX_RINGS : 1;
 }
 
@@ -290,9 +294,9 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
       // the chain onto the window's close, so a 3am chain silenced at 3am
       // would fire its leftover rings back to back at 7am.
       if (isWithinQuietHours(times[i], qStart, qEnd)) break;
-      // A pushup task's alarm carries a Pushups button that opens the
-      // counter, since the counter is the only thing that silences the chain.
-      await scheduleNativeAlarm(taskAlarmUuid(task.id, i), times[i], title, hasPushupChallenge(task) ? task.id : null);
+      // A task with a mission rings with its mission button, and Stop brings
+      // it back until the mission is done (see missions.ts).
+      await scheduleNativeAlarm(taskAlarmUuid(task.id, i), times[i], title, nativeMissionForTask(task));
     }
     return;
   }

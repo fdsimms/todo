@@ -182,9 +182,9 @@ describe('completionTapFor', () => {
   });
 
   it('opens the counter on a task with pushups, ahead of its question', () => {
-    expect(completionTapFor({ ...baseTask, pushupChallenge: 20 })).toBe('pushups');
-    expect(completionTapFor({ ...baseTask, pushupChallenge: 20, deliverableKind: 'text' })).toBe('pushups');
-    expect(completionTapFor({ ...baseTask, pushupChallenge: 20, completed: true })).toBe('uncomplete');
+    expect(completionTapFor({ ...baseTask, mission: { kind: 'pushups', count: 20 } })).toBe('mission');
+    expect(completionTapFor({ ...baseTask, mission: { kind: 'pushups', count: 20 }, deliverableKind: 'text' })).toBe('mission');
+    expect(completionTapFor({ ...baseTask, mission: { kind: 'pushups', count: 20 }, completed: true })).toBe('uncomplete');
   });
 
   it('does not ask a decision task that is already answered and done', () => {

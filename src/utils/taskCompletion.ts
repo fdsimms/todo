@@ -65,7 +65,7 @@ import { parseMealSlotSource, mealSlotStepTimeSegments } from './mealSlotTasks';
 import { derivedId, spawnSeed } from './syncIds';
 import { advanceQuotaRamp } from './quotaRamp';
 import { newTaskFromDraft, buildSeriesRow } from './taskDraft';
-import { hasPushupChallenge, normalizePushupChallenge } from './pushupCounter';
+import { describeMission, hasMission, normalizeMission } from './missions';
 
 /** The five things a caller can say about a completion. Identical to `completeTask`'s. */
 export interface CompletionOptions {
@@ -108,10 +108,10 @@ export interface CompletionOptions {
    */
   byOther?: boolean;
   /**
-   * The pushup counter counted this task's `pushupChallenge`. Set only by the
-   * counter; see `completionRefusal` for why nothing else completes one.
+   * The task's mission was done (see missions.ts). Set only by the mission
+   * sheet; see `completionRefusal` for why nothing else completes one.
    */
-  pushupsDone?: boolean;
+  missionDone?: boolean;
   completedAt?: string;
   /**
    * Confirmed override for an `'hours'` recurrence's own not-yet-due lock
@@ -192,12 +192,12 @@ export interface CompletionRows {
  *   `CompletionOptions.logEarly`.
  */
 /**
- * Whether this completion would check off a pushup task without its pushups:
+ * Whether this completion would check off a task without doing its mission:
  * true for any completion of one except the counter's own, a missed mark, or
  * one somebody else did.
  */
-export function pushupsOwed(task: Task, options?: Pick<CompletionOptions, 'missed' | 'byOther' | 'pushupsDone'>): boolean {
-  return hasPushupChallenge(task) && !options?.missed && !options?.byOther && !options?.pushupsDone;
+export function missionOwed(task: Task, options?: Pick<CompletionOptions, 'missed' | 'byOther' | 'missionDone'>): boolean {
+  return hasMission(task) && !options?.missed && !options?.byOther && !options?.missionDone;
 }
 
 export function completionRefusal(task: Task, options?: CompletionOptions): string | null {
@@ -210,11 +210,11 @@ export function completionRefusal(task: Task, options?: CompletionOptions): stri
   if (isAnsweredByRecord(task) && !options?.missed && !options?.recorded) {
     return 'That task is answered by saving the entry it asks for, so it has no manual completion. Record the entry instead.';
   }
-  // The pushups are the completion, so only the counter that counted them can
+  // The mission is the completion, so only the sheet that ran it can
   // make one. A missed mark and "someone else did it" claim nothing about
-  // pushups and say so in the record, so they still go through.
-  if (pushupsOwed(task, options)) {
-    return `That task is checked off by doing ${normalizePushupChallenge(task.pushupChallenge)} pushups, which only the phone can count. Ask the person to check it off on their phone, or mark it missed.`;
+  // the mission and say so in the record, so they still go through.
+  if (missionOwed(task, options)) {
+    return `That task is checked off by doing its mission (${describeMission(normalizeMission(task.mission)!)}), which only the phone can count. Ask the person to check it off on their phone, or mark it missed.`;
   }
   if (isRecurrenceNotYetDue(task)) {
     if (task.recurrenceType === 'hours' && options?.logEarly) return null;

@@ -34,6 +34,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, currentAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, +3 more
 - `src/utils/aiRouting.ts` — AiRoute, OnDeviceEngine, onDeviceEngineFor, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
+- `src/utils/alarmSchedule.ts` — syncAlarmToDevice, removeAlarmFromDevice
+- `src/utils/alarms.ts` — QUICK_ALARM_MINUTES, QUICK_ALARM_CHOICES, MISSED_MISSION_WINDOW_MS, formatAlarmMinutes, nextClockTime, isRepeating, nextFireAt, previousFireAt, isSpent, missedMissionRing, +9 more
 - `src/utils/alcohol.ts` — US_STANDARD_DRINK_G, STANDARD_DRINK_SIZES, setDisplayDrinkGrams, getDisplayDrinkGrams, normalizeStandardDrinkGrams, DRINK_PRESETS, DRINK_STEP, MAX_ENTRY_DRINKS, gramsFromDrinks, drinksFromGrams, +9 more
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
 - `src/utils/allergenGuess.ts` — Allergen, guessAllergens, describeAllergens
@@ -71,7 +73,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/bloodPressureLog.ts` — BloodPressureReading, MIN_SYSTOLIC, MAX_SYSTOLIC, MIN_DIASTOLIC, MAX_DIASTOLIC, MIN_PULSE, MAX_PULSE, isPlausibleReading, parseBloodPressureInput, formatReading, +9 more
 - `src/utils/bloodPressureTasks.ts` — BLOOD_PRESSURE_TITLE, DEFAULT_BLOOD_PRESSURE_EVERY_DAYS, BLOOD_PRESSURE_EVERY_DAYS_MIN, BLOOD_PRESSURE_EVERY_DAYS_MAX, clampBloodPressureEveryDays, BLOOD_PRESSURE_LINK_URL, bloodPressureDayKey, wantsBloodPressure, bloodPressureDeclineHolds, bloodPressureNotes
 - `src/utils/brands.ts` — BrandSummary, brandSummaries, planBrandRename
-- `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, tasksNeedingPushups, completesThroughQueue, unansweredCompletionCopy, stackCompletionScope
+- `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, tasksWithMission, completesThroughQueue, unansweredCompletionCopy, stackCompletionScope
 - `src/utils/bulkDelete.ts` — isMissableOneOff, BulkDeletePrompt, bulkDeletePrompt
 - `src/utils/bulkScopePrompt.ts` — confirmBulkScope, confirmFollowUpScope, confirmGeneratedScope, bulkSetPriorityAsking, bulkSetDifficultyAsking, bulkAddTagsAsking
 - `src/utils/busyEvenings.ts` — BUSY_EVENING_MIN_MINUTES, BusyEvening, busyEveningOn, describeBusyEvening
@@ -312,6 +314,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/metricKit.ts` — DeviceMetricSummary, DEVICE_METRIC_LIMIT, Bucket, histogramBuckets, bucketTotal, bucketMedianMs, parseMetricPayload, parseSummaries, mergeSummaries, collectSummaries, +1 more
 - `src/utils/mirroringDefault.ts` — shouldDefaultMirroringOn
 - `src/utils/missed.ts` — isMissed, isRealCompletion, isDoneByOther, isResolvedAsDone, MostMissedGroup, mostMissed
+- `src/utils/missions.ts` — MISSION_REARM_SECONDS, MISSION_COUNTING_GRACE_SECONDS, MISSION_HEARTBEAT_MS, MISSION_GIVE_UP_HOLD_MS, MISSION_KINDS, DEFAULT_MISSION, normalizeMission, parseMission, hasMission, describeMission, +9 more
 - `src/utils/moodContextSources.ts` — MoodContextSources, NO_MOOD_CONTEXT_SOURCES, MOOD_CONTEXT_SOURCE_KEYS, EXERCISED_MINUTES, OUTSIDE_MINUTES, RAIN_TAG_MM, parseMoodContextSources, MoodEventTag, MOOD_EVENT_TAG_MAX_LENGTH, parseMoodEventTags
 - `src/utils/moodDayContext.ts` — MoodDayInputs, DayRain, rainForDay, moodDayOffers
 - `src/utils/moodDayOffers.ts` — moodDayOffersFor
@@ -410,7 +413,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/proteinPerWeight.ts` — ProteinPerWeight, PROTEIN_PER_WEIGHT_RANGE, parseProteinPerWeight, serializeProteinPerWeight, switchProteinUnit, proteinTargetFromWeight
 - `src/utils/pulseLog.ts` — PulseKind, PulseEntry, isPlausiblePulse, parsePulseInput, parsePulseSeries, standalonePulses, pulsesSince
 - `src/utils/purchaseInterval.ts` — MIN_PURCHASE_GAP_DAYS, nextPurchaseIntervalDays
-- `src/utils/pushupCounter.ts` — PUSHUP_MIN_NEAR_MS, PUSHUP_MIN_REP_MS, PUSHUP_MAX_NEAR_MS, PUSHUP_DEFAULT_COUNT, PUSHUP_MAX_COUNT, PushupCounterState, initialPushupState, feedProximity, tapRep, normalizePushupChallenge, +1 more
+- `src/utils/pushupCounter.ts` — PUSHUP_MIN_NEAR_MS, PUSHUP_MIN_REP_MS, PUSHUP_MAX_NEAR_MS, PUSHUP_DEFAULT_COUNT, PUSHUP_MAX_COUNT, PushupCounterState, initialPushupState, feedProximity, tapRep, normalizePushupCount
 - `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more
 - `src/utils/quickActions.ts` — STATIC_ACTIONS, QuickActionScreen, quickActionsFor, handleQuickActionId, useHomeScreenQuickActions, publishQuickActions
 - `src/utils/quickAddPhrases.ts` — QuickAddPhrase, QuickAddPhraseSection, QUICK_ADD_PHRASES
@@ -568,7 +571,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/tagColor.ts` — tagColor
 - `src/utils/tagRename.ts` — normalizeTagName, renameInTagList, renameTagInSeriesDefaults, renameTagInFollowUpDraft, renameTagInTitleRules, renameTagInReminderCaptures, renameTagInGeneratedExtras
 - `src/utils/taskAgain.ts` — AgainFields, againFields, describeAgainFields, againDraft
-- `src/utils/taskCompletion.ts` — CompletionOptions, CompletionContext, CompletionRows, pushupsOwed, completionRefusal, buildCompletion, completionSettings
+- `src/utils/taskCompletion.ts` — CompletionOptions, CompletionContext, CompletionRows, missionOwed, completionRefusal, buildCompletion, completionSettings
 - `src/utils/taskDates.ts` — calendarDayKey, SeriesRepeat, seriesRows, DatesAnchorStep, datesAnchorStep, DatesReconcile, datesReconcile
 - `src/utils/taskDose.ts` — TaskDosePreview, describeTaskDose
 - `src/utils/taskDraft.ts` — applyTitleRulesToDraft, newTaskFromDraft, reanchorReminder, NO_RECURRENCE, buildSeriesRow
@@ -679,6 +682,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, markGeneratedReady, settleReadyMarks, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask, forfeitUseUpCoins, restoreUseUpCoins
 - `src/store/generatorSwitch.ts` — setGeneratorEnabled
 - `src/store/useAgentSuggestionStore.ts` — useAgentSuggestionStore
+- `src/store/useAlarmStore.ts` — AlarmInput, useAlarmStore
 - `src/store/useAppGroupStore.ts` — NewSchedule, ScheduleResult, useAppGroupStore, resolvedAssignments, allowGroupsNow, resolveGroupNow, expandGroupNow
 - `src/store/useAppLockStore.ts` — useAppLockStore, isAppLocked
 - `src/store/useBlockTimerStore.ts` — useBlockTimerStore
@@ -709,6 +713,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useMealPlanStore.ts` — MealPlanDraft, CookRecap, sameMealPlanEntries, useMealPlanStore
 - `src/store/useMedicationStore.ts` — SUMMARY_LAST_SETTING_KEY, MILESTONE_DISMISSED_SETTING_KEY, DoseInput, DoseEffects, setDoseEffects, MedicationLogPatch, useMedicationStore
 - `src/store/useMilestoneStore.ts` — MilestonePatch, useMilestoneStore
+- `src/store/useMissionStore.ts` — useMissionStore
 - `src/store/useMoodStore.ts` — MoodLogPatch, useMoodStore
 - `src/store/useNfcKeyStore.ts` — KeyScanResult, EnrollResult, useNfcKeyStore
 - `src/store/usePendingEstimateStore.ts` — PendingEstimateDraft, EnqueueResult, usePendingEstimateStore
@@ -840,7 +845,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +310 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +313 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SERVER_SHARING_KEY_PREFIX, +19 more
 
 ## `src/services`

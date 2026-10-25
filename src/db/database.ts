@@ -70,6 +70,7 @@ import type {
   StoreAlias,
   TaskGroup,
   FocusSession,
+  Alarm,
   FocusSessionRecord,
   FocusStep,
   FocusStepRecord,
@@ -142,6 +143,7 @@ import {
   updatedAtMigrations,
   type SyncTable,
 } from './syncTracking';
+import { parseMission } from '../utils/missions';
 import {
   emptyApplyReport,
   remoteDeletionWins,
@@ -374,6 +376,26 @@ function runInitDatabase(): void {
     -- here, ending one deletes it. A table rather than a settings key because
     -- the plan is structured data the app reads on every tick, not a
     -- preference (see FocusSession in types).
+    -- Alarms of their own (see Alarm in types and utils/alarms.ts). Device-only:
+    -- neither synced nor backed up, because an alarm belongs to the phone it
+    -- rings on. repeat_days and mission are JSON; fire_at is set only on a
+    -- one-off alarm.
+    CREATE TABLE IF NOT EXISTS alarms (
+      id TEXT PRIMARY KEY NOT NULL,
+      label TEXT NOT NULL DEFAULT '',
+      hour INTEGER NOT NULL,
+      minute INTEGER NOT NULL,
+      repeat_days TEXT NOT NULL DEFAULT '[]',
+      fire_at TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      mission TEXT,
+      quick INTEGER NOT NULL DEFAULT 0,
+      armed_at TEXT NOT NULL,
+      mission_done_at TEXT,
+      mission_gave_up INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS focus_sessions (
       id TEXT PRIMARY KEY NOT NULL,
       started_at TEXT NOT NULL,
@@ -2471,8 +2493,8 @@ function runInitDatabase(): void {
     'ALTER TABLE workout_sessions ADD COLUMN routine_version_id TEXT',
     'CREATE INDEX IF NOT EXISTS idx_workout_routine_versions_routine ON workout_routine_versions(routine_id)',
     'CREATE INDEX IF NOT EXISTS idx_workout_program_versions_program ON workout_program_versions(program_id)',
-    // Task.pushupChallenge: NULL on every existing row, which is no challenge.
-    'ALTER TABLE tasks ADD COLUMN pushup_challenge INTEGER',
+    // Task.mission: NULL on every existing row, which is no mission.
+    'ALTER TABLE tasks ADD COLUMN mission TEXT',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -3004,6 +3026,11 @@ export const BACKUP_EXCLUDED_TABLES = [
   // rows are believed only against a fingerprint of ingredient lines that a
   // restore is about to rewrite.
   'pending_recipe_estimates',
+  // Alarms (see Alarm in types). An alarm belongs to the phone it rings on,
+  // and a restore onto another phone, or weeks later, would set alarms for a
+  // morning nobody planned. They are quick to set again; a wrong one ringing
+  // at 6am is not quick to forgive.
+  'alarms',
   // The error log (see utils/errorLog.ts). A diagnostic trail of what went
   // wrong on this phone recently; restoring another day's failures over a
   // fixed bug would send somebody chasing an error that no longer happens. It
@@ -4288,7 +4315,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     healthTarget: (row.health_target as number | null) ?? null,
     healthFollowGoal: Boolean(row.health_follow_goal),
     completionTimerMinutes: (row.completion_timer_minutes as number | null) ?? null,
-    pushupChallenge: (row.pushup_challenge as number | null) ?? null,
+    mission: parseMission(row.mission),
     completionTimerNote: (row.completion_timer_note as string | null) ?? null,
     completionTimerStartedAt: (row.completion_timer_started_at as string | null) ?? null,
     // Narrowed the same way healthMetric above is: an unrecognized column value
@@ -4413,7 +4440,7 @@ export function dbInsertTask(task: Task): void {
       rain_skip_mm, rain_skipped_on,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
       slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, medication_extras, attachments, reminder_place_id, reminder_place_on,
-      pushup_challenge
+      mission
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
@@ -4566,7 +4593,7 @@ export function dbInsertTask(task: Task): void {
       task.attachments?.length ? JSON.stringify(task.attachments) : null,
       task.reminderPlaceId ?? null,
       task.reminderPlaceId ? (task.reminderPlaceOn ?? 'arrive') : null,
-      task.pushupChallenge ?? null,
+      task.mission ? JSON.stringify(task.mission) : null,
     ]
   );
 }
@@ -4607,7 +4634,7 @@ export function dbUpdateTask(task: Task): void {
       rain_skip_mm=?, rain_skipped_on=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
       slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, medication_extras=?, attachments=?, reminder_place_id=?, reminder_place_on=?,
-      pushup_challenge=?
+      mission=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -4760,7 +4787,7 @@ export function dbUpdateTask(task: Task): void {
       task.attachments?.length ? JSON.stringify(task.attachments) : null,
       task.reminderPlaceId ?? null,
       task.reminderPlaceId ? (task.reminderPlaceOn ?? 'arrive') : null,
-      task.pushupChallenge ?? null,
+      task.mission ? JSON.stringify(task.mission) : null,
       task.id,
     ]
   );
@@ -5426,6 +5453,55 @@ export function dbDeleteTaskGroup(id: string): void {
 }
 
 // ─── Focus sessions ─────────────────────────────────────────────────────────
+
+function rowToAlarm(row: Record<string, unknown>): Alarm {
+  let repeatDays: number[] = [];
+  try {
+    const parsed: unknown = JSON.parse((row.repeat_days as string) || '[]');
+    if (Array.isArray(parsed)) {
+      repeatDays = parsed.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6);
+    }
+  } catch {
+    // A damaged day list reads as no repeat, which rings once.
+  }
+  return {
+    id: row.id as string,
+    label: (row.label as string) ?? '',
+    hour: row.hour as number,
+    minute: row.minute as number,
+    repeatDays,
+    fireAt: (row.fire_at as string | null) ?? null,
+    enabled: Boolean(row.enabled),
+    mission: parseMission(row.mission),
+    quick: Boolean(row.quick),
+    armedAt: row.armed_at as string,
+    missionDoneAt: (row.mission_done_at as string | null) ?? null,
+    missionGaveUp: Boolean(row.mission_gave_up),
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAlarms(): Alarm[] {
+  return db.getAllSync<Record<string, unknown>>('SELECT * FROM alarms ORDER BY created_at').map(rowToAlarm);
+}
+
+/** Inserts or replaces one alarm. One write for both, since an alarm row is small and always written whole. */
+export function dbSaveAlarm(alarm: Alarm): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO alarms
+      (id, label, hour, minute, repeat_days, fire_at, enabled, mission, quick, armed_at, mission_done_at, mission_gave_up, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      alarm.id, alarm.label, alarm.hour, alarm.minute, JSON.stringify(alarm.repeatDays), alarm.fireAt,
+      alarm.enabled ? 1 : 0, alarm.mission ? JSON.stringify(alarm.mission) : null, alarm.quick ? 1 : 0,
+      alarm.armedAt, alarm.missionDoneAt, alarm.missionGaveUp ? 1 : 0, alarm.createdAt,
+    ],
+  );
+}
+
+export function dbDeleteAlarm(id: string): void {
+  db.runSync('DELETE FROM alarms WHERE id = ?', [id]);
+}
 
 function rowToFocusSession(row: Record<string, unknown>): FocusSession {
   return {

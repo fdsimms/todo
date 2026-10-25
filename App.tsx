@@ -16,6 +16,7 @@ import { useAppGroupStore } from './src/store/useAppGroupStore';
 import { useShieldReleaseStore } from './src/store/useShieldReleaseStore';
 import { useBlockTimerStore } from './src/store/useBlockTimerStore';
 import { useManualBlockStore } from './src/store/useManualBlockStore';
+import { useAlarmStore } from './src/store/useAlarmStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
@@ -171,6 +172,12 @@ function AppGate() {
       runStartupStep('load released blocks', () => useShieldReleaseStore.getState().initialize());
       runStartupStep('load timed block', () => useManualBlockStore.getState().initialize());
       runStartupStep('load block timer', () => useBlockTimerStore.getState().initialize());
+      // Puts every alarm back on the device as well: AlarmKit keeps what was
+      // scheduled, but a one-off switched back on, or a reinstall, needs it.
+      runStartupStep('load alarms', () => {
+        useAlarmStore.getState().initialize();
+        void useAlarmStore.getState().syncAllToDevice();
+      });
       runStartupStep('load sync state', () => useSyncStore.getState().initialize());
       // After settings, which say whether the weather feature is on: puts the
       // last reading in place so Today's header chip is on the first frame.

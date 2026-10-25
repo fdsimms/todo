@@ -4,9 +4,8 @@ import {
   PUSHUP_MIN_NEAR_MS,
   PUSHUP_MIN_REP_MS,
   feedProximity,
-  hasPushupChallenge,
   initialPushupState,
-  normalizePushupChallenge,
+  normalizePushupCount,
   tapRep,
 } from '../utils/pushupCounter';
 
@@ -75,30 +74,21 @@ describe('tapRep', () => {
   });
 });
 
-describe('normalizePushupChallenge', () => {
+describe('normalizePushupCount', () => {
   it('keeps a whole positive count', () => {
-    expect(normalizePushupChallenge(20)).toBe(20);
-    expect(normalizePushupChallenge(12.6)).toBe(13);
+    expect(normalizePushupCount(20)).toBe(20);
+    expect(normalizePushupCount(12.6)).toBe(13);
   });
 
   it('reads anything not positive as none', () => {
-    expect(normalizePushupChallenge(0)).toBeNull();
-    expect(normalizePushupChallenge(-3)).toBeNull();
-    expect(normalizePushupChallenge(NaN)).toBeNull();
-    expect(normalizePushupChallenge(null)).toBeNull();
-    expect(normalizePushupChallenge('20')).toBeNull();
+    expect(normalizePushupCount(0)).toBeNull();
+    expect(normalizePushupCount(-3)).toBeNull();
+    expect(normalizePushupCount(NaN)).toBeNull();
+    expect(normalizePushupCount(null)).toBeNull();
+    expect(normalizePushupCount('20')).toBeNull();
   });
 
   it('caps the count', () => {
-    expect(normalizePushupChallenge(5000)).toBe(PUSHUP_MAX_COUNT);
-  });
-});
-
-describe('hasPushupChallenge', () => {
-  it('is set only by a usable count', () => {
-    expect(hasPushupChallenge({ pushupChallenge: 10 })).toBe(true);
-    expect(hasPushupChallenge({ pushupChallenge: 0 })).toBe(false);
-    expect(hasPushupChallenge({ pushupChallenge: null })).toBe(false);
-    expect(hasPushupChallenge({})).toBe(false);
+    expect(normalizePushupCount(5000)).toBe(PUSHUP_MAX_COUNT);
   });
 });

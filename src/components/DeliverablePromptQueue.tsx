@@ -3,9 +3,9 @@ import type { Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { animateLayout } from '../utils/layoutAnimation';
 import { asksOnCompletion } from '../utils/deliverables';
-import { hasPushupChallenge } from '../utils/pushupCounter';
+import { hasMission } from '../utils/missions';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
-import { PushupCounterSheet } from './PushupCounterSheet';
+import { MissionSheet, taskMissionProps } from './MissionSheet';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 
 interface Props {
@@ -36,10 +36,10 @@ interface Props {
  * where cancelling the second silently dropped the third would be its own
  * quiet loss, which is the thing this path exists to stop.
  *
- * **A task with pushups to do gets the counter first** (`PushupCounterSheet`),
+ * **A task with a mission gets the mission first** (`MissionSheet`),
  * which is why every path completing one with a person present comes through
  * here (`completesThroughQueue`): `completeTask` refuses it otherwise. Once
- * the pushups are counted, a task that also asks something gets its question
+ * the mission is done, a task that also asks something gets its question
  * next and is completed with both; one that doesn't is completed at once and
  * the counter closes. Only one of the two sheets is ever visible, since two
  * modals can't be.
@@ -62,16 +62,16 @@ export function DeliverablePromptQueue({ ids, onResolved, onOpenTask }: Props) {
   const current = useTaskStore(s =>
     head ? s.tasks.find(t => t.id === head && !t.completed) ?? null : null);
 
-  // Tasks whose pushups were counted in this run, still waiting on their
-  // question. The question's answer completes them with `pushupsDone`.
+  // Tasks whose mission was done in this run, still waiting on their
+  // question. The question's answer completes them with `missionDone`.
   const [counted, setCounted] = useState<readonly string[]>([]);
   useEffect(() => {
     if (head !== null && current === null) onResolved(head);
   }, [head, current]);
 
-  const pushupHead = current && hasPushupChallenge(current) && !counted.includes(current.id) ? current : null;
-  const counterTask = pushupHead;
-  const promptTask = pushupHead === null ? current : null;
+  const missionHead = current && hasMission(current) && !counted.includes(current.id) ? current : null;
+  const counterTask = missionHead;
+  const promptTask = missionHead === null ? current : null;
 
   // Each held past the end of the run, so the last answer closes its sheet
   // through `visible` instead of taking it out of the tree while it is still
@@ -81,11 +81,11 @@ export function DeliverablePromptQueue({ ids, onResolved, onOpenTask }: Props) {
 
   return (
     <>
-      {shownCounter && (
-        <PushupCounterSheet
+      {shownCounter && taskMissionProps(shownCounter) && (
+        <MissionSheet
+          {...taskMissionProps(shownCounter)!}
           visible={counterTask !== null}
-          task={shownCounter}
-          onCounted={() => {
+          onDone={() => {
             const task = shownCounter;
             if (asksOnCompletion(task)) {
               // The counter closes and the question opens in the same commit,
@@ -94,7 +94,7 @@ export function DeliverablePromptQueue({ ids, onResolved, onOpenTask }: Props) {
               return;
             }
             animateLayout();
-            completeTask(task.id, { pushupsDone: true });
+            completeTask(task.id, { missionDone: true });
             onResolved(task.id);
           }}
           onClose={() => onResolved(shownCounter.id)}
@@ -109,7 +109,7 @@ export function DeliverablePromptQueue({ ids, onResolved, onOpenTask }: Props) {
             completeTask(shownPrompt.id, {
               deliverableValue: value,
               deliverableReasoning: reasoning,
-              pushupsDone: counted.includes(shownPrompt.id),
+              missionDone: counted.includes(shownPrompt.id),
             });
             onResolved(shownPrompt.id);
           }}

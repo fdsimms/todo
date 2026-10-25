@@ -72,8 +72,8 @@ export interface TaskSummaryInput {
   phone?: string;
   email?: string;
   asks?: DeliverableKind;
-  /** Pushups to do before it can be checked off (Task.pushupChallenge). */
-  pushups?: number;
+  /** The mission to do before it can be checked off, described ("20 pushups"). See Task.mission. */
+  mission?: string;
 }
 
 const PROPER_FIRST_WORD = new Set([
@@ -221,7 +221,7 @@ function opensSentence(i: TaskSummaryInput): Clause[] {
 }
 
 function finishSentence(i: TaskSummaryInput): Clause[] {
-  const pushups = i.pushups ? v(`${i.pushups} pushup${i.pushups === 1 ? '' : 's'}`, 'pushups') : null;
+  const pushups = i.mission ? v(i.mission, 'mission') : null;
   if (pushups && i.asks) {
     return [[w('takes '), pushups, w(' and asks for '), v(ASKS[i.asks], 'deliverable'), w(' when you check it off')]];
   }

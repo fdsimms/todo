@@ -229,7 +229,7 @@ import {
   buildSeriesRow,
   NO_RECURRENCE,
 } from '../utils/taskDraft';
-import { buildCompletion, completionSettings, pushupsOwed } from '../utils/taskCompletion';
+import { buildCompletion, completionSettings, missionOwed } from '../utils/taskCompletion';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
@@ -1926,8 +1926,8 @@ interface TaskStore extends UndoHistoryActions {
     recorded?: boolean;
     /** See CompletionOptions.byOther (taskCompletion.ts) — somebody else did it. */
     byOther?: boolean;
-    /** See CompletionOptions.pushupsDone (taskCompletion.ts) — set only by the pushup counter. */
-    pushupsDone?: boolean;
+    /** See CompletionOptions.missionDone (taskCompletion.ts) — set only by the mission sheet. */
+    missionDone?: boolean;
     /** The app completed this because the person's action satisfied it; a ready step it spawns follows. See `requestAutoComplete`. */
     autoCompleted?: boolean;
     completedAt?: string;
@@ -3979,9 +3979,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         'archived' in updates ||
         'title' in updates ||
         'notes' in updates ||
-        // An alarm for a pushup task carries a Pushups button (see
+        // An alarm for a task with a mission rings back until it's done (see
         // scheduleTaskReminder), so the alarm is rebuilt when that changes.
-        'pushupChallenge' in updates
+        'mission' in updates
       ) {
         cancelTaskReminder(id);
         scheduleTaskReminder(updated);
@@ -4271,10 +4271,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (!recordTaskAnswered(task)) return;
       options = { ...options, recorded: true };
     }
-    // A task with pushups to do is checked off by the counter that counted
-    // them (see pushupsOwed). Refused here, ahead of the timer and answer
+    // A task with a mission is checked off by the sheet that ran it (see
+    // missionOwed). Refused here, ahead of the timer and answer
     // writes below, for the same funnel reason as the negative habit above.
-    if (pushupsOwed(task, options)) return;
+    if (missionOwed(task, options)) return;
     // Recurring tasks shown early in Later (deferred to, or due on, a future
     // day) can't be completed ahead of schedule — doing so would generate the
     // next occurrence off today instead of the task's real day. Non-recurring

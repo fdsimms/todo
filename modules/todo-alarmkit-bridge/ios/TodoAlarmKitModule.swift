@@ -18,7 +18,6 @@ import ExpoModulesCore
 #if canImport(AlarmKit)
 import AlarmKit
 #endif
-import AppIntents
 
 private let exceptionCatcherLogTag = "[TodoAlarmKitBridge]"
 
@@ -74,84 +73,56 @@ public class TodoAlarmKitModule: Module {
     // schedule bail at the guard below and silently return false. Don't
     // "simplify" the call sites back to handing this a task id.
     //
-    // `pushupsTaskId` is set only for a task with pushups to do
-    // (Task.pushupChallenge): the alert then carries a Pushups button whose
-    // intent opens the app to that task's counter (OpenPushupsIntent.swift).
-    // The task id has to travel with the alarm, because the alarm's own UUID
-    // is a one-way hash of it.
-    AsyncFunction("scheduleAlarm") { (id: String, epochSeconds: Double, title: String, pushupsTaskId: String?) -> Bool in
+    // `missionJson` is set only for an alarm with a mission (MissionPayload in
+    // MissionAlarm.swift): the alert then carries the mission's button, and
+    // Stop keeps it coming back until the app completes the mission.
+    AsyncFunction("scheduleAlarm") { (id: String, epochSeconds: Double, title: String, missionJson: String?) -> Bool in
       guard #available(iOS 26, *) else { return false }
       guard let uuid = UUID(uuidString: id) else { return false }
-
-      var succeeded = false
-      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-        TodoAlarmKitExceptionCatcher.runCatchingExceptions {
-          Task {
-            do {
-              let fireDate = Date(timeIntervalSince1970: epochSeconds)
-              let stopButton = AlarmButton(
-                text: "Stop",
-                textColor: .white,
-                systemImageName: "stop.circle"
-              )
-              // On gold (the tint, below), so the text is ink. `.custom` is
-              // AlarmKit's "this button runs secondaryIntent" behaviour; the
-              // other one, `.countdown`, is a snooze.
-              let pushupsButton: AlarmButton? = pushupsTaskId.map { _ in
-                AlarmButton(
-                  text: "Pushups",
-                  textColor: .black,
-                  systemImageName: "figure.strengthtraining.functional"
-                )
-              }
-              // The stopButton initializer is deprecated in iOS 26.1, where
-              // the system draws Stop itself, but it is the one available on
-              // 26.0 and still compiles and runs on 26.1+.
-              let alert = AlarmPresentation.Alert(
-                title: LocalizedStringResource(stringLiteral: title),
-                stopButton: stopButton,
-                secondaryButton: pushupsButton,
-                secondaryButtonBehavior: pushupsButton == nil ? nil : .custom
-              )
-              let presentation = AlarmPresentation(alert: alert)
-              let attributes = AlarmAttributes<TodoAlarmMetadata>(
-                presentation: presentation,
-                // The mark's gold (colors.brand). It colors the title,
-                // countdown and Dynamic Island; the system fills only a
-                // secondary button with it, which only a pushup task's alarm
-                // has (its text is ink for that reason), so the Stop
-                // button's white text never sits on gold. Written as
-                // `.init` for the same reason `.accentColor` was a bare member:
-                // this file doesn't import SwiftUI by name.
-                tintColor: .init(red: 1.0, green: 176.0 / 255.0, blue: 32.0 / 255.0)
-              )
-              let secondaryIntent: (any LiveActivityIntent)? = pushupsTaskId.map {
-                OpenPushupsIntent(taskId: $0)
-              }
-              let configuration = AlarmManager.AlarmConfiguration(
-                schedule: .fixed(fireDate),
-                attributes: attributes,
-                secondaryIntent: secondaryIntent
-              )
-
-              _ = try await AlarmManager.shared.schedule(id: uuid, configuration: configuration)
-              succeeded = true
-            } catch {
-              NSLog("%@ scheduleAlarm failed: %@", exceptionCatcherLogTag, String(describing: error))
-              succeeded = false
-            }
-            continuation.resume()
-          }
-        }
-      }
-      return succeeded
+      let configuration = AlarmBuilder.configuration(
+        schedule: .fixed(Date(timeIntervalSince1970: epochSeconds)),
+        title: title,
+        mission: MissionPayload.decode(missionJson)
+      )
+      return await scheduleCatching(id: uuid, configuration: configuration, label: "scheduleAlarm")
     }
 
-    // Reads and clears the task ids OpenPushupsIntent queued, as a JSON
-    // array of strings, oldest first. Cleared on read, so JS calls this only
-    // once it can open the counter (see src/utils/pushupAlarmOpens.ts).
-    AsyncFunction("drainPendingPushupOpens") { () -> String in
-      return PushupOpenQueue.drain()
+    // A repeating alarm on AlarmKit's own weekly schedule, so it keeps
+    // ringing on its days whether or not the app is opened in between.
+    // `weekdays` are 0 = Sunday, as in JS.
+    AsyncFunction("scheduleWeeklyAlarm") { (id: String, hour: Int, minute: Int, weekdays: [Int], title: String, missionJson: String?) -> Bool in
+      guard #available(iOS 26, *) else { return false }
+      guard let uuid = UUID(uuidString: id) else { return false }
+      let days = weekdays.compactMap(localeWeekday)
+      guard !days.isEmpty else { return false }
+      let configuration = AlarmBuilder.configuration(
+        schedule: .relative(.init(time: .init(hour: hour, minute: minute), repeats: .weekly(days))),
+        title: title,
+        mission: MissionPayload.decode(missionJson)
+      )
+      return await scheduleCatching(id: uuid, configuration: configuration, label: "scheduleWeeklyAlarm")
+    }
+
+    // The missions whose alarm has been stopped and that are still owed, as a
+    // JSON array (MissionStore.pendingJSON). Reading clears nothing.
+    AsyncFunction("pendingMissions") { () -> String in
+      return MissionStore.pendingJSON()
+    }
+
+    // Marks a mission pending and puts its next ring `seconds` out: 15 when
+    // the counter closes unfinished, a minute (renewed) while it is open.
+    AsyncFunction("deferMission") { (missionJson: String, seconds: Double) -> Bool in
+      guard #available(iOS 26, *) else { return false }
+      guard let mission = MissionPayload.decode(missionJson) else { return false }
+      await MissionLoop.rearm(mission, after: seconds)
+      return true
+    }
+
+    // The mission is done or given up: no more rings for it.
+    AsyncFunction("completeMission") { (key: String) -> Bool in
+      guard #available(iOS 26, *) else { return false }
+      MissionLoop.complete(key: key)
+      return true
     }
 
     AsyncFunction("cancelAlarm") { (id: String) -> Bool in
@@ -191,5 +162,43 @@ private func alarmKitAuthorizationStateString(_ state: AlarmManager.Authorizatio
     return "notDetermined"
   @unknown default:
     return "denied"
+  }
+}
+
+@available(iOS 26, *)
+private func scheduleCatching(
+  id: UUID,
+  configuration: AlarmManager.AlarmConfiguration<TodoAlarmMetadata>,
+  label: String
+) async -> Bool {
+  var succeeded = false
+  await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+    TodoAlarmKitExceptionCatcher.runCatchingExceptions {
+      Task {
+        do {
+          _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
+          succeeded = true
+        } catch {
+          NSLog("%@ %@ failed: %@", exceptionCatcherLogTag, label, String(describing: error))
+          succeeded = false
+        }
+        continuation.resume()
+      }
+    }
+  }
+  return succeeded
+}
+
+@available(iOS 16, *)
+private func localeWeekday(_ day: Int) -> Locale.Weekday? {
+  switch day {
+  case 0: return .sunday
+  case 1: return .monday
+  case 2: return .tuesday
+  case 3: return .wednesday
+  case 4: return .thursday
+  case 5: return .friday
+  case 6: return .saturday
+  default: return nil
   }
 }

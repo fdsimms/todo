@@ -1,4 +1,4 @@
-import { completesThroughQueue, stackCompletionScope, tasksAskingOnCompletion, tasksNeedingPushups, unansweredCompletionCopy } from '../utils/bulkCompletion';
+import { completesThroughQueue, stackCompletionScope, tasksAskingOnCompletion, tasksWithMission, unansweredCompletionCopy } from '../utils/bulkCompletion';
 import type { Task } from '../types';
 
 // Same two stubs completionTap.test.ts uses: isRecurrenceNotYetDue reaches
@@ -83,14 +83,14 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
 
 const idsOf = (tasks: Task[]) => tasks.map(t => t.id);
 
-describe('tasksNeedingPushups', () => {
+describe('tasksWithMission', () => {
   it('names the open tasks with pushups to do', () => {
     const tasks = [
       makeTask({ id: 'plain' }),
-      makeTask({ id: 'push', pushupChallenge: 10 }),
-      makeTask({ id: 'done', pushupChallenge: 10, completed: true }),
+      makeTask({ id: 'push', mission: { kind: 'pushups', count: 10 } }),
+      makeTask({ id: 'done', mission: { kind: 'pushups', count: 10 }, completed: true }),
     ];
-    expect(idsOf(tasksNeedingPushups(tasks))).toEqual(['push']);
+    expect(idsOf(tasksWithMission(tasks))).toEqual(['push']);
   });
 });
 
@@ -98,7 +98,7 @@ describe('completesThroughQueue', () => {
   it('is true for a question or pushups, and false for a plain task', () => {
     expect(completesThroughQueue(makeTask())).toBe(false);
     expect(completesThroughQueue(makeTask({ deliverableKind: 'text' }))).toBe(true);
-    expect(completesThroughQueue(makeTask({ pushupChallenge: 5 }))).toBe(true);
+    expect(completesThroughQueue(makeTask({ mission: { kind: 'pushups', count: 5 } }))).toBe(true);
   });
 });
 

@@ -6,8 +6,11 @@ export type AlarmAuthorizationState = 'authorized' | 'denied' | 'notDetermined';
 interface TodoAlarmKitNativeModule {
   isAvailable(): boolean;
   requestAuthorization(): Promise<AlarmAuthorizationState>;
-  scheduleAlarm(id: string, epochSeconds: number, title: string, pushupsTaskId: string | null): Promise<boolean>;
-  drainPendingPushupOpens?(): Promise<string>;
+  scheduleAlarm(id: string, epochSeconds: number, title: string, missionJson: string | null): Promise<boolean>;
+  scheduleWeeklyAlarm?(id: string, hour: number, minute: number, weekdays: number[], title: string, missionJson: string | null): Promise<boolean>;
+  pendingMissions?(): Promise<string>;
+  deferMission?(missionJson: string, seconds: number): Promise<boolean>;
+  completeMission?(key: string): Promise<boolean>;
   cancelAlarm(id: string): Promise<boolean>;
 }
 
@@ -53,31 +56,86 @@ export function requestAlarmAuthorization(): Promise<AlarmAuthorizationState> {
 }
 
 /**
- * `pushupsTaskId` gives the alarm a Pushups button that opens the app to that
- * task's pushup counter (`drainPendingPushupOpens` hands the tap over). Null
- * for every alarm that isn't a pushup task's.
+ * What an alarm's mission is, for the native side: the opaque key the app
+ * tracks it under (`task:<id>`, `alarm:<id>`), what to do, and what the
+ * re-armed ring shows. See src/utils/missions.ts and MissionAlarm.swift.
  */
-export function scheduleNativeAlarm(id: string, date: Date, title: string, pushupsTaskId: string | null = null): Promise<boolean> {
+export interface NativeMission {
+  key: string;
+  kind: string;
+  count: number;
+  title: string;
+  buttonLabel: string;
+}
+
+/** A mission whose alarm has been stopped and that is still owed. `since` is ms since the epoch. */
+export interface PendingNativeMission extends NativeMission {
+  since: number;
+}
+
+/**
+ * `mission` gives the alarm its mission button, and makes Stop bring it back
+ * until `completeNativeMission`. Null for an ordinary alarm.
+ */
+export function scheduleNativeAlarm(id: string, date: Date, title: string, mission: NativeMission | null = null): Promise<boolean> {
   return degradeOnThrow<Promise<boolean>>(
-    () => nativeModule!.scheduleAlarm(id, date.getTime() / 1000, title, pushupsTaskId),
+    () => nativeModule!.scheduleAlarm(id, date.getTime() / 1000, title, mission ? JSON.stringify(mission) : null),
     Promise.resolve(false)
   );
 }
 
-/**
- * The task ids whose alarm's Pushups button was tapped since the last drain,
- * oldest first. Reading clears them, so a caller that can't act on them yet
- * (stores still loading, demo mode) must not call this.
- */
-export async function drainPendingPushupOpens(): Promise<string[]> {
-  const drain = nativeModule?.drainPendingPushupOpens;
-  if (!nativeModule || typeof drain !== 'function') return [];
+/** A repeating alarm on the weekdays given (0 = Sunday), at a clock time. False on a build without it. */
+export function scheduleWeeklyNativeAlarm(
+  id: string,
+  hour: number,
+  minute: number,
+  weekdays: number[],
+  title: string,
+  mission: NativeMission | null = null,
+): Promise<boolean> {
+  const schedule = nativeModule?.scheduleWeeklyAlarm;
+  if (typeof schedule !== 'function') return Promise.resolve(false);
+  return degradeOnThrow<Promise<boolean>>(
+    () => schedule.call(nativeModule, id, hour, minute, weekdays, title, mission ? JSON.stringify(mission) : null),
+    Promise.resolve(false)
+  );
+}
+
+/** The missions whose alarm has been stopped and that are still owed. Reading clears nothing. */
+export async function pendingNativeMissions(): Promise<PendingNativeMission[]> {
+  const read = nativeModule?.pendingMissions;
+  if (!nativeModule || typeof read !== 'function') return [];
   try {
-    const json = await drain.call(nativeModule);
-    const parsed: unknown = JSON.parse(json);
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+    const parsed: unknown = JSON.parse(await read.call(nativeModule));
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((m): m is PendingNativeMission =>
+      typeof m === 'object' && m !== null
+      && typeof m.key === 'string' && typeof m.kind === 'string' && typeof m.count === 'number'
+      && typeof m.title === 'string' && typeof m.buttonLabel === 'string' && typeof m.since === 'number');
   } catch {
     return [];
+  }
+}
+
+/** Marks the mission pending and puts its next ring `seconds` from now, replacing any waiting one. */
+export async function deferNativeMission(mission: NativeMission, seconds: number): Promise<boolean> {
+  const defer = nativeModule?.deferMission;
+  if (!nativeModule || typeof defer !== 'function') return false;
+  try {
+    return (await defer.call(nativeModule, JSON.stringify(mission), seconds)) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** The mission is done or given up: its waiting ring is cancelled and it is no longer pending. */
+export async function completeNativeMission(key: string): Promise<boolean> {
+  const complete = nativeModule?.completeMission;
+  if (!nativeModule || typeof complete !== 'function') return false;
+  try {
+    return (await complete.call(nativeModule, key)) === true;
+  } catch {
+    return false;
   }
 }
 

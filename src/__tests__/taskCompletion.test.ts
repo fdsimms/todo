@@ -132,9 +132,9 @@ describe('completionRefusal', () => {
   });
 
   it('refuses a pushup task except from the counter, a missed mark or someone else', () => {
-    const task = makeTask({ pushupChallenge: 20 });
+    const task = makeTask({ mission: { kind: 'pushups', count: 20 } });
     expect(completionRefusal(task)).toMatch(/20 pushups/);
-    expect(completionRefusal(task, { pushupsDone: true })).toBeNull();
+    expect(completionRefusal(task, { missionDone: true })).toBeNull();
     expect(completionRefusal(task, { missed: true })).toBeNull();
     expect(completionRefusal(task, { byOther: true })).toBeNull();
     expect(buildCompletion(task, undefined, context())).toBeNull();

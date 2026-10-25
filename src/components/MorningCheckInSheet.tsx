@@ -11,7 +11,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import type { Task } from '../types';
-import { hasPushupChallenge } from '../utils/pushupCounter';
+import { hasMission } from '../utils/missions';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -119,10 +119,10 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
                           >
                             <Ionicons name="close" size={iconSize.sm} color={colors.red} />
                           </TouchableOpacity>
-                          {/* Yesterday's pushups can't be counted now, and
-                              completeTask refuses a tick the counter didn't
-                              make, so a pushup task offers only the miss. */}
-                          {!hasPushupChallenge(task) && (
+                          {/* Yesterday's mission can't be done now, and
+                              completeTask refuses a tick the mission didn't
+                              make, so a task with one offers only the miss. */}
+                          {!hasMission(task) && (
                             <TouchableOpacity hitSlop={8}
                               style={[styles.choiceBtn, styles.choiceBtnYes]}
                               activeOpacity={interaction.activeOpacity}

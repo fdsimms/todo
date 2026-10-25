@@ -433,14 +433,14 @@ describe('scheduleTaskReminder', () => {
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 
-  it('gives a pushup task\'s alarm the Pushups button, naming the task', async () => {
+  it('rings a task with a mission once, carrying the mission so Stop brings it back', async () => {
     mockAlarmKitAvailable = true;
     await scheduleTaskReminder(makeTask({
-      id: 'getup', title: 'Get up', reminderTime: FUTURE, reminderKind: 'persistent', pushupChallenge: 20,
+      id: 'getup', title: 'Get up', reminderTime: FUTURE, reminderKind: 'persistent', mission: { kind: 'pushups', count: 20 },
     }));
     const calls = (scheduleNativeAlarm as jest.Mock).mock.calls;
-    expect(calls.length).toBe(ALARM_MAX_RINGS);
-    expect(calls.every(c => c[3] === 'getup')).toBe(true);
+    expect(calls.length).toBe(1);
+    expect(calls[0][3]).toEqual({ key: 'task:getup', kind: 'pushups', count: 20, title: 'Get up', buttonLabel: 'Pushups' });
   });
 
   it('rings a "persistent" reminder once as a plain notification when AlarmKit is unavailable', async () => {

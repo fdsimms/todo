@@ -119,6 +119,7 @@ import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
 import { generateId } from './id';
 import { writeAgentNotes } from './agentNotes';
+import { useAlarmStore } from '../store/useAlarmStore';
 
 // Seeds a whole plausible-looking task list into whatever database is
 // currently active. Demo mode points the db at a throwaway file first (see
@@ -1230,7 +1231,7 @@ export function seedDemoData(): void {
   });
 
   // The same alarm with pushups to do before it can be checked off
-  // (Task.pushupChallenge). Seeded for the same reason: nothing on the row
+  // (Task.mission). Seeded for the same reason: nothing on the row
   // says a task can ask for pushups until one does.
   addTask({
     title: 'Get up',
@@ -1239,8 +1240,19 @@ export function seedDemoData(): void {
     dueDate: addDays(today, 1).toISOString(),
     reminderTime: setHours(addDays(today, 1), 7).toISOString(),
     reminderKind: 'persistent',
-    pushupChallenge: 20,
+    mission: { kind: 'pushups', count: 20 },
     effort: 1,
+  });
+
+  // An alarm of its own (not a task) with a mission, so the Alarms &
+  // Reminders screen shows what one looks like. Through the store, which puts
+  // nothing on the device in demo mode (syncAlarmToDevice).
+  useAlarmStore.getState().saveAlarm({
+    label: 'Wake up',
+    hour: 7,
+    minute: 0,
+    repeatDays: [1, 2, 3, 4, 5],
+    mission: { kind: 'pushups', count: 20 },
   });
 
   // --- A task given several dates (a series) -------------------------------

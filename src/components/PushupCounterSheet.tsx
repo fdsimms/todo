@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import { addProximityListener, isProximitySupported } from 'todo-proximity-bridge';
-import type { Task } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { type Colors, font, fontWeight, iconSize, interaction, lineHeight, radius, spacing } from '../theme';
 import { SheetModal } from './SheetModal';
@@ -14,27 +13,36 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { AnimatedNumber } from './AnimatedNumber';
 import { BUTTON_LABEL } from '../copy/shared';
 import { haptics } from '../utils/haptics';
-import { displayTitleFor } from '../utils/visibilityUtils';
+import { MISSION_GIVE_UP_HOLD_MS } from '../utils/missions';
 import {
   feedProximity,
   initialPushupState,
-  normalizePushupChallenge,
   tapRep,
   type PushupCounterState,
 } from '../utils/pushupCounter';
 
-interface Props {
+export interface PushupCounterProps {
   visible: boolean;
-  task: Task;
+  /** What the pushups are for: the task's or the alarm's title. */
+  title: string;
+  count: number;
+  /** Starts a fresh count when it changes while the sheet is up (the answer queue moving on). */
+  subjectKey: string;
+  /** What the done state says while the sheet slides away ("Get up is checked off."). */
+  doneNote: string;
   /**
-   * The count was reached. The caller closes the sheet and checks the task
-   * off (`completeTask` with `pushupsDone`), or asks its question first if it
-   * has one. Called once per opening. The done state below is what shows
-   * while the sheet slides away.
+   * The count was reached. The caller closes the sheet and finishes what the
+   * mission was for (`completeTask` with `missionDone`, or the alarm's
+   * `completeMission`). Called once per opening.
    */
   onCounted: () => void;
-  /** Cancel: closes the sheet with the task left as it was. */
+  /** Cancel: closes the sheet with nothing done. */
   onClose: () => void;
+  /**
+   * Shown only while an alarm is ringing for this mission: the way out that
+   * isn't the mission, behind a hold of `MISSION_GIVE_UP_HOLD_MS`.
+   */
+  onGiveUp?: () => void;
 }
 
 const RING_SIZE = 240;
@@ -43,8 +51,8 @@ const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
 
 /**
- * Counts a task's pushups (`Task.pushupChallenge`) and hands the completion
- * back once they're done. The rules for what counts as a rep are in
+ * Counts a pushup mission (`AlarmMission`, on a task or an alarm) and hands
+ * the completion back once they're done. The rules for what counts as a rep are in
  * `src/utils/pushupCounter.ts`; this is the screen around them.
  *
  * Full screen rather than a page sheet: the phone is face up on the floor for
@@ -56,11 +64,11 @@ const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
  * honest fallback for a task synced from a phone: without it, the task could
  * never be checked off there at all.
  */
-export function PushupCounterSheet({ visible, task, onCounted, onClose }: Props) {
+export function PushupCounterSheet({ visible, title, count, subjectKey, doneNote, onCounted, onClose, onGiveUp }: PushupCounterProps) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const target = normalizePushupChallenge(task.pushupChallenge) ?? 1;
+  const target = Math.max(1, count);
 
   const [counter, setCounter] = useState<PushupCounterState>(initialPushupState);
   // null while the sensor is being looked for.
@@ -81,7 +89,7 @@ export function PushupCounterSheet({ visible, task, onCounted, onClose }: Props)
     return () => {
       live = false;
     };
-  }, [visible, task.id]);
+  }, [visible, subjectKey]);
 
   // Listening turns the sensor on, and with it iOS's habit of switching the
   // screen off while it's covered, so only while there is something to count.
@@ -111,8 +119,6 @@ export function PushupCounterSheet({ visible, task, onCounted, onClose }: Props)
   }, [counter.count, target]);
 
   const progress = Math.min(1, counter.count / target);
-  const title = displayTitleFor(task);
-  const ringsAgain = task.reminderKind === 'persistent' || task.reminderKind === 'alarm';
 
   const ring = (
     <View style={styles.ring}>
@@ -180,9 +186,7 @@ export function PushupCounterSheet({ visible, task, onCounted, onClose }: Props)
           ) : ring}
 
           {counted ? (
-            <Text style={styles.doneNote}>
-              {ringsAgain ? `${title} is checked off, and its alarm won’t ring again.` : `${title} is checked off.`}
-            </Text>
+            <Text style={styles.doneNote}>{doneNote}</Text>
           ) : sensor === null ? null : (
             <>
               <View style={styles.card}>
@@ -203,8 +207,71 @@ export function PushupCounterSheet({ visible, task, onCounted, onClose }: Props)
             </>
           )}
         </View>
+        {onGiveUp && !counted && (
+          <View style={[styles.giveUpWrap, { paddingBottom: insets.bottom + spacing.md }]}>
+            <GiveUpButton onGiveUp={onGiveUp} colors={colors} styles={styles} />
+          </View>
+        )}
       </View>
     </SheetModal>
+  );
+}
+
+/**
+ * The way out of a ringing mission that isn't the mission: held for
+ * `MISSION_GIVE_UP_HOLD_MS`, filling as it goes, and nothing on a shorter
+ * press. Long on purpose, so stopping the alarm this way is a decision made
+ * awake rather than a tap made half asleep.
+ */
+function GiveUpButton({ onGiveUp, colors, styles }: {
+  onGiveUp: () => void;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  const fill = useRef(new Animated.Value(0)).current;
+  const holding = useRef<Animated.CompositeAnimation | null>(null);
+  const seconds = Math.round(MISSION_GIVE_UP_HOLD_MS / 1000);
+
+  const start = () => {
+    haptics.impactLight();
+    holding.current = Animated.timing(fill, {
+      toValue: 1,
+      duration: MISSION_GIVE_UP_HOLD_MS,
+      useNativeDriver: false,
+    });
+    holding.current.start(({ finished }) => {
+      if (!finished) return;
+      haptics.warning();
+      onGiveUp();
+    });
+  };
+  const stop = () => {
+    holding.current?.stop();
+    holding.current = null;
+    Animated.timing(fill, { toValue: 0, duration: 150, useNativeDriver: false }).start();
+  };
+
+  return (
+    <>
+      <Pressable
+        onPressIn={start}
+        onPressOut={stop}
+        style={styles.giveUp}
+        accessibilityRole="button"
+        accessibilityLabel={`Give up, hold for ${seconds} seconds`}
+      >
+        <Animated.View
+          style={[
+            styles.giveUpFill,
+            { width: fill.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) },
+          ]}
+        />
+        <Text style={styles.giveUpText}>Give up</Text>
+      </Pressable>
+      <Text style={styles.giveUpNote}>
+        Hold for {seconds} seconds. The alarm stops, and Activity records that you gave up.
+      </Text>
+    </>
   );
 }
 
@@ -297,6 +364,36 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.md,
     paddingHorizontal: spacing.smd,
+  },
+  giveUpWrap: {
+    paddingHorizontal: spacing.lg,
+  },
+  giveUp: {
+    minHeight: 50,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  giveUpFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: colors.redFill,
+  },
+  giveUpText: {
+    color: colors.redText,
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
+  },
+  giveUpNote: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    lineHeight: lineHeight.sm,
+    textAlign: 'center',
+    marginTop: spacing.sm,
   },
   doneNote: {
     color: colors.textSecondary,

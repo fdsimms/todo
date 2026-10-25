@@ -1,6 +1,6 @@
 /**
- * Counting pushups off the proximity sensor, for a task that has to be earned
- * before it can be checked off (`Task.pushupChallenge`).
+ * Counting pushups off the proximity sensor: the rules behind the `pushups`
+ * mission (see missions.ts), for a task or an alarm that has to be earned.
  *
  * The phone lies face up on the floor under the person's chest, and each time
  * they go down the sensor reads *near*. A rep is counted when the sensor
@@ -80,18 +80,13 @@ export function tapRep(state: PushupCounterState, at: number): PushupCounterStat
 }
 
 /**
- * The stored form of a challenge count: a whole number from 1 to
- * `PUSHUP_MAX_COUNT`, or null for no challenge. Anything that isn't a positive
- * number (0, a negative, NaN, a string from the MCP) means none.
+ * The stored form of a pushup count: a whole number from 1 to
+ * `PUSHUP_MAX_COUNT`, or null for none. Anything that isn't a positive number
+ * (0, a negative, NaN, a string from the MCP) means none.
  */
-export function normalizePushupChallenge(value: unknown): number | null {
+export function normalizePushupCount(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   const n = Math.round(value);
   if (n < 1) return null;
   return Math.min(n, PUSHUP_MAX_COUNT);
-}
-
-/** Whether a task can only be checked off by doing its pushups. */
-export function hasPushupChallenge(task: { pushupChallenge?: number | null }): boolean {
-  return normalizePushupChallenge(task.pushupChallenge) !== null;
 }

@@ -173,8 +173,9 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { WhenPicker } from './WhenPicker';
 import { TaskBreakdownSheet } from './TaskBreakdownSheet';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
-import { PushupCounterSheet } from './PushupCounterSheet';
-import { hasPushupChallenge } from '../utils/pushupCounter';
+import { MissionSheet, taskMissionProps } from './MissionSheet';
+import { useSheetSubject } from '../hooks/useSheetSubject';
+import { hasMission } from '../utils/missions';
 import { RecipePickerSheet } from './RecipePickerSheet';
 import { PressableScale } from './PressableScale';
 import { usePaintSelectionRow } from './PaintSelection';
@@ -779,14 +780,14 @@ const TaskItemRow = React.memo(function TaskItem({
   const pinWaiting = task.pinned && !pinLit;
   const pinWritesPending = useRef(0);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
-  // The pushup counter (Task.pushupChallenge). Once it has counted, the ref
+  // The mission sheet (Task.mission). Once the mission is done, the ref
   // says so to every completeTask below, which refuses the task otherwise.
-  const [showPushups, setShowPushups] = useState(false);
-  const pushupsCountedRef = useRef(false);
+  const [showMission, setShowMission] = useState(false);
+  const missionDoneRef = useRef(false);
   // A count is good for one completion: an undo, or the row moving on to
-  // another task, needs the pushups again.
+  // another task, needs the mission again.
   useEffect(() => {
-    pushupsCountedRef.current = false;
+    missionDoneRef.current = false;
   }, [task.id, task.completed]);
   const [showMealPicker, setShowMealPicker] = useState(false);
   const { offerPrepTasksForEach } = usePlanMeal();
@@ -1251,7 +1252,7 @@ const TaskItemRow = React.memo(function TaskItem({
     completeTask(task.id, {
       ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
       ...(autoCompletedRef.current ? { autoCompleted: true } : {}),
-      ...(pushupsCountedRef.current ? { pushupsDone: true } : {}),
+      ...(missionDoneRef.current ? { missionDone: true } : {}),
       ...outcome,
     });
   }, []);
@@ -1449,7 +1450,10 @@ const TaskItemRow = React.memo(function TaskItem({
   const mountWhenPicker = useSheetMount(whenPickerOpen);
   const mountBreakdown = useSheetMount(showBreakdown);
   const mountDeliverablePrompt = useSheetMount(showDeliverablePrompt);
-  const mountPushups = useSheetMount(showPushups);
+  const mountMission = useSheetMount(showMission);
+  // Held, so a mission removed from the task while its sheet is up closes the
+  // sheet through `visible` rather than taking it out of the tree.
+  const missionSheet = useSheetSubject(mountMission ? taskMissionProps(task) : null);
   const mealPickerOpen = showMealPicker && mealSlotChooseSource !== null;
   const mountMealPicker = useSheetMount(mealPickerOpen);
   const [showRotationPick, setShowRotationPick] = useState(false);
@@ -2488,7 +2492,7 @@ const TaskItemRow = React.memo(function TaskItem({
           ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
           ...(logEarly ? { logEarly: true } : {}),
           ...(autoCompletedRef.current ? { autoCompleted: true } : {}),
-          ...(pushupsCountedRef.current ? { pushupsDone: true } : {}),
+          ...(missionDoneRef.current ? { missionDone: true } : {}),
           ...outcome,
         });
         endQuotaHold();
@@ -2562,7 +2566,7 @@ const TaskItemRow = React.memo(function TaskItem({
       ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
       ...(logEarly ? { logEarly: true } : {}),
       ...(autoCompletedRef.current ? { autoCompleted: true } : {}),
-      ...(pushupsCountedRef.current ? { pushupsDone: true } : {}),
+      ...(missionDoneRef.current ? { missionDone: true } : {}),
       chainStepInPlace: true,
     });
     endQuotaHold();
@@ -2698,12 +2702,12 @@ const TaskItemRow = React.memo(function TaskItem({
     // still be there to cancel back to. Answering (or explicitly skipping)
     // then runs the ordinary completion, so nothing downstream — the hold, the
     // batched collapse, the recurrence — learns about deliverables at all.
-    // The pushups come before everything else the tick asks, question
+    // The mission comes before everything else the tick asks, question
     // included: the counter is what checks the task off, and once it has
     // counted it calls back in here to carry on from this point.
-    if (hasPushupChallenge(task) && !task.completed && !pushupsCountedRef.current) {
+    if (hasMission(task) && !task.completed && !missionDoneRef.current) {
       await haptics.tap();
-      setShowPushups(true);
+      setShowMission(true);
       return;
     }
     if (asksOnComplete) {
@@ -5587,17 +5591,17 @@ const TaskItemRow = React.memo(function TaskItem({
           onCancel={() => setShowDeliverablePrompt(false)}
         />
       )}
-      {mountPushups && (
-        <PushupCounterSheet
-          visible={showPushups}
-          task={task}
-          onCounted={() => {
-            pushupsCountedRef.current = true;
-            setShowPushups(false);
+      {missionSheet && (
+        <MissionSheet
+          {...missionSheet}
+          visible={showMission}
+          onDone={() => {
+            missionDoneRef.current = true;
+            setShowMission(false);
             handleComplete();
           }}
           // Cancel takes the tap back, the same as the question's.
-          onClose={() => setShowPushups(false)}
+          onClose={() => setShowMission(false)}
         />
       )}
       {mountMealPicker && mealSlotChooseSource && (

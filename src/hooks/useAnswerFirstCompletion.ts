@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 import type { Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
-import { tasksAskingOnCompletion, tasksNeedingPushups, unansweredCompletionCopy } from '../utils/bulkCompletion';
+import { tasksAskingOnCompletion, tasksWithMission, unansweredCompletionCopy } from '../utils/bulkCompletion';
 import { BUTTON_LABEL } from '../copy/shared';
 
 const NOTHING_QUEUED: readonly string[] = [];
@@ -48,16 +48,16 @@ export function useAnswerFirstCompletion(onOpenTask?: (task: Task) => void) {
   const requestComplete = useCallback(({ ids, complete }: CompleteRequest) => {
     const byId = new Map(useTaskStore.getState().tasks.map(t => [t.id, t]));
     const candidates = ids.map(id => byId.get(id)).filter((t): t is NonNullable<typeof t> => !!t);
-    // Tasks with pushups to do are never completed here: completeTask refuses
+    // Tasks with a mission are never completed here: completeTask refuses
     // them, so they are always set aside and handed to the counter. The queue
-    // asks such a task's question after its pushups, so it isn't asked twice.
-    const pushupIds = tasksNeedingPushups(candidates).map(t => t.id);
+    // asks such a task's question after its mission, so it isn't asked twice.
+    const missionIds = tasksWithMission(candidates).map(t => t.id);
     const queue = (ids: readonly string[]) =>
       setQueueIds(prev => [...prev, ...ids.filter(id => !prev.includes(id))]);
-    const asking = tasksAskingOnCompletion(candidates).filter(t => !pushupIds.includes(t.id));
+    const asking = tasksAskingOnCompletion(candidates).filter(t => !missionIds.includes(t.id));
     if (asking.length === 0) {
-      complete(pushupIds);
-      queue(pushupIds);
+      complete(missionIds);
+      queue(missionIds);
       return;
     }
     const askingIds = asking.map(t => t.id);
@@ -71,15 +71,15 @@ export function useAnswerFirstCompletion(onOpenTask?: (task: Task) => void) {
           // The rest go through first, so the questions are the only thing
           // left on screen rather than being asked over a list that hasn't
           // moved yet.
-          complete([...askingIds, ...pushupIds]);
-          queue([...askingIds, ...pushupIds]);
+          complete([...askingIds, ...missionIds]);
+          queue([...askingIds, ...missionIds]);
         },
       },
       {
         text: 'Complete without answering',
         onPress: () => {
-          complete(pushupIds);
-          queue(pushupIds);
+          complete(missionIds);
+          queue(missionIds);
         },
       },
       { text: BUTTON_LABEL.cancel, style: 'cancel' },

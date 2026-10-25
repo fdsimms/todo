@@ -15,7 +15,13 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { usePullToSearch } from '../hooks/usePullToSearch';
-import { EmptyState } from '../components/EmptyState';
+import { EmptyNote } from '../components/EmptyNote';
+import { AlarmsSection } from '../components/AlarmsSection';
+import { AlarmEditorSheet } from '../components/AlarmEditorSheet';
+import { QuickAlarmSheet } from '../components/QuickAlarmSheet';
+import { useAlarmStore } from '../store/useAlarmStore';
+import { useSheetMount } from '../hooks/useSheetMount';
+import type { Alarm } from '../types';
 import { RemindersOffNote } from '../components/RemindersOffNote';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, lineHeight, fontWeight, iconSize, radius, interaction, type Colors } from '../theme';
@@ -26,6 +32,10 @@ import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 
 /**
+ * Alarms & Reminders. The alarms come first (AlarmsSection: the quick alarm,
+ * every alarm of its own and any mission owed; see utils/alarms.ts), drawn as
+ * the list's header, and the reminders follow:
+ *
  * Every task with a reminder still ahead, across the whole app, soonest
  * first — not filtered to what Today happens to be showing.
  *
@@ -54,6 +64,22 @@ export function RemindersScreen() {
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
+  const [editingAlarm, setEditingAlarm] = useState<Alarm | null>(null);
+  const [alarmEditorOpen, setAlarmEditorOpen] = useState(false);
+  const mountAlarmEditor = useSheetMount(alarmEditorOpen);
+  const [quickMinutes, setQuickMinutes] = useState(30);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const mountQuick = useSheetMount(quickOpen);
+  const alarmsOn = useAlarmStore(s => s.alarms.filter(a => a.enabled).length);
+
+  const openAlarm = useCallback((alarm: Alarm | null) => {
+    setEditingAlarm(alarm);
+    setAlarmEditorOpen(true);
+  }, []);
+  const openQuick = useCallback((minutes: number) => {
+    setQuickMinutes(minutes);
+    setQuickOpen(true);
+  }, []);
 
   const reminders = useMemo(() => upcomingReminders(tasks), [tasks]);
 
@@ -71,12 +97,11 @@ export function RemindersScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
-        title="Reminders"
-        subtitle={
-          reminders.length === 0
-            ? undefined
-            : `${reminders.length} upcoming`
-        }
+        title="Alarms & Reminders"
+        subtitle={[
+          alarmsOn > 0 ? `${alarmsOn} alarm${alarmsOn === 1 ? '' : 's'} on` : null,
+          reminders.length > 0 ? `${reminders.length} upcoming` : null,
+        ].filter(Boolean).join(' · ') || undefined}
         actions={withScreenSettings(undefined, screenSettings.action)}
       />
       <ScreenSettingsSheet {...screenSettings.sheet} />
@@ -88,7 +113,8 @@ export function RemindersScreen() {
         refreshControl={pullSearch.refreshControl}
         data={reminders}
         keyExtractor={item => item.id}
-        contentContainerStyle={reminders.length === 0 ? styles.emptyContainer : [styles.listContent, { paddingBottom: Math.max(tabBarHeight + spacing.md, scrollTop.clearance) }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: Math.max(tabBarHeight + spacing.md, scrollTop.clearance) }]}
+        ListHeaderComponent={<AlarmsSection onEditAlarm={openAlarm} onQuickAlarm={openQuick} />}
         renderItem={({ item }) => (
           <ReminderRow
             task={item}
@@ -101,14 +127,9 @@ export function RemindersScreen() {
           />
         )}
         ListEmptyComponent={
-          <EmptyState
-            icon="alarm-outline"
-            title="No reminders set"
-            subtitle="Tasks with a reminder or alarm, soonest first."
-            actionLabel="New task"
-            onAction={() => { setEditingTask(null); setEditorVisible(true); }}
-            bottomOffset={tabBarHeight}
-          />
+          <EmptyNote icon="alarm-outline" style={styles.emptyNote}>
+            No task reminders yet. Tasks with a reminder or alarm show here, soonest first.
+          </EmptyNote>
         }
       />
 
@@ -119,6 +140,12 @@ export function RemindersScreen() {
           onClose={() => setEditorVisible(false)}
         />
       </LazySheet>
+      {mountAlarmEditor && (
+        <AlarmEditorSheet visible={alarmEditorOpen} alarm={editingAlarm} onClose={() => setAlarmEditorOpen(false)} />
+      )}
+      {mountQuick && (
+        <QuickAlarmSheet visible={quickOpen} initialMinutes={quickMinutes} onClose={() => setQuickOpen(false)} />
+      )}
       <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
     </View>
@@ -190,7 +217,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   listContent: { paddingTop: spacing.xxs, paddingBottom: 40 },
   offNote: { marginHorizontal: spacing.md, marginBottom: spacing.sm },
-  emptyContainer: { flexGrow: 1 },
+  emptyNote: { marginHorizontal: spacing.md },
   // The same inset-grouped card footprint as TaskItem rows / ArchivedScreen's.
   card: {
     flexDirection: 'row',

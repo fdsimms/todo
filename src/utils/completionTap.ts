@@ -8,7 +8,7 @@ import { isNegativeTask } from './negativeHabits';
 import { projectReviewProjectId } from './projectReviewTasks';
 import { isAnsweredByRecord } from './recordTasks';
 import { offersBlockStart } from './blockOfferTasks';
-import { hasPushupChallenge } from './pushupCounter';
+import { hasMission } from './missions';
 
 /**
  * What a tap on a task's checkbox should do, for the surfaces that show a
@@ -27,8 +27,8 @@ export type CompletionTap =
   | 'complete'
   /** A decision task (see Task.deliverableKind) — ask for the answer first. */
   | 'ask'
-  /** A task with pushups to do (see Task.pushupChallenge) — open the counter, which checks it off once they're counted. */
-  | 'pushups'
+  /** A task with a mission (see Task.mission) — open it, and it checks the task off once it's done. */
+  | 'mission'
   /** A meal-slot task's own "Choose <meal>" step — open the meal picker, not the checkmark. */
   | 'pick-meal'
   /** A quiet project's review task — open the pull sheet, not the checkmark. */
@@ -98,10 +98,10 @@ export function completionTapFor(task: Task, recordReady = false): CompletionTap
   // its tap is the ordinary tick the green ring is offering.
   if (!task.generatedReadyAt && activeMealSlotStepId(task)?.endsWith('-choose')) return 'pick-meal';
   if (projectReviewProjectId(task)) return 'review-project';
-  // Ahead of 'ask': the counter asks the question itself once the pushups are
+  // Ahead of 'ask': the queue asks the question itself once the mission is
   // done (DeliverablePromptQueue), and asking first would let an answer be
-  // recorded on a task that then never gets its pushups.
-  if (hasPushupChallenge(task)) return 'pushups';
+  // recorded on a task whose mission then never gets done.
+  if (hasMission(task)) return 'mission';
   if (asksOnCompletion(task)) return 'ask';
   return 'complete';
 }

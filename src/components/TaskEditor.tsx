@@ -89,7 +89,7 @@ import {
 import {
   HEALTH_TARGET_LABELS, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES, describeHealthGoalAmount, followsRingGoal,
 } from '../utils/healthTarget';
-import type { HealthTargetMetric } from '../types';
+import type { AlarmMission, HealthTargetMetric } from '../types';
 import { editorRowShown, featureShown, hiddenResultsNote, taskKindsForMode } from '../utils/simpleMode';
 import { QUOTA_RAMP_MAX_EVERY, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_TARGET, canRampQuota, describeQuotaRamp } from '../utils/quotaRamp';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
@@ -204,7 +204,8 @@ import { ProgressBar } from './ProgressBar';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
-import { normalizePushupChallenge, PUSHUP_DEFAULT_COUNT, PUSHUP_MAX_COUNT } from '../utils/pushupCounter';
+import { describeMission, normalizeMission } from '../utils/missions';
+import { MissionPicker } from './MissionPicker';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -384,7 +385,7 @@ function serializeExtraRows(rows: readonly MedicationExtraRow[]): string {
     .map(r => [r.name.trim(), r.amount.trim(), r.unit]));
 }
 
-type FieldKey = 'kind' | 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'pushups' | 'logHealthValue' | 'medication' | 'logMealSlot' | 'slotIn' | 'placeReminder';
+type FieldKey = 'kind' | 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'mission' | 'logHealthValue' | 'medication' | 'logMealSlot' | 'slotIn' | 'placeReminder';
 
 // "If the day is full" (Task.slotIn). Keep the date first: it is what every
 // task does unless told otherwise.
@@ -828,7 +829,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
   const [completionTimerNote, setCompletionTimerNote] = useState<string | null>(null);
-  const [pushupChallenge, setPushupChallenge] = useState<number | null>(null);
+  const [mission, setMission] = useState<AlarmMission | null>(null);
   const [logHealthMetric, setLogHealthMetric] = useState<NutrientKey | null>(null);
   const [logHealthAmount, setLogHealthAmount] = useState<number | null>(null);
   // Display-only, and not read from the task: logHealthAmount is always held
@@ -1306,7 +1307,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setLinkUrl(task.linkUrl ?? null);
       setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
       setCompletionTimerNote(task.completionTimerNote ?? null);
-      setPushupChallenge(normalizePushupChallenge(task.pushupChallenge));
+      setMission(normalizeMission(task.mission));
       setLogHealthMetric(task.logHealthMetric ?? null);
       setLogHealthAmount(task.logHealthAmount ?? null);
       setMedicationName(task.medicationName ?? null);
@@ -1381,7 +1382,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setLinkUrl(initialDraft?.linkUrl ?? null);
       setCompletionTimerMinutes(initialDraft?.completionTimerMinutes ?? null);
       setCompletionTimerNote(initialDraft?.completionTimerNote ?? null);
-      setPushupChallenge(null);
+      setMission(null);
       setLogHealthMetric(initialDraft?.logHealthMetric ?? null);
       setLogHealthAmount(initialDraft?.logHealthAmount ?? null);
       setMedicationName(initialDraft?.medicationName ?? null);
@@ -1540,7 +1541,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
       completionTimerNote: task ? (task.completionTimerNote ?? null) : (initialDraft?.completionTimerNote ?? null),
-      pushupChallenge: task ? normalizePushupChallenge(task.pushupChallenge) : null,
+      mission: task ? normalizeMission(task.mission) : null,
       logHealthMetric: task ? (task.logHealthMetric ?? null) : (initialDraft?.logHealthMetric ?? null),
       logHealthAmount: task ? (task.logHealthAmount ?? null) : (initialDraft?.logHealthAmount ?? null),
       medicationName: task ? (task.medicationName ?? null) : (initialDraft?.medicationName ?? null),
@@ -2384,7 +2385,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       linkUrl: resolveLinkUrl(),
       completionTimerMinutes,
       completionTimerNote,
-      pushupChallenge,
+      mission,
       logHealthMetric,
       logHealthAmount,
       medicationName: resolveMedicationName(),
@@ -3289,7 +3290,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       linkUrl,
       completionTimerMinutes,
       completionTimerNote,
-      pushupChallenge,
+      mission,
       logHealthMetric,
       logHealthAmount,
       medicationName,
@@ -3775,7 +3776,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     phone: phoneNumber ?? undefined,
     email: emailAddress ?? undefined,
     asks: deliverableKind ?? undefined,
-    pushups: pushupChallenge ?? undefined,
+    mission: mission ? describeMission(mission) : undefined,
   });
 
   const openField = (key: FieldKey) => {
@@ -3812,7 +3813,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     phone: () => { setPhoneText(phoneNumber ?? ''); setShowPhoneField(true); },
     email: () => { setEmailText(emailAddress ?? ''); setShowEmailField(true); },
     deliverable: () => openField('deliverable'),
-    pushups: () => openField('pushups'),
+    mission: () => openField('mission'),
   };
   const openFromSummary = (key: string) => {
     const y = jump.rowY(key);
@@ -8281,33 +8282,23 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               </>
             ),
           },
-          // Gates the tick itself: checking the task off opens the pushup
-          // counter, and completeTask refuses any other way of completing it.
-          // Mostly wanted with an "until done" alarm, which the counter is
-          // then the only way to silence (see utils/pushupCounter.ts).
+          // Gates the tick itself: checking the task off opens the mission,
+          // and completeTask refuses any other way of completing it. Mostly
+          // wanted with an alarm reminder, which then rings back every 15
+          // seconds after Stop until it's done (see utils/missions.ts).
           {
-            key: 'pushups', label: 'Pushups first', set: pushupChallenge !== null,
-            keywords: ['pushup', 'push-up', 'exercise', 'alarm', 'wake', 'dismiss', 'challenge', 'mission', 'workout', 'proximity'],
+            key: 'mission', label: 'Mission', set: mission !== null,
+            keywords: ['mission', 'pushup', 'push-up', 'exercise', 'alarm', 'wake', 'dismiss', 'challenge', 'workout', 'proximity'],
             node: (
               <CollapsibleField
-                label="Pushups first"
+                label="Mission"
                 icon="barbell-outline"
-                summary={pushupChallenge !== null ? `${pushupChallenge} pushups` : undefined}
-                hint="Checking this off opens a pushup counter, and it’s done once you’ve done this many. An Until done alarm keeps ringing until then."
-                expanded={fieldOpen('pushups')}
-                onToggle={() => toggleField('pushups')}
+                summary={mission ? describeMission(mission) : undefined}
+                hint="Checking this off opens the mission, and it’s done once the mission is. An alarm on this task rings again every 15 seconds after you stop it, until then."
+                expanded={fieldOpen('mission')}
+                onToggle={() => toggleField('mission')}
               >
-                <CountStepper
-                  value={pushupChallenge}
-                  onChange={setPushupChallenge}
-                  min={1}
-                  max={PUSHUP_MAX_COUNT}
-                  start={PUSHUP_DEFAULT_COUNT}
-                  allowNull
-                  emptyLabel="Off"
-                  label="Pushups"
-                  describeValue={n => (n === null ? 'off' : `${n} pushups`)}
-                />
+                <MissionPicker value={mission} onChange={setMission} />
               </CollapsibleField>
             ),
           },

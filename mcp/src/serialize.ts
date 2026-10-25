@@ -21,7 +21,7 @@
  */
 import { primaryNickname } from '../../src/utils/nicknames';
 import { PRIORITY_LABELS } from '../../src/types';
-import type { Task } from '../../src/types';
+import type { AlarmMission, Task } from '../../src/types';
 import type { Replica } from './replica';
 import { isRotationTask } from '../../src/utils/rotation';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
@@ -57,8 +57,8 @@ export interface SerializedTask {
   /** 'trivial' | 'easy' | 'normal' | 'hard'. Absent when the task was never rated. */
   difficulty?: string;
   estimatedMinutes?: number;
-  /** Pushups the phone must count before it can be checked off. Absent when none. */
-  pushupChallenge?: number;
+  /** What has to be done on the phone (e.g. 20 pushups) before it can be checked off. Absent when none. */
+  mission?: AlarmMission;
   /** Present only mid-chain, and then it is where `title` came from. */
   chainStep?: string;
   /** The question this task asks when it is completed, if it asks one. */
@@ -187,7 +187,7 @@ export function serializeTask(replica: Replica, task: Task, names?: Map<string, 
     priority: task.priority > 0 ? PRIORITY_LABELS[task.priority] : undefined,
     difficulty: task.difficulty ?? undefined,
     estimatedMinutes: replica.estimatedMinutes(task) ?? undefined,
-    pushupChallenge: task.pushupChallenge ?? undefined,
+    mission: task.mission ?? undefined,
     chainStep: step?.title,
     asksOnCompletion: replica.deliverableKind(task) ?? undefined,
     answerOptions: (() => {

@@ -15,7 +15,8 @@ import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { useColors } from '../theme/ThemeContext';
 import { animation, border, checkboxRadius, iconSize, interaction, spacing, type Colors } from '../theme';
-import { PushupCounterSheet } from './PushupCounterSheet';
+import { MissionSheet, taskMissionProps } from './MissionSheet';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { asksOnCompletion } from '../utils/deliverables';
 import { completionTapFor, isStrayTapOnFinishedTarget, offersMealLogOnCompletion } from '../utils/completionTap';
 import { recordLogUrl } from '../utils/recordTasks';
@@ -101,11 +102,12 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
   const { offerPrepTasksForEach } = usePlanMeal();
 
   const [showPrompt, setShowPrompt] = useState(false);
-  // The pushup counter (Task.pushupChallenge), and whether it has counted, so
-  // the question it hands over to completes with `pushupsDone` too.
-  const [showPushups, setShowPushups] = useState(false);
-  const [pushupsCounted, setPushupsCounted] = useState(false);
-  const mountPushups = useSheetMount(showPushups);
+  // The mission sheet (Task.mission), and whether the mission is done, so
+  // the question it hands over to completes with `missionDone` too.
+  const [showMission, setShowMission] = useState(false);
+  const [missionCounted, setMissionCounted] = useState(false);
+  const mountMission = useSheetMount(showMission);
+  const missionSheet = useSheetSubject(mountMission ? taskMissionProps(task) : null);
   const [showMealPicker, setShowMealPicker] = useState(false);
   // Both mounted on first open and kept, so each closes through `visible`
   // rather than by leaving the tree. See useSheetMount.
@@ -144,7 +146,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
   // plain tick does — including the heavier second pulse a whole chain finishing
   // is owed, which is easy to drop when the completion arrives from a sheet
   // rather than from the tap.
-  const runComplete = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning, pushupsDone = false) => {
+  const runComplete = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning, missionDone = false) => {
     void (isChainFinish(task) ? haptics.chainFinish() : haptics.success());
     // The same pop a task's own circle gives a check, so this box doesn't read
     // as a different control from the row it stands in for.
@@ -159,7 +161,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
     animateLayout();
     completeTask(task.id, {
       ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
-      ...(pushupsDone ? { pushupsDone: true } : {}),
+      ...(missionDone ? { missionDone: true } : {}),
     });
   };
 
@@ -185,7 +187,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
   const runPress = async () => {
     // Only the taps that change completion are held; a logged unit or a slip
     // moves nothing the host would close over.
-    if (confirmFirst && (action === 'complete' || action === 'ask' || action === 'pushups' || action === 'uncomplete')) {
+    if (confirmFirst && (action === 'complete' || action === 'ask' || action === 'mission' || action === 'uncomplete')) {
       await haptics.tap();
       confirmFirst(() => {
         if (busyRef.current) return;
@@ -217,12 +219,12 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
         await haptics.tap();
         setShowPrompt(true);
         return;
-      case 'pushups':
+      case 'mission':
         // Same contract as 'ask': the counter checks the task off once it has
         // counted, and cancelling it takes the tap back.
         await haptics.tap();
-        setPushupsCounted(false);
-        setShowPushups(true);
+        setMissionCounted(false);
+        setShowMission(true);
         return;
       case 'pick-meal':
         // Same contract as 'ask': the tap opens a sheet instead of ticking
@@ -313,7 +315,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
         : `${label}, clean today, log a slip`
     : action === 'locked' ? `${label}, not due yet`
     : action === 'ask' ? `Complete ${label}, asks for an answer`
-    : action === 'pushups' ? `${label}, opens the pushup counter`
+    : action === 'mission' ? `${label}, opens its mission`
     : action === 'pick-meal' ? `${label}, pick a meal`
     : action === 'review-project' ? `${label}, review what to pull in`
     : action === 'open-log' ? `${label}, opens the entry sheet`
@@ -424,27 +426,27 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
           task={task}
           onConfirm={(value, reasoning) => {
             setShowPrompt(false);
-            runComplete(value, reasoning, pushupsCounted);
+            runComplete(value, reasoning, missionCounted);
           }}
           onCancel={() => setShowPrompt(false)}
         />
       )}
-      {mountPushups && (
-        <PushupCounterSheet
-          visible={showPushups}
-          task={task}
-          onCounted={() => {
-            setShowPushups(false);
+      {missionSheet && (
+        <MissionSheet
+          {...missionSheet}
+          visible={showMission}
+          onDone={() => {
+            setShowMission(false);
             // A question still to ask goes next; the counter closing and the
             // question opening in one commit is safe.
             if (asksOnCompletion(task)) {
-              setPushupsCounted(true);
+              setMissionCounted(true);
               setShowPrompt(true);
             } else {
               runComplete(undefined, undefined, true);
             }
           }}
-          onClose={() => setShowPushups(false)}
+          onClose={() => setShowMission(false)}
         />
       )}
       {mountMealPicker && (() => {

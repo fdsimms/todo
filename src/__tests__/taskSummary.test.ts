@@ -129,9 +129,9 @@ describe('buildTaskSummary', () => {
   it('says what checking it off asks for', () => {
     expect(text(buildTaskSummary({ asks: 'date' }))).toBe('Asks for a date when you check it off.');
     expect(text(buildTaskSummary({ asks: 'yesno' }))).toBe('Asks for yes or no when you check it off.');
-    expect(text(buildTaskSummary({ pushups: 20 }))).toBe('Takes 20 pushups to check off.');
-    expect(text(buildTaskSummary({ pushups: 1 }))).toBe('Takes 1 pushup to check off.');
-    expect(text(buildTaskSummary({ pushups: 20, asks: 'date' }))).toBe('Takes 20 pushups and asks for a date when you check it off.');
+    expect(text(buildTaskSummary({ mission: '20 pushups' }))).toBe('Takes 20 pushups to check off.');
+    expect(text(buildTaskSummary({ mission: '1 pushup' }))).toBe('Takes 1 pushup to check off.');
+    expect(text(buildTaskSummary({ mission: '20 pushups', asks: 'date' }))).toBe('Takes 20 pushups and asks for a date when you check it off.');
   });
 });
 

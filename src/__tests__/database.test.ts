@@ -9,6 +9,9 @@
 import {
   initDatabase,
   ensureDatabaseReady,
+  dbGetAlarms,
+  dbSaveAlarm,
+  dbDeleteAlarm,
   dbGetSetting,
   dbGetAllSettings,
   dbStorageStats,
@@ -936,11 +939,25 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.completionTimerMinutes).toBeNull();
   });
 
-  it('round-trips a pushup challenge through insert and update', () => {
-    dbInsertTask(makeTask({ id: 'push1', pushupChallenge: 20 }));
-    expect(dbGetAllTasks()[0].pushupChallenge).toBe(20);
-    dbUpdateTask(makeTask({ id: 'push1', pushupChallenge: null }));
-    expect(dbGetAllTasks()[0].pushupChallenge).toBeNull();
+  it('round-trips a mission through insert and update', () => {
+    dbInsertTask(makeTask({ id: 'push1', mission: { kind: 'pushups', count: 20 } }));
+    expect(dbGetAllTasks()[0].mission).toEqual({ kind: 'pushups', count: 20 });
+    dbUpdateTask(makeTask({ id: 'push1', mission: null }));
+    expect(dbGetAllTasks()[0].mission).toBeNull();
+  });
+
+  it('round-trips an alarm, and deletes it', () => {
+    const alarm = {
+      id: 'al1', label: 'Wake up', hour: 7, minute: 30, repeatDays: [1, 3, 5], fireAt: null, enabled: true,
+      mission: { kind: 'pushups' as const, count: 15 }, quick: false, armedAt: '2026-10-14T07:00:00.000Z',
+      missionDoneAt: null, missionGaveUp: false, createdAt: '2026-10-14T07:00:00.000Z',
+    };
+    dbSaveAlarm(alarm);
+    expect(dbGetAlarms()).toEqual([alarm]);
+    dbSaveAlarm({ ...alarm, enabled: false, missionGaveUp: true, missionDoneAt: '2026-10-15T07:05:00.000Z' });
+    expect(dbGetAlarms()[0]).toMatchObject({ enabled: false, missionGaveUp: true });
+    dbDeleteAlarm('al1');
+    expect(dbGetAlarms()).toEqual([]);
   });
 
   it('returns null targetUnit when unset', () => {
