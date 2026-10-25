@@ -656,8 +656,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // groups because their rows are written inline in the JSX below — which is
   // the same reason there's no separate index file to keep in step.
   const [matchCounts, setMatchCounts] = useState<Record<string, number>>({});
+  // A group not yet heard from counts as 0, the same as in the total, so every
+  // group's first report of 0 on opening isn't a change that re-renders the
+  // whole editor while it slides in.
   const reportMatches = useCallback((groupKey: string, count: number) => {
-    setMatchCounts(prev => (prev[groupKey] === count ? prev : { ...prev, [groupKey]: count }));
+    setMatchCounts(prev => ((prev[groupKey] ?? 0) === count ? prev : { ...prev, [groupKey]: count }));
   }, []);
 
   const totalMatches = useMemo(() => {
