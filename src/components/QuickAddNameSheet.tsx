@@ -217,6 +217,7 @@ export function QuickAddNameSheet({
           visible={emojiPickerOpen}
           value={emoji || null}
           title="Emoji"
+          suggestFor={name}
           onSelect={picked => setEmoji(picked ?? '')}
           onClose={() => { setEmojiPickerOpen(false); inputRef.current?.focus(); }}
         />

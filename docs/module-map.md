@@ -151,7 +151,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows
 - `src/utils/effort.ts` — MeasuredTimeUpdate, applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, effortRangeLabel, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, nearestPresetMinutes, +13 more
 - `src/utils/email.ts` — mailtoUrl, isEmailable
-- `src/utils/emojiCatalog.ts` — EmojiEntry, EmojiGroup, EMOJI_GROUPS, ALL_EMOJI, searchEmoji
+- `src/utils/emojiCatalog.ts` — EmojiEntry, EmojiGroup, EMOJI_GROUPS, ALL_EMOJI, searchEmoji, suggestEmoji
 - `src/utils/emojiInput.ts` — firstEmoji, isSingleEmoji
 - `src/utils/energyBudget.ts` — BodySex, ActivityLevel, ACTIVITY_FACTOR, ACTIVITY_LABEL, ACTIVITY_LEVELS, BodyProfile, EMPTY_BODY_PROFILE, MIN_HEIGHT_CM, MAX_HEIGHT_CM, MIN_BIRTH_YEAR, +27 more
 - `src/utils/errorLog.ts` — ERROR_LOG_MAX_ROWS, ERROR_LOG_MAX_DAYS, buildErrorEntry, logError
