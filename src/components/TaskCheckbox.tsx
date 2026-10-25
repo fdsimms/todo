@@ -176,7 +176,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
     // Only the taps that change completion are held; a logged unit or a slip
     // moves nothing the host would close over.
     if (confirmFirst && (action === 'complete' || action === 'ask' || action === 'uncomplete')) {
-      await haptics.tap();
+      haptics.tap();
       confirmFirst(() => {
         if (busyRef.current) return;
         busyRef.current = true;
@@ -190,35 +190,35 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
   const performPress = async () => {
     switch (action) {
       case 'locked':
-        await haptics.error();
+        haptics.error();
         return;
       case 'slip':
         // A warning rather than a success: this tap reports the thing the task
         // exists to avoid, and it costs a run. The row doesn't move — a negative
         // habit stays on the list either way — so the haptic and the box going
         // red are the whole of the feedback here.
-        await haptics.warning();
+        haptics.warning();
         confirmSlip(task, penaltyShieldEnabled, getCurrentDayStart(), () => logSlip(task.id), useRewardStore.getState().slipGuardFor(task, getCurrentDayStart()));
         return;
       case 'ask':
         // The question comes first and the completion only follows an answer,
         // so backing out of the sheet takes the whole tap back — same contract
         // the task row's own box offers.
-        await haptics.tap();
+        haptics.tap();
         setShowPrompt(true);
         return;
       case 'pick-meal':
         // Same contract as 'ask': the tap opens a sheet instead of ticking
         // anything. Picking a meal rewrites this row into "Make X"/"Eat X" in
         // place (see mealSlotDrift) rather than completing it.
-        await haptics.tap();
+        haptics.tap();
         setShowMealPicker(true);
         return;
       case 'review-project':
         // Same contract again: the tap opens the pull sheet (via the task's
         // own linkUrl, same as its row's link button) rather than completing
         // a quiet project's review task unanswered.
-        await haptics.tap();
+        haptics.tap();
         if (task.linkUrl && !openInAppUrl(task.linkUrl)) {
           try {
             await Linking.openURL(task.linkUrl);
@@ -236,7 +236,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
         // Same contract as 'review-project': until there is an entry the tap
         // opens the sheet that records it. Once there is one, the tap is a
         // plain 'complete'.
-        await haptics.tap();
+        haptics.tap();
         const url = recordLogUrl(task);
         if (url && !openInAppUrl(url)) {
           try {

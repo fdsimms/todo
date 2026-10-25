@@ -25,6 +25,7 @@ import { SegmentedControl } from '../components/SegmentedControl';
 import { HubPills } from '../components/HubPills';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings } from '../hooks/useScreenSettings';
+import { useStableCallback } from '../hooks/useStableCallback';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
 import { GroceryAddSheet } from '../components/GroceryAddSheet';
@@ -903,6 +904,25 @@ export function GroceryScreen() {
   useEffect(() => {
     if (editingId === null) itemReturnToRef.current = null;
   }, [editingId]);
+  // Stable, so the item sheet (memoized, and kept mounted once opened) isn't
+  // re-rendered by every render of the list behind it.
+  const closeItemSheet = useStableCallback(() => {
+    setEditingId(null);
+    const returnTo = itemReturnToRef.current;
+    itemReturnToRef.current = null;
+    if (returnTo) navigateToTab(returnTo);
+  });
+  const openRecipeFromItemSheet = useStableCallback((recipeId: string) => {
+    setEditingId(null);
+    openRecipe(recipeId);
+  });
+  const openSettingsFromItemSheet = useStableCallback((entryId: string) => {
+    setEditingId(null);
+    navigateToFoodSearchSettings(navigation, entryId);
+  });
+  // A plain useCallback, not a stable one: the sheet calls it while rendering, so
+  // it has to change when the recipes do.
+  const recipeExists = useCallback((recipeId: string) => recipeIds.has(recipeId), [recipeIds]);
   useEffect(() => {
     if (openItemStamp === undefined || openItemStamp === handledItemStamp) return;
     setHandledItemStamp(openItemStamp);
@@ -1710,21 +1730,10 @@ export function GroceryScreen() {
       inline={inline}
       visible={editingId !== null}
       itemId={editingId}
-      onClose={() => {
-        setEditingId(null);
-        const returnTo = itemReturnToRef.current;
-        itemReturnToRef.current = null;
-        if (returnTo) navigateToTab(returnTo);
-      }}
-      onOpenRecipe={recipeId => {
-        setEditingId(null);
-        openRecipe(recipeId);
-      }}
-      onOpenSettings={entryId => {
-        setEditingId(null);
-        navigateToFoodSearchSettings(navigation, entryId);
-      }}
-      recipeExists={recipeId => recipeIds.has(recipeId)}
+      onClose={closeItemSheet}
+      onOpenRecipe={openRecipeFromItemSheet}
+      onOpenSettings={openSettingsFromItemSheet}
+      recipeExists={recipeExists}
     />
   );
 

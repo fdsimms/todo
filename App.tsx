@@ -18,6 +18,7 @@ import { useBlockTimerStore } from './src/store/useBlockTimerStore';
 import { useManualBlockStore } from './src/store/useManualBlockStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
+import { runAfterPaint } from './src/utils/afterPaint';
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
 import { useNotificationTapSync } from './src/utils/notificationTapSync';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
@@ -67,7 +68,7 @@ import { useAppRefresh, useBackgroundRefresh } from './src/utils/backgroundRefre
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { preloadAppFont, preloadBrandFonts } from './src/theme/AppFont';
 import { animation } from './src/theme';
-import { AppState, InteractionManager, View } from 'react-native';
+import { AppState, View } from 'react-native';
 import { runPendingHealthFoodWrites } from './src/utils/pendingHealthFoodWrites';
 import { runPendingHealthWorkoutWrites } from './src/utils/pendingHealthWorkoutWrites';
 import { usePendingEstimateStore } from './src/store/usePendingEstimateStore';
@@ -191,28 +192,14 @@ function AppGate() {
 }
 
 /**
- * Runs `task` once the first frame is on screen and the opening animations have
- * settled, and returns a cancel. `runAfterInteractions` alone can wait for ever
- * behind a looping animation that holds an interaction handle, and the work it
- * is holding back (the purges, the generators) is not optional, so a timer runs
- * it regardless after `fallbackMs`.
+ * Runs `task` once the first frame is on screen, and returns a cancel. Not
+ * `InteractionManager.runAfterInteractions`, which is a microtask in this React
+ * Native and ran the whole startup sequence before the first frame could paint
+ * (see utils/afterPaint.ts).
  */
-function afterFirstFrame(task: () => void, fallbackMs = 2000): () => void {
-  let done = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const run = () => {
-    if (done) return;
-    done = true;
-    if (timer !== undefined) clearTimeout(timer);
-    task();
-  };
-  const handle = InteractionManager.runAfterInteractions(run);
-  timer = setTimeout(run, fallbackMs);
-  return () => {
-    done = true;
-    handle.cancel();
-    if (timer !== undefined) clearTimeout(timer);
-  };
+function afterFirstFrame(task: () => void): () => void {
+  const handle = runAfterPaint(task);
+  return handle.cancel;
 }
 
 function AppRoot() {

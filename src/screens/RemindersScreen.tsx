@@ -54,6 +54,8 @@ export function RemindersScreen() {
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
+  // Stable, so the closed (memoized) editor doesn't re-render with this screen.
+  const closeTaskEditor = useCallback(() => setEditorVisible(false), []);
 
   const reminders = useMemo(() => upcomingReminders(tasks), [tasks]);
 
@@ -116,7 +118,7 @@ export function RemindersScreen() {
         <TaskEditor
           visible={editorVisible}
           task={editingTask}
-          onClose={() => setEditorVisible(false)}
+          onClose={closeTaskEditor}
         />
       </LazySheet>
       <ScrollToTopButton {...scrollTop.buttonProps} />
