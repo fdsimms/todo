@@ -399,6 +399,15 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
       { key: 'location', label: 'Location', summary: 'The event’s location' },
     ],
   },
+  wakeUp: {
+    example: 'Wake up at 6:20',
+    noun: 'Wake-up task',
+    owned: () => [
+      { key: 'title', label: 'Title', summary: 'Wake up at (time)', hint: 'The event’s start minus the trip, the arrive-early time and getting ready.' },
+      { key: 'date', label: 'Date', summary: 'The evening before', hint: 'It shows on the day before the early event, so there is time to set the alarm.' },
+      { key: 'link', label: 'Link', summary: 'Shows tomorrow’s alarm', hint: 'Tap the row to keep or change it.' },
+    ],
+  },
   moodLog: {
     example: 'Log how you’re feeling',
     noun: 'Mood check-in',

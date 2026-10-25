@@ -34,6 +34,7 @@ export function setGeneratorEnabled(kind: GeneratedKind, next: boolean): void {
     case 'weather': s.setWeatherTasks(next); break;
     case 'eventTask': s.setEventTasks(next); break;
     case 'travel': s.setTravelTasks(next); break;
+    case 'wakeUp': s.setWakeUpTasks(next); break;
     case 'screenTime': s.setScreenTimeTasks(next); break;
     case 'blockOffer': s.setBlockOfferTasks(next); break;
     case 'health': s.setHealthTasks(next); break;

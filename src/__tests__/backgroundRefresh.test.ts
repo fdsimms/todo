@@ -80,6 +80,7 @@ const mockTaskState = {
   applyRainSkips: mockRecord('applyRainSkips'),
   checkEventTasks: mockRecord('checkEventTasks'),
   checkTravelTasks: mockRecord('checkTravelTasks'),
+  checkWakeUpTasks: mockRecord('checkWakeUpTasks'),
   checkScreenTimeTasks: mockRecord('checkScreenTimeTasks'),
   checkBlockOfferTasks: mockRecord('checkBlockOfferTasks'),
   checkHealthTasks: mockRecord('checkHealthTasks'),
@@ -189,6 +190,7 @@ jest.mock('../store/useSyncStore', () => {
     mockRegistered: registered,
   };
 });
+jest.mock('../utils/wakeUpAlarm', () => ({ syncWakeUpAlarm: () => false }));
 jest.mock('../utils/calendarRequestDrain', () => ({ drainCalendarRequests: () => Promise.resolve() }));
 jest.mock('../utils/pendingHealthFoodWrites', () => ({ runPendingHealthFoodWrites: () => {} }));
 jest.mock('../utils/pendingHealthWorkoutWrites', () => ({ runPendingHealthWorkoutWrites: () => {} }));
@@ -259,7 +261,7 @@ describe('runBackgroundRefresh', () => {
       'checkPantryReviewTasks', 'checkPantryCheckTasks', 'checkProduceFloorTasks', 'checkMealShortfallTasks',
       'checkMealThawTasks', 'checkMealLogNudgeTasks',
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'applyWeatherWaits', 'applyRainSkips', 'checkEventTasks',
-      'checkTravelTasks', 'checkScreenTimeTasks', 'checkBlockOfferTasks', 'checkHealthTasks',
+      'checkTravelTasks', 'checkWakeUpTasks', 'checkScreenTimeTasks', 'checkBlockOfferTasks', 'checkHealthTasks',
       'checkMoodTasks', 'checkJournalTasks', 'checkWaniKaniTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks', 'checkBloodPressureTasks',
       'checkBirthdayTasks', 'checkPersonDateTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'checkWaitingFollowUpTasks',

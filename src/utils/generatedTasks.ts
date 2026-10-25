@@ -156,6 +156,7 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // list, though: one switch and one number, since the trigger (an event has
   // a location) leaves nothing per-rule to vary. See src/utils/travelTasks.ts.
   'travel',
+  'wakeUp',
   // The sixteenth and seventeenth, appended as a pair for the reason birthday
   // and birthdayGift sit together: one subject with two lead-ins. Nothing else
   // here reads the mood log, so there is no existing generator either belongs
@@ -264,6 +265,7 @@ export type GeneratedEnabledKey =
   | 'weatherTasks'
   | 'eventTasks'
   | 'travelTasks'
+  | 'wakeUpTasks'
   | 'screenTimeTasks'
   | 'blockOfferTasks'
   | 'healthTasks'
@@ -925,6 +927,25 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // event tasks it reads as one more thing to do.
     defaultCategory: 'Leave By',
   },
+  // An event early tomorrow becomes "Wake up at 6:20", pointing at the device's
+  // alarms. See src/utils/wakeUpTasks.ts. Calendar events happen on vacation
+  // too, so it keeps running, for travel's reason, and ships off for the same
+  // one: it adds a surface rather than replacing one.
+  wakeUp: {
+    kind: 'wakeUp',
+    pausedOnVacation: false,
+    enabledKey: 'wakeUpTasks',
+    label: 'Wake-up alarm',
+    onHint: 'When tomorrow starts earlier than usual, adds a task with the time to get up, and sets that alarm',
+    offHint: 'No task or alarm for an early start',
+    icon: 'alarm-outline',
+    sourced: false,
+    notice: true,
+    pinnableNotice: true,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Leave By',
+  },
   // Ships off, like pantryCheck, mealShortfall and birthdayGift, and for the
   // reason all three do: it adds a surface nobody had rather than replacing one
   // that was already on screen. There is no recorded intent it could point at
@@ -1339,7 +1360,7 @@ export type GeneratedEnabledFlags =
  * `generatedTasks.test.ts` reads `useTaskStore.ts` and fails if a pass gains
  * or loses that refusal without this list following.
  */
-export const CALENDAR_READ_KINDS: readonly GeneratedKind[] = ['calendarReview', 'eventTask', 'travel'];
+export const CALENDAR_READ_KINDS: readonly GeneratedKind[] = ['calendarReview', 'eventTask', 'travel', 'wakeUp'];
 
 /**
  * What a generator needs turned on before its own switch can mean anything,

@@ -57,6 +57,7 @@ import {
   dateToHHMM,
   getDeadlineFromOffset,
   nthWeekdayOfMonth,
+  formatTimeOfDay,
 } from './dateUtils';
 import { awayNoonIso } from './awayDates';
 import { generatedBy } from './generatedTasks';
@@ -113,6 +114,7 @@ import { blockOfferSourceId, blockOfferTitle, describeOfferCoins, newBlockOfferR
 import { defaultEventRules, eventOccurrenceKey, eventTaskSourceId } from './eventTasks';
 import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceId, travelTaskTitle } from './travelTasks';
 import { healthSourceId, defaultHealthRules } from './healthRules';
+import { WAKE_UP_DEFAULT_GET_READY_MINUTES, wakeUpSourceId, wakeUpTitle } from './wakeUpTasks';
 import { WANIKANI_REVIEW_URL, wanikaniReviewSourceId, wanikaniReviewTitle } from './wanikaniTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
@@ -1977,6 +1979,7 @@ export function seedDemoData(): void {
   addCategory('Leave By');
   setCategoryEmoji('Leave By', '🚶');
   useSettingsStore.getState().setTravelTaskCategory('Leave By');
+  useSettingsStore.getState().setWakeUpTaskCategory('Leave By');
   useSettingsStore.getState().setTransitAlerts(true);
   useSettingsStore.getState().setTransitLines(['L']);
   // Planned work on the L across the day, held as the snapshot the row reads its
@@ -2010,6 +2013,23 @@ export function seedDemoData(): void {
     location: '123 Court St, Brooklyn',
     category: 'Leave By',
     ...generatedBy('travel', travelSourceId(demoDentist)),
+  });
+
+  // A wake-up task for an early event tomorrow, seeded directly like the
+  // travel row above (the sweep refuses in demo mode), pointing at the demo's
+  // alarms so its row shows what rings.
+  const demoEarlyStart = new Date(today);
+  demoEarlyStart.setDate(demoEarlyStart.getDate() + 1);
+  demoEarlyStart.setHours(7, 30, 0, 0);
+  const demoEarly = { id: 'demo-early-meeting', start: demoEarlyStart.toISOString() };
+  const demoWakeAt = new Date(demoEarlyStart.getTime()
+    - (TRAVEL_LEAD_MINUTES_DEFAULT + WAKE_UP_DEFAULT_GET_READY_MINUTES) * 60 * 1000);
+  addTask({
+    title: wakeUpTitle(demoWakeAt, at => formatTimeOfDay(at, false)),
+    dueDate: today.toISOString(),
+    category: 'Leave By',
+    alarmLink: 'next',
+    ...generatedBy('wakeUp', wakeUpSourceId(demoEarly)),
   });
 
   // A health task, seeded directly for the screen-time row's reason: the gate

@@ -18,6 +18,7 @@ jest.mock('../store/useEventReminderStore', () => ({
 jest.mock('../db/database', () => ({ dbReclaimFreePages: jest.fn() }));
 jest.mock('../utils/notifications', () => ({ rescheduleAllReminders: jest.fn() }));
 jest.mock('../utils/deviceTimeZone', () => ({ recordDeviceTimeZone: jest.fn() }));
+jest.mock('../utils/wakeUpAlarm', () => ({ syncWakeUpAlarm: jest.fn() }));
 
 import { catchUpPasses, expiryPasses, launchCatchUpPasses, retentionPasses } from '../utils/maintenancePasses';
 
@@ -57,6 +58,7 @@ describe('the three maintenance groups', () => {
       'apply rain skips',
       'check event tasks',
       'check travel tasks',
+      'check wake-up tasks',
       'check screen time tasks',
       'check block offer tasks',
       'check health tasks',

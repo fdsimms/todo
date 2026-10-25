@@ -385,6 +385,9 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   // and the train, which is what somebody looking for it would type.
   travel: ['travel', 'commute', 'subway', 'train', 'mta', 'transit', 'delay', 'delays',
     'location', 'address', 'late', 'on time', 'generated', 'automatic'],
+  // No bare 'wake' or 'alarm': both are already in this generator's own label.
+  wakeUp: ['wake up', 'get up', 'morning', 'early', 'early start', 'alarm clock', 'event',
+    'calendar', 'sleep in', 'generated', 'automatic'],
   // No bare 'weigh': already a substring of this generator's own label
   // ("Ask for a weigh-in"). 'scale' and 'weight' are the words somebody
   // actually types, and neither is in the label.
@@ -764,6 +767,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'transit', 'commute', 'new york', 'nyc'] },
   { id: 'transitLines', requires: 'transitAlerts', groupId: 'generated', label: 'Lines', section: 'Leave-by reminders',
     keywords: ['mta', 'subway', 'train', 'route', 'which train', 'transit'] },
+  { id: 'wakeUpUsualMinutes', requires: 'gen:wakeUp', groupId: 'generated', label: 'Usual wake-up', section: 'Wake-up alarm',
+    keywords: ['get up', 'morning', 'early', 'time', 'when do i wake'] },
+  { id: 'wakeUpGetReadyMinutes', requires: 'gen:wakeUp', groupId: 'generated', label: 'Getting ready takes', section: 'Wake-up alarm',
+    keywords: ['morning routine', 'minutes', 'shower', 'breakfast', 'prepare'] },
   { id: 'screenTimeRules', requires: 'gen:screenTime', groupId: 'generated', label: 'Rules', section: 'Screen time tasks',
     keywords: ['screen time', 'usage', 'phone', 'apps', 'threshold', 'minutes', 'distraction',
       'social media', 'doomscroll', 'limit', 'screen time rule'] },

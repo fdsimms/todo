@@ -57,6 +57,7 @@ import { useJournalStore } from '../store/useJournalStore';
 import { dbReclaimFreePages } from '../db/database';
 import { rescheduleAllReminders } from './notifications';
 import { recordDeviceTimeZone } from './deviceTimeZone';
+import { syncWakeUpAlarm } from './wakeUpAlarm';
 
 /** A named step, the shape `runStartupSequence` isolates one at a time. */
 export type MaintenanceStep = [string, () => void];
@@ -203,6 +204,9 @@ export function catchUpPasses(): MaintenanceStep[] {
     // window and transit snapshot the last foreground left behind; it never
     // fetches either, for the reason the weather pass above doesn't.
     ['check travel tasks', () => tasks().checkTravelTasks()],
+    // Beside it for its calendar read; the second half sets this device's alarm
+    // for the task it just wrote (wakeUpAlarm.ts), which only this device can ring.
+    ['check wake-up tasks', () => { tasks().checkWakeUpTasks(); syncWakeUpAlarm(); }],
     // Beside it, same trigger and the same near-no-op at cold launch: the
     // crossings it reads are only ever drained by useScreenTimeSync's own
     // effect, which has not run yet on the very first pass.

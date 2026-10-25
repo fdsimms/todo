@@ -73,7 +73,8 @@ import {
 import { DEFAULT_PRODUCE_FLOOR, PRODUCE_FLOOR_MAX, PRODUCE_FLOOR_MIN } from '../../utils/produceFloorTasks';
 import { MEAL_PLAN_NUDGE_SLOTS } from '../../utils/mealPlanNudge';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
-import { formatHHMM } from '../../utils/dateUtils';
+import { formatHHMM, formatTimeOfDay } from '../../utils/dateUtils';
+import { WAKE_UP_DEFAULT_GET_READY_MINUTES, WAKE_UP_DEFAULT_USUAL_MINUTES } from '../../utils/wakeUpTasks';
 import { useColors } from '../../theme/ThemeContext';
 import { interaction, spacing, type Colors } from '../../theme';
 import { CountStepper } from '../../components/CountStepper';
@@ -142,6 +143,11 @@ import { navigateToSettingsEntry } from '../../navigation/openSettings';
 import { alertPermissionOff } from '../../utils/permissionAlert';
 import { BUTTON_LABEL } from '../../copy/shared';
 import { RotatingChevron } from '../../components/RotatingChevron';
+
+/** A clock time held as minutes after midnight, the way the person's settings show it. */
+function formatMinutesOfDay(minutes: number, use24Hour: boolean): string {
+  return formatTimeOfDay(new Date(2000, 0, 1, Math.floor(minutes / 60), minutes % 60), use24Hour);
+}
 
 // Map of this file (one component holding most of it; `grep -n '// ===='` is
 // the table of contents):
@@ -400,6 +406,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'weather': return s.weatherTaskCategory;
       case 'eventTask': return s.eventTaskCategory;
       case 'travel': return s.travelTaskCategory;
+      case 'wakeUp': return s.wakeUpTaskCategory;
       case 'screenTime': return s.screenTimeTaskCategory;
       case 'blockOffer': return s.blockOfferTaskCategory;
       case 'health': return s.healthTaskCategory;
@@ -444,6 +451,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'weather': s.setWeatherTaskCategory(category); break;
       case 'eventTask': s.setEventTaskCategory(category); break;
       case 'travel': s.setTravelTaskCategory(category); break;
+      case 'wakeUp': s.setWakeUpTaskCategory(category); break;
       case 'screenTime': s.setScreenTimeTaskCategory(category); break;
       case 'blockOffer': s.setBlockOfferTaskCategory(category); break;
       case 'health': s.setHealthTaskCategory(category); break;
@@ -1232,6 +1240,55 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
             }
             onPress={() => { haptics.tap(); setEventRulesVisible(true); }}
           />
+        </>
+      );
+    }
+
+    if (kind === 'wakeUp') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="wakeUpUsualMinutes"
+            icon="sunny-outline"
+            label="Usual wake-up"
+            hint="Adds a task only when you need to be up before this time."
+            value={formatMinutesOfDay(s.wakeUpUsualMinutes, s.use24HourTime)}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.wakeUpUsualMinutes}
+              onChange={next => s.setWakeUpUsualMinutes(next ?? WAKE_UP_DEFAULT_USUAL_MINUTES)}
+              min={4 * 60}
+              max={12 * 60}
+              step={15}
+              format={n => formatMinutesOfDay(n, s.use24HourTime)}
+              label="Usual wake-up time"
+              describeValue={n => formatMinutesOfDay(n ?? WAKE_UP_DEFAULT_USUAL_MINUTES, s.use24HourTime)}
+            />
+          </View>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="wakeUpGetReadyMinutes"
+            icon="time-outline"
+            label="Getting ready takes"
+            hint="Added to the trip and the arrive-early time from Leave-by reminders."
+            value={`${s.wakeUpGetReadyMinutes} min`}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.wakeUpGetReadyMinutes}
+              onChange={next => s.setWakeUpGetReadyMinutes(next ?? WAKE_UP_DEFAULT_GET_READY_MINUTES)}
+              min={0}
+              max={180}
+              step={5}
+              format={n => `${n}m`}
+              label="Minutes to get ready"
+              describeValue={n => `${n ?? WAKE_UP_DEFAULT_GET_READY_MINUTES} minutes to get ready`}
+            />
+          </View>
         </>
       );
     }

@@ -638,6 +638,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/vacationStreaks.ts` — isVacationProtectedStreak, forgiveVacationStreaks
 - `src/utils/visibilityUtils.ts` — isTaskBlocked, isInPausedProject, isWithheld, isTaskNotNeeded, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, isCategoryScheduledDay, sameTimeSegments, +44 more
 - `src/utils/waitingFollowUpTasks.ts` — MAX_WAITING_FOLLOW_UP_TASKS, WAITING_FOLLOW_UP_DECLINE_DAYS, WAITING_FOLLOW_UP_THRESHOLD_DAYS, waitingFollowUpTaskId, waitingFollowUpTitle, waitingFollowUpsHandledRecently, followUpDue, WaitingFollowUpWant, wantedWaitingFollowUps, staleWaitingFollowUpTasks
+- `src/utils/wakeUpAlarm.ts` — syncWakeUpAlarm
+- `src/utils/wakeUpTasks.ts` — WAKE_UP_DEFAULT_USUAL_MINUTES, WAKE_UP_DEFAULT_GET_READY_MINUTES, WAKE_UP_ROUND_MINUTES, clampWakeUpMinutes, WakeUpSettings, wakeUpInputs, WakeUpPrefs, wakeUpTitle, wakeUpSourceId, wakeUpSourceOf, +8 more
 - `src/utils/wanikaniTasks.ts` — WaniKaniSnapshot, WaniKaniReviewState, WANIKANI_INITIAL_REVIEW_STATE, WANIKANI_REVIEW_THRESHOLD_DEFAULT, WANIKANI_REVIEW_THRESHOLD_MIN, WANIKANI_REVIEW_THRESHOLD_MAX, WANIKANI_LESSONS_PER_DAY_MIN, WANIKANI_LESSONS_PER_DAY_MAX, WANIKANI_APPRENTICE_CAP_DEFAULT, WANIKANI_APPRENTICE_CAP_MIN, +27 more
 - `src/utils/watchHealthWorkout.ts` — WATCH_HEALTH_REQUESTS_SETTING, WATCH_RETRACT_LIMIT, WATCH_DROP_HOURS, RECENTLY_FINISHED_HOURS, RECENTLY_FINISHED_LIMIT, WatchHealthRequest, WatchHealthRequests, NO_WATCH_HEALTH_REQUESTS, parseWatchHealthRequests, withRetractions, +9 more
 - `src/utils/watchWorkout.ts` — MAX_WATCH_ROUTINES, MAX_WATCH_PLAN_SETS, MAX_WATCH_LIVE_SETS, MAX_WATCH_RECENT, WATCH_RECENT_DAYS, WatchSuggestion, WatchWorkoutExercise, WatchRecentExercise, WatchWorkoutSet, WatchLiveWorkout, +10 more
@@ -842,6 +844,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useTitleSelection.ts` — TitleSelection, useTitleSelection
 - `src/hooks/useTravelTaskSync.ts` — useTravelTaskSync
 - `src/hooks/useTwoPane.ts` — useTwoPane
+- `src/hooks/useWakeUpTaskSync.ts` — useWakeUpTaskSync
 - `src/hooks/useWaniKaniSync.ts` — useWaniKaniSync
 - `src/hooks/useWatchClashPrompt.ts` — useWatchClashPrompt
 - `src/hooks/useWeatherWaitSync.ts` — useWeatherWaitSync

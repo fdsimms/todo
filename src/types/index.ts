@@ -2780,6 +2780,12 @@ export type GeneratedKind =
   // since there is one rule. Not `sourced`, for eventTask's reason: the
   // handled record in settings (`travelTaskHandled`) is the mark.
   | 'travel'
+  // Tomorrow's first timed event needs an earlier wake-up than usual, so a task
+  // says when to be up and points at the device's own alarms (Task.alarmLink)
+  // — see src/utils/wakeUpTasks.ts. Its source id is the occurrence key alone,
+  // travel's, and the handled record in settings (`wakeUpTaskHandled`) is the
+  // mark, for the same reason.
+  | 'wakeUp'
   // A recurring task whose supply of a consumable is nearly spent becomes
   // "Order more X". The first generator whose source is a *task* rather than a
   // row in another store — see src/utils/supply.ts.

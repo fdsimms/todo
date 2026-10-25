@@ -166,6 +166,11 @@ import {
   type TravelLeadByCalendar,
   type TravelMode,
 } from '../utils/travelTasks';
+import {
+  WAKE_UP_DEFAULT_GET_READY_MINUTES,
+  WAKE_UP_DEFAULT_USUAL_MINUTES,
+  clampWakeUpMinutes,
+} from '../utils/wakeUpTasks';
 import { parseTransitLines } from '../utils/transitAlerts';
 import {
   WANIKANI_APPRENTICE_CAP_DEFAULT,
@@ -1808,6 +1813,20 @@ interface SettingsStore {
   // eventTaskHandled's shape and reason, keyed by occurrence alone since there
   // is one rule. Written by checkTravelTasks, never by anything a person taps.
   travelTaskHandled: HandledEventTasks;
+  // The wake-up task (src/utils/wakeUpTasks.ts): tomorrow's first timed event
+  // needs an earlier wake-up than `wakeUpUsualMinutes`, so a task says when to
+  // be up and the device's alarm is set for it. Minutes after midnight and a
+  // number of minutes, both typed, clamped on read and write.
+  wakeUpTasks: boolean;
+  wakeUpTaskCategory: string | null;
+  wakeUpUsualMinutes: number;
+  wakeUpGetReadyMinutes: number;
+  // travelTaskHandled's shape and reason (device-local, not synced).
+  wakeUpTaskHandled: HandledEventTasks;
+  // The alarms this device has already set for a wake-up task, by
+  // `wakeAlarmKey`, so an alarm the person then changed or deleted is not set
+  // again on the next sweep. Device-local like the alarms themselves.
+  wakeUpAlarmApplied: HandledEventTasks;
   // Whether the MTA subway alerts feed is read to add a note to a travel task.
   // Its own switch, off by default, because it is the one part of the feature
   // that reaches the network: no key stands in front of it the way one does
@@ -2432,6 +2451,12 @@ interface SettingsStore {
   setTravelLeadForCalendar: (calendarId: string, minutes: number | null) => void;
   setTravelEventPref: (eventId: string, pref: TravelEventPref | null) => void;
   setTravelTaskHandled: (handled: HandledEventTasks) => void;
+  setWakeUpTasks: (on: boolean) => void;
+  setWakeUpTaskCategory: (category: string | null) => void;
+  setWakeUpUsualMinutes: (minutes: number) => void;
+  setWakeUpGetReadyMinutes: (minutes: number) => void;
+  setWakeUpTaskHandled: (handled: HandledEventTasks) => void;
+  setWakeUpAlarmApplied: (applied: HandledEventTasks) => void;
   setTransitAlerts: (on: boolean) => void;
   setTransitLines: (lines: string[]) => void;
   setScreenTimeTasks: (on: boolean) => void;
@@ -3230,6 +3255,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   holidaySet: 'us',
   customHolidays: [],
   travelTaskHandled: {},
+  wakeUpTasks: false,
+  wakeUpTaskCategory: null,
+  wakeUpUsualMinutes: WAKE_UP_DEFAULT_USUAL_MINUTES,
+  wakeUpGetReadyMinutes: WAKE_UP_DEFAULT_GET_READY_MINUTES,
+  wakeUpTaskHandled: {},
+  wakeUpAlarmApplied: {},
   transitAlerts: false,
   transitLines: [],
   screenTimeTasks: false,
@@ -3779,6 +3810,20 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       parseHandledEventTasks(dbGetSetting('travelTaskHandled')),
       new Date(),
     );
+    const wakeUpTasks = dbGetSetting('wakeUpTasks') === 'true';
+    const wakeUpTaskCategory = dbGetSetting('wakeUpTaskCategory') || null;
+    const wakeUpUsualMinutes = clampWakeUpMinutes(
+      parseInt(dbGetSetting('wakeUpUsualMinutes') ?? '', 10), WAKE_UP_DEFAULT_USUAL_MINUTES, 0, 12 * 60);
+    const wakeUpGetReadyMinutes = clampWakeUpMinutes(
+      parseInt(dbGetSetting('wakeUpGetReadyMinutes') ?? '', 10), WAKE_UP_DEFAULT_GET_READY_MINUTES, 0, 180);
+    const wakeUpTaskHandled = pruneHandledEventTasks(
+      parseHandledEventTasks(dbGetSetting('wakeUpTaskHandled')),
+      new Date(),
+    );
+    const wakeUpAlarmApplied = pruneHandledEventTasks(
+      parseHandledEventTasks(dbGetSetting('wakeUpAlarmApplied')),
+      new Date(),
+    );
     const transitAlerts = dbGetSetting('transitAlerts') === 'true';
     const transitLines = parseTransitLines(dbGetSetting('transitLines'));
     const moodLogTasks = dbGetSetting('moodLogTasks') === 'true';
@@ -4291,6 +4336,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       vacationStart,
       waitingFollowUpTaskCategory,
       waitingFollowUpTasks,
+      wakeUpAlarmApplied,
+      wakeUpGetReadyMinutes,
+      wakeUpTaskCategory,
+      wakeUpTaskHandled,
+      wakeUpTasks,
+      wakeUpUsualMinutes,
       wanikaniApprenticeCap,
       wanikaniClientLink,
       wanikaniLessonsLastDayKey,
@@ -5036,6 +5087,39 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setTravelTaskHandled(handled: HandledEventTasks) {
     dbSetSetting('travelTaskHandled', JSON.stringify(handled));
     set({ travelTaskHandled: handled });
+  },
+
+  setWakeUpTasks(on: boolean) {
+    dbSetSetting('wakeUpTasks', on ? 'true' : 'false');
+    set({ wakeUpTasks: on });
+  },
+
+  setWakeUpTaskCategory(category: string | null) {
+    dbSetSetting('wakeUpTaskCategory', category ?? '');
+    set({ wakeUpTaskCategory: category });
+  },
+
+  setWakeUpUsualMinutes(minutes: number) {
+    const clamped = clampWakeUpMinutes(minutes, WAKE_UP_DEFAULT_USUAL_MINUTES, 0, 12 * 60);
+    dbSetSetting('wakeUpUsualMinutes', String(clamped));
+    set({ wakeUpUsualMinutes: clamped });
+  },
+
+  setWakeUpGetReadyMinutes(minutes: number) {
+    const clamped = clampWakeUpMinutes(minutes, WAKE_UP_DEFAULT_GET_READY_MINUTES, 0, 180);
+    dbSetSetting('wakeUpGetReadyMinutes', String(clamped));
+    set({ wakeUpGetReadyMinutes: clamped });
+  },
+
+  // State rather than a preference, like setEventTaskHandled.
+  setWakeUpTaskHandled(handled: HandledEventTasks) {
+    dbSetSetting('wakeUpTaskHandled', JSON.stringify(handled));
+    set({ wakeUpTaskHandled: handled });
+  },
+
+  setWakeUpAlarmApplied(applied: HandledEventTasks) {
+    dbSetSetting('wakeUpAlarmApplied', JSON.stringify(applied));
+    set({ wakeUpAlarmApplied: applied });
   },
 
   setTransitAlerts(on: boolean) {

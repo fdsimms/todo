@@ -41,6 +41,7 @@ const NEEDS_ON_PHONE: Partial<Record<GeneratedKind, string>> = {
   weather: 'location access, so the phone can read the forecast',
   eventTask: 'calendar access',
   travel: 'calendar access, and a travel time on each event',
+  wakeUp: 'calendar access; the phone sets the alarm itself (alarms are on the phone only), so the task shows here but its alarm can\u2019t be set from here',
   calendarReview: 'calendar access',
   health: 'Apple Health access',
   weighIn: 'Apple Health access',
