@@ -153,6 +153,16 @@ describe('suggestDrinksForName', () => {
     expect(suggestDrinksForName('Rum raisin ice cream')).toBeNull();
     expect(suggestDrinksForName('Beer battered fish')).toBeNull();
   });
+
+  it('leaves out dishes cooked with a drink, and shots and cider with none in them', () => {
+    for (const name of [
+      'Penne alla vodka', 'Bourbon chicken', 'Red wine braised short ribs', 'Beer cheese dip',
+      'Margarita pizza', 'Champagne vinaigrette salad', 'Espresso shot', 'Ginger shot',
+      'Apple cider', 'Apple cider donut',
+    ]) expect(suggestDrinksForName(name)).toBeNull();
+    expect(suggestDrinksForName('Hard cider')).toBe(1);
+    expect(suggestDrinksForName('Tequila shot')).toBe(1);
+  });
 });
 
 describe('what Apple Health is told', () => {

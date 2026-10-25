@@ -89,6 +89,34 @@ describe('the rewards tools', () => {
       expect(() => createReward(replica, { title: 'Coffee', cost: 5, taxable: true })).toThrow(/dollar price/);
     });
 
+    it('reprices a reward still marked taxable once the tax rate is cleared, as typed', () => {
+      // A week of history and a budget, so a dollar price has a rate.
+      mockRaw.runSync("UPDATE tasks SET completed_at = ? WHERE completed = 1", [new Date(Date.now() - 10 * 86_400_000).toISOString()]);
+      mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('rewardWeeklyBudgetMinor', '1000')");
+      mockRaw.runSync("INSERT OR REPLACE INTO settings (key, value) VALUES ('rewardSalesTaxPercent', '10')");
+      replica.refresh();
+      const taxed = createReward(replica, { title: 'Book', price: 20, taxable: true });
+      mockRaw.runSync("DELETE FROM settings WHERE key = 'rewardSalesTaxPercent'");
+      replica.refresh();
+      // No rate means no tax, not an error: a new price alone goes through.
+      const repriced = updateReward(replica, taxed.id, { price: 10 });
+      expect(repriced.cost).toBeLessThan(taxed.cost);
+      // Asking for tax with no rate is still refused, rather than quietly skipped.
+      expect(() => updateReward(replica, taxed.id, { price: 12, taxable: true })).toThrow(/sales tax rate/);
+      mockRaw.runSync("DELETE FROM settings WHERE key = 'rewardWeeklyBudgetMinor'");
+      replica.refresh();
+    });
+
+    it('will not take back a balance reset as though it were a claim', () => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useRewardStore } = require('../../../src/store/useRewardStore');
+      const reset = useRewardStore.getState().resetBalance();
+      expect(reset).not.toBeNull();
+      replica.refresh();
+      expect(() => unclaimReward(replica, reset.id)).toThrow(/Only a reward claim/);
+      expect(getRewards(replica).balance).toBe(0);
+    });
+
     it('lists a live bounty and says what the miss costs', () => {
       const task = replica.createTask({ title: 'Ring the dentist' });
       expect(setBounty(replica, task.id, true).bounty).toMatch(/\d/);

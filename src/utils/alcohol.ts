@@ -174,17 +174,21 @@ export function withAlcoholG(nutrition: FoodNutrition, grams: number): FoodNutri
 // A name that is a drink with alcohol in it, by how many standard drinks one
 // of it usually is. Whole words only, so "ale" is not "scale" or "kale".
 const ONE_DRINK_WORDS = [
-  'beer', 'lager', 'ale', 'ipa', 'stout', 'porter', 'pilsner', 'cider', 'hard seltzer',
+  'beer', 'lager', 'ale', 'ipa', 'stout', 'porter', 'pilsner', 'hard cider', 'hard seltzer',
   'wine', 'prosecco', 'champagne', 'sake', 'merlot', 'chardonnay', 'pinot',
-  'whiskey', 'whisky', 'bourbon', 'scotch', 'vodka', 'gin', 'rum', 'tequila', 'mezcal', 'brandy', 'cognac', 'shot',
+  'whiskey', 'whisky', 'bourbon', 'scotch', 'vodka', 'gin', 'rum', 'tequila', 'mezcal', 'brandy', 'cognac',
 ];
 const COCKTAIL_WORDS = [
   'cocktail', 'margarita', 'martini', 'mojito', 'cosmopolitan', 'old fashioned', 'negroni', 'daiquiri',
   'spritz', 'mimosa', 'sangria', 'manhattan', 'mai tai', 'pina colada', 'paloma', 'bloody mary',
   'gin and tonic', 'moscow mule', 'whiskey sour', 'espresso martini',
 ];
-// Names that contain one of those words and are not a drink with alcohol in it.
-const NOT_ALCOHOLIC = /\b(non[- ]?alcoholic|alcohol[- ]?free|root beer|ginger beer|ginger ale|vinegar|extract|batter|battered|sauce|raisin|cake|ice cream|0\.0|zero)\b/;
+// Names that contain one of those words and are not a drink with alcohol in it:
+// the drinks named for one, and dishes cooked with one ("Penne alla vodka",
+// "Bourbon chicken", "Margarita pizza"). Plain "cider" and "shot" are left out
+// of the words above for the same reason: apple cider is juice in the US, and
+// an espresso or ginger shot has nothing in it.
+const NOT_ALCOHOLIC = /\b(non[- ]?alcoholic|alcohol[- ]?free|root beer|ginger beer|ginger ale|vinegar|vinaigrette|dressing|extract|batter|battered|sauce|glaze|glazed|braised|marinated|raisin|cake|cupcake|donut|doughnut|ice cream|sorbet|pizza|pasta|penne|risotto|chicken|beef|pork|ribs|mussels|cheese|dip|soup|stew|bread|0\.0|zero)\b/;
 
 function hasWord(text: string, words: readonly string[]): boolean {
   return words.some(word => new RegExp(`\\b${word}\\b`).test(text));

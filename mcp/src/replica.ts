@@ -927,6 +927,8 @@ export interface CompletedResult {
   rolledOver: Task[];
   /** True when a dose was recorded against the medication the task names. */
   loggedDose: boolean;
+  /** The medicines it recorded, main dose first. */
+  loggedDoses: string[];
 }
 
 /** One task the way `fuzzySearch` ranked it, without the highlight ranges. */
@@ -3265,8 +3267,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           const title = s.title.trim();
           const byTitle = stored?.chainItems.find(c => c.title.trim().toLowerCase() === title.toLowerCase());
           const keptStep = byTitle ?? (stored?.chainItems[i] && !chain.steps.some(o => o.title.trim().toLowerCase() === stored.chainItems[i].title.trim().toLowerCase()) ? stored.chainItems[i] : undefined);
-          const { deliverableKind: _k, deliverableDatesNextStep: _d, ...carried } = keptStep ?? ({} as Partial<ChainItem>);
-          void _k; void _d;
+          // The note, link and medication are left to `stepTextFields`, which
+          // keeps the stored ones itself; spread from here, a null meant to
+          // clear one would leave it standing.
+          const {
+            deliverableKind: _k, deliverableDatesNextStep: _d,
+            notes: _n, linkUrl: _l, medicationName: _mn, medicationAmount: _ma, medicationUnit: _mu,
+            ...carried
+          } = keptStep ?? ({} as Partial<ChainItem>);
+          void _k; void _d; void _n; void _l; void _mn; void _ma; void _mu;
           return {
             ...carried,
             id: keptStep?.id ?? generateId(),
@@ -3392,7 +3401,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       },
     });
   }
-  const { useRewardStore } = require('../../src/store/useRewardStore') as typeof import('../../src/store/useRewardStore');
+  const { useRewardStore, isBalanceReset } = require('../../src/store/useRewardStore') as typeof import('../../src/store/useRewardStore');
   // Food recorded as thrown out used nothing up, so the coins its use-up task
   // paid come back, as on the phone (`forfeitUseUpCoins` in generatedTaskSync).
   // The prompt that asks never reaches this replica, so the answer arrives here.
@@ -3851,10 +3860,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     // The one cross-store write kept, because it is a record rather than a
     // device effect: a dose taken is a fact about the person, and dropping
     // it would make a medication task completed here invisible in the log
-    // that exists to count exactly these. Read through `medicationFor` so a
-    // chain step carrying its own medication records that one.
-    const dose = missed || mode === 'other' ? null : medication.medicationFor(task);
-    if (dose) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: new Date(), useUsualDose: true });
+    // that exists to count exactly these. The same doses the app's
+    // completeTask records: a chain step carrying its own medication records
+    // that one, a target only its main dose, and anything else its extras too.
+    const doses = missed || mode === 'other'
+      ? []
+      : visibility.isQuotaTask(task)
+        ? [medication.medicationFor(task)].filter(d => d !== null)
+        : medication.medicationsFor(task);
+    const doseAt = new Date();
+    for (const dose of doses) useMedicationStore.getState().addLog({ ...dose, taskId: id, at: doseAt, useUsualDose: true });
 
     // Coins, kept for the same reason: the ledger is a record, and a task
     // finished here should earn what it would have earned on the phone.
@@ -3888,7 +3903,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       nextTask: built.nextTask,
       followUpTask: built.followUpTask,
       rolledOver: built.rolledOver,
-      loggedDose: dose !== null,
+      loggedDose: doses.length > 0,
+      loggedDoses: doses.map(d => d.name),
     };
   };
 
@@ -8454,7 +8470,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     unclaimReward(entryId): CoinEntry {
       const entry = useRewardStore.getState().entries.find(e => e.id === entryId);
-      if (!entry || entry.kind !== 'spend') throw new Error(`No claim with id ${entryId}. Only a spend can be taken back.`);
+      if (!entry || entry.kind !== 'spend' || isBalanceReset(entry)) throw new Error(`No claim with id ${entryId}. Only a reward claim can be taken back.`);
       // The app's undo for a wish-list claim puts the item back with the coins.
       // Only an item checked off at or after the claim is reopened: one the person
       // finished earlier is theirs, and a refused reopen stops the whole undo

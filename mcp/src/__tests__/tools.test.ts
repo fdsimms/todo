@@ -571,6 +571,25 @@ describe('getTask', () => {
     expect(result.autoScheduledAt).toBe('2026-10-01T09:00:00.000Z');
   });
 
+  it("reports the medicine the live chain step records, in place of the task's", () => {
+    const chained = task({
+      id: 'chain-med-1', title: 'Pills', chainEnabled: true, chainIndex: 0,
+      chainItems: [
+        { id: 's1', title: 'Morning', estimatedMinutes: null, medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg' },
+        { id: 's2', title: 'Evening', estimatedMinutes: null },
+      ],
+      medicationName: 'Vitamin D', medicationExtras: [{ name: 'Zinc', amount: 15, unit: 'mg' }],
+    });
+    expect(getTask(withTasks([chained]), 'chain-med-1')!.onCompletion).toEqual({
+      logsMedication: { name: 'Sertraline', amount: 50, unit: 'mg' },
+    });
+    // On a step with none of its own, the task's dose and its extras.
+    expect(getTask(withTasks([{ ...chained, chainIndex: 1 }]), 'chain-med-1')!.onCompletion).toEqual({
+      logsMedication: { name: 'Vitamin D' },
+      alsoLogsMedication: [{ name: 'Zinc', amount: 15, unit: 'mg' }],
+    });
+  });
+
   it('explains a task held by vacation mode, which has no moment to surface at', () => {
     const paused = task({ id: 'vacation-1', title: 'Water the plants', vacationPause: true });
     const result = getTask(withTasks([paused], { visibleAt: () => new Date() }), 'vacation-1')!;

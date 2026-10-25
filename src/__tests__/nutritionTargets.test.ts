@@ -363,4 +363,17 @@ describe('alcohol, shown in drinks', () => {
     const impact = limitImpact({ alcoholG: 14 }, { alcoholG: 21 }, { alcoholG: 28 }, ['alcoholG']);
     expect(describeLimitImpact(impact[0])).toBe('Puts you at 2.5 of 2 drinks, 0.5 drinks over');
   });
+
+  it('is not over a limit that the figure shown is exactly at', () => {
+    // A 150 ml glass of 12% wine: 14.2 g, one drink on screen.
+    expect(describeLimit('alcoholG', 14.2, { alcoholG: 14 })).toBe('At the limit');
+    expect(limitStatus('alcoholG', 14.2, { alcoholG: 14 })).toBe('near');
+    const [impact] = limitImpact({ alcoholG: 14.2 }, {}, { alcoholG: 14 }, ['alcoholG']);
+    expect(impact).toMatchObject({ status: 'near', crosses: false });
+    expect(describeLimitImpact(impact)).toBe('Puts you at 1 of 1 drink');
+    // A tenth of a drink past it is over, and that is what the row says too.
+    expect(limitStatus('alcoholG', 15.5, { alcoholG: 14 })).toBe('over');
+    expect(describeLimit('alcoholG', 15.5, { alcoholG: 14 })).toBe('0.1 drinks over');
+    expect(limitStatus('satFatG', 16.8, { satFatG: 16 })).toBe('over');
+  });
 });

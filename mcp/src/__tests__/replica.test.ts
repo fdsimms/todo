@@ -793,6 +793,22 @@ describe('the replica', () => {
       expect(updated.items[0].chainItems[0].linkUrl).toBe('https://b.example');
     });
 
+    it("clears a chain step's note, link and medication given null, and keeps them left out", () => {
+      const t = replica.createTemplate({ name: 'Steps', items: [{ title: 'x', chain: { steps: [
+        { title: 'A', notes: 'bring cash', link: 'https://a.example', medication: { name: 'Ibuprofen' } },
+        { title: 'B', notes: 'keep me' },
+      ] } }] });
+      const updated = replica.updateTemplate(t.id, { items: [{ id: t.items[0].id, chain: { steps: [
+        { title: 'A', notes: null, link: null, medication: null },
+        { title: 'B' },
+      ] } }] });
+      const [a, b] = updated.items[0].chainItems;
+      expect(a.notes ?? null).toBeNull();
+      expect(a.linkUrl ?? null).toBeNull();
+      expect(a.medicationName ?? null).toBeNull();
+      expect(b.notes).toBe('keep me');
+    });
+
     it('refuses an edit made against a version that is no longer current', () => {
       const built = trip();
       const read = templateVersion(built);
@@ -1469,6 +1485,16 @@ describe('the replica', () => {
 
     const task2 = replica.createTask({ title: 'Hang the picture' });
     expect(replica.completeTask(task2.id, {}).loggedDose).toBe(false);
+  });
+
+  it("records a task's extra medicines with its main dose, as the app does, and takes them all back on reopen", () => {
+    const logsFor = (id: string) => mockRaw.getAllSync<{ name: string }>('SELECT name FROM medication_logs WHERE task_id = ?', [id]).map(r => r.name).sort();
+    const task = replica.createTask({ title: 'Morning pills', medicationName: 'Vitamin D', medicationExtras: [{ name: 'Zinc', amount: 15, unit: 'mg' }] });
+    const result = replica.completeTask(task.id, {});
+    expect(result.loggedDoses).toEqual(['Vitamin D', 'Zinc']);
+    expect(logsFor(task.id)).toEqual(['Vitamin D', 'Zinc']);
+    replica.reopenTask(task.id);
+    expect(logsFor(task.id)).toEqual([]);
   });
 
   it('earns coins for a completion while rewards are on, and nothing while off', () => {
