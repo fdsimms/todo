@@ -3713,6 +3713,12 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     () => (reminderPlaceId ? readSavedPlaces().find(p => p.id === reminderPlaceId)?.name ?? null : null),
     [reminderPlaceId],
   );
+  // The places a daily target's reminders can be limited to, read when the
+  // switch turns on rather than in every render (it's a SQLite read).
+  const quotaReminderPlaces = useMemo(
+    () => (quotaReminders ? pinnedPlaces(readSavedPlaces()) : []),
+    [quotaReminders],
+  );
   const placeReminderValue = reminderPlaceId
     ? describePlaceReminder(reminderPlaceOn, reminderPlaceName ?? 'a saved place')
     : undefined;
@@ -5095,7 +5101,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                         </View>
                         <Toggle value={quotaReminders} onColor={colors.orange} />
                       </TouchableOpacity>
-                      {quotaReminders && pinnedPlaces(readSavedPlaces()).length > 0 && (
+                      {quotaReminders && quotaReminderPlaces.length > 0 && (
                         <View style={styles.placeLimit}>
                           <Text style={styles.optionLabel}>Only notify me at</Text>
                           <Text style={styles.optionHint}>
@@ -5104,7 +5110,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                           <PillGroup
                             noun="place"
                             surface="card"
-                            options={pinnedPlaces(readSavedPlaces()).map(p => ({
+                            options={quotaReminderPlaces.map(p => ({
                               key: p.id,
                               label: p.name,
                               selected: quotaPlaceIds.includes(p.id),

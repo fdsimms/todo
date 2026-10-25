@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
@@ -102,6 +102,8 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [drafted, setDrafted] = useState<string[]>([]);
   const [taskEditorOpen, setTaskEditorOpen] = useState(false);
+  // Stable, so the closed (memoized) editor doesn't re-render with this sheet.
+  const closeTaskEditor = useCallback(() => setTaskEditorOpen(false), []);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [attachedTitle, setAttachedTitle] = useState<string | null>(null);
   const updateTask = useTaskStore(s => s.updateTask);
@@ -299,7 +301,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
         <TaskEditor
           visible={taskEditorOpen}
           initialDraft={taskDraft}
-          onClose={() => { setTaskEditorOpen(false); }}
+          onClose={closeTaskEditor}
         />
         <TaskRelationPickerSheet
           visible={taskPickerOpen}

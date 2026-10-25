@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Linking } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -192,6 +192,7 @@ export function PersonDetailScreen() {
   // A coming-up, waiting or undated task opened from its row. Its id, read live from the store,
   // so an edit made in the editor shows straight away.
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const closeTaskEditor = useCallback(() => setEditingTaskId(null), []);
   const editingTask = useTaskStore(s => (editingTaskId ? s.tasks.find(t => t.id === editingTaskId) ?? null : null));
   // Two separate flags rather than one union: an in-progress add has no
   // `HistoryEntry` to carry (there's no task yet), so `entry: null` would be
@@ -864,7 +865,7 @@ export function PersonDetailScreen() {
         <TaskEditor
           visible={editingTaskId !== null}
           task={editingTask}
-          onClose={() => setEditingTaskId(null)}
+          onClose={closeTaskEditor}
         />
       </LazySheet>
       <LazySheet open={noteSheet !== null}>

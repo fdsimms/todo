@@ -58,6 +58,8 @@ export function ArchivedScreen() {
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
+  // Stable, so the closed (memoized) editor doesn't re-render with this screen.
+  const closeTaskEditor = useCallback(() => setEditorVisible(false), []);
   const searchFilter = useFilterField();
   const query = searchFilter.query;
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -307,7 +309,7 @@ export function ArchivedScreen() {
         <TaskEditor
           visible={editorVisible}
           task={editingTask}
-          onClose={() => setEditorVisible(false)}
+          onClose={closeTaskEditor}
         />
       </LazySheet>
       <ScrollToTopButton {...scrollTop.buttonProps} />

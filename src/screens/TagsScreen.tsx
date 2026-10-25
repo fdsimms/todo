@@ -95,6 +95,12 @@ export function TagsScreen() {
   // A new task started from a tag's own page, already carrying the tag.
   const [taskQuickAddVisible, setTaskQuickAddVisible] = useState(false);
   const [editorDraft, setEditorDraft] = useState<Partial<TaskDraft> | null>(null);
+  // Stable, so the closed (memoized) editor doesn't re-render with this screen.
+  const closeTaskEditor = useCallback(() => {
+    setEditorVisible(false);
+    setExpandedTaskId(null);
+    setEditorDraft(null);
+  }, []);
   const tagSeed = useMemo(() => (selectedTag ? { tags: [selectedTag] } : undefined), [selectedTag]);
   const onTaskQuickAddClose = useCallback(() => setTaskQuickAddVisible(false), []);
   const onTaskQuickAddOpenFull = useCallback((draft: TaskDraft) => {
@@ -533,11 +539,7 @@ export function TagsScreen() {
               visible={editorVisible}
               task={editingTask}
               initialDraft={editorDraft ?? undefined}
-              onClose={() => {
-                setEditorVisible(false);
-                setExpandedTaskId(null);
-                setEditorDraft(null);
-              }}
+              onClose={closeTaskEditor}
             />
           </LazySheet>
 

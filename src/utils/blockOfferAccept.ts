@@ -44,7 +44,7 @@ export async function offerBlockStart(task: Task): Promise<void> {
   const apps = groupName(groups, rule.groupId ?? DEFAULT_GROUP_ID, meta);
   const length = describeDuration(rule.minutes);
   const coins = describeOfferCoins(rule.coins);
-  await haptics.tap();
+  haptics.tap();
 
   Alert.alert(
     `Block ${apps} for ${length}?`,

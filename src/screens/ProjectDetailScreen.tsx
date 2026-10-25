@@ -43,7 +43,7 @@ import { LinkedText } from '../components/LinkedText';
 import { format } from 'date-fns/format';
 import { groupRoster, isHeldBack, isTaskNotNeeded } from '../utils/visibilityUtils';
 import { reuseUnchangedLists } from '../utils/stableLists';
-import { Alert, InteractionManager, Linking, ScrollView, Share } from 'react-native';
+import { Alert, Linking, ScrollView, Share } from 'react-native';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { linkHost, parseLabelledLink } from '../utils/textLinks';
 import { OfferBanner } from '../components/OfferBanner';
@@ -509,6 +509,12 @@ function ProjectDetailContent() {
   const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
   const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
+  // Stable, so the closed (memoized) editor doesn't re-render with this screen.
+  const closeTaskEditor = useCallback(() => {
+    setEditorVisible(false);
+    setEditorInitialDraft(null);
+    setExpandedTaskId(null);
+  }, []);
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const searchFilter = useFilterField();
   const existingSearch = searchFilter.query;
@@ -2628,11 +2634,7 @@ function ProjectDetailContent() {
             visible={editorVisible}
             task={editingTask}
             initialDraft={editorInitialDraft}
-            onClose={() => {
-              setEditorVisible(false);
-              setEditorInitialDraft(null);
-              setExpandedTaskId(null);
-            }}
+            onClose={closeTaskEditor}
           />
         </LazySheet>
         {pullSearch.sheet}

@@ -20,7 +20,6 @@ import {
   RefreshControl,
   Alert,
   AppState,
-  InteractionManager,
   type GestureResponderEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -32,6 +31,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, NutrientKey, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
+import { runAfterPaint, runAfterTransition } from '../utils/afterPaint';
 import { taskHomeFor } from '../utils/taskHome';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
 import { sameGroupsApartFromFold } from '../utils/groupFold';
@@ -1590,7 +1590,7 @@ export function TodayScreen() {
       // one that writes re-renders this whole screen, so running them inline
       // stacked that work on the frame the tab switch was trying to paint.
       // A stale row they clear can show for that moment and no longer.
-      const sweeps = InteractionManager.runAfterInteractions(() => {
+      const sweeps = runAfterTransition(() => {
         // On *focus* as well as on foreground below, which is this pass alone and
         // deliberate: a pantry check is answered on another screen — its own link
         // opens the item sheet — and the six writes that answer it (both Pantry
@@ -3186,7 +3186,7 @@ export function TodayScreen() {
   // by this effect's own cleanup.
   const [todayTaskLimit, setTodayTaskLimit] = useState<number | undefined>(TODAY_INITIAL_TASK_LIMIT);
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
+    const handle = runAfterPaint(() => {
       setTodayTaskLimit(viewMode === 'today' ? undefined : TODAY_INITIAL_TASK_LIMIT);
     });
     return () => handle.cancel();
@@ -4888,7 +4888,7 @@ export function TodayScreen() {
   // cancelled by this effect's own cleanup, and the ramp-up that replaces it
   // is a Math.max.
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
+    const handle = runAfterPaint(() => {
       setLaterTaskLimit(limit =>
         viewMode === 'later' ? Math.max(limit, LATER_SETTLED_TASK_LIMIT) : LATER_INITIAL_TASK_LIMIT,
       );
