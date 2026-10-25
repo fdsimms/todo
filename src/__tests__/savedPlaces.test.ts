@@ -85,10 +85,10 @@ describe('finding a place', () => {
     expect(findSavedPlace(list, '')).toBeNull();
   });
 
-  it('suggests names that start with the typed text, never the exact one', () => {
+  it('suggests names that start with the typed text, the exact one included', () => {
     expect(suggestSavedPlaces(list, 'ho').map(p => p.name)).toEqual(['Home', 'Hotel']);
     expect(suggestSavedPlaces(list, 'hom').map(p => p.name)).toEqual(['Home']);
-    expect(suggestSavedPlaces(list, 'home')).toEqual([]);
+    expect(suggestSavedPlaces(list, 'home').map(p => p.name)).toEqual(['Home']);
     expect(suggestSavedPlaces(list, 'h')).toEqual([]);
   });
 

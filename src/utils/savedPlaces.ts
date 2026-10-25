@@ -162,8 +162,8 @@ export function savedPlaceWithText(places: readonly SavedPlace[], text: string):
 
 /**
  * Saved places whose names start with what is being typed, for the card's
- * suggestions. An exact name is not one: that resolves on its own
- * (`findSavedPlace`), and listing it too would offer the same place twice.
+ * suggestions. An exact name is listed too: a name never resolves to its
+ * address until the person taps it.
  */
 export function suggestSavedPlaces(places: readonly SavedPlace[], query: string, limit = 3): SavedPlace[] {
   const key = savedPlaceKey(query);
@@ -171,7 +171,7 @@ export function suggestSavedPlaces(places: readonly SavedPlace[], query: string,
   return places
     .filter(p => {
       const name = savedPlaceKey(p.name);
-      return name !== key && name.startsWith(key);
+      return name.startsWith(key);
     })
     .slice(0, limit);
 }

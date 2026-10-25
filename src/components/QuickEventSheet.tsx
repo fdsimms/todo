@@ -344,7 +344,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   // resolves to its address and pin; the typed text the user waved off for
   // this event ("Use what I typed") is remembered by key so it stays off.
   const [savedPlaces, setSavedPlaces] = useState<SavedPlace[]>([]);
-  const [savedDismissedKey, setSavedDismissedKey] = useState<string | null>(null);
+  const [savedConfirmedKey, setSavedConfirmedKey] = useState<string | null>(null);
   // What was typed in the location when a place was picked, to offer as the
   // name if that pick is then saved ("home" before picking an address).
   const [typedBeforePick, setTypedBeforePick] = useState('');
@@ -457,7 +457,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setPlaceResults([]);
     setPickedPlace(null);
     setSavedPlaces(readSavedPlaces());
-    setSavedDismissedKey(null);
+    setSavedConfirmedKey(null);
     setTypedBeforePick('');
     const defaults = readQuickEventDefaults();
     setCalendarId(defaults.calendarId);
@@ -660,11 +660,11 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const typedLocation = draft.location ?? (location.trim() || memoryLocation);
   const placeQuery = typedLocation ?? '';
   const placePicked = pickedPlace !== null && pickedPlace.text === placeQuery;
-  // A saved place named exactly ("home") is what the event is saved with, in
-  // place of the typed word, unless the user waved it off for this event. A
-  // place picked from Apple Maps outranks it: that pick is more specific.
+  // A saved place named exactly ("home") is only offered, never applied on its
+  // own: the event is saved with it once the suggestion is tapped. A place
+  // picked from Apple Maps outranks it: that pick is more specific.
   const savedMatch = !placePicked ? findSavedPlace(savedPlaces, placeQuery) : null;
-  const savedInUse = savedMatch !== null && savedPlaceKey(savedMatch.name) !== savedDismissedKey ? savedMatch : null;
+  const savedInUse = savedMatch !== null && savedPlaceKey(savedMatch.name) === savedConfirmedKey ? savedMatch : null;
   const effectiveLocation = savedInUse ? savedInUse.text : typedLocation;
   // A remembered place was already picked once; it isn't looked up again.
   // Neither is a saved one: it already says where it is.
@@ -676,7 +676,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     ? pickedPlace
     : savedInUse ? savedPin
     : memoryLocation !== null ? recalled?.place ?? null : null;
-  const savedSuggestions = !placePicked && savedInUse === null && savedMatch === null
+  const savedSuggestions = !placePicked && savedInUse === null
     ? suggestSavedPlaces(savedPlaces, placeQuery)
     : [];
   // Offered on any location that isn't a saved name or already saved as text.
@@ -780,14 +780,14 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setPlaceResults([]);
   };
 
-  // A partly typed name picked from the suggestions. Like a picked place it
+  // A saved name picked from the suggestions, which is what confirms it. Like a picked place it
   // comes out of the line, so the typed words don't outrank it.
   const pickSavedPlace = (saved: SavedPlace) => {
     haptics.tap();
     animateLayout();
     if (draft.location !== null && draft.locationSpan) cutFromLine(draft.locationSpan);
     setLocation(saved.name);
-    setSavedDismissedKey(null);
+    setSavedConfirmedKey(savedPlaceKey(saved.name));
   };
 
   // Names the location this event is going to, so the name can be typed next
@@ -823,7 +823,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
             // saved text and pin. A place typed in the line comes out of it.
             if (draft.location !== null && draft.locationSpan) cutFromLine(draft.locationSpan);
             setLocation(trimmed);
-            setSavedDismissedKey(null);
+            setSavedConfirmedKey(savedPlaceKey(trimmed));
           },
         },
       ],
@@ -1520,7 +1520,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 // Last time's place shows here, as an ordinary value to keep or edit.
                 value={draft.location ?? (location || memoryLocation || '')}
                 editable={draft.location === null}
-                onChangeText={setLocation}
+                onChangeText={text => { setLocation(text); setSavedConfirmedKey(null); }}
                 autoFocus={stepped}
                 onSubmitEditing={advance}
                 returnKeyType="next"
@@ -1575,7 +1575,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 <Ionicons name="bookmark" size={13} color={colors.textSecondary} />
                 <Text style={styles.captionText} numberOfLines={1}>{savedInUse.text}</Text>
                 <TouchableOpacity
-                  onPress={() => { haptics.tap(); animateLayout(); setSavedDismissedKey(savedPlaceKey(savedInUse.name)); }}
+                  onPress={() => { haptics.tap(); animateLayout(); setSavedConfirmedKey(null); }}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   accessibilityRole="button"
                   accessibilityLabel={`Use “${savedInUse.name}” as typed`}
