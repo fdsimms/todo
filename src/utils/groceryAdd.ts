@@ -35,6 +35,7 @@ import { catalogItemForKey } from './groceryPlural';
 import { aisleForName, placeAisle } from './groceryAisles';
 import { entryFor, nextListSortOrder } from './groceryLists';
 import { canonicalBrand, productKeyFor } from './groceryProduct';
+import { readableItemName } from './productCase';
 
 /** The next free slot in the catalog's own order. */
 export function nextSortOrder(items: GroceryItem[]): number {
@@ -146,7 +147,9 @@ export function newItemRow(fields: {
 }): GroceryItem {
   return {
     id: generateId(),
-    name: fields.name,
+    // Never all capitals: see readableItemName. The key is already lowercase,
+    // so this changes how the row reads and nothing it matches on.
+    name: readableItemName(fields.name),
     nameKey: fields.nameKey,
     // A fresh row has no products and so no preference. A brand typed into
     // GroceryAddField's chip becomes a real ItemProduct *after* the row exists

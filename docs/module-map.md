@@ -97,6 +97,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +25 more
 - `src/utils/capitalize.ts` — capitalize
 - `src/utils/cardAnchor.ts` — CardAnchor, CardPlacement, ANCHOR_GAP, ANCHOR_REACH, ANCHOR_EDGE, cardAnchorPlacement
+- `src/utils/catalogAudit.ts` — AuditKind, AuditRow, AuditFinding, auditTokens, auditCatalog
 - `src/utils/categoryBackfill.ts` — CategoryBackfillFieldId, CategoryBackfillFieldDef, CATEGORY_BACKFILL_FIELDS, isCategoryFieldMissing, isCategoryBackfillDismissed, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField
 - `src/utils/categoryLabel.ts` — categoryLabel
 - `src/utils/categoryOrder.ts` — moveCategory, alphabeticalCategories, sortCategoriesByTaskCount
@@ -403,7 +404,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/produceFloorTasks.ts` — DEFAULT_PRODUCE_FLOOR, PRODUCE_FLOOR_MIN, PRODUCE_FLOOR_MAX, clampProduceFloor, stockedProduce, stockedProduceNames, produceFloorApplies, produceFloorTitle, PRODUCE_FLOOR_SUGGESTIONS_SHOWN, restockSuggestions, +1 more
 - `src/utils/produceNudgeTasks.ts` — DEFAULT_PRODUCE_NUDGE_FROM_HOUR, PRODUCE_NUDGE_FROM_HOUR_MIN, PRODUCE_NUDGE_FROM_HOUR_MAX, DEFAULT_PRODUCE_NUDGE_GOAL, PRODUCE_NUDGE_GOAL_MIN, PRODUCE_NUDGE_GOAL_MAX, clampProduceNudgeFromHour, clampProduceNudgeGoal, describeProduceNudgeHour, ProduceReading, +8 more
 - `src/utils/produceServings.ts` — PORTION_GRAMS, DRIED_PORTION_GRAMS, LEGUME_DAILY_CAP, ProduceKind, ProduceGrams, emptyProduceGrams, ProduceServings, DayProduce, stems, tokensOf, +16 more
-- `src/utils/productCase.ts` — readableProductCase
+- `src/utils/productCase.ts` — readableProductCase, readableItemName
 - `src/utils/productCategory.ts` — CATEGORY_AISLES, aisleForProductCategory
 - `src/utils/projectBackfill.ts` — ProjectBackfillFieldId, ProjectBackfillFieldDef, PROJECT_BACKFILL_FIELDS, isProjectFieldMissing, isProjectBackfillDismissed, projectBackfillCandidates, projectBackfillFieldCounts, dismissProjectBackfillField
 - `src/utils/projectBoard.ts` — BoardColumn, LOOSE_COLUMN_KEY, boardColumns, columnIndexAt, insertIndexAt, BoardMove, boardMove
@@ -502,7 +503,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, editSavedPlace, +7 more
 - `src/utils/scanItemType.ts` — itemTypeFromCategory, cleanModelItemType, catalogSpellingOf, ItemTypeMove, itemTypeMoveFor
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packSizeGrams, servingsIn, packageChoices, packageFractions, servingDescription, packageHelping
-- `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, newItemBox, nameFromScanFor, sourceLabelFor, sourceLineFor, variantFor, ScanBoxSource, scanBoxChoice, +11 more
+- `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, newItemBox, nameFromScanFor, sourceLabelFor, sourceLineFor, variantFor, ScanBoxSource, scanBoxChoice, +12 more
 - `src/utils/scheduleMovePrompt.ts` — confirmScheduleMove, confirmSegmentScope, confirmBulkSetWhen
 - `src/utils/screenLinks.ts` — screenKey, resolveScreen, quickActionScreens, quickActionScreenList, screenSymbol
 - `src/utils/screenSettingControls.ts` — ScreenSettingRead, ScreenSettingState, SCREEN_SETTING_TOGGLE_IDS, generatorKindOf, aiFeatureOf, screenSettingRead

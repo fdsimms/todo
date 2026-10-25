@@ -91,6 +91,10 @@ export interface ScannedGtinLink {
 /** Words a brand-stripped name shouldn't be left starting or ending with. */
 const EDGE_JUNK = /^[\s,;:.\-–—]+|[\s,;:.\-–—]+$/g;
 
+/** A size at the very end of a name: "-- 6 oz", "12 fl oz", "(16 ct)". */
+const TRAILING_SIZE =
+  /[\s\-–—(]*\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|lbs?|g|kg|ml|l|ct|count|pk|pack)\b\.?\)?\s*$/i;
+
 /**
  * A product's full name reduced to something that belongs on a shopping list.
  *
@@ -125,6 +129,12 @@ export function shopperNameFor(fullName: string, brand: string | null): string {
     const stripped = name.slice(0, comma).replace(EDGE_JUNK, '');
     if (stripped) name = stripped;
   }
+
+  // "…Smokey Dokey -- 6 oz" — a size with no comma before it, set off by dashes
+  // or just a space. The unit list is closed on purpose: a trailing number with
+  // no unit ("Vitamin B 12", "Catch 22") is part of the name.
+  const sized = name.replace(TRAILING_SIZE, '').replace(EDGE_JUNK, '');
+  if (sized) name = sized;
 
   const tidied = name.replace(EDGE_JUNK, '').replace(/\s+/g, ' ');
   return tidied || full;
@@ -502,4 +512,9 @@ export function classifyTypedEntry(raw: string, allowNames: boolean): TypedEntry
     return { kind: 'name', name: text };
   }
   return { kind: 'invalid', reason: digitsOnly ? 'digits' : 'name' };
+}
+
+/** Whether a name ends in a size ("-- 6 oz"), which belongs in the quantity and not the name. */
+export function hasTrailingSize(name: string): boolean {
+  return TRAILING_SIZE.test(name.trim());
 }

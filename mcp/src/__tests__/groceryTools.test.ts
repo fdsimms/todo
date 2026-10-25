@@ -33,7 +33,7 @@ import {
   reorderAisles,
   updateStore,
   reorderGroceryPlaces,
-  listBrands,
+  catalogAudit, listBrands,
   mergeGroceryItems,
   renameBrand,
   renameBrands,
@@ -237,6 +237,23 @@ describe('the catalog tools', () => {
 
       expect(() => saveGroceryBox(replica, { name: 'stroopwafels' }, { boxId: plain.box!.id, gtin: '12345' })).toThrow(/not a product barcode/);
       expect(() => saveGroceryBox(replica, { name: 'stroopwafels' }, { boxId: plain.box!.id, gtin: '0212345000008' })).toThrow(/not a product barcode/);
+    });
+  });
+
+  describe('catalog_audit', () => {
+    it('flags a brand-named row and a duplicate pair, and holds back kind-of pairs unless asked', () => {
+      addGroceryItem(replica, 'tofurky');
+      addGroceryItem(replica, 'onion');
+      addGroceryItem(replica, 'white onion');
+      addGroceryItem(replica, 'ground ginger');
+      addGroceryItem(replica, 'ginger powder');
+      saveGroceryBox(replica, { name: 'tofurky' }, { brand: 'Tofurky', variant: 'deli slices' });
+      const audit = catalogAudit(replica);
+      expect(audit.findings.map(f => f.kind).sort()).toEqual(['brand_in_name', 'same_words']);
+      expect(audit.heldBack).toMatch(/1 possible kind-of/);
+      const kindOf = catalogAudit(replica, { kinds: ['maybe_kind_of'] });
+      expect(kindOf.findings.map(f => f.items.map(i => i.name))).toEqual([['onion', 'white onion']]);
+      expect(kindOf).not.toHaveProperty('heldBack');
     });
   });
 

@@ -28,6 +28,7 @@ import type {
   Replica,
 } from './replica';
 import { brandSummaries } from '../../src/utils/brands';
+import { auditCatalog, type AuditKind } from '../../src/utils/catalogAudit';
 import { findPantryItem } from './pantryTools';
 import { NUTRIENT_KEYS } from '../../src/types';
 import { describeFoodPanel } from '../../src/utils/foodNutrition';
@@ -412,6 +413,29 @@ export function listBrands(replica: Replica) {
     items: b.items,
     ...(b.spellings.length > 1 ? { spellings: b.spellings.map(s => `${s.text} (${s.count})`) } : {}),
   }));
+}
+
+/**
+ * Names in the catalog that look wrong: a brand where the generic should be, a
+ * name copied off a package, a shouted or sized name, and rows that are one
+ * thing. Read-only; the fix is `update_grocery_item` or `merge_grocery_items`.
+ *
+ * `maybe_kind_of` ("onion" and "white onion") is left out unless asked for: most
+ * of those pairs are intended, and listing them first would bury the rest. The
+ * result says how many were held back.
+ */
+export function catalogAudit(replica: Replica, input: { kinds?: AuditKind[] } = {}) {
+  const all = auditCatalog(replica.groceryItems(), replica.itemProducts());
+  const wanted = input.kinds?.length ? new Set<AuditKind>(input.kinds) : null;
+  const findings = all.filter(f => (wanted ? wanted.has(f.kind) : f.kind !== 'maybe_kind_of'));
+  const held = wanted ? 0 : all.length - findings.length;
+  return {
+    count: findings.length,
+    findings,
+    ...(held > 0
+      ? { heldBack: `${held} possible kind-of pairs ("onion" and "white onion") are not shown; ask for kinds: ["maybe_kind_of"] to see them.` }
+      : {}),
+  };
 }
 
 export function renameBrand(replica: Replica, input: { from: string; to: string }) {

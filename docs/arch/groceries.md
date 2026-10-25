@@ -1742,6 +1742,25 @@ Three rules the resolver enforces, all pinned by `standingSwaps.test.ts`:
 
 Where it is answered: the planned meal's sheet (`MealEntrySheet`'s "Butter or vegan butter" chips, written with `setItemPicks`), the log prompt, and `update_meal`'s `picks`. `set_meal_cooked` over MCP completes the cooking and says which pairs were never answered rather than guessing.
 
+## Naming a new item, and auditing the names already there (`catalogAudit.ts`)
+
+**A new row is never named in capitals.** `newItemRow` is the one factory every path mints a row
+through (a scan, a receipt, a typed name, a paste, the pantry, the food log), so `readableItemName`
+(`productCase.ts`) is applied there and not at each caller. `lookupGtin` already did it for scans,
+which left the receipt `label`, `ensureCatalogItem` and the rest shouting. A short single word
+("TUMS", "MSG") is left alone, since it is as likely an acronym as a shout.
+
+**A scan's trailing size is cut from the name** (`TRAILING_SIZE` in `scanResolve.ts`): "-- 6 oz",
+"12 fl oz", "(6 ct)". The unit list is closed on purpose, so "Vitamin B 12" keeps its number.
+
+**`auditCatalog` reads names and writes nothing.** A brand in a name is found only from brands the
+catalog already holds on a variant (plus the first word of a row's own variants' brands, which is how
+"Beyond Sausage…" under "Beyond Meat" is caught); no brand list ships with the app, for the reason
+`ItemProduct.brand` gives. A pair is flagged `same_words` when the words match once case, plurals,
+filler (fresh, organic) and a few synonyms (mayo/mayonnaise, stock/broth, powder/ground) are set
+aside, and `maybe_kind_of` when one name is the other plus words. A pair the person already linked
+(`otherNames`, `varietyOfKey`) is never shown again. The MCP `catalog_audit` tool is its reader.
+
 ## Singular and plural are one row (`groceryPlural.ts`)
 
 `groceryNameKey` does not stem plurals and still doesn't — stemming the *identity* key merges two

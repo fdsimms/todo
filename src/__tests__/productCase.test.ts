@@ -1,4 +1,4 @@
-import { readableProductCase } from '../utils/productCase';
+import { readableItemName, readableProductCase } from '../utils/productCase';
 
 describe('readableProductCase', () => {
   it('title-cases a name that is all capitals', () => {
@@ -27,5 +27,23 @@ describe('readableProductCase', () => {
   it('leaves a string with no letters alone', () => {
     expect(readableProductCase('7-11')).toBe('7-11');
     expect(readableProductCase('')).toBe('');
+  });
+});
+
+describe('readableItemName', () => {
+  it('title-cases a long or multi-word all-caps name', () => {
+    expect(readableItemName('MILK CHOCOLATE PEANUT BUTTER CUPS')).toBe('Milk Chocolate Peanut Butter Cups');
+    expect(readableItemName('CHEETOS')).toBe('Cheetos');
+    expect(readableItemName('BAKING SODA')).toBe('Baking Soda');
+  });
+
+  it('leaves a short single word that could be an acronym', () => {
+    expect(readableItemName('MSG')).toBe('MSG');
+    expect(readableItemName('TUMS')).toBe('TUMS');
+  });
+
+  it('leaves mixed case alone', () => {
+    expect(readableItemName('oat milk')).toBe('oat milk');
+    expect(readableItemName('Just Egg')).toBe('Just Egg');
   });
 });

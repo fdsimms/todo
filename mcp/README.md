@@ -250,6 +250,7 @@ only the fallback until the first sync.
 | `set_nutrition_panel` | **Write.** An item's or a brand's nutrition panel, with optional `portions` (what a tablespoon, cup or clove weighs) merged into its table by label, and optional `packageGrams` (what the whole package weighs). A recipe counts a volume or count line only when the item has a portion weighing it. |
 | `merge_grocery_items` | **Write.** Merges one item into another, with everything recorded on it. Not undoable from Activity. |
 | `delete_grocery_item` | **Write.** Deletes an item with everything attached. Restorable from Activity. |
+| `catalog_audit` | Read-only. Catalog names that look wrong: a brand in the name, a package title, capitals, a size, two rows with the same words (and, on request, possible kind-of pairs). Names the fixing tool; changes nothing. |
 | `list_brands` / `rename_brand` | `list_brands` is read-only: every brand once with its variant count, items and the spellings in use. **`rename_brand` writes:** one spelling onto every variant of a brand, or a `renames` list of up to 50 under one confirmation. |
 | `create_grocery_list` / `rename_grocery_list` / `delete_grocery_list` | **Write.** Separate lists (a trip away). The grocery tools take a `list`. |
 | `finish_grocery_trip` | **Write.** Records the checked-off items as bought and removes them from the list. |

@@ -258,6 +258,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   update_store: { title: 'Change or delete a store', destructive: true, idempotent: false },
   merge_grocery_items: { title: 'Merge two grocery items', destructive: true, idempotent: false },
   create_grocery_list: { title: 'Create a separate list', destructive: false, idempotent: false },
+  catalog_audit: { title: 'Audit catalog names', destructive: false, idempotent: true },
   list_brands: { title: 'List brands', destructive: false, idempotent: true },
   rename_brand: { title: 'Rename a brand', destructive: true, idempotent: true },
   rename_grocery_list: { title: 'Rename a separate list', destructive: true, idempotent: true },

@@ -112,6 +112,17 @@ describe('shopperNameFor', () => {
     expect(shopperNameFor('Whole Milk, 1 Gallon', null)).toBe('Whole Milk');
   });
 
+  it('drops a trailing size with no comma before it', () => {
+    expect(shopperNameFor('Mac & Cheese Smokey Dokey -- 6 oz', null)).toBe('Mac & Cheese Smokey Dokey');
+    expect(shopperNameFor('Sparkling Water 12 fl oz', null)).toBe('Sparkling Water');
+    expect(shopperNameFor('Paper Towels (6 ct)', null)).toBe('Paper Towels');
+  });
+
+  it('keeps a trailing number that has no unit', () => {
+    expect(shopperNameFor('Vitamin B 12', null)).toBe('Vitamin B 12');
+    expect(shopperNameFor('Catch 22', null)).toBe('Catch 22');
+  });
+
   it('keeps a trailing clause that is not a size', () => {
     expect(shopperNameFor('Beans, black', null)).toBe('Beans, black');
   });
