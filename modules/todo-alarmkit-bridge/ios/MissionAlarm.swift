@@ -1,6 +1,9 @@
 import AppIntents
 import Foundation
 import SwiftUI
+#if canImport(ActivityKit)
+import ActivityKit
+#endif
 #if canImport(AlarmKit)
 import AlarmKit
 #endif
@@ -20,13 +23,22 @@ import AlarmKit
 
 /// What an alarm's mission is, as JS hands it over (JSON) and as the pending
 /// store keeps it. `key` is the opaque mission key (`task:<id>`,
-/// `alarm:<id>`); the rest is what the re-armed ring has to show.
+/// `alarm:<id>`); the rest is what the re-armed ring has to show. `sound` is
+/// the alarm's sound file (nil for the system's), set by the schedule call
+/// rather than by JS's mission object, so a re-arm rings with it too.
 struct MissionPayload: Codable {
   let key: String
   let kind: String
   let count: Int
   let title: String
   let buttonLabel: String
+  var sound: String? = nil
+
+  func withSound(_ sound: String?) -> MissionPayload {
+    var copy = self
+    copy.sound = sound
+    return copy
+  }
 
   static func decode(_ json: String?) -> MissionPayload? {
     guard let json, let data = json.data(using: .utf8) else { return nil }
@@ -114,7 +126,8 @@ enum AlarmBuilder {
   static func configuration(
     schedule: Alarm.Schedule,
     title: String,
-    mission: MissionPayload?
+    mission: MissionPayload?,
+    sound: String?
   ) -> AlarmManager.AlarmConfiguration<TodoAlarmMetadata> {
     let stopButton = AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle")
     // `.custom` is AlarmKit's "this button runs secondaryIntent" behaviour; the
@@ -143,11 +156,14 @@ enum AlarmBuilder {
     let secondaryIntent: (any LiveActivityIntent)? = mission.map {
       MissionAlarmIntent(mission: $0, rearmSeconds: MissionLoop.openRearmSeconds) as any LiveActivityIntent
     }
+    // A name the system can't find or play rings with its default sound.
+    let alertSound: AlertConfiguration.AlertSound = sound.map { .named($0) } ?? .default
     return AlarmManager.AlarmConfiguration(
       schedule: schedule,
       attributes: attributes,
       stopIntent: stopIntent,
-      secondaryIntent: secondaryIntent
+      secondaryIntent: secondaryIntent,
+      sound: alertSound
     )
   }
 }
@@ -160,9 +176,12 @@ enum MissionLoop {
 
   /// Records the mission as pending and puts its next ring `seconds` out,
   /// replacing the one already waiting, so there is only ever one.
-  static func rearm(_ mission: MissionPayload, after seconds: Double) async {
+  static func rearm(_ incoming: MissionPayload, after seconds: Double) async {
     var missions = MissionStore.read()
-    let existing = missions[mission.key]
+    let existing = missions[incoming.key]
+    // JS defers a mission without knowing its sound; the one the alarm rang
+    // with is kept.
+    let mission = incoming.sound == nil ? incoming.withSound(existing?.mission.sound) : incoming
     if let old = existing?.rearmId, let oldId = UUID(uuidString: old) {
       try? AlarmManager.shared.cancel(id: oldId)
     }
@@ -170,7 +189,8 @@ enum MissionLoop {
     let configuration = AlarmBuilder.configuration(
       schedule: .fixed(Date().addingTimeInterval(seconds)),
       title: mission.title,
-      mission: mission
+      mission: mission,
+      sound: mission.sound
     )
     do {
       _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
@@ -216,6 +236,7 @@ struct MissionAlarmIntent: LiveActivityIntent {
   @Parameter(title: "Title") var alarmTitle: String
   @Parameter(title: "Button") var buttonLabel: String
   @Parameter(title: "Rearm Seconds") var rearmSeconds: Int
+  @Parameter(title: "Sound") var soundName: String?
 
   init() {}
 
@@ -226,10 +247,11 @@ struct MissionAlarmIntent: LiveActivityIntent {
     self.alarmTitle = mission.title
     self.buttonLabel = mission.buttonLabel
     self.rearmSeconds = rearmSeconds
+    self.soundName = mission.sound
   }
 
   func perform() async throws -> some IntentResult {
-    let mission = MissionPayload(key: key, kind: kind, count: count, title: alarmTitle, buttonLabel: buttonLabel)
+    let mission = MissionPayload(key: key, kind: kind, count: count, title: alarmTitle, buttonLabel: buttonLabel, sound: soundName)
     await MissionLoop.rearm(mission, after: Double(rearmSeconds))
     return .result()
   }

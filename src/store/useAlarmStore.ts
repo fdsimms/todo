@@ -1,26 +1,71 @@
 import { create } from 'zustand';
-import type { Alarm, AlarmMission } from '../types';
+import type { Alarm, AlarmMission, AlarmSoundFile, WakeSong } from '../types';
 import { dbDeleteAlarm, dbGetAlarms, dbGetSetting, dbSaveAlarm, dbSetSetting } from '../db/database';
 import { generateId } from '../utils/id';
 import { isSpent, quickAlarmFields, scheduleFields } from '../utils/alarms';
-import { normalizeMission, parseMission } from '../utils/missions';
+import { normalizeMission } from '../utils/missions';
+import {
+  ALARM_SOUNDS_SETTING,
+  customSoundId,
+  customSoundRef,
+  normalizeWakeSong,
+  parseAlarmSound,
+  parseAlarmSoundFiles,
+  soundNameFromFile,
+} from '../utils/alarmSounds';
+import { removeAlarmFromDevice, syncAlarmToDevice } from '../utils/alarmSchedule';
+import { installImportedSound, pickSoundFile, removeImportedSound } from '../utils/alarmSoundDevice';
+import { isDemoModeActive } from '../utils/demoState';
 
 /**
- * The mission the last quick alarm was set with, so the next one opens on it.
- * A device-local setting (not on the sync allowlist), like the alarms.
+ * How the last quick alarm was set up (mission, sound, song), so the next one
+ * opens on it. A device-local setting (not on the sync allowlist), like the
+ * alarms.
  */
-const QUICK_MISSION_SETTING = 'quickAlarmMission';
-import { removeAlarmFromDevice, syncAlarmToDevice } from '../utils/alarmSchedule';
+const QUICK_SETUP_SETTING = 'quickAlarmSetup';
 
-/** What the alarm editor saves. */
-export interface AlarmInput {
+/** What an alarm does when it goes off, beyond its time: shared by the editor and the quick alarm. */
+export interface AlarmSetup {
+  mission: AlarmMission | null;
+  sound: string | null;
+  /** Kept only with a mission (alarmSounds.ts). */
+  wakeSong: WakeSong | null;
+}
+
+/** What the alarm editor saves. A sound or song left out is the default, none. */
+export interface AlarmInput extends Partial<AlarmSetup> {
+  mission: AlarmMission | null;
   /** Set to edit an existing alarm; absent to add one. */
   id?: string;
   label: string;
   hour: number;
   minute: number;
   repeatDays: number[];
-  mission: AlarmMission | null;
+}
+
+export type ImportSoundResult =
+  | { status: 'ok'; sound: AlarmSoundFile }
+  | { status: 'canceled' }
+  | { status: 'failed' };
+
+/** The stored form of a setup: no song without a mission, nothing malformed. */
+function normalizeSetup(setup: Partial<AlarmSetup>): AlarmSetup {
+  const mission = normalizeMission(setup.mission);
+  return {
+    mission,
+    sound: parseAlarmSound(setup.sound),
+    wakeSong: mission ? normalizeWakeSong(setup.wakeSong) : null,
+  };
+}
+
+function readQuickSetup(): AlarmSetup {
+  const raw = dbGetSetting(QUICK_SETUP_SETTING);
+  if (!raw) return { mission: null, sound: null, wakeSong: null };
+  try {
+    return normalizeSetup(JSON.parse(raw) as Partial<AlarmSetup>);
+  } catch {
+    return { mission: null, sound: null, wakeSong: null };
+  }
 }
 
 /**
@@ -38,6 +83,8 @@ export interface AlarmInput {
  */
 interface AlarmStore {
   alarms: Alarm[];
+  /** Sounds imported from Files, newest last. */
+  sounds: AlarmSoundFile[];
   initialized: boolean;
   initialize: () => void;
   /** Re-read from the current database, after a demo-mode swap. */
@@ -45,9 +92,13 @@ interface AlarmStore {
   /** Adds or edits an alarm, and switches it on. */
   saveAlarm: (input: AlarmInput, now?: Date) => Alarm;
   /** A one-off alarm `minutes` from now. */
-  addQuickAlarm: (minutes: number, mission: AlarmMission | null, now?: Date) => Alarm;
-  /** The mission the last quick alarm was set with, or null. */
-  lastQuickMission: () => AlarmMission | null;
+  addQuickAlarm: (minutes: number, setup: AlarmSetup, now?: Date) => Alarm;
+  /** How the last quick alarm was set up. */
+  lastQuickSetup: () => AlarmSetup;
+  /** Picks an audio file from Files and installs it as a sound alarms can ring with. */
+  importSound: (now?: Date) => Promise<ImportSoundResult>;
+  /** Deletes an imported sound; alarms that rang with it go back to the default. */
+  deleteSound: (id: string) => void;
   setEnabled: (id: string, enabled: boolean, now?: Date) => void;
   deleteAlarm: (id: string) => void;
   /** Its mission was done, or given up. A spent quick alarm goes with it. */
@@ -65,14 +116,15 @@ function write(alarm: Alarm): void {
 
 export const useAlarmStore = create<AlarmStore>((set, get) => ({
   alarms: [],
+  sounds: [],
   initialized: false,
 
   initialize() {
-    set({ alarms: dbGetAlarms(), initialized: true });
+    set({ alarms: dbGetAlarms(), sounds: parseAlarmSoundFiles(dbGetSetting(ALARM_SOUNDS_SETTING)), initialized: true });
   },
 
   reload() {
-    set({ alarms: dbGetAlarms(), initialized: true });
+    set({ alarms: dbGetAlarms(), sounds: parseAlarmSoundFiles(dbGetSetting(ALARM_SOUNDS_SETTING)), initialized: true });
   },
 
   saveAlarm(input, now = new Date()) {
@@ -82,7 +134,7 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
       label: input.label.trim(),
       ...scheduleFields(input.hour, input.minute, input.repeatDays, now),
       enabled: true,
-      mission: normalizeMission(input.mission),
+      ...normalizeSetup(input),
       quick: false,
       armedAt: now.toISOString(),
       missionDoneAt: existing?.missionDoneAt ?? null,
@@ -94,26 +146,59 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
     return alarm;
   },
 
-  addQuickAlarm(minutes, mission, now = new Date()) {
+  addQuickAlarm(minutes, setup, now = new Date()) {
+    const normalized = normalizeSetup(setup);
     const alarm: Alarm = {
       id: generateId(),
       label: '',
       ...quickAlarmFields(minutes, now),
       enabled: true,
-      mission: normalizeMission(mission),
+      ...normalized,
       armedAt: now.toISOString(),
       missionDoneAt: null,
       missionGaveUp: false,
       createdAt: now.toISOString(),
     };
     write(alarm);
-    dbSetSetting(QUICK_MISSION_SETTING, alarm.mission ? JSON.stringify(alarm.mission) : '');
+    dbSetSetting(QUICK_SETUP_SETTING, JSON.stringify(normalized));
     set({ alarms: [...get().alarms, alarm] });
     return alarm;
   },
 
-  lastQuickMission() {
-    return parseMission(dbGetSetting(QUICK_MISSION_SETTING));
+  lastQuickSetup() {
+    const setup = readQuickSetup();
+    // An imported sound deleted since reads as the default.
+    const id = customSoundId(setup.sound);
+    if (id !== null && !get().sounds.some(s => s.id === id)) return { ...setup, sound: null };
+    return setup;
+  },
+
+  async importSound(now = new Date()) {
+    // A sound file is written outside the database, so a demo can't make one
+    // (CLAUDE.md, demo mode); the picker hides the row then too.
+    if (isDemoModeActive()) return { status: 'canceled' };
+    const picked = await pickSoundFile();
+    if (picked.status !== 'ok') return picked;
+    const sound: AlarmSoundFile = { id: generateId(), name: soundNameFromFile(picked.fileName), addedAt: now.toISOString() };
+    if (!(await installImportedSound(picked.uri, customSoundRef(sound.id)))) return { status: 'failed' };
+    const sounds = [...get().sounds, sound];
+    dbSetSetting(ALARM_SOUNDS_SETTING, JSON.stringify(sounds));
+    set({ sounds });
+    return { status: 'ok', sound };
+  },
+
+  deleteSound(id) {
+    const ref = customSoundRef(id);
+    const sounds = get().sounds.filter(s => s.id !== id);
+    dbSetSetting(ALARM_SOUNDS_SETTING, JSON.stringify(sounds));
+    const alarms = get().alarms.map(a => {
+      if (a.sound !== ref) return a;
+      const reset = { ...a, sound: null };
+      write(reset);
+      return reset;
+    });
+    set({ sounds, alarms });
+    void removeImportedSound(ref);
   },
 
   setEnabled(id, enabled, now = new Date()) {

@@ -17,4 +17,10 @@ Pod::Spec.new do |s|
   s.dependency 'ExpoModulesCore'
 
   s.source_files = '**/*.{h,m,swift}'
+
+  # AVFoundation converts imported alarm sounds (AlarmSoundFiles.swift).
+  # ActivityKit (iOS 16.1+, the alarm's AlertSound type) is weak-linked for
+  # the reason todo-widget-bridge's podspec gives: this pod's floor is 15.1.
+  s.frameworks = 'AVFoundation'
+  s.weak_frameworks = 'ActivityKit'
 end

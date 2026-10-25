@@ -35,6 +35,8 @@ function alarm(over: Partial<Alarm> = {}): Alarm {
     armedAt: new Date(2026, 9, 1).toISOString(),
     missionDoneAt: null,
     missionGaveUp: false,
+    sound: null,
+    wakeSong: null,
     createdAt: new Date(2026, 9, 1).toISOString(),
     ...over,
   };

@@ -21,7 +21,7 @@ import { normalizePushupCount, PUSHUP_DEFAULT_COUNT } from './pushupCounter';
  * the app dies with the counter up.
  *
  * The one way out other than the mission is Give up, held for
- * `MISSION_GIVE_UP_HOLD_MS` and written to Activity, so a sensor that
+ * `MISSION_GIVE_UP_HOLD_MS` and shown on the alarm's row, so a sensor that
  * misbehaves can't leave someone with an alarm they can never stop.
  */
 

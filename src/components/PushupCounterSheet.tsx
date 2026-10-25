@@ -43,6 +43,8 @@ export interface PushupCounterProps {
    * isn't the mission, behind a hold of `MISSION_GIVE_UP_HOLD_MS`.
    */
   onGiveUp?: () => void;
+  /** The alarm's wake-up song while it plays ("Mr. Blue Sky · ELO"), shown under the title. */
+  nowPlaying?: string | null;
 }
 
 const RING_SIZE = 240;
@@ -64,7 +66,9 @@ const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
  * honest fallback for a task synced from a phone: without it, the task could
  * never be checked off there at all.
  */
-export function PushupCounterSheet({ visible, title, count, subjectKey, doneNote, onCounted, onClose, onGiveUp }: PushupCounterProps) {
+export function PushupCounterSheet({
+  visible, title, count, subjectKey, doneNote, onCounted, onClose, onGiveUp, nowPlaying,
+}: PushupCounterProps) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -174,6 +178,12 @@ export function PushupCounterSheet({ visible, title, count, subjectKey, doneNote
         />
         <View style={styles.body}>
           <Text style={styles.taskTitle} numberOfLines={2}>{title}</Text>
+          {nowPlaying ? (
+            <View style={styles.nowPlaying} accessibilityLabel={`Playing ${nowPlaying}`}>
+              <Ionicons name="musical-notes" size={iconSize.xs} color={colors.accentText} />
+              <Text style={styles.nowPlayingText} numberOfLines={1}>{nowPlaying}</Text>
+            </View>
+          ) : null}
           {sensor === false && !counted ? (
             <TouchableOpacity
               activeOpacity={interaction.activeOpacity}
@@ -301,6 +311,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.sm,
   },
+  nowPlaying: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xsm,
+    maxWidth: '100%',
+    marginTop: spacing.smd,
+    paddingHorizontal: spacing.smd,
+    paddingVertical: spacing.xsm,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSubtle,
+  },
+  nowPlayingText: { flexShrink: 1, color: colors.accentText, fontSize: font.sm, fontWeight: fontWeight.semibold },
   ring: {
     width: RING_SIZE,
     height: RING_SIZE,

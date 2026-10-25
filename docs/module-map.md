@@ -35,6 +35,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/aiRouting.ts` — AiRoute, OnDeviceEngine, onDeviceEngineFor, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
 - `src/utils/alarmSchedule.ts` — syncAlarmToDevice, removeAlarmFromDevice
+- `src/utils/alarmSoundDevice.ts` — soundFileForAlarm, PickedSound, pickSoundFile, installImportedSound, removeImportedSound, playSoundPreview, stopSoundPreview
+- `src/utils/alarmSounds.ts` — BUILT_IN_SOUNDS, BuiltInSoundId, CUSTOM_SOUND_PREFIX, ALARM_SOUND_MAX_SECONDS, ALARM_SOUNDS_SETTING, DEFAULT_SOUND_LABEL, isBuiltInSound, customSoundId, customSoundRef, parseAlarmSound, +7 more
 - `src/utils/alarms.ts` — QUICK_ALARM_MINUTES, QUICK_ALARM_CHOICES, MISSED_MISSION_WINDOW_MS, formatAlarmMinutes, nextClockTime, isRepeating, nextFireAt, previousFireAt, isSpent, missedMissionRing, +9 more
 - `src/utils/alcohol.ts` — US_STANDARD_DRINK_G, STANDARD_DRINK_SIZES, setDisplayDrinkGrams, getDisplayDrinkGrams, normalizeStandardDrinkGrams, DRINK_PRESETS, DRINK_STEP, MAX_ENTRY_DRINKS, gramsFromDrinks, drinksFromGrams, +9 more
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
@@ -682,7 +684,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/generatedTaskSync.ts` — deleteGeneratedTaskQuietly, markGeneratedReady, settleReadyMarks, ReconcileGeneratedOptions, reconcileGeneratedTask, dropGeneratedTask, forfeitUseUpCoins, restoreUseUpCoins
 - `src/store/generatorSwitch.ts` — setGeneratorEnabled
 - `src/store/useAgentSuggestionStore.ts` — useAgentSuggestionStore
-- `src/store/useAlarmStore.ts` — AlarmInput, useAlarmStore
+- `src/store/useAlarmStore.ts` — AlarmSetup, AlarmInput, ImportSoundResult, useAlarmStore
 - `src/store/useAppGroupStore.ts` — NewSchedule, ScheduleResult, useAppGroupStore, resolvedAssignments, allowGroupsNow, resolveGroupNow, expandGroupNow
 - `src/store/useAppLockStore.ts` — useAppLockStore, isAppLocked
 - `src/store/useBlockTimerStore.ts` — useBlockTimerStore

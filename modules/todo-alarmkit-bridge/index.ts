@@ -6,11 +6,17 @@ export type AlarmAuthorizationState = 'authorized' | 'denied' | 'notDetermined';
 interface TodoAlarmKitNativeModule {
   isAvailable(): boolean;
   requestAuthorization(): Promise<AlarmAuthorizationState>;
-  scheduleAlarm(id: string, epochSeconds: number, title: string, missionJson: string | null): Promise<boolean>;
-  scheduleWeeklyAlarm?(id: string, hour: number, minute: number, weekdays: number[], title: string, missionJson: string | null): Promise<boolean>;
+  scheduleAlarm(id: string, epochSeconds: number, title: string, missionJson: string | null, soundName: string | null): Promise<boolean>;
+  scheduleWeeklyAlarm?(
+    id: string, hour: number, minute: number, weekdays: number[], title: string, missionJson: string | null, soundName: string | null,
+  ): Promise<boolean>;
   pendingMissions?(): Promise<string>;
   deferMission?(missionJson: string, seconds: number): Promise<boolean>;
   completeMission?(key: string): Promise<boolean>;
+  installSound?(sourceUri: string, fileName: string, maxSeconds: number): Promise<boolean>;
+  hasSound?(fileName: string): boolean;
+  soundUri?(fileName: string): string | null;
+  deleteSound?(fileName: string): Promise<boolean>;
   cancelAlarm(id: string): Promise<boolean>;
 }
 
@@ -75,11 +81,18 @@ export interface PendingNativeMission extends NativeMission {
 
 /**
  * `mission` gives the alarm its mission button, and makes Stop bring it back
- * until `completeNativeMission`. Null for an ordinary alarm.
+ * until `completeNativeMission`. Null for an ordinary alarm. `soundName` is a
+ * file installed with `installAlarmSound`, or null for the system's sound.
  */
-export function scheduleNativeAlarm(id: string, date: Date, title: string, mission: NativeMission | null = null): Promise<boolean> {
+export function scheduleNativeAlarm(
+  id: string,
+  date: Date,
+  title: string,
+  mission: NativeMission | null = null,
+  soundName: string | null = null,
+): Promise<boolean> {
   return degradeOnThrow<Promise<boolean>>(
-    () => nativeModule!.scheduleAlarm(id, date.getTime() / 1000, title, mission ? JSON.stringify(mission) : null),
+    () => nativeModule!.scheduleAlarm(id, date.getTime() / 1000, title, mission ? JSON.stringify(mission) : null, soundName),
     Promise.resolve(false)
   );
 }
@@ -92,11 +105,12 @@ export function scheduleWeeklyNativeAlarm(
   weekdays: number[],
   title: string,
   mission: NativeMission | null = null,
+  soundName: string | null = null,
 ): Promise<boolean> {
   const schedule = nativeModule?.scheduleWeeklyAlarm;
   if (typeof schedule !== 'function') return Promise.resolve(false);
   return degradeOnThrow<Promise<boolean>>(
-    () => schedule.call(nativeModule, id, hour, minute, weekdays, title, mission ? JSON.stringify(mission) : null),
+    () => schedule.call(nativeModule, id, hour, minute, weekdays, title, mission ? JSON.stringify(mission) : null, soundName),
     Promise.resolve(false)
   );
 }
@@ -134,6 +148,45 @@ export async function completeNativeMission(key: string): Promise<boolean> {
   if (!nativeModule || typeof complete !== 'function') return false;
   try {
     return (await complete.call(nativeModule, key)) === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Decodes an audio file (a `file://` URI) and installs its first `maxSeconds`
+ * as `fileName` in Library/Sounds, where an alarm can ring with it. False on
+ * a build without it, or a file that can't be read (a protected song).
+ */
+export async function installAlarmSound(sourceUri: string, fileName: string, maxSeconds: number): Promise<boolean> {
+  const install = nativeModule?.installSound;
+  if (!nativeModule || typeof install !== 'function') return false;
+  try {
+    return (await install.call(nativeModule, sourceUri, fileName, maxSeconds)) === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether a sound file is installed. */
+export function hasAlarmSound(fileName: string): boolean {
+  const has = nativeModule?.hasSound;
+  if (typeof has !== 'function') return false;
+  return degradeOnThrow(() => has.call(nativeModule, fileName) === true, false);
+}
+
+/** A `file://` URI to play an installed sound from, or null. */
+export function alarmSoundUri(fileName: string): string | null {
+  const uri = nativeModule?.soundUri;
+  if (typeof uri !== 'function') return null;
+  return degradeOnThrow(() => uri.call(nativeModule, fileName) ?? null, null);
+}
+
+export async function deleteAlarmSound(fileName: string): Promise<boolean> {
+  const remove = nativeModule?.deleteSound;
+  if (!nativeModule || typeof remove !== 'function') return false;
+  try {
+    return (await remove.call(nativeModule, fileName)) === true;
   } catch {
     return false;
   }

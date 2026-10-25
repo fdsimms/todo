@@ -86,6 +86,7 @@ Where each component can appear.
 - `src/components/AgentSuggestionCards.tsx` — on TodayScreen
 - `src/components/AlarmEditorSheet.tsx` — on RemindersScreen
 - `src/components/AlarmMissionHost.tsx` — on app shell
+- `src/components/AlarmSoundRows.tsx` — on RemindersScreen
 - `src/components/AlarmsSection.tsx` — on RemindersScreen
 - `src/components/AllClearMark.tsx` — on TodayScreen
 - `src/components/AnimatedBarFill.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, KitchenScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MoodScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, +13 more
@@ -372,6 +373,7 @@ Where each component can appear.
 - `src/components/ReminderCapturesSheet.tsx` — on SettingsGroupScreen
 - `src/components/RemindersOffNote.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
 - `src/components/ReorderableList.tsx` — on CategoriesScreen, FoodLogScreen, GroceryScreen, KitchenScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen, WorkoutsScreen
+- `src/components/RingtonePickerSheet.tsx` — on RemindersScreen
 - `src/components/RotatingChevron.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, DishesScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +27 more
 - `src/components/RotationChecklist.tsx` — on CategoryDetailScreen, LogbookScreen, ProjectDetailScreen, ProjectsScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/RotationPickSheet.tsx` — on CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, StackDetailScreen, TagsScreen, TodayScreen

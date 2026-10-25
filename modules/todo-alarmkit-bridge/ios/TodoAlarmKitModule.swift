@@ -76,13 +76,18 @@ public class TodoAlarmKitModule: Module {
     // `missionJson` is set only for an alarm with a mission (MissionPayload in
     // MissionAlarm.swift): the alert then carries the mission's button, and
     // Stop keeps it coming back until the app completes the mission.
-    AsyncFunction("scheduleAlarm") { (id: String, epochSeconds: Double, title: String, missionJson: String?) -> Bool in
+    //
+    // `soundName` is a file in Library/Sounds (`installSound` below) to ring
+    // with, or nil for the system's alarm sound. A mission carries it too, so
+    // every re-armed ring sounds like the first.
+    AsyncFunction("scheduleAlarm") { (id: String, epochSeconds: Double, title: String, missionJson: String?, soundName: String?) -> Bool in
       guard #available(iOS 26, *) else { return false }
       guard let uuid = UUID(uuidString: id) else { return false }
       let configuration = AlarmBuilder.configuration(
         schedule: .fixed(Date(timeIntervalSince1970: epochSeconds)),
         title: title,
-        mission: MissionPayload.decode(missionJson)
+        mission: MissionPayload.decode(missionJson)?.withSound(soundName),
+        sound: soundName
       )
       return await scheduleCatching(id: uuid, configuration: configuration, label: "scheduleAlarm")
     }
@@ -90,7 +95,7 @@ public class TodoAlarmKitModule: Module {
     // A repeating alarm on AlarmKit's own weekly schedule, so it keeps
     // ringing on its days whether or not the app is opened in between.
     // `weekdays` are 0 = Sunday, as in JS.
-    AsyncFunction("scheduleWeeklyAlarm") { (id: String, hour: Int, minute: Int, weekdays: [Int], title: String, missionJson: String?) -> Bool in
+    AsyncFunction("scheduleWeeklyAlarm") { (id: String, hour: Int, minute: Int, weekdays: [Int], title: String, missionJson: String?, soundName: String?) -> Bool in
       guard #available(iOS 26, *) else { return false }
       guard let uuid = UUID(uuidString: id) else { return false }
       let days = weekdays.compactMap(localeWeekday)
@@ -98,7 +103,8 @@ public class TodoAlarmKitModule: Module {
       let configuration = AlarmBuilder.configuration(
         schedule: .relative(.init(time: .init(hour: hour, minute: minute), repeats: .weekly(days))),
         title: title,
-        mission: MissionPayload.decode(missionJson)
+        mission: MissionPayload.decode(missionJson)?.withSound(soundName),
+        sound: soundName
       )
       return await scheduleCatching(id: uuid, configuration: configuration, label: "scheduleWeeklyAlarm")
     }
@@ -123,6 +129,27 @@ public class TodoAlarmKitModule: Module {
       guard #available(iOS 26, *) else { return false }
       MissionLoop.complete(key: key)
       return true
+    }
+
+    // Alarm sounds (AlarmSoundFiles.swift). Not gated on iOS 26: the files
+    // are plain audio, and installing one ahead of the schedule is harmless
+    // on a phone that can't ring with it yet.
+    AsyncFunction("installSound") { (sourceUri: String, fileName: String, maxSeconds: Double) -> Bool in
+      return AlarmSoundFiles.install(from: sourceUri, as: fileName, maxSeconds: maxSeconds)
+    }
+
+    Function("hasSound") { (fileName: String) -> Bool in
+      return AlarmSoundFiles.exists(fileName)
+    }
+
+    // A file:// URI the app can play a preview from, or nil if it isn't installed.
+    Function("soundUri") { (fileName: String) -> String? in
+      guard AlarmSoundFiles.exists(fileName), let url = AlarmSoundFiles.url(for: fileName) else { return nil }
+      return url.absoluteString
+    }
+
+    AsyncFunction("deleteSound") { (fileName: String) -> Bool in
+      return AlarmSoundFiles.delete(fileName)
     }
 
     AsyncFunction("cancelAlarm") { (id: String) -> Bool in

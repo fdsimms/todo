@@ -3005,7 +3005,43 @@ export interface Alarm {
   missionDoneAt: string | null;
   /** The last mission ended with Give up rather than being done. Shown on the row. */
   missionGaveUp: boolean;
+  /**
+   * What it rings with: null for the system's alarm sound, a built-in tone
+   * (`chime`, `beacon`, `rise`), or `custom:<id>` for one imported from Files
+   * (an `AlarmSoundFile`). See src/utils/alarmSounds.ts.
+   */
+  sound: string | null;
+  /**
+   * A song from the Apple Music library, played while its mission is open and
+   * stopped once the mission is done or given up. Only an alarm with a
+   * mission has one; the alert itself can't play a song (alarmSounds.ts).
+   */
+  wakeSong: WakeSong | null;
   createdAt: string;
+}
+
+/** A song picked from the music library for an alarm (Alarm.wakeSong). */
+export interface WakeSong {
+  /**
+   * MPMediaItem.persistentID as a decimal string: it is a UInt64, which a JS
+   * number can't hold exactly. Only meaningful on the device it was picked on,
+   * which is fine for a device-only alarm.
+   */
+  persistentId: string;
+  title: string;
+  artist: string | null;
+}
+
+/**
+ * A sound imported from Files for alarms to ring with, converted on the
+ * device into the app's Library/Sounds (alarmSounds.ts). Device-only, kept in
+ * a device-local setting beside the alarms that use it.
+ */
+export interface AlarmSoundFile {
+  id: string;
+  /** What the picker lists it as: the file's name without its extension. */
+  name: string;
+  addedAt: string;
 }
 
 export interface Task {

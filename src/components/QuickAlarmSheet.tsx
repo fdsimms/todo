@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import type { AlarmMission } from '../types';
+import type { AlarmMission, WakeSong } from '../types';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { MissionPicker } from './MissionPicker';
+import { AlarmSoundRows } from './AlarmSoundRows';
+import { RingtonePickerSheet } from './RingtonePickerSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -27,8 +29,9 @@ const MINUTE_OPTIONS: SegmentOption<number>[] = QUICK_ALARM_CHOICES.map(m => ({ 
  * to stop ("a 30-minute nap I have to do pushups to wake up from"). A card,
  * since it is one small decision (CLAUDE.md, CardSheet).
  *
- * The mission it opens with is the last one used here, so a nap alarm that
- * always takes pushups doesn't ask to be set up again each time.
+ * The mission, ringtone and song it opens with are the last ones used here,
+ * so a nap alarm that always takes pushups doesn't ask to be set up again
+ * each time.
  */
 export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
   const colors = useColors();
@@ -36,11 +39,18 @@ export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
   const card = useCardSheet();
   const [minutes, setMinutes] = useState(initialMinutes);
   const [mission, setMission] = useState<AlarmMission | null>(null);
+  const [sound, setSound] = useState<string | null>(null);
+  const [wakeSong, setWakeSong] = useState<WakeSong | null>(null);
+  const [ringtonesOpen, setRingtonesOpen] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
+    const last = useAlarmStore.getState().lastQuickSetup();
     setMinutes(initialMinutes);
-    setMission(useAlarmStore.getState().lastQuickMission());
+    setMission(last.mission);
+    setSound(last.sound);
+    setWakeSong(last.wakeSong);
+    setRingtonesOpen(false);
   }, [visible, initialMinutes]);
 
   const ringsAt = new Date(Date.now() + minutes * 60_000);
@@ -48,11 +58,24 @@ export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
 
   const start = () => {
     haptics.success();
-    dismiss(() => { useAlarmStore.getState().addQuickAlarm(minutes, mission); });
+    dismiss(() => { useAlarmStore.getState().addQuickAlarm(minutes, { mission, sound, wakeSong }); });
   };
 
   return (
-    <CardSheet name="QuickAlarmSheet" visible={visible} controller={card} onRequestClose={() => dismiss()}>
+    <CardSheet
+      name="QuickAlarmSheet"
+      visible={visible}
+      controller={card}
+      onRequestClose={() => dismiss()}
+      overlays={(
+        <RingtonePickerSheet
+          visible={visible && ringtonesOpen}
+          value={sound}
+          onChange={setSound}
+          onClose={() => setRingtonesOpen(false)}
+        />
+      )}
+    >
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss()} minWidth={56} />
@@ -74,6 +97,15 @@ export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
           />
           <Text style={styles.label}>Mission</Text>
           <MissionPicker value={mission} onChange={setMission} />
+          <View style={styles.rows}>
+            <AlarmSoundRows
+              sound={sound}
+              wakeSong={wakeSong}
+              hasMission={mission !== null}
+              onOpenRingtones={() => setRingtonesOpen(true)}
+              onWakeSong={setWakeSong}
+            />
+          </View>
         </View>
 
         <TouchableOpacity
@@ -104,6 +136,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     letterSpacing: 0.8, textTransform: 'uppercase', marginTop: spacing.xs,
   },
+  rows: { marginTop: spacing.xs, borderRadius: radius.md, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
   start: {
     marginTop: spacing.md, marginHorizontal: spacing.md, minHeight: 48, borderRadius: radius.md,
     alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentFill,

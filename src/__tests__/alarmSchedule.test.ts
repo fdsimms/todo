@@ -10,6 +10,10 @@ jest.mock('todo-alarmkit-bridge', () => ({
   scheduleNativeAlarm: jest.fn().mockResolvedValue(true),
   scheduleWeeklyNativeAlarm: jest.fn().mockResolvedValue(true),
 }));
+const mockSoundFile = jest.fn(async (sound: string | null) => (sound === 'chime' ? 'dundundun-chime.caf' : null));
+jest.mock('../utils/alarmSoundDevice', () => ({
+  soundFileForAlarm: (sound: string | null) => mockSoundFile(sound),
+}));
 
 import {
   cancelNativeAlarm,
@@ -26,7 +30,7 @@ function alarm(over: Partial<Alarm> = {}): Alarm {
   return {
     id: 'a1', label: 'Wake up', hour: 7, minute: 0, repeatDays: [1, 2, 3, 4, 5], fireAt: null, enabled: true,
     mission: { kind: 'pushups', count: 20 }, quick: false, armedAt: NOW.toISOString(), missionDoneAt: null,
-    missionGaveUp: false,
+    missionGaveUp: false, sound: null, wakeSong: null,
     createdAt: NOW.toISOString(), ...over,
   };
 }
@@ -43,13 +47,27 @@ describe('syncAlarmToDevice', () => {
     expect(scheduleWeeklyNativeAlarm).toHaveBeenCalledWith(
       alarmNativeUuid('a1'), 7, 0, [1, 2, 3, 4, 5], 'Wake up',
       { key: 'alarm:a1', kind: 'pushups', count: 20, title: 'Wake up', buttonLabel: 'Pushups' },
+      null,
     );
   });
 
   it('schedules a one-off at its instant', async () => {
     const at = new Date(2026, 9, 14, 10, 30);
     await syncAlarmToDevice(alarm({ repeatDays: [], fireAt: at.toISOString(), mission: null, label: '' }), NOW);
-    expect(scheduleNativeAlarm).toHaveBeenCalledWith(alarmNativeUuid('a1'), at, 'Alarm', null);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(alarmNativeUuid('a1'), at, 'Alarm', null, null);
+  });
+
+  it('rings with its sound once the file is installed', async () => {
+    await syncAlarmToDevice(alarm({ sound: 'chime' }), NOW);
+    expect(mockSoundFile).toHaveBeenCalledWith('chime');
+    expect(scheduleWeeklyNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1'), 7, 0, [1, 2, 3, 4, 5], 'Wake up', expect.anything(), 'dundundun-chime.caf');
+  });
+
+  it('rings with the default when the sound can’t be had', async () => {
+    await syncAlarmToDevice(alarm({ sound: 'custom:gone' }), NOW);
+    expect(scheduleWeeklyNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1'), 7, 0, [1, 2, 3, 4, 5], 'Wake up', expect.anything(), null);
   });
 
   it('only cancels an alarm that is off or spent', async () => {

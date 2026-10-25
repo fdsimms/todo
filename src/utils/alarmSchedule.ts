@@ -10,6 +10,7 @@ import type { Alarm } from '../types';
 import { alarmAlertTitle, alarmNativeUuid, isRepeating, nextFireAt } from './alarms';
 import { missionKeyForAlarm, nativeMission } from './missions';
 import { isDemoModeActive } from './demoState';
+import { soundFileForAlarm } from './alarmSoundDevice';
 
 /**
  * Puts one alarm on the device the way the store holds it: cancelled, then
@@ -21,6 +22,9 @@ import { isDemoModeActive } from './demoState';
  * write outside the demo database"). It also leaves the real alarms alone
  * while the demo runs, since nothing here cancels them either.
  *
+ * Its sound is installed first if it is a built-in tone not yet used, and
+ * rings as the default if its file can't be had (alarmSoundDevice.ts).
+ *
  * Returns whether the alarm is now scheduled.
  */
 export async function syncAlarmToDevice(alarm: Alarm, now: Date = new Date()): Promise<boolean> {
@@ -31,10 +35,11 @@ export async function syncAlarmToDevice(alarm: Alarm, now: Date = new Date()): P
   await ensureAuthorized();
   const title = alarmAlertTitle(alarm);
   const mission = nativeMission(missionKeyForAlarm(alarm.id), alarm.mission, title);
+  const sound = await soundFileForAlarm(alarm.sound);
   if (isRepeating(alarm)) {
-    return scheduleWeeklyNativeAlarm(id, alarm.hour, alarm.minute, alarm.repeatDays, title, mission);
+    return scheduleWeeklyNativeAlarm(id, alarm.hour, alarm.minute, alarm.repeatDays, title, mission, sound);
   }
-  return scheduleNativeAlarm(id, nextFireAt(alarm, now)!, title, mission);
+  return scheduleNativeAlarm(id, nextFireAt(alarm, now)!, title, mission, sound);
 }
 
 /** Takes an alarm off the device, and ends any mission its ring left owed. */

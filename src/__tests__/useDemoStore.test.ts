@@ -335,6 +335,11 @@ jest.mock('../utils/notifications', () => ({
 // (syncDeadlineEvent).
 // The native alarm bridge doesn't load under Jest, and demo mode puts nothing
 // on the device anyway (syncAlarmToDevice).
+jest.mock('../utils/alarmSoundDevice', () => ({
+  pickSoundFile: jest.fn().mockResolvedValue({ status: 'canceled' }),
+  installImportedSound: jest.fn().mockResolvedValue(false),
+  removeImportedSound: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('../utils/alarmSchedule', () => ({
   syncAlarmToDevice: jest.fn().mockResolvedValue(false),
   removeAlarmFromDevice: jest.fn().mockResolvedValue(undefined),
@@ -1548,6 +1553,7 @@ describe('demo mode', () => {
     const alarms = useAlarmStore.getState().alarms;
 
     expect(alarms.some(a => a.mission?.kind === 'pushups' && a.repeatDays.length > 0)).toBe(true);
+    expect(alarms.some(a => a.sound === 'chime')).toBe(true);
   });
 
   it('seeds an alarm that takes pushups to check off', () => {

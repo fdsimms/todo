@@ -1253,6 +1253,8 @@ export function seedDemoData(): void {
     minute: 0,
     repeatDays: [1, 2, 3, 4, 5],
     mission: { kind: 'pushups', count: 20 },
+    // A built-in tone, so the editor's Ringtone row shows one picked.
+    sound: 'chime',
   });
 
   // --- A task given several dates (a series) -------------------------------

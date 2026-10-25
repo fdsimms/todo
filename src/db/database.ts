@@ -144,6 +144,7 @@ import {
   type SyncTable,
 } from './syncTracking';
 import { parseMission } from '../utils/missions';
+import { parseAlarmSound, parseWakeSong } from '../utils/alarmSounds';
 import {
   emptyApplyReport,
   remoteDeletionWins,
@@ -393,6 +394,8 @@ function runInitDatabase(): void {
       armed_at TEXT NOT NULL,
       mission_done_at TEXT,
       mission_gave_up INTEGER NOT NULL DEFAULT 0,
+      sound TEXT,
+      wake_song TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -5477,6 +5480,8 @@ function rowToAlarm(row: Record<string, unknown>): Alarm {
     armedAt: row.armed_at as string,
     missionDoneAt: (row.mission_done_at as string | null) ?? null,
     missionGaveUp: Boolean(row.mission_gave_up),
+    sound: parseAlarmSound(row.sound),
+    wakeSong: parseWakeSong(row.wake_song),
     createdAt: row.created_at as string,
   };
 }
@@ -5489,12 +5494,14 @@ export function dbGetAlarms(): Alarm[] {
 export function dbSaveAlarm(alarm: Alarm): void {
   db.runSync(
     `INSERT OR REPLACE INTO alarms
-      (id, label, hour, minute, repeat_days, fire_at, enabled, mission, quick, armed_at, mission_done_at, mission_gave_up, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      (id, label, hour, minute, repeat_days, fire_at, enabled, mission, quick, armed_at, mission_done_at, mission_gave_up,
+       sound, wake_song, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       alarm.id, alarm.label, alarm.hour, alarm.minute, JSON.stringify(alarm.repeatDays), alarm.fireAt,
       alarm.enabled ? 1 : 0, alarm.mission ? JSON.stringify(alarm.mission) : null, alarm.quick ? 1 : 0,
-      alarm.armedAt, alarm.missionDoneAt, alarm.missionGaveUp ? 1 : 0, alarm.createdAt,
+      alarm.armedAt, alarm.missionDoneAt, alarm.missionGaveUp ? 1 : 0,
+      alarm.sound, alarm.wakeSong ? JSON.stringify(alarm.wakeSong) : null, alarm.createdAt,
     ],
   );
 }
