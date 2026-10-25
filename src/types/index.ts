@@ -4689,6 +4689,11 @@ export interface Task {
   // absent = none. With an alarm reminder, the alarm rings back every 15
   // seconds after Stop until it's done. See src/utils/missions.ts.
   mission?: AlarmMission | null;
+  // What an alarm reminder (reminderKind 'alarm' or 'persistent') rings
+  // with: null for the system sound, a built-in tone, or `custom:<id>` for a
+  // sound imported on one phone, which rings as the default on any other
+  // device. See src/utils/alarmSounds.ts.
+  alarmSound?: string | null;
 
   // Optional freeform text explaining what the completion timer reminder is
   // for — "Don't eat for 2 hours" — shown as the notification body instead of

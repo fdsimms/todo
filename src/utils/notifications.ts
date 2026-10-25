@@ -34,6 +34,7 @@ import type { Shop } from '../types';
 import type { EventReminder } from './eventReminders';
 import { reminderTriggerDate } from './eventReminders';
 import { hasMission, nativeMissionForTask } from './missions';
+import { soundFileForAlarm } from './alarmSoundDevice';
 
 export { isAlarmKitAvailable, requestAlarmAuthorization };
 
@@ -286,6 +287,9 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
     const title = reminderTitleFor(task);
     const { quietHoursStart: qStart, quietHoursEnd: qEnd } = useSettingsStore.getState();
     const times = alarmChainTimes(triggerDate, ringCountFor(task));
+    // Its ringtone, installed first if it's a built-in tone not used yet; the
+    // default when there is none or its file can't be had (alarmSounds.ts).
+    const sound = await soundFileForAlarm(task.alarmSound ?? null);
 
     for (let i = 0; i < times.length; i++) {
       // Repeats that run into quiet hours are dropped, not deferred — the
@@ -296,7 +300,7 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
       if (isWithinQuietHours(times[i], qStart, qEnd)) break;
       // A task with a mission rings with its mission button, and Stop brings
       // it back until the mission is done (see missions.ts).
-      await scheduleNativeAlarm(taskAlarmUuid(task.id, i), times[i], title, nativeMissionForTask(task));
+      await scheduleNativeAlarm(taskAlarmUuid(task.id, i), times[i], title, nativeMissionForTask(task), sound);
     }
     return;
   }

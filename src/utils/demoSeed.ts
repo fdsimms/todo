@@ -1241,6 +1241,8 @@ export function seedDemoData(): void {
     reminderTime: setHours(addDays(today, 1), 7).toISOString(),
     reminderKind: 'persistent',
     mission: { kind: 'pushups', count: 20 },
+    // A built-in tone, so the editor's Ringtone row under Remind me shows one.
+    alarmSound: 'rise',
     effort: 1,
   });
 

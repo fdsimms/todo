@@ -4025,6 +4025,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (
         'reminderTime' in updates ||
         'reminderKind' in updates ||
+        'alarmSound' in updates ||
         'reminderOffsetDays' in updates ||
         'reminderTracksVisibility' in updates ||
         'completed' in updates ||

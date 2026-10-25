@@ -30,6 +30,11 @@ jest.mock('todo-alarmkit-bridge', () => ({
   scheduleNativeAlarm: jest.fn().mockResolvedValue(true),
   cancelNativeAlarm: jest.fn().mockResolvedValue(true),
 }));
+// A task's ringtone resolves to its installed file; this mock stands in for
+// the install (alarmSoundDevice.ts needs expo-asset and the native bridge).
+jest.mock('../utils/alarmSoundDevice', () => ({
+  soundFileForAlarm: jest.fn(async (sound: string | null) => (sound === 'chime' ? 'dundundun-chime.caf' : null)),
+}));
 
 // Mutable so the daily-agenda tests can drive the settings it reads. Safe to
 // close over even though the import below is hoisted above this declaration:
@@ -400,13 +405,19 @@ describe('scheduleTaskReminder', () => {
     expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
   });
 
+  it('rings a task alarm with its ringtone', async () => {
+    mockAlarmKitAvailable = true;
+    await scheduleTaskReminder(makeTask({ id: 'toned', title: 'Wake up', reminderTime: FUTURE, reminderKind: 'alarm', alarmSound: 'chime' }));
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('toned', 0), new Date(FUTURE), 'Wake up', null, 'dundundun-chime.caf');
+  });
+
   it('schedules a native alarm instead of a notification when reminderKind is "alarm" and AlarmKit is available', async () => {
     mockAlarmKitAvailable = true;
     const task = makeTask({ id: 'task-alarm', title: 'Wake up', reminderTime: FUTURE, reminderKind: 'alarm' });
     await scheduleTaskReminder(task);
     // The derived UUID, not the bare task id: AlarmKit rejects a non-UUID id,
     // which is why passing 'task-alarm' straight through scheduled nothing.
-    expect(scheduleNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('task-alarm', 0), new Date(FUTURE), 'Wake up', null);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('task-alarm', 0), new Date(FUTURE), 'Wake up', null, null);
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
     // Still clears any stale plain notification left behind by a prior 'notification'-kind schedule.
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-alarm');
@@ -426,7 +437,7 @@ describe('scheduleTaskReminder', () => {
     expect(scheduleNativeAlarm).toHaveBeenCalledTimes(ALARM_MAX_RINGS);
 
     const calls = (scheduleNativeAlarm as jest.Mock).mock.calls;
-    expect(calls[0]).toEqual([taskAlarmUuid('nag', 0), new Date(FUTURE), 'Take pills', null]);
+    expect(calls[0]).toEqual([taskAlarmUuid('nag', 0), new Date(FUTURE), 'Take pills', null, null]);
     // Each ring one interval after the last, under its own id.
     expect(calls[1][0]).toBe(taskAlarmUuid('nag', 1));
     expect(calls[1][1].getTime() - calls[0][1].getTime()).toBe(ALARM_RING_INTERVAL_MINUTES * 60 * 1000);
@@ -618,7 +629,7 @@ describe('rescheduleAllReminders', () => {
     await rescheduleAllReminders(tasks);
     expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(64);
     expect(scheduleNativeAlarm).toHaveBeenCalledTimes(1);
-    expect(scheduleNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('alarm-1', 0), new Date(FUTURE), expect.any(String), null);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('alarm-1', 0), new Date(FUTURE), expect.any(String), null, null);
   });
 
   it('schedules only the nearest MAX_PENDING_REMINDERS upcoming reminders, soonest first', async () => {
@@ -1009,7 +1020,7 @@ describe('scheduleTaskReminder honors quiet hours by deferring', () => {
     const reminderTime = new Date(2026, 0, 1, 23, 0).toISOString();
     await scheduleTaskReminder(makeTask({ id: 'quiet-alarm', reminderTime, reminderKind: 'alarm' }));
     expect(scheduleNativeAlarm).toHaveBeenCalledWith(
-      taskAlarmUuid('quiet-alarm', 0), new Date(2026, 0, 2, 7, 0), expect.any(String), null
+      taskAlarmUuid('quiet-alarm', 0), new Date(2026, 0, 2, 7, 0), expect.any(String), null, null
     );
   });
 });

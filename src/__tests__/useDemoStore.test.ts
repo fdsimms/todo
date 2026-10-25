@@ -1562,6 +1562,7 @@ describe('demo mode', () => {
 
     expect(pushups.length).toBeGreaterThan(0);
     expect(pushups.every(t => t.reminderKind === 'persistent')).toBe(true);
+    expect(pushups.some(t => t.alarmSound === 'rise')).toBe(true);
   });
 
   it('seeds a reminder set as "N days before due" rather than a fixed instant', () => {

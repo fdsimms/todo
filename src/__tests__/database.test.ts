@@ -946,6 +946,13 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(dbGetAllTasks()[0].mission).toBeNull();
   });
 
+  it('round-trips a task alarm’s ringtone, and reads an unknown one as the default', () => {
+    dbInsertTask(makeTask({ id: 'tone1', alarmSound: 'beacon' }));
+    expect(dbGetAllTasks()[0].alarmSound).toBe('beacon');
+    dbUpdateTask(makeTask({ id: 'tone1', alarmSound: 'kazoo' }));
+    expect(dbGetAllTasks()[0].alarmSound).toBeNull();
+  });
+
   it('round-trips an alarm, and deletes it', () => {
     const alarm = {
       id: 'al1', label: 'Wake up', hour: 7, minute: 30, repeatDays: [1, 3, 5], fireAt: null, enabled: true,
