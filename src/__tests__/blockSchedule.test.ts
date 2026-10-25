@@ -401,4 +401,11 @@ describe('an allow window', () => {
     expect(armedActivityCount([allow()])).toBe(2);
     expect(armedActivityCount([allow({ days: [1, 3, 5] })])).toBeLessThanOrEqual(MAX_ARMED_ACTIVITIES);
   });
+
+  it("leaves iOS's twenty room for the bridge's own four activities", () => {
+    // The old budget: 8 overnight blocks, 2 activities each, fill it exactly.
+    const overnight = Array.from({ length: 8 }, (_, i) => make({ id: `s${i}`, startMinutes: 22 * 60, endMinutes: 6 * 60 }));
+    expect(armedActivityCount(overnight)).toBe(MAX_ARMED_ACTIVITIES);
+    expect(MAX_ARMED_ACTIVITIES + 4).toBe(20);
+  });
 });

@@ -253,6 +253,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
       title: `Forget ${names.length} ${names.length === 1 ? 'item' : 'items'}?`,
       message: `${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}\n\nThis removes them from your catalog along with their purchase history. You can undo it right after.${loss ? `\n\n${loss}` : ''}`,
       confirmLabel: 'Forget',
+      undoable: !loss,
       onConfirm: () => {
         deleteItems([...selected], { undoable: true });
         setSelected(new Set());
@@ -266,6 +267,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
       title: `Forget ${pruneable.length} unused ${pruneable.length === 1 ? 'item' : 'items'}?`,
       message: `${pruneable.map(i => i.name).slice(0, 6).join(', ')}${pruneable.length > 6 ? '…' : ''}\n\nThese have never been bought and haven’t been added in months. You can undo it right after.`,
       confirmLabel: 'Forget',
+      undoable: true,
       onConfirm: () => {
         deleteItems(pruneable.map(i => i.id), { undoable: true });
         haptics.warning();

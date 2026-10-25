@@ -94,15 +94,15 @@ export function confirmWithinLimit(
 ): Promise<boolean> {
   const { logs, settings } = useMedicationStore.getState();
   const { limit, strength } = prefsFor(settings, name);
-  const status = limitStatus(logs, name, limit, now, planned);
   // A counted dose is saved with the strength set now (`addLog`), so it is
-  // measured with that strength here too, or "2 tablets" never reads as mg.
-  const over = planned && planned.amount !== null && planned.unit
-    ? doseOverMax(limit, {
-      amount: planned.amount,
-      unit: planned.unit,
-      strength: isCountedUnit(planned.unit) && strength ? { ...strength } : null,
-    })
+  // measured with that strength here too, or "2 tablets" never reads as mg:
+  // against the 24-hour total as much as against the one-dose cap.
+  const measured = planned
+    ? { ...planned, strength: planned.unit && isCountedUnit(planned.unit) && strength ? { ...strength } : null }
+    : null;
+  const status = limitStatus(logs, name, limit, now, measured);
+  const over = measured && measured.amount !== null && measured.unit
+    ? doseOverMax(limit, { amount: measured.amount, unit: measured.unit, strength: measured.strength })
     : null;
   if (!status.nextOkAt && !over) return Promise.resolve(true);
   const lines: string[] = [];

@@ -40,7 +40,8 @@ jest.mock('../utils/calendarSync', () => ({
 jest.mock('../utils/demoState', () => ({ isDemoModeActive: jest.fn().mockReturnValue(false) }));
 jest.mock('../store/useCalendarStore', () => {
   const refresh = jest.fn().mockResolvedValue(undefined);
-  const state = { refresh, events: [], pastEvents: [], gridEvents: [] };
+  const noteEventSaved = jest.fn();
+  const state = { refresh, noteEventSaved, events: [], pastEvents: [], gridEvents: [] };
   return { useCalendarStore: { getState: () => state, subscribe: jest.fn() } };
 });
 jest.mock('../store/useSettingsStore', () => ({
@@ -184,6 +185,10 @@ describe('saveEvent', () => {
     (saveEventDirect as jest.Mock).mockResolvedValue({ id: 'new', calendarId: 'cal1' });
     await expect(useEventPeopleStore.getState().saveEvent(saveFields)).resolves.not.toBeNull();
     expect(mockTable).toEqual([]);
+    // Shown on Today at once, ahead of the re-read.
+    expect(useCalendarStore.getState().noteEventSaved).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'new', calendarId: 'cal1' }),
+    );
   });
 });
 

@@ -122,6 +122,15 @@ interface CalendarState {
   readFailed: boolean;
   refresh: () => Promise<void>;
   /**
+   * An event this app just wrote, put into the window at once rather than
+   * after the re-read that follows the write. Only into a window that loaded,
+   * and only for a calendar the window reads (a picked calendar, not hidden by
+   * vacation) on a day it covers, so it can't show what the read wouldn't.
+   * The re-read replaces the window whole, so a repeat's later occurrences and
+   * the server id arrive with it.
+   */
+  noteEventSaved: (event: BusyEvent) => void;
+  /**
    * Tomorrow's events from the calendars vacation mode is hiding, held only
    * while vacation ends tomorrow. Read by the "Review tomorrow's calendar" task
    * and nothing else: the hiding keeps work out of the days you're away, and
@@ -275,6 +284,20 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   recentLoaded: false,
   handledHistory: {},
   handledLoaded: false,
+
+  noteEventSaved(event) {
+    const { loaded, windowStart, windowEnd, events } = get();
+    if (!loaded || !windowStart || !windowEnd) return;
+    const { calendarIds, vacationMode, vacationHiddenCalendarIds } = useSettingsStore.getState();
+    const readIds = vacationMode
+      ? calendarIds.filter(id => !vacationHiddenCalendarIds.includes(id))
+      : calendarIds;
+    if (!readIds.includes(event.calendarId)) return;
+    if (Date.parse(event.end) <= Date.parse(windowStart) || Date.parse(event.start) >= Date.parse(windowEnd)) return;
+    if (events.some(e => e.id === event.id)) return;
+    // Appended, as the read appends each calendar's events: readers order them.
+    set({ events: [...events, event] });
+  },
 
   async refresh() {
     const { calendarReadEnabled, calendarIds, vacationMode, vacationHiddenCalendarIds, vacationEnd, dayResetTime } =

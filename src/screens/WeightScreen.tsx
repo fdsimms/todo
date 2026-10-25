@@ -184,9 +184,14 @@ export function WeightScreen() {
   // session, so a weigh-in the scale sent to Health, or a day rolling over,
   // never showed while the app stayed open. refreshWeight guards itself
   // against overlapping reads.
+  // Whether a read has come back this session, whatever it found. Until one
+  // has, a null series is "not read yet" rather than "nothing there"; a read
+  // that throws or has no bridge still settles it, so the empty state can't
+  // be stuck behind "Reading Health…".
+  const [readSettled, setReadSettled] = useState(false);
   useFocusEffect(
     useCallback(() => {
-      if (healthReadEnabled) void refreshWeight();
+      if (healthReadEnabled) void refreshWeight().finally(() => setReadSettled(true));
     }, [healthReadEnabled, refreshWeight]),
   );
 
@@ -343,20 +348,25 @@ export function WeightScreen() {
   }
 
   if (readings.length === 0) {
+    // `weightSeries` is null until the first read of the session lands, and
+    // `loadingWeight` only turns on in the focus effect after the first
+    // commit, so null has to read as loading until a read settles, or the
+    // first frame claims there are no weigh-ins.
+    const reading = loadingWeight || (weightSeries === null && healthReadEnabled && !readSettled);
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {header}
         <EmptyState
           icon="scale-outline"
-          title={loadingWeight ? 'Reading Health…' : 'No weigh-ins yet'}
+          title={reading ? 'Reading Health…' : 'No weigh-ins yet'}
           // "Nothing recorded" and "Health did not share it" are the same
           // answer from HealthKit and there is no way to tell them apart, so
           // the copy has to cover both without claiming either.
-          subtitle={loadingWeight
+          subtitle={reading
             ? undefined
             : `Nothing recorded in the last ${WEIGHT_HISTORY_DAYS} days, or Health isn’t sharing weight. Record one and it’s saved to Health.`}
-          actionLabel={loadingWeight ? undefined : 'Record a weight'}
-          onAction={loadingWeight ? undefined : openLog}
+          actionLabel={reading ? undefined : 'Record a weight'}
+          onAction={reading ? undefined : openLog}
           bottomOffset={tabBarHeight}
         />
         <LogWeightSheet visible={logOpen} onClose={closeLog} />

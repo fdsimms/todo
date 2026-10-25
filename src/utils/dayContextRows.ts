@@ -108,6 +108,29 @@ export function startsInLabel(start: number, now: number): string | null {
 }
 
 /**
+ * Blank rows standing in for today's events until the calendar read lands on
+ * a cold launch, one per row Today drew last time and the same shape
+ * (`eventRowMemo.ts`), so the tasks below don't jump down when the events
+ * arrive. Filed under the calendar's category like the rows they stand in for.
+ */
+export function eventPlaceholderRows(
+  shapes: readonly { withLocation: boolean }[],
+  category: string | null,
+): ContextRow[] {
+  return shapes.map((shape, i) => ({
+    id: `event-placeholder-${i}`,
+    sourceId: '',
+    kind: 'event' as const,
+    title: '',
+    caption: '',
+    category,
+    now: false,
+    calendarTag: null,
+    placeholder: { withLocation: shape.withLocation },
+  }));
+}
+
+/**
  * Today's events as rows, in the order they'll be read.
  *
  * **An event that has ended is dropped.** Today is a list of what's left, not a

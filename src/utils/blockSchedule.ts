@@ -281,9 +281,13 @@ export function blockingWindows(
 
 /**
  * iOS lets an app register about twenty monitored activities in all, and an
- * allow window can need several windows where a block needs one.
+ * allow window can need several windows where a block needs one. Four of the
+ * twenty are always the bridge's own (the penalty, manual-block and gate
+ * windows, and the usage-threshold monitor), so schedules get what is left:
+ * the same budget 8 overnight blocks used to fill.
  */
-export const MAX_ARMED_ACTIVITIES = 20;
+const FIXED_ACTIVITIES = 4;
+export const MAX_ARMED_ACTIVITIES = 20 - FIXED_ACTIVITIES;
 export const ARMED_ACTIVITIES_MESSAGE = 'That needs more separate blocks than iOS allows an app to schedule. Pick fewer days or fewer schedules.';
 
 /**

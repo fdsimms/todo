@@ -69,6 +69,14 @@ interface Props {
   /** Spoken label for the subtitle button. Falls back to the subtitle itself. */
   subtitleAccessibilityLabel?: string;
   /**
+   * The subtitle is a short count that changes while the screen is open
+   * (Groceries' "4 left · 2 in cart"), so its changed characters roll through
+   * `AnimatedNumber` rather than swapping in one frame. Only for a line that
+   * fits on one row: while it rolls, each character is its own `Text` in a row
+   * that can't wrap.
+   */
+  subtitleRolls?: boolean;
+  /**
    * Small content rendered inline right after the title text, baseline-aligned
    * — e.g. Today's concise weather reading ("68° Sunny"). Not supported
    * alongside `onTitlePress`; nothing needs both today.
@@ -94,7 +102,7 @@ interface Props {
  * The standard large-title header used at the top of every screen, so
  * titles, counts and 34pt icon buttons render identically app-wide.
  */
-export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, titleAdornment, topRight, minHeight }: Props) {
+export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, subtitleRolls = false, titleAdornment, topRight, minHeight }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const brandFace = useBrandFace('heavy');
@@ -137,11 +145,15 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
             accessibilityRole="button"
             accessibilityLabel={subtitleAccessibilityLabel ?? subtitle}
           >
-            <Text style={[styles.subtitle, styles.subtitleShrinks]}>{subtitle}</Text>
+            {subtitleRolls
+              ? <AnimatedNumber text={subtitle} style={styles.subtitle} containerStyle={styles.subtitleShrinks} />
+              : <Text style={[styles.subtitle, styles.subtitleShrinks]}>{subtitle}</Text>}
             <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textSecondary} style={styles.subtitleChevron} />
           </TouchableOpacity>
         ) : subtitle != null ? (
-          <Text style={styles.subtitle}>{subtitle}</Text>
+          subtitleRolls
+            ? <AnimatedNumber text={subtitle} style={styles.subtitle} />
+            : <Text style={styles.subtitle}>{subtitle}</Text>
         ) : (
           // Same reservation, one line down: without it, any screen whose
           // subtitle depends on data (a count that's sometimes 0, Today's

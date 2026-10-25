@@ -131,7 +131,9 @@ export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
   // corner when the screen has one, and one bar higher while CookingBar shows.
   const fabShown = useFabPresenceStore(s => s.count > 0);
   const fabHand = useSettingsStore(s => s.fabHand);
-  const bottom = insets.bottom + barHeight + spacing.sm + (lifted ? FLOATING_BAR_STEP : 0);
+  // CookingBar centers on the add button when there is one, which sits higher.
+  const liftStep = FLOATING_BAR_STEP + (fabShown ? FAB_CENTERED_RISE : 0);
+  const bottom = insets.bottom + barHeight + spacing.sm + (lifted ? liftStep : 0);
   const clearance = spacing.lg + FAB_SIZE + spacing.sm - spacing.md;
   const sideInset = fabShown ? { [fabHand === 'left' ? 'marginLeft' : 'marginRight']: clearance } : null;
 
@@ -184,6 +186,8 @@ export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
 
 /** One bar's height plus a gap, the room `lifted` leaves for CookingBar. */
 const FLOATING_BAR_STEP = 52;
+/** How much higher CookingBar sits when centered on the add button than when resting above the tab bar. */
+const FAB_CENTERED_RISE = 14;
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {

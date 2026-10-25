@@ -7118,6 +7118,7 @@ describe('a task that waits for a lighter day', () => {
       titleRules: [],
       collapsedCategories: [],
       calendarReadEnabled: false,
+      slotInMaxWaitDays: 3,
     });
     categories = [];
     const base = categoryStore.useCategoryStore.getState();
@@ -7173,6 +7174,27 @@ describe('a task that waits for a lighter day', () => {
     const ids = [add('A', { slotIn: true }), add('B', { slotIn: true })];
     useTaskStore.getState().applySlotIns();
     expect(ids.filter(held)).toHaveLength(0);
+  });
+
+  it('holds a generated task written after the day was decided, behind one already waiting', () => {
+    dbGetSetting.mockImplementation((key: string) => (key === 'slotInDecidedDay' ? TODAY : null));
+    const waiting = add('Waiting', { slotIn: true });
+    useTaskStore.getState().updateTask(waiting, {
+      slotDecidedOn: TODAY, deferUntil: new Date(2026, 9, 20).toISOString(), slotWaitingSince: '2026-10-17',
+    });
+    const late = add('Catch up', { slotIn: true, generatedKind: 'reachOut' });
+    const mine = add('Mine', { slotIn: true });
+    useTaskStore.getState().holdLateSlotIns();
+    expect(held(late)).toBe(true);
+    // A task the person adds mid-day is left where they put it.
+    expect(held(mine)).toBe(false);
+  });
+
+  it('leaves late arrivals to the day’s own pass until it has run', () => {
+    add('Waiting', { slotIn: true });
+    const late = add('Catch up', { slotIn: true, generatedKind: 'reachOut' });
+    useTaskStore.getState().holdLateSlotIns();
+    expect(read(late).slotDecidedOn).toBeNull();
   });
 
   it('lets go of a held task once it is no longer set to wait', () => {
@@ -10685,6 +10707,24 @@ describe('clearAllPins', () => {
     useTaskStore.getState().clearAllPins();
     expect(dbClearAllPins).toHaveBeenCalledTimes(1);
   });
+
+  it('files an undo that pins back only what was pinned', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', pinned: true }),
+        makeTask({ id: 't2', pinned: true }),
+        makeTask({ id: 't3', pinned: false }),
+      ],
+    });
+    useTaskStore.getState().clearAllPins();
+    const action = useTaskStore.getState().lastAction!;
+    expect(action.label).toBe('Unpinned 2 tasks');
+    expect(action.destructive).toBe(true);
+
+    useTaskStore.getState().undoLastAction();
+    const pinned = useTaskStore.getState().tasks.filter(t => t.pinned).map(t => t.id);
+    expect(pinned).toEqual(['t1', 't2']);
+  });
 });
 
 // ─── pinCategory ───────────────────────────────────────────────────────────
@@ -13550,6 +13590,16 @@ describe('timers', () => {
     expect(task.timerStartedAt).toBeNull();
     expect(task.actualMinutes).toBeNull();
     expect(task.estimatedMinutes).toBeNull();
+  });
+
+  it('discardTimer files an undo that puts the original start back', () => {
+    const started = new Date(Date.now() - 10 * 60000).toISOString();
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', timerStartedAt: started })] });
+    useTaskStore.getState().discardTimer('a');
+    expect(useTaskStore.getState().lastAction!.destructive).toBe(true);
+
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')!.timerStartedAt).toBe(started);
   });
 
   it('discardTimer is a no-op when no timer is running', () => {
@@ -22153,5 +22203,75 @@ describe('checkBlockOfferTasks', () => {
       useTaskStore.getState().uncompleteTask('t1');
       expect(useRewardStore.getState().balance()).toBe(0);
     });
+  });
+});
+
+// ─── the list lenses' cache ──────────────────────────────────────────────────
+
+describe('list lens cache', () => {
+  // This suite's settings and category mocks hand back a fresh object on every
+  // getState(), which reads as "settings changed" and defeats the cache, so
+  // these tests pin both to one object for as long as they run.
+  const settingsGetState = useSettingsStore.getState as jest.Mock;
+  const categoryGetState = useCategoryStore.getState as jest.Mock;
+  const originalSettings = settingsGetState.getMockImplementation()!;
+  const originalCategories = categoryGetState.getMockImplementation()!;
+  let settings: Record<string, unknown>;
+  const dueToday = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
+    settings = originalSettings();
+    const categories = originalCategories();
+    settingsGetState.mockImplementation(() => settings);
+    categoryGetState.mockImplementation(() => categories);
+    useProjectStore.setState({ projects: [] });
+  });
+
+  afterEach(() => {
+    settingsGetState.mockImplementation(originalSettings);
+    categoryGetState.mockImplementation(originalCategories);
+    useProjectStore.setState({ projects: [] });
+    jest.useRealTimers();
+  });
+
+  it('hands back the same array while nothing it reads has changed', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', dueDate: dueToday })] });
+    const first = useTaskStore.getState().visibleTasks();
+    expect(first.map(t => t.id)).toEqual(['t1']);
+    expect(useTaskStore.getState().visibleTasks()).toBe(first);
+  });
+
+  it('recomputes when the tasks change', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', dueDate: dueToday })] });
+    useTaskStore.getState().visibleTasks();
+    useTaskStore.setState({ tasks: [makeTask({ id: 't2', dueDate: dueToday })] });
+    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['t2']);
+  });
+
+  it('recomputes when a setting changes with the tasks left alone', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', dueDate: dueToday, vacationPause: true })] });
+    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['t1']);
+    settings = { ...settings, vacationMode: true };
+    expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
+    expect(useTaskStore.getState().vacationHiddenTasks().map(t => t.id)).toEqual(['t1']);
+  });
+
+  it('recomputes when a project pauses with the tasks left alone', () => {
+    const project = { id: 'garden', pausedUntil: null, archived: false, completed: false } as unknown as Project;
+    useProjectStore.setState({ projects: [project] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', dueDate: dueToday, projectId: 'garden' })] });
+    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['t1']);
+    useProjectStore.setState({ projects: [{ ...project, pausedUntil: '2999-01-01' }] });
+    expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
+  });
+
+  it('recomputes once the clock opens a time window, within a second', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', dueDate: dueToday, windowStart: '10:01' })] });
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 59, 500));
+    expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 1, 0, 100));
+    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['t1']);
   });
 });

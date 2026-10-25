@@ -134,7 +134,7 @@ export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'
       }
     },
     onLog: async () => {
-      await haptics.success();
+      haptics.success();
       const target = isCook ? recipe.estimatedMinutes : recipe.prepMinutes;
       const measured = Math.max(1, Math.round(
         (isCook ? cookTimerElapsed(recipe, Date.now()) : prepTimerElapsed(recipe, Date.now())) / 60
@@ -143,11 +143,11 @@ export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'
       offerLongerEstimate(recipe.name, verb, target, measured, isCook ? m => setEstimatedMinutes(recipe.id, m) : m => setPrepMinutes(recipe.id, m));
     },
     onReset: async () => {
-      await haptics.warning();
+      haptics.warning();
       (isCook ? resetCookTimer : resetPrepTimer)(recipe.id);
     },
     onLogManual: async (minutes: number) => {
-      await haptics.success();
+      haptics.success();
       const target = isCook ? recipe.estimatedMinutes : recipe.prepMinutes;
       (isCook ? logManualCookTime : logManualPrepTime)(recipe.id, minutes);
       offerLongerEstimate(recipe.name, verb, target, Math.round(minutes), isCook ? m => setEstimatedMinutes(recipe.id, m) : m => setPrepMinutes(recipe.id, m));

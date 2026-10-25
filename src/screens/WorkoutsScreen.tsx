@@ -921,6 +921,9 @@ export function WorkoutsScreen() {
           visible={openSessionId !== null}
           sessionId={shownSessionId}
           onClose={() => setOpenSessionId(null)}
+          // One sheet down and the editor up in the same commit: SheetModal
+          // holds the open until the close has landed.
+          onOpenRoutine={id => { setOpenSessionId(null); openEditor(id); }}
         />
       )}
       <LazySheet open={libraryOpen}>

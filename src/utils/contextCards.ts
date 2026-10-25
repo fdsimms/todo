@@ -92,8 +92,10 @@ export function contextSectionSummaries(items: readonly TodayListItem[]): Map<st
 function eventSummary(rows: readonly ContextRow[]): string {
   // The header already shows the count, so this says only what's next. The time
   // leads so a long title is the part that truncates.
-  const running = rows.find(r => r.now);
+  // A placeholder has nothing to say yet, so a section of them says nothing.
+  const real = rows.filter(r => !r.placeholder);
+  const running = real.find(r => r.now);
   if (running) return `Now: ${running.title}`;
-  const next = rows.find(r => r.caption !== ALL_DAY_CAPTION);
+  const next = real.find(r => r.caption !== ALL_DAY_CAPTION);
   return next ? `${next.caption} ${next.title}` : '';
 }

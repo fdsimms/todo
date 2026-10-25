@@ -26,6 +26,7 @@ import { SearchField } from '../components/SearchField';
 import { ChipFilterSheet, type ChipFilterGroup } from '../components/ChipFilterSheet';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { animateLayout } from '../utils/layoutAnimation';
 
 /**
  * Every mood entry there is, grouped by day and narrowable.
@@ -196,7 +197,7 @@ export function MoodHistoryScreen() {
             <TouchableOpacity
               key={pill.key}
               style={styles.pill}
-              onPress={() => { haptics.tap(); pill.remove(); }}
+              onPress={() => { haptics.tap(); animateLayout(); pill.remove(); }}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
               accessibilityLabel={`Remove the ${pill.label} filter`}

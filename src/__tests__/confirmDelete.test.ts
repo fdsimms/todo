@@ -59,4 +59,13 @@ describe('confirmDelete', () => {
     expect(Alert.alert).not.toHaveBeenCalled();
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
+
+  it('runs an undoable delete at once, with the setting on', () => {
+    const onConfirm = jest.fn();
+
+    confirmDelete({ title: 'Delete task?', undoable: true, onConfirm });
+
+    expect(Alert.alert).not.toHaveBeenCalled();
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
 });

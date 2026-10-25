@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
@@ -9,6 +9,8 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { EditorRow } from './EditorRow';
 import { PillGroup } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
+import { MinutesSegments } from './MinutesSegments';
+import { shortMinutesLabel } from '../utils/customMinutes';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
@@ -68,6 +70,9 @@ const AGO_OPTIONS: { value: number; label: string }[] = [
   { value: 120, label: '2 hr ago' },
 ];
 
+/** A typed answer runs from a minute to a day; further back is the Day row above. */
+const AGO_RANGE = { min: 1, max: 24 * 60 };
+
 /**
  * Recording a dose by hand — see `src/utils/medicationLog.ts`.
  *
@@ -102,6 +107,8 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [drafted, setDrafted] = useState<string[]>([]);
   const [taskEditorOpen, setTaskEditorOpen] = useState(false);
+  // Stable, so the closed (memoized) editor doesn't re-render with this sheet.
+  const closeTaskEditor = useCallback(() => setTaskEditorOpen(false), []);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
   const [attachedTitle, setAttachedTitle] = useState<string | null>(null);
   const updateTask = useTaskStore(s => s.updateTask);
@@ -299,7 +306,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
         <TaskEditor
           visible={taskEditorOpen}
           initialDraft={taskDraft}
-          onClose={() => { setTaskEditorOpen(false); }}
+          onClose={closeTaskEditor}
         />
         <TaskRelationPickerSheet
           visible={taskPickerOpen}
@@ -411,12 +418,14 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
           />
           {!backdated && (
             <View style={styles.agoRow}>
-              <SegmentedControl
-                options={AGO_OPTIONS}
+              <MinutesSegments
+                presets={AGO_OPTIONS}
                 value={agoMinutes}
                 columns={4}
                 label="When you took it"
-                onChange={value => setAgoMinutes(value)}
+                onChange={value => setAgoMinutes(value ?? 0)}
+                range={AGO_RANGE}
+                describe={minutes => `${shortMinutesLabel(minutes)} ago`}
               />
             </View>
           )}

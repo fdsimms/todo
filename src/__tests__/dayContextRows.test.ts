@@ -3,6 +3,7 @@ import type { BusyEvent } from '../utils/calendarBusy';
 import type { TodayListItem } from '../utils/taskGrouping';
 import {
   eventContextRows,
+  eventPlaceholderRows,
   startsInLabel,
   mealContextRows,
   goalContextRows,
@@ -547,5 +548,19 @@ describe('eventContextRows call and travel', () => {
       { ...eventOpts, travelNote: () => '18 min drive' },
     );
     expect(rows.map(r => [r.videoCallStart ? true : false, r.travelNote])).toEqual([[true, undefined], [false, '18 min drive']]);
+  });
+});
+
+describe('eventPlaceholderRows', () => {
+  it('makes one blank event row per remembered shape, under the calendar category, with distinct keys', () => {
+    const rows = eventPlaceholderRows([{ withLocation: false }, { withLocation: true }], 'Calendar');
+    expect(rows).toHaveLength(2);
+    expect(rows.every(r => r.kind === 'event' && r.category === 'Calendar')).toBe(true);
+    expect(rows.map(r => r.placeholder)).toEqual([{ withLocation: false }, { withLocation: true }]);
+    expect(new Set(rows.map(r => r.id)).size).toBe(2);
+  });
+
+  it('makes none when nothing was remembered', () => {
+    expect(eventPlaceholderRows([], 'Calendar')).toEqual([]);
   });
 });

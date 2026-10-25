@@ -307,6 +307,46 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition, onDire
   };
   const separated = cardPosition === 'middle' || cardPosition === 'last';
 
+  // A blank event row held while the calendar read is under way on a cold
+  // launch (ContextRow.placeholder). Built from the same Text lines a real
+  // event row draws, with the text made invisible and a bar laid in each, so
+  // the space it holds is the row's own height at any text size.
+  if (row.placeholder) {
+    return (
+      <View
+        style={[styles.card, joinedShape, shadows.card]}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      >
+        <View style={[styles.clip, clipShape]}>
+          <View style={[styles.row, separated && styles.rowSeparated]}>
+            <View style={styles.slot}>
+              <View style={styles.placeholderGlyph} />
+            </View>
+            <View style={styles.content}>
+              <View>
+                <Text style={[styles.title, styles.placeholderText]}> </Text>
+                <View style={[styles.placeholderBar, styles.placeholderTitleBar]} />
+              </View>
+              <View>
+                <Text style={[styles.caption, styles.placeholderText]}> </Text>
+                <View style={[styles.placeholderBar, styles.placeholderCaptionBar]} />
+              </View>
+              {/* The location line a real row draws under its time, for a row
+                  that had one, so this holds the same height. */}
+              {row.placeholder.withLocation && (
+                <View>
+                  <Text style={[styles.caption, styles.placeholderText]}> </Text>
+                  <View style={[styles.placeholderBar, styles.placeholderLocationBar]} />
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.card, joinedShape, shadows.card]}>
       {/* Separate from `card`: overflow hidden there would clip the card
@@ -525,6 +565,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // Not shrinkable: the figure matters more than the end of a long address.
   travelNote: { flexShrink: 0 },
+  // The placeholder's parts: bgTertiary, the one surface a step brighter than
+  // the card, so it reads as space held rather than as content.
+  placeholderText: { color: 'transparent' },
+  placeholderGlyph: {
+    width: 18,
+    height: 18,
+    borderRadius: 5,
+    backgroundColor: colors.bgTertiary,
+  },
+  placeholderBar: {
+    position: 'absolute',
+    left: 0,
+    top: '25%',
+    bottom: '25%',
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  placeholderTitleBar: { width: '52%' },
+  placeholderCaptionBar: { width: '34%' },
+  placeholderLocationBar: { width: '44%' },
   captionNow: {
     color: colors.accent,
     fontWeight: fontWeight.medium,

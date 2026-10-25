@@ -44,7 +44,6 @@ import type { Person, Task } from '../types';
 import { resetToPeople } from '../navigation/navigationRef';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
-import { BUTTON_LABEL } from '../copy/shared';
 
 const CHECKBOX_SIZE = 22;
 
@@ -174,6 +173,8 @@ export function StuckScreen() {
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
+  // Stable, so the closed (memoized) editor doesn't re-render with this screen.
+  const closeTaskEditor = useCallback(() => setEditorVisible(false), []);
   const [breakdownId, setBreakdownId] = useState<string | null>(null);
   // The blocker whose completion is waiting on an answer — a task that asks
   // one when it's ticked off (Task.deliverableKind) must ask here too, or
@@ -331,21 +332,12 @@ export function StuckScreen() {
       {
         key: 'drop',
         label: 'Drop it',
+        // At once, like the picker's own Drop it: nothing is deleted, and
+        // archiveTask puts an undo on the bar.
         onPress: () => {
-          haptics.warning();
-          Alert.alert(
-            'Archive this task?',
-            `“${displayTitleFor(task)}” moves to Archived. Nothing is deleted. You can restore it from there.`,
-            [
-              { text: BUTTON_LABEL.cancel, style: 'cancel' },
-              {
-                // Not destructive styling, for the reason the picker's copy of
-                // this gives: archiving keeps the task.
-                text: 'Archive',
-                onPress: () => { animateLayout(); archiveTask(task.id); },
-              },
-            ],
-          );
+          haptics.tap();
+          animateLayout();
+          archiveTask(task.id);
         },
       },
       // A bounty is aimed at exactly these tasks (see "Bounties" in
@@ -600,7 +592,7 @@ export function StuckScreen() {
         <TaskEditor
           visible={editorVisible}
           task={editingTask}
-          onClose={() => setEditorVisible(false)}
+          onClose={closeTaskEditor}
         />
       </LazySheet>
       {shownBreakdownId && (

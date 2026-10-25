@@ -15,6 +15,8 @@ import { PREP_OFFSET_MIN, PREP_OFFSET_MAX } from '../utils/recipeUtils';
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { type PendingEdits } from '../hooks/usePendingEdits';
 import { haptics } from '../utils/haptics';
+import { RotatingChevron } from './RotatingChevron';
+import { animateLayout } from '../utils/layoutAnimation';
 
 const CHECKBOX_SIZE = 22;
 const LINE_CHECKBOX_SIZE = 18;
@@ -132,17 +134,13 @@ export function ImportApplyRow({
           <TouchableOpacity
             style={styles.disclosure}
             activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); setExpanded(v => !v); }}
+            onPress={() => { haptics.tap(); animateLayout(); setExpanded(v => !v); }}
             hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
             accessibilityRole="button"
             accessibilityState={{ expanded }}
             accessibilityLabel={previewToggleLabel(expanded, lines.length, previewNoun)}
           >
-            <Ionicons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={iconSize.sm}
-              color={colors.textSecondary}
-            />
+            <RotatingChevron open={expanded} size={iconSize.sm} color={colors.textSecondary} />
           </TouchableOpacity>
         )}
       </View>

@@ -8,10 +8,12 @@
 // The open-ended pill grids here go through PillGroup, which caps itself past
 // eight; see docs/arch/groceries.md for what aisles, shops and substitutes mean.
 import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { LazySheet } from './LazySheet';
 import {
   format } from 'date-fns/format';
 import {
   Keyboard,
+  type TextInput,
   Platform,
   Switch,
   View,
@@ -179,7 +181,12 @@ interface Props {
  * anywhere in groceries, so deleting a catalog row is behind a confirm rather
  * than on a swipe.
  */
-export function GroceryItemSheet({
+// Memoized: a screen keeps it mounted once opened (LazySheet), and without this
+// every render of the grocery list, each check-off among them, re-rendered the
+// closed sheet and its fifty-odd store reads.
+export const GroceryItemSheet = React.memo(GroceryItemSheetBody);
+
+function GroceryItemSheetBody({
   visible, itemId, onClose, onOpenRecipe, onOpenSettings, recipeExists, initialField, inline = false,
 }: Props) {
   // ==== store bindings ====
@@ -258,7 +265,7 @@ export function GroceryItemSheet({
   const [lowAddsToListChoice, setLowAddsToListChoice] = useState<boolean | undefined>(undefined);
   const runningLowAddsToList = lowAddsToListChoice ?? runningLowAddsToListSetting;
   const simpleMode = useSettingsStore(s => s.simpleMode);
-  const removeFromList = useGroceryStore(s => s.removeFromList);
+  const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
   const addExisting = useGroceryStore(s => s.addExisting);
   // The list "Add to list" puts it on: the one being viewed, as Remove's is.
   // Named when it isn't the home list, since this sheet also opens from the
@@ -416,9 +423,19 @@ export function GroceryItemSheet({
   // merging means choosing whose purchase history survives — so a rejected
   // rename leaves nameError showing and the item's stored name untouched;
   // the field itself keeps whatever was typed until it's corrected.
-  const commitName = () => {
+  // Return moves through the fields in the order they're drawn, so a run of
+  // corrections is typed without reaching for the next field each time.
+  const quantityInputRef = useRef<TextInput>(null);
+  const noteInputRef = useRef<TextInput>(null);
+  const focusNext = (...refs: React.RefObject<TextInput | null>[]) => {
+    const next = refs.find(r => r.current);
+    if (next) next.current!.focus();
+    else Keyboard.dismiss();
+  };
+  /** False when the name was refused, so Return stays on the field to fix it. */
+  const commitName = (): boolean => {
     const trimmed = name.trim();
-    if (!trimmed || trimmed === item.name) { setNameError(null); setNameCollisionId(null); return; }
+    if (!trimmed || trimmed === item.name) { setNameError(null); setNameCollisionId(null); return true; }
     if (!renameItem(item.id, trimmed)) {
       const collision = renameClash(items, item.id, trimmed);
       setNameError(
@@ -426,10 +443,11 @@ export function GroceryItemSheet({
       );
       setNameCollisionId(collision?.id ?? null);
       haptics.error();
-      return;
+      return false;
     }
     setNameError(null);
     setNameCollisionId(null);
+    return true;
   };
   const commitQuantity = () => {
     if (quantity !== (item.quantity ?? '')) setQuantity(item.id, quantity);
@@ -788,7 +806,11 @@ export function GroceryItemSheet({
       title: `Forget ${item.name}?`,
       message: `This removes it and its history from your catalog. You can undo it right after.${loss ? `\n\n${loss}` : ''}\n\nTo take it off this week’s list instead, use “Remove from list”.`,
       confirmLabel: 'Forget',
+      // The undo puts it back; only a loss line (what else forgetting it
+      // touches) is worth stopping to read first.
+      undoable: !loss,
       onConfirm: () => {
+        animateLayout();
         deleteItem(item.id, { undoable: true });
         haptics.warning();
         Keyboard.dismiss();
@@ -1900,7 +1922,9 @@ export function GroceryItemSheet({
               if (nameError) { setNameError(null); setNameCollisionId(null); }
             }}
             onBlur={commitName}
-            onSubmitEditing={commitName}
+            onSubmitEditing={() => { if (commitName()) focusNext(quantityInputRef, noteInputRef); }}
+            returnKeyType="next"
+            blurOnSubmit={false}
             placeholder="Item name"
             placeholderTextColor={colors.textTertiary}
             // See the note on GroceryRow's inline rename field: an
@@ -2019,10 +2043,14 @@ export function GroceryItemSheet({
           <>
           <Text style={styles.label}>QUANTITY</Text>
           <TextField
+            ref={quantityInputRef}
             style={styles.input}
             value={quantity}
             onChangeText={setQuantityText}
             onBlur={commitQuantity}
+            onSubmitEditing={() => { commitQuantity(); focusNext(noteInputRef); }}
+            returnKeyType="next"
+            blurOnSubmit={false}
             placeholder="e.g. 2 lb, x3, a bunch"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
@@ -2115,10 +2143,13 @@ export function GroceryItemSheet({
           <>
           <Text style={styles.label}>NOTE</Text>
           <TextField
+            ref={noteInputRef}
             style={styles.input}
             value={note}
             onChangeText={setNoteText}
             onBlur={commitNote}
+            onSubmitEditing={commitNote}
+            returnKeyType="done"
             placeholder="e.g. the blue cap one"
             placeholderTextColor={colors.textTertiary}
             maxLength={GROCERY_NAME_MAX_LENGTH}
@@ -2203,7 +2234,10 @@ export function GroceryItemSheet({
               style={styles.actionRow}
               activeOpacity={interaction.activeOpacity}
               onPress={() => {
-                removeFromList(item.id);
+                // Through the bulk action for its undo: one row off the list is
+                // the same step as twenty, and the bulk bar's has always had one.
+                animateLayout();
+                removeFromListMany([item.id], { registerUndo: true });
                 haptics.tap();
                 Keyboard.dismiss();
                 onClose();
@@ -2295,51 +2329,63 @@ export function GroceryItemSheet({
           GroceryCatalogSheet nests this sheet: a Modal presents from the view
           controller its React parent belongs to, so a sibling would be asking
           the screen's controller to present a second sheet while this one is
-          already up. */}
-      <ProductSheet
-        visible={productSheet !== null}
-        itemId={item.id}
-        editingProductId={productSheet === 'add' ? null : productSheet}
-        onClose={() => setProductSheet(null)}
-      />
-      <SubstituteSheet
-        visible={subSheet !== null}
-        itemId={item.id}
-        editingSubItemId={subSheet === 'add' ? null : subSheet}
-        onClose={() => setSubSheet(null)}
-      />
-      <MergeItemSheet
-        visible={mergeSheetOpen}
-        itemId={item.id}
-        initialPickedId={nameCollisionId}
-        onClose={() => { setMergeSheetOpen(false); setNameCollisionId(null); }}
-        onMerged={survivorId => {
-          setMergeSheetOpen(false);
-          setNameCollisionId(null);
-          // The row this sheet is open for lost the merge — nothing left to
-          // show, so the whole sheet closes rather than rendering over a
-          // deleted item.
-          if (survivorId !== item.id) onClose();
-        }}
-      />
-      <NutritionSearchSheet
-        visible={nutritionSearchOpen}
-        itemName={item.name}
-        onClose={() => setNutritionSearchOpen(false)}
-        onPick={nutrition => setItemNutrition(item.id, nutrition)}
-        onOpenSettings={entryId => {
-          setNutritionSearchOpen(false);
-          onClose();
-          onOpenSettings(entryId);
-        }}
-      />
-      <NutritionPanelSheet
-        visible={nutritionPanelOpen}
-        foodName={item.name}
-        nutrition={item.nutrition}
-        onClose={() => setNutritionPanelOpen(false)}
-        onSave={nutrition => setItemNutrition(item.id, nutrition)}
-      />
+          already up. Each mounts the first time it opens (LazySheet): most
+          opens of this sheet use none of them, and two of them sort the whole
+          catalog. */}
+      <LazySheet open={productSheet !== null}>
+        <ProductSheet
+          visible={productSheet !== null}
+          itemId={item.id}
+          editingProductId={productSheet === 'add' ? null : productSheet}
+          onClose={() => setProductSheet(null)}
+        />
+      </LazySheet>
+      <LazySheet open={subSheet !== null}>
+        <SubstituteSheet
+          visible={subSheet !== null}
+          itemId={item.id}
+          editingSubItemId={subSheet === 'add' ? null : subSheet}
+          onClose={() => setSubSheet(null)}
+        />
+      </LazySheet>
+      <LazySheet open={mergeSheetOpen}>
+        <MergeItemSheet
+          visible={mergeSheetOpen}
+          itemId={item.id}
+          initialPickedId={nameCollisionId}
+          onClose={() => { setMergeSheetOpen(false); setNameCollisionId(null); }}
+          onMerged={survivorId => {
+            setMergeSheetOpen(false);
+            setNameCollisionId(null);
+            // The row this sheet is open for lost the merge — nothing left to
+            // show, so the whole sheet closes rather than rendering over a
+            // deleted item.
+            if (survivorId !== item.id) onClose();
+          }}
+        />
+      </LazySheet>
+      <LazySheet open={nutritionSearchOpen}>
+        <NutritionSearchSheet
+          visible={nutritionSearchOpen}
+          itemName={item.name}
+          onClose={() => setNutritionSearchOpen(false)}
+          onPick={nutrition => setItemNutrition(item.id, nutrition)}
+          onOpenSettings={entryId => {
+            setNutritionSearchOpen(false);
+            onClose();
+            onOpenSettings(entryId);
+          }}
+        />
+      </LazySheet>
+      <LazySheet open={nutritionPanelOpen}>
+        <NutritionPanelSheet
+          visible={nutritionPanelOpen}
+          foodName={item.name}
+          nutrition={item.nutrition}
+          onClose={() => setNutritionPanelOpen(false)}
+          onSave={nutrition => setItemNutrition(item.id, nutrition)}
+        />
+      </LazySheet>
       <NumberPadAccessory />
     </ItemSheetModal>
   );

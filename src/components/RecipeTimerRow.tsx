@@ -8,6 +8,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
 import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TextField } from './TextField';
+import { RotatingChevron } from './RotatingChevron';
 
 interface Props {
   /** "Prep" or "Cook" — drives the idle copy ("Time this cook", "Time prep"). */
@@ -128,11 +129,7 @@ export function RecipeTimerRow({
             <Text style={[styles.labels, styles.idleLabel]} numberOfLines={1}>{idleText}</Text>
           )}
           {hasDetails && (
-            <Ionicons
-              name={showDetails ? 'chevron-up' : 'chevron-down'}
-              size={iconSize.xs}
-              color={colors.textTertiary}
-            />
+            <RotatingChevron open={showDetails} size={iconSize.xs} color={colors.textTertiary} />
           )}
         </TouchableOpacity>
         {/* Furthest from the primary button and a wider gap from its

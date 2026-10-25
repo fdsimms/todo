@@ -741,7 +741,7 @@ describe('alcohol', () => {
 
   it('files FoodData Central\'s ethyl alcohol under alcohol', () => {
     const read = readFdcNutrition(
-      { foodNutrients: [fdcNutrient(1008, 'KCAL', 43), fdcNutrient(221, 'G', 3.9)] },
+      { foodNutrients: [fdcNutrient(1008, 'KCAL', 43), fdcNutrient(1018, 'G', 3.9)] },
       RECORDED_AT,
     )!;
     expect(read.amounts.alcoholG).toBe(3.9);

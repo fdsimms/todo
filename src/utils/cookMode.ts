@@ -224,3 +224,27 @@ export function describeStepPosition(index: number, count: number): string {
   if (at < 0) return '';
   return `Step ${at + 1} of ${count}`;
 }
+
+/** How big the step's sentence is drawn. `large` is what cook mode has always used. */
+export type CookTextSize = 'small' | 'medium' | 'large' | 'xlarge';
+
+export const COOK_TEXT_SIZES: CookTextSize[] = ['small', 'medium', 'large', 'xlarge'];
+
+export const DEFAULT_COOK_TEXT_SIZE: CookTextSize = 'large';
+
+const COOK_TEXT_METRICS: Record<CookTextSize, { fontSize: number; lineHeight: number }> = {
+  small: { fontSize: 20, lineHeight: 28 },
+  medium: { fontSize: 24, lineHeight: 33 },
+  large: { fontSize: 28, lineHeight: 38 },
+  xlarge: { fontSize: 34, lineHeight: 46 },
+};
+
+/** The size and line height for a step's text; anything unrecognized reads as the default. */
+export function cookTextMetrics(size: string | null | undefined): { fontSize: number; lineHeight: number } {
+  return COOK_TEXT_METRICS[COOK_TEXT_SIZES.find(s => s === size) ?? DEFAULT_COOK_TEXT_SIZE];
+}
+
+/** Reads a stored value back, so a missing or stale one falls to the default. */
+export function parseCookTextSize(value: string | null | undefined): CookTextSize {
+  return COOK_TEXT_SIZES.find(s => s === value) ?? DEFAULT_COOK_TEXT_SIZE;
+}

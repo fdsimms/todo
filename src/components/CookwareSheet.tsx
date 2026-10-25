@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { EditorSheet } from './EditorSheet';
@@ -18,6 +18,7 @@ import { parseWeightText, clampCookwareWeight, groupCookwareByType, cookwareType
 import type { CookwareType } from '../types';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
+import { confirmDelete } from '../utils/confirmDelete';
 
 const NAME_MAX_LENGTH = 40;
 
@@ -49,7 +50,7 @@ function TypeChip({ name, kind, onSelect, label }: {
       onSelect={key => onSelect(kindOfKey(key))}
       noun={label}
       name={`CookwareType:${name}`}
-      labelOverride={kind ? undefined : `${cookwareTypeOf(name)} (from the name)`}
+      labelOverride={kind ? undefined : cookwareTypeOf(name)}
     />
   );
 }
@@ -119,11 +120,12 @@ export function CookwareSheet({ visible, onClose }: Props) {
     setEditingId(id);
   };
 
-  const confirmDelete = (id: string, name: string) => {
-    Alert.alert(`Delete ${name}?`, 'Dishes already weighed keep their weight. Only this entry goes.', [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      { text: BUTTON_LABEL.delete, style: 'destructive', onPress: () => removeCookware(id) },
-    ]);
+  const handleDelete = (id: string, name: string) => {
+    confirmDelete({
+      title: `Delete ${name}?`,
+      message: 'Dishes already weighed keep their weight. Only this entry goes.',
+      onConfirm: () => removeCookware(id),
+    });
   };
 
   return (
@@ -244,7 +246,7 @@ export function CookwareSheet({ visible, onClose }: Props) {
                           <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
                         </TouchableOpacity>
                         <TouchableOpacity
-                          onPress={() => confirmDelete(c.id, c.name)}
+                          onPress={() => handleDelete(c.id, c.name)}
                           hitSlop={8}
                           accessibilityRole="button"
                           accessibilityLabel={`Delete ${c.name}`}
@@ -254,14 +256,16 @@ export function CookwareSheet({ visible, onClose }: Props) {
                       </>
                     )}
                   </View>
-                  <View style={styles.typeRow}>
-                    <TypeChip
-                      name={c.name}
-                      kind={c.kind}
-                      onSelect={kind => updateCookware(c.id, { kind })}
-                      label={`Type of ${c.name}`}
-                    />
-                  </View>
+                  {editingId === c.id && (
+                    <View style={styles.typeRow}>
+                      <TypeChip
+                        name={c.name}
+                        kind={c.kind}
+                        onSelect={kind => updateCookware(c.id, { kind })}
+                        label={`Type of ${c.name}`}
+                      />
+                    </View>
+                  )}
                 </View>
               ))}
             </View>

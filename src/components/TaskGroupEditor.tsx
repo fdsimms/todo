@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -205,6 +205,8 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
   // instead of an existing row — see handleQuickAddOpenFull.
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editingDraft, setEditingDraft] = useState<Partial<TaskDraft> | null>(null);
+  // Stable, so the closed (memoized) editor doesn't re-render with this sheet.
+  const closeTaskEditor = useCallback(() => { setEditingTask(null); setEditingDraft(null); }, []);
   const titleInputRef = useRef<TextInput>(null);
   // The task editor and quick add are nested here for the presentation reason
   // noted at the footer, and each is a large component that runs all of its
@@ -507,7 +509,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
             visible={!!editingTask || !!editingDraft}
             task={editingTask}
             initialDraft={editingDraft}
-            onClose={() => { setEditingTask(null); setEditingDraft(null); }}
+            onClose={closeTaskEditor}
           />}
           {/*
             Also inside this sheet's own Modal, for the same reason as

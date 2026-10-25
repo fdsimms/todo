@@ -12,6 +12,8 @@ import { spacing, radius, font, fontWeight, interaction, checkboxRadius, type Co
 import { haptics } from '../utils/haptics';
 import { isHeldBack } from '../utils/visibilityUtils';
 import type { ProjectListItem } from '../utils/projectStacks';
+import { RotatingChevron } from './RotatingChevron';
+import { animateLayout } from '../utils/layoutAnimation';
 import {
   boardColumns, boardMove, columnIndexAt, insertIndexAt, LOOSE_COLUMN_KEY,
   type BoardColumn, type BoardMove,
@@ -87,6 +89,7 @@ export function ProjectBoard({
   // list's own completed toggle.
   const [doneShown, setDoneShown] = useState<ReadonlySet<string>>(new Set());
   const toggleDone = useCallback((key: string) => {
+    animateLayout();
     setDoneShown(prev => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
@@ -568,7 +571,7 @@ function BoardColumnView({
           >
             <Ionicons name="checkmark-circle-outline" size={13} color={colors.textSecondary} />
             <Text style={styles.doneToggleText}>{completed.length} completed</Text>
-            <Ionicons name={doneShown ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textSecondary} />
+            <RotatingChevron open={doneShown} size={13} color={colors.textSecondary} />
           </TouchableOpacity>
         )}
         {doneShown && completed.map(task => (

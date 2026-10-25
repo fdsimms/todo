@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
@@ -24,6 +24,7 @@ import {
 import { useFastStore } from '../store/useFastStore';
 import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { BUTTON_LABEL } from '../copy/shared';
+import { confirmDelete } from '../utils/confirmDelete';
 
 interface Props {
   visible: boolean;
@@ -100,12 +101,13 @@ export function FastSheet({ visible, fast, lastMealAt, onClose }: Props) {
     }
   };
 
-  const confirmDelete = (close: (after?: () => void) => void) => {
+  const handleDelete = (close: (after?: () => void) => void) => {
     if (!fast) return;
-    Alert.alert('Delete this fast?', 'It is removed from your history.', [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      { text: BUTTON_LABEL.delete, style: 'destructive', onPress: () => close(() => deleteFast(fast.id)) },
-    ]);
+    confirmDelete({
+      title: 'Delete this fast?',
+      message: 'It is removed from your history.',
+      onConfirm: () => close(() => deleteFast(fast.id)),
+    });
   };
 
   const quick = (label: string, at: Date) => {
@@ -212,7 +214,7 @@ export function FastSheet({ visible, fast, lastMealAt, onClose }: Props) {
           {fast && (
             <TouchableOpacity
               style={styles.delete}
-              onPress={() => confirmDelete(close)}
+              onPress={() => handleDelete(close)}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
             >

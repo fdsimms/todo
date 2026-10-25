@@ -14,6 +14,14 @@ export interface PerfEntry {
   /** Milliseconds the step took, or for a mark, milliseconds since the app started. */
   ms: number;
   mark?: true;
+  /**
+   * Where a step's time went, for a step that records its own parts
+   * (`timedPart`): its slowest PERF_PART_LIMIT parts, then the rest summed.
+   * Carried on the step's one entry rather than as entries of their own, so a
+   * step with forty parts doesn't push the run past PERF_ENTRY_LIMIT and drop
+   * the steps after it.
+   */
+  parts?: PerfEntry[];
 }
 
 export type PerfRunKind = 'launch' | 'background';
@@ -31,7 +39,18 @@ export const PERF_RUN_LIMIT = 5;
 /** Most entries kept per run, so a runaway caller can't grow the saved value. */
 export const PERF_ENTRY_LIMIT = 80;
 
+/** Most parts kept on one step before the rest are summed into one line. */
+export const PERF_PART_LIMIT = 10;
+
 let current: PerfEntry[] = [];
+/** Parts recorded since the last step finished; the next step to finish takes them. */
+let pendingParts: PerfEntry[] = [];
+/**
+ * How many `timed` steps are running. A part is only recorded inside one, so
+ * the same work run outside a launch step (a demo swap reloading every store)
+ * can't hand its parts to whichever unrelated step finishes next.
+ */
+let openSteps = 0;
 
 /** Milliseconds from the engine's clock, which starts with the app. Falls back to wall time where there is none. */
 export function perfNow(): number {
@@ -39,10 +58,44 @@ export function perfNow(): number {
   return typeof p?.now === 'function' ? p.now() : Date.now();
 }
 
-/** Records one finished step. */
+const roundMs = (ms: number) => Math.round(ms * 10) / 10;
+
+/**
+ * A step's parts, slowest first: the slowest PERF_PART_LIMIT as they are, and
+ * everything else as one "N others" line, so the total still adds up.
+ */
+export function summarizeParts(parts: readonly PerfEntry[]): PerfEntry[] {
+  const sorted = [...parts].sort((a, b) => b.ms - a.ms);
+  if (sorted.length <= PERF_PART_LIMIT + 1) return sorted;
+  const kept = sorted.slice(0, PERF_PART_LIMIT);
+  const rest = sorted.slice(PERF_PART_LIMIT);
+  return [...kept, { name: `${rest.length} others`, ms: roundMs(rest.reduce((sum, e) => sum + e.ms, 0)) }];
+}
+
+/** Records one finished step, with any parts recorded while it ran. */
 export function recordTiming(name: string, ms: number): void {
+  const parts = pendingParts;
+  pendingParts = [];
   if (current.length >= PERF_ENTRY_LIMIT) return;
-  current.push({ name, ms: Math.round(ms * 10) / 10 });
+  current.push(parts.length > 0
+    ? { name, ms: roundMs(ms), parts: summarizeParts(parts) }
+    : { name, ms: roundMs(ms) });
+}
+
+/**
+ * Runs one part of a larger step and records how long it took, to be attached
+ * to that step's entry when it finishes (see PerfEntry.parts). For a step whose
+ * time is worth breaking down, such as the store fan-out in
+ * `useTaskStore.initialize`.
+ */
+export function timedPart<T>(name: string, fn: () => T): T {
+  if (openSteps === 0) return fn();
+  const start = perfNow();
+  try {
+    return fn();
+  } finally {
+    pendingParts.push({ name, ms: roundMs(perfNow() - start) });
+  }
 }
 
 /** Records a moment rather than a duration: how long after the app started it was reached. */
@@ -54,9 +107,11 @@ export function markMilestone(name: string): void {
 /** Runs `fn` and records how long it took, whether or not it throws. */
 export function timed<T>(name: string, fn: () => T): T {
   const start = perfNow();
+  openSteps += 1;
   try {
     return fn();
   } finally {
+    openSteps -= 1;
     recordTiming(name, perfNow() - start);
   }
 }
@@ -76,6 +131,8 @@ export function takeEntries(): PerfEntry[] {
 /** Test seam: forgets everything recorded. */
 export function resetPerfLog(): void {
   current = [];
+  pendingParts = [];
+  openSteps = 0;
 }
 
 /** `runs` with `run` added, keeping only the newest PERF_RUN_LIMIT. */
@@ -100,7 +157,9 @@ export function parseRuns(raw: string | null): PerfRun[] {
 }
 
 function lineFor(e: PerfEntry): string {
-  return e.mark ? `  ${e.name}: at ${e.ms} ms` : `  ${e.name}: ${e.ms} ms`;
+  const line = e.mark ? `  ${e.name}: at ${e.ms} ms` : `  ${e.name}: ${e.ms} ms`;
+  if (!e.parts || e.parts.length === 0) return line;
+  return [line, ...e.parts.map(p => `      ${p.name}: ${p.ms} ms`)].join('\n');
 }
 
 function totalOf(entries: readonly PerfEntry[]): number {

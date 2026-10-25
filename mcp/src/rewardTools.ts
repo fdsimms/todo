@@ -188,23 +188,28 @@ function priceToMinor(price: number): number {
   return minor;
 }
 
-/** The tax rate to add when `taxable`, refusing rather than quietly skipping it when none is set. */
-function taxFor(replica: Replica, taxable: boolean): number | null {
+/**
+ * The tax rate to add when `taxable`. A call that asks for tax is refused when
+ * no rate is set rather than quietly skipping it; a reward that was already
+ * marked taxable is priced as typed, the way the app prices it ("no rate means
+ * no tax, not an error"), so a new price alone doesn't fail on it.
+ */
+function taxFor(replica: Replica, taxable: boolean, asked: boolean): number | null {
   if (!taxable) return null;
   const percent = replica.settings().rewardSalesTaxPercent;
-  if (percent === null) {
+  if (percent === null && asked) {
     throw new Error('taxable needs a sales tax rate: the person has to set one in Rewards under Exchange rate.');
   }
   return percent;
 }
 
-function costForPrice(replica: Replica, priceMinor: number, taxable = false): number {
+function costForPrice(replica: Replica, priceMinor: number, taxable = false, asked = taxable): number {
   const rate = exchangeRate(replica);
   if (rate === null) {
     throw new Error('A dollar price needs a coin-to-dollar rate: the person has to set a weekly reward budget in Rewards, and have about a week of completed tasks. Give a cost in coins instead.');
   }
   const { rewards: lib } = replica.lib();
-  return lib.coinsForPrice(lib.priceWithTax(priceMinor, taxable, taxFor(replica, taxable)), rate);
+  return lib.coinsForPrice(lib.priceWithTax(priceMinor, taxable, taxFor(replica, taxable, asked)), rate);
 }
 
 /** A new reward. Give a coin cost, or a dollar price the person's own rate converts to one. */
@@ -239,7 +244,7 @@ export function updateReward(
   if (patch.taxable && pricedAt === null) throw new Error('taxable goes with a dollar price. Give price, or leave taxable out.');
   // A change to the tax alone reprices the reward it applies to.
   const cost = pricedAt !== null && (priceMinor !== undefined || patch.taxable !== undefined)
-    ? costForPrice(replica, pricedAt, taxable)
+    ? costForPrice(replica, pricedAt, taxable, patch.taxable === true)
     : patch.cost;
   const reward = replica.updateReward(id, {
     ...(patch.title !== undefined ? { title: patch.title } : {}),

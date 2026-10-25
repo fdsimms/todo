@@ -20,7 +20,6 @@ import {
   RefreshControl,
   Alert,
   AppState,
-  InteractionManager,
   type GestureResponderEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -32,6 +31,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, NutrientKey, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
+import { runAfterPaint, runAfterTransition } from '../utils/afterPaint';
 import { taskHomeFor } from '../utils/taskHome';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
 import { sameGroupsApartFromFold } from '../utils/groupFold';
@@ -65,6 +65,7 @@ import {
 import { liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { useDemoStore } from '../store/useDemoStore';
 import {
+  eventPlaceholderRows,
   eventContextRows,
   mealContextRows,
   healthContextRows,
@@ -104,6 +105,8 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
+import { useStore } from 'zustand';
+import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
 import { MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
 import { SuggestedPinsSheet } from '../components/SuggestedPinsSheet';
 import { MorningCheckInSheet } from '../components/MorningCheckInSheet';
@@ -138,8 +141,7 @@ import {
   type FabDropIntent,
 } from '../utils/fabDrop';
 import { SortableList } from '../components/SortableList';
-import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
-import { QuickAddModal } from '../components/QuickAddModal';
+import type { TaskDraft } from '../components/TaskEditor';
 import { InboxSortSheet } from '../components/InboxSortSheet';
 import { QuickSearchModal } from '../components/QuickSearchModal';
 import { EventImportSheet } from '../components/EventImportSheet';
@@ -244,6 +246,8 @@ import { AnimatedNumber } from '../components/AnimatedNumber';
 import { useLingering } from '../hooks/useLingering';
 import { PillHighlightLayer, PillLabel, usePillHighlight } from '../components/SlidingPills';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from '../components/RotatingChevron';
+import { loadEventRowMemo, saveEventRowMemo } from '../utils/eventRowMemo';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -288,6 +292,12 @@ const LATER_END_REACHED_THRESHOLD = 900;
 // The same first-paint budget for the Today list, which is remounted from
 // scratch on every switch back to it (see the todayTaskLimit block below).
 // There is no settled size: once the switch has painted, the whole day mounts.
+/**
+ * The longest Today holds blank rows for its events before giving up on the
+ * calendar read (see `showEventPlaceholders`). A read lands in well under a
+ * second; past this one is not coming soon, and blank cards would read as broken.
+ */
+const EVENT_PLACEHOLDER_MAX_MS = 3000;
 const TODAY_INITIAL_TASK_LIMIT = 15;
 
 // How long the created-task toast stays up before it dismisses itself —
@@ -402,7 +412,7 @@ function SectionHeader({
             {label}
             {collapsed && count !== undefined ? ` (${count})` : ''}
           </Text>
-          <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+          <RotatingChevron open={!collapsed} closed="forward" size={13} color={colors.textTertiary} />
           {collapsed && summary ? (
             <Text style={styles.sectionHeaderSummary} numberOfLines={1}>{summary}</Text>
           ) : null}
@@ -511,7 +521,7 @@ function VacationHiddenSection({
         <Text style={styles.hiddenToggleText}>
           {expanded ? 'Hide' : 'Show'} {tasks.length} hidden on vacation
         </Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+        <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
       </TouchableOpacity>
       {expanded && tasks.map(task => (
         <React.Fragment key={task.id}>{renderHiddenTask(task)}</React.Fragment>
@@ -562,7 +572,7 @@ function LaterTodaySection({
         <Text style={styles.hiddenToggleText}>
           {expanded ? 'Hide' : 'Show'} {totalCount} later today
         </Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+        <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
       </TouchableOpacity>
       {expanded && sections.map(section => (
         <View key={section.key}>
@@ -614,7 +624,7 @@ function ExpiredSection({
         <Text style={styles.hiddenToggleText}>
           {expanded ? 'Hide' : 'Show'} {tasks.length} expired
         </Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+        <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
       </TouchableOpacity>
       {expanded && tasks.map(task => (
         <React.Fragment key={task.id}>{renderExpiredTask(task)}</React.Fragment>
@@ -653,7 +663,7 @@ function SlotWaitingSection({
         <Text style={styles.hiddenToggleText}>
           {expanded ? 'Hide' : 'Show'} {tasks.length} waiting for a lighter day
         </Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+        <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
       </TouchableOpacity>
       {expanded && tasks.map(task => (
         <React.Fragment key={task.id}>{renderWaitingTask(task)}</React.Fragment>
@@ -940,8 +950,15 @@ export function TodayScreen() {
     [colors],
   );
 
-  const [quickAddVisible, setQuickAddVisible] = useState(false);
-  const [quickAddType, setQuickAddType] = useState<TaskKind>('task');
+  // The quick-add and editor sheets' open state lives in a store of its own
+  // rather than in this component's state (see SheetHosts), so opening one
+  // re-renders the sheet and not this whole screen. The setters keep their
+  // useState names, so every caller reads as it did.
+  const quickAddStore = useSheetStore<QuickAddSheetState>(QUICK_ADD_CLOSED);
+  const setQuickAddVisible = useCallback((visible: boolean) => quickAddStore.setState({ visible }), [quickAddStore]);
+  const setQuickAddType = useCallback((type: TaskKind) => quickAddStore.setState({ type }), [quickAddStore]);
+  const setQuickAddSeed = useCallback((seed: QuickAddSheetState['seed']) => quickAddStore.setState({ seed }), [quickAddStore]);
+  const setQuickAddSeedLabel = useCallback((seedLabel: string | null) => quickAddStore.setState({ seedLabel }), [quickAddStore]);
   const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A row a jump is on its way to, held as state rather than scrolled straight
@@ -992,14 +1009,24 @@ export function TodayScreen() {
     });
     return true;
   }, []);
-  const [editorVisible, setEditorVisible] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
+  // In a store, for the reason quickAddStore gives. This screen reads it only
+  // while something here depends on it: the two-pane layout, which lights the
+  // row being edited and shows a placeholder beside the list, and an itinerary
+  // import waiting for the editor to close before opening the next entry.
+  const editorStore = useSheetStore<EditorSheetState>(EDITOR_CLOSED);
+  const setEditorVisible = useCallback((visible: boolean) => editorStore.setState({ visible }), [editorStore]);
+  const setEditingTask = useCallback((task: Task | null) => editorStore.setState({ task }), [editorStore]);
+  const setEditorInitialDraft = useCallback((draft: Partial<TaskDraft> | null) => editorStore.setState({ draft }), [editorStore]);
   const [eventImportVisible, setEventImportVisible] = useState(false);
   // Events still waiting to become a task, from an itinerary import that read
   // more than one. Drained one at a time by the effect below, which opens the
   // next as soon as the editor closes on the previous — see its own comment.
   const [pendingEventImports, setPendingEventImports] = useState<ExtractedCalendarEvent[]>([]);
+  // Read only when watched (see editorStore): false otherwise, whatever the
+  // sheet is doing, so opening and closing it leaves this screen alone.
+  const editorWatched = twoPane || pendingEventImports.length > 0;
+  const editorVisible = useStore(editorStore, st => editorWatched && st.visible);
+  const paneEditingTaskId = useStore(editorStore, st => (twoPane && st.visible ? st.task?.id ?? null : null));
   const [quickEventVisible, setQuickEventVisible] = useState(false);
   const [quickEventSeed, setQuickEventSeed] = useState<QuickEventSeed | null>(null);
   const [pullingToSearch, setPullingToSearch] = useState(false);
@@ -1589,7 +1616,7 @@ export function TodayScreen() {
       // one that writes re-renders this whole screen, so running them inline
       // stacked that work on the frame the tab switch was trying to paint.
       // A stale row they clear can show for that moment and no longer.
-      const sweeps = InteractionManager.runAfterInteractions(() => {
+      const sweeps = runAfterTransition(() => {
         // On *focus* as well as on foreground below, which is this pass alone and
         // deliberate: a pantry check is answered on another screen — its own link
         // opens the item sheet — and the six writes that answer it (both Pantry
@@ -2104,7 +2131,7 @@ export function TodayScreen() {
   // that reads the list (same trade inboxTasks makes above). A scalar, so it
   // can't churn renders — this recomputes on every store write and re-renders
   // only when the number itself moves.
-  const unscheduledCount = useTaskStore(s => openTasksOf(s.tasks).filter(isUnscheduledTask).length);
+  const unscheduledCount = useTaskStore(s => s.unscheduledTasks().length);
   // Later and Inbox stay whatever the mode is: each is the only route to a set
   // of real tasks, and a lens that hides tasks isn't a simplification. Only
   // Unscheduled goes, and only while it's empty and isn't the view you're on.
@@ -2778,6 +2805,22 @@ export function TodayScreen() {
   const demoActive = useDemoStore(s => s.active);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
+  const calendarReadFailed = useCalendarStore(s => s.readFailed);
+  // Blank rows held for today's events on a cold launch, as many as were drawn
+  // last time today (eventRowMemo.ts), so the tasks below don't jump down when
+  // the read lands. Only until the first read settles, either way, and never
+  // longer than EVENT_PLACEHOLDER_MAX_MS: a read that never reports (every
+  // calendar hidden by vacation, say) must not leave blank cards behind.
+  const [rememberedEventRows] = useState(() => loadEventRowMemo(getLogicalDayKey(new Date(), dayResetTime)));
+  const [eventReadSettled, setEventReadSettled] = useState(false);
+  useEffect(() => {
+    if (calendarLoaded || calendarReadFailed) setEventReadSettled(true);
+  }, [calendarLoaded, calendarReadFailed]);
+  useEffect(() => {
+    if (rememberedEventRows.length === 0) return;
+    const timer = setTimeout(() => setEventReadSettled(true), EVENT_PLACEHOLDER_MAX_MS);
+    return () => clearTimeout(timer);
+  }, [rememberedEventRows]);
   const calendarsById = useCalendarStore(s => s.calendarsById);
   // Which calendar an event came from is worth a row only once "which one" is
   // a real question — with a single calendar chosen every event already comes
@@ -2825,6 +2868,11 @@ export function TodayScreen() {
       : []),
     [calendarReadEnabled, calendarLoaded, demoActive, calendarEvents, todayCalendarDayEnd]
   );
+  const showEventPlaceholders = rememberedEventRows.length > 0
+    && !eventReadSettled
+    && calendarReadEnabled
+    && calendarIds.length > 0
+    && !demoActive;
 
   // The day's events and its uncooked-and-untasked meals, as rows in the list
   // (#1571). Each files under a category — the calendar's own, and the cook
@@ -2934,7 +2982,9 @@ export function TodayScreen() {
     }
     // No category means nowhere to put them — see ensureCalendarEventCategory
     // for why a cleared setting is a real answer rather than a missing one.
-    if (calendarEventCategory) {
+    if (calendarEventCategory && showEventPlaceholders) {
+      rows.push(...eventPlaceholderRows(rememberedEventRows, calendarEventCategory));
+    } else if (calendarEventCategory) {
       rows.push(...eventContextRows(todayCalendarEvents, {
         now: new Date(),
         category: calendarEventCategory,
@@ -2982,8 +3032,18 @@ export function TodayScreen() {
     healthToday, healthCategory, stepGoal, healthTodayHidden, dayResetTime,
     limitsTodayCategory, limitsTodayHidden, goalsTodayCategory, goalsTodayHidden, nutritionTargets, nutritionLimits, limitWarnPercent,
     recentFoodEntries, foodLogCount, foodLogWindow,
-    minuteTick,
+    minuteTick, showEventPlaceholders, rememberedEventRows,
   ]);
+
+  // What the next cold launch holds space for: the event rows just drawn from
+  // a read that landed, and which of them had a location line. Written as they
+  // change, so a day whose meetings have ended holds none.
+  useEffect(() => {
+    if (!calendarLoaded || !calendarReadEnabled || demoActive) return;
+    saveEventRowMemo(todayKey, contextRows
+      .filter(r => r.kind === 'event' && !r.placeholder)
+      .map(r => ({ withLocation: !!r.location })));
+  }, [contextRows, calendarLoaded, calendarReadEnabled, demoActive, todayKey]);
 
   // Every row the current layout *has*, before anything the user has folded
   // away is dropped. `data` below is this narrowed to what's on screen; this
@@ -3185,7 +3245,7 @@ export function TodayScreen() {
   // by this effect's own cleanup.
   const [todayTaskLimit, setTodayTaskLimit] = useState<number | undefined>(TODAY_INITIAL_TASK_LIMIT);
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
+    const handle = runAfterPaint(() => {
       setTodayTaskLimit(viewMode === 'today' ? undefined : TODAY_INITIAL_TASK_LIMIT);
     });
     return () => handle.cancel();
@@ -3255,19 +3315,6 @@ export function TodayScreen() {
   // screen re-runs every row's renderItem. The two things that do change with
   // it — the label on the button, the highlight on a stack — subscribe.
   const fabIntentChannel = useFabIntentChannel();
-  const [quickAddSeed, setQuickAddSeed] = useState<
-    | {
-        category?: string | null;
-        groupId?: string;
-        pinned?: boolean;
-        dueDate?: string | null;
-        timeSegments?: TimeOfDay[];
-        windowStart?: string | null;
-        windowEnd?: string | null;
-      }
-    | undefined
-  >(undefined);
-  const [quickAddSeedLabel, setQuickAddSeedLabel] = useState<string | null>(null);
   // The drop that opened the sheet, read once when the task comes back.
   const pendingDropRef = useRef<FabDropIntent | null>(null);
 
@@ -3287,10 +3334,7 @@ export function TodayScreen() {
     if (namedStackId && !useTaskStore.getState().tasks.some(t => t.groupId === namedStackId)) {
       removeGroupRow(namedStackId);
     }
-    setQuickAddVisible(false);
-    setQuickAddSeed(undefined);
-    setQuickAddSeedLabel(null);
-    setQuickAddType('task');
+    quickAddStore.setState(QUICK_ADD_CLOSED);
     pendingDropRef.current = null;
   };
   // Stable, because QuickAddModal is memoized and stays mounted while hidden:
@@ -3829,7 +3873,7 @@ export function TodayScreen() {
         expanded={expandedTaskId === rowKey}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== rowKey && !selectionMode}
         onEdit={handleRowEdit}
-        paneActive={twoPane && editorVisible && editingTask?.id === task.id}
+        paneActive={paneEditingTaskId === task.id}
         subtaskCount={subs.items.length}
         subtaskDoneCount={subs.doneCount}
         subtasks={subs.items}
@@ -3964,7 +4008,8 @@ export function TodayScreen() {
     // order to commit and nothing for resolveDrop to place. Same as a section
     // header, which is also in this data and also static.
     if (item.type === 'context') {
-      const openContextRow = item.row.kind === 'event' ? () => {
+      const openContextRow = item.row.placeholder ? undefined
+        : item.row.kind === 'event' ? () => {
               const moved = item.row.id.startsWith('moved-')
                 ? movedEvents.find(m => `moved-${eventTaskKey(m.event)}` === item.row.id)
                 : undefined;
@@ -4371,18 +4416,12 @@ export function TodayScreen() {
               acts on what was picked. */}
           {!selectionMode && (
             <TouchableOpacity
+              // No confirm: clearAllPins puts an undo on the bar that pins the
+              // block back as it was.
               onPress={() => {
-                // One pinned task is a single unpin, which is cheap to redo,
-                // so there is nothing "all" about it worth stopping to confirm.
-                if (pinnedTasks.length === 1) { clearAllPins(); return; }
-                Alert.alert(
-                  'Unpin all tasks?',
-                  'This removes every task from the Pinned Tasks block. The tasks aren’t changed.',
-                  [
-                    { text: BUTTON_LABEL.cancel, style: 'cancel' },
-                    { text: 'Unpin all', style: 'destructive', onPress: clearAllPins },
-                  ],
-                );
+                haptics.tap();
+                animateLayout();
+                clearAllPins();
               }}
               hitSlop={8}
               accessibilityRole="button"
@@ -4491,7 +4530,7 @@ export function TodayScreen() {
                       {band.project.title}
                       {collapsed ? ` (${band.taskCount})` : ''}
                     </Text>
-                    <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+                    <RotatingChevron open={!collapsed} closed="forward" size={13} color={colors.textTertiary} />
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -4887,7 +4926,7 @@ export function TodayScreen() {
   // cancelled by this effect's own cleanup, and the ramp-up that replaces it
   // is a Math.max.
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
+    const handle = runAfterPaint(() => {
       setLaterTaskLimit(limit =>
         viewMode === 'later' ? Math.max(limit, LATER_SETTLED_TASK_LIMIT) : LATER_INITIAL_TASK_LIMIT,
       );
@@ -5835,18 +5874,13 @@ export function TodayScreen() {
           />
         )}
 
-        <LazySheet open={quickAddVisible} warm>
-          <QuickAddModal
-            visible={quickAddVisible}
-            onClose={onQuickAddClose}
-            onOpenFull={onQuickAddOpenFull}
-            context={viewMode}
-            onCreated={onQuickAddCreated}
-            seed={quickAddSeed}
-            seedLabel={quickAddSeedLabel}
-            initialType={quickAddType}
-          />
-        </LazySheet>
+        <QuickAddSheetHost
+          store={quickAddStore}
+          onClose={onQuickAddClose}
+          onOpenFull={onQuickAddOpenFull}
+          context={viewMode}
+          onCreated={onQuickAddCreated}
+        />
 
         <LazySheet open={inboxSortVisible}>
           <InboxSortSheet
@@ -5917,14 +5951,7 @@ export function TodayScreen() {
 
         {/* A sheet over the list, unless there is room for it beside it (below). */}
         {!twoPane && (
-          <LazySheet open={editorVisible} warm>
-            <TaskEditor
-              visible={editorVisible}
-              task={editingTask}
-              initialDraft={editorInitialDraft}
-              onClose={closeEditor}
-            />
-          </LazySheet>
+          <EditorSheetHost store={editorStore} onClose={closeEditor} />
         )}
 
         <LazySheet open={filterVisible}>
@@ -6198,13 +6225,7 @@ export function TodayScreen() {
               subtitle="Its details open here. Tap the pencil on a task, or add a new one."
             />
           )}
-          <TaskEditor
-            inline
-            visible={editorVisible}
-            task={editingTask}
-            initialDraft={editorInitialDraft}
-            onClose={closeEditor}
-          />
+          <EditorSheetHost store={editorStore} onClose={closeEditor} inline />
         </>
       )}
     />

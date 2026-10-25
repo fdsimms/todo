@@ -2776,6 +2776,10 @@ export function RecipeDetailScreen() {
             placeholderTextColor={colors.textTertiary}
             maxLength={GROCERY_NAME_MAX_LENGTH * 4}
             multiline
+            // Multiline so a pasted recipe keeps its lines, but Return adds
+            // the line and stays put for the next one. Left to its default,
+            // a multiline field's Return types a newline and never submits.
+            submitBehavior="submit"
             returnKeyType="done"
             autoCapitalize="none"
             accessibilityLabel="Add an ingredient"
@@ -2883,7 +2887,9 @@ export function RecipeDetailScreen() {
             placeholder={editingStepId ? 'Edit this step' : 'Add a step'}
             placeholderTextColor={colors.textTertiary}
             multiline
-            blurOnSubmit
+            // Adding keeps the keyboard up for the next step; saving an edit
+            // is the end of that edit, so it lets go.
+            submitBehavior={editingStepId ? 'blurAndSubmit' : 'submit'}
             returnKeyType="done"
             accessibilityLabel={editingStepId ? 'Edit step' : 'Add a step'}
           />
@@ -3047,7 +3053,8 @@ export function RecipeDetailScreen() {
             placeholder="Add a prep task"
             placeholderTextColor={colors.textTertiary}
             maxLength={TITLE_MAX_LENGTH}
-            blurOnSubmit
+            // Stays focused so a run of prep tasks is typed one after another.
+            blurOnSubmit={false}
             returnKeyType="done"
             accessibilityLabel="Add a prep task"
           />
@@ -3748,6 +3755,10 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     paddingRight: spacing.md,
     borderLeftWidth: 2,
     borderLeftColor: colors.accent,
+    // Each row either side already pads itself by spacing.smd, so the joint
+    // between two options sat a row's padding away from both. Pull the rows
+    // in so the divider hugs the text it separates.
+    marginVertical: -spacing.xsm,
   },
   choiceOrLine: {
     flex: 1,

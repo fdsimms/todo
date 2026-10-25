@@ -1336,7 +1336,7 @@ interface GroceryStore extends UndoHistoryActions {
    * removeFromList over a whole selection at once. `opts.listId` as setCheckedMany's.
    *
    * `opts.registerUndo` files one undo for the batch, and only the bulk bar
-   * passes it. Every other caller is either an undo itself (`undoForAdds`) or
+   * and the item sheet's Remove from list pass it. Every other caller is either an undo itself (`undoForAdds`) or
    * something the app did unattended (the Reminders mirror), and neither is a
    * step the user took and might want back.
    */
@@ -4133,8 +4133,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // reason Clear is, so the undo bar offers it rather than only the shake.
     if (opts?.registerUndo) {
       const count = leaving.length;
+      const only = count === 1 ? parking[0] : undefined;
       get().setLastAction({
-        label: `Removed ${count} ${count === 1 ? 'item' : 'items'} from the list`,
+        label: only
+          ? `Removed “${only.name}” from the list`
+          : `Removed ${count} ${count === 1 ? 'item' : 'items'} from the list`,
         destructive: true,
         redo: () => get().removeFromListMany(ids, { listId, registerUndo: true }),
         undo: () => {

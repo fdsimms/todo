@@ -101,6 +101,13 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { isPortionBox } from '../types';
 import { LazySheet } from '../components/LazySheet';
 import { useFabBottom } from '../components/Fab';
+import { useRowSelection } from '../hooks/useRowSelection';
+import { PaintSelectionProvider, PaintSelectionRow } from '../components/PaintSelection';
+import { ListBulkBar } from '../components/ListBulkBar';
+import { SwipeableRow } from '../components/SwipeableRow';
+import { SwipeActionButtons } from '../components/SwipeActionButtons';
+import { SelectionDot } from '../components/SelectionDot';
+import { applyPantryBulk, type PantryBulkAction } from '../utils/pantryBulk';
 
 /**
  * Everything the app currently thinks is in your kitchen, in one place — the
@@ -332,6 +339,39 @@ export function KitchenScreen() {
           }),
     [sections, entries, dropNonce, query]
   );
+
+  // ==== bulk selection ====
+  // A swipe on a row selects it, the way every other list's rows do, and the
+  // bar acts on the lot at once: clearing out a fridge was two taps a row.
+  // Containers are in it too, since that's half of what goes off.
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+    painting,
+    paintProps,
+  } = useRowSelection();
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
+  const selectableIds = useMemo(
+    () => rows.flatMap(r => (r.type === 'entry' ? [r.entry.id] : [])),
+    [rows]
+  );
+  const runBulk = (action: PantryBulkAction) => {
+    const chosen = entries.filter(e => selectedIds.has(e.id));
+    animateLayout();
+    const changed = applyPantryBulk(action, chosen);
+    if (changed > 0) {
+      if (action === 'usedUp' || action === 'spoiled') haptics.success();
+      else haptics.tap();
+    } else {
+      haptics.warning();
+    }
+    exitSelection();
+  };
 
   // ==== recipes for what is about to go ====
   // What to cook with what's dying. Off `useUpEntries` rather than the whole
@@ -886,11 +926,17 @@ export function KitchenScreen() {
     const facts = rowFacts(entry);
     const chipKind = facts ? pantryRowChip(facts) : 'have';
     const marks = facts ? pantryRowMarks(facts) : [];
-    return (
+    const selected = selectedIds.has(entry.id);
+    const swipeSelect = {
+      onSelect: () => enterSelectionMode(entry.id),
+      accessibilityLabel: `Select ${entry.title}`,
+    };
+    const rowBody = (
       <TouchableOpacity
         style={[styles.row, isActive && styles.rowActive]}
         activeOpacity={interaction.activeOpacity}
         onPress={() => {
+          if (selectionMode) { toggleSelection(entry.id); return; }
           haptics.tap();
           if (entry.kind === 'leftover') setOpenLeftoverId(entry.sourceId);
           // A box's corrections live on the box, so its row opens the item
@@ -905,9 +951,12 @@ export function KitchenScreen() {
           } else setOpenItemId(entry.sourceId);
         }}
         // The lift haptic is ReorderableList's own, so there's none here.
-        onLongPress={drag}
+        // No drag while selecting: the rows are being picked, not moved.
+        onLongPress={selectionMode ? undefined : drag}
         delayLongPress={interaction.delayLongPress}
         accessibilityRole="button"
+        // The selection dot isn't its own element, so the row says whether it's picked.
+        accessibilityState={selectionMode ? { selected } : undefined}
         accessibilityLabel={`${entry.title}, ${entry.caption}`}
         accessibilityHint={
           entry.kind === 'leftover'
@@ -957,7 +1006,7 @@ export function KitchenScreen() {
             said about it. The chip replaces a bare ✕ that only said "out",
             and a container's says where it is, with "finished" and "threw it
             out" as two entries of its menu so neither is guessed. */}
-        {facts && (
+        {facts && !selectionMode && (
           <PressableScale
             style={[styles.chip, chipKind === 'low' && styles.chipLow]}
             onPress={e => openRowMenu(entry, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
@@ -975,7 +1024,21 @@ export function KitchenScreen() {
             />
           </PressableScale>
         )}
+        <SwipeActionButtons enabled={!isActive && !selectionMode} selectAction={swipeSelect} />
+        {/* In the chip's place while selecting, so nothing moves aside for it. */}
+        {selectionMode && (
+          <SelectionDot selected={selected} onPress={() => toggleSelection(entry.id)} />
+        )}
       </TouchableOpacity>
+    );
+    return (
+      // The card is the wrapper, so the swipe panel reveals inside its rounded
+      // edge. SwipeableRow stays mounted through selection mode (see its note).
+      <PaintSelectionRow rowId={isActive ? null : entry.id} style={styles.rowWrapper}>
+        <SwipeableRow enabled={!isActive && !selectionMode} selectAction={swipeSelect}>
+          {rowBody}
+        </SwipeableRow>
+      </PaintSelectionRow>
     );
   };
 
@@ -1091,6 +1154,9 @@ export function KitchenScreen() {
           autoCapitalize="none"
           returnKeyType={canAdd ? 'done' : 'search'}
           onSubmitEditing={canAdd ? handleAdd : undefined}
+          // An add keeps the keyboard up for the next name (handleAdd clears
+          // the field for exactly that); a search has nothing to keep it for.
+          blurOnSubmit={!canAdd}
           accessibilityLabel="Find something in the pantry, or type a name to add it"
         />
         <FieldClearButton query={query} onClear={clearQuery} />
@@ -1107,8 +1173,12 @@ export function KitchenScreen() {
         </View>
       )}
 
+      <PaintSelectionProvider {...paintProps}>
       <ReorderableList
         refreshControl={pullSearch.refreshControl}
+        // A paint down the selection dots owns the touch; the list has to be
+        // told directly (see PaintSelectionProvider).
+        scrollEnabled={!painting}
         data={rows}
         keyExtractor={kitchenRowKey}
         renderItem={renderRow}
@@ -1125,7 +1195,13 @@ export function KitchenScreen() {
         contentContainerStyle={
           rows.length === 0
             ? styles.emptyContainer
-            : [styles.list, { paddingBottom: tabBarHeight + spacing.xl }]
+            : [styles.list, {
+              // Clear of the bulk bar while selecting, so the last rows can
+              // scroll out from under it.
+              paddingBottom: selectionMode
+                ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm
+                : tabBarHeight + spacing.xl,
+            }]
         }
         ListEmptyComponent={
           <EmptyState
@@ -1140,6 +1216,25 @@ export function KitchenScreen() {
           />
         }
       />
+      </PaintSelectionProvider>
+
+      {selectionMode && (
+        <ListBulkBar
+          selectedCount={selectedIds.size}
+          totalCount={selectableIds.length}
+          actions={[
+            { key: 'usedUp', icon: 'checkmark-done-circle', label: 'Used up', onPress: () => runBulk('usedUp') },
+            { key: 'spoiled', icon: 'trash', label: 'Went bad', tone: 'destructive', onPress: () => runBulk('spoiled') },
+            { key: 'have', icon: 'add-circle', label: 'Got it', onPress: () => runBulk('have') },
+            { key: 'freeze', icon: 'snow', label: 'Freeze', onPress: () => runBulk('freeze') },
+          ]}
+          onSelectAll={() => selectAll(selectableIds)}
+          onDeselectAll={deselectAll}
+          onCancel={exitSelection}
+          bottomInset={tabBarHeight}
+          onHeightChange={setBulkBarHeight}
+        />
+      )}
 
       <LazySheet open={openItemId !== null}>
         <GroceryItemSheet
@@ -1295,14 +1390,21 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
       textTransform: 'uppercase',
     },
+    // The card: margins, corners and the clip the swipe panel reveals inside.
+    rowWrapper: {
+      backgroundColor: colors.bgSecondary,
+      marginHorizontal: spacing.md,
+      marginVertical: spacing.xxs,
+      borderRadius: radius.md,
+      overflow: 'hidden',
+    },
+    // Flush inside the card, with its own fill so the panel stays covered
+    // until the row slides.
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
       backgroundColor: colors.bgSecondary,
-      marginHorizontal: spacing.md,
-      marginVertical: spacing.xxs,
-      borderRadius: radius.md,
       paddingVertical: spacing.smd,
       paddingHorizontal: spacing.md,
     },

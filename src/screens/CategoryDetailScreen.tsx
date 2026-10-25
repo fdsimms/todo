@@ -81,6 +81,12 @@ export function CategoryDetailScreen() {
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  // Stable, so the closed (memoized) editor doesn't re-render with this screen.
+  const closeTaskEditor = useCallback(() => {
+    setEditorVisible(false);
+    setExpandedTaskId(null);
+    setEditorInitialDraft(null);
+  }, []);
   // True while a subtask inside the expanded row is mid-drag; the list has to
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
   const [draggingSubtask, setDraggingSubtask] = useState(false);
@@ -363,11 +369,7 @@ export function CategoryDetailScreen() {
             visible={editorVisible}
             task={editingTask}
             initialDraft={editorInitialDraft}
-            onClose={() => {
-              setEditorVisible(false);
-              setExpandedTaskId(null);
-              setEditorInitialDraft(null);
-            }}
+            onClose={closeTaskEditor}
           />
         </LazySheet>
 

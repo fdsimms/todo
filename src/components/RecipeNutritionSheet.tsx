@@ -37,6 +37,8 @@ import { SheetHeader } from './SheetHeader';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from './RotatingChevron';
+import { animateLayout } from '../utils/layoutAnimation';
 
 /**
  * A dish's whole nutrition panel, and the ingredients it couldn't count.
@@ -585,7 +587,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
                   <TouchableOpacity
                     style={styles.countedHeader}
                     activeOpacity={interaction.activeOpacity}
-                    onPress={() => { haptics.tap(); setExpandedId(expanded ? null : line.id); }}
+                    onPress={() => { haptics.tap(); animateLayout(); setExpandedId(expanded ? null : line.id); }}
                     accessibilityRole="button"
                     accessibilityLabel={`${expanded ? 'Hide' : 'Show'} what ${line.name} contributes`}
                     accessibilityState={{ expanded }}
@@ -598,11 +600,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
                         {formatAmount('calorieKcal', contribution.calorieKcal)} cal
                       </Text>
                     )}
-                    <Ionicons
-                      name={expanded ? 'chevron-up' : 'chevron-down'}
-                      size={iconSize.xs}
-                      color={colors.textTertiary}
-                    />
+                    <RotatingChevron open={expanded} size={iconSize.xs} color={colors.textTertiary} />
                   </TouchableOpacity>
                   {expanded && contribution && (
                     <View style={styles.countedDetail}>

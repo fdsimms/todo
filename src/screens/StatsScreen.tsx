@@ -5,7 +5,7 @@
 //
 //   ==== <name> ====        the section banners through the logic half
 //   makeStyles              styles, at the bottom
-import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useMemo, useRef, useState, useEffect, useLayoutEffect } from 'react';
 import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   View,
@@ -447,7 +447,9 @@ export function StatsScreen() {
   const leftovers = useLeftoverStore(s => s.leftovers);
   const storedCookingCounts = useMealPlanStore(s => s.cookingCounts);
   const refreshCookingCounts = useMealPlanStore(s => s.refreshCookingCounts);
-  const [cookWindow, setCookWindow] = useState<CookingWindow | null>(null);
+  const [cookWindow, setCookWindow] = useState<CookingWindow | null>(
+    () => cookingWindow(getLogicalToday(), COOKING_DAYS),
+  );
 
   // Gated at the point of use rather than by writing anything off, like
   // `mealsOnToday` in TodayScreen: someone who has put the kitchen away
@@ -487,6 +489,20 @@ export function StatsScreen() {
       loadFoodWindow(next.startKey, next.endKey);
     }, [kitchenEnabled, loadFoodWindow]),
   );
+
+  // The first read happens before the first frame is drawn. The focus effects
+  // above run after paint, so on a first visit the cooking and eating sections
+  // arrived a frame late (and someone whose history is all kitchen saw "No
+  // data yet" first). Same fix MealPlanScreen and FoodLogScreen use for their
+  // windows. The focus effects still run, which keeps a return visit current.
+  useLayoutEffect(() => {
+    if (!kitchenEnabled) return;
+    const first = cookingWindow(getLogicalToday(), COOKING_DAYS);
+    refreshCookingCounts(first);
+    loadFoodWindow(first.startKey, first.endKey);
+    // Mount only: everything after this is the focus effects' job.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Off `tasks` rather than `done`: onTimeSummary above makes the same call,
   // doing its own isRealCompletion/parentId check rather than assuming a

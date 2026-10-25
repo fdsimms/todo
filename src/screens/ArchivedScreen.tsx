@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRoute } from '@react-navigation/native';
@@ -31,7 +31,6 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
-import { BUTTON_LABEL } from '../copy/shared';
 
 // A quiet, out-of-the-way home for recurring tasks paused indefinitely (see
 // archiveTask/unarchiveTask in useTaskStore) — reached only via the side
@@ -58,6 +57,8 @@ export function ArchivedScreen() {
 
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
+  // Stable, so the closed (memoized) editor doesn't re-render with this screen.
+  const closeTaskEditor = useCallback(() => setEditorVisible(false), []);
   const searchFilter = useFilterField();
   const query = searchFilter.query;
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -146,27 +147,14 @@ export function ArchivedScreen() {
   // there would quietly bring the task back rather than delete it.
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
-    const plural = ids.length === 1 ? 'task' : 'tasks';
     haptics.warning();
-    Alert.alert(
-      `Delete ${ids.length} ${plural}?`,
-      `This deletes ${ids.length === 1 ? 'it' : 'them'} along with the history. You can undo it right after.`,
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.delete,
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            // skipGeneratedOptOut: an archived row is one the user kept out of
-            // the way, and deleting it is deleting history, not declining the
-            // generator that wrote the task (see clearLogbook).
-            bulkDeleteTasks(ids, { skipGeneratedOptOut: true });
-            exitSelection();
-          },
-        },
-      ],
-    );
+    animateLayout();
+    // skipGeneratedOptOut: an archived row is one the user kept out of
+    // the way, and deleting it is deleting history, not declining the
+    // generator that wrote the task (see clearLogbook). No confirm:
+    // bulkDeleteTasks files one undo on the bar for the batch.
+    bulkDeleteTasks(ids, { skipGeneratedOptOut: true });
+    exitSelection();
   };
 
   const openEditor = useCallback((task: Task) => {
@@ -307,7 +295,7 @@ export function ArchivedScreen() {
         <TaskEditor
           visible={editorVisible}
           task={editingTask}
-          onClose={() => setEditorVisible(false)}
+          onClose={closeTaskEditor}
         />
       </LazySheet>
       <ScrollToTopButton {...scrollTop.buttonProps} />

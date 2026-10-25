@@ -99,6 +99,7 @@ import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { PantryAnswerField } from './PantryAnswerField';
 import { unfixableQuantityReason, weighableLine, type LineWeighing } from '../utils/ingredientGrams';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
@@ -605,6 +606,9 @@ export function FoodLogEntrySheet({
   // The open estimate's Log button, drawn at the foot of the sheet rather than
   // at the end of the card, which a long estimate pushes below the fold.
   const [estimateLog, setEstimateLog] = useState<EstimateLogAction | null>(null);
+  // The Log button is pinned to the foot of the sheet, which the keyboard covers
+  // while the description is still being typed, so it rides above it.
+  const keyboardHeight = useKeyboardHeight(estimateOpen && !!estimateLog);
   // The earlier estimated helping whose amount is being changed before it is
   // logged again (`openHelping`).
   const [amountHelping, setAmountHelping] = useState<FoodLogEntry | null>(null);
@@ -2313,9 +2317,6 @@ export function FoodLogEntrySheet({
               );
             })()}
             <Text style={styles.hint}>
-              {/* Says where a number nobody typed came from, and only while
-                  the field still holds it. */}
-              {recalledAmount !== null && amount === recalledAmount ? 'Filled in from the last time you logged this. ' : ''}
               {picked.kind === 'dish'
                 ? dishWeightHint
                 : foodUnitOptions.length > 0 && amountUnit !== 'other'
@@ -2390,17 +2391,21 @@ export function FoodLogEntrySheet({
             )}
 
             {!!built && (
-              <Text style={styles.preview}>
-                {built.nutrition.amounts.calorieKcal !== undefined
-                  ? `${Math.round(built.nutrition.amounts.calorieKcal)} cal`
-                  : 'No calories stated'}
-                {built.nutrition.amounts.proteinG !== undefined
-                  ? `, ${Math.round(built.nutrition.amounts.proteinG)} g protein`
-                  : ''}
-                {built.grams !== null ? `, ${built.grams} g` : ''}
-              </Text>
+              <LimitImpactLines
+                impacts={limitImpacts}
+                stats={[
+                  {
+                    value: built.nutrition.amounts.calorieKcal !== undefined
+                      ? String(Math.round(built.nutrition.amounts.calorieKcal)) : '--',
+                    label: 'cal',
+                  },
+                  ...(built.nutrition.amounts.proteinG !== undefined
+                    ? [{ value: `${Math.round(built.nutrition.amounts.proteinG)} g`, label: 'protein' }] : []),
+                  ...(built.grams !== null ? [{ value: `${built.grams} g`, label: 'weight' }] : []),
+                ]}
+                style={styles.limitImpacts}
+              />
             )}
-            {!!built && <LimitImpactLines impacts={limitImpacts} style={styles.limitImpacts} />}
             {/* This label states no density of its own, so the weight behind
                 a volume amount is approximated from water's — right for most
                 drinks, off for anything syrupy or creamy. See
@@ -2569,6 +2574,23 @@ export function FoodLogEntrySheet({
               surface="page"
             />
 
+            {/* Only for a food that is a catalog row (a dish or a bare database
+                food has no pantry entry to update), and not when correcting an
+                entry that was logged already. */}
+            {!!picked.itemId && !editing && (
+              <>
+                <PantryAnswerField
+                  itemId={picked.itemId}
+                  value={pantryAnswer}
+                  onChange={setPantryAnswer}
+                  addToList={pantryAddToList}
+                  onAddToListChange={setPantryAddToList}
+                  surface="page"
+                  style={styles.pantryField}
+                />
+              </>
+            )}
+
             {/* One row on every entry, so alcohol can be added to anything
                 (a homemade sangria, a pour with no label). It opens already
                 answered when the figures or the food's name say it is a drink,
@@ -2645,23 +2667,6 @@ export function FoodLogEntrySheet({
                 )}
               </>
             )}
-
-            {/* Only for a food that is a catalog row (a dish or a bare database
-                food has no pantry entry to update), and not when correcting an
-                entry that was logged already. */}
-            {!!picked.itemId && !editing && (
-              <>
-                <PantryAnswerField
-                  itemId={picked.itemId}
-                  value={pantryAnswer}
-                  onChange={setPantryAnswer}
-                  addToList={pantryAddToList}
-                  onAddToListChange={setPantryAddToList}
-                  surface="page"
-                  style={styles.pantryField}
-                />
-              </>
-            )}
           </ScrollView>
         ) : (
           <>
@@ -2709,6 +2714,25 @@ export function FoodLogEntrySheet({
                 </PressableScale>
               )}
             </View>
+            {/* Under the field, not at the foot of the sheet: the keyboard is up
+                nearly every time this half is open, and a bar at the foot sat
+                behind it. */}
+            {!!allowBurst && !editing && (
+              <View style={styles.burstRow}>
+                <Text style={styles.burstLabel}>Log several</Text>
+                {burstAdded.length > 0 && (
+                  <Text style={styles.burstCount}>
+                    {burstAdded.length} added
+                  </Text>
+                )}
+                <Switch
+                  value={keepOpenAfterFoodLog}
+                  onValueChange={next => { haptics.tap(); setKeepOpenAfterFoodLog(next); }}
+                  trackColor={{ false: colors.bgTertiary, true: colors.accent }}
+                  accessibilityLabel="Log several. Keep this open after each food"
+                />
+              </View>
+            )}
             {/* The ways to start that need no text, as one row of tiles. They
                 are only here while the field is empty: once something is typed
                 the keyboard is up and the space under the field belongs to
@@ -2809,7 +2833,7 @@ export function FoodLogEntrySheet({
                 rather than among the ways to find a food, because it isn't
                 one: it says what happens after a save. */}
             {estimateOpen && !!estimateLog && (
-              <View style={styles.estimateLogBar}>
+              <View style={[styles.estimateLogBar, { marginBottom: keyboardHeight }]}>
                 <TouchableOpacity
                   style={[styles.estimateLogButton, estimateLog.loading && styles.estimateLogOff]}
                   activeOpacity={interaction.activeOpacity}
@@ -2820,22 +2844,6 @@ export function FoodLogEntrySheet({
                 >
                   <Text style={styles.estimateLogText}>{estimateLog.label}</Text>
                 </TouchableOpacity>
-              </View>
-            )}
-            {!!allowBurst && !editing && (
-              <View style={styles.burstFooter}>
-                <Text style={styles.burstLabel}>Log several</Text>
-                {burstAdded.length > 0 && (
-                  <Text style={styles.burstCount}>
-                    {burstAdded.length} added
-                  </Text>
-                )}
-                <Switch
-                  value={keepOpenAfterFoodLog}
-                  onValueChange={next => { haptics.tap(); setKeepOpenAfterFoodLog(next); }}
-                  trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-                  accessibilityLabel="Log several. Keep this open after each food"
-                />
               </View>
             )}
           </>
@@ -2984,8 +2992,7 @@ function makeStyles(colors: Colors) {
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.xs },
     plateWeighIn: { marginTop: spacing.smd },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },
-    preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, marginTop: spacing.sm },
-    limitImpacts: { marginTop: spacing.xs },
+    limitImpacts: { marginTop: spacing.md },
     // Wraps rather than truncating: the first pill carries the food's own name,
     // which can be a database description several words long.
     fileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
@@ -3067,7 +3074,7 @@ function makeStyles(colors: Colors) {
       textAlignVertical: 'top',
       paddingTop: spacing.xsm,
     },
-    // The "Log several" switch, a bar across the foot of the search half.
+    // Under an open estimate: the button that logs it, a bar across the foot.
     estimateLogBar: {
       paddingHorizontal: spacing.md,
       paddingTop: spacing.smd,
@@ -3084,16 +3091,17 @@ function makeStyles(colors: Colors) {
     },
     estimateLogOff: { opacity: interaction.activeOpacity * 0.6 },
     estimateLogText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
-    burstFooter: {
+    // The "Log several" switch, a card under the search field.
+    burstRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
+      marginHorizontal: spacing.md,
+      marginBottom: spacing.md,
       paddingHorizontal: spacing.md,
-      paddingTop: spacing.smd,
-      paddingBottom: spacing.lg,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.separator,
+      paddingVertical: spacing.sm,
       backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
     },
     burstLabel: { flex: 1, color: colors.text, fontSize: font.md },
     scanButton: {
