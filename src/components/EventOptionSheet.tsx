@@ -24,6 +24,12 @@ interface Props {
   /** Shown instead of the list when there are no options to pick. */
   emptyText?: string;
   onSelect: (key: string) => void;
+  /**
+   * Adds an "Other…" row after the options, for a number the list doesn't
+   * have. It closes this card and then calls this, so the caller raises its
+   * own prompt (`CustomMinutesPrompt`) once the card is gone.
+   */
+  onOther?: () => void;
   onClose: () => void;
 }
 
@@ -35,7 +41,7 @@ interface Props {
  * `CalendarChoiceSheet`, is written around a task's mirror setting (an "Off"
  * row, copy about every task), so it isn't reused here.
  */
-export function EventOptionSheet({ visible, title, options, selectedKey, emptyText, onSelect, onClose }: Props) {
+export function EventOptionSheet({ visible, title, options, selectedKey, emptyText, onSelect, onOther, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
@@ -71,6 +77,17 @@ export function EventOptionSheet({ visible, title, options, selectedKey, emptyTe
                   )}
                 </TouchableOpacity>
               ))}
+              {onOther && (
+                <TouchableOpacity
+                  style={[styles.row, options.length > 0 && styles.rowRuled]}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => { haptics.tap(); card.close(() => { onClose(); onOther(); }); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Other ${title.toLowerCase()}`}
+                >
+                  <Text style={styles.rowOther}>Other…</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </ScrollView>
@@ -96,6 +113,7 @@ function makeStyles(colors: Colors) {
     rowRuled: { borderTopWidth: 1, borderTopColor: colors.separator },
     dot: { width: 10, height: 10, borderRadius: 5 },
     rowTitle: { flex: 1, color: colors.text, fontSize: font.md },
+    rowOther: { flex: 1, color: colors.accentText, fontSize: font.md },
     empty: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
   });
 }

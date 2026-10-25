@@ -337,7 +337,7 @@ an entry with a photo and no words.
 ## The writing timer
 
 A journal entry (not a dream) can be written against a countdown: **Start** beside a length menu
-(5, 10, 15 or 20 minutes) on the line under the field, `JournalTimer` over `journalTimer.ts`. Running
+(5, 10, 15 or 20 minutes, or Other… for any whole number from 1 to 120) on the line under the field, `JournalTimer` over `journalTimer.ts`. Running
 it shows the time left and a thin bar, and a tap cancels. When it ends the chip reads "Time’s up" with
 a haptic, and typing carries on.
 

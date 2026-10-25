@@ -712,7 +712,7 @@ export function CookModeSheet({
             <Text style={styles.miseSubtitle}>
               {steps.length > 0
                 ? 'Check each one as you set it out, before you start cooking.'
-                : 'Check each one as you set it out. It has no steps yet, so add them in the recipe to read the method here.'}
+                : 'Check each one as you set it out. This recipe has no steps yet, so add them in the recipe to read the method here.'}
               {gatheredCount > 0 ? ` ${gatheredCount} of ${ingredients.length} out.` : ''}
             </Text>
             {ovenSetups.length > 0 && (
