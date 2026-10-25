@@ -47,7 +47,7 @@ import { AnimatedNumber } from './AnimatedNumber';
 import { useProjectLockStore } from '../store/useProjectLockStore';
 import { isProjectLockedAway } from '../utils/projectLock';
 import { CoinIcon } from './CoinIcon';
-import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe, ChainItem } from '../types';
+import type { Alarm, Task, GroceryItem, ItemSubLink, ItemProduct, Recipe, ChainItem } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTrayRaised } from './TaskGroupTray';
@@ -174,6 +174,9 @@ import { WhenPicker } from './WhenPicker';
 import { TaskBreakdownSheet } from './TaskBreakdownSheet';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
 import { MissionSheet, taskMissionProps } from './MissionSheet';
+import { TomorrowAlarmSheet } from './TomorrowAlarmSheet';
+import { useAlarmStore } from '../store/useAlarmStore';
+import { morningAlarmFor, morningChipLabel } from '../utils/morningAlarm';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { hasMission } from '../utils/missions';
 import { RecipePickerSheet } from './RecipePickerSheet';
@@ -254,6 +257,7 @@ const EMPTY_BUSY_EVENTS: BusyEvent[] = [];
 // subscribing to the live grocery/recipe arrays for nothing.
 const EMPTY_GROCERY_ITEMS: GroceryItem[] = [];
 const EMPTY_ITEM_SUBS: ItemSubLink[] = [];
+const NO_ALARMS: Alarm[] = [];
 const EMPTY_RECIPES: Recipe[] = [];
 const EMPTY_ITEM_PRODUCTS: ItemProduct[] = [];
 
@@ -790,6 +794,22 @@ const TaskItemRow = React.memo(function TaskItem({
   useEffect(() => {
     missionDoneRef.current = false;
   }, [task.id, task.completed]);
+  // Tomorrow's alarm (Task.alarmLink, morningAlarm.ts): the card the row's
+  // chip, its alarm button and its tick open. Settling it (keeping or changing
+  // the alarm) is what the tick asks for, so the ref lets that one completion
+  // through, the way missionDoneRef does for a mission.
+  const [showAlarmCard, setShowAlarmCard] = useState(false);
+  const alarmSettledRef = useRef(false);
+  useEffect(() => {
+    alarmSettledRef.current = false;
+  }, [task.id, task.completed]);
+  const alarmLink = task.alarmLink ?? null;
+  const linkedAlarms = useAlarmStore(s => (alarmLink ? s.alarms : NO_ALARMS));
+  const alarmDayReset = useSettingsStore(s => s.dayResetTime);
+  const morning = useMemo(
+    () => (alarmLink && !task.completed ? morningAlarmFor(alarmLink, linkedAlarms, new Date(), alarmDayReset) : null),
+    [alarmLink, linkedAlarms, alarmDayReset, task.completed],
+  );
   const [showMealPicker, setShowMealPicker] = useState(false);
   const { offerPrepTasksForEach } = usePlanMeal();
   // The postpone prompt's "Break it up" needs somewhere to send the user. With
@@ -1452,6 +1472,7 @@ const TaskItemRow = React.memo(function TaskItem({
   const mountBreakdown = useSheetMount(showBreakdown);
   const mountDeliverablePrompt = useSheetMount(showDeliverablePrompt);
   const mountMission = useSheetMount(showMission);
+  const mountAlarmCard = useSheetMount(showAlarmCard);
   // Held, so a mission removed from the task while its sheet is up closes the
   // sheet through `visible` rather than taking it out of the tree.
   const missionSheet = useSheetSubject(mountMission ? taskMissionProps(task) : null);
@@ -2695,6 +2716,13 @@ const TaskItemRow = React.memo(function TaskItem({
     // The mission comes before everything else the tick asks, question
     // included: the counter is what checks the task off, and once it has
     // counted it calls back in here to carry on from this point.
+    // Tomorrow's alarm is checked before the task is: the tick opens the
+    // card, and keeping or changing the alarm there comes back through here.
+    if (alarmLink && !task.alarmLinkLeavesOpen && !task.completed && !alarmSettledRef.current) {
+      haptics.tap();
+      setShowAlarmCard(true);
+      return;
+    }
     if (hasMission(task) && !task.completed && !missionDoneRef.current) {
       haptics.tap();
       setShowMission(true);
@@ -3199,7 +3227,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // Whether the meta row has anything to show besides the notes and deadline
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
-  const hasOtherMeta = isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
+  const hasOtherMeta = morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
   const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !deadlineOnMeta;
 
@@ -3661,6 +3689,21 @@ const TaskItemRow = React.memo(function TaskItem({
         )}
         {(markersOnMeta || hasOtherMeta) && (
           <View style={styles.metaRow}>
+            {morning && (
+              <PressableScale
+                style={[styles.alarmChip, !morning.ring && styles.alarmChipNone]}
+                onPress={() => { haptics.tap(); setShowAlarmCard(true); }}
+                disabled={selectionMode}
+                accessibilityLabel={morning.ring
+                  ? `Tomorrow’s alarm, ${morningChipLabel(morning, at => formatTimeOfDay(at, use24HourTime))}`
+                  : `${morningChipLabel(morning, at => formatTimeOfDay(at, use24HourTime))}. Set one`}
+              >
+                <Ionicons name="alarm-outline" size={iconSize.xs} color={morning.ring ? colors.accentText : colors.warningText} />
+                <Text style={[styles.alarmChipText, !morning.ring && styles.alarmChipTextNone]} numberOfLines={1}>
+                  {morningChipLabel(morning, at => formatTimeOfDay(at, use24HourTime))}
+                </Text>
+              </PressableScale>
+            )}
             {markersOnMeta && hasNotes && !notesStayInTitle && (
               <View style={styles.metaChip} accessibilityLabel="Has notes">
                 <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textSecondary} />
@@ -4382,6 +4425,18 @@ const TaskItemRow = React.memo(function TaskItem({
           accessibilityLabel={`Open people page for ${task.title}`}
         >
           <Ionicons name={linkIconFor(peopleLink) as never} size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
+      {!selectionMode && showActions && morning && (
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); setShowAlarmCard(true); }}
+          hitSlop={8}
+          style={styles.linkBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Tomorrow’s alarm for ${task.title}`}
+        >
+          <Ionicons name="alarm-outline" size={iconSize.sm} color={morning.ring ? colors.accent : colors.warningText} />
         </TouchableOpacity>
       )}
 
@@ -5577,6 +5632,17 @@ const TaskItemRow = React.memo(function TaskItem({
           onCancel={() => setShowDeliverablePrompt(false)}
         />
       )}
+      {mountAlarmCard && (
+        <TomorrowAlarmSheet
+          visible={showAlarmCard}
+          task={task}
+          onSettled={() => {
+            alarmSettledRef.current = true;
+            handleComplete();
+          }}
+          onClose={() => setShowAlarmCard(false)}
+        />
+      )}
       {missionSheet && (
         <MissionSheet
           {...missionSheet}
@@ -5905,6 +5971,20 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
     alignItems: 'center',
     gap: spacing.sm,
   },
+  // Tomorrow's alarm, the one chip on a row that's a button with a fill: it
+  // opens the card, and on a morning with none it turns the warning colour.
+  alarmChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSubtle,
+  },
+  alarmChipNone: { backgroundColor: colors.warningBg },
+  alarmChipText: { color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.semibold, fontVariant: ['tabular-nums'] },
+  alarmChipTextNone: { color: colors.warningText },
   metaChip: {
     flexDirection: 'row',
     alignItems: 'center',

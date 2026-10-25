@@ -1246,6 +1246,16 @@ export function seedDemoData(): void {
     effort: 1,
   });
 
+  // A task pointing at tomorrow's alarm (Task.alarmLink), so its row shows
+  // the Wake up alarm below and opens the card to keep or change it.
+  addTask({
+    title: 'Set alarm for morning',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    alarmLink: 'next',
+    effort: 1,
+  });
+
   // An alarm of its own (not a task) with a mission, so the Alarms &
   // Reminders screen shows what one looks like. Through the store, which puts
   // nothing on the device in demo mode (syncAlarmToDevice).

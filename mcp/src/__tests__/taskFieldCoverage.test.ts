@@ -38,7 +38,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
   'device side effects and the ids that name them': [
     'deadlineOnCalendar', 'logCompletionToCalendar', 'calendarEventId', 'calendarEventExternalId',
     'completionCalendarEventId', 'completionCalendarEventExternalId', 'timeBlockEventId', 'timeBlockExternalId',
-    'reminderKind', 'alarmSound', 'completionTimerMinutes', 'completionTimerNote', 'completionTimerStartedAt',
+    'reminderKind', 'alarmSound', 'alarmLink', 'alarmLinkLeavesOpen', 'completionTimerMinutes', 'completionTimerNote', 'completionTimerStartedAt',
     // A group of apps is a selection of tokens that exists only on the phone.
     'gateGroupId',
   ],

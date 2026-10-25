@@ -35,10 +35,11 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, currentAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, +3 more
 - `src/utils/aiRouting.ts` — AiRoute, OnDeviceEngine, onDeviceEngineFor, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
+- `src/utils/alarmOverride.ts` — parseAlarmOverride
 - `src/utils/alarmSchedule.ts` — syncAlarmToDevice, removeAlarmFromDevice
 - `src/utils/alarmSoundDevice.ts` — soundFileForAlarm, PickedSound, pickSoundFile, installImportedSound, removeImportedSound, playSoundPreview, stopSoundPreview
 - `src/utils/alarmSounds.ts` — BUILT_IN_SOUNDS, BuiltInSoundId, CUSTOM_SOUND_PREFIX, ALARM_SOUND_MAX_SECONDS, ALARM_SOUNDS_SETTING, DEFAULT_SOUND_LABEL, isBuiltInSound, customSoundId, customSoundRef, parseAlarmSound, +7 more
-- `src/utils/alarms.ts` — QUICK_ALARM_MINUTES, QUICK_ALARM_CHOICES, MISSED_MISSION_WINDOW_MS, formatAlarmMinutes, nextClockTime, isRepeating, nextFireAt, previousFireAt, isSpent, missedMissionRing, +9 more
+- `src/utils/alarms.ts` — QUICK_ALARM_MINUTES, QUICK_ALARM_CHOICES, MISSED_MISSION_WINDOW_MS, formatAlarmMinutes, atTime, nextClockTime, isRepeating, calendarKey, repeatingRingOn, nextFireAt, +12 more
 - `src/utils/alcohol.ts` — US_STANDARD_DRINK_G, STANDARD_DRINK_SIZES, setDisplayDrinkGrams, getDisplayDrinkGrams, normalizeStandardDrinkGrams, DRINK_PRESETS, DRINK_STEP, MAX_ENTRY_DRINKS, gramsFromDrinks, drinksFromGrams, +9 more
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
 - `src/utils/allergenGuess.ts` — Allergen, guessAllergens, describeAllergens
@@ -331,6 +332,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodPlaceNow.ts` — moodPlaceTagNow
 - `src/utils/moodPlaces.ts` — PLACE_MATCH_RADIUS_M, PLACE_MAX_FIX_ERROR_M, PlaceFix, distanceMeters, moodPlacesOf, placeTagName, placeAt, placeTagAt
 - `src/utils/moodTasks.ts` — MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MIN, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodLogSegmentOf, moodLogSourceId, +5 more
+- `src/utils/morningAlarm.ts` — NEXT_ALARM_LINK, morningDate, ringOn, MorningAlarm, morningAlarmFor, overrideFor, overrideDay, overrideAt, isOverrideSpent, morningChipLabel
 - `src/utils/morningCheckIn.ts` — isMorningCheckInCandidate, morningCheckInTasks
 - `src/utils/naturalKeyFold.ts` — NaturalKey, NATURAL_KEYS, foldRows, Reference, REFERENCES, SettingReference, SETTING_REFERENCES, foldWinner
 - `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +35 more

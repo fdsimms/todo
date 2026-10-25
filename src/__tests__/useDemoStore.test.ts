@@ -1554,6 +1554,7 @@ describe('demo mode', () => {
 
     expect(alarms.some(a => a.mission?.kind === 'pushups' && a.repeatDays.length > 0)).toBe(true);
     expect(alarms.some(a => a.sound === 'chime')).toBe(true);
+    expect(useTaskStore.getState().tasks.some(t => t.alarmLink === 'next')).toBe(true);
   });
 
   it('seeds an alarm that takes pushups to check off', () => {

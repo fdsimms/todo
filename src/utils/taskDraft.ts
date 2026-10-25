@@ -429,6 +429,8 @@ export function newTaskFromDraft(
     completionTimerStartedAt: null,
     mission: normalizeMission(draft.mission),
     alarmSound: parseAlarmSound(draft.alarmSound ?? null),
+    alarmLink: draft.alarmLink ?? null,
+    alarmLinkLeavesOpen: draft.alarmLinkLeavesOpen ?? false,
     logHealthMetric: draft.logHealthMetric ?? null,
     logHealthAmount: draft.logHealthAmount ?? null,
     medicationName: draft.medicationName ?? null,

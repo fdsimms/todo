@@ -42,7 +42,7 @@ export function formatAlarmMinutes(minutes: number): string {
 }
 
 /** The clock time on `day`'s calendar date. */
-function atTime(day: Date, hour: number, minute: number): Date {
+export function atTime(day: Date, hour: number, minute: number): Date {
   return new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, minute, 0, 0);
 }
 
@@ -54,6 +54,29 @@ export function nextClockTime(hour: number, minute: number, now: Date): Date {
 
 export function isRepeating(alarm: Pick<Alarm, 'repeatDays'>): boolean {
   return alarm.repeatDays.length > 0;
+}
+
+/**
+ * `day`'s calendar date as `YYYY-MM-DD`, local: `dayKeyOf`'s answer, written
+ * here because dateUtils reaches the settings store, and the alarm rules are
+ * read from places (the database, the native scheduling) that mustn't load it.
+ */
+export function calendarKey(day: Date): string {
+  const m = day.getMonth() + 1;
+  const d = day.getDate();
+  return `${day.getFullYear()}-${m < 10 ? '0' : ''}${m}-${d < 10 ? '0' : ''}${d}`;
+}
+
+/**
+ * When a repeating alarm rings on `day`'s calendar date, or null if it
+ * doesn't ring that day: its own time, or the one-night time its `override`
+ * names for that date (see morningAlarm.ts).
+ */
+export function repeatingRingOn(alarm: Pick<Alarm, 'repeatDays' | 'hour' | 'minute' | 'override'>, day: Date): Date | null {
+  if (!alarm.repeatDays.includes(day.getDay())) return null;
+  const o = alarm.override;
+  if (o && o.date === calendarKey(day)) return atTime(day, o.hour, o.minute);
+  return atTime(day, alarm.hour, alarm.minute);
 }
 
 /**
@@ -69,9 +92,8 @@ export function nextFireAt(alarm: Alarm, now: Date): Date | null {
   }
   for (let offset = 0; offset <= 7; offset++) {
     const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
-    if (!alarm.repeatDays.includes(day.getDay())) continue;
-    const at = atTime(day, alarm.hour, alarm.minute);
-    if (at.getTime() > now.getTime()) return at;
+    const at = repeatingRingOn(alarm, day);
+    if (at && at.getTime() > now.getTime()) return at;
   }
   return null;
 }
@@ -85,9 +107,8 @@ export function previousFireAt(alarm: Alarm, now: Date): Date | null {
   }
   for (let offset = 0; offset <= 7; offset++) {
     const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset);
-    if (!alarm.repeatDays.includes(day.getDay())) continue;
-    const at = atTime(day, alarm.hour, alarm.minute);
-    if (at.getTime() <= now.getTime()) return at;
+    const at = repeatingRingOn(alarm, day);
+    if (at && at.getTime() <= now.getTime()) return at;
   }
   return null;
 }

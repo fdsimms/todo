@@ -121,6 +121,8 @@ import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useShallow } from 'zustand/react/shallow';
 import { useAlarmStore } from '../store/useAlarmStore';
 import { describeSound } from '../utils/alarmSounds';
+import { NEXT_ALARM_LINK } from '../utils/morningAlarm';
+import { alarmAlertTitle } from '../utils/alarms';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
 import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate, getCurrentLogicalDayKey } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
@@ -792,6 +794,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [alarmSound, setAlarmSound] = useState<string | null>(null);
   const [ringtonesOpen, setRingtonesOpen] = useState(false);
   const alarmSounds = useAlarmStore(useShallow(st => st.sounds));
+  const editorAlarms = useAlarmStore(useShallow(st => st.alarms));
   const [reminderOffsetDays, setReminderOffsetDays] = useState<number | null>(null);
   const [reminderTracksVisibility, setReminderTracksVisibility] = useState(false);
   const [reminderTimeAnchor, setReminderTimeAnchor] = useState<'wallClock' | 'fixed'>('wallClock');
@@ -848,6 +851,10 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // in the draft; save turns it into a post or a withdrawal.
   const [bounty, setBounty] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  // Tomorrow's alarm (Task.alarmLink, morningAlarm.ts).
+  const [alarmLink, setAlarmLink] = useState<string | null>(null);
+  const [alarmLinkLeavesOpen, setAlarmLinkLeavesOpen] = useState(false);
+  const [showAlarmLinkPicker, setShowAlarmLinkPicker] = useState(false);
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
   const [completionTimerNote, setCompletionTimerNote] = useState<string | null>(null);
   const [mission, setMission] = useState<AlarmMission | null>(null);
@@ -1334,6 +1341,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setStreakCountsUnits(task.streakCountsUnits ?? false);
       setLinkUrl(task.linkUrl ?? null);
+      setAlarmLink(task.alarmLink ?? null);
+      setAlarmLinkLeavesOpen(task.alarmLinkLeavesOpen ?? false);
+      setShowAlarmLinkPicker(false);
       setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
       setCompletionTimerNote(task.completionTimerNote ?? null);
       setMission(normalizeMission(task.mission));
@@ -1409,6 +1419,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setShowStreak(initialDraft?.polarity === 'negative');
       setStreakRequiresWindow(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
+      setAlarmLink(null);
+      setAlarmLinkLeavesOpen(false);
+      setShowAlarmLinkPicker(false);
       setCompletionTimerMinutes(initialDraft?.completionTimerMinutes ?? null);
       setCompletionTimerNote(initialDraft?.completionTimerNote ?? null);
       setMission(null);
@@ -1569,6 +1582,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
       streakCountsUnits: task?.streakCountsUnits ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
+      alarmLink: task?.alarmLink ?? null,
+      alarmLinkLeavesOpen: task?.alarmLinkLeavesOpen ?? false,
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
       completionTimerNote: task ? (task.completionTimerNote ?? null) : (initialDraft?.completionTimerNote ?? null),
       mission: task ? normalizeMission(task.mission) : null,
@@ -2414,6 +2429,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       streakRequiresWindow: recurrenceType !== 'none' && streakRequiresWindow,
       streakCountsUnits: recurrenceType !== 'none' && quotaPeriod === 'week' && targetCount !== null && streakCountsUnits,
       linkUrl: resolveLinkUrl(),
+      alarmLink,
+      alarmLinkLeavesOpen: alarmLink !== null && alarmLinkLeavesOpen,
       completionTimerMinutes,
       completionTimerNote,
       mission,
@@ -3320,6 +3337,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       streakRequiresWindow,
       streakCountsUnits,
       linkUrl,
+      alarmLink,
+      alarmLinkLeavesOpen: alarmLink !== null && alarmLinkLeavesOpen,
       completionTimerMinutes,
       completionTimerNote,
       mission,
@@ -3781,6 +3800,14 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ')
     : undefined;
   const linkValue = knownLinkAppFor(linkUrl)?.name ?? (linkUrl ?? undefined);
+  const alarmLinkValue = alarmLink === null
+    ? undefined
+    : alarmLink === NEXT_ALARM_LINK
+      ? 'Tomorrow’s alarm'
+      : (() => {
+          const a = editorAlarms.find(x => x.id === alarmLink);
+          return a ? alarmAlertTitle(a) : 'Tomorrow’s alarm';
+        })();
   const workoutValue = workoutProgramId
     ? workoutPrograms.find(p => p.id === workoutProgramId)?.name ?? 'A deleted program'
     : workoutRoutineId
@@ -8056,6 +8083,64 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             ),
           }] : []),
           {
+            key: 'alarmLink', label: 'Alarm', set: alarmLink !== null || showAlarmLinkPicker,
+            keywords: ['alarm', 'wake', 'morning', 'tomorrow', 'set alarm', 'bedtime'],
+            node: (
+              <>
+            <EditorRow
+              icon="alarm-outline"
+              label="Alarm"
+              hint="Show tomorrow’s alarm on the task, to keep it or change its time."
+              value={alarmLinkValue}
+              expanded={showAlarmLinkPicker}
+              onPress={() => setShowAlarmLinkPicker(v => !v)}
+              onClear={alarmLink ? () => { setAlarmLink(null); setShowAlarmLinkPicker(false); } : undefined}
+            />
+            {showAlarmLinkPicker && (
+              <View style={styles.workoutPicker}>
+                <PillGroup
+                  noun="alarm"
+                  options={[
+                    {
+                      key: '__none__', label: 'None', pinned: true, selected: alarmLink === null,
+                      onPress: () => { haptics.tap(); setAlarmLink(null); setShowAlarmLinkPicker(false); },
+                    },
+                    {
+                      key: NEXT_ALARM_LINK, label: 'Tomorrow’s alarm', pinned: true, selected: alarmLink === NEXT_ALARM_LINK,
+                      onPress: () => { haptics.tap(); setAlarmLink(NEXT_ALARM_LINK); },
+                    },
+                    ...editorAlarms.filter(a => !a.quick).map(a => ({
+                      key: a.id,
+                      label: `${alarmAlertTitle(a)} · ${formatTimeOfDay(new Date(2000, 0, 1, a.hour, a.minute), use24HourTime)}`,
+                      selected: alarmLink === a.id,
+                      onPress: () => { haptics.tap(); setAlarmLink(a.id); },
+                    })),
+                  ]}
+                />
+                <HelpText style={styles.workoutPickerHint}>
+                  Tomorrow’s alarm is whichever of your alarms rings first that morning.
+                </HelpText>
+                {alarmLink !== null && (
+                  <TouchableOpacity
+                    style={styles.alarmLinkToggleRow}
+                    onPress={() => { haptics.tap(); setAlarmLinkLeavesOpen(v => !v); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: !alarmLinkLeavesOpen }}
+                  >
+                    <View style={styles.alarmLinkToggleText}>
+                      <Text style={styles.alarmLinkToggleLabel}>Check off when the alarm is set</Text>
+                      <HelpText style={styles.workoutPickerHint}>Keeping or changing the alarm checks off the task. Off, you check it off yourself.</HelpText>
+                    </View>
+                    <Toggle value={!alarmLinkLeavesOpen} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+              </>
+            ),
+          },
+          {
             key: 'link', label: 'Link', set: !!linkUrl || showLinkPicker,
             keywords: ['url', 'website', 'open', 'app', 'address'],
             node: (
@@ -9243,6 +9328,9 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   workoutNewRow: { flexDirection: 'row', marginTop: spacing.smd },
   workoutPickerHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xs, marginBottom: spacing.smd },
+  alarmLinkToggleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingVertical: spacing.xs },
+  alarmLinkToggleText: { flex: 1, minWidth: 0 },
+  alarmLinkToggleLabel: { color: colors.text, fontSize: font.md },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,

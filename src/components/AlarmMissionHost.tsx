@@ -72,6 +72,9 @@ export function AlarmMissionHost() {
 
   const refresh = useCallback(async () => {
     if (!ready) return;
+    // A one-night alarm time whose day is over goes back to the alarm's own
+    // (morningAlarm.ts), so the weekly schedule is whole again.
+    useAlarmStore.getState().clearSpentOverrides();
     setPending(await pendingNativeMissions());
     setTick(t => t + 1);
   }, [ready]);

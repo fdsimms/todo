@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import type { Alarm, AlarmMission, AlarmSoundFile, WakeSong } from '../types';
 import { dbDeleteAlarm, dbGetAlarms, dbGetSetting, dbSaveAlarm, dbSetSetting } from '../db/database';
 import { generateId } from '../utils/id';
-import { isSpent, quickAlarmFields, scheduleFields } from '../utils/alarms';
+import { isRepeating, isSpent, quickAlarmFields, repeatingRingOn, scheduleFields } from '../utils/alarms';
+import { isOverrideSpent, overrideFor } from '../utils/morningAlarm';
 import { normalizeMission } from '../utils/missions';
 import {
   ALARM_SOUNDS_SETTING,
@@ -105,6 +106,16 @@ interface AlarmStore {
   markMissionDone: (id: string, gaveUp?: boolean, now?: Date) => void;
   /** Deletes quick alarms that have rung and owe nothing. Run on open. */
   pruneSpent: (owed: ReadonlySet<string>, now?: Date) => void;
+  /**
+   * Rings a repeating alarm at `hour:minute` on `day` only (morningAlarm.ts).
+   * Its own time clears the override. False for an alarm that doesn't repeat
+   * or doesn't ring that day.
+   */
+  setOverride: (id: string, day: Date, hour: number, minute: number) => boolean;
+  /** Puts back the alarms whose one-night change is over. Run on open. */
+  clearSpentOverrides: (now?: Date) => void;
+  /** A one-off alarm at `at` that deletes itself once it has rung, like a quick alarm. */
+  addOneOffAlarm: (at: Date, setup: AlarmSetup, now?: Date) => Alarm;
   /** Puts every alarm on the device again, after launch or the demo ending. */
   syncAllToDevice: () => Promise<void>;
 }
@@ -139,6 +150,8 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
       armedAt: now.toISOString(),
       missionDoneAt: existing?.missionDoneAt ?? null,
       missionGaveUp: existing?.missionGaveUp ?? false,
+      // A new time for every day it rings replaces any one-night change.
+      override: null,
       createdAt: existing?.createdAt ?? now.toISOString(),
     };
     write(alarm);
@@ -157,6 +170,7 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
       armedAt: now.toISOString(),
       missionDoneAt: null,
       missionGaveUp: false,
+      override: null,
       createdAt: now.toISOString(),
     };
     write(alarm);
@@ -239,7 +253,49 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
     set({ alarms: get().alarms.filter(a => !gone.has(a.id)) });
   },
 
+  setOverride(id, day, hour, minute) {
+    const current = get().alarms.find(a => a.id === id);
+    if (!current || !isRepeating(current) || repeatingRingOn({ ...current, override: null }, day) === null) return false;
+    const alarm: Alarm = { ...current, enabled: true, override: overrideFor(current, day, hour, minute) };
+    write(alarm);
+    set({ alarms: get().alarms.map(a => (a.id === id ? alarm : a)) });
+    return true;
+  },
+
+  clearSpentOverrides(now = new Date()) {
+    const spent = get().alarms.filter(a => a.override && isOverrideSpent(a.override, now));
+    if (spent.length === 0) return;
+    const cleared = new Map(spent.map(a => [a.id, { ...a, override: null }]));
+    for (const alarm of cleared.values()) write(alarm);
+    set({ alarms: get().alarms.map(a => cleared.get(a.id) ?? a) });
+  },
+
+  addOneOffAlarm(at, setup, now = new Date()) {
+    const ring = new Date(at);
+    ring.setSeconds(0, 0);
+    const alarm: Alarm = {
+      id: generateId(),
+      label: '',
+      hour: ring.getHours(),
+      minute: ring.getMinutes(),
+      repeatDays: [],
+      fireAt: ring.toISOString(),
+      quick: true,
+      enabled: true,
+      ...normalizeSetup(setup),
+      armedAt: now.toISOString(),
+      missionDoneAt: null,
+      missionGaveUp: false,
+      override: null,
+      createdAt: now.toISOString(),
+    };
+    write(alarm);
+    set({ alarms: [...get().alarms, alarm] });
+    return alarm;
+  },
+
   async syncAllToDevice() {
+    get().clearSpentOverrides();
     for (const alarm of get().alarms) await syncAlarmToDevice(alarm);
   },
 }));

@@ -3017,7 +3017,21 @@ export interface Alarm {
    * mission has one; the alert itself can't play a song (alarmSounds.ts).
    */
   wakeSong: WakeSong | null;
+  /**
+   * A one-night change to a repeating alarm ("6:30 just tomorrow"): on that
+   * calendar date it rings at this time instead, and after that day it goes
+   * back to its own. Null for none. See src/utils/morningAlarm.ts.
+   */
+  override: AlarmOverride | null;
   createdAt: string;
+}
+
+/** A repeating alarm's time for one calendar date (Alarm.override). */
+export interface AlarmOverride {
+  /** YYYY-MM-DD, local. */
+  date: string;
+  hour: number;
+  minute: number;
 }
 
 /** A song picked from the music library for an alarm (Alarm.wakeSong). */
@@ -4694,6 +4708,15 @@ export interface Task {
   // sound imported on one phone, which rings as the default on any other
   // device. See src/utils/alarmSounds.ts.
   alarmSound?: string | null;
+  // The alarm a task like "Set alarm for morning" is about: 'next' for
+  // whichever of the device's own alarms rings first tomorrow, or an alarm's
+  // id. The row shows that alarm and opens a card to keep or change it. Alarms
+  // are device-only, so an id from another phone reads as 'next'. Null = none.
+  // See src/utils/morningAlarm.ts.
+  alarmLink?: string | null;
+  // Keeping or changing the linked alarm from the row's card checks the task
+  // off, unless this is set.
+  alarmLinkLeavesOpen?: boolean;
 
   // Optional freeform text explaining what the completion timer reminder is
   // for — "Don't eat for 2 hours" — shown as the notification body instead of

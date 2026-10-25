@@ -30,7 +30,7 @@ function alarm(over: Partial<Alarm> = {}): Alarm {
   return {
     id: 'a1', label: 'Wake up', hour: 7, minute: 0, repeatDays: [1, 2, 3, 4, 5], fireAt: null, enabled: true,
     mission: { kind: 'pushups', count: 20 }, quick: false, armedAt: NOW.toISOString(), missionDoneAt: null,
-    missionGaveUp: false, sound: null, wakeSong: null,
+    missionGaveUp: false, sound: null, wakeSong: null, override: null,
     createdAt: NOW.toISOString(), ...over,
   };
 }
@@ -73,9 +73,29 @@ describe('syncAlarmToDevice', () => {
   it('only cancels an alarm that is off or spent', async () => {
     await syncAlarmToDevice(alarm({ enabled: false }), NOW);
     await syncAlarmToDevice(alarm({ repeatDays: [], fireAt: new Date(2026, 9, 14, 9).toISOString() }), NOW);
-    expect(cancelNativeAlarm).toHaveBeenCalledTimes(2);
+    expect(cancelNativeAlarm).toHaveBeenCalledWith(alarmNativeUuid('a1'));
     expect(scheduleNativeAlarm).not.toHaveBeenCalled();
     expect(scheduleWeeklyNativeAlarm).not.toHaveBeenCalled();
+  });
+
+  it('rings one morning at its override, leaving that weekday out of the weekly and covering it next week', async () => {
+    // Mon 26 Oct at 6:30 instead of 7:00.
+    await syncAlarmToDevice(alarm({ override: { date: '2026-10-26', hour: 6, minute: 30 } }), NOW);
+    expect(scheduleWeeklyNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1'), 7, 0, [2, 3, 4, 5], 'Wake up', expect.anything(), null);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1:override'), new Date(2026, 9, 26, 6, 30), 'Wake up', expect.anything(), null);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1:fallback'), new Date(2026, 10, 2, 7, 0), 'Wake up', expect.anything(), null);
+  });
+
+  it('goes back to the plain weekly once the override’s day is over', async () => {
+    await syncAlarmToDevice(alarm({ override: { date: '2026-10-12', hour: 6, minute: 30 } }), NOW);
+    expect(scheduleWeeklyNativeAlarm).toHaveBeenCalledWith(
+      alarmNativeUuid('a1'), 7, 0, [1, 2, 3, 4, 5], 'Wake up', expect.anything(), null);
+    expect(scheduleNativeAlarm).not.toHaveBeenCalled();
+    expect(cancelNativeAlarm).toHaveBeenCalledWith(alarmNativeUuid('a1:override'));
+    expect(cancelNativeAlarm).toHaveBeenCalledWith(alarmNativeUuid('a1:fallback'));
   });
 
   it('does nothing on the device in demo mode', async () => {

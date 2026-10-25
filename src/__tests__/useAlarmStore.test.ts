@@ -163,4 +163,37 @@ describe('useAlarmStore', () => {
     expect(useAlarmStore.getState().alarms.map(a => a.id)).toEqual([owedNap.id]);
     expect(mockRows.has(doneNap.id)).toBe(false);
   });
+
+  it('rings a repeating alarm at another time one morning only, and clears it after', () => {
+    const wake = useAlarmStore.getState().saveAlarm({ label: '', hour: 7, minute: 0, repeatDays: [1, 2, 3, 4, 5], mission: null }, NOW);
+    const thursday = new Date(2026, 9, 15);
+    expect(useAlarmStore.getState().setOverride(wake.id, thursday, 6, 30)).toBe(true);
+    expect(useAlarmStore.getState().alarms[0].override).toEqual({ date: '2026-10-15', hour: 6, minute: 30 });
+    useAlarmStore.getState().clearSpentOverrides(new Date(2026, 9, 15, 12, 0));
+    expect(useAlarmStore.getState().alarms[0].override).not.toBeNull();
+    useAlarmStore.getState().clearSpentOverrides(new Date(2026, 9, 16, 0, 1));
+    expect(mockRows.get(wake.id)?.override).toBeNull();
+  });
+
+  it('refuses an override on a day the alarm doesn’t ring, and clears it at its own time', () => {
+    const wake = useAlarmStore.getState().saveAlarm({ label: '', hour: 7, minute: 0, repeatDays: [1, 2, 3, 4, 5], mission: null }, NOW);
+    expect(useAlarmStore.getState().setOverride(wake.id, new Date(2026, 9, 17), 9, 0)).toBe(false);
+    useAlarmStore.getState().setOverride(wake.id, new Date(2026, 9, 15), 6, 30);
+    useAlarmStore.getState().setOverride(wake.id, new Date(2026, 9, 15), 7, 0);
+    expect(useAlarmStore.getState().alarms[0].override).toBeNull();
+  });
+
+  it('a new time for every day replaces the override', () => {
+    const wake = useAlarmStore.getState().saveAlarm({ label: '', hour: 7, minute: 0, repeatDays: [1, 2, 3, 4, 5], mission: null }, NOW);
+    useAlarmStore.getState().setOverride(wake.id, new Date(2026, 9, 15), 6, 30);
+    const edited = useAlarmStore.getState().saveAlarm({ id: wake.id, label: '', hour: 6, minute: 45, repeatDays: [1, 2, 3, 4, 5], mission: null }, NOW);
+    expect(edited.override).toBeNull();
+  });
+
+  it('sets a one-off alarm that goes once it has rung', () => {
+    const at = new Date(2026, 9, 17, 9, 0, 30);
+    const once = useAlarmStore.getState().addOneOffAlarm(at, { mission: pushups, sound: 'chime', wakeSong: null }, NOW);
+    expect(once).toMatchObject({ quick: true, hour: 9, minute: 0, repeatDays: [], fireAt: new Date(2026, 9, 17, 9, 0).toISOString(), mission: pushups, sound: 'chime' });
+    expect(mockSync).toHaveBeenCalledWith(once);
+  });
 });

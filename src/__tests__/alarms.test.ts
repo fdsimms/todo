@@ -37,6 +37,7 @@ function alarm(over: Partial<Alarm> = {}): Alarm {
     missionGaveUp: false,
     sound: null,
     wakeSong: null,
+    override: null,
     createdAt: new Date(2026, 9, 1).toISOString(),
     ...over,
   };
