@@ -1434,7 +1434,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
-    padding: spacing.md,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.md,
+    // The card spaces its own blocks, so neither carries a trailing margin that
+    // would stack on the padding and leave the bottom heavier than the top.
+    gap: spacing.md,
     borderRadius: radius.md,
     // Warm, where every other card on the page is grey: this one is the point
     // of the screen, and the gold is the coin's own colour. `brand` rather than
@@ -1444,10 +1448,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   burstAnchor: { position: 'absolute', left: 0, right: 0 },
-  balanceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, marginBottom: spacing.smd },
+  balanceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   // A hero number, which is one of the things a literal font size is for.
   balance: { color: colors.text, fontSize: 48, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
-  goal: { alignSelf: 'stretch', marginBottom: spacing.md, gap: spacing.xs },
+  goal: { alignSelf: 'stretch', gap: spacing.sm },
   goalLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, textAlign: 'center' },
   goalMeta: { color: colors.textSecondary, fontSize: font.xs, textAlign: 'center' },
   rulesCard: { padding: spacing.md },
