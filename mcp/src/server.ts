@@ -1700,6 +1700,17 @@ const {
 } = taskFieldsShape;
 const ADVANCED_TASK_FIELDS_NOTE = 'Repeat, target, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication, logsMeal and onlyIfAnswer are not accepted here; set them with update_task.';
 
+/** What one variant (a brand and variant pair) can change, shared by save_grocery_box and the `variants` of update_grocery_item. */
+const GROCERY_BOX_EDIT = {
+  boxId: z.string().optional(),
+  brand: z.string().nullable().optional(),
+  variant: z.string().nullable().optional(),
+  note: z.string().optional(),
+  rating: z.enum(['loved', 'fine', 'avoid']).nullable().optional().describe('How it was: loved (Loved it), fine (It was fine) or avoid (Never again); null clears it. Put the reason in note ("too sweet"). Rate a variant only once the person has tried it, never from what they bought.'),
+  gtin: z.string().optional().describe('The barcode printed on the package, digits only or as scanned. A scan of it then lands on this variant. A code belongs to one variant at a time: it moves here from whichever variant held it. A store\'s own by-weight code is refused.'),
+  delete: z.boolean().optional(),
+};
+
 /** What one catalog edit can change, shared by update_grocery_item and update_grocery_items. */
 const GROCERY_ITEM_EDIT = {
   id: z.string().optional(),
@@ -1727,6 +1738,7 @@ const GROCERY_ITEM_EDIT = {
     bothWays: z.boolean().optional(),
   })).optional(),
   removeSubstitutes: z.array(z.string()).optional().describe('Substitute items to remove, by name or id.'),
+  variants: z.array(z.object(GROCERY_BOX_EDIT)).max(20).optional().describe('Variants (a brand and variant pair) to add, edit or delete on this item, applied after any rename, so renaming "Tums" to "antacid" can keep "Tums" as a brand in the same call. Each entry is what save_grocery_box takes: omit boxId to add one, pass boxId to edit it, delete: true to remove it.'),
 };
 
 function registerWriteTools(
@@ -3408,13 +3420,7 @@ function registerWriteTools(
     {
       id: z.string().optional(),
       name: z.string().optional().describe('The item by name, when you have no id.'),
-      boxId: z.string().optional(),
-      brand: z.string().nullable().optional(),
-      variant: z.string().nullable().optional(),
-      note: z.string().optional(),
-      rating: z.enum(['loved', 'fine', 'avoid']).nullable().optional().describe('How it was: loved (Loved it), fine (It was fine) or avoid (Never again); null clears it. Put the reason in note ("too sweet"). Rate a variant only once the person has tried it, never from what they bought.'),
-      gtin: z.string().optional().describe('The barcode printed on the package, digits only or as scanned. A scan of it then lands on this variant. A code belongs to one variant at a time: it moves here from whichever variant held it. A store\'s own by-weight code is refused.'),
-      delete: z.boolean().optional(),
+      ...GROCERY_BOX_EDIT,
     },
     async ({ id, name, ...input }) => {
       try {

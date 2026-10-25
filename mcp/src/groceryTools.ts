@@ -329,6 +329,8 @@ export interface UpdateGroceryItemInput {
   unlinkStores?: string[];
   addSubstitutes?: { name?: string; itemId?: string; note?: string | null; ratioFrom?: string | null; ratioTo?: string | null; standing?: boolean; either?: boolean; bothWays?: boolean }[];
   removeSubstitutes?: string[];
+  /** Variants to add, edit or delete on the item, after any rename. */
+  variants?: GroceryBoxInput[];
 }
 
 export function updateGroceryItem(replica: Replica, input: UpdateGroceryItemInput): { item: GroceryItemDetail; changed: string[]; undoable: boolean; note?: string } {
@@ -355,11 +357,26 @@ export function updateGroceryItem(replica: Replica, input: UpdateGroceryItemInpu
     ...(input.removeSubstitutes ? { removeSubstitutes: input.removeSubstitutes.map(n => itemByIdOrName(replica, n).id) } : {}),
   };
   const outcome = replica.updateGroceryItem(target.id, change);
+  // After the rename, on the row it produced: a variant added in the same call
+  // lands on the item under its new name.
+  const variantChanges = (input.variants ?? []).map((v, i) => {
+    let saved: { box: ItemProduct | null };
+    try {
+      saved = saveGroceryBox(replica, { id: outcome.item.id }, v);
+    } catch (e) {
+      throw new Error(`Variant ${i + 1}: ${e instanceof Error ? e.message : 'could not be saved.'}`);
+    }
+    // The variant as it now reads, so an edit that only names a flavor still says whose.
+    const label = [saved.box?.brand ?? v.brand, saved.box?.variant ?? v.variant].filter(Boolean).join(' ');
+    return v.delete ? 'removed a variant' : `${v.boxId ? 'changed' : 'added'} variant${label ? ` "${label}"` : ''}`;
+  });
+  const changed = [...outcome.changed, ...variantChanges];
   return {
     item: getGroceryItem(replica, { id: outcome.item.id }),
-    changed: outcome.changed,
-    undoable: outcome.reversible && outcome.changed.length > 0,
-    ...(outcome.changed.length === 0 ? { note: 'Nothing changed: it was already that way.' } : {}),
+    changed,
+    // Variant writes are recorded but their undo is not promised here.
+    undoable: outcome.reversible && outcome.changed.length > 0 && variantChanges.length === 0,
+    ...(changed.length === 0 ? { note: 'Nothing changed: it was already that way.' } : {}),
   };
 }
 

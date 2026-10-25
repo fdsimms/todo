@@ -240,6 +240,38 @@ describe('the catalog tools', () => {
     });
   });
 
+  describe('variants on update_grocery_item', () => {
+    it('renames a row and keeps the brand as a variant in the same call', () => {
+      addGroceryItem(replica, 'Tums');
+      const out = updateGroceryItem(replica, { name: 'Tums', rename: 'antacid', variants: [{ brand: 'Tums' }] });
+      expect(out.item.name).toBe('antacid');
+      expect(out.item.boxes).toMatchObject([{ brand: 'Tums' }]);
+      expect(out.changed.join(' ')).toMatch(/renamed/);
+      expect(out.changed).toContain('added variant "Tums"');
+      expect(out.undoable).toBe(false);
+    });
+
+    it('edits an existing variant by id, and names the entry a refusal came from', () => {
+      addGroceryItem(replica, 'cashews');
+      const box = saveGroceryBox(replica, { name: 'cashews' }, { brand: 'Planters' }).box!;
+      const out = updateGroceryItem(replica, { name: 'cashews', variants: [{ boxId: box.id, variant: 'dill pickle' }] });
+      expect(out.item.boxes).toMatchObject([{ brand: 'Planters', variant: 'dill pickle' }]);
+      expect(out.changed).toContain('changed variant "Planters dill pickle"');
+      expect(() => updateGroceryItem(replica, { name: 'cashews', variants: [{ brand: null, variant: null }] })).toThrow(/Variant 1/);
+    });
+
+    it('applies variants inside a batch, after each rename', () => {
+      addGroceryItem(replica, 'Aleve');
+      addGroceryItem(replica, 'Flonase');
+      const out = updateGroceryItems(replica, [
+        { name: 'Aleve', rename: 'naproxen', variants: [{ brand: 'Aleve' }] },
+        { name: 'Flonase', rename: 'nasal spray', variants: [{ brand: 'Flonase' }] },
+      ]);
+      expect(out.items.map(i => i.name)).toEqual(['naproxen', 'nasal spray']);
+      expect(listGroceryItems(replica, { query: 'naproxen' })).toHaveLength(1);
+    });
+  });
+
   describe('update_grocery_items and merge_grocery_items merges', () => {
     it('renames and refiles several items in order, and a later one may take a name an earlier one freed', () => {
       addGroceryItem(replica, 'Tums');
