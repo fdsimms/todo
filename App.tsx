@@ -48,6 +48,7 @@ import { useWeatherSync, useWeatherStore } from './src/store/useWeatherStore';
 import { useWeatherWaitSync } from './src/hooks/useWeatherWaitSync';
 import { useSlotInSync } from './src/hooks/useSlotInSync';
 import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
+import { useWakeUpTaskSync } from './src/hooks/useWakeUpTaskSync';
 import { useWaniKaniSync } from './src/hooks/useWaniKaniSync';
 import { useEventTaskSync } from './src/hooks/useEventTaskSync';
 import { useReminderMeetingResync } from './src/hooks/useReminderMeetingResync';
@@ -378,6 +379,9 @@ function AppRoot() {
   // until travel tasks, the transit switch and a line are all on), and re-runs
   // the travel task check when the calendar window or the alerts land.
   useTravelTaskSync();
+  // Re-runs the wake-up task check, and sets this phone's alarm for it, when the
+  // calendar window lands or its settings change.
+  useWakeUpTaskSync();
   // Reads the person's WaniKani queue while the app is in front (inert until
   // the WaniKani task is switched on and has a token) and re-runs its check
   // when a read lands.

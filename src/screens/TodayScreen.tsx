@@ -248,6 +248,7 @@ import { PillHighlightLayer, PillLabel, usePillHighlight } from '../components/S
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from '../components/RotatingChevron';
 import { loadEventRowMemo, saveEventRowMemo } from '../utils/eventRowMemo';
+import { syncWakeUpAlarm } from '../utils/wakeUpAlarm';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -1807,6 +1808,9 @@ export function TodayScreen() {
           // reads both land asynchronously, so useTravelTaskSync re-runs it
           // when either arrives rather than this firing being the only one.
           useTaskStore.getState().checkTravelTasks();
+          // Beside it: the wake-up task, and this phone's alarm for it.
+          useTaskStore.getState().checkWakeUpTasks();
+          syncWakeUpAlarm();
           // And the event rules, which read the same window. They ran only at
           // launch and in background refresh, so a rule whose lead day arrived
           // while the app sat open waited for the next cold start.

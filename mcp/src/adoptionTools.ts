@@ -411,6 +411,18 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'wake_up_alarm',
+    title: 'Wake-up alarm for early starts',
+    benefit: 'The evening before an event that starts earlier than you usually get up, a task says when to be up (the trip, arriving early and getting ready taken off the start) and the phone sets that alarm for you, for that morning only.',
+    since: '2026-10-25',
+    settingsQuery: 'wake-up alarm',
+    evidence: ({ all, replica }) => {
+      if (replica.generatorEnabled('wakeUpTasks')) return null;
+      const alarmTasks = all.filter(t => t.alarmLink).length;
+      return alarmTasks > 0 ? `${alarmTasks} of your tasks already point at tomorrow's alarm, and the wake-up alarm is off.` : null;
+    },
+  },
+  {
     id: 'slot_in',
     title: 'Waiting for a lighter day',
     benefit: 'A task or a whole category can wait for a day that isn\u2019t already full instead of piling onto a busy one. At least one waiting task still shows every day, longest wait first, and nothing waits more than a few days (3 unless you change it).',

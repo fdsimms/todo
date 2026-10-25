@@ -368,6 +368,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'eventTaskCategory', current: s.eventTaskCategory, assign: s.setEventTaskCategory };
     case 'travel':
       return { key: 'travelTaskCategory', current: s.travelTaskCategory, assign: s.setTravelTaskCategory };
+    case 'wakeUp':
+      return { key: 'wakeUpTaskCategory', current: s.wakeUpTaskCategory, assign: s.setWakeUpTaskCategory };
     case 'screenTime':
       return { key: 'screenTimeTaskCategory', current: s.screenTimeTaskCategory, assign: s.setScreenTimeTaskCategory };
     case 'blockOffer':

@@ -445,6 +445,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'weatherTasks',
   'eventTasks',
   'travelTasks',
+  'wakeUpTasks',
   'screenTimeTasks',
   'blockOfferTasks',
   'healthTasks',
@@ -617,6 +618,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'travelTaskCategory',
   'travelLeadMinutes',
   'travelArriveEarlyMinutes',
+  'wakeUpTaskCategory',
+  'wakeUpUsualMinutes',
+  'wakeUpGetReadyMinutes',
   'travelMode',
   'travelWalkUnderMinutes',
   // Which saved place the trip is estimated from (an id in the synced

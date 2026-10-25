@@ -914,7 +914,7 @@ was switched on to stop, so it pauses (the use-up and pantry generators, the mea
 reviews, supply reorders, chasing a wait (`waitingFollowUp`), the weekend nudge, the weigh-in).
 A generator about your body, your mood, the weather, your own phone use, the people you care about,
 or what is on your calendar is not work and keeps running (weather, Screen Time and Health rules,
-the mood check-ins, birthdays, reaching out, the calendar review, calendar event rules, leave-by reminders). A birthday missed because you
+the mood check-ins, birthdays, reaching out, the calendar review, calendar event rules, leave-by reminders, wake-up alarms). A birthday missed because you
 were away is the exact failure that feature exists to prevent, and what is on tomorrow matters more
 when you are travelling, not less.
 
@@ -1493,6 +1493,48 @@ turned up a bug: `generatorSwitchedOn` gated `calendarReview` on the calendar re
 writing nothing. Both are gated now through `CALENDAR_READ_KINDS`, the one list both the switch and
 Settings' `blockedBy` read, and `generatedTasks.test.ts` fails if a pass's calendar refusal and that
 list disagree.
+
+## `wakeUp` — when to get up for an early start, and the alarm for it
+
+Tomorrow's first timed event can need you up before your usual wake-up. When it does, a task says
+so ("Wake up at 6:15", dated the evening before) and this phone's alarm is set for it.
+`src/utils/wakeUpTasks.ts` holds the rules, `checkWakeUpTasks` the sweep, and
+`src/utils/wakeUpAlarm.ts` (`syncWakeUpAlarm`) the alarm.
+
+- **The task and the alarm are two writes on purpose.** Alarms are device-only and never synced,
+  and a task syncs, so the task can't carry the alarm. It is a notice with `alarmLink: 'next'`
+  (`morningAlarm.ts`), which makes its row show whichever alarm rings tomorrow and open the card
+  to keep or change it. `syncWakeUpAlarm` runs after every sweep on each device and sets *that
+  device's* alarm. A phone that isn't the one you sleep by sets one too; delete it there.
+- **The time is typed numbers only.** Start, less the Travel lead and arrive-early (`travelLeadFor`,
+  `leadWithArrival`, the same settings Leave-by reminders uses; an event with no place or a video
+  call has no trip), less "Getting ready takes", floored to five minutes. It does not read Apple
+  Maps estimates or a position. It is not shortened or lengthened by anything the app infers
+  about sleep (`health-data.md`: nothing is derived from sleep on its own).
+- **A task exists only below "Usual wake-up".** An ordinary morning writes nothing. Of the timed
+  events on tomorrow's *calendar* date (`morningDate`, not the logical day: a wake-up alarm belongs
+  to a calendar morning), the one needing the earliest wake-up wins. All-day events are refused.
+- **One task a morning, and a changed answer replaces it.** `isWakeUpTaskStale` clears a row whose
+  occurrence is no longer the match (moved, cancelled, or an earlier event took over) before the
+  event starts, quietly, and never after it. The handled record (`wakeUpTaskHandled`, device-local
+  like `travelTaskHandled`) is what keeps a deleted row deleted.
+- **The alarm is set once per answer.** `wakeUpAlarmApplied` holds `wakeAlarmKey` (occurrence plus
+  wake time), so a moved event sets it again and nothing else does: an alarm you then changed or
+  deleted is not overruled by the next sweep. `wakeAlarmPlan` decides: nothing ringing that morning
+  adds a one-off (`addOneOffAlarm`, which deletes itself after ringing); a repeating alarm ringing
+  later gets a one-night `Alarm.override` back to its own time the next day; an alarm already in
+  time is left; **a one-off you set yourself is left alone even if it rings too late**, and the row
+  still offers the change.
+- **It takes down what it set.** `wakeUpAlarmIds` remembers, per task, the one-off it added or the
+  repeating alarm it moved for a morning (`override:<id>`). When the event moves, is cancelled, or
+  an earlier one takes over, `syncWakeUpAlarm` deletes that one-off, or puts the moved alarm back
+  on its own time, before setting the new answer. An alarm you made yourself is never in the
+  record, so it is never touched. An alarm you changed by hand *after* it was set is still
+  replaced when the event moves, since it is the app's alarm until then.
+- **It refuses until it can read both sides.** The task sweep waits for the calendar window, and
+  the alarm half also waits for the alarm store (`initialized`): an unread list reads as "nothing
+  rings" and would set a second alarm over a real one. Both refuse in demo mode.
+- **It keeps running on vacation**, like Leave-by reminders. Ships off.
 
 ## `weekendNudge` — the one that asks about a *span*
 

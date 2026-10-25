@@ -5224,6 +5224,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(settings.travelTaskHandled).toEqual({});
   });
 
+  it('seeds a wake-up task for an early event tomorrow, pointing at the alarms', () => {
+    const task = useTaskStore.getState().tasks.find(t => t.generatedKind === 'wakeUp');
+    expect(task).toBeDefined();
+    expect(task!.title).toMatch(/^Wake up at /);
+    expect(task!.alarmLink).toBe('next');
+    expect(useSettingsStore.getState().wakeUpTaskCategory).toBe('Leave By');
+    // Nothing is marked handled or applied, for the travel task's reason.
+    expect(useSettingsStore.getState().wakeUpTaskHandled).toEqual({});
+  });
+
   it('seeds a health task and the rules alongside it', () => {
     const { tasks } = useTaskStore.getState();
     const settings = useSettingsStore.getState();

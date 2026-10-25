@@ -269,7 +269,7 @@ import {
   supplyRestockReleasesItem,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getNextOccurrence, getCurrentDayStart, getCurrentLogicalDayKey, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
+import { formatTimeOfDay, getNextDueDate, getNextOccurrence, getCurrentDayStart, getCurrentLogicalDayKey, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { logSlotToMealSlot, slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
@@ -460,6 +460,8 @@ import {
   type HandledEventTasks,
 } from '../utils/eventTasks';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
+import { NEXT_ALARM_LINK, morningDate } from '../utils/morningAlarm';
+import { isWakeUpTaskStale, matchedWakeUp, wakeUpInputs, wakeUpSourceOf, wakeUpTitle } from '../utils/wakeUpTasks';
 import {
   isTravelTaskStale,
   matchedTravelTasks,
@@ -824,6 +826,9 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       // The same answer as eventTask, for the same reason: the source is an
       // event in EventKit. `travelTaskHandled` is the mark, written as the task
       // is created, and outlives the task until the occurrence ends.
+      return;
+    case 'wakeUp':
+      // Travel's answer, with `wakeUpTaskHandled` as the mark.
       return;
     case 'screenTime':
       // Nothing to write either, and for the same reason: the source is a
@@ -2327,6 +2332,7 @@ interface TaskStore extends UndoHistoryActions {
    * the transit snapshot has one. See src/utils/travelTasks.ts.
    */
   checkTravelTasks: () => void;
+  checkWakeUpTasks: () => void;
   checkScreenTimeTasks: () => void;
   /**
    * Block offers: each enabled rule offers its task once a day, a block that
@@ -8395,6 +8401,64 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const changed = wroteNew
       || Object.keys(nextHandled).length !== Object.keys(settings.travelTaskHandled).length;
     if (changed) settings.setTravelTaskHandled(nextHandled);
+  },
+
+  checkWakeUpTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.wakeUpTasks) return;
+    // checkTravelTasks' refusals, for its reasons.
+    if (isDemoModeActive()) return;
+    if (!settings.calendarReadEnabled) return;
+    if (!settings.wakeUpTaskCategory) return;
+    const calendar = useCalendarStore.getState();
+    if (!calendar.loaded) return;
+
+    const now = new Date();
+    const handled = pruneHandledEventTasks(settings.wakeUpTaskHandled, now);
+    const { leads, prefs } = wakeUpInputs(settings);
+    const match = matchedWakeUp(leads, prefs, calendar.events, now, morningDate(now, settings.dayResetTime), handled);
+
+    // One task a morning: a row for any other occurrence (the event moved, was
+    // cancelled, or an earlier one appeared) is cleared, quietly, and the one
+    // that matches is written below.
+    liveGeneratedTasksOfKind(get().tasks, 'wakeUp')
+      .filter(task => {
+        const sourceId = wakeUpSourceOf(task);
+        return !sourceId || isWakeUpTaskStale(sourceId, match, now);
+      })
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+    const nextHandled: HandledEventTasks = { ...handled };
+    let wroteNew = false;
+    if (match && !(match.handled && !liveGeneratedTask(get().tasks, 'wakeUp', match.sourceId))) {
+      const title = wakeUpTitle(match.wakeAt, at => formatTimeOfDay(at, settings.use24HourTime));
+      reconcileGeneratedTask({
+        kind: 'wakeUp',
+        sourceId: match.sourceId,
+        wanted: true,
+        // The title follows the leads and the getting-ready time. The date is
+        // the occurrence's own and never moves (a moved event is a new key).
+        drift: existing => (existing.title !== title ? { title } : null),
+        draft: () => ({
+          // The evening before, which is when there is still time to set the
+          // alarm. The event's own location is not copied: this isn't a trip.
+          ...taskFieldsFromEvent(match.event, 1),
+          title,
+          location: null,
+          category: settings.wakeUpTaskCategory,
+          alarmLink: NEXT_ALARM_LINK,
+          ...generatedBy('wakeUp', match.sourceId),
+        }),
+      });
+      if (!match.handled) {
+        nextHandled[match.sourceId] = match.endsAt;
+        wroteNew = true;
+      }
+    }
+
+    const changed = wroteNew
+      || Object.keys(nextHandled).length !== Object.keys(settings.wakeUpTaskHandled).length;
+    if (changed) settings.setWakeUpTaskHandled(nextHandled);
   },
 
   /**

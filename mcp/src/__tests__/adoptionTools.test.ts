@@ -182,6 +182,13 @@ describe('since: features that are new to the person', () => {
     expect(ids).toEqual(['supplement_nutrients']);
   });
 
+  it('suggests the wake-up alarm only to someone whose tasks already point at tomorrow\u2019s alarm', () => {
+    const ids = (tasks: unknown[]) =>
+      unusedFeatures(fakeReplica({ tasks }), { since: '2026-10-25', limit: 20 }).suggestions.map(s => s.id);
+    expect(ids([task({ alarmLink: 'next' })])).toEqual(['wake_up_alarm']);
+    expect(ids([task()])).toEqual([]);
+  });
+
   it('does not suggest holidays once a repeating task uses them, or a supplement that lists its contents', () => {
     const replica = fakeReplica({
       tasks: [repeating({ recurrenceHolidays: 'skip' }), repeating(), repeating()],
