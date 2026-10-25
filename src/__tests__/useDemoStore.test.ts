@@ -1536,6 +1536,14 @@ describe('demo mode', () => {
     expect(persistent.every(t => t.reminderTime !== null)).toBe(true);
   });
 
+  it('seeds an alarm that takes pushups to check off', () => {
+    useDemoStore.getState().enterDemoMode();
+    const pushups = useTaskStore.getState().tasks.filter(t => t.pushupChallenge);
+
+    expect(pushups.length).toBeGreaterThan(0);
+    expect(pushups.every(t => t.reminderKind === 'persistent')).toBe(true);
+  });
+
   it('seeds a reminder set as "N days before due" rather than a fixed instant', () => {
     useDemoStore.getState().enterDemoMode();
     const relative = useTaskStore.getState().tasks.filter(t => t.reminderOffsetDays !== null);

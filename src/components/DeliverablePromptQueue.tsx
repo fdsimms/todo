@@ -1,8 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { animateLayout } from '../utils/layoutAnimation';
+import { asksOnCompletion } from '../utils/deliverables';
+import { hasPushupChallenge } from '../utils/pushupCounter';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
+import { PushupCounterSheet } from './PushupCounterSheet';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 
 interface Props {
@@ -33,8 +36,16 @@ interface Props {
  * where cancelling the second silently dropped the third would be its own
  * quiet loss, which is the thing this path exists to stop.
  *
+ * **A task with pushups to do gets the counter first** (`PushupCounterSheet`),
+ * which is why every path completing one with a person present comes through
+ * here (`completesThroughQueue`): `completeTask` refuses it otherwise. Once
+ * the pushups are counted, a task that also asks something gets its question
+ * next and is completed with both; one that doesn't is completed at once and
+ * the counter closes. Only one of the two sheets is ever visible, since two
+ * modals can't be.
+ *
  * Renders nothing until the first question, so a host can mount it
- * unconditionally. After that the sheet stays in the tree and closes
+ * unconditionally. After that each sheet stays in the tree and closes
  * through `visible`, because a sheet unmounted while it is on screen
  * skips SheetModal's ordered close (see useSheetSubject).
  */
@@ -51,27 +62,61 @@ export function DeliverablePromptQueue({ ids, onResolved, onOpenTask }: Props) {
   const current = useTaskStore(s =>
     head ? s.tasks.find(t => t.id === head && !t.completed) ?? null : null);
 
+  // Tasks whose pushups were counted in this run, still waiting on their
+  // question. The question's answer completes them with `pushupsDone`.
+  const [counted, setCounted] = useState<readonly string[]>([]);
   useEffect(() => {
     if (head !== null && current === null) onResolved(head);
   }, [head, current]);
 
-  // Held past the end of the run, so the last answer closes the sheet through
-  // `visible` instead of taking it out of the tree while it is still on
-  // screen. See useSheetSubject.
-  const shown = useSheetSubject(current);
-  if (!shown) return null;
+  const pushupHead = current && hasPushupChallenge(current) && !counted.includes(current.id) ? current : null;
+  const counterTask = pushupHead;
+  const promptTask = pushupHead === null ? current : null;
+
+  // Each held past the end of the run, so the last answer closes its sheet
+  // through `visible` instead of taking it out of the tree while it is still
+  // on screen. See useSheetSubject.
+  const shownCounter = useSheetSubject(counterTask);
+  const shownPrompt = useSheetSubject(promptTask);
 
   return (
-    <DeliverablePromptSheet
-      visible={current !== null}
-      task={shown}
-      onConfirm={(value, reasoning) => {
-        animateLayout();
-        completeTask(shown.id, { deliverableValue: value, deliverableReasoning: reasoning });
-        onResolved(shown.id);
-      }}
-      onCancel={() => onResolved(shown.id)}
-      onOpenTask={onOpenTask}
-    />
+    <>
+      {shownCounter && (
+        <PushupCounterSheet
+          visible={counterTask !== null}
+          task={shownCounter}
+          onCounted={() => {
+            const task = shownCounter;
+            if (asksOnCompletion(task)) {
+              // The counter closes and the question opens in the same commit,
+              // which is safe; holding both open is not.
+              setCounted(prev => [...prev, task.id]);
+              return;
+            }
+            animateLayout();
+            completeTask(task.id, { pushupsDone: true });
+            onResolved(task.id);
+          }}
+          onClose={() => onResolved(shownCounter.id)}
+        />
+      )}
+      {shownPrompt && (
+        <DeliverablePromptSheet
+          visible={promptTask !== null}
+          task={shownPrompt}
+          onConfirm={(value, reasoning) => {
+            animateLayout();
+            completeTask(shownPrompt.id, {
+              deliverableValue: value,
+              deliverableReasoning: reasoning,
+              pushupsDone: counted.includes(shownPrompt.id),
+            });
+            onResolved(shownPrompt.id);
+          }}
+          onCancel={() => onResolved(shownPrompt.id)}
+          onOpenTask={onOpenTask}
+        />
+      )}
+    </>
   );
 }

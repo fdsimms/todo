@@ -1229,6 +1229,20 @@ export function seedDemoData(): void {
     effort: 1,
   });
 
+  // The same alarm with pushups to do before it can be checked off
+  // (Task.pushupChallenge). Seeded for the same reason: nothing on the row
+  // says a task can ask for pushups until one does.
+  addTask({
+    title: 'Get up',
+    notes: 'Rings until 20 pushups are counted.',
+    category: 'Health',
+    dueDate: addDays(today, 1).toISOString(),
+    reminderTime: setHours(addDays(today, 1), 7).toISOString(),
+    reminderKind: 'persistent',
+    pushupChallenge: 20,
+    effort: 1,
+  });
+
   // --- A task given several dates (a series) -------------------------------
   // Three rows sharing one seriesId, each an ordinary one-off on its own day
   // (see the Series note in CLAUDE.md). Through addTaskSeries, the same entry

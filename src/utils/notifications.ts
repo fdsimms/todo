@@ -33,6 +33,7 @@ import { resolveActiveTrip } from './activeTrip';
 import type { Shop } from '../types';
 import type { EventReminder } from './eventReminders';
 import { reminderTriggerDate } from './eventReminders';
+import { hasPushupChallenge } from './pushupCounter';
 
 export { isAlarmKitAvailable, requestAlarmAuthorization };
 
@@ -289,7 +290,9 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
       // the chain onto the window's close, so a 3am chain silenced at 3am
       // would fire its leftover rings back to back at 7am.
       if (isWithinQuietHours(times[i], qStart, qEnd)) break;
-      await scheduleNativeAlarm(taskAlarmUuid(task.id, i), times[i], title);
+      // A pushup task's alarm carries a Pushups button that opens the
+      // counter, since the counter is the only thing that silences the chain.
+      await scheduleNativeAlarm(taskAlarmUuid(task.id, i), times[i], title, hasPushupChallenge(task) ? task.id : null);
     }
     return;
   }

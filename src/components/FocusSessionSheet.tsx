@@ -48,7 +48,7 @@ import { CoinIcon } from './CoinIcon';
 import { useFocusSession } from '../hooks/useFocusSession';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
-import { asksOnCompletion } from '../utils/deliverables';
+import { completesThroughQueue } from '../utils/bulkCompletion';
 import { DeliverablePromptQueue } from './DeliverablePromptQueue';
 import { ProgressBar } from './ProgressBar';
 import { PressableScale } from './PressableScale';
@@ -348,7 +348,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     // completing straight through the question would drop the answer with
     // nothing said — see utils/bulkCompletion.ts. No confirm: there is one
     // task, so there is nothing to warn about, only a question to ask.
-    if (asksOnCompletion(currentTask)) {
+    if (completesThroughQueue(currentTask)) {
       clearPendingUndo();
       haptics.tap();
       enqueue([currentTask.id]);

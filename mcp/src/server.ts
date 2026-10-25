@@ -1499,6 +1499,8 @@ const taskFieldsShape = {
     .describe('Hold a one-off task until the first day in the next two weeks with this kind of forecast, e.g. "leave books on the curb on the next sunny day". The phone matches the forecast and moves the task, so it can take until the next sync to leave Today. Not for a repeating task, chain, set of dates or subtask. null stops waiting.'),
   pinned: z.boolean().optional().describe('Pin it to the top of Today.'),
   pinEachOccurrence: z.boolean().optional().describe('On a repeating task: every occurrence it spawns starts pinned, so the pin is not redone by hand each time. Does nothing on a task that does not repeat.'),
+  pushupChallenge: z.number().int().min(1).max(200).nullable().optional()
+    .describe('Pushups the phone counts (with its proximity sensor) before the task can be checked off; ticking it on the phone opens a counter. Pair with a persistent alarm reminder for "make me do pushups to stop the alarm". A task with one cannot be completed over MCP. null removes it.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
     .describe('Makes completing this task ask for an answer of that kind, recorded on the row.'),
   deliverableOptions: z.array(z.string()).optional()

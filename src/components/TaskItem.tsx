@@ -173,6 +173,8 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { WhenPicker } from './WhenPicker';
 import { TaskBreakdownSheet } from './TaskBreakdownSheet';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
+import { PushupCounterSheet } from './PushupCounterSheet';
+import { hasPushupChallenge } from '../utils/pushupCounter';
 import { RecipePickerSheet } from './RecipePickerSheet';
 import { PressableScale } from './PressableScale';
 import { usePaintSelectionRow } from './PaintSelection';
@@ -777,6 +779,15 @@ const TaskItemRow = React.memo(function TaskItem({
   const pinWaiting = task.pinned && !pinLit;
   const pinWritesPending = useRef(0);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
+  // The pushup counter (Task.pushupChallenge). Once it has counted, the ref
+  // says so to every completeTask below, which refuses the task otherwise.
+  const [showPushups, setShowPushups] = useState(false);
+  const pushupsCountedRef = useRef(false);
+  // A count is good for one completion: an undo, or the row moving on to
+  // another task, needs the pushups again.
+  useEffect(() => {
+    pushupsCountedRef.current = false;
+  }, [task.id, task.completed]);
   const [showMealPicker, setShowMealPicker] = useState(false);
   const { offerPrepTasksForEach } = usePlanMeal();
   // The postpone prompt's "Break it up" needs somewhere to send the user. With
@@ -1240,6 +1251,7 @@ const TaskItemRow = React.memo(function TaskItem({
     completeTask(task.id, {
       ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
       ...(autoCompletedRef.current ? { autoCompleted: true } : {}),
+      ...(pushupsCountedRef.current ? { pushupsDone: true } : {}),
       ...outcome,
     });
   }, []);
@@ -1437,6 +1449,7 @@ const TaskItemRow = React.memo(function TaskItem({
   const mountWhenPicker = useSheetMount(whenPickerOpen);
   const mountBreakdown = useSheetMount(showBreakdown);
   const mountDeliverablePrompt = useSheetMount(showDeliverablePrompt);
+  const mountPushups = useSheetMount(showPushups);
   const mealPickerOpen = showMealPicker && mealSlotChooseSource !== null;
   const mountMealPicker = useSheetMount(mealPickerOpen);
   const [showRotationPick, setShowRotationPick] = useState(false);
@@ -2475,6 +2488,7 @@ const TaskItemRow = React.memo(function TaskItem({
           ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
           ...(logEarly ? { logEarly: true } : {}),
           ...(autoCompletedRef.current ? { autoCompleted: true } : {}),
+          ...(pushupsCountedRef.current ? { pushupsDone: true } : {}),
           ...outcome,
         });
         endQuotaHold();
@@ -2548,6 +2562,7 @@ const TaskItemRow = React.memo(function TaskItem({
       ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
       ...(logEarly ? { logEarly: true } : {}),
       ...(autoCompletedRef.current ? { autoCompleted: true } : {}),
+      ...(pushupsCountedRef.current ? { pushupsDone: true } : {}),
       chainStepInPlace: true,
     });
     endQuotaHold();
@@ -2683,6 +2698,14 @@ const TaskItemRow = React.memo(function TaskItem({
     // still be there to cancel back to. Answering (or explicitly skipping)
     // then runs the ordinary completion, so nothing downstream — the hold, the
     // batched collapse, the recurrence — learns about deliverables at all.
+    // The pushups come before everything else the tick asks, question
+    // included: the counter is what checks the task off, and once it has
+    // counted it calls back in here to carry on from this point.
+    if (hasPushupChallenge(task) && !task.completed && !pushupsCountedRef.current) {
+      await haptics.tap();
+      setShowPushups(true);
+      return;
+    }
     if (asksOnComplete) {
       await haptics.tap();
       setShowDeliverablePrompt(true);
@@ -5562,6 +5585,19 @@ const TaskItemRow = React.memo(function TaskItem({
           // Cancel leaves the task exactly as it was — the tap is taken back,
           // not turned into an unanswered completion.
           onCancel={() => setShowDeliverablePrompt(false)}
+        />
+      )}
+      {mountPushups && (
+        <PushupCounterSheet
+          visible={showPushups}
+          task={task}
+          onCounted={() => {
+            pushupsCountedRef.current = true;
+            setShowPushups(false);
+            handleComplete();
+          }}
+          // Cancel takes the tap back, the same as the question's.
+          onClose={() => setShowPushups(false)}
         />
       )}
       {mountMealPicker && mealSlotChooseSource && (

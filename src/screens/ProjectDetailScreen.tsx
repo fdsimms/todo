@@ -1352,7 +1352,7 @@ function ProjectDetailContent() {
       haptics.success();
       animateLayout();
       useTaskStore.getState().completeTask(task.id);
-    } else if (tap === 'ask') {
+    } else if (tap === 'ask' || tap === 'pushups') {
       haptics.tap();
       enqueue([task.id]);
     } else if (tap !== 'locked') {

@@ -35,7 +35,7 @@ import {
   type MedicationSettingsMap,
 } from '../utils/medicationSettings';
 import { describeSupply } from '../utils/supply';
-import { asksOnCompletion } from '../utils/deliverables';
+import { completesThroughQueue } from '../utils/bulkCompletion';
 import { confirmWithinLimit, recordDose, unrecordDose } from '../utils/doseRecording';
 import {
   medicationExportCsv,
@@ -252,7 +252,7 @@ export function MedicationScreen() {
   };
 
   const completeDue = useCallback((task: Task) => {
-    if (asksOnCompletion(task)) {
+    if (completesThroughQueue(task)) {
       haptics.tap();
       enqueue([task.id]);
       return;

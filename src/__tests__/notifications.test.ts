@@ -406,7 +406,7 @@ describe('scheduleTaskReminder', () => {
     await scheduleTaskReminder(task);
     // The derived UUID, not the bare task id: AlarmKit rejects a non-UUID id,
     // which is why passing 'task-alarm' straight through scheduled nothing.
-    expect(scheduleNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('task-alarm', 0), new Date(FUTURE), 'Wake up');
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('task-alarm', 0), new Date(FUTURE), 'Wake up', null);
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
     // Still clears any stale plain notification left behind by a prior 'notification'-kind schedule.
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-alarm');
@@ -426,11 +426,21 @@ describe('scheduleTaskReminder', () => {
     expect(scheduleNativeAlarm).toHaveBeenCalledTimes(ALARM_MAX_RINGS);
 
     const calls = (scheduleNativeAlarm as jest.Mock).mock.calls;
-    expect(calls[0]).toEqual([taskAlarmUuid('nag', 0), new Date(FUTURE), 'Take pills']);
+    expect(calls[0]).toEqual([taskAlarmUuid('nag', 0), new Date(FUTURE), 'Take pills', null]);
     // Each ring one interval after the last, under its own id.
     expect(calls[1][0]).toBe(taskAlarmUuid('nag', 1));
     expect(calls[1][1].getTime() - calls[0][1].getTime()).toBe(ALARM_RING_INTERVAL_MINUTES * 60 * 1000);
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('gives a pushup task\'s alarm the Pushups button, naming the task', async () => {
+    mockAlarmKitAvailable = true;
+    await scheduleTaskReminder(makeTask({
+      id: 'getup', title: 'Get up', reminderTime: FUTURE, reminderKind: 'persistent', pushupChallenge: 20,
+    }));
+    const calls = (scheduleNativeAlarm as jest.Mock).mock.calls;
+    expect(calls.length).toBe(ALARM_MAX_RINGS);
+    expect(calls.every(c => c[3] === 'getup')).toBe(true);
   });
 
   it('rings a "persistent" reminder once as a plain notification when AlarmKit is unavailable', async () => {
@@ -608,7 +618,7 @@ describe('rescheduleAllReminders', () => {
     await rescheduleAllReminders(tasks);
     expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(64);
     expect(scheduleNativeAlarm).toHaveBeenCalledTimes(1);
-    expect(scheduleNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('alarm-1', 0), new Date(FUTURE), expect.any(String));
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('alarm-1', 0), new Date(FUTURE), expect.any(String), null);
   });
 
   it('schedules only the nearest MAX_PENDING_REMINDERS upcoming reminders, soonest first', async () => {
@@ -999,7 +1009,7 @@ describe('scheduleTaskReminder honors quiet hours by deferring', () => {
     const reminderTime = new Date(2026, 0, 1, 23, 0).toISOString();
     await scheduleTaskReminder(makeTask({ id: 'quiet-alarm', reminderTime, reminderKind: 'alarm' }));
     expect(scheduleNativeAlarm).toHaveBeenCalledWith(
-      taskAlarmUuid('quiet-alarm', 0), new Date(2026, 0, 2, 7, 0), expect.any(String)
+      taskAlarmUuid('quiet-alarm', 0), new Date(2026, 0, 2, 7, 0), expect.any(String), null
     );
   });
 });

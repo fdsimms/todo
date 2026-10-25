@@ -204,6 +204,7 @@ import { ProgressBar } from './ProgressBar';
 import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { normalizePushupChallenge, PUSHUP_DEFAULT_COUNT, PUSHUP_MAX_COUNT } from '../utils/pushupCounter';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -383,7 +384,7 @@ function serializeExtraRows(rows: readonly MedicationExtraRow[]): string {
     .map(r => [r.name.trim(), r.amount.trim(), r.unit]));
 }
 
-type FieldKey = 'kind' | 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'logHealthValue' | 'medication' | 'logMealSlot' | 'slotIn' | 'placeReminder';
+type FieldKey = 'kind' | 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'pushups' | 'logHealthValue' | 'medication' | 'logMealSlot' | 'slotIn' | 'placeReminder';
 
 // "If the day is full" (Task.slotIn). Keep the date first: it is what every
 // task does unless told otherwise.
@@ -827,6 +828,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
   const [completionTimerNote, setCompletionTimerNote] = useState<string | null>(null);
+  const [pushupChallenge, setPushupChallenge] = useState<number | null>(null);
   const [logHealthMetric, setLogHealthMetric] = useState<NutrientKey | null>(null);
   const [logHealthAmount, setLogHealthAmount] = useState<number | null>(null);
   // Display-only, and not read from the task: logHealthAmount is always held
@@ -1304,6 +1306,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setLinkUrl(task.linkUrl ?? null);
       setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
       setCompletionTimerNote(task.completionTimerNote ?? null);
+      setPushupChallenge(normalizePushupChallenge(task.pushupChallenge));
       setLogHealthMetric(task.logHealthMetric ?? null);
       setLogHealthAmount(task.logHealthAmount ?? null);
       setMedicationName(task.medicationName ?? null);
@@ -1378,6 +1381,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setLinkUrl(initialDraft?.linkUrl ?? null);
       setCompletionTimerMinutes(initialDraft?.completionTimerMinutes ?? null);
       setCompletionTimerNote(initialDraft?.completionTimerNote ?? null);
+      setPushupChallenge(null);
       setLogHealthMetric(initialDraft?.logHealthMetric ?? null);
       setLogHealthAmount(initialDraft?.logHealthAmount ?? null);
       setMedicationName(initialDraft?.medicationName ?? null);
@@ -1536,6 +1540,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
       completionTimerNote: task ? (task.completionTimerNote ?? null) : (initialDraft?.completionTimerNote ?? null),
+      pushupChallenge: task ? normalizePushupChallenge(task.pushupChallenge) : null,
       logHealthMetric: task ? (task.logHealthMetric ?? null) : (initialDraft?.logHealthMetric ?? null),
       logHealthAmount: task ? (task.logHealthAmount ?? null) : (initialDraft?.logHealthAmount ?? null),
       medicationName: task ? (task.medicationName ?? null) : (initialDraft?.medicationName ?? null),
@@ -2379,6 +2384,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       linkUrl: resolveLinkUrl(),
       completionTimerMinutes,
       completionTimerNote,
+      pushupChallenge,
       logHealthMetric,
       logHealthAmount,
       medicationName: resolveMedicationName(),
@@ -3283,6 +3289,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       linkUrl,
       completionTimerMinutes,
       completionTimerNote,
+      pushupChallenge,
       logHealthMetric,
       logHealthAmount,
       medicationName,
@@ -3768,6 +3775,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     phone: phoneNumber ?? undefined,
     email: emailAddress ?? undefined,
     asks: deliverableKind ?? undefined,
+    pushups: pushupChallenge ?? undefined,
   });
 
   const openField = (key: FieldKey) => {
@@ -3804,6 +3812,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     phone: () => { setPhoneText(phoneNumber ?? ''); setShowPhoneField(true); },
     email: () => { setEmailText(emailAddress ?? ''); setShowEmailField(true); },
     deliverable: () => openField('deliverable'),
+    pushups: () => openField('pushups'),
   };
   const openFromSummary = (key: string) => {
     const y = jump.rowY(key);
@@ -8270,6 +8279,36 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               )}
             </CollapsibleField>
               </>
+            ),
+          },
+          // Gates the tick itself: checking the task off opens the pushup
+          // counter, and completeTask refuses any other way of completing it.
+          // Mostly wanted with an "until done" alarm, which the counter is
+          // then the only way to silence (see utils/pushupCounter.ts).
+          {
+            key: 'pushups', label: 'Pushups first', set: pushupChallenge !== null,
+            keywords: ['pushup', 'push-up', 'exercise', 'alarm', 'wake', 'dismiss', 'challenge', 'mission', 'workout', 'proximity'],
+            node: (
+              <CollapsibleField
+                label="Pushups first"
+                icon="barbell-outline"
+                summary={pushupChallenge !== null ? `${pushupChallenge} pushups` : undefined}
+                hint="Checking this off opens a pushup counter, and it’s done once you’ve done this many. An Until done alarm keeps ringing until then."
+                expanded={fieldOpen('pushups')}
+                onToggle={() => toggleField('pushups')}
+              >
+                <CountStepper
+                  value={pushupChallenge}
+                  onChange={setPushupChallenge}
+                  min={1}
+                  max={PUSHUP_MAX_COUNT}
+                  start={PUSHUP_DEFAULT_COUNT}
+                  allowNull
+                  emptyLabel="Off"
+                  label="Pushups"
+                  describeValue={n => (n === null ? 'off' : `${n} pushups`)}
+                />
+              </CollapsibleField>
             ),
           },
           // Another "what does completing this mean" question, and — like

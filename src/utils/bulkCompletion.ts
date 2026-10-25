@@ -1,6 +1,7 @@
 import type { Task } from '../types';
 import { asksOnCompletion } from './deliverables';
 import { isRecurrenceNotYetDue } from './visibilityUtils';
+import { hasPushupChallenge } from './pushupCounter';
 
 /**
  * Which tasks in a set would lose an answer if the set were completed in one
@@ -36,6 +37,28 @@ import { isRecurrenceNotYetDue } from './visibilityUtils';
  */
 export function tasksAskingOnCompletion(tasks: readonly Task[]): Task[] {
   return tasks.filter(t => !t.completed && !isRecurrenceNotYetDue(t) && asksOnCompletion(t));
+}
+
+/**
+ * The tasks here that have pushups to do (`Task.pushupChallenge`), in the
+ * order given, with the same two guards as `tasksAskingOnCompletion`.
+ *
+ * Unlike a question these have no "complete anyway": `completeTask` refuses
+ * one the counter didn't check off, so a bulk path that completed them with
+ * the rest would leave them open with nothing said. They always go to the
+ * counter instead (`DeliverablePromptQueue`, which counts them one at a time).
+ */
+export function tasksNeedingPushups(tasks: readonly Task[]): Task[] {
+  return tasks.filter(t => !t.completed && !isRecurrenceNotYetDue(t) && hasPushupChallenge(t));
+}
+
+/**
+ * Whether a path completing this one task with a person present hands it to
+ * the queue (`useAnswerFirstCompletion`'s `enqueue`) rather than calling
+ * `completeTask` itself: a question to ask, or pushups to count.
+ */
+export function completesThroughQueue(task: Task): boolean {
+  return asksOnCompletion(task) || hasPushupChallenge(task);
 }
 
 /** What the confirm says, for `count` tasks that would go unanswered. */

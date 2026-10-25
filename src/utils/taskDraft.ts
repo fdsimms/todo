@@ -46,6 +46,7 @@ import { canHoldFollowUpTask } from './followUpTask';
 import { normalizeTargetUnit } from './quotaUnit';
 import { canHoldSupply, clampSupplyReorderAt, DEFAULT_SUPPLY_REORDER_AT } from './supply';
 import { blockerFields, blockerIdsOf } from './blocking';
+import { normalizePushupChallenge } from './pushupCounter';
 
 // The time-of-day a brand-new task starts with: its own if the draft named
 // one, else its category's default (Category.defaultTimeSegments), else
@@ -425,6 +426,7 @@ export function newTaskFromDraft(
     completionTimerMinutes: draft.completionTimerMinutes ?? null,
     completionTimerNote: draft.completionTimerNote ?? null,
     completionTimerStartedAt: null,
+    pushupChallenge: normalizePushupChallenge(draft.pushupChallenge),
     logHealthMetric: draft.logHealthMetric ?? null,
     logHealthAmount: draft.logHealthAmount ?? null,
     medicationName: draft.medicationName ?? null,

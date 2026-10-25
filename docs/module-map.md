@@ -71,7 +71,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/bloodPressureLog.ts` — BloodPressureReading, MIN_SYSTOLIC, MAX_SYSTOLIC, MIN_DIASTOLIC, MAX_DIASTOLIC, MIN_PULSE, MAX_PULSE, isPlausibleReading, parseBloodPressureInput, formatReading, +9 more
 - `src/utils/bloodPressureTasks.ts` — BLOOD_PRESSURE_TITLE, DEFAULT_BLOOD_PRESSURE_EVERY_DAYS, BLOOD_PRESSURE_EVERY_DAYS_MIN, BLOOD_PRESSURE_EVERY_DAYS_MAX, clampBloodPressureEveryDays, BLOOD_PRESSURE_LINK_URL, bloodPressureDayKey, wantsBloodPressure, bloodPressureDeclineHolds, bloodPressureNotes
 - `src/utils/brands.ts` — BrandSummary, brandSummaries, planBrandRename
-- `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy, stackCompletionScope
+- `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, tasksNeedingPushups, completesThroughQueue, unansweredCompletionCopy, stackCompletionScope
 - `src/utils/bulkDelete.ts` — isMissableOneOff, BulkDeletePrompt, bulkDeletePrompt
 - `src/utils/bulkScopePrompt.ts` — confirmBulkScope, confirmFollowUpScope, confirmGeneratedScope, bulkSetPriorityAsking, bulkSetDifficultyAsking, bulkAddTagsAsking
 - `src/utils/busyEvenings.ts` — BUSY_EVENING_MIN_MINUTES, BusyEvening, busyEveningOn, describeBusyEvening
@@ -410,6 +410,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/proteinPerWeight.ts` — ProteinPerWeight, PROTEIN_PER_WEIGHT_RANGE, parseProteinPerWeight, serializeProteinPerWeight, switchProteinUnit, proteinTargetFromWeight
 - `src/utils/pulseLog.ts` — PulseKind, PulseEntry, isPlausiblePulse, parsePulseInput, parsePulseSeries, standalonePulses, pulsesSince
 - `src/utils/purchaseInterval.ts` — MIN_PURCHASE_GAP_DAYS, nextPurchaseIntervalDays
+- `src/utils/pushupCounter.ts` — PUSHUP_MIN_NEAR_MS, PUSHUP_MIN_REP_MS, PUSHUP_MAX_NEAR_MS, PUSHUP_DEFAULT_COUNT, PUSHUP_MAX_COUNT, PushupCounterState, initialPushupState, feedProximity, tapRep, normalizePushupChallenge, +1 more
 - `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more
 - `src/utils/quickActions.ts` — STATIC_ACTIONS, QuickActionScreen, quickActionsFor, handleQuickActionId, useHomeScreenQuickActions, publishQuickActions
 - `src/utils/quickAddPhrases.ts` — QuickAddPhrase, QuickAddPhraseSection, QUICK_ADD_PHRASES
@@ -567,7 +568,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/tagColor.ts` — tagColor
 - `src/utils/tagRename.ts` — normalizeTagName, renameInTagList, renameTagInSeriesDefaults, renameTagInFollowUpDraft, renameTagInTitleRules, renameTagInReminderCaptures, renameTagInGeneratedExtras
 - `src/utils/taskAgain.ts` — AgainFields, againFields, describeAgainFields, againDraft
-- `src/utils/taskCompletion.ts` — CompletionOptions, CompletionContext, CompletionRows, completionRefusal, buildCompletion, completionSettings
+- `src/utils/taskCompletion.ts` — CompletionOptions, CompletionContext, CompletionRows, pushupsOwed, completionRefusal, buildCompletion, completionSettings
 - `src/utils/taskDates.ts` — calendarDayKey, SeriesRepeat, seriesRows, DatesAnchorStep, datesAnchorStep, DatesReconcile, datesReconcile
 - `src/utils/taskDose.ts` — TaskDosePreview, describeTaskDose
 - `src/utils/taskDraft.ts` — applyTitleRulesToDraft, newTaskFromDraft, reanchorReminder, NO_RECURRENCE, buildSeriesRow

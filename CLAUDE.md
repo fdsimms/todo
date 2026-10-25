@@ -459,6 +459,7 @@ file: the two maps are indexes, not write-ups.
 | colors, spacing, animation | `src/theme/index.ts`, `src/theme/ThemeContext.tsx` |
 | pinning, the Pinned Tasks block | `pinnedBlock` in `src/screens/TodayScreen.tsx` — see Pinning below |
 | bulk selection | `src/hooks/useTaskSelection.ts` + `src/components/BulkActionBar.tsx` |
+| a task that takes pushups to check off, and the alarm's Pushups button | `src/utils/pushupCounter.ts` (what counts as a rep) + `Task.pushupChallenge` + `PushupCounterSheet` + `modules/todo-proximity-bridge` + `OpenPushupsIntent.swift` in `todo-alarmkit-bridge`. `completionRefusal` refuses any completion the counter didn't make (`pushupsDone`), except a miss or someone else; a path with a person present hands the task to `DeliverablePromptQueue`, which counts before it asks |
 | reminders | `src/utils/notifications.ts`. A reminder at a place is `src/utils/placeReminders.ts`, armed through a system location trigger in `todo-eventkit-bridge` (expo-notifications has none), so the app itself never reads a location in the background |
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
 | how you're feeling, and what that looks like against your tasks | `src/utils/moodLog.ts` + `src/utils/moodInsights.ts` + `src/utils/moodTasks.ts` — see `docs/arch/mood-log.md` |

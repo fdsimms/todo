@@ -936,6 +936,13 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.completionTimerMinutes).toBeNull();
   });
 
+  it('round-trips a pushup challenge through insert and update', () => {
+    dbInsertTask(makeTask({ id: 'push1', pushupChallenge: 20 }));
+    expect(dbGetAllTasks()[0].pushupChallenge).toBe(20);
+    dbUpdateTask(makeTask({ id: 'push1', pushupChallenge: null }));
+    expect(dbGetAllTasks()[0].pushupChallenge).toBeNull();
+  });
+
   it('returns null targetUnit when unset', () => {
     dbInsertTask(makeTask({ id: 'nounit', targetCount: 12 }));
     const [t] = dbGetAllTasks();

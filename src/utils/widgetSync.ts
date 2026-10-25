@@ -53,6 +53,8 @@ import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { buildRoutineIndex, parseQueuedWorkoutStarts, resolveQueuedWorkoutStart } from './workoutSiri';
 import { startWorkout } from './startWorkout';
 import { requestDismissAllSheets } from './sheetModal';
+import { drainPendingPushupOpens } from 'todo-alarmkit-bridge';
+import { isDemoModeActive } from './demoState';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useWatchHealthStore } from '../store/useWatchHealthStore';
 import { watchWorkoutTapTiming } from './watchHealthWorkout';
@@ -407,6 +409,25 @@ async function processPendingWorkoutStarts(): Promise<void> {
   } catch {
     // A build predating drainPendingWorkoutStarts — no-op.
   }
+}
+
+// The Pushups button on a pushup task's alarm (OpenPushupsIntent.swift in
+// todo-alarmkit-bridge) queues the task and opens the app. It is handed to
+// Today the way a widget checkbox is: the task's row (or, when it isn't on
+// Today, the answer queue) opens the counter, because the counter is the only
+// thing that checks the task off and so silences the rest of its alarm.
+//
+// Not behind widgetBridge(), so demo mode is checked here: the queue holds
+// real alarms' taps, and the demo database doesn't have their tasks.
+async function processPendingPushupOpens(): Promise<void> {
+  if (isDemoModeActive()) return;
+  // Read before draining, for processPendingWorkoutStarts' reason.
+  if (!useTaskStore.getState().initialized) return;
+  const ids = [...new Set(await drainPendingPushupOpens())];
+  if (ids.length === 0) return;
+  requestDismissAllSheets();
+  useWidgetCompletionStore.getState().enqueue(ids);
+  resetToToday();
 }
 
 // The routines StartRoutineIntent can hear (workoutSiri.ts), on its own
@@ -1172,6 +1193,7 @@ export function useWidgetSync(): void {
       processPendingShortcutActions(),
       processPendingKeyScans(),
       processPendingWorkoutStarts(),
+      processPendingPushupOpens(),
       processQuietWidgetTaps(),
     ]).finally(() => {
       // Deferred rather than called synchronously during mount — avoids
@@ -1200,6 +1222,7 @@ export function useWidgetSync(): void {
           processPendingShortcutActions(),
           processPendingKeyScans(),
           processPendingWorkoutStarts(),
+          processPendingPushupOpens(),
           processQuietWidgetTaps(),
         ]).finally(scheduleSnapshotWrite);
       }

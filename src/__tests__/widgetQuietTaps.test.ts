@@ -207,6 +207,7 @@ describe('widgetTapNeedsApp', () => {
     expect(widgetTapNeedsApp(task({ deliverableKind: 'text' }), true)).toBe(true);
     expect(widgetTapNeedsApp(task({ completionTimerMinutes: 60 }), true)).toBe(true);
     expect(widgetTapNeedsApp(task({ logMealSlot: 'lunch' }), true)).toBe(true);
+    expect(widgetTapNeedsApp(task({ pushupChallenge: 20 }), true)).toBe(true);
   });
 });
 

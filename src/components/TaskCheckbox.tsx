@@ -15,6 +15,8 @@ import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
 import { useColors } from '../theme/ThemeContext';
 import { animation, border, checkboxRadius, iconSize, interaction, spacing, type Colors } from '../theme';
+import { PushupCounterSheet } from './PushupCounterSheet';
+import { asksOnCompletion } from '../utils/deliverables';
 import { completionTapFor, isStrayTapOnFinishedTarget, offersMealLogOnCompletion } from '../utils/completionTap';
 import { recordLogUrl } from '../utils/recordTasks';
 import { useRecordTaskReady } from '../hooks/useRecordTaskReady';
@@ -99,6 +101,11 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
   const { offerPrepTasksForEach } = usePlanMeal();
 
   const [showPrompt, setShowPrompt] = useState(false);
+  // The pushup counter (Task.pushupChallenge), and whether it has counted, so
+  // the question it hands over to completes with `pushupsDone` too.
+  const [showPushups, setShowPushups] = useState(false);
+  const [pushupsCounted, setPushupsCounted] = useState(false);
+  const mountPushups = useSheetMount(showPushups);
   const [showMealPicker, setShowMealPicker] = useState(false);
   // Both mounted on first open and kept, so each closes through `visible`
   // rather than by leaving the tree. See useSheetMount.
@@ -137,7 +144,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
   // plain tick does — including the heavier second pulse a whole chain finishing
   // is owed, which is easy to drop when the completion arrives from a sheet
   // rather than from the tap.
-  const runComplete = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning) => {
+  const runComplete = async (deliverableValue?: string | null, deliverableReasoning?: DeliverableReasoning, pushupsDone = false) => {
     void (isChainFinish(task) ? haptics.chainFinish() : haptics.success());
     // The same pop a task's own circle gives a check, so this box doesn't read
     // as a different control from the row it stands in for.
@@ -150,7 +157,10 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
     }
     onTicked?.(task.id);
     animateLayout();
-    completeTask(task.id, deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : undefined);
+    completeTask(task.id, {
+      ...(deliverableValue !== undefined ? { deliverableValue, deliverableReasoning } : {}),
+      ...(pushupsDone ? { pushupsDone: true } : {}),
+    });
   };
 
   // The branches that open a sheet or warn await their haptic before they do
@@ -175,7 +185,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
   const runPress = async () => {
     // Only the taps that change completion are held; a logged unit or a slip
     // moves nothing the host would close over.
-    if (confirmFirst && (action === 'complete' || action === 'ask' || action === 'uncomplete')) {
+    if (confirmFirst && (action === 'complete' || action === 'ask' || action === 'pushups' || action === 'uncomplete')) {
       await haptics.tap();
       confirmFirst(() => {
         if (busyRef.current) return;
@@ -206,6 +216,13 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
         // the task row's own box offers.
         await haptics.tap();
         setShowPrompt(true);
+        return;
+      case 'pushups':
+        // Same contract as 'ask': the counter checks the task off once it has
+        // counted, and cancelling it takes the tap back.
+        await haptics.tap();
+        setPushupsCounted(false);
+        setShowPushups(true);
         return;
       case 'pick-meal':
         // Same contract as 'ask': the tap opens a sheet instead of ticking
@@ -296,6 +313,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
         : `${label}, clean today, log a slip`
     : action === 'locked' ? `${label}, not due yet`
     : action === 'ask' ? `Complete ${label}, asks for an answer`
+    : action === 'pushups' ? `${label}, opens the pushup counter`
     : action === 'pick-meal' ? `${label}, pick a meal`
     : action === 'review-project' ? `${label}, review what to pull in`
     : action === 'open-log' ? `${label}, opens the entry sheet`
@@ -406,9 +424,27 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
           task={task}
           onConfirm={(value, reasoning) => {
             setShowPrompt(false);
-            runComplete(value, reasoning);
+            runComplete(value, reasoning, pushupsCounted);
           }}
           onCancel={() => setShowPrompt(false)}
+        />
+      )}
+      {mountPushups && (
+        <PushupCounterSheet
+          visible={showPushups}
+          task={task}
+          onCounted={() => {
+            setShowPushups(false);
+            // A question still to ask goes next; the counter closing and the
+            // question opening in one commit is safe.
+            if (asksOnCompletion(task)) {
+              setPushupsCounted(true);
+              setShowPrompt(true);
+            } else {
+              runComplete(undefined, undefined, true);
+            }
+          }}
+          onClose={() => setShowPushups(false)}
         />
       )}
       {mountMealPicker && (() => {

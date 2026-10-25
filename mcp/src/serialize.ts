@@ -57,6 +57,8 @@ export interface SerializedTask {
   /** 'trivial' | 'easy' | 'normal' | 'hard'. Absent when the task was never rated. */
   difficulty?: string;
   estimatedMinutes?: number;
+  /** Pushups the phone must count before it can be checked off. Absent when none. */
+  pushupChallenge?: number;
   /** Present only mid-chain, and then it is where `title` came from. */
   chainStep?: string;
   /** The question this task asks when it is completed, if it asks one. */
@@ -185,6 +187,7 @@ export function serializeTask(replica: Replica, task: Task, names?: Map<string, 
     priority: task.priority > 0 ? PRIORITY_LABELS[task.priority] : undefined,
     difficulty: task.difficulty ?? undefined,
     estimatedMinutes: replica.estimatedMinutes(task) ?? undefined,
+    pushupChallenge: task.pushupChallenge ?? undefined,
     chainStep: step?.title,
     asksOnCompletion: replica.deliverableKind(task) ?? undefined,
     answerOptions: (() => {

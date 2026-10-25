@@ -20475,6 +20475,33 @@ describe('undo/redo history', () => {
 // itself is pinned down in negativeHabits.test.ts; these are the store's own
 // three jobs: refusing the completion path, writing a slip, and crediting the
 // days the clock has gone past.
+describe('pushup challenge', () => {
+  const seed = (...tasks: Task[]) => useTaskStore.setState({ tasks });
+  const get = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  // The funnel guard, for the reason the negative-habit one above is: the
+  // bulk bar, a stack cascade and a widget tap all end up here.
+  it('refuses a completion the counter did not make', () => {
+    seed(makeTask({ id: 'wake', pushupChallenge: 20, timerStartedAt: new Date().toISOString() }));
+    useTaskStore.getState().completeTask('wake');
+    expect(get('wake').completed).toBe(false);
+    // Refused before the timer stop, which writes the row.
+    expect(get('wake').timerStartedAt).not.toBeNull();
+  });
+
+  it('completes once the counter says the pushups are done', () => {
+    seed(makeTask({ id: 'wake', pushupChallenge: 20 }));
+    useTaskStore.getState().completeTask('wake', { pushupsDone: true });
+    expect(get('wake').completed).toBe(true);
+  });
+
+  it('still takes a missed mark', () => {
+    seed(makeTask({ id: 'wake', pushupChallenge: 20 }));
+    useTaskStore.getState().completeTask('wake', { missed: true });
+    expect(get('wake').completed).toBe(true);
+  });
+});
+
 describe('negative habits', () => {
   beforeEach(() => {
     jest.useFakeTimers();

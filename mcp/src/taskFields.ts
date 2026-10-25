@@ -42,6 +42,7 @@ import { isRotationTask, MAX_ROTATION_PER_WEEK, MIN_ROTATION_ITEMS, rotationItem
 import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
 import { canWaitForWeather } from '../../src/utils/weatherCondition';
 import { isSlotHold } from '../../src/utils/slotIn';
+import { normalizePushupChallenge, PUSHUP_MAX_COUNT } from '../../src/utils/pushupCounter';
 import { formatSunAnchor, parseSunAnchor, SUN_OFFSET_LIMIT } from '../../src/utils/sunTimes';
 import { localDateInput } from './timeZone';
 
@@ -277,6 +278,12 @@ export interface TaskFieldsInput {
   weatherWait?: WeatherConditionInput | null;
   pinned?: boolean;
   pinEachOccurrence?: boolean;
+  /**
+   * Pushups the phone has to count before the task can be checked off. Only
+   * the phone can count them, so a task with one can't be completed from here.
+   * null removes it.
+   */
+  pushupChallenge?: number | null;
   deliverableKind?: DeliverableKind | null;
   deliverableOptions?: string[];
   repeat?: RepeatInput;
@@ -508,6 +515,11 @@ export function taskFieldsPatch(
   }
   if (input.pinned !== undefined) patch.pinned = input.pinned;
   if (input.pinEachOccurrence !== undefined) patch.pinEachOccurrence = input.pinEachOccurrence;
+  if (input.pushupChallenge !== undefined) {
+    if (input.pushupChallenge !== null && normalizePushupChallenge(input.pushupChallenge) !== input.pushupChallenge) {
+      errors.push(`pushupChallenge must be a whole number from 1 to ${PUSHUP_MAX_COUNT}, or null.`);
+    } else patch.pushupChallenge = input.pushupChallenge;
+  }
   if (input.deliverableKind !== undefined) {
     if (input.deliverableKind !== null && !DELIVERABLE_KINDS.includes(input.deliverableKind)) {
       errors.push(`deliverableKind must be one of ${DELIVERABLE_KINDS.join(', ')}, or null.`);

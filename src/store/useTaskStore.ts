@@ -229,7 +229,7 @@ import {
   buildSeriesRow,
   NO_RECURRENCE,
 } from '../utils/taskDraft';
-import { buildCompletion, completionSettings } from '../utils/taskCompletion';
+import { buildCompletion, completionSettings, pushupsOwed } from '../utils/taskCompletion';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
@@ -1926,6 +1926,8 @@ interface TaskStore extends UndoHistoryActions {
     recorded?: boolean;
     /** See CompletionOptions.byOther (taskCompletion.ts) — somebody else did it. */
     byOther?: boolean;
+    /** See CompletionOptions.pushupsDone (taskCompletion.ts) — set only by the pushup counter. */
+    pushupsDone?: boolean;
     /** The app completed this because the person's action satisfied it; a ready step it spawns follows. See `requestAutoComplete`. */
     autoCompleted?: boolean;
     completedAt?: string;
@@ -3976,7 +3978,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         'completed' in updates ||
         'archived' in updates ||
         'title' in updates ||
-        'notes' in updates
+        'notes' in updates ||
+        // An alarm for a pushup task carries a Pushups button (see
+        // scheduleTaskReminder), so the alarm is rebuilt when that changes.
+        'pushupChallenge' in updates
       ) {
         cancelTaskReminder(id);
         scheduleTaskReminder(updated);
@@ -4266,6 +4271,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (!recordTaskAnswered(task)) return;
       options = { ...options, recorded: true };
     }
+    // A task with pushups to do is checked off by the counter that counted
+    // them (see pushupsOwed). Refused here, ahead of the timer and answer
+    // writes below, for the same funnel reason as the negative habit above.
+    if (pushupsOwed(task, options)) return;
     // Recurring tasks shown early in Later (deferred to, or due on, a future
     // day) can't be completed ahead of schedule — doing so would generate the
     // next occurrence off today instead of the task's real day. Non-recurring

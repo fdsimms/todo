@@ -4603,6 +4603,13 @@ export interface Task {
   // task doesn't offer one. Purely a duration from the moment of completion,
   // unrelated to reminderTime (which fires before/at a task's own schedule).
   completionTimerMinutes: number | null;
+  // How many pushups have to be counted before this task can be checked off:
+  // ticking it opens the pushup counter instead, and `completeTask` refuses
+  // a completion the counter didn't make (a missed mark and "someone else did
+  // it" claim nothing about pushups, so they still go through). Null or absent
+  // = no challenge. Usually paired with a persistent alarm, which then rings
+  // until the pushups are done. See src/utils/pushupCounter.ts.
+  pushupChallenge?: number | null;
 
   // Optional freeform text explaining what the completion timer reminder is
   // for — "Don't eat for 2 hours" — shown as the notification body instead of

@@ -6,7 +6,8 @@ export type AlarmAuthorizationState = 'authorized' | 'denied' | 'notDetermined';
 interface TodoAlarmKitNativeModule {
   isAvailable(): boolean;
   requestAuthorization(): Promise<AlarmAuthorizationState>;
-  scheduleAlarm(id: string, epochSeconds: number, title: string): Promise<boolean>;
+  scheduleAlarm(id: string, epochSeconds: number, title: string, pushupsTaskId: string | null): Promise<boolean>;
+  drainPendingPushupOpens?(): Promise<string>;
   cancelAlarm(id: string): Promise<boolean>;
 }
 
@@ -51,11 +52,33 @@ export function requestAlarmAuthorization(): Promise<AlarmAuthorizationState> {
   );
 }
 
-export function scheduleNativeAlarm(id: string, date: Date, title: string): Promise<boolean> {
+/**
+ * `pushupsTaskId` gives the alarm a Pushups button that opens the app to that
+ * task's pushup counter (`drainPendingPushupOpens` hands the tap over). Null
+ * for every alarm that isn't a pushup task's.
+ */
+export function scheduleNativeAlarm(id: string, date: Date, title: string, pushupsTaskId: string | null = null): Promise<boolean> {
   return degradeOnThrow<Promise<boolean>>(
-    () => nativeModule!.scheduleAlarm(id, date.getTime() / 1000, title),
+    () => nativeModule!.scheduleAlarm(id, date.getTime() / 1000, title, pushupsTaskId),
     Promise.resolve(false)
   );
+}
+
+/**
+ * The task ids whose alarm's Pushups button was tapped since the last drain,
+ * oldest first. Reading clears them, so a caller that can't act on them yet
+ * (stores still loading, demo mode) must not call this.
+ */
+export async function drainPendingPushupOpens(): Promise<string[]> {
+  const drain = nativeModule?.drainPendingPushupOpens;
+  if (!nativeModule || typeof drain !== 'function') return [];
+  try {
+    const json = await drain.call(nativeModule);
+    const parsed: unknown = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 export function cancelNativeAlarm(id: string): Promise<boolean> {
