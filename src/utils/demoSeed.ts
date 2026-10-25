@@ -32,7 +32,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
-import { stepDurationOffers, stepTimerExcerpt } from './stepTimers';
+import { repeatTimerExcerpt, stepDurationOffers, stepTimerExcerpt } from './stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
@@ -4710,7 +4710,26 @@ function seedRecipes(): DemoRecipes {
   [
     'Heat the olive oil in a large pot and cook the onion, carrots and celery until soft, about 8 minutes.',
     'Add the garlic and thyme, then the stock and tomatoes, and simmer for 20 minutes.',
+    // "Every 10 minutes" is the demo's repeating timer: cook mode offers it as
+    // a cycle with a count, where a plain duration would ring once. Seeded
+    // paused below, for the reason the stir-fry's timer is.
+    'Simmer for 30 minutes more, adding a splash of water every 10 minutes if it gets thick.',
   ].forEach(text => addStep(soup.id, text));
+  const soupStep = useRecipeStore.getState().recipeById(soup.id)?.steps[2];
+  const soupCycle = soupStep ? stepDurationOffers(soupStep).find(offer => offer.every) : undefined;
+  if (soupStep && soupCycle) {
+    const cycleTimer = useStepTimerStore.getState().start({
+      recipeId: soup.id,
+      recipeName: soup.name,
+      stepId: soupStep.id,
+      stepLabel: 'Step 3 of 3',
+      stepExcerpt: repeatTimerExcerpt(soupStep.text, soupCycle),
+      durationSeconds: soupCycle.seconds,
+      // The step's other time over the interval, the number cook mode offers.
+      repeatTarget: 3,
+    });
+    if (cycleTimer) useStepTimerStore.getState().pause(cycleTimer.id);
+  }
   // A side with no fixed amount in the recipe — "however much bread was on
   // the table", not a line `recipeNutrition.ts`'s rollup could ever total
   // (there's no single right answer to write down once) and not one

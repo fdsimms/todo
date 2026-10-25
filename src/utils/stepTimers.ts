@@ -42,6 +42,13 @@ export interface StepDuration {
   maxSeconds: number | null;
   /** The phrase exactly as written ("7 to 9 minutes"). */
   text: string;
+  /**
+   * True when the phrase is "every 30 minutes" rather than "30 minutes": the
+   * step is asking for something to happen on a cycle, so the offer is a
+   * repeating timer. `start` then includes the word "every". Left off rather
+   * than set to false, so every other offer reads as it always did.
+   */
+  every?: true;
 }
 
 // ==== reading a number out of a sentence ====
@@ -165,6 +172,12 @@ const DURATION_PATTERN = new RegExp(
 
 interface RawMatch extends StepDuration {}
 
+// The word that turns a duration into a cycle. Only "every": "each" and "once
+// per" are real wordings too, and an offer that is missed costs a tap on the
+// plain timer, where one that is wrong would start repeating a timer that was
+// meant to ring once.
+const EVERY_LEAD = /\bevery\s+$/i;
+
 function rawMatches(text: string): RawMatch[] {
   const out: RawMatch[] = [];
   DURATION_PATTERN.lastIndex = 0;
@@ -202,12 +215,16 @@ function rawMatches(text: string): RawMatch[] {
       if (tail !== null && tailUnit < unit) seconds += tail * tailUnit;
     }
 
+    const lead = EVERY_LEAD.exec(text.slice(0, match.index));
+    const start = lead ? lead.index : match.index;
+    const end = match.index + whole.length;
     out.push({
-      start: match.index,
-      end: match.index + whole.length,
+      start,
+      end,
       seconds: Math.round(seconds),
       maxSeconds: maxSeconds === null ? null : Math.round(maxSeconds),
-      text: whole.trim(),
+      text: text.slice(start, end).trim(),
+      ...(lead ? { every: true as const } : {}),
     });
   }
 
@@ -234,6 +251,7 @@ function mergeAdjacentRanges(matches: RawMatch[], text: string): RawMatch[] {
         seconds: Math.min(previous.seconds, match.seconds),
         maxSeconds: Math.max(previous.seconds, match.seconds),
         text: text.slice(previous.start, match.end).trim(),
+        ...(previous.every ? { every: true as const } : {}),
       };
       continue;
     }
@@ -249,16 +267,21 @@ function mergeAdjacentRanges(matches: RawMatch[], text: string): RawMatch[] {
  * minutes more" is one timer offered twice, and two identical chips read as a
  * parser fault whichever one you press. Restarting a finished timer is the
  * answer to a duration used twice, and it's a button on the timer itself.
+ *
+ * "Every 30 minutes" is not the same offer as "30 minutes" and doesn't dedupe
+ * against it: "simmer 30 minutes, then stir every 30 minutes" is a timer that
+ * rings once and one that repeats.
  */
 export function parseStepDurations(text: string): StepDuration[] {
   const merged = mergeAdjacentRanges(rawMatches(text), text);
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   const out: StepDuration[] = [];
   for (const duration of merged) {
     if (duration.seconds < MIN_STEP_TIMER_SECONDS) continue;
     if (duration.seconds > MAX_STEP_TIMER_SECONDS) continue;
-    if (seen.has(duration.seconds)) continue;
-    seen.add(duration.seconds);
+    const key = `${duration.seconds}${duration.every ? ':every' : ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     out.push(duration);
   }
   return out;
@@ -308,15 +331,136 @@ export function stepTimerElapsed(timer: StepTimer, now: number = Date.now()): nu
   return banked + Math.max(0, (now - new Date(timer.startedAt).getTime()) / 1000);
 }
 
-/** Seconds left. Goes negative once time is up; `isStepTimerReady` needs the sign. */
-export function stepTimerRemaining(timer: StepTimer, now: number = Date.now()): number {
-  return timer.durationSeconds - stepTimerElapsed(timer, now);
+// ==== a timer that repeats ====
+
+/** The most times a repeating timer can be told to ring: a fat-finger guard, not a design limit. */
+export const MAX_REPEAT_ROUNDS = 99;
+
+/** What a repeating timer expects when the step names no other time to divide the interval into. */
+export const DEFAULT_REPEAT_ROUNDS = 3;
+
+/**
+ * How many rings past the target are armed up front. A pot that needs one more
+ * cycle is the ordinary case ("6 of 5"), and the phone can't be relied on to
+ * be opened between two rings, so the alarms for the overshoot are already
+ * waiting. Past that the count keeps going and the alarms are topped up
+ * whenever the app next sees the timer (`useStepTimers`).
+ */
+export const REPEAT_RINGS_PAST_TARGET = 3;
+
+/**
+ * The most alarms one repeating timer holds at once. The alarm backends name
+ * them by slot (`stepTimerAlarmUuid`), so this is also how many a cancel has to
+ * name.
+ */
+export const MAX_REPEAT_ALARMS = 12;
+
+/** A step timer that rings every `durationSeconds` until dismissed, with how many rings the recipe expects. */
+export function isRepeatingTimer(timer: StepTimer): timer is RecipeStepTimer & { repeatTarget: number } {
+  return timer.kind === 'recipe' && typeof timer.repeatTarget === 'number' && timer.repeatTarget >= 1;
 }
 
-/** How far through, 0–1. */
+/**
+ * How many times a repeating timer has gone off. **Derived from the clock**,
+ * like every other number a step timer shows: whole intervals elapsed, so a
+ * phone locked through three of them reads three when it comes back, and a
+ * pause stops the count with the clock. 0 for a timer that rings once.
+ */
+export function stepTimerRings(timer: StepTimer, now: number = Date.now()): number {
+  if (!isRepeatingTimer(timer) || timer.durationSeconds <= 0) return 0;
+  return Math.floor(stepTimerElapsed(timer, now) / timer.durationSeconds);
+}
+
+/**
+ * Seconds left until the next ring. For a timer that rings once, goes negative
+ * once time is up (`isStepTimerReady` needs the sign). A repeating one rolls
+ * straight into the next interval instead, so it is always positive: it never
+ * reads as finished, because only dismissing it ends it.
+ */
+export function stepTimerRemaining(timer: StepTimer, now: number = Date.now()): number {
+  const elapsed = stepTimerElapsed(timer, now);
+  if (isRepeatingTimer(timer) && timer.durationSeconds > 0) {
+    return timer.durationSeconds - (elapsed % timer.durationSeconds);
+  }
+  return timer.durationSeconds - elapsed;
+}
+
+/** How far through, 0–1. A repeating timer's is through the interval it is in. */
 export function stepTimerProgress(timer: StepTimer, now: number = Date.now()): number {
   if (timer.durationSeconds <= 0) return 1;
-  return Math.min(1, Math.max(0, stepTimerElapsed(timer, now) / timer.durationSeconds));
+  const elapsed = stepTimerElapsed(timer, now);
+  const within = isRepeatingTimer(timer) ? elapsed % timer.durationSeconds : elapsed;
+  return Math.min(1, Math.max(0, within / timer.durationSeconds));
+}
+
+/**
+ * "2 of 5", and "6 of 5" once it has gone past the plan. The recipe's number
+ * is the denominator and is never enforced.
+ */
+export function describeRepeatCount(rings: number, target: number): string {
+  return `${rings} of ${target}`;
+}
+
+/** Whether the count has passed what the recipe expected, which the row says in orange. */
+export function isRepeatOver(rings: number, target: number): boolean {
+  return rings > target;
+}
+
+/**
+ * What a repeating offer starts at: the step's other time divided by the
+ * interval. "Cook for about 2½ hours … add 1 cup of water every 30 minutes" is
+ * 5. Returns the time it was read from too, so the card can say where the
+ * number came from and not leave it looking invented.
+ *
+ * Needs a time at least twice the interval: "simmer 40 minutes, stir every 30"
+ * is one ring and a bad suggestion for a repeat, so it falls back to
+ * `DEFAULT_REPEAT_ROUNDS` like a step with no other time. Where there are
+ * several, the longest wins, since the interval is spread across the whole
+ * cook rather than the shortest sub-step in it.
+ */
+export function defaultRepeatRounds(
+  offers: StepDuration[],
+  every: StepDuration,
+): { rounds: number; basis: StepDuration | null } {
+  let basis: StepDuration | null = null;
+  for (const offer of offers) {
+    if (offer.every || offer.seconds < every.seconds * 2) continue;
+    if (basis === null || offer.seconds > basis.seconds) basis = offer;
+  }
+  if (!basis) return { rounds: DEFAULT_REPEAT_ROUNDS, basis: null };
+  const rounds = Math.round(basis.seconds / every.seconds);
+  return { rounds: Math.max(1, Math.min(MAX_REPEAT_ROUNDS, rounds)), basis };
+}
+
+/**
+ * The step's own words for a repeating timer, ending at the phrase: "…add 1 cup
+ * hot water every 30 minutes". `stepTimerExcerpt` takes the *start* of the
+ * clause, which for a long sentence is "The water will evaporate, so…", where
+ * what the cook needs to be told is the instruction the interval belongs to,
+ * and that comes just before it. Cut from the left at a word, so it is still
+ * the recipe's own words and never a summary.
+ */
+export function repeatTimerExcerpt(text: string, offer: StepDuration, max: number = 48): string {
+  const boundary = /[.!?;](?=\s)/g;
+  let start = 0;
+  for (let match = boundary.exec(text); match; match = boundary.exec(text)) {
+    if (match.index < offer.start) start = match.index + 1;
+    else break;
+  }
+  const clause = text.slice(start, offer.end)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\d+[.)]\s*/, '');
+  if (clause.length <= max) return clause;
+  const tail = clause.slice(clause.length - max);
+  const space = tail.indexOf(' ');
+  // Start at a word: if the cut landed mid-word, drop to the next space.
+  const atWord = (clause[clause.length - max - 1] === ' ' || space < 0 ? tail : tail.slice(space + 1)).trim();
+  // And not on the tail of an earlier phrase: "more, adding a splash of water
+  // every 10 minutes" reads better from "adding", when the comma is near the cut.
+  const comma = atWord.search(/,\s/);
+  const whole = comma >= 0 && comma < atWord.length / 3 ? atWord.slice(comma + 1).trim() : atWord;
+  return `…${whole}`;
 }
 
 /** Is a run segment in flight right now? */
@@ -337,6 +481,26 @@ export function isStepTimerReady(timer: StepTimer, now: number = Date.now()): bo
 export function stepTimerEndsAt(timer: StepTimer, now: number = Date.now()): Date | null {
   if (!isStepTimerRunning(timer)) return null;
   return new Date(now + Math.max(0, stepTimerRemaining(timer, now)) * 1000);
+}
+
+/**
+ * Every moment the alarm backends should be holding for a running timer: the
+ * one ring for a timer that rings once, and for a repeating one the next ring
+ * and the ones after it, up to the target and `REPEAT_RINGS_PAST_TARGET` beyond
+ * it (never fewer than that many ahead, and never more than
+ * `MAX_REPEAT_ALARMS`). Empty for a paused timer.
+ *
+ * Measured from what is left right now, so it is right whether the timer just
+ * started, came back from a pause, or has been going for hours and is being
+ * topped up.
+ */
+export function stepTimerRingTimes(timer: StepTimer, now: number = Date.now()): Date[] {
+  const first = stepTimerEndsAt(timer, now);
+  if (!first) return [];
+  if (!isRepeatingTimer(timer)) return [first];
+  const wanted = timer.repeatTarget + REPEAT_RINGS_PAST_TARGET - stepTimerRings(timer, now);
+  const ahead = Math.min(MAX_REPEAT_ALARMS, Math.max(REPEAT_RINGS_PAST_TARGET, wanted));
+  return Array.from({ length: ahead }, (_, at) => new Date(first.getTime() + at * timer.durationSeconds * 1000));
 }
 
 /** What "+1 min" adds. A minute is the unit every stove clock and oven mitt agrees on. */
@@ -527,7 +691,9 @@ export function stepTimerCancelPrompt(
   now: number = Date.now(),
 ): { title: string; message: string } | null {
   if (isStepTimerReady(timer, now)) return null;
-  const left = `${formatStopwatch(stepTimerRemaining(timer, now))} left`;
+  const left = isRepeatingTimer(timer)
+    ? `${describeRepeatCount(stepTimerRings(timer, now), timer.repeatTarget)} so far, ${formatStopwatch(stepTimerRemaining(timer, now))} to the next`
+    : `${formatStopwatch(stepTimerRemaining(timer, now))} left`;
   const where = (timer.kind === 'rest' ? [timer.label] : [timer.stepExcerpt, timer.stepLabel]).filter(Boolean).join('\n');
   return {
     title: 'Cancel this timer?',
@@ -558,6 +724,13 @@ export function pruneStaleStepTimers(timers: StepTimer[], now: number = Date.now
     // A paused timer is a decision someone made and hasn't come back to; it
     // has no end time to be stale relative to, so it waits.
     if (!isStepTimerRunning(timer)) return true;
+    // A repeating timer never reads as finished, so "four hours after it rang"
+    // is measured from the last ring it was armed for: the target and the
+    // rings of overshoot it holds alarms for.
+    if (isRepeatingTimer(timer)) {
+      const lastArmed = timer.durationSeconds * (timer.repeatTarget + REPEAT_RINGS_PAST_TARGET);
+      return (stepTimerElapsed(timer, now) - lastArmed) * 1000 < STEP_TIMER_KEEP_AFTER_READY_MS;
+    }
     const remaining = stepTimerRemaining(timer, now);
     return remaining * -1000 < STEP_TIMER_KEEP_AFTER_READY_MS;
   });
@@ -619,6 +792,10 @@ export function parseStepTimerQueue(raw: string | null): StepTimer[] {
       recipeName: typeof t.recipeName === 'string' ? t.recipeName : '',
       stepLabel: typeof t.stepLabel === 'string' ? t.stepLabel : '',
       ...(typeof t.stepExcerpt === 'string' && t.stepExcerpt ? { stepExcerpt: t.stepExcerpt } : {}),
+      ...(typeof t.repeatTarget === 'number' && Number.isInteger(t.repeatTarget)
+        && t.repeatTarget >= 1 && t.repeatTarget <= MAX_REPEAT_ROUNDS
+        ? { repeatTarget: t.repeatTarget }
+        : {}),
     };
     out.push(recipe);
   }

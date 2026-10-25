@@ -1422,6 +1422,21 @@ through a locked phone, and outlives the sheet.
   stores, so nothing is counted down in state. `pruneStaleStepTimers` bounds the stack at four hours
   past ringing — long enough that someone who left the kitchen still finds out, short enough that
   Thursday isn't holding Tuesday's tempeh.
+- **"Every 30 minutes" is a timer that repeats, and its count is derived, never stored.** A step that
+  says "add 1 cup of water every 30 minutes" is the one phrase where one ring is the wrong timer, so
+  `StepDuration.every` marks it (the phrase includes the word) and a tap asks how many times
+  (`RepeatTimerSheet`) instead of starting. The number defaults from the step's own other time, the
+  2½ hours it is spread across (`defaultRepeatRounds`: needs a time at least twice the interval, else
+  3). `RecipeStepTimer.repeatTarget` is that number and is **a target, never a stop**: the count is
+  whole intervals elapsed (`stepTimerRings`), so it survives a locked phone like the countdown does and
+  reads "6 of 5" when a pot needs another cycle. It rolls straight into the next interval, which is why
+  it is never `isStepTimerReady`, and why it has no +1m or Again: changing the length would rewrite how
+  many times it had gone off (`addTime` refuses it). Alarms are armed ahead, one slot per ring
+  (`stepTimerRingTimes`: the target and three more, at most `MAX_REPEAT_ALARMS`), because nothing can
+  re-arm while the app is closed; `useStepTimers` tops them up as each ring is seen, and
+  `cancelStepAlarm` names every slot. **It stays out of the Live Activity**: a countdown to one end
+  time would sit at 0:00 after the first ring. `pruneStaleStepTimers` measures its four hours from the
+  last ring it was armed for.
 - **The offer scrolls with the step; the running timer doesn't.** Chips sit under the sentence they
   were read out of, which is what makes it obvious the app didn't invent a number. Once started, the
   timer belongs to the footer: pressing Next must not take a running countdown off screen, and Pause

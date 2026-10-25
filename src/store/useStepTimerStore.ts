@@ -3,9 +3,11 @@ import type { RecipeStepTimer, RestTimer, StepTimer } from '../types';
 import { dbDeleteSetting, dbGetSetting, dbSetSetting } from '../db/database';
 import { generateId } from '../utils/id';
 import {
+  MAX_REPEAT_ROUNDS,
   MAX_STEP_TIMER_SECONDS,
   MIN_STEP_TIMER_SECONDS,
   STEP_TIMER_NUDGE_SECONDS,
+  isRepeatingTimer,
   isStepTimerRunning,
   nudgedDuration,
   parseStepTimerQueue,
@@ -73,6 +75,12 @@ interface StepTimerState {
     /** `stepTimerExcerpt` of the step, when there is one to read. */
     stepExcerpt?: string;
     durationSeconds: number;
+    /**
+     * Makes it a repeating timer: it rings every `durationSeconds` until
+     * dismissed, expecting this many rings. Whole numbers from 1 to
+     * `MAX_REPEAT_ROUNDS`; anything else starts a timer that rings once.
+     */
+    repeatTarget?: number;
   }) => RecipeStepTimer | null;
   /**
    * Starts the rest after a set, replacing any rest already running: there is
@@ -99,6 +107,18 @@ interface StepTimerState {
    * timer that just went off.
    */
   addTime: (id: string, seconds?: number) => void;
+  /**
+   * Changes how many rings a repeating timer expects. The count itself is the
+   * clock's and doesn't move; only what it is read against does. Re-arms the
+   * alarms, since how many are held ahead depends on the target.
+   */
+  setRepeatTarget: (id: string, target: number) => void;
+  /**
+   * Lays a running timer's alarms down again without changing it: a repeating
+   * timer's count has moved on since they were armed, and the ones ahead of it
+   * need topping up. `useStepTimers` calls it as each ring is seen.
+   */
+  rearm: (id: string) => void;
   /** Puts a timer back to its full length and starts it again — the answer to "per side". */
   restart: (id: string) => void;
   /** Drops one timer: cancelled mid-run, or dismissed after it rang. */
@@ -112,6 +132,11 @@ interface StepTimerState {
    * about nothing. `WorkoutModeHost` runs it whenever the live session changes.
    */
   removeRestsOutside: (liveSessionId: string | null) => void;
+}
+
+/** A repeat target is a whole number of rings, at least one. */
+function validRepeatTarget(target: number | undefined): target is number {
+  return typeof target === 'number' && Number.isInteger(target) && target >= 1 && target <= MAX_REPEAT_ROUNDS;
 }
 
 function persist(timers: StepTimer[]): void {
@@ -179,7 +204,7 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
     set({ timers, hydrated: true });
   },
 
-  start: ({ recipeId, recipeName, stepId, stepLabel, stepExcerpt, durationSeconds }) => {
+  start: ({ recipeId, recipeName, stepId, stepLabel, stepExcerpt, durationSeconds, repeatTarget }) => {
     const seconds = Math.round(durationSeconds);
     if (!Number.isFinite(seconds)) return null;
     if (seconds < MIN_STEP_TIMER_SECONDS || seconds > MAX_STEP_TIMER_SECONDS) return null;
@@ -192,6 +217,7 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
       stepId,
       stepLabel,
       ...(stepExcerpt ? { stepExcerpt } : {}),
+      ...(validRepeatTarget(repeatTarget) ? { repeatTarget } : {}),
       durationSeconds: seconds,
       startedAt: now,
       elapsedSeconds: 0,
@@ -248,10 +274,24 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
 
   addTime: (id, seconds = STEP_TIMER_NUDGE_SECONDS) => {
     const timer = get().timers.find(t => t.id === id);
-    if (!timer) return;
+    // A repeating timer's count is whole intervals of its length, so changing
+    // the length would rewrite how many times it had gone off.
+    if (!timer || isRepeatingTimer(timer)) return;
     // Measured from now, not from the original length; see nudgedDuration.
     const extended: StepTimer = { ...timer, durationSeconds: nudgedDuration(timer, seconds) };
     commit(set, get().timers.map(t => (t.id === id ? extended : t)), extended);
+  },
+
+  setRepeatTarget: (id, target) => {
+    const timer = get().timers.find(t => t.id === id);
+    if (!timer || !isRepeatingTimer(timer) || !validRepeatTarget(target)) return;
+    const changed: StepTimer = { ...timer, repeatTarget: target };
+    commit(set, get().timers.map(t => (t.id === id ? changed : t)), changed);
+  },
+
+  rearm: id => {
+    const timer = get().timers.find(t => t.id === id);
+    if (timer && isStepTimerRunning(timer)) scheduleStepAlarm(timer);
   },
 
   restart: id => {

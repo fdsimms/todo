@@ -6,7 +6,16 @@ import { Platform } from 'react-native';
 import type { RestTimer, StepTimer, Task } from '../types';
 import type { FocusSession } from '../types';
 import { isTimedTask, isTimerRunning, timerRemaining } from './timer';
-import { formatStepDuration, isStepTimerRunning, stepTimerEndsAt } from './stepTimers';
+import {
+  MAX_REPEAT_ALARMS,
+  describeRepeatCount,
+  formatStepDuration,
+  isRepeatingTimer,
+  isStepTimerRunning,
+  stepTimerEndsAt,
+  stepTimerRingTimes,
+  stepTimerRings,
+} from './stepTimers';
 import {
   currentFocusStep,
   focusStepRemaining,
@@ -1255,7 +1264,10 @@ export function quotaNudgeTasks(tasks: Task[]): Task[] {
 // One id per timer, namespaced away from task reminders and timer alarms for
 // the reason the timer's own note above gives. Several step timers run at once
 // by design, so unlike the focus step's single fixed id these can't share one.
-const stepAlarmNotificationId = (timerId: string): string => `step-timer:${timerId}`;
+// Slot 0 keeps the id a timer that rings once has always had; a repeating
+// timer's later rings are `#1`, `#2`, and so on.
+const stepAlarmNotificationId = (timerId: string, slot: number = 0): string =>
+  slot === 0 ? `step-timer:${timerId}` : `step-timer:${timerId}#${slot}`;
 
 /**
  * Ring when a cooking step timer runs out. A workout's rest goes through here
@@ -1300,36 +1312,48 @@ export async function scheduleStepAlarm(timer: StepTimer): Promise<void> {
     return;
   }
 
-  const length = formatStepDuration(timer.durationSeconds);
   const title = timer.recipeName || 'Cooking timer';
-  const body = timer.stepLabel
-    ? `${timer.stepLabel}: your ${length} timer is up.`
-    : `Your ${length} timer is up.`;
+  // A repeating timer arms every ring it is expected to need, and says which
+  // one each is: the alarm may be the only thing the cook sees all afternoon,
+  // and "3 of 5" is how they know whether the water has gone in.
+  const rings = stepTimerRingTimes(timer);
+  const firstRing = stepTimerRings(timer) + 1;
+  const what = timer.stepExcerpt || timer.stepLabel;
 
-  if (isAlarmKitAvailable()) {
-    // AlarmKit's alert carries one line, so it has to say both which dish and
-    // which step on its own.
-    const label = timer.stepLabel ? `${title} · ${timer.stepLabel}` : title;
-    await scheduleNativeAlarm(stepTimerAlarmUuid(timer.id), triggerDate, label);
-    return;
+  for (const [slot, ringAt] of rings.entries()) {
+    const count = isRepeatingTimer(timer) ? describeRepeatCount(firstRing + slot, timer.repeatTarget) : null;
+
+    if (isAlarmKitAvailable()) {
+      // AlarmKit's alert carries one line, so it has to say both which dish and
+      // which step on its own.
+      const label = [title, isRepeatingTimer(timer) ? what : timer.stepLabel, count].filter(Boolean).join(' · ');
+      await scheduleNativeAlarm(stepTimerAlarmUuid(timer.id, slot), ringAt, label);
+      continue;
+    }
+
+    const length = formatStepDuration(timer.durationSeconds);
+    const body = count
+      ? `${what}: ${count}.`
+      : timer.stepLabel
+        ? `${timer.stepLabel}: your ${length} timer is up.`
+        : `Your ${length} timer is up.`;
+    await Notifications.scheduleNotificationAsync({
+      identifier: stepAlarmNotificationId(timer.id, slot),
+      content: {
+        title,
+        body,
+        data: { stepTimerId: timer.id, recipeId: timer.recipeId },
+        sound: true,
+        // Someone standing at a stove needs this the moment it fires — same
+        // urgency as a reminder, see REMINDER_INTERRUPTION_LEVEL.
+        interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: ringAt,
+      },
+    });
   }
-
-  await Notifications.scheduleNotificationAsync({
-    identifier: stepAlarmNotificationId(timer.id),
-    content: {
-      title,
-      body,
-      data: { stepTimerId: timer.id, recipeId: timer.recipeId },
-      sound: true,
-      // Someone standing at a stove needs this the moment it fires — same
-      // urgency as a reminder, see REMINDER_INTERRUPTION_LEVEL.
-      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DATE,
-      date: triggerDate,
-    },
-  });
 }
 
 /**
@@ -1376,10 +1400,13 @@ async function scheduleRestAlarm(timer: RestTimer, triggerDate: Date): Promise<v
  * minutes ago.
  */
 export async function cancelStepAlarm(timerId: string): Promise<void> {
-  await Promise.all([
-    Notifications.cancelScheduledNotificationAsync(stepAlarmNotificationId(timerId)).catch(() => {}),
-    cancelNativeAlarm(stepTimerAlarmUuid(timerId)).catch(() => {}),
-  ]);
+  // Every slot a repeating timer could be holding, for the same reason: the
+  // cancel doesn't know which kind of timer it is cancelling.
+  const slots = Array.from({ length: MAX_REPEAT_ALARMS }, (_, slot) => slot);
+  await Promise.all(slots.flatMap(slot => [
+    Notifications.cancelScheduledNotificationAsync(stepAlarmNotificationId(timerId, slot)).catch(() => {}),
+    cancelNativeAlarm(stepTimerAlarmUuid(timerId, slot)).catch(() => {}),
+  ]));
 }
 
 export async function rescheduleAllTimerAlarms(tasks: Task[]): Promise<void> {

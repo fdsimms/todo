@@ -1,12 +1,20 @@
 import {
+  DEFAULT_REPEAT_ROUNDS,
+  MAX_REPEAT_ALARMS,
   MAX_STEP_TIMER_SECONDS,
+  defaultRepeatRounds,
+  describeRepeatCount,
   describeStepDuration,
   formatStepDuration,
+  isRepeatOver,
+  isRepeatingTimer,
   isStepTimerReady,
   isStepTimerRunning,
   nudgedDuration,
   parseStepDurations,
   parseStepTimerQueue,
+  pruneStaleStepTimers,
+  repeatTimerExcerpt,
   sortStepTimers,
   splitStepAtDurations,
   stepDurationOffers,
@@ -17,6 +25,8 @@ import {
   stepTimerOverSeconds,
   stepTimerProgress,
   stepTimerRemaining,
+  stepTimerRingTimes,
+  stepTimerRings,
 } from '../utils/stepTimers';
 import type { RecipeStepTimer, RestTimer } from '../types';
 
@@ -393,5 +403,204 @@ describe('splitStepAtDurations', () => {
   it('gives an explicit timerSeconds no phrase to tap', () => {
     const pieces = splitStepAtDurations('Until dry.', undefined, stepDurationOffers({ text: 'Until dry.', timerSeconds: 300 }));
     expect(pieces).toEqual([{ kind: 'text', text: 'Until dry.' }]);
+  });
+});
+
+// ==== a timer that repeats ====
+
+const BEANS = 'Cook the beans over medium-low heat for about 2½ hours, without covering or stirring, until tender. '
+  + 'The water will evaporate, so you will need to add 1 cup hot water every 30 minutes.';
+
+describe('"every" offers', () => {
+  it('reads "every 30 minutes" as a repeating offer that includes the word every', () => {
+    const [, every] = parseStepDurations(BEANS);
+    expect(every.every).toBe(true);
+    expect(every.seconds).toBe(30 * 60);
+    expect(every.text).toBe('every 30 minutes');
+    expect(BEANS.slice(every.start, every.end)).toBe('every 30 minutes');
+  });
+
+  it('leaves the other time in the same step a plain one', () => {
+    const [plain] = parseStepDurations(BEANS);
+    expect(plain.seconds).toBe(150 * 60);
+    expect(plain.every).toBeUndefined();
+  });
+
+  it('reads the unit words and fractions the same way', () => {
+    expect(parseStepDurations('Stir every half hour.')[0]).toMatchObject({ every: true, seconds: 1800 });
+    expect(parseStepDurations('Baste every ten minutes.')[0]).toMatchObject({ every: true, seconds: 600 });
+    expect(parseStepDurations('Stir every 30 seconds.')[0]).toMatchObject({ every: true, seconds: 30 });
+  });
+
+  it('does not treat a duration merely near the word every as a cycle', () => {
+    expect(parseStepDurations('Cook 20 minutes. Stir every pot twice.')[0].every).toBeUndefined();
+    expect(parseStepDurations('Stir often, every so often, for 20 minutes.')[0].every).toBeUndefined();
+  });
+
+  it('keeps "simmer 30 minutes" and "stir every 30 minutes" as two offers', () => {
+    const found = parseStepDurations('Simmer 30 minutes, stirring every 30 minutes.');
+    expect(found.map(d => !!d.every)).toEqual([false, true]);
+  });
+
+  it('still dedupes a plain duration written twice', () => {
+    expect(parseStepDurations('Cook 3 minutes, flip, cook 3 minutes more.')).toHaveLength(1);
+  });
+});
+
+describe('defaultRepeatRounds', () => {
+  it('divides the step\'s other time by the interval', () => {
+    const offers = parseStepDurations(BEANS);
+    const { rounds, basis } = defaultRepeatRounds(offers, offers[1]);
+    expect(rounds).toBe(5);
+    expect(basis?.text).toBe('2½ hours');
+  });
+
+  it('falls back to a default when the step names no other time', () => {
+    const offers = parseStepDurations('Add a splash of water every 10 minutes.');
+    expect(defaultRepeatRounds(offers, offers[0])).toEqual({ rounds: DEFAULT_REPEAT_ROUNDS, basis: null });
+  });
+
+  it('ignores a time too short to hold two intervals', () => {
+    const offers = parseStepDurations('Simmer 40 minutes, stirring every 30 minutes.');
+    expect(defaultRepeatRounds(offers, offers[1]).basis).toBeNull();
+  });
+
+  it('takes the longest of several other times', () => {
+    const offers = parseStepDurations('Boil 20 minutes, then cook 2 hours more, adding water every 20 minutes.');
+    expect(defaultRepeatRounds(offers, offers[2]).rounds).toBe(6);
+  });
+});
+
+describe('repeatTimerExcerpt', () => {
+  const offers = parseStepDurations(BEANS);
+
+  it('ends at the interval and keeps the instruction before it', () => {
+    expect(repeatTimerExcerpt(BEANS, offers[1])).toBe('…need to add 1 cup hot water every 30 minutes');
+  });
+
+  it('returns a short clause whole', () => {
+    const text = 'Stir every 2 minutes.';
+    expect(repeatTimerExcerpt(text, parseStepDurations(text)[0])).toBe('Stir every 2 minutes');
+  });
+
+  it('starts at the clause holding the phrase, not the step', () => {
+    const text = 'Boil the water. Add salt every 5 minutes.';
+    expect(repeatTimerExcerpt(text, parseStepDurations(text)[0])).toBe('Add salt every 5 minutes');
+  });
+});
+
+describe('a repeating timer', () => {
+  // 30 minutes, expecting 5, started at 12:00.
+  const REPEATING: RecipeStepTimer = { ...TIMER, durationSeconds: 1800, repeatTarget: 5 };
+
+  it('knows it repeats only when it has a target', () => {
+    expect(isRepeatingTimer(REPEATING)).toBe(true);
+    expect(isRepeatingTimer(TIMER)).toBe(false);
+    expect(isRepeatingTimer(REST)).toBe(false);
+    expect(isRepeatingTimer({ ...TIMER, repeatTarget: 0 })).toBe(false);
+  });
+
+  it('counts the rings from the clock', () => {
+    expect(stepTimerRings(REPEATING, at(0))).toBe(0);
+    expect(stepTimerRings(REPEATING, at(29))).toBe(0);
+    expect(stepTimerRings(REPEATING, at(30))).toBe(1);
+    expect(stepTimerRings(REPEATING, at(95))).toBe(3);
+  });
+
+  it('keeps counting past the target, which is the point of a soft target', () => {
+    expect(stepTimerRings(REPEATING, at(30 * 6 + 5))).toBe(6);
+    expect(isRepeatOver(6, 5)).toBe(true);
+    expect(isRepeatOver(5, 5)).toBe(false);
+    expect(describeRepeatCount(6, 5)).toBe('6 of 5');
+  });
+
+  it('counts a locked phone the same as an open one, and stops with a pause', () => {
+    const paused = { ...REPEATING, startedAt: null, elapsedSeconds: 70 * 60 };
+    expect(stepTimerRings(paused, at(500))).toBe(2);
+    const resumed = { ...REPEATING, elapsedSeconds: 50 * 60 };
+    expect(stepTimerRings(resumed, at(15))).toBe(2);
+  });
+
+  it('rolls into the next interval instead of finishing', () => {
+    expect(stepTimerRemaining(REPEATING, at(10))).toBe(20 * 60);
+    expect(stepTimerRemaining(REPEATING, at(31))).toBe(29 * 60);
+    expect(stepTimerRemaining(REPEATING, at(30))).toBe(30 * 60);
+    expect(isStepTimerReady(REPEATING, at(31))).toBe(false);
+    expect(isStepTimerReady(REPEATING, at(300))).toBe(false);
+  });
+
+  it('draws progress through the interval it is in', () => {
+    expect(stepTimerProgress(REPEATING, at(15))).toBeCloseTo(0.5);
+    expect(stepTimerProgress(REPEATING, at(45))).toBeCloseTo(0.5);
+  });
+
+  it('ends at the next ring, not the last one', () => {
+    expect(stepTimerEndsAt(REPEATING, at(40))?.toISOString()).toBe('2026-08-25T13:00:00.000Z');
+  });
+
+  it('is not a timer that rings once, so a plain one reads as it always did', () => {
+    expect(stepTimerRings(TIMER, at(60))).toBe(0);
+    expect(isStepTimerReady(TIMER, at(60))).toBe(true);
+  });
+});
+
+describe('stepTimerRingTimes', () => {
+  const REPEATING: RecipeStepTimer = { ...TIMER, durationSeconds: 1800, repeatTarget: 5 };
+
+  it('is the one ring for a timer that rings once', () => {
+    expect(stepTimerRingTimes(TIMER, at(2)).map(d => d.toISOString())).toEqual(['2026-08-25T12:07:00.000Z']);
+  });
+
+  it('is nothing for a paused timer', () => {
+    expect(stepTimerRingTimes({ ...REPEATING, startedAt: null }, at(2))).toEqual([]);
+  });
+
+  it('arms the target and three rings past it, half an hour apart', () => {
+    const times = stepTimerRingTimes(REPEATING, at(2));
+    expect(times).toHaveLength(8);
+    expect(times[0].toISOString()).toBe('2026-08-25T12:30:00.000Z');
+    expect(times[7].toISOString()).toBe('2026-08-25T16:00:00.000Z');
+  });
+
+  it('arms fewer as the count catches up, and never fewer than three ahead', () => {
+    expect(stepTimerRingTimes(REPEATING, at(30 * 3 + 1))).toHaveLength(5);
+    expect(stepTimerRingTimes(REPEATING, at(30 * 9 + 1))).toHaveLength(3);
+  });
+
+  it('never arms more than the cap', () => {
+    const long = { ...REPEATING, repeatTarget: 99 };
+    expect(stepTimerRingTimes(long, at(1))).toHaveLength(MAX_REPEAT_ALARMS);
+  });
+});
+
+describe('a repeating timer in storage', () => {
+  const REPEATING: RecipeStepTimer = { ...TIMER, durationSeconds: 1800, repeatTarget: 5 };
+
+  it('reads its target back, and a timer without one as it was', () => {
+    const [repeating, plain] = parseStepTimerQueue(JSON.stringify([REPEATING, TIMER]));
+    expect(repeating.kind === 'recipe' && repeating.repeatTarget).toBe(5);
+    expect(plain.kind === 'recipe' && plain.repeatTarget).toBeUndefined();
+  });
+
+  it('drops a target that is not a whole number of rings and keeps the timer', () => {
+    for (const bad of [0, -2, 2.5, 100, '5', null]) {
+      const [read] = parseStepTimerQueue(JSON.stringify([{ ...REPEATING, repeatTarget: bad }]));
+      expect(read.kind === 'recipe' && read.repeatTarget).toBeUndefined();
+    }
+  });
+
+  it('keeps a running one well after its first ring, and drops it four hours after its last armed ring', () => {
+    // Armed through 8 rings: 4 hours from 12:00. Stale 4 hours after that.
+    expect(pruneStaleStepTimers([REPEATING], at(60 * 7))).toHaveLength(1);
+    expect(pruneStaleStepTimers([REPEATING], at(60 * 8 + 1))).toHaveLength(0);
+  });
+
+  it('keeps a paused one however long it has been', () => {
+    expect(pruneStaleStepTimers([{ ...REPEATING, startedAt: null, elapsedSeconds: 60 }], at(60 * 48))).toHaveLength(1);
+  });
+
+  it('tells the cook how many it has rung when asking before a cancel', () => {
+    const prompt = stepTimerCancelPrompt(REPEATING, at(65));
+    expect(prompt?.message).toContain('2 of 5 so far');
   });
 });

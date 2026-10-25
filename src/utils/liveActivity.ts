@@ -11,7 +11,7 @@ import { activeFast, fastGoalAt } from './fasting';
 import { widgetBridge } from './widgetBridge';
 import { workoutActivitySessionId } from './workoutLiveActivity';
 import { isTimedTask, timerRemaining } from './timer';
-import { isStepTimerRunning, stepTimerRemaining } from './stepTimers';
+import { isRepeatingTimer, isStepTimerRunning, stepTimerRemaining } from './stepTimers';
 import { displayTitleFor } from './visibilityUtils';
 
 /**
@@ -170,6 +170,10 @@ export function buildTimerRuns(
       runs.push(restRun(timer));
       continue;
     }
+    // A Live Activity counts down to one end time and can't roll over on its
+    // own, so a repeating timer would sit at 0:00 after its first ring for the
+    // rest of the afternoon. Its alarms are what reach a locked phone.
+    if (isRepeatingTimer(timer)) continue;
     const startedAtMs = new Date(timer.startedAt as string).getTime();
     // A step timer always has a target — it's a countdown by construction, so
     // unlike the three above there's no stopwatch case to fall through to.

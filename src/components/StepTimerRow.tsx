@@ -1,17 +1,24 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { RecipeStepTimer } from '../types';
 import { ProgressBar } from './ProgressBar';
+import { RepeatTimerSheet } from './RepeatTimerSheet';
+import { BUTTON_LABEL } from '../copy/shared';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import {
+  describeRepeatCount,
+  formatStepDuration,
   formatStepTimerClock,
+  isRepeatOver,
+  isRepeatingTimer,
   isStepTimerReady,
   isStepTimerRunning,
   stepTimerCancelPrompt,
   stepTimerProgress,
   stepTimerRemaining,
+  stepTimerRings,
 } from '../utils/stepTimers';
 
 interface Props {
@@ -24,6 +31,11 @@ interface Props {
   onAddTime: () => void;
   onRestart: () => void;
   onRemove: () => void;
+  /**
+   * Changes how many rings a repeating timer expects, from tapping its count.
+   * Omitted where a row can't change it, which leaves the count plain text.
+   */
+  onSetRepeatTarget?: (target: number) => void;
 }
 
 /**
@@ -63,9 +75,19 @@ interface Props {
  * Pause and Resume are glyphs rather than words to make that room, with the
  * state spelled out after the clock ("12:30 paused").
  */
-export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, onRestart, onRemove }: Props) {
+export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, onRestart, onRemove, onSetRepeatTarget }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [editingTarget, setEditingTarget] = useState(false);
+
+  // A repeating timer rolls into its next interval instead of finishing, so it
+  // is never "ready": the row says how many times it has gone off and how long
+  // until the next, and has no +1m or Again (either would change the length the
+  // count is measured in). Only dismissing it ends it.
+  const repeating = isRepeatingTimer(timer);
+  const rings = repeating ? stepTimerRings(timer, now) : 0;
+  const over = repeating && isRepeatOver(rings, timer.repeatTarget);
+  const countText = repeating ? describeRepeatCount(rings, timer.repeatTarget) : '';
 
   const running = isStepTimerRunning(timer);
   const ready = isStepTimerReady(timer, now);
@@ -74,7 +96,7 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
   // The number big, the state small after it: "12:30 left", "12:30 paused",
   // "0:45 over" (the last in orange, with "Time's up" leading the line below).
   const clock = formatStepTimerClock(ready ? -remaining : remaining);
-  const state = ready ? 'over' : running ? 'left' : 'paused';
+  const state = ready ? 'over' : running ? (repeating ? 'until next' : 'left') : 'paused';
 
   const context = [hideRecipeName ? '' : timer.recipeName, timer.stepExcerpt, timer.stepLabel]
     .filter(Boolean)
@@ -95,7 +117,7 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
     <View style={styles.row}>
       <View style={styles.headerLine}>
         <Ionicons
-          name={ready ? 'alarm' : 'timer-outline'}
+          name={ready ? 'alarm' : repeating ? 'repeat' : 'timer-outline'}
           size={18}
           color={ready ? colors.orangeText : colors.accent}
         />
@@ -108,15 +130,33 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
           <Text style={[styles.clockState, ready && styles.clockStateReady]}> {state}</Text>
         </Text>
 
-        <TouchableOpacity
-          onPress={onAddTime}
-          style={styles.secondaryBtn}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityLabel={`Add a minute to the ${name} timer`}
-        >
-          <Text style={styles.secondaryBtnText}>+1m</Text>
-        </TouchableOpacity>
+        {repeating && (
+          <TouchableOpacity
+            onPress={onSetRepeatTarget ? () => setEditingTarget(true) : undefined}
+            disabled={!onSetRepeatTarget}
+            style={styles.countTap}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole={onSetRepeatTarget ? 'button' : 'text'}
+            accessibilityLabel={`Rang ${countText} times`}
+            accessibilityHint={onSetRepeatTarget ? 'Changes how many times it repeats' : undefined}
+          >
+            <View style={[styles.countPill, over && styles.countPillOver]}>
+              <Text style={[styles.countText, over && styles.countTextOver]}>{countText}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {!repeating && (
+          <TouchableOpacity
+            onPress={onAddTime}
+            style={styles.secondaryBtn}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`Add a minute to the ${name} timer`}
+          >
+            <Text style={styles.secondaryBtnText}>+1m</Text>
+          </TouchableOpacity>
+        )}
 
         {ready ? (
           <TouchableOpacity
@@ -169,6 +209,18 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
         </Text>
       )}
       <ProgressBar progress={stepTimerProgress(timer, now)} height={4} accessibilityLabel="Timer" />
+      {repeating && !!onSetRepeatTarget && (
+        <RepeatTimerSheet
+          visible={editingTarget}
+          onClose={() => setEditingTarget(false)}
+          name="StepTimerRepeatTarget"
+          heading={`Every ${formatStepDuration(timer.durationSeconds)}`}
+          hint="Changes the number the count is read against. It doesn’t change how many times it has rung."
+          value={timer.repeatTarget}
+          confirmLabel={BUTTON_LABEL.done}
+          onConfirm={onSetRepeatTarget}
+        />
+      )}
     </View>
   );
 }
@@ -247,6 +299,33 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // With the row's own gap, 16pt clear of the button beside it.
   removeBtn: {
     marginLeft: spacing.sm,
+  },
+  // The count of rings, beside the clock. Accent while it is within what the
+  // recipe expected and orange once it has gone past, the same two states the
+  // clock's own orange already says "over" in.
+  countTap: {
+    minHeight: TOUCH,
+    justifyContent: 'center',
+  },
+  countPill: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.smd,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countPillOver: {
+    backgroundColor: colors.orange + '33',
+  },
+  countText: {
+    color: colors.accentText,
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums'],
+  },
+  countTextOver: {
+    color: colors.orangeText,
   },
   secondaryBtnText: {
     color: colors.textSecondary,
