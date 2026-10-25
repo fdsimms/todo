@@ -2,7 +2,7 @@ import { US_STANDARD_DRINK_G, alcoholGramsOf, describeDrinks } from './alcohol';
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey, SavedMeal, SavedMealItem } from '../types';
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
 import { aisleForName } from './groceryAisles';
-import { groceryNameKey } from './groceryParse';
+import { groceryNameKey, parseGroceryInput } from './groceryParse';
 import { looseNameWeight } from './looseNameMatch';
 import { isWaterEntry } from './waterLog';
 import { mealHelping, weighedHelping, type DishFigures } from './mealLog';
@@ -877,6 +877,20 @@ export function savedMealCalories(items: readonly SavedMealItem[]): number | nul
     total = round((total ?? 0) + amount);
   }
   return total;
+}
+
+/**
+ * The keys a typed search matches a food's name against: the text as typed, and
+ * the same text with a leading amount taken off ("10g sugar" also searches
+ * "sugar"). Both, because the whole text is right for a name that starts with a
+ * number ("2% milk") and the stripped one is right for an amount followed by
+ * the food. Empty while nothing is typed.
+ */
+export function foodSearchKeys(query: string): string[] {
+  const typed = groceryNameKey(query);
+  if (!typed) return [];
+  const bare = groceryNameKey(parseGroceryInput(query).name);
+  return bare && bare !== typed ? [typed, bare] : [typed];
 }
 
 /**

@@ -65,6 +65,7 @@ import {
   matchMealPlanEntry,
   parseFoodAmount,
   convertAmountNumber,
+  foodSearchKeys,
   largeAmountWarning,
   recallAmount,
   describeRecalledAmount,
@@ -101,7 +102,7 @@ import { unfixableQuantityReason, weighableLine, type LineWeighing } from '../ut
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
-import { EmptyState } from './EmptyState';
+import { EmptyNote } from './EmptyNote';
 import { InlineAction } from './InlineAction';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { LabelSubjectSheet, type LabelSubject } from './LabelSubjectSheet';
@@ -945,15 +946,18 @@ export function FoodLogEntrySheet({
   );
 
   const results = useMemo(() => {
-    const key = groceryNameKey(query);
+    const keys = foodSearchKeys(query);
     // Ranked before the cap, not after, which is the whole point: a food eaten
     // every morning was landing below forty things bought once and being cut
     // off by the slice, so the list promised what it could not be searched for.
     const ranked = rankByRecency(candidates, recency);
     // A row already offered as this meal's usual isn't offered twice.
     const shown = new Set(usual.map(c => c.key));
-    if (!key) return ranked.filter(c => !shown.has(c.key)).slice(0, 40);
-    return ranked.filter(c => groceryNameKey(c.label).includes(key)).slice(0, 40);
+    if (keys.length === 0) return ranked.filter(c => !shown.has(c.key)).slice(0, 40);
+    return ranked.filter(c => {
+      const name = groceryNameKey(c.label);
+      return keys.some(key => name.includes(key));
+    }).slice(0, 40);
   }, [candidates, query, recency, usual]);
 
   // A recipe the search matches by name but the list dropped for want of
@@ -2025,6 +2029,18 @@ export function FoodLogEntrySheet({
   // first, since it is about everything typed, then the database's matches.
   const dbRows = dbShowAll ? db.ranked : db.ranked.slice(0, DB_ROWS_SHOWN);
   const hasQuery = query.trim() !== '';
+  // Said about the catalog when logged-before rows are showing above, so it
+  // doesn't claim there is nothing to log while offering something to log.
+  // Without a key the database button can only lead to Settings, so the next
+  // step is the key, not the search.
+  const lookupHint = hasFdcKey
+    ? 'Search a food database for it, or add nutrition to a grocery item.'
+    : 'To search a food database, add a free FoodData Central key in Settings. You can also add nutrition to a grocery item.';
+  const emptyListNote = unfiguredRecipes.length > 0
+    ? `${unfiguredRecipes.length === 1 ? `${unfiguredRecipes[0]} has no figures yet` : `${unfiguredRecipes.length} matching recipes have no figures yet`}. Too few of its ingredients have nutrition to work out a total. Add nutrition to more of them, or describe it with Estimate.`
+    : candidates.length === 0
+    ? `${helpings.length > 0 ? 'Nothing in your catalog has figures yet' : 'Nothing has figures yet'}. A food can be logged once it has nutrition. ${hasQuery ? lookupHint : 'Type a food above to search a food database, or add nutrition to a grocery item.'}`
+    : `${helpings.length > 0 ? 'Nothing in your catalog matches' : 'No matching food'}. Only foods and recipes with nutrition can be logged. ${hasQuery ? lookupHint : ''}`.trim();
   const dbStale = dbOpen && !!db.searchedFor && hasQuery && query.trim() !== db.searchedFor;
   // The way past the foods this app already has figures for, offered as the
   // first rows of the list once there is text to send. Always offered apart
@@ -2796,35 +2812,11 @@ export function FoodLogEntrySheet({
               // answer to "no matching food", and a full-height empty state
               // under them would say there was nothing while showing something.
               ListEmptyComponent={lookupBlock || usualBlock || savedBlock || yesterdayBlock ? null : (
-                <EmptyState
-                  icon="nutrition-outline"
-                  // Said about the catalog when logged-before rows are showing
-                  // above, so it doesn't claim there is nothing to log while
-                  // offering something to log.
-                  title={unfiguredRecipes.length > 0
-                    ? (unfiguredRecipes.length === 1 ? `${unfiguredRecipes[0]} has no figures yet` : `${unfiguredRecipes.length} matching recipes have no figures yet`)
-                    : candidates.length === 0
-                    ? (helpings.length > 0 ? 'Nothing in your catalog has figures yet' : 'Nothing has figures yet')
-                    : (helpings.length > 0 ? 'Nothing in your catalog matches' : 'No matching food')}
-                  subtitle={
-                    (unfiguredRecipes.length > 0
-                      ? 'Too few of its ingredients have nutrition to work out a total. Add nutrition to more of them, or describe it with Estimate.'
-                      : candidates.length === 0
-                      ? 'A food can be logged once it has nutrition.'
-                      : 'Only foods and recipes with nutrition can be logged.')
-                    + (hasFdcKey
-                      ? (candidates.length === 0
-                        ? ' Type a food above and search a food database, or add nutrition to a grocery item.'
-                        : ' Search a food database for it, or add nutrition to a grocery item.')
-                      // Without a key the search can only fail, so the next
-                      // step is the key, not the search.
-                      : ' To search a food database, add a free FoodData Central key in Settings. You can also add nutrition to a grocery item.')
-                  }
-                  // With nothing typed there is nothing to search for, so the
-                  // button would do nothing; the subtitle says what to type.
-                  actionLabel={!hasFdcKey ? 'Add a food database key' : query.trim() ? 'Search a food database' : undefined}
-                  onAction={!hasFdcKey || query.trim() ? openFoodDatabase : undefined}
-                />
+                // A note at the top of the list rather than a centered empty
+                // state: the keyboard is up nearly every time this shows, and
+                // a state centered in what is left of the list was cut off by
+                // it. The two lookups it points to are in the rows above.
+                <EmptyNote icon="nutrition-outline">{emptyListNote}</EmptyNote>
               )}
             />
             {/* Hidden for a caller answering one specific food (a correction,
