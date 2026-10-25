@@ -260,6 +260,8 @@ interface HealthState {
   loadingBloodPressure: boolean;
   /** Re-read the blood pressure window. Only the Blood pressure screen calls this. */
   refreshBloodPressure: () => Promise<void>;
+  /** `noteWeightWritten` for a blood pressure reading, under the same rule. */
+  noteBloodPressureWritten: (reading: BloodPressureReading) => void;
   /**
    * The pulses the Blood pressure screen lists over the same window: ones typed
    * in here and Apple's resting heart rate, oldest first, or null for "not
@@ -292,6 +294,14 @@ interface HealthState {
   refreshHistory: () => Promise<void>;
   /** Re-read the body-mass window. Only the Weight screen calls this. */
   refreshWeight: () => Promise<void>;
+  /**
+   * A weight this app just wrote to Health, shown at once rather than after the
+   * re-read that follows it. Only into a series that already holds readings:
+   * an empty or unread one may be Health refusing to share, and a point drawn
+   * there would vanish again when the re-read came back empty. Memory only,
+   * like the rest of the series, and the re-read replaces it whole.
+   */
+  noteWeightWritten: (at: Date, kilograms: number) => void;
   /** Re-read the sleep window, with start and end times. Only the Sleep screen calls this. */
   refreshSleep: () => Promise<void>;
   /**
@@ -512,6 +522,15 @@ export const useHealthStore = create<HealthState>((set, get) => ({
    * less: Health already holds it, already syncs it, and already lets somebody
    * delete it in one place and have that mean something.
    */
+  noteWeightWritten(at, kilograms) {
+    const series = get().weightSeries;
+    if (!series || series.length === 0) return;
+    // Keyed the way refreshWeight keys a reading, and after any other reading
+    // on the same day, since it is the newest one.
+    const point: WeightPoint = { dayKey: getLogicalDayKey(at), kilograms };
+    set({ weightSeries: [...series, point].sort((a, b) => a.dayKey.localeCompare(b.dayKey)) });
+  },
+
   async refreshWeight() {
     const bridge = healthBridge();
     if (!bridge) return;
@@ -562,6 +581,12 @@ export const useHealthStore = create<HealthState>((set, get) => ({
    * `refreshWeight`'s reason (one screen reads it). Written whole even when
    * empty, so revoked access reads as no data, never as the last data.
    */
+  noteBloodPressureWritten(reading) {
+    const readings = get().bloodPressure;
+    if (!readings || readings.length === 0) return;
+    set({ bloodPressure: [...readings, reading].sort((a, b) => a.at.getTime() - b.at.getTime()) });
+  },
+
   async refreshBloodPressure() {
     const bridge = healthBridge();
     if (!bridge) return;

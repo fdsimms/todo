@@ -12,6 +12,7 @@ import {
   format } from 'date-fns/format';
 import {
   Keyboard,
+  type TextInput,
   Platform,
   Switch,
   View,
@@ -416,9 +417,19 @@ export function GroceryItemSheet({
   // merging means choosing whose purchase history survives — so a rejected
   // rename leaves nameError showing and the item's stored name untouched;
   // the field itself keeps whatever was typed until it's corrected.
-  const commitName = () => {
+  // Return moves through the fields in the order they're drawn, so a run of
+  // corrections is typed without reaching for the next field each time.
+  const quantityInputRef = useRef<TextInput>(null);
+  const noteInputRef = useRef<TextInput>(null);
+  const focusNext = (...refs: React.RefObject<TextInput | null>[]) => {
+    const next = refs.find(r => r.current);
+    if (next) next.current!.focus();
+    else Keyboard.dismiss();
+  };
+  /** False when the name was refused, so Return stays on the field to fix it. */
+  const commitName = (): boolean => {
     const trimmed = name.trim();
-    if (!trimmed || trimmed === item.name) { setNameError(null); setNameCollisionId(null); return; }
+    if (!trimmed || trimmed === item.name) { setNameError(null); setNameCollisionId(null); return true; }
     if (!renameItem(item.id, trimmed)) {
       const collision = renameClash(items, item.id, trimmed);
       setNameError(
@@ -426,10 +437,11 @@ export function GroceryItemSheet({
       );
       setNameCollisionId(collision?.id ?? null);
       haptics.error();
-      return;
+      return false;
     }
     setNameError(null);
     setNameCollisionId(null);
+    return true;
   };
   const commitQuantity = () => {
     if (quantity !== (item.quantity ?? '')) setQuantity(item.id, quantity);
@@ -1904,7 +1916,9 @@ export function GroceryItemSheet({
               if (nameError) { setNameError(null); setNameCollisionId(null); }
             }}
             onBlur={commitName}
-            onSubmitEditing={commitName}
+            onSubmitEditing={() => { if (commitName()) focusNext(quantityInputRef, noteInputRef); }}
+            returnKeyType="next"
+            blurOnSubmit={false}
             placeholder="Item name"
             placeholderTextColor={colors.textTertiary}
             // See the note on GroceryRow's inline rename field: an
@@ -2023,10 +2037,14 @@ export function GroceryItemSheet({
           <>
           <Text style={styles.label}>QUANTITY</Text>
           <TextField
+            ref={quantityInputRef}
             style={styles.input}
             value={quantity}
             onChangeText={setQuantityText}
             onBlur={commitQuantity}
+            onSubmitEditing={() => { commitQuantity(); focusNext(noteInputRef); }}
+            returnKeyType="next"
+            blurOnSubmit={false}
             placeholder="e.g. 2 lb, x3, a bunch"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
@@ -2119,10 +2137,13 @@ export function GroceryItemSheet({
           <>
           <Text style={styles.label}>NOTE</Text>
           <TextField
+            ref={noteInputRef}
             style={styles.input}
             value={note}
             onChangeText={setNoteText}
             onBlur={commitNote}
+            onSubmitEditing={commitNote}
+            returnKeyType="done"
             placeholder="e.g. the blue cap one"
             placeholderTextColor={colors.textTertiary}
             maxLength={GROCERY_NAME_MAX_LENGTH}

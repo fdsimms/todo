@@ -49,7 +49,8 @@ let lastDragTick = 0;
  * is on its way the moment it's made; awaiting its promise only holds the
  * animation back a bridge round trip, so the buzz lands ahead of what it's
  * about (a task's checkmark waited on exactly this). Fire it and move on. The
- * one reason to await is a deliberate pause, and then say so where it's done.
+ * one reason to await is a deliberate pause, and then say so where it's done
+ * and add the file to noAwaitedHaptic.test.ts, which fails the build otherwise.
  *
  * And fire one per action: a control that already buzzes (SegmentedControl,
  * a SettingsRow switch, ReorderableList's slot tick, enterSelectionMode) owns

@@ -109,6 +109,7 @@ export function LogWeightSheet({ visible, onClose }: Props) {
 
     if (result === 'written') {
       haptics.success();
+      useHealthStore.getState().noteWeightWritten(when, kilograms);
       void refreshWeight();
       // Recording the weight answers a live request for one, which makes its
       // row read ready; the tick, and the coins, stay the person's. A no-op

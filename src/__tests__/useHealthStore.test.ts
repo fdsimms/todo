@@ -401,3 +401,37 @@ describe('the exercise live-metric window', () => {
     expect(useHealthStore.getState().today?.steps).toBe(4200);
   });
 });
+
+describe('a reading this app just wrote', () => {
+  it('adds a weight to a series that already has readings, as the newest of its day', () => {
+    useHealthStore.setState({ weightSeries: [{ dayKey: '2026-10-20', kilograms: 70 }, { dayKey: '2026-10-25', kilograms: 69.5 }] });
+    useHealthStore.getState().noteWeightWritten(new Date(2026, 9, 25, 8), 69.2);
+    expect(useHealthStore.getState().weightSeries).toEqual([
+      { dayKey: '2026-10-20', kilograms: 70 },
+      { dayKey: '2026-10-25', kilograms: 69.5 },
+      { dayKey: '2026-10-25', kilograms: 69.2 },
+    ]);
+  });
+
+  it('leaves an empty or unread weight series alone, since that may be Health refusing to share', () => {
+    useHealthStore.setState({ weightSeries: [] });
+    useHealthStore.getState().noteWeightWritten(new Date(2026, 9, 25, 8), 69.2);
+    expect(useHealthStore.getState().weightSeries).toEqual([]);
+
+    useHealthStore.setState({ weightSeries: null });
+    useHealthStore.getState().noteWeightWritten(new Date(2026, 9, 25, 8), 69.2);
+    expect(useHealthStore.getState().weightSeries).toBeNull();
+  });
+
+  it('adds a blood pressure reading in time order, under the same rule', () => {
+    const earlier = { at: new Date(2026, 9, 25, 7), systolic: 118, diastolic: 76, pulse: 64 };
+    const later = { at: new Date(2026, 9, 25, 21), systolic: 121, diastolic: 79, pulse: null };
+    useHealthStore.setState({ bloodPressure: [later] });
+    useHealthStore.getState().noteBloodPressureWritten(earlier);
+    expect(useHealthStore.getState().bloodPressure).toEqual([earlier, later]);
+
+    useHealthStore.setState({ bloodPressure: null });
+    useHealthStore.getState().noteBloodPressureWritten(earlier);
+    expect(useHealthStore.getState().bloodPressure).toBeNull();
+  });
+});

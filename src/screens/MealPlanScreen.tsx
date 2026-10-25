@@ -1207,12 +1207,22 @@ export function MealPlanScreen() {
   const addChosenPrepTasks = (chosen: FlatPrepTask[]) => {
     if (!reviewingEntry) return;
     const mealDate = dayKeyToDate(reviewingEntry.date);
-    chosen.forEach(({ prepTask }) => {
+    const tasks = useTaskStore.getState();
+    const before = tasks.undoStack;
+    const ids = chosen.map(({ prepTask }) => {
       const { dueDate, reminderTime } = resolvePrepTaskDraft(prepTask, mealDate);
-      addTask({ title: prepTask.title, dueDate, reminderTime });
+      return addTask({ title: prepTask.title, dueDate, reminderTime }).id;
     });
     haptics.success();
-    Alert.alert('Prep tasks added', `Added ${chosen.length} to your tasks.`);
+    // On the undo bar rather than in an alert: the bar says it happened
+    // without a tap to get past it, and takes the whole batch back in one.
+    if (ids.length > 0) {
+      tasks.setLastAction({
+        label: ids.length === 1 ? 'Added 1 prep task' : `Added ${ids.length} prep tasks`,
+        announce: true,
+        undo: () => useTaskStore.getState().bulkDeleteTasks(ids, { skipGeneratedOptOut: true, registerUndo: false }),
+      }, { replacing: before });
+    }
   };
 
   // Shared by the sheet's "Mark cooked" action and the row's own badge tap —
@@ -2102,7 +2112,14 @@ export function MealPlanScreen() {
       return;
     }
     haptics.success();
-    if (!onScreen) Alert.alert('Meal copied', `${title} is also planned for ${slot} on ${day}.`);
+    // Off the week on screen, so nothing in view changed: say so, and offer
+    // the way there through the same day link "View in meal plan" uses.
+    if (!onScreen) {
+      Alert.alert('Meal copied', `${title} is also planned for ${slot} on ${day}.`, [
+        { text: BUTTON_LABEL.done, style: 'cancel' },
+        { text: 'Show it', onPress: () => navigation.setParams({ focusDay: dayKey, focusStamp: Date.now() }) },
+      ]);
+    }
   };
 
   const handleCopySlot = (slot: MealSlot) => {
