@@ -43,7 +43,7 @@ import { LinkedText } from '../components/LinkedText';
 import { format } from 'date-fns/format';
 import { groupRoster, isHeldBack, isTaskNotNeeded } from '../utils/visibilityUtils';
 import { reuseUnchangedLists } from '../utils/stableLists';
-import { Alert, InteractionManager, Linking, ScrollView, Share } from 'react-native';
+import { Alert, Linking, ScrollView, Share } from 'react-native';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { linkHost, parseLabelledLink } from '../utils/textLinks';
 import { OfferBanner } from '../components/OfferBanner';
@@ -51,7 +51,7 @@ import { useTaskSelection } from '../hooks/useTaskSelection';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
-import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
+import type { TaskDraft } from '../components/TaskEditor';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { InlineNameField } from '../components/InlineNameField';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
@@ -70,7 +70,7 @@ import { LOOSE_COLUMN_KEY, type BoardMove } from '../utils/projectBoard';
 import { LazySheet } from '../components/LazySheet';
 import type { CardAnchor } from '../components/CardSheet';
 import { BulkActionBar } from '../components/BulkActionBar';
-import { QuickAddModal } from '../components/QuickAddModal';
+import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
@@ -437,8 +437,12 @@ function ProjectDetailContent() {
   const sectionMenu = useActionMenu();
   const [pageMenuVisible, setPageMenuVisible] = useState(false);
   const [pageMenuAnchor, setPageMenuAnchor] = useState<CardAnchor | null>(null);
-  const [editorVisible, setEditorVisible] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  // Quick add's and the editor's open state live in stores of their own rather
+  // than in this screen's state (see SheetHosts), so opening either re-renders
+  // the sheet and not the whole page. The setters keep their useState names.
+  const editorStore = useSheetStore<EditorSheetState>(EDITOR_CLOSED);
+  const setEditorVisible = useCallback((visible: boolean) => editorStore.setState({ visible }), [editorStore]);
+  const setEditingTask = useCallback((task: Task | null) => editorStore.setState({ task }), [editorStore]);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
   // Set while a group header's drag() is in flight, so its body can collapse
@@ -495,7 +499,10 @@ function ProjectDetailContent() {
   // on the first finger move. By id rather than a bool so only that section's
   // tray is lifted over its neighbours (see rowElevated), exactly as Today does.
   const [draggingSectionId, setDraggingSectionId] = useState<string | null>(null);
-  const [quickAddVisible, setQuickAddVisible] = useState(false);
+  const quickAddStore = useSheetStore<QuickAddSheetState>(QUICK_ADD_CLOSED);
+  const setQuickAddVisible = useCallback((visible: boolean) => quickAddStore.setState({ visible }), [quickAddStore]);
+  const setQuickAddSeed = useCallback((seed: QuickAddSheetState['seed']) => quickAddStore.setState({ seed }), [quickAddStore]);
+  const setQuickAddSeedLabel = useCallback((seedLabel: string | null) => quickAddStore.setState({ seedLabel }), [quickAddStore]);
   // The project's own field, at the foot of the page where a new task lands.
   // Null when closed; a number otherwise, bumped on every add so the field
   // remounts empty and focused for the next one.
@@ -509,7 +516,12 @@ function ProjectDetailContent() {
   const [suggestionsVisible, setSuggestionsVisible] = useState(false);
   const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
   const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
-  const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
+  const setEditorInitialDraft = useCallback((draft: Partial<TaskDraft> | null) => editorStore.setState({ draft }), [editorStore]);
+  // Stable, so the closed (memoized) editor doesn't re-render with this screen.
+  const closeTaskEditor = useCallback(() => {
+    editorStore.setState({ visible: false, draft: null });
+    setExpandedTaskId(null);
+  }, [editorStore]);
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const searchFilter = useFilterField();
   const existingSearch = searchFilter.query;
@@ -819,8 +831,6 @@ function ProjectDetailContent() {
   // Scrolls back up to a list's add field when it's opened from the FAB.
   const listScroller = useRef<RowScroller | null>(null);
   const fabIntentChannel = useFabIntentChannel();
-  const [quickAddSeed, setQuickAddSeed] = useState<{ groupId?: string } | undefined>(undefined);
-  const [quickAddSeedLabel, setQuickAddSeedLabel] = useState<string | null>(null);
   // The drop that opened the sheet, read once when the task comes back.
   const pendingDropRef = useRef<FabDropIntent | null>(null);
 
@@ -1086,9 +1096,7 @@ function ProjectDetailContent() {
    * a drag two minutes ago.
    */
   const closeQuickAdd = () => {
-    setQuickAddVisible(false);
-    setQuickAddSeed(undefined);
-    setQuickAddSeedLabel(null);
+    quickAddStore.setState(QUICK_ADD_CLOSED);
     pendingDropRef.current = null;
   };
 
@@ -2513,9 +2521,8 @@ function ProjectDetailContent() {
           />
         </LazySheet>
 
-        <LazySheet open={quickAddVisible} warm>
-          <QuickAddModal
-            visible={quickAddVisible}
+        <QuickAddSheetHost
+            store={quickAddStore}
             onClose={onQuickAddClose}
             onOpenFull={onQuickAddOpenFull}
             // Project tasks are picked off over time rather than scheduled for
@@ -2524,10 +2531,7 @@ function ProjectDetailContent() {
             intoProjectId={project?.id ?? null}
             onCreated={onQuickAddCreated}
             onResumed={onQuickAddResumed}
-            seed={quickAddSeed}
-            seedLabel={quickAddSeedLabel}
           />
-        </LazySheet>
 
         {/* Add from a template: pick one here, then the apply sheet below —
             same two-step flow as Today, but the applied tasks land directly
@@ -2624,18 +2628,7 @@ function ProjectDetailContent() {
 
         <DeliverablePromptQueue {...queueProps} />
 
-        <LazySheet open={editorVisible} warm>
-          <TaskEditor
-            visible={editorVisible}
-            task={editingTask}
-            initialDraft={editorInitialDraft}
-            onClose={() => {
-              setEditorVisible(false);
-              setEditorInitialDraft(null);
-              setExpandedTaskId(null);
-            }}
-          />
-        </LazySheet>
+        <EditorSheetHost store={editorStore} onClose={closeTaskEditor} />
         {pullSearch.sheet}
       </View>
     </SpotlightProvider>

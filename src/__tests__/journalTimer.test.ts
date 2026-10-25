@@ -30,6 +30,8 @@ describe('the remembered length', () => {
     writeJournalTimerMinutes(20);
     expect(dbSetSetting).toHaveBeenLastCalledWith(JOURNAL_TIMER_SETTING, '20');
     writeJournalTimerMinutes(7);
+    expect(dbSetSetting).toHaveBeenLastCalledWith(JOURNAL_TIMER_SETTING, '7');
+    writeJournalTimerMinutes(600);
     expect(dbSetSetting).toHaveBeenLastCalledWith(JOURNAL_TIMER_SETTING, String(DEFAULT_JOURNAL_TIMER_MINUTES));
   });
 });
@@ -39,8 +41,14 @@ describe('parseJournalTimerMinutes', () => {
     for (const m of JOURNAL_TIMER_MINUTES) expect(parseJournalTimerMinutes(String(m))).toBe(m);
   });
 
+  it('keeps a typed length anywhere in the range', () => {
+    expect(parseJournalTimerMinutes('7')).toBe(7);
+    expect(parseJournalTimerMinutes('1')).toBe(1);
+    expect(parseJournalTimerMinutes('120')).toBe(120);
+  });
+
   it('falls back to the default for anything else', () => {
-    for (const raw of [null, undefined, '', 'abc', '7', '0', '-5', '600']) {
+    for (const raw of [null, undefined, '', ' ', 'abc', '0', '-5', '121', '600', '7.5']) {
       expect(parseJournalTimerMinutes(raw)).toBe(DEFAULT_JOURNAL_TIMER_MINUTES);
     }
   });

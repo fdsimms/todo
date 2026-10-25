@@ -6,6 +6,7 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors }
 import { haptics } from '../utils/haptics';
 import {
   JOURNAL_TIMER_MINUTES,
+  JOURNAL_TIMER_RANGE,
   formatJournalTimerClock,
   journalTimerProgress,
   journalTimerRemainingMs,
@@ -13,6 +14,7 @@ import {
   writeJournalTimerMinutes,
 } from '../utils/journalTimer';
 import { ChoiceMenuChip } from './ChoiceMenuChip';
+import { CustomMinutesPrompt } from './CustomMinutesPrompt';
 
 interface Props {
   /** Whether the sheet is open. Closing it ends a running timer. */
@@ -26,9 +28,12 @@ interface Run {
   endsAt: number;
 }
 
-const LENGTH_GROUPS = [{
-  options: JOURNAL_TIMER_MINUTES.map(m => ({ key: String(m), label: `${m} min` })),
-}];
+/** The listed lengths, plus the one in use when it was typed rather than picked, so the menu shows it as chosen. */
+function lengthGroups(minutes: number) {
+  const listed: readonly number[] = JOURNAL_TIMER_MINUTES;
+  const lengths = listed.includes(minutes) ? listed : [...listed, minutes];
+  return [{ options: lengths.map(m => ({ key: String(m), label: `${m} min` })) }];
+}
 
 /**
  * The writing timer's row under the field: the word count on the left, and on
@@ -46,6 +51,7 @@ export function JournalTimer({ active, children }: Props) {
   const [run, setRun] = useState<Run | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [finished, setFinished] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
 
   useEffect(() => {
     if (active) return;
@@ -127,9 +133,10 @@ export function JournalTimer({ active, children }: Props) {
               <Text style={[styles.chipText, styles.startText]}>Start</Text>
             </TouchableOpacity>
             <ChoiceMenuChip
-              groups={LENGTH_GROUPS}
+              groups={lengthGroups(minutes)}
               selectedKey={String(minutes)}
               onSelect={pick}
+              onOther={() => setCustomOpen(true)}
               noun="Timer length"
               name="JournalTimerLength"
               background={colors.bgTertiary}
@@ -142,6 +149,14 @@ export function JournalTimer({ active, children }: Props) {
           <View style={[styles.fill, { width: `${journalTimerProgress(run.startedAt, run.endsAt, now) * 100}%` }]} />
         </View>
       )}
+      <CustomMinutesPrompt
+        visible={customOpen}
+        title="Timer length"
+        range={JOURNAL_TIMER_RANGE}
+        initialMinutes={minutes}
+        onSubmit={m => pick(String(m))}
+        onClose={() => setCustomOpen(false)}
+      />
     </View>
   );
 }

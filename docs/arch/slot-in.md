@@ -42,12 +42,27 @@ all-day conference.
 
 1. **Must land**: a deadline today or earlier (holding would miss it), pinned, urgent, a running
    timer.
-2. **The floor**: the longest-waiting task always lands, even on a full day. This is what makes
-   "wait" safe: the queue drains at least one a day however busy the days are. Must-land tasks
+2. **The floor**: the longest-waiting task always lands, even on a full day. Must-land tasks
    don't count toward it, or a task pinned every day would starve the queue.
-3. **A light day takes more**: up to `SLOT_IN_LIGHT_DAY_MAX` in all, each only while it keeps the
+3. **The cap**: a task that has waited `slotInMaxWaitDays` (a setting, Settings › Tasks & projects ›
+   Longest wait; 3 by default, 1 to 14) lands whatever the day holds.
+   The floor alone is not enough. `BUSY_DAY_MINUTES` is a fixed line, and for someone with a lot of
+   routine every day is over it, so the queue drained one a day while weekly chores arrived faster
+   and waits grew past a week. These count toward the light-day limit below.
+4. **A light day takes more**: up to `SLOT_IN_LIGHT_DAY_MAX` in all, each only while it keeps the
    day under `BUSY_DAY_MINUTES`. Each landing counts toward the next one's judgment, or one light
    day would collect the whole queue and stop being light.
+
+**A task let through stays let through.** One that landed on an earlier day and isn't done yet is
+not a candidate again (`landedEarlier`): it stays on Today. Decided afresh each morning, it was
+always the longest wait, so it took the floor for itself and nothing behind it moved until it was
+done. Moving it to a later day by hand makes that day a fresh question.
+
+**A generated task written after the day's pass waits its turn** (`holdLateSlotIns`, called from
+`checkReachOutTasks`). The reach-out generator writes the next catch-up as soon as one is done, so
+without this a new one landed straight on Today while older ones waited. While anything is waiting
+it is held to tomorrow (`planLateArrivals`). Only generated rows: a task the person adds or
+re-dates mid-day is one they are looking at.
 
 "Longest wait" is `slotWaitingSinceKey`: the earliest of the pass's own stamp, the start of the
 person's own run of pushes (`driftingSince`), and the date. A push by hand counts as waiting.

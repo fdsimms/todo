@@ -1000,7 +1000,7 @@ function placeholderTexts(
     item.notes,
     item.location ?? '',
     ...item.subtasks.map(s => s.title),
-    ...item.chainItems.map(c => c.title),
+    ...item.chainItems.flatMap(c => [c.title, c.notes ?? '']),
     ...(item.rotationItems ?? []).map(r => r.title),
     // A variant's text is only ever swapped in for the item's own, so its
     // blanks are asked for too: otherwise one used in a variant alone is
@@ -1187,6 +1187,7 @@ export function substituteDraftPlaceholders(
     chainItems: draft.chainItems?.map(c => ({
       ...c,
       title: substitutePlaceholders(c.title, values),
+      ...(c.notes ? { notes: substitutePlaceholders(c.notes, values) } : {}),
     })),
     rotationItems: draft.rotationItems?.map(r => ({
       ...r,

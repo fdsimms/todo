@@ -109,6 +109,7 @@ export const SETTINGS_SPEC: Record<string, SettingSpec> = {
   completedRetentionDays: { group: 'tasks', describe: 'Delete completed tasks older than this many days (90 or 365), or null keep forever.', read: s => s.completedRetentionDays, write: (s, v) => s.setCompletedRetentionDays(oneOf('completedRetentionDays', v, [null, 90, 365] as const)) },
   postponeCheckEnabled: { group: 'tasks', describe: 'Ask about a task that keeps being pushed to another day.', read: s => s.postponeCheckEnabled, write: (s, v) => s.setPostponeCheckEnabled(bool('postponeCheckEnabled', v)) },
   postponeCheckThreshold: { group: 'tasks', describe: 'Ask after a task has been pushed this many times.', read: s => s.postponeCheckThreshold, write: (s, v) => s.setPostponeCheckThreshold(int('postponeCheckThreshold', v, 1, 100)) },
+  slotInMaxWaitDays: { group: 'tasks', describe: 'Days a task set to wait for a lighter day may wait before it shows up however full the day is (1 to 14, default 3).', read: s => s.slotInMaxWaitDays, write: (s, v) => s.setSlotInMaxWaitDays(int('slotInMaxWaitDays', v, 1, 14)) },
   newTaskDefaults: {
     group: 'tasks',
     describe: 'What a new task starts with: { category, priority (0-4), effort (0-6), difficulty, timeSegment, destination (today, inbox or unscheduled) }. Fields left out stay.',
@@ -175,6 +176,7 @@ export const SETTINGS_SPEC: Record<string, SettingSpec> = {
   limitWarnPercent: { group: 'kitchen', describe: 'The share of a limit, as a percent (50-100), at which a day counts as close to it: the Food log bar and the Today row turn orange.', read: s => s.limitWarnPercent, write: (s, v) => s.setLimitWarnPercent(int('limitWarnPercent', v, 50, 100)) },
   limitsTodayCategory: { group: 'kitchen', describe: 'The category Today shows a row per limit under ("Sat fat 9 of 16g, 7g left"), or null for none. It must already exist.', read: s => s.limitsTodayCategory, write: (s, v) => s.setLimitsTodayCategory(v === null ? null : String(v)) },
 
+  cookTextSize: { group: 'kitchen', describe: 'How big cook mode draws the step being read: small, medium, large (the default) or xlarge.', read: s => s.cookTextSize, write: (s, v) => s.setCookTextSize(oneOf('cookTextSize', v, ['small', 'medium', 'large', 'xlarge'] as const)) },
   cookRecapEnabled: { group: 'kitchen', describe: 'When a meal is marked cooked, ask how it was, whether there are leftovers, and what it used up.', read: s => s.cookRecapEnabled, write: (s, v) => s.setCookRecapEnabled(bool('cookRecapEnabled', v)) },
   restockOfferEnabled: { group: 'kitchen', describe: 'After cooking, list what the meal used that is not on the grocery list, with a button to add it.', read: s => s.restockOfferEnabled, write: (s, v) => s.setRestockOfferEnabled(bool('restockOfferEnabled', v)) },
   runningLowAddsToList: { group: 'kitchen', describe: 'Marking an item as running low adds it to the grocery list. Off keeps it as a note in the pantry.', read: s => s.runningLowAddsToList, write: (s, v) => s.setRunningLowAddsToList(bool('runningLowAddsToList', v)) },

@@ -329,10 +329,38 @@ export function taskEarnsCoins(task: { parentId: string | null }): boolean {
   return !task.parentId;
 }
 
-/** The current balance: everything earned, less everything lost or spent. */
-export function coinBalance(entries: readonly Pick<CoinEntry, 'kind' | 'amount'>[]): number {
+/** The label a balance reset's entry carries, and how the history spots one. */
+export const BALANCE_RESET_LABEL = 'Balance reset';
+
+/**
+ * A reset belongs to no task and no reward, which no other entry can say, and
+ * carries its own label: it decides where the balance starts, so a stray row
+ * with no task can't pass for one.
+ */
+export function isBalanceReset(entry: Pick<CoinEntry, 'taskId' | 'rewardId' | 'label'>): boolean {
+  return entry.taskId === null && entry.rewardId === null && entry.label === BALANCE_RESET_LABEL;
+}
+
+/**
+ * The current balance: everything earned, less everything lost or spent, since
+ * the latest reset.
+ *
+ * A reset is the balance's zero rather than an amount taken off it: what came
+ * before the latest one counts for nothing, and the reset itself adds nothing.
+ * Read as an offset, two devices that each reset 100 coins before syncing
+ * merged to two offsets and a balance of -100. The cost is that an entry dated
+ * before the latest reset no longer counts, which is what "reset to 0" says.
+ */
+export function coinBalance(entries: readonly Pick<CoinEntry, 'kind' | 'amount' | 'at' | 'taskId' | 'rewardId' | 'label'>[]): number {
+  let zeroAt = -Infinity;
+  for (const e of entries) {
+    if (isBalanceReset(e)) zeroAt = Math.max(zeroAt, Date.parse(e.at));
+  }
   let total = 0;
-  for (const e of entries) total += e.kind === 'earn' ? e.amount : -e.amount;
+  for (const e of entries) {
+    if (isBalanceReset(e) || Date.parse(e.at) <= zeroAt) continue;
+    total += e.kind === 'earn' ? e.amount : -e.amount;
+  }
   return total;
 }
 

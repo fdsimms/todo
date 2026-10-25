@@ -68,6 +68,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
+import { runAfterTransition } from '../utils/afterPaint';
 import { resumeTasks } from '../utils/resumePrompt';
 import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
 import { MAX_MEDICATION_EXTRAS, medicationVocabulary, medicationKey, parseMedicationExtras } from '../utils/medicationLog';
@@ -544,6 +545,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const updateTask = useTaskStore(s => s.updateTask);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const bountyLimit = useSettingsStore(s => s.bountyLimit);
+  const slotInMaxWaitDays = useSettingsStore(s => s.slotInMaxWaitDays);
+  const slotInWaitLimit = slotInMaxWaitDays === 1 ? '1 day' : `${slotInMaxWaitDays} days`;
   const setLastAction = useTaskStore(s => s.setLastAction);
   const addSubtask = useTaskStore(s => s.addSubtask);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
@@ -622,6 +625,12 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // did: the sheet is dense enough that a permanent bar would cost every task
   // edit to serve the ones that need it.
   const [searchOpen, setSearchOpen] = useState(false);
+  // Whether the cards below the fold have their rows. Opening the sheet mounts
+  // them as empty slots (EditorGroup's deferRows) and fills them in once the
+  // slide has finished, so the commit the slide waits on builds the first
+  // screen of the form rather than all of it. Inline (the pane beside a list)
+  // has no slide and mounts everything at once.
+  const [rowsMounted, setRowsMounted] = useState(inline);
   // Where each card and row sits, for the jump bar and the summary's links.
   // Kept off state (see editorJump.ts) so a scroll re-renders only the bar.
   const jump = useMemo(() => new EditorJumpTracker(EDITOR_CARD_SECTIONS.map(s => s.key)), []);
@@ -657,8 +666,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // groups because their rows are written inline in the JSX below — which is
   // the same reason there's no separate index file to keep in step.
   const [matchCounts, setMatchCounts] = useState<Record<string, number>>({});
+  // A group not yet heard from counts as 0, the same as in the total, so every
+  // group's first report of 0 on opening isn't a change that re-renders the
+  // whole editor while it slides in.
   const reportMatches = useCallback((groupKey: string, count: number) => {
-    setMatchCounts(prev => (prev[groupKey] === count ? prev : { ...prev, [groupKey]: count }));
+    setMatchCounts(prev => ((prev[groupKey] ?? 0) === count ? prev : { ...prev, [groupKey]: count }));
   }, []);
 
   const totalMatches = useMemo(() => {
@@ -1187,7 +1199,13 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     setDraftLoadedFor({ visible, task });
     if (visible) loadDraft();
     setShowAllFields(false);
+    setRowsMounted(inline);
   }
+  useEffect(() => {
+    if (!visible || rowsMounted) return;
+    const handle = runAfterTransition(() => setRowsMounted(true));
+    return () => handle.cancel();
+  }, [visible, rowsMounted]);
   // The one part that touches a native view, so it waits for the commit.
   useEffect(() => {
     if (visible) searchFilter.clear();
@@ -3714,6 +3732,12 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     () => (reminderPlaceId ? readSavedPlaces().find(p => p.id === reminderPlaceId)?.name ?? null : null),
     [reminderPlaceId],
   );
+  // The places a daily target's reminders can be limited to, read when the
+  // switch turns on rather than in every render (it's a SQLite read).
+  const quotaReminderPlaces = useMemo(
+    () => (quotaReminders ? pinnedPlaces(readSavedPlaces()) : []),
+    [quotaReminders],
+  );
   const placeReminderValue = reminderPlaceId
     ? describePlaceReminder(reminderPlaceOn, reminderPlaceName ?? 'a saved place')
     : undefined;
@@ -3807,11 +3831,13 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     deliverable: () => openField('deliverable'),
   };
   const openFromSummary = (key: string) => {
+    setRowsMounted(true);
     const y = jump.rowY(key);
     if (y !== null) scrollToRef.current?.(scrollTargetFor(y, jump.getMetrics()));
     summaryOpeners[key]?.();
   };
   const jumpToCard = (key: string) => {
+    setRowsMounted(true);
     const y = jump.jumpTo(key);
     if (y !== null) scrollToRef.current?.(y);
   };
@@ -5096,7 +5122,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                         </View>
                         <Toggle value={quotaReminders} onColor={colors.orange} />
                       </TouchableOpacity>
-                      {quotaReminders && pinnedPlaces(readSavedPlaces()).length > 0 && (
+                      {quotaReminders && quotaReminderPlaces.length > 0 && (
                         <View style={styles.placeLimit}>
                           <Text style={styles.optionLabel}>Only notify me at</Text>
                           <Text style={styles.optionHint}>
@@ -5105,7 +5131,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                           <PillGroup
                             noun="place"
                             surface="card"
-                            options={pinnedPlaces(readSavedPlaces()).map(p => ({
+                            options={quotaReminderPlaces.map(p => ({
                               key: p.id,
                               label: p.name,
                               selected: quotaPlaceIds.includes(p.id),
@@ -5792,8 +5818,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 icon="hourglass-outline"
                 summary={slotInShown ? 'Wait' : 'Keep the date'}
                 hint={slotInCategory !== null
-                  ? `Wait moves this to the next day that isn’t full, but at least one waiting task still shows every day. Set for every task in ${slotInCategory}.`
-                  : "Wait moves this to the next day that isn’t full, but at least one waiting task still shows every day."}
+                  ? `Wait moves this to the next day that isn’t full, but never more than ${slotInWaitLimit}. Set for every task in ${slotInCategory}.`
+                  : `Wait moves this to the next day that isn’t full, but never more than ${slotInWaitLimit}.`}
                 expanded={fieldOpen('slotIn')}
                 onToggle={() => toggleField('slotIn')}
               >
@@ -6954,6 +6980,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       <EditorGroup
         label={featureShown('effortRating', simpleMode, !!effort) ? 'Priority & effort' : 'Priority'}
         groupKey="priority"
+        deferRows={!rowsMounted}
         jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
@@ -7334,6 +7361,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       <EditorGroup
         label="Filed under"
         groupKey="filed"
+        deferRows={!rowsMounted}
         jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
@@ -7535,6 +7563,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       <EditorGroup
         label="Waits for"
         groupKey="waits"
+        deferRows={!rowsMounted}
         jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
@@ -7814,6 +7843,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       <EditorGroup
         label="Who and where"
         groupKey="who"
+        deferRows={!rowsMounted}
         jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
@@ -7907,6 +7937,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       <EditorGroup
         label="Opens from the task"
         groupKey="opens"
+        deferRows={!rowsMounted}
         jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
@@ -8151,6 +8182,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       <EditorGroup
         label="When you check it off"
         groupKey="finish"
+        deferRows={!rowsMounted}
         jump={jump}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
@@ -8766,9 +8798,19 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     if (task.archived) {
                       resumeTasks([task], unarchiveTask);
                     } else {
-                      haptics.success();
-                      archiveTask(task.id);
-                      onClose();
+                      haptics.warning();
+                      Alert.alert(
+                        'Archive this task?',
+                        `“${displayTitleFor(task)}” moves to Archived. Nothing is deleted. You can restore it from there.`,
+                        [
+                          { text: BUTTON_LABEL.cancel, style: 'cancel' },
+                          {
+                            // Not destructive styling: archiving keeps the task.
+                            text: 'Archive',
+                            onPress: () => { archiveTask(task.id); onClose(); },
+                          },
+                        ],
+                      );
                     }
                   }}
                   activeOpacity={interaction.activeOpacity}

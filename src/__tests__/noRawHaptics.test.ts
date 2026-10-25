@@ -8,6 +8,11 @@
  * typechecks, runs, and only betrays itself to someone who turned haptics off.
  * It also skips the vocabulary, which is what keeps one meaning to one buzz.
  *
+ * Nor may a haptic be awaited. The native call is on its way when it's made,
+ * and awaiting it only holds back the visual it belongs to by a bridge round
+ * trip (a sheet opened from a task row waited on exactly this). See the rule in
+ * `utils/haptics.ts`.
+ *
  * Read from the source rather than the module graph, the same as
  * `noRawModal.test.ts`.
  */
@@ -62,6 +67,13 @@ describe('raw haptics usage', () => {
   it('never imports Vibration from react-native', () => {
     expect(importsVibration("import { View, Vibration } from 'react-native';")).toBe(true);
     const offenders = files.filter(f => importsVibration(f.src)).map(f => f.rel);
+    expect(offenders).toEqual([]);
+  });
+
+  it('never awaits a haptic', () => {
+    const AWAITED = /\bawait\s+haptics\./;
+    expect(AWAITED.test('    await haptics.tap();')).toBe(true);
+    const offenders = files.filter(f => AWAITED.test(f.src)).map(f => f.rel);
     expect(offenders).toEqual([]);
   });
 });

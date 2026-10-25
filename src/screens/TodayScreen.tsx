@@ -20,7 +20,6 @@ import {
   RefreshControl,
   Alert,
   AppState,
-  InteractionManager,
   type GestureResponderEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -32,6 +31,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, NutrientKey, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
+import { runAfterPaint, runAfterTransition } from '../utils/afterPaint';
 import { taskHomeFor } from '../utils/taskHome';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
 import { sameGroupsApartFromFold } from '../utils/groupFold';
@@ -106,6 +106,8 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
+import { useStore } from 'zustand';
+import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
 import { MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
 import { SuggestedPinsSheet } from '../components/SuggestedPinsSheet';
 import { MorningCheckInSheet } from '../components/MorningCheckInSheet';
@@ -140,8 +142,7 @@ import {
   type FabDropIntent,
 } from '../utils/fabDrop';
 import { SortableList } from '../components/SortableList';
-import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
-import { QuickAddModal } from '../components/QuickAddModal';
+import type { TaskDraft } from '../components/TaskEditor';
 import { InboxSortSheet } from '../components/InboxSortSheet';
 import { QuickSearchModal } from '../components/QuickSearchModal';
 import { EventImportSheet } from '../components/EventImportSheet';
@@ -950,8 +951,15 @@ export function TodayScreen() {
     [colors],
   );
 
-  const [quickAddVisible, setQuickAddVisible] = useState(false);
-  const [quickAddType, setQuickAddType] = useState<TaskKind>('task');
+  // The quick-add and editor sheets' open state lives in a store of its own
+  // rather than in this component's state (see SheetHosts), so opening one
+  // re-renders the sheet and not this whole screen. The setters keep their
+  // useState names, so every caller reads as it did.
+  const quickAddStore = useSheetStore<QuickAddSheetState>(QUICK_ADD_CLOSED);
+  const setQuickAddVisible = useCallback((visible: boolean) => quickAddStore.setState({ visible }), [quickAddStore]);
+  const setQuickAddType = useCallback((type: TaskKind) => quickAddStore.setState({ type }), [quickAddStore]);
+  const setQuickAddSeed = useCallback((seed: QuickAddSheetState['seed']) => quickAddStore.setState({ seed }), [quickAddStore]);
+  const setQuickAddSeedLabel = useCallback((seedLabel: string | null) => quickAddStore.setState({ seedLabel }), [quickAddStore]);
   const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
   const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A row a jump is on its way to, held as state rather than scrolled straight
@@ -1002,14 +1010,24 @@ export function TodayScreen() {
     });
     return true;
   }, []);
-  const [editorVisible, setEditorVisible] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
+  // In a store, for the reason quickAddStore gives. This screen reads it only
+  // while something here depends on it: the two-pane layout, which lights the
+  // row being edited and shows a placeholder beside the list, and an itinerary
+  // import waiting for the editor to close before opening the next entry.
+  const editorStore = useSheetStore<EditorSheetState>(EDITOR_CLOSED);
+  const setEditorVisible = useCallback((visible: boolean) => editorStore.setState({ visible }), [editorStore]);
+  const setEditingTask = useCallback((task: Task | null) => editorStore.setState({ task }), [editorStore]);
+  const setEditorInitialDraft = useCallback((draft: Partial<TaskDraft> | null) => editorStore.setState({ draft }), [editorStore]);
   const [eventImportVisible, setEventImportVisible] = useState(false);
   // Events still waiting to become a task, from an itinerary import that read
   // more than one. Drained one at a time by the effect below, which opens the
   // next as soon as the editor closes on the previous — see its own comment.
   const [pendingEventImports, setPendingEventImports] = useState<ExtractedCalendarEvent[]>([]);
+  // Read only when watched (see editorStore): false otherwise, whatever the
+  // sheet is doing, so opening and closing it leaves this screen alone.
+  const editorWatched = twoPane || pendingEventImports.length > 0;
+  const editorVisible = useStore(editorStore, st => editorWatched && st.visible);
+  const paneEditingTaskId = useStore(editorStore, st => (twoPane && st.visible ? st.task?.id ?? null : null));
   const [quickEventVisible, setQuickEventVisible] = useState(false);
   const [quickEventSeed, setQuickEventSeed] = useState<QuickEventSeed | null>(null);
   const [pullingToSearch, setPullingToSearch] = useState(false);
@@ -1599,7 +1617,7 @@ export function TodayScreen() {
       // one that writes re-renders this whole screen, so running them inline
       // stacked that work on the frame the tab switch was trying to paint.
       // A stale row they clear can show for that moment and no longer.
-      const sweeps = InteractionManager.runAfterInteractions(() => {
+      const sweeps = runAfterTransition(() => {
         // On *focus* as well as on foreground below, which is this pass alone and
         // deliberate: a pantry check is answered on another screen — its own link
         // opens the item sheet — and the six writes that answer it (both Pantry
@@ -2114,7 +2132,7 @@ export function TodayScreen() {
   // that reads the list (same trade inboxTasks makes above). A scalar, so it
   // can't churn renders — this recomputes on every store write and re-renders
   // only when the number itself moves.
-  const unscheduledCount = useTaskStore(s => openTasksOf(s.tasks).filter(isUnscheduledTask).length);
+  const unscheduledCount = useTaskStore(s => s.unscheduledTasks().length);
   // Later and Inbox stay whatever the mode is: each is the only route to a set
   // of real tasks, and a lens that hides tasks isn't a simplification. Only
   // Unscheduled goes, and only while it's empty and isn't the view you're on.
@@ -3227,7 +3245,7 @@ export function TodayScreen() {
   // by this effect's own cleanup.
   const [todayTaskLimit, setTodayTaskLimit] = useState<number | undefined>(TODAY_INITIAL_TASK_LIMIT);
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
+    const handle = runAfterPaint(() => {
       setTodayTaskLimit(viewMode === 'today' ? undefined : TODAY_INITIAL_TASK_LIMIT);
     });
     return () => handle.cancel();
@@ -3297,19 +3315,6 @@ export function TodayScreen() {
   // screen re-runs every row's renderItem. The two things that do change with
   // it — the label on the button, the highlight on a stack — subscribe.
   const fabIntentChannel = useFabIntentChannel();
-  const [quickAddSeed, setQuickAddSeed] = useState<
-    | {
-        category?: string | null;
-        groupId?: string;
-        pinned?: boolean;
-        dueDate?: string | null;
-        timeSegments?: TimeOfDay[];
-        windowStart?: string | null;
-        windowEnd?: string | null;
-      }
-    | undefined
-  >(undefined);
-  const [quickAddSeedLabel, setQuickAddSeedLabel] = useState<string | null>(null);
   // The drop that opened the sheet, read once when the task comes back.
   const pendingDropRef = useRef<FabDropIntent | null>(null);
 
@@ -3329,10 +3334,7 @@ export function TodayScreen() {
     if (namedStackId && !useTaskStore.getState().tasks.some(t => t.groupId === namedStackId)) {
       removeGroupRow(namedStackId);
     }
-    setQuickAddVisible(false);
-    setQuickAddSeed(undefined);
-    setQuickAddSeedLabel(null);
-    setQuickAddType('task');
+    quickAddStore.setState(QUICK_ADD_CLOSED);
     pendingDropRef.current = null;
   };
   // Stable, because QuickAddModal is memoized and stays mounted while hidden:
@@ -3871,7 +3873,7 @@ export function TodayScreen() {
         expanded={expandedTaskId === rowKey}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== rowKey && !selectionMode}
         onEdit={handleRowEdit}
-        paneActive={twoPane && editorVisible && editingTask?.id === task.id}
+        paneActive={paneEditingTaskId === task.id}
         subtaskCount={subs.items.length}
         subtaskDoneCount={subs.doneCount}
         subtasks={subs.items}
@@ -4924,7 +4926,7 @@ export function TodayScreen() {
   // cancelled by this effect's own cleanup, and the ramp-up that replaces it
   // is a Math.max.
   useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
+    const handle = runAfterPaint(() => {
       setLaterTaskLimit(limit =>
         viewMode === 'later' ? Math.max(limit, LATER_SETTLED_TASK_LIMIT) : LATER_INITIAL_TASK_LIMIT,
       );
@@ -5872,18 +5874,13 @@ export function TodayScreen() {
           />
         )}
 
-        <LazySheet open={quickAddVisible} warm>
-          <QuickAddModal
-            visible={quickAddVisible}
-            onClose={onQuickAddClose}
-            onOpenFull={onQuickAddOpenFull}
-            context={viewMode}
-            onCreated={onQuickAddCreated}
-            seed={quickAddSeed}
-            seedLabel={quickAddSeedLabel}
-            initialType={quickAddType}
-          />
-        </LazySheet>
+        <QuickAddSheetHost
+          store={quickAddStore}
+          onClose={onQuickAddClose}
+          onOpenFull={onQuickAddOpenFull}
+          context={viewMode}
+          onCreated={onQuickAddCreated}
+        />
 
         <LazySheet open={inboxSortVisible}>
           <InboxSortSheet
@@ -5954,14 +5951,7 @@ export function TodayScreen() {
 
         {/* A sheet over the list, unless there is room for it beside it (below). */}
         {!twoPane && (
-          <LazySheet open={editorVisible} warm>
-            <TaskEditor
-              visible={editorVisible}
-              task={editingTask}
-              initialDraft={editorInitialDraft}
-              onClose={closeEditor}
-            />
-          </LazySheet>
+          <EditorSheetHost store={editorStore} onClose={closeEditor} />
         )}
 
         <LazySheet open={filterVisible}>
@@ -6235,13 +6225,7 @@ export function TodayScreen() {
               subtitle="Its details open here. Tap the pencil on a task, or add a new one."
             />
           )}
-          <TaskEditor
-            inline
-            visible={editorVisible}
-            task={editingTask}
-            initialDraft={editorInitialDraft}
-            onClose={closeEditor}
-          />
+          <EditorSheetHost store={editorStore} onClose={closeEditor} inline />
         </>
       )}
     />

@@ -73,6 +73,14 @@ interface Props {
    * this set.
    */
   jump?: EditorJumpTracker;
+  /**
+   * Draw each row as an empty slot of a row's height, and mount its content
+   * once this turns false. For the cards below the fold while a sheet slides
+   * in: the card, its label and everything it reports (its place, whether a
+   * row holds a value, its search matches) are exactly as they would be, so
+   * nothing above it moves when the rows arrive. Ignored while searching.
+   */
+  deferRows?: boolean;
 }
 
 /**
@@ -85,7 +93,7 @@ const NO_TERMS: string[] = [];
 
 export function EditorGroup({
   label, rows: allRows, divider = 'icon',
-  searchTerms = NO_TERMS, groupKey = label ?? '', onMatchCount, jump,
+  searchTerms = NO_TERMS, groupKey = label ?? '', onMatchCount, jump, deferRows = false,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -138,6 +146,7 @@ export function EditorGroup({
   if (!rendered) return null;
 
   const sep = divider === 'full' ? styles.sepFull : styles.sep;
+  const placeholders = deferRows && !searching;
 
   const content = (
     <>
@@ -146,9 +155,11 @@ export function EditorGroup({
         {shown.map((r, i) => (
           <React.Fragment key={r.key}>
             {i > 0 && <View style={sep} />}
-            {jump
-              ? <View onLayout={e => jump.setRowY(groupKey, r.key, e.nativeEvent.layout.y)}>{r.node}</View>
-              : r.node}
+            {placeholders
+              ? <View style={styles.rowPlaceholder} />
+              : jump
+                ? <View onLayout={e => jump.setRowY(groupKey, r.key, e.nativeEvent.layout.y)}>{r.node}</View>
+                : r.node}
           </React.Fragment>
         ))}
       </View>
@@ -168,6 +179,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.8,
     marginHorizontal: spacing.md + spacing.xs, marginBottom: spacing.xs,
   },
+  // About one EditorRow's resting height, so the card is close to its final
+  // size before its rows mount.
+  rowPlaceholder: { minHeight: spacing.md * 3 },
   card: {
     marginHorizontal: spacing.md, marginBottom: spacing.lg,
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',

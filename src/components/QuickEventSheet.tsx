@@ -26,6 +26,7 @@ import { HighlightedText } from './HighlightedText';
 import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { CalendarPicker } from './CalendarPicker';
 import { EventOptionSheet, type EventOption } from './EventOptionSheet';
+import { CustomMinutesPrompt } from './CustomMinutesPrompt';
 import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
@@ -361,6 +362,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [typedBeforePick, setTypedBeforePick] = useState('');
   const [calendarPickerVisible, setCalendarPickerVisible] = useState(false);
   const [alertPickerVisible, setAlertPickerVisible] = useState(false);
+  const [alertCustomVisible, setAlertCustomVisible] = useState(false);
   // How this event is travelled to, how early to arrive and where the trip
   // starts: app-only, written to travelEventPrefs once the event saves. A null
   // mode or origin follows Settings.
@@ -1126,9 +1128,13 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   };
 
   const calendarOptions: EventOption[] = calendars.map(c => ({ key: c.id, label: c.title, color: c.color }));
+  // A typed alert ("alert 45m", or one from Other…) isn't in the preset list, so it gets its own row to show as picked.
+  const alertChoices = effectiveAlert !== null && !ALERT_CHOICES.includes(effectiveAlert)
+    ? [...ALERT_CHOICES, effectiveAlert]
+    : ALERT_CHOICES;
   const alertOptions: EventOption[] = [
     { key: 'none', label: describeAlert(null) },
-    ...ALERT_CHOICES.map(m => ({ key: String(m), label: describeAlert(m, allDay) })),
+    ...alertChoices.map(m => ({ key: String(m), label: describeAlert(m, allDay) })),
   ];
 
   const repeatOptions: EventOption[] = [
@@ -1956,7 +1962,19 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
           if (draft.alertSpan) cutFromLine(draft.alertSpan);
           setAlertPick(key === 'none' ? null : Number(key));
         }}
+        onOther={() => setAlertCustomVisible(true)}
         onClose={() => setAlertPickerVisible(false)}
+      />
+      <CustomMinutesPrompt
+        visible={alertCustomVisible}
+        title="Alert"
+        range={ALERT_RANGE}
+        initialMinutes={effectiveAlert}
+        onSubmit={minutes => {
+          if (draft.alertSpan) cutFromLine(draft.alertSpan);
+          setAlertPick(minutes);
+        }}
+        onClose={() => setAlertCustomVisible(false)}
       />
       <EventOptionSheet
         visible={travelModePickerVisible}
@@ -1999,6 +2017,9 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 
 const TRAVEL_MODE_LABELS: Record<TravelMode, string> = { driving: 'Car', transit: 'Transit', walking: 'Walking' };
 const TRAVEL_SKIP_KEY = 'skip';
+
+/** A typed alert runs from a minute to a week before the event, as in a saved event. */
+const ALERT_RANGE = { min: 1, max: 7 * 24 * 60 };
 const STEP_NAMES = ['When', 'Where', 'Details'] as const;
 
 // Mirrors QuickAddModal's card, input and tooltip styles; the notes on why

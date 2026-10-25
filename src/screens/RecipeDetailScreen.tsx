@@ -3755,6 +3755,10 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     paddingRight: spacing.md,
     borderLeftWidth: 2,
     borderLeftColor: colors.accent,
+    // Each row either side already pads itself by spacing.smd, so the joint
+    // between two options sat a row's padding away from both. Pull the rows
+    // in so the divider hugs the text it separates.
+    marginVertical: -spacing.xsm,
   },
   choiceOrLine: {
     flex: 1,

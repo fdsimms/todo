@@ -2313,9 +2313,6 @@ export function FoodLogEntrySheet({
               );
             })()}
             <Text style={styles.hint}>
-              {/* Says where a number nobody typed came from, and only while
-                  the field still holds it. */}
-              {recalledAmount !== null && amount === recalledAmount ? 'Filled in from the last time you logged this. ' : ''}
               {picked.kind === 'dish'
                 ? dishWeightHint
                 : foodUnitOptions.length > 0 && amountUnit !== 'other'
@@ -2390,17 +2387,21 @@ export function FoodLogEntrySheet({
             )}
 
             {!!built && (
-              <Text style={styles.preview}>
-                {built.nutrition.amounts.calorieKcal !== undefined
-                  ? `${Math.round(built.nutrition.amounts.calorieKcal)} cal`
-                  : 'No calories stated'}
-                {built.nutrition.amounts.proteinG !== undefined
-                  ? `, ${Math.round(built.nutrition.amounts.proteinG)} g protein`
-                  : ''}
-                {built.grams !== null ? `, ${built.grams} g` : ''}
-              </Text>
+              <LimitImpactLines
+                impacts={limitImpacts}
+                stats={[
+                  {
+                    value: built.nutrition.amounts.calorieKcal !== undefined
+                      ? String(Math.round(built.nutrition.amounts.calorieKcal)) : '--',
+                    label: 'cal',
+                  },
+                  ...(built.nutrition.amounts.proteinG !== undefined
+                    ? [{ value: `${Math.round(built.nutrition.amounts.proteinG)} g`, label: 'protein' }] : []),
+                  ...(built.grams !== null ? [{ value: `${built.grams} g`, label: 'weight' }] : []),
+                ]}
+                style={styles.limitImpacts}
+              />
             )}
-            {!!built && <LimitImpactLines impacts={limitImpacts} style={styles.limitImpacts} />}
             {/* This label states no density of its own, so the weight behind
                 a volume amount is approximated from water's — right for most
                 drinks, off for anything syrupy or creamy. See
@@ -2569,6 +2570,23 @@ export function FoodLogEntrySheet({
               surface="page"
             />
 
+            {/* Only for a food that is a catalog row (a dish or a bare database
+                food has no pantry entry to update), and not when correcting an
+                entry that was logged already. */}
+            {!!picked.itemId && !editing && (
+              <>
+                <PantryAnswerField
+                  itemId={picked.itemId}
+                  value={pantryAnswer}
+                  onChange={setPantryAnswer}
+                  addToList={pantryAddToList}
+                  onAddToListChange={setPantryAddToList}
+                  surface="page"
+                  style={styles.pantryField}
+                />
+              </>
+            )}
+
             {/* One row on every entry, so alcohol can be added to anything
                 (a homemade sangria, a pour with no label). It opens already
                 answered when the figures or the food's name say it is a drink,
@@ -2643,23 +2661,6 @@ export function FoodLogEntrySheet({
                     {alcoholStated ? ' Changing it only changes this entry.' : ''}
                   </Text>
                 )}
-              </>
-            )}
-
-            {/* Only for a food that is a catalog row (a dish or a bare database
-                food has no pantry entry to update), and not when correcting an
-                entry that was logged already. */}
-            {!!picked.itemId && !editing && (
-              <>
-                <PantryAnswerField
-                  itemId={picked.itemId}
-                  value={pantryAnswer}
-                  onChange={setPantryAnswer}
-                  addToList={pantryAddToList}
-                  onAddToListChange={setPantryAddToList}
-                  surface="page"
-                  style={styles.pantryField}
-                />
               </>
             )}
           </ScrollView>
@@ -2984,8 +2985,7 @@ function makeStyles(colors: Colors) {
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.xs },
     plateWeighIn: { marginTop: spacing.smd },
     error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },
-    preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, marginTop: spacing.sm },
-    limitImpacts: { marginTop: spacing.xs },
+    limitImpacts: { marginTop: spacing.md },
     // Wraps rather than truncating: the first pill carries the food's own name,
     // which can be a database description several words long.
     fileRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },

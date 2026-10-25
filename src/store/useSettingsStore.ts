@@ -122,6 +122,7 @@ import {
   DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, MEAL_PLAN_NUDGE_SLOTS,
 } from '../utils/mealPlanNudge';
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
+import { DEFAULT_SLOT_IN_MAX_WAIT_DAYS, parseSlotInMaxWaitDays } from '../utils/slotIn';
 import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit, parseSalesTaxPercent, parseWeeklyBudget } from '../utils/rewards';
 import {
   FOCUS_DEFAULTS,
@@ -135,6 +136,7 @@ import {
   serializeOptionalCount,
 } from '../utils/focusSettings';
 import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
+import { parseCookTextSize, type CookTextSize } from '../utils/cookMode';
 import { MAX_HOUSEHOLD_SERVINGS } from '../utils/recipeScale';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseGeneratedTaskDefaults, hasTaskFieldDefaults } from '../utils/taskFieldDefaults';
@@ -533,6 +535,11 @@ interface SettingsStore {
   /** How many pushes before it says something. */
   postponeCheckThreshold: number;
   /**
+   * Days a task set to wait for a lighter day may wait before it shows up
+   * whatever the day holds. See src/utils/slotIn.ts.
+   */
+  slotInMaxWaitDays: number;
+  /**
    * Focus sessions — the run of work stretches and breaks a queue of tasks is
    * turned into (see src/utils/focusPlan.ts). Defaults are a classic pomodoro;
    * `focusSettings.ts` says why each one is what it is.
@@ -766,6 +773,9 @@ interface SettingsStore {
   // what's stored. Defaults to 'asWritten', so an install upgrading into this
   // reads exactly as it did.
   unitSystem: UnitSystem;
+  // How big cook mode draws the step's sentence. Changed from cook mode's own
+  // header, since that is where someone propping up a phone notices it.
+  cookTextSize: CookTextSize;
   // How many people a planned recipe usually feeds (#2910), which planMeal
   // turns into the new meal's starting scale through the recipe's own servings
   // (see householdScale in src/utils/recipeScale.ts). 0 means not set, and is
@@ -2171,6 +2181,7 @@ interface SettingsStore {
   setConfirmBeforeDeleting: (on: boolean) => void;
   setMealsOnToday: (mode: MealsOnToday) => void;
   setUnitSystem: (system: UnitSystem) => void;
+  setCookTextSize: (size: CookTextSize) => void;
   setHouseholdServings: (servings: number) => void;
   setCurrencySymbol: (symbol: string) => void;
   setMealCookTasks: (on: boolean) => void;
@@ -2197,6 +2208,7 @@ interface SettingsStore {
   setOnDeviceAiEnabled: (on: boolean) => void;
   setPostponeCheckEnabled: (on: boolean) => void;
   setPostponeCheckThreshold: (count: number) => void;
+  setSlotInMaxWaitDays: (days: number) => void;
   setAppLockEnabled: (on: boolean) => void;
   setAppLockGraceSeconds: (seconds: number) => void;
   setJournalLockEnabled: (on: boolean) => void;
@@ -2570,6 +2582,7 @@ const DEFAULT_SETTINGS = {
   autoCompleteProjectsOnDone: false,
   postponeCheckEnabled: true,
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
+  slotInMaxWaitDays: DEFAULT_SLOT_IN_MAX_WAIT_DAYS,
   focusWorkCapMinutes: FOCUS_DEFAULTS.workCapMinutes,
   focusDefaultWorkMinutes: FOCUS_DEFAULTS.defaultWorkMinutes,
   focusRestAfterTasks: FOCUS_DEFAULTS.restAfterTasks,
@@ -2612,6 +2625,7 @@ const DEFAULT_SETTINGS = {
   collapsedGroceryGroups: [] as string[],
   mealsOnToday: 'inline' as MealsOnToday,
   unitSystem: 'asWritten' as UnitSystem,
+  cookTextSize: 'large' as CookTextSize,
   householdServings: 0,
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
@@ -3021,6 +3035,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   autoCompleteProjectsOnDone: false,
   postponeCheckEnabled: true,
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
+  slotInMaxWaitDays: DEFAULT_SLOT_IN_MAX_WAIT_DAYS,
   focusWorkCapMinutes: FOCUS_DEFAULTS.workCapMinutes,
   focusDefaultWorkMinutes: FOCUS_DEFAULTS.defaultWorkMinutes,
   focusRestAfterTasks: FOCUS_DEFAULTS.restAfterTasks,
@@ -3066,6 +3081,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   kitchenEnabled: true,
   mealsOnToday: 'inline',
   unitSystem: 'asWritten',
+  cookTextSize: 'large',
   householdServings: 0,
   currencySymbol: DEFAULT_CURRENCY_SYMBOL,
   mealCookTasks: true,
@@ -3379,6 +3395,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // that predates the setting starts with it rather than without it.
     const postponeCheckEnabled = dbGetSetting('postponeCheckEnabled') !== 'false';
     const postponeCheckThreshold = parsePostponeThreshold(dbGetSetting('postponeCheckThreshold'));
+    const slotInMaxWaitDays = parseSlotInMaxWaitDays(dbGetSetting('slotInMaxWaitDays'));
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
@@ -3453,6 +3470,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const storedUnitSystem = dbGetSetting('unitSystem') as UnitSystem | null;
     const unitSystem: UnitSystem =
       storedUnitSystem && UNIT_SYSTEMS.includes(storedUnitSystem) ? storedUnitSystem : 'asWritten';
+    const cookTextSize = parseCookTextSize(dbGetSetting('cookTextSize'));
     const currencySymbol = parseCurrencySymbol(dbGetSetting('currencySymbol'));
     // Same TEXT-column parse as defaultProjectNudgeCadenceDays: missing or
     // unparseable reads as 0, not set, and a stored count is held to the cap
@@ -4029,6 +4047,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       completionCalendarId,
       confirmBeforeDeleting,
       cookRecapEnabled,
+      cookTextSize,
       currencySymbol,
       currentProgramId,
       customHolidays,
@@ -4229,6 +4248,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       simpleMode,
       simpleTaskForm,
       sleepGoalMinutes,
+      slotInMaxWaitDays,
       snackNudgeDeclinedDayKey,
       snackNudgeFromHour,
       snackNudgeSharePercent,
@@ -5424,6 +5444,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ postponeCheckThreshold: clamped });
   },
 
+  setSlotInMaxWaitDays(days: number) {
+    const clamped = parseSlotInMaxWaitDays(String(days));
+    dbSetSetting('slotInMaxWaitDays', String(clamped));
+    set({ slotInMaxWaitDays: clamped });
+  },
+
   // Every focus setting re-parses on the way in as well as on the way out, so
   // a value that somehow got past the stepper can't put the plan builder in a
   // state the UI has no way to show or undo.
@@ -5678,6 +5704,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setUnitSystem(system: UnitSystem) {
     dbSetSetting('unitSystem', system);
     set({ unitSystem: system });
+  },
+
+  setCookTextSize(size: CookTextSize) {
+    dbSetSetting('cookTextSize', size);
+    set({ cookTextSize: size });
   },
 
   setHouseholdServings(servings: number) {

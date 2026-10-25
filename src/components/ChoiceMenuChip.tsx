@@ -35,6 +35,12 @@ interface Props {
    * full-width select row, for a pick that has no number to sit beside.
    */
   variant?: 'chip' | 'field';
+  /**
+   * Adds an "Other…" row after the options, for a value the menu doesn't list.
+   * The menu closes first and then calls this, so the caller raises its own
+   * prompt once the popover is gone.
+   */
+  onOther?: () => void;
   /** The fill, one step off the surface it sits on. Defaults to a card's `bgSecondary` for a chip and `bgTertiary` for a field. */
   background?: string;
 }
@@ -51,7 +57,7 @@ interface Props {
  * sheet's children, which is what lets one Modal present from the other.
  */
 export function ChoiceMenuChip({
-  groups, selectedKey, onSelect, noun, name, fallbackLabel, labelOverride, variant = 'chip', background,
+  groups, selectedKey, onSelect, onOther, noun, name, fallbackLabel, labelOverride, variant = 'chip', background,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -114,6 +120,20 @@ export function ChoiceMenuChip({
                   })}
                 </React.Fragment>
               ))}
+              {onOther && (
+                <TouchableOpacity
+                  style={styles.row}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => {
+                    haptics.tap();
+                    close(onOther);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Other ${noun.toLowerCase()}`}
+                >
+                  <Text style={styles.rowOther}>Other…</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </ScrollView>
         )}
@@ -153,6 +173,7 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.smd,
     },
     rowText: { color: colors.text, fontSize: font.md },
+    rowOther: { color: colors.accentText, fontSize: font.md },
     rowTextOn: { color: colors.accentText, fontWeight: fontWeight.semibold },
     header: {
       color: colors.textSecondary,
