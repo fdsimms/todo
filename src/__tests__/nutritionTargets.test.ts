@@ -5,7 +5,9 @@ import {
   activeLimits,
   describeAgainstTarget,
   describeLimit,
+  describeLimitFigures,
   describeLimitImpact,
+  limitImpactLabel,
   limitImpact,
   limitStatus,
   limitsShownOnToday,
@@ -294,6 +296,12 @@ describe('limitImpact', () => {
     expect(describeLimitImpact(impact)).toBe('Puts you at 18 of 16g saturated fat, 2g over');
   });
 
+  it('gives a row its figures and name without the sentence around them', () => {
+    const [impact] = limitImpact({ satFatG: 6 }, { satFatG: 12 }, targets, [...limits]);
+    expect(describeLimitFigures(impact)).toBe('18 of 16g');
+    expect(limitImpactLabel(impact)).toBe('Saturated fat');
+  });
+
   it('does not call a day already over a crossing', () => {
     const [impact] = limitImpact({ sugarG: 5 }, { sugarG: 40 }, targets, [...limits]);
     expect(impact).toMatchObject({ status: 'over', crosses: false });
@@ -354,5 +362,18 @@ describe('alcohol, shown in drinks', () => {
   it('says what logging a drink would do, with no noun after the count', () => {
     const impact = limitImpact({ alcoholG: 14 }, { alcoholG: 21 }, { alcoholG: 28 }, ['alcoholG']);
     expect(describeLimitImpact(impact[0])).toBe('Puts you at 2.5 of 2 drinks, 0.5 drinks over');
+  });
+
+  it('is not over a limit that the figure shown is exactly at', () => {
+    // A 150 ml glass of 12% wine: 14.2 g, one drink on screen.
+    expect(describeLimit('alcoholG', 14.2, { alcoholG: 14 })).toBe('At the limit');
+    expect(limitStatus('alcoholG', 14.2, { alcoholG: 14 })).toBe('near');
+    const [impact] = limitImpact({ alcoholG: 14.2 }, {}, { alcoholG: 14 }, ['alcoholG']);
+    expect(impact).toMatchObject({ status: 'near', crosses: false });
+    expect(describeLimitImpact(impact)).toBe('Puts you at 1 of 1 drink');
+    // A tenth of a drink past it is over, and that is what the row says too.
+    expect(limitStatus('alcoholG', 15.5, { alcoholG: 14 })).toBe('over');
+    expect(describeLimit('alcoholG', 15.5, { alcoholG: 14 })).toBe('0.1 drinks over');
+    expect(limitStatus('satFatG', 16.8, { satFatG: 16 })).toBe('over');
   });
 });

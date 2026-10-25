@@ -31,6 +31,7 @@ import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
 import { proratedFrom } from '../../src/utils/quotaSchedule';
 import { textMatchesQuery } from '../../src/utils/moodHistory';
 import { programProgress } from '../../src/utils/workoutProgram';
+import { medicationsFor, type MedicationDose } from '../../src/utils/medicationLog';
 import {
   describeDeadlineRule,
   describeHealthTarget,
@@ -347,19 +348,17 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
   }
 
   const onCompletion: NonNullable<GetTaskResult['onCompletion']> = {};
-  if (task.medicationName) {
-    onCompletion.logsMedication = {
-      name: task.medicationName,
-      ...(task.medicationAmount != null ? { amount: task.medicationAmount } : {}),
-      ...(task.medicationUnit ? { unit: task.medicationUnit } : {}),
-    };
-    if (task.medicationExtras?.length) {
-      onCompletion.alsoLogsMedication = task.medicationExtras.map(e => ({
-        name: e.name,
-        ...(e.amount != null ? { amount: e.amount } : {}),
-        ...(e.unit ? { unit: e.unit } : {}),
-      }));
-    }
+  // What completing records, as completion resolves it: a chain step with a
+  // medicine of its own records that one alone, in place of the task's.
+  const [mainDose, ...extraDoses] = medicationsFor(task);
+  if (mainDose) {
+    const asOut = (d: MedicationDose) => ({
+      name: d.name,
+      ...(d.amount != null ? { amount: d.amount } : {}),
+      ...(d.unit ? { unit: d.unit } : {}),
+    });
+    onCompletion.logsMedication = asOut(mainDose);
+    if (extraDoses.length) onCompletion.alsoLogsMedication = extraDoses.map(asOut);
   }
   if (task.logHealthMetric) {
     onCompletion.logsHealth = {

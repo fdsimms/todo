@@ -2,7 +2,8 @@ import type { Task } from '../types';
 import {
   canSlotIn, effectiveSlotIn, slotInFromCategory, slotInInUse, isSlotHold, isSlotWaiting,
   slotWaitingSinceKey, isSlotInCandidate, planSlotIns, slotHoldPatch, slotLandPatch,
-  slotReleasePatch, slotInChipText, slotWaitingTasks, compareSlotInOrder, SLOT_IN_LIGHT_DAY_MAX, type SlotInDay,
+  slotReleasePatch, slotInChipText, slotWaitingTasks, compareSlotInOrder, planLateArrivals, SLOT_IN_LIGHT_DAY_MAX,
+  DEFAULT_SLOT_IN_MAX_WAIT_DAYS, parseSlotInMaxWaitDays, type SlotInDay,
 } from '../utils/slotIn';
 
 const iso = (key: string) => new Date(`${key}T00:00:00`).toISOString();
@@ -47,6 +48,7 @@ const day = (overrides: Partial<SlotInDay> = {}): SlotInDay => ({
   full: false,
   busyMinutes: 180,
   minutesOf: t => t.estimatedMinutes ?? 30,
+  maxWaitDays: DEFAULT_SLOT_IN_MAX_WAIT_DAYS,
   ...overrides,
 });
 
@@ -161,6 +163,14 @@ describe('isSlotInCandidate', () => {
     expect(isSlotInCandidate(task({ slotDecidedOn: '2026-10-18', deferUntil: iso(TODAY) }), none, TODAY)).toBe(true);
   });
 
+  it('leaves a task let through on an earlier day where it landed', () => {
+    // Landed yesterday and not done: it stays on Today rather than taking
+    // today's one landing again.
+    expect(isSlotInCandidate(task({ slotDecidedOn: '2026-10-18', dueDate: iso('2026-10-15') }), none, TODAY)).toBe(false);
+    // Moved by hand to today since it landed: today is a fresh question.
+    expect(isSlotInCandidate(task({ slotDecidedOn: '2026-10-16', dueDate: iso('2026-10-15'), deferUntil: iso(TODAY) }), none, TODAY)).toBe(true);
+  });
+
   it('leaves a task not set to wait', () => {
     expect(isSlotInCandidate(task({ slotIn: false }), none, TODAY)).toBe(false);
     expect(isSlotInCandidate(task({ slotIn: null }), none, TODAY)).toBe(false);
@@ -209,12 +219,68 @@ describe('planSlotIns', () => {
     expect(plan.land.map(t => t.id).sort()).toEqual([due.id, waiting.id].sort());
   });
 
+  it(`lands everything that has waited ${DEFAULT_SLOT_IN_MAX_WAIT_DAYS} days, even on a full day`, () => {
+    const oldest = task({ slotWaitingSince: '2026-10-10' });
+    const longEnough = task({ slotWaitingSince: '2026-10-16' });
+    const notYet = task({ slotWaitingSince: '2026-10-17' });
+    const fresh = task();
+    const plan = planSlotIns([fresh, notYet, longEnough, oldest], day({ baseMinutes: 400, full: true }));
+    expect(plan.land.map(t => t.id)).toEqual([oldest.id, longEnough.id]);
+    expect(plan.hold.map(t => t.id)).toEqual([notYet.id, fresh.id]);
+  });
+
+  it('follows the longest wait the person picked', () => {
+    const fiveDays = task({ slotWaitingSince: '2026-10-14' });
+    const fresh = task();
+    const plan = planSlotIns([fresh, fiveDays, task({ slotWaitingSince: '2026-10-13' })], day({ full: true, maxWaitDays: 7 }));
+    // Only the floor lands: neither has waited a week.
+    expect(plan.land).toHaveLength(1);
+    // At one day, yesterday's lands beside the floor's; today's still waits.
+    const yesterday = task({ slotWaitingSince: '2026-10-18' });
+    const short = planSlotIns([fresh, yesterday, fiveDays], day({ full: true, maxWaitDays: 1 }));
+    expect(short.land.map(t => t.id)).toEqual([fiveDays.id, yesterday.id]);
+  });
+
+  it('counts a long wait toward a light day’s limit', () => {
+    const old = task({ slotWaitingSince: '2026-10-10' });
+    const older = task({ slotWaitingSince: '2026-10-09' });
+    const fresh = task();
+    const plan = planSlotIns([fresh, old, older], day());
+    expect(plan.land.map(t => t.id)).toEqual([older.id, old.id]);
+  });
+
   it('lands what is pinned or urgent whatever the day', () => {
     const pinned = task({ pinned: true });
     const urgent = task({ priority: 4 });
     const waiting = task();
     const plan = planSlotIns([pinned, urgent, waiting], day({ full: true }));
     expect(plan.land).toHaveLength(3);
+  });
+});
+
+describe('parseSlotInMaxWaitDays', () => {
+  it('reads a missing or unreadable row as the default, and clamps the rest', () => {
+    expect(parseSlotInMaxWaitDays(null)).toBe(DEFAULT_SLOT_IN_MAX_WAIT_DAYS);
+    expect(parseSlotInMaxWaitDays('')).toBe(DEFAULT_SLOT_IN_MAX_WAIT_DAYS);
+    expect(parseSlotInMaxWaitDays('null')).toBe(DEFAULT_SLOT_IN_MAX_WAIT_DAYS);
+    expect(parseSlotInMaxWaitDays('5')).toBe(5);
+    expect(parseSlotInMaxWaitDays('0')).toBe(1);
+    expect(parseSlotInMaxWaitDays('99')).toBe(14);
+  });
+});
+
+describe('planLateArrivals', () => {
+  it('holds a task written after the day was decided while others wait', () => {
+    const late = task({ generatedKind: 'reachOut' });
+    const plan = planLateArrivals([late], true, TODAY);
+    expect(plan.hold).toEqual([late]);
+  });
+
+  it('lets it through when nothing is waiting, or when it has a deadline today', () => {
+    const late = task({ generatedKind: 'reachOut' });
+    expect(planLateArrivals([late], false, TODAY).land).toEqual([late]);
+    const due = task({ generatedKind: 'reachOut', deadline: iso(TODAY) });
+    expect(planLateArrivals([due], true, TODAY).land).toEqual([due]);
   });
 });
 

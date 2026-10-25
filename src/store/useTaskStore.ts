@@ -234,7 +234,7 @@ import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime, draftHasEstimate, estimatedMinutesFor } from '../utils/effort';
-import { isSlotInCandidate, slotWaitingTasks, planSlotIns, slotHoldPatch, slotLandPatch, slotReleasePatch, canSlotIn, effectiveSlotIn } from '../utils/slotIn';
+import { isSlotInCandidate, slotWaitingTasks, planSlotIns, planLateArrivals, isSlotWaiting, slotHoldPatch, slotLandPatch, slotReleasePatch, canSlotIn, effectiveSlotIn } from '../utils/slotIn';
 import {
   ruleEstimateDraft, withRuleEstimate, withGeneratorEstimate, holdsKindEstimate,
 } from '../utils/ruleEstimate';
@@ -2310,6 +2310,13 @@ interface TaskStore extends UndoHistoryActions {
    * `src/utils/slotIn.ts` for the decision.
    */
   applySlotIns: () => void;
+  /**
+   * After today's `applySlotIns` has run, decides generated tasks written
+   * since (a catch-up written once the last was done), so they wait behind
+   * tasks already waiting rather than landing ahead of them. A no-op before
+   * the day's pass, which decides them itself.
+   */
+  holdLateSlotIns: () => void;
   checkEventTasks: () => void;
   /**
    * "Leave for X" for each upcoming event with a location, its reminder at the
@@ -6783,6 +6790,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         }),
       });
     });
+    // A catch-up written after this morning's slot-in pass would otherwise
+    // land on Today ahead of ones that have waited for days.
+    get().holdLateSlotIns();
   },
 
   /**
@@ -7826,9 +7836,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       full: weight === 'full' || weight === 'away',
       busyMinutes: BUSY_DAY_MINUTES,
       minutesOf: t => estimatedMinutesFor(t) ?? assumed,
+      maxWaitDays: settings.slotInMaxWaitDays,
     });
     // SKIP_POSTPONE: a hold is the app's decision, not the person putting
     // something off, so it must not climb toward "You've pushed this 3 times".
+    for (const task of plan.land) get().updateTask(task.id, slotLandPatch(todayKey), SKIP_POSTPONE);
+    for (const task of plan.hold) get().updateTask(task.id, slotHoldPatch(task, todayKey), SKIP_POSTPONE);
+  },
+
+  holdLateSlotIns() {
+    if (isDemoModeActive()) return;
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    if (dbGetSetting(SLOT_IN_DAY_KEY) !== todayKey) return;
+    const categories = useCategoryStore.getState().categories;
+    const tasks = get().tasks;
+    // Generated rows only: a task the person adds or re-dates mid-day is one
+    // they are looking at, and hiding it the moment it's saved would read as
+    // losing it.
+    const arrivals = tasks.filter(t =>
+      t.generatedKind !== null && isSlotInCandidate(t, categories, todayKey) && !isWithheld(t) && !isHeldBack(t),
+    );
+    if (arrivals.length === 0) return;
+    const anyWaiting = tasks.some(t => !t.parentId && isSlotWaiting(t, todayKey) && !isWithheld(t));
+    const plan = planLateArrivals(arrivals, anyWaiting, todayKey);
     for (const task of plan.land) get().updateTask(task.id, slotLandPatch(todayKey), SKIP_POSTPONE);
     for (const task of plan.hold) get().updateTask(task.id, slotHoldPatch(task, todayKey), SKIP_POSTPONE);
   },

@@ -376,6 +376,16 @@ export function clampLimitWarnPercent(percent: number): number {
   return Math.min(LIMIT_WARN_PERCENT_MAX, Math.max(LIMIT_WARN_PERCENT_MIN, snapped));
 }
 
+/**
+ * Whether `amount` is past `target`, compared as the figures are shown. A
+ * total the row rounds to the limit reads "At the limit", so it can't also be
+ * over it: a 150 ml glass of 12% wine is 14.2 g, one drink exactly on screen,
+ * and was being logged as a slip against a one-drink limit.
+ */
+function isPastLimit(key: NutrientKey, amount: number, target: number): boolean {
+  return displayFigure(key, amount).value > displayFigure(key, target).value;
+}
+
 export function limitStatus(
   key: NutrientKey,
   total: number | undefined,
@@ -385,7 +395,7 @@ export function limitStatus(
   const target = targets[key];
   const amount = total ?? 0;
   if (target === undefined) return 'within';
-  if (amount > target) return 'over';
+  if (isPastLimit(key, amount, target)) return 'over';
   if (target <= 0) return 'within';
   return amount >= target * (warnPercent / 100) ? 'near' : 'within';
 }
@@ -450,7 +460,7 @@ export function limitImpact(
       after,
       target,
       status: limitStatus(key, after, targets, warnPercent),
-      crosses: before <= target && after > target,
+      crosses: !isPastLimit(key, before, target) && isPastLimit(key, after, target),
     });
   }
   return impacts;
@@ -471,6 +481,21 @@ export function describeLimitImpact(impact: LimitImpact): string {
   if (impact.status !== 'over') return base;
   const over = round(shownAfter - shownTarget.value);
   return `${base}, ${over.toLocaleString()}${suffixFor(key, over)} over`;
+}
+
+/**
+ * "16.8 of 16 g", the figures half of `describeLimitImpact` for a row that
+ * already names the nutrient in its own label and says "over" by colour.
+ */
+export function describeLimitFigures(impact: LimitImpact): string {
+  const shownAfter = displayFigure(impact.key, impact.after).value;
+  const shownTarget = displayFigure(impact.key, impact.target);
+  return `${shownAfter.toLocaleString()} of ${shownTarget.value.toLocaleString()}${shownTarget.suffix}`;
+}
+
+/** The nutrient's own name for a row label: "Saturated fat", or "Alcohol" for drinks. */
+export function limitImpactLabel(impact: LimitImpact): string {
+  return impact.key === 'alcoholG' ? 'Alcohol' : NUTRIENT_LABEL[impact.key].label;
 }
 
 /**

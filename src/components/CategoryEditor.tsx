@@ -520,6 +520,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
           visible={emojiPickerOpen}
           value={emoji || null}
           title="Category emoji"
+          suggestFor={name}
           onSelect={picked => setEmoji(picked ?? '')}
           onClose={() => setEmojiPickerOpen(false)}
         />

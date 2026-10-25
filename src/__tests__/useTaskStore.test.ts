@@ -7118,6 +7118,7 @@ describe('a task that waits for a lighter day', () => {
       titleRules: [],
       collapsedCategories: [],
       calendarReadEnabled: false,
+      slotInMaxWaitDays: 3,
     });
     categories = [];
     const base = categoryStore.useCategoryStore.getState();
@@ -7173,6 +7174,27 @@ describe('a task that waits for a lighter day', () => {
     const ids = [add('A', { slotIn: true }), add('B', { slotIn: true })];
     useTaskStore.getState().applySlotIns();
     expect(ids.filter(held)).toHaveLength(0);
+  });
+
+  it('holds a generated task written after the day was decided, behind one already waiting', () => {
+    dbGetSetting.mockImplementation((key: string) => (key === 'slotInDecidedDay' ? TODAY : null));
+    const waiting = add('Waiting', { slotIn: true });
+    useTaskStore.getState().updateTask(waiting, {
+      slotDecidedOn: TODAY, deferUntil: new Date(2026, 9, 20).toISOString(), slotWaitingSince: '2026-10-17',
+    });
+    const late = add('Catch up', { slotIn: true, generatedKind: 'reachOut' });
+    const mine = add('Mine', { slotIn: true });
+    useTaskStore.getState().holdLateSlotIns();
+    expect(held(late)).toBe(true);
+    // A task the person adds mid-day is left where they put it.
+    expect(held(mine)).toBe(false);
+  });
+
+  it('leaves late arrivals to the day’s own pass until it has run', () => {
+    add('Waiting', { slotIn: true });
+    const late = add('Catch up', { slotIn: true, generatedKind: 'reachOut' });
+    useTaskStore.getState().holdLateSlotIns();
+    expect(read(late).slotDecidedOn).toBeNull();
   });
 
   it('lets go of a held task once it is no longer set to wait', () => {

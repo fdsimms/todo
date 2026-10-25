@@ -22,6 +22,7 @@ import {
   rewardDisplay,
   rewardIsOpen,
   canClaimReward,
+  BALANCE_RESET_LABEL,
   coinBalance,
   describeRewardPace,
   earnRatePerDay,
@@ -211,14 +212,30 @@ describe('taskEarnsCoins', () => {
 describe('coinBalance', () => {
   it('adds earnings and takes off losses and spends', () => {
     expect(coinBalance([
-      entry({ kind: 'earn', amount: 10 }),
-      entry({ kind: 'loss', amount: 3 }),
-      entry({ kind: 'spend', amount: 4 }),
+      entry({ kind: 'earn', amount: 10, taskId: 't' }),
+      entry({ kind: 'loss', amount: 3, taskId: 't' }),
+      entry({ kind: 'spend', amount: 4, rewardId: 'r' }),
     ])).toBe(3);
   });
 
   it('can go below zero', () => {
-    expect(coinBalance([entry({ kind: 'loss', amount: 2 })])).toBe(-2);
+    expect(coinBalance([entry({ kind: 'loss', amount: 2, taskId: 't' })])).toBe(-2);
+  });
+
+  it('counts from the latest reset, so two devices resetting before a sync still land on zero', () => {
+    const earned = entry({ id: 'e1', kind: 'earn', amount: 100, taskId: 't', at: '2026-10-01T09:00:00.000Z' });
+    // Each device saw a balance of 100 and wrote its own reset of it.
+    const resetA = entry({ id: 'r1', kind: 'spend', amount: 100, label: BALANCE_RESET_LABEL, at: '2026-10-02T09:00:00.000Z' });
+    const resetB = entry({ id: 'r2', kind: 'spend', amount: 100, label: BALANCE_RESET_LABEL, at: '2026-10-02T09:05:00.000Z' });
+    expect(coinBalance([earned, resetA, resetB])).toBe(0);
+    const later = entry({ id: 'e2', kind: 'earn', amount: 5, taskId: 't2', at: '2026-10-03T09:00:00.000Z' });
+    expect(coinBalance([earned, resetA, resetB, later])).toBe(5);
+    // An entry dated before the reset that syncs in afterwards was reset too.
+    const late = entry({ id: 'e3', kind: 'earn', amount: 7, taskId: 't3', at: '2026-10-01T12:00:00.000Z' });
+    expect(coinBalance([earned, resetA, later, late])).toBe(5);
+    // Undoing a reset drops its row, and the balance counts from the one before.
+    expect(coinBalance([earned, resetA, later])).toBe(5);
+    expect(coinBalance([earned, later])).toBe(105);
   });
 
   it('is zero with nothing recorded', () => {

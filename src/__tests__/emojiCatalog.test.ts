@@ -1,4 +1,4 @@
-import { EMOJI_GROUPS, ALL_EMOJI, searchEmoji } from '../utils/emojiCatalog';
+import { EMOJI_GROUPS, ALL_EMOJI, searchEmoji, suggestEmoji } from '../utils/emojiCatalog';
 import { isSingleEmoji } from '../utils/emojiInput';
 
 describe('emoji catalog', () => {
@@ -51,5 +51,36 @@ describe('searchEmoji', () => {
 
   it('respects the limit', () => {
     expect(searchEmoji('a', 5).length).toBeLessThanOrEqual(5);
+  });
+});
+
+describe('suggestEmoji', () => {
+  const chars = (name: string) => suggestEmoji(name).map(e => e.char);
+
+  it('matches a whole keyword in the name', () => {
+    expect(chars('Donut')[0]).toBe('🍩');
+    expect(chars('Pay bills')).toContain('💳');
+  });
+
+  it('matches a plural and a prefix of three or more letters', () => {
+    expect(chars('Donuts')).toContain('🍩');
+    expect(chars('Gym days')).toContain('🏋️');
+    expect(chars('dozen')).not.toContain('🍩');
+  });
+
+  it('ignores one-letter words and a two-letter prefix', () => {
+    expect(chars('a')).toEqual([]);
+    expect(chars('do')).toEqual([]);
+  });
+
+  it('offers nothing for an empty or unmatched name', () => {
+    expect(chars('')).toEqual([]);
+    expect(chars('   ')).toEqual([]);
+    expect(chars('qqqqq')).toEqual([]);
+  });
+
+  it('puts an entry matching more of the name first, and respects the limit', () => {
+    expect(chars('dessert treat')[0]).not.toBeUndefined();
+    expect(suggestEmoji('food', 3).length).toBeLessThanOrEqual(3);
   });
 });

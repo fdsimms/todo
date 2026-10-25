@@ -544,6 +544,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const updateTask = useTaskStore(s => s.updateTask);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const bountyLimit = useSettingsStore(s => s.bountyLimit);
+  const slotInMaxWaitDays = useSettingsStore(s => s.slotInMaxWaitDays);
+  const slotInWaitLimit = slotInMaxWaitDays === 1 ? '1 day' : `${slotInMaxWaitDays} days`;
   const setLastAction = useTaskStore(s => s.setLastAction);
   const addSubtask = useTaskStore(s => s.addSubtask);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
@@ -5815,8 +5817,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 icon="hourglass-outline"
                 summary={slotInShown ? 'Wait' : 'Keep the date'}
                 hint={slotInCategory !== null
-                  ? `Wait moves this to the next day that isn’t full, but at least one waiting task still shows every day. Set for every task in ${slotInCategory}.`
-                  : "Wait moves this to the next day that isn’t full, but at least one waiting task still shows every day."}
+                  ? `Wait moves this to the next day that isn’t full, but never more than ${slotInWaitLimit}. Set for every task in ${slotInCategory}.`
+                  : `Wait moves this to the next day that isn’t full, but never more than ${slotInWaitLimit}.`}
                 expanded={fieldOpen('slotIn')}
                 onToggle={() => toggleField('slotIn')}
               >
@@ -8793,9 +8795,19 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     if (task.archived) {
                       resumeTasks([task], unarchiveTask);
                     } else {
-                      haptics.success();
-                      archiveTask(task.id);
-                      onClose();
+                      haptics.warning();
+                      Alert.alert(
+                        'Archive this task?',
+                        `“${displayTitleFor(task)}” moves to Archived. Nothing is deleted. You can restore it from there.`,
+                        [
+                          { text: BUTTON_LABEL.cancel, style: 'cancel' },
+                          {
+                            // Not destructive styling: archiving keeps the task.
+                            text: 'Archive',
+                            onPress: () => { archiveTask(task.id); onClose(); },
+                          },
+                        ],
+                      );
                     }
                   }}
                   activeOpacity={interaction.activeOpacity}

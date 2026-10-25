@@ -290,7 +290,13 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
                             style={styles.inputInRow}
                             value={usingPills ? (numbers[line.key] ?? parsed?.number ?? '') : text}
                             onChangeText={typed => {
-                              if (usingPills) setNumbers(prev => ({ ...prev, [line.key]: typed }));
+                              if (usingPills) {
+                                setNumbers(prev => ({ ...prev, [line.key]: typed }));
+                                // Clearing the number leaves no text to read the unit
+                                // from, which would drop the row to "Other" and the
+                                // text keyboard mid-edit. Pin the unit it is on.
+                                setUnits(prev => (prev[line.key] === unitKey ? prev : { ...prev, [line.key]: unitKey }));
+                              }
                               setDrafts(prev => ({ ...prev, [line.key]: usingPills ? composeFoodAmount(typed, unit) : typed }));
                               clearError();
                             }}

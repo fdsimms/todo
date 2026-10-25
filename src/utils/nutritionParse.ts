@@ -602,11 +602,12 @@ const FDC_NUTRIENT_KEYS: Record<number, NutrientKey> = {
   1089: 'ironMg',
   1092: 'potassiumMg',
   1057: 'caffeineMg',
-  // Alcohol, ethyl, in grams per 100 g. Taken from the documented nutrient
-  // number rather than read off a live response (FoodData Central was
-  // unreachable when this was added), so it is the first thing to check if a
-  // beer never shows an alcohol figure.
-  221: 'alcoholG',
+  // Alcohol, ethyl, in grams per 100 g. Keyed by its nutrient id like every
+  // other row here, not by its SR nutrient number (221, which is what this held
+  // first, so no search hit ever matched). Not yet read off a live response
+  // (FoodData Central was unreachable both times), so it is the first thing to
+  // check if a beer never shows an alcohol figure.
+  1018: 'alcoholG',
   1051: 'waterMl',
 };
 
