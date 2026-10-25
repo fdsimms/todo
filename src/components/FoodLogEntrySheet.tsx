@@ -2313,9 +2313,6 @@ export function FoodLogEntrySheet({
               );
             })()}
             <Text style={styles.hint}>
-              {/* Says where a number nobody typed came from, and only while
-                  the field still holds it. */}
-              {recalledAmount !== null && amount === recalledAmount ? 'Filled in from the last time you logged this. ' : ''}
               {picked.kind === 'dish'
                 ? dishWeightHint
                 : foodUnitOptions.length > 0 && amountUnit !== 'other'
@@ -2569,6 +2566,23 @@ export function FoodLogEntrySheet({
               surface="page"
             />
 
+            {/* Only for a food that is a catalog row (a dish or a bare database
+                food has no pantry entry to update), and not when correcting an
+                entry that was logged already. */}
+            {!!picked.itemId && !editing && (
+              <>
+                <PantryAnswerField
+                  itemId={picked.itemId}
+                  value={pantryAnswer}
+                  onChange={setPantryAnswer}
+                  addToList={pantryAddToList}
+                  onAddToListChange={setPantryAddToList}
+                  surface="page"
+                  style={styles.pantryField}
+                />
+              </>
+            )}
+
             {/* One row on every entry, so alcohol can be added to anything
                 (a homemade sangria, a pour with no label). It opens already
                 answered when the figures or the food's name say it is a drink,
@@ -2643,23 +2657,6 @@ export function FoodLogEntrySheet({
                     {alcoholStated ? ' Changing it only changes this entry.' : ''}
                   </Text>
                 )}
-              </>
-            )}
-
-            {/* Only for a food that is a catalog row (a dish or a bare database
-                food has no pantry entry to update), and not when correcting an
-                entry that was logged already. */}
-            {!!picked.itemId && !editing && (
-              <>
-                <PantryAnswerField
-                  itemId={picked.itemId}
-                  value={pantryAnswer}
-                  onChange={setPantryAnswer}
-                  addToList={pantryAddToList}
-                  onAddToListChange={setPantryAddToList}
-                  surface="page"
-                  style={styles.pantryField}
-                />
               </>
             )}
           </ScrollView>
