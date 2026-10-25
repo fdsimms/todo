@@ -522,3 +522,42 @@ describe('a read that is no longer the current one', () => {
     expect(useCalendarStore.getState().loaded).toBe(true);
   });
 });
+
+describe('noteEventSaved', () => {
+  const saved = {
+    id: 'new-1', title: 'Dentist', start: '2026-10-26T15:00:00.000Z', end: '2026-10-26T16:00:00.000Z',
+    allDay: false, calendarId: 'cal-1', location: null, status: 'confirmed', availability: 'busy',
+  };
+  const loadedWindow = () => useCalendarStore.setState({
+    loaded: true, windowStart: '2026-10-25T00:00:00.000Z', windowEnd: '2026-11-08T00:00:00.000Z',
+  });
+
+  it('puts an event this app wrote into a loaded window at once', () => {
+    loadedWindow();
+    useCalendarStore.getState().noteEventSaved(saved);
+    expect(useCalendarStore.getState().events).toEqual([saved]);
+  });
+
+  it('adds nothing the read itself would not show', () => {
+    // Not loaded yet.
+    useCalendarStore.getState().noteEventSaved(saved);
+    expect(useCalendarStore.getState().events).toEqual([]);
+
+    loadedWindow();
+    // A calendar the window doesn't read.
+    useCalendarStore.getState().noteEventSaved({ ...saved, calendarId: 'cal-2' });
+    // A day past the window.
+    useCalendarStore.getState().noteEventSaved({ ...saved, start: '2026-11-20T15:00:00.000Z', end: '2026-11-20T16:00:00.000Z' });
+    // A calendar vacation is hiding.
+    useSettingsStore.setState({ vacationMode: true, vacationHiddenCalendarIds: ['cal-1'] });
+    useCalendarStore.getState().noteEventSaved(saved);
+    expect(useCalendarStore.getState().events).toEqual([]);
+  });
+
+  it('does not add an event twice', () => {
+    loadedWindow();
+    useCalendarStore.getState().noteEventSaved(saved);
+    useCalendarStore.getState().noteEventSaved(saved);
+    expect(useCalendarStore.getState().events).toHaveLength(1);
+  });
+});

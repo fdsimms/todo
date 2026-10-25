@@ -446,6 +446,8 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       // day it belongs to.
       const isToday = isSameDay(day, getLogicalToday());
       const at = isToday ? undefined : noonOn(day);
+      // The history behind the sheet gains a row; let it ease in as the sheet goes.
+      animateLayout();
       addLog(mood, symptoms, note, at, contextTags, factors);
       // The saved entry answers the check-in task (recordTasks.ts), so its row
       // plays the tick and leaves. A backdated entry answers nothing, and the
@@ -475,7 +477,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     confirmDelete({
       title: 'Delete this entry?',
       message: 'It will be removed from your history and from every number on the Mood screen.',
-      onConfirm: () => { haptics.warning(); removeLog(id); onClose(); },
+      onConfirm: () => { haptics.warning(); animateLayout(); removeLog(id); onClose(); },
     });
   };
 

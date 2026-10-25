@@ -59,7 +59,9 @@ describe('confirmDeleteTask', () => {
     const onDone = jest.fn();
     confirmDeleteTask(task(), onDone);
     expect(mockAlert).not.toHaveBeenCalled();
-    const { onConfirm } = mockConfirmDelete.mock.calls[0][0];
+    const { onConfirm, undoable } = mockConfirmDelete.mock.calls[0][0];
+    // deleteTask files an undo the bar offers, so the confirm doesn't ask.
+    expect(undoable).toBe(true);
     expect(onDone).not.toHaveBeenCalled();
     onConfirm();
     expect(mockDeleteTask).toHaveBeenCalledWith('t1');

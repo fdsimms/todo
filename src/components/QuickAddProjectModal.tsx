@@ -37,6 +37,9 @@ import { matchTemplate } from '../utils/templateMatch';
 import type { TaskTemplate } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 
+/** How long a name left by tapping outside waits to be picked up. */
+const QUICK_PROJECT_KEEP_TITLE_MS = 10 * 60 * 1000;
+
 /** The in-progress project the quick-add hands off to the full editor. */
 export interface ProjectDraft {
   title: string;
@@ -151,10 +154,16 @@ export function QuickAddProjectModal({
     };
   }, []);
 
+  // What was typed when the sheet was last left by the backdrop rather than
+  // added; a plain open within QUICK_PROJECT_KEEP_TITLE_MS puts it back.
+  const keptTitle = useRef<{ at: number; title: string } | null>(null);
+
   useEffect(() => {
     if (!visible) return;
     submittedRef.current = false;
-    setTitle('');
+    const kept = keptTitle.current;
+    keptTitle.current = null;
+    setTitle(kept && !seedRef.current && Date.now() - kept.at <= QUICK_PROJECT_KEEP_TITLE_MS ? kept.title : '');
     setCategory(seedRef.current?.category ?? null);
     setSeedActive(!!seedRef.current);
     setDeadline(null);
@@ -190,6 +199,10 @@ export function QuickAddProjectModal({
       Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => { scaleAnim.setValue(0.95); sheetOpacity.setValue(0); onClose(); });
+  };
+  const dismissKeepingTitle = () => {
+    keptTitle.current = title.trim() ? { at: Date.now(), title } : null;
+    dismiss();
   };
 
   // Archived and finished projects both: last year's party is usually just
@@ -335,12 +348,12 @@ export function QuickAddProjectModal({
   };
 
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={dismissKeepingTitle}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <SheetScrim onPress={dismiss} label="Close without adding" />
+      <SheetScrim onPress={dismissKeepingTitle} label="Close without adding" />
       <View style={styles.centeredContainer} pointerEvents="box-none">
         <Animated.View
           style={[

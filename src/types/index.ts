@@ -9147,6 +9147,13 @@ export interface ContextRow {
    */
   calendarTag: { name: string; color: string } | null;
   /**
+   * A blank stand-in for an event row while the calendar read is under way on
+   * a cold launch (`eventPlaceholderRows`). Drawn as the row's shape with no
+   * text, never pressable, and hidden from VoiceOver. `withLocation` draws the
+   * location line too, for a row that had one, so it holds that row's height.
+   */
+  placeholder?: { withLocation: boolean };
+  /**
    * An event that moved with tasks planned around it ("Moved, 3 tasks"), set
    * by `eventContextRows`' `movedNote`. The offer to move them is in the events
    * sheet this row opens; this only makes sure somebody looking at Today sees

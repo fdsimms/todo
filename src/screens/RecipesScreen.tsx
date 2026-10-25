@@ -104,6 +104,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { LazySheet } from '../components/LazySheet';
 import { FadeInImage } from '../components/FadeInImage';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from '../components/RotatingChevron';
 
 /**
  * The recipe box.
@@ -679,6 +680,9 @@ function RecipesList() {
 
   const handleToggleUpNext = useCallback((recipe: Recipe) => {
     haptics.tap();
+    // The shelf above the box gains or loses a row, and appears or goes when
+    // it's the first or last one.
+    animateLayout();
     setUpNext(recipe.id, !recipe.upNext);
   }, [setUpNext]);
 
@@ -933,11 +937,7 @@ function RecipesList() {
                     >
                       <View style={styles.sectionHeaderLeft}>
                         <Text style={styles.sectionHeaderText}>{item.title}</Text>
-                        <Ionicons
-                          name={collapsedSections.has(recipeSectionKey(item.mealType)) ? 'chevron-forward' : 'chevron-down'}
-                          size={13}
-                          color={colors.textTertiary}
-                        />
+                        <RotatingChevron open={!(collapsedSections.has(recipeSectionKey(item.mealType)))} closed="forward" size={13} color={colors.textTertiary} />
                       </View>
                       <Text style={styles.sectionHeaderCount}>{sectionCounts.get(item.mealType ?? '') ?? 0}</Text>
                     </TouchableOpacity>

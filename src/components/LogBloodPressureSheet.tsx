@@ -64,6 +64,12 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
   const systolicRef = useRef<TextInput>(null);
   const diastolicRef = useRef<TextInput>(null);
   const pulseRef = useRef<TextInput>(null);
+  // Which number is being typed, for the pad's Next: top, then bottom, then
+  // pulse, in the order they're drawn.
+  const [focused, setFocused] = useState<'systolic' | 'diastolic' | 'pulse' | null>(null);
+  const nextField = focused === 'systolic' ? diastolicRef
+    : focused === 'diastolic' ? pulseRef
+    : null;
 
   // The sheet stays mounted across opens (see `onShow` below), so the day it
   // was seeded with, or reset to on the last close, can be yesterday's by the
@@ -178,6 +184,7 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
       // The reading is in Health; only the optional pulse was refused. Said
       // rather than dropped, and the sheet closes because the reading is saved.
       haptics.warning();
+      useHealthStore.getState().noteBloodPressureWritten({ ...reading, at: when, pulse: null });
       void refreshBloodPressure();
       useTaskStore.getState().markBloodPressureAnswered(dayKeyOf(day));
       close();
@@ -193,6 +200,7 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
     }
     if (result === 'written') {
       haptics.success();
+      useHealthStore.getState().noteBloodPressureWritten({ ...reading, at: when });
       void refreshBloodPressure();
       useTaskStore.getState().markBloodPressureAnswered(dayKeyOf(day));
       close();
@@ -290,6 +298,8 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
             <TextField
               ref={systolicRef}
               style={styles.input}
+              onFocus={() => setFocused('systolic')}
+              onBlur={() => setFocused(f => (f === 'systolic' ? null : f))}
               value={systolicText}
               onChangeText={setSystolicText}
               keyboardType="number-pad"
@@ -309,6 +319,8 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
             <TextField
               ref={diastolicRef}
               style={styles.input}
+              onFocus={() => setFocused('diastolic')}
+              onBlur={() => setFocused(f => (f === 'diastolic' ? null : f))}
               value={diastolicText}
               onChangeText={setDiastolicText}
               keyboardType="number-pad"
@@ -330,6 +342,8 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
             <TextField
               ref={pulseRef}
               style={styles.input}
+              onFocus={() => setFocused('pulse')}
+              onBlur={() => setFocused(f => (f === 'pulse' ? null : f))}
               value={pulseText}
               onChangeText={setPulseText}
               keyboardType="number-pad"
@@ -359,7 +373,7 @@ export function LogBloodPressureSheet({ visible, onClose }: Props) {
         Saved to Apple Health. Edit or delete it
         in the Health app.
       </Text>
-      <NumberPadAccessory />
+      <NumberPadAccessory onNext={nextField ? () => nextField.current?.focus() : undefined} />
     </EditorSheet>
   );
 }

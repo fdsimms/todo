@@ -82,6 +82,7 @@ import { useKeyboardLift } from '../hooks/useKeyboardLift';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from './RotatingChevron';
 
 interface Props {
   visible: boolean;
@@ -510,7 +511,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
                 {leafIds.length} item{leafIds.length === 1 ? '' : 's'}
               </Text>
             </TouchableOpacity>
-            <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={14} color={colors.textTertiary} />
+            <RotatingChevron open={!collapsed} closed="forward" size={14} color={colors.textTertiary} />
           </View>
           {!collapsed && renderApplyTreeNodes(node.children, depth + 1)}
         </View>

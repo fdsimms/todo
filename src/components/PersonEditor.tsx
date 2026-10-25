@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Platform, View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Platform, View, Text, TouchableOpacity, StyleSheet, type TextInput } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Person, PersonDate } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
@@ -119,6 +119,14 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
   // measures instead of left to auto-grow.
   const [notesHeight, setNotesHeight] = useState(0);
   const [email, setEmail] = useState('');
+  // Return (and the phone pad's Next) walks the contact rows in the order
+  // they're drawn, so a contact is typed in without a tap between fields.
+  const notesInputRef = useRef<TextInput>(null);
+  const faxInputRef = useRef<TextInput>(null);
+  const emailInputRef = useRef<TextInput>(null);
+  const linkInputRef = useRef<TextInput>(null);
+  const addressInputRef = useRef<TextInput>(null);
+  const [padField, setPadField] = useState<'phone' | 'fax' | null>(null);
   const [linkUrl, setLinkUrl] = useState('');
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [cadenceDays, setCadenceDays] = useState(0);
@@ -212,19 +220,12 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
     onClose();
   };
 
+  // No confirm: removePersonRow files an undo on the bar that puts back the
+  // person and every note about them.
   const handleDelete = () => {
-    Alert.alert(
-      `Delete ${person.name}?`,
-      'Anything you wrote about them is deleted. Tasks that name them are kept without the name.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.delete,
-          style: 'destructive',
-          onPress: () => { removePersonRow(person.id); onClose(); },
-        },
-      ]
-    );
+    haptics.warning();
+    removePersonRow(person.id);
+    onClose();
   };
 
   const toggleArchived = () => {
@@ -309,7 +310,11 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
           {/* For the phone row below. Unlike the task editor's phone field
               there's no checkmark beside it to commit against, so without
               this the iOS phone pad has nothing at all to dismiss it. */}
-          <NumberPadAccessory />
+          <NumberPadAccessory
+            onNext={padField === 'phone' ? () => faxInputRef.current?.focus()
+              : padField === 'fax' ? () => emailInputRef.current?.focus()
+              : undefined}
+          />
         </>
       }
     >
@@ -320,9 +325,13 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         placeholder="Name"
         placeholderTextColor={colors.textTertiary}
         maxLength={TITLE_MAX_LENGTH}
+        returnKeyType="next"
+        blurOnSubmit={false}
+        onSubmitEditing={() => notesInputRef.current?.focus()}
       />
       <View style={styles.notesCard}>
         <TextField
+          ref={notesInputRef}
           // An empty field is always the minimum height; see ProjectEditor's
           // notes field for why the measured height can't be trusted while the
           // sheet is still opening.
@@ -551,6 +560,8 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
           <Text style={styles.fieldLabel}>Phone</Text>
           <TextField
             style={styles.fieldInput}
+            onFocus={() => setPadField('phone')}
+            onBlur={() => setPadField(f => (f === 'phone' ? null : f))}
             value={phoneNumber}
             // Formatted as typed but stored verbatim, the decision
             // Task.phoneNumber documents: there is no canonical dial string
@@ -566,7 +577,10 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabel}>Fax</Text>
           <TextField
+            ref={faxInputRef}
             style={styles.fieldInput}
+            onFocus={() => setPadField('fax')}
+            onBlur={() => setPadField(f => (f === 'fax' ? null : f))}
             value={faxNumber}
             onChangeText={text => setFaxNumber(formatPhoneInput(text))}
             placeholder="e.g. 555 123 4567"
@@ -579,6 +593,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabel}>Email</Text>
           <TextField
+            ref={emailInputRef}
             style={styles.fieldInput}
             value={email}
             onChangeText={setEmail}
@@ -586,24 +601,32 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
             placeholderTextColor={colors.textTertiary}
             keyboardType="email-address"
             autoCapitalize="none"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => linkInputRef.current?.focus()}
           />
         </View>
         <View style={styles.sep} />
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabel}>Link</Text>
           <TextField
+            ref={linkInputRef}
             style={styles.fieldInput}
             value={linkUrl}
             onChangeText={setLinkUrl}
             placeholder="e.g. a chat app or a profile"
             placeholderTextColor={colors.textTertiary}
             autoCapitalize="none"
+            returnKeyType="next"
+            blurOnSubmit={false}
+            onSubmitEditing={() => addressInputRef.current?.focus()}
           />
         </View>
         <View style={styles.sep} />
         <View style={[styles.fieldRow, styles.fieldRowTop]}>
           <Text style={styles.fieldLabel}>Address</Text>
           <TextField
+            ref={addressInputRef}
             // An empty field is the minimum height, as in the notes field.
             style={[styles.fieldInput, { height: address ? Math.max(24, addressHeight) : 24 }]}
             value={address}

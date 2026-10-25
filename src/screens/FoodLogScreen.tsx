@@ -136,6 +136,14 @@ import type { CardAnchor } from '../components/CardSheet';
 import { resetToMealPlan } from '../navigation/navigationRef';
 import { ProgressBar } from '../components/ProgressBar';
 import { BUTTON_LABEL } from '../copy/shared';
+import { AnimatedNumber } from '../components/AnimatedNumber';
+
+/**
+ * How long the Food log can be away before an arrival lands back on today.
+ * Long enough to check a recipe or the meal plan mid-entry, short enough that
+ * opening it later in the day starts from today rather than a day left behind.
+ */
+const FOOD_LOG_KEEP_PLACE_MS = 10 * 60 * 1000;
 
 /**
  * A day of eating, read back.
@@ -437,10 +445,13 @@ export function FoodLogScreen() {
   // The screen is a hidden tab and stays mounted for the life of the session,
   // so stepping to another day and then leaving without stepping back would
   // otherwise leave it stranded there on the next visit, and so would leaving
-  // on today and coming back after midnight. Every arrival lands on today,
-  // except the one caller that names a specific day to open (`openEntry`,
-  // e.g. Meal plan's "View in food log") — that request is still pending its
-  // own effect above the first time an arrival sees it.
+  // on today and coming back after midnight. A stale arrival lands on today,
+  // at the top: one after the logical day has turned, or after
+  // FOOD_LOG_KEEP_PLACE_MS away. A quick trip to another tab (checking a
+  // recipe while filling in yesterday) comes back to the day and the scroll
+  // position it left. The one caller that names a specific day to open
+  // (`openEntry`, e.g. Meal plan's "View in food log") is still pending its own
+  // effect above the first time an arrival sees it, and wins either way.
   //
   // Read through a ref so neither caller below re-runs when `handledOpenEntry`
   // changes. As a focus-effect dependency it did: handling an `openEntry`
@@ -453,31 +464,74 @@ export function FoodLogScreen() {
   };
   const landOnTodayRef = useRef(landOnToday);
   landOnTodayRef.current = landOnToday;
+  // When and on which logical day the screen was last left, and whether the
+  // arrival under way is stale. Decided once per arrival, by whichever of the
+  // two effects below runs first, and cleared on the way out.
+  const leftAt = useRef<{ at: number; todayKey: string } | null>(null);
+  const arrivalStale = useRef<boolean | null>(null);
+  const decideArrival = () => {
+    if (arrivalStale.current === null) {
+      const left = leftAt.current;
+      arrivalStale.current = left === null
+        || Date.now() - left.at > FOOD_LOG_KEEP_PLACE_MS
+        || left.todayKey !== dayKeyOf(getCurrentDayStart());
+    }
+    return arrivalStale.current;
+  };
+  const decideArrivalRef = useRef(decideArrival);
+  decideArrivalRef.current = decideArrival;
+  // The moment a place left behind goes stale, the screen resets itself while
+  // it is still hidden: back to today, at the top. Deciding only on the way
+  // back in drew one frame of the old scroll offset first, since a frozen tab
+  // runs nothing until it is already on screen. A plain timer rather than an
+  // effect for the same reason: freezing tears effects down, and this has to
+  // outlive the freeze. Cleared on the next arrival. A screen that unmounts
+  // with one pending gets a harmless no-op, since the scroll control is gone.
+  const staleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resetWhileAway = () => {
+    landOnTodayRef.current();
+    if (arrivedBefore.current) foodScrollControl.current?.scrollToOffset(0);
+  };
+  const resetWhileAwayRef = useRef(resetWhileAway);
+  resetWhileAwayRef.current = resetWhileAway;
   // Before the arrival's first frame is drawn. A blurred tab is frozen in an
   // Activity, which re-creates the hidden subtree's effects when it shows it
   // again, so this runs on every arrival from another tab as well as on mount.
   // The focus effect below runs only after that frame, which is a frame of the
   // day left behind (yesterday, after midnight) before today replaced it.
-  useLayoutEffect(() => { landOnTodayRef.current(); }, []);
+  useLayoutEffect(() => {
+    if (decideArrivalRef.current()) landOnTodayRef.current();
+  }, []);
   useFocusEffect(
     useCallback(() => {
+      if (staleTimer.current !== null) {
+        clearTimeout(staleTimer.current);
+        staleTimer.current = null;
+      }
       // Again here for an arrival that wasn't frozen (a sheet was still up as
       // the tab was left, see `shouldFreezeTab`). A no-op otherwise.
-      landOnTodayRef.current();
-      // Every arrival lands on today at the top. The list keeps the offset it
-      // was left at while the tab is blurred, and the day it comes back to can
-      // be shorter, so without this it paints scrolled off the top for a
-      // frame before the settled-scroll clamp snaps it back. Reset on the way
-      // out as well, since a blurred tab is frozen and runs nothing until it
-      // is already on screen.
-      const resetScroll = () => foodScrollControl.current?.scrollToOffset(0);
-      // Not on the first arrival: a list that has just mounted is already at
-      // the top, and a scrollTo issued before its first layout moved it
-      // instead, so the content painted off the top and snapped down a beat
-      // later on every cold start.
-      if (arrivedBefore.current) resetScroll();
+      const stale = decideArrivalRef.current();
+      if (stale) landOnTodayRef.current();
+      // A stale arrival lands at the top. The list keeps the offset it was
+      // left at while the tab is blurred, and today can be shorter than the
+      // day it was left on. Not on the first arrival: a list that has just
+      // mounted is already at the top, and a scrollTo issued before its first
+      // layout moved it instead, so the content painted off the top and
+      // snapped down a beat later on every cold start.
+      if (stale && arrivedBefore.current) foodScrollControl.current?.scrollToOffset(0);
       arrivedBefore.current = true;
-      return resetScroll;
+      return () => {
+        const now = Date.now();
+        leftAt.current = { at: now, todayKey: dayKeyOf(getCurrentDayStart()) };
+        arrivalStale.current = null;
+        // Whichever comes first: the keep-place window running out, or the
+        // logical day turning over.
+        const untilNextDay = addDays(getCurrentDayStart(), 1).getTime() - now;
+        staleTimer.current = setTimeout(() => {
+          staleTimer.current = null;
+          resetWhileAwayRef.current();
+        }, Math.max(0, Math.min(FOOD_LOG_KEEP_PLACE_MS, untilNextDay)));
+      };
     }, []),
   );
 
@@ -611,13 +665,13 @@ export function FoodLogScreen() {
   }, [exitSelection, todayKey]);
 
 
-  // Through confirmDelete, so Settings' "Confirm before deleting" answers
-  // for these too; the store raises an undo bar either way.
+  // The store raises an undo bar, so these don't ask first.
   const handleDelete = useCallback((id: string, label: string) => {
     confirmDelete({
       title: `Forget ${label}?`,
       message: 'This removes it from the day’s totals.',
       confirmLabel: 'Forget',
+      undoable: true,
       onConfirm: () => {
         haptics.warning();
         animateLayout();
@@ -712,10 +766,10 @@ export function FoodLogScreen() {
       .map(s => ({
         key: s,
         label: MEAL_SLOT_LABELS[s],
-        onPress: () => moveEntries([entry.id], s),
+        onPress: () => { animateLayout(); moveEntries([entry.id], s); },
       }));
     if (entry.slot !== null) {
-      moveChoices.push({ key: 'other', label: 'Other', onPress: () => moveEntries([entry.id], null) });
+      moveChoices.push({ key: 'other', label: 'Other', onPress: () => { animateLayout(); moveEntries([entry.id], null); } });
     }
     return [
       // Edit reopens the sheet and re-measures, which needs a panel to measure
@@ -778,6 +832,7 @@ export function FoodLogScreen() {
       title: `Forget ${count} ${count === 1 ? 'entry' : 'entries'}?`,
       message: 'This removes them from the day’s totals.',
       confirmLabel: 'Forget',
+      undoable: true,
       onConfirm: () => {
         haptics.warning();
         animateLayout();
@@ -1241,7 +1296,7 @@ export function FoodLogScreen() {
                 `Math.round` and the target with `toLocaleString`, so
                 a heavy day read "1840 of 2,000 cal" — two number
                 formats on one line. */}
-            <Text style={styles.totalValue}>{totalText(key)}</Text>
+            <AnimatedNumber text={totalText(key)} style={styles.totalValue} />
           </View>
         </View>
         {/* Colored by distance from the target, never by direction:
@@ -1418,6 +1473,7 @@ export function FoodLogScreen() {
       <ScreenHeader
         title="Food log"
         overline={format(dayDate, 'EEEE, MMMM d')}
+        subtitleRolls
         subtitle={
           dayEntries.length === 0
             ? undefined
@@ -1661,7 +1717,9 @@ export function FoodLogScreen() {
         />
       )}
 
-      <LazySheet open={addOpen || reviewing !== null}>
+      {/* Warm: adding food is what this screen is for, and the sheet is
+          large enough that building it on the first tap was a visible wait. */}
+      <LazySheet open={addOpen || reviewing !== null} warm>
         <FoodLogEntrySheet
           ref={addSheetRef}
           visible={addOpen || reviewing !== null}

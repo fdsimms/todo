@@ -8,7 +8,6 @@
 //   QuickButton             one quick-day button, above the styles
 import React, { useMemo, useRef, useState, useEffect, useDeferredValue } from 'react';
 import {
-  Alert,
   Keyboard,
   View,
   Text,
@@ -580,22 +579,12 @@ export function WhenPicker({
     actions.push({
       key: 'drop',
       label: 'Drop it',
+      // Archives at once, the way the task editor's Archive row does:
+      // nothing is deleted, and archiveTask puts an undo on the bar.
       onPress: () => {
-        haptics.warning();
-        Alert.alert(
-          'Archive this task?',
-          `“${postponeTask.title}” moves to Archived. Nothing is deleted. You can restore it from there.`,
-          [
-            { text: BUTTON_LABEL.cancel, style: 'cancel' },
-            {
-              text: 'Archive',
-              // Not destructive styling: archiving keeps the task, and dressing
-              // a filing away up as a deletion is how a real one stops being
-              // read (same call RemindersCaptureSettings makes).
-              onPress: () => { archiveTask(postponeTask.id); cancel(); },
-            },
-          ],
-        );
+        haptics.tap();
+        archiveTask(postponeTask.id);
+        cancel();
       },
     });
     // A reach-out task gets its own way out instead of the generic mute:

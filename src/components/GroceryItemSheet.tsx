@@ -13,6 +13,7 @@ import {
   format } from 'date-fns/format';
 import {
   Keyboard,
+  type TextInput,
   Platform,
   Switch,
   View,
@@ -264,7 +265,7 @@ function GroceryItemSheetBody({
   const [lowAddsToListChoice, setLowAddsToListChoice] = useState<boolean | undefined>(undefined);
   const runningLowAddsToList = lowAddsToListChoice ?? runningLowAddsToListSetting;
   const simpleMode = useSettingsStore(s => s.simpleMode);
-  const removeFromList = useGroceryStore(s => s.removeFromList);
+  const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
   const addExisting = useGroceryStore(s => s.addExisting);
   // The list "Add to list" puts it on: the one being viewed, as Remove's is.
   // Named when it isn't the home list, since this sheet also opens from the
@@ -422,9 +423,19 @@ function GroceryItemSheetBody({
   // merging means choosing whose purchase history survives — so a rejected
   // rename leaves nameError showing and the item's stored name untouched;
   // the field itself keeps whatever was typed until it's corrected.
-  const commitName = () => {
+  // Return moves through the fields in the order they're drawn, so a run of
+  // corrections is typed without reaching for the next field each time.
+  const quantityInputRef = useRef<TextInput>(null);
+  const noteInputRef = useRef<TextInput>(null);
+  const focusNext = (...refs: React.RefObject<TextInput | null>[]) => {
+    const next = refs.find(r => r.current);
+    if (next) next.current!.focus();
+    else Keyboard.dismiss();
+  };
+  /** False when the name was refused, so Return stays on the field to fix it. */
+  const commitName = (): boolean => {
     const trimmed = name.trim();
-    if (!trimmed || trimmed === item.name) { setNameError(null); setNameCollisionId(null); return; }
+    if (!trimmed || trimmed === item.name) { setNameError(null); setNameCollisionId(null); return true; }
     if (!renameItem(item.id, trimmed)) {
       const collision = renameClash(items, item.id, trimmed);
       setNameError(
@@ -432,10 +443,11 @@ function GroceryItemSheetBody({
       );
       setNameCollisionId(collision?.id ?? null);
       haptics.error();
-      return;
+      return false;
     }
     setNameError(null);
     setNameCollisionId(null);
+    return true;
   };
   const commitQuantity = () => {
     if (quantity !== (item.quantity ?? '')) setQuantity(item.id, quantity);
@@ -794,7 +806,11 @@ function GroceryItemSheetBody({
       title: `Forget ${item.name}?`,
       message: `This removes it and its history from your catalog. You can undo it right after.${loss ? `\n\n${loss}` : ''}\n\nTo take it off this week’s list instead, use “Remove from list”.`,
       confirmLabel: 'Forget',
+      // The undo puts it back; only a loss line (what else forgetting it
+      // touches) is worth stopping to read first.
+      undoable: !loss,
       onConfirm: () => {
+        animateLayout();
         deleteItem(item.id, { undoable: true });
         haptics.warning();
         Keyboard.dismiss();
@@ -1906,7 +1922,9 @@ function GroceryItemSheetBody({
               if (nameError) { setNameError(null); setNameCollisionId(null); }
             }}
             onBlur={commitName}
-            onSubmitEditing={commitName}
+            onSubmitEditing={() => { if (commitName()) focusNext(quantityInputRef, noteInputRef); }}
+            returnKeyType="next"
+            blurOnSubmit={false}
             placeholder="Item name"
             placeholderTextColor={colors.textTertiary}
             // See the note on GroceryRow's inline rename field: an
@@ -2025,10 +2043,14 @@ function GroceryItemSheetBody({
           <>
           <Text style={styles.label}>QUANTITY</Text>
           <TextField
+            ref={quantityInputRef}
             style={styles.input}
             value={quantity}
             onChangeText={setQuantityText}
             onBlur={commitQuantity}
+            onSubmitEditing={() => { commitQuantity(); focusNext(noteInputRef); }}
+            returnKeyType="next"
+            blurOnSubmit={false}
             placeholder="e.g. 2 lb, x3, a bunch"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
@@ -2121,10 +2143,13 @@ function GroceryItemSheetBody({
           <>
           <Text style={styles.label}>NOTE</Text>
           <TextField
+            ref={noteInputRef}
             style={styles.input}
             value={note}
             onChangeText={setNoteText}
             onBlur={commitNote}
+            onSubmitEditing={commitNote}
+            returnKeyType="done"
             placeholder="e.g. the blue cap one"
             placeholderTextColor={colors.textTertiary}
             maxLength={GROCERY_NAME_MAX_LENGTH}
@@ -2209,7 +2234,10 @@ function GroceryItemSheetBody({
               style={styles.actionRow}
               activeOpacity={interaction.activeOpacity}
               onPress={() => {
-                removeFromList(item.id);
+                // Through the bulk action for its undo: one row off the list is
+                // the same step as twenty, and the bulk bar's has always had one.
+                animateLayout();
+                removeFromListMany([item.id], { registerUndo: true });
                 haptics.tap();
                 Keyboard.dismiss();
                 onClose();

@@ -505,6 +505,7 @@ import {
 } from '../utils/undoHistory';
 import { isOpenEnded } from '../utils/listMode';
 import { describeReschedule } from '../utils/rescheduleLabel';
+import { timedPart } from '../utils/perfLog';
 
 
 /**
@@ -3373,9 +3374,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   initialize(opts) {
-    if (opts?.reload) ensureDatabaseReady();
-    else initDatabase();
-    useCategoryStore.getState().initialize();
+    // Each part is timed into the launch perf report's one "initialize tasks"
+    // entry (perfLog.ts, timedPart), so a slow store shows by name.
+    timedPart('open database', () => { if (opts?.reload) ensureDatabaseReady(); else initDatabase(); });
+    timedPart('Category', () => useCategoryStore.getState().initialize());
     // After the categories load, because it may add one: an install that
     // already had the calendar read on predates events having a section to
     // land in, and this is the whole of that migration (see
@@ -3389,126 +3391,126 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // than in the settings store because they add a category, and the
     // categories have just finished loading.
     ensureGeneratedTaskCategories();
-    useTemplateStore.getState().initialize();
-    useTaskGroupStore.getState().initialize();
-    useProjectStore.getState().initialize();
-    useProjectCategoryStore.getState().initialize();
+    timedPart('Template', () => useTemplateStore.getState().initialize());
+    timedPart('TaskGroup', () => useTaskGroupStore.getState().initialize());
+    timedPart('Project', () => useProjectStore.getState().initialize());
+    timedPart('ProjectCategory', () => useProjectCategoryStore.getState().initialize());
     // Rides the same fan-out as everything below it, and for the identical
     // swap-the-database reason: a person list left pointed at the previous
     // database while tasks showed the new one would render demo tasks naming
     // real people, or the reverse.
-    usePersonStore.getState().initialize();
+    timedPart('Person', () => usePersonStore.getState().initialize());
     // Immediately after the people, and on the same fan-out for the same
     // database-swap reason: notes left pointed at the previous database would
     // render real facts about real people under demo names.
-    usePersonNoteStore.getState().initialize();
+    timedPart('PersonNote', () => usePersonNoteStore.getState().initialize());
     // Also immediately after the people, for the identical reason: a group
     // left pointed at the previous database would name people who don't
     // exist in the new one.
-    usePersonGroupStore.getState().initialize();
+    timedPart('PersonGroup', () => usePersonGroupStore.getState().initialize());
     // On the same fan-out as everything else here, and for the same
     // swap-the-database reason: a mood history left pointed at the previous
     // database would show a demo session's invented entries as the real
     // person's own record, or the reverse — and this is the one store where
     // that mistake is a claim about somebody's health.
-    useMoodStore.getState().initialize();
+    timedPart('Mood', () => useMoodStore.getState().initialize());
     // Beside the mood log, on the same fan-out and for the same reason:
     // milestones are read against it, so a device swap that left them out of
     // step would date a before/after split against the wrong person's phone.
-    useMilestoneStore.getState().initialize();
+    timedPart('Milestone', () => useMilestoneStore.getState().initialize());
     // Dish ratings are their own table, so a demo swap or a restore has to
     // reload them or the list keeps showing the other database's dishes.
-    useDishRatingStore.getState().initialize();
+    timedPart('DishRating', () => useDishRatingStore.getState().initialize());
     // Pot weights are read while typing a dish's weight, so they swap with the
     // database the recipes came from.
-    useCookwareStore.getState().initialize();
+    timedPart('Cookware', () => useCookwareStore.getState().initialize());
     // Temporary dev tooling (see CopyFlag): on the fan-out so a demo session
     // doesn't show real flags, and so a flag the MCP resolved shows up after a pull.
-    useCopyFlagStore.getState().initialize();
+    timedPart('CopyFlag', () => useCopyFlagStore.getState().initialize());
     // Fasts are part of the health record, so like the workouts below they are
     // read from whichever database is live after a demo swap or a restore.
-    useFastStore.getState().initialize();
+    timedPart('Fast', () => useFastStore.getState().initialize());
     // Workouts: custom exercises, routines, programs and sessions. A session is
     // part of the health record, so after a demo swap or a restore it has to
     // be read from the database the rest came from, never kept from the last.
-    useWorkoutStore.getState().initialize();
+    timedPart('Workout', () => useWorkoutStore.getState().initialize());
     // Gyms are read against the sessions that name them, so they swap with them.
-    useGymStore.getState().initialize();
+    timedPart('Gym', () => useGymStore.getState().initialize());
     // The journal grew out of the mood entry's note, so it sits beside it on
     // the fan-out for the same swap-the-database reason.
-    useJournalStore.getState().initialize();
+    timedPart('Journal', () => useJournalStore.getState().initialize());
     // Beside the mood log, same fan-out, and the sharpest version of the same
     // stakes: a medication history left pointed at the previous database would
     // report a demo session's invented doses as a real person's record of what
     // they have taken.
-    useMedicationStore.getState().initialize();
+    timedPart('Medication', () => useMedicationStore.getState().initialize());
     // What a supplement dose adds to the food log. Here because this is where
     // the app's stores come up together, and the medication store can't import
     // the food log's itself (see `DoseEffects`).
     installSupplementDoseEffects();
     // The coin ledger. Same fan-out, so a demo session's invented coins never
     // sit on top of a real balance.
-    useRewardStore.getState().initialize();
+    timedPart('Reward', () => useRewardStore.getState().initialize());
     // Beside the mood log and for the identical reason, with the same stakes:
     // a food log left pointed at the previous database would show a demo
     // session's invented meals as somebody's own record of what they ate.
-    useFoodLogStore.getState().initialize();
+    timedPart('FoodLog', () => useFoodLogStore.getState().initialize());
     // Beside the food log it's built from, for the same demo-mode stakes: a
     // saved meal left pointed at the previous database would offer a demo
     // session's invented combination as something to log again for real.
-    useSavedMealsStore.getState().initialize();
+    timedPart('SavedMeals', () => useSavedMealsStore.getState().initialize());
     // Meals waiting for an estimate (`utils/estimateQueue.ts`). Device-local and
     // read from the live database, so a demo session never shows the real queue
     // and the real queue never reaches the scratch file.
-    usePendingEstimateStore.getState().initialize();
+    timedPart('PendingEstimate', () => usePendingEstimateStore.getState().initialize());
     // The recipe counterpart, for the same demo-mode reason.
-    usePendingRecipeEstimateStore.getState().initialize();
+    timedPart('PendingRecipeEstimate', () => usePendingRecipeEstimateStore.getState().initialize());
     // On the same fan-out for the plainest version of the reason: the ledger is
     // an account of what the app did to *this* database, so one left pointed at
     // the previous one would report a demo session's invented generators against
     // the real list, and the passes that run moments later would append to a log
     // belonging to a database they are not touching.
-    useUnattendedStore.getState().initialize();
-    useTemplateCategoryStore.getState().initialize();
+    timedPart('Unattended', () => useUnattendedStore.getState().initialize());
+    timedPart('TemplateCategory', () => useTemplateCategoryStore.getState().initialize());
     // Groceries ride this fan-out rather than being initialized from App.tsx,
     // and that placement is load-bearing: enterDemoMode/exitDemoMode and
     // restore-from-backup all reload by calling *this* function after swapping
     // the database file. A store initialized outside it would keep its
     // in-memory rows pointed at the previous database while every other
     // surface showed the new one — i.e. your real groceries on a demo phone.
-    useGroceryStore.getState().initialize();
+    timedPart('Grocery', () => useGroceryStore.getState().initialize());
     // Same reasoning, and the same swap-the-database hazard: recipes bridge to
     // the catalog by name_key, so a stale recipe list next to a fresh catalog
     // would match nothing.
-    useRecipeStore.getState().initialize();
+    timedPart('Recipe', () => useRecipeStore.getState().initialize());
     // And the plan, which points at those recipes by id. Range-scoped, so this
     // reloads whatever week is on screen rather than the whole table.
-    useMealPlanStore.getState().initialize();
+    timedPart('MealPlan', () => useMealPlanStore.getState().initialize());
     // What's in the fridge — pointed at by the plan the same way recipes are,
     // and on the same swap-the-database hazard.
-    useLeftoverStore.getState().initialize();
+    timedPart('Leftover', () => useLeftoverStore.getState().initialize());
     // Read from the settings table the same way, and on the same
     // swap-the-database hazard: a reminder set in one database (real or
     // demo) is meaningless once the file underneath has changed.
-    useEventReminderStore.getState().initialize();
+    timedPart('EventReminder', () => useEventReminderStore.getState().initialize());
     // Same settings-table read, same swap-the-database hazard: an event hidden
     // in one database (real or demo) is meaningless once the file underneath
     // has changed.
-    useHiddenEventsStore.getState().initialize();
+    timedPart('HiddenEvents', () => useHiddenEventsStore.getState().initialize());
     // Same again: who an event is with names demo people in a demo database.
-    useEventPeopleStore.getState().initialize();
-    useEventTaskLinkStore.getState().initialize();
+    timedPart('EventPeople', () => useEventPeopleStore.getState().initialize());
+    timedPart('EventTaskLink', () => useEventTaskLinkStore.getState().initialize());
     // What an agent asked for and the person hasn't answered: arrives by sync,
     // which reloads through this, and names demo requests in a demo database.
-    useAgentSuggestionStore.getState().initialize();
-    const tasks = dbGetAllTasks();
-    backfillRecurrenceAnchors(tasks);
+    timedPart('AgentSuggestion', () => useAgentSuggestionStore.getState().initialize());
+    const tasks = timedPart('read tasks', () => dbGetAllTasks());
+    timedPart('backfill recurrence anchors', () => backfillRecurrenceAnchors(tasks));
     const tagRegistry = dbGetTagRegistry();
     // After the tasks, and given them: a stored focus session points at task
     // ids, and the first thing it does is drop the stretches belonging to
     // tasks that were completed or deleted while the app was shut. Rides this
     // fan-out rather than App.tsx for the swap-the-database reason above.
-    useFocusStore.getState().initialize(tasks);
+    timedPart('Focus', () => useFocusStore.getState().initialize(tasks));
 
     set({ tasks, tagRegistry, initialized: true });
     // The device's timezone can have changed while the app was shut — a cold
@@ -3521,14 +3523,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().reanchorWallClockReminders();
     const { tripShopId, tripStartedAt, shops } = useGroceryStore.getState();
     const eventReminders = Object.values(useEventReminderStore.getState().remindersByKey);
-    rescheduleAllReminders(get().tasks, { shopId: tripShopId, startedAt: tripStartedAt, shops }, eventReminders);
+    timedPart('reschedule reminders', () => rescheduleAllReminders(get().tasks, { shopId: tripShopId, startedAt: tripStartedAt, shops }, eventReminders));
     // Deliberately after the set() above, not inside useLeftoverStore's own
     // initialize(): reconciling reads useTaskStore.getState().tasks to find
     // each leftover's live task, and at the point leftovers load (just above)
     // that array is still whatever this store held before this call — stale
     // rows on a demo-mode swap, or simply unset on a cold start. Running the
     // sweep here means it sees the tasks this launch actually has.
-    useLeftoverStore.getState().reconcileAllLeftoverTasks();
+    timedPart('reconcile leftover tasks', () => useLeftoverStore.getState().reconcileAllLeftoverTasks());
   },
 
   // Must run after useSettingsStore.initialize() so autoRemoveExpiredTasks,
@@ -9438,6 +9440,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(id, { archived: true, archivedAt: new Date().toISOString(), pinned: false });
     get().setLastAction({
       label: 'Task archived',
+      // On the bar: archiving takes the task out of every list, and the bar
+      // is what lets the places that archive without asking first do so.
+      announce: true,
       undo: () => get().updateTask(id, { archived: false, archivedAt: null, pinned }),
       redo: redoRestoringRows([id]),
     });
@@ -9492,10 +9497,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   clearAllPins() {
+    const ids = get().tasks.filter(t => t.pinned).map(t => t.id);
     dbClearAllPins();
     set(s => ({
       tasks: s.tasks.map(t => (t.pinned ? { ...t, pinned: false } : t)),
     }));
+    if (ids.length === 0) return;
+    // On the bar, so Today's Clear can run without asking. pinnedOrder is
+    // untouched by the clear, so putting the flag back restores the block in
+    // the order it had.
+    get().setLastAction({
+      label: ids.length === 1 ? 'Unpinned 1 task' : `Unpinned ${ids.length} tasks`,
+      destructive: true,
+      redo: () => get().clearAllPins(),
+      undo: () => {
+        const back = new Set(ids);
+        dbBulkSetPinned(ids, true);
+        set(s => ({ tasks: s.tasks.map(t => (back.has(t.id) ? { ...t, pinned: true } : t)) }));
+      },
+    });
   },
 
   pinCategory(category) {
@@ -9579,8 +9599,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   discardTimer(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.timerStartedAt === null) return;
+    const startedAt = task.timerStartedAt;
     cancelTimerAlarm(id);
     get().updateTask(id, { timerStartedAt: null });
+    // On the bar, so the row's Discard can run without asking. The undo puts
+    // the original start back, so the time spent while it was discarded
+    // counts too, and stops whatever timer started since, the way startTimer
+    // would: only one task times at a time.
+    get().setLastAction({
+      label: 'Timer discarded',
+      destructive: true,
+      redo: () => get().discardTimer(id),
+      undo: () => {
+        const running = get().tasks.find(t => t.timerStartedAt !== null && t.id !== id);
+        if (running) {
+          if (isTimedTask(running)) get().pauseTimer(running.id);
+          else get().stopTimer(running.id);
+        }
+        get().updateTask(id, { timerStartedAt: startedAt });
+        const restored = get().tasks.find(t => t.id === id);
+        if (restored) scheduleTimerAlarm(restored);
+      },
+    });
   },
 
   // Paired with scheduleCompletionTimer (src/utils/notifications.ts), which

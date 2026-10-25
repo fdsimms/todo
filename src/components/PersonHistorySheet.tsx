@@ -84,6 +84,7 @@ export function PersonHistorySheet({ visible, personName, entry, onSave, onDelet
     confirmDelete({
       title: 'Delete entry',
       message: `Delete “${entry.title}” from ${personName}’s history? You can undo it right after.`,
+      undoable: true,
       onConfirm: () => onDelete(entry.taskId),
     });
   };

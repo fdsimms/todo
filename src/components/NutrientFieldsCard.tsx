@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { EXTERNAL_NUTRIENT_KEYS, MINERAL_KEYS, VITAMIN_KEYS, type NutrientKey } from '../types';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TextField } from './TextField';
+import { RotatingChevron } from './RotatingChevron';
+import { animateLayout } from '../utils/layoutAnimation';
+import { haptics } from '../utils/haptics';
 
 /**
  * One text box per nutrient, for a panel typed in by hand. Shared by the food
@@ -139,7 +141,7 @@ export function NutrientFieldsCard({ amounts, bad, onChange, primary = 'main' }:
       <TouchableOpacity
         style={styles.disclosure}
         activeOpacity={interaction.activeOpacity}
-        onPress={() => setOpened(v => !v)}
+        onPress={() => { haptics.tap(); animateLayout(); setOpened(v => !v); }}
         // Held open while a field inside failed to read, so the refused save
         // never points at a field that is folded away.
         disabled={badSecondary}
@@ -149,11 +151,7 @@ export function NutrientFieldsCard({ amounts, bad, onChange, primary = 'main' }:
       >
         <Text style={styles.disclosureLabel}>{secondaryLabel}</Text>
         <Text style={styles.disclosureValue}>{filled > 0 ? `${filled} entered` : ''}</Text>
-        <Ionicons
-          name={open ? 'chevron-up' : 'chevron-down'}
-          size={iconSize.sm}
-          color={colors.textTertiary}
-        />
+        <RotatingChevron open={open} size={iconSize.sm} color={colors.textTertiary} />
       </TouchableOpacity>
       {open && (primary === 'main' ? microCard : mainCard)}
     </View>

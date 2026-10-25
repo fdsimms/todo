@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Person } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
@@ -71,20 +71,13 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
     onClose();
   };
 
+  // No confirm: removeGroupRow files an undo on the bar, and nobody in the
+  // group is deleted with it.
   const handleDeleteGroup = () => {
     if (!currentGroup) return;
-    Alert.alert(
-      `Delete ${currentGroup.name}?`,
-      'Nobody in it is deleted. They stop sharing one reminder and one tag.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.delete,
-          style: 'destructive',
-          onPress: () => { removeGroupRow(currentGroup.id); onClose(); },
-        },
-      ]
-    );
+    haptics.warning();
+    removeGroupRow(currentGroup.id);
+    onClose();
   };
 
   const startNewGroup = () => {

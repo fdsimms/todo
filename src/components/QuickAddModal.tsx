@@ -138,6 +138,9 @@ import { ordinal } from '../utils/ordinal';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 
+/** How long a draft left by tapping outside quick add waits to be picked up. */
+const QUICK_ADD_KEEP_DRAFT_MS = 10 * 60 * 1000;
+
 const TITLE_TOKEN_ACCESSORY_ID = 'quickAddTitleTokenAccessory';
 
 interface Props {
@@ -718,9 +721,35 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   };
 
   // ==== effects: seeding and resetting the draft ====
+  // A draft left by tapping outside the sheet (or swiping it away) rather than
+  // by Cancel: the next plain open within QUICK_ADD_KEEP_DRAFT_MS picks it up
+  // where it was, every chip included, since the sheet stays mounted and the
+  // state is still here. A brush against the backdrop used to throw away a
+  // half-typed task. An open that brings its own title or a drop seed, or a
+  // different list or kind, starts fresh as before.
+  const keptDraft = useRef<{ at: number; context: string; type: string } | null>(null);
+  const dismissKeepingDraft = () => {
+    keptDraft.current = title.trim()
+      ? { at: Date.now(), context: effectiveContext, type: initialType }
+      : null;
+    dismiss();
+  };
+  const dismissDiscarding = () => {
+    keptDraft.current = null;
+    dismiss();
+  };
+
   useEffect(() => {
     if (visible) {
-      resetDraft(initialTitle ?? '');
+      const kept = keptDraft.current;
+      keptDraft.current = null;
+      const resume = kept !== null
+        && !initialTitle
+        && !seedRef.current
+        && kept.context === effectiveContext
+        && kept.type === initialType
+        && Date.now() - kept.at <= QUICK_ADD_KEEP_DRAFT_MS;
+      if (!resume) resetDraft(initialTitle ?? '');
       // Applied after the reset rather than folded into it, so a drop's
       // category overrides the default instead of racing it.
       if (seedRef.current) {
@@ -2529,7 +2558,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       visible={visible}
       animationType="none"
       transparent
-      onRequestClose={() => dismiss()}
+      onRequestClose={dismissKeepingDraft}
       // Opening this sheet can be held back a commit or more by SheetModal's
       // own sibling-Modal sequencing (e.g. right after FabMenu's popup closes)
       // — see SheetModal.tsx. Focusing off the `visible` prop races that: the
@@ -2547,7 +2576,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <SheetScrim onPress={() => dismiss()} />
+      <SheetScrim onPress={dismissKeepingDraft} />
       {keyboardHeight > 0 && (
         <View
           pointerEvents="none"
@@ -3687,7 +3716,7 @@ parsed
               <View style={styles.footerSpacer} />
               <TouchableOpacity
                 style={styles.footerCancel}
-                onPress={() => dismiss()}
+                onPress={dismissDiscarding}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={BUTTON_LABEL.cancel}

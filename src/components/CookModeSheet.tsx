@@ -75,6 +75,7 @@ import { ovenSetupsFor } from '../utils/ovenTemp';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { RotatingChevron } from './RotatingChevron';
 
 interface Props {
   visible: boolean;
@@ -1074,11 +1075,7 @@ export function CookModeSheet({
                 <Text style={styles.panelHeaderText}>
                   Ingredients · {checkedCount > 0 ? `${ingredients.length - checkedCount} left` : ingredients.length}
                 </Text>
-                <Ionicons
-                  name={ingredientsOpen ? 'chevron-up' : 'chevron-down'}
-                  size={12}
-                  color={colors.textTertiary}
-                />
+                <RotatingChevron open={ingredientsOpen} size={12} color={colors.textTertiary} />
               </TouchableOpacity>
               {ingredientsOpen && (
                 <ScrollView style={styles.panelList} nestedScrollEnabled>
@@ -1193,11 +1190,7 @@ export function CookModeSheet({
                   Notes
                   {!notesOpen && <Text style={styles.notesPreview}>{` · ${notesPanel.preview}`}</Text>}
                 </Text>
-                <Ionicons
-                  name={notesOpen ? 'chevron-up' : 'chevron-down'}
-                  size={12}
-                  color={colors.textTertiary}
-                />
+                <RotatingChevron open={notesOpen} size={12} color={colors.textTertiary} />
               </TouchableOpacity>
               {notesOpen && (
                 <ScrollView style={styles.panelList} nestedScrollEnabled>
