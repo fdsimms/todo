@@ -428,10 +428,10 @@ export function RewardsScreen() {
     } else if (draft.mode === 'item') {
       // The title is a snapshot for if the item is ever deleted; what shows is
       // the item's own (see rewardDisplay).
-      if (draftItem) store.addReward(draftItem.title, parsedCost!, { taskId: draftItem.id, oneTime: true, priceMinor, taxable });
+      if (draftItem) store.addReward(draftItem.title, parsedCost!, { taskId: draftItem.id, oneTime: true, priceMinor, taxable, glyph: cleanRewardGlyph(draftGlyph) });
     } else {
       store.updateReward(draft.id, draftItem
-        ? { cost: parsedCost!, title: draftItem.title, priceMinor, taxable }
+        ? { cost: parsedCost!, title: draftItem.title, priceMinor, taxable, glyph: cleanRewardGlyph(draftGlyph) }
         : { title: draftTitle, cost: parsedCost!, ...details });
     }
     closeDraft();
@@ -612,8 +612,7 @@ export function RewardsScreen() {
           accessibilityLabel="Reward"
         />
       )}
-      {!draftItem && (
-        <>
+      <>
           <Text style={styles.fieldLabel}>Icon</Text>
           <HelpText style={styles.hint}>Shown on the reward’s tile. Leave it blank to use a gift icon.</HelpText>
           <View style={styles.presetRow}>
@@ -642,8 +641,7 @@ export function RewardsScreen() {
             placeholderTextColor={colors.textTertiary}
             accessibilityLabel="Icon"
           />
-        </>
-      )}
+      </>
       {/* How often you'd want it only prices a reward that comes back; a one-time one is claimed once. */}
       {!draftOneTime && <Text style={styles.fieldLabel}>How often do you want it?</Text>}
       {draftOneTime ? null : rate === null ? (

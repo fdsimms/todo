@@ -255,7 +255,7 @@ per-reward fact goes in the sheet, not on the tile.
 
 - **`Reward.glyph` is chosen, never guessed.** One emoji typed or picked in the form; null draws a gift
   icon. A word list mapping "coffee" to an emoji was rejected because a wrong guess can't be corrected
-  from the screen. A wish list reward has none: the item is what is shown (`addReward` drops it).
+  from the screen. A wish list reward takes one too, set in the same form; the item still supplies the title, notes and link.
 - **Resting rewards go last and dim** (`splitRewardsByWait`), as do ones the balance can't cover yet. A
   reward in either state still opens its sheet and still explains itself when Claim is tapped.
 - **The form takes a full row where its tile was**, so editing never leaves a half-empty grid row.
