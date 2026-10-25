@@ -84,24 +84,19 @@ export function AlarmsSection({ onEditAlarm, onQuickAlarm }: Props) {
       </View>
 
       <Text style={styles.label}>Alarms</Text>
-      {sorted.length > 0 && (
-        <View style={styles.card}>
-          {sorted.map((alarm, i) => (
-            <AlarmRow
-              key={alarm.id}
-              alarm={alarm}
-              now={now}
-              owed={owedAlarmIds.has(alarm.id)}
-              use24Hour={use24Hour}
-              weekStartsOn={weekStartsOn}
-              first={i === 0}
-              onPress={onEditAlarm}
-              styles={styles}
-              colors={colors}
-            />
-          ))}
-        </View>
-      )}
+      {sorted.map(alarm => (
+        <AlarmRow
+          key={alarm.id}
+          alarm={alarm}
+          now={now}
+          owed={owedAlarmIds.has(alarm.id)}
+          use24Hour={use24Hour}
+          weekStartsOn={weekStartsOn}
+          onPress={onEditAlarm}
+          styles={styles}
+          colors={colors}
+        />
+      ))}
       <View style={styles.addRow}>
         <InlineAction label="New alarm" icon="add" onPress={() => onEditAlarm(null)} />
       </View>
@@ -118,13 +113,12 @@ interface RowProps {
   owed: boolean;
   use24Hour: boolean;
   weekStartsOn: 0 | 1;
-  first: boolean;
   onPress: (alarm: Alarm) => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }
 
-function AlarmRow({ alarm, now, owed, use24Hour, weekStartsOn, first, onPress, styles, colors }: RowProps) {
+function AlarmRow({ alarm, now, owed, use24Hour, weekStartsOn, onPress, styles, colors }: RowProps) {
   const clock = formatTimeOfDay(new Date(2000, 0, 1, alarm.hour, alarm.minute), use24Hour);
   // "7:00 AM" is drawn as a large time with a small meridiem, the way the
   // Clock app draws it; a 24-hour time is one piece.
@@ -146,7 +140,7 @@ function AlarmRow({ alarm, now, owed, use24Hour, weekStartsOn, first, onPress, s
   };
 
   return (
-    <View style={[styles.row, !first && styles.rowDivider]}>
+    <View style={styles.row}>
       <TouchableOpacity
         style={styles.rowMain}
         onPress={press}
@@ -155,14 +149,14 @@ function AlarmRow({ alarm, now, owed, use24Hour, weekStartsOn, first, onPress, s
         accessibilityLabel={[clock, subtitle, missionLine].filter(Boolean).join(', ')}
         accessibilityHint={owed ? 'Opens its mission' : 'Edits the alarm'}
       >
+        {subtitle !== '' && <Text style={[styles.subtitle, !live && styles.dimSecondary]}>{subtitle}</Text>}
         <Text style={[styles.time, !live && styles.dim]}>
           {split ? split[1] : clock}
           {split && <Text style={styles.meridiem}> {split[2]}</Text>}
         </Text>
-        {subtitle !== '' && <Text style={[styles.subtitle, !live && styles.dimSecondary]}>{subtitle}</Text>}
         {missionLine && (
           <View style={styles.missionRow}>
-            <Ionicons name="barbell-outline" size={iconSize.xs} color={live ? colors.accentText : colors.textTertiary} />
+            <Ionicons name="barbell-outline" size={iconSize.xs} color={live ? colors.textSecondary : colors.textTertiary} />
             <Text style={[styles.mission, !live && styles.dimSecondary]}>{missionLine}</Text>
           </View>
         )}
@@ -210,23 +204,27 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: spacing.smd,
   },
   addRow: { marginHorizontal: spacing.md, marginTop: spacing.sm, alignItems: 'flex-start' },
+  // One card per alarm, the way the reference draws them.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.smd,
-    paddingVertical: spacing.smd,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.smd,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
   },
-  rowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   rowMain: { flex: 1, minWidth: 0 },
   // A hero number, one of the literal sizes the font scale isn't for.
-  time: { color: colors.text, fontSize: 34, fontWeight: fontWeight.regular, fontVariant: ['tabular-nums'] },
+  time: { color: colors.text, fontSize: 34, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   meridiem: { fontSize: font.lg },
   dim: { color: colors.textTertiary },
-  subtitle: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
+  subtitle: { color: colors.accentText, fontSize: font.sm, fontWeight: fontWeight.semibold },
   dimSecondary: { color: colors.textTertiary },
   missionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xxs },
-  mission: { color: colors.accentText, fontSize: font.sm, fontWeight: fontWeight.semibold },
+  mission: { color: colors.textSecondary, fontSize: font.sm },
   ringing: {
     borderRadius: radius.full,
     backgroundColor: colors.warningBg,
