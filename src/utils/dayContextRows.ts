@@ -108,6 +108,26 @@ export function startsInLabel(start: number, now: number): string | null {
 }
 
 /**
+ * Blank rows standing in for today's events until the calendar read lands on
+ * a cold launch, as many as Today drew last time (`eventRowMemo.ts`), so the
+ * tasks below don't jump down when the events arrive. Filed under the
+ * calendar's category like the rows they stand in for.
+ */
+export function eventPlaceholderRows(count: number, category: string | null): ContextRow[] {
+  return Array.from({ length: Math.max(0, count) }, (_, i) => ({
+    id: `event-placeholder-${i}`,
+    sourceId: '',
+    kind: 'event' as const,
+    title: '',
+    caption: '',
+    category,
+    now: false,
+    calendarTag: null,
+    placeholder: true,
+  }));
+}
+
+/**
  * Today's events as rows, in the order they'll be read.
  *
  * **An event that has ended is dropped.** Today is a list of what's left, not a

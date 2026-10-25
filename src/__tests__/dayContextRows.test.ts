@@ -3,6 +3,7 @@ import type { BusyEvent } from '../utils/calendarBusy';
 import type { TodayListItem } from '../utils/taskGrouping';
 import {
   eventContextRows,
+  eventPlaceholderRows,
   startsInLabel,
   mealContextRows,
   goalContextRows,
@@ -547,5 +548,19 @@ describe('eventContextRows call and travel', () => {
       { ...eventOpts, travelNote: () => '18 min drive' },
     );
     expect(rows.map(r => [r.videoCallStart ? true : false, r.travelNote])).toEqual([[true, undefined], [false, '18 min drive']]);
+  });
+});
+
+describe('eventPlaceholderRows', () => {
+  it('makes that many blank event rows under the calendar category, with distinct keys', () => {
+    const rows = eventPlaceholderRows(2, 'Calendar');
+    expect(rows).toHaveLength(2);
+    expect(rows.every(r => r.kind === 'event' && r.placeholder === true && r.category === 'Calendar')).toBe(true);
+    expect(new Set(rows.map(r => r.id)).size).toBe(2);
+  });
+
+  it('makes none for a zero or negative count', () => {
+    expect(eventPlaceholderRows(0, 'Calendar')).toEqual([]);
+    expect(eventPlaceholderRows(-1, 'Calendar')).toEqual([]);
   });
 });

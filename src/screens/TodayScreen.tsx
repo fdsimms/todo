@@ -65,6 +65,7 @@ import {
 import { liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { useDemoStore } from '../store/useDemoStore';
 import {
+  eventPlaceholderRows,
   eventContextRows,
   mealContextRows,
   healthContextRows,
@@ -246,6 +247,7 @@ import { useLingering } from '../hooks/useLingering';
 import { PillHighlightLayer, PillLabel, usePillHighlight } from '../components/SlidingPills';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from '../components/RotatingChevron';
+import { loadEventRowMemo, saveEventRowMemo } from '../utils/eventRowMemo';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -290,6 +292,12 @@ const LATER_END_REACHED_THRESHOLD = 900;
 // The same first-paint budget for the Today list, which is remounted from
 // scratch on every switch back to it (see the todayTaskLimit block below).
 // There is no settled size: once the switch has painted, the whole day mounts.
+/**
+ * The longest Today holds blank rows for its events before giving up on the
+ * calendar read (see `showEventPlaceholders`). A read lands in well under a
+ * second; past this one is not coming soon, and blank cards would read as broken.
+ */
+const EVENT_PLACEHOLDER_MAX_MS = 3000;
 const TODAY_INITIAL_TASK_LIMIT = 15;
 
 // How long the created-task toast stays up before it dismisses itself —
@@ -2780,6 +2788,22 @@ export function TodayScreen() {
   const demoActive = useDemoStore(s => s.active);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
+  const calendarReadFailed = useCalendarStore(s => s.readFailed);
+  // Blank rows held for today's events on a cold launch, as many as were drawn
+  // last time today (eventRowMemo.ts), so the tasks below don't jump down when
+  // the read lands. Only until the first read settles, either way, and never
+  // longer than EVENT_PLACEHOLDER_MAX_MS: a read that never reports (every
+  // calendar hidden by vacation, say) must not leave blank cards behind.
+  const [rememberedEventRows] = useState(() => loadEventRowMemo(getLogicalDayKey(new Date(), dayResetTime)));
+  const [eventReadSettled, setEventReadSettled] = useState(false);
+  useEffect(() => {
+    if (calendarLoaded || calendarReadFailed) setEventReadSettled(true);
+  }, [calendarLoaded, calendarReadFailed]);
+  useEffect(() => {
+    if (rememberedEventRows === 0) return;
+    const timer = setTimeout(() => setEventReadSettled(true), EVENT_PLACEHOLDER_MAX_MS);
+    return () => clearTimeout(timer);
+  }, [rememberedEventRows]);
   const calendarsById = useCalendarStore(s => s.calendarsById);
   // Which calendar an event came from is worth a row only once "which one" is
   // a real question — with a single calendar chosen every event already comes
@@ -2827,6 +2851,11 @@ export function TodayScreen() {
       : []),
     [calendarReadEnabled, calendarLoaded, demoActive, calendarEvents, todayCalendarDayEnd]
   );
+  const showEventPlaceholders = rememberedEventRows > 0
+    && !eventReadSettled
+    && calendarReadEnabled
+    && calendarIds.length > 0
+    && !demoActive;
 
   // The day's events and its uncooked-and-untasked meals, as rows in the list
   // (#1571). Each files under a category — the calendar's own, and the cook
@@ -2936,7 +2965,9 @@ export function TodayScreen() {
     }
     // No category means nowhere to put them — see ensureCalendarEventCategory
     // for why a cleared setting is a real answer rather than a missing one.
-    if (calendarEventCategory) {
+    if (calendarEventCategory && showEventPlaceholders) {
+      rows.push(...eventPlaceholderRows(rememberedEventRows, calendarEventCategory));
+    } else if (calendarEventCategory) {
       rows.push(...eventContextRows(todayCalendarEvents, {
         now: new Date(),
         category: calendarEventCategory,
@@ -2984,8 +3015,17 @@ export function TodayScreen() {
     healthToday, healthCategory, stepGoal, healthTodayHidden, dayResetTime,
     limitsTodayCategory, limitsTodayHidden, goalsTodayCategory, goalsTodayHidden, nutritionTargets, nutritionLimits, limitWarnPercent,
     recentFoodEntries, foodLogCount, foodLogWindow,
-    minuteTick,
+    minuteTick, showEventPlaceholders, rememberedEventRows,
   ]);
+
+  // What the next cold launch holds space for: the event rows just drawn from
+  // a read that landed. Written as the count changes, so a day whose meetings
+  // have ended holds none.
+  useEffect(() => {
+    if (!calendarLoaded || !calendarReadEnabled || demoActive) return;
+    const count = contextRows.filter(r => r.kind === 'event' && !r.placeholder).length;
+    saveEventRowMemo(todayKey, count);
+  }, [contextRows, calendarLoaded, calendarReadEnabled, demoActive, todayKey]);
 
   // Every row the current layout *has*, before anything the user has folded
   // away is dropped. `data` below is this narrowed to what's on screen; this
@@ -3966,7 +4006,8 @@ export function TodayScreen() {
     // order to commit and nothing for resolveDrop to place. Same as a section
     // header, which is also in this data and also static.
     if (item.type === 'context') {
-      const openContextRow = item.row.kind === 'event' ? () => {
+      const openContextRow = item.row.placeholder ? undefined
+        : item.row.kind === 'event' ? () => {
               const moved = item.row.id.startsWith('moved-')
                 ? movedEvents.find(m => `moved-${eventTaskKey(m.event)}` === item.row.id)
                 : undefined;

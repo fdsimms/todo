@@ -81,6 +81,15 @@ describe('contextSectionSummaries', () => {
     expect(contextSectionSummaries(items).get('Calendar')).toBe('2:30 PM Dentist');
   });
 
+  it('says nothing for a section of placeholders still waiting on the calendar', () => {
+    const items = [
+      header('Calendar'),
+      ctx(row('event-placeholder-0', 'event', { title: '', caption: '', placeholder: true })),
+      ctx(row('event-placeholder-1', 'event', { title: '', caption: '', placeholder: true })),
+    ];
+    expect(contextSectionSummaries(items).has('Calendar')).toBe(false);
+  });
+
   it('names the running event instead of the next one', () => {
     const items = [
       header('Calendar'),
