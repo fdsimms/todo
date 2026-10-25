@@ -89,9 +89,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border, radius, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
-import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { hasRunningRecipeTimer } from '../utils/recipeTimer';
 import { screenShown } from '../utils/simpleMode';
 import { MENU_ROUTES, NAV_HUBS, NAV_MENU_ROWS, visibleTabRoutes, type NavDestination } from '../utils/navHubs';
 import { useNavMenuOptions } from '../hooks/useNavMenuOptions';
@@ -261,14 +259,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: EDGE_WIDTH,
   },
-  timerDot: {
-    position: 'absolute',
-    top: -1,
-    right: -2,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
 });
 
 // Whether the side menu is open, for the More button's tint and nothing else.
@@ -330,22 +320,12 @@ const renderHiddenTabBar = () => <HiddenTabBar />;
 const MainTabs = React.memo(function MainTabs({
   initialRouteName, screenOptions, tabPressHaptic, accentColor, onOpenMenu, hideTabBar,
 }: MainTabsProps) {
-  const colors = useColors();
-  // Recipes and meal plan live behind the drawer with no tab of their own, so
-  // a cook/prep timer left running has nowhere to show once you've left the
-  // recipe screen except here — see hasRunningRecipeTimer's doc comment.
-  // Gated on kitchenEnabled: a timer can outlive the switch being turned off,
-  // and a dot on the menu button pointing at a screen the menu no longer lists
-  // is a notification with nowhere to go.
-  const kitchenEnabled = useSettingsStore(state => state.kitchenEnabled);
   // Which screens get a button, through the same rule the menu uses, so a
   // tab whose screen the kitchen switch or simplified mode took away drops
   // out of the bar rather than pointing at something the menu no longer lists.
   const tabRoutes = useSettingsStore(state => state.tabRoutes);
   const menuOptions = useNavMenuOptions();
   const visibleTabs = useMemo(() => visibleTabRoutes(tabRoutes, menuOptions), [tabRoutes, menuOptions]);
-  const anyTimerRunning = useRecipeStore(state => state.recipes.some(hasRunningRecipeTimer));
-  const timerRunning = kitchenEnabled && anyTimerRunning;
   return (
     <HubMenuOptionsProvider value={menuOptions}>
     <Tab.Navigator
@@ -391,15 +371,10 @@ const MainTabs = React.memo(function MainTabs({
           },
         }}
         options={{
-          tabBarAccessibilityLabel: timerRunning
-            ? 'More, a timer is running, opens menu'
-            : 'More, opens menu',
+          tabBarAccessibilityLabel: 'More, opens menu',
           tabBarIcon: ({ color, focused }) => (
             <TabIconPlate focused={focused}>
-              <View>
-                <MoreMenuGlyph color={color} accentColor={accentColor} />
-                {timerRunning && <View style={[styles.timerDot, { backgroundColor: colors.orange }]} />}
-              </View>
+              <MoreMenuGlyph color={color} accentColor={accentColor} />
             </TabIconPlate>
           ),
         }}
