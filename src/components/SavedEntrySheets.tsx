@@ -5,7 +5,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { FieldClearButton } from './FieldClearButton';
 import { CountStepper } from './CountStepper';
-import { SegmentedControl } from './SegmentedControl';
+import { MinutesSegments } from './MinutesSegments';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
 import { useColors } from '../theme/ThemeContext';
@@ -239,6 +239,9 @@ interface EventSheetProps {
 }
 
 const NO_ALERT = -1;
+
+/** A typed alert runs from a minute to a week before the event. */
+const ALERT_RANGE = { min: 1, max: 7 * 24 * 60 };
 const DEFAULT_LENGTH_MINUTES = 60;
 
 /**
@@ -271,13 +274,10 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, subject === 'new' ? 'new' : subject?.title]);
 
-  const alertOptions = useMemo(() => {
-    const minutes = alert !== NO_ALERT && !ALERT_CHOICES.includes(alert) ? [...ALERT_CHOICES, alert] : ALERT_CHOICES;
-    return [
-      { value: NO_ALERT, label: 'None' },
-      ...minutes.map(m => ({ value: m, label: describeAlert(m, length === null) })),
-    ];
-  }, [alert, length]);
+  const alertPresets = useMemo(() => [
+    { value: null, label: 'None' },
+    ...ALERT_CHOICES.map(m => ({ value: m, label: describeAlert(m, length === null) })),
+  ], [length]);
 
   if (!subject) return null;
   const isNew = subject === 'new';
@@ -344,10 +344,12 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
           label="Event length"
         />
         <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>ALERT</Text>
-        <SegmentedControl
-          options={alertOptions}
-          value={alert}
-          onChange={setAlert}
+        <MinutesSegments
+          presets={alertPresets}
+          value={alert === NO_ALERT ? null : alert}
+          onChange={minutes => setAlert(minutes ?? NO_ALERT)}
+          range={ALERT_RANGE}
+          describe={minutes => describeAlert(minutes, length === null)}
           columns={3}
           label="Alert"
         />

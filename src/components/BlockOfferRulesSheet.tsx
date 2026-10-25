@@ -11,11 +11,12 @@ import {
   BLOCK_OFFER_COINS_DEFAULT, BLOCK_OFFER_COINS_MAX, BLOCK_OFFER_COINS_MIN, BLOCK_OFFER_MINUTE_CHOICES,
   BLOCK_OFFER_MINUTES_DEFAULT, BLOCK_OFFER_TITLE_MAX_LENGTH, blockOfferTitle, describeOfferCoins, newBlockOfferRule,
 } from '../utils/blockOfferTasks';
-import { describeDuration } from '../utils/manualBlock';
+import { MAX_MANUAL_MINUTES, MIN_MANUAL_MINUTES, describeDuration } from '../utils/manualBlock';
 import { CountStepper } from './CountStepper';
 import { PillGroup } from './PillGroup';
 import { RuleFieldLabel, RuleListSheet } from './RuleListSheet';
-import { SegmentedControl, type SegmentOption } from './SegmentedControl';
+import { MinutesSegments } from './MinutesSegments';
+import type { SegmentOption } from './SegmentedControl';
 
 interface Props {
   visible: boolean;
@@ -99,10 +100,11 @@ export function BlockOfferRulesSheet({ visible, onClose }: Props) {
               }))}
             />
             <RuleFieldLabel>For how long</RuleFieldLabel>
-            <SegmentedControl
-              options={LENGTH_OPTIONS}
+            <MinutesSegments
+              presets={LENGTH_OPTIONS}
               value={rule.minutes}
-              onChange={minutes => follow({ minutes }, nameOf(rule), minutes)}
+              onChange={minutes => minutes !== null && follow({ minutes }, nameOf(rule), minutes)}
+              range={{ min: MIN_MANUAL_MINUTES, max: MAX_MANUAL_MINUTES }}
               label="Block length"
               surface="card"
             />

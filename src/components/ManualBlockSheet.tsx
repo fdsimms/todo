@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import { SegmentedControl } from './SegmentedControl';
+import { MinutesSegments } from './MinutesSegments';
 import { AppGroupChecklist } from './AppGroupChecklist';
 import { HelpText } from './HelpText';
 import { PressableScale } from './PressableScale';
@@ -11,7 +11,9 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import type { AppGroup } from '../utils/appGroups';
-import { MANUAL_BLOCK_PRESETS, describeDuration, describeManualBlock } from '../utils/manualBlock';
+import {
+  MANUAL_BLOCK_PRESETS, MAX_MANUAL_MINUTES, MIN_MANUAL_MINUTES, describeDuration, describeManualBlock,
+} from '../utils/manualBlock';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -76,12 +78,14 @@ export function ManualBlockSheet({ visible, groups, initialIds, formatEnd, onClo
         />
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
           <Text style={styles.label}>FOR HOW LONG</Text>
-          <SegmentedControl
+          <MinutesSegments
             label="For how long"
             columns={3}
-            options={MANUAL_BLOCK_PRESETS.map(m => ({ value: m, label: m === null ? 'Until I end it' : describeDuration(m) }))}
+            presets={MANUAL_BLOCK_PRESETS.map(m => ({ value: m, label: m === null ? 'Until I end it' : describeDuration(m) }))}
             value={minutes}
             onChange={setMinutes}
+            range={{ min: MIN_MANUAL_MINUTES, max: MAX_MANUAL_MINUTES }}
+            describe={describeDuration}
           />
           {pickGroups && (
             <>
