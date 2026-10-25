@@ -82,7 +82,7 @@ import type { DeliverableKind, ExerciseEquipment, MealSlot, TimeOfDay } from '..
 import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
-import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, catalogAudit, listBrands, mergeGroceryItems, renameBrand, renameBrands, renameGroceryList, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
+import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, catalogAudit, listBrands, mergeGroceryItems, mergeGroceryItemsMany, updateGroceryItems, renameBrand, renameBrands, renameGroceryList, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { deleteCookbook, listCookbooks, logCookTime, mergeCookbooks, renameCookbook } from './recipeTools';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, copyMeals, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, saveMealAsRecipe, setMealCooked, updateMeal } from './kitchenTools';
@@ -1699,6 +1699,35 @@ const {
   ...coreTaskFieldsShape
 } = taskFieldsShape;
 const ADVANCED_TASK_FIELDS_NOTE = 'Repeat, target, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication, logsMeal and onlyIfAnswer are not accepted here; set them with update_task.';
+
+/** What one catalog edit can change, shared by update_grocery_item and update_grocery_items. */
+const GROCERY_ITEM_EDIT = {
+  id: z.string().optional(),
+  name: z.string().optional().describe('The item by name, when you have no id.'),
+  rename: z.string().min(1).optional().describe('A new name. Refused if another item has it; merge_grocery_items joins two items that are the same thing.'),
+  aisle: z.string().optional(),
+  quantity: z.string().nullable().optional(),
+  note: z.string().optional(),
+  priceMinor: z.number().int().positive().nullable().optional().describe('The last price in minor units (cents), or null to clear. Paired with the current quantity.'),
+  priceStore: z.string().optional().describe('With priceMinor: the store it was seen at, which also updates that store\'s link if it has one.'),
+  kindOf: z.string().nullable().optional().describe('The generic this item is a kind of ("white onion" is a kind of "onion"), or null.'),
+  foodType: z.array(z.enum(['vegetable', 'fruit', 'legume', 'grain', 'protein', 'dairy', 'nuts', 'sauce', 'herb'])).nullable().optional().describe('What kind of food it is, which decides which of a recipe\'s blanks it can fill ("tofurky" is protein). Replaces the list; [] means it fills none; null goes back to the app\'s guess from the name. get_grocery_item shows the guess with foodTypeGuessed.'),
+  alsoCalled: z.array(z.string()).optional().describe('Replaces the item\'s other names ("kombu" on dashima): the same thing under another word, unlike kindOf. A recipe line using one resolves to this item. [] clears them. A name another item already uses is refused and said so in the result.'),
+  preferredBoxId: z.string().nullable().optional().describe('The id of a variant (a `boxes` id from get_grocery_item), or null for none.'),
+  onlyPreferredBrand: z.boolean().optional(),
+  linkStores: z.array(z.string()).optional().describe('Stores it can be bought at, by name or id.'),
+  unlinkStores: z.array(z.string()).optional(),
+  addSubstitutes: z.array(z.object({
+    name: z.string().optional(), itemId: z.string().optional(),
+    note: z.string().nullable().optional(),
+    ratioFrom: z.string().nullable().optional().describe('With ratioTo: "1 cup butter" = "3/4 cup oil".'),
+    ratioTo: z.string().nullable().optional(),
+    standing: z.boolean().optional().describe('Always use this instead, in recipes.'),
+    either: z.boolean().optional().describe('The two are interchangeable and each cooking says which was used (written both ways, and not together with standing). Recipes asking for either one hold their nutrition, shopping and pantry use until update_meal picks which; give picks there.'),
+    bothWays: z.boolean().optional(),
+  })).optional(),
+  removeSubstitutes: z.array(z.string()).optional().describe('Substitute items to remove, by name or id.'),
+};
 
 function registerWriteTools(
   server: McpServer,
@@ -3350,38 +3379,25 @@ function registerWriteTools(
   server.tool(
     'update_grocery_item',
     "Edit a grocery item in the catalog (id from list_grocery_items, or its name): rename it, move it to another aisle, set its quantity, note or last price, mark it a kind of another item, choose its preferred brand, link it to stores, or add or remove substitutes. Several fields per call. Aisles must be ones that exist (grocery_setup). Filing an aisle is remembered for the name, as it is in the app. Activity can undo changes to the item's own fields; a rename and store or substitute changes are recorded but not undoable. Brands themselves are save_grocery_box.",
-    {
-      id: z.string().optional(),
-      name: z.string().optional().describe('The item by name, when you have no id.'),
-      rename: z.string().min(1).optional().describe('A new name. Refused if another item has it; merge_grocery_items joins two items that are the same thing.'),
-      aisle: z.string().optional(),
-      quantity: z.string().nullable().optional(),
-      note: z.string().optional(),
-      priceMinor: z.number().int().positive().nullable().optional().describe('The last price in minor units (cents), or null to clear. Paired with the current quantity.'),
-      priceStore: z.string().optional().describe('With priceMinor: the store it was seen at, which also updates that store\'s link if it has one.'),
-      kindOf: z.string().nullable().optional().describe('The generic this item is a kind of ("white onion" is a kind of "onion"), or null.'),
-      foodType: z.array(z.enum(['vegetable', 'fruit', 'legume', 'grain', 'protein', 'dairy', 'nuts', 'sauce', 'herb'])).nullable().optional().describe('What kind of food it is, which decides which of a recipe\'s blanks it can fill ("tofurky" is protein). Replaces the list; [] means it fills none; null goes back to the app\'s guess from the name. get_grocery_item shows the guess with foodTypeGuessed.'),
-      alsoCalled: z.array(z.string()).optional().describe('Replaces the item\'s other names ("kombu" on dashima): the same thing under another word, unlike kindOf. A recipe line using one resolves to this item. [] clears them. A name another item already uses is refused and said so in the result.'),
-      preferredBoxId: z.string().nullable().optional().describe('The id of a variant (a `boxes` id from get_grocery_item), or null for none.'),
-      onlyPreferredBrand: z.boolean().optional(),
-      linkStores: z.array(z.string()).optional().describe('Stores it can be bought at, by name or id.'),
-      unlinkStores: z.array(z.string()).optional(),
-      addSubstitutes: z.array(z.object({
-        name: z.string().optional(), itemId: z.string().optional(),
-        note: z.string().nullable().optional(),
-        ratioFrom: z.string().nullable().optional().describe('With ratioTo: "1 cup butter" = "3/4 cup oil".'),
-        ratioTo: z.string().nullable().optional(),
-        standing: z.boolean().optional().describe('Always use this instead, in recipes.'),
-        either: z.boolean().optional().describe('The two are interchangeable and each cooking says which was used (written both ways, and not together with standing). Recipes asking for either one hold their nutrition, shopping and pantry use until update_meal picks which; give picks there.'),
-        bothWays: z.boolean().optional(),
-      })).optional(),
-      removeSubstitutes: z.array(z.string()).optional().describe('Substitute items to remove, by name or id.'),
-    },
+    GROCERY_ITEM_EDIT,
     async input => {
       try {
         return json(withLink(await withWrite(() => updateGroceryItem(replica, input)), LINKS?.groceries()));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change that item.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_grocery_items',
+    "Edit several grocery items in the catalog under one preview and one confirmation: each entry is what update_grocery_item takes (an id or name, then rename, aisle, kindOf and the rest), up to 50. They apply in order, each seeing the ones before it, so a name freed by one can be taken by the next. The preview runs the whole sequence and rolls it back, so a clean preview means the apply will not stop partway; a refusal names the entry it came from. Use it for a tidy-up such as renaming and refiling the rows catalog_audit lists.",
+    { items: z.array(z.object(GROCERY_ITEM_EDIT)).min(1).max(50) },
+    async ({ items }) => {
+      try {
+        return json(await withWrite(() => updateGroceryItems(replica, items)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change those items.' });
       }
     }
   );
@@ -3648,14 +3664,20 @@ function registerWriteTools(
 
   server.tool(
     'merge_grocery_items',
-    "Merge one grocery item into another when they are the same thing under two names (\"cilantro\" into \"coriander\"), as the app's merge does: purchase history, brands, store links and prices, substitutes, receipt names, list entries, recipe lines and supply tasks move to the one kept, and the other is gone. Cannot be undone from Activity, so only on the person's word, and preview first.",
+    "Merge one grocery item into another when they are the same thing under two names (\"cilantro\" into \"coriander\"), as the app's merge does: purchase history, brands, store links and prices, substitutes, receipt names, list entries, recipe lines and supply tasks move to the one kept, and the other is gone. Cannot be undone from Activity, so only on the person's word, and preview first. Pass from and into for one merge, or merges (up to 50) to do several under one confirmation: they apply in order, each seeing the ones before it, and the preview shows every one and any refusal.",
     {
-      from: z.string().min(1).describe('The item that goes, by name or id.'),
-      into: z.string().min(1).describe('The item kept.'),
+      from: z.string().min(1).optional().describe('The item that goes, by name or id.'),
+      into: z.string().min(1).optional().describe('The item kept.'),
+      merges: z.array(z.object({ from: z.string().min(1), into: z.string().min(1) })).min(1).max(50).optional(),
     },
-    async input => {
+    async ({ from, into, merges }) => {
       try {
-        return json(await withWrite(() => mergeGroceryItems(replica, input)));
+        if (merges) {
+          if (from !== undefined || into !== undefined) return json({ error: 'Pass either from and into, or merges, not both.' });
+          return json(await withWrite(() => mergeGroceryItemsMany(replica, merges)));
+        }
+        if (!from || !into) return json({ error: 'Pass from and into, or a merges list.' });
+        return json(await withWrite(() => mergeGroceryItems(replica, { from, into })));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not merge.' });
       }

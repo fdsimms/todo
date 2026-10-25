@@ -241,6 +241,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   update_pantry_box: { title: 'Change one package in the pantry', destructive: true, idempotent: true },
   add_to_pantry: { title: 'Add to the pantry', destructive: false, idempotent: true },
   answer_pantry_review: { title: 'Answer the pantry review', destructive: true, idempotent: true },
+  update_grocery_items: { title: 'Edit several grocery items', destructive: true, idempotent: true },
   update_grocery_item: { title: 'Edit a grocery item', destructive: true, idempotent: true },
   save_grocery_box: { title: 'Edit a brand of an item', destructive: true, idempotent: false },
   save_store: { title: 'Add or edit a store', destructive: false, idempotent: false },
