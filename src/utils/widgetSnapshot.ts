@@ -29,7 +29,7 @@ import { occupiesTime, type BusyEvent } from './calendarBusy';
 import { eventTaskEventOf } from './eventTasks';
 import { addDays } from 'date-fns/addDays';
 import type { WidgetCalendar } from './widgetCalendar';
-import { widgetTapNeedsAppReason, type WidgetNeedsAppReason } from './widgetQuietTaps';
+import { watchQuestionFor, widgetTapNeedsAppReason, type WatchQuestion, type WidgetNeedsAppReason } from './widgetQuietTaps';
 import { formatDose, medicationStats, repeatDose } from './medicationLog';
 import { NUTRIENT_LABEL } from './foodNutrition';
 import {
@@ -143,6 +143,12 @@ export interface WidgetTask {
    * message a tap on the row shows; the iPhone widget just opens the app.
    */
   needsAppReason: WidgetNeedsAppReason | null;
+  /**
+   * The question the Apple Watch asks itself rather than sending the person
+   * to the phone (`watchQuestionFor`), or null. Only ever set on a row whose
+   * `needsAppReason` is 'ask'; the iPhone widget ignores it and opens the app.
+   */
+  question: WatchQuestion | null;
 }
 
 /**
@@ -421,6 +427,7 @@ export function toWidgetTask(
     reminderTime: task.reminderTime,
     needsApp: needsAppReason !== null,
     needsAppReason,
+    question: watchQuestionFor(task, mealLogPrompt),
   };
 }
 

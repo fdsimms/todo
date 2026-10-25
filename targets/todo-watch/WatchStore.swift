@@ -112,6 +112,13 @@ final class WatchStore: NSObject, ObservableObject {
         record(kind: task.tapsAreUnits ? "unit" : "complete", itemId: task.id, listId: nil, title: nil)
     }
 
+    /// Completes a task with the answer to its question (`WidgetTask.question`),
+    /// or with none: "Complete without an answer", which is nil.
+    func answer(_ task: WidgetTask, with answer: String?) {
+        guard !local.isDone(task) else { return }
+        record(kind: "answer", itemId: task.id, listId: nil, title: nil, answer: answer)
+    }
+
     /// Moves a task to tomorrow, the swipe on its row. The phone makes the
     /// same move its own row's Tomorrow does (`quietDeferUpdates`).
     func deferToTomorrow(_ task: WidgetTask) {
@@ -144,8 +151,8 @@ final class WatchStore: NSObject, ObservableObject {
         record(kind: "add", itemId: "", listId: nil, title: trimmed)
     }
 
-    private func record(kind: String, itemId: String, listId: String?, title: String?) {
-        let tap = WatchTap(
+    private func record(kind: String, itemId: String, listId: String?, title: String?, answer: String? = nil) {
+        var tap = WatchTap(
             id: UUID().uuidString,
             kind: kind,
             itemId: itemId,
@@ -154,6 +161,7 @@ final class WatchStore: NSObject, ObservableObject {
             at: Date(),
             sent: false
         )
+        tap.answer = answer
         taps.append(tap)
         WatchTapLog.save(taps)
         WidgetCenter.shared.reloadAllTimelines()
@@ -169,7 +177,7 @@ final class WatchStore: NSObject, ObservableObject {
     private static func playHaptic(for kind: String) {
         switch kind {
         case "unit", "defer": WKInterfaceDevice.current().play(.click)
-        case "complete", "grocery", "choose": WKInterfaceDevice.current().play(.success)
+        case "complete", "answer", "grocery", "choose": WKInterfaceDevice.current().play(.success)
         default: break
         }
     }

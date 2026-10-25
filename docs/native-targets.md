@@ -296,12 +296,16 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   `WatchSession.swift` sends it as the session's application context, compressed. Back: a tap
   is a user-info transfer, which `WatchSession` appends to the widget's own quiet-tap queue (or
   AddTaskIntent's queue, for a dictated task) in the widget's shape, so
-  `processQuietWidgetTaps` applies it with the widget's rules. Three tap kinds exist only for the
+  `processQuietWidgetTaps` applies it with the widget's rules. Four tap kinds exist only for the
   watch: `choose` (settle an either/or on the list the tap names, through `resolveChoice`'s
   explicit `listId`), `groceryAdd` (a dictated item, which rides the quiet-tap queue rather
   than AddTaskIntent's task-title queue so it applies in order with the ticks around it) and
   `defer` (a row's swipe to tomorrow, which writes `quietDeferUpdates`: the move the app's own
   Tomorrow makes, dropped rather than applied a day late if the day ended before the drain).
+  `answer` completes a task with the answer to its question, which the watch asks itself when
+  the snapshot's row carries a `question` (`watchQuestionFor`: yes/no, pick one, text, a
+  number, never a date). The drain checks the question again, and an answer that no longer
+  fits is handed to the app to ask again rather than dropped.
 - **The watch pager has no visible way to its second page on its own.** Today is a scrolling
   list, so the Digital Crown scrolls it instead of paging past it, and Groceries was only
   reachable by a vertical swipe nobody is told about. Today's top-leading toolbar button (a cart)

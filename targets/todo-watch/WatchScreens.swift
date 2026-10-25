@@ -1,7 +1,8 @@
 import SwiftUI
 
-// The watch's two pages. Colors are WidgetPalette.dark (TodoWidgetData.swift),
-// the app's own dark tokens, since a watch face is always dark.
+// The watch's two pages, and the sheet a task's question is asked in. Colors
+// are WidgetPalette.dark (TodoWidgetData.swift), the app's own dark tokens,
+// since a watch face is always dark.
 
 // ==== Today ====
 
@@ -10,6 +11,8 @@ struct TodayView: View {
     let openGroceries: () -> Void
     /// A row whose tap has to happen on the phone, shown as an alert.
     @State private var needsPhone: WidgetTask?
+    /// A row whose question is being asked here (`WidgetTask.question`).
+    @State private var asking: WidgetTask?
 
     var body: some View {
         NavigationStack {
@@ -30,7 +33,7 @@ struct TodayView: View {
             }
             .navigationTitle("Today")
             // Add and Groceries sit in the top corners rather than after the
-            // list: below twenty tasks, Add was twenty rows of scrolling away,
+            // list: under twenty tasks, Add was twenty rows of scrolling away,
             // and the pager's swipe to Groceries is something nothing says.
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -48,6 +51,12 @@ struct TodayView: View {
                     }
                     .accessibilityLabel("Add task")
                 }
+            }
+        }
+        .sheet(item: $asking) { task in
+            if let question = task.question {
+                TaskQuestionView(task: task, question: question)
+                    .environmentObject(store)
             }
         }
         .alert(needsPhone.map { NeedsPhoneCopy($0.needsAppReason).title } ?? "", isPresented: needsPhoneShown, presenting: needsPhone) { _ in
@@ -80,7 +89,9 @@ struct TodayView: View {
                 }
                 ForEach(rows) { task in
                     TaskRowView(task: task, done: local.isDone(task), progress: local.progress(task)) {
-                        if task.needsApp {
+                        if task.question != nil {
+                            asking = task
+                        } else if task.needsApp {
                             needsPhone = task
                         } else {
                             store.tap(task)
@@ -215,6 +226,7 @@ struct TaskRowView: View {
 
     private var symbol: String {
         if done { return "checkmark.circle.fill" }
+        if task.question != nil { return "questionmark.circle" }
         if task.needsApp { return "iphone" }
         return "circle"
     }
@@ -263,6 +275,73 @@ struct LaterTodayRow: View {
         }
         .listRowBackground(Color.clear)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A task's question, asked here instead of on the phone: a button per
+/// answer for Yes/No and Pick one, dictation for text and a number, and the
+/// app's own way out, "Complete without an answer". The task's title is the
+/// question, as in the app's prompt.
+struct TaskQuestionView: View {
+    @EnvironmentObject private var store: WatchStore
+    @Environment(\.dismiss) private var dismiss
+    let task: WidgetTask
+    let question: WidgetQuestion
+    /// Why the last dictated answer wasn't taken, shown under the field.
+    @State private var refused: String?
+
+    var body: some View {
+        List {
+            Text(task.title)
+                .font(.headline)
+                .foregroundStyle(WidgetPalette.dark.text)
+                .listRowBackground(Color.clear)
+            if question.options.isEmpty {
+                TextFieldLink(prompt: Text(question.kind == "number" ? "Number" : "Answer")) {
+                    Label("Answer", systemImage: "mic")
+                        .foregroundStyle(WidgetPalette.dark.accent)
+                } onSubmit: { text in
+                    submit(text)
+                }
+                if let refused {
+                    Text(refused)
+                        .font(.footnote)
+                        .foregroundStyle(WidgetPalette.dark.orange)
+                        .listRowBackground(Color.clear)
+                }
+            } else {
+                ForEach(question.options, id: \.self) { option in
+                    Button(option) { send(option) }
+                }
+            }
+            Button {
+                send(nil)
+            } label: {
+                Text("Complete without an answer")
+                    .foregroundStyle(WidgetPalette.dark.textSecondary)
+            }
+        }
+    }
+
+    /// A dictated answer. A number that doesn't read as one is refused here,
+    /// with the reason, rather than sent for the phone to refuse
+    /// (`normalizeDeliverableValue` there takes the same shape).
+    private func submit(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if question.kind == "number" {
+            let bare = trimmed.filter { !$0.isWhitespace && $0 != "," }
+            guard bare.range(of: #"^-?\d+(\.\d+)?$"#, options: .regularExpression) != nil else {
+                refused = "“\(trimmed)” isn't a number. Say just the number."
+                return
+            }
+        }
+        send(trimmed)
+    }
+
+    private func send(_ answer: String?) {
+        store.answer(task, with: answer)
+        dismiss()
     }
 }
 

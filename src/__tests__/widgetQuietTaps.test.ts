@@ -8,6 +8,7 @@ import {
   quietDeferUpdates,
   tapsToRequeue,
   tickValuesFromWatch,
+  watchQuestionFor,
   widgetTapNeedsApp,
   widgetTapNeedsAppReason,
   workoutHandOffTaps,
@@ -229,6 +230,27 @@ describe('widgetTapNeedsAppReason', () => {
   });
 });
 
+describe('watchQuestionFor', () => {
+  it('asks the kinds the watch can answer, with their buttons', () => {
+    expect(watchQuestionFor(task({ deliverableKind: 'yesno' }), true)).toEqual({ kind: 'yesno', options: ['Yes', 'No'] });
+    expect(watchQuestionFor(task({ deliverableKind: 'number' }), true)).toEqual({ kind: 'number', options: [] });
+    expect(watchQuestionFor(task({ deliverableKind: 'choice', deliverableOptions: ['Tacos', 'Pho'] }), true))
+      .toEqual({ kind: 'choice', options: ['Tacos', 'Pho'] });
+  });
+
+  it('reads a pick-one with too few options as a text answer, as the app does', () => {
+    expect(watchQuestionFor(task({ deliverableKind: 'choice', deliverableOptions: ['Tacos'] }), true))
+      .toEqual({ kind: 'text', options: [] });
+  });
+
+  it('leaves to the phone what the watch cannot ask', () => {
+    expect(watchQuestionFor(baseTask, true)).toBeNull();
+    expect(watchQuestionFor(task({ deliverableKind: 'date' }), true)).toBeNull();
+    expect(watchQuestionFor(task({ deliverableKind: 'text', completionTimerMinutes: 60 }), true)).toBeNull();
+    expect(watchQuestionFor(task({ deliverableKind: 'text', generatedKind: 'reachOut' }), true)).toBeNull();
+  });
+});
+
 describe('quietDeferUpdates', () => {
   const tomorrowNoon = new Date(2025, 5, 11, 12).toISOString();
 
@@ -283,6 +305,19 @@ describe('parseQuietTaps', () => {
     expect(parseQuietTaps(json)).toEqual([
       { kind: 'complete', id: 'a', listId: null, at: AT, watchTapId: 'w1' },
       { kind: 'grocery', id: 'milk', listId: null, at: AT, watchTapId: 'w2' },
+    ]);
+  });
+
+  it("reads an answer's words, and none for an empty or missing one", () => {
+    const json = JSON.stringify([
+      { kind: 'answer', id: 'a', at: AT, answer: ' Yes ' },
+      { kind: 'answer', id: 'b', at: AT, answer: '  ' },
+      { kind: 'answer', id: 'c', at: AT },
+    ]);
+    expect(parseQuietTaps(json)).toEqual([
+      { kind: 'answer', id: 'a', listId: null, at: AT, answer: 'Yes' },
+      { kind: 'answer', id: 'b', listId: null, at: AT },
+      { kind: 'answer', id: 'c', listId: null, at: AT },
     ]);
   });
 
@@ -378,6 +413,32 @@ describe('planQuietTaps', () => {
   it('defers a task that would need the app to complete, since a move asks nothing', () => {
     expect(plan([tap('defer', 'q')], [task({ id: 'q', deliverableKind: 'text' })])).toEqual([
       { type: 'deferTask', id: 'q' },
+    ]);
+  });
+
+  it('completes a task with the answer given on the watch', () => {
+    const answer = (value?: string): QuietTap => ({ ...tap('answer', 'q'), ...(value !== undefined ? { answer: value } : {}) });
+    expect(plan([answer('Yes')], [task({ id: 'q', deliverableKind: 'yesno' })])).toEqual([
+      { type: 'complete', id: 'q', at: AT, deliverableValue: 'Yes' },
+    ]);
+    expect(plan([answer('1,200')], [task({ id: 'q', deliverableKind: 'number' })])).toEqual([
+      { type: 'complete', id: 'q', at: AT, deliverableValue: '1200' },
+    ]);
+    // "Complete without an answer" is an answer too: null, not "nobody asked".
+    expect(plan([answer()], [task({ id: 'q', deliverableKind: 'text' })])).toEqual([
+      { type: 'complete', id: 'q', at: AT, deliverableValue: null },
+    ]);
+  });
+
+  it('hands an answer to the app rather than losing it', () => {
+    const answer = (value: string): QuietTap => ({ ...tap('answer', 'q'), answer: value });
+    // Not a number, so the app asks again.
+    expect(plan([answer('a few')], [task({ id: 'q', deliverableKind: 'number' })])).toEqual([
+      { type: 'handToApp', id: 'q', at: AT },
+    ]);
+    // The question became a date since the watch asked it.
+    expect(plan([answer('Yes')], [task({ id: 'q', deliverableKind: 'date' })])).toEqual([
+      { type: 'handToApp', id: 'q', at: AT },
     ]);
   });
 

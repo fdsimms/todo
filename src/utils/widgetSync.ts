@@ -507,7 +507,10 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
     for (const action of plan) {
       switch (action.type) {
         case 'complete':
-          useTaskStore.getState().completeTask(action.id, { completedAt: action.at });
+          useTaskStore.getState().completeTask(action.id, {
+            completedAt: action.at,
+            ...(action.deliverableValue !== undefined ? { deliverableValue: action.deliverableValue } : {}),
+          });
           break;
         case 'logUnit':
           useTaskStore.getState().logQuotaUnit(action.id);

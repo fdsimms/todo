@@ -39,9 +39,9 @@ struct WatchFinishedNote: Codable, Equatable {
 /// tap, so the phone can say which ones it has received and applied.
 struct WatchTap: Codable, Identifiable {
     let id: String
-    /// "complete", "unit", "grocery", "choose", "add", "groceryAdd" or
-    /// "defer" (move a task to tomorrow), or one of the workout's
-    /// (`workoutKinds`).
+    /// "complete", "unit", "grocery", "choose", "add", "groceryAdd",
+    /// "defer" (move a task to tomorrow) or "answer" (complete it with the
+    /// answer to its question), or one of the workout's (`workoutKinds`).
     let kind: String
     /// The task id or grocery item id. Empty for "add" and "groceryAdd". A
     /// workout tap's is the set ("set", "setNote", "addSet"), the phone's
@@ -63,6 +63,9 @@ struct WatchTap: Codable, Identifiable {
     // written before they existed still decodes.
 
     /// The phone's workout session the tap was made on.
+    /// The answer to a task's question ("answer"); nil there is "complete
+    /// without an answer".
+    var answer: String? = nil
     var sessionId: String? = nil
     /// The phone's rest the watch was showing, when it was the phone's.
     var restId: String? = nil
@@ -122,6 +125,7 @@ struct WatchTap: Codable, Identifiable {
         if !itemId.isEmpty { info["id"] = itemId }
         if let listId { info["listId"] = listId }
         if let title { info["title"] = title }
+        if let answer { info["answer"] = answer }
         if let sessionId { info["sessionId"] = sessionId }
         if let restId { info["restId"] = restId }
         if let unit { info["unit"] = unit }
@@ -253,7 +257,7 @@ struct LocalTapState {
                 sentWorkouts.append(tap)
             case "healthRetracted":
                 retractedWorkouts.insert(tap.itemId)
-            case "complete": completed.insert(tap.itemId)
+            case "complete", "answer": completed.insert(tap.itemId)
             case "defer": deferred.insert(tap.itemId)
             case "unit": units[tap.itemId, default: 0] += 1
             case "grocery": groceries.insert(Self.groceryKey(itemId: tap.itemId, listId: tap.listId))

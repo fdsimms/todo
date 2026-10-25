@@ -50,11 +50,15 @@ struct WidgetTask: Codable, Identifiable {
     /// tapped. Nil on a row that doesn't need the app, and on a snapshot from
     /// before the field existed.
     let needsAppReason: String?
+    /// The question the Apple Watch asks itself (`watchQuestionFor` in the
+    /// app), so the row is answered on the wrist rather than on the phone.
+    /// Nil on every other row; the iPhone widget never reads it.
+    let question: WidgetQuestion?
 
     enum CodingKeys: String, CodingKey {
         case id, title, priority, pinned, dueDate, category, streakCount, recurrenceType
         case targetCount, progressCount, targetUnit, eventTitle, visibleAt
-        case reminderTime, needsApp, needsAppReason
+        case reminderTime, needsApp, needsAppReason, question
     }
 
     init(from decoder: Decoder) throws {
@@ -75,6 +79,9 @@ struct WidgetTask: Codable, Identifiable {
         reminderTime = try c.decodeIfPresent(String.self, forKey: .reminderTime)
         needsApp = try c.decodeIfPresent(Bool.self, forKey: .needsApp) ?? true
         needsAppReason = try c.decodeIfPresent(String.self, forKey: .needsAppReason)
+        // `try?`: a question this build can't read leaves the row needing
+        // the phone, as it always did, rather than failing the whole snapshot.
+        question = try? c.decodeIfPresent(WidgetQuestion.self, forKey: .question)
     }
 
     var reminderDate: Date? { reminderTime.flatMap(isoDate) }
@@ -152,6 +159,13 @@ struct WidgetGroceryList: Codable, Identifiable {
 }
 
 /// One unbought row on a list (`WidgetGroceryRow` in widgetSnapshot.ts).
+/// A task's question as the Apple Watch asks it (`WatchQuestion` in the app):
+/// "yesno" and "choice" with their buttons, "text" and "number" dictated.
+struct WidgetQuestion: Codable {
+    let kind: String
+    let options: [String]
+}
+
 struct WidgetGroceryRow: Codable, Identifiable {
     /// Empty when the snapshot carried names only; such a row has no checkbox.
     let id: String

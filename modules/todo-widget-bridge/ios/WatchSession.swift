@@ -219,13 +219,15 @@ final class WatchSession: NSObject, WCSessionDelegate {
 
     let at = (info["at"] as? String) ?? ISO8601DateFormatter().string(from: Date())
     switch kind {
-    case "complete", "unit", "grocery", "choose", "defer":
+    case "complete", "unit", "grocery", "choose", "defer", "answer":
       guard let id = info["id"] as? String, !id.isEmpty else { return }
       // The widget's QuietTap shape (WidgetQuietIntents.swift) plus the id the
       // watch settles on. Both readers ignore a key they don't know, and a nil
       // list is left out rather than written as null, as JSONEncoder does there.
       var entry: [String: Any] = ["kind": kind, "id": id, "at": at, "watchTapId": tapId]
       if let listId = info["listId"] as? String, !listId.isEmpty { entry["listId"] = listId }
+      // A question's answer; none is "complete without an answer".
+      if kind == "answer", let answer = info["answer"] as? String, !answer.isEmpty { entry["answer"] = answer }
       appendToQueue(watchQuietTapsFileName, entry)
       // As the widget's quiet checkbox does: the task's reminder is scheduled
       // under its id (notifications.ts) and would otherwise still go off for
@@ -233,7 +235,7 @@ final class WatchSession: NSObject, WCSessionDelegate {
       // moved to tomorrow is the same (the app schedules the new one when it
       // applies the move). A unit doesn't finish the task, so it leaves the
       // reminder alone.
-      if kind == "complete" || kind == "defer" {
+      if kind == "complete" || kind == "answer" || kind == "defer" {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
       }
     case "groceryAdd":

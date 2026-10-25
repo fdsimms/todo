@@ -149,6 +149,11 @@ describe('toWidgetTask', () => {
     expect(toWidgetTask(makeTask({ deliverableKind: 'text' })).needsAppReason).toBe('ask');
   });
 
+  it('carries the question the watch can ask itself', () => {
+    expect(toWidgetTask(makeTask()).question).toBeNull();
+    expect(toWidgetTask(makeTask({ deliverableKind: 'yesno' })).question).toEqual({ kind: 'yesno', options: ['Yes', 'No'] });
+  });
+
   describe('eventTitle', () => {
     const start = new Date('2026-10-06T15:00').toISOString();
     const evt: BusyEvent = {
