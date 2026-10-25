@@ -1180,7 +1180,7 @@ has the rules; two decisions are specific to the server.
 
 ### The catalog: edits, delete with a snapshot, separate lists and receipts
 
-`grocery_setup`, `get_grocery_item`, `match_receipt` and the writes `update_grocery_item`,
+`grocery_setup`, `get_grocery_item`, `match_receipt` and the writes `update_grocery_item`, `update_grocery_items`,
 `save_grocery_box`, `catalog_audit`, `list_brands`, `rename_brand`, `save_store`, `delete_grocery_item`, `create_grocery_list`, `rename_grocery_list`,
 `delete_grocery_list`, `finish_grocery_trip` and `import_receipt` (`mcp/src/groceryTools.ts`), with a `list`
 argument on the list tools. The row rules are `src/utils/groceryItemWrite.ts` (price, boxes, rename, store and

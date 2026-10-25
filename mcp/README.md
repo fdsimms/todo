@@ -235,6 +235,7 @@ only the fallback until the first sync.
 | `add_grocery_item` | **Write.** Puts something on the home list, re-using the shelf item the user already has where there is one. `inCart: true` is for something already bought and never listed (an incidental): it goes on checked off, so the trip counts it. |
 | `check_off_grocery_item` | **Write.** Checks something off on the home list, or un-checks it. |
 | `remove_from_grocery_list` | **Write.** Takes something off the home list. Does not delete it. |
+| `update_grocery_items` | **Write.** Up to 50 `update_grocery_item` edits under one preview and one confirmation, applied in order. A refusal names the entry. |
 | `update_grocery_item` | **Write.** Rename, aisle, quantity, note, last price, kind-of, other names, preferred brand, stores and substitutes (including a pair marked either one). Field edits are undoable from Activity. |
 | `save_grocery_box` | **Write.** Add, edit or delete a brand or variant of an item, set the barcode a scan of it lands on, and rate a variant (loved, fine or avoid) with the reason in its note. |
 | `save_store` | **Write.** Add or rename a store, or set its receipt style. |
@@ -248,7 +249,7 @@ only the fallback until the first sync.
 | `mark_unavailable` | **Write.** A store doesn't carry an item, or its preferred brand; or does again. |
 | `set_nutrition_panels` | **Write.** Many items' panels in one call (one preview, one approval): the same panels as `set_nutrition_panel`, all or none, with `create: true` on an entry to add a catalog item that is not there yet (on no list, not in the pantry). |
 | `set_nutrition_panel` | **Write.** An item's or a brand's nutrition panel, with optional `portions` (what a tablespoon, cup or clove weighs) merged into its table by label, and optional `packageGrams` (what the whole package weighs). A recipe counts a volume or count line only when the item has a portion weighing it. |
-| `merge_grocery_items` | **Write.** Merges one item into another, with everything recorded on it. Not undoable from Activity. |
+| `merge_grocery_items` | **Write.** Merges one item into another, with everything recorded on it, or up to 50 pairs (`merges`) under one confirmation, applied in order. Not undoable from Activity. |
 | `delete_grocery_item` | **Write.** Deletes an item with everything attached. Restorable from Activity. |
 | `catalog_audit` | Read-only. Catalog names that look wrong: a brand in the name, a package title, capitals, a size, two rows with the same words (and, on request, possible kind-of pairs). Names the fixing tool; changes nothing. |
 | `list_brands` / `rename_brand` | `list_brands` is read-only: every brand once with its variant count, items and the spellings in use. **`rename_brand` writes:** one spelling onto every variant of a brand, or a `renames` list of up to 50 under one confirmation. |
