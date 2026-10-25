@@ -363,6 +363,27 @@ export function updateGroceryItem(replica: Replica, input: UpdateGroceryItemInpu
   };
 }
 
+/**
+ * Several catalog edits in one call, in order, each seeing the ones before it.
+ * A refusal names the entry it came from. Nothing is undone here when one
+ * fails midway: the preview runs this same sequence and rolls it back, so a
+ * clean preview is what makes the apply safe to run.
+ */
+export function updateGroceryItems(replica: Replica, items: UpdateGroceryItemInput[]) {
+  const results = items.map((input, i) => {
+    try {
+      return updateGroceryItem(replica, input);
+    } catch (e) {
+      const which = input.name ?? input.id ?? 'item';
+      throw new Error(`Entry ${i + 1} ("${which}"): ${e instanceof Error ? e.message : 'could not be changed.'}`);
+    }
+  });
+  return {
+    updated: results.length,
+    items: results.map(r => ({ name: r.item.name, changed: r.changed, undoable: r.undoable })),
+  };
+}
+
 export function saveGroceryBox(replica: Replica, ref: { id?: string; name?: string }, input: GroceryBoxInput): { box: ItemProduct | null; item: string } {
   const item = findPantryItem(replica, ref);
   return { box: replica.saveGroceryBox(item.id, input), item: item.name };
@@ -876,6 +897,25 @@ export function mergeGroceryItems(replica: Replica, input: { from: string; into:
     merged: getGroceryItem(replica, { id: result.merged.id }),
     gone: result.from.name,
     note: `"${result.from.name}" is now part of "${result.merged.name}": its purchase history, brands, store links and prices, substitutes, receipt names, list entries and recipe lines moved over. This cannot be undone from Activity.`,
+  };
+}
+
+/** Several merges in one call, in order. A refusal names the entry it came from; the preview rolls the sequence back first. */
+export function mergeGroceryItemsMany(replica: Replica, merges: { from: string; into: string }[]) {
+  const results = merges.map((m, i) => {
+    try {
+      const from = itemByIdOrName(replica, m.from);
+      const into = itemByIdOrName(replica, m.into);
+      const result = replica.mergeGroceryItems(from.id, into.id);
+      return { gone: result.from.name, into: result.merged.name };
+    } catch (e) {
+      throw new Error(`Merge ${i + 1} ("${m.from}" into "${m.into}"): ${e instanceof Error ? e.message : 'could not merge.'}`);
+    }
+  });
+  return {
+    merged: results.length,
+    merges: results,
+    note: 'Each item on the left is now part of the one on the right: purchase history, brands, store links and prices, substitutes, receipt names, list entries and recipe lines moved over. This cannot be undone from Activity.',
   };
 }
 

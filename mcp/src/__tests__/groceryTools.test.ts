@@ -33,7 +33,7 @@ import {
   reorderAisles,
   updateStore,
   reorderGroceryPlaces,
-  catalogAudit, listBrands,
+  catalogAudit, listBrands, mergeGroceryItemsMany, updateGroceryItems,
   mergeGroceryItems,
   renameBrand,
   renameBrands,
@@ -237,6 +237,43 @@ describe('the catalog tools', () => {
 
       expect(() => saveGroceryBox(replica, { name: 'stroopwafels' }, { boxId: plain.box!.id, gtin: '12345' })).toThrow(/not a product barcode/);
       expect(() => saveGroceryBox(replica, { name: 'stroopwafels' }, { boxId: plain.box!.id, gtin: '0212345000008' })).toThrow(/not a product barcode/);
+    });
+  });
+
+  describe('update_grocery_items and merge_grocery_items merges', () => {
+    it('renames and refiles several items in order, and a later one may take a name an earlier one freed', () => {
+      addGroceryItem(replica, 'Tums');
+      addGroceryItem(replica, 'Aleve');
+      const out = updateGroceryItems(replica, [
+        { name: 'Tums', rename: 'antacid' },
+        { name: 'Aleve', rename: 'naproxen', aisle: 'Pantry' },
+        { name: 'antacid', rename: 'tums' },
+      ]);
+      expect(out.updated).toBe(3);
+      expect(out.items.map(i => i.name)).toEqual(['antacid', 'naproxen', 'tums']);
+      expect(out.items[1].changed.join(' ')).toMatch(/renamed/);
+    });
+
+    it('names the entry a refusal came from', () => {
+      addGroceryItem(replica, 'salt');
+      addGroceryItem(replica, 'sea salt');
+      expect(() => updateGroceryItems(replica, [{ name: 'salt', aisle: 'Pantry' }, { name: 'sea salt', rename: 'salt' }])).toThrow(/Entry 2 \("sea salt"\)/);
+    });
+
+    it('merges several pairs in order, each seeing the ones before it', () => {
+      addGroceryItem(replica, 'mayo');
+      addGroceryItem(replica, 'mayonnaise');
+      addGroceryItem(replica, 'vegan mayonnaise');
+      const out = mergeGroceryItemsMany(replica, [
+        { from: 'mayo', into: 'mayonnaise' },
+        { from: 'mayonnaise', into: 'vegan mayonnaise' },
+      ]);
+      expect(out.merged).toBe(2);
+      expect(out.merges).toEqual([
+        { gone: 'mayo', into: 'mayonnaise' },
+        { gone: 'mayonnaise', into: 'vegan mayonnaise' },
+      ]);
+      expect(() => mergeGroceryItemsMany(replica, [{ from: 'nothing here', into: 'vegan mayonnaise' }])).toThrow(/Merge 1/);
     });
   });
 
