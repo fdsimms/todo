@@ -2,7 +2,9 @@ import {
   clampStepIndex,
   cookNotesPanel,
   cookSteps,
+  cookTextMetrics,
   describeStepPosition,
+  parseCookTextSize,
   stepsFromNotes,
 } from '../utils/cookMode';
 import { recipeMap } from '../utils/recipeComponents';
@@ -345,5 +347,21 @@ describe('describeStepPosition', () => {
 
   it('says nothing at all when there is no method', () => {
     expect(describeStepPosition(0, 0)).toBe('');
+  });
+});
+
+describe('cook text size', () => {
+  it('reads a stored value, and falls back to large for a missing or stale one', () => {
+    expect(parseCookTextSize('small')).toBe('small');
+    expect(parseCookTextSize('xlarge')).toBe('xlarge');
+    expect(parseCookTextSize(null)).toBe('large');
+    expect(parseCookTextSize('huge')).toBe('large');
+  });
+
+  it('keeps large at the size cook mode has always used and grows with each step', () => {
+    expect(cookTextMetrics('large')).toEqual({ fontSize: 28, lineHeight: 38 });
+    expect(cookTextMetrics('nonsense')).toEqual({ fontSize: 28, lineHeight: 38 });
+    const sizes = (['small', 'medium', 'large', 'xlarge'] as const).map(s => cookTextMetrics(s).fontSize);
+    expect(sizes).toEqual([...sizes].sort((a, b) => a - b));
   });
 });
