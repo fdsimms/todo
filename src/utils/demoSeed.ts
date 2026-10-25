@@ -5029,6 +5029,12 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   ];
   CATALOG.forEach(name => addByName(name, undefined, undefined, { registerUndo: false }));
 
+  // A row for Tidy catalog (catalogAudit.ts) to find: a brand where the generic
+  // belongs. Left as it is on purpose, the way Cilantro and Coriander are below;
+  // its product keeps it past clearList.
+  addByName('Chobani Greek yogurt', undefined, undefined, { registerUndo: false });
+  addProduct(itemNamed('Chobani Greek yogurt').id, { brand: 'Chobani', variant: 'plain' });
+
   // Quantities and notes — free text. The only thing that reads a quantity as a
   // number is the per-unit price comparison, and only when every price in a set
   // names one it can measure: "a bunch" below is the demo's example of the
@@ -5954,6 +5960,10 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // here, after the clear: it carries nothing anyone put on it, so clearList
   // would sweep it along with every other bare name on the list.
   addByName('Coriander', undefined, undefined, { registerUndo: false });
+
+  // One thing under two names, for Tidy catalog. Here for the same reason as
+  // Coriander: nothing was ever bought, so the clear above would drop them.
+  ['Ground ginger', 'Ginger powder'].forEach(name => addByName(name, undefined, undefined, { registerUndo: false }));
 
   // The shelf-life correction itself: a name the lexicon has never heard of
   // (cheddar isn't in it), given a shelf life by hand. Cheddar is still on

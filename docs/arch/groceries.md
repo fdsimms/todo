@@ -1761,6 +1761,17 @@ filler (fresh, organic) and a few synonyms (mayo/mayonnaise, stock/broth, powder
 aside, and `maybe_kind_of` when one name is the other plus words. A pair the person already linked
 (`otherNames`, `varietyOfKey`) is never shown again. The MCP `catalog_audit` tool is its reader.
 
+**Two places read it in the app.** The add field says something while a name would make a new row
+(`nameHintFor`, `catalogNameHint.ts`): a brand the catalog already keeps ("Beyond Meat brats" offers
+"brats" with the brand set as the Brand chip), or a name that is an existing row in other words
+("ground ginger" offers "Add as another name"). It is a card inside the field's floating results block,
+never in flow, and it only ever offers: "Keep this name" and "Add separately" are one tap. A name that
+already finds a row (`catalogItemForKey`: exact, other name, plural) says nothing. **Tidy catalog**
+(`TidyCatalogSheet`, Groceries gear menu) lists the findings with Rename, Merge and Leave it. It
+writes only through `renameItem` and `mergeItems`, leaves out `maybe_kind_of` (a kind is declared in the
+item sheet), and remembers "Leave it" in the synced `catalogAuditDismissed` setting, keyed by the
+finding's kind and name keys (`catalogAuditDismissed.ts`) so a renamed row asks again.
+
 ## Singular and plural are one row (`groceryPlural.ts`)
 
 `groceryNameKey` does not stem plurals and still doesn't — stemming the *identity* key merges two

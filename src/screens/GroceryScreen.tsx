@@ -50,6 +50,7 @@ import { navigateToTab } from '../navigation/navigationRef';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { navigateToFoodSearchSettings } from '../components/NutritionSearchSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
+import { TidyCatalogSheet } from '../components/TidyCatalogSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { GroceryListSheet } from '../components/GroceryListSheet';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
@@ -298,6 +299,7 @@ export function GroceryScreen() {
   const [addOpen, setAddOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [aislesOpen, setAislesOpen] = useState(false);
+  const [tidyOpen, setTidyOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
   const [listSheetOpen, setListSheetOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -1984,13 +1986,24 @@ export function GroceryScreen() {
       <LazySheet open={aislesOpen}>
         <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
       </LazySheet>
+      <LazySheet open={tidyOpen}>
+        <TidyCatalogSheet visible={tidyOpen} onClose={() => setTidyOpen(false)} />
+      </LazySheet>
       <ScreenSettingsSheet
         {...screenSettings.sheet}
-        extraRows={[{
-          id: 'aisles',
-          label: 'Aisles, stores and sorting',
-          onPress: () => setAislesOpen(true),
-        }]}
+        extraRows={[
+          {
+            id: 'aisles',
+            label: 'Aisles, stores and sorting',
+            onPress: () => setAislesOpen(true),
+          },
+          {
+            id: 'tidy',
+            label: 'Tidy catalog',
+            hint: 'Brand names, package labels and repeats',
+            onPress: () => setTidyOpen(true),
+          },
+        ]}
       />
       <LazySheet open={listSheetOpen}>
         <GroceryListSheet visible={listSheetOpen} onClose={() => setListSheetOpen(false)} />

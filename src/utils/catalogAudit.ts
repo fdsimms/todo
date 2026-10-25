@@ -2,7 +2,8 @@ import type { GroceryItem, ItemProduct } from '../types';
 import { isPortionBox } from '../types';
 import { otherNameKeysOf } from './itemAliases';
 import { groceryNameKey } from './groceryParse';
-import { hasTrailingSize } from './scanResolve';
+import { readableItemName } from './productCase';
+import { hasTrailingSize, shopperNameFor } from './scanResolve';
 
 /**
  * Reading the catalog for names that don't belong in it: a brand where the
@@ -46,6 +47,8 @@ export interface AuditFinding {
   why: string;
   /** What the existing tools would do about it. */
   suggestion: string;
+  /** For `brand_in_name`: the brand the catalog holds that the name contains. */
+  brand?: string;
 }
 
 const STOP = new Set(['and', 'or', 'the', 'of', 'a', 'an', 'in', 'with', 'from']);
@@ -72,7 +75,7 @@ export function auditTokens(name: string): string[] {
 
 const row = (i: GroceryItem): AuditRow => ({ id: i.id, name: i.name, aisle: i.aisle });
 
-function containsRun(words: string[], run: string[]): boolean {
+export function containsRun(words: string[], run: string[]): boolean {
   if (run.length === 0 || run.length > words.length) return false;
   for (let i = 0; i + run.length <= words.length; i++) {
     if (run.every((w, j) => words[i + j] === w)) return true;
@@ -144,6 +147,7 @@ export function auditCatalog(
       out.push({
         kind: 'brand_in_name',
         confidence: brandHit.whole ? 'high' : 'low',
+        brand: brandHit.brand,
         items: [display],
         why: brandHit.whole
           ? `The whole name is the brand "${brandHit.brand}", which the catalog also holds as a brand on a variant.`
@@ -200,4 +204,36 @@ export function auditCatalog(
     }
   }
   return out;
+}
+
+/** The name with a brand's words taken out, or '' when nothing is left. */
+export function withoutBrand(name: string, brand: string): string {
+  const run = groceryNameKey(brand).split(/\s+/).filter(Boolean);
+  const words = name.trim().split(/\s+/);
+  const keys = words.map(w => groceryNameKey(w));
+  for (let i = 0; i + run.length <= words.length; i++) {
+    if (run.every((w, j) => keys[i + j] === w)) {
+      return [...words.slice(0, i), ...words.slice(i + run.length)].join(' ').trim();
+    }
+  }
+  return name.trim();
+}
+
+/**
+ * A name to start a rename from, for one row's finding. Only a starting point:
+ * a person edits it before it is saved, and a finding with nothing mechanical
+ * to offer (a package title) starts from the name as it stands.
+ */
+export function suggestedName(finding: AuditFinding): string {
+  const name = finding.items[0]?.name ?? '';
+  switch (finding.kind) {
+    case 'all_caps':
+      return readableItemName(name);
+    case 'size_in_name':
+      return shopperNameFor(name, null);
+    case 'brand_in_name':
+      return finding.brand ? withoutBrand(name, finding.brand) : name;
+    default:
+      return name;
+  }
 }
