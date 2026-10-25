@@ -793,6 +793,22 @@ describe('the replica', () => {
       expect(updated.items[0].chainItems[0].linkUrl).toBe('https://b.example');
     });
 
+    it("clears a chain step's note, link and medication given null, and keeps them left out", () => {
+      const t = replica.createTemplate({ name: 'Steps', items: [{ title: 'x', chain: { steps: [
+        { title: 'A', notes: 'bring cash', link: 'https://a.example', medication: { name: 'Ibuprofen' } },
+        { title: 'B', notes: 'keep me' },
+      ] } }] });
+      const updated = replica.updateTemplate(t.id, { items: [{ id: t.items[0].id, chain: { steps: [
+        { title: 'A', notes: null, link: null, medication: null },
+        { title: 'B' },
+      ] } }] });
+      const [a, b] = updated.items[0].chainItems;
+      expect(a.notes ?? null).toBeNull();
+      expect(a.linkUrl ?? null).toBeNull();
+      expect(a.medicationName ?? null).toBeNull();
+      expect(b.notes).toBe('keep me');
+    });
+
     it('refuses an edit made against a version that is no longer current', () => {
       const built = trip();
       const read = templateVersion(built);

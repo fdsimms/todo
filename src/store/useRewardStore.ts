@@ -414,7 +414,8 @@ export const useRewardStore = create<RewardStore>((set, get) => {
 
     unclaim(entryId) {
       const entry = get().entries.find(e => e.id === entryId);
-      if (entry?.kind === 'spend') remove([entryId]);
+      // A reset is a spend too, but it is no claim: `unreset` is its undo.
+      if (entry?.kind === 'spend' && !isBalanceReset(entry)) remove([entryId]);
     },
 
     resetBalance(at) {

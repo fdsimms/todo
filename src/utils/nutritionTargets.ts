@@ -376,6 +376,16 @@ export function clampLimitWarnPercent(percent: number): number {
   return Math.min(LIMIT_WARN_PERCENT_MAX, Math.max(LIMIT_WARN_PERCENT_MIN, snapped));
 }
 
+/**
+ * Whether `amount` is past `target`, compared as the figures are shown. A
+ * total the row rounds to the limit reads "At the limit", so it can't also be
+ * over it: a 150 ml glass of 12% wine is 14.2 g, one drink exactly on screen,
+ * and was being logged as a slip against a one-drink limit.
+ */
+function isPastLimit(key: NutrientKey, amount: number, target: number): boolean {
+  return displayFigure(key, amount).value > displayFigure(key, target).value;
+}
+
 export function limitStatus(
   key: NutrientKey,
   total: number | undefined,
@@ -385,7 +395,7 @@ export function limitStatus(
   const target = targets[key];
   const amount = total ?? 0;
   if (target === undefined) return 'within';
-  if (amount > target) return 'over';
+  if (isPastLimit(key, amount, target)) return 'over';
   if (target <= 0) return 'within';
   return amount >= target * (warnPercent / 100) ? 'near' : 'within';
 }
@@ -450,7 +460,7 @@ export function limitImpact(
       after,
       target,
       status: limitStatus(key, after, targets, warnPercent),
-      crosses: before <= target && after > target,
+      crosses: !isPastLimit(key, before, target) && isPastLimit(key, after, target),
     });
   }
   return impacts;

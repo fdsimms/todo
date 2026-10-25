@@ -3265,8 +3265,15 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           const title = s.title.trim();
           const byTitle = stored?.chainItems.find(c => c.title.trim().toLowerCase() === title.toLowerCase());
           const keptStep = byTitle ?? (stored?.chainItems[i] && !chain.steps.some(o => o.title.trim().toLowerCase() === stored.chainItems[i].title.trim().toLowerCase()) ? stored.chainItems[i] : undefined);
-          const { deliverableKind: _k, deliverableDatesNextStep: _d, ...carried } = keptStep ?? ({} as Partial<ChainItem>);
-          void _k; void _d;
+          // The note, link and medication are left to `stepTextFields`, which
+          // keeps the stored ones itself; spread from here, a null meant to
+          // clear one would leave it standing.
+          const {
+            deliverableKind: _k, deliverableDatesNextStep: _d,
+            notes: _n, linkUrl: _l, medicationName: _mn, medicationAmount: _ma, medicationUnit: _mu,
+            ...carried
+          } = keptStep ?? ({} as Partial<ChainItem>);
+          void _k; void _d; void _n; void _l; void _mn; void _ma; void _mu;
           return {
             ...carried,
             id: keptStep?.id ?? generateId(),
@@ -3392,7 +3399,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       },
     });
   }
-  const { useRewardStore } = require('../../src/store/useRewardStore') as typeof import('../../src/store/useRewardStore');
+  const { useRewardStore, isBalanceReset } = require('../../src/store/useRewardStore') as typeof import('../../src/store/useRewardStore');
   // Food recorded as thrown out used nothing up, so the coins its use-up task
   // paid come back, as on the phone (`forfeitUseUpCoins` in generatedTaskSync).
   // The prompt that asks never reaches this replica, so the answer arrives here.
@@ -8454,7 +8461,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     unclaimReward(entryId): CoinEntry {
       const entry = useRewardStore.getState().entries.find(e => e.id === entryId);
-      if (!entry || entry.kind !== 'spend') throw new Error(`No claim with id ${entryId}. Only a spend can be taken back.`);
+      if (!entry || entry.kind !== 'spend' || isBalanceReset(entry)) throw new Error(`No claim with id ${entryId}. Only a reward claim can be taken back.`);
       // The app's undo for a wish-list claim puts the item back with the coins.
       // Only an item checked off at or after the claim is reopened: one the person
       // finished earlier is theirs, and a refused reopen stops the whole undo

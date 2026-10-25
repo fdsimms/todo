@@ -812,6 +812,14 @@ describe('extractPlaceholders', () => {
     expect(extractPlaceholders(items)).toEqual(['trip', 'device', 'who']);
   });
 
+  it("reads a chain step's own note", () => {
+    const items = [makeItem({
+      title: 'Party',
+      chainItems: [{ id: 'c1', title: 'Shop', estimatedMinutes: null, notes: 'Bring {gift}' }],
+    })];
+    expect(extractPlaceholders(items)).toEqual(['gift']);
+  });
+
   it('excludes the reserved run placeholder, which is bound to the run name', () => {
     expect(extractPlaceholders([makeItem({ title: 'Put in for PTO for {run}' })])).toEqual([]);
   });
@@ -1098,6 +1106,19 @@ describe('substituteDraftPlaceholders', () => {
     expect(out.title).toBe('Pack for Denver');
     expect(out.notes).toBe('ask Dan');
     expect(out.chainItems).toEqual([{ id: 'c1', title: 'Confirm Dan', estimatedMinutes: null }]);
+  });
+
+  it("substitutes into a chain step's note, and leaves a step with none alone", () => {
+    const out = substituteDraftPlaceholders({
+      chainItems: [
+        { id: 'c1', title: 'Shop', estimatedMinutes: null, notes: 'Bring {gift}' },
+        { id: 'c2', title: 'Go', estimatedMinutes: null },
+      ],
+    }, { gift: 'wine' });
+    expect(out.chainItems).toEqual([
+      { id: 'c1', title: 'Shop', estimatedMinutes: null, notes: 'Bring wine' },
+      { id: 'c2', title: 'Go', estimatedMinutes: null },
+    ]);
   });
 
   it('leaves an absent title/notes/chain absent rather than turning it into a blank string', () => {
