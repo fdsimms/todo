@@ -170,6 +170,7 @@ import {
   WAKE_UP_DEFAULT_GET_READY_MINUTES,
   WAKE_UP_DEFAULT_USUAL_MINUTES,
   clampWakeUpMinutes,
+  parseWakeUpAlarmIds,
 } from '../utils/wakeUpTasks';
 import { parseTransitLines } from '../utils/transitAlerts';
 import {
@@ -1827,6 +1828,11 @@ interface SettingsStore {
   // `wakeAlarmKey`, so an alarm the person then changed or deleted is not set
   // again on the next sweep. Device-local like the alarms themselves.
   wakeUpAlarmApplied: HandledEventTasks;
+  // What this device set for each wake-up task, by source id: an alarm id for a
+  // one-off it added, or `override:<id>` for a repeating alarm it moved for
+  // one morning. Lets a moved or cancelled event take its alarm back down
+  // (wakeUpAlarm.ts). Device-local, and an entry whose alarm is gone is dropped.
+  wakeUpAlarmIds: Record<string, string>;
   // Whether the MTA subway alerts feed is read to add a note to a travel task.
   // Its own switch, off by default, because it is the one part of the feature
   // that reaches the network: no key stands in front of it the way one does
@@ -2457,6 +2463,7 @@ interface SettingsStore {
   setWakeUpGetReadyMinutes: (minutes: number) => void;
   setWakeUpTaskHandled: (handled: HandledEventTasks) => void;
   setWakeUpAlarmApplied: (applied: HandledEventTasks) => void;
+  setWakeUpAlarmIds: (ids: Record<string, string>) => void;
   setTransitAlerts: (on: boolean) => void;
   setTransitLines: (lines: string[]) => void;
   setScreenTimeTasks: (on: boolean) => void;
@@ -3261,6 +3268,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   wakeUpGetReadyMinutes: WAKE_UP_DEFAULT_GET_READY_MINUTES,
   wakeUpTaskHandled: {},
   wakeUpAlarmApplied: {},
+  wakeUpAlarmIds: {},
   transitAlerts: false,
   transitLines: [],
   screenTimeTasks: false,
@@ -3824,6 +3832,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       parseHandledEventTasks(dbGetSetting('wakeUpAlarmApplied')),
       new Date(),
     );
+    const wakeUpAlarmIds = parseWakeUpAlarmIds(dbGetSetting('wakeUpAlarmIds'));
     const transitAlerts = dbGetSetting('transitAlerts') === 'true';
     const transitLines = parseTransitLines(dbGetSetting('transitLines'));
     const moodLogTasks = dbGetSetting('moodLogTasks') === 'true';
@@ -4337,6 +4346,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       waitingFollowUpTaskCategory,
       waitingFollowUpTasks,
       wakeUpAlarmApplied,
+      wakeUpAlarmIds,
       wakeUpGetReadyMinutes,
       wakeUpTaskCategory,
       wakeUpTaskHandled,
@@ -5115,6 +5125,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWakeUpTaskHandled(handled: HandledEventTasks) {
     dbSetSetting('wakeUpTaskHandled', JSON.stringify(handled));
     set({ wakeUpTaskHandled: handled });
+  },
+
+  setWakeUpAlarmIds(ids: Record<string, string>) {
+    dbSetSetting('wakeUpAlarmIds', JSON.stringify(ids));
+    set({ wakeUpAlarmIds: ids });
   },
 
   setWakeUpAlarmApplied(applied: HandledEventTasks) {

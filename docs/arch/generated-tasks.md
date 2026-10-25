@@ -1524,8 +1524,13 @@ so ("Wake up at 6:15", dated the evening before) and this phone's alarm is set f
   adds a one-off (`addOneOffAlarm`, which deletes itself after ringing); a repeating alarm ringing
   later gets a one-night `Alarm.override` back to its own time the next day; an alarm already in
   time is left; **a one-off you set yourself is left alone even if it rings too late**, and the row
-  still offers the change. Known gap: if the event then moves *earlier*, the one-off this added
-  stays and a second is not added over it, so the row shows the earlier time is not covered.
+  still offers the change.
+- **It takes down what it set.** `wakeUpAlarmIds` remembers, per task, the one-off it added or the
+  repeating alarm it moved for a morning (`override:<id>`). When the event moves, is cancelled, or
+  an earlier one takes over, `syncWakeUpAlarm` deletes that one-off, or puts the moved alarm back
+  on its own time, before setting the new answer. An alarm you made yourself is never in the
+  record, so it is never touched. An alarm you changed by hand *after* it was set is still
+  replaced when the event moves, since it is the app's alarm until then.
 - **It refuses until it can read both sides.** The task sweep waits for the calendar window, and
   the alarm half also waits for the alarm store (`initialized`): an unread list reads as "nothing
   rings" and would set a second alarm over a real one. Both refuse in demo mode.

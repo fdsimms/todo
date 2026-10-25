@@ -6,6 +6,7 @@ import {
   eventIsWakeUpEligible,
   isWakeUpTaskStale,
   matchedWakeUp,
+  parseWakeUpAlarmIds,
   wakeAlarmKey,
   wakeAlarmPlan,
   wakeUpAt,
@@ -173,5 +174,18 @@ describe('small helpers', () => {
     expect(clampWakeUpMinutes(500, 45, 0, 180)).toBe(180);
     expect(clampWakeUpMinutes(NaN, 45, 0, 180)).toBe(45);
     expect(clampWakeUpMinutes(12.4, 45, 0, 180)).toBe(12);
+  });
+});
+
+describe('parseWakeUpAlarmIds', () => {
+  it('reads string pairs and drops everything else', () => {
+    expect(parseWakeUpAlarmIds('{"a|b":"alarm-1","c|d":"override:alarm-2","e":3,"f":""}'))
+      .toEqual({ 'a|b': 'alarm-1', 'c|d': 'override:alarm-2' });
+  });
+
+  it('answers empty for a missing, malformed or non-object value', () => {
+    expect(parseWakeUpAlarmIds(null)).toEqual({});
+    expect(parseWakeUpAlarmIds('nope')).toEqual({});
+    expect(parseWakeUpAlarmIds('[1,2]')).toEqual({});
   });
 });

@@ -197,3 +197,22 @@ export function wakeAlarmPlan(morning: MorningAlarm, wakeAt: Date, now: Date): W
 export function wakeAlarmKey(sourceId: string, wakeAt: Date): string {
   return `${sourceId}@${wakeAt.getHours()}:${wakeAt.getMinutes()}`;
 }
+
+/** The prefix on a `wakeUpAlarmIds` value for a repeating alarm moved for one morning, not a one-off added. */
+export const WAKE_OVERRIDE_PREFIX = 'override:';
+
+/** Reads `wakeUpAlarmIds` back from its setting, dropping anything that isn't a string pair. */
+export function parseWakeUpAlarmIds(raw: unknown): Record<string, string> {
+  if (typeof raw !== 'string' || raw === '') return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === 'string' && value !== '') out[key] = value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
