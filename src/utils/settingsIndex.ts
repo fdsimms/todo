@@ -792,6 +792,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['postpone', 'procrastinate', 'snooze', 'defer', 'avoid'] },
   { id: 'postponeCheckThreshold', requires: 'postponeCheck', groupId: 'tasksProjects', label: 'Reschedule threshold', section: 'Rescheduling',
     keywords: ['postpone', 'how many'] },
+  { id: 'slotInMaxWaitDays', groupId: 'tasksProjects', label: 'Longest wait', section: 'Waiting for a lighter day',
+    keywords: ['slot in', 'lighter day', 'day is full', 'busy', 'waiting', 'how long', 'queue', 'held'] },
   // Every focus row carries "pomodoro": it's the name most people have for the
   // thing, and it appears nowhere in the UI copy (which says what each setting
   // does in literal terms instead), so without it the whole section is

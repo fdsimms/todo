@@ -1633,7 +1633,7 @@ const taskFieldsShape = {
   vacationPause: z.boolean().optional()
     .describe('Hide this task, and keep its streak, while vacation mode is on (get_overview says whether it is).'),
   slotIn: z.boolean().nullable().optional()
-    .describe('If the day is full: true lets the phone hold this task until a day that is not busy (at least one waiting task still shows every day, longest wait first, and never past its deadline); false keeps its date even when its category says wait; null follows the category. Only for a dated task that is not a daily repeat, a daily target, an every-N-hours task, a meter or weather wait, or one with a reminder at a set time.'),
+    .describe('If the day is full: true lets the phone hold this task until a day that is not busy (at least one waiting task still shows every day, longest wait first, never more than the slotInMaxWaitDays setting (3 days by default), and never past its deadline); false keeps its date even when its category says wait; null follows the category. Only for a dated task that is not a daily repeat, a daily target, an every-N-hours task, a meter or weather wait, or one with a reminder at a set time.'),
   workoutRoutineId: z.string().nullable().optional()
     .describe('A workout routine id (list_workouts lists routines; save_routine makes one). The task row then offers Start workout, and finishing that workout on the phone completes the task. Completing the task never logs a workout. null removes the link. Setting it clears workoutProgramId.'),
   workoutProgramId: z.string().nullable().optional()

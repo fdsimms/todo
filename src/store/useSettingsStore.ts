@@ -122,6 +122,7 @@ import {
   DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, MEAL_PLAN_NUDGE_SLOTS,
 } from '../utils/mealPlanNudge';
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
+import { DEFAULT_SLOT_IN_MAX_WAIT_DAYS, parseSlotInMaxWaitDays } from '../utils/slotIn';
 import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit, parseSalesTaxPercent, parseWeeklyBudget } from '../utils/rewards';
 import {
   FOCUS_DEFAULTS,
@@ -532,6 +533,11 @@ interface SettingsStore {
   postponeCheckEnabled: boolean;
   /** How many pushes before it says something. */
   postponeCheckThreshold: number;
+  /**
+   * Days a task set to wait for a lighter day may wait before it shows up
+   * whatever the day holds. See src/utils/slotIn.ts.
+   */
+  slotInMaxWaitDays: number;
   /**
    * Focus sessions — the run of work stretches and breaks a queue of tasks is
    * turned into (see src/utils/focusPlan.ts). Defaults are a classic pomodoro;
@@ -2197,6 +2203,7 @@ interface SettingsStore {
   setOnDeviceAiEnabled: (on: boolean) => void;
   setPostponeCheckEnabled: (on: boolean) => void;
   setPostponeCheckThreshold: (count: number) => void;
+  setSlotInMaxWaitDays: (days: number) => void;
   setAppLockEnabled: (on: boolean) => void;
   setAppLockGraceSeconds: (seconds: number) => void;
   setJournalLockEnabled: (on: boolean) => void;
@@ -2570,6 +2577,7 @@ const DEFAULT_SETTINGS = {
   autoCompleteProjectsOnDone: false,
   postponeCheckEnabled: true,
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
+  slotInMaxWaitDays: DEFAULT_SLOT_IN_MAX_WAIT_DAYS,
   focusWorkCapMinutes: FOCUS_DEFAULTS.workCapMinutes,
   focusDefaultWorkMinutes: FOCUS_DEFAULTS.defaultWorkMinutes,
   focusRestAfterTasks: FOCUS_DEFAULTS.restAfterTasks,
@@ -3021,6 +3029,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   autoCompleteProjectsOnDone: false,
   postponeCheckEnabled: true,
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
+  slotInMaxWaitDays: DEFAULT_SLOT_IN_MAX_WAIT_DAYS,
   focusWorkCapMinutes: FOCUS_DEFAULTS.workCapMinutes,
   focusDefaultWorkMinutes: FOCUS_DEFAULTS.defaultWorkMinutes,
   focusRestAfterTasks: FOCUS_DEFAULTS.restAfterTasks,
@@ -3379,6 +3388,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // that predates the setting starts with it rather than without it.
     const postponeCheckEnabled = dbGetSetting('postponeCheckEnabled') !== 'false';
     const postponeCheckThreshold = parsePostponeThreshold(dbGetSetting('postponeCheckThreshold'));
+    const slotInMaxWaitDays = parseSlotInMaxWaitDays(dbGetSetting('slotInMaxWaitDays'));
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
@@ -4229,6 +4239,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       simpleMode,
       simpleTaskForm,
       sleepGoalMinutes,
+      slotInMaxWaitDays,
       snackNudgeDeclinedDayKey,
       snackNudgeFromHour,
       snackNudgeSharePercent,
@@ -5422,6 +5433,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = parsePostponeThreshold(String(count));
     dbSetSetting('postponeCheckThreshold', String(clamped));
     set({ postponeCheckThreshold: clamped });
+  },
+
+  setSlotInMaxWaitDays(days: number) {
+    const clamped = parseSlotInMaxWaitDays(String(days));
+    dbSetSetting('slotInMaxWaitDays', String(clamped));
+    set({ slotInMaxWaitDays: clamped });
   },
 
   // Every focus setting re-parses on the way in as well as on the way out, so

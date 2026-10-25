@@ -26,6 +26,9 @@ import {
 import {
   DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD,
 } from '../../utils/postpone';
+import {
+  DEFAULT_SLOT_IN_MAX_WAIT_DAYS, MIN_SLOT_IN_MAX_WAIT_DAYS, MAX_SLOT_IN_MAX_WAIT_DAYS,
+} from '../../utils/slotIn';
 
 const EXPIRED_TASK_GRACE_SEGMENTS: SegmentOption<ExpiredTaskGraceDays>[] =
   EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
@@ -62,6 +65,8 @@ export function TasksProjectsSettings() {
   const setPostponeCheckEnabled = useSettingsStore(s => s.setPostponeCheckEnabled);
   const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
   const setPostponeCheckThreshold = useSettingsStore(s => s.setPostponeCheckThreshold);
+  const slotInMaxWaitDays = useSettingsStore(s => s.slotInMaxWaitDays);
+  const setSlotInMaxWaitDays = useSettingsStore(s => s.setSlotInMaxWaitDays);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const simpleTaskForm = useSettingsStore(s => s.simpleTaskForm);
@@ -360,6 +365,29 @@ export function TasksProjectsSettings() {
             </View>
           </>
         )}
+      </SettingsSection>
+
+      <SettingsSection
+        label="Waiting for a lighter day"
+        footer="For tasks and categories set to wait if the day is full."
+      >
+        <SettingsRow
+          entryId="slotInMaxWaitDays"
+          icon="hourglass-outline"
+          label="Longest wait"
+          hint={`A waiting task shows up after ${slotInMaxWaitDays === 1 ? '1 day' : `${slotInMaxWaitDays} days`}, however full the day is`}
+          tight
+        />
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={slotInMaxWaitDays}
+            onChange={next => setSlotInMaxWaitDays(next ?? DEFAULT_SLOT_IN_MAX_WAIT_DAYS)}
+            min={MIN_SLOT_IN_MAX_WAIT_DAYS}
+            max={MAX_SLOT_IN_MAX_WAIT_DAYS}
+            label="Longest wait"
+            describeValue={n => (n === 1 ? '1 day' : `${n} days`)}
+          />
+        </View>
       </SettingsSection>
 
       {/* Expiry needs a time window, and simplified mode takes the window row
