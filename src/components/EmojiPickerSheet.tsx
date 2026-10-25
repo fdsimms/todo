@@ -18,7 +18,7 @@ import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { EMOJI_GROUPS, searchEmoji } from '../utils/emojiCatalog';
+import { EMOJI_GROUPS, searchEmoji, suggestEmoji } from '../utils/emojiCatalog';
 import { firstEmoji } from '../utils/emojiInput';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
@@ -31,6 +31,8 @@ interface Props {
   value?: string | null;
   title?: string;
   hint?: string;
+  /** The name being typed alongside the emoji; matching emoji are offered in a Suggested row. */
+  suggestFor?: string;
   /** Fires with the chosen emoji, or `null` when the user clears it. */
   onSelect: (emoji: string | null) => void;
   onClose: () => void;
@@ -51,7 +53,7 @@ interface Props {
  * keyboard. The keyboard is still reachable from the footer for anything the
  * curated catalog doesn't carry, and `firstEmoji` clamps whatever comes back.
  */
-export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hint, onSelect, onClose }: Props) {
+export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hint, suggestFor, onSelect, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -62,6 +64,8 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
 
   const results = useMemo(() => (query.trim() ? searchEmoji(query) : null), [query]);
   const shown = results ?? EMOJI_GROUPS[groupIndex].entries;
+  // One grid row, and gone while searching: the results already answer the query.
+  const suggestions = useMemo(() => (suggestFor ? suggestEmoji(suggestFor, 8) : []), [suggestFor]);
 
   const sheet = useSheetMotion(visible);
   const { translateY, backdropOpacity } = sheet;
@@ -188,6 +192,30 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
               </TouchableOpacity>
             )}
           </View>
+
+          {!results && suggestions.length > 0 && (
+            <>
+              <Text style={styles.groupName}>Suggested</Text>
+              <View style={styles.suggestRow}>
+                {suggestions.map(entry => {
+                  const selected = entry.char === value;
+                  return (
+                    <TouchableOpacity
+                      key={entry.char}
+                      style={[styles.cell, selected && styles.cellSelected]}
+                      onPress={() => choose(entry.char)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`Suggested: ${entry.keywords.split(' ')[0]}`}
+                    >
+                      <Text style={styles.cellEmoji}>{entry.char}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
 
           {/* Icon-only, and all of them on screen at once: labelled tabs ran off
               the right edge, which buried Objects and Symbols — the two groups a
@@ -334,6 +362,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
     paddingHorizontal: spacing.md, paddingBottom: spacing.xs,
+  },
+  suggestRow: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    paddingHorizontal: spacing.sm, paddingBottom: spacing.sm,
   },
   grid: { maxHeight: 232 },
   gridContent: {

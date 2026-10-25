@@ -118,6 +118,8 @@ export const EMOJI_GROUPS: EmojiGroup[] = [
       '🍳 cooking breakfast eggs',
       '🥘 cooking dinner meal',
       '🍱 lunch bento meal prep',
+      '🍩 donut doughnut dessert treat sweet',
+      '🍪 cookie cookies dessert baking treat',
       '🧁 cupcake dessert baking treat',
       '🍰 cake dessert birthday',
       '🍫 chocolate treat snack',
@@ -302,4 +304,36 @@ export function searchEmoji(query: string, limit = 60): EmojiEntry[] {
     else if (entry.keywords.includes(q)) contains.push(entry);
   }
   return [...starts, ...contains].slice(0, limit);
+}
+
+/**
+ * Entries suggested by a name someone has typed ("Donut", "Pay bills", "Gym days").
+ *
+ * Stricter than `searchEmoji` on purpose: a search is typed *at* the catalog, so
+ * a loose substring match is fine, but a suggestion nobody asked for has to be
+ * right or it is noise above the grid. A word counts only when it equals a
+ * keyword, or begins one (three letters or more, so "do" doesn't offer
+ * everything starting with d), or is a keyword with an "s"/"es" on the end
+ * ("donuts"). Entries matching more of the name's words come first, then ones
+ * matching a whole keyword over a prefix, then catalog order. No match is an
+ * empty list, and the caller shows nothing.
+ */
+export function suggestEmoji(name: string, limit = 8): EmojiEntry[] {
+  const words = name.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 2);
+  if (words.length === 0) return [];
+
+  const scored: { entry: EmojiEntry; hits: number; exact: number; order: number }[] = [];
+  ALL_EMOJI.forEach((entry, order) => {
+    const keys = entry.keywords.split(' ');
+    let hits = 0;
+    let exact = 0;
+    for (const word of words) {
+      const stem = word.replace(/(es|s)$/, '');
+      if (keys.includes(word) || (stem.length >= 3 && keys.includes(stem))) { hits++; exact++; }
+      else if (word.length >= 3 && keys.some(k => k.startsWith(word))) hits++;
+    }
+    if (hits > 0) scored.push({ entry, hits, exact, order });
+  });
+  scored.sort((a, b) => b.hits - a.hits || b.exact - a.exact || a.order - b.order);
+  return scored.slice(0, limit).map(s => s.entry);
 }
