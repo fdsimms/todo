@@ -12,7 +12,7 @@ import { LimitImpactLines } from './LimitImpactLines';
 import { useLimitImpact } from '../hooks/useLimitImpact';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot, type NutrientKey, type ProductRating } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -37,6 +37,7 @@ import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { confirmLargeAmount } from '../utils/confirmLargeAmount';
 import { PantryAnswerField } from './PantryAnswerField';
+import { ProductRatingField } from './ProductRatingField';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl } from './SegmentedControl';
@@ -152,6 +153,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
   const answerPantryReview = useGroceryStore(s => s.answerPantryReview);
+  const updateProduct = useGroceryStore(s => s.updateProduct);
   // Lifts the focused amount field clear of the keyboard instead of leaving
   // it to a plain ScrollView, which only scrolls when the person does it
   // manually — same mechanism as every other keyboard-heavy sheet (see the
@@ -167,6 +169,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   const [pantryAnswers, setPantryAnswers] = useState<Record<string, PantryReviewAnswer | null>>({});
   // Per card, whether "Running low" also lists it; missing follows the setting.
   const [pantryAddToList, setPantryAddToList] = useState<Record<string, boolean>>({});
+  // A verdict picked per card, written to its product on Log. Missing is "no
+  // change", same as the pantry answer.
+  const [ratings, setRatings] = useState<Record<string, ProductRating | null>>({});
   // Which unit's pill is selected per card, and the bare number typed against
   // it — split the same way `FoodLogEntrySheet`'s amount field is, and reset
   // together with the answers below. 'other' means the free-text field, same
@@ -193,6 +198,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     setWeighGrams({});
     setPantryAnswers({});
     setPantryAddToList({});
+    setRatings({});
     setChosenSlot(slot);
     const today = getCurrentDayStart();
     setLastAmounts(foodLastAmounts(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today))));
@@ -386,6 +392,8 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
       });
       const pantry = pantryAnswers[food.key];
       if (pantry && food.itemId) answerPantryReview(food.itemId, pantry, { addToList: pantryAddToList[food.key] });
+      const rating = ratings[food.key];
+      if (rating && food.productId) updateProduct(food.productId, { rating });
     }
     haptics.success();
     Keyboard.dismiss();
@@ -580,6 +588,16 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     addToList={pantryAddToList[food.key]}
                     onAddToListChange={on => setPantryAddToList(a => ({ ...a, [food.key]: on }))}
                     label={`Pantry stock of ${food.label}`}
+                    style={styles.pantryField}
+                  />
+                )}
+                {/* A box with a product row can be rated while it's in hand. */}
+                {!!outcome && !!food.productId && (
+                  <ProductRatingField
+                    productId={food.productId}
+                    value={ratings[food.key] ?? null}
+                    onChange={v => setRatings(r => ({ ...r, [food.key]: v }))}
+                    label={`Rating of ${food.label}`}
                     style={styles.pantryField}
                   />
                 )}
