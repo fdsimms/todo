@@ -1017,14 +1017,19 @@ export function RewardsScreen() {
     const status = resting
       ? sentence(describeClaimWait(waitDays)).replace('Available again', 'Back')
       : !affordable
-      ? `Need ${formatCoins(reward.cost - balance)} more`
+      ? `${Math.max(0, balance)} / ${reward.cost}`
       : null;
     return (
       <PressableScale
         key={reward.id}
         style={[styles.tile, isGoal && styles.tileGoal, (resting || !affordable) && styles.tileDim]}
         onPress={() => setDetailId(reward.id)}
-        accessibilityLabel={[shown.title, formatCoins(reward.cost), status, isGoal ? 'Saving for this' : null].filter(Boolean).join('. ')}
+        accessibilityLabel={[
+          shown.title,
+          formatCoins(reward.cost),
+          resting || affordable ? status : `${Math.max(0, balance)} of ${formatCoins(reward.cost)} saved`,
+          isGoal ? 'Saving for this' : null,
+        ].filter(Boolean).join('. ')}
         accessibilityHint="Opens the reward"
       >
         <View style={styles.tileTop}>
@@ -1039,6 +1044,9 @@ export function RewardsScreen() {
           </Text>
         </View>
         {status && <Text style={styles.hint}>{status}</Text>}
+        {!resting && !affordable && (
+          <ProgressBar progress={goalBarFill(balance, reward.cost)} height={6} color={colors.done} decorative style={styles.tileBar} />
+        )}
         {/* Claimable from the tile itself. A tile that can't be claimed yet
             keeps its reason as text and opens the sheet, which explains it. */}
         {!resting && affordable && (
@@ -1502,6 +1510,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tileGoal: { borderColor: colors.accent },
   tileDim: { opacity: 0.6 },
   tileClaim: { alignSelf: 'flex-start', marginTop: spacing.xsm },
+  tileBar: { marginTop: spacing.xsm },
   tileTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'auto' },
   tileTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium, marginTop: spacing.sm },
   glyphFallback: { borderRadius: radius.md, backgroundColor: colors.accentSubtle, alignItems: 'center', justifyContent: 'center' },
