@@ -62,10 +62,9 @@ struct TodayView: View {
     }
 
     private var groceriesLabel: String {
-        guard let remaining = store.snapshot?.groceries?.lists.first?.remaining, remaining > 0 else {
-            return "Groceries"
-        }
-        return "Groceries, \(remaining) left"
+        guard let list = store.snapshot?.groceries?.lists.first else { return "Groceries" }
+        let remaining = store.local.remaining(list)
+        return remaining > 0 ? "Groceries, \(remaining) left" : "Groceries"
     }
 
     @ViewBuilder
@@ -74,8 +73,8 @@ struct TodayView: View {
             if snapshot.isStale(at: now) {
                 WatchNote(text: "This list is out of date. Open dundundun on your iPhone to refresh it.")
             } else {
-                let rows = snapshot.todayRows(at: now)
                 let local = store.local
+                let rows = snapshot.todayRows(at: now).filter { !local.isDeferred($0) }
                 if rows.isEmpty {
                     WatchNote(text: "Nothing left for today.")
                 }
@@ -87,16 +86,48 @@ struct TodayView: View {
                             store.tap(task)
                         }
                     }
+                    // Moving a task asks nothing, so a row that has to be
+                    // checked off on the phone can still go to tomorrow here.
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        if !local.isDone(task) {
+                            Button {
+                                store.deferToTomorrow(task)
+                            } label: {
+                                Label("Tomorrow", systemImage: "arrow.turn.up.right")
+                            }
+                            .tint(WidgetPalette.dark.accent)
+                        }
+                    }
                 }
                 let done = snapshot.doneToday(at: now) + rows.filter { local.isDone($0) }.count
                 if done > 0 {
                     WatchNote(text: "\(done) done today")
                 }
+                laterToday(snapshot.laterTodayRows(at: now).filter { !local.isDeferred($0) })
             }
         } else {
             WatchNote(text: "Open dundundun on your iPhone to load your tasks.")
         }
     }
+
+    /// What reaches Today later on: a deferred task, a time window not yet
+    /// open. Read only: the watch ticks off only what is on Today, and the
+    /// minute timeline moves each one up into the list when its time comes.
+    @ViewBuilder
+    private func laterToday(_ rows: [WidgetTask]) -> some View {
+        if !rows.isEmpty {
+            Section("Later today") {
+                ForEach(rows.prefix(Self.laterTodayLimit)) { task in
+                    LaterTodayRow(task: task)
+                }
+                if rows.count > Self.laterTodayLimit {
+                    WatchNote(text: "\(rows.count - Self.laterTodayLimit) more later today")
+                }
+            }
+        }
+    }
+
+    private static let laterTodayLimit = 5
 
     /// Tasks dictated here and not yet on the phone, at the top so the one
     /// just added is where the eye is when the dictation sheet closes.
@@ -210,6 +241,31 @@ struct TaskRowView: View {
     }
 }
 
+/// A task that reaches Today later on, and when. Not a button: it can't be
+/// checked off until it's on Today.
+struct LaterTodayRow: View {
+    let task: WidgetTask
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock")
+                .foregroundStyle(WidgetPalette.dark.textSecondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(task.title)
+                    .lineLimit(2)
+                    .foregroundStyle(WidgetPalette.dark.text)
+                if let at = task.visibleAtDate {
+                    Text(at, style: .time)
+                        .font(.footnote)
+                        .foregroundStyle(WidgetPalette.dark.textSecondary)
+                }
+            }
+        }
+        .listRowBackground(Color.clear)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // ==== Groceries ====
 
 struct GroceriesView: View {
@@ -303,7 +359,7 @@ struct GroceryListView: View {
                             HStack {
                                 Text(other.name)
                                 Spacer()
-                                Text("\(other.remaining)")
+                                Text("\(store.local.remaining(other))")
                                     .foregroundStyle(WidgetPalette.dark.textSecondary)
                             }
                         }

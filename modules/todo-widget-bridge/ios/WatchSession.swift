@@ -219,7 +219,7 @@ final class WatchSession: NSObject, WCSessionDelegate {
 
     let at = (info["at"] as? String) ?? ISO8601DateFormatter().string(from: Date())
     switch kind {
-    case "complete", "unit", "grocery", "choose":
+    case "complete", "unit", "grocery", "choose", "defer":
       guard let id = info["id"] as? String, !id.isEmpty else { return }
       // The widget's QuietTap shape (WidgetQuietIntents.swift) plus the id the
       // watch settles on. Both readers ignore a key they don't know, and a nil
@@ -229,9 +229,11 @@ final class WatchSession: NSObject, WCSessionDelegate {
       appendToQueue(watchQuietTapsFileName, entry)
       // As the widget's quiet checkbox does: the task's reminder is scheduled
       // under its id (notifications.ts) and would otherwise still go off for
-      // something already checked off, until the app applies the tap. A unit
-      // doesn't finish the task, so it leaves the reminder alone.
-      if kind == "complete" {
+      // something already checked off, until the app applies the tap. A task
+      // moved to tomorrow is the same (the app schedules the new one when it
+      // applies the move). A unit doesn't finish the task, so it leaves the
+      // reminder alone.
+      if kind == "complete" || kind == "defer" {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
       }
     case "groceryAdd":

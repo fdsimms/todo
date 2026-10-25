@@ -296,10 +296,12 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   `WatchSession.swift` sends it as the session's application context, compressed. Back: a tap
   is a user-info transfer, which `WatchSession` appends to the widget's own quiet-tap queue (or
   AddTaskIntent's queue, for a dictated task) in the widget's shape, so
-  `processQuietWidgetTaps` applies it with the widget's rules. Two tap kinds exist only for the
+  `processQuietWidgetTaps` applies it with the widget's rules. Three tap kinds exist only for the
   watch: `choose` (settle an either/or on the list the tap names, through `resolveChoice`'s
-  explicit `listId`) and `groceryAdd` (a dictated item, which rides the quiet-tap queue rather
-  than AddTaskIntent's task-title queue so it applies in order with the ticks around it).
+  explicit `listId`), `groceryAdd` (a dictated item, which rides the quiet-tap queue rather
+  than AddTaskIntent's task-title queue so it applies in order with the ticks around it) and
+  `defer` (a row's swipe to tomorrow, which writes `quietDeferUpdates`: the move the app's own
+  Tomorrow makes, dropped rather than applied a day late if the day ended before the drain).
 - **The watch pager has no visible way to its second page on its own.** Today is a scrolling
   list, so the Digital Crown scrolls it instead of paging past it, and Groceries was only
   reachable by a vertical swipe nobody is told about. Today's top-leading toolbar button (a cart)
@@ -327,6 +329,12 @@ whose comments carry the reasons. The rules worth knowing before touching them:
   that context includes it (`WatchStore.apply`). Before any of that, a tap is held on the watch
   for `WatchStore.undoWindow` behind an Undo button, and sent early if the app leaves the
   screen: once WatchConnectivity has it, the phone will apply it and the watch can't take it back.
+- **The complication extension holds two widgets** (Today and Groceries, one `WidgetBundle`), and
+  each opens the watch app on its own page through `widgetURL` (`WatchLink`, read by
+  `TodoWatchApp`'s `onOpenURL`). The watch app registers the `dundundun` scheme in its own
+  Info.plist for this; the iPhone app's registration doesn't reach another device. Keep the
+  Today widget's `kind` (`TodoWatchToday`) as it is, or every placed complication drops off its
+  watch face.
 - **`TodoWidgetData.swift` is compiled into both watch targets unchanged.** The watch keeps the
   snapshot in its own App Group under the widget's file name, so `loadWidgetSnapshot()` and the
   time-passing helpers (`visibleTasks(at:)`, `isStale`, `changeDates`) work there as they do in

@@ -2,6 +2,8 @@ import type { GroceryListEntry, Task, WorkoutSet, WorkoutSetKind } from '../type
 import type { WatchSessionInput } from '../store/useWorkoutStore';
 import type { WeightUnit } from './weightLog';
 import { completionTapFor, offersMealLogOnCompletion, type CompletionTap } from './completionTap';
+import { getLogicalTomorrow } from './dateUtils';
+import { scheduleMoveUpdates } from './taskMoves';
 import { workoutTaskEffect } from './workoutTask';
 import { storedKgFromShown } from './dumbbellLoad';
 import { WORKOUT_SET_KINDS, weightFromDisplay, weightToDisplay } from './workoutData';
@@ -44,8 +46,9 @@ export interface QuietTap {
    * widget sends these for every target row, so a run of taps is a run of
    * units), `grocery` puts an item in the cart on one list, `choose` picks one
    * option of an either/or on one list (the others come off it), and
-   * `groceryAdd` adds `title` to one list. Only the Apple Watch sends the last
-   * two: the widget draws no checkbox on an either/or and has no text entry.
+   * `groceryAdd` adds `title` to one list, and `defer` moves a task to
+   * tomorrow. Only the Apple Watch sends the last three: the widget draws no
+   * checkbox on an either/or, has no text entry and has no swipe.
    */
   kind: QuietTapKind;
   /**
@@ -136,13 +139,13 @@ export interface QuietTap {
  * watch dealt with a workout the phone asked it to retract, named by `id`).
  */
 export type QuietTapKind =
-  | 'complete' | 'unit' | 'grocery' | 'choose' | 'groceryAdd'
+  | 'complete' | 'unit' | 'grocery' | 'choose' | 'groceryAdd' | 'defer'
   | 'set' | 'restAdd' | 'restSkip' | 'finish' | 'watchSession'
   | 'setNote' | 'addSet' | 'addExercise' | 'moveExercise' | 'superset' | 'useSuggestion'
   | 'measuring' | 'healthWorkout' | 'healthRetracted';
 
 const QUIET_TAP_KINDS: readonly QuietTapKind[] = [
-  'complete', 'unit', 'grocery', 'choose', 'groceryAdd', 'set', 'restAdd', 'restSkip', 'finish', 'watchSession',
+  'complete', 'unit', 'grocery', 'choose', 'groceryAdd', 'defer', 'set', 'restAdd', 'restSkip', 'finish', 'watchSession',
   'setNote', 'addSet', 'addExercise', 'moveExercise', 'superset', 'useSuggestion', 'measuring', 'healthWorkout', 'healthRetracted',
 ];
 
@@ -181,6 +184,8 @@ export interface WatchDoneSet {
 export type QuietTapAction =
   | { type: 'complete'; id: string; at: string }
   | { type: 'logUnit'; id: string }
+  /** Move the task to tomorrow (`quietDeferUpdates`). */
+  | { type: 'deferTask'; id: string }
   /** Needs a person after all: run it through the opening intent's path. */
   | {
       type: 'handToApp';
@@ -623,6 +628,16 @@ export function planQuietTaps(
     const task = working.get(tap.id) ?? byId.get(tap.id);
     if (!task || task.completed || task.archived) continue;
 
+    if (tap.kind === 'defer') {
+      // "Tomorrow" said on a day that has since ended would land a day late,
+      // so it's dropped rather than guessed at; the task comes back to the
+      // watch with the next snapshot.
+      if (!isCurrentDay(tap.at)) continue;
+      settled.add(tap.id);
+      actions.push({ type: 'deferTask', id: tap.id });
+      continue;
+    }
+
     const tapKind = completionTapFor(task);
     if (tapKind === 'log-unit') {
       if (!isCurrentDay(tap.at)) continue;
@@ -641,6 +656,20 @@ export function planQuietTaps(
     }
   }
   return actions;
+}
+
+/**
+ * What moving a task to tomorrow from the watch writes: the same move a row's
+ * Tomorrow in the app makes (noon of the logical tomorrow, through
+ * `scheduleMoveUpdates`, so a repeating task is held by `deferUntil` and keeps
+ * its schedule), and a pin comes off, since the row's own move drops it when
+ * the day changes.
+ */
+export function quietDeferUpdates(task: Task, dayResetTime?: string): Partial<Task> {
+  const tomorrow = getLogicalTomorrow(dayResetTime);
+  tomorrow.setHours(12, 0, 0, 0);
+  const updates = scheduleMoveUpdates(task, tomorrow, dayResetTime);
+  return task.pinned ? { ...updates, pinned: false } : updates;
 }
 
 /**

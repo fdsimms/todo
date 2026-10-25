@@ -5,6 +5,7 @@ import {
   parseQuietTaps,
   parseWatchSession,
   planQuietTaps,
+  quietDeferUpdates,
   tapsToRequeue,
   tickValuesFromWatch,
   widgetTapNeedsApp,
@@ -228,6 +229,28 @@ describe('widgetTapNeedsAppReason', () => {
   });
 });
 
+describe('quietDeferUpdates', () => {
+  const tomorrowNoon = new Date(2025, 5, 11, 12).toISOString();
+
+  it('gives a one-off task tomorrow as its date', () => {
+    expect(quietDeferUpdates(task({ dueDate: AT }))).toEqual({ dueDate: tomorrowNoon, deferUntil: null });
+  });
+
+  it('holds a repeating task until tomorrow and keeps its schedule', () => {
+    expect(quietDeferUpdates(task({ dueDate: AT, recurrenceType: 'daily' }))).toEqual({ deferUntil: tomorrowNoon });
+  });
+
+  it('takes the pin off, as the app does when a pinned task changes day', () => {
+    expect(quietDeferUpdates(task({ dueDate: AT, pinned: true }))).toMatchObject({ pinned: false });
+  });
+
+  it("counts tomorrow from the user's own day start", () => {
+    // 1 AM on the 11th with a 2 AM reset is still the 10th, so tomorrow is the 11th.
+    jest.setSystemTime(new Date(2025, 5, 11, 1));
+    expect(quietDeferUpdates(task({ dueDate: AT }), '02:00')).toEqual({ dueDate: tomorrowNoon, deferUntil: null });
+  });
+});
+
 describe('parseQuietTaps', () => {
   it('keeps well-formed taps and drops the rest', () => {
     const json = JSON.stringify([
@@ -344,6 +367,22 @@ describe('planQuietTaps', () => {
 
   it('skips a task that is gone or already done', () => {
     expect(plan([tap('complete', 'missing'), tap('complete', 'test-1')], [task({ completed: true })])).toEqual([]);
+  });
+
+  it('moves a task to tomorrow from the watch, and drops what follows on it', () => {
+    expect(plan([tap('defer', 'test-1'), tap('complete', 'test-1')], [baseTask])).toEqual([
+      { type: 'deferTask', id: 'test-1' },
+    ]);
+  });
+
+  it('defers a task that would need the app to complete, since a move asks nothing', () => {
+    expect(plan([tap('defer', 'q')], [task({ id: 'q', deliverableKind: 'text' })])).toEqual([
+      { type: 'deferTask', id: 'q' },
+    ]);
+  });
+
+  it('drops a defer made on a day that has since ended', () => {
+    expect(plan([tap('defer', 'test-1', YESTERDAY)], [baseTask])).toEqual([]);
   });
 
   it('checks a grocery row on the list it was tapped on, and nowhere else', () => {

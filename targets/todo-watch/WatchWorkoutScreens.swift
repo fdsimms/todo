@@ -288,44 +288,56 @@ struct WorkoutSetView: View {
     private var fields: [WatchSetField] { exercise?.fields ?? [.weight, .reps] }
 
     var body: some View {
-        VStack(spacing: 6) {
-            if let bpm = store.shownHeartRate(on: screen) {
-                WatchHeartRateLine(bpm: bpm)
-            }
-            Text(exercise?.name ?? "")
-                .font(.headline)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-            HStack(spacing: 4) {
-                if let badge = set.badge {
-                    Text(badge)
-                        .fontWeight(.bold)
-                        .foregroundStyle(palette.orange)
-                }
-                Text(set.label)
-                    .foregroundStyle(palette.textSecondary)
-            }
-            .font(.footnote)
-            if let suggestion = screen.offeredSuggestion(set.exerciseId) {
-                suggestionCard(suggestion)
-            }
-            HStack(spacing: 6) {
-                box(.first, field: fields[0], value: $first)
-                if fields.count > 1 {
-                    box(.second, field: fields[1], value: $second)
-                }
-            }
-            if let note = set.note {
-                HStack(alignment: .firstTextBaseline, spacing: 3) {
-                    Text("Note:")
+        // Everything but Done set scrolls, and Done set stays pinned below:
+        // on a 41mm watch the whole stack ran past the bottom of the screen,
+        // taking the button with it. The Crown stays with the focused box;
+        // the list scrolls by touch.
+        ScrollView {
+            VStack(spacing: 4) {
+                Text(exercise?.name ?? "")
+                    .font(.headline)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                HStack(spacing: 4) {
+                    // On the set's own line rather than one of its own, which
+                    // is the line a small screen couldn't spare.
+                    if let bpm = store.shownHeartRate(on: screen) {
+                        WatchHeartRateLine(bpm: bpm, compact: true)
+                        Text("·")
+                            .foregroundStyle(palette.textSecondary)
+                            .accessibilityHidden(true)
+                    }
+                    if let badge = set.badge {
+                        Text(badge)
+                            .fontWeight(.bold)
+                            .foregroundStyle(palette.orange)
+                    }
+                    Text(set.label)
                         .foregroundStyle(palette.textSecondary)
-                    Text(note)
-                        .lineLimit(2)
-                        .foregroundStyle(palette.text)
                 }
-                .font(.caption2)
-                .accessibilityElement(children: .combine)
+                .font(.footnote)
+                if let suggestion = screen.offeredSuggestion(set.exerciseId) {
+                    suggestionCard(suggestion)
+                }
+                HStack(spacing: 6) {
+                    box(.first, field: fields[0], value: $first)
+                    if fields.count > 1 {
+                        box(.second, field: fields[1], value: $second)
+                    }
+                }
+                if let note = set.note {
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text("Note:")
+                            .foregroundStyle(palette.textSecondary)
+                        Text(note)
+                            .foregroundStyle(palette.text)
+                    }
+                    .font(.caption2)
+                    .accessibilityElement(children: .combine)
+                }
             }
+        }
+        .safeAreaInset(edge: .bottom) {
             HStack(spacing: 6) {
                 Button {
                     store.doneSet(set, values: values, in: screen)
@@ -353,6 +365,8 @@ struct WorkoutSetView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(noteLabel)
             }
+            .padding(.top, 4)
+            .background(Color.black)
         }
         .onAppear {
             DispatchQueue.main.async { focus = .first }
@@ -375,7 +389,8 @@ struct WorkoutSetView: View {
         HStack(spacing: 6) {
             Text(suggestion.reason)
                 .font(.caption2)
-                .lineLimit(2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
                 .foregroundStyle(palette.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button {
@@ -508,12 +523,15 @@ struct WorkoutSetView: View {
     }
 }
 
-/// "♥ 142 bpm" under the top bar while the watch measures the workout
+/// "♥ 142 bpm" under the top bar while the watch measures the workout (on a
+/// set, "♥ 142" on the set's own line)
 /// (docs/arch/workouts-mocks/heart-rate.png). The number and a heart, in one
 /// color whatever the number is: no zone color, no "high" or "low", nothing
 /// that reads it (docs/arch/health-data.md, "Heart rate during a workout").
 struct WatchHeartRateLine: View {
     let bpm: Int
+    /// Leaves off "bpm", for the set's line, where the heart says it.
+    var compact = false
 
     var body: some View {
         HStack(spacing: 3) {
@@ -521,8 +539,10 @@ struct WatchHeartRateLine: View {
             Text("\(bpm)")
                 .fontWeight(.semibold)
                 .monospacedDigit()
-            Text("bpm")
-                .foregroundStyle(palette.textSecondary)
+            if !compact {
+                Text("bpm")
+                    .foregroundStyle(palette.textSecondary)
+            }
         }
         .font(.footnote)
         .foregroundStyle(palette.red)

@@ -112,6 +112,13 @@ final class WatchStore: NSObject, ObservableObject {
         record(kind: task.tapsAreUnits ? "unit" : "complete", itemId: task.id, listId: nil, title: nil)
     }
 
+    /// Moves a task to tomorrow, the swipe on its row. The phone makes the
+    /// same move its own row's Tomorrow does (`quietDeferUpdates`).
+    func deferToTomorrow(_ task: WidgetTask) {
+        guard !local.isDone(task), !local.isDeferred(task) else { return }
+        record(kind: "defer", itemId: task.id, listId: nil, title: nil)
+    }
+
     func check(_ row: WidgetGroceryRow, listId: String?) {
         guard row.canCheck, !local.isChecked(row, listId: listId) else { return }
         record(kind: "grocery", itemId: row.id, listId: listId, title: nil)
@@ -157,11 +164,11 @@ final class WatchStore: NSObject, ObservableObject {
     }
 
     /// What a tick feels like on the wrist, so a tap made without looking
-    /// says it landed: one unit of a target clicks, anything checked off
+    /// says it landed: one unit of a target or a move to tomorrow clicks, anything checked off
     /// plays success. A dictated add has the dictation sheet closing to say so.
     private static func playHaptic(for kind: String) {
         switch kind {
-        case "unit": WKInterfaceDevice.current().play(.click)
+        case "unit", "defer": WKInterfaceDevice.current().play(.click)
         case "complete", "grocery", "choose": WKInterfaceDevice.current().play(.success)
         default: break
         }

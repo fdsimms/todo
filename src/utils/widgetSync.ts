@@ -15,7 +15,7 @@ import { dayKeyOf, dayKeyToDate, getDayStart, getLogicalDayKey } from './dateUti
 import { beginVisibleAtPass, getVisibleAt, sunLocationOn } from './visibilityUtils';
 import { buildWidgetCalendar, type WidgetCalendar } from './widgetCalendar';
 import { buildDayBuckets, dayDetail, dayRows } from './calendarMonth';
-import { parseQuietTaps, planQuietTaps, tapsToRequeue, workoutHandOffTaps, type QuietTap, type QuietTapWorkouts } from './widgetQuietTaps';
+import { parseQuietTaps, planQuietTaps, quietDeferUpdates, tapsToRequeue, workoutHandOffTaps, type QuietTap, type QuietTapWorkouts } from './widgetQuietTaps';
 import type { Task } from '../types';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -512,6 +512,13 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
         case 'logUnit':
           useTaskStore.getState().logQuotaUnit(action.id);
           break;
+        case 'deferTask': {
+          const task = useTaskStore.getState().tasks.find(t => t.id === action.id);
+          if (task) {
+            useTaskStore.getState().updateTask(action.id, quietDeferUpdates(task, dayResetTime), { markSeenOnBecomeVisible: true });
+          }
+          break;
+        }
         case 'checkGrocery':
           useGroceryStore.getState().setCheckedMany([action.itemId], true, { listId: action.listId });
           break;

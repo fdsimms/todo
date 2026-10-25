@@ -39,8 +39,9 @@ struct WatchFinishedNote: Codable, Equatable {
 /// tap, so the phone can say which ones it has received and applied.
 struct WatchTap: Codable, Identifiable {
     let id: String
-    /// "complete", "unit", "grocery", "choose", "add" or "groceryAdd", or one
-    /// of the workout's (`workoutKinds`).
+    /// "complete", "unit", "grocery", "choose", "add", "groceryAdd" or
+    /// "defer" (move a task to tomorrow), or one of the workout's
+    /// (`workoutKinds`).
     let kind: String
     /// The task id or grocery item id. Empty for "add" and "groceryAdd". A
     /// workout tap's is the set ("set", "setNote", "addSet"), the phone's
@@ -202,6 +203,8 @@ enum WatchTapLog {
 /// The watch's unsettled taps, as what they change on screen.
 struct LocalTapState {
     let completed: Set<String>
+    /// Tasks moved to tomorrow here, which leave Today at once.
+    let deferred: Set<String>
     let units: [String: Int]
     let groceries: Set<String>
     /// Titles of tasks added on the watch that the phone hasn't received yet.
@@ -226,6 +229,7 @@ struct LocalTapState {
 
     init(_ taps: [WatchTap]) {
         var completed = Set<String>()
+        var deferred = Set<String>()
         var units: [String: Int] = [:]
         var groceries = Set<String>()
         var added: [String] = []
@@ -250,6 +254,7 @@ struct LocalTapState {
             case "healthRetracted":
                 retractedWorkouts.insert(tap.itemId)
             case "complete": completed.insert(tap.itemId)
+            case "defer": deferred.insert(tap.itemId)
             case "unit": units[tap.itemId, default: 0] += 1
             case "grocery": groceries.insert(Self.groceryKey(itemId: tap.itemId, listId: tap.listId))
             case "choose":
@@ -262,6 +267,7 @@ struct LocalTapState {
             }
         }
         self.completed = completed
+        self.deferred = deferred
         self.units = units
         self.groceries = groceries
         self.added = added
@@ -281,6 +287,11 @@ struct LocalTapState {
     /// The target's count with this watch's units added on.
     func progress(_ task: WidgetTask) -> Int {
         task.progressCount + (units[task.id] ?? 0)
+    }
+
+    /// Whether the task was moved to tomorrow here and so is off Today.
+    func isDeferred(_ task: WidgetTask) -> Bool {
+        deferred.contains(task.id)
     }
 
     func isDone(_ task: WidgetTask) -> Bool {
@@ -306,6 +317,15 @@ struct LocalTapState {
         }
     }
 
+    /// How many of `list` are left to buy as drawn here: the phone's count,
+    /// less what was checked here (an either/or's losing options included),
+    /// plus what was added here and hasn't reached the phone.
+    func remaining(_ list: WidgetGroceryList) -> Int {
+        let shown = visibleRows(list)
+        let gone = (list.rows.count - shown.count) + shown.filter { isChecked($0, listId: list.id) }.count
+        return max(0, list.remaining - gone) + groceryAdds(listId: list.id).count
+    }
+
     /// Items added here to `listId` that the phone hasn't received yet.
     func groceryAdds(listId: String?) -> [String] {
         groceryAdded.filter { $0.listId == listId }.map { $0.title }
@@ -317,5 +337,18 @@ extension WidgetSnapshot {
     func todayRows(at date: Date) -> [WidgetTask] {
         var seen = Set<String>()
         return (pinnedTasks + visibleTasks(at: date)).filter { seen.insert($0.id).inserted }
+    }
+
+    /// Tasks that reach Today later in the same logical day, soonest first:
+    /// the snapshot's upcoming tasks whose moment hasn't come by `date`,
+    /// less anything already a row (a pinned one) and anything after the day
+    /// turns over. Empty from a snapshot with no day boundary to judge by.
+    func laterTodayRows(at date: Date) -> [WidgetTask] {
+        guard !isLaterDay(at: date), let dayEnd = nextDayStart.flatMap(isoDate) else { return [] }
+        let shown = Set(todayRows(at: date).map(\.id))
+        return upcomingTasks.filter { task in
+            guard let at = task.visibleAtDate else { return false }
+            return at > date && at < dayEnd && !shown.contains(task.id)
+        }
     }
 }

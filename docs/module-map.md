@@ -648,7 +648,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, dayKeyGap, weighInDeclineHolds, +1 more
 - `src/utils/widgetBridge.ts` — WidgetBridge, widgetBridge
 - `src/utils/widgetCalendar.ts` — WidgetCalendarEvent, WidgetCalendarTask, WidgetCalendarDay, WidgetHiddenEvent, WidgetCalendar, MAX_WIDGET_CALENDAR_EVENTS, MAX_WIDGET_CALENDAR_TASKS, WidgetCalendarDayInput, WidgetCalendarInput, buildWidgetCalendar
-- `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapKind, WATCH_NOTE_MAX, WatchTickValues, WatchDoneSet, QuietTapAction, QuietTapWorkouts, WidgetNeedsAppReason, widgetTapNeedsAppReason, widgetTapNeedsApp, +9 more
+- `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapKind, WATCH_NOTE_MAX, WatchTickValues, WatchDoneSet, QuietTapAction, QuietTapWorkouts, WidgetNeedsAppReason, widgetTapNeedsAppReason, widgetTapNeedsApp, +10 more
 - `src/utils/widgetSnapshot.ts` — SnapshotCaps, WIDGET_CAPS, WATCH_CAPS, WidgetTask, WidgetUpcomingTask, WidgetGroceryList, WidgetGroceryRow, WidgetGroceries, WidgetMeal, WidgetKitchenItem, +19 more
 - `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
 - `src/utils/workoutCell.ts` — setFieldMax, parseRepsTarget, parseSetCell
