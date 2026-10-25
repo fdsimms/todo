@@ -2028,7 +2028,14 @@ export function FoodLogEntrySheet({
   // figures, and these are the way to one that doesn't. Each leaves while its
   // own results are open, which have their own way to search again.
   const offerDatabase = hasQuery && !dbOpen;
-  const startTileCount = [onScan, onPhotographLabel, canEstimate, onSavedMeal].filter(Boolean).length;
+  const startTiles: { label: string; icon: React.ComponentProps<typeof Ionicons>['name']; onPress: () => void }[] = [];
+  if (onScan) startTiles.push({ label: 'Scan a barcode', icon: 'barcode-outline', onPress: () => { haptics.tap(); Keyboard.dismiss(); onScan(); } });
+  if (onPhotographLabel) startTiles.push({ label: 'Photograph a label', icon: 'camera-outline', onPress: startLabelPhoto });
+  if (canEstimate) startTiles.push({ label: 'Photograph your meal', icon: 'restaurant-outline', onPress: startMealPhoto });
+  if (onSavedMeal) startTiles.push({ label: 'Log a saved meal', icon: 'bookmark-outline', onPress: () => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); } });
+  const startTileRows = startTiles.length >= 4
+    ? [startTiles.slice(0, 2), startTiles.slice(2)]
+    : [startTiles];
   const offerEstimate = hasQuery && !!canEstimate && !estimateOpen;
   const lookupOffers = offerDatabase || offerEstimate ? (
     <View style={styles.lookupOffers}>
@@ -2712,49 +2719,16 @@ export function FoodLogEntrySheet({
               <>
                 <Text style={styles.startLabel}>OR START FROM</Text>
                 {/* Two to a row once there are four: four across left each
-                    label a word or two wide at a larger text size. */}
-                <View style={styles.startRow}>
-                  {!!onScan && (
-                    <StartTile
-                      styles={styles}
-                      colors={colors}
-                      icon="barcode-outline"
-                      label="Scan a barcode"
-                      onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
-                      wide={startTileCount >= 4}
-                    />
-                  )}
-                  {!!onPhotographLabel && (
-                    <StartTile
-                      styles={styles}
-                      colors={colors}
-                      icon="camera-outline"
-                      label="Photograph a label"
-                      onPress={startLabelPhoto}
-                      wide={startTileCount >= 4}
-                    />
-                  )}
-                  {!!canEstimate && (
-                    <StartTile
-                      styles={styles}
-                      colors={colors}
-                      icon="restaurant-outline"
-                      label="Photograph your meal"
-                      onPress={startMealPhoto}
-                      wide={startTileCount >= 4}
-                    />
-                  )}
-                  {!!onSavedMeal && (
-                    <StartTile
-                      styles={styles}
-                      colors={colors}
-                      icon="bookmark-outline"
-                      label="Log a saved meal"
-                      onPress={() => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); }}
-                      wide={startTileCount >= 4}
-                    />
-                  )}
-                </View>
+                    label a word or two wide at a larger text size. The pairs
+                    are rows of their own rather than one wrapping row, since
+                    a wrapped row sized the tiles by their labels. */}
+                {startTileRows.map((row, i) => (
+                  <View key={i} style={[styles.startRow, i < startTileRows.length - 1 && styles.startRowGap]}>
+                    {row.map(t => (
+                      <StartTile key={t.label} styles={styles} colors={colors} icon={t.icon} label={t.label} onPress={t.onPress} />
+                    ))}
+                  </View>
+                ))}
               </>
             )}
             {!!onDeclineMeal && (
@@ -2917,17 +2891,15 @@ interface StartTileProps {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
   onPress: () => void;
-  /** Half the row rather than an even share, once there are four tiles. */
-  wide?: boolean;
 }
 
 /**
  * One of the ways to start that need no text (scan, photograph a label, a
- * saved meal): equal thirds of one row, icon over label.
+ * saved meal): an equal share of its row, icon over label.
  */
-function StartTile({ styles, colors, icon, label, onPress, wide = false }: StartTileProps) {
+function StartTile({ styles, colors, icon, label, onPress }: StartTileProps) {
   return (
-    <PressableScale style={[styles.startTile, wide && styles.startTileHalf]} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+    <PressableScale style={styles.startTile} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
       <Ionicons name={icon} size={iconSize.md} color={colors.accentText} />
       <Text style={styles.startTileText} numberOfLines={2}>{label}</Text>
     </PressableScale>
@@ -3151,11 +3123,11 @@ function makeStyles(colors: Colors) {
     },
     startRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
       gap: spacing.sm,
       marginHorizontal: spacing.md,
       marginBottom: spacing.md,
     },
+    startRowGap: { marginBottom: spacing.sm },
     // minHeight, not height: a larger system text size wraps the label onto a
     // third line and the tile has to grow with it.
     startTile: {
@@ -3169,8 +3141,6 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
       backgroundColor: colors.bgSecondary,
     },
-    // Overrides flex: 1's zero basis so the row wraps two to a line.
-    startTileHalf: { flexBasis: '45%' },
     startTileText: {
       color: colors.text,
       fontSize: font.sm,
