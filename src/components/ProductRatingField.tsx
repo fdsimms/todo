@@ -1,11 +1,12 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, type NativeSyntheticEvent, type StyleProp, type TargetedEvent, type ViewStyle } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, spacing, type Colors } from '../theme';
+import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { RATING_LABELS } from '../utils/groceryProduct';
 import type { ProductRating } from '../types';
 import { SegmentedControl } from './SegmentedControl';
+import { TextField } from './TextField';
 
 interface Props {
   productId: string;
@@ -16,6 +17,15 @@ interface Props {
    */
   value: ProductRating | null;
   onChange: (rating: ProductRating | null) => void;
+  /**
+   * The reason typed beside a pick ("too sweet"), or null while it is
+   * untouched, in which case the field shows the product's own note. The field
+   * only appears once a rating has been picked here.
+   */
+  note: string | null;
+  onNoteChange: (note: string) => void;
+  /** Fired when the note field takes focus, so the sheet can lift it clear of the keyboard. */
+  onNoteFocus?: (event: NativeSyntheticEvent<TargetedEvent>) => void;
   /** Names the group for screen readers. */
   label?: string;
   surface?: 'page' | 'card';
@@ -38,10 +48,11 @@ const OPTIONS: { value: ProductRating; label: string }[] = [
  * already held. The banner after a finish (`ProductRatingOffer`) is the other
  * way in and records the same value.
  */
-export function ProductRatingField({ productId, value, onChange, label = 'How was it?', surface, style }: Props) {
+export function ProductRatingField({ productId, value, onChange, note, onNoteChange, onNoteFocus, label = 'How was it?', surface, style }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const current = useGroceryStore(s => s.itemProducts.find(p => p.id === productId)?.rating ?? null);
+  const currentNote = useGroceryStore(s => s.itemProducts.find(p => p.id === productId)?.note ?? '');
   const shown = value ?? current;
 
   return (
@@ -54,6 +65,19 @@ export function ProductRatingField({ productId, value, onChange, label = 'How wa
         label={label}
         surface={surface}
       />
+      {/* Asked only after a pick, since the reason belongs to the verdict. */}
+      {value !== null && (
+        <TextField
+          style={styles.note}
+          value={note ?? currentNote}
+          onChangeText={onNoteChange}
+          onFocus={onNoteFocus}
+          placeholder="e.g. Too sweet"
+          placeholderTextColor={colors.textTertiary}
+          returnKeyType="done"
+          accessibilityLabel="Why? A note on the rating"
+        />
+      )}
     </View>
   );
 }
@@ -61,4 +85,12 @@ export function ProductRatingField({ productId, value, onChange, label = 'How wa
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { gap: spacing.xsm },
   label: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, letterSpacing: 0.8 },
+  note: {
+    color: colors.text,
+    fontSize: font.md,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
 });

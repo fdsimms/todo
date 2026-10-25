@@ -172,6 +172,9 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   // A verdict picked per card, written to its product on Log. Missing is "no
   // change", same as the pantry answer.
   const [ratings, setRatings] = useState<Record<string, ProductRating | null>>({});
+  // The reason typed beside a pick. Missing is untouched, so the product's own
+  // note stands; it is written only alongside a rating picked in this sheet.
+  const [ratingNotes, setRatingNotes] = useState<Record<string, string>>({});
   // Which unit's pill is selected per card, and the bare number typed against
   // it — split the same way `FoodLogEntrySheet`'s amount field is, and reset
   // together with the answers below. 'other' means the free-text field, same
@@ -199,6 +202,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
     setPantryAnswers({});
     setPantryAddToList({});
     setRatings({});
+    setRatingNotes({});
     setChosenSlot(slot);
     const today = getCurrentDayStart();
     setLastAmounts(foodLastAmounts(recentEntries(dayKeyOf(subDays(today, 90)), dayKeyOf(today))));
@@ -393,7 +397,10 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
       const pantry = pantryAnswers[food.key];
       if (pantry && food.itemId) answerPantryReview(food.itemId, pantry, { addToList: pantryAddToList[food.key] });
       const rating = ratings[food.key];
-      if (rating && food.productId) updateProduct(food.productId, { rating });
+      if (rating && food.productId) {
+        const note = ratingNotes[food.key];
+        updateProduct(food.productId, note === undefined ? { rating } : { rating, note: note.trim() });
+      }
     }
     haptics.success();
     Keyboard.dismiss();
@@ -597,6 +604,11 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     productId={food.productId}
                     value={ratings[food.key] ?? null}
                     onChange={v => setRatings(r => ({ ...r, [food.key]: v }))}
+                    note={ratingNotes[food.key] ?? null}
+                    onNoteChange={text => setRatingNotes(n => ({ ...n, [food.key]: text }))}
+                    onNoteFocus={e => {
+                      if (typeof e.nativeEvent.target === 'number') keyboardScroll.focusInput(e.nativeEvent.target);
+                    }}
                     label={`Rating of ${food.label}`}
                     style={styles.pantryField}
                   />
