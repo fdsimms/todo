@@ -5054,8 +5054,9 @@ export function TodayScreen() {
 
   // Dropped by simplified mode: "40m done · 2h 15m planned" is a reading of the
   // day rather than a part of it, and it needs the effort ratings that mode
-  // also takes away.
-  const workloadSubtitle =
+  // also takes away. Drawn as one quiet line under the view pills rather than
+  // in the header, since it's the least important thing the header held.
+  const workloadLine =
     viewMode === 'today' && !featureHidden('workloadSubtitle', simpleMode)
     && (plannedLabel || completedTodayLabel || eventsLeftLabel)
       ? [
@@ -5065,12 +5066,10 @@ export function TodayScreen() {
           ]
             .filter(Boolean)
             .join(' · '),
-          // Its own line: with the header buttons beside it the full sentence
-          // wrapped anyway, and it wrapped mid-phrase ("1h of / events left").
           eventsLeftLabel ? `${eventsLeftLabel} of events left` : undefined,
         ]
           .filter(Boolean)
-          .join('\n')
+          .join(' · ')
       : undefined;
 
 
@@ -5147,10 +5146,10 @@ export function TodayScreen() {
       }] : []),
   ];
 
-  // Today's header is the tallest of the four: its workload line can run to two
-  // lines (events left is a line of its own), where the others reserve one. The
-  // other lenses are held to its measured height, or the pills and the list
-  // under them jump up on every switch away from Today.
+  // Today's header is the tallest of the four: it carries the date overline and
+  // the weather, which the others don't. The other lenses are held to its
+  // measured height, or the pills and the list under them jump up on every
+  // switch away from Today.
   const [todayHeaderHeight, setTodayHeaderHeight] = useState<number | undefined>(undefined);
 
   // ==== render. Everything below is JSX ====
@@ -5162,7 +5161,6 @@ export function TodayScreen() {
           title={VIEW_TITLES[viewMode]}
           minHeight={viewMode === 'today' ? undefined : todayHeaderHeight}
           overline={viewMode === 'today' ? today : undefined}
-          subtitle={workloadSubtitle}
           actions={headerActions}
           titleAdornment={
             viewMode === 'today' && headerWeather ? (
@@ -5207,6 +5205,8 @@ export function TodayScreen() {
           switchChannel={viewSwitchChannel}
           styles={styles}
         />
+
+        {workloadLine && <Text style={styles.workloadLine}>{workloadLine}</Text>}
 
         {/* Outside the `viewMode` gate on purpose: a session runs against the
             tasks, not against a lens over them, so switching to Later must
@@ -6243,6 +6243,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   coinPillTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   coinPillGoal: { fontSize: font.xxs, fontWeight: fontWeight.medium, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
   coinPillText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+  workloadLine: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs, fontSize: font.xs, color: colors.textTertiary },
   headerWeatherText: { flexShrink: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 7,
