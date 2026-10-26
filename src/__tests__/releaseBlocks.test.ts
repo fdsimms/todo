@@ -6,9 +6,15 @@ jest.mock('../db/database', () => ({
 
 let mockReasons: { reason: string; groupIds: string[] }[] = [];
 let mockGates: { id: string }[] = [];
+const mockReconcile = jest.fn();
 jest.mock('../utils/appShieldReconcile', () => ({
   currentShieldReasons: () => mockReasons,
   outstandingGatesNow: () => mockGates,
+  reconcileAppShield: () => mockReconcile(),
+}));
+const mockClearSpeedBump = jest.fn();
+jest.mock('../utils/screenTimeBridge', () => ({
+  screenTimeBridge: () => ({ clearSpeedBump: mockClearSpeedBump }),
 }));
 
 const mockSetPenalty = jest.fn();
@@ -50,6 +56,15 @@ describe('releaseAllBlocks', () => {
   it('does nothing and records nothing when nothing is blocking', () => {
     expect(releaseAllBlocks('emergency', 'a reason long enough')).toEqual([]);
     expect(useShieldReleaseStore.getState().log).toEqual([]);
+  });
+
+  it('ends a speed bump by dropping the extension\'s record, then lifts the shield itself', () => {
+    live('speedBump');
+    expect(releaseAllBlocks('emergency', 'Need the map to get home')).toEqual(['speedBump']);
+    expect(mockClearSpeedBump).toHaveBeenCalledTimes(1);
+    // No store changed, so nothing else would bring the shield down.
+    expect(mockReconcile).toHaveBeenCalledTimes(1);
+    expect(useShieldReleaseStore.getState().log[0].ended).toEqual(['speedBump']);
   });
 
   it('ends a failed-task block by clearing it', () => {

@@ -58,7 +58,7 @@ import {
 import { DEFAULT_PRODUCE_FLOOR, clampProduceFloor } from '../utils/produceFloorTasks';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
 import { parseGeneratorEstimates, type GeneratorEstimates } from '../utils/ruleEstimate';
-import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, BlockOfferRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
+import type { SortOption, RecipeSortOption, ProjectSortOption, Priority, Effort, Difficulty, GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, MealSlot, TimeOfDay, TitleRule, WeatherRule, EventTaskRule, ScreenTimeRule, SpeedBumpRule, BlockOfferRule, HealthRule, NutrientKey, ReminderCapture } from '../types';
 import { clampStepGoal, parseStepGoal } from '../utils/stepGoal';
 import { clampShortNightMinutes, parseShortNightMinutes, SHORT_NIGHT_MINUTES_DEFAULT } from '../utils/shortNight';
 import { parseLeftoverOptOuts, serializeLeftoverOptOuts } from '../utils/leftoverOptOut';
@@ -185,6 +185,7 @@ import {
 } from '../utils/wanikaniTasks';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseBlockOfferRules, serializeBlockOfferRules } from '../utils/blockOfferTasks';
+import { parseSpeedBumpRules, serializeSpeedBumpRules } from '../utils/speedBump';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
 import { parseReminderCaptures, serializeReminderCaptures } from '../utils/reminderCaptures';
 import {
@@ -1863,6 +1864,10 @@ interface SettingsStore {
   // defaults: a coin amount is the person's call. Out of DEFAULT_SETTINGS for
   // weatherRules's reason.
   blockOfferRules: BlockOfferRule[];
+  // Speed bumps: a short block the monitor raises when a group's use today
+  // passes a threshold (src/utils/speedBump.ts). No shipped defaults, and
+  // armed whether or not Screen Time tasks are on.
+  speedBumpRules: SpeedBumpRule[];
   // The daily "log how you're feeling" task (see src/utils/moodTasks.ts). Off
   // by default, the same call pantryCheck and birthdayGift make: it adds a
   // surface nobody had, and there is no recorded intent to point at — nobody
@@ -2472,6 +2477,7 @@ interface SettingsStore {
   setBlockOfferTasks: (on: boolean) => void;
   setBlockOfferTaskCategory: (category: string | null) => void;
   setBlockOfferRules: (rules: BlockOfferRule[]) => void;
+  setSpeedBumpRules: (rules: SpeedBumpRule[]) => void;
   setMoodLogTasks: (on: boolean) => void;
   setMoodLogTaskCategory: (category: string | null) => void;
   setMoodLogLastDayKey: (dayKey: string | null) => void;
@@ -3277,6 +3283,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   blockOfferTasks: false,
   blockOfferTaskCategory: null,
   blockOfferRules: [],
+  speedBumpRules: [],
   moodLogTasks: false,
   moodLogTaskCategory: null,
   moodLogLastDayKey: null,
@@ -3943,6 +3950,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const blockOfferTasks = dbGetSetting('blockOfferTasks') === 'true';
     const blockOfferTaskCategory = dbGetSetting('blockOfferTaskCategory') || null;
     const blockOfferRules = parseBlockOfferRules(dbGetSetting('blockOfferRules'));
+    const speedBumpRules = parseSpeedBumpRules(dbGetSetting('speedBumpRules'));
     // Same TEXT-column parse as every other numeric setting here: an
     // unparseable or missing row (a fresh install, or one that predates this
     // setting) reads back as 0 — never nudge — matching DEFAULT_NUDGE_CADENCE_DAYS.
@@ -4309,6 +4317,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       snackNudgeTaskCategory,
       snackNudgeTasks,
       sortOption,
+      speedBumpRules,
       standardDrinkGrams,
       stepGoal,
       sunLocation,
@@ -5180,6 +5189,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setBlockOfferRules(rules: BlockOfferRule[]) {
     dbSetSetting('blockOfferRules', serializeBlockOfferRules(rules));
     set({ blockOfferRules: rules });
+  },
+
+  // Written whole, like setScreenTimeRules.
+  setSpeedBumpRules(rules: SpeedBumpRule[]) {
+    dbSetSetting('speedBumpRules', serializeSpeedBumpRules(rules));
+    set({ speedBumpRules: rules });
   },
 
   setMoodLogTasks(on: boolean) {

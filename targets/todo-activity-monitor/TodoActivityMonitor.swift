@@ -43,6 +43,10 @@ class TodoActivityMonitor: DeviceActivityMonitor {
     super.eventDidReachThreshold(event, activity: activity)
 
     let raw = event.rawValue
+    if raw.hasPrefix(ScreenTimeShared.speedBumpEventPrefix) {
+      raiseSpeedBump(event: raw)
+      return
+    }
     guard raw.hasPrefix(Self.eventPrefix) else { return }
     let ruleId = String(raw.dropFirst(Self.eventPrefix.count))
     guard !ruleId.isEmpty else { return }
@@ -53,6 +57,72 @@ class TodoActivityMonitor: DeviceActivityMonitor {
     // wake this more than once for an event that has already fired, and a
     // duplicate here would be a duplicate task.
     ScreenTimeShared.appendCrossing(ScreenTimeCrossing(ruleId: ruleId, dayKey: dayKey))
+  }
+
+  /// A speed bump rung was crossed: block the rule's groups for a short time.
+  ///
+  /// The second place outside the app that raises a shield, and the first that
+  /// does it in answer to use rather than to a clock. The app is usually closed
+  /// when this runs, so everything it needs was written ahead (`speedBumpsFileName`)
+  /// and everything the app needs afterwards is written back (`speedBumpLiveFileName`):
+  /// the app reads that record and keeps the shield up for it, since a reconcile
+  /// that did not know about it would lift a block it never raised.
+  ///
+  /// Four rules keep it from blocking more than it should:
+  ///
+  /// - **A rung fires once a day.** iOS can report an event more than once, and a
+  ///   duplicate would start a second block when the first has ended.
+  /// - **A running block is left alone.** A rung crossed during one is ignored,
+  ///   not queued or extended, so blocks never stack into a long one.
+  /// - **No day, no block.** It uses the day the app stamped when it armed the
+  ///   monitor, for the reason crossings do. Without one it does nothing.
+  /// - **It lifts only its own groups.** The window armed here ends through
+  ///   `heldGroupIds`, which keeps every group another reason still holds.
+  ///
+  /// Not verified without a device: that `DeviceActivityCenter` can start a
+  /// window from inside the extension (Apple's documentation says an extension
+  /// may call it), and that iOS accepts an interval starting at the current
+  /// second, which the manual block's window already relies on.
+  private func raiseSpeedBump(event raw: String) {
+    #if canImport(FamilyControls)
+    if #available(iOS 16.0, *) {
+      let body = String(raw.dropFirst(ScreenTimeShared.speedBumpEventPrefix.count))
+      guard let split = body.lastIndex(of: ":") else { return }
+      let ruleId = String(body[..<split])
+      guard !ruleId.isEmpty,
+            let bump = ScreenTimeShared.readSpeedBumps().first(where: { $0.id == ruleId }),
+            !bump.blockGroupIds.isEmpty,
+            let dayKey = ScreenTimeShared.readDayKey()
+      else { return }
+
+      // Recorded before anything is raised, so a duplicate wake stops here even
+      // if the rest fails.
+      guard ScreenTimeShared.recordSpeedBumpFired(dayKey: dayKey, event: raw) else { return }
+
+      let now = Date()
+      if !ScreenTimeShared.activeSpeedBumpGroupIds(now: now).isEmpty { return }
+
+      let end = now.addingTimeInterval(TimeInterval(bump.blockMinutes * 60))
+      let formatter = ISO8601DateFormatter()
+      formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+      let live = SpeedBumpLiveShared(endIso: formatter.string(from: end), groupIds: bump.blockGroupIds, ruleId: ruleId)
+      guard ScreenTimeShared.writeLiveSpeedBump(live) else { return }
+      ScreenTimeShared.applyGroups(ScreenTimeShared.heldGroupIds(now: now))
+
+      let calendar = Calendar.current
+      let schedule = DeviceActivitySchedule(
+        intervalStart: calendar.dateComponents([.hour, .minute, .second], from: now),
+        intervalEnd: calendar.dateComponents([.hour, .minute, .second], from: end),
+        repeats: false
+      )
+      let center = DeviceActivityCenter()
+      let name = DeviceActivityName(ScreenTimeShared.speedBumpWindowName)
+      center.stopMonitoring([name])
+      // A failure here is not fatal: the app's reconcile lifts the block on its
+      // next foreground, as it does for the other timed blocks.
+      try? center.startMonitoring(name, during: schedule)
+    }
+    #endif
   }
 
   /// The start of a gate block: a task the apps are held behind becoming due
@@ -146,6 +216,13 @@ class TodoActivityMonitor: DeviceActivityMonitor {
         // the penalty's, with the manual group left out and every other
         // reason's group (including a penalty still running) kept.
         ScreenTimeShared.applyGroups(ScreenTimeShared.heldGroupIds(now: Date(), manualEnded: true))
+      } else if activity.rawValue == ScreenTimeShared.speedBumpWindowName {
+        // A speed bump running out: the same rebuild, with its groups left out
+        // and everything else a penalty, schedule or manual block holds kept.
+        ScreenTimeShared.applyGroups(ScreenTimeShared.heldGroupIds(now: Date(), speedBumpEnded: true))
+        if ScreenTimeShared.activeSpeedBumpGroupIds(now: Date(), ended: true).isEmpty {
+          _ = ScreenTimeShared.remove(ScreenTimeShared.speedBumpLiveFileName)
+        }
       } else if activity.rawValue.hasPrefix(ScreenTimeShared.scheduleActivityPrefix) {
         // A schedule closing lifts only the groups nothing else holds.
         ScreenTimeShared.applyGroups(ScreenTimeShared.heldGroupIds(now: Date()))

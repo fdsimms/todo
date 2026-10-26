@@ -72,6 +72,11 @@ jest.mock('../store/useNfcKeyStore', () => ({
   useNfcKeyStore: { getState: () => mockKeyState },
 }));
 
+let mockSpeedBumpJson = '';
+jest.mock('../utils/screenTimeBridge', () => ({
+  screenTimeBridge: () => ({ readSpeedBump: () => mockSpeedBumpJson }),
+}));
+
 import type { Task } from '../types';
 import { gateTitlesNow, reconcileAppShield } from '../utils/appShieldReconcile';
 
@@ -96,6 +101,7 @@ beforeEach(() => {
   mockTasks.length = 0;
   mockFocus.session = null;
   mockManual.block = null;
+  mockSpeedBumpJson = '';
   mockReleases.focusSessionId = null;
   mockReleases.gateTaskIds = [];
   mockVisible.mockReturnValue(true);
@@ -196,6 +202,24 @@ describe('reconcileAppShield', () => {
     expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({
       manual: { untilIso: end.toISOString(), groupIds: ['games'] },
     }));
+  });
+
+  it('hands over the speed bump the extension raised, and returns its end to wait at', () => {
+    const end = new Date(NOW + 15 * 60 * 1000);
+    mockSpeedBumpJson = JSON.stringify({ endIso: end.toISOString(), groupIds: ['games'], ruleId: 'r1' });
+    expect(reconcileAppShield()).toEqual(end);
+    expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({
+      speedBump: { untilIso: end.toISOString(), groupIds: ['games'] },
+    }));
+  });
+
+  it('hands over no speed bump once its end has passed, or when there is no record', () => {
+    mockSpeedBumpJson = JSON.stringify({ endIso: new Date(NOW - 1000).toISOString(), groupIds: ['games'] });
+    reconcileAppShield();
+    expect(mockSync).toHaveBeenLastCalledWith(expect.objectContaining({ speedBump: null }));
+    mockSpeedBumpJson = '';
+    reconcileAppShield();
+    expect(mockSync).toHaveBeenLastCalledWith(expect.objectContaining({ speedBump: null }));
   });
 
   it('waits at whichever of a gate and a timed block comes first', () => {

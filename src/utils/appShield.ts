@@ -3,6 +3,7 @@ import { gateShieldWanted, gateSubtitle, gateWindowFor } from './appGate';
 import { shieldWanted } from './focusShield';
 import { KEY_LOCK_DETAIL } from './nfcKey';
 import { isTimedBlock, manualBlockWanted, type ManualBlock } from './manualBlock';
+import type { LiveSpeedBump } from './speedBump';
 import { penaltyShieldWanted } from './penaltyShield';
 import { screenTimeBridge } from './screenTimeBridge';
 import { uniqueGroupIds, type GroupAssignments } from './appGroups';
@@ -67,6 +68,13 @@ export interface AppShieldState {
    */
   manual?: ManualBlock | null;
   /**
+   * The speed bump the monitor extension raised and has not yet lifted, with its
+   * groups already resolved. The app never starts one: it reads the extension's
+   * record and keeps the shield up for it, or a reconcile would lift a block the
+   * extension raised with the app closed. Optional for the same reason `manual` is.
+   */
+  speedBump?: LiveSpeedBump | null;
+  /**
    * A key tag has locked the apps and not yet unlocked them. The caller has
    * already required a key to be enrolled (`canLock`), so a lock with nothing
    * to end it never reaches here.
@@ -118,14 +126,14 @@ export interface AppShieldState {
 }
 
 /** Why the apps are blocked, in the order a person should read the reasons. */
-export type ShieldReasonKind = 'focus' | 'gate' | 'penalty' | 'key' | 'schedule' | 'manual';
+export type ShieldReasonKind = 'focus' | 'gate' | 'penalty' | 'key' | 'schedule' | 'manual' | 'speedBump';
 
 /** One reason the shield is up, with only what a screen needs to say it. */
 export interface ShieldReasonEntry {
   reason: ShieldReasonKind;
   /** The gate tasks standing in the way. Set for `gate` only. */
   titles?: readonly string[];
-  /** When a penalty, manual or schedule block runs out. Set for those only. */
+  /** When a penalty, manual, speed bump or schedule block runs out. Set for those only. */
   until?: string | null;
   /** The task a penalty was charged for, when it is known. Set for `penalty` only. */
   cause?: string | null;
@@ -167,6 +175,12 @@ export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
       reason: 'manual', until: state.manual.untilIso, groupIds: held(state.manual.groupIds), namedGroupIds: named(state.manual.groupIds),
     });
   }
+  // A speed bump is the app's reaction to use, not a choice or a fault, so it
+  // reads after the two the person made themselves and before the gate.
+  if (speedBumpWanted(state.speedBump ?? null, state.now)) {
+    const bump = state.speedBump!;
+    reasons.push({ reason: 'speedBump', until: bump.untilIso, groupIds: held(bump.groupIds), namedGroupIds: named(bump.groupIds) });
+  }
   if (gateShieldWanted(state.gateTitles.length, state.gateEnabled)) {
     // One entry per group, so a gate for Social and a gate for Games are two
     // lines on the status card and two groups in the union, each naming only
@@ -198,6 +212,13 @@ export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
   }
   if (state.keyLocked) reasons.push({ reason: 'key', groupIds: held([state.groups.key]), namedGroupIds: named([state.groups.key]) });
   return reasons;
+}
+
+/** Whether a speed bump the extension raised is still running at `now`. */
+export function speedBumpWanted(bump: LiveSpeedBump | null, now: Date): boolean {
+  if (!bump) return false;
+  const end = new Date(bump.untilIso).getTime();
+  return !Number.isNaN(end) && end > now.getTime();
 }
 
 /** The groups of apps to block right now: the union across every live reason. */
@@ -236,6 +257,7 @@ export function appShieldWanted(state: AppShieldState): boolean {
     penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now) ||
     gateShieldWanted(state.gateTitles.length, state.gateEnabled) ||
     manualBlockWanted(state.manual ?? null, state.now) ||
+    speedBumpWanted(state.speedBump ?? null, state.now) ||
     activeSchedules(state.schedules, state.now).length > 0 ||
     state.keyLocked
   );
@@ -314,7 +336,7 @@ export function syncAppShield(state: AppShieldState): void {
   bridge.setShieldState({
     otherReasonWantsShield: focusWants || gateWants || keyWants || scheduleWants || manualOpen,
     reason: lead?.reason ?? 'none',
-    untilIso: lead?.reason === 'penalty' || lead?.reason === 'schedule' || lead?.reason === 'manual' ? lead.until ?? null : null,
+    untilIso: lead?.reason === 'penalty' || lead?.reason === 'schedule' || lead?.reason === 'manual' || lead?.reason === 'speedBump' ? lead.until ?? null : null,
     detail: !lead
       ? null
       : lead.reason === 'gate'

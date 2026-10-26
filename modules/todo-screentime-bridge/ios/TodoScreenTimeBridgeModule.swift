@@ -691,6 +691,125 @@ public class TodoScreenTimeBridgeModule: Module {
       return false
     }
 
+    // ─── Speed bumps ──────────────────────────────────────────────────────
+
+    /// Arm the speed bump monitor: one event per rung of each rule, each firing
+    /// when the rule's group has been used for that many minutes today. What the
+    /// extension does with a crossing is `raiseSpeedBump` in
+    /// `TodoActivityMonitor.swift`.
+    ///
+    /// `bumpsJson` is `[{ id, groupId, blockGroupIds, blockMinutes, rungs }]`.
+    /// A call that changes nothing (same rules, same day, monitor still armed)
+    /// does not restart the monitor: this runs on every foreground, and starting
+    /// the activity again may start the day's count over, which would let a day
+    /// of short sessions never reach a rung.
+    AsyncFunction("armSpeedBumps") { (bumpsJson: String, dayKey: String) -> Bool in
+      #if canImport(DeviceActivity) && canImport(FamilyControls)
+      if #available(iOS 16.0, *) {
+        var started = false
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          guard let data = bumpsJson.data(using: .utf8),
+                let bumps = try? JSONDecoder().decode([SpeedBumpShared].self, from: data),
+                !bumps.isEmpty
+          else { return }
+
+          let center = DeviceActivityCenter()
+          let name = DeviceActivityName(ScreenTimeShared.speedBumpMonitorName)
+          if let armed = ScreenTimeShared.readSpeedBumpsArmed(),
+             armed.dayKey == dayKey, armed.bumps == bumpsJson,
+             center.activities.contains(name) {
+            started = true
+            return
+          }
+
+          ScreenTimeShared.writeData(data, to: ScreenTimeShared.speedBumpsFileName)
+          ScreenTimeShared.writeDayKey(dayKey)
+
+          var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
+          for bump in bumps {
+            // A group with nothing picked arms nothing for that rule rather than
+            // watching everything.
+            guard let selection = ScreenTimeShared.readSelection(groupId: bump.groupId),
+                  !(selection.applicationTokens.isEmpty && selection.categoryTokens.isEmpty)
+            else { continue }
+            for (index, minutes) in bump.rungs.prefix(6).enumerated() where minutes > 0 {
+              events[DeviceActivityEvent.Name("\(ScreenTimeShared.speedBumpEventPrefix)\(bump.id):\(index)")] = DeviceActivityEvent(
+                applications: selection.applicationTokens,
+                categories: selection.categoryTokens,
+                threshold: DateComponents(minute: minutes)
+              )
+            }
+          }
+          guard !events.isEmpty else {
+            center.stopMonitoring([name])
+            ScreenTimeShared.remove(ScreenTimeShared.speedBumpsArmedFileName)
+            return
+          }
+
+          let schedule = DeviceActivitySchedule(
+            intervalStart: DateComponents(hour: 0, minute: 0),
+            intervalEnd: DateComponents(hour: 23, minute: 59),
+            repeats: true
+          )
+          center.stopMonitoring([name])
+          try? center.startMonitoring(name, during: schedule, events: events)
+          ScreenTimeShared.writeSpeedBumpsArmed(SpeedBumpArmedShared(dayKey: dayKey, bumps: bumpsJson))
+          started = true
+        }
+        return started
+      }
+      #endif
+      return false
+    }
+
+    /// Disarm the speed bump monitor. A block already running keeps its own
+    /// window and ends on time; this only stops new ones.
+    Function("stopSpeedBumps") { () -> Bool in
+      #if canImport(DeviceActivity)
+      if #available(iOS 16.0, *) {
+        var stopped = false
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          DeviceActivityCenter().stopMonitoring([DeviceActivityName(ScreenTimeShared.speedBumpMonitorName)])
+          ScreenTimeShared.remove(ScreenTimeShared.speedBumpsFileName)
+          ScreenTimeShared.remove(ScreenTimeShared.speedBumpsArmedFileName)
+          stopped = true
+        }
+        return stopped
+      }
+      #endif
+      return false
+    }
+
+    /// The running speed bump block as the extension left it, as JSON, or an
+    /// empty string when there is none.
+    Function("readSpeedBump") { () -> String in
+      var json = ""
+      TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+        guard let data = ScreenTimeShared.readData(ScreenTimeShared.speedBumpLiveFileName),
+              let text = String(data: data, encoding: .utf8)
+        else { return }
+        json = text
+      }
+      return json
+    }
+
+    /// End the running speed bump block: forget it and disarm the window that
+    /// would have lifted it. The caller reconciles the shield afterwards.
+    Function("clearSpeedBump") { () -> Bool in
+      #if canImport(DeviceActivity)
+      if #available(iOS 16.0, *) {
+        var cleared = false
+        TodoScreenTimeExceptionCatcher.runCatchingExceptions {
+          ScreenTimeShared.remove(ScreenTimeShared.speedBumpLiveFileName)
+          DeviceActivityCenter().stopMonitoring([DeviceActivityName(ScreenTimeShared.speedBumpWindowName)])
+          cleared = true
+        }
+        return cleared
+      }
+      #endif
+      return false
+    }
+
     /// Read and clear the thresholds crossed since the last drain, as JSON
     /// `[{ ruleId, dayKey }]`.
     ///

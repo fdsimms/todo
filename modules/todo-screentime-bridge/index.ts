@@ -80,6 +80,10 @@ interface TodoScreenTimeNativeModule {
   startMonitoring(rulesJson: string, dayKey: string): Promise<boolean>;
   stopMonitoring(): boolean;
   drainCrossings(): Promise<string>;
+  armSpeedBumps(bumpsJson: string, dayKey: string): Promise<boolean>;
+  stopSpeedBumps(): boolean;
+  readSpeedBump(): string;
+  clearSpeedBump(): boolean;
 }
 
 let nativeModule: TodoScreenTimeNativeModule | null = null;
@@ -220,7 +224,7 @@ export function setAllowSets(sets: readonly (readonly string[])[]): boolean {
 }
 
 /** Why the apps are blocked, as the two extensions will read it back. */
-export type ShieldReason = 'penalty' | 'focus' | 'gate' | 'key' | 'schedule' | 'manual' | 'none';
+export type ShieldReason = 'penalty' | 'focus' | 'gate' | 'key' | 'schedule' | 'manual' | 'speedBump' | 'none';
 
 export interface ShieldState {
   /**
@@ -389,4 +393,50 @@ export async function drainCrossings(): Promise<ScreenTimeCrossing[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * One speed bump as the native side arms it: which group is timed, the
+ * cumulative minutes of use that fire it, and what to block and for how long.
+ * Group ids are already resolved, and the blocked ones are plain groups (a
+ * supergroup never reaches iOS).
+ */
+export interface ScreenTimeSpeedBump {
+  id: string;
+  groupId: string;
+  blockGroupIds: string[];
+  blockMinutes: number;
+  rungs: number[];
+}
+
+/**
+ * Arm the speed bumps, replacing whatever was armed. A separate monitor from
+ * `startMonitoring`, so arming either never disarms the other. The day key is
+ * stamped here for the reason `startMonitoring`'s is: the extension cannot work
+ * out the person's day, and it uses the key to fire each rung at most once.
+ * False on a build that predates speed bumps.
+ */
+export function armSpeedBumps(bumps: readonly ScreenTimeSpeedBump[], dayKey: string): Promise<boolean> {
+  return degradeOnReject(() => nativeModule!.armSpeedBumps(JSON.stringify(bumps), dayKey), false);
+}
+
+export function stopSpeedBumps(): boolean {
+  return degradeOnThrow(() => nativeModule!.stopSpeedBumps(), false);
+}
+
+/**
+ * The block the monitor extension raised, as the JSON it left in the App Group
+ * (`{ endIso, groupIds }`), or an empty string when there is none. Parsed by
+ * `liveSpeedBump` in the app, which also decides whether it has run out.
+ */
+export function readSpeedBump(): string {
+  return degradeOnThrow(() => nativeModule!.readSpeedBump(), '');
+}
+
+/**
+ * Drop the live block and disarm the window that would lift it. The only way
+ * the app ends one early, and only `releaseAllBlocks` calls it.
+ */
+export function clearSpeedBump(): boolean {
+  return degradeOnThrow(() => nativeModule!.clearSpeedBump(), false);
 }

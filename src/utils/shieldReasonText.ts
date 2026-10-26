@@ -61,6 +61,10 @@ function reasonLines(entry: ShieldReasonEntry, formatTime: (iso: string) => stri
       if (entry.until === null || entry.until === undefined) return ['A block you started is on until you end it.'];
       return [time ? `A block you started runs until ${time}.` : 'A block you started is running.'];
     }
+    case 'speedBump': {
+      const time = entry.until ? formatTime(entry.until) : null;
+      return [time ? `You’ve used these apps a lot today. They’re blocked until ${time}.` : 'You’ve used these apps a lot today.'];
+    }
     case 'key':
       return ['Locked with a key tag. Tap one to unlock.'];
   }

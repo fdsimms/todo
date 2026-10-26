@@ -5,6 +5,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { useNfcKeyStore } from '../../store/useNfcKeyStore';
 import { useAppGroupStore } from '../../store/useAppGroupStore';
 import { BlockScheduleSheet } from '../../components/BlockScheduleSheet';
+import { SpeedBumpRulesSheet } from '../../components/SpeedBumpRulesSheet';
 import { ManualBlockSheet } from '../../components/ManualBlockSheet';
 import { SupergroupMembersSheet } from '../../components/SupergroupMembersSheet';
 import { EmergencyReleaseSheet } from '../../components/EmergencyReleaseSheet';
@@ -86,6 +87,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   const setPenaltyShieldUntil = useSettingsStore(s => s.setPenaltyShieldUntil);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const screenTimeRules = useSettingsStore(s => s.screenTimeRules);
+  const speedBumpRules = useSettingsStore(s => s.speedBumpRules);
 
   // ==== authorization ====
 
@@ -619,6 +621,8 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   };
 
   const [manualSheetOpen, setManualSheetOpen] = useState(false);
+  const [speedBumpsOpen, setSpeedBumpsOpen] = useState(false);
+  const activeSpeedBumpCount = speedBumpRules.filter(r => r.enabled).length;
 
   const handleBlockNow = async () => {
     haptics.tap();
@@ -662,6 +666,20 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
             onPress={() => { void handleBlockNow(); }}
           />
         )}
+      </SettingsSection>
+
+      <SettingsSection
+        label="Speed bumps"
+        footer="Blocks a group of apps for a short while once your total time on a group reaches the time you set, even when dundundun is closed. The shortest block is 15 minutes."
+      >
+        <SettingsRow
+          entryId="speedBumps"
+          icon="speedometer-outline"
+          iconColor={activeSpeedBumpCount > 0 ? colors.accent : undefined}
+          label="Speed bumps"
+          value={activeSpeedBumpCount === 0 ? 'None' : activeSpeedBumpCount === 1 ? '1 speed bump' : `${activeSpeedBumpCount} speed bumps`}
+          onPress={() => { haptics.tap(); setSpeedBumpsOpen(true); }}
+        />
       </SettingsSection>
 
       {releaseLog.length > 0 && (
@@ -981,6 +999,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
         onClose={() => setMemberSheet(prev => ({ ...prev, open: false }))}
         onConfirm={confirmMembers}
       />
+      <SpeedBumpRulesSheet visible={speedBumpsOpen} onClose={() => setSpeedBumpsOpen(false)} />
       <BlockScheduleSheet
         visible={scheduleSheet.open}
         scheduleId={scheduleSheet.id}
