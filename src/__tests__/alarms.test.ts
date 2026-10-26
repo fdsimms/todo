@@ -1,5 +1,6 @@
 import type { Alarm } from '../types';
 import {
+  soundOwesReroll,
   alarmMissionLine,
   alarmNativeUuid,
   alarmSubtitle,
@@ -36,11 +37,38 @@ function alarm(over: Partial<Alarm> = {}): Alarm {
     missionDoneAt: null,
     missionGaveUp: false,
     sound: null,
+    soundPool: [],
+    soundRolledAt: null,
     override: null,
     createdAt: new Date(2026, 9, 1).toISOString(),
     ...over,
   };
 }
+
+describe('soundOwesReroll', () => {
+  const pool = ['chime', 'rise'];
+  const rolled = new Date(2026, 9, 12, 12, 0).toISOString();
+
+  it('is owed once a ring has passed since the last pick', () => {
+    // Mon 12 Oct 12:00 picked, Tue 13 Oct 07:00 rang.
+    expect(soundOwesReroll(alarm({ soundPool: pool, soundRolledAt: rolled }), NOW)).toBe(true);
+  });
+
+  it('is not owed before the next ring, or without a pool', () => {
+    expect(soundOwesReroll(alarm({ soundPool: pool, soundRolledAt: new Date(2026, 9, 14, 8, 0).toISOString() }), NOW)).toBe(false);
+    expect(soundOwesReroll(alarm({ soundPool: [], soundRolledAt: null }), NOW)).toBe(false);
+  });
+
+  it('counts from when the alarm was set if it was never picked', () => {
+    expect(soundOwesReroll(alarm({ soundPool: pool, soundRolledAt: null, armedAt: new Date(2026, 9, 14, 8, 0).toISOString() }), NOW)).toBe(false);
+    expect(soundOwesReroll(alarm({ soundPool: pool, soundRolledAt: null }), NOW)).toBe(true);
+  });
+
+  it('is never owed by a switched-off alarm or a one-off', () => {
+    expect(soundOwesReroll(alarm({ soundPool: pool, soundRolledAt: rolled, enabled: false }), NOW)).toBe(false);
+    expect(soundOwesReroll(alarm({ soundPool: pool, soundRolledAt: rolled, repeatDays: [], fireAt: new Date(2026, 9, 13, 7).toISOString() }), NOW)).toBe(false);
+  });
+});
 
 const pushups = { kind: 'pushups' as const, count: 20 };
 

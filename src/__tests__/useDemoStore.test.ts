@@ -1554,7 +1554,7 @@ describe('demo mode', () => {
     const alarms = useAlarmStore.getState().alarms;
 
     expect(alarms.some(a => a.mission?.kind === 'pushups' && a.repeatDays.length > 0)).toBe(true);
-    expect(alarms.some(a => a.sound === 'chime')).toBe(true);
+    expect(alarms.some(a => a.soundPool.join() === 'chime,rise' && a.sound !== null)).toBe(true);
     expect(useTaskStore.getState().tasks.some(t => t.alarmLink === 'next')).toBe(true);
   });
 

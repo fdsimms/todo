@@ -3018,6 +3018,16 @@ export interface Alarm {
    */
   sound: string | null;
   /**
+   * Two or more sounds the alarm picks between, or empty for no choice. When
+   * set, `sound` is the one picked for the next ring and is re-picked after
+   * each ring the next time the app runs (`rerollSounds`, alarms.ts
+   * `soundOwesReroll`), since AlarmKit takes the sound when the alarm is
+   * scheduled and plays it for every ring of a weekly schedule.
+   */
+  soundPool: string[];
+  /** When `sound` was last picked from the pool, or null if it never was. */
+  soundRolledAt: string | null;
+  /**
    * A one-night change to a repeating alarm ("6:30 just tomorrow"): on that
    * calendar date it rings at this time instead, and after that day it goes
    * back to its own. Null for none. See src/utils/morningAlarm.ts.

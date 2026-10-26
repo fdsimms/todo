@@ -46,6 +46,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useAlarmStore } from '../store/useAlarmStore';
 import { useEventReminderStore } from '../store/useEventReminderStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
@@ -207,6 +208,10 @@ export function catchUpPasses(): MaintenanceStep[] {
     // Beside it for its calendar read; the second half sets this device's alarm
     // for the task it just wrote (wakeUpAlarm.ts), which only this device can ring.
     ['check wake-up tasks', () => { tasks().checkWakeUpTasks(); syncWakeUpAlarm(); }],
+    // An alarm that picks between several sounds can only change the one it
+    // rings with while the app runs (AlarmKit plays the sound it was scheduled
+    // with), so each one that rang since is given a new pick here.
+    ['reroll alarm sounds', () => useAlarmStore.getState().rerollSounds()],
     // Beside it, same trigger and the same near-no-op at cold launch: the
     // crossings it reads are only ever drained by useScreenTimeSync's own
     // effect, which has not run yet on the very first pass.

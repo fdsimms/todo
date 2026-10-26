@@ -1267,8 +1267,10 @@ export function seedDemoData(): void {
     minute: 0,
     repeatDays: [1, 2, 3, 4, 5],
     mission: { kind: 'pushups', count: 20 },
-    // A built-in tone, so the editor's Ringtone row shows one picked.
+    // Two built-in tones, so the editor's Ringtone row shows an alarm that
+    // picks between sounds.
     sound: 'chime',
+    soundPool: ['chime', 'rise'],
   });
 
   // --- A task given several dates (a series) -------------------------------

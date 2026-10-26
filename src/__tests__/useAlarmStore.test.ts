@@ -70,9 +70,11 @@ describe('useAlarmStore', () => {
     const setup = { mission: pushups, sound: 'beacon' };
     const nap = useAlarmStore.getState().addQuickAlarm(30, setup, NOW);
     expect(nap).toMatchObject({ quick: true, hour: 10, minute: 30, fireAt: new Date(2026, 9, 14, 10, 30).toISOString(), ...setup });
-    expect(useAlarmStore.getState().lastQuickSetup()).toEqual(setup);
+    expect(useAlarmStore.getState().lastQuickSetup()).toEqual({ ...setup, soundPool: [] });
     useAlarmStore.getState().addQuickAlarm(10, { mission: null, sound: null }, NOW);
-    expect(useAlarmStore.getState().lastQuickSetup()).toEqual({ mission: null, sound: null });
+    expect(useAlarmStore.getState().lastQuickSetup()).toEqual({ mission: null, sound: null, soundPool: [] });
+    useAlarmStore.getState().addQuickAlarm(10, { mission: null, sound: null, soundPool: ['chime', 'rise'] }, NOW);
+    expect(useAlarmStore.getState().lastQuickSetup().soundPool).toEqual(['chime', 'rise']);
   });
 
   it('reads an unknown sound as the default', () => {
@@ -118,6 +120,47 @@ describe('useAlarmStore', () => {
     expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({ id: alarm.id, sound: null }));
     expect(mockRemoveSound).toHaveBeenCalledWith(ref);
     expect(useAlarmStore.getState().lastQuickSetup().sound).toBeNull();
+  });
+
+  it('picks a sound from the pool when an alarm is saved, and stamps when', () => {
+    const alarm = useAlarmStore.getState().saveAlarm(
+      { label: '', hour: 7, minute: 0, repeatDays: [1, 2], mission: null, soundPool: ['chime', 'rise', 'kazoo'] }, NOW);
+    expect(alarm.soundPool).toEqual(['chime', 'rise']);
+    expect(['chime', 'rise']).toContain(alarm.sound);
+    expect(alarm.soundRolledAt).toBe(NOW.toISOString());
+  });
+
+  it('keeps no pool for a single sound', () => {
+    const alarm = useAlarmStore.getState().saveAlarm(
+      { label: '', hour: 7, minute: 0, repeatDays: [1], mission: null, sound: 'rise', soundPool: ['chime'] }, NOW);
+    expect(alarm).toMatchObject({ sound: 'rise', soundPool: [], soundRolledAt: null });
+  });
+
+  it('re-picks the sound of an alarm that rang, to a different one, and puts it on the device', () => {
+    const alarm = useAlarmStore.getState().saveAlarm(
+      { label: '', hour: 7, minute: 0, repeatDays: [1, 2, 3, 4, 5], mission: null, soundPool: ['chime', 'rise'] }, NOW);
+    mockSync.mockClear();
+    // Thu 15 Oct 08:00: the 07:00 ring has passed.
+    const later = new Date(2026, 9, 15, 8, 0);
+    useAlarmStore.getState().rerollSounds(later, () => 0);
+    const after = useAlarmStore.getState().alarms[0];
+    expect(after.sound).not.toBe(alarm.sound);
+    expect(after.soundRolledAt).toBe(later.toISOString());
+    expect(mockSync).toHaveBeenCalledTimes(1);
+    // Nothing has rung since, so a second pass leaves it alone.
+    useAlarmStore.getState().rerollSounds(later, () => 0);
+    expect(mockSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('deleting a sound removes it from a pool, and ends the pool at one', async () => {
+    mockPick = { status: 'ok', uri: 'file:///cache/a.mp3', fileName: 'a.mp3' };
+    const result = await useAlarmStore.getState().importSound(NOW);
+    if (result.status !== 'ok') throw new Error('import failed');
+    const ref = `custom:${result.sound.id}`;
+    const alarm = useAlarmStore.getState().saveAlarm(
+      { label: '', hour: 7, minute: 0, repeatDays: [1], mission: null, soundPool: [ref, 'chime'] }, NOW);
+    useAlarmStore.getState().deleteSound(result.sound.id);
+    expect(mockRows.get(alarm.id)).toMatchObject({ sound: 'chime', soundPool: [], soundRolledAt: null });
   });
 
   it('switching a rung one-off back on sets it for the next time', () => {

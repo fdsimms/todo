@@ -87,6 +87,54 @@ export function describeSound(sound: string | null, imported: readonly AlarmSoun
   return imported.find(s => s.id === id)?.name ?? DEFAULT_SOUND_LABEL;
 }
 
+/**
+ * The sounds an alarm picks between, read back: known sounds only, each once.
+ * Fewer than two is no choice at all, so it reads as empty and the alarm
+ * rings with `Alarm.sound` alone.
+ */
+export function parseSoundPool(raw: unknown): string[] {
+  let list: unknown = raw;
+  if (typeof raw === 'string') {
+    try { list = JSON.parse(raw); } catch { return []; }
+  }
+  if (!Array.isArray(list)) return [];
+  const pool: string[] = [];
+  for (const s of list) {
+    const sound = parseAlarmSound(s);
+    if (sound !== null && !pool.includes(sound)) pool.push(sound);
+  }
+  return pool.length >= 2 ? pool : [];
+}
+
+/**
+ * Which sound an alarm rings with next, out of its pool. Never the one it
+ * has now when there is another, so two rings in a row don't sound the same.
+ * `random` is a parameter for the tests.
+ */
+export function pickFromPool(pool: readonly string[], current: string | null, random: () => number = Math.random): string | null {
+  if (pool.length === 0) return current;
+  const others = pool.filter(s => s !== current);
+  const from = others.length > 0 ? others : pool;
+  return from[Math.min(from.length - 1, Math.floor(random() * from.length))];
+}
+
+/**
+ * What the ringtone picker's selection means for an alarm: nothing picked is
+ * the default, one is that sound, two or more is a pool the alarm picks from
+ * each time it is set (see `pickFromPool`).
+ */
+export function soundChoiceFrom(sounds: readonly string[]): { sound: string | null; soundPool: string[] } {
+  const pool = parseSoundPool(sounds);
+  if (pool.length > 0) return { sound: pool[0], soundPool: pool };
+  return { sound: parseAlarmSound(sounds[0] ?? null), soundPool: [] };
+}
+
+/** The ringtone row's value: "Chime", or "Random, 3 sounds" for a pool. */
+export function describeSoundChoice(sound: string | null, pool: readonly string[], imported: readonly AlarmSoundFile[]): string {
+  if (pool.length >= 2) return `Random, ${pool.length} sounds`;
+  return describeSound(sound, imported);
+}
+
 /** A sound's name for the picker, from the file picked: "Rooster.mp3" is "Rooster". */
 export function soundNameFromFile(fileName: string | null | undefined): string {
   const base = (fileName ?? '').split('/').pop() ?? '';

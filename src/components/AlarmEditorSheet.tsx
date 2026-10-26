@@ -16,6 +16,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useAlarmStore } from '../store/useAlarmStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { describeRepeat } from '../utils/alarms';
+import { soundChoiceFrom } from '../utils/alarmSounds';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { confirmDelete } from '../utils/confirmDelete';
 import { haptics } from '../utils/haptics';
@@ -38,23 +39,25 @@ interface Draft {
   repeatDays: number[];
   mission: AlarmMission | null;
   sound: string | null;
+  soundPool: string[];
 }
 
 function draftFor(alarm: Alarm | null): Draft {
   if (alarm) {
     return {
       hour: alarm.hour, minute: alarm.minute, label: alarm.label, repeatDays: alarm.repeatDays,
-      mission: alarm.mission, sound: alarm.sound,
+      mission: alarm.mission, sound: alarm.sound, soundPool: alarm.soundPool,
     };
   }
-  return { hour: 7, minute: 0, label: '', repeatDays: [], mission: null, sound: null };
+  return { hour: 7, minute: 0, label: '', repeatDays: [], mission: null, sound: null, soundPool: [] };
 }
 
 const sameDraft = (a: Draft, b: Draft) =>
   a.hour === b.hour && a.minute === b.minute && a.label.trim() === b.label.trim()
   && [...a.repeatDays].sort().join() === [...b.repeatDays].sort().join()
   && JSON.stringify(a.mission) === JSON.stringify(b.mission)
-  && a.sound === b.sound;
+  && a.sound === b.sound
+  && a.soundPool.join() === b.soundPool.join();
 
 /**
  * Adds or edits an alarm of its own (utils/alarms.ts): the time, the label,
@@ -189,6 +192,7 @@ export function AlarmEditorSheet({ visible, alarm, onClose }: Props) {
           <View style={styles.rowsCard}>
             <AlarmSoundRows
               sound={draft.sound}
+              soundPool={draft.soundPool}
               onOpenRingtones={() => setRingtonesOpen(true)}
             />
           </View>
@@ -208,8 +212,9 @@ export function AlarmEditorSheet({ visible, alarm, onClose }: Props) {
       {/* Inside this sheet's Modal, never beside it ("Two sibling Modals"). */}
       <RingtonePickerSheet
         visible={visible && ringtonesOpen}
-        value={draft.sound}
-        onChange={sound => patch({ sound })}
+        multiple
+        values={draft.soundPool.length > 0 ? draft.soundPool : draft.sound === null ? [] : [draft.sound]}
+        onChangeValues={sounds => patch(soundChoiceFrom(sounds))}
         onClose={() => setRingtonesOpen(false)}
       />
     </SheetModal>

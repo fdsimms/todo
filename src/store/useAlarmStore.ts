@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { Alarm, AlarmMission, AlarmSoundFile } from '../types';
 import { dbDeleteAlarm, dbGetAlarms, dbGetSetting, dbSaveAlarm, dbSetSetting } from '../db/database';
 import { generateId } from '../utils/id';
-import { isRepeating, isSpent, quickAlarmFields, repeatingRingOn, scheduleFields } from '../utils/alarms';
+import { isRepeating, isSpent, quickAlarmFields, repeatingRingOn, scheduleFields, soundOwesReroll } from '../utils/alarms';
 import { isOverrideSpent, overrideFor } from '../utils/morningAlarm';
 import { normalizeMission } from '../utils/missions';
 import {
@@ -11,6 +11,8 @@ import {
   customSoundRef,
   parseAlarmSound,
   parseAlarmSoundFiles,
+  parseSoundPool,
+  pickFromPool,
   soundNameFromFile,
 } from '../utils/alarmSounds';
 import { removeAlarmFromDevice, syncAlarmToDevice } from '../utils/alarmSchedule';
@@ -28,6 +30,8 @@ const QUICK_SETUP_SETTING = 'quickAlarmSetup';
 export interface AlarmSetup {
   mission: AlarmMission | null;
   sound: string | null;
+  /** Two or more sounds to pick between each time (`Alarm.soundPool`); absent or empty for none. */
+  soundPool?: string[];
 }
 
 /** What the alarm editor saves. A sound left out is the default. */
@@ -47,20 +51,36 @@ export type ImportSoundResult =
   | { status: 'failed' };
 
 /** The stored form of a setup, with nothing malformed. */
-function normalizeSetup(setup: Partial<AlarmSetup>): AlarmSetup {
+function normalizeSetup(setup: Partial<AlarmSetup>): AlarmSetup & { soundPool: string[] } {
+  const soundPool = parseSoundPool(setup.soundPool);
+  const sound = parseAlarmSound(setup.sound);
   return {
     mission: normalizeMission(setup.mission),
-    sound: parseAlarmSound(setup.sound),
+    sound: soundPool.length > 0 && !(sound !== null && soundPool.includes(sound)) ? soundPool[0] : sound,
+    soundPool,
   };
 }
 
-function readQuickSetup(): AlarmSetup {
+/**
+ * The sound fields an alarm is written with. A pool picks its sound now, so
+ * the first ring is already a random one, and stamps when.
+ */
+function soundFields(
+  setup: { sound: string | null; soundPool: string[] },
+  now: Date,
+  random: () => number = Math.random,
+): Pick<Alarm, 'sound' | 'soundPool' | 'soundRolledAt'> {
+  if (setup.soundPool.length === 0) return { sound: setup.sound, soundPool: [], soundRolledAt: null };
+  return { sound: pickFromPool(setup.soundPool, null, random), soundPool: setup.soundPool, soundRolledAt: now.toISOString() };
+}
+
+function readQuickSetup(): AlarmSetup & { soundPool: string[] } {
   const raw = dbGetSetting(QUICK_SETUP_SETTING);
-  if (!raw) return { mission: null, sound: null };
+  if (!raw) return { mission: null, sound: null, soundPool: [] };
   try {
     return normalizeSetup(JSON.parse(raw) as Partial<AlarmSetup>);
   } catch {
-    return { mission: null, sound: null };
+    return { mission: null, sound: null, soundPool: [] };
   }
 }
 
@@ -90,11 +110,17 @@ interface AlarmStore {
   /** A one-off alarm `minutes` from now. */
   addQuickAlarm: (minutes: number, setup: AlarmSetup, now?: Date) => Alarm;
   /** How the last quick alarm was set up. */
-  lastQuickSetup: () => AlarmSetup;
+  lastQuickSetup: () => AlarmSetup & { soundPool: string[] };
   /** Picks an audio file from Files and installs it as a sound alarms can ring with. */
   importSound: (now?: Date) => Promise<ImportSoundResult>;
   /** Deletes an imported sound; alarms that rang with it go back to the default. */
   deleteSound: (id: string) => void;
+  /**
+   * Picks a new sound, from its pool, for each repeating alarm that has rung
+   * since the last pick, and puts it on the device. Run on every launch and
+   * foreground (maintenancePasses.ts), the only moments the sound can change.
+   */
+  rerollSounds: (now?: Date, random?: () => number) => void;
   setEnabled: (id: string, enabled: boolean, now?: Date) => void;
   deleteAlarm: (id: string) => void;
   /** Its mission was done, or given up. A spent quick alarm goes with it. */
@@ -135,12 +161,14 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
 
   saveAlarm(input, now = new Date()) {
     const existing = input.id ? get().alarms.find(a => a.id === input.id) : undefined;
+    const setup = normalizeSetup(input);
     const alarm: Alarm = {
       id: existing?.id ?? generateId(),
       label: input.label.trim(),
       ...scheduleFields(input.hour, input.minute, input.repeatDays, now),
       enabled: true,
-      ...normalizeSetup(input),
+      mission: setup.mission,
+      ...soundFields(setup, now),
       quick: false,
       armedAt: now.toISOString(),
       missionDoneAt: existing?.missionDoneAt ?? null,
@@ -161,7 +189,8 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
       label: '',
       ...quickAlarmFields(minutes, now),
       enabled: true,
-      ...normalized,
+      mission: normalized.mission,
+      ...soundFields(normalized, now),
       armedAt: now.toISOString(),
       missionDoneAt: null,
       missionGaveUp: false,
@@ -176,10 +205,16 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
 
   lastQuickSetup() {
     const setup = readQuickSetup();
-    // An imported sound deleted since reads as the default.
-    const id = customSoundId(setup.sound);
-    if (id !== null && !get().sounds.some(s => s.id === id)) return { ...setup, sound: null };
-    return setup;
+    // An imported sound deleted since reads as the default, and drops out of a pool.
+    const known = (s: string) => {
+      const id = customSoundId(s);
+      return id === null || get().sounds.some(f => f.id === id);
+    };
+    return normalizeSetup({
+      mission: setup.mission,
+      sound: setup.sound !== null && known(setup.sound) ? setup.sound : null,
+      soundPool: setup.soundPool.filter(known),
+    });
   },
 
   async importSound(now = new Date()) {
@@ -201,13 +236,30 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
     const sounds = get().sounds.filter(s => s.id !== id);
     dbSetSetting(ALARM_SOUNDS_SETTING, JSON.stringify(sounds));
     const alarms = get().alarms.map(a => {
-      if (a.sound !== ref) return a;
-      const reset = { ...a, sound: null };
+      if (a.sound !== ref && !a.soundPool.includes(ref)) return a;
+      // A pool that loses a sound keeps choosing among the rest, and is no
+      // pool once only one is left.
+      const soundPool = parseSoundPool(a.soundPool.filter(s => s !== ref));
+      const sound = a.sound !== ref ? a.sound : soundPool.length > 0 ? pickFromPool(soundPool, null) : (a.soundPool.find(s => s !== ref) ?? null);
+      const reset: Alarm = { ...a, sound, soundPool, soundRolledAt: soundPool.length > 0 ? a.soundRolledAt : null };
       write(reset);
       return reset;
     });
     set({ sounds, alarms });
     void removeImportedSound(ref);
+  },
+
+  rerollSounds(now = new Date(), random = Math.random) {
+    // A background run has not loaded the store, and an empty one would find nothing to do.
+    if (!get().initialized) get().initialize();
+    const due = get().alarms.filter(a => soundOwesReroll(a, now));
+    if (due.length === 0) return;
+    const rerolled = new Map(due.map(a => [
+      a.id,
+      { ...a, sound: pickFromPool(a.soundPool, a.sound, random), soundRolledAt: now.toISOString() } as Alarm,
+    ]));
+    for (const alarm of rerolled.values()) write(alarm);
+    set({ alarms: get().alarms.map(a => rerolled.get(a.id) ?? a) });
   },
 
   setEnabled(id, enabled, now = new Date()) {
@@ -277,7 +329,7 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
       fireAt: ring.toISOString(),
       quick: true,
       enabled: true,
-      ...normalizeSetup(setup),
+      ...(() => { const n = normalizeSetup(setup); return { mission: n.mission, ...soundFields(n, now) }; })(),
       armedAt: now.toISOString(),
       missionDoneAt: null,
       missionGaveUp: false,
