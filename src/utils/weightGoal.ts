@@ -45,16 +45,23 @@
  * function is what `useSettingsStore.syncWeightGoalCalorieTarget` and
  * `WeightGoalSheet`'s Save both call to keep the two in step automatically.
  * It is scoped to the plain calorie figure alone — macros stay manual, same
- * as before — and it uses the multiplier basis (never the measured Apple
- * Health one), since that figure needs a live read with nobody necessarily
- * there to ask for it. The one exception is a goal set to the log basis
- * (`maintenanceBasis: 'log'`), which the caller computes from data already on
- * the device and passes in; see `src/utils/adaptiveExpenditure.ts`.
+ * as before — and it uses the multiplier basis unless the goal itself asks
+ * for a measured one, which the caller works out and passes in:
+ * `maintenanceBasis: 'log'` (data already on the device, see
+ * `src/utils/adaptiveExpenditure.ts`) or `'health'` (a Health read the caller
+ * makes, which can come back empty or be refused, and then the multiplier
+ * stands rather than a figure that looks measured and saw nothing).
  */
 
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { dayKeyToDate } from './dateUtils';
-import { budgetFromMaintenance, calorieBudget, type BodyProfile } from './energyBudget';
+import {
+  budgetFromMaintenance,
+  calorieBudget,
+  measuredMaintenanceKcal as measuredFromActivity,
+  type BodyProfile,
+} from './energyBudget';
+import { typicalActiveEnergyKcal } from './activeEnergyBoost';
 import { MAX_WEIGHT_KG, unitToKg, type WeightPoint, type WeightUnit } from './weightLog';
 
 /**
@@ -85,11 +92,20 @@ export interface WeightGoal {
    * Where the maintenance figure under the calorie target comes from:
    * `'profile'` (the body profile and an activity level, the default) or
    * `'log'`, what was eaten against how the weight moved
-   * (`src/utils/adaptiveExpenditure.ts`). Choosing `'log'` is the opt-in to
-   * that calculation, and the automatic target follows it once there is
-   * enough data, falling back to the profile until then.
+   * (`src/utils/adaptiveExpenditure.ts`), or `'health'`, the resting rate plus
+   * the active energy Apple Health recorded (`measuredMaintenanceKcal` in
+   * `energyBudget.ts`). Choosing either of the last two is the opt-in to that
+   * calculation, and the automatic target follows it once there is enough
+   * data, falling back to the profile until then.
    */
-  maintenanceBasis?: 'profile' | 'log';
+  maintenanceBasis?: 'profile' | 'log' | 'health';
+  /**
+   * Whether the `'health'` basis adds the energy spent digesting food. Stored
+   * only as `false`: absent reads as on, which is how that basis has always
+   * read, and the sheet's switch for it has to survive being closed or the
+   * next weigh-in would compute a different figure than the one it showed.
+   */
+  countDigestion?: false;
 }
 
 /**
@@ -162,20 +178,47 @@ export function autoCalorieTargetKcal(
   currentKg: number | null,
   today: Date,
   /**
-   * The maintenance figure measured from the log (`measuredExpenditure`), or
-   * null when there isn't one yet. Read only when the goal asks for the log
-   * basis; until it has a figure the profile's estimate stands, so choosing
-   * "Your log" never leaves the target without one.
+   * The maintenance figure measured for the goal's basis (the log's, or the
+   * Apple Health one), or null when there isn't one yet. Read only when the
+   * goal asks for one of those; until it has a figure the profile's estimate
+   * stands, so choosing either never leaves the target without one.
    */
   measuredMaintenanceKcal: number | null = null,
 ): number | null {
   if (goal === null) return null;
-  if (goal.maintenanceBasis === 'log' && measuredMaintenanceKcal !== null) {
+  if (
+    (goal.maintenanceBasis === 'log' || goal.maintenanceBasis === 'health')
+    && measuredMaintenanceKcal !== null
+  ) {
     return budgetFromMaintenance(measuredMaintenanceKcal, profile.sex, signedRateKgPerWeek(goal))?.proposedKcal ?? null;
   }
   const weightKg = currentKg ?? goal.startKg;
   const budget = calorieBudget(profile, weightKg, signedRateKgPerWeek(goal), today);
   return budget?.proposedKcal ?? null;
+}
+
+/**
+ * The maintenance figure for a goal on the Apple Health basis, from a window of
+ * recent daily active energy (null for a day with none), or null when the goal
+ * isn't on that basis or there isn't an answer to give.
+ *
+ * Null is the fallback signal `autoCalorieTargetKcal` reads: a read that came
+ * back empty or refused (`activeEnergyDays` null, or fewer than a week of days
+ * to take a typical one from) leaves the activity level standing, never a
+ * figure built from nothing. The weight is the latest weigh-in, then the one
+ * the goal started from, the same fallback the sheet's own figure uses.
+ */
+export function healthMaintenanceKcal(
+  goal: WeightGoal | null,
+  profile: BodyProfile,
+  currentKg: number | null,
+  today: Date,
+  activeEnergyDays: (number | null)[] | null,
+): number | null {
+  if (goal === null || goal.maintenanceBasis !== 'health' || activeEnergyDays === null) return null;
+  const typical = typicalActiveEnergyKcal(activeEnergyDays);
+  if (typical === null) return null;
+  return measuredFromActivity(profile, currentKg ?? goal.startKg, today, typical, goal.countDigestion !== false);
 }
 
 /** How far along a goal is, in the plainest terms the numbers allow. */
@@ -414,9 +457,12 @@ export function parseWeightGoal(raw: string | null | undefined): WeightGoal | nu
       // somebody meant, where a nonsense *weight* is a typo with nothing to
       // salvage. Same split parseWeightInput draws between the two.
       rateKgPerWeek: Math.min(rate, MAX_RATE_KG_PER_WEEK),
-      // Anything but a recognised 'log' reads as the default, so a goal
+      // Anything but a recognised basis reads as the default, so a goal
       // written before this existed keeps the profile basis it always had.
-      ...(parsed.maintenanceBasis === 'log' ? { maintenanceBasis: 'log' as const } : {}),
+      ...(parsed.maintenanceBasis === 'log' || parsed.maintenanceBasis === 'health'
+        ? { maintenanceBasis: parsed.maintenanceBasis }
+        : {}),
+      ...(parsed.countDigestion === false ? { countDigestion: false as const } : {}),
     };
   } catch {
     return null;

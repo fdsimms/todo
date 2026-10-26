@@ -16,9 +16,10 @@ Pod::Spec.new do |s|
 
   s.dependency 'ExpoModulesCore'
 
-  # UIKit only: the proximity sensor needs no entitlement, Info.plist key or
-  # permission, so there is no config plugin beside this module.
-  s.frameworks = 'UIKit'
+  # The proximity sensor needs no entitlement or permission. The depth reader
+  # needs camera permission, whose Info.plist string expo-camera's config
+  # plugin already writes (app.json), so there is no config plugin here either.
+  s.frameworks = 'UIKit', 'AVFoundation', 'CoreMedia', 'CoreVideo'
 
   s.source_files = '**/*.{h,m,swift}'
 end

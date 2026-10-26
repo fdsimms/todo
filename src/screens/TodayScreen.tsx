@@ -246,6 +246,7 @@ import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { useLingering } from '../hooks/useLingering';
 import { PillHighlightLayer, PillLabel, usePillHighlight } from '../components/SlidingPills';
+import { usePillRowReveal } from '../hooks/usePillRowReveal';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from '../components/RotatingChevron';
 import { loadEventRowMemo, saveEventRowMemo } from '../utils/eventRowMemo';
@@ -734,12 +735,15 @@ function ViewModePills({
   const colors = useColors();
   const [shownMode, showMode] = useOptimistic(viewMode);
   const highlight = usePillHighlight(shownMode);
+  // At large text sizes the row outgrows the screen; keep the chosen pill on it.
+  const reveal = usePillRowReveal(shownMode);
   // Clears once the new mode has committed (or the tap changed nothing).
   useEffect(() => {
     switchChannel.publish(null);
   }, [viewMode, switchChannel]);
   return (
     <ScrollView
+      {...reveal.scrollProps}
       horizontal
       showsHorizontalScrollIndicator={false}
       style={styles.viewModePillsScroll}
@@ -750,7 +754,6 @@ function ViewModePills({
         keys={modes}
         restColor={colors.bgSecondary}
         activeColor={colors.accentFill}
-        radius={radius.full}
       />
       {modes.map(mode => {
         const active = shownMode === mode;
@@ -760,7 +763,10 @@ function ViewModePills({
         return (
           <TouchableOpacity
             key={mode}
-            onLayout={highlight.onPillLayout(mode)}
+            onLayout={e => {
+              highlight.onPillLayout(mode)(e);
+              reveal.onPillLayout(mode)(e);
+            }}
             style={[
               styles.viewModePill,
               active && styles.viewModePillActive,
@@ -790,9 +796,9 @@ function ViewModePills({
             <PillLabel
               highlight={highlight}
               pillKey={mode}
-              style={[styles.viewModePillText, active && styles.viewModePillTextActive]}
-              restColor={colors.textSecondary}
-              activeColor={colors.onAccent}
+              active={active}
+              style={styles.viewModePillText}
+              activeStyle={styles.viewModePillTextActive}
             >
               {VIEW_TITLES[mode]}
             </PillLabel>

@@ -178,6 +178,42 @@ describe('syncWeightTargets', () => {
     expect(useSettingsStore.getState().nutritionTargets.calorieKcal).toBeUndefined();
   });
 
+  describe('on the Apple Health basis', () => {
+    const healthGoal = { startKg: 90, startDayKey: '2026-09-01', targetKg: 75, rateKgPerWeek: 0.5, maintenanceBasis: 'health' as const };
+    const days = (kcal: number | null, n: number) => Array.from({ length: n }, () => ({ start: '2026-01-01T00:00:00.000Z', steps: 1, sleepMinutes: 1, activeEnergyKcal: kcal }));
+
+    beforeEach(() => {
+      useSettingsStore.setState({
+        proteinPerWeight: null,
+        weightGoal: healthGoal,
+        bodyProfile: { heightCm: 170, birthYear: 1990, sex: 'female', activity: 'sedentary' },
+      });
+      bridge.readWeightSeries.mockResolvedValue([recentWeight(80)]);
+    });
+
+    const targetFor = async (goal: typeof healthGoal | Omit<typeof healthGoal, 'maintenanceBasis'>, activity: ReturnType<typeof days>) => {
+      useSettingsStore.setState({ weightGoal: goal as never, nutritionTargets: {} });
+      bridge.readDailyHealth.mockResolvedValue(activity);
+      await useHealthStore.getState().syncWeightTargets();
+      return useSettingsStore.getState().nutritionTargets.calorieKcal;
+    };
+
+    it('follows the measured activity, which is not what the activity level gives', async () => {
+      const { maintenanceBasis: _omit, ...profileGoal } = healthGoal;
+      const profileTarget = await targetFor(profileGoal, days(null, 14));
+      const healthTarget = await targetFor(healthGoal, days(900, 14));
+      expect(healthTarget).toEqual(expect.any(Number));
+      expect(healthTarget).not.toBe(profileTarget);
+    });
+
+    it('keeps the activity-level target when the read has too few days or nothing recorded', async () => {
+      const { maintenanceBasis: _omit, ...profileGoal } = healthGoal;
+      const profileTarget = await targetFor(profileGoal, days(null, 14));
+      expect(await targetFor(healthGoal, days(900, 3))).toBe(profileTarget);
+      expect(await targetFor(healthGoal, days(null, 14))).toBe(profileTarget);
+    });
+  });
+
   it('does not read Health when neither target follows weight', async () => {
     useSettingsStore.setState({ proteinPerWeight: null, weightGoal: null });
     await useHealthStore.getState().syncWeightTargets();

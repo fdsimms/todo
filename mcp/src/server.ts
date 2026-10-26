@@ -1501,7 +1501,7 @@ const taskFieldsShape = {
   pinned: z.boolean().optional().describe('Pin it to the top of Today.'),
   pinEachOccurrence: z.boolean().optional().describe('On a repeating task: every occurrence it spawns starts pinned, so the pin is not redone by hand each time. Does nothing on a task that does not repeat.'),
   mission: z.object({ kind: z.literal('pushups'), count: z.number().int().min(1).max(200) }).nullable().optional()
-    .describe('Something to do on the phone before the task can be checked off: { kind: "pushups", count } is counted by the proximity sensor. Ticking the task on the phone opens it. With an alarm reminder, the alarm rings back every 15 seconds after Stop until it is done ("make me do pushups to stop the alarm"). A task with one cannot be completed over MCP. null removes it.'),
+    .describe('Something to do on the phone before the task can be checked off: { kind: "pushups", count } is counted by the phone\'s Face ID camera, with the phone face up under the person\'s face (or by the proximity sensor, under their chest, on a phone without one). Ticking the task on the phone opens it. With an alarm reminder, the alarm rings back every 15 seconds after Stop until it is done ("make me do pushups to stop the alarm"). A task with one cannot be completed over MCP. null removes it.'),
   deliverableKind: z.enum(DELIVERABLE_KINDS as unknown as [DeliverableKind, ...DeliverableKind[]]).nullable().optional()
     .describe('Makes completing this task ask for an answer of that kind, recorded on the row.'),
   deliverableOptions: z.array(z.string()).optional()

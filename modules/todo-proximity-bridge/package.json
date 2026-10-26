@@ -1,7 +1,7 @@
 {
   "name": "todo-proximity-bridge",
   "version": "1.0.0",
-  "description": "Local Expo module that reports the iPhone proximity sensor, for counting pushups with the phone on the floor.",
+  "description": "Local Expo module that reports the Face ID camera's depth and the proximity sensor, for counting pushups with the phone on the floor.",
   "main": "index.ts",
   "private": true
 }

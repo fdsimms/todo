@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
+import React, { useMemo } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, textScale, textOnFill, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -19,7 +19,7 @@ import { attentionLeftovers, freshnessOf } from '../utils/leftovers';
 // RecipePickerSheet makes, and for the reason given there.
 import { freshnessFill } from './LeftoversCard';
 import { AnimatedNumber } from './AnimatedNumber';
-import { PillHighlightLayer, PillLabel, usePillHighlight } from './SlidingPills';
+import { usePillRowReveal } from '../hooks/usePillRowReveal';
 
 interface Props {
   hub: NavHubId;
@@ -45,32 +45,21 @@ interface Props {
  * member, but hiding the one you are standing on would take away the row that
  * says where you are — and the mode can be flipped from Settings while a
  * screen sits behind it.
+ *
+ * **The selection doesn't slide**, unlike Today's view pills (SlidingPills).
+ * Each member screen draws its own row, so a slide had to be handed from the
+ * row being left to the one arriving, and could only start once the arriving
+ * screen was on screen and laid out. It began a frame or more late and ran
+ * while that screen did its heaviest work, which read as a stutter. The
+ * screen itself changes at once, and the pill changes with it.
  */
-/**
- * The pill a person just left by tapping another, so the screen that tap
- * opens can start its highlight there and slide it over. Each member screen
- * draws its own row, and a tab switch is instant, so the slide has to be
- * handed from one row to the next to read as one movement.
- */
-let lastHubTap: { hub: NavHubId; from: string; at: number } | null = null;
-/** A hand-over older than this belongs to some earlier tap. */
-const HUB_TAP_FRESH_MS = 1000;
 
 export function HubPills({ hub, active }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
-  const highlight = usePillHighlight(active);
-  const focused = useIsFocused();
-  useEffect(() => {
-    if (!focused) return;
-    const tap = lastHubTap;
-    if (!tap || tap.hub !== hub || Date.now() - tap.at > HUB_TAP_FRESH_MS) return;
-    lastHubTap = null;
-    highlight.slideFrom(tap.from);
-    // Keyed on arriving: the tap is read at the moment this row comes into view.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focused]);
+  // Opened from the menu on a member past the edge, the row starts there.
+  const reveal = usePillRowReveal(active);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   // Scalars, so each selector is referentially stable and the row doesn't
   // re-render every time a stack or template is edited.
@@ -119,18 +108,12 @@ export function HubPills({ hub, active }: Props) {
 
   return (
     <ScrollView
+      {...reveal.scrollProps}
       horizontal
       showsHorizontalScrollIndicator={false}
       style={styles.scroll}
       contentContainerStyle={styles.pills}
     >
-      <PillHighlightLayer
-        highlight={highlight}
-        keys={tabs.map(t => t.route)}
-        restColor={colors.bgSecondary}
-        activeColor={colors.accentFill}
-        radius={radius.full}
-      />
       {tabs.map(tab => {
         const isActive = tab.route === active;
         const badge = tab.route === 'Groceries' ? groceryCount
@@ -144,17 +127,11 @@ export function HubPills({ hub, active }: Props) {
         return (
           <TouchableOpacity
             key={tab.route}
-            onLayout={highlight.onPillLayout(tab.route)}
-            style={[
-              styles.pill,
-              isActive && styles.pillActive,
-              // Drawn by the layers underneath once they're placed.
-              highlight.ready && styles.pillLayered,
-            ]}
+            onLayout={reveal.onPillLayout(tab.route)}
+            style={[styles.pill, isActive && styles.pillActive]}
             onPress={() => {
               if (isActive) return;
               haptics.tap();
-              lastHubTap = { hub, from: active, at: Date.now() };
               navigation.navigate(tab.route);
             }}
             activeOpacity={interaction.activeOpacity}
@@ -162,15 +139,7 @@ export function HubPills({ hub, active }: Props) {
             accessibilityState={{ selected: isActive }}
             accessibilityLabel={badge > 0 ? `${tab.label}, ${badgeLabel}` : tab.label}
           >
-            <PillLabel
-              highlight={highlight}
-              pillKey={tab.route}
-              style={[styles.pillText, isActive && styles.pillTextActive]}
-              restColor={colors.text}
-              activeColor={colors.onAccent}
-            >
-              {tab.label}
-            </PillLabel>
+            <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{tab.label}</Text>
             {badge > 0 && (
               <View
                 style={[
@@ -209,7 +178,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
   pillActive: { backgroundColor: colors.accentFill },
-  pillLayered: { backgroundColor: 'transparent' },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   pillBadge: {

@@ -51,8 +51,10 @@ completions, which made it read as one more task list. What it does now:
   column's header opens that day in the Day view. Its columns are a third of the width, so it
   spends the width on titles: 4pt side margins, a one-line hour gutter, and overlaps that
   **cascade** (`cascadeEntries`: a later start sits on top, offset 22pt, at an opaque fill) where
-  Day splits them into lanes. A half-width lane left about 40pt of text. An all-day event on
-  several days is one bar across them (`layoutAllDay`).
+  Day splits them into lanes, because a half-width lane left about 40pt of text. A stack only
+  works while every covered title keeps its first line, so a run of overlaps splits into lanes
+  after all when a later start is within 20 minutes of an earlier one, or when it is five deep.
+  An all-day event on several days is one bar across them (`layoutAllDay`).
 - **Dragging works in Day and 3 Day** (`DayTimeline`, `MultiDayTimeline`): a long-press on empty time then a drag down
   makes an event that long (the quick-add card opens with the span), a long-press on an event
   moves it, and its foot's grip stretches it. The arithmetic is `draggedRange` (quarter-hour
