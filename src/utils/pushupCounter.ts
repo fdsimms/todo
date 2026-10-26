@@ -48,6 +48,10 @@
  * and the half second after a counted rep is ignored (`MOTION_QUIET_MS`),
  * because the haptic for that rep shakes the phone itself.
  *
+ * A phone that isn't lying flat (`MOTION_MIN_FLATNESS`) counts as moving too:
+ * held up toward the face it can be moved smoothly enough to stay under the
+ * rotation and acceleration limits, but not while lying face up on the floor.
+ *
  * With no motion sensor there are no samples, so nothing is ever flagged and
  * the count works as it did: the check removes a cheat, and shouldn't be able
  * to take the whole mission away on a device that can't run it.
@@ -215,6 +219,9 @@ export const MOTION_ROTATION_DPS = 25;
 /** The phone accelerating harder than this (m/s², gravity removed) is being moved. */
 export const MOTION_ACCEL_MS2 = 0.6;
 
+/** Share of gravity along the screen's axis below which the phone isn't lying flat (cos 25°). */
+export const MOTION_MIN_FLATNESS = 0.9;
+
 /** Motion has to last this long to count as the phone moving, so one thump of the floor doesn't. */
 export const MOTION_MIN_MS = 120;
 
@@ -343,6 +350,12 @@ export interface MotionSample {
   rotation: number;
   /** Acceleration with gravity removed, m/s². */
   acceleration: number;
+  /**
+   * How flat the phone lies, 0 to 1: the share of gravity along the screen's
+   * axis (face up or down alike). Omitted when the sensor can't say, which
+   * reads as flat.
+   */
+  flatness?: number;
   /** When, in milliseconds since the epoch. */
   at: number;
 }
@@ -354,7 +367,10 @@ export interface MotionSample {
  */
 export function feedMotion(state: DepthCounterState, sample: MotionSample): DepthCounterState {
   if (sample.at < state.quietUntil) return state;
-  const moving = sample.rotation >= MOTION_ROTATION_DPS || sample.acceleration >= MOTION_ACCEL_MS2;
+  // A phone held up toward the face is tilted, however smoothly it moves; one
+  // on the floor lies flat.
+  const moving = sample.rotation >= MOTION_ROTATION_DPS || sample.acceleration >= MOTION_ACCEL_MS2
+    || (sample.flatness !== undefined && sample.flatness < MOTION_MIN_FLATNESS);
   if (!moving) return state.motionSince === null ? state : { ...state, motionSince: null };
   const motionSince = state.motionSince ?? sample.at;
   if (sample.at - motionSince >= MOTION_MIN_MS) return { ...state, motionSince, movedAt: sample.at };
@@ -378,7 +394,7 @@ export function depthSensorStatus(state: DepthCounterState): PushupSensorStatus 
     return { tone: 'counting', line: 'Push back up', detail: 'It counts when you’re back up.' };
   }
   if (state.lastMiss === 'moved') {
-    return { tone: 'miss', line: 'Keep the phone still', detail: 'That one didn’t count because the phone moved.' };
+    return { tone: 'miss', line: 'Keep the phone still', detail: 'That one didn’t count because the phone moved or wasn’t lying flat.' };
   }
   if (state.lastMiss === 'shallow') {
     return { tone: 'miss', line: 'Go a little lower', detail: 'That one wasn’t deep enough to count.' };

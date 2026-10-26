@@ -6,6 +6,7 @@ import {
   DEPTH_NEAR_LOST_M,
   DEPTH_UP_M,
   MOTION_ACCEL_MS2,
+  MOTION_MIN_FLATNESS,
   MOTION_MIN_MS,
   MOTION_QUIET_MS,
   MOTION_ROTATION_DPS,
@@ -283,7 +284,7 @@ describe('the phone moving', () => {
   /** Depth readings 100ms apart from `startAt`, with motion samples fed in at given times. */
   function runWithMotion(
     distances: number[],
-    motion: { at: number; sample: { rotation: number; acceleration: number } }[],
+    motion: { at: number; sample: { rotation: number; acceleration: number; flatness?: number } }[],
   ) {
     const events = [
       ...distances.map((distance, i) => ({ at: i * 100, distance })),
@@ -295,7 +296,7 @@ describe('the phone moving', () => {
   }
 
   /** Samples every 50ms across [from, to] with the same motion. */
-  const across = (from: number, to: number, sample: { rotation: number; acceleration: number }) => {
+  const across = (from: number, to: number, sample: { rotation: number; acceleration: number; flatness?: number }) => {
     const out: { at: number; sample: typeof sample }[] = [];
     for (let at = from; at <= to; at += 50) out.push({ at, sample });
     return out;
@@ -313,6 +314,13 @@ describe('the phone moving', () => {
 
   it('catches a phone slid back and forth with no turning at all', () => {
     expect(runWithMotion(rep(0.55, 0.25), across(100, 400, sliding)).count).toBe(0);
+  });
+
+  it('does not count a rep with the phone held up, however smoothly it moves', () => {
+    const held = { rotation: 0, acceleration: 0, flatness: MOTION_MIN_FLATNESS - 0.2 };
+    expect(runWithMotion(rep(0.55, 0.25), across(100, 400, held)).count).toBe(0);
+    const flat = { rotation: 0, acceleration: 0, flatness: 0.99 };
+    expect(runWithMotion(rep(0.55, 0.25), across(100, 400, flat)).count).toBe(1);
   });
 
   it('ignores a single thump, which is shorter than the phone being moved', () => {

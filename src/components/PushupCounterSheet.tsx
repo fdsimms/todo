@@ -202,9 +202,12 @@ export function PushupCounterSheet({
       subscription = DeviceMotion.addListener(motion => {
         const turn = motion.rotationRate;
         const accel = motion.acceleration;
+        const g = motion.accelerationIncludingGravity;
+        const pull = g ? Math.hypot(g.x, g.y, g.z) : 0;
         setDepth(prev => feedMotion(prev, {
           rotation: turn ? Math.hypot(turn.alpha, turn.beta, turn.gamma) : 0,
           acceleration: accel ? Math.hypot(accel.x, accel.y, accel.z) : 0,
+          flatness: g && pull > 0 ? Math.abs(g.z) / pull : undefined,
           at: Date.now(),
         }));
       });
@@ -356,7 +359,7 @@ export function PushupCounterSheet({
 function cardText(mode: CountMode, depthBlocked: boolean): string {
   switch (mode) {
     case 'depth':
-      return 'Lay the phone face up on the floor under your face. The front camera measures how far away you are, and a rep doesn’t count if the phone moves. Nothing is recorded.';
+      return 'Lay the phone face up on the floor under your face. The front camera measures how far away you are, and a rep doesn’t count if the phone moves or isn’t lying flat. Nothing is recorded.';
     case 'proximity':
       return depthBlocked
         ? 'Lay the phone face up on the floor under your chest. Each time you go down, it counts. Camera access is off. Turn it on in Settings to count with the Face ID camera instead.'
