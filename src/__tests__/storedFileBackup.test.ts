@@ -21,17 +21,6 @@ describe('stored files in a backup', () => {
     expect(storedFileNamesIn(withTasks)['task-files']).toEqual(['task-a.pdf']);
   });
 
-  it('reads a dish\'s one photo name, a plain column rather than a list, and refuses a path', () => {
-    const withDishes = {
-      dish_ratings: [
-        { id: 'd1', photo: 'dish-a.jpg' },
-        { id: 'd2', photo: null },
-        { id: 'd3', photo: '../escape.jpg' },
-      ],
-    };
-    expect(storedFileNamesIn(withDishes)['dish-photos']).toEqual(['dish-a.jpg']);
-  });
-
   it('embeds the files it can read and leaves out the ones that are gone', () => {
     const files = collectStoredFiles(tables, (_folder, name) => (name === 'a.jpg' ? 'QUJD' : null));
     expect(files).toEqual({ 'journal-photos': { 'a.jpg': 'QUJD' } });

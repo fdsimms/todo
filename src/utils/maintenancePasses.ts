@@ -46,13 +46,12 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useAlarmStore } from '../store/useAlarmStore';
 import { useEventReminderStore } from '../store/useEventReminderStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { sweepJournalPhotos } from './journalPhotos';
 import { sweepTaskFiles } from './taskFiles';
-import { sweepDishPhotos } from './dishPhotos';
-import { useDishRatingStore } from '../store/useDishRatingStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { dbReclaimFreePages } from '../db/database';
 import { rescheduleAllReminders } from './notifications';
@@ -207,6 +206,10 @@ export function catchUpPasses(): MaintenanceStep[] {
     // Beside it for its calendar read; the second half sets this device's alarm
     // for the task it just wrote (wakeUpAlarm.ts), which only this device can ring.
     ['check wake-up tasks', () => { tasks().checkWakeUpTasks(); syncWakeUpAlarm(); }],
+    // An alarm that picks between several sounds can only change the one it
+    // rings with while the app runs (AlarmKit plays the sound it was scheduled
+    // with), so each one that rang since is given a new pick here.
+    ['reroll alarm sounds', () => useAlarmStore.getState().rerollSounds()],
     // Beside it, same trigger and the same near-no-op at cold launch: the
     // crossings it reads are only ever drained by useScreenTimeSync's own
     // effect, which has not run yet on the very first pass.
@@ -368,13 +371,6 @@ export function retentionPasses(): MaintenanceStep[] {
     // undo's sake (taskFiles.ts), so this is where one finally goes. Every row
     // counts, completed and archived included, since each still shows its files.
     ['sweep unused task files', () => { sweepTaskFiles(useTaskStore.getState().tasks); }],
-    // Dish photos likewise (dishPhotos.ts). Unlike the lists above it checks the
-    // store loaded: an unloaded one reads as no dishes, and the sweep would take
-    // every photo with it.
-    ['sweep unused dish photos', () => {
-      const { dishes, initialized } = useDishRatingStore.getState();
-      if (initialized) sweepDishPhotos(dishes);
-    }],
     // Then give the pages all of the above freed back to the device. Last on
     // purpose: it can only release what the deletes before it have already
     // freed. It deletes no rows and does nothing until the person has run

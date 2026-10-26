@@ -1,6 +1,6 @@
 import { drinksFromGrams, getDisplayDrinkGrams } from './alcohol';
 import type { NutrientKey } from '../types';
-import { HEALTH_WRITABLE_NUTRIENTS, NUTRIENT_KEYS } from '../types';
+import { HEALTH_WRITABLE_NUTRIENTS, MINERAL_KEYS, NUTRIENT_KEYS, VITAMIN_KEYS } from '../types';
 import { NUTRIENT_LABEL } from './foodNutrition';
 
 /**
@@ -538,6 +538,25 @@ export function serializeFoodLogPinnedNutrients(keys: NutrientKey[]): string {
  * `healthFoodSync.ts` always wrote before which ones to write became a choice.
  */
 export const DEFAULT_HEALTH_WRITE_NUTRIENTS: NutrientKey[] = [...HEALTH_WRITABLE_NUTRIENTS];
+
+/**
+ * The nutrients a meal can write to Health, split under headings so a picker
+ * isn't one wall of pills. Anything HealthKit has a type for that no section
+ * names lands in a trailing unheaded one, so a nutrient added later is offered
+ * rather than silently missing.
+ */
+export function healthNutrientSections(): Array<{ heading?: string; keys: NutrientKey[] }> {
+  const sections: Array<{ heading?: string; keys: NutrientKey[] }> = [
+    { heading: 'Macros', keys: ['calorieKcal', 'proteinG', 'carbsG', 'fatG', 'satFatG', 'transFatG', 'cholesterolMg', 'fiberG', 'sugarG', 'addedSugarG'] },
+    { heading: 'Minerals', keys: ['sodiumMg', 'calciumMg', 'ironMg', 'potassiumMg', ...MINERAL_KEYS] },
+    { heading: 'Vitamins', keys: [...VITAMIN_KEYS] },
+    { heading: 'Drinks', keys: ['caffeineMg', 'alcoholG', 'waterMl'] },
+  ];
+  const named = new Set(sections.flatMap(sec => sec.keys));
+  const writable = sections.map(sec => ({ ...sec, keys: sec.keys.filter(k => HEALTH_WRITABLE_NUTRIENTS.includes(k)) }));
+  const rest = HEALTH_WRITABLE_NUTRIENTS.filter(k => !named.has(k));
+  return rest.length > 0 ? [...writable, { keys: rest }] : writable;
+}
 
 /**
  * The Health write-selection a stored blob actually carries.

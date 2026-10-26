@@ -19,6 +19,7 @@ jest.mock('../db/database', () => ({ dbReclaimFreePages: jest.fn() }));
 jest.mock('../utils/notifications', () => ({ rescheduleAllReminders: jest.fn() }));
 jest.mock('../utils/deviceTimeZone', () => ({ recordDeviceTimeZone: jest.fn() }));
 jest.mock('../utils/wakeUpAlarm', () => ({ syncWakeUpAlarm: jest.fn() }));
+jest.mock('../store/useAlarmStore', () => ({ useAlarmStore: { getState: () => ({ rerollSounds: jest.fn() }) } }));
 
 import { catchUpPasses, expiryPasses, launchCatchUpPasses, retentionPasses } from '../utils/maintenancePasses';
 
@@ -59,6 +60,7 @@ describe('the three maintenance groups', () => {
       'check event tasks',
       'check travel tasks',
       'check wake-up tasks',
+      'reroll alarm sounds',
       'check screen time tasks',
       'check block offer tasks',
       'check health tasks',
@@ -98,7 +100,6 @@ describe('the three maintenance groups', () => {
       'discard idle workout',
       'sweep unused journal photos',
       'sweep unused task files',
-      'sweep unused dish photos',
       'reclaim freed storage',
     ]);
   });

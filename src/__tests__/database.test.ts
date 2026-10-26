@@ -953,11 +953,19 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(dbGetAllTasks()[0].alarmSound).toBeNull();
   });
 
+  it('round-trips a task alarm’s sound pool, and reads fewer than two as none', () => {
+    dbInsertTask(makeTask({ id: 'pool1', alarmSoundPool: ['chime', 'rise'] }));
+    expect(dbGetAllTasks()[0].alarmSoundPool).toEqual(['chime', 'rise']);
+    dbUpdateTask(makeTask({ id: 'pool1', alarmSoundPool: ['chime'] }));
+    expect(dbGetAllTasks()[0].alarmSoundPool).toEqual([]);
+  });
+
   it('round-trips an alarm, and deletes it', () => {
     const alarm = {
       id: 'al1', label: 'Wake up', hour: 7, minute: 30, repeatDays: [1, 3, 5], fireAt: null, enabled: true,
       mission: { kind: 'pushups' as const, count: 15 }, quick: false, armedAt: '2026-10-14T07:00:00.000Z',
       missionDoneAt: null, missionGaveUp: false, sound: 'custom:snd1',
+      soundPool: ['custom:snd1', 'chime'], soundRolledAt: '2026-10-14T07:00:00.000Z',
       override: { date: '2026-10-26', hour: 6, minute: 30 },
       createdAt: '2026-10-14T07:00:00.000Z',
     };
@@ -965,8 +973,8 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(dbGetAlarms()).toEqual([alarm]);
     dbSaveAlarm({ ...alarm, enabled: false, missionGaveUp: true, missionDoneAt: '2026-10-15T07:05:00.000Z' });
     expect(dbGetAlarms()[0]).toMatchObject({ enabled: false, missionGaveUp: true });
-    dbSaveAlarm({ ...alarm, sound: null, override: null });
-    expect(dbGetAlarms()[0]).toMatchObject({ sound: null, override: null });
+    dbSaveAlarm({ ...alarm, sound: null, soundPool: [], soundRolledAt: null, override: null });
+    expect(dbGetAlarms()[0]).toMatchObject({ sound: null, soundPool: [], soundRolledAt: null, override: null });
     dbDeleteAlarm('al1');
     expect(dbGetAlarms()).toEqual([]);
   });

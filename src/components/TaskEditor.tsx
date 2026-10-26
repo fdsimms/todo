@@ -120,7 +120,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { askForReminderPermissionIfNeeded } from '../utils/reminderPermission';
 import { useShallow } from 'zustand/react/shallow';
 import { useAlarmStore } from '../store/useAlarmStore';
-import { describeSound } from '../utils/alarmSounds';
+import { describeSoundChoice, soundChoiceFrom } from '../utils/alarmSounds';
 import { NEXT_ALARM_LINK } from '../utils/morningAlarm';
 import { alarmAlertTitle } from '../utils/alarms';
 import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
@@ -792,6 +792,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // What an alarm reminder rings with (Task.alarmSound); kept while the kind
   // isn't an alarm and only saved with one.
   const [alarmSound, setAlarmSound] = useState<string | null>(null);
+  const [alarmSoundPool, setAlarmSoundPool] = useState<string[]>([]);
   const [ringtonesOpen, setRingtonesOpen] = useState(false);
   const alarmSounds = useAlarmStore(useShallow(st => st.sounds));
   const editorAlarms = useAlarmStore(useShallow(st => st.alarms));
@@ -1299,6 +1300,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setReminderKind(task.reminderKind ?? 'notification');
       setAlarmSound(task.alarmSound ?? null);
+      setAlarmSoundPool(task.alarmSoundPool ?? []);
       setRingtonesOpen(false);
       setReminderOffsetDays(task.reminderOffsetDays ?? null);
       setReminderTracksVisibility(task.reminderTracksVisibility ?? false);
@@ -1530,6 +1532,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       reminderTime: task ? (task.reminderTime ?? null) : (initialDraft?.reminderTime?.toISOString() ?? null),
       reminderKind: task?.reminderKind ?? 'notification',
       alarmSound: task?.reminderKind === 'alarm' || task?.reminderKind === 'persistent' ? (task.alarmSound ?? null) : null,
+      alarmSoundPool: task?.reminderKind === 'alarm' || task?.reminderKind === 'persistent' ? (task.alarmSoundPool ?? []) : [],
       reminderOffsetDays: task?.reminderOffsetDays ?? null,
       reminderTracksVisibility: task?.reminderTracksVisibility ?? false,
       reminderTimeAnchor: task?.reminderTimeAnchor ?? 'wallClock',
@@ -2352,6 +2355,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
       alarmSound: reminderTime && (reminderKind === 'alarm' || reminderKind === 'persistent') ? alarmSound : null,
+      alarmSoundPool: reminderTime && (reminderKind === 'alarm' || reminderKind === 'persistent') ? alarmSoundPool : [],
       reminderOffsetDays,
       reminderTracksVisibility,
       reminderTimeAnchor,
@@ -3314,6 +3318,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
       alarmSound: reminderTime && (reminderKind === 'alarm' || reminderKind === 'persistent') ? alarmSound : null,
+      alarmSoundPool: reminderTime && (reminderKind === 'alarm' || reminderKind === 'persistent') ? alarmSoundPool : [],
       reminderOffsetDays,
       reminderTracksVisibility,
       reminderTimeAnchor,
@@ -4032,8 +4037,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           <LazySheet open={ringtonesOpen}>
             <RingtonePickerSheet
               visible={visible && ringtonesOpen}
-              value={alarmSound}
-              onChange={setAlarmSound}
+              multiple
+              values={alarmSoundPool.length > 0 ? alarmSoundPool : alarmSound === null ? [] : [alarmSound]}
+              onChangeValues={sounds => { const c = soundChoiceFrom(sounds); setAlarmSound(c.sound); setAlarmSoundPool(c.soundPool); }}
               onClose={() => setRingtonesOpen(false)}
             />
           </LazySheet>
@@ -6192,7 +6198,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               <EditorRow
                 icon="musical-note-outline"
                 label="Ringtone"
-                value={describeSound(alarmSound, alarmSounds)}
+                value={describeSoundChoice(alarmSound, alarmSoundPool, alarmSounds)}
                 onPress={() => setRingtonesOpen(true)}
               />
             )}

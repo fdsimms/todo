@@ -49,8 +49,6 @@ import type {
   GeneratedKind,
   HealthRule,
   Milestone,
-  DishRating,
-  DishVerdict,
   Cookware,
   CookwareType,
   CopyFlag,
@@ -108,7 +106,6 @@ import type {
   GeneratedTaskExtras,
 } from '../../src/types';
 import type { FinishedSessionInput, ProgramInput, SessionPatch, SetInput } from '../../src/store/useWorkoutStore';
-import { dishTextKey } from '../../src/utils/dishRating';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { sectionListPatch } from '../../src/utils/listMode';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
@@ -1285,17 +1282,6 @@ export interface Replica {
   addMilestone(label: string, date: Date): Milestone;
   updateMilestone(id: string, patch: { label?: string; date?: Date }): Milestone;
   deleteMilestone(id: string): Milestone;
-  /** Every rated restaurant dish, oldest first. See `DishRating`. */
-  dishes(): DishRating[];
-  /**
-   * Dishes through `useDishRatingStore`'s own actions: a blank name is refused as
-   * the sheet refuses it, and a dish already saved under the same name and place
-   * is updated rather than duplicated. `lastHadAt` is the day, which the store
-   * anchors at noon.
-   */
-  addDish(input: { name: string; place?: string | null; verdict?: DishVerdict | null; note?: string | null; lastHadAt?: Date | null }): DishRating;
-  updateDish(id: string, patch: { name?: string; place?: string | null; verdict?: DishVerdict | null; note?: string | null; lastHadAt?: Date | null }): DishRating;
-  deleteDish(id: string): DishRating;
   /** Every saved pot, pan, lid and tub in the person's order. See src/utils/cookware.ts. */
   cookware(): Cookware[];
   /**
@@ -4529,37 +4515,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!milestone) throw new Error(`No milestone with id ${id}. list_milestones names them.`);
       store.removeMilestone(id);
       return milestone;
-    },
-    dishes: () => db.dbGetAllDishRatings(),
-    // The dish store, hydrated per write for the milestone store's reason.
-    addDish(input) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { useDishRatingStore } = require('../../src/store/useDishRatingStore') as typeof import('../../src/store/useDishRatingStore');
-      const store = useDishRatingStore.getState();
-      store.initialize();
-      const dish = store.addDish(input);
-      if (!dish) throw new Error('A dish needs a name: what it is called on the menu.');
-      return dish;
-    },
-    updateDish(id, patch) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { useDishRatingStore } = require('../../src/store/useDishRatingStore') as typeof import('../../src/store/useDishRatingStore');
-      const store = useDishRatingStore.getState();
-      store.initialize();
-      if (!store.dishes.some(d => d.id === id)) throw new Error(`No dish with id ${id}. list_dishes names them.`);
-      if (patch.name !== undefined && !dishTextKey(patch.name)) throw new Error('A dish needs a name: what it is called on the menu.');
-      store.updateDish(id, patch);
-      return useDishRatingStore.getState().dishes.find(d => d.id === id)!;
-    },
-    deleteDish(id) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { useDishRatingStore } = require('../../src/store/useDishRatingStore') as typeof import('../../src/store/useDishRatingStore');
-      const store = useDishRatingStore.getState();
-      store.initialize();
-      const dish = store.dishes.find(d => d.id === id);
-      if (!dish) throw new Error(`No dish with id ${id}. list_dishes names them.`);
-      store.removeDish(id);
-      return dish;
     },
     cookware: () => db.dbGetAllCookware(),
     // Hydrated per write, like the milestone store above, so a dry run's

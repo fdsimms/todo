@@ -113,6 +113,20 @@ export function previousFireAt(alarm: Alarm, now: Date): Date | null {
   return null;
 }
 
+/**
+ * A repeating alarm with a sound pool that has rung since its sound was last
+ * picked, so the next ring wants a new one. AlarmKit plays the sound it was
+ * scheduled with for every ring of a weekly schedule, so this can only be
+ * acted on when the app next runs. A one-off rings once and never owes one.
+ */
+export function soundOwesReroll(alarm: Alarm, now: Date): boolean {
+  if (!alarm.enabled || !isRepeating(alarm) || alarm.soundPool.length < 2) return false;
+  const rang = previousFireAt(alarm, now);
+  if (!rang) return false;
+  const since = alarm.soundRolledAt ?? alarm.armedAt;
+  return rang.getTime() > new Date(since).getTime();
+}
+
 /** A one-off whose ring has passed. A repeating alarm is never spent. */
 export function isSpent(alarm: Alarm, now: Date): boolean {
   return !isRepeating(alarm) && nextFireAt(alarm, now) === null;

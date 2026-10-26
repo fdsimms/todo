@@ -191,6 +191,7 @@ jest.mock('../store/useSyncStore', () => {
   };
 });
 jest.mock('../utils/wakeUpAlarm', () => ({ syncWakeUpAlarm: () => false }));
+jest.mock('../store/useAlarmStore', () => ({ useAlarmStore: { getState: () => ({ rerollSounds: () => { mockCalls.push('rerollSounds'); } }) } }));
 jest.mock('../utils/calendarRequestDrain', () => ({ drainCalendarRequests: () => Promise.resolve() }));
 jest.mock('../utils/pendingHealthFoodWrites', () => ({ runPendingHealthFoodWrites: () => {} }));
 jest.mock('../utils/pendingHealthWorkoutWrites', () => ({ runPendingHealthWorkoutWrites: () => {} }));
@@ -261,7 +262,7 @@ describe('runBackgroundRefresh', () => {
       'checkPantryReviewTasks', 'checkPantryCheckTasks', 'checkProduceFloorTasks', 'checkMealShortfallTasks',
       'checkMealThawTasks', 'checkMealLogNudgeTasks',
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'applyWeatherWaits', 'applyRainSkips', 'checkEventTasks',
-      'checkTravelTasks', 'checkWakeUpTasks', 'checkScreenTimeTasks', 'checkBlockOfferTasks', 'checkHealthTasks',
+      'checkTravelTasks', 'checkWakeUpTasks', 'rerollSounds', 'checkScreenTimeTasks', 'checkBlockOfferTasks', 'checkHealthTasks',
       'checkMoodTasks', 'checkJournalTasks', 'checkWaniKaniTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks', 'checkBloodPressureTasks',
       'checkBirthdayTasks', 'checkPersonDateTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'checkWaitingFollowUpTasks',
@@ -278,7 +279,7 @@ describe('runBackgroundRefresh', () => {
     // The expiry sweep, the four purges and the storage reclaim are launch-only on purpose: nobody
     // benefits from a row being deleted earlier, and a purge deliberately
     // bypasses the undo stack. See maintenancePasses.ts.
-    expect([...expiryPasses(), ...retentionPasses()]).toHaveLength(10);
+    expect([...expiryPasses(), ...retentionPasses()]).toHaveLength(9);
     expect(mockCalls).not.toContain('sweepExpiredTasks');
     expect(mockCalls).not.toContain('purgeOldCompletedTasks');
     expect(mockCalls).not.toContain('purgeOldMealPlanEntries');

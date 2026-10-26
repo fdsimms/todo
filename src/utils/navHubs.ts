@@ -134,9 +134,6 @@ const KITCHEN_HUB: NavHub = {
     // diary tied to groceries you've switched off is the accepted cost of
     // that connection.
     { route: 'FoodLog', label: 'Food log', icon: 'nutrition-outline', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros', 'water', 'hydration', 'drink'] },
-    // Restaurant dishes and whether you would order them again. Last, since it
-    // is the one pill of the six that isn't about food you buy or cook.
-    { route: 'Dishes', label: 'Dishes', icon: 'thumbs-up-outline', keywords: ['restaurant', 'restaurants', 'order', 'eating out', 'takeout', 'rate', 'rating', 'menu', 'favorite'] },
   ],
 };
 

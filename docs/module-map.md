@@ -38,8 +38,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/alarmOverride.ts` — parseAlarmOverride
 - `src/utils/alarmSchedule.ts` — syncAlarmToDevice, removeAlarmFromDevice
 - `src/utils/alarmSoundDevice.ts` — soundFileForAlarm, PickedSound, pickSoundFile, installImportedSound, removeImportedSound, playSoundPreview, stopSoundPreview
-- `src/utils/alarmSounds.ts` — BUILT_IN_SOUNDS, BuiltInSoundId, CUSTOM_SOUND_PREFIX, ALARM_SOUND_MAX_SECONDS, ALARM_SOUNDS_SETTING, DEFAULT_SOUND_LABEL, isBuiltInSound, customSoundId, customSoundRef, parseAlarmSound, +4 more
-- `src/utils/alarms.ts` — QUICK_ALARM_MINUTES, QUICK_ALARM_CHOICES, MISSED_MISSION_WINDOW_MS, formatAlarmMinutes, atTime, nextClockTime, isRepeating, calendarKey, repeatingRingOn, nextFireAt, +12 more
+- `src/utils/alarmSounds.ts` — BUILT_IN_SOUNDS, BuiltInSoundId, CUSTOM_SOUND_PREFIX, ALARM_SOUND_MAX_SECONDS, ALARM_SOUNDS_SETTING, DEFAULT_SOUND_LABEL, isBuiltInSound, customSoundId, customSoundRef, parseAlarmSound, +9 more
+- `src/utils/alarms.ts` — QUICK_ALARM_MINUTES, QUICK_ALARM_CHOICES, MISSED_MISSION_WINDOW_MS, formatAlarmMinutes, atTime, nextClockTime, isRepeating, calendarKey, repeatingRingOn, nextFireAt, +13 more
 - `src/utils/alcohol.ts` — US_STANDARD_DRINK_G, STANDARD_DRINK_SIZES, setDisplayDrinkGrams, getDisplayDrinkGrams, normalizeStandardDrinkGrams, DRINK_PRESETS, DRINK_STEP, MAX_ENTRY_DRINKS, gramsFromDrinks, drinksFromGrams, +9 more
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
 - `src/utils/allDaySpans.ts` — AllDayBar, AllDayLayout, layoutAllDay
@@ -151,10 +151,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
 - `src/utils/dictation.ts` — DICTATION_BARS, joinDictation, pushLevel, barHeight, DictationRefusal, dictationRefusal
 - `src/utils/digitRoll.ts` — RollColumn, rollColumns, rollDirection
-- `src/utils/dishOffer.ts` — offerDishRating
-- `src/utils/dishPhotoSync.ts` — dishPhotoNames, readDishPhotoForSync, hasDishPhotoForSync, writeDishPhotoFromSync
-- `src/utils/dishPhotos.ts` — DISH_PHOTO_FOLDER, DISH_PHOTO_PREFIX, isDishPhotoName, dishPhotoNamesInUse, unreferencedDishPhotos, dishPhotoUri, sweepDishPhotos
-- `src/utils/dishRating.ts` — DISH_VERDICT_LABELS, DISH_VERDICTS, DishInput, dishTextKey, dishKeys, noonOf, buildDishRating, DishPatch, applyDishPatch, mergeDishes, +8 more
 - `src/utils/doseRecording.ts` — syncOkAgainNotification, allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose, restoreDose
 - `src/utils/dreamQueue.ts` — QueuedDream, QUEUED_DREAM_MAX_LENGTH, parseQueuedDreams
 - `src/utils/dumbbellLoad.ts` — DumbbellEntry, dumbbellsUsed, entryFor, weightScale, shownKg, storedKgFromTyped, storedKgFromShown, formatScaledWeight, weightHeadingSuffix, DUMBBELL_ENTRY_LABELS, +1 more
@@ -357,7 +353,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nutritionParse.ts` — NutrientSourceUnit, NUTRIENT_STORED_UNIT, SALT_TO_SODIUM, readSourceUnit, readSourceNumber, convertNutrientAmount, readOffNutrition, readFdcNutrition, readFdcPortions
 - `src/utils/nutritionSanity.ts` — PanelWarning, panelWarnings
 - `src/utils/nutritionStats.ts` — NutritionCounts, NutrientAverage, LoggedFood, SourceMix, EMPTY_NUTRITION_COUNTS, EMPTY_SOURCE_MIX, nutritionCounts, ProduceAverage, produceAverage, nutrientAverages, +13 more
-- `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NO_DAILY_VALUE, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, displayFigure, targetProgress, TargetStatus, +29 more
+- `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NO_DAILY_VALUE, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, displayFigure, targetProgress, TargetStatus, +30 more
 - `src/utils/openTasks.ts` — openTasksOf
 - `src/utils/ordinal.ts` — ordinal
 - `src/utils/ovenTemp.ts` — OvenTempUnit, OVEN_TEMP_UNITS, OVEN_TEMP_RANGE, cleanOvenTemp, formatOvenTemp, parseOvenTemp, ovenTempFor, describeOvenTemp, OvenSetup, ovenSetupsFor
@@ -426,7 +422,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/proteinPerWeight.ts` — ProteinPerWeight, PROTEIN_PER_WEIGHT_RANGE, parseProteinPerWeight, serializeProteinPerWeight, switchProteinUnit, proteinTargetFromWeight
 - `src/utils/pulseLog.ts` — PulseKind, PulseEntry, isPlausiblePulse, parsePulseInput, parsePulseSeries, standalonePulses, pulsesSince
 - `src/utils/purchaseInterval.ts` — MIN_PURCHASE_GAP_DAYS, nextPurchaseIntervalDays
-- `src/utils/pushupCounter.ts` — PUSHUP_MIN_NEAR_MS, PUSHUP_MIN_REP_MS, PUSHUP_MAX_NEAR_MS, PUSHUP_DEFAULT_COUNT, PUSHUP_MAX_COUNT, PushupMiss, PushupCounterState, initialPushupState, feedProximity, tapRep, +3 more
+- `src/utils/pushupCounter.ts` — PUSHUP_MIN_NEAR_MS, PUSHUP_MIN_REP_MS, PUSHUP_MAX_NEAR_MS, PUSHUP_DEFAULT_COUNT, PUSHUP_MAX_COUNT, PushupMiss, PushupCounterState, initialPushupState, feedProximity, tapRep, +16 more
 - `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more
 - `src/utils/quickActions.ts` — STATIC_ACTIONS, QuickActionScreen, quickActionsFor, handleQuickActionId, useHomeScreenQuickActions, publishQuickActions
 - `src/utils/quickAddPhrases.ts` — QuickAddPhrase, QuickAddPhraseSection, QUICK_ADD_PHRASES
@@ -663,7 +659,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/weekendTasks.ts` — WEEKEND_NUDGE_TITLE, WEEKEND_EVENING_SEGMENTS, WeekendWindow, upcomingWeekend, isWeekendNudgeLeadDay, clampWeekendNudgeLeadDays, describeWeekendNudgeLead, weekendNudgeWeekendKey, isWeekendEvening, weekendPlanTitles, +10 more
 - `src/utils/weightGoal.ts` — WeightGoalDirection, WeightGoal, RATE_RANGE, MAX_RATE_KG_PER_WEEK, goalDirection, signedRateKgPerWeek, autoCalorieTargetKcal, healthMaintenanceKcal, WeightGoalProgress, goalProgress, +11 more
 - `src/utils/weightLog.ts` — WeightUnit, MAX_WEIGHT_KG, WeightPoint, WeightReading, kgToUnit, unitToKg, formatWeight, parseWeightInput, weightReadings, latestWeight, +14 more
-- `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, dayKeyGap, weighInDeclineHolds, +1 more
+- `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, dayKeyGap, isCurrentRequest, +2 more
 - `src/utils/widgetBridge.ts` — WidgetBridge, widgetBridge
 - `src/utils/widgetCalendar.ts` — WidgetCalendarEvent, WidgetCalendarTask, WidgetCalendarDay, WidgetHiddenEvent, WidgetCalendar, MAX_WIDGET_CALENDAR_EVENTS, MAX_WIDGET_CALENDAR_TASKS, WidgetCalendarDayInput, WidgetCalendarInput, buildWidgetCalendar
 - `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapKind, WATCH_NOTE_MAX, WatchTickValues, WatchDoneSet, QuietTapAction, QuietTapWorkouts, WidgetNeedsAppReason, widgetTapNeedsAppReason, WatchQuestion, +12 more
@@ -708,7 +704,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useCookwareStore.ts` — CookwarePatch, useCookwareStore
 - `src/store/useCopyFlagStore.ts` — useCopyFlagStore
 - `src/store/useDemoStore.ts` — clearUndoHistories, reloadAfterDataReplaced, useDemoStore
-- `src/store/useDishRatingStore.ts` — useDishRatingStore
 - `src/store/useEventCreatedToastStore.ts` — SaveAs, CreatedEvent, useEventCreatedToastStore
 - `src/store/useEventPeopleStore.ts` — EVENT_PEOPLE_SETTING_KEY, EVENT_PEOPLE_MIGRATION_FLAG, useEventPeopleStore
 - `src/store/useEventReminderStore.ts` — useEventReminderStore
@@ -864,7 +859,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +313 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +308 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SERVER_SHARING_KEY_PREFIX, +19 more
 
 ## `src/services`

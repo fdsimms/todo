@@ -4,7 +4,6 @@ import type { NutritionEstimate } from '../utils/nutritionEstimate';
 
 let mockRows: PendingEstimate[] = [];
 const mockAddEntry = jest.fn();
-const mockOfferDish = jest.fn();
 const mockEstimate = jest.fn();
 let mockDemo = false;
 
@@ -22,7 +21,6 @@ jest.mock('../store/useFoodLogStore', () => ({
   useFoodLogStore: { getState: () => ({ addEntry: mockAddEntry }) },
 }));
 
-jest.mock('../utils/dishOffer', () => ({ offerDishRating: (...args: unknown[]) => mockOfferDish(...args) }));
 
 jest.mock('../utils/demoState', () => ({ isDemoModeActive: () => mockDemo }));
 
@@ -56,7 +54,6 @@ beforeEach(() => {
   mockRows = [];
   mockDemo = false;
   mockAddEntry.mockReset();
-  mockOfferDish.mockReset();
   mockEstimate.mockReset();
   usePendingEstimateStore.getState().initialize();
 });
@@ -196,9 +193,6 @@ describe('log', () => {
     const written = usePendingEstimateStore.getState().log(queue()[0].id);
 
     expect(written).toEqual(entry);
-    // A confirmed queued meal is a described one, so the dish question follows
-    // it like any other (dishOffer.ts), dated by when it was eaten.
-    expect(mockOfferDish).toHaveBeenCalledWith(expect.objectContaining({ label: 'Cheeseburger and fries', at: LUNCH }));
     const draft = mockAddEntry.mock.calls[0][0];
     expect(draft.at).toEqual(LUNCH);
     expect(draft).toMatchObject({
@@ -217,7 +211,6 @@ describe('log', () => {
     enqueue('lunch');
     expect(usePendingEstimateStore.getState().log(queue()[0].id)).toBeNull();
     expect(mockAddEntry).not.toHaveBeenCalled();
-    expect(mockOfferDish).not.toHaveBeenCalled();
     expect(queue()).toHaveLength(1);
   });
 

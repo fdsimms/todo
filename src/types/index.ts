@@ -1106,8 +1106,7 @@ export type UnattendedSubject =
   // A milestone on the mood log (`Milestone`). Titled by kind, never by its label, for the
   // reason a mood entry is: the Activity list is about the app, not somebody's health.
   | 'milestone'
-  // A restaurant dish and its rating (`DishRating`). Record only; titled by kind, since a
-  // dish name can be a place and a meal somebody ate.
+  // A restaurant dish rating. The feature is gone; kept so older entries still read.
   | 'dish'
   // A journal or dream entry (`JournalEntry`). Titled by kind, never by its text, for the same reason.
   | 'journal'
@@ -2523,49 +2522,6 @@ export interface Milestone {
 }
 
 /**
- * Whether you would order a restaurant dish again. Three answers and null, the
- * same shape and for the same reason as `ProductRating`: nobody reproduces a 4
- * versus a 3, and "fine" exists so a shrug is not the same as never having
- * tried it. Null is no opinion yet, and nothing infers one.
- */
-export type DishVerdict = 'loved' | 'fine' | 'avoid';
-
-/**
- * A dish somebody else cooked, and whether you would order it again.
- *
- * Its own record rather than a field on `FoodLogEntry`: an eaten-out meal has
- * no identity in the food log beyond its label, entries are snapshots that can
- * be deleted, and the food log can be switched off entirely. A rating is about
- * the dish, and is worth keeping when the entry that prompted it is gone.
- *
- * `place` is the restaurant as typed, never looked up and never a coordinate.
- * Both keys are `groceryNameKey` of the typed text, so "Pad See Ew" and "pad
- * see ew" are one dish; a null place keys as the empty string. Two devices
- * that add the same dish before they sync end up with two rows, which a
- * person can see and delete: there is deliberately no natural-key fold here,
- * because a fold's mistake is a deletion nobody sees.
- */
-export interface DishRating {
-  id: string;
-  name: string;
-  nameKey: string;
-  place: string | null;
-  placeKey: string;
-  verdict: DishVerdict | null;
-  /** Why, in your own words ("Ask for extra spicy"). Null when there is none. */
-  note: string | null;
-  /** The last time you had it: noon on the picked day, like `Milestone.date`. */
-  lastHadAt: string | null;
-  /**
-   * The file name of its one photo in the `dish-photos` folder (`dishPhotos.ts`),
-   * never a path. The file travels through the image sync; the name travels
-   * with the row. Null when there is no photo.
-   */
-  photo: string | null;
-  createdAt: string;
-}
-
-/**
  * One dose of something taken — see `src/utils/medicationLog.ts` and
  * `docs/arch/mood-log.md`.
  *
@@ -3042,6 +2998,16 @@ export interface Alarm {
    * (an `AlarmSoundFile`). See src/utils/alarmSounds.ts.
    */
   sound: string | null;
+  /**
+   * Two or more sounds the alarm picks between, or empty for no choice. When
+   * set, `sound` is the one picked for the next ring and is re-picked after
+   * each ring the next time the app runs (`rerollSounds`, alarms.ts
+   * `soundOwesReroll`), since AlarmKit takes the sound when the alarm is
+   * scheduled and plays it for every ring of a weekly schedule.
+   */
+  soundPool: string[];
+  /** When `sound` was last picked from the pool, or null if it never was. */
+  soundRolledAt: string | null;
   /**
    * A one-night change to a repeating alarm ("6:30 just tomorrow"): on that
    * calendar date it rings at this time instead, and after that day it goes
@@ -4721,6 +4687,11 @@ export interface Task {
   // sound imported on one phone, which rings as the default on any other
   // device. See src/utils/alarmSounds.ts.
   alarmSound?: string | null;
+  // Two or more sounds an alarm reminder picks between, one for each time it
+  // is scheduled (a repeating task's next occurrence is a new row, so each gets
+  // its own pick). Empty or absent = no pool, and `alarmSound` rings. See
+  // `pickFromPool` in src/utils/alarmSounds.ts.
+  alarmSoundPool?: string[];
   // The alarm a task like "Set alarm for morning" is about: 'next' for
   // whichever of the device's own alarms rings first tomorrow, or an alarm's
   // id. The row shows that alarm and opens a card to keep or change it. Alarms

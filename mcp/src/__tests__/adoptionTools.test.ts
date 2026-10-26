@@ -32,8 +32,6 @@ function fakeReplica(opts: {
   people?: unknown[];
   moodLogs?: number;
   milestones?: unknown[];
-  dishes?: unknown[];
-  describedMeals?: number;
   medications?: unknown[];
   rewards?: boolean;
   recipeRows?: unknown[];
@@ -52,8 +50,6 @@ function fakeReplica(opts: {
     people: () => opts.people ?? [],
     allMoodLogs: () => Array.from({ length: opts.moodLogs ?? 0 }),
     milestones: () => opts.milestones ?? [],
-    dishes: () => opts.dishes ?? [],
-    foodLogEntries: () => Array.from({ length: opts.describedMeals ?? 0 }, (_, i) => ({ label: `Meal ${i}`, nutrition: { source: 'estimated' } })),
     medicationSettings: () => opts.medications ?? [],
     agentNotes: () => (opts.notes ?? []).map((text, i) => ({ id: String(i), text })),
     tagRegistry: () => opts.tags ?? [],
@@ -146,13 +142,6 @@ describe('kitchen, people and mood checks', () => {
     const person = (birthdayMonth: number | null) => ({ archived: false, kind: 'individual', birthdayMonth });
     expect(ids(fakeReplica({ people: [person(null), person(null), person(null)] }))).toContain('birthdays');
     expect(ids(fakeReplica({ people: [person(null), person(null), person(4)] }))).not.toContain('birthdays');
-  });
-
-  it('suggests rating dishes once several described meals are logged and none is rated', () => {
-    expect(ids(fakeReplica({ describedMeals: 6 }))).toContain('dish_ratings');
-    expect(ids(fakeReplica({ describedMeals: 6, dishes: [{}] }))).not.toContain('dish_ratings');
-    expect(ids(fakeReplica({ describedMeals: 3 }))).not.toContain('dish_ratings');
-    expect(ids(fakeReplica({ describedMeals: 6, kitchenEnabled: false }))).not.toContain('dish_ratings');
   });
 
   it('suggests milestones only once there are enough mood check-ins to compare', () => {

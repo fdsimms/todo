@@ -14,8 +14,6 @@ import type {
   CoinEntry,
   Reward,
   Milestone,
-  DishRating,
-  DishVerdict,
   Cookware,
   CopyFlag,
   TaskAttachment,
@@ -144,7 +142,7 @@ import {
   type SyncTable,
 } from './syncTracking';
 import { parseMission } from '../utils/missions';
-import { parseAlarmSound } from '../utils/alarmSounds';
+import { parseAlarmSound, parseSoundPool } from '../utils/alarmSounds';
 import { parseAlarmOverride } from '../utils/alarmOverride';
 import {
   emptyApplyReport,
@@ -575,22 +573,6 @@ function runInitDatabase(): void {
       id TEXT PRIMARY KEY NOT NULL,
       label TEXT NOT NULL,
       date TEXT NOT NULL,
-      created_at TEXT NOT NULL
-    );
-
-    -- A restaurant dish and whether you would order it again — see DishRating
-    -- in types/index.ts. No unique key on (place_key, name_key): see the note
-    -- there on why two devices adding one dish are left as two rows.
-    CREATE TABLE IF NOT EXISTS dish_ratings (
-      id TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL,
-      name_key TEXT NOT NULL,
-      place TEXT,
-      place_key TEXT NOT NULL DEFAULT '',
-      verdict TEXT,
-      note TEXT,
-      last_had_at TEXT,
-      photo TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -2504,6 +2486,11 @@ function runInitDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN mission TEXT',
     // Task.alarmSound: NULL on every existing row, which rings with the default.
     'ALTER TABLE tasks ADD COLUMN alarm_sound TEXT',
+    // Alarm.soundPool / soundRolledAt: NULL on every existing alarm, which has no pool.
+    // Task.alarmSoundPool: NULL on every existing row, which has no pool.
+    'ALTER TABLE tasks ADD COLUMN alarm_sound_pool TEXT',
+    'ALTER TABLE alarms ADD COLUMN sound_pool TEXT',
+    'ALTER TABLE alarms ADD COLUMN sound_rolled_at TEXT',
     // Task.alarmLink / alarmLinkLeavesOpen: NULL and 0 on every existing row,
     // which is no linked alarm.
     'ALTER TABLE tasks ADD COLUMN alarm_link TEXT',
@@ -2654,6 +2641,14 @@ function runInitDatabase(): void {
     try { db.runSync('DROP TABLE IF EXISTS meter_readings'); } catch (_) {}
     try { db.runSync('DROP TABLE IF EXISTS saved_views'); } catch (_) {}
     dbSetSetting('meters_views_tables_dropped_done', '1');
+  }
+
+  // One-time cleanup: restaurant dish ratings were removed, so their table is
+  // dropped from installs that still have it, sync triggers included. Any photo
+  // files are left where they are: nothing reads that folder now.
+  if (dbGetSetting('dish_ratings_table_dropped_done') !== '1') {
+    try { db.runSync('DROP TABLE IF EXISTS dish_ratings'); } catch (_) {}
+    dbSetSetting('dish_ratings_table_dropped_done', '1');
   }
 
   // One-time migration: give existing categories a stable sort_order (their
@@ -2920,8 +2915,6 @@ export const BACKUP_TABLES = [
   'mood_logs',
   // Also points at nothing, for the same reason and beside the same neighbor.
   'milestones',
-  // A dish rating points at nothing: its place is typed text, not a row.
-  'dish_ratings',
   // Copy flags point at nothing.
   'copy_flags',
   // Fasts point at nothing either.
@@ -4330,6 +4323,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     completionTimerMinutes: (row.completion_timer_minutes as number | null) ?? null,
     mission: parseMission(row.mission),
     alarmSound: parseAlarmSound(row.alarm_sound),
+    alarmSoundPool: parseSoundPool(row.alarm_sound_pool),
     alarmLink: typeof row.alarm_link === 'string' && row.alarm_link !== '' ? row.alarm_link : null,
     alarmLinkLeavesOpen: Boolean(row.alarm_link_leaves_open),
     completionTimerNote: (row.completion_timer_note as string | null) ?? null,
@@ -4456,8 +4450,8 @@ export function dbInsertTask(task: Task): void {
       rain_skip_mm, rain_skipped_on,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
       slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, medication_extras, attachments, reminder_place_id, reminder_place_on,
-      mission, alarm_sound, alarm_link, alarm_link_leaves_open
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      mission, alarm_sound, alarm_link, alarm_link_leaves_open, alarm_sound_pool
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4613,6 +4607,7 @@ export function dbInsertTask(task: Task): void {
       task.alarmSound ?? null,
       task.alarmLink ?? null,
       task.alarmLinkLeavesOpen ? 1 : 0,
+      task.alarmSoundPool?.length ? JSON.stringify(task.alarmSoundPool) : null,
     ]
   );
 }
@@ -4653,7 +4648,7 @@ export function dbUpdateTask(task: Task): void {
       rain_skip_mm=?, rain_skipped_on=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
       slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, medication_extras=?, attachments=?, reminder_place_id=?, reminder_place_on=?,
-      mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?
+      mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?, alarm_sound_pool=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -4810,6 +4805,7 @@ export function dbUpdateTask(task: Task): void {
       task.alarmSound ?? null,
       task.alarmLink ?? null,
       task.alarmLinkLeavesOpen ? 1 : 0,
+      task.alarmSoundPool?.length ? JSON.stringify(task.alarmSoundPool) : null,
       task.id,
     ]
   );
@@ -5500,6 +5496,8 @@ function rowToAlarm(row: Record<string, unknown>): Alarm {
     missionDoneAt: (row.mission_done_at as string | null) ?? null,
     missionGaveUp: Boolean(row.mission_gave_up),
     sound: parseAlarmSound(row.sound),
+    soundPool: parseSoundPool(row.sound_pool),
+    soundRolledAt: (row.sound_rolled_at as string | null) ?? null,
     override: parseAlarmOverride(row.override),
     createdAt: row.created_at as string,
   };
@@ -5514,14 +5512,15 @@ export function dbSaveAlarm(alarm: Alarm): void {
   db.runSync(
     `INSERT OR REPLACE INTO alarms
       (id, label, hour, minute, repeat_days, fire_at, enabled, mission, quick, armed_at, mission_done_at, mission_gave_up,
-       sound, override, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       sound, override, created_at, sound_pool, sound_rolled_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       alarm.id, alarm.label, alarm.hour, alarm.minute, JSON.stringify(alarm.repeatDays), alarm.fireAt,
       alarm.enabled ? 1 : 0, alarm.mission ? JSON.stringify(alarm.mission) : null, alarm.quick ? 1 : 0,
       alarm.armedAt, alarm.missionDoneAt, alarm.missionGaveUp ? 1 : 0,
       alarm.sound,
       alarm.override ? JSON.stringify(alarm.override) : null, alarm.createdAt,
+      alarm.soundPool.length > 0 ? JSON.stringify(alarm.soundPool) : null, alarm.soundRolledAt,
     ],
   );
 }
@@ -7906,60 +7905,6 @@ export function dbUpdateMilestone(milestone: Milestone): void {
 
 export function dbDeleteMilestone(id: string): void {
   db.runSync('DELETE FROM milestones WHERE id = ?', [id]);
-}
-
-function isDishVerdict(v: unknown): v is DishVerdict {
-  return v === 'loved' || v === 'fine' || v === 'avoid';
-}
-
-/** One dish rating, mapped off its row. An unknown verdict reads as no opinion. */
-function rowToDishRating(row: Record<string, unknown>): DishRating {
-  return {
-    id: row.id as string,
-    name: row.name as string,
-    nameKey: row.name_key as string,
-    place: (row.place as string | null) ?? null,
-    placeKey: (row.place_key as string | null) ?? '',
-    verdict: isDishVerdict(row.verdict) ? row.verdict : null,
-    note: (row.note as string | null) ?? null,
-    lastHadAt: (row.last_had_at as string | null) ?? null,
-    photo: (row.photo as string | null) ?? null,
-    createdAt: row.created_at as string,
-  };
-}
-
-export function dbGetAllDishRatings(): DishRating[] {
-  const rows = db.getAllSync<Record<string, unknown>>(
-    'SELECT * FROM dish_ratings ORDER BY created_at ASC'
-  );
-  return rows.map(rowToDishRating);
-}
-
-export function dbInsertDishRating(dish: DishRating): void {
-  db.runSync(
-    `INSERT INTO dish_ratings (id, name, name_key, place, place_key, verdict, note, last_had_at, photo, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [dish.id, dish.name, dish.nameKey, dish.place, dish.placeKey, dish.verdict, dish.note, dish.lastHadAt, dish.photo, dish.createdAt]
-  );
-}
-
-export function dbUpdateDishRating(dish: DishRating): void {
-  db.runSync(
-    `UPDATE dish_ratings SET name=?, name_key=?, place=?, place_key=?, verdict=?, note=?, last_had_at=?, photo=? WHERE id=?`,
-    [dish.name, dish.nameKey, dish.place, dish.placeKey, dish.verdict, dish.note, dish.lastHadAt, dish.photo, dish.id]
-  );
-}
-
-export function dbDeleteDishRating(id: string): void {
-  db.runSync('DELETE FROM dish_ratings WHERE id = ?', [id]);
-}
-
-/** Every photo file name a dish row names, for the image sync and the launch sweep. */
-export function dbDishPhotoNames(): string[] {
-  const rows = db.getAllSync<{ photo: string }>(
-    "SELECT photo FROM dish_ratings WHERE photo IS NOT NULL AND photo <> ''"
-  );
-  return [...new Set(rows.map(r => r.photo))];
 }
 
 function rowToCookware(row: Record<string, unknown>): Cookware {
