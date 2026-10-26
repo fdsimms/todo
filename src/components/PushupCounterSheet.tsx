@@ -5,6 +5,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Camera } from 'expo-camera';
+import { DeviceMotion } from 'expo-sensors';
 import {
   addDepthListener,
   addProximityListener,
@@ -25,6 +26,7 @@ import {
   DEPTH_SILENCE_MS,
   depthSensorStatus,
   feedDepth,
+  feedMotion,
   feedProximity,
   initialDepthState,
   initialPushupState,
@@ -95,6 +97,9 @@ async function countModes(): Promise<CountModes> {
   const allowed = await cameraAllowed();
   return { start: allowed ? 'depth' : fallback, fallback, depthBlocked: !allowed };
 }
+
+/** How often the phone's motion is sampled while depth counts. */
+const MOTION_INTERVAL_MS = 50;
 
 const RING_SIZE = 240;
 const RING_STROKE = 14;
@@ -186,6 +191,31 @@ export function PushupCounterSheet({
       remove();
     };
   }, [visible, mode, counted, fallBack]);
+
+  // The phone's own motion, so moving it back and forth in front of a still
+  // face doesn't count. No sensor, no samples, and nothing is flagged.
+  useEffect(() => {
+    if (!visible || mode !== 'depth' || counted) return;
+    let subscription: { remove: () => void } | null = null;
+    try {
+      DeviceMotion.setUpdateInterval(MOTION_INTERVAL_MS);
+      subscription = DeviceMotion.addListener(motion => {
+        const turn = motion.rotationRate;
+        const accel = motion.acceleration;
+        const g = motion.accelerationIncludingGravity;
+        const pull = g ? Math.hypot(g.x, g.y, g.z) : 0;
+        setDepth(prev => feedMotion(prev, {
+          rotation: turn ? Math.hypot(turn.alpha, turn.beta, turn.gamma) : 0,
+          acceleration: accel ? Math.hypot(accel.x, accel.y, accel.z) : 0,
+          flatness: g && pull > 0 ? Math.abs(g.z) / pull : undefined,
+          at: Date.now(),
+        }));
+      });
+    } catch {
+      subscription = null;
+    }
+    return () => subscription?.remove();
+  }, [visible, mode, counted]);
 
   // Listening turns the sensor on, and with it iOS's habit of switching the
   // screen off while it's covered, so only while there is something to count.
@@ -329,7 +359,7 @@ export function PushupCounterSheet({
 function cardText(mode: CountMode, depthBlocked: boolean): string {
   switch (mode) {
     case 'depth':
-      return 'Lay the phone face up on the floor under your face. The front camera measures how far away you are. Nothing is recorded.';
+      return 'Lay the phone face up on the floor under your face. The front camera measures how far away you are, and a rep doesn’t count if the phone moves or isn’t lying flat. Nothing is recorded.';
     case 'proximity':
       return depthBlocked
         ? 'Lay the phone face up on the floor under your chest. Each time you go down, it counts. Camera access is off. Turn it on in Settings to count with the Face ID camera instead.'
