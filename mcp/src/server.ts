@@ -567,7 +567,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_cookware',
-    'The pots, pans, lids and tubs the person has weighed empty, each with its empty weight in grams and the type it is listed under. Use it when they tell you what a dish weighed with its pot on: subtract the saved pot (and lid) yourself, because a recipe\'s cookedWeightG is the food alone.',
+    'The pots, pans, lids and tubs the person has weighed empty, each with its empty weight in grams and the type it is listed under. Use it when they tell you what a dish weighed with its pot on: subtract the saved pot yourself, because a recipe\'s cookedWeightG is the food alone.',
     {},
     async () => json(await withFresh(() => listCookware(replica)))
   );
@@ -2475,7 +2475,7 @@ function registerWriteTools(
 
   server.tool(
     'add_cookware',
-    'Save a pot, pan, lid or tub with what it weighs empty, in grams. Only a weight they gave you; never estimate one. A pot and its lid are two entries.',
+    'Save a pot, pan, lid or tub with what it weighs empty, in grams. Only a weight they gave you; never estimate one.',
     {
       name: z.string().min(1).max(40).describe('What it is called, e.g. "Dutch oven".'),
       weightG: z.number().positive().max(50000).describe('Its empty weight in grams.'),

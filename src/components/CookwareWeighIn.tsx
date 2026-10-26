@@ -41,8 +41,8 @@ const grams = (g: number) => `${g.toLocaleString('en-US')} g`;
  * for off the screen. The menu lists them under their type (`groupCookwareByType`)
  * and scrolls. Past `COOKWARE_MENU_SEARCH_MIN` pieces it adds a search field above
  * the list and a Recent group of the last few picked, so a big kitchen is a
- * search or a tap rather than a scroll. It stays open while picking, because several can be picked at once
- * (a pot and its lid are two entries); "None" clears and closes.
+ * search or a tap rather than a scroll. Only one piece can be picked (a lid comes
+ * off before weighing), so a pick closes the menu; "None" clears and closes.
  */
 export function CookwareWeighIn({ weighIn, scaleText, surface = 'card', noun = 'pot' }: Props) {
   const colors = useColors();
@@ -69,14 +69,14 @@ export function CookwareWeighIn({ weighIn, scaleText, surface = 'card', noun = '
     : weighIn.picked.length === 1 ? `${weighIn.picked[0].name} · ${grams(weighIn.picked[0].weightG)}`
     : `${weighIn.picked.length} pieces · ${grams(tare)}`;
 
-  const renderPiece = (c: Cookware, keyPrefix = '') => {
+  const renderPiece = (c: Cookware, keyPrefix: string, close: (after?: () => void) => void) => {
     const on = weighIn.selected.includes(c.id);
     return (
       <TouchableOpacity
         key={keyPrefix + c.id}
         style={styles.row}
         activeOpacity={interaction.activeOpacity}
-        onPress={() => { haptics.tap(); weighIn.toggle(c.id); }}
+        onPress={() => { haptics.tap(); close(() => weighIn.toggle(c.id)); }}
         accessibilityRole="button"
         accessibilityState={{ selected: on }}
         accessibilityLabel={`${c.name}, ${grams(c.weightG)}`}
@@ -149,7 +149,7 @@ export function CookwareWeighIn({ weighIn, scaleText, surface = 'card', noun = '
               {recent.length > 0 && (
                 <>
                   <Text style={styles.header}>RECENT</Text>
-                  {recent.map(c => renderPiece(c, 'recent-'))}
+                  {recent.map(c => renderPiece(c, 'recent-', close))}
                 </>
               )}
               {query.trim() !== '' && groups.length === 0 && (
@@ -158,7 +158,7 @@ export function CookwareWeighIn({ weighIn, scaleText, surface = 'card', noun = '
               {groups.map(group => (
                 <React.Fragment key={group.type}>
                   <Text style={styles.header}>{group.type.toUpperCase()}</Text>
-                  {group.items.map(c => renderPiece(c))}
+                  {group.items.map(c => renderPiece(c, '', close))}
                 </React.Fragment>
               ))}
               <Text style={styles.header}>{cookware.length > 0 ? 'OTHER' : 'NONE SAVED YET'}</Text>
