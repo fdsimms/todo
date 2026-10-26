@@ -118,7 +118,7 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
                   key: g.id,
                   label: g.name,
                   selected: g.id === timedId(rule),
-                  suffix: groupIsEmpty(g.id) ? 'no apps' : undefined,
+                  suffix: groupIsEmpty(g.id) ? ' · no apps' : undefined,
                   onPress: () => update({ groupId: g.id }),
                 }))}
               />
