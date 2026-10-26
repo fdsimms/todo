@@ -749,7 +749,6 @@ function ViewModePills({
         keys={modes}
         restColor={colors.bgSecondary}
         activeColor={colors.accentFill}
-        radius={radius.full}
       />
       {modes.map(mode => {
         const active = shownMode === mode;
@@ -789,9 +788,9 @@ function ViewModePills({
             <PillLabel
               highlight={highlight}
               pillKey={mode}
-              style={[styles.viewModePillText, active && styles.viewModePillTextActive]}
-              restColor={colors.textSecondary}
-              activeColor={colors.onAccent}
+              active={active}
+              style={styles.viewModePillText}
+              activeStyle={styles.viewModePillTextActive}
             >
               {VIEW_TITLES[mode]}
             </PillLabel>
