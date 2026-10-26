@@ -157,19 +157,21 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
    * activity level above, or Apple Health's own measurement of a recent
    * typical day.
    *
-   * **Defaults to the multiplier even when a measurement exists**, and stays
-   * unpersisted, for the same reason `macroPresetId` preselects nothing: the
-   * app is offering two ways to arrive at a number rather than ranking them,
-   * and `measuredMaintenanceKcal` says at length why neither is the one that
-   * is simply right. Opening on the measured figure would be the app deciding
-   * that somebody's watch knows them better than they do.
+   * **Defaults to the multiplier even when a measurement exists**, for the same
+   * reason `macroPresetId` preselects nothing: the app is offering ways to
+   * arrive at a number rather than ranking them, and `measuredMaintenanceKcal`
+   * says at length why none is simply right. Opening on the measured figure
+   * would be the app deciding that somebody's watch knows them better than
+   * they do. Picking a measured one is the opt-in, and it is stored on the goal
+   * (the target follows it), so a reopened sheet opens on what was saved.
    */
   const [basis, setBasis] = useState<'activity' | 'health' | 'log'>('activity');
   const measuredBasis = basis === 'health';
   /**
    * Whether the Apple Health figure adds the energy spent digesting food. On by
    * default, since that is how it has always read; off gives the measured burn
-   * alone. Reset on each open with the basis it belongs to.
+   * alone. Stored on the goal (as `false` only) when that basis is saved, and
+   * otherwise reset on each open.
    */
   const [countDigestion, setCountDigestion] = useState(true);
   /**
@@ -231,13 +233,13 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     setSex(profile.sex);
     setActivity(profile.activity);
     setMacroPresetId(null);
-    // Reset with the rest of the form: the Apple Health basis is a choice about
-    // this sitting, not a setting, so a sheet reopened later opens on the
-    // multiplier again rather than on whatever was picked last time. The log
-    // basis is the exception, because it is stored on the goal (the automatic
-    // target follows it), so the sheet opens on what was saved.
-    setBasis(storedGoal?.maintenanceBasis === 'log' ? 'log' : 'activity');
-    setCountDigestion(true);
+    // Opens on the basis stored on the goal, because the automatic target
+    // follows it: the activity level unless a measured one was saved. Without
+    // a goal there is nothing saved, so it opens on the activity level.
+    setBasis(storedGoal?.maintenanceBasis === 'log' || storedGoal?.maintenanceBasis === 'health'
+      ? storedGoal.maintenanceBasis
+      : 'activity');
+    setCountDigestion(storedGoal?.countDigestion !== false);
 
     if (storedGoal) {
       setDirection(goalDirection(storedGoal));
@@ -341,8 +343,12 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
 
   // ==== saving, clearing, applying targets ====
 
-  const save = () => {
-    if (!canSave || startKg === null || targetKg === null) return;
+  // The header's Save and the Daily calories button are the same write: the
+  // goal (with the basis on screen) and the target together. The button used to
+  // write only the target, so "Your log" looked chosen but wasn't stored, and
+  // the next weigh-in put the activity-level figure back.
+  const commit = (): boolean => {
+    if (!canSave || startKg === null || targetKg === null) return false;
     haptics.success();
     setBodyProfile(profile);
     setWeightGoal({
@@ -355,7 +361,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
         : storedGoal.startDayKey,
       targetKg,
       rateKgPerWeek: maintaining ? 0 : (rateKg ?? 0),
-      ...(basis === 'log' ? { maintenanceBasis: 'log' as const } : {}),
+      ...(basis === 'log' || basis === 'health' ? { maintenanceBasis: basis } : {}),
+      ...(basis === 'health' && !countDigestion ? { countDigestion: false as const } : {}),
     });
     // Keeps the food log's calorie target in step with the goal automatically
     // — see autoCalorieTargetKcal's doc comment. Whichever basis is on screen
@@ -363,7 +370,11 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     // re-syncs on the multiplier basis, or on the log basis when that is the
     // one saved on the goal, via useSettingsStore.syncWeightGoalCalorieTarget.
     if (budget !== null) setNutritionTarget('calorieKcal', budget.proposedKcal);
-    onClose();
+    return true;
+  };
+
+  const save = () => {
+    if (commit()) onClose();
   };
 
   const clear = () => {
@@ -379,13 +390,6 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
         },
       },
     ]);
-  };
-
-  const applyCalorieTarget = () => {
-    if (!budget) return;
-    haptics.success();
-    setBodyProfile(profile);
-    setNutritionTarget('calorieKcal', budget.proposedKcal);
   };
 
   const macroSplit: MacroSplit | null = macroPresetId === CUSTOM_MACRO_ID
@@ -423,6 +427,23 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
 
   const existingCalorieTarget = storedTargets.calorieKcal;
   const alreadyApplied = budget !== null && existingCalorieTarget === budget.proposedKcal;
+  // The target can match while the basis on screen isn't the saved one (Your
+  // log picked, goal still saved on the activity level), and that still needs
+  // saving, so a matching target alone doesn't retire the button.
+  const savedBasis = storedGoal?.maintenanceBasis === 'log' || storedGoal?.maintenanceBasis === 'health'
+    ? storedGoal.maintenanceBasis
+    : 'activity';
+  const basisUnsaved = storedGoal === null
+    || savedBasis !== basis
+    || (basis === 'health' && (storedGoal.countDigestion !== false) !== countDigestion);
+  const showApplyButton = budget !== null && canSave && (!alreadyApplied || basisUnsaved);
+  const applyLabel = budget === null
+    ? ''
+    : basis === 'log' && logBudget !== null
+      ? `Use my log, set target to ${budget.proposedKcal.toLocaleString()}`
+      : measuredBasis && measuredBudget !== null
+        ? `Use Apple Health, set target to ${budget.proposedKcal.toLocaleString()}`
+        : `Set target to ${budget.proposedKcal.toLocaleString()}`;
   const rateRange = RATE_RANGE[unit];
 
   return (
@@ -690,20 +711,41 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     </View>
                   </View>
                 )}
-                {alreadyApplied ? (
+                {/* Directly under the figures it applies, and a solid button: it
+                    sat below four paragraphs as a tinted pill and read as part
+                    of them. It saves the goal with the basis on screen, so the
+                    label says so when that basis is the log. */}
+                {showApplyButton ? (
+                  <>
+                    <TouchableOpacity
+                      style={styles.applyButton}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={commit}
+                      accessibilityRole="button"
+                      accessibilityLabel={applyLabel}
+                    >
+                      <Text style={styles.applyButtonText}>{applyLabel}</Text>
+                    </TouchableOpacity>
+                    <HelpText style={styles.applyHelp}>
+                      {basis === 'log'
+                        ? logBudget === null
+                          ? 'Saved with your goal. The target uses your activity level until your log has enough days.'
+                          : 'Saved with your goal. The target keeps following your log.'
+                        : basis === 'health'
+                          ? measuredBudget === null
+                            ? 'Saved with your goal. The target uses your activity level until Apple Health has a week of activity.'
+                            : 'Saved with your goal. The target keeps following your Apple Health activity.'
+                          : 'Saved with your goal. The target updates on each new weigh-in.'}
+                    </HelpText>
+                  </>
+                ) : alreadyApplied ? (
                   <View style={styles.matchRow}>
                     <Ionicons name="checkmark" size={iconSize.sm} color={colors.greenText} />
                     <Text style={styles.matchText}>Matches your goal</Text>
                   </View>
-                ) : (
-                  <Text style={styles.status}>
-                    {existingCalorieTarget === undefined
-                      ? `Saving this goal sets your calorie target to ${budget.proposedKcal.toLocaleString()}.`
-                      : `Saving this goal changes your calorie target from ${existingCalorieTarget.toLocaleString()} to ${budget.proposedKcal.toLocaleString()}.`}
-                  </Text>
-                )}
+                ) : null}
 
-                <Text style={[styles.fieldLabel, styles.workedOutLabel]}>HOW IT’S WORKED OUT</Text>
+                <Text style={[styles.fieldLabel, styles.workedOutLabel]}>BASED ON</Text>
                 {/* Only once there is a real measurement to offer. The two
                     are presented as two ways of arriving at the same figure,
                     in the order that puts the one somebody typed first, and
@@ -712,24 +754,51 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                 <SegmentedControl
                   options={[
                     { value: 'activity' as const, label: 'Activity level' },
-                    ...(canUseMeasured ? [{ value: 'health' as const, label: 'Apple Health' }] : []),
+                    // Kept while it is the saved basis even if the read comes
+                    // back empty, so the control never sits on no segment.
+                    ...(canUseMeasured || savedBasis === 'health' || basis === 'health'
+                      ? [{ value: 'health' as const, label: 'Apple Health' }]
+                      : []),
                     { value: 'log' as const, label: 'Your log' },
                   ]}
                   value={basis}
                   onChange={next => setBasis(next)}
                   label="How the figure is worked out"
                 />
-                <Text style={styles.help}>
-                  {measuredBasis
-                    ? `Resting rate, plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal of activity on a typical recent day${countDigestion ? `, plus about ${Math.round(budget.maintenanceKcal * DIGESTION_SHARE).toLocaleString()} cal for digesting food` : ''}.`
+                {/* One bold line says what the chosen basis is; the working
+                    that used to be two paragraphs follows as figures. */}
+                <Text style={styles.basisCaption}>
+                  {measuredBasis && measuredBudget === null
+                    ? <><Text style={styles.basisCaptionLead}>Apple Health has no activity to read yet.</Text>{' Your activity level is used until it has a week of it.'}</>
+                    : measuredBasis
+                    ? <><Text style={styles.basisCaptionLead}>What Apple Health measured.</Text>{` Your resting rate, plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal of activity on a typical recent day${countDigestion ? `, plus about ${Math.round(budget.maintenanceKcal * DIGESTION_SHARE).toLocaleString()} cal for digesting food` : ''}.`}</>
                     : basis === 'log'
-                      ? describeLogWorking(logResult, kg => `${kgToUnit(kg, unit).toFixed(1)} ${unit}`, key => format(dayKeyToDate(key), 'MMM d'))
-                      : 'The activity level you picked above, as a multiplier on your resting rate.'}
+                      ? <><Text style={styles.basisCaptionLead}>What you actually ate and weighed.</Text>{' Needs no guess about how active you are.'}</>
+                      : <><Text style={styles.basisCaptionLead}>The activity level you picked above</Text>{', times your resting rate.'}</>}
                 </Text>
-                {basis === 'log' && logResult?.kind === 'measured' && (
+                {basis === 'log' && logResult && logResult.kind !== 'measured' && (
                   <Text style={styles.help}>
-                    Days with only one meal logged are left out. If you log less than you eat, this reads low.
+                    {describeLogWorking(logResult, kg => `${kgToUnit(kg, unit).toFixed(1)} ${unit}`, key => format(dayKeyToDate(key), 'MMM d'))}
                   </Text>
+                )}
+                {basis === 'log' && logResult?.kind === 'measured' && (
+                  <>
+                    <View style={styles.facts}>
+                      <View style={styles.fact}>
+                        <Text style={styles.factKey}>Ate, on average</Text>
+                        <Text style={styles.factValue}>{`${logResult.averageIntakeKcal.toLocaleString()} cal`}</Text>
+                      </View>
+                      <View style={styles.fact}>
+                        <Text style={styles.factKey}>Weight trend</Text>
+                        <Text style={styles.factValue}>
+                          {`${kgToUnit(logResult.trendStartKg, unit).toFixed(1)} → ${kgToUnit(logResult.trendEndKg, unit).toFixed(1)} ${unit}`}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.help}>
+                      {`${logResult.days} logged days, ${logResult.weighIns} weigh-ins, ${format(dayKeyToDate(logResult.firstDayKey), 'MMM d')} to ${format(dayKeyToDate(logResult.lastDayKey), 'MMM d')}`}
+                    </Text>
+                  </>
                 )}
                 {canUseMeasured && measuredBasis && (
                   <TouchableOpacity
@@ -784,24 +853,9 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                   {measuredBasis
                     ? `Still an estimate. The resting rate comes from a population formula (Mifflin-St Jeor), ${countDigestion ? 'digestion is a rule of thumb, and ' : ''}only the activity is measured. Adjust it based on what the scale shows. To raise the target on days you move more than usual, turn on Add active calories under Daily targets.`
                     : basis === 'log' && logBudget !== null
-                      ? 'Your own log and scale already count how active you are, so leave Add active calories under Daily targets off, or a busy day counts twice. It updates as you keep logging.'
+                      ? 'Days with one meal logged are left out, so under-logging reads low. Keep Add active calories off in Daily targets, or busy days count twice.'
                       : 'An estimate from a population formula (Mifflin-St Jeor). Adjust it based on what the scale shows.'}
                 </HelpText>
-
-                {!alreadyApplied && (
-                  <InlineAction
-                    icon="target"
-                    label={`Set target to ${budget.proposedKcal.toLocaleString()} now`}
-                    onPress={applyCalorieTarget}
-                  />
-                )}
-                {/* Saving writes this figure and refreshWeight re-applies it
-                    (autoCalorieTargetKcal), so say so here rather than let a
-                    typed target change with nobody told why. */}
-                <Text style={styles.help}>
-                  Your target follows this figure. It updates each time the Weight
-                  screen reads a new weight.
-                </Text>
               </>
             )}
           </View>
@@ -1030,13 +1084,39 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tileValueOld: { color: colors.textSecondary },
   tileUnit: { fontSize: font.xs, color: colors.textTertiary },
   tileUnitInline: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
-  status: {
+  applyButton: {
+    marginTop: spacing.smd,
+    minHeight: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  applyButtonText: {
+    fontSize: font.md,
+    fontWeight: fontWeight.bold,
+    color: colors.onAccent,
+    textAlign: 'center',
+  },
+  applyHelp: { textAlign: 'center', marginTop: spacing.xs },
+  basisCaption: {
     fontSize: font.sm,
     color: colors.textSecondary,
     lineHeight: 19,
     marginTop: spacing.sm,
-    marginBottom: spacing.xs,
   },
+  basisCaptionLead: { color: colors.text, fontWeight: fontWeight.semibold },
+  facts: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  fact: {
+    flex: 1,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.smd,
+  },
+  factKey: { fontSize: font.xxs, color: colors.textTertiary },
+  factValue: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.text, marginTop: spacing.xxs },
   matchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm, marginTop: spacing.sm },
   matchText: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.greenText },
   workedOutLabel: { marginTop: spacing.md },

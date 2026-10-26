@@ -2097,9 +2097,18 @@ rather than a guess, which is that module's whole discipline about defaults.
 place a reading reaches this.** `maintenanceKcal` multiplies the resting rate
 by the activity level somebody picked; `measuredMaintenanceKcal` instead adds
 the active energy a typical recent day of theirs recorded. `WeightGoalSheet`
-offers both and **opens on the multiplier**, which is the whole of the fence
-around it: the measured option appears only once there is a real figure behind
-it, picking it is an act, and nothing about it is stored. Neither is ranked as
+offers both and **opens on the multiplier**: the measured option appears only
+once there is a real figure behind it, and picking it is an act. **Picking it
+is stored on the goal** (`maintenanceBasis: 'health'`, plus `countDigestion:
+false` when digestion is switched off), because the automatic target has to
+follow what the sheet showed or the next weigh-in would put the activity level
+back. It used to be chosen per sitting and never remembered, and that was the
+fence; the fence is now that the figure is only ever used when it exists. A
+refused read or fewer than a week of days (`typicalActiveEnergyKcal`) gives
+null and the activity level stands, in the sheet and in the automatic target
+alike (`healthMaintenanceKcal`, read by `goalMaintenanceKcal` in
+`useHealthStore`, which looks at the goal and the read permission again after
+its read). Neither is ranked as
 the better one, and that module argues why at length (the multiplier is a
 population average over a self-description; the measurement is exact about
 whatever the person's devices actually saw, which for a phone on a desk is not
@@ -2325,9 +2334,9 @@ minus the slope of a least-squares line through the weigh-ins, converted at the
 same energy per kilogram the goal's rate uses. Four posts hold it:
 
 - **Picking it is the opt-in, and it is stored on the goal**
-  (`WeightGoal.maintenanceBasis`). Nothing computes it otherwise, and unlike the
-  Apple Health basis (chosen per sitting, never remembered) it is saved,
-  because the automatic target has to follow it.
+  (`WeightGoal.maintenanceBasis`). Nothing computes it otherwise. The Apple
+  Health basis is stored the same way, for the same reason: the automatic
+  target has to follow it.
 - **It proposes a maintenance figure and nothing else.** The target is
   `budgetFromMaintenance` with the goal's own rate and `MIN_PROPOSED_KCAL`, so
   this basis can't produce a number the profile basis couldn't.
