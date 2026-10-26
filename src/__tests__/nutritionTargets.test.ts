@@ -1,6 +1,7 @@
 import {
   DEFAULT_FOOD_LOG_PINNED_NUTRIENTS,
   DEFAULT_HEALTH_WRITE_NUTRIENTS,
+  healthNutrientSections,
   NUTRITION_TARGET_RANGES,
   activeLimits,
   describeAgainstTarget,
@@ -375,5 +376,17 @@ describe('alcohol, shown in drinks', () => {
     expect(limitStatus('alcoholG', 15.5, { alcoholG: 14 })).toBe('over');
     expect(describeLimit('alcoholG', 15.5, { alcoholG: 14 })).toBe('0.1 drinks over');
     expect(limitStatus('satFatG', 16.8, { satFatG: 16 })).toBe('over');
+  });
+});
+
+describe('healthNutrientSections', () => {
+  it('offers every writable nutrient exactly once', () => {
+    const keys = healthNutrientSections().flatMap(sec => sec.keys);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect([...keys].sort()).toEqual([...DEFAULT_HEALTH_WRITE_NUTRIENTS].sort());
+  });
+
+  it('has no empty section', () => {
+    for (const sec of healthNutrientSections()) expect(sec.keys.length).toBeGreaterThan(0);
   });
 });

@@ -148,6 +148,12 @@ export type Colors = {
   onWarning: string;
   backdrop: string;
   blurFallback: string;
+  /**
+   * The ring on a floating accent button (the Fab, scroll-to-top). The button is
+   * `accentFill`, the same violet as a picked pill, so over one it vanishes; a
+   * light edge (paper in the dark themes, white in Light) keeps it a separate object.
+   */
+  floatingEdge: string;
   timeMorning: string;
   timeAfternoon: string;
   timeEvening: string;
@@ -223,6 +229,7 @@ export const darkColors: Colors = {
   onWarning: '#000000',
   backdrop: 'rgba(0, 0, 0, 0.45)',
   blurFallback: 'rgba(28, 28, 30, 0.85)',
+  floatingEdge: PAPER,
   timeMorning: '#FF9F0A',
   timeAfternoon: '#0A84FF',
   timeEvening: '#BF5AF2',
@@ -280,6 +287,7 @@ export const nightColors: Colors = {
   onWarning: '#000000',
   backdrop: 'rgba(10, 6, 20, 0.5)',
   blurFallback: 'rgba(31, 26, 44, 0.85)',
+  floatingEdge: PAPER,
   timeMorning: '#FF9F0A',
   timeAfternoon: '#0A84FF',
   timeEvening: '#BF5AF2',
@@ -333,6 +341,7 @@ export const lightColors: Colors = {
   onWarning: '#000000',
   backdrop: 'rgba(23, 19, 28, 0.35)',
   blurFallback: 'rgba(255, 255, 255, 0.85)',
+  floatingEdge: '#FFFFFF',
   timeMorning: '#FF9500',
   timeAfternoon: '#007AFF',
   timeEvening: '#AF52DE',
@@ -524,7 +533,18 @@ export const border = {
   thin: 0.5,
   sm: 1,
   md: 1.5,
+  /** The ring on a floating accent button, see `Colors.floatingEdge`. */
+  floating: 2,
 };
+
+/**
+ * The light ring that keeps a flat accent button apart from accent content
+ * behind it (a picked pill is the same violet). A glass button draws its own
+ * edge, so only the flat fallback takes this.
+ */
+export function floatingEdge(colors: Colors) {
+  return { borderWidth: border.floating, borderColor: colors.floatingEdge };
+}
 
 export const iconSize = {
   xs: 12,

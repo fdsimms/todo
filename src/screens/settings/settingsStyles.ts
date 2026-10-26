@@ -74,6 +74,12 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   // The open-set case (the user's own categories), which is a `PillGroup` and
   // not a segmented control at all — this is only its padding.
   pillGroupRow: { paddingHorizontal: spacing.sm, paddingBottom: spacing.sm },
+  // A small heading over one of several pill groups in the same row.
+  pillGroupHeading: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    marginTop: spacing.xs, marginBottom: spacing.sm, paddingHorizontal: spacing.md,
+  },
   // A stepper paired with its own unit pills, sitting under a `tight` row —
   // the unit pills stay one group and wrap together rather than splitting off
   // on their own at a narrow width (same idiom as ProjectEditor's cadenceRow).

@@ -3,7 +3,7 @@ import { Animated, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, iconSize, animation } from '../theme';
+import { spacing, radius, iconSize, animation, floatingEdge } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { selectFloatingBarsTop, useFloatingBarStore } from '../store/useFloatingBarStore';
 
@@ -66,6 +66,7 @@ export function ScrollToTopButton({ visible, bottom, onPress }: Props) {
           styles.button,
           shadows.fab,
           { backgroundColor: colors.accentFill, shadowColor: colors.accent },
+          floatingEdge(colors),
         ]}
         pressScale={0.9}
         haptic
