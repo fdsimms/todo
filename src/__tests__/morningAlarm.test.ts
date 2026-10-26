@@ -111,20 +111,15 @@ describe('overrides', () => {
 
 describe('alarmDetails', () => {
   const pushups = { kind: 'pushups' as const, count: 20 };
-  const song = { persistentId: '1', title: 'Song', artist: '' };
 
   it('says nothing for a plain alarm', () => {
     expect(alarmDetails(alarm(), SUNDAY_NIGHT, clock)).toBeNull();
   });
 
-  it('lists the mission, its song and a chosen sound', () => {
-    const d = alarmDetails(alarm({ mission: pushups, wakeSong: song as Alarm['wakeSong'], sound: 'chime' }), SUNDAY_NIGHT, clock)!;
-    expect(d.icons).toEqual(['barbell-outline', 'musical-notes-outline', 'volume-high-outline']);
+  it('lists the mission and a chosen sound', () => {
+    const d = alarmDetails(alarm({ mission: pushups, sound: 'chime' }), SUNDAY_NIGHT, clock)!;
+    expect(d.icons).toEqual(['barbell-outline', 'volume-high-outline']);
     expect(d.text).toBe('20 pushups');
-  });
-
-  it('ignores a song on an alarm with no mission', () => {
-    expect(alarmDetails(alarm({ wakeSong: song as Alarm['wakeSong'] }), SUNDAY_NIGHT, clock)).toBeNull();
   });
 
   it('names a one-night time by day until its day is over', () => {
