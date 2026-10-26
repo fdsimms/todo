@@ -48,6 +48,12 @@ export function TaskDoseAmount({
   const usual = defaultUsualDose(prefs);
   const strength = prefs.strength ?? null;
   const usualDoses = prefs.usualDoses ?? [];
+  // The forms this medication is already taken in. A supplement saved as
+  // tablets has no use for spray; a new form is added on its medication page.
+  const knownForms = useMemo(
+    () => [...new Set(usualDoses.map(d => d.unit).filter(u => isCountedUnit(u) || u === 'unit'))],
+    [usualDoses],
+  );
 
   // Open by tapping Change, or because an override is already set. Derived from
   // the fields rather than stored, so loading a task that carries its own
@@ -100,6 +106,7 @@ export function TaskDoseAmount({
             onChangeAmount={onChangeAmount}
             unit={unit}
             onChangeUnit={onChangeUnit}
+            countedUnits={knownForms.length > 0 ? knownForms : undefined}
           />
           {usual ? (
             <View style={styles.useUsual}>
