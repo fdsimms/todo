@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
+import { GlassLayer, glassSupported } from './GlassLayer';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, iconSize, animation, floatingEdge } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -64,15 +65,19 @@ export function ScrollToTopButton({ visible, bottom, onPress }: Props) {
       <PressableScale
         style={[
           styles.button,
-          shadows.fab,
-          { backgroundColor: colors.accentFill, shadowColor: colors.accent },
-          floatingEdge(colors),
+          // The Fab in the opposite corner is glass where it can be, so this
+          // matches it; glass draws its own depth and edge, so the flat
+          // fallback alone takes the glow and the light ring.
+          glassSupported()
+            ? styles.glass
+            : [shadows.fab, { backgroundColor: colors.accentFill, shadowColor: colors.accent }, floatingEdge(colors)],
         ]}
         pressScale={0.9}
         haptic
         onPress={onPress}
         accessibilityLabel="Scroll to top"
       >
+        <GlassLayer interactive tintColor={colors.accentFill} style={styles.round} />
         <Ionicons name="arrow-up" size={iconSize.md} color={colors.onAccent} />
       </PressableScale>
     </Animated.View>
@@ -91,4 +96,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  glass: { backgroundColor: 'transparent' },
+  round: { borderRadius: radius.full },
 });
