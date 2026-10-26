@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Alarm, AlarmMission, WakeSong } from '../types';
+import type { Alarm, AlarmMission } from '../types';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -38,26 +38,23 @@ interface Draft {
   repeatDays: number[];
   mission: AlarmMission | null;
   sound: string | null;
-  wakeSong: WakeSong | null;
 }
 
 function draftFor(alarm: Alarm | null): Draft {
   if (alarm) {
     return {
       hour: alarm.hour, minute: alarm.minute, label: alarm.label, repeatDays: alarm.repeatDays,
-      mission: alarm.mission, sound: alarm.sound, wakeSong: alarm.wakeSong,
+      mission: alarm.mission, sound: alarm.sound,
     };
   }
-  return { hour: 7, minute: 0, label: '', repeatDays: [], mission: null, sound: null, wakeSong: null };
+  return { hour: 7, minute: 0, label: '', repeatDays: [], mission: null, sound: null };
 }
 
 const sameDraft = (a: Draft, b: Draft) =>
   a.hour === b.hour && a.minute === b.minute && a.label.trim() === b.label.trim()
   && [...a.repeatDays].sort().join() === [...b.repeatDays].sort().join()
   && JSON.stringify(a.mission) === JSON.stringify(b.mission)
-  && a.sound === b.sound
-  // A song without a mission isn't kept (useAlarmStore), so it isn't a change.
-  && (a.mission ? a.wakeSong?.persistentId : null) === (b.mission ? b.wakeSong?.persistentId : null);
+  && a.sound === b.sound;
 
 /**
  * Adds or edits an alarm of its own (utils/alarms.ts): the time, the label,
@@ -192,17 +189,9 @@ export function AlarmEditorSheet({ visible, alarm, onClose }: Props) {
           <View style={styles.rowsCard}>
             <AlarmSoundRows
               sound={draft.sound}
-              wakeSong={draft.wakeSong}
-              hasMission={draft.mission !== null}
               onOpenRingtones={() => setRingtonesOpen(true)}
-              onWakeSong={wakeSong => patch({ wakeSong })}
             />
           </View>
-          {draft.mission !== null && (
-            <HelpText style={styles.footHint}>
-              The ringtone is what the alarm rings with. The song plays once you open the alarm’s mission, until it’s done.
-            </HelpText>
-          )}
 
           {alarm && (
             <TouchableOpacity
@@ -264,7 +253,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dayTextOn: { color: colors.onAccent },
   hint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, marginBottom: spacing.smd },
   rowsCard: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
-  footHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm, marginHorizontal: spacing.md },
   delete: { marginTop: spacing.lg, alignItems: 'center' },
   deleteText: { color: colors.redText, fontSize: font.md },
 });

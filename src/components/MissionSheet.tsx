@@ -19,8 +19,6 @@ interface Props {
   onClose: () => void;
   /** Only while an alarm is ringing for it: the held Give up (see missions.ts). */
   onGiveUp?: () => void;
-  /** An alarm's wake-up song while it plays. */
-  nowPlaying?: string | null;
 }
 
 /**

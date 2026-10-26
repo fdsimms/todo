@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import type { AlarmMission, WakeSong } from '../types';
+import type { AlarmMission } from '../types';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
@@ -29,7 +29,7 @@ const MINUTE_OPTIONS: SegmentOption<number>[] = QUICK_ALARM_CHOICES.map(m => ({ 
  * to stop ("a 30-minute nap I have to do pushups to wake up from"). A card,
  * since it is one small decision (CLAUDE.md, CardSheet).
  *
- * The mission, ringtone and song it opens with are the last ones used here,
+ * The mission and ringtone it opens with are the last ones used here,
  * so a nap alarm that always takes pushups doesn't ask to be set up again
  * each time.
  */
@@ -40,7 +40,6 @@ export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
   const [minutes, setMinutes] = useState(initialMinutes);
   const [mission, setMission] = useState<AlarmMission | null>(null);
   const [sound, setSound] = useState<string | null>(null);
-  const [wakeSong, setWakeSong] = useState<WakeSong | null>(null);
   const [ringtonesOpen, setRingtonesOpen] = useState(false);
 
   useEffect(() => {
@@ -49,7 +48,6 @@ export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
     setMinutes(initialMinutes);
     setMission(last.mission);
     setSound(last.sound);
-    setWakeSong(last.wakeSong);
     setRingtonesOpen(false);
   }, [visible, initialMinutes]);
 
@@ -58,7 +56,7 @@ export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
 
   const start = () => {
     haptics.success();
-    dismiss(() => { useAlarmStore.getState().addQuickAlarm(minutes, { mission, sound, wakeSong }); });
+    dismiss(() => { useAlarmStore.getState().addQuickAlarm(minutes, { mission, sound }); });
   };
 
   return (
@@ -100,10 +98,7 @@ export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
           <View style={styles.rows}>
             <AlarmSoundRows
               sound={sound}
-              wakeSong={wakeSong}
-              hasMission={mission !== null}
               onOpenRingtones={() => setRingtonesOpen(true)}
-              onWakeSong={setWakeSong}
             />
           </View>
         </View>

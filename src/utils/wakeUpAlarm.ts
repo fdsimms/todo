@@ -83,7 +83,7 @@ export function syncWakeUpAlarm(now: Date = new Date()): boolean {
     set = store.setOverride(plan.alarm.id, morning, match.wakeAt.getHours(), match.wakeAt.getMinutes());
     if (set) ids[match.sourceId] = `${WAKE_OVERRIDE_PREFIX}${plan.alarm.id}`;
   } else if (plan.kind === 'add') {
-    const added = store.addOneOffAlarm(match.wakeAt, { mission: null, sound: null, wakeSong: null }, now);
+    const added = store.addOneOffAlarm(match.wakeAt, { mission: null, sound: null }, now);
     ids[match.sourceId] = added.id;
     set = true;
   }

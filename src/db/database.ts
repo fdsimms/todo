@@ -144,7 +144,7 @@ import {
   type SyncTable,
 } from './syncTracking';
 import { parseMission } from '../utils/missions';
-import { parseAlarmSound, parseWakeSong } from '../utils/alarmSounds';
+import { parseAlarmSound } from '../utils/alarmSounds';
 import { parseAlarmOverride } from '../utils/alarmOverride';
 import {
   emptyApplyReport,
@@ -396,6 +396,8 @@ function runInitDatabase(): void {
       mission_done_at TEXT,
       mission_gave_up INTEGER NOT NULL DEFAULT 0,
       sound TEXT,
+      -- Unread: the Apple Music wake-up song it held was removed. Left so an
+      -- existing table and a new one have the same columns.
       wake_song TEXT,
       override TEXT,
       created_at TEXT NOT NULL
@@ -5498,7 +5500,6 @@ function rowToAlarm(row: Record<string, unknown>): Alarm {
     missionDoneAt: (row.mission_done_at as string | null) ?? null,
     missionGaveUp: Boolean(row.mission_gave_up),
     sound: parseAlarmSound(row.sound),
-    wakeSong: parseWakeSong(row.wake_song),
     override: parseAlarmOverride(row.override),
     createdAt: row.created_at as string,
   };
@@ -5513,13 +5514,13 @@ export function dbSaveAlarm(alarm: Alarm): void {
   db.runSync(
     `INSERT OR REPLACE INTO alarms
       (id, label, hour, minute, repeat_days, fire_at, enabled, mission, quick, armed_at, mission_done_at, mission_gave_up,
-       sound, wake_song, override, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       sound, override, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       alarm.id, alarm.label, alarm.hour, alarm.minute, JSON.stringify(alarm.repeatDays), alarm.fireAt,
       alarm.enabled ? 1 : 0, alarm.mission ? JSON.stringify(alarm.mission) : null, alarm.quick ? 1 : 0,
       alarm.armedAt, alarm.missionDoneAt, alarm.missionGaveUp ? 1 : 0,
-      alarm.sound, alarm.wakeSong ? JSON.stringify(alarm.wakeSong) : null,
+      alarm.sound,
       alarm.override ? JSON.stringify(alarm.override) : null, alarm.createdAt,
     ],
   );

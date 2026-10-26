@@ -98,7 +98,7 @@ export function TomorrowAlarmSheet({ visible, task, onSettled, onClose }: Props)
       // No alarm that morning: a one-off, set up like the alarm that rings
       // next, so the morning it fills in for asks the same mission.
       const like = morning.next?.alarm;
-      store.addOneOffAlarm(chosen, { mission: like?.mission ?? null, sound: like?.sound ?? null, wakeSong: like?.wakeSong ?? null });
+      store.addOneOffAlarm(chosen, { mission: like?.mission ?? null, sound: like?.sound ?? null });
       return;
     }
     const alarm = ring.alarm;

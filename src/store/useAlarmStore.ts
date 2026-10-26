@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Alarm, AlarmMission, AlarmSoundFile, WakeSong } from '../types';
+import type { Alarm, AlarmMission, AlarmSoundFile } from '../types';
 import { dbDeleteAlarm, dbGetAlarms, dbGetSetting, dbSaveAlarm, dbSetSetting } from '../db/database';
 import { generateId } from '../utils/id';
 import { isRepeating, isSpent, quickAlarmFields, repeatingRingOn, scheduleFields } from '../utils/alarms';
@@ -9,7 +9,6 @@ import {
   ALARM_SOUNDS_SETTING,
   customSoundId,
   customSoundRef,
-  normalizeWakeSong,
   parseAlarmSound,
   parseAlarmSoundFiles,
   soundNameFromFile,
@@ -19,7 +18,7 @@ import { installImportedSound, pickSoundFile, removeImportedSound } from '../uti
 import { isDemoModeActive } from '../utils/demoState';
 
 /**
- * How the last quick alarm was set up (mission, sound, song), so the next one
+ * How the last quick alarm was set up (mission, sound), so the next one
  * opens on it. A device-local setting (not on the sync allowlist), like the
  * alarms.
  */
@@ -29,11 +28,9 @@ const QUICK_SETUP_SETTING = 'quickAlarmSetup';
 export interface AlarmSetup {
   mission: AlarmMission | null;
   sound: string | null;
-  /** Kept only with a mission (alarmSounds.ts). */
-  wakeSong: WakeSong | null;
 }
 
-/** What the alarm editor saves. A sound or song left out is the default, none. */
+/** What the alarm editor saves. A sound left out is the default. */
 export interface AlarmInput extends Partial<AlarmSetup> {
   mission: AlarmMission | null;
   /** Set to edit an existing alarm; absent to add one. */
@@ -49,23 +46,21 @@ export type ImportSoundResult =
   | { status: 'canceled' }
   | { status: 'failed' };
 
-/** The stored form of a setup: no song without a mission, nothing malformed. */
+/** The stored form of a setup, with nothing malformed. */
 function normalizeSetup(setup: Partial<AlarmSetup>): AlarmSetup {
-  const mission = normalizeMission(setup.mission);
   return {
-    mission,
+    mission: normalizeMission(setup.mission),
     sound: parseAlarmSound(setup.sound),
-    wakeSong: mission ? normalizeWakeSong(setup.wakeSong) : null,
   };
 }
 
 function readQuickSetup(): AlarmSetup {
   const raw = dbGetSetting(QUICK_SETUP_SETTING);
-  if (!raw) return { mission: null, sound: null, wakeSong: null };
+  if (!raw) return { mission: null, sound: null };
   try {
     return normalizeSetup(JSON.parse(raw) as Partial<AlarmSetup>);
   } catch {
-    return { mission: null, sound: null, wakeSong: null };
+    return { mission: null, sound: null };
   }
 }
 

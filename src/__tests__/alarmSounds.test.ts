@@ -2,11 +2,8 @@ import {
   customSoundId,
   customSoundRef,
   describeSound,
-  describeWakeSong,
-  normalizeWakeSong,
   parseAlarmSound,
   parseAlarmSoundFiles,
-  parseWakeSong,
   soundFileName,
   soundNameFromFile,
 } from '../utils/alarmSounds';
@@ -51,20 +48,5 @@ describe('alarm sounds', () => {
     expect(parseAlarmSoundFiles(JSON.stringify([rooster, { id: '', name: 'x', addedAt: 'y' }, 3]))).toEqual([rooster]);
     expect(parseAlarmSoundFiles('{')).toEqual([]);
     expect(parseAlarmSoundFiles(null)).toEqual([]);
-  });
-
-  it('keeps a song only with a persistent id', () => {
-    const song = { persistentId: '18446744073709551615', title: ' Mr. Blue Sky ', artist: 'ELO' };
-    expect(normalizeWakeSong(song)).toEqual({ persistentId: '18446744073709551615', title: 'Mr. Blue Sky', artist: 'ELO' });
-    expect(normalizeWakeSong({ persistentId: '0', title: 'x' })).toBeNull();
-    expect(normalizeWakeSong({ persistentId: 12, title: 'x' })).toBeNull();
-    expect(normalizeWakeSong({ persistentId: '5', title: '', artist: '' })).toEqual({ persistentId: '5', title: 'Untitled song', artist: null });
-    expect(parseWakeSong(JSON.stringify(song))?.title).toBe('Mr. Blue Sky');
-    expect(parseWakeSong('nope')).toBeNull();
-  });
-
-  it('describes a song with its artist when it has one', () => {
-    expect(describeWakeSong({ persistentId: '1', title: 'Mr. Blue Sky', artist: 'ELO' })).toBe('Mr. Blue Sky · ELO');
-    expect(describeWakeSong({ persistentId: '1', title: 'Mr. Blue Sky', artist: null })).toBe('Mr. Blue Sky');
   });
 });
