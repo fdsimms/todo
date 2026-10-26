@@ -1772,6 +1772,13 @@ Five things worth not re-deriving:
   request whose day has gone uses `dropGeneratedTask`, so an ignored request is
   not a decline: it comes back the next day, because it was never answered.
 
+- **Rescheduling a request keeps it, and the new date is the basis.** The pass
+  used to drop any request not raised today, so a request pushed to Friday was
+  gone on Tuesday and a fresh one written. `isCurrentRequest`
+  (`weightTasks.ts`) keeps one the person moved until its new day has passed,
+  and the pass asks nothing while it is there. Its answer stays recorded under
+  the day it was raised on (`weighInDayKey`), not today's.
+
 The row carries `dundundun://weight?log=1` so its link button opens the sheet
 that answers it, and `markWeighInAnswered` makes the request read ready when a
 weight is saved (the tick, and the coins, stay the person's). Both are copied from `moodLog`, and the reason is sharper

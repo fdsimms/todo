@@ -6,6 +6,7 @@ import {
   WEIGH_IN_LINK_URL,
   WEIGH_IN_TITLE,
   clampWeighInEveryDays,
+  isCurrentRequest,
   wantsWeighIn,
   weighInDayKey,
   weighInDeclineHolds,
@@ -159,5 +160,28 @@ describe('constants', () => {
     // Ticking a request off without answering it records nothing, and unlike a
     // mood entry the answer cannot be reconstructed later.
     expect(WEIGH_IN_LINK_URL).toBe('dundundun://weight?log=1');
+  });
+});
+
+describe('isCurrentRequest', () => {
+  it('is current on the day it was raised', () => {
+    expect(isCurrentRequest('2026-09-08', '2026-09-08', '2026-09-08')).toBe(true);
+  });
+
+  it('is not current the next day when nothing moved it', () => {
+    expect(isCurrentRequest('2026-09-08', '2026-09-08', '2026-09-09')).toBe(false);
+  });
+
+  it('stays current while a rescheduled date has not passed', () => {
+    expect(isCurrentRequest('2026-09-08', '2026-09-12', '2026-09-09')).toBe(true);
+    expect(isCurrentRequest('2026-09-08', '2026-09-12', '2026-09-12')).toBe(true);
+  });
+
+  it('lapses once the rescheduled day has gone, like any ignored request', () => {
+    expect(isCurrentRequest('2026-09-08', '2026-09-12', '2026-09-13')).toBe(false);
+  });
+
+  it('is never current for a task with no source day', () => {
+    expect(isCurrentRequest(null, '2026-09-12', '2026-09-08')).toBe(false);
   });
 });

@@ -160,6 +160,7 @@ import {
   clampWeighInEveryDays,
   wantsWeighIn,
   weighInDayKey,
+  isCurrentRequest,
   weighInDeclineHolds,
   weighInNotes,
 } from '../utils/weightTasks';
@@ -3244,6 +3245,17 @@ function recordTaskAnswered(task: Task): boolean {
     weighInAnsweredOn: useHealthStore.getState().weighInAnsweredOn,
     bloodPressureAnsweredOn: useHealthStore.getState().bloodPressureAnsweredOn,
   });
+}
+
+/**
+ * `isCurrentRequest` for a task the weigh-in or blood pressure pass wrote: the
+ * row's own placement is read here, since the rule itself takes day keys only.
+ */
+function isCurrentAskRequest(task: Task, sourceKey: string | null, todayKey: string): boolean {
+  const resetTime = useSettingsStore.getState().dayResetTime;
+  const date = getEffectiveTaskDate(task, resetTime);
+  const placedOnKey = date ? dayKeyOf(getTaskDayStart(new Date(date), resetTime)) : null;
+  return isCurrentRequest(sourceKey, placedOnKey, todayKey);
 }
 
 /**
@@ -9315,7 +9327,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // which for this kind is the decline stamp below, and a request nobody
     // answered has not been declined.
     liveGeneratedTasksOfKind(get().tasks, 'weighIn')
-      .filter(task => weighInDayKey(task) !== todayKey)
+      .filter(task => !isCurrentAskRequest(task, weighInDayKey(task), todayKey))
       .filter(task => !isReadyRecordTask(task))
       .forEach(task => dropGeneratedTask('weighIn', task.generatedSourceId));
 
@@ -9326,11 +9338,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // answer is kept, as a day key, for the row to read; the tick is still the
     // person's. A null read says nothing either way, so the marker is left alone.
     const liveRequest = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
-      .find(task => weighInDayKey(task) === todayKey);
+      .find(task => isCurrentAskRequest(task, weighInDayKey(task), todayKey));
     if (liveRequest) {
       const recent = await useHealthStore.getState().readRecentWeights(everyDays);
       if (recent !== null) {
-        useHealthStore.getState().setWeighInAnsweredOn(wantsWeighIn(recent) ? null : todayKey);
+        useHealthStore.getState().setWeighInAnsweredOn(wantsWeighIn(recent) ? null : weighInDayKey(liveRequest));
       }
       return;
     }
@@ -9394,10 +9406,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   markWeighInAnswered(dayKey) {
     const todayKey = dayKeyOf(getCurrentDayStart());
     const live = liveGeneratedTasksOfKind(get().tasks, 'weighIn')
-      .some(t => weighInDayKey(t) === todayKey);
+      .find(t => isCurrentAskRequest(t, weighInDayKey(t), todayKey));
     if (!live) return;
     if (dayKey === todayKey) {
-      useHealthStore.getState().setWeighInAnsweredOn(todayKey);
+      useHealthStore.getState().setWeighInAnsweredOn(weighInDayKey(live));
       get().autoCompleteRecordTasks('weighIn');
     } else {
       void get().checkWeighInTasks().then(() => get().autoCompleteRecordTasks('weighIn'));
@@ -9425,7 +9437,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     // An unanswered request from a day that has gone is dropped, not declined.
     liveGeneratedTasksOfKind(get().tasks, 'bloodPressureLog')
-      .filter(task => bloodPressureDayKey(task) !== todayKey)
+      .filter(task => !isCurrentAskRequest(task, bloodPressureDayKey(task), todayKey))
       .filter(task => !isReadyRecordTask(task))
       .forEach(task => dropGeneratedTask('bloodPressureLog', task.generatedSourceId));
 
@@ -9434,11 +9446,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A live request reads ready once a reading lands in its window, however it
     // got there. A null read says nothing either way.
     const liveRequest = liveGeneratedTasksOfKind(get().tasks, 'bloodPressureLog')
-      .find(task => bloodPressureDayKey(task) === todayKey);
+      .find(task => isCurrentAskRequest(task, bloodPressureDayKey(task), todayKey));
     if (liveRequest) {
       const recent = await useHealthStore.getState().readRecentBloodPressure(everyDays);
       if (recent !== null) {
-        useHealthStore.getState().setBloodPressureAnsweredOn(wantsBloodPressure(recent) ? null : todayKey);
+        useHealthStore.getState().setBloodPressureAnsweredOn(wantsBloodPressure(recent) ? null : bloodPressureDayKey(liveRequest));
       }
       return;
     }
@@ -9474,10 +9486,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   markBloodPressureAnswered(dayKey) {
     const todayKey = dayKeyOf(getCurrentDayStart());
     const live = liveGeneratedTasksOfKind(get().tasks, 'bloodPressureLog')
-      .some(t => bloodPressureDayKey(t) === todayKey);
+      .find(t => isCurrentAskRequest(t, bloodPressureDayKey(t), todayKey));
     if (!live) return;
     if (dayKey === todayKey) {
-      useHealthStore.getState().setBloodPressureAnsweredOn(todayKey);
+      useHealthStore.getState().setBloodPressureAnsweredOn(bloodPressureDayKey(live));
       get().autoCompleteRecordTasks('bloodPressureLog');
     } else {
       void get().checkBloodPressureTasks().then(() => get().autoCompleteRecordTasks('bloodPressureLog'));
