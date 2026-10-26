@@ -74,9 +74,6 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // differently on each phone, and a milestone is written once and rarely
   // edited, so last-writer-wins is a no-op on almost every row.
   { name: 'milestones', key: ['id'] },
-  // Dish ratings: plain data like recipes, so in neither the health nor the
-  // journal gate. A rating is a verdict about a dish, not a record of eating.
-  { name: 'dish_ratings', key: ['id'] },
   // Copy flags (CopyFlag): temporary dev tooling. They have to travel so the
   // MCP server can read what the phone flagged and resolve it.
   { name: 'copy_flags', key: ['id'] },

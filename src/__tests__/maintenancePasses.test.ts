@@ -98,7 +98,6 @@ describe('the three maintenance groups', () => {
       'discard idle workout',
       'sweep unused journal photos',
       'sweep unused task files',
-      'sweep unused dish photos',
       'reclaim freed storage',
     ]);
   });

@@ -26,8 +26,8 @@ export interface StorageStats {
   tables: StorageTable[];
   /** Recipe photos, which are files beside the database rather than rows in it. */
   photoBytes: number;
-  /** Journal photos, task files and dish photos, the same kind of thing in folders of their own. Absent counts as none. */
-  otherFileBytes?: { journal: number; task: number; dish?: number };
+  /** Journal photos and task files, the same kind of thing in folders of their own. Absent counts as none. */
+  otherFileBytes?: { journal: number; task: number };
 }
 
 /** Decimal units with one decimal, the way iOS prints "276.3 MB". */

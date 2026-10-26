@@ -51,8 +51,6 @@ import { useUnattendedStore } from '../store/useUnattendedStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { sweepJournalPhotos } from './journalPhotos';
 import { sweepTaskFiles } from './taskFiles';
-import { sweepDishPhotos } from './dishPhotos';
-import { useDishRatingStore } from '../store/useDishRatingStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { dbReclaimFreePages } from '../db/database';
 import { rescheduleAllReminders } from './notifications';
@@ -368,13 +366,6 @@ export function retentionPasses(): MaintenanceStep[] {
     // undo's sake (taskFiles.ts), so this is where one finally goes. Every row
     // counts, completed and archived included, since each still shows its files.
     ['sweep unused task files', () => { sweepTaskFiles(useTaskStore.getState().tasks); }],
-    // Dish photos likewise (dishPhotos.ts). Unlike the lists above it checks the
-    // store loaded: an unloaded one reads as no dishes, and the sweep would take
-    // every photo with it.
-    ['sweep unused dish photos', () => {
-      const { dishes, initialized } = useDishRatingStore.getState();
-      if (initialized) sweepDishPhotos(dishes);
-    }],
     // Then give the pages all of the above freed back to the device. Last on
     // purpose: it can only release what the deletes before it have already
     // freed. It deletes no rows and does nothing until the person has run

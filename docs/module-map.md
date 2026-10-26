@@ -151,10 +151,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
 - `src/utils/dictation.ts` — DICTATION_BARS, joinDictation, pushLevel, barHeight, DictationRefusal, dictationRefusal
 - `src/utils/digitRoll.ts` — RollColumn, rollColumns, rollDirection
-- `src/utils/dishOffer.ts` — offerDishRating
-- `src/utils/dishPhotoSync.ts` — dishPhotoNames, readDishPhotoForSync, hasDishPhotoForSync, writeDishPhotoFromSync
-- `src/utils/dishPhotos.ts` — DISH_PHOTO_FOLDER, DISH_PHOTO_PREFIX, isDishPhotoName, dishPhotoNamesInUse, unreferencedDishPhotos, dishPhotoUri, sweepDishPhotos
-- `src/utils/dishRating.ts` — DISH_VERDICT_LABELS, DISH_VERDICTS, DishInput, dishTextKey, dishKeys, noonOf, buildDishRating, DishPatch, applyDishPatch, mergeDishes, +8 more
 - `src/utils/doseRecording.ts` — syncOkAgainNotification, allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose, restoreDose
 - `src/utils/dreamQueue.ts` — QueuedDream, QUEUED_DREAM_MAX_LENGTH, parseQueuedDreams
 - `src/utils/dumbbellLoad.ts` — DumbbellEntry, dumbbellsUsed, entryFor, weightScale, shownKg, storedKgFromTyped, storedKgFromShown, formatScaledWeight, weightHeadingSuffix, DUMBBELL_ENTRY_LABELS, +1 more
@@ -706,7 +702,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useCookwareStore.ts` — CookwarePatch, useCookwareStore
 - `src/store/useCopyFlagStore.ts` — useCopyFlagStore
 - `src/store/useDemoStore.ts` — clearUndoHistories, reloadAfterDataReplaced, useDemoStore
-- `src/store/useDishRatingStore.ts` — useDishRatingStore
 - `src/store/useEventCreatedToastStore.ts` — SaveAs, CreatedEvent, useEventCreatedToastStore
 - `src/store/useEventPeopleStore.ts` — EVENT_PEOPLE_SETTING_KEY, EVENT_PEOPLE_MIGRATION_FLAG, useEventPeopleStore
 - `src/store/useEventReminderStore.ts` — useEventReminderStore
@@ -861,7 +856,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +313 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +308 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SERVER_SHARING_KEY_PREFIX, +19 more
 
 ## `src/services`
