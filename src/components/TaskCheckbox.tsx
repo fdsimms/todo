@@ -189,11 +189,21 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
     // moves nothing the host would close over.
     if (confirmFirst && (action === 'complete' || action === 'ask' || action === 'mission' || action === 'uncomplete')) {
       haptics.tap();
+      // A host with nothing to ask calls `proceed` before `confirmFirst`
+      // returns, while this press still holds `busyRef`: it runs inline under
+      // that hold. Checking the lock there made the tap a no-op (haptic and
+      // nothing else). Only a `proceed` that comes later, after an alert, has
+      // to take the lock itself.
+      let inline = true;
+      let pending: Promise<void> | undefined;
       confirmFirst(() => {
+        if (inline) { pending = performPress(); return; }
         if (busyRef.current) return;
         busyRef.current = true;
         performPress().finally(() => { busyRef.current = false; });
       });
+      inline = false;
+      await pending;
       return;
     }
     await performPress();
