@@ -185,8 +185,12 @@ export function pushupSensorStatus(state: PushupCounterState): PushupSensorStatu
   };
 }
 
-/** How far below the top of a rep the face has to go before it is down. */
-export const DEPTH_DOWN_M = 0.15;
+/**
+ * How far below the top of a rep the face has to go before it is down. A real
+ * pushup takes the face 35 cm or more from the top to the bottom, so this is
+ * about two thirds of that; 15 cm let a half rep count.
+ */
+export const DEPTH_DOWN_M = 0.25;
 
 /** How far back up from the bottom the face has to come for the rep to count. */
 export const DEPTH_UP_M = 0.1;
@@ -311,7 +315,7 @@ function tooClose(state: DepthCounterState, last: number): DepthCounterState {
   }
   // Only a face that came down to get here: one that went out of range
   // without leaving the top is a dropout, not a rep.
-  if (state.top === null || state.top - last < DEPTH_SHALLOW_M) return state;
+  if (state.top === null || state.top - last < DEPTH_DOWN_M) return state;
   return { ...state, phase: 'down', low: last, lastMiss: null };
 }
 
