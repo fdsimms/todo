@@ -197,8 +197,18 @@ function placeTask(
  */
 const INSTANT_SLOT_MINUTES = 30;
 
+/**
+ * The least a block holds in the lane packing: the minutes its minimum drawn
+ * height covers (22pt at 56pt an hour is about 24; the multi-day view's 18pt at
+ * 48 is 22.5). A five-minute task is drawn that tall, so packing it by its real
+ * length let a mark ten minutes later share its lane and paint over its text.
+ */
+const MIN_BLOCK_MINUTES = 24;
+
 const laneEnd = (e: TimelineEntry) =>
-  e.instant ? e.startMinutes + INSTANT_SLOT_MINUTES : Math.max(e.endMinutes, e.startMinutes + 1);
+  e.instant
+    ? e.startMinutes + INSTANT_SLOT_MINUTES
+    : Math.max(e.endMinutes, e.startMinutes + MIN_BLOCK_MINUTES);
 
 /**
  * Greedy column packing over a sorted run.
