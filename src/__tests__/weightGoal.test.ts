@@ -7,6 +7,7 @@ import {
   goalDirection,
   goalPace,
   goalProgress,
+  healthMaintenanceKcal,
   paceWeightAfterDays,
   pacePlotPoints,
   parseWeightGoal,
@@ -120,6 +121,57 @@ describe('the goal\'s maintenance basis', () => {
     const older = parseWeightGoal(serializeWeightGoal(losingGoal()));
     expect(older!.maintenanceBasis).toBeUndefined();
     expect(parseWeightGoal(JSON.stringify({ ...losingGoal(), maintenanceBasis: 'nonsense' }))!.maintenanceBasis).toBeUndefined();
+  });
+
+  it('round-trips the Apple Health basis and whether it counts digestion', () => {
+    const goal = losingGoal({ maintenanceBasis: 'health', countDigestion: false });
+    const parsed = parseWeightGoal(serializeWeightGoal(goal))!;
+    expect(parsed.maintenanceBasis).toBe('health');
+    expect(parsed.countDigestion).toBe(false);
+    // Only `false` is stored; anything else reads as on.
+    expect(parseWeightGoal(JSON.stringify({ ...losingGoal(), countDigestion: true }))!.countDigestion).toBeUndefined();
+  });
+});
+
+describe('the Apple Health basis', () => {
+  const today = new Date(2026, 8, 15, 12);
+  const week = [600, 620, 580, 640, 610, 590, 600, 630];
+
+  it('builds the target on the measured figure, as the log basis does', () => {
+    const goal = losingGoal({ maintenanceBasis: 'health' });
+    const rate = signedRateKgPerWeek(goal);
+    const shortfall = Math.round((rate / 0.45359237) * 3500 / 7);
+    expect(autoCalorieTargetKcal(goal, completeProfile, 80, today, 2600)).toBe(2600 + shortfall);
+  });
+
+  it('keeps the activity-level figure until there is a measured one', () => {
+    const profileOnly = autoCalorieTargetKcal(losingGoal(), completeProfile, 80, today);
+    expect(autoCalorieTargetKcal(losingGoal({ maintenanceBasis: 'health' }), completeProfile, 80, today, null)).toBe(profileOnly);
+  });
+
+  it('works out maintenance from a typical day of activity, with digestion unless turned off', () => {
+    const on = healthMaintenanceKcal(losingGoal({ maintenanceBasis: 'health' }), completeProfile, 80, today, week);
+    const off = healthMaintenanceKcal(
+      losingGoal({ maintenanceBasis: 'health', countDigestion: false }), completeProfile, 80, today, week,
+    );
+    expect(on).not.toBeNull();
+    expect(off).not.toBeNull();
+    expect(on!).toBeGreaterThan(off!);
+  });
+
+  it('gives no figure for a refused read, too few days, another basis or no goal', () => {
+    const health = losingGoal({ maintenanceBasis: 'health' });
+    expect(healthMaintenanceKcal(health, completeProfile, 80, today, null)).toBeNull();
+    expect(healthMaintenanceKcal(health, completeProfile, 80, today, [600, 610, null, null, null, 600, 590])).toBeNull();
+    expect(healthMaintenanceKcal(losingGoal(), completeProfile, 80, today, week)).toBeNull();
+    expect(healthMaintenanceKcal(losingGoal({ maintenanceBasis: 'log' }), completeProfile, 80, today, week)).toBeNull();
+    expect(healthMaintenanceKcal(null, completeProfile, 80, today, week)).toBeNull();
+  });
+
+  it('falls back to the goal\'s start weight when no weigh-in is known', () => {
+    const goal = losingGoal({ maintenanceBasis: 'health' });
+    expect(healthMaintenanceKcal(goal, completeProfile, null, today, week))
+      .toBe(healthMaintenanceKcal(goal, completeProfile, 80, today, week));
   });
 });
 

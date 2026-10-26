@@ -2,8 +2,10 @@ import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { dayKeyOf, getCurrentDayStart, getLogicalDayKey, getLogicalToday } from '../utils/dateUtils';
 import { measuredMaintenanceKcal } from '../utils/adaptiveExpenditureRead';
+import { healthMaintenanceKcal } from '../utils/weightGoal';
+import { TYPICAL_ACTIVE_ENERGY_WINDOW_DAYS } from '../utils/activeEnergyBoost';
 import type { HealthDayInput } from '../utils/moodInsights';
 import { latestWeight, type WeightPoint } from '../utils/weightLog';
 import { parseBloodPressureReadings, type BloodPressureReading } from '../utils/bloodPressureLog';
@@ -352,6 +354,26 @@ export function sameHealthHistory(held: readonly HealthDayInput[] | null, read: 
   });
 }
 
+/**
+ * The maintenance figure the weight goal's chosen basis asks for, or null when
+ * the basis is the activity level or the basis has no figure yet (the caller
+ * then leaves the activity level standing, see `autoCalorieTargetKcal`).
+ *
+ * The log basis reads the weights already in hand. The Apple Health basis
+ * makes its own read, which can come back refused or empty (null days, or
+ * fewer than a week of them), and the goal and the read permission are looked
+ * at again after it, since either can change while it is in flight.
+ */
+async function goalMaintenanceKcal(weights: readonly WeightPoint[], latestKg: number | null): Promise<number | null> {
+  const basis = useSettingsStore.getState().weightGoal?.maintenanceBasis;
+  if (basis === 'log') return measuredMaintenanceKcal(weights);
+  if (basis !== 'health') return null;
+  const days = await useHealthStore.getState().readRecentActiveEnergy(TYPICAL_ACTIVE_ENERGY_WINDOW_DAYS);
+  const now = useSettingsStore.getState();
+  if (!now.healthReadEnabled || now.weightGoal?.maintenanceBasis !== 'health') return null;
+  return healthMaintenanceKcal(now.weightGoal, now.bodyProfile, latestKg, getLogicalToday(), days);
+}
+
 export const useHealthStore = create<HealthState>((set, get) => ({
   today: null,
   refreshing: false,
@@ -563,11 +585,9 @@ export const useHealthStore = create<HealthState>((set, get) => ({
       // worked out against the current weight), so keep the food log target
       // in step here too, not just when the goal or profile sheet is saved.
       const latestKg = latestWeight(weightSeries)?.kilograms ?? null;
-      // The log basis reads the window of this same series; worked out only
-      // when the goal asks for it, which is the opt-in.
-      const measured = useSettingsStore.getState().weightGoal?.maintenanceBasis === 'log'
-        ? measuredMaintenanceKcal(weightSeries)
-        : null;
+      const measured = await goalMaintenanceKcal(weightSeries, latestKg);
+      // The read above can outlive access being revoked, same as the weights.
+      if (!weightGuard.isCurrent(token)) return;
       useSettingsStore.getState().syncWeightGoalCalorieTarget(latestKg, measured);
       // The protein target pinned to a ratio of this weight, if it's on.
       useSettingsStore.getState().syncProteinToWeight(latestKg);
@@ -714,9 +734,12 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     // otherwise fall back to the weight the goal started from, which is older
     // than the longer read `refreshWeight` may have used.
     if (kg === null) return;
-    const measured = settings.weightGoal?.maintenanceBasis === 'log' ? measuredMaintenanceKcal(points) : null;
-    settings.syncWeightGoalCalorieTarget(kg, measured);
-    settings.syncProteinToWeight(kg);
+    const measured = await goalMaintenanceKcal(points, kg);
+    // Settled again after the second read, for the same reason as the first.
+    const after = useSettingsStore.getState();
+    if (!after.healthReadEnabled || !wanted(after)) return;
+    after.syncWeightGoalCalorieTarget(kg, measured);
+    after.syncProteinToWeight(kg);
   },
 
   /**
