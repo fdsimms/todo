@@ -197,8 +197,18 @@ function placeTask(
  */
 const INSTANT_SLOT_MINUTES = 30;
 
+/**
+ * The least a block holds in the lane packing: the minutes its minimum drawn
+ * height covers (22pt at 56pt an hour is about 24; the multi-day view's 18pt at
+ * 48 is 22.5). A five-minute task is drawn that tall, so packing it by its real
+ * length let a mark ten minutes later share its lane and paint over its text.
+ */
+const MIN_BLOCK_MINUTES = 24;
+
 const laneEnd = (e: TimelineEntry) =>
-  e.instant ? e.startMinutes + INSTANT_SLOT_MINUTES : Math.max(e.endMinutes, e.startMinutes + 1);
+  e.instant
+    ? e.startMinutes + INSTANT_SLOT_MINUTES
+    : Math.max(e.endMinutes, e.startMinutes + MIN_BLOCK_MINUTES);
 
 /**
  * Greedy column packing over a sorted run.
@@ -231,6 +241,101 @@ function assignLanes(entries: TimelineEntry[]): void {
     runEnd = Math.max(runEnd, width);
   }
   if (run.length > 0) closeRun();
+}
+
+/** How many offsets deep a cascade goes before it gives up and splits the column. */
+export const MAX_CASCADE_DEPTH = 3;
+
+/**
+ * The least time a later start must leave an earlier entry for its first title
+ * line to stay uncovered: about one line at the three-day view's scale.
+ */
+export const MIN_CASCADE_VISIBLE_MINUTES = 20;
+
+export interface CascadePlacement {
+  /** 0 is flush left; each step in is one cascade offset. */
+  depth: number;
+  /** Paint order: a later-starting entry sits on top of an earlier one. */
+  order: number;
+  /** True when it starts while another entry is still running under it. */
+  overlays: boolean;
+  /** Minutes of this entry nothing later starts on top of, or null when none does. */
+  visibleMinutes: number | null;
+  /**
+   * True when stacking this entry's overlap would hide a title, so it takes the
+   * entry's `lane` and `laneCount` column like the Day view does. Every entry of
+   * an overlapping run answers the same.
+   */
+  split: boolean;
+}
+
+/**
+ * Where each entry sits when overlaps are stacked rather than split into
+ * columns, for a column too narrow to halve (the three-day view).
+ *
+ * An entry takes the smallest offset not held by something still running when
+ * it starts, so a short entry after a long one reuses the left edge once the
+ * earlier one finishes and sits on top of it at full width. The one that starts
+ * last paints last. The first line of an earlier entry's title is never
+ * covered because whatever overlaps it starts after it, and `visibleMinutes`
+ * says how much of it a later start leaves, so the caller can cut a title to
+ * the lines that fit. Results are in the input's order.
+ *
+ * A stack only works while each covered entry keeps a readable first line, so a
+ * run of overlapping entries falls back to the lane layout (`split`) when a later
+ * one starts within `MIN_CASCADE_VISIBLE_MINUTES` of an earlier one, or when it
+ * would sit deeper than `MAX_CASCADE_DEPTH`, where entries would cover each
+ * other completely. Narrow columns that stay readable beat a stack that doesn't.
+ */
+export function cascadeEntries(entries: readonly TimelineEntry[]): CascadePlacement[] {
+  const sorted = entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) =>
+      a.entry.startMinutes - b.entry.startMinutes
+      || laneEnd(b.entry) - laneEnd(a.entry)
+      || a.index - b.index);
+  const placements: CascadePlacement[] = new Array(entries.length);
+  const depths: number[] = [];
+  sorted.forEach(({ entry, index }, rank) => {
+    const running: number[] = [];
+    for (let i = 0; i < rank; i += 1) {
+      if (laneEnd(sorted[i].entry) > entry.startMinutes) running.push(depths[i]);
+    }
+    let depth = 0;
+    while (running.includes(depth)) depth += 1;
+    depths[rank] = depth;
+
+    const next = sorted[rank + 1]?.entry.startMinutes;
+    const nextStart = next !== undefined && next < laneEnd(entry) ? next : null;
+    placements[index] = {
+      depth,
+      order: rank + 1,
+      overlays: running.length > 0,
+      visibleMinutes: nextStart === null ? null : nextStart - entry.startMinutes,
+      split: false,
+    };
+  });
+
+  // The runs are the ones `assignLanes` packs: a run ends where nothing in it is still going.
+  let run: number[] = [];
+  let runEnd = -1;
+  const closeRun = () => {
+    const cramped = run.some(index => {
+      const { depth, visibleMinutes } = placements[index];
+      return depth > MAX_CASCADE_DEPTH
+        || (visibleMinutes !== null && visibleMinutes < MIN_CASCADE_VISIBLE_MINUTES);
+    });
+    for (const index of run) placements[index].split = cramped;
+    run = [];
+    runEnd = -1;
+  };
+  sorted.forEach(({ entry, index }) => {
+    if (run.length > 0 && entry.startMinutes >= runEnd) closeRun();
+    run.push(index);
+    runEnd = Math.max(runEnd, laneEnd(entry));
+  });
+  if (run.length > 0) closeRun();
+  return placements;
 }
 
 export function buildDayTimeline({ dayStart, tasks, events, sunLocation = null }: DayTimelineInput): DayTimeline {

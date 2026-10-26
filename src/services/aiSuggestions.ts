@@ -248,7 +248,7 @@ export function describeAIError(error: unknown, source: string = 'ai'): string {
     const reason = (error as { reason?: string }).reason;
     return `Anthropic rejected the request${reason ? ` (${reason})` : ''}. Try another model for this feature in Settings.`;
   }
-  if (message === 'Response was truncated') return 'The response was cut off. Try again.';
+  if (message === 'Response was truncated') return 'The reply was too long to finish. Try again with less in the request, such as a smaller meal or fewer items.';
   if (message === 'No estimate returned') {
     return 'That description could not be read into figures. Try naming the dish and the place.';
   }
@@ -2766,7 +2766,11 @@ export async function estimateMealNutrition(
   const useWebSearch = !!useSettingsStore.getState().aiFeatureConfig.nutritionEstimate.webSearch;
 
   const ask = (search: boolean) => callAnthropic({
-    max_tokens: search ? 4000 : 2000,
+    // The reply is one block of figures for the total plus one per component
+    // in the breakdown, each about 300 tokens, so a meal of several items
+    // (fried tofu, popcorn with butter, soft serve) outgrew 2000 and came back
+    // cut off. A short meal still stops far below the cap.
+    max_tokens: search ? 8000 : 6000,
     system: [
       'You estimate what one described meal contains, for somebody writing it down in a food diary.',
       ...(search ? [

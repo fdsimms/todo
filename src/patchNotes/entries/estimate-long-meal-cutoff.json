@@ -1,0 +1,1 @@
+{ "message": "Fixed estimating a meal with several foods in it failing, and the error now says to ask for less instead of to try again.", "date": "2026-10-26" }

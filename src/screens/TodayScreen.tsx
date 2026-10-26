@@ -79,6 +79,7 @@ import { dragRange } from '../utils/reorder';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
+import { setAutoCompleteRowsLive } from '../utils/autoCompleteScope';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -245,6 +246,7 @@ import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { useLingering } from '../hooks/useLingering';
 import { PillHighlightLayer, PillLabel, usePillHighlight } from '../components/SlidingPills';
+import { usePillRowReveal } from '../hooks/usePillRowReveal';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from '../components/RotatingChevron';
 import { loadEventRowMemo, saveEventRowMemo } from '../utils/eventRowMemo';
@@ -733,12 +735,15 @@ function ViewModePills({
   const colors = useColors();
   const [shownMode, showMode] = useOptimistic(viewMode);
   const highlight = usePillHighlight(shownMode);
+  // At large text sizes the row outgrows the screen; keep the chosen pill on it.
+  const reveal = usePillRowReveal(shownMode);
   // Clears once the new mode has committed (or the tap changed nothing).
   useEffect(() => {
     switchChannel.publish(null);
   }, [viewMode, switchChannel]);
   return (
     <ScrollView
+      {...reveal.scrollProps}
       horizontal
       showsHorizontalScrollIndicator={false}
       style={styles.viewModePillsScroll}
@@ -749,7 +754,6 @@ function ViewModePills({
         keys={modes}
         restColor={colors.bgSecondary}
         activeColor={colors.accentFill}
-        radius={radius.full}
       />
       {modes.map(mode => {
         const active = shownMode === mode;
@@ -759,7 +763,10 @@ function ViewModePills({
         return (
           <TouchableOpacity
             key={mode}
-            onLayout={highlight.onPillLayout(mode)}
+            onLayout={e => {
+              highlight.onPillLayout(mode)(e);
+              reveal.onPillLayout(mode)(e);
+            }}
             style={[
               styles.viewModePill,
               active && styles.viewModePillActive,
@@ -789,9 +796,9 @@ function ViewModePills({
             <PillLabel
               highlight={highlight}
               pillKey={mode}
-              style={[styles.viewModePillText, active && styles.viewModePillTextActive]}
-              restColor={colors.textSecondary}
-              activeColor={colors.onAccent}
+              active={active}
+              style={styles.viewModePillText}
+              activeStyle={styles.viewModePillTextActive}
             >
               {VIEW_TITLES[mode]}
             </PillLabel>
@@ -1215,6 +1222,17 @@ export function TodayScreen() {
   useFocusEffect(
     useCallback(() => {
       return () => setExpandedTaskId(null);
+    }, [])
+  );
+
+  // Today's rows are the only ones that can play a task completing itself. A
+  // record saved on another tab (a dream in the Journal) leaves the request
+  // held, and this hands it to the rows now that they are back on screen.
+  useFocusEffect(
+    useCallback(() => {
+      setAutoCompleteRowsLive(true);
+      useTaskStore.getState().resumeAutoComplete();
+      return () => setAutoCompleteRowsLive(false);
     }, [])
   );
 
@@ -5054,8 +5072,9 @@ export function TodayScreen() {
 
   // Dropped by simplified mode: "40m done · 2h 15m planned" is a reading of the
   // day rather than a part of it, and it needs the effort ratings that mode
-  // also takes away.
-  const workloadSubtitle =
+  // also takes away. Drawn as one quiet line under the view pills rather than
+  // in the header, since it's the least important thing the header held.
+  const workloadLine =
     viewMode === 'today' && !featureHidden('workloadSubtitle', simpleMode)
     && (plannedLabel || completedTodayLabel || eventsLeftLabel)
       ? [
@@ -5065,12 +5084,10 @@ export function TodayScreen() {
           ]
             .filter(Boolean)
             .join(' · '),
-          // Its own line: with the header buttons beside it the full sentence
-          // wrapped anyway, and it wrapped mid-phrase ("1h of / events left").
           eventsLeftLabel ? `${eventsLeftLabel} of events left` : undefined,
         ]
           .filter(Boolean)
-          .join('\n')
+          .join(' · ')
       : undefined;
 
 
@@ -5147,10 +5164,10 @@ export function TodayScreen() {
       }] : []),
   ];
 
-  // Today's header is the tallest of the four: its workload line can run to two
-  // lines (events left is a line of its own), where the others reserve one. The
-  // other lenses are held to its measured height, or the pills and the list
-  // under them jump up on every switch away from Today.
+  // Today's header is the tallest of the four: it carries the date overline and
+  // the weather, which the others don't. The other lenses are held to its
+  // measured height, or the pills and the list under them jump up on every
+  // switch away from Today.
   const [todayHeaderHeight, setTodayHeaderHeight] = useState<number | undefined>(undefined);
 
   // ==== render. Everything below is JSX ====
@@ -5162,7 +5179,6 @@ export function TodayScreen() {
           title={VIEW_TITLES[viewMode]}
           minHeight={viewMode === 'today' ? undefined : todayHeaderHeight}
           overline={viewMode === 'today' ? today : undefined}
-          subtitle={workloadSubtitle}
           actions={headerActions}
           titleAdornment={
             viewMode === 'today' && headerWeather ? (
@@ -5207,6 +5223,8 @@ export function TodayScreen() {
           switchChannel={viewSwitchChannel}
           styles={styles}
         />
+
+        {workloadLine && <Text style={styles.workloadLine}>{workloadLine}</Text>}
 
         {/* Outside the `viewMode` gate on purpose: a session runs against the
             tasks, not against a lens over them, so switching to Later must
@@ -6243,6 +6261,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   coinPillTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   coinPillGoal: { fontSize: font.xxs, fontWeight: fontWeight.medium, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
   coinPillText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+  workloadLine: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs, fontSize: font.xs, color: colors.textTertiary },
   headerWeatherText: { flexShrink: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 7,
