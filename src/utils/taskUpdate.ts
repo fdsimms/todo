@@ -44,7 +44,7 @@ import { blockerFields, blockerIdsOf } from './blocking';
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort', 'difficulty',
-  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'healthFollowGoal', 'windowStart', 'windowEnd', 'windowStartSun', 'windowEndSun', 'timeSegments', 'reminderTime', 'reminderKind', 'alarmSound', 'alarmLink', 'alarmLinkLeavesOpen', 'reminderOffsetDays', 'reminderTracksVisibility', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
+  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'healthFollowGoal', 'windowStart', 'windowEnd', 'windowStartSun', 'windowEndSun', 'timeSegments', 'reminderTime', 'reminderKind', 'alarmSound', 'alarmSoundPool', 'alarmLink', 'alarmLinkLeavesOpen', 'reminderOffsetDays', 'reminderTracksVisibility', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
   // What "Start workout" opens, the way linkUrl is what the row's link opens: a
   // scope:'occurrence' change to one date's routine must not become the default
   // for every date after it.

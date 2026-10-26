@@ -191,6 +191,7 @@ jest.mock('../store/useSyncStore', () => {
   };
 });
 jest.mock('../utils/wakeUpAlarm', () => ({ syncWakeUpAlarm: () => false }));
+jest.mock('../store/useAlarmStore', () => ({ useAlarmStore: { getState: () => ({ rerollSounds: () => { mockCalls.push('rerollSounds'); } }) } }));
 jest.mock('../utils/calendarRequestDrain', () => ({ drainCalendarRequests: () => Promise.resolve() }));
 jest.mock('../utils/pendingHealthFoodWrites', () => ({ runPendingHealthFoodWrites: () => {} }));
 jest.mock('../utils/pendingHealthWorkoutWrites', () => ({ runPendingHealthWorkoutWrites: () => {} }));
@@ -261,7 +262,7 @@ describe('runBackgroundRefresh', () => {
       'checkPantryReviewTasks', 'checkPantryCheckTasks', 'checkProduceFloorTasks', 'checkMealShortfallTasks',
       'checkMealThawTasks', 'checkMealLogNudgeTasks',
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'applyWeatherWaits', 'applyRainSkips', 'checkEventTasks',
-      'checkTravelTasks', 'checkWakeUpTasks', 'checkScreenTimeTasks', 'checkBlockOfferTasks', 'checkHealthTasks',
+      'checkTravelTasks', 'checkWakeUpTasks', 'rerollSounds', 'checkScreenTimeTasks', 'checkBlockOfferTasks', 'checkHealthTasks',
       'checkMoodTasks', 'checkJournalTasks', 'checkWaniKaniTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks', 'checkBloodPressureTasks',
       'checkBirthdayTasks', 'checkPersonDateTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'checkWaitingFollowUpTasks',

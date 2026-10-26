@@ -8,7 +8,7 @@ import { SheetScrim } from './SheetScrim';
 import { GlassLayer, glassSupported } from './GlassLayer';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, border, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, animation, border, interaction, floatingEdge, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { fabHomeState, type FabHomeState } from '../utils/fabDrop';
 import { useSettingsStore, type FabHand } from '../store/useSettingsStore';
@@ -77,7 +77,7 @@ export function fabCircle(colors: Colors, size: number) {
     justifyContent: 'center' as const,
     shadowColor: colors.accent,
     // The glass draws its own depth; a coloured halo under it would show through.
-    ...(glassSupported() ? { shadowOpacity: 0, elevation: 0 } : null),
+    ...(glassSupported() ? { shadowOpacity: 0, elevation: 0 } : floatingEdge(colors)),
   };
 }
 
@@ -683,6 +683,8 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
   },
   fabDisabled: {
     backgroundColor: colors.bgQuaternary,
+    // A greyed-out button has nothing to stand apart from, and a bright ring would read as live.
+    borderColor: colors.bgQuaternary,
   },
   backdrop: {
     backgroundColor: colors.backdrop,
@@ -699,6 +701,7 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     borderRadius: radius.full,
     backgroundColor: glassSupported() ? 'transparent' : colors.accentFill,
     shadowColor: colors.accent,
+    ...(glassSupported() ? null : floatingEdge(colors)),
   },
   menuItemText: {
     color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold,
@@ -719,6 +722,7 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     borderRadius: radius.full,
     backgroundColor: glassSupported() ? 'transparent' : colors.accentFill,
     shadowColor: colors.accent,
+    ...(glassSupported() ? null : floatingEdge(colors)),
   },
   // The glass draws its own depth, so the coloured halo comes off a glass pill.
   glassFace: { shadowOpacity: 0, elevation: 0 },

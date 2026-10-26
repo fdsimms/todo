@@ -102,7 +102,7 @@ const NOT_SEEDED: Record<string, string[]> = {
   'a place among the person\'s own saved places': ['reminderPlaceId', 'reminderPlaceOn'],
   // A template has no alarm reminder to ring (reminderKind isn't offered
   // either), so it has nothing a sound could belong to.
-  'rings only with an alarm reminder': ['alarmSound'],
+  'rings only with an alarm reminder': ['alarmSound', 'alarmSoundPool'],
   // Alarms are device-only, so a template can't name one, and "tomorrow's
   // alarm" is set on the task it's needed on.
   'an alarm on one phone': ['alarmLink', 'alarmLinkLeavesOpen'],

@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, AppState } from 'react-native';
+import { View, Text, AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { HealthRequestStatus, HealthWriteStatus } from 'todo-health-bridge';
 import { useShallow } from 'zustand/react/shallow';
@@ -15,6 +15,7 @@ import { SHORT_NIGHT_MINUTES_MAX, SHORT_NIGHT_MINUTES_MIN, SHORT_NIGHT_MINUTES_S
 import { STEP_GOAL_DEFAULT, STEP_GOAL_MAX, STEP_GOAL_MIN, STEP_GOAL_STEP } from '../../utils/stepGoal';
 import { ActivityRingsCard } from '../../components/ActivityRingsCard';
 import { HEALTH_WRITABLE_NUTRIENTS } from '../../types';
+import { healthNutrientSections } from '../../utils/nutritionTargets';
 import { NUTRIENT_LABEL } from '../../utils/foodNutrition';
 import { healthBridge, isHealthSupported, openHealthApp } from '../../utils/healthBridge';
 import type { WeightUnit } from '../../utils/weightLog';
@@ -670,20 +671,26 @@ export function HealthSettings() {
             entryId="healthWriteNutrients"
             icon="nutrition-outline"
             label="Nutrients written per meal"
-            tight
+            value={`${healthWriteNutrients.length} of ${HEALTH_WRITABLE_NUTRIENTS.length}`}
           />
-          <View style={styles.pillGroupRow}>
-            <PillGroup
-              noun="nutrient"
-              options={HEALTH_WRITABLE_NUTRIENTS.map(key => ({
-                key,
-                label: NUTRIENT_LABEL[key].label,
-                selected: healthWriteNutrients.includes(key),
-                accessibilityLabel: `Write ${NUTRIENT_LABEL[key].label} to Health`,
-                onPress: () => toggleWriteNutrient(key),
-              }))}
-            />
-          </View>
+          {healthNutrientSections().map(section => (
+            <View key={section.heading ?? 'other'}>
+              {section.heading ? <Text style={styles.pillGroupHeading}>{section.heading}</Text> : null}
+              <View style={styles.pillGroupRow}>
+                <PillGroup
+                  noun="nutrient"
+                  limit={section.keys.length}
+                  options={section.keys.map(key => ({
+                    key,
+                    label: NUTRIENT_LABEL[key].label,
+                    selected: healthWriteNutrients.includes(key),
+                    accessibilityLabel: `Write ${NUTRIENT_LABEL[key].label} to Health`,
+                    onPress: () => toggleWriteNutrient(key),
+                  }))}
+                />
+              </View>
+            </View>
+          ))}
           {/* Only inside the Workouts area: a switch for something the app
               can't do while the area is off would be a row about nothing. */}
           {workoutsEnabled && (

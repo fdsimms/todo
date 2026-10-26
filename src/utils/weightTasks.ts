@@ -123,6 +123,33 @@ export function dayKeyGap(from: string, to: string): number {
 }
 
 /**
+ * Whether a request is the live one for today: raised today, or raised on an
+ * earlier day and then moved by the person to today or a later day.
+ *
+ * Both asking generators write the request dated to the day they raised it, and
+ * used to drop it the next morning as a question about a window that had moved
+ * on. A request the person rescheduled had answered that: they said when they
+ * will do it. Dropping it threw the new date away, and the next pass wrote a
+ * fresh one for today, so a "Friday" request was back on Tuesday. A moved
+ * request is kept until its new day has passed, and the gap is not asked about
+ * again in the meantime, so the next ask is measured from the new date. One
+ * moved to a day already gone is an ignored request like any other.
+ *
+ * `sourceKey` is the day key the request was raised on (`weighInDayKey` or
+ * `bloodPressureDayKey`), which is also the key its answer is recorded under.
+ */
+export function isCurrentRequest(
+  sourceKey: string | null,
+  /** The day key the row sits on now (its defer or due date), null when undated. */
+  placedOnKey: string | null,
+  todayKey: string,
+): boolean {
+  if (sourceKey === null) return false;
+  if (sourceKey === todayKey) return true;
+  return placedOnKey !== null && placedOnKey !== sourceKey && placedOnKey >= todayKey;
+}
+
+/**
  * Whether a deleted request still holds, so the pass should not ask today.
  *
  * Deleting "Record your weight" used to mean nothing past the day it was

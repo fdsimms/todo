@@ -33,7 +33,7 @@ jest.mock('todo-alarmkit-bridge', () => ({
 // A task's ringtone resolves to its installed file; this mock stands in for
 // the install (alarmSoundDevice.ts needs expo-asset and the native bridge).
 jest.mock('../utils/alarmSoundDevice', () => ({
-  soundFileForAlarm: jest.fn(async (sound: string | null) => (sound === 'chime' ? 'dundundun-chime.caf' : null)),
+  soundFileForAlarm: jest.fn(async (sound: string | null) => (sound === null ? null : `dundundun-${sound}.caf`)),
 }));
 
 // Mutable so the daily-agenda tests can drive the settings it reads. Safe to
@@ -409,6 +409,21 @@ describe('scheduleTaskReminder', () => {
     mockAlarmKitAvailable = true;
     await scheduleTaskReminder(makeTask({ id: 'toned', title: 'Wake up', reminderTime: FUTURE, reminderKind: 'alarm', alarmSound: 'chime' }));
     expect(scheduleNativeAlarm).toHaveBeenCalledWith(taskAlarmUuid('toned', 0), new Date(FUTURE), 'Wake up', null, 'dundundun-chime.caf');
+  });
+
+  it('picks a task alarm’s ringtone from its pool, and keeps it when the reminder is scheduled again', async () => {
+    mockAlarmKitAvailable = true;
+    const ring = async (id: string) => {
+      (scheduleNativeAlarm as jest.Mock).mockClear();
+      await scheduleTaskReminder(makeTask({ id, reminderTime: FUTURE, reminderKind: 'alarm', alarmSound: 'chime', alarmSoundPool: ['chime', 'rise'] }));
+      return (scheduleNativeAlarm as jest.Mock).mock.calls[0][4] as string;
+    };
+    const first = await ring('pool-a');
+    expect(['dundundun-chime.caf', 'dundundun-rise.caf']).toContain(first);
+    expect(await ring('pool-a')).toBe(first);
+    const seen = new Set<string>();
+    for (let i = 0; i < 30; i++) seen.add(await ring(`pool-${i}`));
+    expect(seen.size).toBe(2);
   });
 
   it('schedules a native alarm instead of a notification when reminderKind is "alarm" and AlarmKit is available', async () => {

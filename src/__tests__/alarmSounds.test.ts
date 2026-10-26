@@ -2,8 +2,13 @@ import {
   customSoundId,
   customSoundRef,
   describeSound,
+  describeSoundChoice,
   parseAlarmSound,
   parseAlarmSoundFiles,
+  parseSoundPool,
+  pickFromPool,
+  seededRandom,
+  soundChoiceFrom,
   soundFileName,
   soundNameFromFile,
 } from '../utils/alarmSounds';
@@ -48,5 +53,50 @@ describe('alarm sounds', () => {
     expect(parseAlarmSoundFiles(JSON.stringify([rooster, { id: '', name: 'x', addedAt: 'y' }, 3]))).toEqual([rooster]);
     expect(parseAlarmSoundFiles('{')).toEqual([]);
     expect(parseAlarmSoundFiles(null)).toEqual([]);
+  });
+});
+
+describe('sound pools', () => {
+  it('reads a pool back with known sounds only, each once', () => {
+    expect(parseSoundPool(['chime', 'kazoo', 'chime', 'rise'])).toEqual(['chime', 'rise']);
+    expect(parseSoundPool('["beacon","rise"]')).toEqual(['beacon', 'rise']);
+  });
+
+  it('treats fewer than two as no pool', () => {
+    expect(parseSoundPool(['chime'])).toEqual([]);
+    expect(parseSoundPool(['chime', 'chime'])).toEqual([]);
+    expect(parseSoundPool(null)).toEqual([]);
+    expect(parseSoundPool('not json')).toEqual([]);
+  });
+
+  it('never picks the sound it already has when another is there', () => {
+    const pool = ['chime', 'beacon', 'rise'];
+    for (const r of [0, 0.4, 0.99]) expect(pickFromPool(pool, 'beacon', () => r)).not.toBe('beacon');
+    expect(pickFromPool(pool, 'beacon', () => 0)).toBe('chime');
+    expect(pickFromPool(pool, 'beacon', () => 0.99)).toBe('rise');
+  });
+
+  it('can pick any sound when it has none yet, and handles an empty pool', () => {
+    expect(pickFromPool(['chime', 'rise'], null, () => 0.99)).toBe('rise');
+    expect(pickFromPool([], 'chime')).toBe('chime');
+  });
+
+  it('turns the picker selection into a sound and a pool', () => {
+    expect(soundChoiceFrom([])).toEqual({ sound: null, soundPool: [] });
+    expect(soundChoiceFrom(['rise'])).toEqual({ sound: 'rise', soundPool: [] });
+    expect(soundChoiceFrom(['rise', 'chime'])).toEqual({ sound: 'rise', soundPool: ['rise', 'chime'] });
+  });
+
+  it('seeds a repeatable number between 0 and 1', () => {
+    const a = seededRandom('task1|1700000000000');
+    expect(a()).toBe(seededRandom('task1|1700000000000')());
+    expect(a()).toBeGreaterThanOrEqual(0);
+    expect(a()).toBeLessThan(1);
+    expect(seededRandom('task1|1')()).not.toBe(seededRandom('task2|1')());
+  });
+
+  it('describes a pool by its size', () => {
+    expect(describeSoundChoice('chime', [], [])).toBe('Chime');
+    expect(describeSoundChoice('chime', ['chime', 'rise', 'beacon'], [])).toBe('Random, 3 sounds');
   });
 });

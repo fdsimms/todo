@@ -204,7 +204,7 @@ Where each component can appear.
 - `src/components/FreezeWhenBlurred.tsx` — on app shell
 - `src/components/FridgeHistorySheet.tsx` — on MealPlanScreen
 - `src/components/GeneratedTaskSettingsSheet.tsx` — on AutomationsScreen
-- `src/components/GlassLayer.tsx` — on ArchivedScreen, AutomationsScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, +30 more
+- `src/components/GlassLayer.tsx` — on ArchivedScreen, AutomationsScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +33 more
 - `src/components/GoalStepperSheet.tsx` — on JournalScreen, SettingsGroupScreen, SleepScreen
 - `src/components/GroceryAISheet.tsx` — on GroceryScreen
 - `src/components/GroceryAddField.tsx` — on GroceryScreen

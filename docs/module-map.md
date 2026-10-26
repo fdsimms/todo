@@ -38,8 +38,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/alarmOverride.ts` — parseAlarmOverride
 - `src/utils/alarmSchedule.ts` — syncAlarmToDevice, removeAlarmFromDevice
 - `src/utils/alarmSoundDevice.ts` — soundFileForAlarm, PickedSound, pickSoundFile, installImportedSound, removeImportedSound, playSoundPreview, stopSoundPreview
-- `src/utils/alarmSounds.ts` — BUILT_IN_SOUNDS, BuiltInSoundId, CUSTOM_SOUND_PREFIX, ALARM_SOUND_MAX_SECONDS, ALARM_SOUNDS_SETTING, DEFAULT_SOUND_LABEL, isBuiltInSound, customSoundId, customSoundRef, parseAlarmSound, +4 more
-- `src/utils/alarms.ts` — QUICK_ALARM_MINUTES, QUICK_ALARM_CHOICES, MISSED_MISSION_WINDOW_MS, formatAlarmMinutes, atTime, nextClockTime, isRepeating, calendarKey, repeatingRingOn, nextFireAt, +12 more
+- `src/utils/alarmSounds.ts` — BUILT_IN_SOUNDS, BuiltInSoundId, CUSTOM_SOUND_PREFIX, ALARM_SOUND_MAX_SECONDS, ALARM_SOUNDS_SETTING, DEFAULT_SOUND_LABEL, isBuiltInSound, customSoundId, customSoundRef, parseAlarmSound, +9 more
+- `src/utils/alarms.ts` — QUICK_ALARM_MINUTES, QUICK_ALARM_CHOICES, MISSED_MISSION_WINDOW_MS, formatAlarmMinutes, atTime, nextClockTime, isRepeating, calendarKey, repeatingRingOn, nextFireAt, +13 more
 - `src/utils/alcohol.ts` — US_STANDARD_DRINK_G, STANDARD_DRINK_SIZES, setDisplayDrinkGrams, getDisplayDrinkGrams, normalizeStandardDrinkGrams, DRINK_PRESETS, DRINK_STEP, MAX_ENTRY_DRINKS, gramsFromDrinks, drinksFromGrams, +9 more
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
 - `src/utils/allDaySpans.ts` — AllDayBar, AllDayLayout, layoutAllDay
@@ -353,7 +353,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nutritionParse.ts` — NutrientSourceUnit, NUTRIENT_STORED_UNIT, SALT_TO_SODIUM, readSourceUnit, readSourceNumber, convertNutrientAmount, readOffNutrition, readFdcNutrition, readFdcPortions
 - `src/utils/nutritionSanity.ts` — PanelWarning, panelWarnings
 - `src/utils/nutritionStats.ts` — NutritionCounts, NutrientAverage, LoggedFood, SourceMix, EMPTY_NUTRITION_COUNTS, EMPTY_SOURCE_MIX, nutritionCounts, ProduceAverage, produceAverage, nutrientAverages, +13 more
-- `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NO_DAILY_VALUE, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, displayFigure, targetProgress, TargetStatus, +29 more
+- `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NO_DAILY_VALUE, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, displayFigure, targetProgress, TargetStatus, +30 more
 - `src/utils/openTasks.ts` — openTasksOf
 - `src/utils/ordinal.ts` — ordinal
 - `src/utils/ovenTemp.ts` — OvenTempUnit, OVEN_TEMP_UNITS, OVEN_TEMP_RANGE, cleanOvenTemp, formatOvenTemp, parseOvenTemp, ovenTempFor, describeOvenTemp, OvenSetup, ovenSetupsFor
@@ -658,7 +658,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/weekendTasks.ts` — WEEKEND_NUDGE_TITLE, WEEKEND_EVENING_SEGMENTS, WeekendWindow, upcomingWeekend, isWeekendNudgeLeadDay, clampWeekendNudgeLeadDays, describeWeekendNudgeLead, weekendNudgeWeekendKey, isWeekendEvening, weekendPlanTitles, +10 more
 - `src/utils/weightGoal.ts` — WeightGoalDirection, WeightGoal, RATE_RANGE, MAX_RATE_KG_PER_WEEK, goalDirection, signedRateKgPerWeek, autoCalorieTargetKcal, healthMaintenanceKcal, WeightGoalProgress, goalProgress, +11 more
 - `src/utils/weightLog.ts` — WeightUnit, MAX_WEIGHT_KG, WeightPoint, WeightReading, kgToUnit, unitToKg, formatWeight, parseWeightInput, weightReadings, latestWeight, +14 more
-- `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, dayKeyGap, weighInDeclineHolds, +1 more
+- `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, dayKeyGap, isCurrentRequest, +2 more
 - `src/utils/widgetBridge.ts` — WidgetBridge, widgetBridge
 - `src/utils/widgetCalendar.ts` — WidgetCalendarEvent, WidgetCalendarTask, WidgetCalendarDay, WidgetHiddenEvent, WidgetCalendar, MAX_WIDGET_CALENDAR_EVENTS, MAX_WIDGET_CALENDAR_TASKS, WidgetCalendarDayInput, WidgetCalendarInput, buildWidgetCalendar
 - `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapKind, WATCH_NOTE_MAX, WatchTickValues, WatchDoneSet, QuietTapAction, QuietTapWorkouts, WidgetNeedsAppReason, widgetTapNeedsAppReason, WatchQuestion, +12 more

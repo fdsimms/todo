@@ -12,6 +12,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { QUICK_ALARM_CHOICES, formatAlarmMinutes } from '../utils/alarms';
+import { soundChoiceFrom } from '../utils/alarmSounds';
 import { useAlarmStore } from '../store/useAlarmStore';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -40,6 +41,7 @@ export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
   const [minutes, setMinutes] = useState(initialMinutes);
   const [mission, setMission] = useState<AlarmMission | null>(null);
   const [sound, setSound] = useState<string | null>(null);
+  const [soundPool, setSoundPool] = useState<string[]>([]);
   const [ringtonesOpen, setRingtonesOpen] = useState(false);
 
   useEffect(() => {
@@ -48,6 +50,7 @@ export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
     setMinutes(initialMinutes);
     setMission(last.mission);
     setSound(last.sound);
+    setSoundPool(last.soundPool);
     setRingtonesOpen(false);
   }, [visible, initialMinutes]);
 
@@ -56,7 +59,7 @@ export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
 
   const start = () => {
     haptics.success();
-    dismiss(() => { useAlarmStore.getState().addQuickAlarm(minutes, { mission, sound }); });
+    dismiss(() => { useAlarmStore.getState().addQuickAlarm(minutes, { mission, sound, soundPool }); });
   };
 
   return (
@@ -68,8 +71,9 @@ export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
       overlays={(
         <RingtonePickerSheet
           visible={visible && ringtonesOpen}
-          value={sound}
-          onChange={setSound}
+          multiple
+          values={soundPool.length > 0 ? soundPool : sound === null ? [] : [sound]}
+          onChangeValues={sounds => { const c = soundChoiceFrom(sounds); setSound(c.sound); setSoundPool(c.soundPool); }}
           onClose={() => setRingtonesOpen(false)}
         />
       )}
@@ -98,6 +102,7 @@ export function QuickAlarmSheet({ visible, initialMinutes, onClose }: Props) {
           <View style={styles.rows}>
             <AlarmSoundRows
               sound={sound}
+              soundPool={soundPool}
               onOpenRingtones={() => setRingtonesOpen(true)}
             />
           </View>

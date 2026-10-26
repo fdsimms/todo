@@ -44,6 +44,7 @@ import type { EventReminder } from './eventReminders';
 import { reminderTriggerDate } from './eventReminders';
 import { hasMission, nativeMissionForTask } from './missions';
 import { soundFileForAlarm } from './alarmSoundDevice';
+import { parseSoundPool, pickFromPool, seededRandom } from './alarmSounds';
 
 export { isAlarmKitAvailable, requestAlarmAuthorization };
 
@@ -298,7 +299,11 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
     const times = alarmChainTimes(triggerDate, ringCountFor(task));
     // Its ringtone, installed first if it's a built-in tone not used yet; the
     // default when there is none or its file can't be had (alarmSounds.ts).
-    const sound = await soundFileForAlarm(task.alarmSound ?? null);
+    // A pool picks one for this ring, seeded by the task and its time so the
+    // reminder rescheduled on the next launch keeps it.
+    const pool = parseSoundPool(task.alarmSoundPool);
+    const picked = pool.length > 0 ? pickFromPool(pool, null, seededRandom(`${task.id}|${triggerDate.getTime()}`)) : (task.alarmSound ?? null);
+    const sound = await soundFileForAlarm(picked);
 
     for (let i = 0; i < times.length; i++) {
       // Repeats that run into quiet hours are dropped, not deferred — the
