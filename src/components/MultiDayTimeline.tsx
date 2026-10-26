@@ -5,7 +5,9 @@ import { useColors } from '../theme/ThemeContext';
 import { border, flattenOverlay, font, fontWeight, interaction, radius, spacing, textScale, type Colors } from '../theme';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
+import { layoutAllDay } from '../utils/allDaySpans';
 import {
+  cascadeEntries,
   draggedColumn,
   draggedRange,
   dayLengthMinutes,
@@ -19,7 +21,15 @@ import type { BusyEvent } from '../utils/calendarBusy';
 const HOUR_HEIGHT = 48;
 const MIN_BLOCK_HEIGHT = 18;
 const BLOCK_GAP = 2;
-const GUTTER_WIDTH = 44;
+/** Wide enough for "12 PM" on one line, which is what lets the hour labels be one line. */
+const GUTTER_WIDTH = 36;
+/** The screen's edge to the first and last column: the days are what this view is for. */
+const EDGE_INSET = spacing.xs;
+/** How far each step of an overlap sits in from the one beneath it. */
+const CASCADE_STEP = 22;
+/** What a title's lines and the block's own padding cost, for fitting lines in the part of a block left uncovered. */
+const TITLE_LINE_HEIGHT = 15;
+const TITLE_PADDING = 4;
 /** How many all-day events a column shows before the rest are a count. */
 const MAX_ALL_DAY = 2;
 /** How long a new event made by a long-press that never moved is, in minutes. */
@@ -200,8 +210,11 @@ export function MultiDayTimeline({
 
   const hourMarks: { minutes: number; label: string }[] = [];
   for (let m = firstMinute; m <= lastMinute; m += 60) {
-    hourMarks.push({ minutes: m, label: formatTimeOfDay(new Date(origin.getTime() + m * 60000), use24Hour) });
+    hourMarks.push({ minutes: m, label: format(new Date(origin.getTime() + m * 60000), use24Hour ? 'HH:mm' : 'h a') });
   }
+
+  const allDayLayout = useMemo(() => layoutAllDay(columns.map(c => c.timeline.allDay), MAX_ALL_DAY), [columns]);
+  const showCaptions = columns.some((c, i) => allDayLayout.hidden[i] > 0 || c.untimed > 0);
 
   const tintFor = (color: string | undefined): string | null =>
     color && /^#[0-9a-fA-F]{6}$/.test(color) ? flattenOverlay(`${color}33`, colors.bg) : null;
@@ -232,46 +245,66 @@ export function MultiDayTimeline({
         ))}
       </View>
 
-      {/* What has no time: all-day events, then the count of untimed tasks. */}
-      <View style={styles.offAxisRow}>
-        <View style={styles.gutter} />
-        {columns.map(column => {
-          const allDay = column.timeline.allDay;
-          const more = allDay.length - MAX_ALL_DAY;
-          return (
-            <View key={column.key} style={styles.offAxisCell}>
-              {allDay.slice(0, MAX_ALL_DAY).map(event => {
-                const color = eventColor(event.id);
-                return (
-                  <TouchableOpacity
-                    key={`${event.id}:${event.start}`}
-                    style={[styles.allDayChip, { backgroundColor: tintFor(color) ?? flattenOverlay(colors.accentSubtle, colors.bg) }]}
-                    activeOpacity={interaction.activeOpacity}
-                    onPress={() => onPressAllDay(column.key, event)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${event.title || 'Event'}, all day`}
-                  >
-                    <Text style={styles.allDayText} numberOfLines={1}>{event.title || 'Event'}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-              {more > 0 && <Text style={styles.moreText}>+{more} more</Text>}
-              {column.untimed > 0 && (
+      {/* What has no time: all-day events, one bar across the days it covers,
+          then the count of untimed tasks under each day. */}
+      <View style={styles.offAxis}>
+        {allDayLayout.rows.map((row, rowIndex) => {
+          const segments: React.ReactNode[] = [];
+          let cursor = 0;
+          for (const bar of row) {
+            if (bar.startColumn > cursor) {
+              segments.push(<View key={`gap-${cursor}`} style={{ flex: bar.startColumn - cursor }} />);
+            }
+            const color = eventColor(bar.event.id);
+            const day = columns[bar.startColumn];
+            segments.push(
+              <View key={`${bar.event.id}:${bar.event.start}:${bar.startColumn}`} style={{ flex: bar.span }}>
                 <TouchableOpacity
-                  style={styles.untimedChip}
+                  style={[styles.allDayChip, { backgroundColor: tintFor(color) ?? flattenOverlay(colors.accentSubtle, colors.bg) }]}
                   activeOpacity={interaction.activeOpacity}
-                  onPress={() => onPressUntimed(column.key)}
+                  onPress={() => onPressAllDay(day.key, bar.event)}
                   accessibilityRole="button"
-                  accessibilityLabel={`${column.untimed} ${column.untimed === 1 ? 'task' : 'tasks'} without a time on ${format(column.date, 'EEEE')}`}
+                  accessibilityLabel={`${bar.event.title || 'Event'}, all day${bar.span > 1 ? `, ${bar.span} days` : ''}`}
                 >
-                  <Text style={styles.untimedText} numberOfLines={1}>
-                    {column.untimed} {column.untimed === 1 ? 'task' : 'tasks'} ›
-                  </Text>
+                  <Text style={styles.allDayText} numberOfLines={1}>{bar.event.title || 'Event'}</Text>
                 </TouchableOpacity>
-              )}
+              </View>,
+            );
+            cursor = bar.startColumn + bar.span;
+          }
+          return (
+            <View key={rowIndex} style={styles.offAxisRow}>
+              <View style={styles.gutter} />
+              <View style={styles.allDayTrack}>{segments}</View>
             </View>
           );
         })}
+        {showCaptions && (
+          <View style={styles.offAxisRow}>
+            <View style={styles.gutter} />
+            {columns.map((column, i) => {
+              const more = allDayLayout.hidden[i];
+              return (
+                <View key={column.key} style={styles.offAxisCell}>
+                  {more > 0 && <Text style={styles.moreText}>+{more} more</Text>}
+                  {column.untimed > 0 && (
+                    <TouchableOpacity
+                      style={styles.untimedChip}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => onPressUntimed(column.key)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${column.untimed} ${column.untimed === 1 ? 'task' : 'tasks'} without a time on ${format(column.date, 'EEEE')}`}
+                    >
+                      <Text style={styles.untimedText} numberOfLines={1}>
+                        {column.untimed} {column.untimed === 1 ? 'task' : 'tasks'} ›
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
       </View>
 
       <View
@@ -282,7 +315,7 @@ export function MultiDayTimeline({
       >
         {hourMarks.map(mark => (
           <View key={mark.minutes} pointerEvents="none" style={[styles.hourRow, { top: offsetFor(mark.minutes) }]}>
-            <Text style={styles.hourLabel}>{mark.label}</Text>
+            <Text style={styles.hourLabel} numberOfLines={1}>{mark.label}</Text>
             <View style={styles.hourRule} />
           </View>
         ))}
@@ -298,6 +331,7 @@ export function MultiDayTimeline({
             // the same clock time each day (the reset time), so one axis
             // serves them all.
             const at = offsetFor;
+            const cascade = cascadeEntries(column.timeline.entries);
             return (
               <View key={column.key} style={[styles.column, index > 0 && styles.columnDivided]}>
                 {(onPressSlot || onCreateRange) && (
@@ -321,11 +355,11 @@ export function MultiDayTimeline({
                       : undefined}
                   />
                 )}
-                {column.timeline.entries.map(entry => {
+                {column.timeline.entries.map((entry, entryIndex) => {
                   const isTask = entry.kind === 'task';
                   const color = !isTask && entry.eventId ? eventColor(entry.eventId) : undefined;
                   const tint = tintFor(color);
-                  const laneWidth = 100 / entry.laneCount;
+                  const placement = cascade[entryIndex];
                   const rawHeight = ((entry.endMinutes - entry.startMinutes) / 60) * HOUR_HEIGHT;
                   const timeLabel = formatTimeOfDay(new Date(column.dayStart.getTime() + entry.startMinutes * 60000), use24Hour);
                   const blockHeight = Math.max(MIN_BLOCK_HEIGHT, rawHeight - BLOCK_GAP);
@@ -334,6 +368,14 @@ export function MultiDayTimeline({
                   const beingDragged = drag !== null && drag.eventId !== null
                     && drag.eventId === entry.eventId && drag.fromIndex === index;
                   const span = { start: entry.startMinutes, end: entry.endMinutes };
+                  const roomyLines = rawHeight > MIN_BLOCK_HEIGHT * 2 ? 3 : 1;
+                  // Whatever starts on top of this block leaves it only the time before that.
+                  const titleLines = placement.visibleMinutes === null
+                    ? roomyLines
+                    : Math.max(1, Math.min(
+                      roomyLines,
+                      Math.floor(((placement.visibleMinutes / 60) * HOUR_HEIGHT - TITLE_PADDING) / TITLE_LINE_HEIGHT),
+                    ));
                   return (
                     <TouchableOpacity
                       key={entry.key}
@@ -344,9 +386,11 @@ export function MultiDayTimeline({
                         {
                           top: at(entry.startMinutes),
                           height: blockHeight,
-                          left: `${entry.lane * laneWidth}%`,
-                          width: `${laneWidth}%`,
+                          left: placement.depth * CASCADE_STEP,
+                          right: 0,
+                          zIndex: placement.order,
                         },
+                        placement.overlays && styles.blockOverlay,
                         beingDragged && styles.blockLifted,
                       ]}
                       activeOpacity={interaction.activeOpacity}
@@ -360,7 +404,7 @@ export function MultiDayTimeline({
                       accessibilityLabel={`${entry.title}, ${timeLabel}${isTask ? ', task' : ''}`}
                       accessibilityHint={movable ? 'Touch and hold, then drag, to move it to another time or day.' : undefined}
                     >
-                      <Text style={styles.blockTitle} numberOfLines={rawHeight > MIN_BLOCK_HEIGHT * 2 ? 3 : 1}>
+                      <Text style={styles.blockTitle} numberOfLines={titleLines}>
                         {entry.title}
                       </Text>
                       {/* The grip at the foot, its own press target so a hold
@@ -429,7 +473,7 @@ export function MultiDayTimeline({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: EDGE_INSET,
     marginBottom: spacing.xs,
   },
   gutter: {
@@ -470,10 +514,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dateTextToday: {
     color: colors.onAccent,
   },
+  offAxis: {
+    gap: 3,
+    marginBottom: spacing.sm,
+  },
   offAxisRow: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.sm,
+    paddingHorizontal: EDGE_INSET,
+  },
+  allDayTrack: {
+    flex: 1,
+    flexDirection: 'row',
   },
   offAxisCell: {
     flex: 1,
@@ -481,6 +532,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 2,
   },
   allDayChip: {
+    marginHorizontal: 2,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.xsm,
     paddingVertical: 3,
@@ -507,7 +559,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accentText,
   },
   axis: {
-    marginHorizontal: spacing.md,
+    marginHorizontal: EDGE_INSET,
     marginBottom: spacing.md,
   },
   hourRow: {
@@ -548,13 +600,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   block: {
     position: 'absolute',
     borderRadius: radius.sm,
-    borderLeftWidth: 3,
-    paddingHorizontal: 4,
+    borderLeftWidth: 2,
+    paddingHorizontal: 3,
     paddingVertical: 2,
     overflow: 'hidden',
   },
+  // A block that starts on top of another outlines itself in the page colour,
+  // so two of the same tint still read as two blocks. The top and bottom take
+  // a point of padding back so a one-line title keeps its room.
+  blockOverlay: {
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderTopColor: colors.bg,
+    borderBottomColor: colors.bg,
+    paddingVertical: 1,
+  },
+  // Opaque, not the translucent tint: a block stacked on another must hide it.
   blockTask: {
-    backgroundColor: colors.accentSubtle,
+    backgroundColor: flattenOverlay(colors.accentSubtle, colors.bg),
     borderLeftColor: colors.accent,
   },
   blockEvent: {
@@ -574,6 +637,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   ghost: {
     left: 0,
     right: 0,
+    zIndex: 1000,
     borderWidth: 1.5,
     borderColor: colors.accent,
   },
@@ -590,6 +654,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: colors.accent,
+    zIndex: 1000,
     backgroundColor: colors.accentSubtle,
     paddingHorizontal: 4,
     paddingVertical: 2,
@@ -620,6 +685,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    zIndex: 1000,
     flexDirection: 'row',
     alignItems: 'center',
   },
