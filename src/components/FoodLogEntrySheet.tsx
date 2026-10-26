@@ -2791,9 +2791,9 @@ export function FoodLogEntrySheet({
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); Keyboard.dismiss(); onDeclineMeal(); }}
                 accessibilityRole="button"
-                accessibilityLabel="Don’t ask about this meal"
+                accessibilityLabel="Never ask about this meal"
               >
-                <Text style={styles.declineMealText}>Don’t ask about this meal</Text>
+                <Text style={styles.declineMealText}>Never ask about this meal</Text>
               </TouchableOpacity>
             )}
             </Pressable>
