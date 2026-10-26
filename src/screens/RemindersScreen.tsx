@@ -19,6 +19,8 @@ import { EmptyNote } from '../components/EmptyNote';
 import { AlarmsSection } from '../components/AlarmsSection';
 import { AlarmEditorSheet } from '../components/AlarmEditorSheet';
 import { QuickAlarmSheet } from '../components/QuickAlarmSheet';
+import { MissionSheet } from '../components/MissionSheet';
+import { PRACTICE_MISSION, describeMission } from '../utils/missions';
 import { useAlarmStore } from '../store/useAlarmStore';
 import { useSheetMount } from '../hooks/useSheetMount';
 import type { Alarm } from '../types';
@@ -71,6 +73,10 @@ export function RemindersScreen() {
   const [quickMinutes, setQuickMinutes] = useState(30);
   const [quickOpen, setQuickOpen] = useState(false);
   const mountQuick = useSheetMount(quickOpen);
+  // "Try pushups", from the gear: the real counter with nothing set, so
+  // whether the sensor sees you can be checked before an alarm depends on it.
+  const [practiceOpen, setPracticeOpen] = useState(false);
+  const mountPractice = useSheetMount(practiceOpen);
   const alarmsOn = useAlarmStore(s => s.alarms.filter(a => a.enabled).length);
 
   const openAlarm = useCallback((alarm: Alarm | null) => {
@@ -107,7 +113,15 @@ export function RemindersScreen() {
         ].filter(Boolean).join(' · ') || undefined}
         actions={withScreenSettings(undefined, screenSettings.action)}
       />
-      <ScreenSettingsSheet {...screenSettings.sheet} />
+      <ScreenSettingsSheet
+        {...screenSettings.sheet}
+        extraRows={[{
+          id: 'tryPushups',
+          label: 'Try pushups',
+          hint: `Do ${describeMission(PRACTICE_MISSION)} without setting an alarm`,
+          onPress: () => setPracticeOpen(true),
+        }]}
+      />
       <RemindersOffNote plural enabled={reminders.length > 0} style={styles.offNote} />
 
       <FlatList
@@ -148,6 +162,18 @@ export function RemindersScreen() {
       )}
       {mountQuick && (
         <QuickAlarmSheet visible={quickOpen} initialMinutes={quickMinutes} onClose={() => setQuickOpen(false)} />
+      )}
+      {mountPractice && (
+        <MissionSheet
+          visible={practiceOpen}
+          mission={PRACTICE_MISSION}
+          title="Practice. Nothing rings or gets checked off."
+          subjectKey="practice"
+          doneNote="The phone counted them, so a pushups alarm will too."
+          // The done state stays up until its Done, which closes it.
+          onDone={() => {}}
+          onClose={() => setPracticeOpen(false)}
+        />
       )}
       <Fab onPress={() => openAlarm(null)} accessibilityLabel="New alarm" />
       <ScrollToTopButton {...scrollTop.buttonProps} />

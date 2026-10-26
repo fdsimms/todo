@@ -323,7 +323,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/metricKit.ts` — DeviceMetricSummary, DEVICE_METRIC_LIMIT, Bucket, histogramBuckets, bucketTotal, bucketMedianMs, parseMetricPayload, parseSummaries, mergeSummaries, collectSummaries, +1 more
 - `src/utils/mirroringDefault.ts` — shouldDefaultMirroringOn
 - `src/utils/missed.ts` — isMissed, isRealCompletion, isDoneByOther, isResolvedAsDone, MostMissedGroup, mostMissed
-- `src/utils/missions.ts` — MISSION_REARM_SECONDS, MISSION_COUNTING_GRACE_SECONDS, MISSION_HEARTBEAT_MS, MISSION_GIVE_UP_HOLD_MS, MISSION_KINDS, DEFAULT_MISSION, normalizeMission, parseMission, hasMission, describeMission, +9 more
+- `src/utils/missions.ts` — MISSION_REARM_SECONDS, MISSION_COUNTING_GRACE_SECONDS, MISSION_HEARTBEAT_MS, MISSION_GIVE_UP_HOLD_MS, MISSION_KINDS, DEFAULT_MISSION, PRACTICE_MISSION, normalizeMission, parseMission, hasMission, +10 more
 - `src/utils/moodContextSources.ts` — MoodContextSources, NO_MOOD_CONTEXT_SOURCES, MOOD_CONTEXT_SOURCE_KEYS, EXERCISED_MINUTES, OUTSIDE_MINUTES, RAIN_TAG_MM, parseMoodContextSources, MoodEventTag, MOOD_EVENT_TAG_MAX_LENGTH, parseMoodEventTags
 - `src/utils/moodDayContext.ts` — MoodDayInputs, DayRain, rainForDay, moodDayOffers
 - `src/utils/moodDayOffers.ts` — moodDayOffersFor

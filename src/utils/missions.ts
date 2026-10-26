@@ -43,6 +43,12 @@ export const MISSION_KINDS = ['pushups'] as const;
 export const DEFAULT_MISSION: AlarmMission = { kind: 'pushups', count: PUSHUP_DEFAULT_COUNT };
 
 /**
+ * The practice run behind "Try pushups" on Alarms & Reminders: enough reps to
+ * see the sensor count, few enough to try twice. Nothing rings or completes.
+ */
+export const PRACTICE_MISSION: AlarmMission = { kind: 'pushups', count: 5 };
+
+/**
  * The stored form of a mission, or null for none. Anything malformed (an
  * unknown kind, a count of 0, a string count from the MCP) reads as none
  * rather than as a mission nobody can finish.
