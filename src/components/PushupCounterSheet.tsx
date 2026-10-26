@@ -1,24 +1,36 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
-import { addProximityListener, isProximitySupported } from 'todo-proximity-bridge';
+import { Camera } from 'expo-camera';
+import {
+  addDepthListener,
+  addProximityListener,
+  isDepthSupported,
+  isProximitySupported,
+} from 'todo-proximity-bridge';
 import { useColors } from '../theme/ThemeContext';
 import { type Colors, font, fontWeight, iconSize, interaction, lineHeight, radius, spacing } from '../theme';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { AnimatedNumber } from './AnimatedNumber';
+import { InlineAction } from './InlineAction';
 import { BUTTON_LABEL } from '../copy/shared';
 import { haptics } from '../utils/haptics';
 import { MISSION_GIVE_UP_HOLD_MS } from '../utils/missions';
 import {
+  DEPTH_SILENCE_MS,
+  depthSensorStatus,
+  feedDepth,
   feedProximity,
+  initialDepthState,
   initialPushupState,
   pushupSensorStatus,
   tapRep,
+  type DepthCounterState,
   type PushupCounterState,
 } from '../utils/pushupCounter';
 
@@ -46,6 +58,44 @@ export interface PushupCounterProps {
   onGiveUp?: () => void;
 }
 
+/** How the reps are counted: see pushupCounter.ts for each. */
+type CountMode = 'depth' | 'proximity' | 'tap';
+
+/** What this device can count with, worked out once per opening. */
+interface CountModes {
+  /** The best of them, which the count starts in. */
+  start: CountMode;
+  /** What depth falls back to: the proximity sensor, or taps where there's none. */
+  fallback: 'proximity' | 'tap';
+  /** There is a Face ID camera, but no camera permission to read it with. */
+  depthBlocked: boolean;
+}
+
+/**
+ * Asks for the camera the first time it's needed, here rather than up front,
+ * so the prompt arrives with the screen that explains it. A refusal isn't asked
+ * again (iOS wouldn't show it): the count goes to the proximity sensor, and
+ * the card says how to turn the camera back on.
+ */
+async function cameraAllowed(): Promise<boolean> {
+  try {
+    const existing = await Camera.getCameraPermissionsAsync();
+    if (existing.granted) return true;
+    if (!existing.canAskAgain) return false;
+    return (await Camera.requestCameraPermissionsAsync()).granted;
+  } catch {
+    return false;
+  }
+}
+
+async function countModes(): Promise<CountModes> {
+  const [depth, proximity] = await Promise.all([isDepthSupported(), isProximitySupported()]);
+  const fallback = proximity ? 'proximity' : 'tap';
+  if (!depth) return { start: fallback, fallback, depthBlocked: false };
+  const allowed = await cameraAllowed();
+  return { start: allowed ? 'depth' : fallback, fallback, depthBlocked: !allowed };
+}
+
 const RING_SIZE = 240;
 const RING_STROKE = 14;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
@@ -56,11 +106,17 @@ const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
  * the completion back once they're done. The rules for what counts as a rep are in
  * `src/utils/pushupCounter.ts`; this is the screen around them.
  *
+ * It counts with the best thing the device has (`countModes`): the Face ID
+ * camera's depth, with the phone under the person's face so they can watch
+ * the count; the proximity sensor, with the phone under their chest; or taps.
+ * Depth hands over to the fallback, keeping the count, if its readings stop
+ * (`DEPTH_SILENCE_MS`), and on a tap of the switch shown before the first rep.
+ *
  * Full screen rather than a page sheet: the phone is face up on the floor for
  * the whole of it, and a swipe that brushed the screen on the way down would
  * otherwise dismiss the sheet and lose the count.
  *
- * On a device with no proximity sensor (an iPad, a Mac) the ring is a button
+ * On a device with neither sensor (most iPads, a Mac) the ring is a button
  * and each tap counts, held to the same pace floor as the sensor. It's the
  * honest fallback for a task synced from a phone: without it, the task could
  * never be checked off there at all.
@@ -73,44 +129,81 @@ export function PushupCounterSheet({
   const insets = useSafeAreaInsets();
   const target = Math.max(1, count);
 
+  // The proximity sensor's count, and the taps'.
   const [counter, setCounter] = useState<PushupCounterState>(initialPushupState);
-  // null while the sensor is being looked for.
-  const [sensor, setSensor] = useState<boolean | null>(null);
-  const counted = counter.count >= target;
+  const [depth, setDepth] = useState<DepthCounterState>(initialDepthState);
+  // null while what the device can count with is being worked out.
+  const [modes, setModes] = useState<CountModes | null>(null);
+  const [mode, setMode] = useState<CountMode | null>(null);
+  const reps = mode === 'depth' ? depth.count : counter.count;
+  const counted = reps >= target;
   const countedRef = useRef(false);
+  const depthCountRef = useRef(0);
+  depthCountRef.current = depth.count;
 
   // A fresh count every time it opens, so a cancelled attempt isn't resumed,
   // and when the answer queue moves it on to the next task while it's up.
   useEffect(() => {
     if (!visible) return;
     setCounter(initialPushupState());
+    setDepth(initialDepthState());
+    setModes(null);
+    setMode(null);
     countedRef.current = false;
     let live = true;
-    isProximitySupported().then(supported => {
-      if (live) setSensor(supported);
+    countModes().then(found => {
+      if (!live) return;
+      setModes(found);
+      setMode(found.start);
     });
     return () => {
       live = false;
     };
   }, [visible, subjectKey]);
 
+  // From depth to the fallback, carrying the reps counted so far.
+  const fallBack = useCallback(() => {
+    if (!modes) return;
+    setCounter({ ...initialPushupState(), count: depthCountRef.current });
+    setMode(modes.fallback);
+  }, [modes]);
+
+  // Listening starts the camera, so only while there is something to count. A
+  // camera that never starts, or stops partway, sends nothing at all, which
+  // no reading can report, so the silence is what's watched.
+  useEffect(() => {
+    if (!visible || mode !== 'depth' || counted) return;
+    let lastHeard = Date.now();
+    const remove = addDepthListener(reading => {
+      lastHeard = Date.now();
+      setDepth(prev => feedDepth(prev, reading));
+    });
+    const watch = setInterval(() => {
+      if (Date.now() - lastHeard >= DEPTH_SILENCE_MS) fallBack();
+    }, 500);
+    return () => {
+      clearInterval(watch);
+      remove();
+    };
+  }, [visible, mode, counted, fallBack]);
+
   // Listening turns the sensor on, and with it iOS's habit of switching the
   // screen off while it's covered, so only while there is something to count.
   useEffect(() => {
-    if (!visible || sensor !== true || counted) return;
+    if (!visible || mode !== 'proximity' || counted) return;
     return addProximityListener(change => {
       setCounter(prev => feedProximity(prev, change.near, change.at));
     });
-  }, [visible, sensor, counted]);
+  }, [visible, mode, counted]);
 
-  // A rep is felt as well as seen: the screen is dark for the part of the rep
-  // where it happens.
+  // A rep is felt as well as seen: with the proximity sensor the screen is
+  // dark for the part of the rep where it happens.
   const lastCount = useRef(0);
   useEffect(() => {
-    if (counter.count === lastCount.current) return;
-    lastCount.current = counter.count;
-    if (counter.count === 0) return;
-    if (counter.count >= target) {
+    if (reps === lastCount.current) return;
+    lastCount.current = reps;
+    if (reps === 0) return;
+    if (reps >= target) {
       if (!countedRef.current) {
         countedRef.current = true;
         haptics.success();
@@ -119,10 +212,10 @@ export function PushupCounterSheet({
     } else {
       haptics.impactLight();
     }
-  }, [counter.count, target]);
+  }, [reps, target]);
 
-  const progress = Math.min(1, counter.count / target);
-  const status = pushupSensorStatus(counter);
+  const progress = Math.min(1, reps / target);
+  const status = mode === 'depth' ? depthSensorStatus(depth) : pushupSensorStatus(counter);
   const statusDot = status.tone === 'miss' ? colors.orange : status.tone === 'counting' ? colors.green : colors.textTertiary;
 
   const ring = (
@@ -152,10 +245,10 @@ export function PushupCounterSheet({
         ) : (
           <>
             <AnimatedNumber
-              text={String(counter.count)}
-              value={counter.count}
+              text={String(reps)}
+              value={reps}
               style={styles.hero}
-              accessibilityLabel={`${counter.count} of ${target} pushups`}
+              accessibilityLabel={`${reps} of ${target} pushups`}
             />
             <Text style={styles.ringCaption}>of {target}</Text>
           </>
@@ -179,12 +272,12 @@ export function PushupCounterSheet({
         />
         <View style={styles.body}>
           <Text style={styles.taskTitle} numberOfLines={2}>{title}</Text>
-          {sensor === false && !counted ? (
+          {mode === 'tap' && !counted ? (
             <TouchableOpacity
               activeOpacity={interaction.activeOpacity}
               onPress={() => setCounter(prev => tapRep(prev, Date.now()))}
               accessibilityRole="button"
-              accessibilityLabel={`Count a pushup, ${counter.count} of ${target}`}
+              accessibilityLabel={`Count a pushup, ${reps} of ${target}`}
             >
               {ring}
             </TouchableOpacity>
@@ -192,9 +285,9 @@ export function PushupCounterSheet({
 
           {counted ? (
             <Text style={styles.doneNote}>{doneNote}</Text>
-          ) : sensor === null ? null : (
+          ) : mode === null ? null : (
             <>
-              {sensor && (
+              {mode !== 'tap' && (
                 <View style={styles.status} accessible accessibilityLabel={`${status.line}. ${status.detail}`}>
                   <View style={[styles.statusDot, { backgroundColor: statusDot }]} />
                   <View style={styles.statusText}>
@@ -203,16 +296,22 @@ export function PushupCounterSheet({
                   </View>
                 </View>
               )}
-              <View style={[styles.card, sensor && styles.cardUnderStatus]}>
+              <View style={[styles.card, mode !== 'tap' && styles.cardUnderStatus]}>
                 <View style={styles.cardIcon}>
-                  <Ionicons name={sensor ? 'phone-portrait-outline' : 'hand-left-outline'} size={iconSize.sm} color={colors.accentText} />
+                  <Ionicons name={mode === 'tap' ? 'hand-left-outline' : 'phone-portrait-outline'} size={iconSize.sm} color={colors.accentText} />
                 </View>
-                <Text style={styles.cardText}>
-                  {sensor
-                    ? 'Lay the phone face up on the floor under your chest. Each time you go down, it counts.'
-                    : 'This device has no proximity sensor. Tap the circle after each pushup.'}
-                </Text>
+                <Text style={styles.cardText}>{cardText(mode, modes?.depthBlocked === true)}</Text>
               </View>
+              {mode === 'depth' && reps === 0 && modes && (
+                <InlineAction
+                  label={modes.fallback === 'proximity' ? 'Use the proximity sensor' : 'Count by tapping'}
+                  icon="swap-horizontal-outline"
+                  variant="neutral"
+                  surface="page"
+                  onPress={fallBack}
+                  style={styles.switchMode}
+                />
+              )}
             </>
           )}
         </View>
@@ -224,6 +323,20 @@ export function PushupCounterSheet({
       </View>
     </SheetModal>
   );
+}
+
+/** The card under the status: where the phone goes, or how to count without a sensor. */
+function cardText(mode: CountMode, depthBlocked: boolean): string {
+  switch (mode) {
+    case 'depth':
+      return 'Lay the phone face up on the floor under your face. The front camera measures how far away you are. Nothing is recorded.';
+    case 'proximity':
+      return depthBlocked
+        ? 'Lay the phone face up on the floor under your chest. Each time you go down, it counts. Camera access is off. Turn it on in Settings to count with the Face ID camera instead.'
+        : 'Lay the phone face up on the floor under your chest. Each time you go down, it counts.';
+    case 'tap':
+      return 'This device has no proximity sensor. Tap the circle after each pushup.';
+  }
 }
 
 /**
@@ -354,6 +467,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // The status sits where the card used to start, and the card follows it.
   cardUnderStatus: { marginTop: spacing.md },
+  switchMode: { marginTop: spacing.md },
   status: {
     alignSelf: 'stretch',
     flexDirection: 'row',

@@ -94,13 +94,13 @@
         "expo-image-picker",
         {
           "photosPermission": "dundundun uses a photo you choose: a recipe page to read instead of retyping it, or a picture to keep with a journal entry or a task.",
-          "cameraPermission": "dundundun uses the camera for what you point it at: a recipe page, a store receipt or a barcode to read, a meal to estimate, or a photo to keep with a journal entry or a task."
+          "cameraPermission": "dundundun uses the camera for what you point it at: a recipe page, a store receipt or a barcode to read, a meal to estimate, or a photo to keep with a journal entry or a task. To count pushups, the front camera measures how far away your face is, and nothing from it is recorded."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "dundundun uses the camera for what you point it at: a recipe page, a store receipt or a barcode to read, a meal to estimate, or a photo to keep with a journal entry or a task.",
+          "cameraPermission": "dundundun uses the camera for what you point it at: a recipe page, a store receipt or a barcode to read, a meal to estimate, or a photo to keep with a journal entry or a task. To count pushups, the front camera measures how far away your face is, and nothing from it is recorded.",
           "recordAudioAndroid": false
         }
       ],

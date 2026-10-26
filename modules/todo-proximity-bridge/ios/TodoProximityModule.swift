@@ -1,25 +1,39 @@
 import ExpoModulesCore
 import UIKit
 
-/// The proximity sensor (the one that blanks the screen during a call), for
-/// the pushup counter: the phone lies face up under the person's chest and
-/// each time they go down it reads near. JS does the counting
-/// (src/utils/pushupCounter.ts); this only reports the sensor's changes.
+/// The two sensors the pushup counter reads: the front TrueDepth camera's
+/// depth (`TodoDepthReader`, the phone under the person's face), and the
+/// proximity sensor (the one that blanks the screen during a call, the phone
+/// under their chest), which is the fallback where there is no depth. JS does
+/// the counting (src/utils/pushupCounter.ts); this only reports readings.
 ///
-/// Monitoring is on exactly while JS has a listener (`OnStartObserving` /
-/// `OnStopObserving`), as Apple asks: with it on, iOS switches the screen off
-/// whenever the sensor is covered, which is wanted while counting and nowhere
-/// else.
+/// Each runs exactly while JS has a listener for its own event. The observing
+/// hooks name their event, and that is load-bearing: an unnamed one runs for
+/// the first listener of any event, so depth would switch proximity
+/// monitoring on, and with it iOS switching the screen off whenever the
+/// sensor is covered, which is the one thing counting by depth is meant to
+/// avoid.
 ///
 /// Every UIDevice call hops to the main queue: the observing hooks run on the
 /// module's own queue, and UIDevice is main-thread API.
 public class TodoProximityModule: Module {
   private var observer: NSObjectProtocol?
 
+  // One reader for the module's life, so a stop and the start after it are
+  // ordered on the reader's own queue rather than racing two sessions for the
+  // camera.
+  private lazy var depthReader = TodoDepthReader { [weak self] reading in
+    var body: [String: Any?] = ["valid": reading.valid, "at": reading.at]
+    if let distance = reading.distance {
+      body["distance"] = distance
+    }
+    DispatchQueue.main.async { self?.sendEvent("onDepthReading", body) }
+  }
+
   public func definition() -> ModuleDefinition {
     Name("TodoProximity")
 
-    Events("onProximityChange")
+    Events("onProximityChange", "onDepthReading")
 
     Function("isAvailable") { () -> Bool in
       true
@@ -38,16 +52,31 @@ public class TodoProximityModule: Module {
       return supported
     }.runOnQueue(.main)
 
-    OnStartObserving {
+    OnStartObserving("onProximityChange") {
       DispatchQueue.main.async { [weak self] in self?.startMonitoring() }
     }
 
-    OnStopObserving {
+    OnStopObserving("onProximityChange") {
       DispatchQueue.main.async { [weak self] in self?.stopMonitoring() }
+    }
+
+    // Whether there is a TrueDepth camera with depth to read. Says nothing
+    // about camera permission, which JS asks for before it listens.
+    AsyncFunction("isDepthSupported") { () -> Bool in
+      TodoDepthReader.trueDepthCamera() != nil
+    }
+
+    OnStartObserving("onDepthReading") {
+      self.depthReader.start()
+    }
+
+    OnStopObserving("onDepthReading") {
+      self.depthReader.stop()
     }
 
     OnDestroy {
       DispatchQueue.main.async { [weak self] in self?.stopMonitoring() }
+      self.depthReader.stop()
     }
   }
 
