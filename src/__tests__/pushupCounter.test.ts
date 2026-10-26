@@ -165,8 +165,8 @@ describe('feedDepth', () => {
   });
 
   it('judges a rep against the person’s own top, whatever their arm length', () => {
-    expect(runDepth([...rep(0.4, 0.22), ...rep(0.4, 0.22)]).count).toBe(2);
-    expect(runDepth([...rep(0.7, 0.45), ...rep(0.7, 0.45)]).count).toBe(2);
+    expect(runDepth([...rep(0.5, 0.22), ...rep(0.5, 0.22)]).count).toBe(2);
+    expect(runDepth([...rep(0.75, 0.45), ...rep(0.75, 0.45)]).count).toBe(2);
   });
 
   it('needs the face to come down by the full travel to be down', () => {
@@ -191,7 +191,9 @@ describe('feedDepth', () => {
 
   it('reads a face too close to measure as down', () => {
     // The bottom of the rep is out of the camera's range.
-    expect(runDepth([0.55, 0.42, 0.33, null, null, 0.33, 0.45]).count).toBe(1);
+    expect(runDepth([0.6, 0.45, 0.33, null, null, 0.33, 0.45]).count).toBe(1);
+    // A lost reading only 20 cm below the top is not a full rep.
+    expect(runDepth([0.55, 0.45, 0.35, null, null, 0.35, 0.47]).count).toBe(0);
   });
 
   it('a face flickering at the edge of the range is one rep, not one per flicker', () => {
