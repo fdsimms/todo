@@ -1104,10 +1104,11 @@ const TaskItemRow = React.memo(function TaskItem({
   const isSpotlighted = useSpotlightLinger(expanded) || collapsing;
   // Lets a paint-select drag find this row by its on-screen position. A no-op
   // on screens whose list isn't wrapped in a PaintSelectionProvider — and for
-  // any duplicate of a row that's already registered (the floating copy of a
-  // row being dragged, the pinned block's copy), which would otherwise take the
-  // real row's registration with it when it unmounts.
-  const paintRowRef = usePaintSelectionRow(isActive || duplicateRow ? null : task.id);
+  // the floating copy of a row being dragged, which would otherwise take the
+  // real row's registration with it when it unmounts. The pinned block's copy
+  // is a live row on screen, so it registers under its own `rowId` (and selects
+  // the task's id): left out, its dot could be neither tapped nor painted.
+  const paintRowRef = usePaintSelectionRow(isActive ? null : task.id, duplicateRow ? rowId : task.id);
   const titleInputRef = useRef<TextInput>(null);
   const subtaskTitleInputRef = useRef<TextInput>(null);
   const newSubtaskInputRef = useRef<TextInput>(null);
