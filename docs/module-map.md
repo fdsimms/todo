@@ -393,6 +393,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/personNotes.ts` — PERSON_NOTE_LABELS, PERSON_NOTE_HEADINGS, PERSON_NOTE_HINTS, isLiveNote, isStaleNote, notesOfKind, notesFor, describeNoteDay, giftIdeasText
 - `src/utils/phone.ts` — phoneDigits, telUrl, isDialable, smsUrl, formatPhoneInput, looksLikePhoneNumber
 - `src/utils/pillOverflow.ts` — OverflowPill, PillOverflowResult, PillOverflowOptions, DEFAULT_PILL_LIMIT, resolvePillOverflow, PillSubmit, resolvePillSubmit
+- `src/utils/pillReveal.ts` — pillRevealOffset
 - `src/utils/pinSuggest.ts` — MAX_SUGGESTED_PINS, PinContext, buildCoOccurrenceIndex, currentTimeSegment, buildPinContext, overdueDays, scoreTask, nextPinSuggestion, suggestPins, pinReason, +1 more
 - `src/utils/placeGate.ts` — PLACE_FIX_TTL_MS, PLACE_FIX_KEY, StoredPlaceFix, pinnedPlaces, placeIdAt, isPlaceLimited, placeGateAllows, placeTrustedUntil, readPlaceFix, writePlaceFix, +1 more
 - `src/utils/placeReminders.ts` — PLACE_REMINDER_PREFIX, PLACE_REMINDER_RADIUS_M, MAX_PLACE_REMINDERS, placeReminderId, remindablePlaces, describePlaceReminder, WantedPlaceReminder, wantedPlaceReminders, placeRemindersToCancel
@@ -810,6 +811,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useOnDeviceAi.ts` — useOnDeviceAvailability, useAiRoute
 - `src/hooks/usePantryCatalog.ts` — usePantryCatalog
 - `src/hooks/usePendingEdits.ts` — PendingEdits, usePendingEdits, useRegisterPendingEdit
+- `src/hooks/usePillRowReveal.ts` — usePillRowReveal
 - `src/hooks/usePlaceGateRefresh.ts` — usePlaceGateRefresh
 - `src/hooks/usePlaceSuggestions.ts` — usePlaceSuggestions
 - `src/hooks/usePlanMeal.ts` — usePlanMeal
