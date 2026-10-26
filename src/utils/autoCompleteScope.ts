@@ -30,6 +30,24 @@ export function runUnattended<T>(fn: () => T): T {
   }
 }
 
+/**
+ * Whether a row that could play a requested completion is on screen to do it.
+ * Today is the only place those rows live, and it is frozen while another tab
+ * is focused, so a record saved from the Journal or Mood tab has no row to play
+ * the tick. The store then holds the request rather than completing the task
+ * with nothing to see (`requestAutoComplete`), and Today resumes it on focus.
+ * On unless Today says otherwise, so a store test or the MCP server is unchanged.
+ */
+let rowsLive = true;
+
+export function setAutoCompleteRowsLive(on: boolean): void {
+  rowsLive = on;
+}
+
+export function autoCompleteRowsLive(): boolean {
+  return rowsLive;
+}
+
 export function canAutoComplete(): boolean {
   return attended && unattendedDepth === 0;
 }

@@ -1039,9 +1039,9 @@ const TaskItemRow = React.memo(function TaskItem({
   const collapseFadeOnly = useSharedValue(0);
   const collapseStartedRef = useRef(false);
   // This row played its own completion animation and is waiting for the batch,
-  // as opposed to one completed elsewhere (a swipe, the bulk bar, the editor):
-  // those never played the tick, so taking them away like this would yank a row
-  // that never announced itself. It holds its slot — checked, still fully
+  // as opposed to one completed elsewhere (the bulk bar, a sheet, the editor):
+  // those never played the tick, so they take the batch's collapse without the
+  // wait (collapseAsTwin below). This one holds its slot — checked, still fully
   // visible — for as long as the tapping goes on, and stops taking touches while
   // it waits: the completion is committed by then, so the row's own tap handler
   // (handleUndoComplete) would uncheck something it can no longer take back.
@@ -1192,12 +1192,13 @@ const TaskItemRow = React.memo(function TaskItem({
   // re-renders when its *own* completion is the one being called in.
   const collapseSignal = useTaskStore(s => s.completionCollapseIds.includes(task.id));
   const heldForCompletion = useTaskStore(s => s.completionHoldIds.includes(task.id));
-  // A pinned task has two live rows, and only the one that was tapped plays the
-  // tick and waits (awaitingCollapse). Its twin never did, so it sat there for
-  // the rest of the hold and left a beat after the first, staggering the two
-  // exits. Either row of a pinned task takes the signal while held, so both
-  // collapse in the same frame whichever one was tapped.
-  const collapseAsTwin = heldForCompletion && task.pinned;
+  // Only a row that was tapped plays the tick and waits (awaitingCollapse). Any
+  // other held row never did: a pinned task's twin, and a task completed
+  // somewhere else (the bulk bar, a stack's complete-all, a sheet, a meal marked
+  // cooked, a target finishing). Left alone it sat unchanged for the rest of the
+  // hold and then unmounted with no animation, so it simply vanished. Every held
+  // row takes the signal, so all of them close in the same frame as the batch.
+  const collapseAsTwin = heldForCompletion;
   useEffect(() => {
     if (!collapseSignal || !(awaitingCollapse || collapseAsTwin) || collapseStartedRef.current) return;
     setAwaitingCollapse(false);

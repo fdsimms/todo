@@ -12,7 +12,7 @@ import { useRewardStore } from '../store/useRewardStore';
 import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMoodStore } from '../store/useMoodStore';
-import { setAutoCompleteAttended, runUnattended } from '../utils/autoCompleteScope';
+import { setAutoCompleteAttended, setAutoCompleteRowsLive, runUnattended } from '../utils/autoCompleteScope';
 import { useJournalStore } from '../store/useJournalStore';
 import { UNDO_STACK_LIMIT } from '../utils/undoHistory';
 import { isMissed, isRealCompletion } from '../utils/missed';
@@ -7559,6 +7559,27 @@ describe('checkMoodTasks', () => {
         jest.advanceTimersByTime(700);
         expect(tasksOfKind('moodLog')).toHaveLength(0);
         expect(useTaskStore.getState().autoComplete).toEqual({});
+      });
+
+      it('holds the request while Today is off screen, and completes it once Today is back with no row to claim it', () => {
+        setAutoCompleteAttended(true);
+        liveCheck();
+        setLogs([entry(TODAY, 4)]);
+        setAutoCompleteRowsLive(false);
+        try {
+          useTaskStore.getState().autoCompleteRecordTasks('moodLog');
+          jest.advanceTimersByTime(5000);
+          // Nothing could play the tick, so the row is still there, waiting for Today.
+          expect(tasksOfKind('moodLog')).toHaveLength(1);
+          expect(Object.keys(useTaskStore.getState().autoComplete)).toHaveLength(1);
+
+          setAutoCompleteRowsLive(true);
+          useTaskStore.getState().resumeAutoComplete();
+          jest.advanceTimersByTime(700);
+          expect(tasksOfKind('moodLog')).toHaveLength(0);
+        } finally {
+          setAutoCompleteRowsLive(true);
+        }
       });
 
       it('leaves the completion to the row that claims it', () => {
