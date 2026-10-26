@@ -17,11 +17,18 @@ const MEASURED_UNIT_GROUPS: ChoiceGroup[] = [
   { options: [{ key: NO_UNIT_KEY, label: 'No unit' }] },
 ];
 
-const DOSE_UNIT_GROUPS: ChoiceGroup[] = [
-  { heading: 'MEASURED', options: DOSE_UNITS.filter(u => MEASURED_UNITS.has(u.value)).map(u => ({ key: u.value, label: u.value })) },
-  { heading: 'COUNTED', options: DOSE_UNITS.filter(u => !MEASURED_UNITS.has(u.value)).map(u => ({ key: u.value, label: u.value })) },
-  { options: [{ key: NO_UNIT_KEY, label: 'No unit' }] },
-];
+function doseUnitGroups(countedOnly: readonly string[] | undefined): ChoiceGroup[] {
+  const counted = DOSE_UNITS
+    .filter(u => !MEASURED_UNITS.has(u.value) && (!countedOnly || countedOnly.includes(u.value)))
+    .map(u => ({ key: u.value, label: u.value }));
+  return [
+    { heading: 'MEASURED', options: DOSE_UNITS.filter(u => MEASURED_UNITS.has(u.value)).map(u => ({ key: u.value, label: u.value })) },
+    ...(counted.length > 0 ? [{ heading: 'COUNTED', options: counted }] : []),
+    { options: [{ key: NO_UNIT_KEY, label: 'No unit' }] },
+  ];
+}
+
+const DOSE_UNIT_GROUPS = doseUnitGroups(undefined);
 
 interface Props {
   amount: string;
@@ -33,6 +40,12 @@ interface Props {
   style?: StyleProp<ViewStyle>;
   /** Which units the menu offers. Measured only is for a strength, which is never a count. */
   units?: 'all' | 'measured';
+  /**
+   * Limits the counted units (tablet, spray, ...) to these, for a medication
+   * that is only ever taken one way. The unit already chosen is always kept.
+   * Measured units are never limited.
+   */
+  countedUnits?: readonly string[];
   placeholder?: string;
   /** What the chip says until a unit is picked. */
   unitPlaceholder?: string;
@@ -46,10 +59,17 @@ interface Props {
  * grouping and the way a unit is cleared can't drift apart.
  */
 export function DoseAmountField({
-  amount, onChangeAmount, unit, onChangeUnit, name, style, units = 'all', placeholder = 'e.g. 125', unitPlaceholder = 'Choose unit',
+  amount, onChangeAmount, unit, onChangeUnit, name, style, units = 'all', countedUnits, placeholder = 'e.g. 125', unitPlaceholder = 'Choose unit',
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const countedKey = countedUnits ? [...countedUnits, unit ?? ''].join('|') : '';
+  const unitGroups = useMemo(
+    () => (units === 'measured' ? MEASURED_UNIT_GROUPS
+      : countedUnits ? doseUnitGroups(unit ? [...countedUnits, unit] : countedUnits)
+      : DOSE_UNIT_GROUPS),
+    [units, countedKey],
+  );
   return (
     <>
       <View style={[styles.row, style]}>
@@ -65,7 +85,7 @@ export function DoseAmountField({
           accessibilityLabel="How much, optional"
         />
         <ChoiceMenuChip
-          groups={units === 'measured' ? MEASURED_UNIT_GROUPS : DOSE_UNIT_GROUPS}
+          groups={unitGroups}
           selectedKey={unit}
           onSelect={key => onChangeUnit(key === NO_UNIT_KEY ? null : key)}
           noun="Unit"
