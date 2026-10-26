@@ -7458,7 +7458,6 @@ describe('checkMoodTasks', () => {
     mood,
     symptoms: [],
     contextTags: [],
-    factors: [],
     note: null,
   });
 

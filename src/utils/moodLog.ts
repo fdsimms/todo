@@ -1,4 +1,4 @@
-import type { FactorLevel, LoggedFactor, LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
+import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
 
 /**
  * The mood/symptom log: the scale, the vocabulary, and the day reads.
@@ -33,22 +33,6 @@ export const MOOD_LEVELS: readonly { value: MoodLevel; label: string }[] = [
   { value: 5, label: 'Very good' },
 ];
 
-/** The scale a rated factor is on, low to high. Storage values: reword the labels, never renumber. */
-export const FACTOR_LEVELS: readonly { value: FactorLevel; label: string }[] = [
-  { value: 1, label: 'Very low' },
-  { value: 2, label: 'Low' },
-  { value: 3, label: 'Medium' },
-  { value: 4, label: 'High' },
-  { value: 5, label: 'Very high' },
-];
-
-/**
- * Starter suggestions for the factors grid, for the reason `DEFAULT_CONTEXT_TAGS`
- * exists: a new log has no history to derive a vocabulary from. Not storage and
- * not a registry; what you have rated before always sorts ahead of these.
- */
-export const DEFAULT_FACTORS: readonly string[] = ['Stress', 'Energy', 'Anxiety', 'Focus'];
-
 /**
  * The line below which a day counts as a low one, for the nudge in
  * `moodTasks.ts` and the "low days" count on the Mood screen.
@@ -81,10 +65,6 @@ export const SYMPTOM_SEVERITIES: readonly { value: SymptomSeverity; label: strin
 
 export function moodLabel(mood: MoodLevel): string {
   return MOOD_LEVELS.find(m => m.value === mood)?.label ?? 'OK';
-}
-
-export function factorLabel(value: FactorLevel): string {
-  return FACTOR_LEVELS.find(f => f.value === value)?.label ?? 'Medium';
 }
 
 export function severityLabel(severity: SymptomSeverity): string {
@@ -171,57 +151,6 @@ export function renamedContextTags(
   const oldKey = contextTagKey(oldName);
   if (!tags.some(t => contextTagKey(t) === oldKey)) return [...tags];
   return withContextTag(tags.filter(t => contextTagKey(t) !== oldKey), newName);
-}
-
-/** "Stress 4/5, Energy 2/5": an entry's ratings on one line, for a row and a spoken label. */
-export function factorsSummary(factors: readonly LoggedFactor[]): string {
-  return factors.map(f => `${f.name} ${f.value}/5`).join(', ');
-}
-
-/** The key two spellings of one factor agree on. Same rule as `symptomKey`, for the same reason. */
-export const factorKey = symptomKey;
-
-/** Add a factor's rating to an entry, or replace it if the factor is already there. */
-export function withFactor(
-  factors: readonly LoggedFactor[],
-  name: string,
-  value: FactorLevel,
-): LoggedFactor[] {
-  const trimmed = name.trim();
-  if (!trimmed) return [...factors];
-  const key = factorKey(trimmed);
-  if (factors.some(f => factorKey(f.name) === key)) {
-    return factors.map(f => (factorKey(f.name) === key ? { ...f, value } : f));
-  }
-  return [...factors, { name: trimmed, value }];
-}
-
-export function withoutFactor(factors: readonly LoggedFactor[], name: string): LoggedFactor[] {
-  const key = factorKey(name);
-  return factors.filter(f => factorKey(f.name) !== key);
-}
-
-/** Every factor name you have ever rated, most-used first. Derived on read, like `symptomVocabulary`. */
-export function factorVocabulary(logs: readonly MoodLog[]): string[] {
-  const counts = new Map<string, { name: string; count: number }>();
-  for (const log of logs) {
-    for (const factor of log.factors) {
-      const key = factorKey(factor.name);
-      if (!key) continue;
-      const seen = counts.get(key);
-      if (seen) seen.count++;
-      else counts.set(key, { name: factor.name.trim(), count: 1 });
-    }
-  }
-  return [...counts.values()]
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-    .map(e => e.name);
-}
-
-/** The rating an entry gave a factor, or null when it didn't rate it. */
-export function factorOnLog(log: Pick<MoodLog, 'factors'>, name: string): FactorLevel | null {
-  const key = factorKey(name);
-  return log.factors.find(f => factorKey(f.name) === key)?.value ?? null;
 }
 
 /**
@@ -319,31 +248,6 @@ export function daySymptoms(logs: readonly MoodLog[], dayKey: string): LoggedSym
     }
   }
   return [...worst.values()].sort((a, b) => a.name.localeCompare(b.name));
-}
-
-/**
- * What each rated factor averaged on one day, by `factorKey`. Averaged over the
- * entries that rated it, unlike a symptom's "worst it got": a factor has no
- * bad end the app could pick (a high stress and a high energy are opposite
- * news), so a day with a calm morning and a tense evening is the middle of
- * the two, not either.
- */
-export function dayFactorAverages(logs: readonly MoodLog[], dayKey: string): Record<string, number> {
-  const sums = new Map<string, { total: number; count: number }>();
-  for (const log of logs) {
-    if (log.dayKey !== dayKey) continue;
-    for (const factor of log.factors) {
-      const key = factorKey(factor.name);
-      if (!key) continue;
-      const seen = sums.get(key) ?? { total: 0, count: 0 };
-      seen.total += factor.value;
-      seen.count++;
-      sums.set(key, seen);
-    }
-  }
-  const out: Record<string, number> = {};
-  for (const [key, { total, count }] of sums) out[key] = total / count;
-  return out;
 }
 
 /** Every context tag logged on one day, de-duplicated, alphabetical. */

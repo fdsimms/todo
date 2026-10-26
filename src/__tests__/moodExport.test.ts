@@ -18,7 +18,6 @@ function log(over: Partial<MoodLog> = {}): MoodLog {
     loggedAt: over.loggedAt ?? localIso('2026-08-17T09:00'),
     dayKey: over.dayKey ?? '2026-08-17',
     mood: over.mood === undefined ? 3 : over.mood,
-    factors: over.factors ?? [],
     symptoms: over.symptoms ?? [],
     contextTags: over.contextTags ?? [],
     note: over.note ?? null,
@@ -60,11 +59,6 @@ describe('the file', () => {
       log({ loggedAt: localIso('2026-08-17T09:00'), dayKey: '2026-08-17' }),
     ]);
     expect(rows(csv)[1].startsWith('2026-08-17')).toBe(true);
-  });
-
-  it('spells the ratings out beside their numbers', () => {
-    const csv = moodExportCsv([log({ factors: [{ name: 'Stress', value: 4 }, { name: 'Energy', value: 2 }] })]);
-    expect(csv).toContain('Stress 4 (high); Energy 2 (low)');
   });
 
   it('writes one row per entry and never collapses a day', () => {

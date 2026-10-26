@@ -119,20 +119,6 @@ describe('addLog', () => {
     );
   });
 
-  it('writes rated factors, collapsing two spellings of one', () => {
-    state().addLog(null, [], null, undefined, [], [
-      { name: 'Stress', value: 4 }, { name: 'stress', value: 2 }, { name: ' ', value: 3 },
-    ]);
-    expect(state().logs[0].factors).toEqual([{ name: 'stress', value: 2 }]);
-  });
-
-  it('accepts an entry with only a rating, and updates one', () => {
-    const log = state().addLog(null, [], null, undefined, [], [{ name: 'Energy', value: 5 }]);
-    expect(log).not.toBeNull();
-    state().updateLog(log!.id, { factors: [{ name: 'Energy', value: 1 }] });
-    expect(state().logs[0].factors).toEqual([{ name: 'Energy', value: 1 }]);
-  });
-
   it('collapses two spellings of one context tag', () => {
     state().addLog(3, [], null, undefined, ['Vacation', 'vacation']);
     expect(state().logs[0].contextTags).toEqual(['Vacation']);

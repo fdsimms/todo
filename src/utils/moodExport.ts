@@ -30,10 +30,10 @@
 
 import { format } from 'date-fns/format';
 import type { MoodLog } from '../types';
-import { factorLabel, moodLabel, severityLabel } from './moodLog';
+import { moodLabel, severityLabel } from './moodLog';
 
 export const MOOD_EXPORT_COLUMNS = [
-  'Day', 'Logged at', 'Mood', 'Mood label', 'Ratings', 'Symptoms', 'Context', 'Note',
+  'Day', 'Logged at', 'Mood', 'Mood label', 'Symptoms', 'Context', 'Note',
 ] as const;
 
 /**
@@ -51,11 +51,6 @@ export function csvCell(value: string): string {
 
 function csvRow(cells: readonly string[]): string {
   return cells.map(csvCell).join(',');
-}
-
-/** "Stress 4 (high); Energy 2 (low)" — the ratings column, scale spelled out like the mood's. */
-function ratingsCell(log: MoodLog): string {
-  return log.factors.map(f => `${f.name} ${f.value} (${factorLabel(f.value).toLowerCase()})`).join('; ');
 }
 
 /** "Headache (severe); Poor sleep (mild)" — the symptom column. */
@@ -82,7 +77,6 @@ export function moodExportCsv(logs: readonly MoodLog[]): string {
     log.loggedAt,
     log.mood === null ? '' : String(log.mood),
     log.mood === null ? '' : moodLabel(log.mood),
-    ratingsCell(log),
     symptomCell(log),
     log.contextTags.join('; '),
     log.note ?? '',

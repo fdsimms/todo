@@ -246,14 +246,6 @@ describe('logMood', () => {
     expect(second.contextTags).toEqual(['Poor sleep']);
   });
 
-  it('records ratings in the existing spelling, and refuses one off the scale', () => {
-    logMood(replica, { factors: [{ name: 'Stress', value: 4 }] });
-    const second = logMood(replica, { mood: 3, factors: [{ name: 'stress', value: 2 }] });
-    expect(second.factors).toEqual([{ name: 'Stress', value: 2 }]);
-    expect(() => logMood(replica, { factors: [{ name: 'Stress', value: 6 }] })).toThrow(/1 to 5/);
-    expect(updateMoodLog(replica, second.id, { factors: [] }).mood).toBe(3);
-  });
-
   it('refuses to clear the only thing on a check-in', () => {
     const made = logMood(replica, { note: 'Long day' });
     expect(() => updateMoodLog(replica, made.id, { note: null })).toThrow(/empty/);

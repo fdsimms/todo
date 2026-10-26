@@ -34,8 +34,6 @@ import type {
   CalendarRequestPayload,
   CalendarRequestStatus,
   MoodLevel,
-  FactorLevel,
-  LoggedFactor,
   MoodLog,
   NutrientKey,
   Person,
@@ -2058,8 +2056,6 @@ function runInitDatabase(): void {
     "ALTER TABLE mood_logs ADD COLUMN context_tags TEXT NOT NULL DEFAULT '[]'",
     // MoodLog.dream. Null on every existing row: no entry has a dream until one is written.
     'ALTER TABLE mood_logs ADD COLUMN dream TEXT',
-    // MoodLog.factors: rated factors as JSON, like symptoms. Empty on every existing row.
-    "ALTER TABLE mood_logs ADD COLUMN factors TEXT NOT NULL DEFAULT '[]'",
     // Null on every existing row, and null is the honest reading: a food nobody
     // has looked up has unknown nutrition, which is a different thing from a
     // food with none. Nullable rather than defaulting to '{}' for that reason —
@@ -7700,17 +7696,6 @@ function rowToMoodLog(row: Record<string, unknown>): MoodLog {
   const mood = typeof rawMood === 'number' && rawMood >= 1 && rawMood <= 5
     ? (Math.round(rawMood) as MoodLevel)
     : null;
-  let factors: LoggedFactor[] = [];
-  try {
-    const parsed = JSON.parse((row.factors as string) ?? '[]');
-    if (Array.isArray(parsed)) {
-      factors = (parsed as LoggedFactor[]).filter(f =>
-        typeof f?.name === 'string' && typeof f.value === 'number' && f.value >= 1 && f.value <= 5
-      ).map(f => ({ name: f.name, value: Math.round(f.value) as FactorLevel }));
-    }
-  } catch {
-    // Same shrug as symptoms: a malformed blob costs the ratings on one entry, not the entry.
-  }
   let symptoms: LoggedSymptom[] = [];
   try {
     const parsed = JSON.parse((row.symptoms as string) ?? '[]');
@@ -7731,7 +7716,6 @@ function rowToMoodLog(row: Record<string, unknown>): MoodLog {
     loggedAt: row.logged_at as string,
     dayKey: row.day_key as string,
     mood,
-    factors,
     symptoms,
     contextTags,
     note: (row.note as string) || null,
@@ -7757,10 +7741,10 @@ export function dbGetAllMoodLogs(): MoodLog[] {
 
 export function dbInsertMoodLog(log: MoodLog): void {
   db.runSync(
-    `INSERT INTO mood_logs (id, logged_at, day_key, mood, factors, symptoms, context_tags, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
-      log.id, log.loggedAt, log.dayKey, log.mood, JSON.stringify(log.factors),
+      log.id, log.loggedAt, log.dayKey, log.mood,
       JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note,
     ]
   );
@@ -7768,9 +7752,9 @@ export function dbInsertMoodLog(log: MoodLog): void {
 
 export function dbUpdateMoodLog(log: MoodLog): void {
   db.runSync(
-    `UPDATE mood_logs SET logged_at=?, day_key=?, mood=?, factors=?, symptoms=?, context_tags=?, note=? WHERE id=?`,
+    `UPDATE mood_logs SET logged_at=?, day_key=?, mood=?, symptoms=?, context_tags=?, note=? WHERE id=?`,
     [
-      log.loggedAt, log.dayKey, log.mood, JSON.stringify(log.factors),
+      log.loggedAt, log.dayKey, log.mood,
       JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note, log.id,
     ]
   );

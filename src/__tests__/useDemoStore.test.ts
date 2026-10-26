@@ -113,7 +113,7 @@ import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useGymStore } from '../store/useGymStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { linkFor } from '../constants/linkApps';
-import { buildMoodDays, contextTagMoodContrasts, factorMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, trainingDayMoodContrast, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, lowMoodRun, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, milestoneMoodContrast, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, trainingDayMoodContrast, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { analyzeExercise, recordSessions, trainingDays } from '../utils/workoutRecords';
 import { currentProgram, programProgress } from '../utils/workoutProgram';
 import { programHistory, routineHistory } from '../utils/routineVersions';
@@ -2278,13 +2278,6 @@ describe('demo seed — people', () => {
     expect(symptomVocabulary(logs).length).toBeGreaterThan(1);
     const severities = new Set(logs.flatMap(l => l.symptoms.map(s => s.severity)));
     expect(severities.size).toBeGreaterThan(1);
-  });
-
-  it('seeds rated factors, enough for the rating contrast to report', () => {
-    const logs = useMoodStore.getState().logs;
-    expect(logs.some(l => l.factors.some(f => f.name === 'Stress'))).toBe(true);
-    const days = buildMoodDays(logs, [], '00:00');
-    expect(factorMoodContrasts(days).map(r => r.label)).toContain('stress');
   });
 
   it('seeds a low patch, so the symptom contrast has something to report', () => {
