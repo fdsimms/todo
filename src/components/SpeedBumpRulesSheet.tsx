@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
-import { Linking } from 'react-native';
+import { Linking, StyleSheet, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { SpeedBumpRule } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useColors } from '../theme/ThemeContext';
+import { spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { screenTimeBridge } from '../utils/screenTimeBridge';
 import { allGroups, groupName, plainGroups, resolveGroupId } from '../utils/appGroups';
@@ -97,7 +98,7 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
       renderEditor={(rule, update) => {
         const frequency: Frequency = rule.repeatEveryMinutes ? 'repeat' : 'once';
         return (
-          <>
+          <View style={styles.sections}>
             <CountStepper
               value={rule.thresholdMinutes}
               onChange={next => update({ thresholdMinutes: next ?? SPEED_BUMP_THRESHOLD_DEFAULT })}
@@ -108,84 +109,96 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
               label="Usage threshold"
               describeValue={n => `${n} minutes`}
             />
-            <RuleFieldLabel>Count time on</RuleFieldLabel>
-            <PillGroup
-              noun="group"
-              surface="card"
-              options={timedOptions.map(g => ({
-                key: g.id,
-                label: g.name,
-                selected: g.id === timedId(rule),
-                suffix: groupIsEmpty(g.id) ? 'no apps' : undefined,
-                onPress: () => update({ groupId: g.id }),
-              }))}
-            />
-            <RuleFieldLabel>Then block</RuleFieldLabel>
-            <PillGroup
-              noun="group"
-              surface="card"
-              options={[
-                {
-                  key: 'same',
-                  label: 'Same group',
-                  selected: !rule.blockGroupId,
-                  pinned: true,
-                  onPress: () => update({ blockGroupId: undefined }),
-                },
-                ...blockOptions.map(g => ({
+            <View style={styles.field}>
+              <RuleFieldLabel>Count time on</RuleFieldLabel>
+              <PillGroup
+                noun="group"
+                surface="card"
+                options={timedOptions.map(g => ({
                   key: g.id,
                   label: g.name,
-                  selected: rule.blockGroupId === g.id,
-                  onPress: () => update({ blockGroupId: g.id }),
-                })),
-              ]}
-            />
-            <RuleFieldLabel>Block for</RuleFieldLabel>
-            <SegmentedControl<number>
-              label="Block length"
-              options={SPEED_BUMP_BLOCK_CHOICES.map(m => ({ value: m, label: blockLabel(m), accessibilityLabel: describeDuration(m) }))}
-              value={rule.blockMinutes}
-              onChange={minutes => { haptics.tap(); update({ blockMinutes: minutes }); }}
-            />
-            <RuleFieldLabel>How often</RuleFieldLabel>
-            <SegmentedControl<Frequency>
-              label="How often"
-              options={[{ value: 'once', label: 'Once a day' }, { value: 'repeat', label: 'Repeat' }]}
-              value={frequency}
-              onChange={next => {
-                haptics.tap();
-                update(next === 'repeat'
-                  ? { repeatEveryMinutes: SPEED_BUMP_REPEAT_DEFAULT, maxTimes: 3 }
-                  : { repeatEveryMinutes: null, maxTimes: 1 });
-              }}
-            />
+                  selected: g.id === timedId(rule),
+                  suffix: groupIsEmpty(g.id) ? 'no apps' : undefined,
+                  onPress: () => update({ groupId: g.id }),
+                }))}
+              />
+            </View>
+            <View style={styles.field}>
+              <RuleFieldLabel>Then block</RuleFieldLabel>
+              <PillGroup
+                noun="group"
+                surface="card"
+                options={[
+                  {
+                    key: 'same',
+                    label: 'Same group',
+                    selected: !rule.blockGroupId,
+                    pinned: true,
+                    onPress: () => update({ blockGroupId: undefined }),
+                  },
+                  ...blockOptions.map(g => ({
+                    key: g.id,
+                    label: g.name,
+                    selected: rule.blockGroupId === g.id,
+                    onPress: () => update({ blockGroupId: g.id }),
+                  })),
+                ]}
+              />
+            </View>
+            <View style={styles.field}>
+              <RuleFieldLabel>Block for</RuleFieldLabel>
+              <SegmentedControl<number>
+                label="Block length"
+                options={SPEED_BUMP_BLOCK_CHOICES.map(m => ({ value: m, label: blockLabel(m), accessibilityLabel: describeDuration(m) }))}
+                value={rule.blockMinutes}
+                onChange={minutes => { haptics.tap(); update({ blockMinutes: minutes }); }}
+              />
+            </View>
+            <View style={styles.field}>
+              <RuleFieldLabel>How often</RuleFieldLabel>
+              <SegmentedControl<Frequency>
+                label="How often"
+                options={[{ value: 'once', label: 'Once a day' }, { value: 'repeat', label: 'Repeat' }]}
+                value={frequency}
+                onChange={next => {
+                  haptics.tap();
+                  update(next === 'repeat'
+                    ? { repeatEveryMinutes: SPEED_BUMP_REPEAT_DEFAULT, maxTimes: 3 }
+                    : { repeatEveryMinutes: null, maxTimes: 1 });
+                }}
+              />
+            </View>
             {frequency === 'repeat' && (
               <>
-                <RuleFieldLabel>Repeat every</RuleFieldLabel>
-                <CountStepper
-                  value={rule.repeatEveryMinutes ?? SPEED_BUMP_REPEAT_DEFAULT}
-                  onChange={next => update({ repeatEveryMinutes: next ?? SPEED_BUMP_REPEAT_DEFAULT })}
-                  min={SPEED_BUMP_REPEAT_MIN}
-                  max={SPEED_BUMP_REPEAT_MAX}
-                  step={15}
-                  format={n => `${n} min`}
-                  label="Repeat interval"
-                  describeValue={n => `${n} minutes of further use`}
-                />
-                <RuleFieldLabel>Up to</RuleFieldLabel>
-                <CountStepper
-                  value={rule.maxTimes}
-                  onChange={next => update({ maxTimes: next ?? 2 })}
-                  min={2}
-                  max={SPEED_BUMP_TIMES_MAX}
-                  step={1}
-                  format={n => `${n} times a day`}
-                  label="Times a day"
-                  describeValue={n => `${n} times a day`}
-                />
+                <View style={styles.field}>
+                  <RuleFieldLabel>Repeat every</RuleFieldLabel>
+                  <CountStepper
+                    value={rule.repeatEveryMinutes ?? SPEED_BUMP_REPEAT_DEFAULT}
+                    onChange={next => update({ repeatEveryMinutes: next ?? SPEED_BUMP_REPEAT_DEFAULT })}
+                    min={SPEED_BUMP_REPEAT_MIN}
+                    max={SPEED_BUMP_REPEAT_MAX}
+                    step={15}
+                    format={n => `${n} min`}
+                    label="Repeat interval"
+                    describeValue={n => `${n} minutes of further use`}
+                  />
+                </View>
+                <View style={styles.field}>
+                  <RuleFieldLabel>Up to</RuleFieldLabel>
+                  <CountStepper
+                    value={rule.maxTimes}
+                    onChange={next => update({ maxTimes: next ?? 2 })}
+                    min={2}
+                    max={SPEED_BUMP_TIMES_MAX}
+                    step={1}
+                    format={n => `${n} times a day`}
+                    label="Times a day"
+                    describeValue={n => `${n} times a day`}
+                  />
+                </View>
               </>
             )}
-          </>
+          </View>
         );
       }}
       titleLabel="Name"
@@ -225,3 +238,12 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
     />
   );
 }
+
+const styles = StyleSheet.create({
+  // Roomier than the other rule sheets: this editor has seven controls, and at
+  // their 4pt gap the labels read as part of the control above them. The bottom
+  // margin plus the shared sheet's own spacing gives the Name field, which it
+  // adds after this, the same 24pt the sections have between them.
+  sections: { gap: spacing.lg, marginBottom: spacing.smd },
+  field: { gap: spacing.xs },
+});
