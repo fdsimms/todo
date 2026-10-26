@@ -32,9 +32,10 @@ export function useWeighIn(noun: CookwareNoun = 'pot') {
     [picked, noun],
   );
 
+  /** One piece at a time: picking another replaces it, picking the same one again clears it. */
   const toggle = useCallback((id: string) => {
     if (!selected.includes(id)) markPicked(id);
-    setSelected(cur => (cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]));
+    setSelected(cur => (cur.includes(id) ? [] : [id]));
   }, [selected, markPicked]);
   const clear = useCallback(() => setSelected([]), []);
 
