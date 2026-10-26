@@ -1,4 +1,4 @@
-import { resolveAmountMath } from '../utils/amountMath';
+import { appendOperator, resolveAmountMath } from '../utils/amountMath';
 import { composeFoodAmount } from '../utils/foodLog';
 import { parseWeightText } from '../utils/cookware';
 
@@ -32,5 +32,22 @@ describe('typed sums reach the amount', () => {
   });
   it('weighs a plate reading as a sum', () => {
     expect(parseWeightText('850 - 120')).toBe(730);
+  });
+});
+
+describe('appendOperator', () => {
+  it('appends an operator after a number', () => {
+    expect(appendOperator('120', '-')).toBe('120 − ');
+    expect(appendOperator('120 − 50', '+')).toBe('120 − 50 + ');
+    expect(appendOperator('3', '*')).toBe('3 × ');
+  });
+  it('replaces a trailing operator and ignores an empty field', () => {
+    expect(appendOperator('120 − ', '+')).toBe('120 + ');
+    expect(appendOperator('', '+')).toBe('');
+    expect(appendOperator('  ', '-')).toBe('  ');
+    expect(appendOperator('−', '+')).toBe('−');
+  });
+  it('produces text resolveAmountMath reads', () => {
+    expect(resolveAmountMath(`${appendOperator('120', '-')}50`)).toBe('70');
   });
 });

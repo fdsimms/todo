@@ -57,3 +57,24 @@ export function resolveAmountMath(text: string): string {
   if (!Number.isFinite(total) || !(total > 0)) return text;
   return String(Math.round(total * 100) / 100);
 }
+
+export type AmountOperator = '+' | '-' | '*';
+
+/** The glyph an operator button shows, and the name a screen reader says. */
+export const AMOUNT_OPERATORS: { op: AmountOperator; glyph: string; label: string }[] = [
+  { op: '+', glyph: '+', label: 'Plus' },
+  { op: '-', glyph: '−', label: 'Minus' },
+  { op: '*', glyph: '×', label: 'Times' },
+];
+
+/**
+ * The text after tapping an operator button: appended at the end, since a sum is
+ * typed left to right. A second operator in a row replaces the first, and one
+ * with nothing before it is ignored.
+ */
+export function appendOperator(text: string, op: AmountOperator): string {
+  const trimmed = text.trimEnd();
+  if (!trimmed) return text;
+  const body = /[+\-*x×−–]$/.test(trimmed) ? trimmed.slice(0, -1).trimEnd() : trimmed;
+  return body ? `${body} ${op === '*' ? '×' : op === '-' ? '−' : '+'} ` : text;
+}

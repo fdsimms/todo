@@ -15,6 +15,7 @@ import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot, type NutrientKey, type ProductRating } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useAmountOperators } from '../hooks/useAmountOperators';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { packageChoices, servingDescription } from '../utils/scanPortion';
 import {
@@ -159,6 +160,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
   // manually — same mechanism as every other keyboard-heavy sheet (see the
   // hook's own doc comment for why this beats a KeyboardAvoidingView here).
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  const amountOperators = useAmountOperators();
 
   // What each card's amount currently reads as text ("0.5 serving"). Missing
   // is the untouched state.
@@ -465,6 +467,15 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
             // unresolved amount) decides whether Save can actually be pressed.
             const weighUnitLabel = usingPills && panel.basis === 'per100ml' ? selectedUnit?.label ?? null : null;
             const showWeighField = !!weighUnitLabel && (!outcome || outcome.grams === null);
+            const amountNumber = amountNumbers[food.key] ?? (answers[food.key] === undefined ? defaultAmount?.number : undefined) ?? '';
+            const changeAmount = (text: string) => {
+              if (usingPills) {
+                setAmountNumbers(n => ({ ...n, [food.key]: text }));
+                setAnswers(a => ({ ...a, [food.key]: composeAnswer(food, text, selectedUnit) }));
+              } else {
+                setAnswers(a => ({ ...a, [food.key]: text }));
+              }
+            };
             return (
               <View key={food.key} style={styles.card}>
                 <View>
@@ -477,17 +488,11 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     value={usingPills
                       ? (amountNumbers[food.key] ?? (answers[food.key] === undefined ? defaultAmount?.number : undefined) ?? '')
                       : answer}
-                    onChangeText={text => {
-                      if (usingPills) {
-                        setAmountNumbers(n => ({ ...n, [food.key]: text }));
-                        setAnswers(a => ({ ...a, [food.key]: composeAnswer(food, text, selectedUnit) }));
-                      } else {
-                        setAnswers(a => ({ ...a, [food.key]: text }));
-                      }
-                    }}
+                    onChangeText={changeAmount}
+                    {...(usingPills ? amountOperators.fieldProps(food.key, () => amountNumber, changeAmount) : {})}
                     placeholder={usingPills ? 'Amount' : `e.g. ${amountExample(panel)}`}
                     placeholderTextColor={colors.textTertiary}
-                    keyboardType={usingPills ? 'numbers-and-punctuation' : 'default'}
+                    keyboardType={usingPills ? 'decimal-pad' : 'default'}
                     // The number pad has no return key, so without this there is
                     // no way off it, same accessory `FoodLogEntrySheet` wires up.
                     inputAccessoryViewID={usingPills ? NUMBER_PAD_ACCESSORY_ID : undefined}
@@ -666,7 +671,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
           <LimitImpactLines impacts={limitImpacts} style={styles.limitImpacts} />
         </ScrollView>
       </View>
-      <NumberPadAccessory />
+      <NumberPadAccessory onOperator={amountOperators.onOperator} />
     </SheetModal>
   );
 }
