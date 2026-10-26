@@ -31,6 +31,7 @@ export function ScrollToTopButton({ visible, bottom, onPress }: Props) {
   // The cooking and focus bars float across this corner, so rest above them.
   const barsTop = useFloatingBarStore(selectFloatingBarsTop);
   const lifted = barsTop > 0 ? Math.max(bottom, barsTop + spacing.sm) : bottom;
+  const glass = glassSupported();
   const opacity = useRef(new Animated.Value(0)).current;
   // Stays mounted a beat after `visible` goes false so the fade-out can play;
   // pointerEvents drops immediately so a fading button can't still be tapped.
@@ -47,6 +48,14 @@ export function ScrollToTopButton({ visible, bottom, onPress }: Props) {
     });
   }, [visible, opacity]);
 
+  // A glass view fades with its ancestors' alpha, and UIKit skips the effect
+  // while that is low, which left the arrow floating with no circle behind it.
+  // So glass takes a scale entrance on the same value and its container stays
+  // fully opaque; only the flat fallback fades.
+  const entrance = glass
+    ? { opacity: 1, transform: [{ scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }] }
+    : { opacity };
+
   if (!mounted) return null;
 
   return (
@@ -58,7 +67,7 @@ export function ScrollToTopButton({ visible, bottom, onPress }: Props) {
           bottom: lifted,
           left: hand === 'left' ? undefined : spacing.lg,
           right: hand === 'left' ? spacing.lg : undefined,
-          opacity,
+          ...entrance,
         },
       ]}
     >
@@ -68,7 +77,7 @@ export function ScrollToTopButton({ visible, bottom, onPress }: Props) {
           // The Fab in the opposite corner is glass where it can be, so this
           // matches it; glass draws its own depth and edge, so the flat
           // fallback alone takes the glow and the light ring.
-          glassSupported()
+          glass
             ? styles.glass
             : [shadows.fab, { backgroundColor: colors.accentFill, shadowColor: colors.accent }, floatingEdge(colors)],
         ]}
