@@ -140,7 +140,7 @@ export function ScreenTimeRulesSheet({ visible, onClose }: Props) {
                 key: g.id,
                 label: g.name,
                 selected: g.id === groupId,
-                suffix: groupIsEmpty(g.id) ? 'no apps' : undefined,
+                suffix: groupIsEmpty(g.id) ? ' · no apps' : undefined,
                 onPress: () => update({ groupId: g.id }),
               }))}
             />

@@ -95,7 +95,7 @@ export function BlockOfferRulesSheet({ visible, onClose }: Props) {
                 key: g.id,
                 label: g.name,
                 selected: g.id === groupIdOf(rule),
-                suffix: (counts[g.id] ?? 1) === 0 ? 'no apps' : undefined,
+                suffix: (counts[g.id] ?? 1) === 0 ? ' · no apps' : undefined,
                 onPress: () => follow({ groupId: g.id }, g.name, rule.minutes),
               }))}
             />
