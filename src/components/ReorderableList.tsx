@@ -35,7 +35,9 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useScrollToTopVisibility } from '../hooks/useScrollToTopVisibility';
 import { strandedScrollOffset } from '../utils/scrollClamp';
 import { haptics } from '../utils/haptics';
-import { ScrollToTopButton } from './ScrollToTopButton';
+import { ScrollToTopButton, SCROLL_TO_TOP_SIZE } from './ScrollToTopButton';
+import { spacing } from '../theme';
+import { selectFloatingBarsTop, useFloatingBarStore } from '../store/useFloatingBarStore';
 import { PaintSelectionSuspend } from './PaintSelection';
 
 const ROW_SHIFT_DURATION = 180;
@@ -387,6 +389,15 @@ export function ReorderableList<T>({
   // ==== theme, drag state and the card's animated values ====
   const { shadows } = useTheme();
   const scrollToTopVisibility = useScrollToTopVisibility();
+  // The button floats over the list's corner, so the last row ends above it
+  // (the same floor `useListScrollToTop` sets for the plain lists).
+  const barsTop = useFloatingBarStore(selectFloatingBarsTop);
+  const scrollTopClearance = scrollToTop
+    ? (barsTop > 0 ? Math.max(scrollToTop.bottom, barsTop + spacing.sm) : scrollToTop.bottom) + SCROLL_TO_TOP_SIZE + spacing.md
+    : 0;
+  const scrollTopClearedStyle = scrollToTop
+    ? [contentContainerStyle, { paddingBottom: Math.max(Number(StyleSheet.flatten(contentContainerStyle)?.paddingBottom) || 0, scrollTopClearance) }]
+    : contentContainerStyle;
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   // The committed order, rendered locally the instant a drop lands. This is
   // set in the SAME state batch as the drag reset, so the first frame after
@@ -1329,7 +1340,7 @@ export function ReorderableList<T>({
             updateHover();
           });
         }}
-        contentContainerStyle={contentContainerStyle}
+        contentContainerStyle={scrollTopClearedStyle}
         refreshControl={refreshControl}
         onScrollBeginDrag={() => {
           userScrollingRef.current = true;
