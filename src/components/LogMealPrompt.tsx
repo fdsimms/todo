@@ -525,9 +525,9 @@ export function LogMealPrompt() {
                     activeOpacity={interaction.activeOpacity}
                     onPress={handleNever}
                     accessibilityRole="button"
-                    accessibilityLabel="Don’t ask about this meal"
+                    accessibilityLabel="Never ask about this meal"
                   >
-                    <Text style={styles.quietLinkText}>Don’t ask about this meal</Text>
+                    <Text style={styles.quietLinkText}>Never ask about this meal</Text>
                   </TouchableOpacity>
                 )}
                 {!shown.asked && (
