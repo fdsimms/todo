@@ -79,6 +79,7 @@ import { dragRange } from '../utils/reorder';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
+import { setAutoCompleteRowsLive } from '../utils/autoCompleteScope';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -1215,6 +1216,17 @@ export function TodayScreen() {
   useFocusEffect(
     useCallback(() => {
       return () => setExpandedTaskId(null);
+    }, [])
+  );
+
+  // Today's rows are the only ones that can play a task completing itself. A
+  // record saved on another tab (a dream in the Journal) leaves the request
+  // held, and this hands it to the rows now that they are back on screen.
+  useFocusEffect(
+    useCallback(() => {
+      setAutoCompleteRowsLive(true);
+      useTaskStore.getState().resumeAutoComplete();
+      return () => setAutoCompleteRowsLive(false);
     }, [])
   );
 

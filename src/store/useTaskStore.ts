@@ -135,7 +135,7 @@ import { featureHidden } from '../utils/simpleMode';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
 import { isAnsweredByRecord, isRecordAnswered } from '../utils/recordTasks';
 import { autoCompleteReason } from '../utils/autoComplete';
-import { canAutoComplete } from '../utils/autoCompleteScope';
+import { autoCompleteRowsLive, canAutoComplete } from '../utils/autoCompleteScope';
 import { MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogTitle, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
 import {
@@ -1750,6 +1750,12 @@ interface TaskStore extends UndoHistoryActions {
    * (`autoCompleteReason`), one already done, and a record task with no entry.
    */
   requestAutoComplete: (ids: string[]) => void;
+  /**
+   * Starts the pickup wait again for requests still held. While Today isn't
+   * the focused tab (`autoCompleteRowsLive`) the store holds them instead of
+   * completing with no row to animate; Today calls this when it regains focus.
+   */
+  resumeAutoComplete: () => void;
   /** `requestAutoComplete` for every live task of a kind, called where the person saves what it asks for. */
   autoCompleteRecordTasks: (kind: GeneratedKind) => void;
   /** A row taking the request for its own task: returns the reason and removes it, or null if there is none. */
@@ -3300,13 +3306,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
     if (Object.keys(requested).length === 0) return;
     set(s => ({ autoComplete: { ...s.autoComplete, ...requested } }));
+    get().resumeAutoComplete();
+  },
+  resumeAutoComplete() {
+    if (Object.keys(get().autoComplete).length === 0) return;
     if (autoCompleteTimer) clearTimeout(autoCompleteTimer);
     autoCompleteTimer = setTimeout(() => {
       autoCompleteTimer = null;
+      // Nothing is on screen to play the tick (the record was saved on another
+      // tab), so the request waits for Today to come back and its row claims it.
+      if (!autoCompleteRowsLive()) return;
       const unclaimed = Object.keys(get().autoComplete);
       if (unclaimed.length === 0) return;
       set({ autoComplete: {} });
-      unclaimed.forEach(id => get().completeTask(id, { autoCompleted: true }));
+      unclaimed.forEach(id => {
+        const task = get().tasks.find(t => t.id === id);
+        if (task && !task.completed) get().completeTask(id, { autoCompleted: true });
+      });
     }, AUTO_COMPLETE_PICKUP_MS);
   },
   autoCompleteRecordTasks(kind) {
