@@ -918,7 +918,6 @@ describe('listMoodLogs', () => {
       dayKey: '2026-09-11',
       loggedAt: '2026-09-11T09:00:00.000Z',
       mood: null,
-      factors: [],
       symptoms: [],
       contextTags: [],
       note: null,
@@ -936,13 +935,6 @@ describe('listMoodLogs', () => {
     // the day, and reporting that as a 0 would invent a rating.
     expect(result.logs[0].mood).toBeUndefined();
     expect(result.logs[0].symptoms).toEqual([{ name: 'Headache', severity: '2' }]);
-  });
-
-  it('reports the ratings a check-in carries', () => {
-    const result = listMoodLogs(stubReplica({
-      moodLogs: () => [log({ id: 'm1', factors: [{ name: 'Stress', value: 4 }] })],
-    }));
-    expect(result.logs[0].factors).toEqual([{ name: 'Stress', value: 4 }]);
   });
 
   it('drops empty symptom and tag lists rather than sending them', () => {

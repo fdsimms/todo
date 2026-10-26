@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LoggedSymptom, LoggedFactor, MoodLevel, MoodLog } from '../types';
+import type { LoggedSymptom, MoodLevel, MoodLog } from '../types';
 import {
   dbGetAllMoodLogs,
   dbInsertMoodLog,
@@ -8,7 +8,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
-import { contextTagKey, factorKey, renamedContextTags, symptomKey } from '../utils/moodLog';
+import { contextTagKey, renamedContextTags, symptomKey } from '../utils/moodLog';
 
 /**
  * The mood/symptom log — see `src/utils/moodLog.ts` for every rule and
@@ -25,7 +25,7 @@ import { contextTagKey, factorKey, renamedContextTags, symptomKey } from '../uti
  * wants several cuts of the whole history at once.
  */
 
-export type MoodLogPatch = Partial<Pick<MoodLog, 'mood' | 'factors' | 'symptoms' | 'contextTags' | 'note'>>;
+export type MoodLogPatch = Partial<Pick<MoodLog, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
 
 interface MoodStore {
   logs: MoodLog[];
@@ -58,7 +58,6 @@ interface MoodStore {
      */
     at?: Date,
     contextTags?: string[],
-    factors?: LoggedFactor[],
   ) => MoodLog | null;
   updateLog: (id: string, patch: MoodLogPatch) => void;
   removeLog: (id: string) => void;
@@ -79,8 +78,7 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
     set({ logs: dbGetAllMoodLogs(), initialized: true });
   },
 
-  addLog(mood, symptoms, note = null, at, contextTags = [], factors = []) {
-    const cleanedFactors = cleanFactors(factors);
+  addLog(mood, symptoms, note = null, at, contextTags = []) {
     const cleaned = cleanSymptoms(symptoms);
     const cleanedTags = cleanContextTags(contextTags);
     const trimmedNote = note?.trim() || null;
@@ -88,7 +86,7 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
     // the sheet's Save is the only way in, and an empty row would be a day
     // marked as logged with nothing on it — which every read here would then
     // have to distinguish from a real one.
-    if (mood === null && cleanedFactors.length === 0 && cleaned.length === 0 && cleanedTags.length === 0 && !trimmedNote) return null;
+    if (mood === null && cleaned.length === 0 && cleanedTags.length === 0 && !trimmedNote) return null;
 
     const when = at ?? new Date();
     const log: MoodLog = {
@@ -99,7 +97,6 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
       // entry, which is the same rule applied to an instant that isn't now.
       dayKey: dayKeyOf(at ? getDayStart(when) : getCurrentDayStart()),
       mood,
-      factors: cleanedFactors,
       symptoms: cleaned,
       contextTags: cleanedTags,
       note: trimmedNote,
@@ -117,7 +114,6 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
     if (!existing) return;
     const next: MoodLog = { ...existing, ...patch };
     if (patch.symptoms !== undefined) next.symptoms = cleanSymptoms(patch.symptoms);
-    if (patch.factors !== undefined) next.factors = cleanFactors(patch.factors);
     if (patch.contextTags !== undefined) next.contextTags = cleanContextTags(patch.contextTags);
     if (patch.note !== undefined) next.note = patch.note?.trim() || null;
     // `loggedAt` and `dayKey` are deliberately not patchable. An entry records a
@@ -165,17 +161,6 @@ function cleanSymptoms(symptoms: readonly LoggedSymptom[]): LoggedSymptom[] {
     if (!seen || symptom.severity > seen.severity) {
       byKey.set(key, { name, severity: symptom.severity });
     }
-  }
-  return [...byKey.values()];
-}
-
-/** Drop blanks and collapse two spellings of one factor, keeping the later rating. */
-function cleanFactors(factors: readonly LoggedFactor[]): LoggedFactor[] {
-  const byKey = new Map<string, LoggedFactor>();
-  for (const factor of factors) {
-    const name = factor.name.trim();
-    if (!name) continue;
-    byKey.set(factorKey(name), { name, value: factor.value });
   }
   return [...byKey.values()];
 }

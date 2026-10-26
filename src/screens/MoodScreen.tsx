@@ -39,8 +39,6 @@ import {
   MOOD_LEVELS,
   contextTagKey,
   contextTagVocabulary,
-  factorKey,
-  factorVocabulary,
   symptomKey,
   symptomVocabulary,
 } from '../utils/moodLog';
@@ -54,7 +52,6 @@ import {
   buildMoodDays,
   categoryMoodContrasts,
   contextTagMoodContrasts,
-  factorMoodContrasts,
   finishedDaysAverage,
   foodMoodContrasts,
   healthFindings,
@@ -424,18 +421,6 @@ export function MoodScreen() {
       label: contextTagNames.get(row.label) ?? row.label,
     })),
     [days, contextTagNames],
-  );
-  const factorNames = useMemo(() => {
-    const names = new Map<string, string>();
-    for (const name of factorVocabulary(logs)) names.set(factorKey(name), name);
-    return names;
-  }, [logs]);
-  const factorRows = useMemo(
-    () => factorMoodContrasts(days).slice(0, 4).map(row => ({
-      ...row,
-      label: factorNames.get(row.label) ?? row.label,
-    })),
-    [days, factorNames],
   );
   const timeRows = useMemo(
     () => moodByTimeOfDay(logs, iso => segmentOf(new Date(iso), {
@@ -969,31 +954,6 @@ export function MoodScreen() {
                 ))}
                 <Text style={styles.chartCaption}>
                   Your average mood on days a tag applied, against days it didn’t.
-                </Text>
-              </View>
-            </>
-          )}
-
-          {factorRows.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>MOOD WITH YOUR RATINGS</Text>
-              <View style={styles.card}>
-                {factorRows.map((row, i) => (
-                  <ContrastBars
-                    key={row.label}
-                    first={i === 0}
-                    label={row.label}
-                    withLabel="High days"
-                    withoutLabel="Low days"
-                    withFraction={moodBarFraction(row.moodWith)}
-                    withoutFraction={moodBarFraction(row.moodWithout)}
-                    withText={row.moodWith.toFixed(1)}
-                    withoutText={row.moodWithout.toFixed(1)}
-                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you rated it high, ${row.moodWithout.toFixed(1)} on days you rated it low`}
-                  />
-                ))}
-                <Text style={styles.chartCaption}>
-                  Your average mood on days you rated something 4 or 5, against days you rated it 1 or 2. It doesn’t show what causes what.
                 </Text>
               </View>
             </>

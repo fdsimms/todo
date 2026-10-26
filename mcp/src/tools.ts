@@ -907,8 +907,6 @@ export interface SerializedMoodLog {
   loggedAt: string;
   /** 1 to 5. Absent when the check-in recorded only symptoms. */
   mood?: number;
-  /** Factors the person rated, each 1 to 5 (high is more of it, not better). */
-  factors?: { name: string; value: number }[];
   symptoms?: { name: string; severity: string }[];
   contextTags?: string[];
   note?: string;
@@ -927,7 +925,6 @@ export function listMoodLogs(
       dayKey: log.dayKey,
       loggedAt: log.loggedAt,
       mood: log.mood ?? undefined,
-      factors: log.factors.length ? log.factors : undefined,
       symptoms: log.symptoms.length
         ? log.symptoms.map(s => ({ name: s.name, severity: String(s.severity) }))
         : undefined,

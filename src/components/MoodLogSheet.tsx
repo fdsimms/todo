@@ -3,7 +3,7 @@ import { View, Text, Alert, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
-import type { FactorLevel, LoggedFactor, LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
+import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -11,25 +11,18 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
   DEFAULT_CONTEXT_TAGS,
-  DEFAULT_FACTORS,
-  FACTOR_LEVELS,
   MOOD_LEVELS,
   SYMPTOM_SEVERITIES,
   contextTagVocabulary,
   contextTagKey,
-  factorKey,
-  factorLabel,
-  factorVocabulary,
   moodLabel,
   renamedContextTags,
   seededContextTags,
   symptomKey,
   symptomVocabulary,
   withContextTag,
-  withFactor,
   withSymptom,
   withoutContextTag,
-  withoutFactor,
   withoutSymptom,
 } from '../utils/moodLog';
 import { useMoodStore } from '../store/useMoodStore';
@@ -127,13 +120,6 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   const [mood, setMood] = useState<MoodLevel | null>(null);
   const [symptoms, setSymptoms] = useState<LoggedSymptom[]>([]);
   const [contextTags, setContextTags] = useState<string[]>([]);
-  // Rated factors, and the names picked but not yet rated. A picked factor
-  // starts unrated rather than at a middle value: a number nobody chose would
-  // be an invented rating in every comparison, so only a rated one is saved.
-  const [factors, setFactors] = useState<LoggedFactor[]>([]);
-  const [unratedFactors, setUnratedFactors] = useState<string[]>([]);
-  const [draftedFactors, setDraftedFactors] = useState<string[]>([]);
-  const [openedFactors, setOpenedFactors] = useState<string[]>([]);
   const [note, setNote] = useState('');
   // Whether the note field is showing. Folded away behind "Add a note" on a new
   // entry so the sheet leads with the mood; open from the start when the entry
@@ -177,10 +163,6 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     setMood(editing?.mood ?? offered?.mood ?? null);
     const openingSymptoms = editing?.symptoms ?? (offered?.symptom ? withSymptom([], offered.symptom, 1) : []);
     setSymptoms(openingSymptoms);
-    setFactors(editing?.factors ?? []);
-    setOpenedFactors((editing?.factors ?? []).map(f => f.name));
-    setUnratedFactors([]);
-    setDraftedFactors([]);
     setOpenedSymptoms(openingSymptoms.map(s => s.name));
     // Offered, not decided: a new entry opens with "Vacation" pre-picked
     // while vacation mode is on, exactly as if you had tapped the pill
@@ -275,61 +257,6 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     }
     return names;
   }, [symptoms, vocabulary, drafted, openedSymptoms]);
-
-  const factorVocab = useMemo(() => factorVocabulary(logs), [logs]);
-  const factorPillNames = useMemo(() => {
-    const seen = new Set<string>();
-    const names: string[] = [];
-    // Same no-reorder rule as the grids above: what the sheet opened with, then
-    // what you have rated before, the starters, what you typed this session,
-    // and finally anything picked that is in none of them.
-    for (const source of [openedFactors, factorVocab, DEFAULT_FACTORS, draftedFactors, factors.map(f => f.name), unratedFactors]) {
-      for (const name of source) {
-        const key = factorKey(name);
-        if (!key || seen.has(key)) continue;
-        seen.add(key);
-        names.push(name);
-      }
-    }
-    return names;
-  }, [openedFactors, factorVocab, draftedFactors, factors, unratedFactors]);
-
-  const isFactorPicked = (name: string) =>
-    factors.some(f => factorKey(f.name) === factorKey(name))
-    || unratedFactors.some(n => factorKey(n) === factorKey(name));
-
-  const toggleFactor = (name: string) => {
-    haptics.tap();
-    animateLayout();
-    if (isFactorPicked(name)) {
-      setFactors(current => withoutFactor(current, name));
-      setUnratedFactors(current => current.filter(n => factorKey(n) !== factorKey(name)));
-    } else {
-      setUnratedFactors(current => [...current, name]);
-    }
-  };
-
-  const rateFactor = (name: string, value: FactorLevel) => {
-    setFactors(current => withFactor(current, name, value));
-    setUnratedFactors(current => current.filter(n => factorKey(n) !== factorKey(name)));
-  };
-
-  const clearFactorRating = (name: string) => {
-    haptics.tap();
-    setFactors(current => withoutFactor(current, name));
-    setUnratedFactors(current => [...current, name]);
-  };
-
-  const createFactor = (name: string): string | null | void => {
-    const trimmed = name.trim();
-    if (!trimmed) return 'Give it a name.';
-    if (factorPillNames.some(n => factorKey(n) === factorKey(trimmed))) {
-      return 'You already have that one.';
-    }
-    setDraftedFactors(current => [...current, trimmed]);
-    animateLayout();
-    setUnratedFactors(current => [...current, trimmed]);
-  };
 
   const contextVocabulary = useMemo(() => contextTagVocabulary(logs), [logs]);
   const contextPillNames = useMemo(() => {
@@ -430,14 +357,14 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     setSymptoms(current => withSymptom(current, trimmed, 1));
   };
 
-  const canSave = mood !== null || factors.length > 0 || symptoms.length > 0 || contextTags.length > 0
+  const canSave = mood !== null || symptoms.length > 0 || contextTags.length > 0
     || note.trim().length > 0;
 
   const save = () => {
     if (!canSave) return;
     haptics.success();
     if (editing) {
-      updateLog(editing.id, { mood, factors, symptoms, contextTags, note });
+      updateLog(editing.id, { mood, symptoms, contextTags, note });
     } else {
       // Today records the actual moment; a backdated day records noon on it.
       // Noon rather than midnight for the reason StuckScreen parks its dates
@@ -448,7 +375,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       const at = isToday ? undefined : noonOn(day);
       // The history behind the sheet gains a row; let it ease in as the sheet goes.
       animateLayout();
-      addLog(mood, symptoms, note, at, contextTags, factors);
+      addLog(mood, symptoms, note, at, contextTags);
       // The saved entry answers the check-in task (recordTasks.ts), so its row
       // plays the tick and leaves. A backdated entry answers nothing, and the
       // request skips any task the entry doesn't answer.
@@ -526,44 +453,6 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
         <Text style={styles.moodCaption}>
           {mood === null ? 'Optional. Leave blank to skip.' : moodLabel(mood)}
         </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.groupLabel}>RATINGS</Text>
-        <PillGroup
-          noun="rating"
-          surface="card"
-          onCreate={createFactor}
-          filterPlaceholder="Find or add something to rate…"
-          options={factorPillNames.map(name => ({
-            key: factorKey(name),
-            label: name,
-            selected: isFactorPicked(name),
-            accessibilityLabel: isFactorPicked(name) ? `${name}, picked` : name,
-            onPress: () => toggleFactor(name),
-          }))}
-        />
-        {factorPillNames.filter(isFactorPicked).map(name => {
-          const rated = factors.find(f => factorKey(f.name) === factorKey(name));
-          return (
-            <View key={factorKey(name)} style={styles.severityRow}>
-              <Text style={styles.severityLabel} numberOfLines={1}>
-                {name}{rated ? `: ${factorLabel(rated.value).toLowerCase()}` : ''}
-              </Text>
-              <SegmentedControl
-                options={FACTOR_LEVELS.map(f => ({
-                  value: f.value as FactorLevel,
-                  label: String(f.value),
-                  accessibilityLabel: `${f.value}, ${f.label.toLowerCase()}`,
-                }))}
-                value={rated?.value as FactorLevel}
-                onChange={value => rateFactor(name, value)}
-                onDeselect={() => clearFactorRating(name)}
-                label={`How high was ${name}`}
-              />
-            </View>
-          );
-        })}
       </View>
 
       <View style={styles.card}>

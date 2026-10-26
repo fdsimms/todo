@@ -189,33 +189,6 @@ is built on it. Symptoms have no equivalent yet; nothing asked for it, and the
 severity a merge would have to pick between is a question this feature
 doesn't have.
 
-## Rated factors: your own names on the app's scale
-
-`MoodLog.factors` is `LoggedSymptom` with a rating in place of a severity: a
-name you type ("Stress", "Energy", "Focus") and a value from 1 to 5, nested in
-the entry's JSON, with the vocabulary derived from the entries
-(`factorVocabulary`) and `DEFAULT_FACTORS` only seeding an empty grid. It is the
-same split as everywhere else here: the vocabulary is yours, the scale is the
-app's, so a rating stays comparable across days and no define-your-own-scale UI
-is needed. Three rules are its own:
-
-- **The scale has no good end.** The app cannot know whether a high stress or a
-  high energy is the better news, so `FACTOR_LEVELS` says "Very low" to "Very
-  high" and nothing in the UI, the export or the MCP calls a rating good or bad.
-  There is deliberately no "stressful day" threshold like `LOW_MOOD_AT_OR_BELOW`.
-- **A picked factor starts unrated, and only a rated one is saved.** Defaulting
-  to a middle value would write a number nobody chose into every comparison.
-  Tapping the chosen segment again clears it.
-- **A day's rating is the average of its entries' ratings** (`dayFactorAverages`),
-  not a worst, again because there is no worse end to pick.
-
-`factorMoodContrasts` compares mood on days a factor averaged 4 or more against
-days it averaged 2.5 or less, and leaves the middle out so the gap is between
-days that differ. It carries every gate the other contrasts do
-(`MIN_PAIRED_DAYS`, `MIN_CONTRAST_DAYS` a side, an unrated day is absent) and
-the Mood screen's caption says it shows no cause. Only mood is compared: a
-rating against what you finished is not built.
-
 ## Several entries a day is the normal case
 
 Mood moves through a day. An app allowing one entry per day would be asking you

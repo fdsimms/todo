@@ -1910,27 +1910,6 @@ export interface PersonNote {
  */
 export type MoodLevel = 1 | 2 | 3 | 4 | 5;
 
-/**
- * How high one of your own rated factors was, 1 to 5. Fixed for the reason
- * `MoodLevel` is, and deliberately direction-free ("Very low" to "Very high"):
- * the app cannot know whether a high stress or a high energy is the good end,
- * so the number says how much and never how well. Storage values: reword the
- * labels in `FACTOR_LEVELS`, never renumber.
- */
-export type FactorLevel = 1 | 2 | 3 | 4 | 5;
-
-/**
- * One rated factor on one log entry, by whatever name you gave it ("Stress",
- * "Energy", "Focus"). Nested in the entry's JSON like `LoggedSymptom`, for the
- * same reason: no lifecycle apart from the entry, and the vocabulary is derived
- * from the entries (`factorVocabulary`) rather than stored.
- */
-export interface LoggedFactor {
-  /** Trimmed, in the user's own casing; matched case-insensitively. */
-  name: string;
-  value: FactorLevel;
-}
-
 /** How bad a symptom was. Fixed for the reason `MoodLevel` is, at a coarser grain. */
 export type SymptomSeverity = 1 | 2 | 3;
 
@@ -1993,12 +1972,6 @@ export interface MoodLog {
    * make every symptom entry carry an invented one straight into the averages.
    */
   mood: MoodLevel | null;
-  /**
-   * Factors you rated on this entry, each 1 to 5. Empty is the common case and
-   * means none were rated, never "rated low". Named by the person, like
-   * symptoms, on a scale that is the app's.
-   */
-  factors: LoggedFactor[];
   /** Empty is the common case and means no symptoms, never "not asked". */
   symptoms: LoggedSymptom[];
   /**
