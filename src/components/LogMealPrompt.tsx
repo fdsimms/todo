@@ -494,8 +494,9 @@ export function LogMealPrompt() {
           )}
 
           {/* One primary, one neutral beside it, and the two "no, and stop
-              bringing it up" answers as quiet links underneath. They were four
-              equal text rows, so the one that logs read as one of a list. */}
+              bringing it up" answers as quiet text links underneath. They were
+              four equal text rows, so the one that logs read as one of a list;
+              outlined boxes then made the links read as two more buttons. */}
           <View style={styles.actions}>
             <View style={styles.buttonRow}>
               <PressableScale
@@ -624,15 +625,12 @@ function makeStyles(colors: Colors) {
     quietLinks: { marginTop: spacing.xs, gap: spacing.sm },
     quietGroup: { gap: spacing.xsm },
     quietLink: {
-      minHeight: 40,
+      minHeight: 36,
       alignItems: 'center',
       justifyContent: 'center',
-      borderRadius: radius.md,
-      borderWidth: border.sm,
-      borderColor: colors.controlBorder,
       paddingHorizontal: spacing.md,
     },
-    quietLinkText: { color: colors.text, fontSize: font.sm },
+    quietLinkText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
     pickGroup: { marginTop: spacing.sm, gap: spacing.xsm },
     pickLabel: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold },
     pickOption: {
