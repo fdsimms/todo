@@ -108,11 +108,18 @@ export function CookwareWeighIn({ weighIn, scaleText, surface = 'card', noun = '
         <Ionicons name="chevron-down" size={iconSize.sm} color={colors.textSecondary} />
       </TouchableOpacity>
       {weighIn.picked.length > 0 && result && (
-        <Text style={result.ok ? styles.result : styles.refusal}>
-          {result.ok
-            ? `${grams(tare)} of cookware taken off. The ${noun === 'pot' ? 'dish' : 'food'} is ${grams(result.grams)}.`
-            : result.reason}
-        </Text>
+        result.ok ? (
+          // The reading is rebuilt as net + tare so it is right whatever unit was typed.
+          <Text
+            style={styles.result}
+            accessibilityLabel={`${grams(result.grams + tare)} on the scale, minus ${grams(tare)} of cookware, is ${grams(result.grams)} of ${noun === 'pot' ? 'dish' : 'food'}`}
+          >
+            {`${grams(result.grams + tare)} on scale − ${grams(tare)} cookware = `}
+            <Text style={styles.net}>{`${grams(result.grams)} ${noun === 'pot' ? 'dish' : 'food'}`}</Text>
+          </Text>
+        ) : (
+          <Text style={styles.refusal}>{result.reason}</Text>
+        )
       )}
       <CardSheet
         name="CookwareWeighIn menu"
@@ -195,6 +202,7 @@ const makeStyles = (colors: Colors, surface: 'page' | 'card') => StyleSheet.crea
   fieldText: { color: colors.text, fontSize: font.md, flexShrink: 1 },
   fieldTextEmpty: { color: colors.textSecondary },
   result: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.sm },
+  net: { color: colors.text, fontWeight: fontWeight.semibold },
   refusal: { color: colors.redText, fontSize: font.sm, marginTop: spacing.sm },
   menu: { paddingVertical: spacing.xs },
   search: { marginHorizontal: spacing.smd, marginTop: spacing.sm, marginBottom: spacing.xs },
