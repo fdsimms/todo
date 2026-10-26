@@ -20,6 +20,7 @@ import {
   sortAlarms,
 } from '../utils/alarms';
 import { describeMission, missionKeyForAlarm } from '../utils/missions';
+import { alarmDetails } from '../utils/morningAlarm';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -122,6 +123,7 @@ function AlarmRow({ alarm, now, owed, use24Hour, weekStartsOn, onPress, styles, 
   const live = alarm.enabled && !isSpent(alarm, now);
   const subtitle = alarmSubtitle(alarm, now, weekStartsOn);
   const missionLine = alarmMissionLine(alarm, now);
+  const details = alarmDetails(alarm, now, at => formatTimeOfDay(at, use24Hour));
 
   // While its mission is owed the row opens the mission rather than the
   // editor, and has no switch: Give up is the way out (missions.ts).
@@ -150,10 +152,13 @@ function AlarmRow({ alarm, now, owed, use24Hour, weekStartsOn, onPress, styles, 
           {split ? split[1] : clock}
           {split && <Text style={styles.meridiem}> {split[2]}</Text>}
         </Text>
-        {missionLine && (
+        {details && (
           <View style={styles.missionRow}>
-            <Ionicons name="barbell-outline" size={iconSize.xs} color={live ? colors.textSecondary : colors.textTertiary} />
-            <Text style={[styles.mission, !live && styles.dimSecondary]}>{missionLine}</Text>
+            {details.icons.map(name => (
+              <Ionicons key={name} name={name} size={iconSize.xs} color={live ? colors.textSecondary : colors.textTertiary} />
+            ))}
+            {details.text !== '' && <View style={styles.divider} />}
+            {details.text !== '' && <Text style={[styles.mission, !live && styles.dimSecondary]}>{details.text}</Text>}
           </View>
         )}
       </TouchableOpacity>
@@ -218,7 +223,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dim: { color: colors.textTertiary },
   subtitle: { color: colors.accentText, fontSize: font.sm, fontWeight: fontWeight.semibold },
   dimSecondary: { color: colors.textTertiary },
-  missionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xxs },
+  missionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm, marginTop: spacing.xs },
+  divider: { width: StyleSheet.hairlineWidth, height: spacing.smd, backgroundColor: colors.textTertiary },
   mission: { color: colors.textSecondary, fontSize: font.sm },
   ringing: {
     borderRadius: radius.full,

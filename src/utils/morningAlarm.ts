@@ -1,5 +1,5 @@
 import type { Alarm, AlarmOverride } from '../types';
-import { atTime, calendarKey, isRepeating, repeatingRingOn } from './alarms';
+import { alarmMissionLine, atTime, calendarKey, isRepeating, repeatingRingOn } from './alarms';
 import { logicalDayStart } from './clockTime';
 
 /**
@@ -115,6 +115,40 @@ export function isOverrideSpent(override: AlarmOverride, now: Date): boolean {
 }
 
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+export type AlarmDetailIcon = 'barbell-outline' | 'musical-notes-outline' | 'volume-high-outline' | 'moon-outline';
+
+/**
+ * What an alarm's row says under its time, as a row of icons (mission, wake
+ * song, a chosen sound, a one-night time) and the words for the ones that
+ * need them. Null when it has none, so a plain alarm draws nothing. `clock`
+ * formats a time the way the person's settings do.
+ */
+export function alarmDetails(
+  alarm: Alarm,
+  now: Date,
+  clock: (at: Date) => string,
+): { icons: AlarmDetailIcon[]; text: string } | null {
+  const icons: AlarmDetailIcon[] = [];
+  const words: string[] = [];
+  const mission = alarmMissionLine(alarm, now);
+  if (mission) {
+    icons.push('barbell-outline');
+    words.push(mission);
+    // The alert can't play a song, so one only counts while there's a mission.
+    if (alarm.wakeSong) icons.push('musical-notes-outline');
+  }
+  if (alarm.sound !== null) icons.push('volume-high-outline');
+  const o = alarm.override;
+  if (o && isRepeating(alarm) && !isOverrideSpent(o, now)) {
+    icons.push('moon-outline');
+    const day = overrideDay(o);
+    const ahead = Math.round((day.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86_400_000);
+    const when = ahead === 0 ? 'today' : ahead === 1 ? 'tomorrow' : DAY_SHORT[day.getDay()];
+    words.push(`${clock(overrideAt(o))} ${when}`);
+  }
+  return icons.length === 0 ? null : { icons, text: words.join(' · ') };
+}
 
 /**
  * The chip on the task's row: "Mon 7:00 AM", or "No alarm Mon" for a morning
