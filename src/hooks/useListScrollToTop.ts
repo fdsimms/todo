@@ -3,6 +3,7 @@ import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useFabBottom } from '../components/Fab';
 import { SCROLL_TO_TOP_SIZE } from '../components/ScrollToTopButton';
 import { spacing } from '../theme';
+import { selectFloatingBarsTop, useFloatingBarStore } from '../store/useFloatingBarStore';
 import { useScrollToTopVisibility } from './useScrollToTopVisibility';
 
 /** The scroll handle every list type here has, whichever of the three methods it exposes. */
@@ -45,7 +46,10 @@ export function useListScrollToTop<T = any>(
   // A bar in the layout (not floating) sits where the Fab's offset assumes
   // nothing is, so the button clears it by its measured height instead.
   const footerHeight = options?.footerHeight ?? 0;
-  const bottom = footerHeight > 0 ? footerHeight + spacing.md : fabBottom;
+  const restBottom = footerHeight > 0 ? footerHeight + spacing.md : fabBottom;
+  // The cooking and focus bars float across this corner; the button rests above them.
+  const barsTop = useFloatingBarStore(selectFloatingBarsTop);
+  const bottom = barsTop > 0 ? Math.max(restBottom, barsTop + spacing.sm) : restBottom;
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     onScroll(e);

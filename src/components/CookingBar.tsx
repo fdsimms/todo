@@ -7,6 +7,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useBulkBarPresenceStore } from '../store/useBulkBarPresenceStore';
 import { useFabPresenceStore } from '../store/useFabPresenceStore';
+import { useFloatingBarStore } from '../store/useFloatingBarStore';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
 import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
@@ -73,16 +74,27 @@ export function CookingBar() {
     return () => clearInterval(interval);
   }, [shown, recipe?.id, prep]);
 
-  if (!shown) return null;
-
-  const elapsed = formatStopwatch(prep ? prepTimerElapsed(recipe, nowTick) : cookTimerElapsed(recipe, nowTick));
-  const verb = prep ? 'Prepping' : 'Cooking';
   // Just above the tab bar, stopping short of the add button's corner when the
   // screen has one (it rests in the same band, see `FAB_BOTTOM_OFFSET`). With a button, the bar is
   // centered on it vertically instead: the wrap is the button's own height, at its bottom.
   const bottom = insets.bottom + barHeight + spacing.sm;
   const clearance = spacing.lg + FAB_SIZE + spacing.sm;
   const sideInset = fabShown ? { [fabHand === 'left' ? 'left' : 'right']: clearance } : null;
+
+  // Its top edge, for the scroll-to-top button in the opposite corner to rest above.
+  const [ownHeight, setOwnHeight] = useState(0);
+  const reportBar = useFloatingBarStore(s => s.report);
+  const top = fabShown ? fabBottom + (FAB_SIZE + ownHeight) / 2 : bottom + ownHeight;
+  useEffect(() => {
+    if (!shown || ownHeight === 0) return;
+    reportBar('cooking', top);
+    return () => reportBar('cooking', null);
+  }, [shown, ownHeight, top, reportBar]);
+
+  if (!shown) return null;
+
+  const elapsed = formatStopwatch(prep ? prepTimerElapsed(recipe, nowTick) : cookTimerElapsed(recipe, nowTick));
+  const verb = prep ? 'Prepping' : 'Cooking';
 
   return (
     <View
@@ -92,6 +104,7 @@ export function CookingBar() {
       <TouchableOpacity
         style={[styles.bar, glassSupported() ? styles.barGlass : shadows.fab]}
         activeOpacity={interaction.activeOpacity}
+        onLayout={e => setOwnHeight(e.nativeEvent.layout.height)}
         onPress={() => { haptics.tap(); resetToRecipeDetail(recipe.id, { openCookMode: true }); }}
         accessibilityRole="button"
         accessibilityLabel={`${verb} ${recipe.name}, ${elapsed} elapsed. Return to cook mode`}

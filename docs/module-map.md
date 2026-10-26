@@ -712,6 +712,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useEventTaskLinkStore.ts` — EVENT_TASK_LINKS_SETTING_KEY, useEventTaskLinkStore
 - `src/store/useFabPresenceStore.ts` — useFabPresenceStore
 - `src/store/useFastStore.ts` — useFastStore
+- `src/store/useFloatingBarStore.ts` — useFloatingBarStore, selectFloatingBarsTop
 - `src/store/useFocusStore.ts` — useFocusStore
 - `src/store/useFocusedRouteStore.ts` — useFocusedRouteStore
 - `src/store/useFoodLogStore.ts` — FOOD_INSIGHT_DAYS, FoodLogDraft, PendingMealLog, PendingManualMealLog, FoodLogPatch, FoodLogPlacement, sameEntries, useFoodLogStore
