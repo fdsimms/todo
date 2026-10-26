@@ -1,6 +1,7 @@
 import type { Alarm } from '../types';
 import {
   NEXT_ALARM_LINK,
+  alarmDetails,
   isOverrideSpent,
   morningAlarmFor,
   morningChipLabel,
@@ -105,5 +106,37 @@ describe('overrides', () => {
     expect(parseAlarmOverride(JSON.stringify({ date: '2026-10-26', hour: 24, minute: 0 }))).toBeNull();
     expect(parseAlarmOverride('{')).toBeNull();
     expect(parseAlarmOverride(null)).toBeNull();
+  });
+});
+
+describe('alarmDetails', () => {
+  const pushups = { kind: 'pushups' as const, count: 20 };
+  const song = { persistentId: '1', title: 'Song', artist: '' };
+
+  it('says nothing for a plain alarm', () => {
+    expect(alarmDetails(alarm(), SUNDAY_NIGHT, clock)).toBeNull();
+  });
+
+  it('lists the mission, its song and a chosen sound', () => {
+    const d = alarmDetails(alarm({ mission: pushups, wakeSong: song as Alarm['wakeSong'], sound: 'chime' }), SUNDAY_NIGHT, clock)!;
+    expect(d.icons).toEqual(['barbell-outline', 'musical-notes-outline', 'volume-high-outline']);
+    expect(d.text).toBe('20 pushups');
+  });
+
+  it('ignores a song on an alarm with no mission', () => {
+    expect(alarmDetails(alarm({ wakeSong: song as Alarm['wakeSong'] }), SUNDAY_NIGHT, clock)).toBeNull();
+  });
+
+  it('names a one-night time by day until its day is over', () => {
+    const moved = alarm({ override: { date: '2026-10-26', hour: 6, minute: 30 } });
+    expect(alarmDetails(moved, SUNDAY_NIGHT, clock)).toEqual({ icons: ['moon-outline'], text: '6:30 tomorrow' });
+    expect(alarmDetails(moved, new Date(2026, 9, 26, 5, 0), clock)!.text).toBe('6:30 today');
+    expect(alarmDetails(moved, new Date(2026, 9, 27, 0, 0), clock)).toBeNull();
+  });
+
+  it('joins the mission and a one-night time', () => {
+    const d = alarmDetails(alarm({ mission: pushups, override: { date: '2026-10-26', hour: 6, minute: 30 } }), SUNDAY_NIGHT, clock)!;
+    expect(d.icons).toEqual(['barbell-outline', 'moon-outline']);
+    expect(d.text).toBe('20 pushups · 6:30 tomorrow');
   });
 });

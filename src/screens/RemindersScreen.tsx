@@ -30,6 +30,7 @@ import { upcomingReminders } from '../utils/notifications';
 import type { Task } from '../types';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { Fab, FAB_SIZE } from '../components/Fab';
 
 /**
  * Alarms & Reminders. The alarms come first (AlarmsSection: the quick alarm,
@@ -115,7 +116,7 @@ export function RemindersScreen() {
         refreshControl={pullSearch.refreshControl}
         data={reminders}
         keyExtractor={item => item.id}
-        contentContainerStyle={[styles.listContent, { paddingBottom: Math.max(tabBarHeight + spacing.md, scrollTop.clearance) }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: Math.max(tabBarHeight + FAB_SIZE + spacing.xl, scrollTop.clearance) }]}
         ListHeaderComponent={<AlarmsSection onEditAlarm={openAlarm} onQuickAlarm={openQuick} />}
         renderItem={({ item }) => (
           <ReminderRow
@@ -148,6 +149,7 @@ export function RemindersScreen() {
       {mountQuick && (
         <QuickAlarmSheet visible={quickOpen} initialMinutes={quickMinutes} onClose={() => setQuickOpen(false)} />
       )}
+      <Fab onPress={() => openAlarm(null)} accessibilityLabel="New alarm" />
       <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}
     </View>
