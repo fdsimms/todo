@@ -97,10 +97,6 @@ export function AlarmsSection({ onEditAlarm, onQuickAlarm }: Props) {
           colors={colors}
         />
       ))}
-      <View style={styles.addRow}>
-        <InlineAction label="New alarm" icon="add" onPress={() => onEditAlarm(null)} />
-      </View>
-
       <Text style={styles.label}>Upcoming reminders</Text>
     </View>
   );
@@ -203,7 +199,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.smd,
   },
-  addRow: { marginHorizontal: spacing.md, marginTop: spacing.sm, alignItems: 'flex-start' },
   // One card per alarm, the way the reference draws them.
   row: {
     flexDirection: 'row',

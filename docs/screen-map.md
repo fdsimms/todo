@@ -49,7 +49,7 @@ components below.
 - `src/screens/ProjectsScreen.tsx` — CardSheet, EmbeddedRoute, EmptyState, Fab, FabDropZones, LazySheet, ListBulkBar, PaintSelection, PointerView, ProgressBar, ProjectCategoriesSheet, ProjectDetailScreen, +11 more
 - `src/screens/RecipeDetailScreen.tsx` — BlankEditorSheet, ComponentChoiceSheet, CookModeSheet, CookwareWeighIn, CountStepper, DetailHeader, EmptyState, FadeInImage, HelpText, IngredientCatalogMatchSheet, InlineAction, LazySheet, +28 more
 - `src/screens/RecipesScreen.tsx` — ActiveFilterPill, ActiveTripBanner, EmbeddedRoute, EmptyState, Fab, FabDropZones, FadeInImage, FieldClearButton, HubPills, InventRecipeSheet, LazySheet, ListBulkBar, +19 more
-- `src/screens/RemindersScreen.tsx` — AlarmEditorSheet, AlarmsSection, EmptyNote, LazySheet, QuickAlarmSheet, RemindersOffNote, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, TaskEditor
+- `src/screens/RemindersScreen.tsx` — AlarmEditorSheet, AlarmsSection, EmptyNote, Fab, LazySheet, QuickAlarmSheet, RemindersOffNote, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, TaskEditor
 - `src/screens/RewardsScreen.tsx` — AnimatedNumber, CardSheet, CoinBurst, CoinIcon, CountStepper, EmptyNote, EmptyState, FieldLabel, HabitPickerSheet, HelpText, InlineAction, NumberPadAccessory, +9 more
 - `src/screens/ScreenTimeScreen.tsx` — ScreenHeader, ScreenTimeSettings, SettingsFocus
 - `src/screens/SearchScreen.tsx` — CoinIcon, EmptyState, HighlightedText, InlineAction, LazySheet, QuickAddModal, ScreenHeader, ScrollToTopButton, SearchActionRow, SearchField, TaskCheckbox, TaskEditor, +1 more
@@ -187,7 +187,7 @@ Where each component can appear.
 - `src/components/ExercisePickerSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +6 more
 - `src/components/ExerciseProgressChart.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +6 more
 - `src/components/ExtractedIngredientRow.tsx` — on RecipeDetailScreen, RecipesScreen
-- `src/components/Fab.tsx` — on CategoriesScreen, CategoryDetailScreen, DishesScreen, FoodLogScreen, GroceryScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, SearchScreen, StackDetailScreen, StacksScreen, +5 more
+- `src/components/Fab.tsx` — on CategoriesScreen, CategoryDetailScreen, DishesScreen, FoodLogScreen, GroceryScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, RemindersScreen, SearchScreen, StackDetailScreen, +6 more
 - `src/components/FabDropZones.tsx` — on FoodLogScreen, GroceryScreen, MealPlanScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipesScreen, SearchScreen, StackDetailScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen
 - `src/components/FadeInImage.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, DishesScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MoodDayScreen, +14 more
 - `src/components/FastHistorySheet.tsx` — on FoodLogScreen
