@@ -4048,6 +4048,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         'reminderTime' in updates ||
         'reminderKind' in updates ||
         'alarmSound' in updates ||
+        'alarmSoundPool' in updates ||
         'reminderOffsetDays' in updates ||
         'reminderTracksVisibility' in updates ||
         'completed' in updates ||

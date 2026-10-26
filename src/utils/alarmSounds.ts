@@ -119,6 +119,20 @@ export function pickFromPool(pool: readonly string[], current: string | null, ra
 }
 
 /**
+ * A repeatable stand-in for `Math.random` from a string, so a reminder
+ * rescheduled on every launch keeps the sound it was given rather than
+ * changing it each time (FNV-1a, folded to 0..1).
+ */
+export function seededRandom(seed: string): () => number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return () => h / 0x100000000;
+}
+
+/**
  * What the ringtone picker's selection means for an alarm: nothing picked is
  * the default, one is that sound, two or more is a pool the alarm picks from
  * each time it is set (see `pickFromPool`).

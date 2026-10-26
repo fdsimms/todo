@@ -7,6 +7,7 @@ import {
   parseAlarmSoundFiles,
   parseSoundPool,
   pickFromPool,
+  seededRandom,
   soundChoiceFrom,
   soundFileName,
   soundNameFromFile,
@@ -84,6 +85,14 @@ describe('sound pools', () => {
     expect(soundChoiceFrom([])).toEqual({ sound: null, soundPool: [] });
     expect(soundChoiceFrom(['rise'])).toEqual({ sound: 'rise', soundPool: [] });
     expect(soundChoiceFrom(['rise', 'chime'])).toEqual({ sound: 'rise', soundPool: ['rise', 'chime'] });
+  });
+
+  it('seeds a repeatable number between 0 and 1', () => {
+    const a = seededRandom('task1|1700000000000');
+    expect(a()).toBe(seededRandom('task1|1700000000000')());
+    expect(a()).toBeGreaterThanOrEqual(0);
+    expect(a()).toBeLessThan(1);
+    expect(seededRandom('task1|1')()).not.toBe(seededRandom('task2|1')());
   });
 
   it('describes a pool by its size', () => {

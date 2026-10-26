@@ -953,6 +953,13 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(dbGetAllTasks()[0].alarmSound).toBeNull();
   });
 
+  it('round-trips a task alarm’s sound pool, and reads fewer than two as none', () => {
+    dbInsertTask(makeTask({ id: 'pool1', alarmSoundPool: ['chime', 'rise'] }));
+    expect(dbGetAllTasks()[0].alarmSoundPool).toEqual(['chime', 'rise']);
+    dbUpdateTask(makeTask({ id: 'pool1', alarmSoundPool: ['chime'] }));
+    expect(dbGetAllTasks()[0].alarmSoundPool).toEqual([]);
+  });
+
   it('round-trips an alarm, and deletes it', () => {
     const alarm = {
       id: 'al1', label: 'Wake up', hour: 7, minute: 30, repeatDays: [1, 3, 5], fireAt: null, enabled: true,
