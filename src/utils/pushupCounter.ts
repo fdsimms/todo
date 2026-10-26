@@ -1,6 +1,46 @@
 /**
- * Counting pushups off the proximity sensor: the rules behind the `pushups`
- * mission (see missions.ts), for a task or an alarm that has to be earned.
+ * Counting pushups: the rules behind the `pushups` mission (see missions.ts),
+ * for a task or an alarm that has to be earned. Three ways to count, best
+ * first: the Face ID camera's depth (`feedDepth`, below), the proximity sensor
+ * (`feedProximity`), and a tap per rep on a device with neither (`tapRep`).
+ *
+ * ## The Face ID camera's depth
+ *
+ * The phone lies face up on the floor under the person's face, so they can
+ * watch the count, and the front (TrueDepth) camera measures how far away the
+ * face is (`todo-proximity-bridge`'s depth reader: the nearest part of the
+ * middle of the frame, a few times a second). That is a distance, where the
+ * proximity sensor is only a yes or no, so a rep is judged against the
+ * person's own range rather than against the floor:
+ *
+ * - Down is the face `DEPTH_DOWN_M` below the top this rep started from (the
+ *   highest it has been since the last rep).
+ * - The rep counts on the way back up, once the face is `DEPTH_UP_M` above the
+ *   lowest it went. Measuring the climb from the bottom rather than back to
+ *   the top is what lets a set count while the top sags with tiredness.
+ *
+ * Both are travel, never a fixed height, so arm length doesn't matter, and the
+ * two together are a hysteresis no sensor noise comes near.
+ *
+ * The camera can't measure closer than some distance Apple doesn't publish, so
+ * the bottom of a deep rep can read as nothing at all. A lost reading right
+ * after a near one (`DEPTH_NEAR_LOST_M`) is a face too close to measure, and
+ * counts as down at the last distance that measured; a lost reading after a far
+ * one, or a reading past `DEPTH_MAX_FACE_M`, is nobody over the phone, and
+ * changes nothing. Holding the last distance rather than reading the loss as 0
+ * is what stops a face hovering at the edge of the range, flickering between
+ * measured and lost, from counting a rep on every flicker.
+ *
+ * A dip of `DEPTH_SHALLOW_M` that turns back before reaching down is a rep too
+ * shallow to count, and says so, since a rep that doesn't count with no reason
+ * given is the whole complaint this replaced.
+ *
+ * ## The proximity sensor
+ *
+ * It is the fallback, not the default, because its range is a few centimetres:
+ * a rep it can see is one where the chest comes nearly to the floor, right over
+ * the top edge of the phone, and a rep that stops a hand's width up is never
+ * seen at all. Nothing in the timing below can fix that; it is why depth exists.
  *
  * The phone lies face up on the floor under the person's chest, and each time
  * they go down the sensor reads *near*. A rep is counted when the sensor
@@ -122,6 +162,152 @@ export function pushupSensorStatus(state: PushupCounterState): PushupSensorStatu
     line,
     detail: 'The screen goes dark while you’re down, and the count shows when you come back up.',
   };
+}
+
+/** How far below the top of a rep the face has to go before it is down. */
+export const DEPTH_DOWN_M = 0.15;
+
+/** How far back up from the bottom the face has to come for the rep to count. */
+export const DEPTH_UP_M = 0.1;
+
+/** A dip this deep that turns back before reaching down is a rep too shallow to count. */
+export const DEPTH_SHALLOW_M = 0.06;
+
+/** A face farther than this isn't over the phone: it's the ceiling, or someone standing. */
+export const DEPTH_MAX_FACE_M = 1.2;
+
+/** A reading lost right after one this close is a face too close for the camera, not nobody. */
+export const DEPTH_NEAR_LOST_M = 0.45;
+
+/** Less of the middle of the frame than this measuring is a lost reading. */
+export const DEPTH_MIN_VALID = 0.1;
+
+/** Nobody over the phone for this long, after somebody was, and the status says so. */
+export const DEPTH_AWAY_MS = 1500;
+
+/**
+ * No depth reading at all for this long is a camera that didn't start or has
+ * stopped (an empty frame still arrives as a reading), so the count moves to
+ * the proximity sensor rather than waiting on a camera that won't come back.
+ */
+export const DEPTH_SILENCE_MS = 3000;
+
+/** One reading of the depth reader. */
+export interface DepthReading {
+  /** Metres to the nearest part of the middle of the frame, or null when none of it measured. */
+  distance: number | null;
+  /** The share of the middle of the frame that measured, 0 to 1. */
+  valid: number;
+  /** When, in milliseconds. */
+  at: number;
+}
+
+export interface DepthCounterState {
+  /** Reps counted so far. */
+  count: number;
+  /** `up` while waiting for the face to come down, `down` while waiting for it to come back up. */
+  phase: 'up' | 'down';
+  /** The highest the face has been since the last rep (the top this rep is measured from), or null before it's seen. */
+  top: number | null;
+  /** Going down, the lowest it has been; going up, the lowest since the top (for the shallow check). */
+  low: number | null;
+  /** The last distance that measured, near or far, or null before any did. */
+  last: number | null;
+  /** Whether a face has been over the phone at all. */
+  seen: boolean;
+  /** Why the last dip didn't count, or null when it did (or none has finished). */
+  lastMiss: 'shallow' | null;
+  /** When the readings stopped finding a face, while they still don't. */
+  absentSince: number | null;
+  /** Nobody over the phone for `DEPTH_AWAY_MS`, after somebody was. */
+  away: boolean;
+}
+
+export function initialDepthState(): DepthCounterState {
+  return {
+    count: 0, phase: 'up', top: null, low: null, last: null,
+    seen: false, lastMiss: null, absentSince: null, away: false,
+  };
+}
+
+/**
+ * Feed one depth reading. Returns the next state, which carries a higher
+ * `count` exactly when this reading completed a rep.
+ */
+export function feedDepth(state: DepthCounterState, reading: DepthReading): DepthCounterState {
+  const measured = reading.distance !== null && Number.isFinite(reading.distance) && reading.distance > 0
+    && reading.valid >= DEPTH_MIN_VALID;
+
+  if (!measured) {
+    // Too close to measure: down, at the last distance that measured.
+    if (state.last !== null && state.last <= DEPTH_NEAR_LOST_M) return tooClose(present(state), state.last);
+    return absent(state, reading.at);
+  }
+  const d = reading.distance as number;
+  if (d > DEPTH_MAX_FACE_M) return absent({ ...state, last: d }, reading.at);
+  return atDistance({ ...present(state), last: d, seen: true }, d);
+}
+
+function present(state: DepthCounterState): DepthCounterState {
+  if (state.absentSince === null && !state.away) return state;
+  return { ...state, absentSince: null, away: false };
+}
+
+function absent(state: DepthCounterState, at: number): DepthCounterState {
+  const absentSince = state.absentSince ?? at;
+  const away = state.seen && at - absentSince >= DEPTH_AWAY_MS;
+  if (absentSince === state.absentSince && away === state.away) return state;
+  return { ...state, absentSince, away };
+}
+
+function tooClose(state: DepthCounterState, last: number): DepthCounterState {
+  if (state.phase === 'down') {
+    return state.low !== null && state.low <= last ? state : { ...state, low: last };
+  }
+  // Only a face that came down to get here: one that went out of range
+  // without leaving the top is a dropout, not a rep.
+  if (state.top === null || state.top - last < DEPTH_SHALLOW_M) return state;
+  return { ...state, phase: 'down', low: last, lastMiss: null };
+}
+
+function atDistance(state: DepthCounterState, d: number): DepthCounterState {
+  if (state.phase === 'down') {
+    const low = state.low === null ? d : Math.min(state.low, d);
+    if (d - low >= DEPTH_UP_M) {
+      return { ...state, count: state.count + 1, phase: 'up', top: d, low: d, lastMiss: null };
+    }
+    return { ...state, low };
+  }
+  if (state.top === null || d > state.top) return { ...state, top: d, low: d };
+  const low = state.low === null ? d : Math.min(state.low, d);
+  if (state.top - d >= DEPTH_DOWN_M) return { ...state, phase: 'down', low: d, lastMiss: null };
+  // A dip that turned back before reaching down.
+  if (state.top - low >= DEPTH_SHALLOW_M && d - low >= DEPTH_SHALLOW_M) {
+    return { ...state, low: d, lastMiss: 'shallow' };
+  }
+  return { ...state, low };
+}
+
+/**
+ * The status line under the counter while the depth camera counts. Unlike the
+ * proximity sensor's, the screen stays on the whole time, so this is read mid
+ * rep and says what to do next rather than what happened.
+ */
+export function depthSensorStatus(state: DepthCounterState): PushupSensorStatus {
+  if (!state.seen || state.away) {
+    return {
+      tone: 'idle',
+      line: 'Looking for your face',
+      detail: 'Get into position with your face over the phone.',
+    };
+  }
+  if (state.phase === 'down') {
+    return { tone: 'counting', line: 'Push back up', detail: 'It counts when you’re back up.' };
+  }
+  if (state.lastMiss === 'shallow') {
+    return { tone: 'miss', line: 'Go a little lower', detail: 'That one wasn’t deep enough to count.' };
+  }
+  return { tone: 'counting', line: 'Go down', detail: 'It counts when you push back up.' };
 }
 
 /**

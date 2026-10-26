@@ -1,9 +1,18 @@
 import {
+  DEPTH_AWAY_MS,
+  DEPTH_DOWN_M,
+  DEPTH_MAX_FACE_M,
+  DEPTH_MIN_VALID,
+  DEPTH_NEAR_LOST_M,
+  DEPTH_UP_M,
   PUSHUP_MAX_COUNT,
   PUSHUP_MAX_NEAR_MS,
   PUSHUP_MIN_NEAR_MS,
   PUSHUP_MIN_REP_MS,
+  depthSensorStatus,
+  feedDepth,
   feedProximity,
+  initialDepthState,
   initialPushupState,
   normalizePushupCount,
   pushupSensorStatus,
@@ -122,5 +131,141 @@ describe('normalizePushupCount', () => {
 
   it('caps the count', () => {
     expect(normalizePushupCount(5000)).toBe(PUSHUP_MAX_COUNT);
+  });
+});
+
+/**
+ * Run a list of distances (metres, or null for a lost reading) through the
+ * depth counter from scratch, 100ms apart.
+ */
+function runDepth(distances: (number | null)[], from = initialDepthState()) {
+  return distances.reduce(
+    (s, distance, i) => feedDepth(s, { distance, valid: distance === null ? 0 : 1, at: i * 100 }),
+    from,
+  );
+}
+
+/** One full rep from a top of `top`, down to `bottom` and back. */
+const rep = (top: number, bottom: number) => [top, (top + bottom) / 2, bottom, (top + bottom) / 2, top];
+
+describe('feedDepth', () => {
+  it('counts a rep on the way back up, not at the bottom', () => {
+    expect(runDepth([0.55, 0.45, 0.3]).count).toBe(0);
+    expect(runDepth([0.55, 0.45, 0.3, 0.45]).count).toBe(1);
+  });
+
+  it('counts a run of ordinary reps', () => {
+    expect(runDepth([...rep(0.55, 0.25), ...rep(0.55, 0.25), ...rep(0.55, 0.25)]).count).toBe(3);
+  });
+
+  it('judges a rep against the person’s own top, whatever their arm length', () => {
+    expect(runDepth([...rep(0.4, 0.22), ...rep(0.4, 0.22)]).count).toBe(2);
+    expect(runDepth([...rep(0.7, 0.45), ...rep(0.7, 0.45)]).count).toBe(2);
+  });
+
+  it('needs the face to come down by the full travel to be down', () => {
+    expect(runDepth([0.55, 0.55 - DEPTH_DOWN_M + 0.01, 0.55]).count).toBe(0);
+    expect(runDepth([0.55, 0.55 - DEPTH_DOWN_M - 0.01, 0.55]).count).toBe(1);
+  });
+
+  it('measures the climb from the bottom, so a sagging top still counts', () => {
+    // Each rep tops out lower than the one before it.
+    const s = runDepth([0.6, 0.3, 0.6, 0.55, 0.3, 0.42, 0.5, 0.25, 0.36]);
+    expect(s.count).toBe(3);
+  });
+
+  it('needs the full climb back up to count', () => {
+    expect(runDepth([0.55, 0.3, 0.3 + DEPTH_UP_M - 0.01]).count).toBe(0);
+    expect(runDepth([0.55, 0.3, 0.3 + DEPTH_UP_M]).count).toBe(1);
+  });
+
+  it('ignores noise while holding the top', () => {
+    expect(runDepth([0.55, 0.53, 0.56, 0.52, 0.55, 0.54, 0.56, 0.53]).count).toBe(0);
+  });
+
+  it('reads a face too close to measure as down', () => {
+    // The bottom of the rep is out of the camera's range.
+    expect(runDepth([0.55, 0.42, 0.33, null, null, 0.33, 0.45]).count).toBe(1);
+  });
+
+  it('a face flickering at the edge of the range is one rep, not one per flicker', () => {
+    const s = runDepth([0.55, 0.4, 0.3, null, 0.3, null, 0.31, null, 0.3, 0.45]);
+    expect(s.count).toBe(1);
+  });
+
+  it('a lost reading at the top is a dropout, not a rep', () => {
+    // A short-armed top close enough that a loss there reads as near.
+    expect(runDepth([0.42, null, null, 0.42, null, 0.42]).count).toBe(0);
+  });
+
+  it('a lost reading after a far one is nobody there, and changes nothing', () => {
+    const s = runDepth([0.55, 0.3, 0.9, null, null]);
+    expect(s.phase).toBe('up');
+    expect(runDepth([0.55, 0.3, null, null]).count).toBe(0);
+    expect(DEPTH_NEAR_LOST_M).toBeLessThan(0.55);
+  });
+
+  it('takes nothing past the farthest a face can be as a face', () => {
+    // The ceiling, before anyone is over the phone, sets no top to come down from.
+    const s = runDepth([2.4, 2.4, 0.55, 0.3, 0.45]);
+    expect(s.count).toBe(1);
+    expect(runDepth([DEPTH_MAX_FACE_M + 0.1]).seen).toBe(false);
+  });
+
+  it('treats a reading too little of the frame measured as lost', () => {
+    const s = [0.55, 0.3].reduce(
+      (st, distance, i) => feedDepth(st, { distance, valid: DEPTH_MIN_VALID - 0.01, at: i * 100 }),
+      initialDepthState(),
+    );
+    expect(s.seen).toBe(false);
+  });
+});
+
+describe('a rep too shallow to count', () => {
+  it('says so once it turns back', () => {
+    const s = runDepth([0.55, 0.47, 0.44, 0.5, 0.55]);
+    expect(s.count).toBe(0);
+    expect(s.lastMiss).toBe('shallow');
+  });
+
+  it('clears when the next rep goes deep enough', () => {
+    const s = runDepth([0.55, 0.45, 0.55, 0.3]);
+    expect(s.lastMiss).toBeNull();
+    expect(runDepth([0.55, 0.45, 0.55, 0.3, 0.45]).count).toBe(1);
+  });
+
+  it('isn’t raised by small movements at the top', () => {
+    expect(runDepth([0.55, 0.52, 0.55, 0.51, 0.54]).lastMiss).toBeNull();
+  });
+});
+
+describe('depthSensorStatus', () => {
+  it('looks for a face until one is over the phone', () => {
+    expect(depthSensorStatus(initialDepthState()).tone).toBe('idle');
+    expect(depthSensorStatus(runDepth([2.4, null])).line).toBe('Looking for your face');
+  });
+
+  it('says what to do next through a rep', () => {
+    expect(depthSensorStatus(runDepth([0.55])).line).toBe('Go down');
+    expect(depthSensorStatus(runDepth([0.55, 0.3])).line).toBe('Push back up');
+    expect(depthSensorStatus(runDepth([0.55, 0.3, 0.45])).line).toBe('Go down');
+  });
+
+  it('says a rep was too shallow', () => {
+    const status = depthSensorStatus(runDepth([0.55, 0.45, 0.55]));
+    expect(status.tone).toBe('miss');
+    expect(status.line).toBe('Go a little lower');
+  });
+
+  it('goes back to looking once the face has been gone a while', () => {
+    const seen = runDepth([0.55]);
+    const gone = (ms: number) => feedDepth(
+      feedDepth(seen, { distance: 2.4, valid: 1, at: 1000 }),
+      { distance: 2.4, valid: 1, at: 1000 + ms },
+    );
+    expect(depthSensorStatus(gone(DEPTH_AWAY_MS - 1)).tone).toBe('counting');
+    expect(depthSensorStatus(gone(DEPTH_AWAY_MS)).tone).toBe('idle');
+    expect(depthSensorStatus(feedDepth(gone(DEPTH_AWAY_MS), { distance: 0.55, valid: 1, at: 5000 })).tone)
+      .toBe('counting');
   });
 });
