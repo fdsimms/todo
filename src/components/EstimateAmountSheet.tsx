@@ -19,6 +19,7 @@ import {
   estimateWholeGrams,
   wholeEstimate,
   type EstimateAmountPatch,
+  type EstimateCount,
 } from '../utils/foodLog';
 import { formatQuantityAmount } from '../utils/quantity';
 import { CountStepper } from './CountStepper';
@@ -81,6 +82,18 @@ export function amountText(factor: number, unit: AmountUnit, wholeGrams: number 
   return String(Math.round(n * 10) / 10);
 }
 
+/** The count a typed measure means, or null when it isn't a number or is outside what the estimate can scale to. */
+export function countFromTyped(text: string, counted: EstimateCount): number | null {
+  const n = parseFloat(text.replace(',', '.'));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n > counted.count * MAX_ESTIMATE_MULTIPLE + 1e-9 ? null : n;
+}
+
+export function countRefusal(counted: EstimateCount): string {
+  const max = Math.round(counted.count * MAX_ESTIMATE_MULTIPLE * 10) / 10;
+  return `Enter an amount above 0, up to ${max.toLocaleString()} ${estimateCountNoun(counted, max)}.`;
+}
+
 export function amountRefusal(unit: AmountUnit, wholeGrams: number | null): string {
   const max = MAX_ESTIMATE_MULTIPLE;
   return unit === 'grams' && wholeGrams
@@ -131,6 +144,8 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
   /** What was typed in the amount field, or null while the field shows the chosen multiple. */
   const [typed, setTyped] = useState<string | null>(null);
   const [unit, setUnit] = useState<AmountUnit>('percent');
+  /** What was typed for a measured count (grams, ounces), or null while the field shows `count`. */
+  const [countTyped, setCountTyped] = useState<string | null>(null);
 
   const wholeGrams = whole ? estimateWholeGrams(whole) : null;
 
@@ -138,6 +153,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
     if (!visible) return;
     setFactor(entry ? currentEstimateFactor(entry) : null);
     setTyped(null);
+    setCountTyped(null);
     setUnit(wholeGrams ? 'grams' : 'percent');
     if (counted) setCount((entry && currentEstimateCount(entry)) ?? counted.count);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,7 +166,12 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
   };
 
   const typedFactor = typed === null ? null : factorFromTyped(typed, unit, wholeGrams);
-  const chosen = counted ? count / counted.count : typed !== null ? typedFactor : factor;
+  /** A count of things ("2 slices") is stepped; a measure ("67 g") is typed, as it is on the food log. */
+  const stepped = !!counted && !counted.measure;
+  const typedCount = counted && countTyped !== null ? countFromTyped(countTyped, counted) : null;
+  const chosen = counted
+    ? stepped ? count / counted.count : countTyped !== null ? (typedCount === null ? null : typedCount / counted.count) : count / counted.count
+    : typed !== null ? typedFactor : factor;
   const fieldText = typed ?? (factor === null ? '' : amountText(factor, unit, wholeGrams));
   const pickUnit = (next: AmountUnit) => {
     // Keep the amount the person has now, restated in the new unit.
@@ -185,7 +206,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
       controller={card}
       onRequestClose={() => dismiss(onClose)}
       // The sheet stays mounted across opens, so a bare `autoFocus` would only
-      // fire once. The stepper has no field to focus.
+      // fire once. A stepped count has no field to focus.
       onShow={() => amountRef.current?.focus()}
     >
       <View style={styles.card}>
@@ -203,7 +224,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
 
         <Text style={styles.label}>{question}</Text>
         <View style={styles.body}>
-          {counted ? (
+          {counted && stepped ? (
             <View style={styles.countRow}>
               <CountStepper
                 value={count}
@@ -227,17 +248,21 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
                 <TextField
                   ref={amountRef}
                   style={styles.amountInput}
-                  value={fieldText}
-                  onChangeText={text => { setTyped(text); }}
+                  value={counted ? (countTyped ?? formatQuantityAmount(count, counted.decimal)) : fieldText}
+                  onChangeText={text => { if (counted) setCountTyped(text); else setTyped(text); }}
                   keyboardType="decimal-pad"
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   returnKeyType="done"
                   selectTextOnFocus
                   placeholder="e.g. 150"
                   placeholderTextColor={colors.textTertiary}
-                  accessibilityLabel={`${question}, in ${unit === 'grams' ? 'grams' : 'percent of the meal'}`}
+                  accessibilityLabel={counted ? question : `${question}, in ${unit === 'grams' ? 'grams' : 'percent of the meal'}`}
                 />
-                {wholeGrams ? (
+                {counted ? (
+                  <Text style={styles.unitText}>
+                    {`${estimateCountNoun(counted, typedCount ?? count)}${counted.rest}`}
+                  </Text>
+                ) : wholeGrams ? (
                   <View style={styles.unitTrack}>
                     <SegmentedControl
                       options={UNIT_OPTIONS}
@@ -252,7 +277,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
               </View>
               {/* With a weight to type against, the shares only repeat the
                   field in fractions of a mix nobody portions that way. */}
-              {!wholeGrams && <View style={styles.shareRow}>
+              {!wholeGrams && !counted && <View style={styles.shareRow}>
                 {ESTIMATE_AMOUNTS.map(a => {
                   const on = chosen !== null && typed === null && Math.abs(chosen - a.value) < 1e-9;
                   return (
@@ -273,6 +298,9 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
               {typed !== null && typedFactor === null && typed.trim() !== '' && (
                 <Text style={styles.error}>{amountRefusal(unit, wholeGrams)}</Text>
               )}
+              {counted && countTyped !== null && typedCount === null && countTyped.trim() !== '' && (
+                <Text style={styles.error}>{countRefusal(counted)}</Text>
+              )}
             </View>
           )}
           {!!patch && (
@@ -284,7 +312,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
               {/* On its own line: the meal's own words can run long, and
                   the figures are what the choice is being made on. A
                   count already says its amount in the row above. */}
-              {!counted && !!patch.quantity && <Text style={styles.amount}>{patch.quantity}</Text>}
+              {!stepped && !!patch.quantity && <Text style={styles.amount}>{patch.quantity}</Text>}
               {/* The parts scale with the total, so the choice can be checked
                   against what each one comes to. */}
               {(patch.nutrition.breakdown ?? []).map((line, index) => (
@@ -299,7 +327,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
           )}
           <Text style={styles.hint}>
             {counted
-              ? `The estimate was ${wholeKcalText ? `${wholeKcalText} ` : ''}for ${whole?.servingText ?? ''}. The figures change with the count, so nothing is re-estimated. Setting it back to ${formatQuantityAmount(counted.count, counted.decimal)} puts them back.`
+              ? `The estimate was ${wholeKcalText ? `${wholeKcalText} ` : ''}for ${whole?.servingText ?? ''}. The figures change with the count, so nothing is re-estimated. ${stepped ? 'Setting it back to' : 'Entering'} ${formatQuantityAmount(counted.count, counted.decimal)}${stepped ? '' : ` ${estimateCountNoun(counted, counted.count)}`} puts them back.`
               : `The figures are the estimate for the whole meal${wholeKcalText ? ` (${wholeKcalText})` : ''}, scaled to your choice, so nothing is re-estimated. ${wholeGrams ? `Entering ${Math.round(wholeGrams * 10) / 10} g puts them back.` : 'All puts them back.'}`}
           </Text>
         </View>
