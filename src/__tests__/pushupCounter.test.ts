@@ -6,6 +6,7 @@ import {
   feedProximity,
   initialPushupState,
   normalizePushupCount,
+  pushupSensorStatus,
   tapRep,
 } from '../utils/pushupCounter';
 
@@ -60,6 +61,37 @@ describe('feedProximity', () => {
 
   it('a clear with no cover before it counts nothing', () => {
     expect(run([[false, 0], [false, 1000]]).count).toBe(0);
+  });
+});
+
+describe('what the sensor saw', () => {
+  it('counts every cover, counted or not', () => {
+    const s = run([[true, 0], [false, 50], [true, 1000], [false, 1500], [true, 3000]]);
+    expect(s.seen).toBe(3);
+    expect(s.count).toBe(1);
+  });
+
+  it('keeps why the last cover did not count, until one does', () => {
+    expect(run([[true, 0], [false, PUSHUP_MIN_NEAR_MS - 1]]).lastMiss).toBe('brief');
+    expect(run([[true, 0], [false, PUSHUP_MAX_NEAR_MS + 1]]).lastMiss).toBe('long');
+    expect(run([[true, 0], [false, 300], [true, 400], [false, 800]]).lastMiss).toBe('soon');
+    expect(run([[true, 0], [false, 50], [true, 1000], [false, 1500]]).lastMiss).toBeNull();
+  });
+});
+
+describe('pushupSensorStatus', () => {
+  it('says when the sensor has seen nothing', () => {
+    expect(pushupSensorStatus(initialPushupState()).tone).toBe('idle');
+  });
+
+  it('names what was seen and why the last one missed', () => {
+    const status = pushupSensorStatus(run([[true, 0], [false, 500], [true, 1200], [false, 1210]]));
+    expect(status).toMatchObject({ tone: 'miss', line: 'Seen 2 times, 1 counted' });
+    expect(status.detail).toMatch(/too quick/);
+  });
+
+  it('reads as counting once a cover counts', () => {
+    expect(pushupSensorStatus(run([[true, 0], [false, 500]]))).toMatchObject({ tone: 'counting', line: 'Seen 1 time, 1 counted' });
   });
 });
 
