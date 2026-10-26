@@ -16,29 +16,43 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
 
-interface Props {
+type Props = {
   visible: boolean;
-  /** The sound picked now (`Alarm.sound`). */
-  value: string | null;
-  /** A row was picked. The sheet stays open, so a few can be heard before Done. */
-  onChange: (sound: string | null) => void;
   onClose: () => void;
-}
+} & (
+  | {
+    multiple?: false;
+    /** The sound picked now. */
+    value: string | null;
+    /** A row was picked. The sheet stays open, so a few can be heard before Done. */
+    onChange: (sound: string | null) => void;
+  }
+  | {
+    /** Rows toggle, and two or more picked make an alarm choose between them (`Alarm.soundPool`). */
+    multiple: true;
+    /** The sounds picked now; empty is the default sound. */
+    values: string[];
+    onChangeValues: (sounds: string[]) => void;
+  }
+);
 
 /**
  * Picks what an alarm rings with: the system's sound, one of the built-in
  * tones, or a sound imported from Files (alarmSounds.ts). Tapping a row picks
- * it and plays it; Done closes. A card, since it is one small decision
+ * it and plays it; Done closes. With `multiple`, a row toggles instead, and
+ * picking none is the default. A card, since it is one small decision
  * (CLAUDE.md, CardSheet), raised from the alarm editor or the quick alarm and
  * rendered inside that sheet, never beside it ("Two sibling Modals").
  */
-export function RingtonePickerSheet({ visible, value, onChange, onClose }: Props) {
+export function RingtonePickerSheet(props: Props) {
+  const { visible, onClose } = props;
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
   const imported = useAlarmStore(useShallow(s => s.sounds));
   const demo = useDemoStore(s => s.active);
   const [importing, setImporting] = useState(false);
+  const selected = props.multiple ? props.values : (props.value === null ? [] : [props.value]);
 
   useEffect(() => {
     if (!visible) stopSoundPreview();
@@ -49,8 +63,13 @@ export function RingtonePickerSheet({ visible, value, onChange, onClose }: Props
 
   const pick = (sound: string | null) => {
     haptics.tap();
-    onChange(sound);
-    if (sound === null) stopSoundPreview();
+    const adding = sound !== null && !selected.includes(sound);
+    if (props.multiple) {
+      props.onChangeValues(sound === null ? [] : adding ? [...selected, sound] : selected.filter(s => s !== sound));
+    } else {
+      props.onChange(sound);
+    }
+    if (sound === null || !adding && props.multiple) stopSoundPreview();
     else void playSoundPreview(sound, imported);
   };
 
@@ -72,28 +91,30 @@ export function RingtonePickerSheet({ visible, value, onChange, onClose }: Props
       message: 'Alarms that ring with it will ring with the default sound.',
       onConfirm: () => {
         stopSoundPreview();
-        if (value === customSoundRef(id)) onChange(null);
+        const ref = customSoundRef(id);
+        if (props.multiple) props.onChangeValues(selected.filter(s => s !== ref));
+        else if (props.value === ref) props.onChange(null);
         useAlarmStore.getState().deleteSound(id);
       },
     });
   };
 
   const row = (sound: string | null, label: string, first: boolean, onDelete?: () => void) => {
-    const selected = value === sound;
+    const on = sound === null ? selected.length === 0 : selected.includes(sound);
     return (
       <View key={sound ?? 'default'} style={[styles.row, !first && styles.rowDivider]}>
         <TouchableOpacity
           style={styles.rowMain}
           onPress={() => pick(sound)}
           activeOpacity={interaction.activeOpacity}
-          accessibilityRole="radio"
-          accessibilityState={{ checked: selected }}
-          accessibilityHint={sound === null ? undefined : 'Picks it and plays it'}
+          accessibilityRole={props.multiple ? 'checkbox' : 'radio'}
+          accessibilityState={{ checked: on }}
+          accessibilityHint={sound === null ? undefined : props.multiple ? 'Adds or removes it, and plays it' : 'Picks it and plays it'}
         >
           <View style={styles.check}>
-            {selected && <Ionicons name="checkmark" size={iconSize.md} color={colors.accentText} />}
+            {on && <Ionicons name="checkmark" size={iconSize.md} color={colors.accentText} />}
           </View>
-          <Text style={[styles.rowLabel, selected && styles.rowLabelSelected]} numberOfLines={1}>{label}</Text>
+          <Text style={[styles.rowLabel, on && styles.rowLabelSelected]} numberOfLines={1}>{label}</Text>
         </TouchableOpacity>
         {sound !== null && (
           <TouchableOpacity
@@ -136,6 +157,12 @@ export function RingtonePickerSheet({ visible, value, onChange, onClose }: Props
           </>
         )}
 
+        {props.multiple && selected.length >= 2 && (
+          <HelpText style={styles.poolHint}>
+            Picks one of these {selected.length} at random. It changes after each ring, the next time the app opens.
+          </HelpText>
+        )}
+
         {!demo && (
           <View style={styles.importRow}>
             {importing
@@ -175,5 +202,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowLabel: { flex: 1, color: colors.text, fontSize: font.md, marginLeft: spacing.xs },
   rowLabelSelected: { fontWeight: fontWeight.semibold },
   importRow: { marginTop: spacing.md, alignItems: 'flex-start', gap: spacing.sm },
+  poolHint: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.smd, marginHorizontal: spacing.xs },
   hint: { color: colors.textSecondary, fontSize: font.sm },
 });

@@ -3018,6 +3018,16 @@ export interface Alarm {
    */
   sound: string | null;
   /**
+   * Two or more sounds the alarm picks between, or empty for no choice. When
+   * set, `sound` is the one picked for the next ring and is re-picked after
+   * each ring the next time the app runs (`rerollSounds`, alarms.ts
+   * `soundOwesReroll`), since AlarmKit takes the sound when the alarm is
+   * scheduled and plays it for every ring of a weekly schedule.
+   */
+  soundPool: string[];
+  /** When `sound` was last picked from the pool, or null if it never was. */
+  soundRolledAt: string | null;
+  /**
    * A one-night change to a repeating alarm ("6:30 just tomorrow"): on that
    * calendar date it rings at this time instead, and after that day it goes
    * back to its own. Null for none. See src/utils/morningAlarm.ts.
@@ -4696,6 +4706,11 @@ export interface Task {
   // sound imported on one phone, which rings as the default on any other
   // device. See src/utils/alarmSounds.ts.
   alarmSound?: string | null;
+  // Two or more sounds an alarm reminder picks between, one for each time it
+  // is scheduled (a repeating task's next occurrence is a new row, so each gets
+  // its own pick). Empty or absent = no pool, and `alarmSound` rings. See
+  // `pickFromPool` in src/utils/alarmSounds.ts.
+  alarmSoundPool?: string[];
   // The alarm a task like "Set alarm for morning" is about: 'next' for
   // whichever of the device's own alarms rings first tomorrow, or an alarm's
   // id. The row shows that alarm and opens a card to keep or change it. Alarms

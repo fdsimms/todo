@@ -144,7 +144,7 @@ import {
   type SyncTable,
 } from './syncTracking';
 import { parseMission } from '../utils/missions';
-import { parseAlarmSound } from '../utils/alarmSounds';
+import { parseAlarmSound, parseSoundPool } from '../utils/alarmSounds';
 import { parseAlarmOverride } from '../utils/alarmOverride';
 import {
   emptyApplyReport,
@@ -2504,6 +2504,11 @@ function runInitDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN mission TEXT',
     // Task.alarmSound: NULL on every existing row, which rings with the default.
     'ALTER TABLE tasks ADD COLUMN alarm_sound TEXT',
+    // Alarm.soundPool / soundRolledAt: NULL on every existing alarm, which has no pool.
+    // Task.alarmSoundPool: NULL on every existing row, which has no pool.
+    'ALTER TABLE tasks ADD COLUMN alarm_sound_pool TEXT',
+    'ALTER TABLE alarms ADD COLUMN sound_pool TEXT',
+    'ALTER TABLE alarms ADD COLUMN sound_rolled_at TEXT',
     // Task.alarmLink / alarmLinkLeavesOpen: NULL and 0 on every existing row,
     // which is no linked alarm.
     'ALTER TABLE tasks ADD COLUMN alarm_link TEXT',
@@ -4330,6 +4335,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     completionTimerMinutes: (row.completion_timer_minutes as number | null) ?? null,
     mission: parseMission(row.mission),
     alarmSound: parseAlarmSound(row.alarm_sound),
+    alarmSoundPool: parseSoundPool(row.alarm_sound_pool),
     alarmLink: typeof row.alarm_link === 'string' && row.alarm_link !== '' ? row.alarm_link : null,
     alarmLinkLeavesOpen: Boolean(row.alarm_link_leaves_open),
     completionTimerNote: (row.completion_timer_note as string | null) ?? null,
@@ -4456,8 +4462,8 @@ export function dbInsertTask(task: Task): void {
       rain_skip_mm, rain_skipped_on,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
       slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, medication_extras, attachments, reminder_place_id, reminder_place_on,
-      mission, alarm_sound, alarm_link, alarm_link_leaves_open
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      mission, alarm_sound, alarm_link, alarm_link_leaves_open, alarm_sound_pool
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4613,6 +4619,7 @@ export function dbInsertTask(task: Task): void {
       task.alarmSound ?? null,
       task.alarmLink ?? null,
       task.alarmLinkLeavesOpen ? 1 : 0,
+      task.alarmSoundPool?.length ? JSON.stringify(task.alarmSoundPool) : null,
     ]
   );
 }
@@ -4653,7 +4660,7 @@ export function dbUpdateTask(task: Task): void {
       rain_skip_mm=?, rain_skipped_on=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
       slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, medication_extras=?, attachments=?, reminder_place_id=?, reminder_place_on=?,
-      mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?
+      mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?, alarm_sound_pool=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -4810,6 +4817,7 @@ export function dbUpdateTask(task: Task): void {
       task.alarmSound ?? null,
       task.alarmLink ?? null,
       task.alarmLinkLeavesOpen ? 1 : 0,
+      task.alarmSoundPool?.length ? JSON.stringify(task.alarmSoundPool) : null,
       task.id,
     ]
   );
@@ -5500,6 +5508,8 @@ function rowToAlarm(row: Record<string, unknown>): Alarm {
     missionDoneAt: (row.mission_done_at as string | null) ?? null,
     missionGaveUp: Boolean(row.mission_gave_up),
     sound: parseAlarmSound(row.sound),
+    soundPool: parseSoundPool(row.sound_pool),
+    soundRolledAt: (row.sound_rolled_at as string | null) ?? null,
     override: parseAlarmOverride(row.override),
     createdAt: row.created_at as string,
   };
@@ -5514,14 +5524,15 @@ export function dbSaveAlarm(alarm: Alarm): void {
   db.runSync(
     `INSERT OR REPLACE INTO alarms
       (id, label, hour, minute, repeat_days, fire_at, enabled, mission, quick, armed_at, mission_done_at, mission_gave_up,
-       sound, override, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       sound, override, created_at, sound_pool, sound_rolled_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       alarm.id, alarm.label, alarm.hour, alarm.minute, JSON.stringify(alarm.repeatDays), alarm.fireAt,
       alarm.enabled ? 1 : 0, alarm.mission ? JSON.stringify(alarm.mission) : null, alarm.quick ? 1 : 0,
       alarm.armedAt, alarm.missionDoneAt, alarm.missionGaveUp ? 1 : 0,
       alarm.sound,
       alarm.override ? JSON.stringify(alarm.override) : null, alarm.createdAt,
+      alarm.soundPool.length > 0 ? JSON.stringify(alarm.soundPool) : null, alarm.soundRolledAt,
     ],
   );
 }
