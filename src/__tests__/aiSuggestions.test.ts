@@ -624,7 +624,7 @@ describe('describeAIError', () => {
   });
 
   it('mentions truncation for a max_tokens cutoff', () => {
-    expect(describeAIError(new Error('Response was truncated'))).toContain('cut off');
+    expect(describeAIError(new Error('Response was truncated'))).toContain('too long');
   });
 
   it('says demo mode rather than blaming the connection', () => {

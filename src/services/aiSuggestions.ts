@@ -248,7 +248,7 @@ export function describeAIError(error: unknown, source: string = 'ai'): string {
     const reason = (error as { reason?: string }).reason;
     return `Anthropic rejected the request${reason ? ` (${reason})` : ''}. Try another model for this feature in Settings.`;
   }
-  if (message === 'Response was truncated') return 'The response was cut off. Try again.';
+  if (message === 'Response was truncated') return 'The reply was too long to finish. Try again with less in the request, such as a smaller meal or fewer items.';
   if (message === 'No estimate returned') {
     return 'That description could not be read into figures. Try naming the dish and the place.';
   }
