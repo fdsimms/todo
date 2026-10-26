@@ -2,6 +2,8 @@ import type { Task } from '../types';
 import type { BusyEvent } from '../utils/calendarBusy';
 import {
   buildDayTimeline,
+  cascadeEntries,
+  MAX_CASCADE_DEPTH,
   clockToDayMinutes,
   dayLengthMinutes,
   draggedColumn,
@@ -393,5 +395,74 @@ describe('draggedColumn', () => {
 
   it('keeps the event where it was before the columns are laid out', () => {
     expect(draggedColumn(1, 300, 0, 3)).toBe(1);
+  });
+});
+
+describe('cascadeEntries', () => {
+  const place = (events: BusyEvent[]) => {
+    const { entries } = buildDayTimeline({ dayStart: MIDNIGHT, tasks: [], events });
+    return { entries, cascade: cascadeEntries(entries) };
+  };
+
+  it('leaves a lone entry flush left and on nothing', () => {
+    const { cascade } = place([makeEvent(at(9), at(10), { id: 'a' })]);
+    expect(cascade).toEqual([{ depth: 0, order: 1, overlays: false, visibleMinutes: null }]);
+  });
+
+  it('steps an overlapping entry in and paints it on top', () => {
+    const { cascade } = place([
+      makeEvent(at(9), at(12), { id: 'a' }),
+      makeEvent(at(10), at(11), { id: 'b' }),
+    ]);
+    expect(cascade.map(c => c.depth)).toEqual([0, 1]);
+    expect(cascade.map(c => c.order)).toEqual([1, 2]);
+    expect(cascade.map(c => c.overlays)).toEqual([false, true]);
+  });
+
+  it('says how much of an earlier entry its title keeps before a later one starts', () => {
+    const { cascade } = place([
+      makeEvent(at(9), at(12), { id: 'a' }),
+      makeEvent(at(9, 45), at(11), { id: 'b' }),
+    ]);
+    expect(cascade[0].visibleMinutes).toBe(45);
+    expect(cascade[1].visibleMinutes).toBeNull();
+  });
+
+  it('puts a short entry back at the left edge once the earlier short one is over', () => {
+    // Deep work ends before noon, so the noon entry only overlaps the long one.
+    const { cascade } = place([
+      makeEvent(at(9), at(11, 45), { id: 'work' }),
+      makeEvent(at(9, 45), at(16), { id: 'vote' }),
+      makeEvent(at(12), at(12, 30), { id: 'wani' }),
+    ]);
+    expect(cascade.map(c => c.depth)).toEqual([0, 1, 0]);
+    expect(cascade[2].overlays).toBe(true);
+    expect(cascade[2].order).toBe(3);
+  });
+
+  it('paints the shorter of two entries that start together on top', () => {
+    const { cascade } = place([
+      makeEvent(at(9), at(9, 30), { id: 'short' }),
+      makeEvent(at(9), at(11), { id: 'long' }),
+    ]);
+    expect(cascade[0].order).toBeGreaterThan(cascade[1].order);
+    expect(cascade[0].depth).toBe(1);
+    expect(cascade[1].depth).toBe(0);
+  });
+
+  it('stops stepping in at the deepest offset', () => {
+    const { cascade } = place(
+      [0, 1, 2, 3, 4, 5].map(i => makeEvent(at(9, i * 5), at(12), { id: `e${i}` })),
+    );
+    expect(Math.max(...cascade.map(c => c.depth))).toBe(MAX_CASCADE_DEPTH);
+  });
+
+  it('keeps the input order in its answer', () => {
+    const { entries } = place([
+      makeEvent(at(9), at(10), { id: 'early' }),
+      makeEvent(at(14), at(15), { id: 'late' }),
+    ]);
+    const cascade = cascadeEntries([entries[1], entries[0]]);
+    expect(cascade.map(c => c.order)).toEqual([2, 1]);
   });
 });

@@ -243,6 +243,63 @@ function assignLanes(entries: TimelineEntry[]): void {
   if (run.length > 0) closeRun();
 }
 
+/** How many offsets deep a cascade goes before the rest share the last one. */
+export const MAX_CASCADE_DEPTH = 3;
+
+export interface CascadePlacement {
+  /** 0 is flush left; each step in is one cascade offset. */
+  depth: number;
+  /** Paint order: a later-starting entry sits on top of an earlier one. */
+  order: number;
+  /** True when it starts while another entry is still running under it. */
+  overlays: boolean;
+  /** Minutes of this entry nothing later starts on top of, or null when none does. */
+  visibleMinutes: number | null;
+}
+
+/**
+ * Where each entry sits when overlaps are stacked rather than split into
+ * columns, for a column too narrow to halve (the three-day view).
+ *
+ * An entry takes the smallest offset not held by something still running when
+ * it starts, so a short entry after a long one reuses the left edge once the
+ * earlier one finishes and sits on top of it at full width. The one that starts
+ * last paints last. The first line of an earlier entry's title is never
+ * covered because whatever overlaps it starts after it, and `visibleMinutes`
+ * says how much of it a later start leaves, so the caller can cut a title to
+ * the lines that fit. Results are in the input's order.
+ */
+export function cascadeEntries(entries: readonly TimelineEntry[]): CascadePlacement[] {
+  const sorted = entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) =>
+      a.entry.startMinutes - b.entry.startMinutes
+      || laneEnd(b.entry) - laneEnd(a.entry)
+      || a.index - b.index);
+  const placements: CascadePlacement[] = new Array(entries.length);
+  const depths: number[] = [];
+  sorted.forEach(({ entry, index }, rank) => {
+    const running: number[] = [];
+    for (let i = 0; i < rank; i += 1) {
+      if (laneEnd(sorted[i].entry) > entry.startMinutes) running.push(depths[i]);
+    }
+    let depth = 0;
+    while (running.includes(depth)) depth += 1;
+    depth = Math.min(depth, MAX_CASCADE_DEPTH);
+    depths[rank] = depth;
+
+    const next = sorted[rank + 1]?.entry.startMinutes;
+    const nextStart = next !== undefined && next < laneEnd(entry) ? next : null;
+    placements[index] = {
+      depth,
+      order: rank + 1,
+      overlays: running.length > 0,
+      visibleMinutes: nextStart === null ? null : nextStart - entry.startMinutes,
+    };
+  });
+  return placements;
+}
+
 export function buildDayTimeline({ dayStart, tasks, events, sunLocation = null }: DayTimelineInput): DayTimeline {
   const allDay = events.filter(e => e.allDay);
   const timed = events.filter(e => !e.allDay);
