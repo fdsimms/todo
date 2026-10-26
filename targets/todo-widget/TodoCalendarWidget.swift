@@ -536,7 +536,7 @@ struct CalendarWidgetEntryView: View {
             .frame(width: 100, alignment: .leading)
             VStack(alignment: .leading, spacing: 7) {
                 if shown.isEmpty {
-                    nothingLeft(today: today, tomorrow: tomorrow, palette: palette)
+                    nothingLeft(today: today, tomorrow: tomorrow, palette: palette, expanded: true)
                 } else {
                     ForEach(shown) { line in
                         lineLink(line, day: today, palette: palette, showsTime: false)
@@ -638,13 +638,40 @@ struct CalendarWidgetEntryView: View {
         }
     }
 
-    /// Today has nothing left: say so, and what tomorrow starts with.
-    private func nothingLeft(today: CalendarDayModel, tomorrow: CalendarDayModel?, palette: WidgetPalette) -> some View {
+    /// Today has nothing left: say so, and what tomorrow holds. The small size
+    /// has room for only tomorrow's first line; the medium (`expanded`) lists the
+    /// next few, with the first all-day event as a chip above them.
+    @ViewBuilder
+    private func nothingLeft(today: CalendarDayModel, tomorrow: CalendarDayModel?, palette: WidgetPalette, expanded: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(today.lines.isEmpty ? "Nothing scheduled today" : "Nothing else today")
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(palette.textSecondary)
-            if let next = tomorrow?.lines.first {
+            if expanded, let tomorrow, !(tomorrow.lines.isEmpty && tomorrow.allDay.isEmpty) {
+                // The chip takes a row of its own, so one fewer line fits beside it.
+                let rowCap = tomorrow.allDay.isEmpty ? 3 : 2
+                let shown = Array(tomorrow.lines.prefix(rowCap))
+                let more = (tomorrow.lines.count - shown.count) + max(0, tomorrow.allDay.count - 1)
+                HStack {
+                    Link(destination: calendarURL(dayKey: tomorrow.key)) {
+                        Text("TOMORROW")
+                            .font(.system(size: 11, weight: .bold))
+                            .tracking(0.5)
+                            .foregroundColor(palette.textTertiary)
+                    }
+                    Spacer(minLength: 4)
+                    if more > 0 {
+                        Text("+\(more) more")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundColor(palette.textTertiary)
+                    }
+                }
+                .padding(.top, 3)
+                allDayChips(tomorrow.allDay, palette: palette, limit: 1)
+                ForEach(shown) { line in
+                    lineLink(line, day: tomorrow, palette: palette, showsTime: true, compact: true)
+                }
+            } else if let next = tomorrow?.lines.first {
                 Text("Tomorrow · \(next.title), \(timeText(next.start))")
                     .font(.system(size: 11.5))
                     .foregroundColor(palette.textTertiary)
@@ -675,10 +702,10 @@ struct CalendarWidgetEntryView: View {
     }
 
     @ViewBuilder
-    private func allDayChips(_ items: [CalendarAllDay], palette: WidgetPalette) -> some View {
+    private func allDayChips(_ items: [CalendarAllDay], palette: WidgetPalette, limit: Int = 3) -> some View {
         if !items.isEmpty {
             HStack(spacing: 6) {
-                ForEach(items.prefix(3)) { item in
+                ForEach(items.prefix(limit)) { item in
                     HStack(spacing: 5) {
                         Circle()
                             .fill(item.color ?? palette.accent)
@@ -700,12 +727,12 @@ struct CalendarWidgetEntryView: View {
     }
 
     /// A line that opens what it is: a task's editor, or the calendar on its day.
-    private func lineLink(_ line: CalendarLine, day: CalendarDayModel, palette: WidgetPalette, showsTime: Bool) -> some View {
+    private func lineLink(_ line: CalendarLine, day: CalendarDayModel, palette: WidgetPalette, showsTime: Bool, compact: Bool = false) -> some View {
         let destination = line.taskId.map { taskURL(id: $0) } ?? calendarURL(dayKey: day.key)
         // Inline rather than wrapped in a helper view: the shared header does
         // the same, for WidgetKit's tap regions (see WidgetHeaderView).
         return Link(destination: destination) {
-            CalendarLineView(line: line, palette: palette, showsTime: showsTime)
+            CalendarLineView(line: line, palette: palette, showsTime: showsTime, compact: compact)
         }
     }
 }
@@ -717,8 +744,48 @@ struct CalendarLineView: View {
     let palette: WidgetPalette
     /// The large size's time column; the smaller ones put the time under the title.
     let showsTime: Bool
+    /// One row, title only: the medium size's look at tomorrow, where each line
+    /// can't afford the detail row under it.
+    var compact: Bool = false
 
     var body: some View {
+        if compact {
+            compactBody
+        } else {
+            fullBody
+        }
+    }
+
+    private var compactBody: some View {
+        HStack(alignment: .center, spacing: 6) {
+            Text(timeText(line.start))
+                .font(.system(size: 11.5, weight: .semibold))
+                .monospacedDigit()
+                .foregroundColor(palette.textSecondary)
+                .frame(width: 54, alignment: .trailing)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            if line.kind == .task {
+                RoundedRectangle(cornerRadius: 3.5)
+                    .strokeBorder(line.completed ? palette.done : palette.textTertiary, lineWidth: 1.6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3.5).fill(line.completed ? palette.done : Color.clear)
+                    )
+                    .frame(width: 12, height: 12)
+            } else {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(line.color ?? palette.accent)
+                    .frame(width: 3.5, height: 15)
+            }
+            Text(line.title)
+                .font(.system(size: 13, weight: line.kind == .event ? .semibold : .medium))
+                .foregroundColor(line.completed ? palette.textTertiary : palette.text)
+                .strikethrough(line.completed)
+                .lineLimit(1)
+        }
+    }
+
+    private var fullBody: some View {
         HStack(alignment: .top, spacing: 7) {
             if showsTime {
                 Text(timeText(line.start))
