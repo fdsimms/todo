@@ -2281,9 +2281,11 @@ export function FoodLogEntrySheet({
                     // arrival, so typing a different one replaces it rather
                     // than appending to it ("250" becoming "250200").
                     selectTextOnFocus={recalledAmount !== null && amount === recalledAmount}
+                    // A food's number takes a sum ("120 - 50"), so it gets the
+                    // keyboard with a minus key; a dish's is a plain decimal.
                     keyboardType={
-                      picked.kind === 'dish' || usingFoodUnitPills
-                        ? 'decimal-pad' : 'default'
+                      usingFoodUnitPills ? 'numbers-and-punctuation'
+                        : picked.kind === 'dish' ? 'decimal-pad' : 'default'
                     }
                     // The number pad has no return key, so without this there is no
                     // way off it — the same accessory the weigh field below already

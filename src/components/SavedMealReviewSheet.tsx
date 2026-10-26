@@ -306,7 +306,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
                             }}
                             returnKeyType="done"
                             autoCorrect={false}
-                            keyboardType={usingPills ? 'decimal-pad' : 'default'}
+                            keyboardType={usingPills ? 'numbers-and-punctuation' : 'default'}
                             inputAccessoryViewID={usingPills ? NUMBER_PAD_ACCESSORY_ID : undefined}
                             placeholder={usingPills ? 'e.g. 1.5' : `e.g. ${panel ? amountExample(panel) : '1 cup'}`}
                             placeholderTextColor={colors.textTertiary}

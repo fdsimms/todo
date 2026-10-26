@@ -487,7 +487,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     }}
                     placeholder={usingPills ? 'Amount' : `e.g. ${amountExample(panel)}`}
                     placeholderTextColor={colors.textTertiary}
-                    keyboardType={usingPills ? 'decimal-pad' : 'default'}
+                    keyboardType={usingPills ? 'numbers-and-punctuation' : 'default'}
                     // The number pad has no return key, so without this there is
                     // no way off it, same accessory `FoodLogEntrySheet` wires up.
                     inputAccessoryViewID={usingPills ? NUMBER_PAD_ACCESSORY_ID : undefined}
