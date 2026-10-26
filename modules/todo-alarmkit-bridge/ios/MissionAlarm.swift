@@ -168,23 +168,43 @@ enum AlarmBuilder {
   }
 }
 
+/// When each mission was last ended, so a re-arm that was already in flight
+/// can tell it lost the race. A class behind a lock, because the re-arm runs
+/// in a Task while `completeMission` runs on the module's queue.
+final class MissionEnds: @unchecked Sendable {
+  private let lock = NSLock()
+  private var endedAt: [String: Date] = [:]
+
+  func locked<T>(_ body: (inout [String: Date]) -> T) -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    return body(&endedAt)
+  }
+}
+
 @available(iOS 26, *)
 enum MissionLoop {
   // MISSION_REARM_SECONDS and MISSION_COUNTING_GRACE_SECONDS in missions.ts.
   static let stopRearmSeconds = 15
   static let openRearmSeconds = 60
 
+  static let ends = MissionEnds()
+
   /// Records the mission as pending and puts its next ring `seconds` out,
   /// replacing the one already waiting, so there is only ever one.
+  ///
+  /// The ring is scheduled first and the store is changed after, under the
+  /// lock `complete` takes, so the two can't interleave. A mission ended
+  /// while the schedule was awaited stays ended: the ring just made is
+  /// cancelled and nothing is written. Before this, a heartbeat re-arm that
+  /// was mid-flight when the person gave up wrote the mission back as
+  /// pending, and the alarm kept coming back.
   static func rearm(_ incoming: MissionPayload, after seconds: Double) async {
-    var missions = MissionStore.read()
-    let existing = missions[incoming.key]
+    let started = Date()
     // JS defers a mission without knowing its sound; the one the alarm rang
     // with is kept.
-    let mission = incoming.sound == nil ? incoming.withSound(existing?.mission.sound) : incoming
-    if let old = existing?.rearmId, let oldId = UUID(uuidString: old) {
-      try? AlarmManager.shared.cancel(id: oldId)
-    }
+    let knownSound = MissionStore.read()[incoming.key]?.mission.sound
+    let mission = incoming.sound == nil ? incoming.withSound(knownSound) : incoming
     let id = UUID()
     let configuration = AlarmBuilder.configuration(
       schedule: .fixed(Date().addingTimeInterval(seconds)),
@@ -192,26 +212,45 @@ enum MissionLoop {
       mission: mission,
       sound: mission.sound
     )
+    var scheduled = true
     do {
       _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
-      missions[mission.key] = PendingMission(mission: mission, since: existing?.since ?? Date().timeIntervalSince1970 * 1000, rearmId: id.uuidString)
     } catch {
       NSLog("[TodoAlarmKitBridge] mission rearm failed: %@", String(describing: error))
-      missions[mission.key] = PendingMission(mission: mission, since: existing?.since ?? Date().timeIntervalSince1970 * 1000, rearmId: nil)
+      scheduled = false
     }
-    MissionStore.write(missions)
+    ends.locked { (endedAt: inout [String: Date]) -> Void in
+      if let ended = endedAt[mission.key], ended >= started {
+        if scheduled { try? AlarmManager.shared.cancel(id: id) }
+        return
+      }
+      var missions = MissionStore.read()
+      let existing = missions[mission.key]
+      if let old = existing?.rearmId, let oldId = UUID(uuidString: old) {
+        try? AlarmManager.shared.cancel(id: oldId)
+      }
+      missions[mission.key] = PendingMission(
+        mission: mission,
+        since: existing?.since ?? started.timeIntervalSince1970 * 1000,
+        rearmId: scheduled ? id.uuidString : nil
+      )
+      MissionStore.write(missions)
+    }
   }
 
   /// The mission is over, done or given up: its waiting ring is cancelled
   /// and it stops being pending.
   static func complete(key: String) {
-    var missions = MissionStore.read()
-    if let rearm = missions[key]?.rearmId, let id = UUID(uuidString: rearm) {
-      try? AlarmManager.shared.stop(id: id)
-      try? AlarmManager.shared.cancel(id: id)
+    ends.locked { (endedAt: inout [String: Date]) -> Void in
+      endedAt[key] = Date()
+      var missions = MissionStore.read()
+      if let rearm = missions[key]?.rearmId, let id = UUID(uuidString: rearm) {
+        try? AlarmManager.shared.stop(id: id)
+        try? AlarmManager.shared.cancel(id: id)
+      }
+      missions.removeValue(forKey: key)
+      MissionStore.write(missions)
     }
-    missions.removeValue(forKey: key)
-    MissionStore.write(missions)
   }
 }
 
