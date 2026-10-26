@@ -1605,7 +1605,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       {showBox && !!row.gtin && !!row.label ? (
                         <Text style={styles.rowLabel}>Barcode lookup: {row.label}</Text>
                       ) : (
-                        !!sourceLineFor(row.name, row.label, row.brand) && (
+                        !boxChoice && !!sourceLineFor(row.name, row.label, row.brand) && (
                           <Text style={styles.rowLabel}>{sourceLineFor(row.name, row.label, row.brand)}</Text>
                         )
                       )}
@@ -1703,19 +1703,47 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           here rather than in the grocery screen afterwards. A row
                           that is new has these as the Brand and Flavor fields
                           above, which is why this line isn't shown for it. */}
-                      {!!rowItemId && (
+                      {!!rowItemId && boxChoice ? (
+                        <>
+                          <View style={styles.fieldPair}>
+                            {([
+                              ['BRAND', boxChoice.brand, 'Brand'],
+                              ['FLAVOR OR TYPE', boxChoice.variant, 'Flavor or type'],
+                            ] as const).map(([label, value, spoken]) => (
+                              <TouchableOpacity
+                                key={label}
+                                style={styles.fieldHalf}
+                                activeOpacity={interaction.activeOpacity}
+                                onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'box' ? null : { key: row.key, mode: 'box' }))}
+                                accessibilityRole="button"
+                                accessibilityLabel={`${spoken}: ${value ?? 'none'}. Change which brand or flavor of ${resolvedName ?? 'this item'} this is`}
+                              >
+                                <Text style={styles.fieldLabel}>{label}</Text>
+                                <View style={styles.fieldValueBox}>
+                                  <Text
+                                    style={[styles.fieldValue, !value && { color: colors.textTertiary }]}
+                                    numberOfLines={2}
+                                  >
+                                    {value ?? 'None'}
+                                  </Text>
+                                  <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
+                                </View>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                          <Text style={styles.rowLabel}>{boxNote}. Tap to change</Text>
+                        </>
+                      ) : !!rowItemId && (
                         <ActionRow
                           icon="pricetag-outline"
-                          title={boxText ?? 'No brand or flavor chosen'}
+                          title="No brand or flavor chosen"
                           note={boxNote}
-                          tone={boxText ? 'plain' : 'muted'}
+                          tone="muted"
                           onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'box' ? null : { key: row.key, mode: 'box' }))}
                           accessibilityLabel={
-                            boxText
-                              ? `Filed as ${boxText}. Change which brand or flavor of ${resolvedName ?? 'this item'} this is`
-                              : boxCount > 0
-                                ? `Choose which brand or flavor of ${resolvedName ?? 'this item'} this is`
-                                : `Add a brand or flavor to ${resolvedName ?? 'this item'}`
+                            boxCount > 0
+                              ? `Choose which brand or flavor of ${resolvedName ?? 'this item'} this is`
+                              : `Add a brand or flavor to ${resolvedName ?? 'this item'}`
                           }
                         />
                       )}
@@ -1980,6 +2008,19 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
       marginBottom: spacing.xs,
     },
+    // A tappable value shown in the shape of a field, for a brand or flavor the
+    // row already has and a tap changes rather than types.
+    fieldValueBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.xs,
+      paddingHorizontal: spacing.smd,
+      minHeight: 44,
+      backgroundColor: colors.bgSunken,
+      borderRadius: radius.md,
+    },
+    fieldValue: { flex: 1, color: colors.text, fontSize: font.md },
     fieldInput: {
       color: colors.text,
       fontSize: font.md,
