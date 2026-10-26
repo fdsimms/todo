@@ -286,6 +286,15 @@ describe('buildDayTimeline lanes', () => {
     expect(entries.map(e => e.lane).sort()).toEqual([0, 1]);
     expect(entries.every(e => e.laneCount === 2)).toBe(true);
   });
+
+  it('packs a short block by the height it is drawn at, so a mark just after it gets its own column', () => {
+    const { entries } = buildDayTimeline({
+      dayStart: MIDNIGHT,
+      tasks: [makeTask({ reminderTime: at(21, 10) })],
+      events: [makeEvent(at(21), at(21, 5), { id: 'a' })],
+    });
+    expect(entries.map(e => e.lane).sort()).toEqual([0, 1]);
+  });
 });
 
 describe('buildDayTimeline span', () => {
