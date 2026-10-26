@@ -1322,7 +1322,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     titleCaret.moveCaret(nextTitle);
     setDueDate(parsed.schedule.dueDate);
     setTitleSlotIn(parsed.schedule.slotIn === true);
-    setDeadline(parsed.schedule.deadline ?? null);
+    // Only a phrase that names a deadline ("by Friday") replaces one; a plain
+    // date phrase has no say about it, so an accepted deadline survives.
+    setDeadline(parsed.schedule.deadline ?? deadline);
     setTitleWindowStart(parsed.schedule.windowStart ?? null);
     setTitleWindowEnd(parsed.schedule.windowEnd ?? null);
     setTitleWindowStartSun(null);
@@ -2880,6 +2882,12 @@ parsed
 
           {/* What a title tooltip set that has no chip of its own to show it.
               Same row as the reminder above, and the same way out. */}
+          {!!deadline && appliedLine(
+            'flag-outline',
+            `Deadline ${formatDate(deadline)}`,
+            'Remove the deadline',
+            () => setDeadline(null),
+          )}
           {!!titleWindowStart && appliedLine(
             'time-outline',
             titleWindowStartSun
