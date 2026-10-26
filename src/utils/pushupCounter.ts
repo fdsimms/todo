@@ -35,6 +35,23 @@
  * shallow to count, and says so, since a rep that doesn't count with no reason
  * given is the whole complaint this replaced.
  *
+ * ## The phone has to stay put
+ *
+ * Depth only knows the face got closer and farther, and that is just as true of
+ * a phone swung back and forth in front of a still face. So the phone's own
+ * motion (`feedMotion`: the gyroscope's rotation and the accelerometer's
+ * gravity-free acceleration, from the device motion sensor) is read alongside,
+ * and a rep during which the phone moved doesn't count. The rep's window runs
+ * from the last time the face was at its highest (`repStartAt`, the moment the
+ * descent began) to the reading that would have counted it. Motion has to be
+ * sustained for `MOTION_MIN_MS`, so a single thump of the floor isn't enough,
+ * and the half second after a counted rep is ignored (`MOTION_QUIET_MS`),
+ * because the haptic for that rep shakes the phone itself.
+ *
+ * With no motion sensor there are no samples, so nothing is ever flagged and
+ * the count works as it did: the check removes a cheat, and shouldn't be able
+ * to take the whole mission away on a device that can't run it.
+ *
  * ## The proximity sensor
  *
  * It is the fallback, not the default, because its range is a few centimetres:
@@ -192,6 +209,18 @@ export const DEPTH_AWAY_MS = 1500;
  */
 export const DEPTH_SILENCE_MS = 3000;
 
+/** The phone turning faster than this (degrees per second) is being moved, not lying on the floor. */
+export const MOTION_ROTATION_DPS = 25;
+
+/** The phone accelerating harder than this (m/s², gravity removed) is being moved. */
+export const MOTION_ACCEL_MS2 = 0.6;
+
+/** Motion has to last this long to count as the phone moving, so one thump of the floor doesn't. */
+export const MOTION_MIN_MS = 120;
+
+/** Motion is ignored this long after a counted rep, since the rep's own haptic shakes the phone. */
+export const MOTION_QUIET_MS = 500;
+
 /** One reading of the depth reader. */
 export interface DepthReading {
   /** Metres to the nearest part of the middle of the frame, or null when none of it measured. */
@@ -216,7 +245,15 @@ export interface DepthCounterState {
   /** Whether a face has been over the phone at all. */
   seen: boolean;
   /** Why the last dip didn't count, or null when it did (or none has finished). */
-  lastMiss: 'shallow' | null;
+  lastMiss: 'shallow' | 'moved' | null;
+  /** When the face was last at its highest: the moment the current rep's descent began. */
+  repStartAt: number | null;
+  /** The last time the phone was found moving, or null if it never has been. */
+  movedAt: number | null;
+  /** When the phone started moving, while it still is and hasn't yet lasted `MOTION_MIN_MS`. */
+  motionSince: number | null;
+  /** Motion samples before this are ignored (the haptic after a counted rep). */
+  quietUntil: number;
   /** When the readings stopped finding a face, while they still don't. */
   absentSince: number | null;
   /** Nobody over the phone for `DEPTH_AWAY_MS`, after somebody was. */
@@ -226,7 +263,8 @@ export interface DepthCounterState {
 export function initialDepthState(): DepthCounterState {
   return {
     count: 0, phase: 'up', top: null, low: null, last: null,
-    seen: false, lastMiss: null, absentSince: null, away: false,
+    seen: false, lastMiss: null, repStartAt: null, movedAt: null, motionSince: null, quietUntil: 0,
+    absentSince: null, away: false,
   };
 }
 
@@ -245,7 +283,7 @@ export function feedDepth(state: DepthCounterState, reading: DepthReading): Dept
   }
   const d = reading.distance as number;
   if (d > DEPTH_MAX_FACE_M) return absent({ ...state, last: d }, reading.at);
-  return atDistance({ ...present(state), last: d, seen: true }, d);
+  return atDistance({ ...present(state), last: d, seen: true }, d, reading.at);
 }
 
 function present(state: DepthCounterState): DepthCounterState {
@@ -270,22 +308,57 @@ function tooClose(state: DepthCounterState, last: number): DepthCounterState {
   return { ...state, phase: 'down', low: last, lastMiss: null };
 }
 
-function atDistance(state: DepthCounterState, d: number): DepthCounterState {
+function atDistance(state: DepthCounterState, d: number, at: number): DepthCounterState {
   if (state.phase === 'down') {
     const low = state.low === null ? d : Math.min(state.low, d);
     if (d - low >= DEPTH_UP_M) {
-      return { ...state, count: state.count + 1, phase: 'up', top: d, low: d, lastMiss: null };
+      // The phone moved since the descent began: the face went down and up
+      // because the phone did. It starts the next rep from here, uncounted.
+      if (state.movedAt !== null && state.repStartAt !== null && state.movedAt >= state.repStartAt) {
+        return { ...state, phase: 'up', top: d, low: d, repStartAt: at, movedAt: null, lastMiss: 'moved' };
+      }
+      return {
+        ...state, count: state.count + 1, phase: 'up', top: d, low: d, repStartAt: at,
+        lastMiss: null, quietUntil: at + MOTION_QUIET_MS,
+      };
     }
     return { ...state, low };
   }
-  if (state.top === null || d > state.top) return { ...state, top: d, low: d };
-  const low = state.low === null ? d : Math.min(state.low, d);
-  if (state.top - d >= DEPTH_DOWN_M) return { ...state, phase: 'down', low: d, lastMiss: null };
+  if (state.top === null || d > state.top) return { ...state, top: d, low: d, repStartAt: at };
+  // Resting near the top is still before the descent, so the rep's window
+  // starts when the face leaves it, not when it first got there.
+  const atTop = state.top - d < DEPTH_SHALLOW_M ? { ...state, repStartAt: at } : state;
+  const low = atTop.low === null ? d : Math.min(atTop.low, d);
+  if (atTop.top! - d >= DEPTH_DOWN_M) return { ...atTop, phase: 'down', low: d, lastMiss: null };
   // A dip that turned back before reaching down.
-  if (state.top - low >= DEPTH_SHALLOW_M && d - low >= DEPTH_SHALLOW_M) {
-    return { ...state, low: d, lastMiss: 'shallow' };
+  if (atTop.top! - low >= DEPTH_SHALLOW_M && d - low >= DEPTH_SHALLOW_M) {
+    return { ...atTop, low: d, lastMiss: 'shallow' };
   }
-  return { ...state, low };
+  return { ...atTop, low };
+}
+
+/** One reading of the phone's own motion. Both are magnitudes, never negative. */
+export interface MotionSample {
+  /** Rotation rate, degrees per second. */
+  rotation: number;
+  /** Acceleration with gravity removed, m/s². */
+  acceleration: number;
+  /** When, in milliseconds since the epoch. */
+  at: number;
+}
+
+/**
+ * Feed one motion sample. Returns the same state when nothing changed (the
+ * usual case, a phone lying still), so a sensor sampling many times a second
+ * doesn't re-render the sheet.
+ */
+export function feedMotion(state: DepthCounterState, sample: MotionSample): DepthCounterState {
+  if (sample.at < state.quietUntil) return state;
+  const moving = sample.rotation >= MOTION_ROTATION_DPS || sample.acceleration >= MOTION_ACCEL_MS2;
+  if (!moving) return state.motionSince === null ? state : { ...state, motionSince: null };
+  const motionSince = state.motionSince ?? sample.at;
+  if (sample.at - motionSince >= MOTION_MIN_MS) return { ...state, motionSince, movedAt: sample.at };
+  return motionSince === state.motionSince ? state : { ...state, motionSince };
 }
 
 /**
@@ -303,6 +376,9 @@ export function depthSensorStatus(state: DepthCounterState): PushupSensorStatus 
   }
   if (state.phase === 'down') {
     return { tone: 'counting', line: 'Push back up', detail: 'It counts when you’re back up.' };
+  }
+  if (state.lastMiss === 'moved') {
+    return { tone: 'miss', line: 'Keep the phone still', detail: 'That one didn’t count because the phone moved.' };
   }
   if (state.lastMiss === 'shallow') {
     return { tone: 'miss', line: 'Go a little lower', detail: 'That one wasn’t deep enough to count.' };

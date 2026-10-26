@@ -5,12 +5,17 @@ import {
   DEPTH_MIN_VALID,
   DEPTH_NEAR_LOST_M,
   DEPTH_UP_M,
+  MOTION_ACCEL_MS2,
+  MOTION_MIN_MS,
+  MOTION_QUIET_MS,
+  MOTION_ROTATION_DPS,
   PUSHUP_MAX_COUNT,
   PUSHUP_MAX_NEAR_MS,
   PUSHUP_MIN_NEAR_MS,
   PUSHUP_MIN_REP_MS,
   depthSensorStatus,
   feedDepth,
+  feedMotion,
   feedProximity,
   initialDepthState,
   initialPushupState,
@@ -267,5 +272,100 @@ describe('depthSensorStatus', () => {
     expect(depthSensorStatus(gone(DEPTH_AWAY_MS)).tone).toBe('idle');
     expect(depthSensorStatus(feedDepth(gone(DEPTH_AWAY_MS), { distance: 0.55, valid: 1, at: 5000 })).tone)
       .toBe('counting');
+  });
+});
+
+describe('the phone moving', () => {
+  const still = { rotation: 0, acceleration: 0 };
+  const shaking = { rotation: MOTION_ROTATION_DPS + 10, acceleration: 0 };
+  const sliding = { rotation: 0, acceleration: MOTION_ACCEL_MS2 + 0.5 };
+
+  /** Depth readings 100ms apart from `startAt`, with motion samples fed in at given times. */
+  function runWithMotion(
+    distances: number[],
+    motion: { at: number; sample: { rotation: number; acceleration: number } }[],
+  ) {
+    const events = [
+      ...distances.map((distance, i) => ({ at: i * 100, distance })),
+      ...motion.map(m => ({ at: m.at, sample: m.sample })),
+    ].sort((a, b) => a.at - b.at);
+    return events.reduce((s, e) => 'sample' in e
+      ? feedMotion(s, { ...e.sample, at: e.at })
+      : feedDepth(s, { distance: e.distance, valid: 1, at: e.at }), initialDepthState());
+  }
+
+  /** Samples every 50ms across [from, to] with the same motion. */
+  const across = (from: number, to: number, sample: { rotation: number; acceleration: number }) => {
+    const out: { at: number; sample: typeof sample }[] = [];
+    for (let at = from; at <= to; at += 50) out.push({ at, sample });
+    return out;
+  };
+
+  it('counts a rep with the phone lying still', () => {
+    expect(runWithMotion(rep(0.55, 0.25), across(0, 400, still)).count).toBe(1);
+  });
+
+  it('does not count a rep made by swinging the phone', () => {
+    const s = runWithMotion(rep(0.55, 0.25), across(100, 400, shaking));
+    expect(s.count).toBe(0);
+    expect(s.lastMiss).toBe('moved');
+  });
+
+  it('catches a phone slid back and forth with no turning at all', () => {
+    expect(runWithMotion(rep(0.55, 0.25), across(100, 400, sliding)).count).toBe(0);
+  });
+
+  it('ignores a single thump, which is shorter than the phone being moved', () => {
+    const thump = [{ at: 200, sample: shaking }];
+    expect(runWithMotion(rep(0.55, 0.25), thump).count).toBe(1);
+    const brief = across(200, 200 + MOTION_MIN_MS - 50, shaking);
+    expect(runWithMotion(rep(0.55, 0.25), brief).count).toBe(1);
+  });
+
+  it('counts the next rep once the phone is still again', () => {
+    const first = runWithMotion(rep(0.55, 0.25), across(100, 400, shaking));
+    // Five readings per rep, 100ms apart, continuing from the first rep.
+    const next = rep(0.55, 0.25).reduce(
+      (s, distance, i) => feedDepth(s, { distance, valid: 1, at: 1000 + i * 100 }),
+      first,
+    );
+    expect(next.count).toBe(1);
+  });
+
+  it('does not count movement from before the rep started', () => {
+    // The phone is put down, then the rep begins from a settled top.
+    const settling = across(0, 300, shaking);
+    const s = runWithMotion(
+      [0.55, 0.55, 0.55, 0.55, 0.55, 0.4, 0.25, 0.4, 0.55].map(d => d),
+      settling,
+    );
+    expect(s.count).toBe(1);
+  });
+
+  it('ignores motion just after a counted rep, which is the rep’s own haptic', () => {
+    const counted = runWithMotion(rep(0.55, 0.25), []);
+    const at = 400;
+    const buzzed = across(at, at + MOTION_QUIET_MS - 50, shaking).reduce(
+      (s, m) => feedMotion(s, { ...m.sample, at: m.at }),
+      counted,
+    );
+    expect(buzzed.movedAt).toBeNull();
+    const next = [0.55, 0.4, 0.25, 0.4, 0.55].reduce(
+      (s, distance, i) => feedDepth(s, { distance, valid: 1, at: at + 100 + i * 100 }),
+      buzzed,
+    );
+    expect(next.count).toBe(2);
+  });
+
+  it('says to keep the phone still', () => {
+    const s = runWithMotion(rep(0.55, 0.25), across(100, 400, shaking));
+    const status = depthSensorStatus(s);
+    expect(status.tone).toBe('miss');
+    expect(status.line).toBe('Keep the phone still');
+  });
+
+  it('returns the same state for a still phone, so sampling does not re-render', () => {
+    const s = initialDepthState();
+    expect(feedMotion(s, { ...still, at: 100 })).toBe(s);
   });
 });
