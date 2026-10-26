@@ -2766,7 +2766,11 @@ export async function estimateMealNutrition(
   const useWebSearch = !!useSettingsStore.getState().aiFeatureConfig.nutritionEstimate.webSearch;
 
   const ask = (search: boolean) => callAnthropic({
-    max_tokens: search ? 4000 : 2000,
+    // The reply is one block of figures for the total plus one per component
+    // in the breakdown, each about 300 tokens, so a meal of several items
+    // (fried tofu, popcorn with butter, soft serve) outgrew 2000 and came back
+    // cut off. A short meal still stops far below the cap.
+    max_tokens: search ? 8000 : 6000,
     system: [
       'You estimate what one described meal contains, for somebody writing it down in a food diary.',
       ...(search ? [
