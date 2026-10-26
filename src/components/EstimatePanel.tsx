@@ -14,9 +14,6 @@ import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, EXTERNAL_NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
-import { useDishRatingStore } from '../store/useDishRatingStore';
-import { DISH_VERDICT_LABELS, dishForLabel } from '../utils/dishRating';
-import { offerDishRating } from '../utils/dishOffer';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { MAX_PENDING_ESTIMATES, isQueueableFailure, type PendingEstimate } from '../utils/estimateQueue';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -357,10 +354,6 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   // ==== offers: what has been eaten or filed before ====
   // Real data the user already owns beats a guess, so every offer is made
   // before the request rather than after it comes back.
-  //
-  // The answers given to restaurant dishes (Dishes), so a food you have had
-  // before can say whether you would order it again.
-  const ratedDishes = useDishRatingStore(s => s.dishes);
 
   // Matched per clause of the description (see `descriptionClauses`), not
   // over the whole string: "31 g baguette, 25g peach jam" is two foods, and
@@ -638,7 +631,6 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       mealPlanEntryId: mealPlanEntryId ?? null,
     });
     if (!written) { haptics.error(); return; }
-    offerDishRating({ ...written, at: new Date(written.atISO) });
     // The queued row this was refined from is answered by the entry just
     // written, so it leaves the queue with it rather than offering to log twice.
     if (reviewing) usePendingEstimateStore.getState().discard(reviewing.id);
@@ -897,8 +889,6 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
         at,
       });
     if (!written) { haptics.error(); return 'Couldn’t log this. Try again.'; }
-    // A recalled eaten-out meal is asked about again if it has no answer yet.
-    if (staged.kind === 'recall') offerDishRating({ ...written, at: new Date(written.atISO) });
 
     haptics.success();
     Keyboard.dismiss();
@@ -1153,11 +1143,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
 
   const renderStagedRow = (row: PendingRecallLog, index: number) => {
     const { food } = row;
-    const baseMeta = row.kind === 'recall' ? describeRecall(row.food) : describeCatalogRecall(row.food);
-    // Only the answer the person gave, never one inferred: a dish with no
-    // answer yet adds nothing here.
-    const ratedVerdict = row.kind === 'recall' ? dishForLabel(ratedDishes, food.label)?.verdict : null;
-    const meta = ratedVerdict ? `${baseMeta} · ${DISH_VERDICT_LABELS[ratedVerdict]}` : baseMeta;
+    const meta = row.kind === 'recall' ? describeRecall(row.food) : describeCatalogRecall(row.food);
     if (pendingLog?.kind === row.kind && pendingLog.food.key === food.key && pendingAmount) {
       const ask = askFor(row);
       const write = stagedWrite(row, pendingAmount);

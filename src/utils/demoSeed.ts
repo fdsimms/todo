@@ -17,7 +17,6 @@ import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
-import { useDishRatingStore } from '../store/useDishRatingStore';
 import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { useFastStore } from '../store/useFastStore';
@@ -2466,7 +2465,6 @@ export function seedDemoData(): void {
   // the pass would show the feature only to somebody who had already found it.
   seedMoodTasks(today);
   seedMilestone(today);
-  seedDishRatings(today);
   seedSuggestions(today);
   seedCookware();
   seedFast();
@@ -3735,20 +3733,6 @@ function seedSuggestions(today: Date): void {
     at.setHours(8, 0, 0, 0);
     insert({ ...base, id: 'demo-suggestion-alarm', title: bill.title, startAt: epoch, endAt: epoch, kind: 'task_alarm', taskId: bill.id, payload: { alarmAt: at.toISOString(), ringKind: 'alarm' } });
   }
-}
-
-/**
- * A few restaurant dishes across two places and all three answers, one with no
- * place, so the Dishes list shows its grouping, its filter and an empty-place
- * group. Through `addDish` like everything else here.
- */
-function seedDishRatings(today: Date): void {
-  const { addDish } = useDishRatingStore.getState();
-  addDish({ name: 'Pad see ew', place: 'Thai Orchid', verdict: 'loved', note: 'Ask for extra spicy', lastHadAt: subDays(today, 4) });
-  addDish({ name: 'Green curry', place: 'Thai Orchid', verdict: 'fine', note: 'A little too sweet', lastHadAt: subDays(today, 4) });
-  addDish({ name: 'Margherita pizza', place: "Luigi's", verdict: 'loved', lastHadAt: subDays(today, 20) });
-  addDish({ name: 'Lasagna', place: "Luigi's", verdict: 'avoid', note: 'Dry and heavy', lastHadAt: subDays(today, 20) });
-  addDish({ name: 'Chicken shawarma', verdict: 'fine', note: 'Food truck on 5th', lastHadAt: subDays(today, 11) });
 }
 
 function seedMilestone(today: Date): void {

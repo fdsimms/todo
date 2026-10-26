@@ -20,7 +20,7 @@ function readStats(): StorageStats | null {
     return {
       ...dbStorageStats(),
       photoBytes: recipeImagesBytes(),
-      otherFileBytes: { journal: storedFolderBytes('journal-photos'), task: storedFolderBytes('task-files'), dish: storedFolderBytes('dish-photos') },
+      otherFileBytes: { journal: storedFolderBytes('journal-photos'), task: storedFolderBytes('task-files') },
     };
   } catch {
     return null;
@@ -70,7 +70,7 @@ export function StorageSettings() {
 
   const unavailable = 'Unavailable while demo mode is on';
   const total = stats
-    ? stats.databaseBytes + stats.photoBytes + (stats.otherFileBytes?.journal ?? 0) + (stats.otherFileBytes?.task ?? 0) + (stats.otherFileBytes?.dish ?? 0)
+    ? stats.databaseBytes + stats.photoBytes + (stats.otherFileBytes?.journal ?? 0) + (stats.otherFileBytes?.task ?? 0)
     : null;
 
   let compactHint: string;
@@ -127,18 +127,6 @@ export function StorageSettings() {
             label="Task photos and files"
             hint="Saved on this device, outside the database"
             value={formatBytes(stats.otherFileBytes.task)}
-          />
-        </>
-      )}
-      {!!stats?.otherFileBytes?.dish && (
-        <>
-          <View style={styles.sep} />
-          <SettingsRow
-            entryId="storageDishPhotos"
-            icon="restaurant-outline"
-            label="Dish photos"
-            hint="Saved on this device, outside the database"
-            value={formatBytes(stats.otherFileBytes.dish)}
           />
         </>
       )}
