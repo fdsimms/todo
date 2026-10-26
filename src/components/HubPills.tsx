@@ -19,6 +19,7 @@ import { attentionLeftovers, freshnessOf } from '../utils/leftovers';
 // RecipePickerSheet makes, and for the reason given there.
 import { freshnessFill } from './LeftoversCard';
 import { AnimatedNumber } from './AnimatedNumber';
+import { usePillRowReveal } from '../hooks/usePillRowReveal';
 
 interface Props {
   hub: NavHubId;
@@ -57,6 +58,8 @@ export function HubPills({ hub, active }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
+  // Opened from the menu on a member past the edge, the row starts there.
+  const reveal = usePillRowReveal(active);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   // Scalars, so each selector is referentially stable and the row doesn't
   // re-render every time a stack or template is edited.
@@ -105,6 +108,7 @@ export function HubPills({ hub, active }: Props) {
 
   return (
     <ScrollView
+      {...reveal.scrollProps}
       horizontal
       showsHorizontalScrollIndicator={false}
       style={styles.scroll}
@@ -123,6 +127,7 @@ export function HubPills({ hub, active }: Props) {
         return (
           <TouchableOpacity
             key={tab.route}
+            onLayout={reveal.onPillLayout(tab.route)}
             style={[styles.pill, isActive && styles.pillActive]}
             onPress={() => {
               if (isActive) return;
