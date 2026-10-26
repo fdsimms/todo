@@ -22,6 +22,7 @@ import { QuickAlarmSheet } from '../components/QuickAlarmSheet';
 import { MissionSheet } from '../components/MissionSheet';
 import { PRACTICE_MISSION, describeMission } from '../utils/missions';
 import { useAlarmStore } from '../store/useAlarmStore';
+import { isSpent } from '../utils/alarms';
 import { useSheetMount } from '../hooks/useSheetMount';
 import type { Alarm } from '../types';
 import { RemindersOffNote } from '../components/RemindersOffNote';
@@ -77,7 +78,12 @@ export function RemindersScreen() {
   // whether the sensor sees you can be checked before an alarm depends on it.
   const [practiceOpen, setPracticeOpen] = useState(false);
   const mountPractice = useSheetMount(practiceOpen);
-  const alarmsOn = useAlarmStore(s => s.alarms.filter(a => a.enabled).length);
+  // Counted the way a row draws its switch (AlarmsSection): a one-off that has
+  // already rung stays `enabled` but reads off.
+  const alarmsOn = useAlarmStore(s => {
+    const now = new Date();
+    return s.alarms.filter(a => a.enabled && !isSpent(a, now)).length;
+  });
 
   const openAlarm = useCallback((alarm: Alarm | null) => {
     setEditingAlarm(alarm);
@@ -109,7 +115,7 @@ export function RemindersScreen() {
         title="Alarms & Reminders"
         subtitle={[
           alarmsOn > 0 ? `${alarmsOn} alarm${alarmsOn === 1 ? '' : 's'} on` : null,
-          reminders.length > 0 ? `${reminders.length} upcoming` : null,
+          reminders.length > 0 ? `${reminders.length} upcoming reminder${reminders.length === 1 ? '' : 's'}` : null,
         ].filter(Boolean).join(' · ') || undefined}
         actions={withScreenSettings(undefined, screenSettings.action)}
       />
