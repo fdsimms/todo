@@ -26,6 +26,8 @@ interface Props {
 }
 
 const grams = (g: number) => `${g.toLocaleString('en-US')} g`;
+/** A figure that wraps whole: a line break between the number and its unit reads as two things. */
+const gramsNoBreak = (g: number) => grams(g).replace(' ', '\u00A0');
 
 /**
  * Pick the cookware a food was weighed in, and say what comes out of the subtraction.
@@ -114,8 +116,8 @@ export function CookwareWeighIn({ weighIn, scaleText, surface = 'card', noun = '
             style={styles.result}
             accessibilityLabel={`${grams(result.grams + tare)} on the scale, minus ${grams(tare)} of cookware, is ${grams(result.grams)} of ${noun === 'pot' ? 'dish' : 'food'}`}
           >
-            {`${grams(result.grams + tare)} on scale − ${grams(tare)} cookware = `}
-            <Text style={styles.net}>{`${grams(result.grams)} ${noun === 'pot' ? 'dish' : 'food'}`}</Text>
+            {`${gramsNoBreak(result.grams + tare)} on scale − ${gramsNoBreak(tare)} cookware = `}
+            <Text style={styles.net}>{`${gramsNoBreak(result.grams)} ${noun === 'pot' ? 'dish' : 'food'}`}</Text>
           </Text>
         ) : (
           <Text style={styles.refusal}>{result.reason}</Text>
