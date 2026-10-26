@@ -243,8 +243,14 @@ function assignLanes(entries: TimelineEntry[]): void {
   if (run.length > 0) closeRun();
 }
 
-/** How many offsets deep a cascade goes before the rest share the last one. */
+/** How many offsets deep a cascade goes before it gives up and splits the column. */
 export const MAX_CASCADE_DEPTH = 3;
+
+/**
+ * The least time a later start must leave an earlier entry for its first title
+ * line to stay uncovered: about one line at the three-day view's scale.
+ */
+export const MIN_CASCADE_VISIBLE_MINUTES = 20;
 
 export interface CascadePlacement {
   /** 0 is flush left; each step in is one cascade offset. */
@@ -255,6 +261,12 @@ export interface CascadePlacement {
   overlays: boolean;
   /** Minutes of this entry nothing later starts on top of, or null when none does. */
   visibleMinutes: number | null;
+  /**
+   * True when stacking this entry's overlap would hide a title, so it takes the
+   * entry's `lane` and `laneCount` column like the Day view does. Every entry of
+   * an overlapping run answers the same.
+   */
+  split: boolean;
 }
 
 /**
@@ -268,6 +280,12 @@ export interface CascadePlacement {
  * covered because whatever overlaps it starts after it, and `visibleMinutes`
  * says how much of it a later start leaves, so the caller can cut a title to
  * the lines that fit. Results are in the input's order.
+ *
+ * A stack only works while each covered entry keeps a readable first line, so a
+ * run of overlapping entries falls back to the lane layout (`split`) when a later
+ * one starts within `MIN_CASCADE_VISIBLE_MINUTES` of an earlier one, or when it
+ * would sit deeper than `MAX_CASCADE_DEPTH`, where entries would cover each
+ * other completely. Narrow columns that stay readable beat a stack that doesn't.
  */
 export function cascadeEntries(entries: readonly TimelineEntry[]): CascadePlacement[] {
   const sorted = entries
@@ -285,7 +303,6 @@ export function cascadeEntries(entries: readonly TimelineEntry[]): CascadePlacem
     }
     let depth = 0;
     while (running.includes(depth)) depth += 1;
-    depth = Math.min(depth, MAX_CASCADE_DEPTH);
     depths[rank] = depth;
 
     const next = sorted[rank + 1]?.entry.startMinutes;
@@ -295,8 +312,29 @@ export function cascadeEntries(entries: readonly TimelineEntry[]): CascadePlacem
       order: rank + 1,
       overlays: running.length > 0,
       visibleMinutes: nextStart === null ? null : nextStart - entry.startMinutes,
+      split: false,
     };
   });
+
+  // The runs are the ones `assignLanes` packs: a run ends where nothing in it is still going.
+  let run: number[] = [];
+  let runEnd = -1;
+  const closeRun = () => {
+    const cramped = run.some(index => {
+      const { depth, visibleMinutes } = placements[index];
+      return depth > MAX_CASCADE_DEPTH
+        || (visibleMinutes !== null && visibleMinutes < MIN_CASCADE_VISIBLE_MINUTES);
+    });
+    for (const index of run) placements[index].split = cramped;
+    run = [];
+    runEnd = -1;
+  };
+  sorted.forEach(({ entry, index }) => {
+    if (run.length > 0 && entry.startMinutes >= runEnd) closeRun();
+    run.push(index);
+    runEnd = Math.max(runEnd, laneEnd(entry));
+  });
+  if (run.length > 0) closeRun();
   return placements;
 }
 

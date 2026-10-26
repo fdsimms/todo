@@ -370,7 +370,7 @@ export function MultiDayTimeline({
                   const span = { start: entry.startMinutes, end: entry.endMinutes };
                   const roomyLines = rawHeight > MIN_BLOCK_HEIGHT * 2 ? 3 : 1;
                   // Whatever starts on top of this block leaves it only the time before that.
-                  const titleLines = placement.visibleMinutes === null
+                  const titleLines = placement.split || placement.visibleMinutes === null
                     ? roomyLines
                     : Math.max(1, Math.min(
                       roomyLines,
@@ -386,11 +386,11 @@ export function MultiDayTimeline({
                         {
                           top: at(entry.startMinutes),
                           height: blockHeight,
-                          left: placement.depth * CASCADE_STEP,
-                          right: 0,
-                          zIndex: placement.order,
+                          ...(placement.split
+                            ? { left: `${(100 / entry.laneCount) * entry.lane}%` as const, width: `${100 / entry.laneCount}%` as const }
+                            : { left: placement.depth * CASCADE_STEP, right: 0, zIndex: placement.order }),
                         },
-                        placement.overlays && styles.blockOverlay,
+                        placement.overlays && !placement.split && styles.blockOverlay,
                         beingDragged && styles.blockLifted,
                       ]}
                       activeOpacity={interaction.activeOpacity}
