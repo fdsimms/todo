@@ -44,7 +44,7 @@ interface MeasurableView {
 }
 
 interface PaintSelectionContextValue {
-  register: (id: string, view: MeasurableView | null) => void;
+  register: (key: string, view: MeasurableView | null, id: string) => void;
 }
 
 const PaintSelectionContext = createContext<PaintSelectionContextValue | null>(null);
@@ -80,8 +80,12 @@ export function PaintSelectionSuspend({
  * Pass a null id for a row that is a throwaway copy of another — a drag
  * overlay, say. Registering it would claim the real row's slot under the same
  * id, and unmounting it would then evict a row that's still on screen.
+ *
+ * A second *live* row for the same selectable id (the pinned block's copy of a
+ * task) passes its own `key`: it is measured and hit-tested as a row of its
+ * own, and selects `id`. Keyed by id alone it would collide with the real row.
  */
-export function usePaintSelectionRow(id: string | null) {
+export function usePaintSelectionRow(id: string | null, key: string | null = id) {
   const ctx = useContext(PaintSelectionContext);
   const suspended = useContext(PaintSelectionSuspendedContext);
   return useCallback(
@@ -89,14 +93,14 @@ export function usePaintSelectionRow(id: string | null) {
     // type React won't reconcile with a narrower callback, and the only thing
     // needed off the instance is measureInWindow.
     (view: any) => {
-      if (id === null || suspended) return;
-      ctx?.register(id, (view as MeasurableView | null) ?? null);
+      if (id === null || key === null || suspended) return;
+      ctx?.register(key, (view as MeasurableView | null) ?? null, id);
     },
     // The context value is stable for the provider's lifetime, so this ref
     // callback is too — React won't churn it with null/node on every render.
     // `suspended` changing swaps the callback, and React then detaches the old
     // one (unregistering the row) before attaching the new one.
-    [ctx, id, suspended],
+    [ctx, id, key, suspended],
   );
 }
 
@@ -140,6 +144,9 @@ export function PaintSelectionProvider({
   const containerXRef = useRef(0);
   const containerWidthRef = useRef(0);
   const rowsRef = useRef<Map<string, MeasurableView>>(new Map());
+  // Registration key -> the id that row selects. They differ only for the
+  // pinned block's copy of a task, which has a band of its own.
+  const rowIdsRef = useRef<Map<string, string>>(new Map());
   // Row bands, sorted top to bottom, snapshotted once per gesture.
   const rectsRef = useRef<PaintRowRect[]>([]);
   const paintingRef = useRef(false);
@@ -167,9 +174,14 @@ export function PaintSelectionProvider({
   const onPaintingChangeRef = useRef(onPaintingChange);
   onPaintingChangeRef.current = onPaintingChange;
 
-  const register = useCallback((id: string, view: MeasurableView | null) => {
-    if (view) rowsRef.current.set(id, view);
-    else rowsRef.current.delete(id);
+  const register = useCallback((key: string, view: MeasurableView | null, id: string) => {
+    if (view) {
+      rowsRef.current.set(key, view);
+      rowIdsRef.current.set(key, id);
+    } else {
+      rowsRef.current.delete(key);
+      rowIdsRef.current.delete(key);
+    }
   }, []);
   const ctx = useMemo(() => ({ register }), [register]);
 
@@ -186,9 +198,10 @@ export function PaintSelectionProvider({
       }
       pendingYRef.current = null;
       if (id === lastIdRef.current) return;
-      const ids = rowIdsBetween(rectsRef.current, lastIdRef.current, id);
+      const keys = rowIdsBetween(rectsRef.current, lastIdRef.current, id);
       lastIdRef.current = id;
-      for (const rowId of ids) {
+      for (const key of keys) {
+        const rowId = rowIdsRef.current.get(key) ?? key;
         if (paintedRef.current.has(rowId)) continue;
         paintedRef.current.add(rowId);
         if (paintValueRef.current === null) {
