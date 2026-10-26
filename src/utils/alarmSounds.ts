@@ -1,9 +1,7 @@
-import type { AlarmSoundFile, WakeSong } from '../types';
+import type { AlarmSoundFile } from '../types';
 
 /**
- * What an alarm rings with, and the song it plays once its mission opens.
- *
- * ## The ringtone
+ * What an alarm rings with.
  *
  * AlarmKit plays an alert sound by file name only (`AlertSound.named`), and
  * looks for it where every notification sound is looked for: the app bundle
@@ -17,14 +15,6 @@ import type { AlarmSoundFile, WakeSong } from '../types';
  * An alarm whose sound file has gone (an imported sound deleted, a fresh
  * install) rings with the default rather than not at all: `syncAlarmToDevice`
  * asks for the file and falls back.
- *
- * ## The wake-up song
- *
- * An alarm's alert can't play a song: the sound is a file under 30 seconds,
- * and Apple Music tracks are protected and can't be copied into one. So the
- * song is played by the app, once the mission sheet opens (a mission is what
- * gets the app opened after the ring), and stopped when the mission is done or
- * given up. That is why only an alarm with a mission has one.
  */
 
 /** The tones the app ships, in the order the picker lists them. */
@@ -120,29 +110,4 @@ export function parseAlarmSoundFiles(json: string | null): AlarmSoundFile[] {
   } catch {
     return [];
   }
-}
-
-/** A wake-up song as stored or handed over, or null if it doesn't name one. */
-export function normalizeWakeSong(raw: unknown): WakeSong | null {
-  if (typeof raw !== 'object' || raw === null) return null;
-  const { persistentId, title, artist } = raw as Record<string, unknown>;
-  if (typeof persistentId !== 'string' || !/^\d+$/.test(persistentId) || persistentId === '0') return null;
-  const name = typeof title === 'string' && title.trim() !== '' ? title.trim() : 'Untitled song';
-  const by = typeof artist === 'string' && artist.trim() !== '' ? artist.trim() : null;
-  return { persistentId, title: name, artist: by };
-}
-
-/** Reads a wake_song column (JSON text) back. */
-export function parseWakeSong(json: unknown): WakeSong | null {
-  if (typeof json !== 'string' || json === '') return null;
-  try {
-    return normalizeWakeSong(JSON.parse(json));
-  } catch {
-    return null;
-  }
-}
-
-/** "Mr. Blue Sky · ELO", or the title alone. */
-export function describeWakeSong(song: WakeSong): string {
-  return song.artist ? `${song.title} · ${song.artist}` : song.title;
 }

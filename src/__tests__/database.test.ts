@@ -958,7 +958,6 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       id: 'al1', label: 'Wake up', hour: 7, minute: 30, repeatDays: [1, 3, 5], fireAt: null, enabled: true,
       mission: { kind: 'pushups' as const, count: 15 }, quick: false, armedAt: '2026-10-14T07:00:00.000Z',
       missionDoneAt: null, missionGaveUp: false, sound: 'custom:snd1',
-      wakeSong: { persistentId: '18446744073709551615', title: 'Mr. Blue Sky', artist: 'ELO' },
       override: { date: '2026-10-26', hour: 6, minute: 30 },
       createdAt: '2026-10-14T07:00:00.000Z',
     };
@@ -966,8 +965,8 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(dbGetAlarms()).toEqual([alarm]);
     dbSaveAlarm({ ...alarm, enabled: false, missionGaveUp: true, missionDoneAt: '2026-10-15T07:05:00.000Z' });
     expect(dbGetAlarms()[0]).toMatchObject({ enabled: false, missionGaveUp: true });
-    dbSaveAlarm({ ...alarm, sound: null, wakeSong: null, override: null });
-    expect(dbGetAlarms()[0]).toMatchObject({ sound: null, wakeSong: null, override: null });
+    dbSaveAlarm({ ...alarm, sound: null, override: null });
+    expect(dbGetAlarms()[0]).toMatchObject({ sound: null, override: null });
     dbDeleteAlarm('al1');
     expect(dbGetAlarms()).toEqual([]);
   });

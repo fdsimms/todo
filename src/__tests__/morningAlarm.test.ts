@@ -20,7 +20,7 @@ function alarm(over: Partial<Alarm> = {}): Alarm {
   return {
     id: 'wake', label: 'Wake up', hour: 7, minute: 0, repeatDays: [1, 2, 3, 4, 5], fireAt: null, enabled: true,
     mission: null, quick: false, armedAt: new Date(2026, 9, 1).toISOString(), missionDoneAt: null, missionGaveUp: false,
-    sound: null, wakeSong: null, override: null, createdAt: new Date(2026, 9, 1).toISOString(), ...over,
+    sound: null, override: null, createdAt: new Date(2026, 9, 1).toISOString(), ...over,
   };
 }
 

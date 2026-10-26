@@ -32,8 +32,6 @@ import { useAlarmStore } from '../store/useAlarmStore';
 const NOW = new Date(2026, 9, 14, 10, 0);
 const pushups = { kind: 'pushups' as const, count: 20 };
 
-const song = { persistentId: '1234567890123456789', title: 'Mr. Blue Sky', artist: 'ELO' };
-
 beforeEach(() => {
   mockRows.clear();
   for (const key of Object.keys(mockSettings)) delete mockSettings[key];
@@ -69,19 +67,12 @@ describe('useAlarmStore', () => {
   });
 
   it('sets a quick alarm minutes from now, and remembers how it was set up for the next', () => {
-    const setup = { mission: pushups, sound: 'beacon', wakeSong: song };
+    const setup = { mission: pushups, sound: 'beacon' };
     const nap = useAlarmStore.getState().addQuickAlarm(30, setup, NOW);
     expect(nap).toMatchObject({ quick: true, hour: 10, minute: 30, fireAt: new Date(2026, 9, 14, 10, 30).toISOString(), ...setup });
     expect(useAlarmStore.getState().lastQuickSetup()).toEqual(setup);
-    useAlarmStore.getState().addQuickAlarm(10, { mission: null, sound: null, wakeSong: null }, NOW);
-    expect(useAlarmStore.getState().lastQuickSetup()).toEqual({ mission: null, sound: null, wakeSong: null });
-  });
-
-  it('keeps a wake-up song only on an alarm with a mission', () => {
-    const plain = useAlarmStore.getState().saveAlarm({ label: '', hour: 7, minute: 0, repeatDays: [], mission: null, wakeSong: song }, NOW);
-    expect(plain.wakeSong).toBeNull();
-    const withMission = useAlarmStore.getState().saveAlarm({ label: '', hour: 7, minute: 0, repeatDays: [], mission: pushups, wakeSong: song }, NOW);
-    expect(withMission.wakeSong).toEqual(song);
+    useAlarmStore.getState().addQuickAlarm(10, { mission: null, sound: null }, NOW);
+    expect(useAlarmStore.getState().lastQuickSetup()).toEqual({ mission: null, sound: null });
   });
 
   it('reads an unknown sound as the default', () => {
@@ -119,7 +110,7 @@ describe('useAlarmStore', () => {
     if (result.status !== 'ok') throw new Error('import failed');
     const ref = `custom:${result.sound.id}`;
     const alarm = useAlarmStore.getState().saveAlarm({ label: '', hour: 7, minute: 0, repeatDays: [1], mission: null, sound: ref }, NOW);
-    useAlarmStore.getState().addQuickAlarm(10, { mission: null, sound: ref, wakeSong: null }, NOW);
+    useAlarmStore.getState().addQuickAlarm(10, { mission: null, sound: ref }, NOW);
     mockSync.mockClear();
     useAlarmStore.getState().deleteSound(result.sound.id);
     expect(useAlarmStore.getState().sounds).toEqual([]);
@@ -146,7 +137,7 @@ describe('useAlarmStore', () => {
 
   it('stamps a finished mission, and lets a spent quick alarm go with it', () => {
     const wake = useAlarmStore.getState().saveAlarm({ label: '', hour: 7, minute: 0, repeatDays: [1, 2, 3, 4, 5], mission: pushups }, NOW);
-    const nap = useAlarmStore.getState().addQuickAlarm(10, { mission: pushups, sound: null, wakeSong: null }, NOW);
+    const nap = useAlarmStore.getState().addQuickAlarm(10, { mission: pushups, sound: null }, NOW);
     const after = new Date(2026, 9, 14, 10, 20);
     useAlarmStore.getState().markMissionDone(wake.id, true, after);
     useAlarmStore.getState().markMissionDone(nap.id, false, after);
@@ -156,8 +147,8 @@ describe('useAlarmStore', () => {
   });
 
   it('prunes spent quick alarms unless a mission is still owed for one', () => {
-    const owedNap = useAlarmStore.getState().addQuickAlarm(10, { mission: pushups, sound: null, wakeSong: null }, NOW);
-    const doneNap = useAlarmStore.getState().addQuickAlarm(10, { mission: null, sound: null, wakeSong: null }, NOW);
+    const owedNap = useAlarmStore.getState().addQuickAlarm(10, { mission: pushups, sound: null }, NOW);
+    const doneNap = useAlarmStore.getState().addQuickAlarm(10, { mission: null, sound: null }, NOW);
     const after = new Date(2026, 9, 14, 11, 0);
     useAlarmStore.getState().pruneSpent(new Set([owedNap.id]), after);
     expect(useAlarmStore.getState().alarms.map(a => a.id)).toEqual([owedNap.id]);
@@ -192,7 +183,7 @@ describe('useAlarmStore', () => {
 
   it('sets a one-off alarm that goes once it has rung', () => {
     const at = new Date(2026, 9, 17, 9, 0, 30);
-    const once = useAlarmStore.getState().addOneOffAlarm(at, { mission: pushups, sound: 'chime', wakeSong: null }, NOW);
+    const once = useAlarmStore.getState().addOneOffAlarm(at, { mission: pushups, sound: 'chime' }, NOW);
     expect(once).toMatchObject({ quick: true, hour: 9, minute: 0, repeatDays: [], fireAt: new Date(2026, 9, 17, 9, 0).toISOString(), mission: pushups, sound: 'chime' });
     expect(mockSync).toHaveBeenCalledWith(once);
   });

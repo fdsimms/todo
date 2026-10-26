@@ -38,7 +38,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/alarmOverride.ts` — parseAlarmOverride
 - `src/utils/alarmSchedule.ts` — syncAlarmToDevice, removeAlarmFromDevice
 - `src/utils/alarmSoundDevice.ts` — soundFileForAlarm, PickedSound, pickSoundFile, installImportedSound, removeImportedSound, playSoundPreview, stopSoundPreview
-- `src/utils/alarmSounds.ts` — BUILT_IN_SOUNDS, BuiltInSoundId, CUSTOM_SOUND_PREFIX, ALARM_SOUND_MAX_SECONDS, ALARM_SOUNDS_SETTING, DEFAULT_SOUND_LABEL, isBuiltInSound, customSoundId, customSoundRef, parseAlarmSound, +7 more
+- `src/utils/alarmSounds.ts` — BUILT_IN_SOUNDS, BuiltInSoundId, CUSTOM_SOUND_PREFIX, ALARM_SOUND_MAX_SECONDS, ALARM_SOUNDS_SETTING, DEFAULT_SOUND_LABEL, isBuiltInSound, customSoundId, customSoundRef, parseAlarmSound, +4 more
 - `src/utils/alarms.ts` — QUICK_ALARM_MINUTES, QUICK_ALARM_CHOICES, MISSED_MISSION_WINDOW_MS, formatAlarmMinutes, atTime, nextClockTime, isRepeating, calendarKey, repeatingRingOn, nextFireAt, +12 more
 - `src/utils/alcohol.ts` — US_STANDARD_DRINK_G, STANDARD_DRINK_SIZES, setDisplayDrinkGrams, getDisplayDrinkGrams, normalizeStandardDrinkGrams, DRINK_PRESETS, DRINK_STEP, MAX_ENTRY_DRINKS, gramsFromDrinks, drinksFromGrams, +9 more
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
@@ -424,7 +424,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/proteinPerWeight.ts` — ProteinPerWeight, PROTEIN_PER_WEIGHT_RANGE, parseProteinPerWeight, serializeProteinPerWeight, switchProteinUnit, proteinTargetFromWeight
 - `src/utils/pulseLog.ts` — PulseKind, PulseEntry, isPlausiblePulse, parsePulseInput, parsePulseSeries, standalonePulses, pulsesSince
 - `src/utils/purchaseInterval.ts` — MIN_PURCHASE_GAP_DAYS, nextPurchaseIntervalDays
-- `src/utils/pushupCounter.ts` — PUSHUP_MIN_NEAR_MS, PUSHUP_MIN_REP_MS, PUSHUP_MAX_NEAR_MS, PUSHUP_DEFAULT_COUNT, PUSHUP_MAX_COUNT, PushupCounterState, initialPushupState, feedProximity, tapRep, normalizePushupCount
+- `src/utils/pushupCounter.ts` — PUSHUP_MIN_NEAR_MS, PUSHUP_MIN_REP_MS, PUSHUP_MAX_NEAR_MS, PUSHUP_DEFAULT_COUNT, PUSHUP_MAX_COUNT, PushupMiss, PushupCounterState, initialPushupState, feedProximity, tapRep, +3 more
 - `src/utils/quantity.ts` — Rational, rational, multiplyRational, rationalToNumber, rationalFromNumber, formatRational, formatQuantityAmount, unitKey, inflectUnit, SIZE_UNITS, +7 more
 - `src/utils/quickActions.ts` — STATIC_ACTIONS, QuickActionScreen, quickActionsFor, handleQuickActionId, useHomeScreenQuickActions, publishQuickActions
 - `src/utils/quickAddPhrases.ts` — QuickAddPhrase, QuickAddPhraseSection, QUICK_ADD_PHRASES

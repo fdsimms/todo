@@ -6,7 +6,6 @@ import {
   pendingNativeMissions,
   type PendingNativeMission,
 } from 'todo-alarmkit-bridge';
-import { playSong, stopSong } from 'todo-music-bridge';
 import { useTaskStore } from '../store/useTaskStore';
 import { useAlarmStore } from '../store/useAlarmStore';
 import { useDemoStore } from '../store/useDemoStore';
@@ -18,7 +17,6 @@ import { requestDismissAllSheets } from '../utils/sheetModal';
 import { animateLayout } from '../utils/layoutAnimation';
 import { asksOnCompletion } from '../utils/deliverables';
 import { missedMissionRing } from '../utils/alarms';
-import { describeWakeSong } from '../utils/alarmSounds';
 import {
   MISSION_COUNTING_GRACE_SECONDS,
   MISSION_HEARTBEAT_MS,
@@ -48,8 +46,6 @@ const POLL_MS = 5_000;
  *   still comes back if the app dies mid-set). Cancel puts the next ring
  *   `MISSION_REARM_SECONDS` out and opens it again then; only done or the held
  *   Give up ends it.
- * - **Plays the alarm's wake-up song** while its mission is open, and stops it
- *   when the sheet closes for any reason (alarmSounds.ts).
  *
  * Nothing runs in demo mode: the pending list is the real device's, and the
  * demo's tasks and alarms are not the ones it names.
@@ -66,6 +62,9 @@ export function AlarmMissionHost() {
   const [tick, setTick] = useState(0);
   // A mission cancelled a moment ago waits for its next ring before opening again.
   const quietUntil = useRef(new Map<string, number>());
+  // Missions just done or given up, until the native pending list has been
+  // read back without them (see `ending` in owedMissions).
+  const ending = useRef(new Set<string>());
   const [promptTaskId, setPromptTaskId] = useState<string | null>(null);
 
   const ready = tasksReady && alarmsReady && !demo;
@@ -104,6 +103,7 @@ export function AlarmMissionHost() {
       taskById: id => byId.get(id),
       alarmById: id => alarmById.get(id),
       missedRingAlarmIds: alarms.filter(a => missedMissionRing(a, now) !== null).map(a => a.id),
+      ending: ending.current,
     });
   }, [ready, pending, tasks, alarms, tick]);
 
@@ -150,28 +150,20 @@ export function AlarmMissionHost() {
     return () => clearInterval(timer);
   }, [currentKey]);
 
-  // The alarm's wake-up song plays while its mission is open. Read once per
-  // opening, so an edit to the alarm mid-mission doesn't restart the song.
-  const [nowPlaying, setNowPlaying] = useState<string | null>(null);
-  useEffect(() => {
-    if (!current || current.source !== 'alarm') return;
-    const song = useAlarmStore.getState().alarms.find(a => a.id === current.id)?.wakeSong ?? null;
-    if (!song) return;
-    let open = true;
-    void playSong(song.persistentId).then(started => {
-      if (open && started) setNowPlaying(describeWakeSong(song));
-    });
-    return () => {
-      open = false;
-      setNowPlaying(null);
-      void stopSong();
-    };
-  }, [currentKey]);
-
   const finish = (o: OwedMission, gaveUp: boolean) => {
     useMissionStore.getState().hide();
     quietUntil.current.delete(o.key);
-    void completeNativeMission(o.key).then(refresh);
+    // Held out of `owed` until the pending list is read back without it: the
+    // list in hand still names it, and owing it again would reopen the
+    // counter, whose heartbeat re-arms the alarm.
+    ending.current.add(o.key);
+    setTick(t => t + 1);
+    void completeNativeMission(o.key)
+      .then(refresh)
+      .finally(() => {
+        ending.current.delete(o.key);
+        setTick(t => t + 1);
+      });
     if (o.source === 'alarm') {
       useAlarmStore.getState().markMissionDone(o.id, gaveUp);
       return;
@@ -189,6 +181,10 @@ export function AlarmMissionHost() {
   };
 
   const cancel = (o: OwedMission) => {
+    // Only the open mission can be cancelled. The counter's Done, tapped as
+    // the sheet slides away after `finish`, lands here too, and re-arming
+    // then would bring back the alarm that was just finished.
+    if (useMissionStore.getState().activeKey !== o.key) return;
     useMissionStore.getState().hide();
     quietUntil.current.set(o.key, Date.now() + MISSION_REARM_SECONDS * 1000);
     const native = nativeMission(o.key, o.mission, o.title);
@@ -210,7 +206,6 @@ export function AlarmMissionHost() {
           onDone={() => finish(shown, false)}
           onClose={() => cancel(shown)}
           onGiveUp={() => finish(shown, true)}
-          nowPlaying={nowPlaying}
         />
       )}
       {shownPrompt && (

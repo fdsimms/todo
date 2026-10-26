@@ -117,7 +117,6 @@
     "todo-metrickit-bridge": "file:./modules/todo-metrickit-bridge",
     "todo-nfc-bridge": "file:./modules/todo-nfc-bridge",
     "todo-privacy-shield": "file:./modules/todo-privacy-shield",
-    "todo-music-bridge": "file:./modules/todo-music-bridge",
     "todo-proximity-bridge": "file:./modules/todo-proximity-bridge",
     "todo-screentime-bridge": "file:./modules/todo-screentime-bridge",
     "todo-speech-bridge": "file:./modules/todo-speech-bridge",

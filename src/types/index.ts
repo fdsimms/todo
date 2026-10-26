@@ -3018,12 +3018,6 @@ export interface Alarm {
    */
   sound: string | null;
   /**
-   * A song from the Apple Music library, played while its mission is open and
-   * stopped once the mission is done or given up. Only an alarm with a
-   * mission has one; the alert itself can't play a song (alarmSounds.ts).
-   */
-  wakeSong: WakeSong | null;
-  /**
    * A one-night change to a repeating alarm ("6:30 just tomorrow"): on that
    * calendar date it rings at this time instead, and after that day it goes
    * back to its own. Null for none. See src/utils/morningAlarm.ts.
@@ -3038,18 +3032,6 @@ export interface AlarmOverride {
   date: string;
   hour: number;
   minute: number;
-}
-
-/** A song picked from the music library for an alarm (Alarm.wakeSong). */
-export interface WakeSong {
-  /**
-   * MPMediaItem.persistentID as a decimal string: it is a UInt64, which a JS
-   * number can't hold exactly. Only meaningful on the device it was picked on,
-   * which is fine for a device-only alarm.
-   */
-  persistentId: string;
-  title: string;
-  artist: string | null;
 }
 
 /**

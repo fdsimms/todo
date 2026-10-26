@@ -110,4 +110,16 @@ describe('owedMissions', () => {
     });
     expect(missedOnly.map(o => o.title)).toEqual(['Alarm']);
   });
+
+  it('neither owes nor lets go of a mission that is being ended', () => {
+    const { owed, stale } = owedMissions({
+      pending: [pending('alarm:a1'), pending('task:t1')],
+      taskById: () => task(),
+      alarmById: () => alarm(),
+      missedRingAlarmIds: ['a1'],
+      ending: new Set(['alarm:a1']),
+    });
+    expect(owed.map(o => o.key)).toEqual(['task:t1']);
+    expect(stale).toEqual([]);
+  });
 });

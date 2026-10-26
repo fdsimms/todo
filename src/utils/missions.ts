@@ -152,6 +152,12 @@ interface PendingInput {
  * is gone or no longer asks it: a task completed, archived or deleted (on this
  * device or another), its mission removed, an alarm deleted. Without that a
  * task finished on the iPad would keep its phone ringing every 15 seconds.
+ *
+ * `ending` names missions just done or given up whose native entry is still
+ * being cleared. They are neither owed nor stale: the pending list read before
+ * the clear still names them, and owing one again in that gap reopened the
+ * counter at once, whose heartbeat re-armed the alarm the person had just
+ * stopped.
  */
 export function owedMissions(input: {
   pending: readonly PendingInput[];
@@ -159,16 +165,20 @@ export function owedMissions(input: {
   alarmById: (id: string) => { id: string; label: string; mission: AlarmMission | null } | undefined;
   /** Alarms whose ring passed with the mission undone. */
   missedRingAlarmIds: readonly string[];
+  /** Missions just done or given up, still being cleared natively. */
+  ending?: ReadonlySet<string>;
 }): { owed: OwedMission[]; stale: string[] } {
   const owed: OwedMission[] = [];
   const stale: string[] = [];
   const seen = new Set<string>();
+  const ending = input.ending ?? new Set<string>();
   const add = (o: OwedMission) => {
-    if (seen.has(o.key)) return;
+    if (seen.has(o.key) || ending.has(o.key)) return;
     seen.add(o.key);
     owed.push(o);
   };
   for (const p of input.pending) {
+    if (ending.has(p.key)) continue;
     const target = parseMissionKey(p.key);
     if (!target) {
       stale.push(p.key);

@@ -36,9 +36,16 @@ export const PUSHUP_DEFAULT_COUNT = 20;
 /** The highest count the editor offers. */
 export const PUSHUP_MAX_COUNT = 200;
 
+/** Why the last cover didn't count: too brief, too long, or too soon after the rep before. */
+export type PushupMiss = 'brief' | 'long' | 'soon';
+
 export interface PushupCounterState {
   /** Reps counted so far. */
   count: number;
+  /** Covers the sensor has reported, counted or not: what the status line says it saw. */
+  seen: number;
+  /** Why the last finished cover didn't count, or null when it did (or none has finished). */
+  lastMiss: PushupMiss | null;
   /** When the sensor was last covered, while it still is; null while it's clear. */
   nearSince: number | null;
   /** When the last rep was counted, or null before the first. */
@@ -46,7 +53,7 @@ export interface PushupCounterState {
 }
 
 export function initialPushupState(): PushupCounterState {
-  return { count: 0, nearSince: null, lastRepAt: null };
+  return { count: 0, seen: 0, lastMiss: null, nearSince: null, lastRepAt: null };
 }
 
 /**
@@ -60,14 +67,15 @@ export function initialPushupState(): PushupCounterState {
 export function feedProximity(state: PushupCounterState, near: boolean, at: number): PushupCounterState {
   if (near) {
     if (state.nearSince !== null) return state;
-    return { ...state, nearSince: at };
+    return { ...state, seen: state.seen + 1, nearSince: at };
   }
   if (state.nearSince === null) return state;
   const held = at - state.nearSince;
-  const cleared = { ...state, nearSince: null };
-  if (held < PUSHUP_MIN_NEAR_MS || held > PUSHUP_MAX_NEAR_MS) return cleared;
-  if (state.lastRepAt !== null && at - state.lastRepAt < PUSHUP_MIN_REP_MS) return cleared;
-  return { count: state.count + 1, nearSince: null, lastRepAt: at };
+  const missed = (lastMiss: PushupMiss): PushupCounterState => ({ ...state, lastMiss, nearSince: null });
+  if (held < PUSHUP_MIN_NEAR_MS) return missed('brief');
+  if (held > PUSHUP_MAX_NEAR_MS) return missed('long');
+  if (state.lastRepAt !== null && at - state.lastRepAt < PUSHUP_MIN_REP_MS) return missed('soon');
+  return { ...state, count: state.count + 1, lastMiss: null, nearSince: null, lastRepAt: at };
 }
 
 /**
@@ -76,7 +84,44 @@ export function feedProximity(state: PushupCounterState, near: boolean, at: numb
  */
 export function tapRep(state: PushupCounterState, at: number): PushupCounterState {
   if (state.lastRepAt !== null && at - state.lastRepAt < PUSHUP_MIN_REP_MS) return state;
-  return { count: state.count + 1, nearSince: null, lastRepAt: at };
+  return { ...state, count: state.count + 1, nearSince: null, lastRepAt: at };
+}
+
+/** The status line under the counter while the sensor counts. */
+export interface PushupSensorStatus {
+  /** `idle`: nothing seen yet. `miss`: the last cover didn't count. `counting`: it did. */
+  tone: 'idle' | 'miss' | 'counting';
+  line: string;
+  detail: string;
+}
+
+const MISS_DETAIL: Record<PushupMiss, string> = {
+  brief: 'The last one was too quick to count. Stay down a moment longer.',
+  long: `The sensor was covered for over ${Math.round(PUSHUP_MAX_NEAR_MS / 1000)} seconds, so the last one didn’t count.`,
+  soon: 'The last one came too soon after the one before it to count.',
+};
+
+/**
+ * What the sensor has seen so far, so somebody whose reps aren't counting can
+ * tell a sensor that never saw them from covers the rules above threw out.
+ * The screen is dark while the sensor is covered, so this is read on the way
+ * back up, which is when it changes.
+ */
+export function pushupSensorStatus(state: PushupCounterState): PushupSensorStatus {
+  if (state.seen === 0) {
+    return {
+      tone: 'idle',
+      line: 'The sensor hasn’t seen you yet',
+      detail: 'Bring your chest down close to the top edge of the phone, where the sensor is.',
+    };
+  }
+  const line = `Seen ${state.seen} time${state.seen === 1 ? '' : 's'}, ${state.count} counted`;
+  if (state.lastMiss) return { tone: 'miss', line, detail: MISS_DETAIL[state.lastMiss] };
+  return {
+    tone: 'counting',
+    line,
+    detail: 'The screen goes dark while you’re down, and the count shows when you come back up.',
+  };
 }
 
 /**

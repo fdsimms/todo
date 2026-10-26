@@ -17,6 +17,7 @@ import { MISSION_GIVE_UP_HOLD_MS } from '../utils/missions';
 import {
   feedProximity,
   initialPushupState,
+  pushupSensorStatus,
   tapRep,
   type PushupCounterState,
 } from '../utils/pushupCounter';
@@ -43,8 +44,6 @@ export interface PushupCounterProps {
    * isn't the mission, behind a hold of `MISSION_GIVE_UP_HOLD_MS`.
    */
   onGiveUp?: () => void;
-  /** The alarm's wake-up song while it plays ("Mr. Blue Sky · ELO"), shown under the title. */
-  nowPlaying?: string | null;
 }
 
 const RING_SIZE = 240;
@@ -67,7 +66,7 @@ const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
  * never be checked off there at all.
  */
 export function PushupCounterSheet({
-  visible, title, count, subjectKey, doneNote, onCounted, onClose, onGiveUp, nowPlaying,
+  visible, title, count, subjectKey, doneNote, onCounted, onClose, onGiveUp,
 }: PushupCounterProps) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -123,6 +122,8 @@ export function PushupCounterSheet({
   }, [counter.count, target]);
 
   const progress = Math.min(1, counter.count / target);
+  const status = pushupSensorStatus(counter);
+  const statusDot = status.tone === 'miss' ? colors.orange : status.tone === 'counting' ? colors.green : colors.textTertiary;
 
   const ring = (
     <View style={styles.ring}>
@@ -178,12 +179,6 @@ export function PushupCounterSheet({
         />
         <View style={styles.body}>
           <Text style={styles.taskTitle} numberOfLines={2}>{title}</Text>
-          {nowPlaying ? (
-            <View style={styles.nowPlaying} accessibilityLabel={`Playing ${nowPlaying}`}>
-              <Ionicons name="musical-notes" size={iconSize.xs} color={colors.accentText} />
-              <Text style={styles.nowPlayingText} numberOfLines={1}>{nowPlaying}</Text>
-            </View>
-          ) : null}
           {sensor === false && !counted ? (
             <TouchableOpacity
               activeOpacity={interaction.activeOpacity}
@@ -199,7 +194,16 @@ export function PushupCounterSheet({
             <Text style={styles.doneNote}>{doneNote}</Text>
           ) : sensor === null ? null : (
             <>
-              <View style={styles.card}>
+              {sensor && (
+                <View style={styles.status} accessible accessibilityLabel={`${status.line}. ${status.detail}`}>
+                  <View style={[styles.statusDot, { backgroundColor: statusDot }]} />
+                  <View style={styles.statusText}>
+                    <Text style={styles.statusLine}>{status.line}</Text>
+                    <Text style={styles.statusDetail}>{status.detail}</Text>
+                  </View>
+                </View>
+              )}
+              <View style={[styles.card, sensor && styles.cardUnderStatus]}>
                 <View style={styles.cardIcon}>
                   <Ionicons name={sensor ? 'phone-portrait-outline' : 'hand-left-outline'} size={iconSize.sm} color={colors.accentText} />
                 </View>
@@ -209,11 +213,6 @@ export function PushupCounterSheet({
                     : 'This device has no proximity sensor. Tap the circle after each pushup.'}
                 </Text>
               </View>
-              {sensor && (
-                <Text style={styles.note}>
-                  The screen goes dark while you’re down, and the count shows when you come back up.
-                </Text>
-              )}
             </>
           )}
         </View>
@@ -311,18 +310,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.sm,
   },
-  nowPlaying: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xsm,
-    maxWidth: '100%',
-    marginTop: spacing.smd,
-    paddingHorizontal: spacing.smd,
-    paddingVertical: spacing.xsm,
-    borderRadius: radius.full,
-    backgroundColor: colors.accentSubtle,
-  },
-  nowPlayingText: { flexShrink: 1, color: colors.accentText, fontSize: font.sm, fontWeight: fontWeight.semibold },
   ring: {
     width: RING_SIZE,
     height: RING_SIZE,
@@ -365,6 +352,31 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: spacing.md,
     marginTop: spacing.xl,
   },
+  // The status sits where the card used to start, and the card follows it.
+  cardUnderStatus: { marginTop: spacing.md },
+  status: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.smd,
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.xs,
+  },
+  // Centered on the first line (lineHeight.md).
+  statusDot: { width: 10, height: 10, borderRadius: 5, marginTop: (lineHeight.md - 10) / 2 },
+  statusText: { flex: 1 },
+  statusLine: {
+    color: colors.text,
+    fontSize: font.md,
+    lineHeight: lineHeight.md,
+    fontWeight: fontWeight.semibold,
+  },
+  statusDetail: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    lineHeight: lineHeight.sm,
+    marginTop: spacing.xxs,
+  },
   cardIcon: {
     width: 28,
     height: 28,
@@ -378,14 +390,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.md,
     lineHeight: lineHeight.md,
-  },
-  note: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    lineHeight: lineHeight.sm,
-    textAlign: 'center',
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.smd,
   },
   giveUpWrap: {
     paddingHorizontal: spacing.lg,
