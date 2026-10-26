@@ -116,11 +116,11 @@ export function isOverrideSpent(override: AlarmOverride, now: Date): boolean {
 
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export type AlarmDetailIcon = 'barbell-outline' | 'musical-notes-outline' | 'volume-high-outline' | 'moon-outline';
+export type AlarmDetailIcon = 'barbell-outline' | 'volume-high-outline' | 'moon-outline';
 
 /**
- * What an alarm's row says under its time, as a row of icons (mission, wake
- * song, a chosen sound, a one-night time) and the words for the ones that
+ * What an alarm's row says under its time, as a row of icons (mission, a
+ * chosen sound, a one-night time) and the words for the ones that
  * need them. Null when it has none, so a plain alarm draws nothing. `clock`
  * formats a time the way the person's settings do.
  */
@@ -135,8 +135,6 @@ export function alarmDetails(
   if (mission) {
     icons.push('barbell-outline');
     words.push(mission);
-    // The alert can't play a song, so one only counts while there's a mission.
-    if (alarm.wakeSong) icons.push('musical-notes-outline');
   }
   if (alarm.sound !== null) icons.push('volume-high-outline');
   const o = alarm.override;
