@@ -136,8 +136,12 @@ export function auditCatalog(
     }
     if (!brandHit) {
       for (const brand of ownBrands.get(item.id) ?? []) {
-        const first = groceryNameKey(brand).split(/\s+/)[0];
-        if (first && first.length >= 4 && words.length > 1 && words[0] === first) {
+        const brandWords = groceryNameKey(brand).split(/\s+/);
+        const first = brandWords[0];
+        // A name that is only the start of the brand ("peanut butter" under
+        // "Peanut Butter & Co") is the generic thing, not the brand.
+        const isBrandPrefix = words.every((w, i) => brandWords[i] === w);
+        if (first && first.length >= 4 && words.length > 1 && words[0] === first && !isBrandPrefix) {
           brandHit = { brand, whole: false };
           break;
         }

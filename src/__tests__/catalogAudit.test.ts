@@ -62,6 +62,12 @@ describe('auditCatalog: names', () => {
     expect(kinds(found, 'brand_in_name')).toEqual([['Beyond Sausage Plant-Based Links Brat Original']]);
   });
 
+  it('leaves a generic name that is only the start of its own brand', () => {
+    const pb = item('peanut butter');
+    const found = auditCatalog([pb], [product(pb.id, 'Peanut Butter & Co')]);
+    expect(kinds(found, 'brand_in_name')).toEqual([]);
+  });
+
   it('does not match a brand on part of a word', () => {
     const bar = item('protein bar');
     const found = auditCatalog([item('bearing'), bar], [product(bar.id, 'Bear')]);
