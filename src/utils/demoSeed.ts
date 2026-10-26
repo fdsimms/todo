@@ -110,6 +110,7 @@ import {
 } from './weekendTasks';
 import { weatherSourceId, defaultWeatherRules, describeWeatherWindow, weatherTaskTitle, WEATHER_LINK_URL } from './weatherTasks';
 import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
+import { newSpeedBumpRule } from './speedBump';
 import { blockOfferSourceId, blockOfferTitle, describeOfferCoins, newBlockOfferRule } from './blockOfferTasks';
 import { defaultEventRules, eventOccurrenceKey, eventTaskSourceId } from './eventTasks';
 import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceId, travelTaskTitle } from './travelTasks';
@@ -1906,6 +1907,17 @@ export function seedDemoData(): void {
     category: 'Screen Time',
     ...generatedBy('screenTime', screenTimeSourceId(dayKeyOf(today), walkRule.id)),
   });
+
+  // A speed bump rule, so the sheet has one to show. It is only a rule: the
+  // block itself is raised by the monitor extension, which demo mode never
+  // reaches (screenTimeBridge refuses), so there is no running block to seed.
+  useSettingsStore.getState().setSpeedBumpRules([{
+    ...newSpeedBumpRule('Wind down after Social'),
+    thresholdMinutes: 45,
+    repeatEveryMinutes: 30,
+    maxTimes: 3,
+    blockMinutes: 15,
+  }]);
 
   // A block offer, seeded directly for screenTime's reason: accepting one
   // starts a real block, which demo mode refuses, so checkBlockOfferTasks

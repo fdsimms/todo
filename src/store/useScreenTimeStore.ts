@@ -4,9 +4,10 @@ import { create } from 'zustand';
 import type { ScreenTimeCrossing } from 'todo-screentime-bridge';
 import { screenTimeBridge } from '../utils/screenTimeBridge';
 import { armableRules } from '../utils/screenTimeRules';
+import { armableSpeedBumps } from '../utils/speedBump';
 import { getCurrentDayStart, dayKeyOf } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
-import { resolveGroupNow, useAppGroupStore } from './useAppGroupStore';
+import { expandGroupNow, resolveGroupNow, useAppGroupStore } from './useAppGroupStore';
 import { DEFAULT_GROUP_ID } from '../utils/appGroups';
 import { createRefreshGuard } from '../utils/refreshGuard';
 
@@ -73,6 +74,17 @@ export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
     const bridge = screenTimeBridge();
     if (!bridge) return;
     const settings = useSettingsStore.getState();
+    // Speed bumps are their own monitor and answer to their own rules, so they
+    // are armed (or disarmed) before the task rules' early return below, and
+    // whether Screen Time tasks are on has no say in them.
+    const dayKey = dayKeyOf(getCurrentDayStart());
+    const bumps = armableSpeedBumps(
+      settings.speedBumpRules,
+      id => resolveGroupNow(id ?? DEFAULT_GROUP_ID),
+      id => expandGroupNow(id ?? DEFAULT_GROUP_ID),
+    );
+    if (bumps.length === 0) bridge.stopSpeedBumps();
+    else await bridge.armSpeedBumps(bumps, dayKey);
     const rules = armableRules(settings.screenTimeRules, id => resolveGroupNow(id ?? DEFAULT_GROUP_ID));
     if (!settings.screenTimeTasks || rules.length === 0) {
       bridge.stopMonitoring();
@@ -81,7 +93,7 @@ export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
     // The day key is stamped here rather than in the extension, which has no
     // way to read the user's dayResetTime — a crossing filed under the wrong
     // day is a task on the wrong day.
-    await bridge.startMonitoring(rules, dayKeyOf(getCurrentDayStart()));
+    await bridge.startMonitoring(rules, dayKey);
   },
 
   consume(ruleIds) {
@@ -122,6 +134,7 @@ export function useScreenTimeSync(): void {
         state.initialized !== prev.initialized ||
         state.screenTimeTasks !== prev.screenTimeTasks ||
         state.screenTimeRules !== prev.screenTimeRules ||
+        state.speedBumpRules !== prev.speedBumpRules ||
         // Moving the reset moves which day "today" is, and the day key is
         // baked into the armed monitor — same reason useWeatherSync watches it.
         state.dayResetTime !== prev.dayResetTime

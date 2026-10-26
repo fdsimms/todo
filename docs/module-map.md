@@ -48,7 +48,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/appGroups.ts` — APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, BASE_GROUP_NAME_SETTING, FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, MAX_APP_GROUPS, MAX_SUPERGROUPS, MAX_GROUP_NAME_LENGTH, AppGroup, +31 more
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
-- `src/utils/appShield.ts` — AppShieldState, ShieldReasonKind, ShieldReasonEntry, shieldReasons, shieldGroupIds, shieldAllowSets, appShieldWanted, syncAppShield
+- `src/utils/appShield.ts` — AppShieldState, ShieldReasonKind, ShieldReasonEntry, shieldReasons, speedBumpWanted, shieldGroupIds, shieldAllowSets, appShieldWanted, syncAppShield
 - `src/utils/appShieldReconcile.ts` — reconcileAppShield, outstandingGatesNow, liveGatesNow, currentShieldReasons, keyLockedNow, gateKeyNow, gateTitlesNow
 - `src/utils/applyToAll.ts` — ApplyScope, applyToAllLabel, applyTargets
 - `src/utils/applyToAllOffer.ts` — ApplyOffer, setApplyOffer, clearApplyOffer, getApplyOffer, subscribeApplyOffer, resetApplyOffer
@@ -550,6 +550,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/snackNudgeTasks.ts` — DEFAULT_SNACK_NUDGE_FROM_HOUR, SNACK_NUDGE_FROM_HOUR_MIN, SNACK_NUDGE_FROM_HOUR_MAX, DEFAULT_SNACK_NUDGE_SHARE_PERCENT, SNACK_NUDGE_SHARE_PERCENT_MIN, SNACK_NUDGE_SHARE_PERCENT_MAX, SNACK_NUDGE_SHARE_PERCENT_STEP, clampSnackNudgeFromHour, clampSnackNudgeSharePercent, describeSnackNudgeHour, +4 more
 - `src/utils/snoozeEngine.ts` — SnoozeSuggestion, AWAY_PENALTY, computeSnoozeSuggestion
 - `src/utils/speechSupport.ts` — dictationSupported
+- `src/utils/speedBump.ts` — SPEED_BUMP_TITLE_MAX_LENGTH, SPEED_BUMP_BLOCK_MIN, SPEED_BUMP_BLOCK_MAX, SPEED_BUMP_BLOCK_DEFAULT, SPEED_BUMP_BLOCK_CHOICES, SPEED_BUMP_THRESHOLD_DEFAULT, SPEED_BUMP_TIMES_MIN, SPEED_BUMP_TIMES_MAX, SPEED_BUMP_REPEAT_MIN, SPEED_BUMP_REPEAT_MAX, +14 more
 - `src/utils/stableLists.ts` — reuseUnchangedLists
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, eitherSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap
 - `src/utils/startWorkout.ts` — StartWorkoutInput, StartWorkoutResult, startWorkout

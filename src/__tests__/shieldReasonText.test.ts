@@ -33,6 +33,13 @@ describe('shieldReasonLines', () => {
       .toEqual(['A block you started is running.']);
   });
 
+  it('says a speed bump in terms of use, with its end when there is one', () => {
+    expect(shieldReasonLines({ groupIds: ['games'], reason: 'speedBump', until: '2026-10-14T15:00:00Z' }, time))
+      .toEqual(['You’ve used these apps a lot today. They’re blocked until 10:30 AM.']);
+    expect(shieldReasonLines({ groupIds: ['games'], reason: 'speedBump', until: null }, time))
+      .toEqual(['You’ve used these apps a lot today.']);
+  });
+
   it('gives each gate task its own line', () => {
     expect(shieldReasonLines({ groupIds: ['default'], reason: 'gate', titles: ['Morning walk', 'Pay rent'] }, time))
       .toEqual(['Morning walk isn’t done yet.', 'Pay rent isn’t done yet.']);

@@ -5175,6 +5175,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     });
   });
 
+  it('seeds a speed bump rule that repeats', () => {
+    const [rule, ...rest] = useSettingsStore.getState().speedBumpRules;
+    expect(rest).toEqual([]);
+    expect(rule).toMatchObject({ title: 'Wind down after Social', thresholdMinutes: 45, repeatEveryMinutes: 30, maxTimes: 3, blockMinutes: 15, enabled: true });
+  });
+
   it('seeds a health rule whose task logs a dose when completed', () => {
     const rule = useSettingsStore.getState().healthRules.find(r => r.medicationName);
     expect(rule).toMatchObject({ medicationName: 'Salt tablet', medicationAmount: 1, medicationUnit: 'tablet' });

@@ -834,6 +834,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['screen time', 'block apps', 'hours', 'times', 'bedtime', 'work hours', 'downtime', 'automatic', 'recurring', 'weekdays', 'distraction', 'restrict'] },
   { id: 'manualBlock', iosOnly: true, groupId: 'screenTime', label: 'Block apps now', section: 'Block now', simple: true,
     keywords: ['screen time', 'block now', 'timer', 'for an hour', 'restrict', 'manual', 'start block', 'quiet time', 'distraction', 'timed'] },
+  { id: 'speedBumps', iosOnly: true, groupId: 'screenTime', label: 'Speed bumps', section: 'Speed bumps',
+    keywords: ['screen time', 'block apps', 'too long', 'limit', 'usage', 'time limit', 'cool off', 'pause', 'break', 'doomscroll', 'distraction', 'repeat', 'app limit'] },
   { id: 'emergencyRelease', iosOnly: true, groupId: 'screenTime', label: 'End all blocks now', section: 'Emergency', simple: true,
     keywords: ['screen time', 'emergency', 'unblock', 'unlock', 'end block', 'override', 'turn off block', 'lift', 'penalty', 'locked out'] },
   { id: 'focusShield', iosOnly: true, groupId: 'screenTime', label: 'While focusing', section: 'Reasons to block', simple: true,

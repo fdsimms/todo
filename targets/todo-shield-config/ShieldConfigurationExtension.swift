@@ -173,6 +173,12 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         return "You started this block. It ends at \(until)."
       }
       return "You started this block."
+    case "speedBump":
+      // A speed bump the app has seen. Only the time is on this side.
+      if let until = state.untilIso.flatMap(Self.timeLabel) {
+        return "You’ve used these apps a lot today. They’re blocked until \(until)."
+      }
+      return "You’ve used these apps a lot today."
     case "penalty":
       let cause = state.detail.flatMap { $0.isEmpty ? nil : $0 }
       let until = state.untilIso.flatMap(Self.timeLabel)
@@ -195,6 +201,15 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // fallback below — otherwise the one block somebody can act on right now
       // is the one that refuses to say what it wants.
       if let pending = state.pendingGateDetail, !pending.isEmpty { return pending }
+      // A speed bump raised by the monitor extension, which the app has not seen
+      // yet: the extension writes its own record and not the shield state.
+      if let live = ScreenTimeShared.readLiveSpeedBump(),
+         let end = ScreenTimeShared.parseIso(live.endIso), end > Date() {
+        if let until = Self.timeLabel(live.endIso) {
+          return "You’ve used these apps a lot today. They’re blocked until \(until)."
+        }
+        return "You’ve used these apps a lot today."
+      }
       // A schedule that opened while the app was closed lands here too: the
       // app's last reconcile wrote "none" because the window wasn't open yet,
       // and the monitor raised the shield from the schedules file.

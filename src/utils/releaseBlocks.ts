@@ -1,6 +1,7 @@
-import { currentShieldReasons, outstandingGatesNow } from './appShieldReconcile';
+import { currentShieldReasons, outstandingGatesNow, reconcileAppShield } from './appShieldReconcile';
 import type { ShieldReasonKind } from './appShield';
 import { generateId } from './id';
+import { screenTimeBridge } from './screenTimeBridge';
 import { canLock, matchKey, type NfcKeyKind } from './nfcKey';
 import { cleanReleaseReason, type ReleaseSource } from './shieldRelease';
 import { useAppGroupStore } from '../store/useAppGroupStore';
@@ -20,6 +21,8 @@ import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
  * - the key lock: `unlock`;
  * - schedules: paused until their open window ends (`pauseOpenSchedules`);
  * - a block the person started by hand: dropped (`useManualBlockStore.clear`);
+ * - a speed bump the monitor raised: dropped (`clearSpeedBump`, which also disarms
+ *   the window that would have lifted it);
  * - a failed-task block: cleared (`setPenaltyShieldUntil(null)`), and the next
  *   failed task starts a fresh one;
  * - a gate and a focus session: remembered as released (`useShieldReleaseStore`),
@@ -42,6 +45,11 @@ export function releaseAllBlocks(source: ReleaseSource, reason?: string): Shield
   if (ended.includes('key')) useNfcKeyStore.getState().unlock();
   if (ended.includes('schedule')) useAppGroupStore.getState().pauseOpenSchedules(now);
   if (ended.includes('manual')) useManualBlockStore.getState().clear();
+  if (ended.includes('speedBump')) {
+    screenTimeBridge()?.clearSpeedBump();
+    // Nothing in a store changed, so no subscription would lift the shield.
+    reconcileAppShield();
+  }
   if (ended.includes('penalty')) useSettingsStore.getState().setPenaltyShieldUntil(null, null);
   // Every release goes through here, even one that ends neither: it is also
   // where releases that no longer apply (a done task, a finished session) are

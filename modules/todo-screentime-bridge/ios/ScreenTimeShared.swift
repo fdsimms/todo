@@ -95,6 +95,29 @@ enum ScreenTimeShared {
   /// `intervalDidStart` — and stopping either must not disarm the other.
   static let gateActivityName = "todo.gateWindow"
 
+  /// The speed bumps the usage monitor is watching, as the app armed them. App
+  /// writes, extension reads. See `src/utils/speedBump.ts`.
+  static let speedBumpsFileName = "screentime_speedbumps.json"
+  /// What was last armed, as `SpeedBumpArmedShared`. The app compares against it
+  /// so a foreground that changes nothing does not restart the monitor, which
+  /// would start the day's usage count again.
+  static let speedBumpsArmedFileName = "screentime_speedbumps_armed.json"
+  /// The speed bump block that is running, as `SpeedBumpLiveShared`. The
+  /// extension writes it when a rung is crossed; the app only reads it (and
+  /// removes it when a key tag or the emergency button ends the block).
+  static let speedBumpLiveFileName = "screentime_speedbump_live.json"
+  /// Which rungs already fired today, so a threshold iOS reports twice raises
+  /// one block. Extension writes and reads.
+  static let speedBumpFiredFileName = "screentime_speedbump_fired.json"
+  /// The usage monitor for speed bumps. Its own activity, so arming or stopping
+  /// it never disarms the task rules' monitor.
+  static let speedBumpMonitorName = "todo.speedBumps"
+  /// The one-shot window whose end lifts a speed bump block. Its own activity,
+  /// like the penalty's and the manual block's.
+  static let speedBumpWindowName = "todo.speedBumpWindow"
+  /// Prefix of a speed bump event's name: `bump:<rule id>:<rung>`.
+  static let speedBumpEventPrefix = "bump:"
+
   static func readShieldOptions() -> ShieldOptionsShared {
     guard let data = readData(shieldOptionsFileName),
           let options = try? JSONDecoder().decode(ShieldOptionsShared.self, from: data)
@@ -168,6 +191,38 @@ struct ScreenTimeRuleShared: Codable {
   /// The app group whose selection this rule counts. Absent from a rules file
   /// an older build wrote, which reads as the default group.
   let groupId: String?
+}
+
+/// One speed bump rule, as both processes see it. Group ids are resolved by the
+/// app (a supergroup is already expanded), and `rungs` are the cumulative
+/// minutes of use at which the rule fires.
+struct SpeedBumpShared: Codable {
+  let id: String
+  /// The group whose use is timed.
+  let groupId: String
+  /// Every group the block holds.
+  let blockGroupIds: [String]
+  let blockMinutes: Int
+  let rungs: [Int]
+}
+
+/// What the app last armed: the day and the rules exactly as handed over.
+struct SpeedBumpArmedShared: Codable {
+  let dayKey: String
+  let bumps: String
+}
+
+/// A speed bump block that is running. The extension is the writer.
+struct SpeedBumpLiveShared: Codable {
+  let endIso: String
+  let groupIds: [String]
+  let ruleId: String?
+}
+
+/// The rungs that have fired on a day. A different day starts it again.
+struct SpeedBumpFiredShared: Codable {
+  let dayKey: String
+  let events: [String]
 }
 
 /// Why the apps are blocked right now, written by the app on every reconcile.
@@ -362,6 +417,58 @@ extension ScreenTimeShared {
     return writeData(data, to: shieldStateFileName)
   }
 
+  static func readSpeedBumps() -> [SpeedBumpShared] {
+    guard let data = readData(speedBumpsFileName) else { return [] }
+    return (try? JSONDecoder().decode([SpeedBumpShared].self, from: data)) ?? []
+  }
+
+  static func readSpeedBumpsArmed() -> SpeedBumpArmedShared? {
+    guard let data = readData(speedBumpsArmedFileName) else { return nil }
+    return try? JSONDecoder().decode(SpeedBumpArmedShared.self, from: data)
+  }
+
+  @discardableResult
+  static func writeSpeedBumpsArmed(_ armed: SpeedBumpArmedShared) -> Bool {
+    guard let data = try? JSONEncoder().encode(armed) else { return false }
+    return writeData(data, to: speedBumpsArmedFileName)
+  }
+
+  static func readLiveSpeedBump() -> SpeedBumpLiveShared? {
+    guard let data = readData(speedBumpLiveFileName) else { return nil }
+    return try? JSONDecoder().decode(SpeedBumpLiveShared.self, from: data)
+  }
+
+  @discardableResult
+  static func writeLiveSpeedBump(_ live: SpeedBumpLiveShared) -> Bool {
+    guard let data = try? JSONEncoder().encode(live) else { return false }
+    return writeData(data, to: speedBumpLiveFileName)
+  }
+
+  /// Record that a rung fired on `dayKey`. True when this is the first time, so
+  /// a threshold iOS reports more than once raises one block. A record for
+  /// another day is replaced, which is what starts the rungs again each day.
+  static func recordSpeedBumpFired(dayKey: String, event: String) -> Bool {
+    var fired = SpeedBumpFiredShared(dayKey: dayKey, events: [])
+    if let data = readData(speedBumpFiredFileName),
+       let existing = try? JSONDecoder().decode(SpeedBumpFiredShared.self, from: data),
+       existing.dayKey == dayKey {
+      fired = existing
+    }
+    if fired.events.contains(event) { return false }
+    let next = SpeedBumpFiredShared(dayKey: dayKey, events: fired.events + [event])
+    guard let data = try? JSONEncoder().encode(next) else { return false }
+    return writeData(data, to: speedBumpFiredFileName)
+  }
+
+  /// The groups a running speed bump holds at `now`. `ended` is for the window's
+  /// own end callback, where a few seconds of early delivery must still lift it,
+  /// the rule `endIsDue` gives the other timed blocks.
+  static func activeSpeedBumpGroupIds(now: Date, ended: Bool = false) -> [String] {
+    guard let live = readLiveSpeedBump(), let end = parseIso(live.endIso), end > now else { return [] }
+    if ended && endIsDue(end, now: now) { return [] }
+    return live.groupIds
+  }
+
   static func readCrossings() -> [ScreenTimeCrossing] {
     guard let data = readData(crossingsFileName) else { return [] }
     return (try? JSONDecoder().decode([ScreenTimeCrossing].self, from: data)) ?? []
@@ -510,14 +617,15 @@ extension ScreenTimeShared {
     now: Date,
     penaltyEnded: Bool = false,
     gateStarting: Bool = false,
-    manualEnded: Bool = false
+    manualEnded: Bool = false,
+    speedBumpEnded: Bool = false
   ) -> [String] {
     // No readable state is "assume the app's own reasons still hold" for
     // everything but what we can compute ourselves, the same cautious default
     // `readShieldState` documents: the Default group stays up and the app
     // lifts it on the next foreground.
     guard let state = readShieldState() else {
-      return [defaultGroupID] + activeScheduleGroupIds(now: now)
+      return [defaultGroupID] + activeScheduleGroupIds(now: now) + activeSpeedBumpGroupIds(now: now, ended: speedBumpEnded)
     }
     var ids = state.groups?.otherGroupIds ?? (state.otherReasonWantsShield ? [defaultGroupID] : [])
     // An end callback only counts when the stored end has really arrived. The
@@ -539,6 +647,9 @@ extension ScreenTimeShared {
       ids.append(contentsOf: groups)
     }
     ids.append(contentsOf: activeScheduleGroupIds(now: now))
+    // The extension's own record, not the app's: a speed bump is raised with the
+    // app closed, so the app has never written its group into the state above.
+    ids.append(contentsOf: activeSpeedBumpGroupIds(now: now, ended: speedBumpEnded))
     var seen = Set<String>()
     return ids.filter { seen.insert($0).inserted }
   }

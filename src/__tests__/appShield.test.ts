@@ -694,6 +694,49 @@ describe('app groups and schedules', () => {
   });
 });
 
+describe('a speed bump the monitor extension raised', () => {
+  const speedBump = { untilIso: LATER, groupIds: ['games'] };
+
+  it('wants the shield on its own until it runs out', () => {
+    expect(appShieldWanted(state({ speedBump }))).toBe(true);
+    expect(appShieldWanted(state({ speedBump: { untilIso: EARLIER, groupIds: ['games'] } }))).toBe(false);
+  });
+
+  it('names its groups and its end, and reads after the blocks the person chose', () => {
+    const reasons = shieldReasons(state({
+      session: session(), focusEnabled: true,
+      manual: { untilIso: LATER, groupIds: ['work'] },
+      speedBump, penaltyUntil: LATER, penaltyEnabled: true,
+    }));
+    expect(reasons.map(r => r.reason)).toEqual(['focus', 'manual', 'speedBump', 'penalty']);
+    expect(reasons[2]).toEqual({ reason: 'speedBump', until: LATER, groupIds: ['games'], namedGroupIds: ['games'] });
+  });
+
+  it('is held in the union with the other reasons\' groups', () => {
+    syncAppShield(state({ speedBump, penaltyUntil: LATER, penaltyEnabled: true }));
+    expect(mockBridge.applyShield).toHaveBeenCalledWith(['games', 'default']);
+  });
+
+  it('arms nothing of its own: the extension owns its window', () => {
+    syncAppShield(state({ speedBump }));
+    expect(mockBridge.scheduleManualExpiry).not.toHaveBeenCalled();
+    expect(mockBridge.schedulePenaltyExpiry).not.toHaveBeenCalled();
+    expect(mockBridge.scheduleGateWindow).not.toHaveBeenCalled();
+  });
+
+  it('leads the shield screen when nothing else does, and carries its end', () => {
+    syncAppShield(state({ speedBump }));
+    const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ reason: string; untilIso: string; otherReasonWantsShield: boolean }];
+    expect(written[0]).toMatchObject({ reason: 'speedBump', untilIso: LATER, otherReasonWantsShield: false });
+  });
+
+  it('lifts the shield once it has run out', () => {
+    syncAppShield(state({ speedBump: { untilIso: EARLIER, groupIds: ['games'] } }));
+    expect(mockBridge.clearShield).toHaveBeenCalled();
+    expect(mockBridge.applyShield).not.toHaveBeenCalled();
+  });
+});
+
 describe('a block the person started by hand', () => {
   const manual = { untilIso: LATER, groupIds: ['games'] };
 

@@ -3,6 +3,8 @@ import { shieldGroupIds, shieldReasons, syncAppShield, type AppShieldState, type
 import { isFocusReleased, isGateReleased } from './shieldRelease';
 import { canLock } from './nfcKey';
 import { isTimedBlock, manualBlockWanted } from './manualBlock';
+import { liveSpeedBump, type LiveSpeedBump } from './speedBump';
+import { screenTimeBridge } from './screenTimeBridge';
 import type { Task } from '../types';
 import { nextScheduleBoundary, resolvedGroups } from './blockSchedule';
 import { beginVisibleAtPass, getVisibleAt, isHiddenForVacation, isTaskVisible } from './visibilityUtils';
@@ -57,9 +59,24 @@ export function reconcileAppShield(): Date | null {
   const manualEnd = isTimedBlock(state.manual ?? null) && manualBlockWanted(state.manual ?? null, now)
     ? new Date(state.manual!.untilIso!)
     : null;
-  return [gateAt, boundary, manualEnd]
+  const bumpEnd = state.speedBump ? new Date(state.speedBump.untilIso) : null;
+  return [gateAt, boundary, manualEnd, bumpEnd]
     .filter((d): d is Date => d !== null)
     .reduce<Date | null>((a, d) => (a === null || d < a ? d : a), null);
+}
+
+/**
+ * The speed bump the monitor extension raised and has not lifted, or null. Read
+ * from the App Group each time rather than held in a store: the extension wrote
+ * it with the app closed, so there is nothing in memory to keep in step, and a
+ * stale copy would keep apps blocked past the bump's end. Groups are resolved
+ * like every other reason's, so a removed group is Default.
+ */
+function liveSpeedBumpNow(now: Date): LiveSpeedBump | null {
+  const bridge = screenTimeBridge();
+  if (!bridge) return null;
+  const bump = liveSpeedBump(bridge.readSpeedBump(), now);
+  return bump ? { ...bump, groupIds: resolvedGroups(bump.groupIds, resolveGroupNow).groupIds } : null;
 }
 
 /**
@@ -124,6 +141,7 @@ function buildShieldState(now: Date): AppShieldState {
     gateEnabled: settings.gateShieldEnabled,
     // A removed group is Default, as for every other reason.
     manual: manualBlock ? { ...manualBlock, groupIds: resolvedGroups(manualBlock.groupIds, resolveGroupNow).groupIds } : null,
+    speedBump: liveSpeedBumpNow(now),
     keyLocked: keyLockedNow(),
     groups: resolvedAssignments(),
     schedules,

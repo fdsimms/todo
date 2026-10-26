@@ -546,6 +546,31 @@ export interface ScreenTimeRule extends RuleTaskEstimate, RuleTaskCategory, Rule
 }
 
 /**
+ * A speed bump, stored in settings as `speedBumpRules` — see
+ * `src/utils/speedBump.ts`. When the total time today on `groupId` reaches
+ * `thresholdMinutes`, the monitor extension blocks `blockGroupId` for
+ * `blockMinutes`, and can do it again as the time keeps growing.
+ */
+export interface SpeedBumpRule {
+  id: string;
+  /** What the person calls it, e.g. "Social wind-down". */
+  title: string;
+  /** The app group whose use is timed. Absent means the fallback group. */
+  groupId?: string;
+  /** The app group that gets blocked. Absent means the timed group. */
+  blockGroupId?: string;
+  /** Minutes of use today that trip it the first time. */
+  thresholdMinutes: number;
+  /** How long each block lasts; never under the quarter hour iOS allows a window to be. */
+  blockMinutes: number;
+  /** Minutes of further use between repeats, or null for a rule that fires once a day. */
+  repeatEveryMinutes: number | null;
+  /** The most times it fires in a day. 1 when it does not repeat. */
+  maxTimes: number;
+  enabled: boolean;
+}
+
+/**
  * A rule offering coins for blocking apps ("Block Games for an hour: 10
  * coins"), stored in settings as `blockOfferRules` — see
  * `src/utils/blockOfferTasks.ts`. One task a day per enabled rule, and the task
