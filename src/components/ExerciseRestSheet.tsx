@@ -120,7 +120,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   headerRight: { textAlign: 'right' },
-  sub: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, textAlign: 'center' },
+  sub: { color: colors.textTertiary, fontSize: font.xs, paddingHorizontal: spacing.md, paddingTop: spacing.xs, textAlign: 'center' },
   stepper: { alignItems: 'center', paddingTop: spacing.md, paddingHorizontal: spacing.md },
   presets: { flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.md, paddingTop: spacing.md },
   preset: {

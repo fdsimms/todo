@@ -404,7 +404,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.smd, minHeight: 200,
     textAlignVertical: 'top',
   },
-  help: { marginTop: spacing.sm, marginHorizontal: spacing.xs },
+  help: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   error: { color: colors.redText, fontSize: font.sm, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   button: {
     backgroundColor: colors.accentFill, borderRadius: radius.lg, marginTop: spacing.md,
