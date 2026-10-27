@@ -550,6 +550,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/speechSupport.ts` — dictationSupported
 - `src/utils/speedBump.ts` — SPEED_BUMP_TITLE_MAX_LENGTH, SPEED_BUMP_BLOCK_MIN, SPEED_BUMP_BLOCK_MAX, SPEED_BUMP_BLOCK_DEFAULT, SPEED_BUMP_BLOCK_CHOICES, SPEED_BUMP_THRESHOLD_DEFAULT, SPEED_BUMP_TIMES_MIN, SPEED_BUMP_TIMES_MAX, SPEED_BUMP_REPEAT_MIN, SPEED_BUMP_REPEAT_MAX, +14 more
 - `src/utils/stableLists.ts` — reuseUnchangedLists
+- `src/utils/stackPicker.ts` — StackOption, STACK_PICKER_COLLAPSED_ROWS, filterStacks, StackRows, stackRows
 - `src/utils/stackSort.ts` — stackMemberIdsAToZ
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, eitherSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap
 - `src/utils/startWorkout.ts` — StartWorkoutInput, StartWorkoutResult, startWorkout
