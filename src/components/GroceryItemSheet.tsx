@@ -400,6 +400,12 @@ function GroceryItemSheetBody({
     setOpenField(null);
   };
 
+  // Declared above the early return below: a hook after it runs only once an
+  // item exists, so the sheet opening on a just-added item rendered more
+  // hooks than the empty render before it.
+  const quantityInputRef = useRef<TextInput>(null);
+  const noteInputRef = useRef<TextInput>(null);
+
   if (!item) {
     // Only before the first item has arrived. Themed even though there's
     // nothing to show: an unstyled Modal defaults to a native white
@@ -425,8 +431,6 @@ function GroceryItemSheetBody({
   // the field itself keeps whatever was typed until it's corrected.
   // Return moves through the fields in the order they're drawn, so a run of
   // corrections is typed without reaching for the next field each time.
-  const quantityInputRef = useRef<TextInput>(null);
-  const noteInputRef = useRef<TextInput>(null);
   const focusNext = (...refs: React.RefObject<TextInput | null>[]) => {
     const next = refs.find(r => r.current);
     if (next) next.current!.focus();
