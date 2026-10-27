@@ -23,6 +23,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { stackMemberIdsAToZ } from '../utils/stackSort';
 import { CollapsibleField } from './CollapsibleField';
 import { SortableList } from './SortableList';
 import { EditorSheet } from './EditorSheet';
@@ -316,6 +317,20 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
     rest.splice(pending.before ? anchor : anchor + 1, 0, created.id);
     reorderGroupChildren(group.id, rest);
   }, [members]);
+
+  // One undo step puts the old order back, same as the project page's sort.
+  const sortMembersAToZ = () => {
+    if (!group) return;
+    const before = members.map(m => m.id);
+    animateLayout();
+    haptics.tap();
+    reorderGroupChildren(group.id, stackMemberIdsAToZ(members));
+    useTaskStore.getState().setLastAction({
+      label: 'Sorted A to Z',
+      destructive: true,
+      undo: () => reorderGroupChildren(group.id, before),
+    });
+  };
 
   const handleAddMenuSelect = (key: string) => {
     if (key === 'existing') {
@@ -741,10 +756,15 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
         <View style={styles.cardSection}>
           <View style={styles.subtaskHeader}>
             <Text style={styles.sectionLabel}>Tasks in this {sectionWord}</Text>
-            <Text style={styles.subtaskProgress}>
-              {members.length}
-              {dueToday.length > 0 ? ` · ${doneToday}/${dueToday.length} today` : ''}
-            </Text>
+            <View style={styles.subtaskHeaderRight}>
+              {members.length > 2 && (
+                <InlineAction icon="swap-vertical-outline" label="Sort A to Z" variant="neutral" onPress={sortMembersAToZ} />
+              )}
+              <Text style={styles.subtaskProgress}>
+                {members.length}
+                {dueToday.length > 0 ? ` · ${doneToday}/${dueToday.length} today` : ''}
+              </Text>
+            </View>
           </View>
           <SortableList
             data={members}
@@ -900,6 +920,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary, borderRadius: radius.full, minWidth: 100,
   },
   subtaskHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  subtaskHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   subtaskProgress: { color: colors.textTertiary, fontSize: font.sm, fontWeight: fontWeight.medium },
   childRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
