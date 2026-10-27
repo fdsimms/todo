@@ -20,7 +20,8 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
-import { SegmentedControl } from '../components/SegmentedControl';
+import { GroceryGroupMenu } from '../components/GroceryGroupMenu';
+import type { CardAnchor } from '../components/CardSheet';
 import { HubPills } from '../components/HubPills';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings } from '../hooks/useScreenSettings';
@@ -299,6 +300,8 @@ export function GroceryScreen() {
   const [addOpen, setAddOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [aislesOpen, setAislesOpen] = useState(false);
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
+  const [groupMenuAnchor, setGroupMenuAnchor] = useState<CardAnchor | null>(null);
   const [tidyOpen, setTidyOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
   const [listSheetOpen, setListSheetOpen] = useState(false);
@@ -1466,6 +1469,21 @@ export function GroceryScreen() {
     // it lives at the foot of the list instead, which is where you look when
     // you're done rather than mid-shop.
     const list: ScreenHeaderAction[] = [];
+    // How the list is grouped. Hidden on an empty list, where there is nothing
+    // to group, and lit while it isn't the default so a changed lens shows
+    // without opening the menu.
+    if (listCount > 0) {
+      list.push({
+        icon: 'layers-outline',
+        onPress: (e: GestureResponderEvent) => {
+          setGroupMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+          setGroupMenuOpen(true);
+        },
+        active: lens !== 'aisle',
+        disabled: selectionMode,
+        accessibilityLabel: `Group the list. Now grouped by ${lens}`,
+      });
+    }
     list.push({
       icon: 'basket-outline',
       onPress: () => setCatalogOpen(true),
@@ -1491,7 +1509,7 @@ export function GroceryScreen() {
     // `ActiveTripBanner` during a trip, `StartTripPrompt` when rows have been
     // ticked without one. Both put it where the cart count already is.
     return list;
-  }, [selectionMode, handleShare, shareText, copied, copy, copyText]);
+  }, [selectionMode, handleShare, shareText, copied, copy, copyText, listCount, lens]);
 
   // Bottom-up: "Add an item" ends up closest to the button. The recipe entry
   // no longer needs a key by itself — a saved recipe imports nothing over the
@@ -1780,38 +1798,11 @@ export function GroceryScreen() {
       />
       <HubPills hub="kitchen" active="Groceries" />
       <TipHost screen="groceries" />
-      {/* The starting card sits above the grouping control: starting a shop is
-          the first decision on the screen, and how the list is grouped is a
-          setting for the list under it. It stays put rather than scrolling
-          with the rows, which also keeps the Finish button (which it grows once
-          something is ticked) from being scrolled out of reach. */}
+      {/* Starting a shop is the first decision on the screen. The card stays
+          put rather than scrolling with the rows, which also keeps the Finish
+          button (which it grows once something is ticked) from being scrolled
+          out of reach. How the list is grouped is the header's layers button. */}
       {startCard}
-      {/* How the list is grouped, on the list itself: it was a tab inside the
-          Aisles sheet, three taps from the list it changes. A lens switch
-          under the header (SegmentedControl's `surface="page"`). An away list
-          stays by aisle (see `lens`), so there Store is shown off rather than
-          picked and ignored. Gone while selecting and on an empty list, where
-          there is nothing to group. */}
-      {!selectionMode && listCount > 0 && (
-        <View style={styles.groupBy}>
-          <SegmentedControl
-            label="Group by"
-            surface="page"
-            value={lens}
-            onChange={value => { if (value !== lens) setGroceryGroupBy(value); }}
-            options={[
-              { value: 'aisle', label: 'Aisle' },
-              { value: 'recipe', label: 'Recipe' },
-              {
-                value: 'store',
-                label: 'Store',
-                disabled: away,
-                accessibilityLabel: away ? 'Store, not on an away list' : 'Store',
-              },
-            ]}
-          />
-        </View>
-      )}
       {/* A sibling of the list, not its header: the one thing on screen saying
           why rows have started naming other stores has to still be there when
           you're looking at such a row, and a way out of a mode shouldn't have
@@ -1983,6 +1974,16 @@ export function GroceryScreen() {
       <LazySheet open={catalogOpen}>
         <GroceryCatalogSheet visible={catalogOpen} onClose={() => setCatalogOpen(false)} />
       </LazySheet>
+      <LazySheet open={groupMenuOpen}>
+        <GroceryGroupMenu
+          visible={groupMenuOpen}
+          onClose={() => setGroupMenuOpen(false)}
+          value={lens}
+          onChange={setGroceryGroupBy}
+          storeDisabled={away}
+          anchor={groupMenuAnchor}
+        />
+      </LazySheet>
       <LazySheet open={aislesOpen}>
         <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
       </LazySheet>
@@ -2126,7 +2127,6 @@ export function GroceryScreen() {
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
-    groupBy: { paddingHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.sm },
     container: {
       flex: 1,
       backgroundColor: colors.bg,
