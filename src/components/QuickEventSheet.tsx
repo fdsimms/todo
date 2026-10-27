@@ -402,6 +402,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [personOverrides, setPersonOverrides] = useState<Record<string, string>>({});
   // Mirror-text widths that locate the phrase for the tooltip (aimTooltip).
   const [inputW, setInputW] = useState(0);
+  // The title's natural single-line width, measured only while a highlight wants drawing.
+  const [titleW, setTitleW] = useState(0);
   const [prefixW, setPrefixW] = useState<number | null>(null);
   const [matchW, setMatchW] = useState<number | null>(null);
   const [tooltipRowW, setTooltipRowW] = useState(0);
@@ -607,7 +609,13 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     if (activeMatch) ranges.push([activeMatch.matchStart, activeMatch.matchEnd]);
     return mergeRanges(ranges);
   }, [draft.mentionSpans, draft.clauseSpans, activeMatch?.matchStart, activeMatch?.matchEnd]);
-  const hasOverlay = highlightRanges.length > 0;
+  // The input is one line and the overlay is a wrapping Text, so past the field's
+  // width the overlay grows a second line the input never has, and it spills over
+  // what sits below. A title that has outgrown the field shows the plain input
+  // instead (highlights are lost, but what's typed stays where the caret is).
+  const wantsOverlay = highlightRanges.length > 0;
+  const titleFits = inputW === 0 || titleW <= inputW;
+  const hasOverlay = wantsOverlay && titleFits;
 
   useEffect(() => {
     if (activeMatch && !hadMatch.current) {
@@ -1344,6 +1352,13 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                 inputAccessoryViewID={Platform.OS === 'ios' ? EVENT_TOKEN_ACCESSORY_ID : undefined}
                 accessibilityLabel="Event, with an optional day, time and @people"
               />
+              {wantsOverlay && (
+                <View style={[styles.measureWrap, styles.measureWide]} pointerEvents="none">
+                  <Text style={[styles.measureText, styles.measureNatural]} onLayout={e => setTitleW(e.nativeEvent.layout.width)}>
+                    {text}
+                  </Text>
+                </View>
+              )}
               {activeMatch && (
                 <View style={styles.measureWrap} pointerEvents="none">
                   <Text style={styles.measureText} onLayout={e => setPrefixW(e.nativeEvent.layout.width)}>
@@ -2044,6 +2059,10 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   inputHighlight: { color: colors.accent, fontWeight: fontWeight.semibold, backgroundColor: colors.accentSubtle },
   measureWrap: { position: 'absolute', top: 0, left: 0, opacity: 0 },
   measureText: { fontSize: font.xl, fontWeight: fontWeight.semibold },
+  // Wide enough that the title never wraps while it's being measured, with the
+  // text shrink-wrapped so its reported width is the line's own.
+  measureWide: { width: 10000 },
+  measureNatural: { alignSelf: 'flex-start' },
   addBtn: {
     width: interaction.pillHeight,
     height: interaction.pillHeight,
