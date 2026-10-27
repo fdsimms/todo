@@ -485,11 +485,13 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
 
   // Actions ("take aleve", "buy milk") lead the card and come out of its seven
   // slots, so offering one never makes the card longer than it always was.
+  // They follow the live text rather than the debounced one: they read cached
+  // indexes, so there is nothing to wait for, and the row shows as you type.
   const { actions, onSubmit: submitAction, descriptions: actionDescriptions, describe: describeAction } =
-    useSearchActions(debouncedQuery, visible, QUICK_ACTION_LIMIT);
+    useSearchActions(query, visible, QUICK_ACTION_LIMIT);
   // What the rows ran while the card is open, so a row can say so and offer
   // Undo. Cleared with the query, like `heldIds`.
-  const { receipts, run: runReceipt, undo: undoAction, followUp: followUpAction, clear: clearReceipts } = useSearchActionReceipts(debouncedQuery);
+  const { receipts, run: runReceipt, undo: undoAction, followUp: followUpAction, clear: clearReceipts } = useSearchActionReceipts(query);
   const searchBudget = QUICK_SEARCH_LIMIT - actions.length;
 
   // A screen or setting named by the query leads, above the tasks
@@ -644,11 +646,9 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onSelectGroup
   // Return goes to the Search tab as it always has, unless the query found no
   // task at all: "weight" means the Weight screen, not a Search tab with one
   // row on it. A query that asked for one action in words ("take aleve", "buy
-  // milk") runs it, since that is what was typed. Only once the
-  // debounce has caught up, so Return never runs an action for a query that's
-  // already been typed past.
+  // milk") runs it, since that is what was typed.
   const handleSubmit = () => {
-    if (submitAction && query === debouncedQuery && !receipts.has(submitAction.key)) {
+    if (submitAction && !receipts.has(submitAction.key)) {
       runAction(submitAction);
       return;
     }

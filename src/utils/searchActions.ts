@@ -185,6 +185,8 @@ const DOSE_VERB_RE = /^(?:take|took|taking|log|record)\b\s*/i;
 interface DoseIndex {
   /** The most recent log of each medication, by `medicationKey`. */
   latest: Map<string, MedicationLog>;
+  /** Every log of each medication, by `medicationKey`, so a row's limit status reads only its own doses. */
+  byKey: Map<string, MedicationLog[]>;
   vocabulary?: { archived: readonly string[]; registered: readonly string[]; names: string[] };
 }
 const doseIndexes = new WeakMap<readonly MedicationLog[], DoseIndex>();
@@ -193,12 +195,16 @@ function doseIndexFor(logs: readonly MedicationLog[]): DoseIndex {
   let index = doseIndexes.get(logs);
   if (!index) {
     const latest = new Map<string, MedicationLog>();
+    const byKey = new Map<string, MedicationLog[]>();
     for (const log of logs) {
       const key = medicationKey(log.name);
       const seen = latest.get(key);
       if (!seen || log.takenAt.localeCompare(seen.takenAt) > 0) latest.set(key, log);
+      const own = byKey.get(key);
+      if (own) own.push(log);
+      else byKey.set(key, [log]);
     }
-    index = { latest };
+    index = { latest, byKey };
     doseIndexes.set(logs, index);
   }
   return index;
@@ -562,7 +568,10 @@ function clockOrDate(at: Date, now: Date): string {
  */
 function describeDose(action: DoseAction, ctx: DescribeContext): ActionDescription {
   const { name } = action.dose;
-  const status = limitStatus(ctx.medicationLogs, name, prefsFor(ctx.medicationSettings, name).limit, ctx.now);
+  // `limitStatus` filters, parses and sorts whatever it is given, so it gets
+  // this medication's doses rather than the whole log on every keystroke.
+  const own = doseIndexFor(ctx.medicationLogs).byKey.get(medicationKey(name)) ?? [];
+  const status = limitStatus(own, name, prefsFor(ctx.medicationSettings, name).limit, ctx.now);
   const meta: string[] = [];
   const amount = formatDose(action.dose);
   if (amount) meta.push(amount);
