@@ -657,6 +657,8 @@ export function nameWords(name: string): string[] {
  * not a near one ("bicep curl" is a curl, a "chest fly" is a fly).
  */
 const PHRASE_ALIASES: [RegExp, string][] = [
+  // A bare "bicep curl" is the dumbbell one; with equipment named it is just a curl of that kind.
+  [/^biceps? curls?$/g, 'dumbbell curl'],
   [/\bbiceps? curl/g, 'curl'],
   [/\bchest fly\b/g, 'fly'],
   [/\boverhead press\b/g, 'shoulder press'],
