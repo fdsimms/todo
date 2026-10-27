@@ -359,10 +359,133 @@ export function parseRecipeJsonLd(html: string): PageRecipe | null {
     current.ingredients.length > best.ingredients.length ? current : best);
 }
 
+// ——— schema.org/Recipe as microdata ———————————————————————————————————————
+
+/**
+ * The opening tag of an element that declares itself a `schema.org/Recipe`.
+ * Jetpack's recipe shortcode (Smitten Kitchen, and a great many older
+ * WordPress blogs) publishes the recipe this way and writes no JSON-LD at all.
+ */
+const MICRODATA_RECIPE = /<([a-z][a-z0-9]*)\b[^>]*\bitemtype\s*=\s*["']?https?:\/\/(?:www\.)?schema\.org\/Recipe["'\s>/][^>]*>/gi;
+const OPEN_TAG = /<([a-z][a-z0-9]*)\b[^>]*>/gi;
+/** Largest recipe element read, so one unclosed tag can't make a parse scan the whole page. */
+const MAX_MICRODATA_CHARS = 60_000;
+
+/**
+ * Everything between an opening tag and its matching close, counting nested
+ * elements of the same name. Unbalanced markup (an unclosed `<div>`) yields the
+ * rest of the page up to the cap rather than nothing.
+ */
+function innerHtml(html: string, openEnd: number, tagName: string): string {
+  const tags = new RegExp(`<(/?)${tagName}\\b[^>]*>`, 'gi');
+  tags.lastIndex = openEnd;
+  const limit = openEnd + MAX_MICRODATA_CHARS;
+  let depth = 1;
+  let match: RegExpExecArray | null;
+  while ((match = tags.exec(html)) !== null && match.index < limit) {
+    depth += match[1] ? -1 : 1;
+    if (depth === 0) return html.slice(openEnd, match.index);
+  }
+  return html.slice(openEnd, limit);
+}
+
+interface PropElement {
+  /** The element's content, or its `content`/`datetime` attribute when that is where the value lives. */
+  html: string;
+  attrValue: string | null;
+}
+
+/** Every element inside `html` whose `itemprop` or `class` names one of `names`. */
+function elementsWith(html: string, attribute: 'itemprop' | 'class', names: string[]): PropElement[] {
+  const found: PropElement[] = [];
+  OPEN_TAG.lastIndex = 0;
+  let tag: RegExpExecArray | null;
+  while ((tag = OPEN_TAG.exec(html)) !== null) {
+    const tokens = (attr(tag[0], attribute) ?? '').toLowerCase().split(/\s+/);
+    if (!names.some(name => tokens.includes(name.toLowerCase()))) continue;
+    const name = tag[1].toLowerCase();
+    const attrValue = attr(tag[0], 'content') ?? attr(tag[0], 'datetime');
+    const selfClosed = /^(meta|link|img|br)$/.test(name) || tag[0].endsWith('/>');
+    found.push({
+      html: selfClosed ? '' : innerHtml(html, tag.index + tag[0].length, name),
+      attrValue,
+    });
+  }
+  return found;
+}
+
+/** One value's text, with the label a template writes in front of it ("Servings: 8") dropped. */
+function propText(element: PropElement | undefined): string | null {
+  if (!element) return null;
+  const text = element.attrValue ?? htmlToText(element.html);
+  return text.replace(/^(?:servings?|serves|yield|makes|time)\s*:\s*/i, '').trim() || null;
+}
+
+/** A method block as steps: one per list item when it is a list, else one per paragraph/line. */
+function stepsOf(blockHtml: string): string[] {
+  const items = blockHtml.match(/<li\b[\s\S]*?(?=<li\b|<\/[uo]l\s*>|$)/gi);
+  const text = items && items.length > 1 ? items.map(htmlToText) : htmlToText(blockHtml).split('\n');
+  return text.map(line => line.trim()).filter(Boolean);
+}
+
+/**
+ * The page's `schema.org/Recipe` written as microdata (`itemscope` +
+ * `itemprop`) rather than JSON-LD, or null when it has none.
+ *
+ * Same choice as `parseRecipeJsonLd` when a page holds several: most
+ * ingredients wins. The method is `itemprop="recipeInstructions"` where the
+ * page marks it, and otherwise the `e-instructions` block of the h-recipe
+ * microformat that Jetpack's template adds beside the microdata and leaves
+ * the property off.
+ */
+export function parseRecipeMicrodata(html: string): PageRecipe | null {
+  const recipes: PageRecipe[] = [];
+  MICRODATA_RECIPE.lastIndex = 0;
+  let scope: RegExpExecArray | null;
+  while ((scope = MICRODATA_RECIPE.exec(html)) !== null) {
+    const resume = MICRODATA_RECIPE.lastIndex;
+    const inner = innerHtml(html, resume, scope[1].toLowerCase());
+
+    const ingredients = elementsWith(inner, 'itemprop', ['recipeIngredient', 'ingredients'])
+      .map(propText)
+      .filter((line): line is string => !!line);
+    if (ingredients.length === 0) continue;
+
+    const marked = elementsWith(inner, 'itemprop', ['recipeInstructions']);
+    const blocks = marked.length > 0 ? marked : elementsWith(inner, 'class', ['e-instructions']);
+    const steps = blocks.flatMap(block => stepsOf(block.html));
+
+    const minutes = (name: string) =>
+      parseIsoDuration(elementsWith(inner, 'itemprop', [name])[0]?.attrValue);
+
+    recipes.push({
+      name: propText(elementsWith(inner, 'itemprop', ['name'])[0]),
+      ingredients,
+      steps,
+      recipeYield: propText(elementsWith(inner, 'itemprop', ['recipeYield'])[0]),
+      totalMinutes:
+        minutes('totalTime') ?? ((minutes('cookTime') ?? 0) + (minutes('prepTime') ?? 0) || null),
+      author: null,
+      publisher: null,
+    });
+    // The recipe's own contents were just read; don't rescan them for a nested one.
+    MICRODATA_RECIPE.lastIndex = resume + inner.length;
+  }
+  if (recipes.length === 0) return null;
+  return recipes.reduce((best, current) =>
+    current.ingredients.length > best.ingredients.length ? current : best);
+}
+
 // ——— What reaches the extractor ————————————————————————————————————————
 
 /** The heading a fallback page is trimmed around — see `focusRecipeText`. */
 const INGREDIENTS_HEADING = /^ *ingredients\b/im;
+/**
+ * Where a recipe starts on a page with no "Ingredients" heading: the "Yield:" /
+ * "Serves 4" line that blogs of that kind put straight above the ingredient
+ * lines. Only tried after the heading, since a story can say "serves" too.
+ */
+const RECIPE_START_LINE = /^ *(?:yield|serves|servings|makes)\s*:/im;
 
 /**
  * A page too long to send, trimmed to the part that matters.
@@ -375,7 +498,8 @@ const INGREDIENTS_HEADING = /^ *ingredients\b/im;
  */
 export function focusRecipeText(text: string, limit: number): string {
   if (text.length <= limit) return text;
-  const at = text.search(INGREDIENTS_HEADING);
+  let at = text.search(INGREDIENTS_HEADING);
+  if (at === -1) at = text.search(RECIPE_START_LINE);
   if (at === -1) return text.slice(0, limit);
   const start = Math.max(0, at - 300);
   return text.slice(start, start + limit);
@@ -430,7 +554,12 @@ export interface ParsedRecipePage {
  * fallback is what the cap is for.
  */
 export function parseRecipePage(html: string, limit: number): ParsedRecipePage {
-  const structured = parseRecipeJsonLd(html);
+  const fromLd = parseRecipeJsonLd(html);
+  // JSON-LD first; microdata only when it gave no ingredients (a page with
+  // both describes the same recipe, and the JSON-LD is the cleaner copy).
+  const structured = fromLd && fromLd.ingredients.length > 0
+    ? fromLd
+    : parseRecipeMicrodata(html) ?? fromLd;
   const siteName = metaContent(html, 'og:site_name') ?? structured?.publisher ?? null;
 
   if (structured && structured.ingredients.length > 0) {
