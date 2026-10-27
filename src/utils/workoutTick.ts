@@ -52,13 +52,15 @@ export function tickOutcome(
     routine: Pick<WorkoutRoutine, 'items'> | null;
     defaultRestSeconds: number;
     exerciseName: string;
+    /** Rests set on exercises in this workout, which outrank the routine's. */
+    restOverrides?: Readonly<Record<string, number>> | null;
   },
 ): TickOutcome | null {
   const next = afterLog(sets, setId);
   const set = sets.find(s => s.id === setId);
   if (!next || !set) return null;
   if (!next.rest) return { ...next, restPlan: { kind: 'keep' } };
-  const seconds = restSecondsFor(ctx.routine, set.exerciseId, ctx.defaultRestSeconds);
+  const seconds = restSecondsFor(ctx.routine, set.exerciseId, ctx.defaultRestSeconds, ctx.restOverrides);
   if (seconds <= 0) return { ...next, restPlan: { kind: 'clear' } };
   const exercise = sessionExercises(sets).find(e => e.exerciseId === set.exerciseId);
   const label = exercise ? setLabels(exercise.sets).get(set.id) : undefined;
@@ -98,6 +100,7 @@ export function tickSet(sessionId: string, setId: string, now: Date = new Date()
     routine,
     defaultRestSeconds: useSettingsStore.getState().defaultRestSeconds,
     exerciseName: catalogExercise(workouts.exercises, set.exerciseId)?.name ?? 'this exercise',
+    restOverrides: session.restOverrides,
   });
   if (!outcome) return null;
   const timers = useStepTimerStore.getState();

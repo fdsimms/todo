@@ -275,6 +275,8 @@ export function watchSetRows(
     unit: WeightUnit;
     routine: Pick<WorkoutRoutine, 'items'> | null;
     defaultRestSeconds: number;
+    /** Rests set on exercises in this workout (`WorkoutSession.restOverrides`). */
+    restOverrides?: Readonly<Record<string, number>> | null;
     /** Scales a two-dumbbell exercise's weights to a pair total where the person logs one (`dumbbellLoad.ts`). */
     dumbbellEntry?: DumbbellEntry;
   },
@@ -296,7 +298,7 @@ export function watchSetRows(
     let rest = 0;
     if (s.completedAt === null) {
       const simulated = sets.map(x => (x.completedAt === null && (order.get(x.id) ?? Infinity) <= i ? { ...x, completedAt: SIMULATED_DONE } : x));
-      const outcome = tickOutcome(simulated, s.id, { routine: ctx.routine, defaultRestSeconds: ctx.defaultRestSeconds, exerciseName: name });
+      const outcome = tickOutcome(simulated, s.id, { routine: ctx.routine, defaultRestSeconds: ctx.defaultRestSeconds, exerciseName: name, restOverrides: ctx.restOverrides });
       const plan = outcome?.restPlan;
       rest = !plan ? 0 : plan.kind === 'start' ? plan.seconds : plan.kind === 'keep' ? -1 : 0;
     }
@@ -342,6 +344,7 @@ interface ExerciseContext {
   routines: readonly WorkoutRoutine[];
   plateInventory: PlateInventory;
   defaultRestSeconds: number;
+  restOverrides?: Readonly<Record<string, number>> | null;
   historyFor: (exerciseId: string) => readonly WorkoutSet[];
   /** The workout the suggestions are for, whose own sets aren't history yet. */
   exceptSessionId: string | null;
@@ -401,7 +404,7 @@ function exercisesOf(rows: readonly { exerciseId: string }[], sets: readonly Wor
       id: s.exerciseId,
       name: exerciseName(ctx.exercises, s.exerciseId),
       kind: catalogExercise(ctx.exercises, s.exerciseId)?.kind ?? 'weight_reps',
-      rest: restSecondsFor(ctx.routine, s.exerciseId, ctx.defaultRestSeconds),
+      rest: restSecondsFor(ctx.routine, s.exerciseId, ctx.defaultRestSeconds, ctx.restOverrides),
     };
     const own = sets.filter(x => x.exerciseId === s.exerciseId);
     if (!workingSetLogged(own)) {
@@ -547,7 +550,7 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
     retractWorkouts: requests.retract.map(r => r.id),
     dropSessions: requests.drop.map(d => d.id),
   };
-  const contextFor = (routine: WorkoutRoutine | null, programId: string | null, exceptSessionId: string | null): ExerciseContext => ({
+  const contextFor = (routine: WorkoutRoutine | null, programId: string | null, exceptSessionId: string | null, restOverrides: Readonly<Record<string, number>> | null = null): ExerciseContext => ({
     exercises: input.exercises,
     unit: input.unit,
     dumbbellEntry: input.dumbbellEntry,
@@ -557,13 +560,14 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
     routines: input.routines,
     plateInventory: input.plateInventory,
     defaultRestSeconds: input.defaultRestSeconds,
+    restOverrides,
     historyFor: input.historyFor,
     exceptSessionId,
   });
 
   if (input.live && input.live.session.endedAt === null) {
     const { session, sets, routine, rest } = input.live;
-    const rows = watchSetRows(sets, { exercises: input.exercises, unit: input.unit, routine, defaultRestSeconds: input.defaultRestSeconds, dumbbellEntry: input.dumbbellEntry });
+    const rows = watchSetRows(sets, { exercises: input.exercises, unit: input.unit, routine, defaultRestSeconds: input.defaultRestSeconds, restOverrides: session.restOverrides, dumbbellEntry: input.dumbbellEntry });
     const shown = rows.slice(0, MAX_WATCH_LIVE_SETS);
     return {
       ...base,
@@ -571,7 +575,7 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
         sessionId: session.id,
         title: session.title,
         startedAt: session.startedAt,
-        exercises: exercisesOf(shown, sets, contextFor(routine, session.programId, session.id)),
+        exercises: exercisesOf(shown, sets, contextFor(routine, session.programId, session.id, session.restOverrides)),
         sets: shown,
         moreSets: rows.length - shown.length,
         rest: liveRest(rest, session.id),

@@ -49,6 +49,7 @@ import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useRestTimer } from '../hooks/useRestTimer';
+import { ExerciseRestSheet } from './ExerciseRestSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
@@ -93,7 +94,7 @@ import {
   finishPlan, formatDistance, formatSetLine, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
-  supersetGroup,
+  restSecondsFor, supersetGroup,
 } from '../utils/workoutSession';
 import { tickSet, type TickValues } from '../utils/workoutTick';
 import type { SessionExercise } from '../utils/workoutSession';
@@ -168,6 +169,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const gyms = useGymStore(s => s.gyms);
   const gymSettings = useGymStore(s => s.settings);
   const unit = useSettingsStore(s => s.workoutUnit);
+  const defaultRestSeconds = useSettingsStore(s => s.defaultRestSeconds);
   const dumbbellEntry = useSettingsStore(s => s.dumbbellEntry);
   const plateInventory = useSettingsStore(s => s.plateInventory);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -427,6 +429,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   };
 
   // ==== the exercise's "•••" menu: supersets ====
+  // The exercise whose rest the Rest chip's card is open on.
+  const [restFor, setRestFor] = useState<string | null>(null);
   const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
   const joinSuperset = (exerciseId: string, partnerId: string) => {
     if (!session) return;
@@ -593,9 +597,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         kindOf: id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps',
         // A load taken from the suggestion is the plan working, not a change to it.
         suggestedKg: id => liveProposal(session.id, id)?.proposal.sets.find(x => x.kind !== 'warmup')?.weightKg ?? null,
+        restOverrides: session.restOverrides,
+        defaultRestSeconds,
       });
     },
-    [finishing, session, routine, sets, exerciseRows, oldVersion],
+    [finishing, session, routine, sets, exerciseRows, oldVersion, defaultRestSeconds],
   );
   const exerciseName = (id: string) => catalogExercise(exerciseRows, id)?.name ?? 'Unknown exercise';
   // On a workout from an old version a change is to that version, so taking
@@ -970,6 +976,14 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 )
                 : null;
               const canSwap = swappableSets(viewed.sets, viewed.exerciseId).length > 0;
+              // The rest comes after the round, so a superset's earlier exercises have none of their own.
+              const viewedGroup = supersetGroup(exercises, viewed.exerciseId);
+              const restChip = session && viewedGroup[viewedGroup.length - 1]?.exerciseId === viewed.exerciseId
+                ? {
+                    seconds: restSecondsFor(routine, viewed.exerciseId, defaultRestSeconds, session.restOverrides),
+                    overridden: session.restOverrides?.[viewed.exerciseId] !== undefined,
+                  }
+                : null;
 
               // ==== the suggestion: the next load, proposed and never applied unasked ====
               // The routine the workout follows and the program it belongs to decide
@@ -1053,6 +1067,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         label="Swap"
                         onPress={() => { haptics.tap(); setViewedId(viewed.exerciseId); setPicking('swap'); }}
                         accessibilityLabel={`Swap ${viewedInfo?.name ?? 'this exercise'} for another`}
+                      />
+                    )}
+                    {restChip && (
+                      <InlineAction
+                        icon="timer-outline"
+                        label={`Rest ${restChip.seconds === 0 ? 'none' : formatRestSeconds(restChip.seconds)}`}
+                        variant={restChip.overridden ? undefined : 'neutral'}
+                        onPress={() => { haptics.tap(); setRestFor(viewed.exerciseId); }}
+                        accessibilityLabel={`Rest between sets of ${viewedInfo?.name ?? 'this exercise'}, ${restChip.seconds === 0 ? 'none' : formatRestSeconds(restChip.seconds)}`}
                       />
                     )}
                     {!noteFocus && (!viewedInfo?.notes || !todayNote) && (
@@ -1362,6 +1385,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           />
         );
       })()}
+      <ExerciseRestSheet
+        visible={visible && restFor !== null && session !== null}
+        exerciseName={restFor ? catalogExercise(exerciseRows, restFor)?.name ?? 'This exercise' : ''}
+        seconds={session && restFor ? restSecondsFor(routine, restFor, defaultRestSeconds, session.restOverrides) : 0}
+        fallbackSeconds={restFor ? restSecondsFor(routine, restFor, defaultRestSeconds) : 0}
+        overridden={!!session && !!restFor && session.restOverrides?.[restFor] !== undefined}
+        onChange={seconds => { if (session && restFor) useWorkoutStore.getState().setSessionRest(session.id, restFor, seconds); }}
+        onClose={() => setRestFor(null)}
+      />
       <ExercisePickerSheet
         visible={visible && picking !== null}
         onClose={() => setPicking(null)}

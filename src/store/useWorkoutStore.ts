@@ -658,6 +658,14 @@ interface WorkoutStore {
   /** Takes the exercise out of its superset (`leftSuperset`). False when it isn't in one. */
   leaveSessionSuperset: (sessionId: string, exerciseId: string) => boolean;
   /**
+   * Sets the rest after each set of one exercise for this workout only
+   * (`WorkoutSession.restOverrides`): whole seconds, 0 for no rest, null to go
+   * back to the routine's rest or the default. The routine is never touched.
+   * False for a session that is unknown or already ended, or when nothing
+   * changed.
+   */
+  setSessionRest: (sessionId: string, exerciseId: string, seconds: number | null) => boolean;
+  /**
    * Lays warm-up steps out as planned sets ahead of the exercise's other sets,
    * which move down to make room. Refuses a session, or an exercise not in it,
    * that nobody knows (`notFound`). What "Use" does for a ramp that had no
@@ -2544,6 +2552,17 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const before = new Map(sets.map(s => [s.id, s]));
       dbSaveWorkoutSets(next.filter(s => changed(s, before.get(s.id)!)));
       putSets(sessionId, next);
+      return true;
+    },
+
+    setSessionRest(sessionId, exerciseId, seconds) {
+      const session = get().sessions.find(s => s.id === sessionId);
+      if (!session || session.endedAt !== null) return false;
+      const { [exerciseId]: was, ...others } = session.restOverrides ?? {};
+      const next = seconds === null ? others : { ...others, [exerciseId]: Math.max(0, Math.round(seconds)) };
+      if ((seconds === null ? undefined : next[exerciseId]) === was) return false;
+      const { restOverrides: _old, ...rest } = session;
+      putSession(Object.keys(next).length > 0 ? { ...rest, restOverrides: next } : rest);
       return true;
     },
 
