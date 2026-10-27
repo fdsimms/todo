@@ -2,6 +2,7 @@ import {
   groceryNameKey,
   parseGroceryInput,
   splitPrep,
+  splitQuantityNote,
   splitPurpose,
   splitExample,
   splitAlternativeNames,
@@ -958,5 +959,37 @@ describe('splitImportAlternatives', () => {
 
   it('leaves a hedge about quantity alone, like splitAlternativeNames', () => {
     expect(splitImportAlternatives('salt or more to taste')).toBeNull();
+  });
+});
+
+describe('a metric restatement after the unit', () => {
+  it('stays in the quantity instead of opening the name', () => {
+    expect(parseGroceryInput('1 cup (235 ml) buttermilk')).toEqual({ name: 'buttermilk', quantity: '1 cup (235 ml)' });
+    expect(parseGroceryInput('2 lb (900 g) chicken thighs')).toEqual({ name: 'chicken thighs', quantity: '2 lb (900 g)' });
+  });
+
+  it('leaves a parenthetical that is not a measure in the name', () => {
+    expect(parseGroceryInput('1 cup (optional) walnuts').name).toBe('(optional) walnuts');
+  });
+});
+
+describe('splitQuantityNote', () => {
+  it('moves a note written after the amount', () => {
+    expect(splitQuantityNote('1 cup (235 ml), well-shaken, cold is fine')).toEqual({
+      quantity: '1 cup (235 ml)',
+      note: 'well-shaken, cold is fine',
+    });
+  });
+
+  it('keeps a comma inside parentheses as part of the amount', () => {
+    expect(splitQuantityNote('1 packet (1/4 ounce, 7 g)')).toEqual({ quantity: '1 packet (1/4 ounce, 7 g)', note: null });
+  });
+
+  it('keeps a size word with the amount', () => {
+    expect(splitQuantityNote('2, large')).toEqual({ quantity: '2, large', note: null });
+  });
+
+  it('leaves text that does not open with a number alone', () => {
+    expect(splitQuantityNote('a pinch, or more')).toEqual({ quantity: 'a pinch, or more', note: null });
   });
 });

@@ -15,7 +15,7 @@ import {
   EXTERNAL_NUTRIENT_KEYS,
   PRINTED_NUTRIENT_KEYS,
 } from '../types';
-import { groceryNameKey } from '../utils/groceryParse';
+import { groceryNameKey, splitQuantityNote } from '../utils/groceryParse';
 import { parsePriceInput } from '../utils/groceryPrice';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import {
@@ -1079,11 +1079,14 @@ function parseExtractedItems(
     const key = groceryNameKey(name);
     if (!key || seen.has(key)) continue;
     seen.add(key);
+    const amount = splitQuantityNote(typeof item.quantity === 'string' ? item.quantity : '');
+    const modelPrep = typeof item.prep === 'string' ? item.prep.trim() : '';
+    // A note the model left in the amount ("1 cup (235 ml), well-shaken") is
+    // prep that landed in the wrong field; it goes after the model's own prep.
+    const prep = [modelPrep, amount.note].filter(Boolean).join(', ');
     result.push({
       name,
-      quantity: typeof item.quantity === 'string'
-        ? item.quantity.trim().slice(0, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH)
-        : '',
+      quantity: amount.quantity.slice(0, RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH),
       aisle: canonicalAisle(item.aisle, availableAisles) ?? OTHER_AISLE,
       // The model's field is named "component" (see sharedRecipeInstructions)
       // to keep it unambiguous from the grocery-aisle "section" the same
@@ -1092,9 +1095,7 @@ function parseExtractedItems(
       section: typeof item.component === 'string' && item.component.trim()
         ? item.component.trim().slice(0, RECIPE_SECTION_MAX_LENGTH)
         : null,
-      prep: typeof item.prep === 'string' && item.prep.trim()
-        ? item.prep.trim().slice(0, PREP_MAX_LENGTH)
-        : null,
+      prep: prep ? prep.slice(0, PREP_MAX_LENGTH) : null,
       // Same "written only when true" rule normalizeIngredient itself keeps
       // for this field — an absent/false model answer just isn't carried.
       ...(item.optional === true && { optional: true }),
@@ -1182,7 +1183,7 @@ function groceryItemsSchema(availableAisles: string[], description: string, incl
         },
         quantity: {
           type: 'string',
-          description: `The recipe's own amount, as written, with any prep instruction moved to the "prep" field instead — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". If the recipe gives a parenthetical source count for the amount — "(from about 2 limes)", "(1 medium onion)" — append it after the amount, e.g. "3 oz (from about 2 limes)". Under ${RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH} characters. Empty string if the recipe does not say.`,
+          description: `The recipe's own amount, as written, with any prep instruction moved to the "prep" field instead — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". If the recipe gives a parenthetical source count for the amount — "(from about 2 limes)", "(1 medium onion)" — append it after the amount, e.g. "3 oz (from about 2 limes)". Keep a metric restatement in the amount ("1 cup (235 ml)"). Only the amount belongs here: words like "well-shaken", "room temperature" or "cold is fine" go in "prep", never after the amount. Under ${RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH} characters. Empty string if the recipe does not say.`,
         },
         aisle: {
           type: 'string',
