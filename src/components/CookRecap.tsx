@@ -60,6 +60,7 @@ export function CookRecap() {
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const logLeftover = useLeftoverStore(s => s.logLeftover);
+  const allLeftovers = useLeftoverStore(useShallow(s => s.leftovers));
   // Ranked behind the one other thing a tick can raise — see `waiting` below.
   const pendingFinishLeftoverId = useLeftoverStore(s => s.pendingFinishLeftoverId);
   const cookRecapEnabled = useSettingsStore(s => s.cookRecapEnabled);
@@ -143,6 +144,11 @@ export function CookRecap() {
   const askLeftovers =
     !!shownRecap?.canLogLeftovers &&
     (mutedHere || !isLeftoverOptedOut(leftoverPromptOptOuts, shownRecap.recipeId, shownRecap.title));
+  // Read off the saved rows, so it survives the sheet closing and reopening.
+  const loggedLeftovers = useMemo(
+    () => (shownRecap ? allLeftovers.filter(l => l.sourceEntryId === shownRecap.entryId).map(l => l.title) : []),
+    [allLeftovers, shownRecap]
+  );
   const hasSomethingToAsk =
     askLeftovers || askCookedWeight || rows.length > 0 || restockList.length > 0;
 
@@ -195,6 +201,7 @@ export function CookRecap() {
       visible={open}
       title={shownRecap.title}
       onLogLeftovers={askLeftovers ? () => setLeftoverVisible(true) : undefined}
+      loggedLeftovers={loggedLeftovers}
       onNeverAskLeftovers={
         askLeftovers
           ? () => {

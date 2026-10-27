@@ -56,6 +56,11 @@ interface Props {
   leftoversMuted?: boolean;
   onUndoNeverAskLeftovers?: () => void;
   /**
+   * Names of the containers already logged from this cooking. The question
+   * stays up so a second one can be logged, but says what was saved.
+   */
+  loggedLeftovers?: string[];
+  /**
    * The weigh-the-dish section, or null when there is nothing to ask — a meal
    * with no recipe to remember it on, one whose weight is already recorded, or
    * a dish whose figures the nutrition rollup declined, where a weight would
@@ -154,6 +159,7 @@ export function CookRecapSheet({
   title,
   onLogLeftovers,
   onNeverAskLeftovers,
+  loggedLeftovers = [],
   leftoversMuted,
   onUndoNeverAskLeftovers,
   cookedWeight,
@@ -495,6 +501,14 @@ export function CookRecapSheet({
                       <InlineAction label="Undo" variant="neutral" onPress={onUndoNeverAskLeftovers} accessibilityLabel="Ask about leftovers for this meal again" />
                     )}
                   </View>
+                  {!leftoversMuted && loggedLeftovers.length > 0 && (
+                    <View style={styles.loggedRow}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.greenText} />
+                      <Text style={styles.loggedText} numberOfLines={2}>
+                        Logged {loggedLeftovers.join(', ')}
+                      </Text>
+                    </View>
+                  )}
                   {!leftoversMuted && (
                     <View style={styles.leftoverActions}>
                       <PressableScale
@@ -503,9 +517,9 @@ export function CookRecapSheet({
                         accessibilityRole="button"
                         accessibilityLabel="Log leftovers"
                       >
-                        <Text style={styles.logLeftoversLabel}>Log leftovers</Text>
+                        <Text style={styles.logLeftoversLabel}>{loggedLeftovers.length > 0 ? 'Log more leftovers' : 'Log leftovers'}</Text>
                       </PressableScale>
-                      {onNeverAskLeftovers && (
+                      {onNeverAskLeftovers && loggedLeftovers.length === 0 && (
                         <TouchableOpacity
                           onPress={onNeverAskLeftovers}
                           activeOpacity={interaction.activeOpacity}
@@ -835,6 +849,14 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   logLeftoversLabel: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
   neverAskLink: { alignItems: 'center', paddingTop: spacing.smd, paddingBottom: spacing.xs },
   neverAskText: { color: colors.textSecondary, fontSize: font.sm },
+  loggedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.smd,
+  },
+  loggedText: { flex: 1, color: colors.textSecondary, fontSize: font.sm },
   choiceLabel: { flexGrow: 1, flexShrink: 0, color: colors.text, fontSize: font.md },
   // The same row geometry as choiceRow above, with a field where its label is.
   weighInWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.xs },
