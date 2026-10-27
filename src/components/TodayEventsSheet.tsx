@@ -446,9 +446,13 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
             const hidden = hiddenEventKey(event) in hiddenByKey;
             const linkedIds = peopleForEvent(eventPeople, event);
             const linkedNames = people.filter(p => linkedIds.includes(p.id)).map(displayNameOf);
+            // A panel under the row continues its card, so the row's bottom
+            // corners go square; rounded ones leave a notch of page showing
+            // between the two surfaces.
+            const joined = peopleOpen || reminderOpen || detailsOpen || (!!moved && movedTasks > 0);
             return (
               <View key={key}>
-                <View style={[styles.row, hidden && styles.rowHidden]}>
+                <View style={[styles.row, joined && styles.rowJoined, hidden && styles.rowHidden]}>
                   <View style={styles.rowIcon}>
                     <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
                   </View>
@@ -759,6 +763,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.smd,
     paddingHorizontal: spacing.md,
   },
+  rowJoined: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   rowIcon: {
     width: 32,
     height: 32,
