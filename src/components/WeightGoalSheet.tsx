@@ -726,7 +726,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     >
                       <Text style={styles.applyButtonText}>{applyLabel}</Text>
                     </TouchableOpacity>
-                    <HelpText style={styles.applyHelp}>
+                    <HelpText style={[styles.help, styles.applyHelp]}>
                       {basis === 'log'
                         ? logBudget === null
                           ? 'Saved with your goal. The target uses your activity level until your log has enough days.'
