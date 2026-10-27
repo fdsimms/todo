@@ -1056,6 +1056,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
             }),
           ]}
         />
+        {!!groupLabel && <View style={styles.separator} />}
         {!!groupLabel && (
           editingGroupName ? (
             <View style={styles.groupNameEditRow}>
@@ -1254,8 +1255,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.xs,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
   // The four fields of "what the line says" are one card now rather than four,
   // so the sheet opens on the whole line instead of on a stack of boxes; these

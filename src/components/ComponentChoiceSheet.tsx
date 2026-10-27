@@ -303,8 +303,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.xs,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
   groupLabel: {
     color: colors.textSecondary,
