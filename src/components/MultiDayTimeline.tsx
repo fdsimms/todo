@@ -76,6 +76,11 @@ interface Props {
   /** An empty stretch of a column tapped, with the minute it snaps to and the touch's page position. */
   onPressSlot?: (dayKey: string, minutes: number, pageX: number, pageY: number) => void;
   /**
+   * A dashed block for the slot a menu is open on, so the tap's landing spot
+   * stays visible under the popover. Minutes count from that day's start.
+   */
+  placeholder?: { dayKey: string; minutes: number } | null;
+  /**
    * Whether an event's block can be dragged: one wholly inside its day, so
    * the block is the whole event. Omit to make no event movable.
    */
@@ -105,7 +110,7 @@ interface Props {
  */
 export function MultiDayTimeline({
   columns, use24Hour, eventColor, onPressDay, onPressEvent, onPressAllDay, onPressTask, onPressUntimed, onPressSlot,
-  canMoveEvent, onCreateRange, onRescheduleEvent, onDragStateChange,
+  placeholder = null, canMoveEvent, onCreateRange, onRescheduleEvent, onDragStateChange,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -425,6 +430,28 @@ export function MultiDayTimeline({
                     </TouchableOpacity>
                   );
                 })}
+                {placeholder !== null && placeholder.dayKey === column.key
+                  && placeholder.minutes >= firstMinute && placeholder.minutes < lastMinute && (
+                  <View
+                    pointerEvents="none"
+                    accessibilityElementsHidden
+                    importantForAccessibility="no"
+                    style={[
+                      styles.placeholder,
+                      {
+                        top: at(placeholder.minutes),
+                        height: Math.max(
+                          MIN_BLOCK_HEIGHT,
+                          (Math.min(PLACEHOLDER_MINUTES, lastMinute - placeholder.minutes) / 60) * HOUR_HEIGHT - BLOCK_GAP,
+                        ),
+                      },
+                    ]}
+                  >
+                    <Text style={styles.placeholderTime} numberOfLines={1}>
+                      {formatTimeOfDay(new Date(column.dayStart.getTime() + placeholder.minutes * 60000), use24Hour)}
+                    </Text>
+                  </View>
+                )}
                 {/* The block being made, moved or stretched, in the column it
                     would land in now, with its times. */}
                 {drag !== null && drag.toIndex === index && (() => {
