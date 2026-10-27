@@ -3,6 +3,7 @@ import {
   isLeftoverOptedOut,
   leftoverOptOutKey,
   parseLeftoverOptOuts,
+  removeLeftoverOptOut,
   serializeLeftoverOptOuts,
 } from '../utils/leftoverOptOut';
 
@@ -37,5 +38,12 @@ describe('leftoverOptOut', () => {
     expect(parseLeftoverOptOuts('not json')).toEqual([]);
     expect(parseLeftoverOptOuts('{"a":1}')).toEqual([]);
     expect(parseLeftoverOptOuts('[1,"a",""]')).toEqual(['a']);
+  });
+});
+
+describe('removeLeftoverOptOut', () => {
+  it('takes one meal back off the list and leaves the rest', () => {
+    const list = addLeftoverOptOut(addLeftoverOptOut([], 'r1', 'Soup'), null, 'Protein shake');
+    expect(removeLeftoverOptOut(list, 'r1', 'Soup')).toEqual(['title:protein shake']);
   });
 });

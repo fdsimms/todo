@@ -126,6 +126,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookNotesPanel, cookSteps, clampStepIndex, describeStepPosition, CookTextSize, COOK_TEXT_SIZES, DEFAULT_COOK_TEXT_SIZE, cookTextMetrics, +1 more
 - `src/utils/cookPosition.ts` — CookPosition, saveCookPosition, savedCookPosition, clearCookPosition, CookSetup, saveCookSetup, savedCookSetup, restingCookPosition
 - `src/utils/cookQuestions.ts` — COOK_QUESTION_MAX_LENGTH, COOK_ANSWER_MAX_LINES, COOK_ANSWER_MAX_CHARS, CookContextIngredient, CookQuestionContext, cookQuestionContext, suggestedCookQuestions, clampCookAnswer
+- `src/utils/cookRecipeNow.ts` — cookRecipeNow
 - `src/utils/cookbookRecipes.ts` — CookbookPageKey, cookbookPageKey, compareCookbookRecipes, recipesInCookbook, CookbookLinkEffect, cookbookLinkEffect, pageAfterCookbookLink, CookbookLinkCandidate, COOKBOOK_LINK_LIMIT, cookbookLinkCandidates, +1 more
 - `src/utils/cookedState.ts` — MIN_COOKED_PER_RAW, MAX_COOKED_PER_RAW, readCooking, readCookingField, otherState, stateUnitLabel, takesStateAmount, ratioFromBatch, StatedAmount, parseStatedAmount, +2 more
 - `src/utils/cookingStats.ts` — CookingWindow, MealCookCounts, CookedRecipe, EMPTY_MEAL_COOK_COUNTS, cookingWindow, lastDaysOf, mealCookCounts, leftoversFinishedIn, leftoverHistoryIn, mostCookedRecipes, +1 more
@@ -280,7 +281,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/launchGuard.ts` — UNPROVEN_SCREEN_KEY, HEALTHY_AFTER_MS, screenToRestore, markScreenUnproven, readUnprovenScreen, clearUnprovenScreen
 - `src/utils/layoutAnimation.ts` — animateLayout
 - `src/utils/leaveLiveActivity.ts` — LEAVE_WINDOW_MS, ALREADY_THERE_MINUTES, LeaveRun, AlreadyThereCheck, isAlreadyThere, buildLeaveRun, useLeaveLiveActivitySync
-- `src/utils/leftoverOptOut.ts` — leftoverOptOutKey, isLeftoverOptedOut, addLeftoverOptOut, parseLeftoverOptOuts, serializeLeftoverOptOuts
+- `src/utils/leftoverOptOut.ts` — leftoverOptOutKey, isLeftoverOptedOut, addLeftoverOptOut, removeLeftoverOptOut, parseLeftoverOptOuts, serializeLeftoverOptOuts
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, plannedMealRowFor, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, LeftoverDestination, LeftoverPick, leftoverContainersFor, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, +25 more
 - `src/utils/limitWarningTasks.ts` — LimitReading, limitReadings, limitWarningKeyOf, figure, shortName, limitWarningTitle, LIMIT_WARNING_LINK, LIMIT_WARNING_TOP_FOODS, LIMIT_WARNING_NOTES, describeLimitContributors, +4 more

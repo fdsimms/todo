@@ -66,6 +66,10 @@ jest.mock('../store/useMealPlanStore', () => ({
     getState: () => ({ finishCookForRecipe: mockFinishCookForRecipe, entryById: mockEntryById }),
   },
 }));
+// Plans the recipe onto today before finishing it, so the post-cook sheet has a row.
+jest.mock('../utils/cookRecipeNow', () => ({
+  cookRecipeNow: (id: string) => mockFinishCookForRecipe(id),
+}));
 jest.mock('../store/useStepTimerStore', () => ({
   useStepTimerStore: { getState: () => ({ remove: mockRemoveStepTimer }) },
 }));
