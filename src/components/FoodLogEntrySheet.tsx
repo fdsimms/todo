@@ -99,6 +99,7 @@ import { haptics } from '../utils/haptics';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { PantryAnswerField } from './PantryAnswerField';
 import { unfixableQuantityReason, weighableLine, type LineWeighing } from '../utils/ingredientGrams';
+import { useAmountOperators } from '../hooks/useAmountOperators';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
@@ -1258,6 +1259,7 @@ export function FoodLogEntrySheet({
   }, [picked]);
 
   const usingFoodUnitPills = picked?.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other';
+  const amountOperators = useAmountOperators();
 
   // What `amount` becomes for a typed number and unit. In grams with a plate
   // picked, the number is the scale's reading and the plate comes off; a reading
@@ -2281,10 +2283,20 @@ export function FoodLogEntrySheet({
                     // arrival, so typing a different one replaces it rather
                     // than appending to it ("250" becoming "250200").
                     selectTextOnFocus={recalledAmount !== null && amount === recalledAmount}
+                    // A food's number takes a sum ("120 - 50"), typed with the
+                    // + − × buttons on the bar above the pad.
                     keyboardType={
                       picked.kind === 'dish' || usingFoodUnitPills
                         ? 'decimal-pad' : 'default'
                     }
+                    {...(usingFoodUnitPills ? amountOperators.fieldProps(
+                      'amount',
+                      () => amountNumber,
+                      next => {
+                        setAmountNumber(next);
+                        setAmount(composeAmount(next, selectedFoodUnit));
+                      },
+                    ) : {})}
                     // The number pad has no return key, so without this there is no
                     // way off it — the same accessory the weigh field below already
                     // passes. Omitted for the free-text field, whose amount is
@@ -2887,7 +2899,7 @@ export function FoodLogEntrySheet({
         onNext={subject => onPhotographLabel?.(subject)}
         onClose={() => setLabelAsk(false)}
       />
-      <NumberPadAccessory />
+      <NumberPadAccessory onOperator={amountOperators.onOperator} />
     </SheetModal>
   );
 }

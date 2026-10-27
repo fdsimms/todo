@@ -10,6 +10,7 @@ import { FoodLogEntrySheet } from './FoodLogEntrySheet';
 import { TextField } from './TextField';
 import { UnitMenuChip, OTHER_UNIT_KEY } from './UnitMenuChip';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { useAmountOperators } from '../hooks/useAmountOperators';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
@@ -71,6 +72,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  const amountOperators = useAmountOperators();
   const groceryItems = useGroceryStore(s => s.items);
   const itemProducts = useGroceryStore(s => s.itemProducts);
 
@@ -284,22 +286,24 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
                       const usingPills = unitOptions.length > 0 && unitKey !== OTHER_UNIT_KEY;
                       const unit = unitOptions.find(o => o.key === unitKey);
                       const clearError = () => setErrors(prev => { const { [line.key]: _gone, ...rest } = prev; return rest; });
+                      const change = (typed: string) => {
+                        if (usingPills) {
+                          setNumbers(prev => ({ ...prev, [line.key]: typed }));
+                          // Clearing the number leaves no text to read the unit
+                          // from, which would drop the row to "Other" and the
+                          // text keyboard mid-edit. Pin the unit it is on.
+                          setUnits(prev => (prev[line.key] === unitKey ? prev : { ...prev, [line.key]: unitKey }));
+                        }
+                        setDrafts(prev => ({ ...prev, [line.key]: usingPills ? composeFoodAmount(typed, unit) : typed }));
+                        clearError();
+                      };
                       return (
                         <View style={styles.inputRow}>
                           <TextField
                             style={styles.inputInRow}
                             value={usingPills ? (numbers[line.key] ?? parsed?.number ?? '') : text}
-                            onChangeText={typed => {
-                              if (usingPills) {
-                                setNumbers(prev => ({ ...prev, [line.key]: typed }));
-                                // Clearing the number leaves no text to read the unit
-                                // from, which would drop the row to "Other" and the
-                                // text keyboard mid-edit. Pin the unit it is on.
-                                setUnits(prev => (prev[line.key] === unitKey ? prev : { ...prev, [line.key]: unitKey }));
-                              }
-                              setDrafts(prev => ({ ...prev, [line.key]: usingPills ? composeFoodAmount(typed, unit) : typed }));
-                              clearError();
-                            }}
+                            onChangeText={change}
+                            {...(usingPills ? amountOperators.fieldProps(line.key, () => numbers[line.key] ?? parsed?.number ?? '', change) : {})}
                             onEndEditing={e => {
                               if (drafts[line.key] === undefined) return;
                               applyDraft(line, usingPills ? composeFoodAmount(e.nativeEvent.text, unit) : e.nativeEvent.text);
@@ -432,7 +436,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
             onClose={() => setPickTarget(null)}
           />
         </LazySheet>
-        <NumberPadAccessory />
+        <NumberPadAccessory onOperator={amountOperators.onOperator} />
       </View>
     </SheetModal>
   );

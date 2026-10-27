@@ -1,6 +1,7 @@
 import { US_STANDARD_DRINK_G, alcoholGramsOf, describeDrinks } from './alcohol';
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, MealSlot, NutrientKey, SavedMeal, SavedMealItem } from '../types';
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
+import { resolveAmountMath } from './amountMath';
 import { aisleForName } from './groceryAisles';
 import { groceryNameKey, parseGroceryInput } from './groceryParse';
 import { looseNameWeight } from './looseNameMatch';
@@ -528,9 +529,13 @@ export function isNutrientUnitOption(option: FoodUnitOption): boolean {
   return NUTRIENT_UNIT_OPTIONS.some(n => n.key === option.key);
 }
 
-/** A typed number for a pill, turned into the amount text the rest of the sheet reads. */
+/**
+ * A typed number for a pill, turned into the amount text the rest of the sheet reads.
+ * The number may be a sum ("120 - 50"), which is worked out here so every sheet
+ * that composes an amount accepts it.
+ */
 export function composeFoodAmount(numberText: string, unit: FoodUnitOption | undefined): string {
-  const n = numberText.trim();
+  const n = resolveAmountMath(numberText).trim();
   if (!n || !unit) return '';
   return `${n}${unit.suffix}`;
 }

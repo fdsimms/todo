@@ -44,6 +44,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear, shouldPlayBeat
 - `src/utils/allDaySpans.ts` — AllDayBar, AllDayLayout, layoutAllDay
 - `src/utils/allergenGuess.ts` — Allergen, guessAllergens, describeAllergens
+- `src/utils/amountMath.ts` — resolveAmountMath, AmountOperator, AMOUNT_OPERATORS, appendOperator
 - `src/utils/appGate.ts` — isGateTask, gateGroupFor, outstandingGates, gateShieldWanted, GATE_WINDOW_MINUTES, GATE_ARM_HORIZON_MS, GateWindow, gateWindowFor, PendingGate, nextPendingGate, +1 more
 - `src/utils/appGroups.ts` — APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, BASE_GROUP_NAME_SETTING, FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, MAX_APP_GROUPS, MAX_SUPERGROUPS, MAX_GROUP_NAME_LENGTH, AppGroup, +31 more
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
@@ -764,6 +765,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 ## `src/hooks`
 
 - `src/hooks/useActionMenu.tsx` — ActionMenuSpec, useActionMenu
+- `src/hooks/useAmountOperators.ts` — useAmountOperators
 - `src/hooks/useAnswerFirstCompletion.ts` — useAnswerFirstCompletion
 - `src/hooks/useAppShieldSync.ts` — useAppShieldSync
 - `src/hooks/useBottomBarHeight.ts` — useBottomBarHeight

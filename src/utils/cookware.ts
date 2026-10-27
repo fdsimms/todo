@@ -1,3 +1,4 @@
+import { resolveAmountMath } from './amountMath';
 import { COOKED_WEIGHT_MAX_G } from './mealLog';
 import type { CookwareType } from '../types';
 
@@ -27,7 +28,7 @@ export function clampCookwareWeight(grams: number | null): number | null {
 
 /** What a typed weight field holds, as a number. Accepts a decimal comma. */
 export function parseWeightText(text: string): number | null {
-  const trimmed = text.trim().replace(',', '.');
+  const trimmed = resolveAmountMath(text.trim()).replace(',', '.');
   if (!trimmed) return null;
   const n = Number(trimmed);
   return Number.isFinite(n) ? n : null;

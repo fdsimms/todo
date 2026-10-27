@@ -1,8 +1,10 @@
 import React, { useEffect, useId, useSyncExternalStore } from 'react';
-import { InputAccessoryView, Keyboard, Platform, StyleSheet, View } from 'react-native';
+import { InputAccessoryView, Keyboard, Platform, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, type Colors } from '../theme';
+import { font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { AMOUNT_OPERATORS, type AmountOperator } from '../utils/amountMath';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { PressableScale } from './PressableScale';
 import {
   isTopAccessory,
   registerAccessory,
@@ -38,8 +40,15 @@ export const NUMBER_PAD_ACCESSORY_ID = 'numberPadAccessory';
  * several number fields (a blood pressure reading), since the pad has no
  * return key to move on with either. The host says what Next does for the
  * field that is focused, and passes undefined on the last one.
+ *
+ * `onOperator`, when given, adds + − × buttons at the leading edge for an
+ * amount that takes a sum (`resolveAmountMath`). The host passes it only while
+ * that field is focused (`useAmountOperators`).
  */
-export function NumberPadAccessory({ onNext }: { onNext?: () => void } = {}) {
+export function NumberPadAccessory({ onNext, onOperator }: {
+  onNext?: () => void;
+  onOperator?: (op: AmountOperator) => void;
+} = {}) {
   const colors = useColors();
   const instanceId = useId();
   const ios = Platform.OS === 'ios';
@@ -66,6 +75,21 @@ export function NumberPadAccessory({ onNext }: { onNext?: () => void } = {}) {
     <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor={colors.bgSecondary}>
       <View style={[styles.bar, onNext && styles.barWithNext]}>
         {onNext && <SheetHeaderButton label="Next" role="cancel" onPress={onNext} />}
+        {onOperator && (
+          <View style={styles.operators}>
+            {AMOUNT_OPERATORS.map(({ op, glyph, label }) => (
+              <PressableScale
+                key={op}
+                style={styles.operator}
+                haptic
+                onPress={() => onOperator(op)}
+                accessibilityLabel={label}
+              >
+                <Text style={styles.operatorGlyph}>{glyph}</Text>
+              </PressableScale>
+            ))}
+          </View>
+        )}
         <SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => Keyboard.dismiss()} />
       </View>
     </InputAccessoryView>
@@ -76,6 +100,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   bar: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     backgroundColor: colors.bgSecondary,
@@ -83,4 +108,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderTopColor: colors.separator,
   },
   barWithNext: { justifyContent: 'space-between' },
+  operators: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginRight: 'auto' },
+  operator: {
+    width: 44,
+    height: 32,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  operatorGlyph: { fontSize: font.lg, fontWeight: fontWeight.medium, color: colors.text },
 });
