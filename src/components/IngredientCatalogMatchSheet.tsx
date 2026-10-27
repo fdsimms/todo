@@ -51,10 +51,11 @@ interface Props {
  * leaves, and taking one does the single thing the app already does to link a
  * line: renames it to the catalog item's own name and lets `nameKey`'s existing
  * derivation follow (see `CatalogLinkPicker`, and "the join is nameKey and
- * nothing else" in docs/arch/groceries.md). Nothing here mints a catalog row,
- * and nothing here writes a key. A line the app can't place is listed and left
- * alone — most one-off ingredients are exactly that, and saying so is the
- * honest answer rather than a defect to clear.
+ * nothing else" in docs/arch/groceries.md). Nothing here writes a key. A line
+ * the app can't place is listed and left alone unless the person taps "Add
+ * all" (or opens the line to add it alone). That button is the one place this
+ * sheet mints catalog rows, and only for the lines with no suggestion, so it
+ * never creates a near-duplicate.
  *
  * **Sorted suggestions first, then the unplaceable**, because only the first
  * group has an action. The second is there so the count in the header adds up
@@ -71,6 +72,7 @@ export function IngredientCatalogMatchSheet({
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
+  const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const recipeIngredients = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.ingredients ?? [])
   );
@@ -103,6 +105,15 @@ export function IngredientCatalogMatchSheet({
     // The one way a line is linked anywhere in this app: rename it, and let
     // updateIngredient's own `nameKey: groceryNameKey(next.name)` follow.
     updateIngredient(recipeId, ingredient.id, { name: match.suggestedName });
+  };
+
+  // Only the lines with no suggestion: a line with a "Did you mean" is a near
+  // miss of something already here, and minting it would make the duplicate
+  // that suggestion exists to prevent. The rows leave as they resolve.
+  const addAllToCatalog = () => {
+    haptics.success();
+    animateLayout();
+    for (const { ingredient } of rows.unknown) ensureCatalogItem(ingredient.name);
   };
 
   const { summary, suggested, unknown } = rows;
@@ -195,10 +206,15 @@ export function IngredientCatalogMatchSheet({
               <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
             </TouchableOpacity>
           ))}
+          <InlineAction
+            label={`Add all ${unknown.length} to catalog`}
+            onPress={addAllToCatalog}
+            style={styles.addAll}
+            accessibilityLabel={`Add ${unknown.length} ${unknown.length === 1 ? 'ingredient' : 'ingredients'} to your grocery catalog`}
+          />
           <Text style={styles.hint}>
-            These aren’t in your grocery catalog. Add one to set a brand, store, price
-            or substitute. One-off ingredients
-            don’t need that.
+            Open one to add it on its own, or to search for an item it should match. Adding
+            to the catalog doesn’t put anything on your shopping list.
           </Text>
         </View>
       )}
@@ -258,6 +274,7 @@ function makeStyles(colors: Colors) {
     rowName: { flex: 1, fontSize: font.md, color: colors.text },
     rowArrow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     rowTarget: { flex: 1, fontSize: font.sm, color: colors.textSecondary },
+    addAll: { alignSelf: 'flex-start', marginTop: spacing.sm },
     hint: {
       fontSize: font.xs,
       color: colors.textTertiary,
