@@ -7,10 +7,10 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
-import { cookEntryForRecipe, earliestUnplannedSlot, recipeIndex } from '../utils/mealPlan';
+import { earliestUnplannedSlot, recipeIndex } from '../utils/mealPlan';
 import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import { prepOfferMessage, prepTaskDraftsForMeal } from '../utils/recipeUtils';
-import { slotForHour } from '../utils/mealLog';
+import { cookRecipeNow as cookRecipeNowUtil } from '../utils/cookRecipeNow';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
 import { entryResolution } from '../utils/recipeComponents';
@@ -33,7 +33,6 @@ export function usePlanMeal() {
   const planMeal = useMealPlanStore(s => s.planMeal);
   const setRecipeScale = useMealPlanStore(s => s.setRecipeScale);
   const entriesForDayLive = useMealPlanStore(s => s.entriesForDayLive);
-  const finishCookForRecipe = useMealPlanStore(s => s.finishCookForRecipe);
   const mealSlotsEnabled = useSettingsStore(useShallow(s => s.mealSlotsEnabled));
   const addTask = useTaskStore(s => s.addTask);
 
@@ -174,24 +173,7 @@ export function usePlanMeal() {
    * would find and pair on its own, and planning a second one would just be
    * an extra dinner nobody asked for.
    */
-  const cookRecipeNow = useCallback((recipe: Recipe) => {
-    const dayKey = dayKeyOf(getLogicalToday());
-    const todayEntries = entriesForDayLive(dayKey);
-    if (!cookEntryForRecipe(todayEntries, recipe.id, dayKey)) {
-      // The real clock, not a logical one: this is the time of eating, which
-      // `slotForHour` reads the way a person would.
-      const byClock = slotForHour(new Date().getHours());
-      planMeal({
-        date: dayKey,
-        slot: mealSlotsEnabled.includes(byClock)
-          ? byClock
-          : earliestUnplannedSlot(todayEntries, dayKey, mealSlotsEnabled),
-        recipeId: recipe.id,
-        title: recipe.name,
-      });
-    }
-    finishCookForRecipe(recipe.id);
-  }, [entriesForDayLive, planMeal, mealSlotsEnabled, finishCookForRecipe]);
+  const cookRecipeNow = useCallback((recipe: Recipe) => cookRecipeNowUtil(recipe.id), []);
 
   return { planRecipe, offerPrepTasks, offerPrepTasksForEach, earliestUnplannedSlotToday, cookRecipeNow };
 }
