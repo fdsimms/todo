@@ -129,6 +129,11 @@ const SIZE_WORDS = new Set(['small', 'medium', 'large', 'extra-large', 'jumbo'])
 // only ever looks at the first word.
 const LEADING_SIZE = /^(small|medium|large|extra-large|jumbo)\s+(.+)$/i;
 
+// "1 cup (235 ml) buttermilk": the same amount restated in another measure,
+// written in parentheses right after the unit. Only a parenthetical that opens
+// with a number counts, so "(optional)" and "(packed)" stay where they were.
+const MEASURE_PAREN = /^(\(\s*(?:about |approx\.? |~)?\d[^()]*\))\s+(\S.*)$/i;
+
 function extractLeadingSize(name: string, quantity: string): { name: string; quantity: string } {
   const match = LEADING_SIZE.exec(name);
   if (!match) return { name, quantity };
@@ -326,7 +331,10 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
             quantity: clampQuantity(`${count} x ${packSize[1]}${packSize[2].toLowerCase()}`),
           };
         }
-        const sized = extractLeadingSize(name.trim(), `${count} ${canonicalUnit}`);
+        const restated = canonicalUnit === 'x' ? null : MEASURE_PAREN.exec(name.trim());
+        const sized = restated
+          ? extractLeadingSize(restated[2], `${count} ${canonicalUnit} ${restated[1]}`)
+          : extractLeadingSize(name.trim(), `${count} ${canonicalUnit}`);
         return { name: clampName(sized.name), quantity: clampQuantity(sized.quantity) };
       }
       if (!maybeUnit) {
@@ -412,6 +420,36 @@ export const LEADING_PREP_PRODUCTS: readonly string[] = [
 function namesPrepProduct(name: string): boolean {
   const key = groceryNameKey(name);
   return LEADING_PREP_PRODUCTS.some(product => key === product || key.startsWith(`${product} `));
+}
+
+/**
+ * "1 cup (235 ml), well-shaken, cold is fine" into the amount and the note
+ * that rode along in the same field. A model told to keep `quantity` to the
+ * amount still sometimes writes the instruction after it, which then sits in
+ * the pill where the amount goes.
+ *
+ * Splits only at a comma outside any parentheses ("1 packet (1/4 ounce, 7 g)"
+ * is one amount), only when what comes before it opens with a number, and not
+ * when what follows is a size word, since "2, large" is how `extractLeadingSize`
+ * writes an amount (the size is part of it).
+ */
+export function splitQuantityNote(quantity: string): { quantity: string; note: string | null } {
+  const trimmed = quantity.trim();
+  if (!/^[\d\u00BC-\u00BE\u2150-\u215E]/.test(trimmed)) return { quantity: trimmed, note: null };
+  let depth = 0;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    else if (ch === ',' && depth === 0) {
+      const head = trimmed.slice(0, i).trim();
+      const tail = trimmed.slice(i + 1).trim();
+      if (!head || !tail) break;
+      if (SIZE_WORDS.has(tail.toLowerCase().split(/\s+/)[0].replace(/[^a-z-]/g, ''))) break;
+      return { quantity: head, note: tail };
+    }
+  }
+  return { quantity: trimmed, note: null };
 }
 
 export function splitPrep(name: string): { name: string; prep: string | null } {

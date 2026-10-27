@@ -220,7 +220,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryItemWrite.ts` — pricedRows, ProductPatch, productEditRow, preferredProductRow, renameClash, renameRows, shopLinkRow, newShopRow, renamedShopRow, SubLinkOptions, +14 more
 - `src/utils/groceryLists.ts` — HOME_LIST_NAME, isAwayList, listNameFor, entryFor, onListAnywhere, listedAnywhere, itemsOnList, withHomeMembership, trolleyStateFor, listCount, +4 more
 - `src/utils/groceryMerge.ts` — laterOf, pickPriceFields, MergeRows, MergePlan, planMergeItems
-- `src/utils/groceryParse.ts` — groceryNameKey, parseGroceryInput, LEADING_PREP_PRODUCTS, splitPrep, splitPurpose, splitExample, suggestShorterCatalogName, splitAlternativeNames, splitImportAlternatives, looksLikeAlternativeList, +3 more
+- `src/utils/groceryParse.ts` — groceryNameKey, parseGroceryInput, LEADING_PREP_PRODUCTS, splitQuantityNote, splitPrep, splitPurpose, splitExample, suggestShorterCatalogName, splitAlternativeNames, splitImportAlternatives, +4 more
 - `src/utils/groceryPlural.ts` — pluralKeyVariants, resolvePluralKey, catalogItemForKey
 - `src/utils/groceryPrice.ts` — parsePriceInput, formatPrice, priceToInput, formatPriceInput, describePriceAge, describePriceContext, describeShopPrices, ShopPrice, shopPricesFor, Comparable, +19 more
 - `src/utils/groceryProduct.ts` — productKeyFor, canonicalBrand, describeProduct, describeProductOfItem, describeCatalogItem, productsForItem, productForGtin, preferredProductOf, describePreferredProduct, ratingCandidate, +4 more
