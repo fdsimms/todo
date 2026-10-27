@@ -76,7 +76,9 @@ beforeEach(() => {
     sleepNights: null,
     loadingSleep: false,
   });
-  useSettingsStore.setState({ dayResetTime: '00:00' });
+  // A goal on the Health basis makes refreshWeight read active energy, which a
+  // test holding readDailyHealth open would then wait on for ever.
+  useSettingsStore.setState({ dayResetTime: '00:00', weightGoal: null });
 });
 
 describe('refresh', () => {
