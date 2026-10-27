@@ -53,6 +53,11 @@ interface Props {
    */
   onNeverAskLeftovers?: () => void;
   /**
+   * Names of the containers already logged from this cooking. The question
+   * stays up so a second one can be logged, but says what was saved.
+   */
+  loggedLeftovers?: string[];
+  /**
    * The weigh-the-dish section, or null when there is nothing to ask — a meal
    * with no recipe to remember it on, one whose weight is already recorded, or
    * a dish whose figures the nutrition rollup declined, where a weight would
@@ -151,6 +156,7 @@ export function CookRecapSheet({
   title,
   onLogLeftovers,
   onNeverAskLeftovers,
+  loggedLeftovers = [],
   cookedWeight,
   rows,
   restockRows,
@@ -485,10 +491,22 @@ export function CookRecapSheet({
                     <Ionicons name="cube-outline" size={18} color={colors.textSecondary} />
                     <Text style={styles.choiceLabel}>Anything left over?</Text>
                     <View style={styles.choiceButtons}>
-                      <InlineAction label="Log" onPress={onLogLeftovers} accessibilityLabel="Log leftovers" />
+                      <InlineAction
+                        label={loggedLeftovers.length > 0 ? 'Log more' : 'Log'}
+                        onPress={onLogLeftovers}
+                        accessibilityLabel="Log leftovers"
+                      />
                     </View>
                   </View>
-                  {onNeverAskLeftovers && (
+                  {loggedLeftovers.length > 0 && (
+                    <View style={styles.loggedRow}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.greenText} />
+                      <Text style={styles.loggedText} numberOfLines={2}>
+                        Logged {loggedLeftovers.join(', ')}
+                      </Text>
+                    </View>
+                  )}
+                  {onNeverAskLeftovers && loggedLeftovers.length === 0 && (
                     <View style={styles.neverAskRow}>
                       <InlineAction
                         label="Don’t ask again"
@@ -806,6 +824,14 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   },
   // Under the question rather than beside it, so the question keeps its row.
   neverAskRow: { alignItems: 'flex-start', paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
+  loggedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.smd,
+  },
+  loggedText: { flex: 1, color: colors.textSecondary, fontSize: font.sm },
   choiceLabel: { flexGrow: 1, flexShrink: 0, color: colors.text, fontSize: font.md },
   // The same row geometry as choiceRow above, with a field where its label is.
   weighInWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.xs },
