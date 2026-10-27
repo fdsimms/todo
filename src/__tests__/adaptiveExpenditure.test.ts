@@ -2,6 +2,7 @@ import {
   KCAL_PER_KG,
   MIN_EXPENDITURE_DAYS,
   describeExpenditureShortfall,
+  describeLeftOut,
   describeLogBasis,
   measuredExpenditure,
 } from '../utils/adaptiveExpenditure';
@@ -47,6 +48,35 @@ describe('measuredExpenditure', () => {
     expect(2200 - result.kcal).toBeLessThan(endpointShift * 0.8);
   });
 
+  it('leaves out a mistyped weigh-in and reports it', () => {
+    // 150 lb (68 kg) entered among readings near 82 kg, two days back.
+    const readings = [...weighIns([27, 22, 17, 12, 7]), { dayKey: daysBack(2), kilograms: 68 }];
+    const result = measuredExpenditure(intake(20), readings, TODAY);
+    if (result.kind !== 'measured') throw new Error('expected a figure');
+    expect(result.leftOut).toEqual([{ dayKey: daysBack(2), kilograms: 68 }]);
+    expect(result.weighIns).toBe(5);
+    expect(result.kcal).toBe(2200);
+  });
+
+  it('keeps a heavy morning and a real loss', () => {
+    const loss = weighIns([27, 22, 17, 12, 7, 2], 82, 0.05);
+    loss[3] = { ...loss[3], kilograms: loss[3].kilograms + 1.5 };
+    const result = measuredExpenditure(intake(20), loss, TODAY);
+    if (result.kind !== 'measured') throw new Error('expected a figure');
+    expect(result.leftOut).toEqual([]);
+    expect(result.weighIns).toBe(6);
+  });
+
+  it('does not judge three weigh-ins, where one odd one cannot be told from a change', () => {
+    const result = measuredExpenditure(intake(20), weighIns([27, 14, 1], 82, 0.05), TODAY);
+    expect(result.kind === 'measured' && result.leftOut).toEqual([]);
+  });
+
+  it('counts the weigh-ins that remain against the minimum', () => {
+    const readings = [...weighIns([27, 26, 25]), { dayKey: daysBack(1), kilograms: 60 }];
+    expect(measuredExpenditure(intake(20), readings, TODAY)).toMatchObject({ kind: 'short', weighIns: 3, leftOut: [{ dayKey: daysBack(1), kilograms: 60 }] });
+  });
+
   it('leaves out today and anything older than the window', () => {
     const days = [...intake(MIN_EXPENDITURE_DAYS - 1), { dayKey: TODAY, calorieKcal: 900 }, { dayKey: daysBack(40), calorieKcal: 900 }];
     expect(measuredExpenditure(days, weighIns([27, 14, 1]), TODAY)).toMatchObject({ kind: 'short', days: MIN_EXPENDITURE_DAYS - 1 });
@@ -59,7 +89,7 @@ describe('measuredExpenditure', () => {
 
   it('refuses too few weigh-ins, or weigh-ins too close together', () => {
     expect(measuredExpenditure(intake(20), weighIns([10, 1]), TODAY)).toMatchObject({ kind: 'short', weighIns: 2 });
-    expect(measuredExpenditure(intake(20), weighIns([10, 5, 1]), TODAY)).toMatchObject({ kind: 'short', spanDays: 9 });
+    expect(measuredExpenditure(intake(20), weighIns([10, 5, 1]), TODAY)).toMatchObject({ kind: 'short', spanDays: 9, leftOut: [] });
   });
 
   it('refuses a figure no body produces, rather than proposing it', () => {
@@ -70,7 +100,7 @@ describe('measuredExpenditure', () => {
 
 describe('describeExpenditureShortfall', () => {
   it('says what is needed and what there is so far', () => {
-    expect(describeExpenditureShortfall({ kind: 'short', days: 9, weighIns: 1, spanDays: 0 }))
+    expect(describeExpenditureShortfall({ kind: 'short', days: 9, weighIns: 1, spanDays: 0, leftOut: [] }))
       .toBe('Needs 14 fully logged days and 3 weigh-ins at least two weeks apart, in the last four weeks. So far: 9 days, 1 weigh-in.');
   });
 });
@@ -87,9 +117,22 @@ describe('describeLogBasis', () => {
   });
 
   it('says what is missing, and what the target uses meanwhile', () => {
-    expect(describeLogBasis({ kind: 'short', days: 2, weighIns: 1, spanDays: 0 }, kg, day))
+    expect(describeLogBasis({ kind: 'short', days: 2, weighIns: 1, spanDays: 0, leftOut: [] }, kg, day))
       .toMatch(/So far: 2 days, 1 weigh-in\. Until then your target uses your activity level\.$/);
     expect(describeLogBasis({ kind: 'implausible' }, kg, day)).toMatch(/uses your activity level/);
     expect(describeLogBasis(null, kg, day)).toBe('');
+  });
+});
+
+describe('describeLeftOut', () => {
+  const kg = (v: number) => `${v} kg`;
+  const day = (k: string) => k;
+  it('names the reading and says how to fix it', () => {
+    expect(describeLeftOut([{ dayKey: '2026-10-20', kilograms: 68 }], kg, day)).toBe(
+      '1 weigh-in left out because it was far from the rest: 68 kg on 2026-10-20. Fix or delete it if it was a typo.',
+    );
+  });
+  it('is empty when nothing was left out', () => {
+    expect(describeLeftOut([], kg, day)).toBe('');
   });
 });

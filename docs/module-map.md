@@ -19,7 +19,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/activeEnergyBoost.ts` — ActiveEnergyBoost, ACTIVE_ENERGY_BASELINE_RANGE, parseActiveEnergyBoost, serializeActiveEnergyBoost, activeEnergyBoostKcal, effectiveCalorieTargetKcal, TYPICAL_ACTIVE_ENERGY_WINDOW_DAYS, MIN_TYPICAL_ACTIVE_ENERGY_DAYS, typicalActiveEnergyKcal, snapToBaselineStep
 - `src/utils/activeTrip.ts` — TRIP_MAX_MS, isTripLive, TRIP_STALE_MS, isTripStale, describeTripElapsed, resolveActiveTrip, TripMarkerKind, TripMarker, tripMarkerFor, describeTripMarker, +1 more
 - `src/utils/activityRings.ts` — ActivityRing, RingId, ActivityRings, RING_META, RING_ORDER, parseActivitySummary, ringFraction, isRingClosed, describeRing, ringsAccessibilityLabel, +1 more
-- `src/utils/adaptiveExpenditure.ts` — EXPENDITURE_WINDOW_DAYS, MIN_EXPENDITURE_DAYS, MIN_EXPENDITURE_WEIGH_INS, MIN_EXPENDITURE_SPAN_DAYS, KCAL_PER_KG, MeasuredExpenditure, ExpenditureShortfall, ExpenditureImplausible, ExpenditureResult, measuredExpenditure, +2 more
+- `src/utils/adaptiveExpenditure.ts` — EXPENDITURE_WINDOW_DAYS, MIN_EXPENDITURE_DAYS, MIN_EXPENDITURE_WEIGH_INS, MIN_EXPENDITURE_SPAN_DAYS, KCAL_PER_KG, MeasuredExpenditure, ExpenditureShortfall, ExpenditureImplausible, ExpenditureResult, measuredExpenditure, +3 more
 - `src/utils/adaptiveExpenditureRead.ts` — readMeasuredExpenditure, measuredMaintenanceKcal
 - `src/utils/afterPaint.ts` — DeferredHandle, TRANSITION_SETTLE_MS, runAfterPaint, runAfterTransition
 - `src/utils/agendaSpeech.ts` — AGENDA_SPEECH_RATE, speakAgenda, stopSpeakingAgenda

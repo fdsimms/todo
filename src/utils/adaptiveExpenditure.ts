@@ -25,6 +25,15 @@
  * calories. The slope is a least-squares line through the weigh-ins, which a
  * single heavy morning moves less than it moves a line drawn between two
  * endpoints.
+ *
+ * **A weigh-in far off the rest is left out, and the result says which.** A
+ * mistyped weight (150 lb among readings near 180) sits at the end of the line
+ * where it has the most pull, and read as real it was worth over a thousand
+ * calories a day of invented burn. It is judged against a robust line
+ * (`outlierWeighIns`), left out of the fit rather than corrected, and returned
+ * as `leftOut` so the sheet can name it: the person decides what the scale
+ * said, the app only declines to build a target on a reading that disagrees
+ * with every other one.
  */
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { KCAL_PER_LB } from './energyBudget';
@@ -51,6 +60,15 @@ export const MIN_EXPENDITURE_SPAN_DAYS = 14;
 /** The same energy per kilogram the goal's rate arithmetic uses, so the two can't disagree. */
 export const KCAL_PER_KG = KCAL_PER_LB / unitToKg(1, 'lb');
 
+/**
+ * A weigh-in this far from the robust trend is never ordinary noise, whatever
+ * the spread of the rest. Daily weight moves by a kilogram or two with water
+ * and a meal, so 3 kg keeps a heavy morning in and a typo out.
+ */
+const OUTLIER_MIN_KG = 3;
+/** And a reading must also be this many robust standard deviations off, so a noisy scale isn't trimmed. */
+const OUTLIER_DEVIATIONS = 4;
+
 /** A figure outside this is a logging gap or a scale error, not a body: refused. */
 const PLAUSIBLE_KCAL = { min: 800, max: 6000 };
 
@@ -68,6 +86,8 @@ export interface MeasuredExpenditure {
   trendEndKg: number;
   firstDayKey: string;
   lastDayKey: string;
+  /** Weigh-ins that disagreed with the trend and were not counted. */
+  leftOut: { dayKey: string; kilograms: number }[];
 }
 
 export interface ExpenditureShortfall {
@@ -75,11 +95,51 @@ export interface ExpenditureShortfall {
   days: number;
   weighIns: number;
   spanDays: number;
+  /** Weigh-ins that disagreed with the trend and were not counted. */
+  leftOut: { dayKey: string; kilograms: number }[];
 }
 
 /** Why there is no figure even though the data is all there: it came out implausible. */
 export interface ExpenditureImplausible {
   kind: 'implausible';
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+/**
+ * Splits weigh-ins (sorted by day) into those that fit a robust trend and those
+ * that sit far off it. The line is Theil-Sen, the median of every pairwise
+ * slope, because a least-squares line is dragged toward the very reading being
+ * judged, and a bad one at the end of the window drags it furthest. Needs four
+ * readings to say anything: with three, one odd one out can't be told from a
+ * real change.
+ */
+function outlierWeighIns<T extends { dayKey: string; kilograms: number }>(
+  readings: readonly T[],
+): { kept: T[]; leftOut: T[] } {
+  if (readings.length < 4) return { kept: [...readings], leftOut: [] };
+  const origin = dayKeyToDate(readings[0].dayKey);
+  const xs = readings.map(r => differenceInCalendarDays(dayKeyToDate(r.dayKey), origin));
+  const slopes: number[] = [];
+  for (let i = 0; i < readings.length; i++) {
+    for (let j = i + 1; j < readings.length; j++) {
+      if (xs[j] !== xs[i]) slopes.push((readings[j].kilograms - readings[i].kilograms) / (xs[j] - xs[i]));
+    }
+  }
+  if (slopes.length === 0) return { kept: [...readings], leftOut: [] };
+  const slope = median(slopes);
+  const intercept = median(readings.map((r, i) => r.kilograms - slope * xs[i]));
+  const residuals = readings.map((r, i) => r.kilograms - (intercept + slope * xs[i]));
+  const spread = 1.4826 * median(residuals.map(Math.abs));
+  const limit = Math.max(OUTLIER_MIN_KG, OUTLIER_DEVIATIONS * spread);
+  const kept: T[] = [];
+  const leftOut: T[] = [];
+  readings.forEach((r, i) => (Math.abs(residuals[i]) > limit ? leftOut : kept).push(r));
+  return { kept, leftOut };
 }
 
 export type ExpenditureResult = MeasuredExpenditure | ExpenditureShortfall | ExpenditureImplausible;
@@ -105,15 +165,17 @@ export function measuredExpenditure(
   };
 
   const days = intake.filter(d => inWindow(d.dayKey) && typeof d.calorieKcal === 'number' && d.calorieKcal > 0);
-  const readings = weights
-    .filter((w): w is { dayKey: string; kilograms: number } => w.kilograms !== null && inWindow(w.dayKey))
-    .sort((a, b) => a.dayKey.localeCompare(b.dayKey));
+  const { kept: readings, leftOut } = outlierWeighIns(
+    weights
+      .filter((w): w is { dayKey: string; kilograms: number } => w.kilograms !== null && inWindow(w.dayKey))
+      .sort((a, b) => a.dayKey.localeCompare(b.dayKey)),
+  );
 
   const spanDays = readings.length >= 2
     ? differenceInCalendarDays(dayKeyToDate(readings[readings.length - 1].dayKey), dayKeyToDate(readings[0].dayKey))
     : 0;
   if (days.length < MIN_EXPENDITURE_DAYS || readings.length < MIN_EXPENDITURE_WEIGH_INS || spanDays < MIN_EXPENDITURE_SPAN_DAYS) {
-    return { kind: 'short', days: days.length, weighIns: readings.length, spanDays };
+    return { kind: 'short', days: days.length, weighIns: readings.length, spanDays, leftOut };
   }
 
   // Least squares through (day offset, kilograms).
@@ -147,6 +209,7 @@ export function measuredExpenditure(
     trendEndKg: intercept + slopeKgPerDay * xs[n - 1],
     firstDayKey: sortedDays[0].dayKey,
     lastDayKey: sortedDays[sortedDays.length - 1].dayKey,
+    leftOut,
   };
 }
 
@@ -162,6 +225,17 @@ export function describeExpenditureShortfall(short: ExpenditureShortfall): strin
  * what it came to, or what is still missing. The formatters keep units and
  * dates the caller's business.
  */
+export function describeLeftOut(
+  leftOut: readonly { dayKey: string; kilograms: number }[],
+  formatKg: (kg: number) => string,
+  formatDay: (dayKey: string) => string,
+): string {
+  if (leftOut.length === 0) return '';
+  const list = leftOut.map(w => `${formatKg(w.kilograms)} on ${formatDay(w.dayKey)}`).join(', ');
+  const noun = leftOut.length === 1 ? '1 weigh-in' : `${leftOut.length} weigh-ins`;
+  return `${noun} left out because ${leftOut.length === 1 ? 'it was' : 'they were'} far from the rest: ${list}. Fix or delete ${leftOut.length === 1 ? 'it' : 'them'} if ${leftOut.length === 1 ? 'it was' : 'they were'} a typo.`;
+}
+
 export function describeLogBasis(
   result: ExpenditureResult | null,
   formatKg: (kg: number) => string,
@@ -169,7 +243,8 @@ export function describeLogBasis(
 ): string {
   if (!result) return '';
   if (result.kind === 'short') {
-    return `${describeExpenditureShortfall(result)} Until then your target uses your activity level.`;
+    const out = describeLeftOut(result.leftOut, formatKg, formatDay);
+    return `${describeExpenditureShortfall(result)}${out ? ` ${out}` : ''} Until then your target uses your activity level.`;
   }
   if (result.kind === 'implausible') {
     return 'Your log and your weigh-ins don’t come to a believable figure yet, so your target uses your activity level. A gap in the log or a weigh-in in different clothes can do this.';

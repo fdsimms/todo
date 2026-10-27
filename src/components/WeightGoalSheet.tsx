@@ -43,7 +43,7 @@ import {
   type BodyProfile,
   type BodySex,
 } from '../utils/energyBudget';
-import { describeLogBasis as describeLogWorking } from '../utils/adaptiveExpenditure';
+import { describeLeftOut, describeLogBasis as describeLogWorking } from '../utils/adaptiveExpenditure';
 import { format } from 'date-fns/format';
 import { readMeasuredExpenditure } from '../utils/adaptiveExpenditureRead';
 import {
@@ -798,6 +798,11 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     <Text style={styles.help}>
                       {`${logResult.days} logged days, ${logResult.weighIns} weigh-ins, ${format(dayKeyToDate(logResult.firstDayKey), 'MMM d')} to ${format(dayKeyToDate(logResult.lastDayKey), 'MMM d')}`}
                     </Text>
+                    {logResult.leftOut.length > 0 && (
+                      <Text style={styles.help}>
+                        {describeLeftOut(logResult.leftOut, kg => `${kgToUnit(kg, unit).toFixed(1)} ${unit}`, key => format(dayKeyToDate(key), 'MMM d'))}
+                      </Text>
+                    )}
                   </>
                 )}
                 {canUseMeasured && measuredBasis && (
