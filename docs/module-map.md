@@ -37,7 +37,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
 - `src/utils/alarmOverride.ts` — parseAlarmOverride
 - `src/utils/alarmSchedule.ts` — syncAlarmToDevice, removeAlarmFromDevice
-- `src/utils/alarmSoundDevice.ts` — soundFileForAlarm, PickedSound, pickSoundFile, installImportedSound, removeImportedSound, playSoundPreview, stopSoundPreview
+- `src/utils/alarmSoundDevice.ts` — soundFileForAlarm, PickedSound, pickSoundFile, installImportedSound, removeImportedSound, subscribeSoundPreview, playSoundPreview, stopSoundPreview
 - `src/utils/alarmSounds.ts` — BUILT_IN_SOUNDS, BuiltInSoundId, CUSTOM_SOUND_PREFIX, ALARM_SOUND_MAX_SECONDS, ALARM_SOUNDS_SETTING, DEFAULT_SOUND_LABEL, isBuiltInSound, customSoundId, customSoundRef, parseAlarmSound, +9 more
 - `src/utils/alarms.ts` — QUICK_ALARM_MINUTES, QUICK_ALARM_CHOICES, MISSED_MISSION_WINDOW_MS, formatAlarmMinutes, atTime, nextClockTime, isRepeating, calendarKey, repeatingRingOn, nextFireAt, +13 more
 - `src/utils/alcohol.ts` — US_STANDARD_DRINK_G, STANDARD_DRINK_SIZES, setDisplayDrinkGrams, getDisplayDrinkGrams, normalizeStandardDrinkGrams, DRINK_PRESETS, DRINK_STEP, MAX_ENTRY_DRINKS, gramsFromDrinks, drinksFromGrams, +9 more
@@ -126,6 +126,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookNotesPanel, cookSteps, clampStepIndex, describeStepPosition, CookTextSize, COOK_TEXT_SIZES, DEFAULT_COOK_TEXT_SIZE, cookTextMetrics, +1 more
 - `src/utils/cookPosition.ts` — CookPosition, saveCookPosition, savedCookPosition, clearCookPosition, CookSetup, saveCookSetup, savedCookSetup, restingCookPosition
 - `src/utils/cookQuestions.ts` — COOK_QUESTION_MAX_LENGTH, COOK_ANSWER_MAX_LINES, COOK_ANSWER_MAX_CHARS, CookContextIngredient, CookQuestionContext, cookQuestionContext, suggestedCookQuestions, clampCookAnswer
+- `src/utils/cookRecipeNow.ts` — cookRecipeNow
 - `src/utils/cookbookRecipes.ts` — CookbookPageKey, cookbookPageKey, compareCookbookRecipes, recipesInCookbook, CookbookLinkEffect, cookbookLinkEffect, pageAfterCookbookLink, CookbookLinkCandidate, COOKBOOK_LINK_LIMIT, cookbookLinkCandidates, +1 more
 - `src/utils/cookedState.ts` — MIN_COOKED_PER_RAW, MAX_COOKED_PER_RAW, readCooking, readCookingField, otherState, stateUnitLabel, takesStateAmount, ratioFromBatch, StatedAmount, parseStatedAmount, +2 more
 - `src/utils/cookingStats.ts` — CookingWindow, MealCookCounts, CookedRecipe, EMPTY_MEAL_COOK_COUNTS, cookingWindow, lastDaysOf, mealCookCounts, leftoversFinishedIn, leftoverHistoryIn, mostCookedRecipes, +1 more
@@ -280,7 +281,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/launchGuard.ts` — UNPROVEN_SCREEN_KEY, HEALTHY_AFTER_MS, screenToRestore, markScreenUnproven, readUnprovenScreen, clearUnprovenScreen
 - `src/utils/layoutAnimation.ts` — animateLayout
 - `src/utils/leaveLiveActivity.ts` — LEAVE_WINDOW_MS, ALREADY_THERE_MINUTES, LeaveRun, AlreadyThereCheck, isAlreadyThere, buildLeaveRun, useLeaveLiveActivitySync
-- `src/utils/leftoverOptOut.ts` — leftoverOptOutKey, isLeftoverOptedOut, addLeftoverOptOut, parseLeftoverOptOuts, serializeLeftoverOptOuts
+- `src/utils/leftoverOptOut.ts` — leftoverOptOutKey, isLeftoverOptedOut, addLeftoverOptOut, removeLeftoverOptOut, parseLeftoverOptOuts, serializeLeftoverOptOuts
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, plannedMealRowFor, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, LeftoverDestination, LeftoverPick, leftoverContainersFor, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, +25 more
 - `src/utils/limitWarningTasks.ts` — LimitReading, limitReadings, limitWarningKeyOf, figure, shortName, limitWarningTitle, LIMIT_WARNING_LINK, LIMIT_WARNING_TOP_FOODS, LIMIT_WARNING_NOTES, describeLimitContributors, +4 more
@@ -550,6 +551,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/speedBump.ts` — SPEED_BUMP_TITLE_MAX_LENGTH, SPEED_BUMP_BLOCK_MIN, SPEED_BUMP_BLOCK_MAX, SPEED_BUMP_BLOCK_DEFAULT, SPEED_BUMP_BLOCK_CHOICES, SPEED_BUMP_THRESHOLD_DEFAULT, SPEED_BUMP_TIMES_MIN, SPEED_BUMP_TIMES_MAX, SPEED_BUMP_REPEAT_MIN, SPEED_BUMP_REPEAT_MAX, +14 more
 - `src/utils/stableLists.ts` — reuseUnchangedLists
 - `src/utils/stackPicker.ts` — StackOption, STACK_PICKER_COLLAPSED_ROWS, filterStacks, StackRows, stackRows
+- `src/utils/stackSort.ts` — stackMemberIdsAToZ
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, eitherSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap
 - `src/utils/startWorkout.ts` — StartWorkoutInput, StartWorkoutResult, startWorkout
 - `src/utils/startup.ts` — runStartupStep, runStartupSequence

@@ -252,6 +252,15 @@ describe('buildWatchWorkout', () => {
       expect(buildWatchWorkout(input({ live: { session: live(), sets, routine: null, rest: paused } }))!.live!.rest).toBeNull();
     });
 
+    it('carries a rest set mid-workout in place of the routine\'s, on the exercise and on its sets', () => {
+      const r1 = routine('r1', { items: [doubleItem] });
+      const sets = [set(BENCH, 0, 0, { weightKg: 80, reps: 8 }), set(BENCH, 0, 1, { weightKg: 80, reps: 8 })];
+      const session = live({ routineId: 'r1', restOverrides: { [BENCH]: 45 } });
+      const out = buildWatchWorkout(input({ live: { session, sets, routine: r1, rest: null }, routines: [r1], sessions: [finished, session] }))!.live!;
+      expect(out.exercises[0].rest).toBe(45);
+      expect(out.sets[0].rest).toBe(45);
+    });
+
     it('carries each exercise’s rest, and its suggestion while workout mode would offer it', () => {
       const r1 = routine('r1', { items: [doubleItem] });
       const open = [0, 1, 2].map(i => set(BENCH, 0, i, { weightKg: 80, reps: 8 }));

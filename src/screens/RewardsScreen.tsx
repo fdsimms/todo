@@ -1020,7 +1020,7 @@ export function RewardsScreen() {
     return (
       <PressableScale
         key={reward.id}
-        style={[styles.tile, isGoal && styles.tileGoal, (resting || !affordable) && styles.tileDim]}
+        style={[styles.tile, isGoal && styles.tileGoal]}
         onPress={() => setDetailId(reward.id)}
         accessibilityLabel={[
           shown.title,
@@ -1045,17 +1045,20 @@ export function RewardsScreen() {
         {!resting && !affordable && (
           <ProgressBar progress={goalBarFill(balance, reward.cost)} height={6} color={colors.done} decorative style={styles.tileBar} />
         )}
-        {/* Claimable from the tile itself. A tile that can't be claimed yet
-            keeps its reason as text and opens the sheet, which explains it. */}
-        {!resting && affordable && (
-          <InlineAction
-            label="Claim"
-            icon="gift-outline"
-            onPress={() => claim(reward, shown.title)}
-            style={styles.tileClaim}
-            accessibilityLabel={`Claim ${shown.title} for ${formatCoins(reward.cost)}`}
-          />
-        )}
+        {/* Claimable from the tile itself. One that can't be claimed yet gets
+            the same pill, faded (the tile is not), and tapping it opens the
+            sheet, which explains why. */}
+        <InlineAction
+          label="Claim"
+          icon="gift-outline"
+          onPress={() => (resting || !affordable ? setDetailId(reward.id) : claim(reward, shown.title))}
+          style={resting || !affordable ? [styles.tileClaim, styles.tileClaimOff] : styles.tileClaim}
+          accessibilityLabel={resting
+            ? `${shown.title}. ${status}`
+            : affordable
+            ? `Claim ${shown.title} for ${formatCoins(reward.cost)}`
+            : `${shown.title} needs ${formatCoins(reward.cost - balance)} more`}
+        />
       </PressableScale>
     );
   };
@@ -1508,8 +1511,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   tileGoal: { borderColor: colors.accent },
-  tileDim: { opacity: 0.6 },
   tileClaim: { alignSelf: 'flex-start', marginTop: spacing.xsm },
+  tileClaimOff: { opacity: 0.4 },
   tileBar: { marginTop: spacing.xsm },
   tileTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'auto' },
   tileTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium, marginTop: spacing.sm },

@@ -1,11 +1,11 @@
 // Workout mode: the live session, one exercise at a time, with the rest in
-// the footer, then a summary to save it from. One component of ~1,000 lines, so
+// a strip under the header, then a summary to save it from. One component of ~1,000 lines, so
 // grep a landmark rather than reading it start to finish:
 //
 //   ==== <name> ====        the section banners through the logic half
 //   SuggestionCard          the progression's proposal on the exercise's card
 //   SessionClock            the header's running time, its own tick
-//   RestFooter              the rest countdown and its three buttons
+//   RestStrip               the rest countdown and its three buttons
 //   ScreenAwake             the keep-awake helper
 //   makeStyles              styles, at the bottom
 //
@@ -49,6 +49,7 @@ import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useRestTimer } from '../hooks/useRestTimer';
+import { ExerciseRestSheet } from './ExerciseRestSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
@@ -93,7 +94,7 @@ import {
   finishPlan, formatDistance, formatSetLine, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
-  supersetGroup,
+  restSecondsFor, supersetGroup,
 } from '../utils/workoutSession';
 import { tickSet, type TickValues } from '../utils/workoutTick';
 import type { SessionExercise } from '../utils/workoutSession';
@@ -168,6 +169,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const gyms = useGymStore(s => s.gyms);
   const gymSettings = useGymStore(s => s.settings);
   const unit = useSettingsStore(s => s.workoutUnit);
+  const defaultRestSeconds = useSettingsStore(s => s.defaultRestSeconds);
   const dumbbellEntry = useSettingsStore(s => s.dumbbellEntry);
   const plateInventory = useSettingsStore(s => s.plateInventory);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -246,9 +248,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [gymNoteEdit, setGymNoteEdit] = useState<string | null>(null);
   const [gymNoteDraft, setGymNoteDraft] = useState('');
   const [alwaysDraft, setAlwaysDraft] = useState('');
-  // Every exercise on one scrolling page, instead of one card at a time.
-  // Session-only, like the photos toggle.
-  const [allOpen, setAllOpen] = useState(false);
   // The compact list the exercises are dragged in, instead of their cards, and
   // whether a row of it is in the air (which switches the page's scroll off).
   const [reordering, setReordering] = useState(false);
@@ -296,8 +295,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const viewIndex = Math.max(0, exercises.findIndex(e => e.exerciseId === viewedId));
   const viewed = exercises[viewIndex] ?? null;
   const program = session?.programId ? programs.find(p => p.id === session.programId) ?? null : null;
-  const upNext = exercises[viewIndex + 1] ?? null;
-  const upNextInfo = upNext ? catalogExercise(exerciseRows, upNext.exerciseId) : null;
 
   // ==== writing a set ====
   const edit = useCallback((setId: string, patch: Partial<WorkoutSet>) => {
@@ -381,13 +378,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     applyProposal(session.id, exerciseId, { proposal: shown });
   };
 
-  const toggleAll = () => {
-    haptics.tap();
-    animateLayout();
-    setReordering(false);
-    setAllOpen(v => !v);
-  };
-
   const toggleReordering = () => {
     haptics.tap();
     animateLayout();
@@ -404,15 +394,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const dropReorder = (next: typeof reorderRows) => {
     if (!session) return;
     useWorkoutStore.getState().reorderExercises(session.id, next.flatMap(r => r.block.map(e => e.exerciseId)));
-  };
-
-  const goTo = (index: number) => {
-    const target = exercises[index];
-    if (!target) return;
-    haptics.tap();
-    animateLayout();
-    setViewedId(target.exerciseId);
-    setOpenSetId(null);
   };
 
   const addExercise = (exerciseId: string) => {
@@ -448,6 +429,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   };
 
   // ==== the exercise's "•••" menu: supersets ====
+  // The exercise whose rest the Rest chip's card is open on.
+  const [restFor, setRestFor] = useState<string | null>(null);
   const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
   const joinSuperset = (exerciseId: string, partnerId: string) => {
     if (!session) return;
@@ -614,9 +597,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         kindOf: id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps',
         // A load taken from the suggestion is the plan working, not a change to it.
         suggestedKg: id => liveProposal(session.id, id)?.proposal.sets.find(x => x.kind !== 'warmup')?.weightKg ?? null,
+        restOverrides: session.restOverrides,
+        defaultRestSeconds,
       });
     },
-    [finishing, session, routine, sets, exerciseRows, oldVersion],
+    [finishing, session, routine, sets, exerciseRows, oldVersion, defaultRestSeconds],
   );
   const exerciseName = (id: string) => catalogExercise(exerciseRows, id)?.name ?? 'Unknown exercise';
   // On a workout from an old version a change is to that version, so taking
@@ -715,6 +700,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
           ) : <View style={styles.headerSpacer} />}
         </View>
+
+        {/* Under the header, not in a footer: the keyboard is up while sets are
+            typed, and anything at the bottom of the sheet is behind it. */}
+        {session && !finishing && <RestStrip sessionId={visible ? session.id : undefined} styles={styles} />}
 
         {!session ? (
           <View style={styles.emptyWrap}>
@@ -899,45 +888,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             )}
             {exercises.length > 0 && (
               <View style={styles.position}>
-                {allOpen || reordering ? (
-                  <>
-                    <Text style={styles.positionText}>{`${exercises.length} exercises`}</Text>
-                    <View style={styles.flex} />
-                  </>
-                ) : (
-                <>
-                <TouchableOpacity
-                  onPress={() => goTo(viewIndex - 1)}
-                  disabled={viewIndex === 0}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Previous exercise"
-                >
-                  <Ionicons name="chevron-back" size={iconSize.sm} color={viewIndex === 0 ? colors.textTertiary : colors.accent} />
-                </TouchableOpacity>
-                <Text style={styles.positionText}>{`Exercise ${viewIndex + 1} of ${exercises.length}`}</Text>
-                <TouchableOpacity
-                  onPress={() => goTo(viewIndex + 1)}
-                  disabled={viewIndex >= exercises.length - 1}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Next exercise"
-                >
-                  <Ionicons name="chevron-forward" size={iconSize.sm} color={viewIndex >= exercises.length - 1 ? colors.textTertiary : colors.accent} />
-                </TouchableOpacity>
-                <View style={styles.dots} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                  {exercises.map((e, i) => {
-                    const allDone = e.sets.every(s => s.completedAt !== null);
-                    return (
-                      <View
-                        key={e.exerciseId}
-                        style={[styles.dot, allDone && styles.dotDone, i === viewIndex && styles.dotOn]}
-                      />
-                    );
-                  })}
-                </View>
-                </>
-                )}
+                <Text style={styles.positionText}>{`${exercises.length} exercises`}</Text>
+                <View style={styles.flex} />
                 {exercises.length > 1 && (
                   <InlineAction
                     icon={reordering ? undefined : 'reorder-three-outline'}
@@ -947,13 +899,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     accessibilityLabel={reordering ? 'Done reordering exercises' : 'Reorder exercises'}
                   />
                 )}
-                <InlineAction
-                  icon={allOpen ? undefined : 'list-outline'}
-                  label={allOpen ? 'One at a time' : 'All'}
-                  variant="neutral"
-                  onPress={toggleAll}
-                  accessibilityLabel={allOpen ? 'Show one exercise at a time' : 'Show every exercise on one page'}
-                />
               </View>
             )}
 
@@ -994,7 +939,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 </View>
               </>
             )}
-            {(reordering ? [] : allOpen ? exercises : viewed ? [viewed] : []).map((viewed, cardIndex) => {
+            {(reordering ? [] : exercises).map((viewed, cardIndex) => {
               const viewedInfo = catalogExercise(exerciseRows, viewed.exerciseId);
               const kind: ExerciseKind = viewedInfo?.kind ?? 'weight_reps';
               const fields = setFieldsFor(kind);
@@ -1031,6 +976,14 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 )
                 : null;
               const canSwap = swappableSets(viewed.sets, viewed.exerciseId).length > 0;
+              // The rest comes after the round, so a superset's earlier exercises have none of their own.
+              const viewedGroup = supersetGroup(exercises, viewed.exerciseId);
+              const restChip = session && viewedGroup[viewedGroup.length - 1]?.exerciseId === viewed.exerciseId
+                ? {
+                    seconds: restSecondsFor(routine, viewed.exerciseId, defaultRestSeconds, session.restOverrides),
+                    overridden: session.restOverrides?.[viewed.exerciseId] !== undefined,
+                  }
+                : null;
 
               // ==== the suggestion: the next load, proposed and never applied unasked ====
               // The routine the workout follows and the program it belongs to decide
@@ -1114,6 +1067,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         label="Swap"
                         onPress={() => { haptics.tap(); setViewedId(viewed.exerciseId); setPicking('swap'); }}
                         accessibilityLabel={`Swap ${viewedInfo?.name ?? 'this exercise'} for another`}
+                      />
+                    )}
+                    {restChip && (
+                      <InlineAction
+                        icon="timer-outline"
+                        label={`Rest ${restChip.seconds === 0 ? 'none' : formatRestSeconds(restChip.seconds)}`}
+                        variant={restChip.overridden ? undefined : 'neutral'}
+                        onPress={() => { haptics.tap(); setRestFor(viewed.exerciseId); }}
+                        accessibilityLabel={`Rest between sets of ${viewedInfo?.name ?? 'this exercise'}, ${restChip.seconds === 0 ? 'none' : formatRestSeconds(restChip.seconds)}`}
                       />
                     )}
                     {!noteFocus && (!viewedInfo?.notes || !todayNote) && (
@@ -1351,26 +1313,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               </View>
             )}
 
-            {upNext && !allOpen && (
-              <>
-                <Text style={styles.groupLabel}>Up next</Text>
-                <TouchableOpacity
-                  style={[styles.card, styles.nextRow]}
-                  onPress={() => goTo(viewIndex + 1)}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Go to ${upNextInfo?.name ?? 'the next exercise'}`}
-                >
-                  <View style={styles.flex}>
-                    <Text style={styles.nextName}>{upNextInfo?.name ?? 'Unknown exercise'}</Text>
-                    <Text style={styles.nextMeta}>
-                      {`${upNext.sets.length} ${upNext.sets.length === 1 ? 'set' : 'sets'}`}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
-                </TouchableOpacity>
-              </>
-            )}
             <View style={styles.addExercise}>
               <InlineAction icon="add" label="Add exercise" variant="neutral" surface="page" onPress={() => { haptics.tap(); setPicking('add'); }} />
               {canDescribe && (
@@ -1402,8 +1344,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               </TouchableOpacity>
             )}
           </View>
-        ) : session ? (
-          <RestFooter sessionId={visible ? session.id : undefined} bottomInset={insets.bottom} styles={styles} />
         ) : null}
       </View>
       {/* Inside this Modal, not beside it: a second sheet presented from the
@@ -1445,6 +1385,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           />
         );
       })()}
+      <ExerciseRestSheet
+        visible={visible && restFor !== null && session !== null}
+        exerciseName={restFor ? catalogExercise(exerciseRows, restFor)?.name ?? 'This exercise' : ''}
+        seconds={session && restFor ? restSecondsFor(routine, restFor, defaultRestSeconds, session.restOverrides) : 0}
+        fallbackSeconds={restFor ? restSecondsFor(routine, restFor, defaultRestSeconds) : 0}
+        overridden={!!session && !!restFor && session.restOverrides?.[restFor] !== undefined}
+        onChange={seconds => { if (session && restFor) useWorkoutStore.getState().setSessionRest(session.id, restFor, seconds); }}
+        onClose={() => setRestFor(null)}
+      />
       <ExercisePickerSheet
         visible={visible && picking !== null}
         onClose={() => setPicking(null)}
@@ -1655,14 +1604,14 @@ function SessionClock({ startedAt, style }: { startedAt: string; style: object }
 }
 
 /**
- * The rest after the last set: how long is left, how long it was, and −15 s,
- * +30 s and Skip. Once it runs out it says so and counts up, and stays until
- * it is dismissed or the next set starts another: nothing moves on by itself.
- * Absent while there is no rest. Its own component, for the per-second tick.
+ * The rest after the last set: how long is left, how long it was, and −15,
+ * +30 and Skip, in one strip under the header so the keyboard can't cover it.
+ * Once it runs out it says so and counts up, and stays until it is dismissed
+ * or the next set starts another: nothing moves on by itself. Absent while
+ * there is no rest. Its own component, for the per-second tick.
  */
-function RestFooter({ sessionId, bottomInset, styles }: {
+function RestStrip({ sessionId, styles }: {
   sessionId: string | undefined;
-  bottomInset: number;
   styles: ReturnType<typeof makeStyles>;
 }) {
   const colors = useColors();
@@ -1672,40 +1621,44 @@ function RestFooter({ sessionId, bottomInset, styles }: {
   const over = isStepTimerReady(rest, now);
   const label = rest.label ? `Rest ${rest.label.charAt(0).toLowerCase()}${rest.label.slice(1)}` : 'Rest';
   return (
-    <View style={[styles.footer, { paddingBottom: bottomInset + spacing.smd }]}>
-      <View style={styles.restTop}>
-        <Text style={styles.restLabel} numberOfLines={1}>{over ? 'Rest is over' : label}</Text>
-        <Text style={styles.restOf}>{`of ${formatRestSeconds(rest.durationSeconds)}`}</Text>
+    <View style={styles.restStrip}>
+      <View style={styles.restBody}>
+        <View style={styles.restText}>
+          <Text
+            style={[styles.restTime, over && styles.restTimeOver]}
+            accessibilityLabel={over ? `Rest over ${stepTimerOverSeconds(rest, now)} seconds ago` : `${Math.ceil(stepTimerRemaining(rest, now))} seconds of rest left`}
+          >
+            {over ? `+${formatStopwatch(stepTimerOverSeconds(rest, now))}` : formatStopwatch(Math.ceil(stepTimerRemaining(rest, now)))}
+          </Text>
+          <Text style={styles.restLabel} numberOfLines={1}>
+            {`${over ? 'Rest is over' : label} · of ${formatRestSeconds(rest.durationSeconds)}`}
+          </Text>
+        </View>
+        <View style={styles.restButtons}>
+          <InlineAction
+            label={`−${REST_NUDGE_BACK_SECONDS}`}
+            variant="neutral"
+            disabled={over}
+            style={styles.restButton}
+            accessibilityLabel={`${REST_NUDGE_BACK_SECONDS} seconds less rest`}
+            onPress={() => { haptics.impactLight(); store.addTime(rest.id, -REST_NUDGE_BACK_SECONDS); }}
+          />
+          <InlineAction
+            label={`+${REST_NUDGE_FORWARD_SECONDS}`}
+            variant="neutral"
+            style={styles.restButton}
+            accessibilityLabel={`${REST_NUDGE_FORWARD_SECONDS} seconds more rest`}
+            onPress={() => { haptics.impactLight(); store.addTime(rest.id, REST_NUDGE_FORWARD_SECONDS); }}
+          />
+          <InlineAction
+            label={over ? 'Dismiss' : 'Skip'}
+            style={styles.restButton}
+            accessibilityLabel={over ? 'Dismiss rest' : 'Skip rest'}
+            onPress={() => { haptics.tap(); store.remove(rest.id); }}
+          />
+        </View>
       </View>
-      <Text
-        style={[styles.restTime, over && styles.restTimeOver]}
-        accessibilityLabel={over ? `Rest over ${stepTimerOverSeconds(rest, now)} seconds ago` : `${Math.ceil(stepTimerRemaining(rest, now))} seconds of rest left`}
-      >
-        {over ? `+${formatStopwatch(stepTimerOverSeconds(rest, now))}` : formatStopwatch(Math.ceil(stepTimerRemaining(rest, now)))}
-      </Text>
-      <ProgressBar progress={stepTimerProgress(rest, now)} height={4} decorative style={styles.restBar} color={over ? colors.done : undefined} />
-      <View style={styles.restButtons}>
-        <InlineAction
-          label={`−${REST_NUDGE_BACK_SECONDS} s`}
-          variant="neutral"
-          disabled={over}
-          style={styles.restButton}
-          accessibilityLabel={`${REST_NUDGE_BACK_SECONDS} seconds less rest`}
-          onPress={() => { haptics.impactLight(); store.addTime(rest.id, -REST_NUDGE_BACK_SECONDS); }}
-        />
-        <InlineAction
-          label={`+${REST_NUDGE_FORWARD_SECONDS} s`}
-          variant="neutral"
-          style={styles.restButton}
-          accessibilityLabel={`${REST_NUDGE_FORWARD_SECONDS} seconds more rest`}
-          onPress={() => { haptics.impactLight(); store.addTime(rest.id, REST_NUDGE_FORWARD_SECONDS); }}
-        />
-        <InlineAction
-          label={over ? 'Dismiss' : 'Skip rest'}
-          style={styles.restButton}
-          onPress={() => { haptics.tap(); store.remove(rest.id); }}
-        />
-      </View>
+      <ProgressBar progress={stepTimerProgress(rest, now)} height={3} decorative style={styles.restBar} color={over ? colors.done : undefined} />
     </View>
   );
 }
@@ -1732,10 +1685,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   emptyWrap: { padding: spacing.md },
   position: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginHorizontal: spacing.xs, marginBottom: spacing.smd },
   positionText: { color: colors.textSecondary, fontSize: font.md },
-  dots: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.xsm },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.bgQuaternary },
-  dotDone: { backgroundColor: colors.done },
-  dotOn: { width: 18, backgroundColor: colors.accent },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   cardStacked: { marginTop: spacing.md },
   reorderHint: {
@@ -1826,24 +1775,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase',
     letterSpacing: 0.8, marginTop: spacing.lg, marginBottom: spacing.sm, marginHorizontal: spacing.xs,
   },
-  nextRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
-  nextName: { color: colors.text, fontSize: font.md },
-  nextMeta: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   addExercise: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   footer: {
     backgroundColor: colors.bgSecondary, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
     paddingHorizontal: spacing.md, paddingTop: spacing.smd,
   },
-  restTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.sm },
-  restLabel: { flex: 1, color: colors.textSecondary, fontSize: font.md },
-  restOf: { color: colors.textTertiary, fontSize: font.md, fontVariant: ['tabular-nums'] },
+  restStrip: { marginHorizontal: spacing.md, marginBottom: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
+  restBody: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingLeft: spacing.md, paddingRight: spacing.sm, paddingTop: spacing.sm, paddingBottom: spacing.smd },
+  restText: { flex: 1, minWidth: 0 },
+  restLabel: { color: colors.textSecondary, fontSize: font.xs },
   // A hero number, read from a bench at arm's length: a literal size, which
   // the scale isn't for (see the font scale note in CLAUDE.md).
-  restTime: { color: colors.text, fontSize: 34, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'], marginTop: spacing.xxs },
+  restTime: { color: colors.text, fontSize: 28, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   restTimeOver: { color: colors.accentText },
-  restBar: { marginTop: spacing.sm, marginBottom: spacing.smd },
-  restButtons: { flexDirection: 'row', gap: spacing.sm },
-  restButton: { flex: 1, justifyContent: 'center', minHeight: 44 },
+  restBar: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  restButtons: { flexDirection: 'row', gap: spacing.xsm },
+  restButton: { minWidth: 48, justifyContent: 'center', minHeight: 44 },
   summaryTitle: { color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold, marginTop: spacing.xs, marginHorizontal: spacing.xs },
   stats: { marginTop: spacing.smd },
   summaryRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },

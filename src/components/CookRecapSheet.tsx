@@ -52,6 +52,14 @@ interface Props {
    * meal with no recipe, stops raising it. Unset leaves the row without one.
    */
   onNeverAskLeftovers?: () => void;
+  /** "Don't ask again" was just pressed here: the row says so, with an Undo. */
+  leftoversMuted?: boolean;
+  onUndoNeverAskLeftovers?: () => void;
+  /**
+   * Names of the containers already logged from this cooking. The question
+   * stays up so a second one can be logged, but says what was saved.
+   */
+  loggedLeftovers?: string[];
   /**
    * The weigh-the-dish section, or null when there is nothing to ask — a meal
    * with no recipe to remember it on, one whose weight is already recorded, or
@@ -151,6 +159,9 @@ export function CookRecapSheet({
   title,
   onLogLeftovers,
   onNeverAskLeftovers,
+  loggedLeftovers = [],
+  leftoversMuted,
+  onUndoNeverAskLeftovers,
   cookedWeight,
   rows,
   restockRows,
@@ -483,19 +494,42 @@ export function CookRecapSheet({
                 <View style={styles.card}>
                   <View style={styles.choiceRow}>
                     <Ionicons name="cube-outline" size={18} color={colors.textSecondary} />
-                    <Text style={styles.choiceLabel}>Anything left over?</Text>
-                    <View style={styles.choiceButtons}>
-                      <InlineAction label="Log" onPress={onLogLeftovers} accessibilityLabel="Log leftovers" />
-                    </View>
+                    <Text style={styles.choiceLabel}>
+                      {leftoversMuted ? 'Won’t ask about this meal again.' : 'Anything left over?'}
+                    </Text>
+                    {leftoversMuted && onUndoNeverAskLeftovers && (
+                      <InlineAction label="Undo" variant="neutral" onPress={onUndoNeverAskLeftovers} accessibilityLabel="Ask about leftovers for this meal again" />
+                    )}
                   </View>
-                  {onNeverAskLeftovers && (
-                    <View style={styles.neverAskRow}>
-                      <InlineAction
-                        label="Don’t ask again"
-                        variant="neutral"
-                        onPress={onNeverAskLeftovers}
-                        accessibilityLabel="Don’t ask about leftovers for this meal again"
-                      />
+                  {!leftoversMuted && loggedLeftovers.length > 0 && (
+                    <View style={styles.loggedRow}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.greenText} />
+                      <Text style={styles.loggedText} numberOfLines={2}>
+                        Logged {loggedLeftovers.join(', ')}
+                      </Text>
+                    </View>
+                  )}
+                  {!leftoversMuted && (
+                    <View style={styles.leftoverActions}>
+                      <PressableScale
+                        onPress={onLogLeftovers}
+                        style={styles.logLeftoversButton}
+                        accessibilityRole="button"
+                        accessibilityLabel="Log leftovers"
+                      >
+                        <Text style={styles.logLeftoversLabel}>{loggedLeftovers.length > 0 ? 'Log more leftovers' : 'Log leftovers'}</Text>
+                      </PressableScale>
+                      {onNeverAskLeftovers && loggedLeftovers.length === 0 && (
+                        <TouchableOpacity
+                          onPress={onNeverAskLeftovers}
+                          activeOpacity={interaction.activeOpacity}
+                          style={styles.neverAskLink}
+                          accessibilityRole="button"
+                          accessibilityLabel="Don’t ask about leftovers for this meal again"
+                        >
+                          <Text style={styles.neverAskText}>Don’t ask about this meal again</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   )}
                 </View>
@@ -805,7 +839,24 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingVertical: 13,
   },
   // Under the question rather than beside it, so the question keeps its row.
-  neverAskRow: { alignItems: 'flex-start', paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
+  leftoverActions: { paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
+  logLeftoversButton: {
+    alignItems: 'center',
+    paddingVertical: spacing.smd,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentFill,
+  },
+  logLeftoversLabel: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+  neverAskLink: { alignItems: 'center', paddingTop: spacing.smd, paddingBottom: spacing.xs },
+  neverAskText: { color: colors.textSecondary, fontSize: font.sm },
+  loggedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.smd,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.smd,
+  },
+  loggedText: { flex: 1, color: colors.textSecondary, fontSize: font.sm },
   choiceLabel: { flexGrow: 1, flexShrink: 0, color: colors.text, fontSize: font.md },
   // The same row geometry as choiceRow above, with a field where its label is.
   weighInWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.xs },

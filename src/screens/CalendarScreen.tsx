@@ -1134,6 +1134,12 @@ export function CalendarScreen() {
               untimedLinkFor(key, column?.untimed ?? 0)?.onPress();
             }}
             onPressSlot={handlePressSlotOn}
+            placeholder={slotMenuOpen && slotMenu && slotDayKey !== null
+              ? {
+                dayKey: slotDayKey,
+                minutes: Math.round((slotMenu.at.getTime() - dayStartOf(slotDayKey).getTime()) / 60000),
+              }
+              : null}
             canMoveEvent={canMoveEventOn}
             onCreateRange={isDemoModeActive() ? undefined : handleCreateRangeOn}
             onRescheduleEvent={handleRescheduleEventOn}

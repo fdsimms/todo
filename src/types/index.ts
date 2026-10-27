@@ -2382,6 +2382,14 @@ export interface WorkoutSession {
    * row, so an agent's edit carries it to the phone.
    */
   timesEdited: boolean;
+  /**
+   * Rest after each set, in seconds, set on an exercise while the workout was
+   * going (workout mode's Rest chip), keyed by `Exercise.id`. 0 is "no rest".
+   * It outranks the routine item's rest and the default for this workout only
+   * (`restSecondsFor`) and never edits the routine: the finish summary offers
+   * it as a change. Absent on a workout that set none.
+   */
+  restOverrides?: Record<string, number>;
 }
 
 /**

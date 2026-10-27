@@ -81,6 +81,25 @@ export async function removeImportedSound(soundRef: string): Promise<void> {
 }
 
 let preview: AudioPlayer | null = null;
+let previewing: string | null = null;
+const previewListeners = new Set<(sound: string | null) => void>();
+
+function setPreviewing(sound: string | null): void {
+  if (previewing === sound) return;
+  previewing = sound;
+  previewListeners.forEach(listener => listener(sound));
+}
+
+/**
+ * Calls back with the sound being previewed, or null once it stops (stopped by
+ * hand, replaced, or played to the end), so the picker can show a pause button
+ * on the playing row. Returns the unsubscribe.
+ */
+export function subscribeSoundPreview(listener: (sound: string | null) => void): () => void {
+  previewListeners.add(listener);
+  listener(previewing);
+  return () => { previewListeners.delete(listener); };
+}
 
 /**
  * Plays a sound in the picker, stopping whichever one was playing. Plays with
@@ -103,8 +122,13 @@ export async function playSoundPreview(sound: string, imported: readonly AlarmSo
     }
     if (source === null) return false;
     await Audio.setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'duckOthers' });
-    preview = Audio.createAudioPlayer(source);
-    preview.play();
+    const player = Audio.createAudioPlayer(source);
+    preview = player;
+    player.addListener('playbackStatusUpdate', status => {
+      if (status.didJustFinish && preview === player) stopSoundPreview();
+    });
+    player.play();
+    setPreviewing(sound);
     return true;
   } catch {
     return false;
@@ -117,6 +141,7 @@ export async function playSoundPreview(sound: string, imported: readonly AlarmSo
  * the silent switch.
  */
 export function stopSoundPreview(): void {
+  setPreviewing(null);
   if (!preview) return;
   try {
     preview.pause();

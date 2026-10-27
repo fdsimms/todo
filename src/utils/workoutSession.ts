@@ -257,15 +257,19 @@ export function afterLog(sets: readonly WorkoutSet[], loggedSetId: string): Afte
 }
 
 /**
- * How long the rest after a set of this exercise runs: its routine item's own
+ * How long the rest after a set of this exercise runs: the rest set on it in
+ * this workout (`WorkoutSession.restOverrides`), else its routine item's own
  * rest where the session follows a routine that has the exercise and says,
- * else the `defaultRestSeconds` setting. Zero means the item asks for no rest.
+ * else the `defaultRestSeconds` setting. Zero means no rest.
  */
 export function restSecondsFor(
   routine: Pick<WorkoutRoutine, 'items'> | null,
   exerciseId: string,
   defaultRestSeconds: number,
+  restOverrides?: Readonly<Record<string, number>> | null,
 ): number {
+  const own = restOverrides?.[exerciseId];
+  if (own !== undefined) return own;
   const item = routine?.items.find(i => i.exerciseId === exerciseId);
   return item?.restSeconds ?? defaultRestSeconds;
 }

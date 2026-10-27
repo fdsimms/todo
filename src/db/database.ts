@@ -2476,6 +2476,8 @@ function runInitDatabase(): void {
     'ALTER TABLE workout_routines ADD COLUMN current_version_id TEXT',
     'ALTER TABLE workout_programs ADD COLUMN current_version_id TEXT',
     'ALTER TABLE workout_sessions ADD COLUMN routine_version_id TEXT',
+    // WorkoutSession.restOverrides: rests set per exercise mid-workout, JSON. NULL on a workout that set none.
+    'ALTER TABLE workout_sessions ADD COLUMN rest_overrides TEXT',
     'CREATE INDEX IF NOT EXISTS idx_workout_routine_versions_routine ON workout_routine_versions(routine_id)',
     'CREATE INDEX IF NOT EXISTS idx_workout_program_versions_program ON workout_program_versions(program_id)',
     // Task.mission: NULL on every existing row, which is no mission.
@@ -8291,7 +8293,24 @@ function rowToWorkoutSession(row: Record<string, unknown>): WorkoutSession {
     healthWritePending: Number(row.health_write_pending) === 1,
     measuredOnWatch: Number(row.measured_on_watch) === 1,
     timesEdited: Number(row.times_edited) === 1,
+    ...restOverridesField(row.rest_overrides),
   };
+}
+
+/** `rest_overrides` as the spread the row mapper adds: nothing for NULL or JSON that isn't a map of whole seconds. */
+function restOverridesField(raw: unknown): { restOverrides?: Record<string, number> } {
+  if (typeof raw !== 'string') return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === 'number' && Number.isFinite(v) && v >= 0) out[k] = Math.round(v);
+    }
+    return Object.keys(out).length > 0 ? { restOverrides: out } : {};
+  } catch {
+    return {};
+  }
 }
 
 /** Every session, newest first. A few a week is a few hundred rows a year, so this is loaded whole. */
@@ -8331,12 +8350,13 @@ export function dbSaveWorkoutSession(s: WorkoutSession): void {
   db.runSync(
     `INSERT OR REPLACE INTO workout_sessions
       (id, routine_id, program_id, task_id, title, started_at, ended_at, notes, effort, health_workout_id, health_write_pending,
-       measured_on_watch, times_edited, gym_id, routine_version_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       measured_on_watch, times_edited, gym_id, routine_version_id, rest_overrides)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       s.id, s.routineId, s.programId, s.taskId, s.title, s.startedAt, s.endedAt, s.notes, s.effort,
       s.healthWorkoutId, s.healthWritePending ? 1 : 0, s.measuredOnWatch ? 1 : 0, s.timesEdited ? 1 : 0, s.gymId ?? null,
       s.routineVersionId ?? null,
+      s.restOverrides && Object.keys(s.restOverrides).length > 0 ? JSON.stringify(s.restOverrides) : null,
     ]
   );
 }

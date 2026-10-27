@@ -1,7 +1,7 @@
 import type { ExerciseKind, RoutineSetTarget, WorkoutRoutineItem, WorkoutSet } from '../types';
 import type { WeightUnit } from './weightLog';
 import { normalizeSupersets } from './workoutRoutine';
-import { formatWeightWithUnit } from './workoutData';
+import { formatRestSeconds, formatWeightWithUnit } from './workoutData';
 import { sessionExercises, setFieldsFor } from './workoutSession';
 
 /**
@@ -17,7 +17,7 @@ import { sessionExercises, setFieldsFor } from './workoutSession';
  * Only what the person did counts. A set never ticked is dropped by finishing
  * and says nothing about the plan, warm-ups are left out because a ramp is
  * laid out from the working weight and would show up on every workout, and
- * rest times are never compared. Each change carries what it needs to be
+ * a rest is offered only when the person set it on the exercise during the workout (`restOverrides`), never read off the timers. Each change carries what it needs to be
  * applied, so accepting one never depends on another being accepted.
  */
 
@@ -25,6 +25,7 @@ export type RoutineChange =
   | { kind: 'weight'; id: string; exerciseId: string; from: number; to: number; weights: (number | null)[] }
   | { kind: 'reps'; id: string; exerciseId: string; from: RepRange; to: RepRange }
   | { kind: 'sets'; id: string; exerciseId: string; from: number; to: number; added: RoutineSetTarget[] }
+  | { kind: 'rest'; id: string; exerciseId: string; from: number; to: number }
   | { kind: 'swap'; id: string; fromExerciseId: string; toExerciseId: string; targets: RoutineSetTarget[] }
   | { kind: 'add'; id: string; exerciseId: string; afterExerciseId: string | null; targets: RoutineSetTarget[] }
   | { kind: 'remove'; id: string; exerciseId: string }
@@ -43,6 +44,10 @@ export interface RoutineDiffInput {
    * so it is not offered back as a change.
    */
   suggestedKg?: (exerciseId: string) => number | null;
+  /** Rests the person set on exercises in this workout (`WorkoutSession.restOverrides`). */
+  restOverrides?: Readonly<Record<string, number>> | null;
+  /** What an item with no rest of its own uses, so a rest equal to it isn't offered as a change. */
+  defaultRestSeconds?: number;
 }
 
 const isWork = (kind: string) => kind !== 'warmup';
@@ -156,6 +161,15 @@ export function routineChanges(input: RoutineDiffInput): RoutineChange[] {
     }
   }
 
+  // Rest: only one set on the exercise in this workout, and only for an
+  // exercise the workout actually did. One that matches the routine says nothing.
+  for (const item of items) {
+    const to = input.restOverrides?.[item.exerciseId];
+    if (to === undefined || !inSession.has(item.exerciseId)) continue;
+    const from = item.restSeconds ?? input.defaultRestSeconds ?? 0;
+    if (to !== from) out.push({ kind: 'rest', id: `rest:${item.exerciseId}`, exerciseId: item.exerciseId, from, to });
+  }
+
   // Order: one change for the whole running order of what both have.
   const routineOrder = items.map(i => i.exerciseId).filter(x => inSession.has(x));
   const sessionOrder = session.map(e => e.exerciseId).filter(x => inRoutine.has(x));
@@ -175,7 +189,7 @@ export function applyRoutineChanges(
   const edit = (exerciseId: string, fn: (item: WorkoutRoutineItem) => WorkoutRoutineItem) => {
     next = next.map(i => (i.exerciseId === exerciseId ? fn(i) : i));
   };
-  const rank = { swap: 0, sets: 1, weight: 2, reps: 3, add: 4, remove: 5, order: 6 } as const;
+  const rank = { swap: 0, sets: 1, weight: 2, reps: 3, rest: 4, add: 5, remove: 6, order: 7 } as const;
   for (const c of [...changes].sort((a, b) => rank[a.kind] - rank[b.kind])) {
     switch (c.kind) {
       case 'swap':
@@ -219,6 +233,9 @@ export function applyRoutineChanges(
           targets: i.targets.map(t => (isWork(t.kind) ? { ...t, repsMin: c.to.min, repsMax: c.to.max } : t)),
         }));
         break;
+      case 'rest':
+        edit(c.exerciseId, i => ({ ...i, restSeconds: c.to }));
+        break;
       case 'add': {
         const item: WorkoutRoutineItem = { exerciseId: c.exerciseId, supersetKey: null, restSeconds: null, progression: null, targets: c.targets };
         const at = c.afterExerciseId === null ? 0 : next.findIndex(i => i.exerciseId === c.afterExerciseId) + 1;
@@ -247,6 +264,7 @@ export function applyRoutineChanges(
 // ==== words ====
 
 const reps = (r: RepRange) => (r.min === r.max ? `${r.min}` : `${r.min}–${r.max}`);
+const restWords = (seconds: number) => (seconds === 0 ? 'no rest' : formatRestSeconds(seconds));
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** A change as a row of the "Update routine?" card: what it is, and what it goes from and to. */
@@ -273,6 +291,11 @@ export function describeRoutineChange(
         detail: `From ${plural(c.from, 'set', 'sets')} to ${plural(c.to, 'set', 'sets')}.`,
       };
     }
+    case 'rest':
+      return {
+        title: `${nameOf(c.exerciseId)}: rest time`,
+        detail: `From ${restWords(c.from)} to ${restWords(c.to)} between sets.`,
+      };
     case 'swap':
       return { title: `Swap ${nameOf(c.fromExerciseId)} for ${nameOf(c.toExerciseId)}`, detail: 'Same place in the routine.' };
     case 'add': {

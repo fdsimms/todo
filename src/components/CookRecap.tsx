@@ -13,7 +13,7 @@ import {
   restockRows,
 } from '../utils/mealPlanGroceries';
 import { leftoverKeepDaysFor, leftoverPartsFor } from '../utils/leftovers';
-import { addLeftoverOptOut, isLeftoverOptedOut } from '../utils/leftoverOptOut';
+import { addLeftoverOptOut, removeLeftoverOptOut, isLeftoverOptedOut } from '../utils/leftoverOptOut';
 import { asWrittenCookedWeight } from '../utils/mealLog';
 import { recipeNutrition } from '../utils/recipeNutrition';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -60,6 +60,7 @@ export function CookRecap() {
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const logLeftover = useLeftoverStore(s => s.logLeftover);
+  const allLeftovers = useLeftoverStore(useShallow(s => s.leftovers));
   // Ranked behind the one other thing a tick can raise — see `waiting` below.
   const pendingFinishLeftoverId = useLeftoverStore(s => s.pendingFinishLeftoverId);
   const cookRecapEnabled = useSettingsStore(s => s.cookRecapEnabled);
@@ -68,6 +69,9 @@ export function CookRecap() {
   const setLeftoverPromptOptOuts = useSettingsStore(s => s.setLeftoverPromptOptOuts);
 
   const [leftoverVisible, setLeftoverVisible] = useState(false);
+  // "Don't ask again" was just pressed on this sheet: the row stays, as a note
+  // with an Undo, rather than vanishing with nothing to say it was heard.
+  const [mutedHere, setMutedHere] = useState(false);
 
   const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
   // What the cook actually cooked with — see standingSwaps.ts.
@@ -139,7 +143,12 @@ export function CookRecap() {
   // reads the live list, so pressing it takes the row off the open sheet.
   const askLeftovers =
     !!shownRecap?.canLogLeftovers &&
-    !isLeftoverOptedOut(leftoverPromptOptOuts, shownRecap.recipeId, shownRecap.title);
+    (mutedHere || !isLeftoverOptedOut(leftoverPromptOptOuts, shownRecap.recipeId, shownRecap.title));
+  // Read off the saved rows, so it survives the sheet closing and reopening.
+  const loggedLeftovers = useMemo(
+    () => (shownRecap ? allLeftovers.filter(l => l.sourceEntryId === shownRecap.entryId).map(l => l.title) : []),
+    [allLeftovers, shownRecap]
+  );
   const hasSomethingToAsk =
     askLeftovers || askCookedWeight || rows.length > 0 || restockList.length > 0;
 
@@ -156,6 +165,7 @@ export function CookRecap() {
 
   const close = () => {
     setLeftoverVisible(false);
+    setMutedHere(false);
     clearCookRecap();
   };
 
@@ -191,11 +201,20 @@ export function CookRecap() {
       visible={open}
       title={shownRecap.title}
       onLogLeftovers={askLeftovers ? () => setLeftoverVisible(true) : undefined}
+      loggedLeftovers={loggedLeftovers}
       onNeverAskLeftovers={
         askLeftovers
-          ? () => setLeftoverPromptOptOuts(addLeftoverOptOut(leftoverPromptOptOuts, shownRecap.recipeId, shownRecap.title))
+          ? () => {
+              setLeftoverPromptOptOuts(addLeftoverOptOut(leftoverPromptOptOuts, shownRecap.recipeId, shownRecap.title));
+              setMutedHere(true);
+            }
           : undefined
       }
+      leftoversMuted={mutedHere}
+      onUndoNeverAskLeftovers={() => {
+        setLeftoverPromptOptOuts(removeLeftoverOptOut(leftoverPromptOptOuts, shownRecap.recipeId, shownRecap.title));
+        setMutedHere(false);
+      }}
       cookedWeight={
         askCookedWeight && recipe
           // Divided by this cooking's scale on the way in, because what goes on

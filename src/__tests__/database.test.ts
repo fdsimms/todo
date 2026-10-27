@@ -6634,6 +6634,17 @@ describe('workouts', () => {
     expect(dbGetAllProgramVersions()).toEqual([]);
   });
 
+  it('round-trips the rests set mid-workout, and reads junk as none', () => {
+    dbSaveWorkoutSession({ ...session, restOverrides: { 'lib:back-squat': 120, c1: 0 } });
+    expect(dbGetAllWorkoutSessions()[0].restOverrides).toEqual({ 'lib:back-squat': 120, c1: 0 });
+    dbSaveWorkoutSession({ ...session, restOverrides: {} });
+    expect(dbGetAllWorkoutSessions()[0]).not.toHaveProperty('restOverrides');
+    mockRawDb.prepare('UPDATE workout_sessions SET rest_overrides = ?').run('{"a":-5,"b":"x","c":90.4}');
+    expect(dbGetAllWorkoutSessions()[0].restOverrides).toEqual({ c: 90 });
+    mockRawDb.prepare('UPDATE workout_sessions SET rest_overrides = ?').run('not json');
+    expect(dbGetAllWorkoutSessions()[0]).not.toHaveProperty('restOverrides');
+  });
+
   it('round-trips sessions and sets, in the order they are done', () => {
     dbSaveWorkoutSession(session);
     dbSaveWorkoutSets([set('b', { setIndex: 1 }), set('a'), set('c', { exerciseId: 'c1', position: 1, completedAt: null })]);

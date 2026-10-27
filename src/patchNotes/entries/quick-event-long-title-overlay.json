@@ -1,0 +1,1 @@
+{ "message": "Fixed a long event title in quick add running over the fields below it when a date was highlighted. Titles too long for the line now show as plain text.", "date": "2026-10-27" }

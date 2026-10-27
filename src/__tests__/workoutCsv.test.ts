@@ -669,6 +669,8 @@ describe('matchExerciseName', () => {
       ['Arnold Press (Dumbbell)', 'lib:arnold-press'],
       ['Bulgarian Split Squat (Dumbbell)', 'lib:bulgarian-split-squat'],
       ['Bicep Curl (Dumbbell)', 'lib:dumbbell-curl'],
+      ['Bicep curl', 'lib:dumbbell-curl'],
+      ['Biceps curls', 'lib:dumbbell-curl'],
       ['Overhead Press (Dumbbell)', 'lib:dumbbell-shoulder-press'],
       ['Skullcrusher (Dumbbell)', 'lib:dumbbell-skull-crusher'],
       ['Incline Chest Fly (Dumbbell)', 'lib:incline-dumbbell-fly'],
