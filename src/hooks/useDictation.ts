@@ -9,7 +9,7 @@ import {
   type SpeechSession,
 } from 'todo-speech-bridge';
 import { BUTTON_LABEL } from '../copy/shared';
-import { DICTATION_BARS, dictationRefusal, joinDictation, pushLevel } from '../utils/dictation';
+import { DICTATION_BARS, dictationJoiner, dictationRefusal, pushLevel } from '../utils/dictation';
 
 export type DictationState = 'idle' | 'starting' | 'listening' | 'stopping';
 
@@ -85,10 +85,11 @@ export function useDictation({ maxLength, onText }: Options) {
       }
     }
 
+    const join = dictationJoiner(base, maxLength);
     try {
       const started = await startSpeech({
         onTranscript: text => {
-          if (mine === token.current) onTextRef.current(joinDictation(base, text, maxLength));
+          if (mine === token.current) onTextRef.current(join(text));
         },
         onLevel: level => {
           if (mine === token.current) setLevels(prev => pushLevel(prev, level, DICTATION_BARS));
