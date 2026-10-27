@@ -339,6 +339,14 @@ export interface ChoiceResolution {
    */
   undecided?: readonly string[];
   /**
+   * Ingredient groups that contribute nothing this time, named by
+   * `choiceGroupKey` — "I don't need any of these". Ingredients only, for the
+   * reason `undecided` is: a component names a dish, and a dish is picked or
+   * replaced, not skipped. Shopping reads only; the RecipeToListSheet passes it
+   * and nothing is written back to the recipe or a meal.
+   */
+  skipped?: readonly string[];
+  /**
    * Ingredient nameKeys the caller already has on hand, computed live from
    * pantry state (the same "have it" opinion `probablyHaveReason` owns —
    * callers build this set with it, never a second rule). An unresolved
@@ -501,10 +509,12 @@ function resolveGroupWinners(
   const ingredientGroups = groupOptions(recipe.ingredients);
   const chosen = new Set(resolution?.chosen ?? []);
   const onHand = resolution?.onHand;
+  const skipped = labelsInKeys(recipe, resolution?.skipped);
   const labels = new Set([...ingredientGroups.keys(), ...componentGroups.keys()]);
   for (const label of labels) {
     const ingredients = ingredientGroups.get(label) ?? [];
     const components = componentGroups.get(label) ?? [];
+    if (components.length === 0 && skipped?.has(label)) continue;
     if (components.length === 0 && undecided?.has(label)) {
       for (const ingredient of ingredients) ingredientIds.add(ingredient.id);
       continue;
@@ -524,8 +534,13 @@ function resolveGroupWinners(
 
 /** The labels of `recipe`'s own ingredient groups the resolution leaves open. */
 function undecidedLabelsOf(recipe: Recipe, resolution?: ChoiceResolution): Set<string> | undefined {
-  if (!resolution?.undecided?.length) return undefined;
-  const keys = new Set(resolution.undecided);
+  return labelsInKeys(recipe, resolution?.undecided);
+}
+
+/** The labels of `recipe`'s own ingredient groups named by `choiceGroupKey`s. */
+function labelsInKeys(recipe: Recipe, groupKeys: readonly string[] | undefined): Set<string> | undefined {
+  if (!groupKeys?.length) return undefined;
+  const keys = new Set(groupKeys);
   const labels = new Set<string>();
   for (const ingredient of recipe.ingredients) {
     if (ingredient.choiceGroup && keys.has(choiceGroupKey(recipe.id, ingredient.choiceGroup))) {

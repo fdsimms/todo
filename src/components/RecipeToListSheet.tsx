@@ -199,7 +199,10 @@ export function RecipeToListSheet({
   //
   // Ingredient groups only — see ChoiceResolution.undecided.
   const [undecided, setUndecided] = useState<string[]>([]);
-  const choiceKey = `${choices.join('|')}#${undecided.join('|')}`;
+  // Groups this shop doesn't need at all: no row from them goes on the list.
+  // Same lifetime as `undecided`, and the two are exclusive per group.
+  const [skipped, setSkipped] = useState<string[]>([]);
+  const choiceKey = `${choices.join('|')}#${undecided.join('|')}#${skipped.join('|')}`;
 
   // Same contract as `choices` above, and for the same reason: an ad-hoc shop
   // isn't attached to a meal, so there's nothing for "I'm making a double batch"
@@ -225,7 +228,7 @@ export function RecipeToListSheet({
   const classified = useMemo(() => {
     if (!recipe) return [];
     return classifyPlanned(
-      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices, overrides: initialOverrides, undecided, onHand }, scale, swaps),
+      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices, overrides: initialOverrides, undecided, skipped, onHand }, scale, swaps),
       items,
       new Date(),
       itemSubs,
@@ -298,6 +301,7 @@ export function RecipeToListSheet({
     if (!visible) return;
     setChoices(initialChoices ? [...initialChoices] : []);
     setUndecided([]);
+    setSkipped([]);
     setScale(normalizeScale(initialScale));
     openedChoicesRef.current = JSON.stringify(initialChoices ?? []);
     openedScaleRef.current = normalizeScale(initialScale);
@@ -443,6 +447,7 @@ export function RecipeToListSheet({
   const handleCancel = () => {
     const dirty = JSON.stringify(choices) !== openedChoicesRef.current
       || undecided.length > 0
+      || skipped.length > 0
       || scale !== openedScaleRef.current
       || JSON.stringify([...ticked].sort()) !== tickedBaselineRef.current;
     if (!dirty) { onClose(); return; }
@@ -533,38 +538,59 @@ export function RecipeToListSheet({
               {choiceGroups.map(group => {
                 const key = choiceGroupKey(group.recipe.id, group.label);
                 const open = undecided.includes(key);
+                const skip = skipped.includes(key);
                 return (
                   <RecipeChoiceChips
                     key={key}
                     group={group}
-                    activeOptionId={open ? null : group.active.id}
+                    activeOptionId={open || skip ? null : group.active.id}
                     onPick={optionId => {
                       setUndecided(prev => prev.filter(k => k !== key));
+                      setSkipped(prev => prev.filter(k => k !== key));
                       setChoices(prev => applyChoice(prev, group, optionId));
                     }}
                     hint={open
                       ? `All ${group.options.length} go on the list. Check off the one you get and the rest come off.`
-                      : null}
+                      : skip ? 'None of these go on the list.' : null}
                     // Ingredients only. A component group names a dish, and two
                     // dishes' worth of lines on the list is not something one
                     // tick at the shelf could ever take back off — see
                     // ChoiceResolution.undecided.
                     extraChip={group.kind === 'ingredient' ? (
-                      <TouchableOpacity
-                        style={[styles.choiceChip, open && styles.choiceChipOn]}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => {
-                          haptics.tap();
-                          setUndecided(prev => (open ? prev.filter(k => k !== key) : [...prev, key]));
-                        }}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: open }}
-                        accessibilityLabel={`${group.label}: put both on the list and decide at the store`}
-                      >
-                        <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
-                          Decide at the store
-                        </Text>
-                      </TouchableOpacity>
+                      <>
+                        <TouchableOpacity
+                          style={[styles.choiceChip, open && styles.choiceChipOn]}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => {
+                            haptics.tap();
+                            setSkipped(prev => prev.filter(k => k !== key));
+                            setUndecided(prev => (open ? prev.filter(k => k !== key) : [...prev, key]));
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: open }}
+                          accessibilityLabel={`${group.label}: put both on the list and decide at the store`}
+                        >
+                          <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
+                            Decide at the store
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.choiceChip, skip && styles.choiceChipOn]}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => {
+                            haptics.tap();
+                            setUndecided(prev => prev.filter(k => k !== key));
+                            setSkipped(prev => (skip ? prev.filter(k => k !== key) : [...prev, key]));
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: skip }}
+                          accessibilityLabel={`${group.label}: not needed, leave it off the list`}
+                        >
+                          <Text style={[styles.choiceChipText, skip && styles.choiceChipTextOn]}>
+                            Not needed
+                          </Text>
+                        </TouchableOpacity>
+                      </>
                     ) : null}
                   />
                 );
