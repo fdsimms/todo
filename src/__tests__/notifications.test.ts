@@ -114,6 +114,7 @@ import {
   cancelStepAlarm,
   scheduleFocusStepAlarm,
   cancelFocusStepAlarm,
+  isRedundantInForeground,
   getNotificationPermission,
   upcomingReminders,
   pendingReminderStats,
@@ -1825,6 +1826,22 @@ describe('scheduleStepAlarm', () => {
 
   it('gives a step timer and a task the same id different alarm uuids', () => {
     expect(stepTimerAlarmUuid('x')).not.toBe(taskAlarmUuid('x'));
+  });
+});
+
+describe('isRedundantInForeground', () => {
+  it('silences a focus step chime while the app is open', () => {
+    expect(isRedundantInForeground({ focusSessionId: 's1' }, true)).toBe(true);
+  });
+
+  it('lets the chime through when the app is not in front', () => {
+    expect(isRedundantInForeground({ focusSessionId: 's1' }, false)).toBe(false);
+  });
+
+  it('leaves every other notification alone', () => {
+    expect(isRedundantInForeground({ taskId: 't1' }, true)).toBe(false);
+    expect(isRedundantInForeground(null, true)).toBe(false);
+    expect(isRedundantInForeground(undefined, true)).toBe(false);
   });
 });
 

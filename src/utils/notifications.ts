@@ -2,7 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { isProjectLockedAtAll } from './projectLock';
 import { placeGateAllows, placeTrustedUntil, readPlaceFix } from './placeGate';
 import type { PermissionResponse } from 'expo-modules-core';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import type { RestTimer, StepTimer, Task } from '../types';
 import type { FocusSession } from '../types';
 import { isTimedTask, isTimerRunning, timerRemaining } from './timer';
@@ -133,14 +133,31 @@ export function deferPastQuietHours(
   return result;
 }
 
+/**
+ * Whether a notification arriving while the app is open should stay silent.
+ * The focus step chime exists for a phone that is locked or backgrounded; the
+ * session sheet already shows "Time's up" on screen, and a banner over it is
+ * often the previous step's, still sliding in after the person tapped on.
+ */
+export function isRedundantInForeground(data: unknown, appIsActive: boolean): boolean {
+  if (!appIsActive || typeof data !== 'object' || data === null) return false;
+  return typeof (data as { focusSessionId?: unknown }).focusSessionId === 'string';
+}
+
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (notification) => {
+    const quiet = isRedundantInForeground(
+      notification.request.content.data,
+      AppState.currentState === 'active',
+    );
+    return {
+      shouldShowAlert: !quiet,
+      shouldShowBanner: !quiet,
+      shouldShowList: true,
+      shouldPlaySound: !quiet,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 // The category a task reminder's notification carries, so the system offers
