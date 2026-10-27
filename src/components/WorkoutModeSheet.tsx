@@ -1,11 +1,11 @@
 // Workout mode: the live session, one exercise at a time, with the rest in
-// the footer, then a summary to save it from. One component of ~1,000 lines, so
+// a strip under the header, then a summary to save it from. One component of ~1,000 lines, so
 // grep a landmark rather than reading it start to finish:
 //
 //   ==== <name> ====        the section banners through the logic half
 //   SuggestionCard          the progression's proposal on the exercise's card
 //   SessionClock            the header's running time, its own tick
-//   RestFooter              the rest countdown and its three buttons
+//   RestStrip               the rest countdown and its three buttons
 //   ScreenAwake             the keep-awake helper
 //   makeStyles              styles, at the bottom
 //
@@ -695,6 +695,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           ) : <View style={styles.headerSpacer} />}
         </View>
 
+        {/* Under the header, not in a footer: the keyboard is up while sets are
+            typed, and anything at the bottom of the sheet is behind it. */}
+        {session && !finishing && <RestStrip sessionId={visible ? session.id : undefined} styles={styles} />}
+
         {!session ? (
           <View style={styles.emptyWrap}>
             <EmptyNote icon="barbell-outline">No workout is in progress. Start one from a routine on the Workouts screen, or from a task.</EmptyNote>
@@ -1317,8 +1321,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               </TouchableOpacity>
             )}
           </View>
-        ) : session ? (
-          <RestFooter sessionId={visible ? session.id : undefined} bottomInset={insets.bottom} styles={styles} />
         ) : null}
       </View>
       {/* Inside this Modal, not beside it: a second sheet presented from the
@@ -1570,14 +1572,14 @@ function SessionClock({ startedAt, style }: { startedAt: string; style: object }
 }
 
 /**
- * The rest after the last set: how long is left, how long it was, and −15 s,
- * +30 s and Skip. Once it runs out it says so and counts up, and stays until
- * it is dismissed or the next set starts another: nothing moves on by itself.
- * Absent while there is no rest. Its own component, for the per-second tick.
+ * The rest after the last set: how long is left, how long it was, and −15,
+ * +30 and Skip, in one strip under the header so the keyboard can't cover it.
+ * Once it runs out it says so and counts up, and stays until it is dismissed
+ * or the next set starts another: nothing moves on by itself. Absent while
+ * there is no rest. Its own component, for the per-second tick.
  */
-function RestFooter({ sessionId, bottomInset, styles }: {
+function RestStrip({ sessionId, styles }: {
   sessionId: string | undefined;
-  bottomInset: number;
   styles: ReturnType<typeof makeStyles>;
 }) {
   const colors = useColors();
@@ -1587,40 +1589,44 @@ function RestFooter({ sessionId, bottomInset, styles }: {
   const over = isStepTimerReady(rest, now);
   const label = rest.label ? `Rest ${rest.label.charAt(0).toLowerCase()}${rest.label.slice(1)}` : 'Rest';
   return (
-    <View style={[styles.footer, { paddingBottom: bottomInset + spacing.smd }]}>
-      <View style={styles.restTop}>
-        <Text style={styles.restLabel} numberOfLines={1}>{over ? 'Rest is over' : label}</Text>
-        <Text style={styles.restOf}>{`of ${formatRestSeconds(rest.durationSeconds)}`}</Text>
+    <View style={styles.restStrip}>
+      <View style={styles.restBody}>
+        <View style={styles.restText}>
+          <Text
+            style={[styles.restTime, over && styles.restTimeOver]}
+            accessibilityLabel={over ? `Rest over ${stepTimerOverSeconds(rest, now)} seconds ago` : `${Math.ceil(stepTimerRemaining(rest, now))} seconds of rest left`}
+          >
+            {over ? `+${formatStopwatch(stepTimerOverSeconds(rest, now))}` : formatStopwatch(Math.ceil(stepTimerRemaining(rest, now)))}
+          </Text>
+          <Text style={styles.restLabel} numberOfLines={1}>
+            {`${over ? 'Rest is over' : label} · of ${formatRestSeconds(rest.durationSeconds)}`}
+          </Text>
+        </View>
+        <View style={styles.restButtons}>
+          <InlineAction
+            label={`−${REST_NUDGE_BACK_SECONDS}`}
+            variant="neutral"
+            disabled={over}
+            style={styles.restButton}
+            accessibilityLabel={`${REST_NUDGE_BACK_SECONDS} seconds less rest`}
+            onPress={() => { haptics.impactLight(); store.addTime(rest.id, -REST_NUDGE_BACK_SECONDS); }}
+          />
+          <InlineAction
+            label={`+${REST_NUDGE_FORWARD_SECONDS}`}
+            variant="neutral"
+            style={styles.restButton}
+            accessibilityLabel={`${REST_NUDGE_FORWARD_SECONDS} seconds more rest`}
+            onPress={() => { haptics.impactLight(); store.addTime(rest.id, REST_NUDGE_FORWARD_SECONDS); }}
+          />
+          <InlineAction
+            label={over ? 'Dismiss' : 'Skip'}
+            style={styles.restButton}
+            accessibilityLabel={over ? 'Dismiss rest' : 'Skip rest'}
+            onPress={() => { haptics.tap(); store.remove(rest.id); }}
+          />
+        </View>
       </View>
-      <Text
-        style={[styles.restTime, over && styles.restTimeOver]}
-        accessibilityLabel={over ? `Rest over ${stepTimerOverSeconds(rest, now)} seconds ago` : `${Math.ceil(stepTimerRemaining(rest, now))} seconds of rest left`}
-      >
-        {over ? `+${formatStopwatch(stepTimerOverSeconds(rest, now))}` : formatStopwatch(Math.ceil(stepTimerRemaining(rest, now)))}
-      </Text>
-      <ProgressBar progress={stepTimerProgress(rest, now)} height={4} decorative style={styles.restBar} color={over ? colors.done : undefined} />
-      <View style={styles.restButtons}>
-        <InlineAction
-          label={`−${REST_NUDGE_BACK_SECONDS} s`}
-          variant="neutral"
-          disabled={over}
-          style={styles.restButton}
-          accessibilityLabel={`${REST_NUDGE_BACK_SECONDS} seconds less rest`}
-          onPress={() => { haptics.impactLight(); store.addTime(rest.id, -REST_NUDGE_BACK_SECONDS); }}
-        />
-        <InlineAction
-          label={`+${REST_NUDGE_FORWARD_SECONDS} s`}
-          variant="neutral"
-          style={styles.restButton}
-          accessibilityLabel={`${REST_NUDGE_FORWARD_SECONDS} seconds more rest`}
-          onPress={() => { haptics.impactLight(); store.addTime(rest.id, REST_NUDGE_FORWARD_SECONDS); }}
-        />
-        <InlineAction
-          label={over ? 'Dismiss' : 'Skip rest'}
-          style={styles.restButton}
-          onPress={() => { haptics.tap(); store.remove(rest.id); }}
-        />
-      </View>
+      <ProgressBar progress={stepTimerProgress(rest, now)} height={3} decorative style={styles.restBar} color={over ? colors.done : undefined} />
     </View>
   );
 }
@@ -1742,16 +1748,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
     paddingHorizontal: spacing.md, paddingTop: spacing.smd,
   },
-  restTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.sm },
-  restLabel: { flex: 1, color: colors.textSecondary, fontSize: font.md },
-  restOf: { color: colors.textTertiary, fontSize: font.md, fontVariant: ['tabular-nums'] },
+  restStrip: { marginHorizontal: spacing.md, marginBottom: spacing.smd, backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
+  restBody: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingLeft: spacing.md, paddingRight: spacing.sm, paddingTop: spacing.sm, paddingBottom: spacing.smd },
+  restText: { flex: 1, minWidth: 0 },
+  restLabel: { color: colors.textSecondary, fontSize: font.xs },
   // A hero number, read from a bench at arm's length: a literal size, which
   // the scale isn't for (see the font scale note in CLAUDE.md).
-  restTime: { color: colors.text, fontSize: 34, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'], marginTop: spacing.xxs },
+  restTime: { color: colors.text, fontSize: 28, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   restTimeOver: { color: colors.accentText },
-  restBar: { marginTop: spacing.sm, marginBottom: spacing.smd },
-  restButtons: { flexDirection: 'row', gap: spacing.sm },
-  restButton: { flex: 1, justifyContent: 'center', minHeight: 44 },
+  restBar: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  restButtons: { flexDirection: 'row', gap: spacing.xsm },
+  restButton: { minWidth: 48, justifyContent: 'center', minHeight: 44 },
   summaryTitle: { color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold, marginTop: spacing.xs, marginHorizontal: spacing.xs },
   stats: { marginTop: spacing.smd },
   summaryRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
