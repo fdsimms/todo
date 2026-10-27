@@ -6,6 +6,7 @@ import {
   metaContent,
   parseIsoDuration,
   parseRecipeJsonLd,
+  parseRecipeMicrodata,
   focusRecipeText,
   recipeToPlainText,
   parseRecipePage,
@@ -16,6 +17,28 @@ const LIMIT = 4_000;
 /** Wraps a JSON-LD payload in the script tag a page would ship it in. */
 const ldPage = (payload: unknown, extra = '') =>
   `<html><head>${extra}<script type="application/ld+json">${JSON.stringify(payload)}</script></head><body><p>Hello</p></body></html>`;
+
+/**
+ * Trimmed from smittenkitchen.com/2021/06/perfect-forever-cornbread: Jetpack's
+ * recipe block, microdata with no JSON-LD, the method in an `e-instructions`
+ * div that carries no `itemprop`, and stray `<p>` tags around the divs. The
+ * long story above it is what used to fill the 4,000-character budget.
+ */
+const JETPACK_PAGE = `<html><head><title>perfect, forever cornbread &#8211; smitten kitchen</title>
+<meta property="og:site_name" content="smitten kitchen" /></head><body>
+<nav>${'<a href="/">Recipes</a> '.repeat(200)}</nav>
+<h1 class="entry-title">perfect, forever cornbread</h1>
+<p>${'I have a long story about cornbread and summer. '.repeat(150)}</p>
+<div class="hrecipe h-recipe jetpack-recipe" itemscope itemtype="https://schema.org/Recipe"><h3 class="p-name jetpack-recipe-title fn" itemprop="name">Perfect, Forever Cornbread</h3><ul class="jetpack-recipe-meta"><li class="jetpack-recipe-servings p-yield yield" itemprop="recipeYield"><strong>Servings: </strong>8 to 12</li><li class="jetpack-recipe-time">
+<time itemprop="totalTime" datetime="P0DT0H45M0S"><strong>Time:</strong> <span class="time">45 minutes</span></time></li><li class="jetpack-recipe-print"><a href="#">Print</a></li></ul><div class="jetpack-recipe-content"></p>
+<p><div class="jetpack-recipe-notes">I bake this in an 8-inch cast-iron skillet.</div></p>
+<p><div class="jetpack-recipe-ingredients"><ul><li class="jetpack-recipe-ingredient p-ingredient ingredient" itemprop="recipeIngredient">1/2 cup (4 ounces or 115 grams) unsalted butter, cold is fine</li><li class="jetpack-recipe-ingredient" itemprop="recipeIngredient">2 large eggs</li><li class="jetpack-recipe-ingredient" itemprop="recipeIngredient">1 cup (155 grams) cornmeal</li></ul></div></p>
+<p><div class="jetpack-recipe-directions e-instructions">Heat oven to 400 degrees. Melt the butter in the skillet.</p>
+<p>Blend everything, pour into the skillet &#8212; the extra butter will roll over the top.</p>
+<p>Bake 30 to 35 minutes, until a toothpick comes out clean.</p>
+<p></div></p>
+<p></div></div>
+<div class="comments"><p>Super quick recipe, very tasty!</p></div></body></html>`;
 
 const RECIPE_LD = {
   '@context': 'https://schema.org',
@@ -311,6 +334,46 @@ describe('parseRecipeJsonLd', () => {
   });
 });
 
+describe('parseRecipeMicrodata', () => {
+  it('reads ingredients, yield, time and a method with no itemprop (Jetpack)', () => {
+    const recipe = parseRecipeMicrodata(JETPACK_PAGE)!;
+    expect(recipe.name).toBe('Perfect, Forever Cornbread');
+    expect(recipe.ingredients).toEqual([
+      '1/2 cup (4 ounces or 115 grams) unsalted butter, cold is fine',
+      '2 large eggs',
+      '1 cup (155 grams) cornmeal',
+    ]);
+    expect(recipe.steps).toEqual([
+      'Heat oven to 400 degrees. Melt the butter in the skillet.',
+      'Blend everything, pour into the skillet — the extra butter will roll over the top.',
+      'Bake 30 to 35 minutes, until a toothpick comes out clean.',
+    ]);
+    // The "Servings:" label belongs to the template, not the value.
+    expect(recipe.recipeYield).toBe('8 to 12');
+    expect(recipe.totalMinutes).toBe(45);
+  });
+
+  it('uses itemprop="recipeInstructions" list items as steps when the page marks them', () => {
+    const html = `<div itemscope itemtype="http://schema.org/Recipe"><span itemprop="name">Toast</span>
+      <ul><li itemprop="recipeIngredient">bread</li></ul>
+      <ol itemprop="recipeInstructions"><li>Slice.</li><li>Toast it.</li></ol></div>`;
+    expect(parseRecipeMicrodata(html)!.steps).toEqual(['Slice.', 'Toast it.']);
+  });
+
+  it('keeps the recipe with the most ingredients when a page has two', () => {
+    const html = `
+      <div itemscope itemtype="https://schema.org/Recipe"><i itemprop="name">Sidebar</i><b itemprop="recipeIngredient">x</b></div>
+      <div itemscope itemtype="https://schema.org/Recipe"><i itemprop="name">Main</i>
+        <b itemprop="recipeIngredient">a</b><b itemprop="recipeIngredient">b</b></div>`;
+    expect(parseRecipeMicrodata(html)!.name).toBe('Main');
+  });
+
+  it('is null when there is no recipe markup or it holds no ingredients', () => {
+    expect(parseRecipeMicrodata('<p>Hello</p>')).toBeNull();
+    expect(parseRecipeMicrodata('<div itemscope itemtype="https://schema.org/Recipe"><i itemprop="name">Empty</i></div>')).toBeNull();
+  });
+});
+
 describe('focusRecipeText', () => {
   it('leaves anything already short enough alone', () => {
     expect(focusRecipeText('short', 100)).toBe('short');
@@ -323,6 +386,14 @@ describe('focusRecipeText', () => {
     expect(focused).toContain('Ingredients');
     expect(focused).toContain('1 cup flour');
     expect(focused.length).toBeLessThanOrEqual(500);
+  });
+
+  it('anchors on a Yield line when the page has no ingredients heading', () => {
+    const story = 'My grandmother once told me. '.repeat(200);
+    const text = `${story}\nYield: 8 to 12\n1/2 cup butter\n2 eggs`;
+    const focused = focusRecipeText(text, 500);
+    expect(focused).toContain('2 eggs');
+    expect(focused).toContain('Yield: 8 to 12');
   });
 
   it('falls back to the front when there is no heading to anchor on', () => {
@@ -371,6 +442,22 @@ describe('parseRecipePage', () => {
       LIMIT,
     );
     expect(parsed.siteName).toBe('Cooking');
+  });
+
+  it('reads a microdata-only page (no JSON-LD) whole, ingredients and steps, past the story', () => {
+    const parsed = parseRecipePage(JETPACK_PAGE, LIMIT);
+    expect(parsed.structured).toBe(true);
+    expect(parsed.title).toBe('Perfect, Forever Cornbread');
+    expect(parsed.siteName).toBe('smitten kitchen');
+    expect(parsed.ingredients).toHaveLength(3);
+    expect(parsed.steps).toHaveLength(3);
+    expect(parsed.text).toContain('2 large eggs');
+    expect(parsed.text).not.toContain('long story');
+  });
+
+  it('prefers JSON-LD over microdata when a page carries both', () => {
+    const both = ldPage(RECIPE_LD).replace('<p>Hello</p>', JETPACK_PAGE);
+    expect(parseRecipePage(both, LIMIT).title).toBe('Weeknight chilli');
   });
 
   it('falls back to page text, and claims no method, when there is no markup', () => {
