@@ -1020,7 +1020,7 @@ export function RewardsScreen() {
     return (
       <PressableScale
         key={reward.id}
-        style={[styles.tile, isGoal && styles.tileGoal, (resting || !affordable) && styles.tileDim]}
+        style={[styles.tile, isGoal && styles.tileGoal]}
         onPress={() => setDetailId(reward.id)}
         accessibilityLabel={[
           shown.title,
@@ -1508,7 +1508,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   tileGoal: { borderColor: colors.accent },
-  tileDim: { opacity: 0.6 },
   tileClaim: { alignSelf: 'flex-start', marginTop: spacing.xsm },
   tileBar: { marginTop: spacing.xsm },
   tileTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'auto' },
