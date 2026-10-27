@@ -21,8 +21,8 @@ const asPlanned = [
   set('bench', 0, 0, 60, 9), set('bench', 0, 1, 60, 9), set('bench', 0, 2, 60, 9),
   set('fly', 1, 0, 20, 11), set('fly', 1, 1, 20, 11),
 ];
-const diff = (sets: WorkoutSet[], items = routine, suggestedKg?: (id: string) => number | null) =>
-  routineChanges({ items, sets, kindOf, suggestedKg });
+const diff = (sets: WorkoutSet[], items = routine, suggestedKg?: (id: string) => number | null, rests: Record<string, number> = {}) =>
+  routineChanges({ items, sets, kindOf, suggestedKg, restOverrides: rests, defaultRestSeconds: 90 });
 const only = (cs: RoutineChange[], kind: RoutineChange['kind']) => cs.filter(c => c.kind === kind);
 
 describe('routineChanges', () => {
@@ -39,6 +39,25 @@ describe('routineChanges', () => {
       title: 'BENCH: lighter',
       detail: 'From 60 kg to 57.5 kg on the working sets.',
     });
+  });
+
+  it('offers a rest set mid-workout, against the item\'s rest or the default, and nothing for one that matches', () => {
+    const got = diff(asPlanned, routine, undefined, { bench: 150, fly: 90 });
+    expect(got).toEqual([{ kind: 'rest', id: 'rest:bench', exerciseId: 'bench', from: 90, to: 150 }]);
+    expect(describeRoutineChange(got[0], name, 'kg')).toEqual({
+      title: 'BENCH: rest time',
+      detail: 'From 1:30 to 2:30 between sets.',
+    });
+    const withOwn = [item('bench', BENCH, { restSeconds: 120 }), routine[1]];
+    expect(diff(asPlanned, withOwn, undefined, { bench: 120 })).toEqual([]);
+    expect(describeRoutineChange(diff(asPlanned, withOwn, undefined, { bench: 0 })[0], name, 'kg').detail).toBe('From 2:00 to no rest between sets.');
+  });
+
+  it('offers no rest for an exercise the workout never did, or one the routine lacks', () => {
+    expect(diff(asPlanned.filter(s => s.exerciseId === 'bench'), routine, undefined, { fly: 30 })).toEqual(
+      expect.not.arrayContaining([expect.objectContaining({ kind: 'rest' })]),
+    );
+    expect(only(diff(asPlanned, routine, undefined, { squat: 30 }), 'rest')).toEqual([]);
   });
 
   it('does not offer back a load taken from the progression suggestion', () => {
@@ -112,6 +131,11 @@ describe('routineChanges', () => {
 });
 
 describe('applyRoutineChanges', () => {
+  it('writes an accepted rest onto the item and leaves the others', () => {
+    const next = applyRoutineChanges(routine, [{ kind: 'rest', id: 'rest:bench', exerciseId: 'bench', from: 90, to: 0 }]);
+    expect(next.map(i => i.restSeconds)).toEqual([0, null]);
+  });
+
   it('writes only the changes given, each on its own', () => {
     const sets = [
       ...asPlanned.map(s => (s.exerciseId === 'bench' ? { ...s, weightKg: 57.5 } : s)),

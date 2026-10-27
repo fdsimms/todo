@@ -734,6 +734,27 @@ describe('a session from a routine', () => {
     expect(state().leaveSessionSuperset(s.id, fly)).toBe(false);
   });
 
+  it('sets a rest for one exercise in this workout, and clears it again', () => {
+    const s = ok(state().startSession());
+    expect(state().setSessionRest(s.id, bench, 45)).toBe(true);
+    expect(state().setSessionRest(s.id, bench, 45)).toBe(false);
+    expect(state().setSessionRest(s.id, fly, 0)).toBe(true);
+    expect(state().liveSession()?.restOverrides).toEqual({ [bench]: 45, [fly]: 0 });
+    expect(dbGetWorkoutSession(s.id)?.restOverrides).toEqual({ [bench]: 45, [fly]: 0 });
+    expect(state().setSessionRest(s.id, bench, null)).toBe(true);
+    expect(state().setSessionRest(s.id, bench, null)).toBe(false);
+    expect(state().setSessionRest(s.id, fly, null)).toBe(true);
+    expect(dbGetWorkoutSession(s.id)).not.toHaveProperty('restOverrides');
+    expect(state().setSessionRest('nope', bench, 30)).toBe(false);
+  });
+
+  it('refuses a rest on a workout that is over', () => {
+    const s = ok(state().startSession());
+    ok(state().logSet(s.id, { exerciseId: bench }));
+    state().finishSession(s.id);
+    expect(state().setSessionRest(s.id, bench, 30)).toBe(false);
+  });
+
   it('finishes by dropping the sets never ticked', () => {
     const r = ok(state().addRoutine('Push A', items));
     const s = ok(state().startSession({ routineId: r.id }));

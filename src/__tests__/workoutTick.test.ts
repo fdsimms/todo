@@ -116,6 +116,13 @@ describe('tickOutcome', () => {
     expect(outcome?.restPlan).toEqual({ kind: 'start', seconds: 150, label: 'After set 1 of Barbell bench press' });
   });
 
+  it('takes a rest set in this workout over the routine\'s', () => {
+    const sets = [set('bench', 0, 0, { completedAt: DONE }), set('bench', 0, 1)];
+    const outcome = tickOutcome(sets, sets[0].id, { ...ctx, routine: routine([{ exerciseId: 'bench', restSeconds: 150 }]), restOverrides: { bench: 45 } });
+    expect(outcome?.restPlan).toMatchObject({ kind: 'start', seconds: 45 });
+    expect(tickOutcome(sets, sets[0].id, { ...ctx, restOverrides: { bench: 0 } })?.restPlan).toEqual({ kind: 'clear' });
+  });
+
   it('drops the last rest when the exercise asks for none', () => {
     const sets = [set('bench', 0, 0, { completedAt: DONE }), set('bench', 0, 1)];
     const outcome = tickOutcome(sets, sets[0].id, { ...ctx, routine: routine([{ exerciseId: 'bench', restSeconds: 0 }]) });
@@ -192,6 +199,13 @@ describe('tickSet', () => {
     expect(mockStartRest).not.toHaveBeenCalled();
     expect(mockRemoveRestsOutside).toHaveBeenCalledWith(null);
     expect(mockEditSet).toHaveBeenCalledWith('w1', sets[0].id, { completedAt: longAgo.toISOString() });
+  });
+
+  it('reads a rest set on the session before the routine\'s', () => {
+    mockSessions = [liveSession({ routineId: 'rt', restOverrides: { bench: 30 } })];
+    mockRoutines = [routine([{ exerciseId: 'bench', restSeconds: 0 }])];
+    tickSet('w1', sets[0].id, NOW);
+    expect(mockStartRest).toHaveBeenCalledWith(expect.objectContaining({ durationSeconds: 30 }));
   });
 
   it('reads the rest from the session’s routine', () => {

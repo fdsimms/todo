@@ -228,6 +228,14 @@ describe('restSecondsFor', () => {
     expect(restSecondsFor(null, 'bench', 90)).toBe(90);
     expect(restSecondsFor(routine, 'plank', 90)).toBe(0);
   });
+
+  it('puts a rest set in this workout over the item\'s and the setting, with 0 meaning none', () => {
+    expect(restSecondsFor(routine, 'bench', 90, { bench: 60 })).toBe(60);
+    expect(restSecondsFor(routine, 'fly', 90, { fly: 0 })).toBe(0);
+    expect(restSecondsFor(null, 'squat', 90, { squat: 45 })).toBe(45);
+    expect(restSecondsFor(routine, 'bench', 90, { fly: 30 })).toBe(150);
+    expect(restSecondsFor(routine, 'bench', 90, null)).toBe(150);
+  });
 });
 
 describe('last time', () => {
