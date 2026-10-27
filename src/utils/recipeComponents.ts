@@ -339,14 +339,6 @@ export interface ChoiceResolution {
    */
   undecided?: readonly string[];
   /**
-   * Ingredient groups that contribute nothing this time, named by
-   * `choiceGroupKey` — "I don't need any of these". Ingredients only, for the
-   * reason `undecided` is: a component names a dish, and a dish is picked or
-   * replaced, not skipped. Shopping reads only; the RecipeToListSheet passes it
-   * and nothing is written back to the recipe or a meal.
-   */
-  skipped?: readonly string[];
-  /**
    * Ingredient nameKeys the caller already has on hand, computed live from
    * pantry state (the same "have it" opinion `probablyHaveReason` owns —
    * callers build this set with it, never a second rule). An unresolved
@@ -381,6 +373,42 @@ export interface ChoiceResolution {
    * figures must leave it off, or a garnish nobody chose is bought and counted.
    */
   withOptional?: boolean;
+}
+
+const SKIP_PREFIX = 'skip:';
+
+/**
+ * The id stored in a meal's picks (`chosen`) when a whole ingredient group is
+ * "not needed": the group contributes no line to its shopping or figures.
+ *
+ * It lives in `chosen` rather than a column of its own so every path that
+ * already carries a meal's picks (sync, copy, the MCP replica, every
+ * `entryResolution` reader) carries it too. It can never collide with an option
+ * id, and a group that no longer exists just never matches (resolve-or-shrug).
+ * Ingredient groups only: a component names a dish, which is picked or replaced,
+ * not skipped.
+ */
+export function skipPickId(recipeId: string, label: string): string {
+  return `${SKIP_PREFIX}${choiceGroupKey(recipeId, label)}`;
+}
+
+/** The `choiceGroupKey`s a list of picks marks as not needed. */
+function skippedGroupKeys(chosen: readonly string[] | undefined): string[] | undefined {
+  const keys = (chosen ?? []).filter(id => id.startsWith(SKIP_PREFIX)).map(id => id.slice(SKIP_PREFIX.length));
+  return keys.length > 0 ? keys : undefined;
+}
+
+/** Whether `chosen` marks `group` as not needed. */
+export function isGroupSkipped(chosen: readonly string[], group: Pick<ChoiceGroup, 'recipe' | 'label'>): boolean {
+  return chosen.includes(skipPickId(group.recipe.id, group.label));
+}
+
+/** `chosen` with `group` marked not needed, or brought back (as its default) when it already is. */
+export function toggleSkipGroup(chosen: readonly string[], group: ChoiceGroup): string[] {
+  const id = skipPickId(group.recipe.id, group.label);
+  if (chosen.includes(id)) return chosen.filter(c => c !== id);
+  const optionIds = new Set(group.options.map(o => o.id));
+  return [...chosen.filter(c => !optionIds.has(c)), id];
 }
 
 /**
@@ -509,7 +537,7 @@ function resolveGroupWinners(
   const ingredientGroups = groupOptions(recipe.ingredients);
   const chosen = new Set(resolution?.chosen ?? []);
   const onHand = resolution?.onHand;
-  const skipped = labelsInKeys(recipe, resolution?.skipped);
+  const skipped = labelsInKeys(recipe, skippedGroupKeys(resolution?.chosen));
   const labels = new Set([...ingredientGroups.keys(), ...componentGroups.keys()]);
   for (const label of labels) {
     const ingredients = ingredientGroups.get(label) ?? [];
@@ -1149,7 +1177,8 @@ export function applyChoice(
   optionId: string,
 ): string[] {
   const optionIds = new Set(group.options.map(o => o.id));
-  const rest = choices.filter(id => !optionIds.has(id));
+  const skipId = skipPickId(group.recipe.id, group.label);
+  const rest = choices.filter(id => !optionIds.has(id) && id !== skipId);
   const isDefault = group.defaultId === optionId;
   return isDefault || !optionIds.has(optionId) ? rest : [...rest, optionId];
 }

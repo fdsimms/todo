@@ -8614,6 +8614,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           if (!group) {
             throw new Error(`"${recipe.name}" has no choice called "${pick.group}"${groups.length ? ` (it asks: ${groups.map(g => g.label).join(', ')})` : ''}.`);
           }
+          if (pick.option.trim().toLowerCase() === 'not needed') {
+            if (group.kind !== 'ingredient') throw new Error(`"${group.label}" is a dish, so it is picked or replaced, never "Not needed".`);
+            if (!components().isGroupSkipped(chosen, group)) chosen = components().toggleSkipGroup(chosen, group);
+            continue;
+          }
           const option = group.options.find(o => o.name.trim().toLowerCase() === pick.option.trim().toLowerCase());
           if (!option) throw new Error(`"${group.label}" is one of ${group.options.map(o => o.name).join(', ')}.`);
           chosen = components().applyChoice(chosen, group, option.id);

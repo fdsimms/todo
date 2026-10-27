@@ -30,7 +30,7 @@ import {
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
-import { alternativeCaptions, applyChoice, choiceGroupKey, recipeChoiceGroups } from '../utils/recipeComponents';
+import { alternativeCaptions, applyChoice, choiceGroupKey, isGroupSkipped, recipeChoiceGroups, toggleSkipGroup } from '../utils/recipeComponents';
 import { normalizeScale } from '../utils/recipeScale';
 import { featureShown } from '../utils/simpleMode';
 import { convertQuantity, showContainerCount } from '../utils/unitConvert';
@@ -199,10 +199,7 @@ export function RecipeToListSheet({
   //
   // Ingredient groups only — see ChoiceResolution.undecided.
   const [undecided, setUndecided] = useState<string[]>([]);
-  // Groups this shop doesn't need at all: no row from them goes on the list.
-  // Same lifetime as `undecided`, and the two are exclusive per group.
-  const [skipped, setSkipped] = useState<string[]>([]);
-  const choiceKey = `${choices.join('|')}#${undecided.join('|')}#${skipped.join('|')}`;
+  const choiceKey = `${choices.join('|')}#${undecided.join('|')}`;
 
   // Same contract as `choices` above, and for the same reason: an ad-hoc shop
   // isn't attached to a meal, so there's nothing for "I'm making a double batch"
@@ -228,7 +225,7 @@ export function RecipeToListSheet({
   const classified = useMemo(() => {
     if (!recipe) return [];
     return classifyPlanned(
-      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices, overrides: initialOverrides, undecided, skipped, onHand }, scale, swaps),
+      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices, overrides: initialOverrides, undecided, onHand }, scale, swaps),
       items,
       new Date(),
       itemSubs,
@@ -301,7 +298,6 @@ export function RecipeToListSheet({
     if (!visible) return;
     setChoices(initialChoices ? [...initialChoices] : []);
     setUndecided([]);
-    setSkipped([]);
     setScale(normalizeScale(initialScale));
     openedChoicesRef.current = JSON.stringify(initialChoices ?? []);
     openedScaleRef.current = normalizeScale(initialScale);
@@ -447,7 +443,6 @@ export function RecipeToListSheet({
   const handleCancel = () => {
     const dirty = JSON.stringify(choices) !== openedChoicesRef.current
       || undecided.length > 0
-      || skipped.length > 0
       || scale !== openedScaleRef.current
       || JSON.stringify([...ticked].sort()) !== tickedBaselineRef.current;
     if (!dirty) { onClose(); return; }
@@ -538,7 +533,7 @@ export function RecipeToListSheet({
               {choiceGroups.map(group => {
                 const key = choiceGroupKey(group.recipe.id, group.label);
                 const open = undecided.includes(key);
-                const skip = skipped.includes(key);
+                const skip = isGroupSkipped(choices, group);
                 return (
                   <RecipeChoiceChips
                     key={key}
@@ -546,7 +541,6 @@ export function RecipeToListSheet({
                     activeOptionId={open || skip ? null : group.active.id}
                     onPick={optionId => {
                       setUndecided(prev => prev.filter(k => k !== key));
-                      setSkipped(prev => prev.filter(k => k !== key));
                       setChoices(prev => applyChoice(prev, group, optionId));
                     }}
                     hint={open
@@ -563,7 +557,7 @@ export function RecipeToListSheet({
                           activeOpacity={interaction.activeOpacity}
                           onPress={() => {
                             haptics.tap();
-                            setSkipped(prev => prev.filter(k => k !== key));
+                            setChoices(prev => (skip ? toggleSkipGroup(prev, group) : prev));
                             setUndecided(prev => (open ? prev.filter(k => k !== key) : [...prev, key]));
                           }}
                           accessibilityRole="button"
@@ -580,7 +574,7 @@ export function RecipeToListSheet({
                           onPress={() => {
                             haptics.tap();
                             setUndecided(prev => prev.filter(k => k !== key));
-                            setSkipped(prev => (skip ? prev.filter(k => k !== key) : [...prev, key]));
+                            setChoices(prev => toggleSkipGroup(prev, group));
                           }}
                           accessibilityRole="button"
                           accessibilityState={{ selected: skip }}

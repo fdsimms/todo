@@ -118,6 +118,7 @@ import {
   flattenRecipeIngredients,
   optionalCounts,
   toggleOptionalPick,
+  toggleSkipGroup,
 } from '../utils/recipeComponents';
 import { cookSteps } from '../utils/cookMode';
 import {
@@ -2617,6 +2618,9 @@ export function MealPlanScreen() {
           onFillBlanks={selected && selectedRecipe && recipeBlanksIn(selectedRecipe, recipesById).length > 0
             ? () => setFillingId(selected.id)
             : undefined}
+          onSkipGroup={group => {
+            if (selected) setRecipeChoices(selected.id, toggleSkipGroup(selected.recipeChoices, group));
+          }}
           onChoose={(group, componentId) => {
             if (!selected) return;
             setRecipeChoices(

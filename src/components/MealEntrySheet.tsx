@@ -36,7 +36,7 @@ import { HelpText } from './HelpText';
 import { SheetActionRow } from './SheetActionRow';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
-import type { ChoiceGroup } from '../utils/recipeComponents';
+import { isGroupSkipped, type ChoiceGroup } from '../utils/recipeComponents';
 import { describeEitherPair, type EitherPairInUse } from '../utils/itemEither';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
@@ -121,6 +121,8 @@ interface Props {
   choiceGroups?: ChoiceGroup[];
   /** Records a pick. Absent alongside an empty `choiceGroups`. */
   onChoose?: (group: ChoiceGroup, componentId: string) => void;
+  /** Marks an ingredient group not needed for this meal, or brings it back. */
+  onSkipGroup?: (group: ChoiceGroup) => void;
   /**
    * The "either one" pairs this meal's recipes name ("Butter or vegan butter")
    * and which of the two this cooking used. One answer covers every recipe in the
@@ -270,7 +272,7 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onCopyTo, onCopyFurther, copiedDays, onReplace, onChooseRecipe, onSaveAsRecipe, matchingRecipeName,
-  onRemove, onRename, choiceGroups = [], onChoose, itemPairs = [], onPickItem, overrideLines = [], onRemoveOverride, onOverride, blankFill = null, onFillBlanks, optionalLines = [], onToggleOptional,
+  onRemove, onRename, choiceGroups = [], onChoose, onSkipGroup, itemPairs = [], onPickItem, overrideLines = [], onRemoveOverride, onOverride, blankFill = null, onFillBlanks, optionalLines = [], onToggleOptional,
   onScale, baseServings, baseServingsMax, onSetCooked, onViewFoodLogEntry, onLogMeal, onOpenRecipe, onCook, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
@@ -482,12 +484,14 @@ export function MealEntrySheet({
             </View>
           )}
 
-          {choiceGroups.map(group => (
+          {choiceGroups.map(group => {
+            const skipped = !!entry && isGroupSkipped(entry.recipeChoices, group);
+            return (
             <View key={`${group.recipe.id}:${group.label}`}>
               <Text style={styles.label}>{group.label}</Text>
               <View style={styles.chips}>
                 {group.options.map(option => {
-                  const on = option.id === group.active.id;
+                  const on = !skipped && option.id === group.active.id;
                   const name = option.name || 'Deleted recipe';
                   return (
                     <TouchableOpacity
@@ -503,9 +507,22 @@ export function MealEntrySheet({
                     </TouchableOpacity>
                   );
                 })}
+                {group.kind === 'ingredient' && !!onSkipGroup && (
+                  <TouchableOpacity
+                    style={[styles.chip, skipped && styles.chipOn]}
+                    onPress={() => { haptics.tap(); onSkipGroup(group); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: skipped }}
+                    accessibilityLabel={`${group.label}: not needed`}
+                  >
+                    <Text style={[styles.chipText, skipped && styles.chipTextOn]}>Not needed</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
-          ))}
+            );
+          })}
 
           {/* Which of two interchangeable items went in. Unanswered is shown as
               unanswered: nutrition and the pantry wait for it rather than guess. */}
