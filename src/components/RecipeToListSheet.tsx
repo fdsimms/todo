@@ -500,68 +500,6 @@ export function RecipeToListSheet({
           }
         />
 
-        {/* Above the choice chips: how much you're making applies to the whole
-            shop, while a choice applies to one group within it. */}
-        {/* Simplified mode drops it unless this shop is already scaled (a
-            meal planned for four opens at 2x), the rule RecipeDetail's own
-            chips follow. */}
-        {!nothingToShow
-          && featureShown('recipeScaling', simpleMode, scale !== 1 || normalizeScale(initialScale) !== 1) && (
-          <View style={styles.scaleRow}>
-            <Text style={styles.sectionLabel}>Batch</Text>
-            <RecipeScaleChips
-              value={scale}
-              onChange={setScale}
-              baseServings={recipe?.servings}
-              baseServingsMax={recipe?.servingsMax}
-            />
-          </View>
-        )}
-
-        {choiceGroups.length > 0 && (
-          <View style={styles.choices}>
-            {choiceGroups.map(group => {
-              const key = choiceGroupKey(group.recipe.id, group.label);
-              const open = undecided.includes(key);
-              return (
-                <RecipeChoiceChips
-                  key={key}
-                  group={group}
-                  activeOptionId={open ? null : group.active.id}
-                  onPick={optionId => {
-                    setUndecided(prev => prev.filter(k => k !== key));
-                    setChoices(prev => applyChoice(prev, group, optionId));
-                  }}
-                  hint={open
-                    ? `All ${group.options.length} go on the list. Check off the one you get and the rest come off.`
-                    : null}
-                  // Ingredients only. A component group names a dish, and two
-                  // dishes' worth of lines on the list is not something one
-                  // tick at the shelf could ever take back off — see
-                  // ChoiceResolution.undecided.
-                  extraChip={group.kind === 'ingredient' ? (
-                    <TouchableOpacity
-                      style={[styles.choiceChip, open && styles.choiceChipOn]}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => {
-                        haptics.tap();
-                        setUndecided(prev => (open ? prev.filter(k => k !== key) : [...prev, key]));
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: open }}
-                      accessibilityLabel={`${group.label}: put both on the list and decide at the store`}
-                    >
-                      <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
-                        Decide at the store
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-                />
-              );
-            })}
-          </View>
-        )}
-
         {nothingToShow ? (
           <View style={styles.centered}>
             <EmptyState
@@ -572,6 +510,68 @@ export function RecipeToListSheet({
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
+          {/* Above the choice chips: how much you're making applies to the whole
+              shop, while a choice applies to one group within it. */}
+          {/* Simplified mode drops it unless this shop is already scaled (a
+              meal planned for four opens at 2x), the rule RecipeDetail's own
+              chips follow. */}
+          {!nothingToShow
+            && featureShown('recipeScaling', simpleMode, scale !== 1 || normalizeScale(initialScale) !== 1) && (
+            <View style={styles.scaleRow}>
+              <Text style={styles.sectionLabel}>Batch</Text>
+              <RecipeScaleChips
+                value={scale}
+                onChange={setScale}
+                baseServings={recipe?.servings}
+                baseServingsMax={recipe?.servingsMax}
+              />
+            </View>
+          )}
+
+          {choiceGroups.length > 0 && (
+            <View style={styles.choices}>
+              {choiceGroups.map(group => {
+                const key = choiceGroupKey(group.recipe.id, group.label);
+                const open = undecided.includes(key);
+                return (
+                  <RecipeChoiceChips
+                    key={key}
+                    group={group}
+                    activeOptionId={open ? null : group.active.id}
+                    onPick={optionId => {
+                      setUndecided(prev => prev.filter(k => k !== key));
+                      setChoices(prev => applyChoice(prev, group, optionId));
+                    }}
+                    hint={open
+                      ? `All ${group.options.length} go on the list. Check off the one you get and the rest come off.`
+                      : null}
+                    // Ingredients only. A component group names a dish, and two
+                    // dishes' worth of lines on the list is not something one
+                    // tick at the shelf could ever take back off — see
+                    // ChoiceResolution.undecided.
+                    extraChip={group.kind === 'ingredient' ? (
+                      <TouchableOpacity
+                        style={[styles.choiceChip, open && styles.choiceChipOn]}
+                        activeOpacity={interaction.activeOpacity}
+                        onPress={() => {
+                          haptics.tap();
+                          setUndecided(prev => (open ? prev.filter(k => k !== key) : [...prev, key]));
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: open }}
+                        accessibilityLabel={`${group.label}: put both on the list and decide at the store`}
+                      >
+                        <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
+                          Decide at the store
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  />
+                );
+              })}
+            </View>
+          )}
+
             {SECTIONS.map(({ category, label, interactive, collapsible }) => {
               const rows = byCategory[category];
               if (rows.length === 0) return null;
@@ -821,20 +821,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   list: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
-  // Above the list rather than in it: this decides what the list *is*, so it
-  // sits with the header it qualifies and doesn't scroll away from the rows it
-  // just changed.
+  // Inside the scroll view, ahead of the sections: with several choice groups
+  // a fixed block left the ingredient list a few rows of screen.
   choices: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
     gap: spacing.sm,
-    borderBottomWidth: border.hairline,
-    borderBottomColor: colors.separator,
-    paddingBottom: spacing.md,
   },
   scaleRow: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: spacing.xs,
     gap: spacing.xs,
   },
   choiceChip: {
