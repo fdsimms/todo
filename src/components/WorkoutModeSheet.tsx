@@ -246,9 +246,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [gymNoteEdit, setGymNoteEdit] = useState<string | null>(null);
   const [gymNoteDraft, setGymNoteDraft] = useState('');
   const [alwaysDraft, setAlwaysDraft] = useState('');
-  // Every exercise on one scrolling page, instead of one card at a time.
-  // Session-only, like the photos toggle.
-  const [allOpen, setAllOpen] = useState(false);
   // The compact list the exercises are dragged in, instead of their cards, and
   // whether a row of it is in the air (which switches the page's scroll off).
   const [reordering, setReordering] = useState(false);
@@ -296,8 +293,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const viewIndex = Math.max(0, exercises.findIndex(e => e.exerciseId === viewedId));
   const viewed = exercises[viewIndex] ?? null;
   const program = session?.programId ? programs.find(p => p.id === session.programId) ?? null : null;
-  const upNext = exercises[viewIndex + 1] ?? null;
-  const upNextInfo = upNext ? catalogExercise(exerciseRows, upNext.exerciseId) : null;
 
   // ==== writing a set ====
   const edit = useCallback((setId: string, patch: Partial<WorkoutSet>) => {
@@ -381,13 +376,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     applyProposal(session.id, exerciseId, { proposal: shown });
   };
 
-  const toggleAll = () => {
-    haptics.tap();
-    animateLayout();
-    setReordering(false);
-    setAllOpen(v => !v);
-  };
-
   const toggleReordering = () => {
     haptics.tap();
     animateLayout();
@@ -404,15 +392,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const dropReorder = (next: typeof reorderRows) => {
     if (!session) return;
     useWorkoutStore.getState().reorderExercises(session.id, next.flatMap(r => r.block.map(e => e.exerciseId)));
-  };
-
-  const goTo = (index: number) => {
-    const target = exercises[index];
-    if (!target) return;
-    haptics.tap();
-    animateLayout();
-    setViewedId(target.exerciseId);
-    setOpenSetId(null);
   };
 
   const addExercise = (exerciseId: string) => {
@@ -899,45 +878,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             )}
             {exercises.length > 0 && (
               <View style={styles.position}>
-                {allOpen || reordering ? (
-                  <>
-                    <Text style={styles.positionText}>{`${exercises.length} exercises`}</Text>
-                    <View style={styles.flex} />
-                  </>
-                ) : (
-                <>
-                <TouchableOpacity
-                  onPress={() => goTo(viewIndex - 1)}
-                  disabled={viewIndex === 0}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Previous exercise"
-                >
-                  <Ionicons name="chevron-back" size={iconSize.sm} color={viewIndex === 0 ? colors.textTertiary : colors.accent} />
-                </TouchableOpacity>
-                <Text style={styles.positionText}>{`Exercise ${viewIndex + 1} of ${exercises.length}`}</Text>
-                <TouchableOpacity
-                  onPress={() => goTo(viewIndex + 1)}
-                  disabled={viewIndex >= exercises.length - 1}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Next exercise"
-                >
-                  <Ionicons name="chevron-forward" size={iconSize.sm} color={viewIndex >= exercises.length - 1 ? colors.textTertiary : colors.accent} />
-                </TouchableOpacity>
-                <View style={styles.dots} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                  {exercises.map((e, i) => {
-                    const allDone = e.sets.every(s => s.completedAt !== null);
-                    return (
-                      <View
-                        key={e.exerciseId}
-                        style={[styles.dot, allDone && styles.dotDone, i === viewIndex && styles.dotOn]}
-                      />
-                    );
-                  })}
-                </View>
-                </>
-                )}
+                <Text style={styles.positionText}>{`${exercises.length} exercises`}</Text>
+                <View style={styles.flex} />
                 {exercises.length > 1 && (
                   <InlineAction
                     icon={reordering ? undefined : 'reorder-three-outline'}
@@ -947,13 +889,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     accessibilityLabel={reordering ? 'Done reordering exercises' : 'Reorder exercises'}
                   />
                 )}
-                <InlineAction
-                  icon={allOpen ? undefined : 'list-outline'}
-                  label={allOpen ? 'One at a time' : 'All'}
-                  variant="neutral"
-                  onPress={toggleAll}
-                  accessibilityLabel={allOpen ? 'Show one exercise at a time' : 'Show every exercise on one page'}
-                />
               </View>
             )}
 
@@ -994,7 +929,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 </View>
               </>
             )}
-            {(reordering ? [] : allOpen ? exercises : viewed ? [viewed] : []).map((viewed, cardIndex) => {
+            {(reordering ? [] : exercises).map((viewed, cardIndex) => {
               const viewedInfo = catalogExercise(exerciseRows, viewed.exerciseId);
               const kind: ExerciseKind = viewedInfo?.kind ?? 'weight_reps';
               const fields = setFieldsFor(kind);
@@ -1351,26 +1286,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               </View>
             )}
 
-            {upNext && !allOpen && (
-              <>
-                <Text style={styles.groupLabel}>Up next</Text>
-                <TouchableOpacity
-                  style={[styles.card, styles.nextRow]}
-                  onPress={() => goTo(viewIndex + 1)}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Go to ${upNextInfo?.name ?? 'the next exercise'}`}
-                >
-                  <View style={styles.flex}>
-                    <Text style={styles.nextName}>{upNextInfo?.name ?? 'Unknown exercise'}</Text>
-                    <Text style={styles.nextMeta}>
-                      {`${upNext.sets.length} ${upNext.sets.length === 1 ? 'set' : 'sets'}`}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
-                </TouchableOpacity>
-              </>
-            )}
             <View style={styles.addExercise}>
               <InlineAction icon="add" label="Add exercise" variant="neutral" surface="page" onPress={() => { haptics.tap(); setPicking('add'); }} />
               {canDescribe && (
@@ -1732,10 +1647,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   emptyWrap: { padding: spacing.md },
   position: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginHorizontal: spacing.xs, marginBottom: spacing.smd },
   positionText: { color: colors.textSecondary, fontSize: font.md },
-  dots: { flex: 1, flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.xsm },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.bgQuaternary },
-  dotDone: { backgroundColor: colors.done },
-  dotOn: { width: 18, backgroundColor: colors.accent },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   cardStacked: { marginTop: spacing.md },
   reorderHint: {
@@ -1826,9 +1737,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase',
     letterSpacing: 0.8, marginTop: spacing.lg, marginBottom: spacing.sm, marginHorizontal: spacing.xs,
   },
-  nextRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
-  nextName: { color: colors.text, fontSize: font.md },
-  nextMeta: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   addExercise: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
   footer: {
     backgroundColor: colors.bgSecondary, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,

@@ -1081,7 +1081,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
       // the recipe's counters, and which the ✓ alone never did. Stopping first
       // so the elapsed run is still there to measure.
       useRecipeStore.getState().stopCookTimer(recipeId);
-      useMealPlanStore.getState().finishCookForRecipe(recipeId);
+      // Required here, not imported: the MCP package loads this file in Node for its
+      // link builders and can't take the settings store a plan-then-cook drags in.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      (require('./cookRecipeNow') as typeof import('./cookRecipeNow')).cookRecipeNow(recipeId);
       // And land on the dish. Every other link in here opens the thing it acted
       // on, for the reason the focus link spells out: a Lock Screen tap that
       // leaves you wherever the app happened to be is a tap that appears to

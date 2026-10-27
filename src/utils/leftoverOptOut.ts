@@ -41,6 +41,15 @@ export function addLeftoverOptOut(
   return [...optOuts, key];
 }
 
+export function removeLeftoverOptOut(
+  optOuts: readonly string[],
+  recipeId: string | null,
+  title: string
+): string[] {
+  const key = leftoverOptOutKey(recipeId, title);
+  return optOuts.filter(k => k !== key);
+}
+
 export function parseLeftoverOptOuts(raw: string | null | undefined): string[] {
   if (!raw) return [];
   try {

@@ -11,7 +11,7 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors }
 import { useAlarmStore } from '../store/useAlarmStore';
 import { useDemoStore } from '../store/useDemoStore';
 import { BUILT_IN_SOUNDS, DEFAULT_SOUND_LABEL, customSoundRef } from '../utils/alarmSounds';
-import { playSoundPreview, stopSoundPreview } from '../utils/alarmSoundDevice';
+import { playSoundPreview, stopSoundPreview, subscribeSoundPreview } from '../utils/alarmSoundDevice';
 import { confirmDelete } from '../utils/confirmDelete';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -52,7 +52,10 @@ export function RingtonePickerSheet(props: Props) {
   const imported = useAlarmStore(useShallow(s => s.sounds));
   const demo = useDemoStore(s => s.active);
   const [importing, setImporting] = useState(false);
+  const [playing, setPlaying] = useState<string | null>(null);
   const selected = props.multiple ? props.values : (props.value === null ? [] : [props.value]);
+
+  useEffect(() => subscribeSoundPreview(setPlaying), []);
 
   useEffect(() => {
     if (!visible) stopSoundPreview();
@@ -118,12 +121,16 @@ export function RingtonePickerSheet(props: Props) {
         </TouchableOpacity>
         {sound !== null && (
           <TouchableOpacity
-            onPress={() => { haptics.tap(); void playSoundPreview(sound, imported); }}
+            onPress={() => {
+              haptics.tap();
+              if (playing === sound) stopSoundPreview();
+              else void playSoundPreview(sound, imported);
+            }}
             hitSlop={8}
             accessibilityRole="button"
-            accessibilityLabel={`Play ${label}`}
+            accessibilityLabel={playing === sound ? `Pause ${label}` : `Play ${label}`}
           >
-            <Ionicons name="play-circle-outline" size={iconSize.lg} color={colors.accentText} />
+            <Ionicons name={playing === sound ? 'pause-circle-outline' : 'play-circle-outline'} size={iconSize.lg} color={colors.accentText} />
           </TouchableOpacity>
         )}
         {onDelete && (
