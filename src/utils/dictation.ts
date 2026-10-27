@@ -21,6 +21,33 @@ export function joinDictation(base: string, spoken: string, max: number): string
   return joined.length > max ? joined.slice(0, max).trimEnd() : joined;
 }
 
+/**
+ * Whether the recognizer started its transcript over. After a pause the
+ * on-device recognizer can begin a fresh transcript holding only what is said
+ * next, so the "whole transcript so far" suddenly shrinks to a word or two.
+ * A revision never cuts a long transcript to under half its length, so that is
+ * the signal.
+ */
+export function transcriptRestarted(previous: string, next: string): boolean {
+  const before = previous.trim().length;
+  return before >= 12 && next.trim().length < before / 2;
+}
+
+/**
+ * `joinDictation` for a whole recording: a function from each partial result to
+ * the page. When the recognizer restarts its transcript, what it had heard so
+ * far is kept on the page and the new words go after it, instead of replacing it.
+ */
+export function dictationJoiner(base: string, max: number): (spoken: string) => string {
+  let committed = base;
+  let last = '';
+  return spoken => {
+    if (transcriptRestarted(last, spoken)) committed = joinDictation(committed, last, max);
+    last = spoken;
+    return joinDictation(committed, spoken, max);
+  };
+}
+
 /** The waveform's levels with a new one at the end, keeping the newest `cap`. */
 export function pushLevel(levels: readonly number[], level: number, cap: number = DICTATION_BARS): number[] {
   const clamped = Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 0;

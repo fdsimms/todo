@@ -1,4 +1,4 @@
-import { DICTATION_BARS, barHeight, dictationRefusal, joinDictation, pushLevel } from '../utils/dictation';
+import { DICTATION_BARS, barHeight, dictationJoiner, dictationRefusal, joinDictation, pushLevel, transcriptRestarted } from '../utils/dictation';
 
 describe('joinDictation', () => {
   it('puts the spoken words on an empty page as they are', () => {
@@ -70,5 +70,35 @@ describe('dictationRefusal', () => {
       const { title, message } = dictationRefusal(failure);
       expect(`${title} ${message}`).not.toMatch(/—/);
     }
+  });
+});
+
+describe('dictationJoiner', () => {
+  it('replaces a revised partial, as joinDictation does', () => {
+    const join = dictationJoiner('Start.', 5000);
+    expect(join('I think')).toBe('Start. I think');
+    expect(join('I thought so')).toBe('Start. I thought so');
+  });
+
+  it('keeps what was heard when the recognizer starts its transcript over after a pause', () => {
+    const join = dictationJoiner('', 5000);
+    join('Going to watch a movie with Britney soon');
+    expect(join('Going to watch a movie with Britney soon and then')).toBe('Going to watch a movie with Britney soon and then');
+    expect(join('We')).toBe('Going to watch a movie with Britney soon and then We');
+    expect(join('We are going to a show')).toBe('Going to watch a movie with Britney soon and then We are going to a show');
+  });
+
+  it('keeps it when the restart arrives as an empty transcript', () => {
+    const join = dictationJoiner('Typed.', 5000);
+    join('a fairly long first sentence');
+    expect(join('')).toBe('Typed. a fairly long first sentence');
+    expect(join('next')).toBe('Typed. a fairly long first sentence next');
+  });
+});
+
+describe('transcriptRestarted', () => {
+  it('ignores a short transcript and an ordinary revision', () => {
+    expect(transcriptRestarted('hi there', 'hi')).toBe(false);
+    expect(transcriptRestarted('I think we should go', 'I thought we should go')).toBe(false);
   });
 });
