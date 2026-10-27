@@ -104,6 +104,7 @@ import { ordinal } from '../utils/ordinal';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS, captureFollowUpDrafts, derivedTargetCount, hasEstimateSource, type TimeBlockPlan } from '../store/useTaskStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
+import { StackPickerList } from './StackPicker';
 import { allGroups as allAppGroups, groupName } from '../utils/appGroups';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
@@ -7591,31 +7592,18 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 expanded={fieldOpen('stack')}
                 onToggle={() => toggleField('stack')}
               >
-                <View style={styles.pillRow}>
-                  <TouchableOpacity
-                    style={[styles.pill, !groupId && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); setGroupId(null); closeField('stack'); }}
-                  >
-                    <Text style={[styles.pillText, !groupId && styles.pillTextActive]}>None</Text>
-                  </TouchableOpacity>
-                  {allGroups.map(g => (
-                    <TouchableOpacity
-                      key={g.id}
-                      style={[styles.pill, groupId === g.id && styles.pillActiveNeutral]}
-                      onPress={() => {
-                        haptics.tap();
-                        setGroupId(g.id);
-                        // A stack owns its members' category (see addExistingToGroup),
-                        // so adopt it here rather than letting the locked row keep
-                        // showing a value the save is about to overwrite.
-                        setCategory(g.category);
-                        closeField('stack');
-                      }}
-                    >
-                      <Text style={[styles.pillText, groupId === g.id && styles.pillTextActive]} numberOfLines={1}>{g.title}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <StackPickerList
+                  stacks={allGroups}
+                  value={groupId}
+                  onSelect={id => {
+                    setGroupId(id);
+                    // A stack owns its members' category (see addExistingToGroup),
+                    // so adopt it here rather than letting the locked row keep
+                    // showing a value the save is about to overwrite.
+                    if (id) setCategory(allGroups.find(g => g.id === id)?.category ?? null);
+                    closeField('stack');
+                  }}
+                />
               </CollapsibleField>
               </>
             ),
