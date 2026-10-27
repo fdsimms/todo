@@ -261,9 +261,9 @@ per-reward fact goes in the sheet, not on the tile.
   icon. A word list mapping "coffee" to an emoji was rejected because a wrong guess can't be corrected
   from the screen. A wish list reward takes one too, set in the same form; the item still supplies the title, notes and link.
 - **Resting rewards go last** (`splitRewardsByWait`), and ones the balance can't cover yet keep their
-  place. Neither is dimmed: the tile's own text ("Back in 3 days") or progress bar says why it can't be
-  claimed, and a faded tile read as disabled. A reward in either state still opens its sheet and still
-  explains itself when Claim is tapped.
+  place. Neither tile is dimmed (a faded tile read as disabled); only its Claim pill is, and the tile's
+  own text ("Back in 3 days") or progress bar says why. A reward in either state still opens its sheet,
+  which explains itself when Claim is tapped.
 - **The form takes a full row where its tile was**, so editing never leaves a half-empty grid row.
 
 ## A reward guarding a habit
