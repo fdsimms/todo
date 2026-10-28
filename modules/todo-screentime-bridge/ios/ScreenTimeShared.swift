@@ -661,6 +661,23 @@ extension ScreenTimeShared {
     return try? JSONDecoder().decode(FamilyActivitySelection.self, from: data)
   }
 
+  /// How many apps, categories and websites these groups hold between them, each
+  /// counted once. Only for wording ("this app" against "these apps"), so a
+  /// group that can't be read counts as nothing rather than failing the screen.
+  @available(iOS 16.0, *)
+  static func selectionItemCount(groupIds: [String]) -> Int {
+    var applications = Set<ApplicationToken>()
+    var categories = Set<ActivityCategoryToken>()
+    var webDomains = Set<WebDomainToken>()
+    for id in groupIds {
+      guard let selection = readSelection(groupId: id) else { continue }
+      applications.formUnion(selection.applicationTokens)
+      categories.formUnion(selection.categoryTokens)
+      webDomains.formUnion(selection.webDomainTokens)
+    }
+    return applications.count + categories.count + webDomains.count
+  }
+
   @available(iOS 16.0, *)
   @discardableResult
   static func writeSelection(_ selection: FamilyActivitySelection, groupId: String = defaultGroupID) -> Bool {
