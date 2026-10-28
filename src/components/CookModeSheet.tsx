@@ -300,7 +300,7 @@ export function CookModeSheet({
   // The recipe's blanks (RecipeBlank): a grain bowl's whole ingredient list can
   // be blanks. A filled one is already in `ingredients` as the lines picked for
   // it; this is where it gets filled, or filled differently.
-  const blanks = useMemo(() => recipeBlanksIn(recipe, recipesById), [recipe, recipesById]);
+  const blanks = useMemo(() => recipeBlanksIn(recipe, recipesById, resolution), [recipe, recipesById, resolution]);
   // The oven settings of every dish being cooked: a "Preheat oven" line to tick
   // off with the rest of the gathering. A recipe that only has a temperature
   // still has a mise en place worth opening.
@@ -322,8 +322,9 @@ export function CookModeSheet({
       recipeId: recipe.id,
       date: getLogicalDayKey(new Date()),
       recipeOverrides: [...(overrides ?? [])],
+      recipeChoices: [...choices],
     }),
-    [recipe.id, overrides],
+    [recipe.id, overrides, choices],
   );
 
   // -1 is the mise en place screen, ahead of step 0 — screen state like the

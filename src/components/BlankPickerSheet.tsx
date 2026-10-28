@@ -44,7 +44,8 @@ import { BUTTON_LABEL } from '../copy/shared';
  * What the picker needs to know about the cooking it fills: a planned meal, or
  * cook mode's own (which has no entry, so it stands one in).
  */
-export type BlankPickerSubject = Pick<MealPlanEntry, 'id' | 'recipeId' | 'date' | 'recipeOverrides'>;
+export type BlankPickerSubject = Pick<MealPlanEntry, 'id' | 'recipeId' | 'date' | 'recipeOverrides'>
+  & Partial<Pick<MealPlanEntry, 'recipeChoices'>>;
 
 interface Props {
   visible: boolean;
@@ -95,7 +96,17 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
   const updateBlank = useRecipeStore(s => s.updateBlank);
   const entries = useMealPlanStore(s => s.entries);
 
-  const blanks = useMemo(() => (recipe ? recipeBlanksIn(recipe, recipesById) : []), [recipe, recipesById]);
+  // Only the blanks this cooking's picks keep: one on the side of an either/or
+  // it isn't cooking would be pre-picked and saved with nobody choosing it.
+  const blanks = useMemo(
+    () => (recipe
+      ? recipeBlanksIn(recipe, recipesById, {
+        chosen: entry?.recipeChoices ?? [],
+        ...(entry?.recipeOverrides.length ? { overrides: entry.recipeOverrides } : {}),
+      })
+      : []),
+    [recipe, recipesById, entry?.recipeChoices, entry?.recipeOverrides],
+  );
   const kitchen = useMemo(() => kitchenInventory(items, [], new Date(), itemProducts), [items, itemProducts]);
   const last = useMemo(() => (entry ? lastBlankFill(entries, entry) : null), [entries, entry]);
 

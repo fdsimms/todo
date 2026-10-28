@@ -1029,7 +1029,7 @@ function coverageWithLookups(
   // A blank is one more thing the recipe needs, answered by the pantry the way
   // the blank picker answers it (`blankChoices`' kitchen group), so the
   // fraction can't say a grain bowl is 1/1 while its grain is unaccounted for.
-  const blanks = recipeBlanksIn(recipe, recipesById ?? new Map());
+  const blanks = recipeBlanksIn(recipe, recipesById ?? new Map(), { onHand: lookups.onHand });
   if (planned.length === 0 && blanks.length === 0) return { total: 0, catalogMatches: 0, probablyHave: 0, viaSubstitute: 0, percent: null };
 
   const classified = planned.length === 0

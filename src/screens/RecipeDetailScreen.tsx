@@ -447,8 +447,10 @@ export function RecipeDetailScreen() {
   // A blank this view hasn't filled (RecipeBlank) adds whatever is picked for
   // it, which no figure can know yet, so the total says it is the rest of the dish.
   const hasOpenBlank = useMemo(
-    () => (recipe ? recipeBlanksIn(recipe, recipesById).some(({ blank }) => blankFillOf(overrides, blank.id).length === 0) : false),
-    [recipe, recipesById, overrides]
+    () => (recipe
+      ? recipeBlanksIn(recipe, recipesById, choiceResolution).some(({ blank }) => blankFillOf(overrides, blank.id).length === 0)
+      : false),
+    [recipe, recipesById, overrides, choiceResolution]
   );
 
   // The same flattening again, with grams in place of prices. One reading

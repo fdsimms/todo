@@ -324,12 +324,21 @@ export function RecipeToListSheet({
     // unticked — it's still listed and one tap away, just not assumed.
     const rows = byCategory.needToBuy.filter(r => !r.optional);
     const rowKeys = new Set(rows.map(r => r.nameKey));
+    // The other sections a tap can tick (salt under Always have, to restock
+    // it). A tick there was the user's, and a choice elsewhere doesn't touch it.
+    const elsewhere = new Set(
+      SECTIONS.filter(s => s.interactive && s.category !== 'needToBuy')
+        .flatMap(s => byCategory[s.category].map(r => r.nameKey)),
+    );
     const knownBefore = knownRowKeysRef.current;
     setTicked(prev => {
       if (knownBefore === null) return rowKeys;
       const next = new Set<string>();
       for (const key of rowKeys) {
         if (knownBefore.has(key) ? prev.has(key) : true) next.add(key);
+      }
+      for (const key of prev) {
+        if (!knownBefore.has(key) && elsewhere.has(key)) next.add(key);
       }
       return next;
     });

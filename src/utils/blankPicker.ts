@@ -101,21 +101,29 @@ export function blankChoices(
   const staleOut: BlankCandidate[] = [];
   // Most urgent first is the order kitchenInventory already returns, and an
   // item and its boxes share a key, so the first of them is the one to show.
-  for (const entry of kitchen) {
-    const itemId = kitchenEntryItemId(entry);
-    const item = itemId ? itemsById.get(itemId) : undefined;
-    if (!item || seen.has(item.nameKey) || !fits(item)) continue;
-    seen.add(item.nameKey);
-    const candidate: BlankCandidate = {
-      name: item.name,
-      nameKey: item.nameKey,
-      itemId: item.id,
-      source: entry.freshness === 'over' ? 'stale' : 'kitchen',
-      freshness: entry.freshness,
-      caption: entry.useByCaption || null,
-    };
-    (candidate.source === 'stale' ? staleOut : kitchenOut).push(candidate);
-  }
+  // Fresh entries go first, though: a box past its use-by sorts ahead of the
+  // fresh packet of the same thing, and taking it first offered the item only
+  // as stale, where "Gone" (which answers for the item) marked the fresh one
+  // out too. An item is stale only when nothing of it is fresh.
+  const take = (stale: boolean) => {
+    for (const entry of kitchen) {
+      if ((entry.freshness === 'over') !== stale) continue;
+      const itemId = kitchenEntryItemId(entry);
+      const item = itemId ? itemsById.get(itemId) : undefined;
+      if (!item || seen.has(item.nameKey) || !fits(item)) continue;
+      seen.add(item.nameKey);
+      (stale ? staleOut : kitchenOut).push({
+        name: item.name,
+        nameKey: item.nameKey,
+        itemId: item.id,
+        source: stale ? 'stale' : 'kitchen',
+        freshness: entry.freshness,
+        caption: entry.useByCaption || null,
+      });
+    }
+  };
+  take(false);
+  take(true);
 
   const others: BlankCandidate[] = [];
   const byKey = new Map(items.map(i => [i.nameKey, i]));

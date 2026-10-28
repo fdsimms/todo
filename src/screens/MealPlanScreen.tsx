@@ -2615,7 +2615,7 @@ export function MealPlanScreen() {
           onToggleOptional={id => {
             if (selected) setRecipeChoices(selected.id, toggleOptionalPick(selected.recipeChoices, id));
           }}
-          onFillBlanks={selected && selectedRecipe && recipeBlanksIn(selectedRecipe, recipesById).length > 0
+          onFillBlanks={selected && selectedRecipe && recipeBlanksIn(selectedRecipe, recipesById, entryResolution(selected)).length > 0
             ? () => setFillingId(selected.id)
             : undefined}
           onSkipGroup={group => {
