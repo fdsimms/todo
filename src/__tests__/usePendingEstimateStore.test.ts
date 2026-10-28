@@ -182,6 +182,44 @@ describe('retry', () => {
   });
 });
 
+describe('rename', () => {
+  const rename = (id: string, text: string) => usePendingEstimateStore.getState().rename(id, text);
+
+  it('corrects the words of a waiting meal and keeps it waiting', () => {
+    enqueue('12oz can doweast cider');
+    expect(rename(queue()[0].id, '  12oz can Downeast cider ')).toBe('saved');
+    expect(queue()[0]).toMatchObject({ description: '12oz can Downeast cider', status: 'waiting' });
+    expect(mockRows[0].description).toBe('12oz can Downeast cider');
+  });
+
+  it('puts a failed meal back to waiting and asks again with the new words', async () => {
+    enqueue('doweast cider');
+    mockEstimate.mockRejectedValueOnce(new Error('API error 400'));
+    await usePendingEstimateStore.getState().drain();
+    expect(queue()[0].status).toBe('failed');
+
+    mockEstimate.mockResolvedValueOnce(result('Downeast cider'));
+    expect(rename(queue()[0].id, 'Downeast cider')).toBe('saved');
+    await new Promise(resolve => setImmediate(resolve));
+    expect(mockEstimate).toHaveBeenLastCalledWith('Downeast cider', []);
+    expect(queue()[0]).toMatchObject({ status: 'ready', error: null });
+  });
+
+  it('refuses a blank description, a repeat of another meal, and a ready meal', async () => {
+    enqueue('pad thai');
+    enqueue('curry');
+    const [first, second] = queue();
+    expect(rename(second.id, '   ')).toBe('empty');
+    expect(rename(second.id, 'Pad Thai')).toBe('duplicate');
+    expect(queue().find(p => p.id === second.id)?.description).toBe('curry');
+
+    mockEstimate.mockResolvedValue(result());
+    await usePendingEstimateStore.getState().drain();
+    expect(rename(first.id, 'noodles')).toBe('unavailable');
+    expect(rename('missing', 'noodles')).toBe('unavailable');
+  });
+});
+
 describe('log', () => {
   it('logs a ready meal at the moment it was eaten, estimated and without a weight', async () => {
     enqueue('cheeseburger and fries');
