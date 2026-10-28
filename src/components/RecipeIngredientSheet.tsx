@@ -307,7 +307,13 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     if (!ingredient) { onClose(); return; }
     // Tapping Done can beat the group name field's own blur — flush it here
     // instead of trusting stale `choiceGroup` state.
-    const resolvedChoiceGroup = editingGroupName ? commitGroupRename() : cleanChoiceGroup(choiceGroup);
+    const typedChoiceGroup = editingGroupName ? commitGroupRename() : cleanChoiceGroup(choiceGroup);
+    // The local label outlives the siblings that were taken out of the group
+    // in this same sitting; a label nobody else holds is no choice, so it is
+    // not written back.
+    const resolvedChoiceGroup = typedChoiceGroup && (
+      siblingNames.length > 0 || recipeComponents.some(c => c.choiceGroup === typedChoiceGroup)
+    ) ? typedChoiceGroup : null;
     const trimmed = name.trim();
     // An emptied name would strand the row — keep the old one rather than
     // storing something nothing can shop for.

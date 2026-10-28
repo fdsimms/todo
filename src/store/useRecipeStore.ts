@@ -20,6 +20,7 @@ import {
   applyMeasuredCookTime,
   applyMeasuredPrepTime,
   cleanChoiceGroup,
+  dropLoneChoiceGroups,
   defaultChoiceGroupLabel,
   cleanRecipeName,
   cleanRecipeSource,
@@ -588,7 +589,9 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
 
   initialize() {
     set({
-      recipes: dbGetAllRecipes(),
+      // In memory only: a group of one saved before dropLoneChoiceGroups existed
+      // reads as free from the first frame, and the next save writes it back.
+      recipes: dbGetAllRecipes().map(dropLoneChoiceGroups),
       cookbooks: dbGetAllCookbooks(),
       initialized: true,
     });
@@ -1137,7 +1140,8 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       }
     }
 
-    save(set, { ...recipe, ingredients });
+    // Joining writes one row at a time, so only a leave can strand a lone label.
+    save(set, patch.choiceGroup === null ? dropLoneChoiceGroups({ ...recipe, ingredients }) : { ...recipe, ingredients });
   },
 
   splitIngredientAlternatives(recipeId, ingredientId, names, choiceGroup) {
@@ -1292,7 +1296,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const ingredients = recipe.ingredients.filter(i => i.id !== ingredientId);
     if (ingredients.length === recipe.ingredients.length) return;
     const components = reanchorComponents(recipe.components, recipe.ingredients, new Set([ingredientId]));
-    save(set, { ...recipe, ingredients, components });
+    save(set, dropLoneChoiceGroups({ ...recipe, ingredients, components }));
   },
 
   bulkRemoveIngredients(recipeId, ingredientIds) {
@@ -1302,7 +1306,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const ingredients = recipe.ingredients.filter(i => !idSet.has(i.id));
     if (ingredients.length === recipe.ingredients.length) return;
     const components = reanchorComponents(recipe.components, recipe.ingredients, idSet);
-    save(set, { ...recipe, ingredients, components });
+    save(set, dropLoneChoiceGroups({ ...recipe, ingredients, components }));
   },
 
   bulkSetIngredientAisle(recipeId, ingredientIds, aisle) {
@@ -1379,7 +1383,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return;
     const components = recipe.components.filter(c => c.id !== componentId);
     if (components.length === recipe.components.length) return;
-    save(set, { ...recipe, components });
+    save(set, dropLoneChoiceGroups({ ...recipe, components }));
   },
 
   setComponentChoiceGroup(recipeId, componentId, choiceGroup) {
@@ -1387,10 +1391,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return;
     const clean = cleanChoiceGroup(choiceGroup);
     if (!recipe.components.some(c => c.id === componentId)) return;
-    save(set, {
+    const next = {
       ...recipe,
       components: recipe.components.map(c => (c.id === componentId ? { ...c, choiceGroup: clean } : c)),
-    });
+    };
+    // Joining writes one row at a time, so only a leave can strand a lone label.
+    save(set, clean ? next : dropLoneChoiceGroups(next));
   },
 
   setComponentAmountUsed(recipeId, componentId, amount) {
