@@ -87,6 +87,7 @@ import { PressableScale } from './PressableScale';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccessory';
+import { useCommitHandler } from '../hooks/useCommitHandler';
 import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTokenChips';
 import { chipUseKey, suggestExistingTags } from '../utils/chipUses';
 import { HighlightedText } from './HighlightedText';
@@ -2553,6 +2554,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const hiddenChipCount = chipOverflow.hiddenCount;
 
   const suggestedTags = suggestExistingTags(allTags, tags, tagInput, chipUses, 8);
+
+  // ⌘Return adds, the way the arrow button does: it has to refuse for the same reasons (nothing
+  // typed, or a type that isn't filled in), not add around them.
+  useCommitHandler(visible, handleAdd, title.trim().length > 0 && blocked === null);
 
   // ==== render. Everything below is JSX ====
   return (

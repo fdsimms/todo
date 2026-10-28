@@ -401,6 +401,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                   enabled={!selectionMode}
                   whenAction={swipeWhen}
                   selectAction={swipeSelect}
+                  dragHandle={onDrag}
                 />
               </TouchableOpacity>
 

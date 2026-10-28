@@ -196,6 +196,8 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { PointerView, pointerMenuItem, type PointerMenuItem } from './PointerView';
 import { runningOnMac } from '../utils/runningOnMac';
 import { RotatingChevron } from './RotatingChevron';
+import { useRowCursorStore } from '../store/useRowCursorStore';
+import * as Clipboard from 'expo-clipboard';
 
 /**
  * This device's id for the event a "Leave for X" row was written for. The row
@@ -566,6 +568,9 @@ const TaskItemRow = React.memo(function TaskItem({
   // What a press reports back: this row, not necessarily this task (see the
   // prop's note). Everything else about the row still speaks in task ids.
   const rowId = rowKey ?? task.id;
+  // The keyboard's row cursor is on this task. Asked as a selector, so a key moving it re-renders the
+  // row it left and the row it lands on and no other. A pinned copy never shows it: it is the same task.
+  const cursorOn = useRowCursorStore(s => !duplicateRow && s.cursorId === task.id);
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
   const groupTitle = useTaskGroupStore(s => task.groupId ? s.getGroupById(task.groupId)?.title ?? null : null);
@@ -4367,6 +4372,7 @@ const TaskItemRow = React.memo(function TaskItem({
             enabled={!selectionMode}
             whenAction={swipeWhen}
             selectAction={swipeSelect}
+            dragHandle={drag}
           />
         )}
       </TouchableOpacity>
@@ -5354,6 +5360,30 @@ const TaskItemRow = React.memo(function TaskItem({
     </Reanimated.View>
   );
 
+  // ==== the ways to close a task without ticking it ====
+  // One list, read by the checkbox's hold menu and by the right-click menu below. They were each
+  // working out what a task is offered, and a Mac has no hold to open the first, so the second
+  // listed none of it: a repeating task offered Skip, Mark missed and the rest to a finger and
+  // nothing to a pointer. Which of these exist, and what each does, is decided here only.
+  const completionActions = {
+    onSkip: completionMenuRepeats ? () => { skipNextRecurrence(task.id); afterCompletionMenuChoice(); } : undefined,
+    onMiss: canMiss ? () => handleMiss() : undefined,
+    onSomeoneElse: isAnsweredByRecord(task) ? undefined : handleSomeoneElse,
+    takeOffCount: meterInteractive && task.progressCount > 0 ? task.progressCount : undefined,
+    onTakeOff: handleQuotaUndo,
+    onNextStep: chainStep && chainStepIndex < task.chainItems.length - 1
+      ? () => updateTask(task.id, { chainIndex: chainStepIndex + 1 })
+      : undefined,
+    onPrevStep: chainStep && chainStepIndex > 0
+      ? () => updateTask(task.id, { chainIndex: chainStepIndex - 1 })
+      : undefined,
+    onEndChain: canMiss && chainStep && chainStepIndex < task.chainItems.length - 1 &&
+      (task.recurrenceType !== 'none' || isMissableMealPlanTask(task))
+      ? () => handleMiss(true)
+      : undefined,
+    onDuplicate: () => duplicateTask(task.id),
+  };
+
   // ==== the right-click menu (Mac) ====
   // What the row already offers, gathered where a Mac user looks for it: the
   // pencil, the checkbox, the reschedule and select swipes, the pin button and
@@ -5370,6 +5400,27 @@ const TaskItemRow = React.memo(function TaskItem({
       ? [pinLit ? pointerMenuItem('pin', 'Unpin', 'pin.slash') : pointerMenuItem('pin', 'Pin', 'pin')]
       : []),
     ...(swipeSelect ? [pointerMenuItem('select', 'Select', 'checklist')] : []),
+    // The checkbox's hold menu, for the rows it is offered on (`completionMenuOffered`): a hold is
+    // the only way to it, and a pointer has none.
+    ...(completionMenuOffered && !task.completed
+      ? [
+          ...(completionActions.takeOffCount ? [pointerMenuItem('takeOff', 'Take One Off', 'minus.circle')] : []),
+          ...(completionActions.onSkip ? [pointerMenuItem('skip', 'Skip This Time', 'forward.end')] : []),
+          ...(completionActions.onMiss ? [pointerMenuItem('miss', 'Mark Missed', 'xmark.circle')] : []),
+          ...(completionActions.onSomeoneElse ? [pointerMenuItem('someoneElse', 'Someone Else Did It', 'person.2')] : []),
+          ...(completionActions.onNextStep ? [pointerMenuItem('nextStep', 'Skip to the Next Step', 'forward')] : []),
+          ...(completionActions.onPrevStep ? [pointerMenuItem('prevStep', 'Back a Step', 'backward')] : []),
+          ...(completionActions.onEndChain ? [pointerMenuItem('endChain', 'Mark Missed and End the Chain', 'stop.circle')] : []),
+        ]
+      : []),
+    // A notice is the app talking, not a task of the person's, so there is nothing to copy or duplicate.
+    ...(!notice
+      ? [
+          pointerMenuItem('duplicate', 'Duplicate', 'plus.square.on.square'),
+          // Titles are drawn as plain text, which can't be selected, so this is the way to copy one.
+          pointerMenuItem('copyTitle', 'Copy Title', 'doc.on.doc'),
+        ]
+      : []),
     // The expanded panel's trash, asking what it asks: a list line goes at
     // once (the Undo bar brings it back), anything else confirms first.
     pointerMenuItem('delete', listRow ? BUTTON_LABEL.delete : `${BUTTON_LABEL.delete}…`, 'trash', true),
@@ -5383,6 +5434,15 @@ const TaskItemRow = React.memo(function TaskItem({
       case 'when': swipeWhen?.onAction(); return;
       case 'pin': animateLayout(); togglePin(task.id); return;
       case 'select': swipeSelect?.onSelect(); return;
+      case 'takeOff': completionActions.onTakeOff(); return;
+      case 'skip': completionActions.onSkip?.(); return;
+      case 'miss': completionActions.onMiss?.(); return;
+      case 'someoneElse': completionActions.onSomeoneElse?.(); return;
+      case 'nextStep': completionActions.onNextStep?.(); return;
+      case 'prevStep': completionActions.onPrevStep?.(); return;
+      case 'endChain': completionActions.onEndChain?.(); return;
+      case 'duplicate': completionActions.onDuplicate(); return;
+      case 'copyTitle': void Clipboard.setStringAsync(displayTitle).catch(() => {}); return;
       case 'delete':
         if (listRow) { animateLayout(); deleteTask(task.id); } else confirmDeleteTask(task);
         return;
@@ -5416,6 +5476,8 @@ const TaskItemRow = React.memo(function TaskItem({
             { opacity: isActive ? 1 : rowOpacity },
             isActive && styles.itemWrapperActive,
             paneActive && styles.itemWrapperPaneActive,
+            // Dashed, so a row the cursor is on reads as different from the one open in the pane.
+            cursorOn && !paneActive && styles.itemWrapperCursor,
             indented && styles.itemWrapperIndented,
           ]}
           // Screens collapse the spotlight on any touch in the list area;
@@ -5500,22 +5562,7 @@ const TaskItemRow = React.memo(function TaskItem({
           visible={showCompletionMenu}
           anchor={completionMenuAnchor}
           onClose={() => setShowCompletionMenu(false)}
-          onSkip={completionMenuRepeats ? () => { skipNextRecurrence(task.id); afterCompletionMenuChoice(); } : undefined}
-          onMiss={canMiss ? () => handleMiss() : undefined}
-          onSomeoneElse={isAnsweredByRecord(task) ? undefined : handleSomeoneElse}
-          takeOffCount={meterInteractive && task.progressCount > 0 ? task.progressCount : undefined}
-          onTakeOff={handleQuotaUndo}
-          onNextStep={chainStep && chainStepIndex < task.chainItems.length - 1
-            ? () => updateTask(task.id, { chainIndex: chainStepIndex + 1 })
-            : undefined}
-          onPrevStep={chainStep && chainStepIndex > 0
-            ? () => updateTask(task.id, { chainIndex: chainStepIndex - 1 })
-            : undefined}
-          onEndChain={canMiss && chainStep && chainStepIndex < task.chainItems.length - 1 &&
-            (task.recurrenceType !== 'none' || isMissableMealPlanTask(task))
-            ? () => handleMiss(true)
-            : undefined}
-          onDuplicate={() => duplicateTask(task.id)}
+          {...completionActions}
         />
       )}
       {mountNegativeMenu && (
@@ -5731,6 +5778,13 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
   itemWrapperPaneActive: {
     outlineWidth: 2,
     outlineColor: colors.accent,
+    outlineOffset: -2,
+  },
+  // Where the keyboard is: the same inside outline as the pane's row, dashed.
+  itemWrapperCursor: {
+    outlineWidth: 2,
+    outlineColor: colors.accent,
+    outlineStyle: 'dashed',
     outlineOffset: -2,
   },
   rowActive: {

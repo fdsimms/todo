@@ -24,7 +24,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -33,7 +33,7 @@ import { format } from 'date-fns/format';
 import type { ContextRow, NutrientKey, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { runAfterPaint, runAfterTransition } from '../utils/afterPaint';
 import { taskHomeFor } from '../utils/taskHome';
-import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
+import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster, isQuotaTask, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
 import { sameGroupsApartFromFold } from '../utils/groupFold';
 import { openTasksOf } from '../utils/openTasks';
 import { reuseUnchangedLists } from '../utils/stableLists';
@@ -110,6 +110,16 @@ import { useStore } from 'zustand';
 import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, editorHasUnsavedChanges, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { nextLayoutHold } from '../utils/twoPane';
+import { runningOnMac } from '../utils/runningOnMac';
+import { confirmDeleteTask } from '../utils/confirmDeleteTask';
+import { isNegativeTask } from '../utils/negativeHabits';
+import { isRotationTask } from '../utils/rotation';
+import { settleCursor, stepCursor } from '../utils/rowCursor';
+import { NO_ROWS, flatRowOrder, laterRowOrder, todayRowOrder, unscheduledRowOrder, type OrderableRow, type RowOrder } from '../utils/rowOrder';
+import { registerScreenKeys } from '../utils/keyActions';
+import { useEscapeHandler } from '../hooks/useEscapeHandler';
+import { useViewableRange } from '../hooks/useViewableRange';
+import { useRowCursorStore } from '../store/useRowCursorStore';
 import { MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
 import { SuggestedPinsSheet } from '../components/SuggestedPinsSheet';
 import { MorningCheckInSheet } from '../components/MorningCheckInSheet';
@@ -117,7 +127,7 @@ import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
-import { LaterStackRow } from '../components/LaterStackRow';
+import { LaterStackRow, LATER_STACK_PREVIEW } from '../components/LaterStackRow';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList, type RowScroller, type DropCapture } from '../components/ReorderableList';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
@@ -1173,6 +1183,10 @@ export function TodayScreen() {
   });
   const unscheduledScrollTop = useScrollToTopVisibility();
   const inboxScrollTop = useScrollToTopVisibility();
+  // Which rows these two plain lists have on screen, so the keyboard's cursor scrolls one into view
+  // only when it has left (see `useViewableRange`).
+  const unscheduledViewable = useViewableRange();
+  const inboxViewable = useViewableRange();
   // Lifts the expanded row's cell above the row below it — Unscheduled and
   // Inbox are genuine FlatLists, unlike Today/Later's own ReorderableList
   // (see useElevatedCellRenderer for why that one needs no equivalent).
@@ -1387,35 +1401,43 @@ export function TodayScreen() {
   // wouldn't land in Today.
   const widgetCompletionIds = useWidgetCompletionStore(useShallow(s => s.pendingIds));
   const dequeueWidgetCompletion = useWidgetCompletionStore(s => s.dequeue);
+  // Completes a task the way its own checkbox would, for a caller that is not that checkbox:
+  // a tap on the widget or a Live Activity, or a key. A task with a row on Today is handed to
+  // the row (`autoComplete`), which runs its whole ladder (a question, a mission, a lock); one
+  // without can't be, so it is completed here by the same rules the row would have followed.
+  const completeThroughRow = (task: Task) => {
+    const id = task.id;
+    if (!isTaskVisible(task)) {
+      // No row is mounted to catch autoComplete, so the animated path (which
+      // asks a decision task its question) can't run. Ask here instead
+      // rather than completing straight through it — a Live Activity's Done
+      // button is a person finishing a task, and it's the one completion
+      // path left that would drop an answer with nobody told.
+      // A target below its last unit logs one, as its own row's tap would;
+      // completing it outright would mark every remaining unit done at once.
+      // Ahead of the question for completionTapFor's own reason: a unit that
+      // doesn't finish the task has nothing to ask.
+      if (completionTapFor(task) === 'log-unit') {
+        useTaskStore.getState().logQuotaUnit(id);
+        return;
+      }
+      if (completesThroughQueue(task)) {
+        enqueue([id]);
+        return;
+      }
+      useTaskStore.getState().completeTask(id);
+      return;
+    }
+    pendingAutoCompleteRef.current.add(id);
+    setAutoCompletingIds(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
+  };
   useEffect(() => {
     if (widgetCompletionIds.length === 0) return;
     widgetCompletionIds.forEach(id => {
       dequeueWidgetCompletion(id);
       const task = allTasks.find(t => t.id === id);
       if (!task || task.completed) return;
-      if (!isTaskVisible(task)) {
-        // No row is mounted to catch autoComplete, so the animated path (which
-        // asks a decision task its question) can't run. Ask here instead
-        // rather than completing straight through it — a Live Activity's Done
-        // button is a person finishing a task, and it's the one completion
-        // path left that would drop an answer with nobody told.
-        // A target below its last unit logs one, as its own row's tap would;
-        // completing it outright would mark every remaining unit done at once.
-        // Ahead of the question for completionTapFor's own reason: a unit that
-        // doesn't finish the task has nothing to ask.
-        if (completionTapFor(task) === 'log-unit') {
-          useTaskStore.getState().logQuotaUnit(id);
-          return;
-        }
-        if (completesThroughQueue(task)) {
-          enqueue([id]);
-          return;
-        }
-        useTaskStore.getState().completeTask(id);
-        return;
-      }
-      pendingAutoCompleteRef.current.add(id);
-      setAutoCompletingIds(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
+      completeThroughRow(task);
     });
   }, [widgetCompletionIds]);
 
@@ -2303,6 +2325,19 @@ export function TodayScreen() {
   }, []);
 
   const endPullToSearch = useCallback(() => setPullingToSearch(false), []);
+
+  // Pulling the list down to search is a touch gesture. A trackpad's rubber-band at the top of
+  // a list can end past the threshold with no thought of searching, and the search is one
+  // press away anyway: the header's magnifier, ⌘F and "/". So a Mac list has no pull.
+  const pullToSearchControl = runningOnMac()
+    ? undefined
+    : (
+      <RefreshControl
+        refreshing={pullingToSearch}
+        onRefresh={handlePullToSearch}
+        tintColor={colors.textSecondary}
+      />
+    );
 
   // Anything the card's five slots couldn't answer goes to the real Search
   // screen, carrying the query so it isn't typed twice.
@@ -5033,6 +5068,152 @@ export function TodayScreen() {
   // several days, and opening one day's must not open the others).
   const [openLaterStacks, setOpenLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
   const [expandedLaterStacks, setExpandedLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
+
+  // ==== the keyboard: a row cursor, and what the keys do to it ====
+  // A hardware keyboard (a Mac, an iPad with one) steps a cursor down the rows the view draws and
+  // acts on the row it is on. The cursor is a place and nothing more: it opens, completes or selects
+  // nothing by moving, and it is not the task the editor pane has open. What a key means lives in
+  // `keyShortcuts.ts`; the list of rows it walks is `rowOrder.ts`.
+  const isFocused = useIsFocused();
+  const rowOrder = useMemo((): RowOrder => {
+    // A stack shows its members unless it is folded. Read off the store, not off the
+    // group in the list, whose `collapsed` can be stale (see `liveGroup`).
+    const groupOpen = (group: { id: string }) => liveGroupById.get(group.id)?.collapsed !== true;
+    if (viewMode === 'today') {
+      if (!restVisible) return NO_ROWS;
+      return todayRowOrder(
+        projectBands.bands.filter(band => !collapsedBands.has(band.project.id)).map(band => band.items),
+        data as readonly OrderableRow[],
+        groupOpen,
+      );
+    }
+    if (viewMode === 'later') return laterRowOrder(laterData, openLaterStacks, expandedLaterStacks, LATER_STACK_PREVIEW);
+    if (viewMode === 'unscheduled') return unscheduledRowOrder(unscheduledTasks);
+    return flatRowOrder(inboxData as readonly OrderableRow[], groupOpen);
+  }, [viewMode, restVisible, projectBands, collapsedBands, data, laterData, openLaterStacks, expandedLaterStacks, unscheduledTasks, inboxData, liveGroupById]);
+
+  // The cursor follows its row when the list changes under it. A task that was just completed or
+  // moved hands it to the one below, so a run of Space presses clears a list from the top.
+  const previousRowOrder = useRef<RowOrder>(rowOrder);
+  useEffect(() => {
+    const cursor = useRowCursorStore.getState();
+    const settled = settleCursor(previousRowOrder.current.ids, rowOrder.ids, cursor.cursorId);
+    previousRowOrder.current = rowOrder;
+    if (settled !== cursor.cursorId) cursor.setCursor(settled);
+  }, [rowOrder]);
+  // A place on one view means nothing on another, and nothing once the screen is left.
+  useEffect(() => { useRowCursorStore.getState().setCursor(null); }, [viewMode]);
+  useEffect(() => () => useRowCursorStore.getState().setCursor(null), []);
+
+  /** Scrolls the row a task is drawn in into view, only if it isn't already. */
+  const revealCursorRow = (taskId: string) => {
+    const slot = rowOrder.slots.get(taskId);
+    if (viewMode === 'today' || viewMode === 'later') {
+      const scroller = viewMode === 'today' ? todayRowScroller : laterRowScroller;
+      // A project band is part of the list's header, which has no row key: bring the top back.
+      if (typeof slot === 'string') scroller.current?.keepKeyInView(slot);
+      else if (viewMode === 'today') scroller.current?.scrollToTop();
+      return;
+    }
+    if (typeof slot !== 'number') return;
+    const viewable = viewMode === 'unscheduled' ? unscheduledViewable : inboxViewable;
+    if (viewable.isInView(slot)) return;
+    const list = viewMode === 'unscheduled' ? unscheduledScroll.ref : inboxScroll.ref;
+    list.current?.scrollToIndex({ index: slot, animated: true, viewPosition: 0.3 });
+  };
+
+  const moveCursor = (delta: 1 | -1) => {
+    const store = useRowCursorStore.getState();
+    const next = stepCursor(rowOrder.ids, store.cursorId, delta);
+    if (next === null) return;
+    store.setCursor(next);
+    revealCursorRow(next);
+  };
+
+  const cursorTask = (): Task | null => {
+    const id = useRowCursorStore.getState().cursorId;
+    return id === null ? null : useTaskStore.getState().tasks.find(t => t.id === id) ?? null;
+  };
+
+  /** Space: complete the task under the cursor, by the checkbox's own rules. */
+  const completeCursorTask = () => {
+    const task = cursorTask();
+    if (!task || task.completed) return;
+    // The refusals the row's right-click menu applies: a habit about not doing something has no
+    // completion, and a rotation is ticked through its own pills. A task still waiting out its
+    // recurrence can't be finished ahead of schedule; a row on Today enforces that itself, but one
+    // in Later has no checkbox dispatch to hand it to.
+    if (isNegativeTask(task) || (isQuotaTask(task) && isRotationTask(task))) { haptics.error(); return; }
+    if (!isTaskVisible(task) && isRecurrenceNotYetDue(task)) { haptics.error(); return; }
+    completeThroughRow(task);
+  };
+
+  const deleteCursorTask = () => {
+    const task = cursorTask();
+    if (task) confirmDeleteTask(task);
+  };
+
+  // Read through a ref so the registration below is made once per focus and the handlers it holds
+  // are always this render's.
+  const rowKeys = useRef({
+    moveCursor, completeCursorTask, deleteCursorTask,
+    handleRowEdit, toggleSelection, handleBulkDelete, selectAll, enterSelectionMode,
+    selectionMode, selectedIds, rowOrder,
+  });
+  rowKeys.current = {
+    moveCursor, completeCursorTask, deleteCursorTask,
+    handleRowEdit, toggleSelection, handleBulkDelete, selectAll, enterSelectionMode,
+    selectionMode, selectedIds, rowOrder,
+  };
+  useEffect(() => {
+    if (!isFocused) return;
+    return registerScreenKeys({
+      cursorDown: () => rowKeys.current.moveCursor(1),
+      cursorUp: () => rowKeys.current.moveCursor(-1),
+      // Return edits the task, in the pane when there is room and in a sheet otherwise. While
+      // selecting it does nothing: the row's job then is to be ticked or not.
+      openCursor: () => {
+        if (rowKeys.current.selectionMode) return;
+        const id = useRowCursorStore.getState().cursorId;
+        if (id !== null) rowKeys.current.handleRowEdit(id);
+      },
+      // Space completes the task, or while selecting, ticks the row in or out of the selection.
+      completeCursor: () => {
+        if (rowKeys.current.selectionMode) {
+          const id = useRowCursorStore.getState().cursorId;
+          if (id !== null) rowKeys.current.toggleSelection(id);
+          return;
+        }
+        rowKeys.current.completeCursorTask();
+      },
+      // Delete removes what is selected while selecting (the bulk bar's own delete, which asks),
+      // and the task under the cursor otherwise (`confirmDeleteTask`, which asks).
+      deleteCursor: () => {
+        if (rowKeys.current.selectionMode) {
+          if (rowKeys.current.selectedIds.size > 0) rowKeys.current.handleBulkDelete();
+          return;
+        }
+        rowKeys.current.deleteCursorTask();
+      },
+      // Everything the view draws, not everything it filters (`rowOrder.ts`).
+      selectAll: () => {
+        const ids = rowKeys.current.rowOrder.ids;
+        if (ids.length === 0) return;
+        if (rowKeys.current.selectionMode) rowKeys.current.selectAll(ids);
+        else rowKeys.current.enterSelectionMode(ids);
+      },
+    });
+  }, [isFocused]);
+
+  // Escape steps back out of what the screen is holding open, innermost first. Registered
+  // while each is up, so the most recent is the one Escape reaches; a sheet always goes first.
+  useEscapeHandler(isFocused, () => {
+    const cursor = useRowCursorStore.getState();
+    if (cursor.cursorId === null) return false;
+    cursor.setCursor(null);
+  });
+  useEscapeHandler(expandedTaskId !== null, () => { setExpandedTaskId(null); });
+  useEscapeHandler(selectionMode, () => { exitSelection(); });
   const handleLaterStackToggle = useCallback((key: string) => {
     if (expandedTaskIdRef.current !== null) { setExpandedTaskId(null); return; }
     haptics.tap();
@@ -5468,13 +5649,7 @@ export function TodayScreen() {
                 {listFooter(laterOrder.length === 0)}
               </>
             }
-            refreshControl={
-              <RefreshControl
-                refreshing={pullingToSearch}
-                onRefresh={handlePullToSearch}
-                tintColor={colors.textSecondary}
-              />
-            }
+            refreshControl={pullToSearchControl}
           />
         )}
 
@@ -5688,13 +5863,7 @@ export function TodayScreen() {
                 ? styles.emptyContainer
                 : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
-            refreshControl={
-              <RefreshControl
-                refreshing={pullingToSearch}
-                onRefresh={handlePullToSearch}
-                tintColor={colors.textSecondary}
-              />
-            }
+            refreshControl={pullToSearchControl}
             ListEmptyComponent={emptyComponent}
             ListFooterComponent={
               // Direct child of the scroll content (no cell wrapper), so the
@@ -5708,6 +5877,7 @@ export function TodayScreen() {
         {viewMode === 'unscheduled' && (
           <FlatList
             ref={unscheduledScroll.ref}
+            {...unscheduledViewable.props}
             scrollEnabled={!painting && !draggingSubtask}
             data={unscheduledTasks}
             keyExtractor={t => t.id}
@@ -5790,13 +5960,7 @@ export function TodayScreen() {
               />
             }
             ListFooterComponentStyle={unscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
-            refreshControl={
-              <RefreshControl
-                refreshing={pullingToSearch}
-                onRefresh={handlePullToSearch}
-                tintColor={colors.textSecondary}
-              />
-            }
+            refreshControl={pullToSearchControl}
           />
         )}
 
@@ -5812,6 +5976,7 @@ export function TodayScreen() {
         {viewMode === 'inbox' && (
           <FlatList
             ref={inboxScroll.ref}
+            {...inboxViewable.props}
             scrollEnabled={!painting && !draggingSubtask}
             data={inboxData}
             keyExtractor={listItemKey}
@@ -5874,13 +6039,7 @@ export function TodayScreen() {
               />
             }
             ListFooterComponentStyle={inboxIsEmpty ? undefined : styles.listFooterCell}
-            refreshControl={
-              <RefreshControl
-                refreshing={pullingToSearch}
-                onRefresh={handlePullToSearch}
-                tintColor={colors.textSecondary}
-              />
-            }
+            refreshControl={pullToSearchControl}
           />
         )}
         </FabDropZoneProvider>

@@ -18,12 +18,39 @@ describe('KEY_SHORTCUTS', () => {
     expect(reserved).toEqual([]);
   });
 
-  it('only uses a plain key a text field would type', () => {
-    // A plain key a field doesn't take (an arrow, Return, Tab) would reach the
-    // command while someone is typing. Escape is the deliberate exception: it
-    // closes the sheet the field is in.
+  it('only uses a plain key a text field would handle', () => {
+    // Since iOS 15 text input sees a key before a key command, so a plain key
+    // the field handles (a character, Space, an arrow, Return, Delete) is left
+    // to it while someone types. A key it doesn't (Tab) would reach the command
+    // mid-sentence. Escape is the deliberate exception: it closes the sheet the
+    // field is in.
+    const handled = /^([a-z0-9/ ]|up|down|return|delete)$/;
     const plain = KEY_SHORTCUTS.filter(s => s.modifiers.length === 0 && s.input !== 'escape');
-    for (const s of plain) expect(s.input).toMatch(/^[a-z0-9/]$/);
+    for (const s of plain) expect(s.input).toMatch(handled);
+  });
+
+  it('drops every key that acts on a row while a field has focus, whichever keys a field takes', () => {
+    // The system hands a field the keys it handles, but a field that ignores one (an
+    // arrow in a one-line field, say) would let the command through, and Return or
+    // Delete acting on a row while someone types is the one failure that does harm.
+    const rowKeys = ['cursorDown', 'cursorUp', 'openCursor', 'completeCursor', 'deleteCursor', 'selectAll'];
+    const acting = KEY_SHORTCUTS.filter(s => rowKeys.includes(s.action));
+    expect(acting.length).toBeGreaterThan(0);
+    for (const s of acting) expect(s.unlessTyping).toBe(true);
+  });
+
+  it('only acts on a row from a bare screen', () => {
+    const rowKeys = ['cursorDown', 'cursorUp', 'openCursor', 'completeCursor', 'deleteCursor', 'selectAll'];
+    for (const s of KEY_SHORTCUTS.filter(k => rowKeys.includes(k.action))) expect(s.screenOnly).toBe(true);
+  });
+
+  it('keeps the chords a Mac window is expected to answer to on whatever mirroring mode says', () => {
+    const onMac = KEY_SHORTCUTS.filter(s => s.onMac).map(s => s.action);
+    expect(onMac).toEqual(expect.arrayContaining(['undo', 'redo', 'closeSheet', 'commit']));
+    // No plain character key rides along: turning mirroring mode off is how someone says no to those.
+    for (const s of KEY_SHORTCUTS.filter(k => k.onMac)) {
+      expect(s.modifiers.length > 0 || s.input === 'escape').toBe(true);
+    }
   });
 });
 
@@ -39,6 +66,14 @@ describe('shortcutKeys', () => {
     expect(shortcutKeys(shortcutById('redo')!)).toBe('⇧⌘Z');
     expect(shortcutKeys(shortcutById('closeSheet')!)).toBe('Esc');
     expect(shortcutKeys(shortcutById('newTask')!)).toBe('N');
+  });
+
+  it('writes the keys that have no character of their own', () => {
+    expect(shortcutKeys(shortcutById('cursorDown')!)).toBe('↓');
+    expect(shortcutKeys(shortcutById('openCursor')!)).toBe('↩');
+    expect(shortcutKeys(shortcutById('completeCursor')!)).toBe('Space');
+    expect(shortcutKeys(shortcutById('deleteCursorCommand')!)).toBe('⌘⌫');
+    expect(shortcutKeys(shortcutById('commit')!)).toBe('⌘↩');
   });
 });
 

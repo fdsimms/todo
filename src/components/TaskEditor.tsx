@@ -215,6 +215,7 @@ import { describeMission, normalizeMission } from '../utils/missions';
 import { MissionPicker } from './MissionPicker';
 import { RotatingChevron } from './RotatingChevron';
 import { runningOnMac } from '../utils/runningOnMac';
+import { useEscapeHandler } from '../hooks/useEscapeHandler';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -3419,6 +3420,10 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       onClose();
     }
   };
+  // Escape closes the pane the way its Cancel does, asking first when there are edits. A
+  // sheet editor needs none of this: every sheet is closed by Escape through its own
+  // onRequestClose, which is handleCancel too.
+  useEscapeHandler(inline && visible, handleCancel);
 
   // A copy of the task as saved, which the sheet then shows (see `duplicated`
   // above). Edits not yet saved aren't in it, so it says so before it makes one.

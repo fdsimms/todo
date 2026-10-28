@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { StyleSheet, Text, TouchableOpacity, type StyleProp, type TextStyle } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { registerCommit } from '../utils/keyActions';
 
 interface Props {
   label: string;
@@ -44,6 +45,18 @@ export function SheetHeaderButton({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // A form's confirm button is what ⌘Return presses (`registerCommit`). Registered
+  // once for as long as it is mounted, with the latest press and disabled state read
+  // through a ref: re-registering on each render would move it to the top of the
+  // stack every time it re-rendered, and a Save under a picker would then answer for
+  // the picker. Mount order is what puts the frontmost form's button on top.
+  const latest = useRef({ onPress, disabled });
+  latest.current = { onPress, disabled };
+  useEffect(() => {
+    if (role !== 'confirm') return;
+    return registerCommit(() => latest.current.onPress(), () => !latest.current.disabled);
+  }, [role]);
 
   // A disabled button still takes the press, to say no: a Save that does
   // nothing when tapped reads as the app not noticing. It never calls onPress,

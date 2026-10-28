@@ -202,7 +202,19 @@ public class TodoKeyCommandsModule: Module {
   fileprivate func fire(_ command: UIKeyCommand) {
     let key = Self.lookupKey(input: command.input ?? "", flags: command.modifierFlags)
     guard let id = ids[key] else { return }
+    // An alert is not a sheet as far as JS can tell, and the commands live on the root view
+    // controller, which an alert presented from it still reaches. With one up, a Delete or a
+    // Space would act on the list behind it (a second delete confirmation on top of the
+    // first). The alert answers Return and Escape itself, ahead of these.
+    if Self.alertIsOnTop() { return }
     sendEvent("onKeyCommand", ["id": id])
+  }
+
+  /// Whether the frontmost presented view controller is an alert.
+  private static func alertIsOnTop() -> Bool {
+    var top = hostWindow()?.rootViewController
+    while let presented = top?.presentedViewController { top = presented }
+    return top is UIAlertController
   }
 
   func fireMenu(_ id: String) {
@@ -225,6 +237,9 @@ public class TodoKeyCommandsModule: Module {
     case "left": return UIKeyCommand.inputLeftArrow
     case "right": return UIKeyCommand.inputRightArrow
     case "return": return "\r"
+    // The Delete key (backspace on a Mac keyboard). `inputDelete` is iOS 15 and later, which
+    // is the same release that made text input see a key before a command does (see above).
+    case "delete": return UIKeyCommand.inputDelete
     default: return name
     }
   }

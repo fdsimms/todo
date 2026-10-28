@@ -34,6 +34,14 @@ interface Props {
    * instead. Off a Mac this copy is the only one and draws as usual.
    */
   overlayOnHover?: boolean;
+  /**
+   * Starts the row's drag the moment this is pressed, for a `titleEnd` copy on a
+   * Mac. A drag begins on a 350ms still hold, and a mouse press that starts moving
+   * sooner than that is a scroll, so a click-drag could never lift a row. Shortening
+   * the hold would turn a slow click into a lifted row with the click lost, so the
+   * handle is the way to grab one with a pointer. The hold still works as before.
+   */
+  dragHandle?: () => void;
 }
 
 /**
@@ -68,7 +76,7 @@ interface Props {
  * the title's last few characters is covered while the pointer is there.
  */
 export function SwipeActionButtons({
-  undoAction, whenAction, selectAction, enabled = true, placement = 'trailing', overlayOnHover = false,
+  undoAction, whenAction, selectAction, enabled = true, placement = 'trailing', overlayOnHover = false, dragHandle,
 }: Props) {
   const colors = useColors();
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
@@ -89,6 +97,21 @@ export function SwipeActionButtons({
 
   const buttons = (
     <>
+      {overlay && dragHandle ? (
+        <PointerView toolTip="Drag to reorder" pointerEvents={buttonEvents}>
+          <TouchableOpacity
+            // Pressed in, not pressed: the drag has to start with the button still down.
+            onPressIn={dragHandle}
+            hitSlop={8}
+            style={buttonStyle}
+            accessibilityRole="button"
+            accessibilityLabel="Reorder"
+            accessibilityHint="Press and drag to move this up or down the list."
+          >
+            <Ionicons name="reorder-two" size={iconSize.sm} color={colors.textTertiary} />
+          </TouchableOpacity>
+        </PointerView>
+      ) : null}
       {undoAction ? (
         <PointerView toolTip={undoAction.accessibilityLabel} pointerEvents={buttonEvents}>
           <TouchableOpacity

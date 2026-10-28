@@ -150,6 +150,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/demoSeed.ts` — seedDemoData
 - `src/utils/demoState.ts` — isDemoModeActive, setDemoModeActive
 - `src/utils/describedExercises.ts` — withCreatedExercises
+- `src/utils/deviceKind.ts` — setDeviceIsMac, deviceIsMac
 - `src/utils/deviceMetrics.ts` — startDeviceMetrics, readDevicePayloads
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
 - `src/utils/dictation.ts` — DICTATION_BARS, joinDictation, transcriptRestarted, dictationJoiner, pushLevel, barHeight, DictationRefusal, dictationRefusal
@@ -185,6 +186,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/exerciseLibrary.ts` — LibraryExercise, LIBRARY_ID_PREFIX, EXERCISE_LIBRARY, libraryExercise, isLibraryId
 - `src/utils/exerciseSwap.ts` — swappableSets, swapKindsMatch, swapCandidates
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
+- `src/utils/fabAnchor.ts` — FabMenuAnchor, fabMenuAnchorFor
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
 - `src/utils/fasting.ts` — DEFAULT_FAST_GOAL_HOURS, MIN_FAST_GOAL_HOURS, MAX_FAST_GOAL_HOURS, MAX_FAST_START_AGE_HOURS, clampFastGoalHours, activeFast, lastEndedFast, pastFasts, formatFastLengthShort, fastElapsedMs, +8 more
 - `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, backfillFieldsFor, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, backfillSeriesPeers, backfillFieldCounts, +3 more
@@ -207,7 +209,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodQueue.ts` — QueuedFood, QUEUED_FOOD_MAX_LENGTH, parseQueuedFoods
 - `src/utils/foodRecall.ts` — RECALL_MIN_QUERY, RECALL_LIMIT, RecalledFood, describedGrams, estimateWholeGrams, describedEstimateFactor, descriptionClauses, recallWeight, recallFoods, recallMeasuringPanel, +14 more
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
-- `src/utils/frameWidth.ts` — MAX_CONTENT_WIDTH, MAX_DRAWER_WIDTH, SIDEBAR_MIN_WINDOW_WIDTH, SIDEBAR_WIDTH, sidebarWidthFor, frameWidthFor, frameLeftFor, drawerWidthFor, monthCellSizeFor, pickerCardWidthFor, +1 more
+- `src/utils/frameWidth.ts` — MAX_CONTENT_WIDTH, MAX_DRAWER_WIDTH, SIDEBAR_MIN_WINDOW_WIDTH, SIDEBAR_WIDTH, sidebarWidthFor, frameWidthFor, frameLeftFor, drawerWidthFor, monthCellSizeFor, pickerCardWidthFor, +9 more
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
 - `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, bulkSetCategoryOffering, offerFollowUpWriteBack
@@ -270,6 +272,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/journalPhotos.ts` — JOURNAL_PHOTO_FOLDER, MAX_JOURNAL_PHOTOS, journalPhotoNamesInUse, droppedPhotos, unreferencedPhotos, journalPhotosOnDevice, deleteJournalPhotos, sweepJournalPhotos
 - `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalMicUrl, journalLogUrl, journalTaskSourceId, journalTaskDayKey
 - `src/utils/journalTimer.ts` — JOURNAL_TIMER_MINUTES, JOURNAL_TIMER_RANGE, DEFAULT_JOURNAL_TIMER_MINUTES, JOURNAL_TIMER_SETTING, parseJournalTimerMinutes, readJournalTimerMinutes, writeJournalTimerMinutes, journalTimerRemainingMs, journalTimerProgress, formatJournalTimerClock
+- `src/utils/keyActions.ts` — registerEscapeHandler, runEscape, registerCommit, runCommit, ScreenKey, ScreenKeyHandlers, registerScreenKeys, runScreenKey
 - `src/utils/keyScanAlert.ts` — alertKeyScanResult
 - `src/utils/keyScanQueue.ts` — QueuedKeyScan, QUEUED_KEY_CODE_MAX_LENGTH, parseQueuedKeyScans, keyCodeToken
 - `src/utils/keyShortcuts.ts` — KeyModifier, ShortcutAction, KeyShortcut, KEY_SHORTCUTS, MENU_SHORTCUTS, shortcutById, chordKey, shortcutKeys, describeShortcuts
@@ -495,6 +498,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/routineProgress.ts` — RoutineWorkoutPoint, RoutineExerciseProgress, RoutineProgress, routineSessions, RoutineProgressInput, routineProgress, volumeForChart
 - `src/utils/routineUpdate.ts` — RoutineChange, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
 - `src/utils/routineVersions.ts` — initialRoutineVersionId, initialProgramVersionId, implicitRoutineVersion, routineVersionsOf, currentRoutineVersion, versionNumber, versionAt, sessionVersionId, routineSessionsByVersion, routineVersionTrained, +34 more
+- `src/utils/rowCursor.ts` — stepCursor, settleCursor
+- `src/utils/rowOrder.ts` — RowOrder, NO_ROWS, OrderableRow, todayRowOrder, flatRowOrder, unscheduledRowOrder, laterRowOrder
 - `src/utils/rsvp.ts` — parseGuestNames
 - `src/utils/ruleCategory.ts` — parseRuleCategory, ruleCategoryFor, renameInRuleCategories, withRuleCategory
 - `src/utils/ruleEstimate.ts` — GeneratorEstimate, GeneratorEstimates, holdsKindEstimate, parseRuleEstimate, ruleEstimateDraft, withRuleEstimate, parseGeneratorEstimates, withGeneratorEstimate
@@ -634,7 +639,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/tripEvents.ts` — spansDays, tripSpanOf, awayFieldsFromEvent, DESTINATION_MAX_LENGTH, destinationFromEvent, projectForTripEvent
 - `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
-- `src/utils/twoPane.ts` — TWO_PANE_MIN_WINDOW_WIDTH, TWO_PANE_LIST_WIDTH, TWO_PANE_LIST_MAX_WIDTH, twoPaneListWidthFor, TWO_PANE_ROUTES, twoPaneFor, columnUncappedFor
+- `src/utils/twoPane.ts` — TWO_PANE_MIN_WINDOW_WIDTH, TWO_PANE_LIST_WIDTH, TWO_PANE_LIST_MAX_WIDTH, twoPaneListWidthFor, TWO_PANE_ROUTES, twoPaneFor, nextLayoutHold, floatingLayerInsetFor, columnUncappedFor
 - `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, AGENT_SOURCE, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, +5 more
 - `src/utils/undoHistory.ts` — UndoableAction, UndoHistory, UNDO_STACK_LIMIT, topOf, pushEntry, popEntry, freshest, redoIsCurrent, offersOnUndoBar, latestUndoHistory, +9 more
 - `src/utils/unitConvert.ts` — UnitSystem, UNIT_SYSTEMS, Dimension, ML_PER_TBSP, ConvertedQuantity, MeasuredQuantity, measureQuantity, measureParsedQuantity, shelfUnit, unitBase, +7 more
@@ -745,6 +750,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useRecipeStore.ts` — CookStats, useRecipeStore
 - `src/store/useReminderRemovalStore.ts` — useReminderRemovalStore
 - `src/store/useRewardStore.ts` — COIN_BURST_MS, RewardDetails, useRewardStore
+- `src/store/useRowCursorStore.ts` — useRowCursorStore
 - `src/store/useSavedMealsStore.ts` — useSavedMealsStore
 - `src/store/useScreenTimeStore.ts` — useScreenTimeStore, useScreenTimeSync
 - `src/store/useSettingsStore.ts` — PatchNoteQaStatus, WeekStart, FabHand, MapsApp, MealsOnToday, NewTaskDefaults, DEFAULT_REMINDER_LEAD_OPTIONS, useSettingsStore
@@ -777,6 +783,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useBottomBarHeight.ts` — useBottomBarHeight
 - `src/hooks/useBulkBarEntrance.ts` — useBulkBarEntrance
 - `src/hooks/useClipboardImage.ts` — useClipboardImage
+- `src/hooks/useCommitHandler.ts` — useCommitHandler
 - `src/hooks/useCopyToClipboard.ts` — COPIED_TICK_MS, useCopyToClipboard
 - `src/hooks/useDebouncedValue.ts` — useDebouncedValue
 - `src/hooks/useDeletedDoseUndo.ts` — useDeletedDoseUndo
@@ -785,6 +792,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useDragToDay.ts` — DayDragHandlers, DayDragSource, useDragToDay
 - `src/hooks/useElevatedCellRenderer.tsx` — useElevatedCellRenderer
 - `src/hooks/useElsewhereSearch.ts` — useElsewhereSearch
+- `src/hooks/useEscapeHandler.ts` — useEscapeHandler
 - `src/hooks/useEventTaskContext.ts` — useEventTaskContext
 - `src/hooks/useEventTaskSync.ts` — useEventTaskSync
 - `src/hooks/useEventTravelNote.ts` — useEventTravelNote
@@ -804,7 +812,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useLingering.ts` — useLingering
 - `src/hooks/useListScrollToTop.ts` — useListScrollToTop
 - `src/hooks/useLogicalDayKey.ts` — useLogicalDayKey
-- `src/hooks/useMacMirroringDefault.ts` — useMacMirroringDefault
 - `src/hooks/useMacWindow.ts` — useMacWindow
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
 - `src/hooks/useMeasuredTextWidth.ts` — useMeasuredTextWidth
@@ -855,6 +862,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useTitleSelection.ts` — TitleSelection, useTitleSelection
 - `src/hooks/useTravelTaskSync.ts` — useTravelTaskSync
 - `src/hooks/useTwoPane.ts` — useTwoPane
+- `src/hooks/useViewableRange.ts` — useViewableRange
 - `src/hooks/useWakeUpTaskSync.ts` — useWakeUpTaskSync
 - `src/hooks/useWaniKaniSync.ts` — useWaniKaniSync
 - `src/hooks/useWatchClashPrompt.ts` — useWatchClashPrompt

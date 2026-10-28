@@ -61,6 +61,13 @@ export interface RowScroller {
    * as soon as it does, rather than being missed.
    */
   scrollToKey: (key: string) => void;
+  /**
+   * Scroll just far enough that the row with this key is on screen, and not at
+   * all when it already is. `scrollToKey` always lands the row near the top,
+   * which is right for a jump and jumpy for a key stepping down a list one row
+   * at a time. A row that hasn't laid out is left alone.
+   */
+  keepKeyInView: (key: string) => void;
   /** Scroll back to the very top of the list, header included. */
   scrollToTop: () => void;
   /** Scroll to the very bottom of the list, footer included. */
@@ -679,6 +686,18 @@ export function ReorderableList<T>({
       }
       pendingScrollKeyRef.current = key;
       pendingScrollTimerRef.current = setTimeout(clearPendingScroll, PENDING_SCROLL_TTL);
+    },
+    keepKeyInView: (key: string) => {
+      const y = layoutYRef.current.get(key);
+      const viewport = viewportHeightRef.current;
+      if (y === undefined || viewport <= 0) return;
+      const height = heightsRef.current.get(key) ?? DEFAULT_ROW_HEIGHT;
+      const top = scrollOffsetRef.current;
+      if (y - ROW_SCROLL_MARGIN < top) {
+        scrollRowIntoView(y);
+      } else if (y + height + ROW_SCROLL_MARGIN > top + viewport) {
+        scrollRef.current?.scrollTo({ y: Math.max(0, y + height + ROW_SCROLL_MARGIN - viewport), animated: true });
+      }
     },
     scrollToTop: doScrollToTop,
     // Same reasoning as doScrollToTop: a pending scrollToKey would pull the
