@@ -72,6 +72,25 @@ export function clampCount(value: number, range: StepRange): number {
 }
 
 /**
+ * The value a stepper's field writes while it is still being typed in, or
+ * null to wait for the field to close: only a number the stepper would keep
+ * as typed, in range and to its own decimal places. A number that would be
+ * clamped ("1" on the way to "12" with a floor of 5) or an empty field waits,
+ * since writing it would move the value under the person's finger.
+ *
+ * Written as typed rather than on blur because a sheet's Save sits outside
+ * its scroll view: tapping it doesn't blur the field, so a number typed and
+ * saved at once was read before the typing (see `TextField`'s doc comment).
+ * Holding + or − already sends every value along the way, so a caller sees
+ * nothing it doesn't see from the keys.
+ */
+export function typedStepperValue(text: string, range: StepRange): number | null {
+  const parsed = parseStepperInput(text, range);
+  if (parsed === null) return null;
+  return clampCount(parsed, range) === parsed ? parsed : null;
+}
+
+/**
  * A number typed into a stepper's field, or null for anything that isn't one.
  * On a stepper with decimal places a decimal comma reads as a point ("82,5"),
  * since that is what a phone set to much of Europe types. An integer stepper

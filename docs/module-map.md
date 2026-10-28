@@ -561,7 +561,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/stepGoal.ts` — STEP_GOAL_MIN, STEP_GOAL_MAX, STEP_GOAL_STEP, STEP_GOAL_DEFAULT, clampStepGoal, parseStepGoal
 - `src/utils/stepIngredients.ts` — AnnotatableStep, StepIngredientLine, StepSegment, stepIngredientLines, annotateSteps, stepNamesIngredient
 - `src/utils/stepTimers.ts` — StepDuration, MIN_STEP_TIMER_SECONDS, MAX_STEP_TIMER_SECONDS, parseStepDurations, formatStepDuration, describeStepDuration, stepTimerElapsed, MAX_REPEAT_ROUNDS, DEFAULT_REPEAT_ROUNDS, REPEAT_RINGS_PAST_TARGET, +29 more
-- `src/utils/stepper.ts` — StepRange, clampCount, parseStepperInput, stepCount, canStep, holdRepeatDelay
+- `src/utils/stepper.ts` — StepRange, clampCount, typedStepperValue, parseStepperInput, stepCount, canStep, holdRepeatDelay
 - `src/utils/storageReport.ts` — StorageTable, StorageStats, formatBytes, MIN_RECLAIMABLE_BYTES, worthOptimizing, optimizeBlockedReason, topAreas, describeAreas
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
 - `src/utils/storedFileBackup.ts` — storedFileNamesIn, collectStoredFiles, restoreStoredFiles
