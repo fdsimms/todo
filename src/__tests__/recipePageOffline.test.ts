@@ -55,6 +55,18 @@ describe('recipeFromPageOffline', () => {
     expect(garlic.aisle).toBe('Produce');
   });
 
+  it('keeps a second line for the same ingredient for the review to settle', () => {
+    const page = parseRecipePage(ldPage({ ...RECIPE_LD, recipeIngredient: ['2 tbsp olive oil', '1 onion', '1/4 cup olive oil'] }), 4_000);
+    expect(recipeFromPageOffline(page, aisleFor)!.ingredients.map(i => [i.name, i.quantity]))
+      .toEqual([['olive oil', '2 tbsp'], ['onion', '1'], ['olive oil', '1/4 cup']]);
+  });
+
+  it('files the lines under a heading line rather than listing the heading', () => {
+    const page = parseRecipePage(ldPage({ ...RECIPE_LD, recipeIngredient: ['1 lb pasta', 'For the sauce:', '2 cloves garlic'] }), 4_000);
+    expect(recipeFromPageOffline(page, aisleFor)!.ingredients.map(i => [i.name, i.section]))
+      .toEqual([['pasta', null], ['garlic', 'For the sauce']]);
+  });
+
   it('refuses a page with no structured recipe rather than guessing at its text', () => {
     const page = parseRecipePage(
       '<html><head><title>Chili</title></head><body><ul><li>2 cans beans</li></ul></body></html>',

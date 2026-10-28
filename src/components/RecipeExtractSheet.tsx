@@ -252,8 +252,13 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     resetComponents();
   }, [resetInput, resetComponents]);
 
+  // Which opening of the sheet a request belongs to (see `stillOpenFor`).
+  const openingRef = useRef(0);
   useEffect(() => {
-    if (!visible) reset();
+    if (!visible) {
+      openingRef.current += 1;
+      reset();
+    }
   }, [visible, reset]);
 
   // ==== running the extraction ====
@@ -263,19 +268,25 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // dependency, so a cancel mid-request is seen without re-running `run`.
   const visibleRef = useRef(visible);
   useEffect(() => { visibleRef.current = visible; }, [visible]);
+  // Open is not enough: after a Cancel and a reopen the sheet is open again,
+  // and a reply to the cancelled run filled the review on top of the new one.
+  const stillOpenFor = (opening: number) => visibleRef.current && openingRef.current === opening;
 
   const run = useCallback(async () => {
+    const opening = openingRef.current;
     setLoading(true);
     setError(null);
     try {
       // A link is fetched first; a paste and a photo resolve to themselves.
       const resolved = await resolveSource();
       if (!resolved) return;
+      // Cancelled while the page was fetched: no paid extraction for it.
+      if (!stillOpenFor(opening)) return;
       const result = await extractRecipe(resolved.source, [...aisleOrder]);
       // Canceled while the request was in flight: don't repopulate a sheet
       // the user already discarded — it would silently reappear filled in
       // the next time this sheet opens.
-      if (!visibleRef.current) return;
+      if (!stillOpenFor(opening)) return;
       setExtracted(result);
       // "x or y" lines arrive as one row per option, filed as alternatives.
       const rows = splitImportedAlternatives(result.ingredients);
@@ -312,12 +323,12 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setSourcePageText(source.page);
       setImportedSourceType(source.sourceType);
     } catch (e) {
-      if (visibleRef.current) {
+      if (stillOpenFor(opening)) {
         setError(describeImportError(e));
         setCanRetry(isRetryableImportError(e));
       }
     } finally {
-      setLoading(false);
+      if (openingRef.current === opening) setLoading(false);
     }
   }, [resolveSource, aisleOrder, recipe]);
 
