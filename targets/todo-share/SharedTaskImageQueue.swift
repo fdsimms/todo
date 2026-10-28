@@ -23,8 +23,10 @@ enum SharedTaskImageQueue {
   private static let directoryName = "shared_task_images"
   private static let appGroupID = "group.com.fdsimms.dundundun"
   // Same call as SharedRecipeQueue: the oldest fall off rather than the newest
-  // being refused, so the share just made is the one that survives.
-  private static let maxQueued = 5
+  // being refused, so the share just made is the one that survives. Twice what
+  // one share may carry (ShareViewController.maxImages), so a full share never
+  // evicts part of itself.
+  private static let maxQueued = 10
   // Matches MAX_PHOTO_EDGE in src/utils/recipePhoto.ts, the longest edge an
   // image is sent at. Downscaling here, with ImageIO's thumbnailer, also keeps
   // a full-resolution photo from ever being decoded in an extension whose memory

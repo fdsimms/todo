@@ -150,7 +150,12 @@ import { TaskImportSheet } from '../components/TaskImportSheet';
 import { SharedImageBanner } from '../components/SharedImageBanner';
 import { isDemoModeActive } from '../utils/demoState';
 import { useSharedImageStore } from '../store/useSharedImageStore';
-import { discardSharedTaskImage, listSharedTaskImages, readSharedTaskImage } from '../utils/sharedTaskImages';
+import {
+  MAX_SHARED_IMAGES_PER_READ,
+  discardSharedTaskImage,
+  listSharedTaskImages,
+  readSharedTaskImage,
+} from '../utils/sharedTaskImages';
 import type { RecipeImage } from '../services/aiSuggestions';
 import type { ExtractedCalendarEvent } from '../services/aiSuggestions';
 import { draftFromExtractedEvent, eventImportQuickSeed } from '../utils/calendarEventImport';
@@ -1037,7 +1042,7 @@ export function TodayScreen() {
   // file stays in the App Group folder until the tasks are added or it is
   // discarded, so closing the sheet leaves the banner up (see SharedImageBanner).
   const sharedImageNames = useSharedImageStore(useShallow(s => s.names));
-  const [sharedImage, setSharedImage] = useState<{ name: string; image: RecipeImage } | null>(null);
+  const [sharedImages, setSharedImages] = useState<{ names: string[]; images: RecipeImage[] } | null>(null);
   // Events still waiting to become a task, from an itinerary import that read
   // more than one. Drained one at a time by the effect below, which opens the
   // next as soon as the editor closes on the previous — see its own comment.
@@ -2412,21 +2417,24 @@ export function TodayScreen() {
     setQuickAddVisible(true);
   };
 
-  const discardAndRefreshSharedImages = async (name: string) => {
-    await discardSharedTaskImage(name);
+  const discardAndRefreshSharedImages = async (names: string[]) => {
+    await Promise.all(names.map(discardSharedTaskImage));
     useSharedImageStore.getState().setNames(await listSharedTaskImages());
   };
 
+  // Reads up to MAX_SHARED_IMAGES_PER_READ of the waiting images as one source,
+  // oldest first, since a long thread is often shared as several screenshots.
   const handleReadSharedImage = async () => {
-    const name = sharedImageNames[0];
-    if (!name) return;
-    const image = await readSharedTaskImage(name);
-    if (!image) {
-      // Gone since it was listed: pruned by a newer share, or discarded elsewhere.
-      void discardAndRefreshSharedImages(name);
-      return;
-    }
-    setSharedImage({ name, image });
+    const names = sharedImageNames.slice(0, MAX_SHARED_IMAGES_PER_READ);
+    if (names.length === 0) return;
+    const read = await Promise.all(names.map(async name => ({ name, image: await readSharedTaskImage(name) })));
+    // Any that are gone since they were listed (pruned by a newer share, or
+    // discarded elsewhere) are dropped from the list rather than blocking the rest.
+    const gone = read.filter(r => !r.image).map(r => r.name);
+    const present = read.filter((r): r is { name: string; image: RecipeImage } => !!r.image);
+    if (gone.length > 0) void discardAndRefreshSharedImages(gone);
+    if (present.length === 0) return;
+    setSharedImages({ names: present.map(r => r.name), images: present.map(r => r.image) });
     setTaskImportVisible(true);
   };
 
@@ -5274,7 +5282,7 @@ export function TodayScreen() {
           <SharedImageBanner
             count={sharedImageNames.length}
             onRead={handleReadSharedImage}
-            onDiscard={() => { void discardAndRefreshSharedImages(sharedImageNames[0]); }}
+            onDiscard={() => { void discardAndRefreshSharedImages(sharedImageNames.slice(0, MAX_SHARED_IMAGES_PER_READ)); }}
           />
         )}
 
@@ -6012,13 +6020,13 @@ export function TodayScreen() {
         <LazySheet open={taskImportVisible}>
           <TaskImportSheet
             visible={taskImportVisible}
-            initialPhoto={sharedImage?.image ?? null}
-            onClose={() => { setTaskImportVisible(false); setSharedImage(null); }}
+            initialPhotos={sharedImages?.images}
+            onClose={() => { setTaskImportVisible(false); setSharedImages(null); }}
             onAdd={drafts => {
               const added = drafts.map(draft => useTaskStore.getState().addTask(draft));
               setTemplateAppliedCount(added.length);
               setTemplateAppliedDest(templateRunDestination(added));
-              if (sharedImage) void discardAndRefreshSharedImages(sharedImage.name);
+              if (sharedImages) void discardAndRefreshSharedImages(sharedImages.names);
             }}
           />
         </LazySheet>

@@ -11,6 +11,13 @@ import { widgetBridge } from './widgetBridge';
  * mode and on a build without the native functions.
  */
 
+/**
+ * How many waiting images one read takes. The extension keeps at most ten
+ * (`SharedTaskImageQueue.maxQueued`) and accepts five from one share, so a
+ * share is always read whole; the model request grows with every image.
+ */
+export const MAX_SHARED_IMAGES_PER_READ = 5;
+
 /** The saved images, oldest first. Empty when nothing is queued or the bridge is absent. */
 export async function listSharedTaskImages(): Promise<string[]> {
   const bridge = widgetBridge();

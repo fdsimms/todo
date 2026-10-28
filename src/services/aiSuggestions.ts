@@ -2647,12 +2647,13 @@ export interface ExtractedTask {
  * returns candidates and nothing else. `TaskImportSheet` shows every one with a
  * tick, and nothing is written until the person adds them.
  */
-export async function extractTasks(source: string | RecipeImage): Promise<ExtractedTask[]> {
+export async function extractTasks(source: string | RecipeImage | RecipeImage[]): Promise<ExtractedTask[]> {
   const { apiKey, model } = requireFeature('taskImport');
 
-  const image = typeof source === 'string' ? null : source;
+  const images = typeof source === 'string' ? [] : (Array.isArray(source) ? source : [source]).filter(i => i.base64);
+  const image = images.length > 0;
   const text = typeof source === 'string' ? source.trim().slice(0, MAX_TASK_IMPORT_TEXT_CHARS) : '';
-  if (image ? !image.base64 : !text) return [];
+  if (!image && !text) return [];
 
   // A "by Friday" or "Oct 30" with no year has to be resolved against the
   // person's own day, so it goes through the logical today like the calendar
@@ -2667,7 +2668,9 @@ export async function extractTasks(source: string | RecipeImage): Promise<Extrac
   ];
   const prompt = image
     ? [
-        'This is a screenshot or photo of something that holds tasks: a message thread, an email, a note, a hand-written or typed to-do list, or a page of notes. Read it and list every task in it, in the order they appear.',
+        images.length > 1
+          ? `These are ${images.length} screenshots or photos, in order, of one source that holds tasks: a message thread, an email, a note, a to-do list or a page of notes. Read them together as one and list every task in them, in the order they appear, once each even where the images overlap.`
+          : 'This is a screenshot or photo of something that holds tasks: a message thread, an email, a note, a hand-written or typed to-do list, or a page of notes. Read it and list every task in it, in the order they appear.',
         ...taskRules,
         'If the image is too blurry, dark or cut off to read, or holds no tasks at all, return an empty list rather than guessing.',
       ].join('\n\n')
@@ -2680,7 +2683,7 @@ export async function extractTasks(source: string | RecipeImage): Promise<Extrac
 
   const content = image
     ? [
-        { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } },
+        ...images.map(i => ({ type: 'image', source: { type: 'base64', media_type: i.mediaType, data: i.base64 } })),
         { type: 'text', text: prompt },
       ]
     : prompt;
@@ -2721,7 +2724,7 @@ export async function extractTasks(source: string | RecipeImage): Promise<Extrac
     }],
     tool_choice: { type: 'tool', name: 'extract_tasks' },
     messages: [{ role: 'user', content }],
-  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
+  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS + (images.length - 1) * ADDITIONAL_IMAGE_TIMEOUT_MS : undefined);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as { tasks?: unknown } | undefined;

@@ -2480,6 +2480,19 @@ describe('extractTasks', () => {
     expect(content[1].text).toMatch(/Today is \d{4}-\d{2}-\d{2}/);
   });
 
+  it('sends every image of a multi-image source, in order, and says so in the prompt', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_tasks', { tasks: [] }));
+    await extractTasks([
+      { base64: 'AAAA', mediaType: 'image/jpeg' },
+      { base64: '', mediaType: 'image/jpeg' },
+      { base64: 'BBBB', mediaType: 'image/jpeg' },
+    ]);
+    const body = JSON.parse((spy.mock.calls[0]?.[1] as RequestInit).body as string);
+    const content = body.messages[0].content as { type: string; text?: string; source?: { data: string } }[];
+    expect(content.filter(c => c.type === 'image').map(c => c.source?.data)).toEqual(['AAAA', 'BBBB']);
+    expect(content[2].text).toContain('These are 2 screenshots');
+  });
+
   it('throws when the feature is switched off', async () => {
     mockSettings.aiFeatureConfig.taskImport.enabled = false;
     await expect(extractTasks('Buy milk')).rejects.toThrow('AI feature disabled');

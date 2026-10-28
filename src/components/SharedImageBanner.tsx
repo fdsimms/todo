@@ -7,7 +7,7 @@ import { PressableScale } from './PressableScale';
 import { haptics } from '../utils/haptics';
 
 interface Props {
-  /** How many images are waiting, the front one included. */
+  /** How many images are waiting. A read takes up to the first five, as one source. */
   count: number;
   onRead: () => void;
   onDiscard: () => void;
@@ -40,14 +40,14 @@ export function SharedImageBanner({ count, onRead, onDiscard }: Props) {
         <PressableScale
           style={styles.dismissButton}
           onPress={() => { haptics.tap(); onDiscard(); }}
-          accessibilityLabel="Discard the shared image"
+          accessibilityLabel={count === 1 ? 'Discard the shared image' : 'Discard the shared images'}
         >
           <Text style={styles.dismissText}>Discard</Text>
         </PressableScale>
         <PressableScale
           style={styles.readButton}
           onPress={() => { haptics.tap(); onRead(); }}
-          accessibilityLabel="Read tasks from the shared image"
+          accessibilityLabel={count === 1 ? 'Read tasks from the shared image' : 'Read tasks from the shared images'}
         >
           <Ionicons name="sparkles" size={iconSize.sm} color={colors.onAccent} />
           <Text style={styles.readText}>Read tasks</Text>

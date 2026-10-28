@@ -12,12 +12,12 @@ Targets are injected at prebuild time by custom config plugins rather than a che
 - **`targets/todo-share/`** — the share extension ("dundundun" in another app's share sheet,
   for a recipe page or a screenshot to read tasks from), added by `plugins/withShareExtension.js`.
   A link goes to `SharedRecipeQueue` (one JSON file the app drains and deletes). An image goes to
-  `SharedTaskImageQueue`: a downscaled JPEG in `shared_task_images/` in the App Group, which the
+  `SharedTaskImageQueue`: up to five downscaled JPEGs per share in `shared_task_images/` in the App Group, which the
   app lists, reads and deletes one at a time (`listSharedImages`, `readSharedImage`,
   `deleteSharedImage` in `todo-widget-bridge`). Not drained, because the file is the only copy until
   a person acts on it. A share with a URL always takes the link path, so a page shared with a
   preview image still goes to Recipes. Reading it is an Anthropic call, so it waits for a tap on
-  `SharedImageBanner` (Today) and ends in `TaskImportSheet`'s review step.
+  `SharedImageBanner` (Today) and ends in `TaskImportSheet`'s review step, which reads a share's images as one source.
 - **`targets/todo-activity-monitor/`** — the DeviceActivity monitor, added by
   `plugins/withActivityMonitor.js`. Woken when a usage threshold is crossed, when a scheduled
   gate window starts (`intervalDidStart`), and at the end of a penalty block (`intervalDidEnd`).

@@ -131,6 +131,9 @@ class ShareViewController: UIViewController {
   private static let urlType = "public.url"
   private static let textType = "public.plain-text"
   private static let imageType = "public.image"
+  // How many images one share may carry. Matches the activation rule's MaxCount in
+  // plugins/withShareExtension.js, and MAX_SHARED_IMAGES_PER_READ in the app.
+  private static let maxImages = 5
 
   /// Rejects the `file://` URLs a share of a downloaded page or a photo carries.
   /// Only something fetchable over the network is worth queueing — the app has
@@ -150,36 +153,49 @@ class ShareViewController: UIViewController {
     return nil
   }
 
-  /// Saves the first image attachment. `completion(sawImage, saved)` is always
-  /// called, on the main queue, exactly once: `sawImage` is whether the share
-  /// had an image at all, so a share of neither kind can say so.
+  /// Saves every image attachment, up to `maxImages`. `completion(sawImage, saved)`
+  /// is always called, on the main queue, exactly once: `sawImage` is whether the
+  /// share had an image at all, so a share of neither kind can say so, and
+  /// `saved` is whether every one of them was saved.
   ///
-  /// A share can hand the image over as a file URL, as raw data or as a
+  /// A share can hand an image over as a file URL, as raw data or as a
   /// `UIImage`, depending on the app, so all three are read. Each goes through
   /// ImageIO's thumbnailer (see SharedTaskImageQueue) rather than being decoded
-  /// whole.
+  /// whole. They load one after another, not at once, so at most one image is in
+  /// memory in an extension with a hard cap.
   private func saveSharedImage(completion: @escaping (Bool, Bool) -> Void) {
-    let attachments = (extensionContext?.inputItems as? [NSExtensionItem] ?? [])
+    let providers = (extensionContext?.inputItems as? [NSExtensionItem] ?? [])
       .flatMap { $0.attachments ?? [] }
+      .filter { $0.hasItemConformingToTypeIdentifier(Self.imageType) }
+      .prefix(Self.maxImages)
 
     func finish(_ sawImage: Bool, _ saved: Bool) {
       DispatchQueue.main.async { completion(sawImage, saved) }
     }
 
-    guard let provider = attachments.first(where: { $0.hasItemConformingToTypeIdentifier(Self.imageType) })
-    else { return finish(false, false) }
+    guard !providers.isEmpty else { return finish(false, false) }
 
-    provider.loadItem(forTypeIdentifier: Self.imageType, options: nil) { item, _ in
-      var saved = false
-      if let url = item as? URL, let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
-        saved = SharedTaskImageQueue.save(source)
-      } else if let data = item as? Data, let source = CGImageSourceCreateWithData(data as CFData, nil) {
-        saved = SharedTaskImageQueue.save(source)
-      } else if let image = item as? UIImage {
-        saved = SharedTaskImageQueue.save(image)
+    let queue = Array(providers)
+    var allSaved = true
+
+    // Recursive rather than a loop because loadItem is asynchronous.
+    func saveImage(at index: Int) {
+      guard index < queue.count else { return finish(true, allSaved) }
+      queue[index].loadItem(forTypeIdentifier: Self.imageType, options: nil) { item, _ in
+        var saved = false
+        if let url = item as? URL, let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
+          saved = SharedTaskImageQueue.save(source)
+        } else if let data = item as? Data, let source = CGImageSourceCreateWithData(data as CFData, nil) {
+          saved = SharedTaskImageQueue.save(source)
+        } else if let image = item as? UIImage {
+          saved = SharedTaskImageQueue.save(image)
+        }
+        if !saved { allSaved = false }
+        saveImage(at: index + 1)
       }
-      finish(true, saved)
     }
+
+    saveImage(at: 0)
   }
 
   // MARK: - Confirmation card

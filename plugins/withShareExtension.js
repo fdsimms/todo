@@ -39,9 +39,9 @@ const SWIFT_FILES = ['ShareViewController.swift', 'SharedRecipeQueue.swift', 'Sh
 //  • NSExtensionActivationRule decides which apps show dundundun at all. Both
 //    keys are wanted: an app sharing a page properly attaches a web URL, and
 //    plenty of others share a plain string with the link inside it, which
-//    ShareViewController runs a link detector over. A single image is the
-//    third: a screenshot or photo shared to be read for tasks. The keys are
-//    alternatives, so any one of them shows the row. MaxCount 1 keeps the row
+//    ShareViewController runs a link detector over. Up to five images are the
+//    third: screenshots or photos shared to be read for tasks, as one source. The keys are
+//    alternatives, so any one of them shows the row. MaxCount keeps the row
 //    out of share sheets for a multi-select of ten things, where "import a
 //    recipe" isn't the offer being made.
 function shareInfoPlist() {
@@ -82,7 +82,7 @@ function shareInfoPlist() {
 				<key>NSExtensionActivationSupportsTextWithMaxCount</key>
 				<integer>1</integer>
 				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
-				<integer>1</integer>
+				<integer>5</integer>
 			</dict>
 		</dict>
 	</dict>

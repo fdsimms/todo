@@ -42,6 +42,8 @@ import { BUTTON_LABEL } from '../copy/shared';
 
 type InputMode = 'paste' | 'photo';
 
+const NO_PHOTOS: readonly RecipeImage[] = [];
+
 const CHECKBOX_SIZE = 22;
 
 interface Props {
@@ -50,10 +52,11 @@ interface Props {
   /** Called with a draft per ticked row when the person taps Add; the sheet closes itself right after. */
   onAdd: (drafts: Partial<TaskDraft>[]) => void;
   /**
-   * A photo already in hand, such as one shared in from another app's share
-   * sheet. The sheet opens on it, ready to read.
+   * Photos already in hand, such as screenshots shared in from another app's
+   * share sheet. The sheet opens on them, ready to read as one source. Pass a
+   * stable array: the sheet re-seeds when it changes.
    */
-  initialPhoto?: RecipeImage | null;
+  initialPhotos?: readonly RecipeImage[];
 }
 
 /**
@@ -72,7 +75,7 @@ interface Props {
  * the feature off the sheet says where to turn it on rather than offering a
  * worse path.
  */
-export function TaskImportSheet({ visible, onClose, onAdd, initialPhoto = null }: Props) {
+export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PHOTOS }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
@@ -83,6 +86,9 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhoto = null }
   const [mode, setMode] = useState<InputMode>('photo');
   const [text, setText] = useState('');
   const [photo, setPhoto] = useState<RecipeImage | null>(null);
+  // Further images of the same source, from a share of several screenshots. The
+  // pickers add one photo at a time, so only a share fills this.
+  const [extraPhotos, setExtraPhotos] = useState<RecipeImage[]>([]);
   const [picking, setPicking] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -97,6 +103,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhoto = null }
     setMode('photo');
     setText('');
     setPhoto(null);
+    setExtraPhotos([]);
     setPicking(false);
     setPhotoError(null);
     setLoading(false);
@@ -114,11 +121,12 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhoto = null }
 
   // A photo handed in from outside seeds the capture step on open.
   useEffect(() => {
-    if (visible && initialPhoto) {
-      setPhoto(initialPhoto);
+    if (visible && initialPhotos.length > 0) {
+      setPhoto(initialPhotos[0]);
+      setExtraPhotos(initialPhotos.slice(1));
       setMode('photo');
     }
-  }, [visible, initialPhoto]);
+  }, [visible, initialPhotos]);
 
   // The request outlives a cancel (only the Modal hides), so a late answer
   // checks this before writing any state, the same guard EventImportSheet uses.
@@ -133,6 +141,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhoto = null }
       if (result.status === 'ok') {
         haptics.success();
         setPhoto(result.photo);
+        setExtraPhotos([]);
         setMode('photo');
       } else if (result.status === 'denied') {
         alertPhotoAccessDenied(source, result.canAskAgain, 'read tasks off a photo');
@@ -155,7 +164,8 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhoto = null }
     setError(null);
     setTriedEmpty(false);
     try {
-      const tasks = await extractTasks(mode === 'photo' ? photo! : text);
+      const source = mode === 'photo' ? (extraPhotos.length > 0 ? [photo!, ...extraPhotos] : photo!) : text;
+      const tasks = await extractTasks(source);
       if (!visibleRef.current) return;
       if (tasks.length === 0) {
         setTriedEmpty(true);
@@ -169,7 +179,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhoto = null }
     } finally {
       setLoading(false);
     }
-  }, [ready, aiAvailable, mode, photo, text]);
+  }, [ready, aiAvailable, mode, photo, extraPhotos, text]);
 
   const patch = (id: string, change: Partial<ImportCandidate>) =>
     setCandidates(rows => rows && rows.map(r => (r.id === id ? { ...r, ...change } : r)));
@@ -306,7 +316,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhoto = null }
         <View style={styles.centered}>
           <ActivityIndicator color={colors.accent} />
           <Text style={styles.loadingText}>
-            {mode === 'photo' ? 'Reading the photo…' : 'Reading the text…'}
+            {mode === 'photo' ? (extraPhotos.length > 0 ? 'Reading the photos…' : 'Reading the photo…') : 'Reading the text…'}
           </Text>
         </View>
       );
@@ -322,7 +332,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhoto = null }
               ? 'No tasks found in that photo. Try again in better light, or paste the text instead.'
               : 'No tasks found in that text.'}
             actionLabel={mode === 'photo' ? 'Try another photo' : 'Edit the text'}
-            onAction={() => { setTriedEmpty(false); if (mode === 'photo') setPhoto(null); }}
+            onAction={() => { setTriedEmpty(false); if (mode === 'photo') { setPhoto(null); setExtraPhotos([]); } }}
           />
         </View>
       );
@@ -372,12 +382,17 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhoto = null }
               hitSlop={8}
               style={styles.previewClear}
               activeOpacity={interaction.activeOpacity}
-              onPress={() => { haptics.tap(); setPhoto(null); }}
+              onPress={() => { haptics.tap(); setPhoto(null); setExtraPhotos([]); }}
               accessibilityRole="button"
-              accessibilityLabel="Remove this photo"
+              accessibilityLabel={extraPhotos.length > 0 ? 'Remove these photos' : 'Remove this photo'}
             >
               <Ionicons name="close" size={iconSize.sm} color={colors.onFill} />
             </TouchableOpacity>
+            {extraPhotos.length > 0 && (
+              <View style={styles.previewCount}>
+                <Text style={styles.previewCountText}>+{extraPhotos.length} more</Text>
+              </View>
+            )}
           </View>
         ) : (
           <View style={styles.photoChoices}>
@@ -531,6 +546,16 @@ function makeStyles(colors: Colors) {
       borderWidth: border.hairline,
       borderColor: colors.separator,
     },
+    previewCount: {
+      position: 'absolute',
+      left: spacing.sm,
+      bottom: spacing.sm,
+      backgroundColor: colors.backdrop,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xxs,
+    },
+    previewCountText: { color: colors.onFill, fontSize: font.xs, fontWeight: fontWeight.semibold },
     runBtn: {
       flexDirection: 'row',
       alignItems: 'center',
