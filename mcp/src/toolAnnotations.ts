@@ -183,6 +183,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   rename_medication: { title: 'Rename or combine a medicine', destructive: true, idempotent: false },
   set_supplement_nutrients: { title: 'Set what a supplement contains', destructive: true, idempotent: true },
   rename_mood_tag: { title: 'Rename a mood tag', destructive: true, idempotent: true },
+  unlog_target_unit: { title: 'Take back a logged unit', destructive: true, idempotent: false },
   skip_occurrence: { title: 'Skip an occurrence', destructive: false, idempotent: false },
   set_task_dates: { title: 'Set a task\'s dates', destructive: true, idempotent: true },
   duplicate_task: { title: 'Copy a task', destructive: false, idempotent: false },
