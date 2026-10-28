@@ -191,6 +191,17 @@ describe('describeImportError', () => {
     }
   });
 
+  it('sends a keyless import to a key, not to a paste box it does not have', () => {
+    for (const code of ['blocked', 'notHtml', 'tooLarge', 'noRecipe'] as const) {
+      const message = describeImportError(recipePageError(code), undefined, { keyless: true });
+      expect(message).toContain('API key in Settings');
+      expect(message.toLowerCase()).not.toContain('paste');
+    }
+    // A failure a key wouldn't fix reads the same either way.
+    expect(describeImportError(recipePageError('timeout'), undefined, { keyless: true }))
+      .toBe(describeImportError(recipePageError('timeout')));
+  });
+
   it('hands anything else to the AI error mapper', () => {
     expect(describeImportError(new Error('API error 401'))).toBe('Check your API key in Settings.');
     expect(describeImportError(new Error('Request timed out'))).toBe('The request timed out. Try again.');

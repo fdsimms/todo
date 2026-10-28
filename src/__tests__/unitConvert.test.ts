@@ -356,3 +356,18 @@ describe('convertScaledQuantity', () => {
     expect(convertScaledQuantity(scaleQuantity('0.5 cup', 0.25), 'asWritten').text).toBe('0.13 cup');
   });
 });
+
+describe('convertQuantity: a parenthesised restatement', () => {
+  it('drops the aside rather than contradict the converted amount', () => {
+    expect(convertQuantity('1 cup (240 ml)', 'metric').text).toBe('≈240 ml');
+    expect(convertQuantity('200 g (7 oz)', 'us').text).toBe('≈7 oz');
+  });
+
+  it('keeps an aside that is not a measurement', () => {
+    expect(convertQuantity('1 cup (packed)', 'metric').text).toBe('≈240 ml (packed)');
+  });
+
+  it('does not leave the full stop of "fl. oz." behind', () => {
+    expect(convertQuantity('2 fl. oz.', 'metric').text).toBe('≈60 ml');
+  });
+});

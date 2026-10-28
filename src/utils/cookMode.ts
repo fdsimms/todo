@@ -107,7 +107,7 @@ export function cookNotesPanel(recipe: Recipe): { text: string; preview: string 
 }
 
 /**
- * Take a leading "1.", "2)", "(3)", "Step 4:", "-" or "•" off a step.
+ * Take a leading "1.", "2)", "(3)", "Step 4:", "Step 5 -", "-" or "•" off a step.
  *
  * Cook mode numbers the steps itself, so a blob that already numbers them
  * would otherwise read "1. 1. Preheat the oven". Only ever a *leading*
@@ -117,7 +117,7 @@ export function cookNotesPanel(recipe: Recipe): { text: string; preview: string 
  */
 function stripEnumerator(text: string): string {
   const stripped = text.replace(
-    /^(?:\(?\d{1,3}[.):]|(?:step|Step|STEP)\s*\d{1,3}\s*[.):]?|[-–—•*])\s+/,
+    /^(?:\(?\d{1,3}[.):]|(?:step|Step|STEP)\s*\d{1,3}\s*[.):\-–—]?|[-–—•*])\s+/,
     ''
   );
   return stripped.trim() || text;

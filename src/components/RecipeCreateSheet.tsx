@@ -359,8 +359,13 @@ export function RecipeCreateSheet({
     resetComponents();
   }, [resetInput, resetComponents]);
 
+  // Which opening of the sheet a request belongs to (see `stillOpenFor`).
+  const openingRef = useRef(0);
   useEffect(() => {
-    if (!visible) reset();
+    if (!visible) {
+      openingRef.current += 1;
+      reset();
+    }
   }, [visible, reset]);
 
   // `run` below awaits a network call that easily outlives a cancel — the
@@ -369,6 +374,9 @@ export function RecipeCreateSheet({
   // dependency, so a cancel mid-request is seen without re-running `run`.
   const visibleRef = useRef(visible);
   useEffect(() => { visibleRef.current = visible; }, [visible]);
+  // Open is not enough: after a Cancel and a reopen the sheet is open again,
+  // and a reply to the cancelled run filled the review on top of the new one.
+  const stillOpenFor = (opening: number) => visibleRef.current && openingRef.current === opening;
 
   // `input` keeps its own `mode` and `url` state, and both only pick up the
   // props on first mount — while this sheet stays mounted for the screen's whole
@@ -391,12 +399,16 @@ export function RecipeCreateSheet({
 
   // ==== running the extraction ====
   const extract = useCallback(async () => {
+    const opening = openingRef.current;
     setLoading(true);
     setError(null);
     try {
       // A link is fetched first; a paste and a photo resolve to themselves.
       const resolved = await resolveSource();
       if (!resolved) return;
+      // Cancelled while the page was fetched: the paid extraction below isn't
+      // made for a sheet nobody is looking at.
+      if (!stillOpenFor(opening)) return;
       // No key: the page's own structured data, read with no model at all.
       // The same `ExtractedRecipe` shape comes back, so everything below and
       // the whole review list is the same sheet either way.
@@ -409,7 +421,7 @@ export function RecipeCreateSheet({
             : null)
         : await extractRecipe(resolved.source, [...aisleOrder]);
       if (!result) {
-        if (visibleRef.current) {
+        if (stillOpenFor(opening)) {
           setError(
             'This page doesn’t list its recipe in a standard format. '
             + 'Add an Anthropic API key in Settings to import it.',
@@ -421,7 +433,7 @@ export function RecipeCreateSheet({
       // Canceled while the request was in flight: don't repopulate a sheet
       // the user already discarded — it would silently reappear filled in
       // the next time this sheet opens.
-      if (!visibleRef.current) return;
+      if (!stillOpenFor(opening)) return;
       setExtracted(result);
       setGroundingText(
         keyless ? null
@@ -464,12 +476,14 @@ export function RecipeCreateSheet({
       setSourcePageText(source.page);
       setImportedSourceType(source.sourceType);
     } catch (e) {
-      if (visibleRef.current) {
-        setError(describeImportError(e));
+      if (stillOpenFor(opening)) {
+        setError(describeImportError(e, undefined, { keyless }));
         setCanRetry(isRetryableImportError(e));
       }
     } finally {
-      setLoading(false);
+      // Only this opening's spinner: a stale run finishing must not hide the
+      // spinner of the one now running.
+      if (openingRef.current === opening) setLoading(false);
     }
   }, [resolveSource, aisleOrder, keyless, rememberedAisleFor]);
 

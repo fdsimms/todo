@@ -502,6 +502,15 @@ function RecipesList() {
     return map;
   }, [grouped]);
 
+  // The recipes on screen, for Select all: a folded section's recipes are not,
+  // and picking them too meant a bulk delete reached recipes nobody could see.
+  const selectable = useMemo(
+    () => (grouped && collapsedSections.size > 0
+      ? visible.filter(r => !collapsedSections.has(recipeSectionKey(r.mealType)))
+      : visible),
+    [grouped, collapsedSections, visible],
+  );
+
   // `draggableData` with a collapsed section's recipe rows dropped — what
   // ReorderableList actually renders and drags. Headers always stay (see the
   // doc comment above), which is also what keeps row 0 a header for
@@ -1006,7 +1015,7 @@ function RecipesList() {
       {selectionMode && (
         <ListBulkBar
           selectedCount={selectedIds.size}
-          totalCount={visible.length}
+          totalCount={selectable.length}
           category={{
             title: 'Move to meal type',
             noun: 'a meal type',
@@ -1023,7 +1032,7 @@ function RecipesList() {
             },
             { key: 'delete', icon: 'trash', label: BUTTON_LABEL.delete, tone: 'destructive', onPress: handleBulkDelete },
           ]}
-          onSelectAll={() => selectAll(visible.map(r => r.id))}
+          onSelectAll={() => selectAll(selectable.map(r => r.id))}
           onDeselectAll={deselectAll}
           onCancel={exitSelection}
           bottomInset={tabBarHeight}

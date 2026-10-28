@@ -33,6 +33,11 @@ const SCHEME = /^([a-z][a-z0-9+.-]*):\/\//i;
  * Two refusals are deliberate rather than tidied up: a host with no dot is a
  * machine on the local network rather than a recipe site, and `user@host` is the
  * shape a link takes when it wants to be read as a different host than it opens.
+ *
+ * A fragment is dropped: it is never sent to the server, so it can't change
+ * the page, and blogs' "Jump to recipe" links add one ("#recipe"), which made
+ * a page already imported, or already queued from the share sheet, look new.
+ * A hash route ("#/recipes/12", "#!/…") is kept, since there it is the page.
  */
 export function normalizeRecipeUrl(input: string): string | null {
   const trimmed = input.trim();
@@ -44,7 +49,7 @@ export function normalizeRecipeUrl(input: string): string | null {
 
   const cut = withoutScheme.search(/[/?#]/);
   const authority = cut === -1 ? withoutScheme : withoutScheme.slice(0, cut);
-  const path = cut === -1 ? '' : withoutScheme.slice(cut);
+  const path = (cut === -1 ? '' : withoutScheme.slice(cut)).replace(/#(?![/!]).*$/, '');
   if (!authority || authority.includes('@')) return null;
 
   const portAt = authority.lastIndexOf(':');
@@ -140,7 +145,10 @@ export function htmlToText(html: string): string {
     .replace(NON_TEXT_ELEMENTS, ' ')
     .replace(BLOCK_EDGE, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]*>/g, '');
+    // Only what can open a tag: a letter, "/", "!" or "?". A bare "<" is text
+    // ("until it reads < 165F, then rest > 5 min"), and stripping from it to
+    // the next ">" deleted the words between them.
+    .replace(/<[a-z/!?][^>]*>/gi, '');
   return decodeEntities(stripped)
     .replace(/\r\n?/g, '\n')
     .replace(/[^\S\n]+/g, ' ')
@@ -191,18 +199,23 @@ export interface PageRecipe {
   publisher: string | null;
 }
 
-const ISO_DURATION = /^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:[\d.]+S)?)?$/i;
+// Years and months are read so the zero ones plugins write ("P0Y0M0DT0H35M0S")
+// parse, and refused when set, since neither is a length of time in minutes.
+// Hours and minutes may be fractional ("PT0.5H", "PT7.5M").
+const ISO_DURATION = /^P(?:(\d+)Y)?(?:(\d+)M)?(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:[\d.]+S)?)?$/i;
 
 /** `"PT1H30M"` → 90. Null for anything that isn't a positive duration. */
 export function parseIsoDuration(value: unknown): number | null {
   if (typeof value !== 'string') return null;
   const match = ISO_DURATION.exec(value.trim());
   if (!match) return null;
-  const minutes =
-    Number(match[1] ?? 0) * 7 * 24 * 60 +
-    Number(match[2] ?? 0) * 24 * 60 +
-    Number(match[3] ?? 0) * 60 +
-    Number(match[4] ?? 0);
+  if (Number(match[1] ?? 0) > 0 || Number(match[2] ?? 0) > 0) return null;
+  const minutes = Math.round(
+    Number(match[3] ?? 0) * 7 * 24 * 60 +
+    Number(match[4] ?? 0) * 24 * 60 +
+    Number(match[5] ?? 0) * 60 +
+    Number(match[6] ?? 0),
+  );
   return minutes > 0 ? minutes : null;
 }
 
@@ -228,6 +241,9 @@ function collectRecipes(value: unknown, out: Node[], depth = 0): void {
   const node = value as Node;
   if (typeMatches(node['@type'], 'Recipe')) out.push(node);
   if (node['@graph']) collectRecipes(node['@graph'], out, depth + 1);
+  // A page that describes itself and names the recipe as what it's about:
+  // { "@type": "WebPage", "mainEntity": { "@type": "Recipe", … } }.
+  if (node.mainEntity) collectRecipes(node.mainEntity, out, depth + 1);
 }
 
 function asText(value: unknown): string | null {
@@ -241,7 +257,9 @@ function asText(value: unknown): string | null {
 
 /** `author`/`publisher`: a string, a `{name}`, or an array of either. */
 function nameOf(value: unknown): string | null {
-  if (typeof value === 'string') return value.trim() || null;
+  // Decoded like every other text field (`asText`): "Ren&eacute;e" is a name
+  // as a page encodes it, not as anyone writes it.
+  if (typeof value === 'string') return decodeEntities(value).trim() || null;
   if (Array.isArray(value)) {
     for (const entry of value) {
       const name = nameOf(entry);
@@ -251,7 +269,7 @@ function nameOf(value: unknown): string | null {
   }
   if (value && typeof value === 'object') {
     const name = (value as Node).name;
-    if (typeof name === 'string') return name.trim() || null;
+    if (typeof name === 'string') return decodeEntities(name).trim() || null;
   }
   return null;
 }
@@ -545,6 +563,9 @@ export interface ParsedRecipePage {
   structured: boolean;
 }
 
+/** What sits between a published ingredient list and the page text sent with it. */
+const METHOD_FROM_PAGE = '\n\nThe page as published, for the method:\n';
+
 /**
  * One page of HTML, reduced to what the import needs.
  *
@@ -563,8 +584,17 @@ export function parseRecipePage(html: string, limit: number): ParsedRecipePage {
   const siteName = metaContent(html, 'og:site_name') ?? structured?.publisher ?? null;
 
   if (structured && structured.ingredients.length > 0) {
+    // A page publishing its ingredients but no method: the readable page
+    // follows the list, so the model can read the method off it the way it
+    // does for a page with no markup at all. Sent the list alone, the import
+    // came back with no method. `steps` stays structured-only either way.
+    const listed = recipeToPlainText(structured);
+    const room = limit - listed.length - METHOD_FROM_PAGE.length;
+    const text = structured.steps.length === 0 && room > 0
+      ? `${listed}${METHOD_FROM_PAGE}${focusRecipeText(htmlToText(html), room)}`
+      : focusRecipeText(listed, limit);
     return {
-      text: focusRecipeText(recipeToPlainText(structured), limit),
+      text,
       title: structured.name,
       siteName,
       author: structured.author,

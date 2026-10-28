@@ -5,8 +5,9 @@
 //
 //   ==== <name> ====        the section banners through the logic half
 //   makeStyles              styles, at the bottom
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useContext, useState, useEffect, useMemo, useRef } from 'react';
 import {
+  Alert,
   View,
   Text,
   TouchableOpacity,
@@ -15,6 +16,9 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
+import { EmbeddedPaneContext } from './EmbeddedRoute';
+import { AmountUnitField } from './AmountUnitField';
+import { ingredientAmountGroups } from '../utils/amountUnit';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient } from '../types';
 import {
@@ -35,7 +39,7 @@ import { groceryNameKey, splitAlternativeNames } from '../utils/groceryParse';
 import { varietyOfferFor } from '../utils/itemVarieties';
 import { matchIngredientToCatalog } from '../utils/ingredientCatalogMatch';
 import { catalogItemForKey } from '../utils/groceryPlural';
-import { cleanChoiceGroup, defaultChoiceGroupLabel, splitIngredientAnd as andPartsOf, type AndSplitPart } from '../utils/recipeUtils';
+import { cleanChoiceGroup, defaultChoiceGroupLabel, ingredientDedupeKey, splitIngredientAnd as andPartsOf, type AndSplitPart } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { allSectionsOf } from '../utils/recipeSections';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -66,6 +70,9 @@ interface Props {
 }
 
 /** "1 cup flour": a part of an "and" split as the new line will read. */
+/** The ingredient's unit menu. Built once: the field reads its units from it on every render. */
+const INGREDIENT_AMOUNT_GROUPS = ingredientAmountGroups();
+
 const andPartLabel = (part: AndSplitPart) => [part.quantity, part.name].filter(Boolean).join(' ');
 
 /**
@@ -104,6 +111,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
+  const embedded = useContext(EmbeddedPaneContext);
 
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
   const splitIngredientAlternatives = useRecipeStore(s => s.splitIngredientAlternatives);
@@ -303,8 +311,39 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   }, [askPan, ingredient, allRecipes, recipeId, groceryItems, itemProducts, quantity, prep, cookingShare]);
 
   // ==== save and close ====
+  // Every way out writes the drafts first: Done, and also opening a recipe or
+  // a setting from the catalog card, splitting the line or merging it back.
+  // Those closed with a bare `onClose`, so an edited amount was lost, and a
+  // split cloned the stored row rather than what was on screen.
   const saveAndClose = () => {
-    if (!ingredient) { onClose(); return; }
+    if (commitEdits()) onClose();
+  };
+
+  /** Writes the drafts; false (with an alert) when they would duplicate another line. */
+  const commitEdits = (): boolean => {
+    if (!ingredient) return true;
+    // The add paths refuse a second line with the same name, heading, prep and
+    // purpose, and an edit into that shape made the same duplicate. Checked
+    // only when this edit changes one of those, so a duplicate already on the
+    // recipe doesn't block saving something else.
+    const edited = {
+      ...ingredient,
+      nameKey: name.trim() && name.trim() !== ingredient.name ? groceryNameKey(name.trim()) : ingredient.nameKey,
+      section: section.trim() || null,
+      prep: prep.trim() || null,
+      purpose: purpose.trim() || null,
+    };
+    if (ingredientDedupeKey(edited) !== ingredientDedupeKey(ingredient)) {
+      const clash = allRecipes.find(r => r.id === recipeId)?.ingredients
+        .find(i => i.id !== ingredient.id && ingredientDedupeKey(i) === ingredientDedupeKey(edited));
+      if (clash) {
+        Alert.alert(
+          'That name is taken',
+          `This recipe already has a “${clash.name}” line${edited.section ? ` under ${edited.section}` : ''}. Change this one, or remove the other.`,
+        );
+        return false;
+      }
+    }
     // Tapping Done can beat the group name field's own blur — flush it here
     // instead of trusting stale `choiceGroup` state.
     const typedChoiceGroup = editingGroupName ? commitGroupRename() : cleanChoiceGroup(choiceGroup);
@@ -331,7 +370,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
       cookedInPan,
       excludeFromShoppingList,
     });
-    onClose();
+    return true;
   };
 
   if (!ingredient) return null;
@@ -440,6 +479,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
   const acceptAndSplit = () => {
     if (!ingredient || !andOffer) return;
+    if (!commitEdits()) return;
     if (!splitIngredientAnd(recipeId, ingredient.id)) { haptics.error(); return; }
     haptics.success();
     animateLayout();
@@ -448,6 +488,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
   const acceptSplit = () => {
     if (!ingredient || !alternatives) return;
+    if (!commitEdits()) return;
     const created = splitIngredientAlternatives(
       recipeId, ingredient.id, alternatives, splitGroupName
     );
@@ -528,6 +569,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
   const mergeBack = () => {
     if (!ingredient) return;
+    if (!commitEdits()) return;
     const merged = mergeChoiceGroup(recipeId, ingredient.id);
     if (!merged) return;
     haptics.success();
@@ -720,16 +762,14 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
         <View style={styles.separator} />
 
         <Text style={styles.groupLabel}>How much</Text>
-        <TextField
-          ref={quantityInputRef}
-          style={styles.input}
+        <AmountUnitField
+          name="RecipeIngredientSheet unit"
+          inputRef={quantityInputRef}
           value={quantity}
           onChangeText={setQuantity}
+          groups={INGREDIENT_AMOUNT_GROUPS}
           returnKeyType="next"
-          blurOnSubmit={false}
           onSubmitEditing={() => prepInputRef.current?.focus()}
-          placeholder="e.g. 2 lb"
-          placeholderTextColor={colors.textTertiary}
           maxLength={RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH}
           accessibilityLabel="Quantity"
         />
@@ -1216,11 +1256,18 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
         itemId={editingItemId}
         onClose={() => setEditingItemId(null)}
         onOpenRecipe={openRecipeId => {
+          if (!commitEdits()) return;
           setEditingItemId(null);
           onClose();
-          navigation.navigate('RecipeDetail', { recipeId: openRecipeId });
+          // Pushed, not navigated: this sheet sits on a recipe's own page, and
+          // navigating to the same route swapped the params in place, carrying
+          // this recipe's half-typed notes and step drafts onto the next one.
+          // In a pane, navigate is what replaces the pane's recipe.
+          if (embedded) navigation.navigate('RecipeDetail', { recipeId: openRecipeId });
+          else navigation.push('RecipeDetail', { recipeId: openRecipeId });
         }}
         onOpenSettings={entryId => {
+          if (!commitEdits()) return;
           setEditingItemId(null);
           onClose();
           navigateToFoodSearchSettings(navigation, entryId);

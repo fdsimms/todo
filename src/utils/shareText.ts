@@ -4,7 +4,7 @@ import { cookedDishes, flattenRecipeIngredients, stepOptionNames, type FlatIngre
 import { ingredientHeadings } from './recipeSections';
 import { describeAttribution, formatServingsRange, totalMinutes } from './recipeUtils';
 import { formatDuration } from './effort';
-import { scaleQuantity, scaleServings } from './recipeScale';
+import { describeUnscaled, scaleQuantity, scaleServings } from './recipeScale';
 import { convertQuantity, convertScaledQuantity, showContainerCount, type UnitSystem } from './unitConvert';
 import { ingredientWeightText, type WeightLookups } from './lineWeight';
 import { dayKeyOf } from './dateUtils';
@@ -235,6 +235,10 @@ export function buildRecipeShareText(
       if (section) lines.push(`${section}:`);
       lines.push(`- ${formatShareIngredientRow(row, scale, unitSystem, weights)}`);
     });
+    // A doubled list sent with "a pinch" in it reads as the app's arithmetic
+    // unless it says which lines it left alone, the way the page does.
+    const unscaled = unscaledNoteFor(recipe, recipesById, scale);
+    if (unscaled) lines.push(`(${unscaled}.)`);
   }
 
   if (recipe.steps.length > 0) {
@@ -260,6 +264,24 @@ export function buildRecipeShareText(
   }
 
   return lines.join('\n');
+}
+
+/**
+ * The scaled list's footnote ("2 ingredients couldn't be scaled
+ * automatically…") counted over every line the list shows, a used recipe's
+ * and every either/or option included, so the recipe page, the share and the
+ * printout all say the same thing. Null at a factor of 1. Only a line with a
+ * quantity can fail to scale; one with none was never going to say a number.
+ */
+export function unscaledNoteFor(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+  scale: number,
+): string | null {
+  const count = shareIngredientRows(recipe, recipesById)
+    .flatMap(row => row.options)
+    .filter(o => o.quantity.trim() && !scaleQuantity(o.quantity, scale).scaled).length;
+  return describeUnscaled(count, scale);
 }
 
 /** "Serves 12" at the scale the screen shows, or null when the recipe states no servings. */

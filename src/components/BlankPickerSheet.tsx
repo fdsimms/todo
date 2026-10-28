@@ -37,14 +37,21 @@ import {
   shareOfBlank,
   withBlankFill,
 } from '../utils/recipeBlanks';
+import { entryResolution } from '../utils/recipeComponents';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, type MealPlanEntry, type Recipe, type RecipeBlank, type RecipeOverride } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { AmountUnitField } from './AmountUnitField';
+import { ingredientAmountGroups } from '../utils/amountUnit';
+
+/** A pick's unit menu, the one an ingredient's own amount uses: each pick becomes an ingredient line. */
+const AMOUNT_GROUPS = ingredientAmountGroups();
 
 /**
  * What the picker needs to know about the cooking it fills: a planned meal, or
  * cook mode's own (which has no entry, so it stands one in).
  */
-export type BlankPickerSubject = Pick<MealPlanEntry, 'id' | 'recipeId' | 'date' | 'recipeOverrides'>;
+export type BlankPickerSubject = Pick<MealPlanEntry, 'id' | 'recipeId' | 'date' | 'recipeOverrides'>
+  & Partial<Pick<MealPlanEntry, 'recipeChoices'>>;
 
 interface Props {
   visible: boolean;
@@ -95,7 +102,16 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
   const updateBlank = useRecipeStore(s => s.updateBlank);
   const entries = useMealPlanStore(s => s.entries);
 
-  const blanks = useMemo(() => (recipe ? recipeBlanksIn(recipe, recipesById) : []), [recipe, recipesById]);
+  // Only the blanks this cooking's picks keep: one on the side of an either/or
+  // it isn't cooking would be pre-picked and saved with nobody choosing it.
+  const blanks = useMemo(
+    () => (recipe
+      ? recipeBlanksIn(recipe, recipesById, entryResolution(
+        entry && { recipeChoices: entry.recipeChoices ?? [], recipeOverrides: entry.recipeOverrides },
+      ))
+      : []),
+    [recipe, recipesById, entry?.recipeChoices, entry?.recipeOverrides],
+  );
   const kitchen = useMemo(() => kitchenInventory(items, [], new Date(), itemProducts), [items, itemProducts]);
   const last = useMemo(() => (entry ? lastBlankFill(entries, entry) : null), [entries, entry]);
 
@@ -432,12 +448,12 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
                   return (
                     <View key={key} style={styles.amountEditRow}>
                       <Text style={styles.amountName} numberOfLines={1}>{name}</Text>
-                      <TextField
-                        style={[styles.input, styles.amountInput]}
+                      <AmountUnitField
+                        name="BlankPickerSheet unit"
+                        style={styles.amountInput}
                         value={value}
                         onChangeText={text => setAmount(blank, key, text)}
-                        placeholder="e.g. 1 cup"
-                        placeholderTextColor={colors.textTertiary}
+                        groups={AMOUNT_GROUPS}
                         maxLength={GROCERY_QUANTITY_MAX_LENGTH}
                         accessibilityLabel={`Amount of ${name}`}
                       />

@@ -463,6 +463,13 @@ describe('describeComponents', () => {
     expect(describeComponents(recipe('r1', 'A', { components: [link('r2', 'B'), link('r3', 'C')] })))
       .toBe('2 components');
   });
+
+  it('counts two parts’ same-named choices as two', () => {
+    const tacos = recipe('r2', 'Tacos', { ingredients: [ing('Cheddar', 'Cheese'), ing('Jack', 'Cheese')] });
+    const nachos = recipe('r3', 'Nachos', { ingredients: [ing('Cotija', 'Cheese'), ing('Feta', 'Cheese')] });
+    const plate = recipe('r1', 'Plate', { components: [link('r2', 'Tacos'), link('r3', 'Nachos')] });
+    expect(describeComponents(plate, recipeMap([plate, tacos, nachos]))).toBe('2 components with 2 ingredients');
+  });
 });
 
 describe('choice groups', () => {

@@ -993,3 +993,20 @@ describe('splitQuantityNote', () => {
     expect(splitQuantityNote('a pinch, or more')).toEqual({ quantity: 'a pinch, or more', note: null });
   });
 });
+
+describe('parseGroceryInput: recipe-site amount shapes', () => {
+  it('reads "1-1/2 cups" as a mixed number', () => {
+    expect(parseGroceryInput('1-1/2 cups flour')).toEqual({ name: 'flour', quantity: '1 1/2 cups' });
+    expect(parseGroceryInput('1-2 eggs')).toEqual({ name: 'eggs', quantity: '1-2' });
+  });
+
+  it('keeps both halves of a metric/imperial amount, the second as an aside', () => {
+    expect(parseGroceryInput('200g/7oz plain flour')).toEqual({ name: 'plain flour', quantity: '200 g (7 oz)' });
+    expect(parseGroceryInput('100g / 3.5oz caster sugar')).toEqual({ name: 'caster sugar', quantity: '100 g (3.5 oz)' });
+    expect(parseGroceryInput('1 cup/240ml milk')).toEqual({ name: 'milk', quantity: '1 cup (240 ml)' });
+  });
+
+  it('leaves a slash that is not between two measures alone', () => {
+    expect(parseGroceryInput('and/or salt').name).toBe('and/or salt');
+  });
+});

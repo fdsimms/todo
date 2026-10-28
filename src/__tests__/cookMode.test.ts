@@ -365,3 +365,9 @@ describe('cook text size', () => {
     expect(sizes).toEqual([...sizes].sort((a, b) => a - b));
   });
 });
+
+describe('stepsFromNotes: "Step 1 - Preheat"', () => {
+  it('takes a dash after a step number off with the number', () => {
+    expect(stepsFromNotes('Step 1 - Preheat the oven.\nStep 2 – Mix.')).toEqual(['Preheat the oven.', 'Mix.']);
+  });
+});

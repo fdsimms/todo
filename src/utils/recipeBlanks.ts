@@ -4,6 +4,7 @@ import { isFoodKind, FOOD_KIND_LABELS } from './foodKinds';
 import { groceryNameKey } from './groceryParse';
 import { generateId } from './id';
 import { scaleQuantity } from './recipeScale';
+import { activeComponents, type ChoiceResolution } from './recipeComponents';
 
 /**
  * A recipe's blanks (`RecipeBlank`) and what one cooking fills them with.
@@ -173,10 +174,18 @@ export function isBlankFill(override: RecipeOverride): boolean {
   return override.fill !== undefined;
 }
 
-/** Every blank on the recipe and the parts it uses, with the recipe each sits on. */
+/**
+ * Every blank on the recipe and the parts it uses, with the recipe each sits on.
+ *
+ * With a `resolution`, only the parts that cooking keeps (`activeComponents`):
+ * a blank on the side of an either/or the meal isn't cooking is not one to
+ * fill, and offering it saved a pre-picked fill nobody chose. Without one,
+ * every part, which is the recipe-level read the authoring screens want.
+ */
 export function recipeBlanksIn(
   recipe: Recipe,
   recipesById: ReadonlyMap<string, Recipe>,
+  resolution?: ChoiceResolution,
 ): { blank: RecipeBlank; recipe: Recipe }[] {
   const out: { blank: RecipeBlank; recipe: Recipe }[] = [];
   const seen = new Set<string>();
@@ -184,7 +193,7 @@ export function recipeBlanksIn(
     if (seen.has(node.id)) return;
     seen.add(node.id);
     for (const blank of node.blanks ?? []) out.push({ blank, recipe: node });
-    for (const link of node.components) {
+    for (const link of resolution ? activeComponents(node, resolution) : node.components) {
       const target = recipesById.get(link.recipeId);
       if (target) walk(target);
     }

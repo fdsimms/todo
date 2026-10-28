@@ -253,3 +253,24 @@ describe('a fill through the rest of the recipe machinery', () => {
     expect(describeBlankFills(bowl, byId, [])).toBeNull();
   });
 });
+
+describe('recipeBlanksIn under a meal’s picks', () => {
+  const grainBase = recipe('grain-base', 'Grain base', { blanks: [blank({ label: 'Grain', kind: 'grain' })] });
+  const saladBase = recipe('salad-base', 'Salad base', { blanks: [blank({ label: 'Greens', kind: 'vegetable' })] });
+  const bowl = recipe('bowl2', 'Bowl', {
+    components: [
+      { id: 'c-grain', recipeId: grainBase.id, name: 'Grain base', choiceGroup: 'Base' },
+      { id: 'c-salad', recipeId: saladBase.id, name: 'Salad base', choiceGroup: 'Base' },
+    ],
+  });
+  const byId = recipeMap([bowl, grainBase, saladBase]);
+
+  it('lists only the blanks on the side the meal is cooking', () => {
+    const picked = entryResolution({ recipeChoices: ['c-salad'], recipeOverrides: [] });
+    expect(recipeBlanksIn(bowl, byId, picked).map(b => b.blank.label)).toEqual(['Greens']);
+  });
+
+  it('lists every part’s blanks with no cooking in hand', () => {
+    expect(recipeBlanksIn(bowl, byId).map(b => b.blank.label)).toEqual(['Grain', 'Greens']);
+  });
+});

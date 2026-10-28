@@ -40,10 +40,15 @@ import { isOpenEnded } from '../../utils/listMode';
  * recipe's `image_path` back exactly as the backup held it, which is the
  * *origin* device's path and generally not a file that exists here. This
  * writes each embedded photo into this device's own recipe-images directory
- * and repoints the row at that — clearing it instead when the backup has no
- * matching bytes (an older backup taken before this shipped, or a photo that
- * failed to read at export time), so a dangling path doesn't linger as a
- * permanently blank image.
+ * and repoints the row at that.
+ *
+ * When the backup has no bytes for a photo (it was never on the exporting
+ * device, as on one that syncs only through a server, or it failed to read)
+ * the row keeps its path. Every reader resolves a path by its file name and
+ * says when the photo isn't on this device (`recipeImageOnDevice`), so a
+ * kept path is a photo that may still arrive by sync. Clearing it was a
+ * delete: the restore stamps every row as changed here, so the cleared path
+ * went out to every other device and each one removed its copy.
  */
 function restoreRecipeImages(backup: Backup): number {
   let failed = 0;
@@ -60,11 +65,8 @@ function restoreRecipeImages(backup: Backup): number {
       try {
         dbSetRecipeImagePath(id, writeRecipeImageFile(basename, base64));
       } catch {
-        dbSetRecipeImagePath(id, null);
         failed++;
       }
-    } else {
-      dbSetRecipeImagePath(id, null);
     }
   }
   return failed;

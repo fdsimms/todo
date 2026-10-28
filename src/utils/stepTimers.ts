@@ -209,15 +209,26 @@ function rawMatches(text: string): RawMatch[] {
 
     // A compound only merges downwards: "1 hour 20 minutes" is one duration,
     // where "20 minutes, 1 hour later" is two things the sentence said.
-    if (tailRaw !== undefined && tailUnitRaw !== undefined && maxSeconds === null) {
+    let length = whole.length;
+    if (tailRaw !== undefined && tailUnitRaw !== undefined) {
       const tailUnit = UNIT_SECONDS[unitKey(tailUnitRaw)];
       const tail = numberValue(tailRaw);
-      if (tail !== null && tailUnit < unit) seconds += tail * tailUnit;
+      if (maxSeconds === null && tail !== null && tailUnit < unit) {
+        seconds += tail * tailUnit;
+      } else {
+        // Not merged ("5 minutes and 10 minutes", "25-30 minutes and 5 minutes
+        // more"), so the second duration is its own: this match ends before
+        // it, and the scan resumes there so the second one is offered too
+        // rather than swallowed into the first chip's label.
+        const tailAt = whole.lastIndexOf(tailRaw, whole.length - tailUnitRaw.length);
+        length = whole.slice(0, tailAt).replace(/\s*(?:and\s*)?$/i, '').length;
+        DURATION_PATTERN.lastIndex = match.index + length;
+      }
     }
 
     const lead = EVERY_LEAD.exec(text.slice(0, match.index));
     const start = lead ? lead.index : match.index;
-    const end = match.index + whole.length;
+    const end = match.index + length;
     out.push({
       start,
       end,
