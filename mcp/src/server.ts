@@ -85,6 +85,7 @@ import { addProjectSteps, createProject, deleteProject, getProject, nextInProjec
 import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, catalogAudit, listBrands, mergeGroceryItems, mergeGroceryItemsMany, updateGroceryItems, renameBrand, renameBrands, renameGroceryList, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { deleteCookbook, listCookbooks, logCookTime, mergeCookbooks, renameCookbook } from './recipeTools';
+import { lintRecipes } from './recipeLint';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, copyMeals, getRecipe, listMealPlan, listRecipes, planMeal, removeMeal, saveMealAsRecipe, setMealCooked, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, addPersonNote, createPerson, deletePerson, deletePersonNote, savePersonGroup, updatePerson, updatePersonNote, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
@@ -121,7 +122,7 @@ import { setVacationMode } from './vacationTools';
 import { withLogSyncNote } from './logSync';
 import { getSettings, updateSettings } from './settingsTools';
 import { SETTINGS_SPEC } from './settingsSpec';
-import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, renameTag, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
+import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, renameTag, setCompletionDate, setTaskDates, skipOccurrence, unlogTargetUnit } from './taskTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
 import { generateId } from '../../src/utils/id';
@@ -1067,14 +1068,26 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_recipes',
-    'Recipes, alphabetically. query matches the name, a tag or an ingredient ("spinach").',
+    'Recipes, alphabetically, 50 to a page (matched says how many there are; offset takes the next page). query matches the name, a tag or an ingredient ("spinach"). A row says noSteps or noIngredients when the recipe has none. To find recipes with something left blank use missing, or mealType "none" for the ones with no meal type; to find formatting problems inside recipes use lint_recipes.',
     {
       query: z.string().optional(),
-      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'side', 'condiment', 'snack', 'dessert', 'beverage']).optional(),
+      mealType: z.enum(['breakfast', 'lunch', 'dinner', 'side', 'condiment', 'snack', 'dessert', 'beverage', 'none']).optional(),
       upNext: z.boolean().optional().describe('Only the recipes on the "Up next" shelf.'),
+      missing: z.enum(['steps', 'ingredients', 'servings', 'minutes', 'mealType']).optional().describe('Only recipes with this field empty.'),
       limit: z.number().int().positive().optional(),
+      offset: z.number().int().min(0).optional().describe('Rows to skip, to read past the first 50.'),
     },
     async input => json(await withFresh(() => listRecipes(replica, input)))
+  );
+
+  server.tool(
+    'lint_recipes',
+    'Formatting problems across the recipes, in one call: an ingredient amount that holds a note or prep ("1 cup, melted", "1 cup shredded (about 5"), a size or metric in parentheses, an "or" alternative, an unclosed parenthesis; a source link with tracking parameters; a recipe with no steps or no ingredients; the "New recipe" placeholder. Each finding quotes the text and numbers the ingredient the way get_recipe and patch_recipe do. Reads only; fix with patch_recipe (replaceIngredient, with expect). Style choices (fractions, tbsp or tablespoon, title case) are not flagged.',
+    {
+      id: z.string().min(1).optional().describe('One recipe. Omit to check every recipe.'),
+      codes: z.array(z.enum(['quantity-unclosed-paren', 'quantity-parenthetical', 'quantity-note', 'quantity-alternative', 'source-tracking-url', 'no-steps', 'no-ingredients', 'placeholder-name'])).optional().describe('Only these checks.'),
+    },
+    async input => json(await withFresh(() => lintRecipes(replica.recipes(), input)))
   );
 
   server.tool(
@@ -3078,6 +3091,19 @@ function registerWriteTools(
         return json(withLink(await withWrite(() => skipOccurrence(replica, id)), LINKS?.task(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not skip it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'unlog_target_unit',
+    "Take back the latest unit logged on a daily or weekly target (\"Read 1/5\" becomes 0/5), as the meter's undo does in the app. Only when the person says a tap was a mistake. get_task's target.loggedAt says when each unit was logged. The unit's coins and dose are taken back with it, and a streak that counts units falls by one. One unit per call; a finished target is reopened with reopen_task instead.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(withLink(await withWrite(() => unlogTargetUnit(replica, id)), LINKS?.task(id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not take back the unit.' });
       }
     }
   );

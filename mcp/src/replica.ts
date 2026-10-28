@@ -1874,6 +1874,13 @@ export interface Replica {
   /** Roll a repeating task onto its next occurrence with no completion: the app's "Skip" (`skipPatch`). */
   skipOccurrence(id: string): Task;
   /**
+   * Take back the latest unit logged on a daily or weekly target, as the app's
+   * undo on the meter does: the count, the unit's time, its coins and its dose
+   * go, and a streak that counts units falls by one. Refused where the unit also
+   * wrote to the food log, which this server cannot reverse.
+   */
+  unlogTargetUnit(id: string): Task;
+  /**
    * Hand-order one list: a project's open steps (their slots in the one
    * sortOrder space, `slotUpdates`), a task's checklist, or the Pinned block.
    * The named rows go first in the order given and the rest keep their order
@@ -6347,6 +6354,31 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         freshPinnedOrder: 0,
         dayResetTime: useSettingsStore.getState().dayResetTime,
       });
+      db.dbUpdateTask(updated);
+      refresh();
+      return updated;
+    },
+
+    unlogTargetUnit(id: string): Task {
+      const task = tasks().find(t => t.id === id);
+      if (!task) throw new Error(`No task with id ${id}.`);
+      if (!visibility.isQuotaTask(task)) throw new Error(`"${task.title}" has no daily or weekly target to take a unit back from.`);
+      if (task.completed || task.archived) throw new Error('Only an open target has logged units to take back. Use reopen_task for a finished one.');
+      if (task.progressCount === 0) throw new Error(`"${task.title}" has nothing logged this period.`);
+      if (task.logHealthMetric && task.logHealthAmount) {
+        throw new Error(`Each unit of "${task.title}" also wrote to the food log, which this server cannot take back. Undo it in the app.`);
+      }
+      // Coins and the dose first, as unlogQuotaUnit does: both were written by the tap.
+      useRewardStore.getState().takeBackTap(id, task.progressCount);
+      if (medication.medicationFor(task)) useMedicationStore.getState().removeLatestLogForTask(id);
+      const { countsUnits } = require('../../src/utils/streakUnits') as typeof import('../../src/utils/streakUnits');
+      const updated: Task = {
+        ...task,
+        progressCount: task.progressCount - 1,
+        quotaLoggedDayKey: null,
+        quotaTapTimes: (task.quotaTapTimes ?? []).slice(0, -1),
+        ...(countsUnits(task) && task.streakCount > 0 ? { streakCount: task.streakCount - 1 } : {}),
+      };
       db.dbUpdateTask(updated);
       refresh();
       return updated;

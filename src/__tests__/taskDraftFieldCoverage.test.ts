@@ -26,7 +26,7 @@ const NOT_NAMED: Record<string, string[]> = {
 
   // Per-occurrence state a new row starts without: the day a unit was last
   // logged is stamped by logQuotaUnit, and a draft has logged nothing.
-  'stamped by logging, never by a draft': ['quotaLoggedDayKey'],
+  'stamped by logging, never by a draft': ['quotaLoggedDayKey', 'quotaTapTimes'],
 };
 
 const ALL_NOT_NAMED = Object.values(NOT_NAMED).flat();

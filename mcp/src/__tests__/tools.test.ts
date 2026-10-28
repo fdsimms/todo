@@ -172,6 +172,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     setTaskArchived: () => { throw new Error('not stubbed'); },
     deleteTask: () => { throw new Error('not stubbed'); },
     skipOccurrence: () => { throw new Error('not stubbed'); },
+    unlogTargetUnit: () => { throw new Error('not stubbed'); },
     reorderTasks: () => { throw new Error('not stubbed'); },
     setTaskDates: () => { throw new Error('not stubbed'); },
     duplicateTask: () => { throw new Error('not stubbed'); },
