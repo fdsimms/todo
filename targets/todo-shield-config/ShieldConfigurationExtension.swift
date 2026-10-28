@@ -175,10 +175,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       return "You started this block."
     case "speedBump":
       // A speed bump the app has seen. Only the time is on this side.
-      if let until = state.untilIso.flatMap(Self.timeLabel) {
-        return "You’ve used these apps a lot today. They’re blocked until \(until)."
-      }
-      return "You’ve used these apps a lot today."
+      return Self.speedBumpSubtitle(until: state.untilIso.flatMap(Self.timeLabel))
     case "penalty":
       let cause = state.detail.flatMap { $0.isEmpty ? nil : $0 }
       let until = state.untilIso.flatMap(Self.timeLabel)
@@ -205,10 +202,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // yet: the extension writes its own record and not the shield state.
       if let live = ScreenTimeShared.readLiveSpeedBump(),
          let end = ScreenTimeShared.parseIso(live.endIso), end > Date() {
-        if let until = Self.timeLabel(live.endIso) {
-          return "You’ve used these apps a lot today. They’re blocked until \(until)."
-        }
-        return "You’ve used these apps a lot today."
+        return Self.speedBumpSubtitle(until: Self.timeLabel(live.endIso))
       }
       // A schedule that opened while the app was closed lands here too: the
       // app's last reconcile wrote "none" because the window wasn't open yet,
@@ -222,6 +216,20 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // so is better than claiming a reason that isn't there.
       return "dundundun is blocking it. Open dundundun to see why."
     }
+  }
+
+  /// The speed bump sentence, singular when the group it blocks holds exactly
+  /// one thing. The group comes from the extension's own live record; when that
+  /// is missing (the app wrote the state first) or unreadable, it stays plural,
+  /// which is right for any group and only clumsy for a one-app one.
+  private static func speedBumpSubtitle(until: String?) -> String {
+    var single = false
+    if #available(iOS 16.0, *), let live = ScreenTimeShared.readLiveSpeedBump() {
+      single = ScreenTimeShared.selectionItemCount(groupIds: live.groupIds) == 1
+    }
+    let used = single ? "You’ve used this app a lot today." : "You’ve used these apps a lot today."
+    guard let until else { return used }
+    return "\(used) \(single ? "It’s" : "They’re") blocked until \(until)."
   }
 
   /// The block's end as a local clock time, or nil if the stored instant can't
