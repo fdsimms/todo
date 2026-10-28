@@ -387,31 +387,35 @@ export interface TravelChoice {
   fastest: boolean;
   /** "Transit 13 min". */
   label: string;
+  /** "13 min", for a control that shows the mode as an icon. */
+  duration: string;
 }
 
 /**
- * The modes a "Leave for X" row lists side by side: the one the reminder is
- * based on first, then the others shortest first. Empty unless at least one
+ * The modes a "Leave for X" row lists side by side, always in `TRAVEL_MODES`
+ * order: the row draws them as one track, and a track that reshuffles when you
+ * tap a segment moves the thing you are aiming at. Empty unless at least one
  * other mode was routed, since a lone choice is what the single note already
  * says. Never decides anything: the selected mode stays the one picked, and
  * "fastest" is a label on a number, not a switch.
  */
 export function travelChoices(held: TravelEstimate | null): TravelChoice[] {
   if (!held) return [];
-  const others = TRAVEL_MODES
-    .filter(mode => mode !== held.mode && typeof held.others?.[mode] === 'number')
-    .map(mode => ({ mode, minutes: held.others?.[mode] as number }))
-    .sort((a, b) => a.minutes - b.minutes);
-  if (others.length === 0) return [];
-  const all = [{ mode: held.mode, minutes: held.minutes }, ...others];
+  const all = TRAVEL_MODES
+    .map(mode => ({ mode, minutes: mode === held.mode ? held.minutes : held.others?.[mode] }))
+    .filter((c): c is { mode: TravelMode; minutes: number } => typeof c.minutes === 'number');
+  if (all.length < 2) return [];
   const shortest = Math.min(...all.map(c => Math.round(c.minutes)));
-  const fastestMode = all.find(c => Math.round(c.minutes) === shortest)?.mode;
+  // The selected mode wins a tie.
+  const fastestMode = all.find(c => c.mode === held.mode && Math.round(c.minutes) === shortest)?.mode
+    ?? all.find(c => Math.round(c.minutes) === shortest)?.mode;
   return all.map(c => ({
     mode: c.mode,
     minutes: c.minutes,
     selected: c.mode === held.mode,
     fastest: c.mode === fastestMode,
     label: `${CHOICE_LABELS[c.mode]} ${describeMinutes(c.minutes)}`,
+    duration: describeMinutes(c.minutes),
   }));
 }
 
@@ -813,5 +817,5 @@ export function travelArrivalNote(
   if (lateMinutes > 0) {
     return { text: `Arrive ${format(arriveMs)}, ${lateMinutes} min after it starts at ${format(startMs)}`, late: true };
   }
-  return { text: `Arrive ${format(arriveMs)} · starts ${format(startMs)}`, late: false };
+  return { text: `Arrive ${format(arriveMs)}`, late: false };
 }

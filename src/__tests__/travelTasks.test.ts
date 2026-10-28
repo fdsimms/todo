@@ -581,8 +581,8 @@ describe('travelArrivalNote', () => {
   });
   const fmt = (ms: number) => { const d = new Date(ms); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
-  it('says when you arrive against when it starts', () => {
-    expect(travelArrivalNote(task(new Date(2026, 9, 5, 13, 55)), 31, fmt)).toEqual({ text: 'Arrive 14:26 · starts 14:30', late: false });
+  it('says when you arrive, and leaves the start time out when on time', () => {
+    expect(travelArrivalNote(task(new Date(2026, 9, 5, 13, 55)), 31, fmt)).toEqual({ text: 'Arrive 14:26', late: false });
   });
 
   it('turns to a late note when the arrival is after the start', () => {
@@ -687,11 +687,12 @@ describe('travelChoices', () => {
     expect(travelChoices({ ...held, others: {} })).toEqual([]);
   });
 
-  it('lists the mode in use first, then the others shortest first, and marks the fastest', () => {
+  it('lists the modes in a fixed order whichever is in use, and marks the fastest', () => {
     const choices = travelChoices({ ...held, others: { walking: 22, driving: 8 } });
-    expect(choices.map(c => c.label)).toEqual(['Transit 13 min', 'Car 8 min', 'Walk 22 min']);
-    expect(choices.map(c => c.selected)).toEqual([true, false, false]);
-    expect(choices.map(c => c.fastest)).toEqual([false, true, false]);
+    expect(choices.map(c => c.label)).toEqual(['Car 8 min', 'Transit 13 min', 'Walk 22 min']);
+    expect(choices.map(c => c.duration)).toEqual(['8 min', '13 min', '22 min']);
+    expect(choices.map(c => c.selected)).toEqual([false, true, false]);
+    expect(choices.map(c => c.fastest)).toEqual([true, false, false]);
   });
 
   it('marks the selected mode fastest when it is, and lets it win a tie', () => {
@@ -700,7 +701,7 @@ describe('travelChoices', () => {
   });
 
   it('writes hours the way the single note does', () => {
-    expect(travelChoices({ ...held, others: { driving: 70 } })[1].label).toBe('Car 1 hr 10 min');
+    expect(travelChoices({ ...held, others: { driving: 70 } })[0].label).toBe('Car 1 hr 10 min');
   });
 });
 
