@@ -82,13 +82,16 @@ export function routineFit(
 }
 
 /**
- * "At Planet Fitness, 1 of 6 exercises needs a trap bar.", or null when the
- * gym can do all of it (a line that says everything is fine is noise on a list).
+ * "No trap bar at Planet Fitness. 1 of 6 exercises can’t be done.",
+ * or null when the gym can do all of it (a line that says everything is fine is
+ * noise on a list). It names the gym's gap first, since "needs a trap bar"
+ * alone doesn't say the gym is the one without it.
  */
 export function describeRoutineFit(fit: RoutineFit, gymName: string): string | null {
   if (fit.blocked === 0) return null;
-  const needs = fit.missing.map(m => EQUIPMENT_LABELS[m].toLowerCase()).join(', ');
-  return `At ${gymName}, ${fit.blocked} of ${fit.total} ${fit.total === 1 ? 'exercise needs' : 'exercises need'} ${needs}.`;
+  const names = fit.missing.map(m => EQUIPMENT_LABELS[m].toLowerCase());
+  const lacks = names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}` : names[0];
+  return `No ${lacks} at ${gymName}. ${fit.blocked} of ${fit.total} ${fit.total === 1 ? 'exercise' : 'exercises'} can’t be done.`;
 }
 
 /**
