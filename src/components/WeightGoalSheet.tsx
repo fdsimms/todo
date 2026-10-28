@@ -931,8 +931,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                   <Text style={styles.warning}>
                     The arithmetic came to {budget.arithmeticKcal.toLocaleString()} cal.
                     Suggestions don’t go below {budget.floorKcal.toLocaleString()},
-                    so that is the figure shown. You can still set any target
-                    under Daily targets.
+                    so that is the figure shown.
                   </Text>
                 )}
 
