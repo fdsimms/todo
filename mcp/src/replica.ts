@@ -105,7 +105,7 @@ import type {
   TaskFieldDefaults,
   GeneratedTaskExtras,
 } from '../../src/types';
-import type { FinishedSessionInput, ProgramInput, SessionPatch, SetInput } from '../../src/store/useWorkoutStore';
+import type { ExerciseInput, FinishedSessionInput, ProgramInput, SessionPatch, SetInput } from '../../src/store/useWorkoutStore';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { sectionListPatch } from '../../src/utils/listMode';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
@@ -1368,6 +1368,11 @@ export interface Replica {
   saveRoutineGroup(name: string, renameTo?: string): string;
   /** Its routines stay, in no group. Returns how many were in it. */
   deleteRoutineGroup(name: string): number;
+  /**
+   * Makes a custom exercise through `useWorkoutStore.addExercise`, so a name or
+   * other name another exercise already goes by is refused as on the phone.
+   */
+  addExercise(input: ExerciseInput): Exercise;
   /**
    * `saveGym` creates (no `id`) or changes a gym through `useGymStore`'s own
    * actions, so its name rules and refusals are the app's; fields left out
@@ -4616,6 +4621,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       }
       store.deleteRoutineGroup(name);
       return held;
+    },
+    addExercise(input) {
+      const made = workoutStore().addExercise(input);
+      if (typeof made === 'string') throw new Error(WORKOUT_REFUSALS[made]);
+      return made;
     },
     saveGym(input) {
       const store = gymStore();

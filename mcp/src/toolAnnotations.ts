@@ -141,6 +141,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   restore_program_version: { title: 'Restore a program version', destructive: true, idempotent: false },
   save_routine_group: { title: 'Save a routine group', destructive: true, idempotent: false },
   delete_routine_group: { title: 'Delete a routine group', destructive: true, idempotent: true },
+  create_exercise: { title: 'Make a custom exercise', destructive: false, idempotent: false },
   save_gym: { title: 'Save a gym', destructive: true, idempotent: false },
   delete_gym: { title: 'Delete a gym', destructive: true, idempotent: true },
   save_program: { title: 'Save a workout program', destructive: true, idempotent: false },

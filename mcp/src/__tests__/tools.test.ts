@@ -338,6 +338,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     deleteRoutineGroup: () => { throw new Error('not stubbed'); },
     saveProgram: () => { throw new Error('not stubbed'); },
     deleteProgram: () => { throw new Error('not stubbed'); },
+    addExercise: () => { throw new Error('not stubbed'); },
     saveGym: () => { throw new Error('not stubbed'); },
     deleteGym: () => { throw new Error('not stubbed'); },
     workoutLoads: () => ({ unit: 'kg', plateInventory: { barsKg: [20], plates: [] } }),

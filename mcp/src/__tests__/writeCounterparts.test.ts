@@ -75,6 +75,7 @@ const NO_COUNTERPART: Record<string, string> = {
   save_store: 'Adds and renames a store; update_store deletes one.',
   log_cook_time: 'The app keeps a cook time the way the cook timer logs one, and has no way to take one back on the phone either; it is what the last time shows, so the next cook replaces it.',
   save_aisle: 'One tool adds, renames (newName) and deletes (delete: true) an aisle, so it is its own correction.',
+  create_exercise: 'Corrected in the phone\'s exercise editor (rename, edit, archive), as one the person made is. Nothing here edits an exercise yet; the tool asks the agent to search and ask before making one.',
 };
 
 describe('creating tools and their counterparts', () => {

@@ -1488,6 +1488,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return held;
     },
 
+    // An exercise is named by its own name, like a gym.
+    addExercise(input) {
+      const exercise = replica.addExercise(input);
+      log({ action: 'created', subject: 'exercise', title: exercise.name, taskId: null, recordId: exercise.id, note: `Add the exercise "${exercise.name}"` });
+      return exercise;
+    },
+
     // A gym is a plan like a routine, named by its own name.
     saveGym(input) {
       const before = input.id ? replica.gyms().find(g => g.id === input.id) ?? null : null;

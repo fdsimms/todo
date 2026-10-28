@@ -113,6 +113,28 @@ describe('routineFromDraft', () => {
     'cable fly': { kind: 'exercise' as const, exerciseId: 'fly' },
   };
 
+  it('halves a pair total for an exercise held in two dumbbells, when the person types pair totals', () => {
+    const d = readWorkoutDraft({
+      title: 'Dumbbells',
+      exercises: [
+        { name: 'DB bench', sets: [set({ weight: 100, weightUnit: 'lb' })] },
+        { name: 'Dumbbell row', sets: [set({ weight: 60, weightUnit: 'lb' })] },
+        { name: 'Bench press', sets: [set({ weight: 185, weightUnit: 'lb' })] },
+      ],
+    });
+    const settled = {
+      'db bench': { kind: 'exercise' as const, exerciseId: 'lib:dumbbell-bench-press' },
+      'dumbbell row': { kind: 'create' as const },
+      'bench press': { kind: 'exercise' as const, exerciseId: 'lib:barbell-bench-press' },
+    };
+    const each = routineFromDraft(d, settled, () => 'weight_reps', 'kg');
+    const pair = routineFromDraft(d, settled, () => 'weight_reps', 'kg', { pairTotals: true, exercises: [] });
+    expect(pair.items[0].targets[0].weightKg).toBeCloseTo(each.items[0].targets[0].weightKg! / 2, 2);
+    expect(pair.items[1].targets[0].weightKg).toBeCloseTo(each.items[1].targets[0].weightKg! / 2, 2);
+    // A barbell isn't two dumbbells.
+    expect(pair.items[2].targets[0].weightKg).toBe(each.items[2].targets[0].weightKg);
+  });
+
   it('puts warm-ups first and converts the weight from the unit it was given in', () => {
     const r = routineFromDraft(draft(), resolved, kinds, 'kg');
     const bench = r.items[0];
@@ -221,6 +243,20 @@ describe('startOfDescribed', () => {
   it('reads no date as the logical day, which is not always the calendar one', () => {
     const grace = new Date(2026, 9, 21, 1, 30);
     expect(startOfDescribed(null, '22:00', '2026-10-20', grace)).toEqual(new Date(2026, 9, 20, 22, 0));
+  });
+
+  it('puts a time before the day starts in the small hours at the end of the day', () => {
+    // 1:30 AM with the day starting at 4 AM: still the 20th, and "1am" was half an hour ago.
+    const grace = new Date(2026, 9, 21, 1, 30);
+    expect(startOfDescribed(null, '1:00', '2026-10-20', grace, { dayResetTime: '04:00' })).toEqual(new Date(2026, 9, 21, 1, 0));
+    expect(startOfDescribed(null, '22:00', '2026-10-20', grace, { dayResetTime: '04:00' })).toEqual(new Date(2026, 9, 20, 22, 0));
+  });
+
+  it('moves an untimed workout off a minute another workout already starts in', () => {
+    const taken = [new Date(2026, 9, 20, 12, 0).toISOString(), new Date(2026, 9, 20, 12, 1, 30).toISOString()];
+    expect(startOfDescribed('2026-10-20', null, '2026-10-21', now, { taken })).toEqual(new Date(2026, 9, 20, 12, 2));
+    // A time that was said is kept, even when it is taken: that is the duplicate it looks like.
+    expect(startOfDescribed('2026-10-20', '12:00', '2026-10-21', now, { taken })).toEqual(new Date(2026, 9, 20, 12, 0));
   });
 });
 
