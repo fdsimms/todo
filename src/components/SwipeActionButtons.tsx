@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useRef } from 'react';
-import { Animated, TouchableOpacity, StyleSheet } from 'react-native';
+import { Animated, TouchableOpacity, StyleSheet, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { RowHoverContext, type SelectAction, type UndoAction, type WhenAction } from './SwipeableRow';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -90,7 +90,7 @@ export function SwipeActionButtons({
   if (overlay ? !tracksHover : tracksHover && overlayOnHover) return null;
 
   const buttonStyle = overlay
-    ? [styles.button, styles.overlayButton, { backgroundColor: colors.bgTertiary }]
+    ? [styles.button, styles.overlayButton]
     : hidden ? [styles.button, styles.hidden] : styles.button;
   // A hidden trailing button keeps its space but is not there to be clicked.
   const buttonEvents = !overlay && hidden ? 'none' : undefined;
@@ -161,7 +161,12 @@ export function SwipeActionButtons({
       style={[styles.overlay, { opacity: fade }]}
       pointerEvents={hidden ? 'none' : 'box-none'}
     >
-      {buttons}
+      {/* One pill behind all of them, not a chip each: separate chips left gaps that showed the
+          title's last characters between the buttons. The pill is its own surface, so it needs no
+          guess at the row's colour (a stack header sits on the page or on a tray). */}
+      <View style={[styles.overlayPill, { backgroundColor: colors.bgTertiary, borderColor: colors.separator }]}>
+        {buttons}
+      </View>
     </Animated.View>
   );
 }
@@ -205,11 +210,16 @@ const styles = StyleSheet.create({
     bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
   },
-  // Each is a chip of its own, opaque, so it reads over the title text it covers.
-  overlayButton: {
+  overlayPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xxs,
+    paddingHorizontal: spacing.xs,
     borderRadius: radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  overlayButton: {
     padding: spacing.xsm,
   },
 });
