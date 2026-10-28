@@ -983,7 +983,7 @@ function watchWorkoutSection(): WatchWorkoutSnapshot | null {
           session: live,
           sets: workouts.setsBySession[live.id] ?? [],
           routine: live.routineId ? workouts.routines.find(r => r.id === live.routineId) ?? null : null,
-          restPlan: sessionPlan(live, workouts.routines, workouts.routineVersions),
+          plan: sessionPlan(live, workouts.routines, workouts.routineVersions),
           rest,
         }
       : null,

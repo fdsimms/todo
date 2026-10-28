@@ -112,7 +112,7 @@ import { addCookware, deleteCookware, listCookware, updateCookware } from './coo
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { DEFAULT_FAST_LIMIT, MAX_FAST_LIMIT, listFasts } from './fastTools';
 import {
-  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteRoutineGroup, deleteWorkout, exerciseHistory, listExercises, createExercise,
+  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteRoutineGroup, deleteWorkout, exerciseHistory, listExercises, createExercise, updateExercise,
   listWorkouts, logWorkout, nextWorkout, routineHistoryOut, restoreRoutineVersionOut, copyRoutineVersionOut, mergeRoutinesOut,
   programHistoryOut, restoreProgramVersionOut, saveGym, saveProgram, saveRoutine, saveRoutineGroup, updateWorkout, scaleWorkoutWeights,
 } from './workoutTools';
@@ -623,6 +623,29 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         return json(await withWrite(() => createExercise(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not make the exercise.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_exercise',
+    'Correct an exercise by its id from list_exercises: a custom one (one create_exercise or the person made) in full; a built-in only in the person\'s own words for it (name, otherNames, notes) and whether it is archived, since what the movement is belongs to the library. Fields left out stay. archived: true takes it out of the pickers and the list with its history kept (an exercise is never deleted); false brings it back. A kind can\'t change once sets are logged against it. Only what the person asked for.',
+    {
+      id: z.string().min(1).describe('From list_exercises.'),
+      name: z.string().min(1).max(80).optional(),
+      kind: z.enum(EXERCISE_KINDS as [ExerciseKind, ...ExerciseKind[]]).optional().describe('Custom exercises only, and only before any set is logged.'),
+      equipment: z.enum(EXERCISE_EQUIPMENT as [ExerciseEquipment, ...ExerciseEquipment[]]).optional().describe('Custom exercises only.'),
+      primaryMuscles: z.array(z.enum(MUSCLE_GROUPS as [MuscleGroup, ...MuscleGroup[]])).max(MUSCLE_GROUPS.length).optional().describe('Custom exercises only. Replaces the list.'),
+      secondaryMuscles: z.array(z.enum(MUSCLE_GROUPS as [MuscleGroup, ...MuscleGroup[]])).max(MUSCLE_GROUPS.length).optional().describe('Custom exercises only. Replaces the list.'),
+      otherNames: z.array(z.string().min(1).max(80)).max(10).optional().describe('Replaces the list.'),
+      notes: z.string().max(2000).optional(),
+      archived: z.boolean().optional(),
+    },
+    async ({ id, ...input }) => {
+      try {
+        return json(await withWrite(() => updateExercise(replica, id, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the exercise.' });
       }
     }
   );

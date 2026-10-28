@@ -345,8 +345,11 @@ interface ExerciseContext {
   plateInventory: PlateInventory;
   defaultRestSeconds: number;
   restOverrides?: Readonly<Record<string, number>> | null;
-  /** The plan rests are read from when it isn't `routine`: a live workout's version (`sessionPlan`). */
-  restPlan?: Pick<WorkoutRoutine, 'items'> | null;
+  /**
+   * The plan rests and suggestions are read from when it isn't `routine`: the
+   * version of it a live workout was started on (`sessionPlan`).
+   */
+  plan?: Pick<WorkoutRoutine, 'items'> | null;
   historyFor: (exerciseId: string) => readonly WorkoutSet[];
   /** The workout the suggestions are for, whose own sets aren't history yet. */
   exceptSessionId: string | null;
@@ -362,7 +365,7 @@ export function watchSuggestion(exerciseId: string, ctx: ExerciseContext, exerci
   const p = exerciseProposal({
     exerciseId,
     exercises: ctx.exercises,
-    routine: ctx.routine,
+    routine: ctx.plan !== undefined ? ctx.plan : ctx.routine,
     program: ctx.program,
     sessions: ctx.sessions,
     routines: ctx.routines,
@@ -406,7 +409,7 @@ function exercisesOf(rows: readonly { exerciseId: string }[], sets: readonly Wor
       id: s.exerciseId,
       name: exerciseName(ctx.exercises, s.exerciseId),
       kind: catalogExercise(ctx.exercises, s.exerciseId)?.kind ?? 'weight_reps',
-      rest: restSecondsFor(ctx.restPlan !== undefined ? ctx.restPlan : ctx.routine, s.exerciseId, ctx.defaultRestSeconds, ctx.restOverrides),
+      rest: restSecondsFor(ctx.plan !== undefined ? ctx.plan : ctx.routine, s.exerciseId, ctx.defaultRestSeconds, ctx.restOverrides),
     };
     const own = sets.filter(x => x.exerciseId === s.exerciseId);
     if (!workingSetLogged(own)) {
@@ -516,8 +519,8 @@ export interface WatchWorkoutInput {
     session: WorkoutSession;
     sets: readonly WorkoutSet[];
     routine: WorkoutRoutine | null;
-    /** The version of `routine` it was started on, which its rests are read from (`sessionPlan`). */
-    restPlan?: Pick<WorkoutRoutine, 'items'> | null;
+    /** The version of `routine` it was started on, which its rests and suggestions are read from (`sessionPlan`). */
+    plan?: Pick<WorkoutRoutine, 'items'> | null;
     rest: RestTimer | null;
   } | null;
   routines: readonly WorkoutRoutine[];
@@ -571,8 +574,8 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
 
   if (input.live && input.live.session.endedAt === null) {
     const { session, sets, routine, rest } = input.live;
-    const restPlan = input.live.restPlan !== undefined ? input.live.restPlan : routine;
-    const rows = watchSetRows(sets, { exercises: input.exercises, unit: input.unit, routine: restPlan, defaultRestSeconds: input.defaultRestSeconds, restOverrides: session.restOverrides, dumbbellEntry: input.dumbbellEntry });
+    const plan = input.live.plan !== undefined ? input.live.plan : routine;
+    const rows = watchSetRows(sets, { exercises: input.exercises, unit: input.unit, routine: plan, defaultRestSeconds: input.defaultRestSeconds, restOverrides: session.restOverrides, dumbbellEntry: input.dumbbellEntry });
     const shown = rows.slice(0, MAX_WATCH_LIVE_SETS);
     return {
       ...base,
@@ -580,7 +583,7 @@ export function buildWatchWorkout(input: WatchWorkoutInput): WatchWorkoutSnapsho
         sessionId: session.id,
         title: session.title,
         startedAt: session.startedAt,
-        exercises: exercisesOf(shown, sets, { ...contextFor(routine, session.programId, session.id, session.restOverrides), restPlan }),
+        exercises: exercisesOf(shown, sets, { ...contextFor(routine, session.programId, session.id, session.restOverrides), plan }),
         sets: shown,
         moreSets: rows.length - shown.length,
         rest: liveRest(rest, session.id),

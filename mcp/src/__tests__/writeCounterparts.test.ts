@@ -47,6 +47,8 @@ const COUNTERPARTS: Record<string, string[]> = {
   save_routine: ['save_routine', 'delete_routine'],
   save_routine_group: ['save_routine_group', 'delete_routine_group'],
   save_gym: ['save_gym', 'delete_gym'],
+  // An exercise is archived, never deleted, so its history keeps its name.
+  create_exercise: ['update_exercise'],
   save_program: ['save_program', 'delete_program'],
   log_workout: ['update_workout', 'delete_workout'],
   log_journal_entry: ['update_journal_entry', 'delete_journal_entry'],
@@ -75,7 +77,6 @@ const NO_COUNTERPART: Record<string, string> = {
   save_store: 'Adds and renames a store; update_store deletes one.',
   log_cook_time: 'The app keeps a cook time the way the cook timer logs one, and has no way to take one back on the phone either; it is what the last time shows, so the next cook replaces it.',
   save_aisle: 'One tool adds, renames (newName) and deletes (delete: true) an aisle, so it is its own correction.',
-  create_exercise: 'Corrected in the phone\'s exercise editor (rename, edit, archive), as one the person made is. Nothing here edits an exercise yet; the tool asks the agent to search and ask before making one.',
 };
 
 describe('creating tools and their counterparts', () => {

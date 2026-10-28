@@ -181,8 +181,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const linkedTask = useTaskStore(s => (session?.taskId ? s.tasks.find(t => t.id === session.taskId) ?? null : null));
   const sets = useMemo(() => cachedSets ?? [], [cachedSets]);
   const routine = session?.routineId ? routines.find(r => r.id === session.routineId) ?? null : null;
-  // The version the workout was started on, which its rests are read from (`sessionPlan`).
-  const restPlan = useMemo(() => (session ? sessionPlan(session, routines, routineVersions) : null), [session, routines, routineVersions]);
+  // The version the workout was started on, which its rests and suggestions are read from (`sessionPlan`).
+  const startedPlan = useMemo(() => (session ? sessionPlan(session, routines, routineVersions) : null), [session, routines, routineVersions]);
   // Which version of the routine this workout is on, and the current one's
   // number. A workout started from an older version (History's "Start a
   // workout from it") is measured against that version, and its summary
@@ -1011,7 +1011,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const viewedGroup = supersetGroup(exercises, viewed.exerciseId);
               const restChip = session && viewedGroup[viewedGroup.length - 1]?.exerciseId === viewed.exerciseId
                 ? {
-                    seconds: restSecondsFor(restPlan, viewed.exerciseId, defaultRestSeconds, session.restOverrides),
+                    seconds: restSecondsFor(startedPlan, viewed.exerciseId, defaultRestSeconds, session.restOverrides),
                     overridden: session.restOverrides?.[viewed.exerciseId] !== undefined,
                   }
                 : null;
@@ -1023,7 +1023,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const shownProposal: ExerciseProposal | null = session ? exerciseProposal({
                 exerciseId: viewed.exerciseId,
                 exercises: exerciseRows,
-                routine,
+                routine: startedPlan,
                 program,
                 sessions: sessionsList,
                 routines,
@@ -1420,8 +1420,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       <ExerciseRestSheet
         visible={visible && restFor !== null && session !== null}
         exerciseName={restFor ? catalogExercise(exerciseRows, restFor)?.name ?? 'This exercise' : ''}
-        seconds={session && restFor ? restSecondsFor(restPlan, restFor, defaultRestSeconds, session.restOverrides) : 0}
-        fallbackSeconds={restFor ? restSecondsFor(restPlan, restFor, defaultRestSeconds) : 0}
+        seconds={session && restFor ? restSecondsFor(startedPlan, restFor, defaultRestSeconds, session.restOverrides) : 0}
+        fallbackSeconds={restFor ? restSecondsFor(startedPlan, restFor, defaultRestSeconds) : 0}
         overridden={!!session && !!restFor && session.restOverrides?.[restFor] !== undefined}
         onChange={seconds => { if (session && restFor) useWorkoutStore.getState().setSessionRest(session.id, restFor, seconds); }}
         onClose={() => setRestFor(null)}

@@ -65,10 +65,11 @@ export function routineVersionsOf(
 }
 
 /**
- * The plan a session's rests are read from: the version of its routine it was
- * started on, so a workout started from an old version (History's "Start a
- * workout from it") rests as that version said, as its sets were laid out. The
- * routine as it is when the version isn't one this device has.
+ * The plan a session's rests and load suggestions are read from: the version
+ * of its routine it was started on, so a workout started from an old version
+ * (History's "Start a workout from it") rests and progresses as that version
+ * said, as its sets were laid out. The routine as it is when the version isn't
+ * one this device has.
  */
 export function sessionPlan(
   session: Pick<WorkoutSession, 'routineId' | 'routineVersionId'>,

@@ -10,7 +10,7 @@ import { withAgentLedger, type AgentLedgerEntry } from '../agentLedger';
 import {
   copyRoutineVersionOut, deleteGym, deleteProgram, deleteRoutine, deleteWorkout, listWorkouts, mergeRoutinesOut, programHistoryOut, saveGym,
   logWorkout, nextWorkout, restoreProgramVersionOut, restoreRoutineVersionOut, routineHistoryOut, routineItemsFrom, saveProgram, saveRoutine,
-  updateWorkout, scaleWorkoutWeights, createExercise,
+  updateWorkout, scaleWorkoutWeights, createExercise, updateExercise,
 } from '../workoutTools';
 import { createTask, getTask, updateTask } from '../tools';
 
@@ -53,6 +53,29 @@ describe('the workout write tools', () => {
         startedAt: new Date(2026, 9, 7, 18).toISOString(), exercises: [{ exerciseId: exercise.id, sets: [{ weightKg: 30, reps: 10 }] }],
       }, new Date(2026, 9, 8));
       expect(workout.exercises[0].name).toBe('Tib bar raise');
+    });
+
+    it('corrects and archives one it made, and records each change', () => {
+      const { exercise } = createExercise(replica, { name: 'Tib bar raise', kind: 'weight_reps', equipment: 'other', primaryMuscles: [] });
+      const changed = updateExercise(ledgered, exercise.id, { name: 'Tibialis raise', equipment: 'machine', notes: 'Toes up' }).exercise;
+      expect(changed).toMatchObject({ name: 'Tibialis raise', equipment: 'machine', notes: 'Toes up', custom: true });
+      expect(updateExercise(ledgered, exercise.id, { archived: true }).exercise.archived).toBe(true);
+      expect(entries).toEqual([
+        expect.objectContaining({ action: 'edited', subject: 'exercise', title: 'Tibialis raise' }),
+        expect.objectContaining({ action: 'edited', subject: 'exercise', title: 'Tibialis raise' }),
+      ]);
+    });
+
+    it('keeps a built-in\'s movement and a logged exercise\'s kind, and refuses an empty change', () => {
+      expect(() => updateExercise(replica, BENCH, { equipment: 'machine' })).toThrow(/built-in exercise keeps/);
+      expect(updateExercise(replica, BENCH, { notes: 'Pause on the chest' }).exercise).toMatchObject({ notes: 'Pause on the chest', changedByYou: true });
+      const { exercise } = createExercise(replica, { name: 'Tib bar raise', kind: 'weight_reps', equipment: 'other', primaryMuscles: [] });
+      logWorkout(replica, {
+        startedAt: new Date(2026, 9, 7, 18).toISOString(), exercises: [{ exerciseId: exercise.id, sets: [{ weightKg: 10, reps: 15 }] }],
+      }, new Date(2026, 9, 8));
+      expect(() => updateExercise(replica, exercise.id, { kind: 'duration' })).toThrow(/sets logged/);
+      expect(() => updateExercise(replica, exercise.id, {})).toThrow(/Nothing to change/);
+      expect(() => updateExercise(replica, 'gone', { notes: 'x' })).toThrow(/No exercise with id gone/);
     });
 
     it('refuses a name another exercise already goes by', () => {

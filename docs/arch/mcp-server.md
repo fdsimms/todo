@@ -1575,8 +1575,10 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   workout already logged (naming that one, so a retried call can't log it twice), and it never
   completes a task, since a record of a workout is not the person ticking the task off.
   `create_exercise` makes a custom exercise through `addExercise` for one the library lacks, so
-  such a workout isn't a dead end; the tool asks the agent to search and ask first, and the
-  exercise is corrected on the phone. `update_workout` and
+  such a workout isn't a dead end; the tool asks the agent to search and ask first.
+  `update_exercise` corrects one through `updateExercise`: a custom exercise in full, a built-in
+  only in the person's words for it and its archived flag (the movement is the library's, refused
+  by name rather than silently dropped), and archiving rather than deleting, as on the phone. `update_workout` and
   `delete_workout` refuse the session in progress on the phone, which only the person ends.
   `scale_workout_weights` is the one-call form of the same correction across many workouts (a pair
   total stored as one dumbbell, or the wrong unit): it multiplies the named exercises' weights over a

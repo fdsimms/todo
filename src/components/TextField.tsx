@@ -31,6 +31,16 @@ import { fieldChanged, initialFieldSync, nextFieldSync, styleKeyOf, type FieldSy
  * the command, never by re-render. That matters because `TextInput` pushes its
  * `selection` alongside its own idea of the text, which here is deliberately
  * stale.
+ *
+ * **A field that holds a draft and writes it on blur hands the draft to any
+ * action that can run without blurring it.** A header button outside the
+ * field's scroll view, or a check in the same row under
+ * `keyboardShouldPersistTaps="handled"`, runs while the field still has focus,
+ * so it reads the value from before the typing, and the blur that follows
+ * writes over whatever the action did. Report the text as it is typed and let
+ * the action use it: `SetInput`'s `onTyping` in `WorkoutModeSheet` and
+ * `RoutineSetTable`'s `onPendingChange` are the two shapes. And write on blur
+ * only what was typed since focus, never a draft seeded from the stored value.
  */
 
 type SetTextAndSelectionCommands = {

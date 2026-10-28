@@ -1,6 +1,7 @@
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { exerciseProposal, proposalWrites, type ExerciseProposal } from './workoutProposal';
+import { sessionPlan } from './routineVersions';
 
 /**
  * "Use 82.5 kg" against the stores: the half of the suggestion card that
@@ -17,7 +18,8 @@ export function liveProposal(sessionId: string, exerciseId: string): ExercisePro
   return exerciseProposal({
     exerciseId,
     exercises: workouts.exercises,
-    routine: session.routineId ? workouts.routines.find(r => r.id === session.routineId) ?? null : null,
+    // The version it was started on, as workout mode's own suggestion reads it.
+    routine: sessionPlan(session, workouts.routines, workouts.routineVersions),
     program: session.programId ? workouts.programs.find(p => p.id === session.programId) ?? null : null,
     sessions: workouts.sessions,
     routines: workouts.routines,

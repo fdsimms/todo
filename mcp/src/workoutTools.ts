@@ -107,6 +107,37 @@ export function createExercise(replica: Replica, input: CreateExerciseInput): { 
   };
 }
 
+export interface UpdateExerciseInput {
+  name?: string;
+  kind?: ExerciseKind;
+  equipment?: ExerciseEquipment;
+  primaryMuscles?: MuscleGroup[];
+  secondaryMuscles?: MuscleGroup[];
+  otherNames?: string[];
+  notes?: string;
+  archived?: boolean;
+}
+
+/**
+ * Corrects an exercise, by the store's own rules: a custom one in full, a
+ * built-in only in the person's words for it (name, other names, notes) and
+ * whether it is archived, since what the movement is belongs to the library.
+ */
+export function updateExercise(replica: Replica, id: string, input: UpdateExerciseInput): { exercise: ExerciseRow; note: string } {
+  if (Object.values(input).every(v => v === undefined)) throw new Error('Nothing to change: name a field.');
+  const isBuiltIn = !replica.exercises().some(e => e.id === id && e.isCustom) && catalogExercise(replica.exercises(), id)?.builtIn === true;
+  const movement = input.kind !== undefined || input.equipment !== undefined || input.primaryMuscles !== undefined || input.secondaryMuscles !== undefined;
+  if (isBuiltIn && movement) {
+    throw new Error('A built-in exercise keeps the library\'s kind, equipment and muscles; only its name, otherNames, notes and archived change. Make a custom one with create_exercise for a different movement.');
+  }
+  const made = replica.updateExercise(id, input);
+  const row = catalogExercise(replica.exercises(), made.id);
+  return {
+    exercise: exerciseRow(row!),
+    note: made.archived ? 'Archived: out of the pickers and the list, with its history kept. archived: false brings it back.' : 'Changed. Logged workouts keep their sets.',
+  };
+}
+
 export interface ListExercisesInput {
   query?: string;
   muscle?: MuscleGroup;
