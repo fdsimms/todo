@@ -45,6 +45,14 @@ interface Props {
   alwaysShowHint?: boolean;
   /** Right-aligned accent value. */
   value?: string;
+  /**
+   * Draw `value` under the hint instead of beside the label, while the hint
+   * shows. For a value that can run long ("94 apps, 2 categories, 1699
+   * websites"): beside the label it claims the row first and squeezes the
+   * hint into a column a few words wide. With the hint hidden there is
+   * nothing to squeeze, so the value goes back to the right edge.
+   */
+  stackValue?: boolean;
   /** Renders the standard switch, and makes the row announce itself as one. */
   toggle?: boolean;
   chevron?: boolean;
@@ -88,7 +96,7 @@ interface Props {
  * semantic would reach into all five editors.
  */
 export function SettingsRow({
-  icon, iconColor, label, labelColor, hint, alwaysShowHint, value, toggle, chevron, expanded, busy,
+  icon, iconColor, label, labelColor, hint, alwaysShowHint, value, stackValue, toggle, chevron, expanded, busy,
   trailing, children, onPress, disabled, tight, entryId,
   accessibilityLabel, accessibilityHint,
 }: Props) {
@@ -96,6 +104,7 @@ export function SettingsRow({
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
   const showHint = !!hint && (alwaysShowHint || !hideHelpText);
+  const valueBelow = !!stackValue && showHint && !!value;
 
   const role: AccessibilityRole | undefined =
     toggle !== undefined ? 'switch' : onPress && !disabled ? 'button' : undefined;
@@ -129,9 +138,10 @@ export function SettingsRow({
       <View style={styles.rowContent}>
         <Text style={[styles.rowLabel, !!labelColor && { color: labelColor }]}>{label}</Text>
         {showHint && <Text style={[styles.rowHint, !!children && styles.rowHintSpaced]}>{hint}</Text>}
+        {valueBelow && <Text style={[styles.rowValue, styles.rowValueBelow]}>{value}</Text>}
         {children}
       </View>
-      {!!value && <Text style={styles.rowValue}>{value}</Text>}
+      {!!value && !valueBelow && <Text style={styles.rowValue}>{value}</Text>}
       {trailing}
       {busy && <ActivityIndicator size="small" color={colors.textSecondary} />}
       {toggle !== undefined && (
