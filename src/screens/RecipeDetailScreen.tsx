@@ -57,6 +57,8 @@ import {
   catalogMatchSummary,
   matchIngredientsToCatalog,
 } from '../utils/ingredientCatalogMatch';
+import { onHandStandInsNote } from '../utils/recipeLineOnHand';
+import { varietyIndex } from '../utils/itemVarieties';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { RecipeEditor } from '../components/RecipeEditor';
@@ -946,6 +948,20 @@ export function RecipeDetailScreen() {
     },
     [recipe, groceryItems],
   );
+  // What you already have that could stand in for a line, by ingredient id.
+  // Built once per catalog change rather than per row: it indexes every
+  // declared variety, which a per-row call would repeat.
+  const standInNotes = useMemo(() => {
+    const now = new Date();
+    const index = varietyIndex(groceryItems);
+    const notes = new Map<string, string>();
+    for (const [id, match] of catalogMatches) {
+      if (match.kind !== 'linked' || !match.item) continue;
+      const note = onHandStandInsNote(match.item, groceryItems, itemSubs, itemProducts, now, index);
+      if (note) notes.set(id, note);
+    }
+    return notes;
+  }, [catalogMatches, groceryItems, itemSubs, itemProducts]);
   const catalogSummary = useMemo(
     () => catalogMatchSummary([...catalogMatches.values()]),
     [catalogMatches],
@@ -1452,6 +1468,9 @@ export function RecipeDetailScreen() {
     const aliasNote = !swapNote && aliasMatch?.kind === 'linked' && aliasMatch.reason === 'alias' && aliasMatch.item
       ? `Counted as ${aliasMatch.item.name}`
       : null;
+    // Only for a line the app is reading as written: a swapped line has
+    // already been answered by the swap.
+    const standInNote = swapNote ? null : standInNotes.get(ingredient.id) ?? null;
     const scaledResult = scaleQuantity(line.quantity, scale);
     const convertedResult = convertScaledQuantity(scaledResult, unitSystem);
     const scaledQuantity = showContainerCount(convertedResult.text);
@@ -1589,7 +1608,7 @@ export function RecipeDetailScreen() {
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={
-            [ingredient.section, line.name, swapNote ?? aliasNote, scaledQuantity,
+            [ingredient.section, line.name, swapNote ?? aliasNote, standInNote, scaledQuantity,
              weightText && `about ${weightText.slice(1)}`, ingredient.prep,
              ingredient.purpose && `for ${ingredient.purpose}`,
              ingredient.optional && 'optional',
@@ -1613,6 +1632,9 @@ export function RecipeDetailScreen() {
             )}
             {!!aliasNote && (
               <Text style={styles.alternativeNote} numberOfLines={1}>{aliasNote}</Text>
+            )}
+            {!!standInNote && (
+              <Text style={styles.alternativeNote} numberOfLines={1}>{standInNote}</Text>
             )}
             {(!!ingredient.prep || !!ingredient.purpose || !!ingredient.optional || !!panNote) && (
               <Text style={styles.ingredientPrep}>
