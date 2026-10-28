@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useDeferredValue, useMemo } from 'react';
-import { useColorScheme } from 'react-native';
+import React, { createContext, useContext, useDeferredValue, useEffect, useMemo } from 'react';
+import { Appearance, useColorScheme } from 'react-native';
 import { darkColors, nightColors, lightColors, getShadows, type Colors, type ThemeMode } from './index';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { AppFontProvider } from './AppFont';
@@ -25,6 +25,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // holding the tap until it finishes. Only the resolved colors lag behind.
   const themeMode = useDeferredValue(useSettingsStore(s => s.themeMode));
   const systemScheme = useDeferredValue(useColorScheme());
+
+  // The parts of the screen UIKit draws (scrollbars, context menus, tooltips, alerts, the
+  // title bar on a Mac) follow the system's appearance, not this setting, so a Dark app on a
+  // Light Mac had light scrollbars and menus around it. Told what the app chose; 'system'
+  // hands the choice back to the device.
+  useEffect(() => {
+    Appearance.setColorScheme(themeMode === 'system' ? 'unspecified' : themeMode === 'light' ? 'light' : 'dark');
+  }, [themeMode]);
 
   const isDark =
     themeMode === 'dark' ||

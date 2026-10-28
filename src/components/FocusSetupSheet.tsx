@@ -73,6 +73,7 @@ import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
 import { animateLayout } from '../utils/layoutAnimation';
+import { overlayDock } from '../utils/frameWidth';
 
 interface Props {
   visible: boolean;
@@ -935,8 +936,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   sheetOuter: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    ...overlayDock,
     bottom: 0,
     paddingHorizontal: spacing.md,
     paddingBottom: sheetBottomInset,

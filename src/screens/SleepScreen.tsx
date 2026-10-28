@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -36,6 +36,7 @@ import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSetting
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { WideScroll, WideSpan } from '../components/WideScroll';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { PressableScale } from '../components/PressableScale';
 import { SleepHoursChart, SleepStageTimeline, SleepStagesBar, SleepTimesChart } from '../components/SleepChart';
@@ -231,7 +232,7 @@ export function SleepScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {header}
-      <ScrollView
+      <WideScroll
         ref={scrollTop.ref}
         {...scrollTop.listProps}
         refreshControl={pullSearch.refreshControl}
@@ -240,7 +241,7 @@ export function SleepScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }]}
       >
         {latest && (
-          <>
+          <WideSpan>
             <Text style={styles.sectionTitle}>MOST RECENT</Text>
             <View
               style={styles.card}
@@ -270,54 +271,58 @@ export function SleepScreen() {
                 </View>
               )}
             </View>
-          </>
+          </WideSpan>
         )}
 
-        <View style={styles.rangeRow}>
-          <SegmentedControl
-            options={SLEEP_RANGES.map(r => ({
-              value: r.days,
-              label: r.label,
-              accessibilityLabel: `Show the last ${r.spoken}`,
-            }))}
-            value={rangeDays}
-            onChange={next => setRangeDays(next)}
-            label="Chart range"
-          />
-        </View>
+        <WideSpan>
+          <View style={styles.rangeRow}>
+            <SegmentedControl
+              options={SLEEP_RANGES.map(r => ({
+                value: r.days,
+                label: r.label,
+                accessibilityLabel: `Show the last ${r.spoken}`,
+              }))}
+              value={rangeDays}
+              onChange={next => setRangeDays(next)}
+              label="Chart range"
+            />
+          </View>
 
-        <View style={styles.statRow}>
-          <Stat
-            styles={styles}
-            value={summary.averageMinutes === null ? '—' : formatShortDuration(summary.averageMinutes)}
-            label="Average asleep"
-            accessibilityLabel={summary.averageMinutes === null
-              ? `Average asleep, nothing recorded in the ${rangePhrase}`
-              : `Average asleep over the ${rangePhrase}, ${formatSleepDuration(summary.averageMinutes)}`}
-          />
-          <Stat
-            styles={styles}
-            value={summary.averageAsleepAt === null ? '—' : formatClockMinutes(summary.averageAsleepAt, use24Hour)}
-            label="Fell asleep"
-            accessibilityLabel={summary.averageAsleepAt === null
-              ? 'Average time you fell asleep, too varied to average'
-              : `Average time you fell asleep, ${formatClockMinutes(summary.averageAsleepAt, use24Hour)}`}
-          />
-          <Stat
-            styles={styles}
-            value={summary.averageWokeAt === null ? '—' : formatClockMinutes(summary.averageWokeAt, use24Hour)}
-            label="Woke up"
-            accessibilityLabel={summary.averageWokeAt === null
-              ? 'Average time you woke up, too varied to average'
-              : `Average time you woke up, ${formatClockMinutes(summary.averageWokeAt, use24Hour)}`}
-          />
-        </View>
+          <View style={styles.statRow}>
+            <Stat
+              styles={styles}
+              value={summary.averageMinutes === null ? '—' : formatShortDuration(summary.averageMinutes)}
+              label="Average asleep"
+              accessibilityLabel={summary.averageMinutes === null
+                ? `Average asleep, nothing recorded in the ${rangePhrase}`
+                : `Average asleep over the ${rangePhrase}, ${formatSleepDuration(summary.averageMinutes)}`}
+            />
+            <Stat
+              styles={styles}
+              value={summary.averageAsleepAt === null ? '—' : formatClockMinutes(summary.averageAsleepAt, use24Hour)}
+              label="Fell asleep"
+              accessibilityLabel={summary.averageAsleepAt === null
+                ? 'Average time you fell asleep, too varied to average'
+                : `Average time you fell asleep, ${formatClockMinutes(summary.averageAsleepAt, use24Hour)}`}
+            />
+            <Stat
+              styles={styles}
+              value={summary.averageWokeAt === null ? '—' : formatClockMinutes(summary.averageWokeAt, use24Hour)}
+              label="Woke up"
+              accessibilityLabel={summary.averageWokeAt === null
+                ? 'Average time you woke up, too varied to average'
+                : `Average time you woke up, ${formatClockMinutes(summary.averageWokeAt, use24Hour)}`}
+            />
+          </View>
+        </WideSpan>
 
-        {visible.length === 0 ? (
+        {visible.length === 0 && (
           <View style={styles.card}>
             <Text style={styles.finding}>Nothing recorded in this range.</Text>
           </View>
-        ) : (
+        )}
+
+        {visible.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>SLEEP TIMES BY DAY</Text>
             <View style={styles.card}>
@@ -327,64 +332,68 @@ export function SleepScreen() {
                 Blank days have nothing recorded. Touch and drag over the chart to see a day’s times.
               </Text>
             </View>
+          </>
+        )}
 
-            {stageAverage !== null && (
-              <>
-                <Text style={styles.sectionTitle}>AVERAGE STAGES</Text>
-                <View style={styles.card}>
-                  <SleepStagesBar stages={stageAverage.stages} label="Average" />
-                  <Text style={styles.chartCaption}>
-                    Average of the main stretch, over the {stageAverage.nights}{' '}
-                    {stageAverage.nights === 1 ? 'day' : 'days'} in this range that recorded stages.
-                    Stages come from Apple Watch; sleep tracked by the iPhone alone has none.
+        {visible.length > 0 && stageAverage !== null && (
+          <>
+            <Text style={styles.sectionTitle}>AVERAGE STAGES</Text>
+            <View style={styles.card}>
+              <SleepStagesBar stages={stageAverage.stages} label="Average" />
+              <Text style={styles.chartCaption}>
+                Average of the main stretch, over the {stageAverage.nights}{' '}
+                {stageAverage.nights === 1 ? 'day' : 'days'} in this range that recorded stages.
+                Stages come from Apple Watch; sleep tracked by the iPhone alone has none.
+              </Text>
+            </View>
+          </>
+        )}
+
+        {visible.length > 0 && timelineNight !== null && timelineNight.stages !== null && (
+          <>
+            <Text style={styles.sectionTitle}>STAGES BY NIGHT</Text>
+            <View style={styles.card}>
+              <View style={styles.stepper}>
+                <PressableScale
+                  style={[styles.stepButton, timelineIndex === 0 && styles.stepButtonOff]}
+                  onPress={() => stepTimeline(-1)}
+                  disabled={timelineIndex === 0}
+                  accessibilityLabel="Earlier night"
+                >
+                  <Ionicons name="chevron-back" size={iconSize.md} color={colors.text} />
+                </PressableScale>
+                <View
+                  style={styles.stepperTitle}
+                  accessible
+                  accessibilityLabel={`Ended ${relativeDay(timelineNight.dayKey, todayKey)}, ${
+                    formatClockMinutes(clock(timelineNight.asleepAt), use24Hour)} to ${
+                    formatClockMinutes(clock(timelineNight.wokeAt), use24Hour)}`}
+                >
+                  <Text style={styles.stepperDay}>Ended {relativeDay(timelineNight.dayKey, todayKey)}</Text>
+                  <Text style={styles.stepperRange}>
+                    {formatClockMinutes(clock(timelineNight.asleepAt), use24Hour)} to {formatClockMinutes(clock(timelineNight.wokeAt), use24Hour)}
                   </Text>
                 </View>
-              </>
-            )}
+                <PressableScale
+                  style={[styles.stepButton, timelineIndex === timelineNights.length - 1 && styles.stepButtonOff]}
+                  onPress={() => stepTimeline(1)}
+                  disabled={timelineIndex === timelineNights.length - 1}
+                  accessibilityLabel="Later night"
+                >
+                  <Ionicons name="chevron-forward" size={iconSize.md} color={colors.text} />
+                </PressableScale>
+              </View>
+              <SleepStageTimeline night={timelineNight} use24Hour={use24Hour} />
+              <SleepStagesBar stages={timelineNight.stages} label={`Ended ${relativeDay(timelineNight.dayKey, todayKey)}`} showBar={false} />
+              <Text style={styles.chartCaption}>
+                Each block is one stretch in a stage. Nights tracked by the iPhone alone have no stages, so they are skipped.
+              </Text>
+            </View>
+          </>
+        )}
 
-            {timelineNight !== null && timelineNight.stages !== null && (
-              <>
-                <Text style={styles.sectionTitle}>STAGES BY NIGHT</Text>
-                <View style={styles.card}>
-                  <View style={styles.stepper}>
-                    <PressableScale
-                      style={[styles.stepButton, timelineIndex === 0 && styles.stepButtonOff]}
-                      onPress={() => stepTimeline(-1)}
-                      disabled={timelineIndex === 0}
-                      accessibilityLabel="Earlier night"
-                    >
-                      <Ionicons name="chevron-back" size={iconSize.md} color={colors.text} />
-                    </PressableScale>
-                    <View
-                      style={styles.stepperTitle}
-                      accessible
-                      accessibilityLabel={`Ended ${relativeDay(timelineNight.dayKey, todayKey)}, ${
-                        formatClockMinutes(clock(timelineNight.asleepAt), use24Hour)} to ${
-                        formatClockMinutes(clock(timelineNight.wokeAt), use24Hour)}`}
-                    >
-                      <Text style={styles.stepperDay}>Ended {relativeDay(timelineNight.dayKey, todayKey)}</Text>
-                      <Text style={styles.stepperRange}>
-                        {formatClockMinutes(clock(timelineNight.asleepAt), use24Hour)} to {formatClockMinutes(clock(timelineNight.wokeAt), use24Hour)}
-                      </Text>
-                    </View>
-                    <PressableScale
-                      style={[styles.stepButton, timelineIndex === timelineNights.length - 1 && styles.stepButtonOff]}
-                      onPress={() => stepTimeline(1)}
-                      disabled={timelineIndex === timelineNights.length - 1}
-                      accessibilityLabel="Later night"
-                    >
-                      <Ionicons name="chevron-forward" size={iconSize.md} color={colors.text} />
-                    </PressableScale>
-                  </View>
-                  <SleepStageTimeline night={timelineNight} use24Hour={use24Hour} />
-                  <SleepStagesBar stages={timelineNight.stages} label={`Ended ${relativeDay(timelineNight.dayKey, todayKey)}`} showBar={false} />
-                  <Text style={styles.chartCaption}>
-                    Each block is one stretch in a stage. Nights tracked by the iPhone alone have no stages, so they are skipped.
-                  </Text>
-                </View>
-              </>
-            )}
-
+        {visible.length > 0 && (
+          <>
             <Text style={styles.sectionTitle}>HOURS ASLEEP BY DAY</Text>
             <View style={styles.card}>
               <SleepHoursChart dayKeys={dayKeys} nights={visible} goalMinutes={goal} onScrubChange={setScrubbing} />
@@ -406,37 +415,41 @@ export function SleepScreen() {
           </>
         )}
 
-        <Text style={styles.sectionTitle}>SLEEP, MOOD AND TASKS</Text>
-        <View style={styles.card}>
-          {findings.length > 0 ? (
-            findings.map(f => <Text key={f.key} style={styles.finding}>{f.text}</Text>)
-          ) : (
-            <Text style={styles.finding}>
-              Shows up once {MIN_PAIRED_DAYS} days have both sleep recorded and a mood entry or a finished task.
+        <>
+          <Text style={styles.sectionTitle}>SLEEP, MOOD AND TASKS</Text>
+          <View style={styles.card}>
+            {findings.length > 0 ? (
+              findings.map(f => <Text key={f.key} style={styles.finding}>{f.text}</Text>)
+            ) : (
+              <Text style={styles.finding}>
+                Shows up once {MIN_PAIRED_DAYS} days have both sleep recorded and a mood entry or a finished task.
+              </Text>
+            )}
+            <Text style={styles.chartCaption}>
+              Looks at the last {SLEEP_HISTORY_DAYS} days. A night of sleep counts toward the day you woke up.
+              A pattern here doesn’t mean one caused the other.
             </Text>
-          )}
-          <Text style={styles.chartCaption}>
-            Looks at the last {SLEEP_HISTORY_DAYS} days. A night of sleep counts toward the day you woke up.
-            A pattern here doesn’t mean one caused the other.
-          </Text>
-        </View>
+          </View>
+        </>
 
-        {/* Nothing here is kept, so there is nothing to edit or delete on this
-            screen; correcting a night happens in Health, beside whatever
-            recorded it. Same door the Weight screen opens. */}
-        <TouchableOpacity
-          style={styles.healthLinkRow}
-          activeOpacity={interaction.activeOpacity}
-          onPress={() => { haptics.tap(); void openHealthApp(); }}
-          accessibilityRole="button"
-          accessibilityLabel="Open the Health app"
-          accessibilityHint="View or correct your sleep in Apple Health, where it is kept"
-        >
-          <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
-          <Text style={styles.healthLinkText}>View or edit sleep in Health</Text>
-          <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
-        </TouchableOpacity>
-      </ScrollView>
+        <WideSpan>
+          {/* Nothing here is kept, so there is nothing to edit or delete on this
+              screen; correcting a night happens in Health, beside whatever
+              recorded it. Same door the Weight screen opens. */}
+          <TouchableOpacity
+            style={styles.healthLinkRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); void openHealthApp(); }}
+            accessibilityRole="button"
+            accessibilityLabel="Open the Health app"
+            accessibilityHint="View or correct your sleep in Apple Health, where it is kept"
+          >
+            <Ionicons name="heart-outline" size={iconSize.sm} color={colors.textSecondary} />
+            <Text style={styles.healthLinkText}>View or edit sleep in Health</Text>
+            <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+          </TouchableOpacity>
+        </WideSpan>
+      </WideScroll>
       <SleepGoalSheet visible={goalOpen} onClose={() => setGoalOpen(false)} />
       <ScrollToTopButton {...scrollTop.buttonProps} />
       {pullSearch.sheet}

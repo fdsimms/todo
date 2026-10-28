@@ -84,6 +84,7 @@ import { CookRecap } from '../components/CookRecap';
 import { AlarmMissionHost } from '../components/AlarmMissionHost';
 import { WorkoutModeHost } from '../components/WorkoutModeHost';
 import { CookingBar } from '../components/CookingBar';
+import { FloatingLayer } from '../components/FloatingLayer';
 import { FocusFloatingBar } from '../components/FocusBar';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -772,6 +773,12 @@ export default function AppNavigator() {
           {...edgePanResponder.panHandlers}
         />
       )}
+      {/* Everything that floats over the app from outside a screen: the demo
+          banner, the undo bar, the toasts, the cook timer, the focus strip.
+          They share one layer (see FloatingLayer) so that on a two-pane window
+          they sit over the list, beside its add button, and not across both
+          panes. */}
+      <FloatingLayer>
       {/* Outside the NavigationContainer so it stays put across every screen
           and modal — demo mode isn't a place you navigate to, it's a state
           the whole app is in. */}
@@ -789,6 +796,15 @@ export default function AppNavigator() {
       {/* Beside it, for the same reason: "X is ready" is a moment after a
           tap, not a screen. See ReadyOfferBar. */}
       <ReadyOfferBar />
+      {/* Same "not a screen" placement, and floating rather than a sibling of
+          a list the way ActiveTripBanner is — see CookingBar's own doc
+          comment for why a cook timer needs the app-wide bar that shopping
+          trip deliberately doesn't get. */}
+      <CookingBar />
+      {/* A minimized focus session's way back from every screen but Today,
+          which has its own inline strip. See FocusFloatingBar. */}
+      <FocusFloatingBar hidden={onToday} />
+      </FloatingLayer>
       {/* "Pick dates" asking for Coming back, or offering to move Leaving:
           raised by an answer given anywhere. See TripDatePrompt. */}
       <TripDatePrompt />
@@ -800,14 +816,6 @@ export default function AppNavigator() {
       <FinishLeftoverPrompt />
       <LogMealPrompt />
       <HealthWriteRefusedNotice />
-      {/* Same "not a screen" placement, and floating rather than a sibling of
-          a list the way ActiveTripBanner is — see CookingBar's own doc
-          comment for why a cook timer needs the app-wide bar that shopping
-          trip deliberately doesn't get. */}
-      <CookingBar />
-      {/* A minimized focus session's way back from every screen but Today,
-          which has its own inline strip. See FocusFloatingBar. */}
-      <FocusFloatingBar hidden={onToday} />
       </AppFrame>
       </View>
       {/* The long-press card for a hub's tab. Outside the navigator so it can

@@ -24,7 +24,7 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -33,7 +33,7 @@ import { format } from 'date-fns/format';
 import type { ContextRow, NutrientKey, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { runAfterPaint, runAfterTransition } from '../utils/afterPaint';
 import { taskHomeFor } from '../utils/taskHome';
-import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
+import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster, isQuotaTask, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
 import { sameGroupsApartFromFold } from '../utils/groupFold';
 import { openTasksOf } from '../utils/openTasks';
 import { reuseUnchangedLists } from '../utils/stableLists';
@@ -107,7 +107,19 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from 'zustand';
-import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
+import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, editorHasUnsavedChanges, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
+import { confirmDiscard } from '../utils/confirmDiscard';
+import { nextLayoutHold } from '../utils/twoPane';
+import { runningOnMac } from '../utils/runningOnMac';
+import { confirmDeleteTask } from '../utils/confirmDeleteTask';
+import { isNegativeTask } from '../utils/negativeHabits';
+import { isRotationTask } from '../utils/rotation';
+import { settleCursor, stepCursor } from '../utils/rowCursor';
+import { NO_ROWS, flatRowOrder, laterRowOrder, todayRowOrder, unscheduledRowOrder, type OrderableRow, type RowOrder } from '../utils/rowOrder';
+import { registerScreenKeys } from '../utils/keyActions';
+import { useEscapeHandler } from '../hooks/useEscapeHandler';
+import { useViewableRange } from '../hooks/useViewableRange';
+import { useRowCursorStore } from '../store/useRowCursorStore';
 import { MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
 import { SuggestedPinsSheet } from '../components/SuggestedPinsSheet';
 import { MorningCheckInSheet } from '../components/MorningCheckInSheet';
@@ -115,7 +127,7 @@ import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
-import { LaterStackRow } from '../components/LaterStackRow';
+import { LaterStackRow, LATER_STACK_PREVIEW } from '../components/LaterStackRow';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList, type RowScroller, type DropCapture } from '../components/ReorderableList';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
@@ -187,7 +199,7 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
-import { getDayStart, getLogicalDayKey, getLogicalToday, isBeforeDayReset, liveStreakCount } from '../utils/dateUtils';
+import { formatTimeOfDay, getDayStart, getLogicalDayKey, getLogicalToday, isBeforeDayReset, liveStreakCount } from '../utils/dateUtils';
 import { effectiveCalorieTargetKcal } from '../utils/activeEnergyBoost';
 import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSheet';
 import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
@@ -221,6 +233,7 @@ import {
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { TodayGlance } from '../components/TodayGlance';
 import { AgentSuggestionCards, useSuggestionCount } from '../components/AgentSuggestionCards';
 import { AllClearMark } from '../components/AllClearMark';
 import { CompletionCollapse } from '../components/CompletionCollapse';
@@ -250,6 +263,7 @@ import { projectMoveTargets } from '../utils/projectList';
 import { emitNowTick } from '../utils/nowTick';
 import { useNowTick } from '../hooks/useNowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
+import { glanceEvents } from '../utils/todayGlance';
 import { LazySheet } from '../components/LazySheet';
 import { TwoPane } from '../components/TwoPane';
 import { useTwoPane } from '../hooks/useTwoPane';
@@ -840,9 +854,27 @@ const OPEN_TASK_WAIT_MS = 20_000;
 export function TodayScreen() {
   // ==== store bindings, navigation, layout insets ====
   const insets = useSafeAreaInsets();
+  // In a store, for the reason quickAddStore gives. This screen reads it only
+  // while something here depends on it: the two-pane layout, which lights the
+  // row being edited and shows a placeholder beside the list, and an itinerary
+  // import waiting for the editor to close before opening the next entry. Made
+  // here, ahead of the layout below, which has to know whether an editor is open.
+  const editorStore = useSheetStore<EditorSheetState>(EDITOR_CLOSED);
   // On a window with room for two panes (`twoPaneFor`) the task editor opens
   // beside the list, drawn in place, instead of as a sheet over it.
-  const twoPane = useTwoPane();
+  const roomForTwoPane = useTwoPane();
+  // Resizing the window across the breakpoint with an editor open used to swap
+  // its host: widening unmounted the sheet and mounted the pane, narrowing the
+  // reverse, and either way the form came back fresh and an unsaved edit was gone.
+  // So the layout the editor opened in is held until it closes (`closeEditor`), or
+  // until the window comes back to it. Decided while rendering, not in an effect:
+  // an effect runs after the host has already been torn out.
+  const [layoutHold, setLayoutHold] = useState<boolean | null>(null);
+  const [lastRoomForTwoPane, setLastRoomForTwoPane] = useState(roomForTwoPane);
+  if (lastRoomForTwoPane !== roomForTwoPane) setLastRoomForTwoPane(roomForTwoPane);
+  const nextHold = nextLayoutHold(layoutHold, lastRoomForTwoPane, roomForTwoPane, editorStore.getState().visible);
+  if (nextHold !== layoutHold) setLayoutHold(nextHold);
+  const twoPane = layoutHold ?? roomForTwoPane;
   const navigation = useNavigation();
   // A task row's category chip opens that category's page. Stable, because
   // TaskItem is memoized.
@@ -1028,14 +1060,23 @@ export function TodayScreen() {
     });
     return true;
   }, []);
-  // In a store, for the reason quickAddStore gives. This screen reads it only
-  // while something here depends on it: the two-pane layout, which lights the
-  // row being edited and shows a placeholder beside the list, and an itinerary
-  // import waiting for the editor to close before opening the next entry.
-  const editorStore = useSheetStore<EditorSheetState>(EDITOR_CLOSED);
   const setEditorVisible = useCallback((visible: boolean) => editorStore.setState({ visible }), [editorStore]);
   const setEditingTask = useCallback((task: Task | null) => editorStore.setState({ task }), [editorStore]);
   const setEditorInitialDraft = useCallback((draft: Partial<TaskDraft> | null) => editorStore.setState({ draft }), [editorStore]);
+  // Every way of pointing the editor somewhere goes through this. Beside the list, the editor
+  // is a pane, and the next click on a row is one tap from a form holding edits nobody has
+  // saved: opening another task over it threw them away with nothing said. A sheet covers
+  // the list it was opened from, so this asks only while the pane is up and dirty, in the
+  // app's usual "Discard changes?" alert; Keep editing leaves everything as it was.
+  const twoPaneRef = useRef(twoPane);
+  twoPaneRef.current = twoPane;
+  const switchEditor = useCallback((open: () => void) => {
+    if (twoPaneRef.current && editorHasUnsavedChanges(editorStore)) {
+      confirmDiscard(open);
+      return;
+    }
+    open();
+  }, [editorStore]);
   const [eventImportVisible, setEventImportVisible] = useState(false);
   const [taskImportVisible, setTaskImportVisible] = useState(false);
   // A screenshot shared in from another app, handed to the import sheet. The
@@ -1103,6 +1144,7 @@ export function TodayScreen() {
   const editorReturnToRef = useRef<string | null>(null);
   const closeEditor = useCallback(() => {
     setEditorVisible(false);
+    setLayoutHold(null);
     setExpandedTaskId(null);
     const returnTo = editorReturnToRef.current;
     editorReturnToRef.current = null;
@@ -1128,10 +1170,12 @@ export function TodayScreen() {
   // something actually happens, so cancelling the confirm doesn't cost the
   // user the selection they just built.
   const handleOpenTaskFromDeliverable = useCallback((task: Task) => {
-    setEditingTask(task);
-    setEditorInitialDraft(null);
-    setEditorVisible(true);
-  }, []);
+    switchEditor(() => {
+      setEditingTask(task);
+      setEditorInitialDraft(null);
+      setEditorVisible(true);
+    });
+  }, [switchEditor]);
   const { requestComplete, enqueue, queueProps } = useAnswerFirstCompletion(handleOpenTaskFromDeliverable);
   const handleBulkComplete = () => {
     const ids = Array.from(selectedIds);
@@ -1158,6 +1202,10 @@ export function TodayScreen() {
   });
   const unscheduledScrollTop = useScrollToTopVisibility();
   const inboxScrollTop = useScrollToTopVisibility();
+  // Which rows these two plain lists have on screen, so the keyboard's cursor scrolls one into view
+  // only when it has left (see `useViewableRange`).
+  const unscheduledViewable = useViewableRange();
+  const inboxViewable = useViewableRange();
   // Lifts the expanded row's cell above the row below it — Unscheduled and
   // Inbox are genuine FlatLists, unlike Today/Later's own ReorderableList
   // (see useElevatedCellRenderer for why that one needs no equivalent).
@@ -1372,35 +1420,43 @@ export function TodayScreen() {
   // wouldn't land in Today.
   const widgetCompletionIds = useWidgetCompletionStore(useShallow(s => s.pendingIds));
   const dequeueWidgetCompletion = useWidgetCompletionStore(s => s.dequeue);
+  // Completes a task the way its own checkbox would, for a caller that is not that checkbox:
+  // a tap on the widget or a Live Activity, or a key. A task with a row on Today is handed to
+  // the row (`autoComplete`), which runs its whole ladder (a question, a mission, a lock); one
+  // without can't be, so it is completed here by the same rules the row would have followed.
+  const completeThroughRow = (task: Task) => {
+    const id = task.id;
+    if (!isTaskVisible(task)) {
+      // No row is mounted to catch autoComplete, so the animated path (which
+      // asks a decision task its question) can't run. Ask here instead
+      // rather than completing straight through it — a Live Activity's Done
+      // button is a person finishing a task, and it's the one completion
+      // path left that would drop an answer with nobody told.
+      // A target below its last unit logs one, as its own row's tap would;
+      // completing it outright would mark every remaining unit done at once.
+      // Ahead of the question for completionTapFor's own reason: a unit that
+      // doesn't finish the task has nothing to ask.
+      if (completionTapFor(task) === 'log-unit') {
+        useTaskStore.getState().logQuotaUnit(id);
+        return;
+      }
+      if (completesThroughQueue(task)) {
+        enqueue([id]);
+        return;
+      }
+      useTaskStore.getState().completeTask(id);
+      return;
+    }
+    pendingAutoCompleteRef.current.add(id);
+    setAutoCompletingIds(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
+  };
   useEffect(() => {
     if (widgetCompletionIds.length === 0) return;
     widgetCompletionIds.forEach(id => {
       dequeueWidgetCompletion(id);
       const task = allTasks.find(t => t.id === id);
       if (!task || task.completed) return;
-      if (!isTaskVisible(task)) {
-        // No row is mounted to catch autoComplete, so the animated path (which
-        // asks a decision task its question) can't run. Ask here instead
-        // rather than completing straight through it — a Live Activity's Done
-        // button is a person finishing a task, and it's the one completion
-        // path left that would drop an answer with nobody told.
-        // A target below its last unit logs one, as its own row's tap would;
-        // completing it outright would mark every remaining unit done at once.
-        // Ahead of the question for completionTapFor's own reason: a unit that
-        // doesn't finish the task has nothing to ask.
-        if (completionTapFor(task) === 'log-unit') {
-          useTaskStore.getState().logQuotaUnit(id);
-          return;
-        }
-        if (completesThroughQueue(task)) {
-          enqueue([id]);
-          return;
-        }
-        useTaskStore.getState().completeTask(id);
-        return;
-      }
-      pendingAutoCompleteRef.current.add(id);
-      setAutoCompletingIds(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
+      completeThroughRow(task);
     });
   }, [widgetCompletionIds]);
 
@@ -2289,6 +2345,19 @@ export function TodayScreen() {
 
   const endPullToSearch = useCallback(() => setPullingToSearch(false), []);
 
+  // Pulling the list down to search is a touch gesture. A trackpad's rubber-band at the top of
+  // a list can end past the threshold with no thought of searching, and the search is one
+  // press away anyway: the header's magnifier, ⌘F and "/". So a Mac list has no pull.
+  const pullToSearchControl = runningOnMac()
+    ? undefined
+    : (
+      <RefreshControl
+        refreshing={pullingToSearch}
+        onRefresh={handlePullToSearch}
+        tintColor={colors.textSecondary}
+      />
+    );
+
   // Anything the card's five slots couldn't answer goes to the real Search
   // screen, carrying the query so it isn't typed twice.
   const handleOpenFullSearch = useCallback((query: string) => {
@@ -2296,9 +2365,11 @@ export function TodayScreen() {
   }, [navigation]);
 
   const openEditor = (task?: Task) => {
-    setEditingTask(task ?? null);
-    setEditorInitialDraft(null);
-    setEditorVisible(true);
+    switchEditor(() => {
+      setEditingTask(task ?? null);
+      setEditorInitialDraft(null);
+      setEditorVisible(true);
+    });
   };
 
   // The row handlers below are shared verbatim by all five TaskItem call sites
@@ -2309,24 +2380,40 @@ export function TodayScreen() {
   // Props) so one callback serves the whole list rather than one closure per
   // row, which is what lets the identity be stable at all.
   //
-  // Empty deps throughout, and each is written so that's provably safe: the
-  // expand toggle reaches state only through the functional form of setState,
-  // and the editor resolves its task from the store at call time instead of
-  // capturing it. Neither can read a stale value from its frozen closure.
-  const handleRowPress = useCallback((id: string) => {
+  // Their deps are values that never change identity (a store made once, a
+  // setter, a ref), so each is as stable as an empty list would be, and each
+  // is written so a frozen closure can't read a stale value: the expand toggle
+  // reaches state only through the functional form of setState, the editor
+  // resolves its task from the store at call time instead of capturing it, and
+  // whether the window has two panes is read from a ref.
+  const handleRowEdit = useCallback((id: string) => {
+    switchEditor(() => {
+      setEditingTask(useTaskStore.getState().tasks.find(t => t.id === id) ?? null);
+      setEditorInitialDraft(null);
+      setEditorVisible(true);
+    });
+  }, [switchEditor]);
+
+  // With room for the pane (`twoPane`), a click opens the task in it and the row stays as
+  // it was. Expanding the row first, then finding the pencil inside it, took three clicks
+  // to move from one task to the next, and the spotlight dimmed the rest of a list that
+  // is meant to stay live beside the form. A pinned copy is keyed `pin-<id>`, so the id
+  // is the task's own. Returns true for TaskItem: the press is handled, nothing to expand.
+  const handleRowPress = useCallback((id: string): boolean => {
+    if (twoPaneRef.current) {
+      const taskId = id.startsWith('pin-') ? id.slice(4) : id;
+      const open = editorStore.getState();
+      if (!(open.visible && open.task?.id === taskId)) handleRowEdit(taskId);
+      return true;
+    }
     setExpandedTaskId(prev => {
       // A tap landing while a *different* row is spotlighted just dismisses
       // that one, rather than expanding the row that was tapped.
       if (prev !== null && prev !== id) return null;
       return prev === id ? null : id;
     });
-  }, []);
-
-  const handleRowEdit = useCallback((id: string) => {
-    setEditingTask(useTaskStore.getState().tasks.find(t => t.id === id) ?? null);
-    setEditorInitialDraft(null);
-    setEditorVisible(true);
-  }, []);
+    return false;
+  }, [editorStore, handleRowEdit]);
 
   // A task link (dundundun://task?id=…, or the MCP server's https form of it)
   // opens that task's editor, through the same stamped-param handoff as the
@@ -2389,16 +2476,19 @@ export function TodayScreen() {
   }, [navigation]);
 
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
-    // The draft carries everything the sheet had, including the seeded
-    // category; only the placement is let go of, and the editor has no notion
-    // of one anyway.
-    // A stack just named for this sheet stays: the draft is filed into it,
-    // and the editor hasn't saved it yet.
-    namedStackIdRef.current = null;
-    closeQuickAdd();
-    setEditingTask(null);
-    setEditorInitialDraft(draft);
-    setEditorVisible(true);
+    // Asked before quick add closes, so Keep editing leaves what was typed there where it is.
+    switchEditor(() => {
+      // The draft carries everything the sheet had, including the seeded
+      // category; only the placement is let go of, and the editor has no notion
+      // of one anyway.
+      // A stack just named for this sheet stays: the draft is filed into it,
+      // and the editor hasn't saved it yet.
+      namedStackIdRef.current = null;
+      closeQuickAdd();
+      setEditingTask(null);
+      setEditorInitialDraft(draft);
+      setEditorVisible(true);
+    });
   };
 
   /**
@@ -4152,6 +4242,7 @@ export function TodayScreen() {
         expanded={expandedTaskId === task.id}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
         onEdit={handleRowEdit}
+        paneActive={paneEditingTaskId === task.id}
         subtaskCount={subs.items.length}
         subtaskDoneCount={subs.doneCount}
         subtasks={subs.items}
@@ -4209,6 +4300,7 @@ export function TodayScreen() {
         expanded={expandedTaskId === task.id}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
         onEdit={handleRowEdit}
+        paneActive={paneEditingTaskId === task.id}
         subtaskCount={subs.items.length}
         subtaskDoneCount={subs.doneCount}
         subtasks={subs.items}
@@ -5019,6 +5111,152 @@ export function TodayScreen() {
   // several days, and opening one day's must not open the others).
   const [openLaterStacks, setOpenLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
   const [expandedLaterStacks, setExpandedLaterStacks] = useState<ReadonlySet<string>>(() => new Set());
+
+  // ==== the keyboard: a row cursor, and what the keys do to it ====
+  // A hardware keyboard (a Mac, an iPad with one) steps a cursor down the rows the view draws and
+  // acts on the row it is on. The cursor is a place and nothing more: it opens, completes or selects
+  // nothing by moving, and it is not the task the editor pane has open. What a key means lives in
+  // `keyShortcuts.ts`; the list of rows it walks is `rowOrder.ts`.
+  const isFocused = useIsFocused();
+  const rowOrder = useMemo((): RowOrder => {
+    // A stack shows its members unless it is folded. Read off the store, not off the
+    // group in the list, whose `collapsed` can be stale (see `liveGroup`).
+    const groupOpen = (group: { id: string }) => liveGroupById.get(group.id)?.collapsed !== true;
+    if (viewMode === 'today') {
+      if (!restVisible) return NO_ROWS;
+      return todayRowOrder(
+        projectBands.bands.filter(band => !collapsedBands.has(band.project.id)).map(band => band.items),
+        data as readonly OrderableRow[],
+        groupOpen,
+      );
+    }
+    if (viewMode === 'later') return laterRowOrder(laterData, openLaterStacks, expandedLaterStacks, LATER_STACK_PREVIEW);
+    if (viewMode === 'unscheduled') return unscheduledRowOrder(unscheduledTasks);
+    return flatRowOrder(inboxData as readonly OrderableRow[], groupOpen);
+  }, [viewMode, restVisible, projectBands, collapsedBands, data, laterData, openLaterStacks, expandedLaterStacks, unscheduledTasks, inboxData, liveGroupById]);
+
+  // The cursor follows its row when the list changes under it. A task that was just completed or
+  // moved hands it to the one below, so a run of Space presses clears a list from the top.
+  const previousRowOrder = useRef<RowOrder>(rowOrder);
+  useEffect(() => {
+    const cursor = useRowCursorStore.getState();
+    const settled = settleCursor(previousRowOrder.current.ids, rowOrder.ids, cursor.cursorId);
+    previousRowOrder.current = rowOrder;
+    if (settled !== cursor.cursorId) cursor.setCursor(settled);
+  }, [rowOrder]);
+  // A place on one view means nothing on another, and nothing once the screen is left.
+  useEffect(() => { useRowCursorStore.getState().setCursor(null); }, [viewMode]);
+  useEffect(() => () => useRowCursorStore.getState().setCursor(null), []);
+
+  /** Scrolls the row a task is drawn in into view, only if it isn't already. */
+  const revealCursorRow = (taskId: string) => {
+    const slot = rowOrder.slots.get(taskId);
+    if (viewMode === 'today' || viewMode === 'later') {
+      const scroller = viewMode === 'today' ? todayRowScroller : laterRowScroller;
+      // A project band is part of the list's header, which has no row key: bring the top back.
+      if (typeof slot === 'string') scroller.current?.keepKeyInView(slot);
+      else if (viewMode === 'today') scroller.current?.scrollToTop();
+      return;
+    }
+    if (typeof slot !== 'number') return;
+    const viewable = viewMode === 'unscheduled' ? unscheduledViewable : inboxViewable;
+    if (viewable.isInView(slot)) return;
+    const list = viewMode === 'unscheduled' ? unscheduledScroll.ref : inboxScroll.ref;
+    list.current?.scrollToIndex({ index: slot, animated: true, viewPosition: 0.3 });
+  };
+
+  const moveCursor = (delta: 1 | -1) => {
+    const store = useRowCursorStore.getState();
+    const next = stepCursor(rowOrder.ids, store.cursorId, delta);
+    if (next === null) return;
+    store.setCursor(next);
+    revealCursorRow(next);
+  };
+
+  const cursorTask = (): Task | null => {
+    const id = useRowCursorStore.getState().cursorId;
+    return id === null ? null : useTaskStore.getState().tasks.find(t => t.id === id) ?? null;
+  };
+
+  /** Space: complete the task under the cursor, by the checkbox's own rules. */
+  const completeCursorTask = () => {
+    const task = cursorTask();
+    if (!task || task.completed) return;
+    // The refusals the row's right-click menu applies: a habit about not doing something has no
+    // completion, and a rotation is ticked through its own pills. A task still waiting out its
+    // recurrence can't be finished ahead of schedule; a row on Today enforces that itself, but one
+    // in Later has no checkbox dispatch to hand it to.
+    if (isNegativeTask(task) || (isQuotaTask(task) && isRotationTask(task))) { haptics.error(); return; }
+    if (!isTaskVisible(task) && isRecurrenceNotYetDue(task)) { haptics.error(); return; }
+    completeThroughRow(task);
+  };
+
+  const deleteCursorTask = () => {
+    const task = cursorTask();
+    if (task) confirmDeleteTask(task);
+  };
+
+  // Read through a ref so the registration below is made once per focus and the handlers it holds
+  // are always this render's.
+  const rowKeys = useRef({
+    moveCursor, completeCursorTask, deleteCursorTask,
+    handleRowEdit, toggleSelection, handleBulkDelete, selectAll, enterSelectionMode,
+    selectionMode, selectedIds, rowOrder,
+  });
+  rowKeys.current = {
+    moveCursor, completeCursorTask, deleteCursorTask,
+    handleRowEdit, toggleSelection, handleBulkDelete, selectAll, enterSelectionMode,
+    selectionMode, selectedIds, rowOrder,
+  };
+  useEffect(() => {
+    if (!isFocused) return;
+    return registerScreenKeys({
+      cursorDown: () => rowKeys.current.moveCursor(1),
+      cursorUp: () => rowKeys.current.moveCursor(-1),
+      // Return edits the task, in the pane when there is room and in a sheet otherwise. While
+      // selecting it does nothing: the row's job then is to be ticked or not.
+      openCursor: () => {
+        if (rowKeys.current.selectionMode) return;
+        const id = useRowCursorStore.getState().cursorId;
+        if (id !== null) rowKeys.current.handleRowEdit(id);
+      },
+      // Space completes the task, or while selecting, ticks the row in or out of the selection.
+      completeCursor: () => {
+        if (rowKeys.current.selectionMode) {
+          const id = useRowCursorStore.getState().cursorId;
+          if (id !== null) rowKeys.current.toggleSelection(id);
+          return;
+        }
+        rowKeys.current.completeCursorTask();
+      },
+      // Delete removes what is selected while selecting (the bulk bar's own delete, which asks),
+      // and the task under the cursor otherwise (`confirmDeleteTask`, which asks).
+      deleteCursor: () => {
+        if (rowKeys.current.selectionMode) {
+          if (rowKeys.current.selectedIds.size > 0) rowKeys.current.handleBulkDelete();
+          return;
+        }
+        rowKeys.current.deleteCursorTask();
+      },
+      // Everything the view draws, not everything it filters (`rowOrder.ts`).
+      selectAll: () => {
+        const ids = rowKeys.current.rowOrder.ids;
+        if (ids.length === 0) return;
+        if (rowKeys.current.selectionMode) rowKeys.current.selectAll(ids);
+        else rowKeys.current.enterSelectionMode(ids);
+      },
+    });
+  }, [isFocused]);
+
+  // Escape steps back out of what the screen is holding open, innermost first. Registered
+  // while each is up, so the most recent is the one Escape reaches; a sheet always goes first.
+  useEscapeHandler(isFocused, () => {
+    const cursor = useRowCursorStore.getState();
+    if (cursor.cursorId === null) return false;
+    cursor.setCursor(null);
+  });
+  useEscapeHandler(expandedTaskId !== null, () => { setExpandedTaskId(null); });
+  useEscapeHandler(selectionMode, () => { exitSelection(); });
   const handleLaterStackToggle = useCallback((key: string) => {
     if (expandedTaskIdRef.current !== null) { setExpandedTaskId(null); return; }
     haptics.tap();
@@ -5130,6 +5368,18 @@ export function TodayScreen() {
           .filter(Boolean)
           .join(' · ')
       : undefined;
+
+  // What the empty right-hand pane shows beside the list (TodayGlance): the
+  // events still ahead, off the same read as the "events left" figure above.
+  const glanceEventList = useMemo(
+    () => glanceEvents(
+      todayCalendarEvents,
+      new Date(),
+      isEventHidden,
+      at => formatTimeOfDay(at, use24HourTime),
+    ),
+    [todayCalendarEvents, isEventHidden, use24HourTime, minuteTick],
+  );
 
 
   const showCoinPill = rewardsEnabled && !featureHidden('rewardsScreen', simpleMode);
@@ -5390,6 +5640,7 @@ export function TodayScreen() {
                     expanded={expandedTaskId === item.task.id}
                     spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
                     onEdit={handleRowEdit}
+                    paneActive={paneEditingTaskId === item.task.id}
                     subtaskCount={subs.items.length}
                     subtaskDoneCount={subs.doneCount}
                     subtasks={subs.items}
@@ -5461,13 +5712,7 @@ export function TodayScreen() {
                 {listFooter(laterOrder.length === 0)}
               </>
             }
-            refreshControl={
-              <RefreshControl
-                refreshing={pullingToSearch}
-                onRefresh={handlePullToSearch}
-                tintColor={colors.textSecondary}
-              />
-            }
+            refreshControl={pullToSearchControl}
           />
         )}
 
@@ -5681,13 +5926,7 @@ export function TodayScreen() {
                 ? styles.emptyContainer
                 : [styles.listContent, extraListBottomPadding !== undefined && { paddingBottom: extraListBottomPadding }]
             }
-            refreshControl={
-              <RefreshControl
-                refreshing={pullingToSearch}
-                onRefresh={handlePullToSearch}
-                tintColor={colors.textSecondary}
-              />
-            }
+            refreshControl={pullToSearchControl}
             ListEmptyComponent={emptyComponent}
             ListFooterComponent={
               // Direct child of the scroll content (no cell wrapper), so the
@@ -5701,6 +5940,7 @@ export function TodayScreen() {
         {viewMode === 'unscheduled' && (
           <FlatList
             ref={unscheduledScroll.ref}
+            {...unscheduledViewable.props}
             scrollEnabled={!painting && !draggingSubtask}
             data={unscheduledTasks}
             keyExtractor={t => t.id}
@@ -5731,6 +5971,7 @@ export function TodayScreen() {
                     expanded={expandedTaskId === item.id}
                     spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
                     onEdit={handleRowEdit}
+                    paneActive={paneEditingTaskId === item.id}
                     subtaskCount={subs.items.length}
                     subtaskDoneCount={subs.doneCount}
                     subtasks={subs.items}
@@ -5782,13 +6023,7 @@ export function TodayScreen() {
               />
             }
             ListFooterComponentStyle={unscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
-            refreshControl={
-              <RefreshControl
-                refreshing={pullingToSearch}
-                onRefresh={handlePullToSearch}
-                tintColor={colors.textSecondary}
-              />
-            }
+            refreshControl={pullToSearchControl}
           />
         )}
 
@@ -5804,6 +6039,7 @@ export function TodayScreen() {
         {viewMode === 'inbox' && (
           <FlatList
             ref={inboxScroll.ref}
+            {...inboxViewable.props}
             scrollEnabled={!painting && !draggingSubtask}
             data={inboxData}
             keyExtractor={listItemKey}
@@ -5866,13 +6102,7 @@ export function TodayScreen() {
               />
             }
             ListFooterComponentStyle={inboxIsEmpty ? undefined : styles.listFooterCell}
-            refreshControl={
-              <RefreshControl
-                refreshing={pullingToSearch}
-                onRefresh={handlePullToSearch}
-                tintColor={colors.textSecondary}
-              />
-            }
+            refreshControl={pullToSearchControl}
           />
         )}
         </FabDropZoneProvider>
@@ -6299,15 +6529,25 @@ export function TodayScreen() {
 
   return (
     <TwoPane
+      twoPane={twoPane}
       list={screenBody}
       detail={(
         <>
           {!editorVisible && (
-            <EmptyState
-              icon="create-outline"
-              title="Pick a task to edit"
-              subtitle="Its details open here. Tap the pencil on a task, or add a new one."
-            />
+            viewMode === 'today' && completedToday.length + visibleTasks.length > 0 ? (
+              <TodayGlance
+                done={completedToday.length}
+                left={visibleTasks.length}
+                summary={workloadLine}
+                events={glanceEventList}
+              />
+            ) : (
+              <EmptyState
+                icon="create-outline"
+                title="Pick a task to edit"
+                subtitle="Its details open here. Select a task in the list, or add a new one."
+              />
+            )
           )}
           <EditorSheetHost store={editorStore} onClose={closeEditor} inline />
         </>

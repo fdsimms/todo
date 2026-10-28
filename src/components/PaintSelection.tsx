@@ -1,7 +1,8 @@
-import React, { createContext, useCallback, useContext, useMemo, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import {
   PanResponder,
   StyleSheet,
+  useWindowDimensions,
   View,
   type StyleProp,
   type ViewProps,
@@ -143,6 +144,22 @@ export function PaintSelectionProvider({
   const containerRef = useRef<View | null>(null);
   const containerXRef = useRef(0);
   const containerWidthRef = useRef(0);
+  // Where the container sits in the window. Read on layout, and again when the
+  // window resizes: the app's column is centered, so resizing a Mac window moves
+  // it without its own size changing, and `onLayout` fires for neither, which left
+  // the gutter up to half the window's change away from the dots it belongs to.
+  const measureContainer = useCallback(() => {
+    containerRef.current?.measureInWindow?.((x, _y, width) => {
+      if (Number.isFinite(x)) containerXRef.current = x;
+      if (Number.isFinite(width)) containerWidthRef.current = width;
+    });
+  }, []);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  useEffect(() => {
+    // A frame later, once the column has moved to where it is going.
+    const frame = requestAnimationFrame(measureContainer);
+    return () => cancelAnimationFrame(frame);
+  }, [windowWidth, windowHeight, measureContainer]);
   const rowsRef = useRef<Map<string, MeasurableView>>(new Map());
   // Registration key -> the id that row selects. They differ only for the
   // pinned block's copy of a task, which has a band of its own.
@@ -321,12 +338,7 @@ export function PaintSelectionProvider({
         style={[styles.container, style]}
         // The gutter is measured against this container's own edges, not the
         // window's, so a list that is ever inset still lines up with its rows.
-        onLayout={() => {
-          containerRef.current?.measureInWindow?.((x, _y, width) => {
-            if (Number.isFinite(x)) containerXRef.current = x;
-            if (Number.isFinite(width)) containerWidthRef.current = width;
-          });
-        }}
+        onLayout={measureContainer}
         {...panResponder.panHandlers}
       >
         {children}

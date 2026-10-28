@@ -87,6 +87,7 @@ import { PressableScale } from './PressableScale';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory, QUICK_ADD_TITLE_TOKENS } from './TitleTokenAccessory';
+import { useCommitHandler } from '../hooks/useCommitHandler';
 import { tokenChipsFor, applyTokenChip, type TokenChip } from '../utils/titleTokenChips';
 import { chipUseKey, suggestExistingTags } from '../utils/chipUses';
 import { HighlightedText } from './HighlightedText';
@@ -137,6 +138,7 @@ import { ORDINAL_OPTIONS } from '../utils/recurrenceLabels';
 import { ordinal } from '../utils/ordinal';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayCard } from '../utils/frameWidth';
 
 /** How long a draft left by tapping outside quick add waits to be picked up. */
 const QUICK_ADD_KEEP_DRAFT_MS = 10 * 60 * 1000;
@@ -2553,6 +2555,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
 
   const suggestedTags = suggestExistingTags(allTags, tags, tagInput, chipUses, 8);
 
+  // ⌘Return adds, the way the arrow button does: it has to refuse for the same reasons (nothing
+  // typed, or a type that isn't filled in), not add around them.
+  useCommitHandler(visible, handleAdd, title.trim().length > 0 && blocked === null);
+
   // ==== render. Everything below is JSX ====
   return (
     <>
@@ -3896,6 +3902,9 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   centeredContainer: {
     flex: 1,
     justifyContent: 'center',
+    // Capped and centered: on a Mac window the card is a dialog, not a banner
+    // (and `toolChip`'s flexGrow then fills a 448pt line, as it was drawn for).
+    alignItems: 'center',
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xl,
   },
@@ -3905,6 +3914,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   // content dissolving into the sheet wants.
   scrollFade: { bottom: spacing.md },
   sheet: {
+    ...overlayCard,
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,
     paddingHorizontal: spacing.md,

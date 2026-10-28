@@ -12,6 +12,7 @@ import {
 } from '../utils/accessoryStack';
 import { getApplyOffer, subscribeApplyOffer } from '../utils/applyToAllOffer';
 import { BUTTON_LABEL } from '../copy/shared';
+import { AccessoryBar } from './AccessoryBar';
 
 /** What a weight or reps cell in a set table points `inputAccessoryViewID` at. */
 export const APPLY_TO_ALL_ACCESSORY_ID = 'applyToAllAccessory';
@@ -50,12 +51,12 @@ export function ApplyToAllAccessory() {
   const styles = makeStyles(colors);
   return (
     <InputAccessoryView nativeID={APPLY_TO_ALL_ACCESSORY_ID} backgroundColor={colors.bgSecondary}>
-      <View style={styles.bar}>
+      <AccessoryBar style={styles.bar}>
         {offer && <InlineAction label={offer.label} onPress={offer.apply} haptic />}
         <View style={styles.done}>
           <SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => Keyboard.dismiss()} />
         </View>
-      </View>
+      </AccessoryBar>
     </InputAccessoryView>
   );
 }
@@ -67,9 +68,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minHeight: 44,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xsm,
-    backgroundColor: colors.bgSecondary,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
   },
   done: { marginLeft: 'auto' },
 });

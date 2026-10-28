@@ -5,11 +5,17 @@
  *
  * Three rules shape the list:
  *
- * - **A plain key is one a text field would take** (a letter, a digit, "/").
- *   Since iOS 15 a focused field sees a key before any key command does, so
- *   typing "n" into a title types an "n" and never opens quick add. That's
- *   what makes single-key shortcuts safe at all; a plain key a field *doesn't*
- *   use (an arrow, Return) would fire while typing, so none is used plain.
+ * - **A plain key is one a text field would take** (a letter, a digit, "/",
+ *   Space, an arrow, Return, Delete). Since iOS 15 a focused field sees a key
+ *   before any key command does (Apple: key commands get what "text input or
+ *   focus systems don't handle", `wantsPriorityOverSystemBehavior` left false),
+ *   so typing "n" into a title types an "n" and never opens quick add, and an
+ *   arrow moves the caret rather than the row cursor. That's what makes
+ *   single-key shortcuts safe at all. A plain key a field does not take (Tab,
+ *   Escape) is used only where firing is right. The keys that act on a row
+ *   (`unlessTyping`) are also dropped in JS while any field has focus
+ *   (`runShortcut`), so one a particular field happens to ignore can't act on
+ *   the list under it either.
  * - **⌘1, ⌘2 and ⌘3 belong to iPhone Mirroring** (Home Screen, App Switcher,
  *   Spotlight) and never reach the app, so nothing here uses them.
  * - **A screen action only runs on a bare screen** (`screenOnly`): "n" with a
@@ -25,6 +31,13 @@ export type ShortcutAction =
   | 'undo'
   | 'redo'
   | 'closeSheet'
+  | 'commit'
+  | 'cursorDown'
+  | 'cursorUp'
+  | 'openCursor'
+  | 'completeCursor'
+  | 'deleteCursor'
+  | 'selectAll'
   | 'viewToday'
   | 'viewLater'
   | 'viewUnscheduled'
@@ -41,6 +54,15 @@ export interface KeyShortcut {
   modifiers: KeyModifier[];
   /** Only while no sheet is open. See the header. */
   screenOnly: boolean;
+  /** Dropped while a text field has focus. For the keys that act on a row; see the header. */
+  unlessTyping?: boolean;
+  /**
+   * Stays on for a Mac whose iPhone Mirroring mode is off. Mirroring mode is what
+   * turns the plain-key shortcuts on, and turning it off is a way of saying "no
+   * single keys", not "no ⌘Z": these are the chords a Mac window is expected to
+   * answer to whatever that setting says.
+   */
+  onMac?: boolean;
 }
 
 export const KEY_SHORTCUTS: readonly KeyShortcut[] = [
@@ -48,14 +70,24 @@ export const KEY_SHORTCUTS: readonly KeyShortcut[] = [
   { id: 'newTaskCommand', action: 'newTask', input: 'n', modifiers: ['command'], screenOnly: true },
   { id: 'search', action: 'search', input: '/', modifiers: [], screenOnly: true },
   { id: 'searchCommand', action: 'search', input: 'f', modifiers: ['command'], screenOnly: true },
-  { id: 'undo', action: 'undo', input: 'z', modifiers: ['command'], screenOnly: false },
-  { id: 'redo', action: 'redo', input: 'z', modifiers: ['command', 'shift'], screenOnly: false },
-  { id: 'closeSheet', action: 'closeSheet', input: 'escape', modifiers: [], screenOnly: false },
+  { id: 'undo', action: 'undo', input: 'z', modifiers: ['command'], screenOnly: false, onMac: true },
+  { id: 'redo', action: 'redo', input: 'z', modifiers: ['command', 'shift'], screenOnly: false, onMac: true },
+  { id: 'closeSheet', action: 'closeSheet', input: 'escape', modifiers: [], screenOnly: false, onMac: true },
+  // The frontmost form's Save, Done or Add (`registerCommit`): the key a Mac user reaches for to finish one.
+  { id: 'commit', action: 'commit', input: 'return', modifiers: ['command'], screenOnly: false, onMac: true },
+  // The row cursor (`rowCursor.ts`): move it, then act on the row it is on.
+  { id: 'cursorDown', action: 'cursorDown', input: 'down', modifiers: [], screenOnly: true, unlessTyping: true },
+  { id: 'cursorUp', action: 'cursorUp', input: 'up', modifiers: [], screenOnly: true, unlessTyping: true },
+  { id: 'openCursor', action: 'openCursor', input: 'return', modifiers: [], screenOnly: true, unlessTyping: true },
+  { id: 'completeCursor', action: 'completeCursor', input: ' ', modifiers: [], screenOnly: true, unlessTyping: true },
+  { id: 'deleteCursor', action: 'deleteCursor', input: 'delete', modifiers: [], screenOnly: true, unlessTyping: true },
+  { id: 'deleteCursorCommand', action: 'deleteCursor', input: 'delete', modifiers: ['command'], screenOnly: true, unlessTyping: true },
+  { id: 'selectAll', action: 'selectAll', input: 'a', modifiers: ['command'], screenOnly: true, unlessTyping: true },
   { id: 'viewToday', action: 'viewToday', input: '1', modifiers: [], screenOnly: true },
   { id: 'viewLater', action: 'viewLater', input: '2', modifiers: [], screenOnly: true },
   { id: 'viewUnscheduled', action: 'viewUnscheduled', input: '3', modifiers: [], screenOnly: true },
   { id: 'viewInbox', action: 'viewInbox', input: '4', modifiers: [], screenOnly: true },
-  { id: 'showShortcuts', action: 'showShortcuts', input: '/', modifiers: ['command'], screenOnly: false },
+  { id: 'showShortcuts', action: 'showShortcuts', input: '/', modifiers: ['command'], screenOnly: false, onMac: true },
 ];
 
 /**
@@ -91,10 +123,20 @@ const MODIFIER_GLYPHS: Record<KeyModifier, string> = {
 // Apple's own order for a chord: ⌃⌥⇧⌘.
 const MODIFIER_ORDER: KeyModifier[] = ['control', 'option', 'shift', 'command'];
 
-/** How a shortcut is written down: "⇧⌘Z", "Esc", "N". */
+// Keys with no character of their own, and the one that is only a space, as they are written.
+const KEY_NAMES: Record<string, string> = {
+  escape: 'Esc',
+  up: '↑',
+  down: '↓',
+  return: '↩',
+  delete: '⌫',
+  ' ': 'Space',
+};
+
+/** How a shortcut is written down: "⇧⌘Z", "Esc", "N", "↓". */
 export function shortcutKeys(shortcut: KeyShortcut): string {
   const mods = MODIFIER_ORDER.filter(m => shortcut.modifiers.includes(m)).map(m => MODIFIER_GLYPHS[m]).join('');
-  const key = shortcut.input === 'escape' ? 'Esc' : shortcut.input.toUpperCase();
+  const key = KEY_NAMES[shortcut.input] ?? shortcut.input.toUpperCase();
   return mods + key;
 }
 
@@ -103,7 +145,14 @@ const ACTION_LABELS: Record<ShortcutAction, string> = {
   search: 'Search',
   undo: 'Undo',
   redo: 'Redo',
-  closeSheet: 'Close the sheet on top',
+  closeSheet: 'Close the sheet, or step back out',
+  commit: 'Save, Done or Add',
+  cursorDown: 'Next task',
+  cursorUp: 'Previous task',
+  openCursor: 'Open the task',
+  completeCursor: 'Complete the task',
+  deleteCursor: 'Delete the task',
+  selectAll: 'Select all tasks',
   viewToday: 'Today',
   viewLater: 'Later',
   viewUnscheduled: 'Unscheduled',

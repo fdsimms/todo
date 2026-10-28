@@ -7,7 +7,7 @@
 //   makeStyles              styles, at the bottom
 //   Stat                    one stat tile, above the styles
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { navigateToTab } from '../navigation/navigationRef';
@@ -77,6 +77,7 @@ import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSetting
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { WideScroll, WideSpan } from '../components/WideScroll';
 import { InlineAction } from '../components/InlineAction';
 import { animateLayout } from '../utils/layoutAnimation';
 import { joinAnd } from '../utils/workoutProgression';
@@ -529,64 +530,66 @@ export function MoodScreen() {
           onAction={openNew}
         />
       ) : (
-        <ScrollView
+        <WideScroll
           ref={scrollTop.ref}
           {...scrollTop.listProps}
           refreshControl={pullSearch.refreshControl}
           style={styles.scroll}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: Math.max(tabBarHeight + spacing.xl, scrollTop.clearance) }]}
         >
-          <Text style={styles.sectionTitle}>TODAY</Text>
-          <View style={[styles.card, styles.todayCard]}>
-            <Text style={styles.todayPrompt}>
-              {todayLogs.length === 0 ? 'How are you doing?' : 'Log another'}
-            </Text>
-            <View style={styles.faceRow}>
-              {MOOD_LEVELS.map(level => (
-                <PressableScale
-                  key={level.value}
-                  style={styles.faceBtn}
-                  onPress={() => openWithMood(level.value)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Log ${level.label.toLowerCase()}`}
-                >
-                  <MoodFace level={level.value} size={iconSize.xl + 2} />
-                </PressableScale>
-              ))}
+          <WideSpan>
+            <Text style={styles.sectionTitle}>TODAY</Text>
+            <View style={[styles.card, styles.todayCard]}>
+              <Text style={styles.todayPrompt}>
+                {todayLogs.length === 0 ? 'How are you doing?' : 'Log another'}
+              </Text>
+              <View style={styles.faceRow}>
+                {MOOD_LEVELS.map(level => (
+                  <PressableScale
+                    key={level.value}
+                    style={styles.faceBtn}
+                    onPress={() => openWithMood(level.value)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Log ${level.label.toLowerCase()}`}
+                  >
+                    <MoodFace level={level.value} size={iconSize.xl + 2} />
+                  </PressableScale>
+                ))}
+              </View>
             </View>
-          </View>
-          {todayLogs.length > 0 && (
-            <View style={styles.todayEntries}>
-              {todayLogs.map(log => (
-                <MoodEntryRow key={log.id} log={log} showDate={false} onPress={() => openEdit(log)} />
-              ))}
-            </View>
-          )}
+            {todayLogs.length > 0 && (
+              <View style={styles.todayEntries}>
+                {todayLogs.map(log => (
+                  <MoodEntryRow key={log.id} log={log} showDate={false} onPress={() => openEdit(log)} />
+                ))}
+              </View>
+            )}
 
-          <View style={styles.statRow}>
-            <Stat
-              styles={styles}
-              value={summary.averageMood === null ? '—' : summary.averageMood.toFixed(1)}
-              label="Average mood"
-              // The em dash is a drawn placeholder rather than a value, so it is
-              // spoken as the absence it stands for instead of as punctuation.
-              accessibilityLabel={summary.averageMood === null
-                ? 'Average mood, nothing logged yet'
-                : `Average mood, ${summary.averageMood.toFixed(1)} out of 5`}
-            />
-            <Stat
-              styles={styles}
-              value={String(summary.streak)}
-              label="Day streak"
-              accessibilityLabel={`Day streak, ${summary.streak} ${summary.streak === 1 ? 'day' : 'days'}`}
-            />
-            <Stat
-              styles={styles}
-              value={String(summary.lowDays)}
-              label="Low days"
-              accessibilityLabel={`Low days, ${summary.lowDays}`}
-            />
-          </View>
+            <View style={styles.statRow}>
+              <Stat
+                styles={styles}
+                value={summary.averageMood === null ? '—' : summary.averageMood.toFixed(1)}
+                label="Average mood"
+                // The em dash is a drawn placeholder rather than a value, so it is
+                // spoken as the absence it stands for instead of as punctuation.
+                accessibilityLabel={summary.averageMood === null
+                  ? 'Average mood, nothing logged yet'
+                  : `Average mood, ${summary.averageMood.toFixed(1)} out of 5`}
+              />
+              <Stat
+                styles={styles}
+                value={String(summary.streak)}
+                label="Day streak"
+                accessibilityLabel={`Day streak, ${summary.streak} ${summary.streak === 1 ? 'day' : 'days'}`}
+              />
+              <Stat
+                styles={styles}
+                value={String(summary.lowDays)}
+                label="Low days"
+                accessibilityLabel={`Low days, ${summary.lowDays}`}
+              />
+            </View>
+          </WideSpan>
 
           {lookedBack.length > 0 && (
             <>
@@ -618,98 +621,102 @@ export function MoodScreen() {
             </>
           )}
 
-          <Text style={styles.sectionTitle}>THE LAST TWO WEEKS</Text>
-          <View style={styles.card}>
-            <View>
-              {/* A line for each mood, labelled at the ends and the middle so five
-                  labels don't crowd the 90pt track. Drawn before the bars, which
-                  sit on top of them. */}
-              <ChartGuides
-                height={BAR_HEIGHT}
-                gutter={guideGutter}
-                guides={MOOD_LEVELS.map(level => ({
-                  fraction: level.value / MOOD_LEVELS.length,
-                  label: level.value === 1 || level.value === 3 || level.value === MOOD_LEVELS.length ? level.label : '',
-                }))}
-              />
-              <View style={[styles.chartInner, { paddingLeft: guideGutter }]}>
-                {chart.map(({ key, label, a11y, mood, today }) => (
-                  <View key={key} style={styles.chartCol} accessible accessibilityLabel={a11y}>
-                    <View style={styles.barTrack}>
-                      <View
-                        style={[
-                          styles.bar,
-                          {
-                            // A day with no entry draws a flat baseline rather
-                            // than a zero-height bar: zero is a mood on this
-                            // scale's floor, and "didn't log" is not a bad day.
-                            height: mood === null
-                              ? 2
-                              : Math.max(BAR_HEIGHT * 0.06, (mood / MOOD_LEVELS.length) * BAR_HEIGHT - BAR_GUIDE_GAP),
-                            backgroundColor: mood === null
-                              ? colors.bgQuaternary
-                              : today ? colors.accent : colors.bgQuaternary,
-                          },
-                        ]}
-                      />
+          <>
+            <Text style={styles.sectionTitle}>THE LAST TWO WEEKS</Text>
+            <View style={styles.card}>
+              <View>
+                {/* A line for each mood, labelled at the ends and the middle so five
+                    labels don't crowd the 90pt track. Drawn before the bars, which
+                    sit on top of them. */}
+                <ChartGuides
+                  height={BAR_HEIGHT}
+                  gutter={guideGutter}
+                  guides={MOOD_LEVELS.map(level => ({
+                    fraction: level.value / MOOD_LEVELS.length,
+                    label: level.value === 1 || level.value === 3 || level.value === MOOD_LEVELS.length ? level.label : '',
+                  }))}
+                />
+                <View style={[styles.chartInner, { paddingLeft: guideGutter }]}>
+                  {chart.map(({ key, label, a11y, mood, today }) => (
+                    <View key={key} style={styles.chartCol} accessible accessibilityLabel={a11y}>
+                      <View style={styles.barTrack}>
+                        <View
+                          style={[
+                            styles.bar,
+                            {
+                              // A day with no entry draws a flat baseline rather
+                              // than a zero-height bar: zero is a mood on this
+                              // scale's floor, and "didn't log" is not a bad day.
+                              height: mood === null
+                                ? 2
+                                : Math.max(BAR_HEIGHT * 0.06, (mood / MOOD_LEVELS.length) * BAR_HEIGHT - BAR_GUIDE_GAP),
+                              backgroundColor: mood === null
+                                ? colors.bgQuaternary
+                                : today ? colors.accent : colors.bgQuaternary,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={[styles.barLabel, today && styles.barLabelToday]}>{label}</Text>
                     </View>
-                    <Text style={[styles.barLabel, today && styles.barLabelToday]}>{label}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-            <Text style={styles.chartCaption}>
-              A flat line is a day with nothing logged.
-            </Text>
-          </View>
-
-          <Text style={styles.sectionTitle}>MOOD AND WHAT YOU FINISH</Text>
-          <View style={styles.card}>
-            {completion.strength === null || completion.direction === null ? (
-              <Text style={styles.pending}>
-                {daysToGo > 0
-                  ? `Keep logging. After ${daysToGo} more ${daysToGo === 1 ? 'day' : 'days'} with a mood on ${daysToGo === 1 ? 'it' : 'them'}, this compares your mood against what you got done.`
-                  : 'Not enough variation yet to compare. This fills in once your days differ more.'}
-              </Text>
-            ) : completion.strength === 'none' ? (
-              <Text style={styles.finding}>
-                No clear pattern between your mood and how much you finish, across {completion.dayCount} days.
-              </Text>
-            ) : (
-              <Text style={styles.finding}>
-                You tend to finish {completion.direction === 'more' ? 'more' : 'fewer'} tasks on
-                {' '}better days. A {completion.strength} pattern across {completion.dayCount} days.
-              </Text>
-            )}
-            {completion.completedOnGoodDays !== null && completion.completedOnLowDays !== null && (
-              <View style={styles.splitRow}>
-                <View
-                  style={styles.splitCell}
-                  accessible
-                  accessibilityLabel={`${completion.completedOnGoodDays.toFixed(1)} tasks finished on days when your mood was good`}
-                >
-                  <Text style={styles.splitValue}>{completion.completedOnGoodDays.toFixed(1)}</Text>
-                  <Text style={styles.splitLabel}>on good days</Text>
-                </View>
-                <View
-                  style={styles.splitCell}
-                  accessible
-                  accessibilityLabel={`${completion.completedOnLowDays.toFixed(1)} tasks finished on days when your mood was low`}
-                >
-                  <Text style={styles.splitValue}>{completion.completedOnLowDays.toFixed(1)}</Text>
-                  <Text style={styles.splitLabel}>on low days</Text>
+                  ))}
                 </View>
               </View>
-            )}
-            {clippedDays > 0 && (
               <Text style={styles.chartCaption}>
-                {clippedDays} earlier logged {clippedDays === 1 ? 'day is' : 'days are'} left out
-                here. Completed tasks are kept for
-                {' '}{retentionLabel(settings.completedRetentionDays).toLowerCase()}, so those days have
-                nothing to compare against. Your entries are still there.
+                A flat line is a day with nothing logged.
               </Text>
-            )}
-          </View>
+            </View>
+          </>
+
+          <>
+            <Text style={styles.sectionTitle}>MOOD AND WHAT YOU FINISH</Text>
+            <View style={styles.card}>
+              {completion.strength === null || completion.direction === null ? (
+                <Text style={styles.pending}>
+                  {daysToGo > 0
+                    ? `Keep logging. After ${daysToGo} more ${daysToGo === 1 ? 'day' : 'days'} with a mood on ${daysToGo === 1 ? 'it' : 'them'}, this compares your mood against what you got done.`
+                    : 'Not enough variation yet to compare. This fills in once your days differ more.'}
+                </Text>
+              ) : completion.strength === 'none' ? (
+                <Text style={styles.finding}>
+                  No clear pattern between your mood and how much you finish, across {completion.dayCount} days.
+                </Text>
+              ) : (
+                <Text style={styles.finding}>
+                  You tend to finish {completion.direction === 'more' ? 'more' : 'fewer'} tasks on
+                  {' '}better days. A {completion.strength} pattern across {completion.dayCount} days.
+                </Text>
+              )}
+              {completion.completedOnGoodDays !== null && completion.completedOnLowDays !== null && (
+                <View style={styles.splitRow}>
+                  <View
+                    style={styles.splitCell}
+                    accessible
+                    accessibilityLabel={`${completion.completedOnGoodDays.toFixed(1)} tasks finished on days when your mood was good`}
+                  >
+                    <Text style={styles.splitValue}>{completion.completedOnGoodDays.toFixed(1)}</Text>
+                    <Text style={styles.splitLabel}>on good days</Text>
+                  </View>
+                  <View
+                    style={styles.splitCell}
+                    accessible
+                    accessibilityLabel={`${completion.completedOnLowDays.toFixed(1)} tasks finished on days when your mood was low`}
+                  >
+                    <Text style={styles.splitValue}>{completion.completedOnLowDays.toFixed(1)}</Text>
+                    <Text style={styles.splitLabel}>on low days</Text>
+                  </View>
+                </View>
+              )}
+              {clippedDays > 0 && (
+                <Text style={styles.chartCaption}>
+                  {clippedDays} earlier logged {clippedDays === 1 ? 'day is' : 'days are'} left out
+                  here. Completed tasks are kept for
+                  {' '}{retentionLabel(settings.completedRetentionDays).toLowerCase()}, so those days have
+                  nothing to compare against. Your entries are still there.
+                </Text>
+              )}
+            </View>
+          </>
 
           {(healthFindingRows.length > 0 || averageSteps !== null || averageSleep !== null) && (
             <>
@@ -991,119 +998,125 @@ export function MoodScreen() {
             </>
           )}
 
-          <Text style={styles.sectionTitle}>SYMPTOMS</Text>
-          {symptomList.length === 0 ? (
-            <View style={styles.card}>
-              <Text style={styles.pending}>
-                No symptoms yet. Add one to an entry and it gets its own page here,
-                with how often it happens and how bad it gets.
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.card}>
-              {symptomList.map(stat => (
-                <TouchableOpacity
-                  key={stat.key}
-                  style={styles.linkRow}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => {
-                    haptics.tap();
-                    navigation.navigate('SymptomDetail', { symptomKey: stat.key });
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${stat.name}, ${stat.dayCount} ${stat.dayCount === 1 ? 'day' : 'days'}, last logged ${format(dayKeyToDate(stat.lastDayKey), 'MMMM d')}`}
-                >
-                  <View style={styles.linkBody}>
-                    <Text style={styles.linkLabel} numberOfLines={1}>{stat.name}</Text>
-                    <Text style={styles.linkMeta}>
-                      {stat.dayCount} {stat.dayCount === 1 ? 'day' : 'days'} · last on{' '}
-                      {format(dayKeyToDate(stat.lastDayKey), 'MMM d')}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          <Text style={styles.sectionTitle}>MILESTONES</Text>
-          <View style={styles.card}>
-            {milestoneRows.length === 0 ? (
-              <Text style={[styles.pending, styles.milestoneAddSpacing]}>
-                Mark the day something changed (starting a medicine, a new
-                job) and compare your mood before and after it.
-              </Text>
+          <>
+            <Text style={styles.sectionTitle}>SYMPTOMS</Text>
+            {symptomList.length === 0 ? (
+              <View style={styles.card}>
+                <Text style={styles.pending}>
+                  No symptoms yet. Add one to an entry and it gets its own page here,
+                  with how often it happens and how bad it gets.
+                </Text>
+              </View>
             ) : (
-              <View style={styles.milestoneAddSpacing}>
-                {milestoneRows.map(({ milestone, contrast }, i) => (
-                  contrast ? (
-                    <ContrastBars
-                      key={milestone.id}
-                      first={i === 0}
-                      label={milestone.label}
-                      withLabel="Before"
-                      withoutLabel="After"
-                      withFraction={moodBarFraction(contrast.moodBefore)}
-                      withoutFraction={moodBarFraction(contrast.moodAfter)}
-                      withText={contrast.moodBefore.toFixed(1)}
-                      withoutText={contrast.moodAfter.toFixed(1)}
-                      onPress={() => openEditMilestone(milestone)}
-                      accessibilityLabel={`${milestone.label}, average mood ${contrast.moodBefore.toFixed(1)} before ${format(new Date(milestone.date), 'MMMM d')}, ${contrast.moodAfter.toFixed(1)} on and after`}
-                    />
-                  ) : (
-                    <TouchableOpacity
-                      key={milestone.id}
-                      style={[styles.linkRow, i > 0 && styles.milestoneRowGap]}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => openEditMilestone(milestone)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${milestone.label}, ${format(new Date(milestone.date), 'MMMM d, yyyy')}, not enough days logged yet to compare`}
-                    >
-                      <View style={styles.linkBody}>
-                        <Text style={styles.linkLabel} numberOfLines={1}>{milestone.label}</Text>
-                        <Text style={styles.linkMeta}>
-                          {format(new Date(milestone.date), 'MMM d, yyyy')} · not enough days yet
-                        </Text>
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                  )
+              <View style={styles.card}>
+                {symptomList.map(stat => (
+                  <TouchableOpacity
+                    key={stat.key}
+                    style={styles.linkRow}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => {
+                      haptics.tap();
+                      navigation.navigate('SymptomDetail', { symptomKey: stat.key });
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${stat.name}, ${stat.dayCount} ${stat.dayCount === 1 ? 'day' : 'days'}, last logged ${format(dayKeyToDate(stat.lastDayKey), 'MMMM d')}`}
+                  >
+                    <View style={styles.linkBody}>
+                      <Text style={styles.linkLabel} numberOfLines={1}>{stat.name}</Text>
+                      <Text style={styles.linkMeta}>
+                        {stat.dayCount} {stat.dayCount === 1 ? 'day' : 'days'} · last on{' '}
+                        {format(dayKeyToDate(stat.lastDayKey), 'MMM d')}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                  </TouchableOpacity>
                 ))}
               </View>
             )}
-            <InlineAction
-              label="Add milestone"
-              onPress={openNewMilestone}
-              variant={milestoneRows.length > 0 ? 'neutral' : 'accent'}
-            />
-            {milestoneRows.some(r => r.contrast) && (
-              <Text style={styles.chartCaption}>
-                Average mood before a milestone’s date, against on and after it.
-              </Text>
-            )}
-          </View>
+          </>
 
-          {recent.length > 0 && <Text style={styles.sectionTitle}>RECENT ENTRIES</Text>}
-          {recent.map(log => (
-            <MoodEntryRow
-              key={log.id}
-              log={log}
-              onPress={() => openEdit(log)}
-            />
-          ))}
-          {logs.length > todayLogs.length + recent.length && (
-            <TouchableOpacity
-              style={styles.seeAllRow}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => { haptics.tap(); navigation.navigate('MoodHistory'); }}
-              accessibilityRole="button"
-              accessibilityLabel={`See all ${logs.length} entries`}
-            >
-              <Text style={styles.seeAllText}>See all {logs.length} entries</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.accent} />
-            </TouchableOpacity>
-          )}
-        </ScrollView>
+          <>
+            <Text style={styles.sectionTitle}>MILESTONES</Text>
+            <View style={styles.card}>
+              {milestoneRows.length === 0 ? (
+                <Text style={[styles.pending, styles.milestoneAddSpacing]}>
+                  Mark the day something changed (starting a medicine, a new
+                  job) and compare your mood before and after it.
+                </Text>
+              ) : (
+                <View style={styles.milestoneAddSpacing}>
+                  {milestoneRows.map(({ milestone, contrast }, i) => (
+                    contrast ? (
+                      <ContrastBars
+                        key={milestone.id}
+                        first={i === 0}
+                        label={milestone.label}
+                        withLabel="Before"
+                        withoutLabel="After"
+                        withFraction={moodBarFraction(contrast.moodBefore)}
+                        withoutFraction={moodBarFraction(contrast.moodAfter)}
+                        withText={contrast.moodBefore.toFixed(1)}
+                        withoutText={contrast.moodAfter.toFixed(1)}
+                        onPress={() => openEditMilestone(milestone)}
+                        accessibilityLabel={`${milestone.label}, average mood ${contrast.moodBefore.toFixed(1)} before ${format(new Date(milestone.date), 'MMMM d')}, ${contrast.moodAfter.toFixed(1)} on and after`}
+                      />
+                    ) : (
+                      <TouchableOpacity
+                        key={milestone.id}
+                        style={[styles.linkRow, i > 0 && styles.milestoneRowGap]}
+                        activeOpacity={interaction.activeOpacity}
+                        onPress={() => openEditMilestone(milestone)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${milestone.label}, ${format(new Date(milestone.date), 'MMMM d, yyyy')}, not enough days logged yet to compare`}
+                      >
+                        <View style={styles.linkBody}>
+                          <Text style={styles.linkLabel} numberOfLines={1}>{milestone.label}</Text>
+                          <Text style={styles.linkMeta}>
+                            {format(new Date(milestone.date), 'MMM d, yyyy')} · not enough days yet
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                    )
+                  ))}
+                </View>
+              )}
+              <InlineAction
+                label="Add milestone"
+                onPress={openNewMilestone}
+                variant={milestoneRows.length > 0 ? 'neutral' : 'accent'}
+              />
+              {milestoneRows.some(r => r.contrast) && (
+                <Text style={styles.chartCaption}>
+                  Average mood before a milestone’s date, against on and after it.
+                </Text>
+              )}
+            </View>
+          </>
+
+          <WideSpan>
+            {recent.length > 0 && <Text style={styles.sectionTitle}>RECENT ENTRIES</Text>}
+            {recent.map(log => (
+              <MoodEntryRow
+                key={log.id}
+                log={log}
+                onPress={() => openEdit(log)}
+              />
+            ))}
+            {logs.length > todayLogs.length + recent.length && (
+              <TouchableOpacity
+                style={styles.seeAllRow}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); navigation.navigate('MoodHistory'); }}
+                accessibilityRole="button"
+                accessibilityLabel={`See all ${logs.length} entries`}
+              >
+                <Text style={styles.seeAllText}>See all {logs.length} entries</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+              </TouchableOpacity>
+            )}
+          </WideSpan>
+        </WideScroll>
       )}
 
       <LazySheet open={sheetOpen}>

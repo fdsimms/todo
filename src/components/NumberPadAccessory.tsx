@@ -12,6 +12,7 @@ import {
   unregisterAccessory,
 } from '../utils/accessoryStack';
 import { BUTTON_LABEL } from '../copy/shared';
+import { AccessoryBar } from './AccessoryBar';
 
 /**
  * Every number-pad TextInput in the app points its `inputAccessoryViewID` at
@@ -73,7 +74,7 @@ export function NumberPadAccessory({ onNext, onOperator }: {
   const styles = makeStyles(colors);
   return (
     <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor={colors.bgSecondary}>
-      <View style={[styles.bar, onNext && styles.barWithNext]}>
+      <AccessoryBar style={[styles.bar, onNext && styles.barWithNext]}>
         {onNext && <SheetHeaderButton label="Next" role="cancel" onPress={onNext} />}
         {onOperator && (
           <View style={styles.operators}>
@@ -91,7 +92,7 @@ export function NumberPadAccessory({ onNext, onOperator }: {
           </View>
         )}
         <SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => Keyboard.dismiss()} />
-      </View>
+      </AccessoryBar>
     </InputAccessoryView>
   );
 }
@@ -103,9 +104,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: colors.bgSecondary,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
   },
   barWithNext: { justifyContent: 'space-between' },
   operators: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginRight: 'auto' },

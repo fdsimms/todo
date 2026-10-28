@@ -5,6 +5,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  ScrollView,
   useWindowDimensions,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
@@ -28,7 +29,7 @@ import { EVENT_LENGTH_PRESETS, describeEventLength, lengthToClock } from '../uti
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
 import { BUTTON_LABEL } from '../copy/shared';
-import { pickerCardWidthFor } from '../utils/frameWidth';
+import { pickerCardMaxHeightFor, pickerCardWidthFor } from '../utils/frameWidth';
 
 interface Props {
   visible: boolean;
@@ -82,8 +83,8 @@ export function CalendarPicker({
 }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
-  const { width: windowWidth } = useWindowDimensions();
-  const styles = useMemo(() => makeStyles(colors, windowWidth), [colors, windowWidth]);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const styles = useMemo(() => makeStyles(colors, windowWidth, windowHeight), [colors, windowWidth, windowHeight]);
 
   const [displayMonth, setDisplayMonth] = useState(() => value ?? new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(value);
@@ -243,6 +244,7 @@ export function CalendarPicker({
             <SheetHeaderButton label={BUTTON_LABEL.done} onPress={confirm} disabled={!canConfirm} style={styles.headerDoneText} minWidth={28} />
           </View>
 
+          <ScrollView style={styles.body} bounces={false} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {viewMode === 'end' && startsAt && (
             <View style={styles.endSummary}>
               <Text style={styles.endSummaryTitle} numberOfLines={1}>
@@ -449,13 +451,14 @@ export function CalendarPicker({
           )}
 
           <View style={styles.bottomSpacer} />
+          </ScrollView>
         </Animated.View>
       </View>
     </SheetModal>
   );
 }
 
-const makeStyles = (colors: Colors, windowWidth: number) => {
+const makeStyles = (colors: Colors, windowWidth: number, windowHeight: number) => {
   // Read per render: a Mac window or an iPad in Split View is resized after launch.
   const cardWidth = pickerCardWidthFor(windowWidth);
   const cellSize = Math.floor((cardWidth - CAL_PADDING * 2) / 7);
@@ -471,10 +474,13 @@ const makeStyles = (colors: Colors, windowWidth: number) => {
   },
   card: {
     width: cardWidth,
+    maxHeight: pickerCardMaxHeightFor(windowHeight),
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
   },
+  // Everything under the header, so a short window scrolls it and leaves Cancel and Done where they are.
+  body: { flexShrink: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

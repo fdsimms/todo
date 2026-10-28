@@ -38,6 +38,7 @@ import { haptics } from '../utils/haptics';
 import { useMeasuredTextWidth } from '../hooks/useMeasuredTextWidth';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayCard } from '../utils/frameWidth';
 
 const CHECKBOX_SIZE = 22;
 
@@ -738,6 +739,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   centeredContainer: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xl,
   },
@@ -747,6 +749,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   // rounded corners, and the scrollable rows below are inset from the edges
   // by their own margin.
   dialogCard: {
+    ...overlayCard,
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,
     maxHeight: sheetMaxHeight,

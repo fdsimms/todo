@@ -30,6 +30,7 @@ import { SheetScrim } from './SheetScrim';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { TextField } from './TextField';
 import { cleanPastedLines } from '../utils/pastedLines';
+import { overlayCard } from '../utils/frameWidth';
 
 /** Same short labels the main quick add uses, so the two priority rows read alike. */
 const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
@@ -488,10 +489,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   centeredContainer: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xl,
   },
   sheet: {
+    ...overlayCard,
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,
     padding: spacing.md,

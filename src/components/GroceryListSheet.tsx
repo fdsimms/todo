@@ -35,6 +35,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { listPickerRows } from '../utils/groceryLists';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayDock } from '../utils/frameWidth';
 
 /** Kept clear above the lifted sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
@@ -310,7 +311,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   sheetOuter: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
+    position: 'absolute', ...overlayDock, bottom: 0,
     paddingHorizontal: spacing.md, paddingBottom: sheetBottomInset,
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.sm },

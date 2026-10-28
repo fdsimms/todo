@@ -2,6 +2,8 @@ import {
   TWO_PANE_MIN_WINDOW_WIDTH,
   TWO_PANE_ROUTES,
   columnUncappedFor,
+  floatingLayerInsetFor,
+  nextLayoutHold,
   twoPaneFor,
 } from '../utils/twoPane';
 import { SIDEBAR_WIDTH } from '../utils/frameWidth';
@@ -63,6 +65,68 @@ describe('twoPaneListWidthFor', () => {
   it('always leaves the page at least a phone wide', () => {
     for (let w = TWO_PANE_MIN_WINDOW_WIDTH; w <= 2560; w += 10) {
       expect(w - SIDEBAR_WIDTH - twoPaneListWidthFor(w)).toBeGreaterThan(393);
+    }
+  });
+});
+
+describe('nextLayoutHold', () => {
+  it('keeps nothing while no editor is open, however the window moves', () => {
+    expect(nextLayoutHold(null, true, false, false)).toBeNull();
+    expect(nextLayoutHold(null, false, true, false)).toBeNull();
+    expect(nextLayoutHold(null, true, true, false)).toBeNull();
+  });
+
+  it('keeps the pane when the window narrows under an open editor', () => {
+    expect(nextLayoutHold(null, true, false, true)).toBe(true);
+  });
+
+  it('keeps the sheet when the window widens over an open one', () => {
+    expect(nextLayoutHold(null, false, true, true)).toBe(false);
+  });
+
+  it('starts nothing when an editor is open but the window did not cross the breakpoint', () => {
+    expect(nextLayoutHold(null, true, true, true)).toBeNull();
+    expect(nextLayoutHold(null, false, false, true)).toBeNull();
+  });
+
+  it('holds until the window comes back to the layout it is holding', () => {
+    // Pane held, window still narrow.
+    expect(nextLayoutHold(true, false, false, true)).toBe(true);
+    // Back across the breakpoint: the pane is the window's own layout again.
+    expect(nextLayoutHold(true, false, true, true)).toBeNull();
+    // Sheet held, window still wide, then back below.
+    expect(nextLayoutHold(false, true, true, true)).toBe(false);
+    expect(nextLayoutHold(false, true, false, true)).toBeNull();
+  });
+
+  it('holds through further resizing on the same side', () => {
+    expect(nextLayoutHold(true, false, false, true)).toBe(true);
+    expect(nextLayoutHold(false, true, true, true)).toBe(false);
+  });
+});
+
+describe('floatingLayerInsetFor', () => {
+  it('is nothing on a screen with one pane, so the bars span the column as they always did', () => {
+    expect(floatingLayerInsetFor(393, 'Today')).toBe(0);
+    expect(floatingLayerInsetFor(1400, 'Stats')).toBe(0);
+    expect(floatingLayerInsetFor(1400, null)).toBe(0);
+  });
+
+  it('is nothing in a window too narrow for two panes', () => {
+    expect(floatingLayerInsetFor(TWO_PANE_MIN_WINDOW_WIDTH - 1, 'Today')).toBe(0);
+  });
+
+  it('ends the layer at the list pane on a two-pane screen', () => {
+    const window = 1600;
+    const column = window - SIDEBAR_WIDTH;
+    expect(floatingLayerInsetFor(window, 'Today')).toBe(column - twoPaneListWidthFor(window));
+    // The layer is then exactly as wide as the list, where the add button sits.
+    expect(column - floatingLayerInsetFor(window, 'Today')).toBe(twoPaneListWidthFor(window));
+  });
+
+  it('covers every screen that has a second pane', () => {
+    for (const route of TWO_PANE_ROUTES) {
+      expect(floatingLayerInsetFor(1600, route)).toBeGreaterThan(0);
     }
   });
 });

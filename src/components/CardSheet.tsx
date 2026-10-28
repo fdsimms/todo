@@ -18,6 +18,7 @@ import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, animation, type Colors } from '../theme';
 import { cardAnchorPlacement, type CardAnchor } from '../utils/cardAnchor';
+import { overlayCard } from '../utils/frameWidth';
 
 export type { CardAnchor } from '../utils/cardAnchor';
 
@@ -254,6 +255,7 @@ export function CardSheet({
           <Animated.View
             style={[
               styles.card,
+              styles.centeredCard,
               shadows.sheet,
               {
                 maxHeight: Math.max(200, centeredMax),
@@ -277,8 +279,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   centered: {
     flex: 1,
     justifyContent: 'center',
+    // The card is capped (`centeredCard`) and sits in the middle of whatever
+    // room the window has, so a Mac window gets a dialog and not a banner.
+    alignItems: 'center',
     paddingHorizontal: spacing.lg,
   },
+  centeredCard: overlayCard,
   // The shadow is on the card and the clip on the view inside it: iOS drops
   // the shadow of a view that clips its own bounds.
   card: {
