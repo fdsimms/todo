@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSheetMount } from '../hooks/useSheetMount';
@@ -7,8 +6,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { InlineAction } from './InlineAction';
 import { BannerBar } from './BannerBar';
 import { WhenPicker } from './WhenPicker';
-import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
-import { FAB_SIZE } from './Fab';
+import { useAboveFabBottom } from './Fab';
 import { spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { getLogicalToday } from '../utils/dateUtils';
@@ -34,8 +32,8 @@ const VISIBLE_MS = 8000;
  * it's a few seconds the app is in after a tap, not a place.
  */
 export function ReadyOfferBar() {
-  const insets = useSafeAreaInsets();
-  const barHeight = useBottomBarHeight();
+  // Clear of the add button wherever it rests, which depends on the sidebar as well as the tab bar.
+  const bottom = useAboveFabBottom();
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const offer = useTaskStore(s => s.readyOffer);
   const titles = useTaskStore(useShallow(s =>
@@ -67,7 +65,6 @@ export function ReadyOfferBar() {
   };
 
   const label = titles.length === 1 ? `“${titles[0]}” is ready` : `${titles.length} tasks are ready`;
-  const bottom = insets.bottom + barHeight + FAB_SIZE + spacing.lg;
   // The label, held while the bar drops away after the offer clears. Its
   // titles are gone from the store by then, so it has to be kept, not re-read.
   const bar = useLingering(shown && !picking ? label : null);

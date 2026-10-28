@@ -29,6 +29,7 @@ import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayDock } from '../utils/frameWidth';
 
 export interface MealReplacement {
   recipeId: string | null;
@@ -274,8 +275,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   sheetOuter: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    ...overlayDock,
     bottom: 0,
     paddingHorizontal: spacing.md,
     paddingBottom: sheetBottomInset,

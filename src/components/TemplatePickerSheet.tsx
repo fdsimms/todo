@@ -24,6 +24,7 @@ import type { TaskTemplate } from '../types';
 import { navigateToTab } from '../navigation/navigationRef';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayDock } from '../utils/frameWidth';
 
 interface Props {
   visible: boolean;
@@ -191,8 +192,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   sheetOuter: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    ...overlayDock,
     bottom: 0,
     paddingHorizontal: spacing.md,
     paddingBottom: sheetBottomInset,

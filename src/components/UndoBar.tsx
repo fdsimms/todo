@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTaskStore } from '../store/useTaskStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -10,8 +9,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { InlineAction } from './InlineAction';
 import { BannerBar } from './BannerBar';
-import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
-import { FAB_SIZE } from './Fab';
+import { useAboveFabBottom } from './Fab';
 import { spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -79,8 +77,8 @@ const VISIBLE_MS = 6000;
  * action.
  */
 export function UndoBar() {
-  const insets = useSafeAreaInsets();
-  const barHeight = useBottomBarHeight();
+  // Clear of the add button wherever it rests, which depends on the sidebar as well as the tab bar.
+  const bottom = useAboveFabBottom();
   const everyAction = useSettingsStore(s => s.mirroringMode);
 
   const taskAction = useTaskStore(s => topOf(s.undoStack));
@@ -207,8 +205,6 @@ export function UndoBar() {
     setLeaving(false);
     setVisible(false);
   };
-
-  const bottom = insets.bottom + barHeight + FAB_SIZE + spacing.lg;
 
   const verb = shown.mode === 'redo' ? 'Redo' : 'Undo';
 

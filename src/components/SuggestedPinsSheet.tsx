@@ -29,6 +29,7 @@ import type { Task } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { activeChainStep } from '../utils/chain';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayDock } from '../utils/frameWidth';
 
 interface Props {
   visible: boolean;
@@ -310,8 +311,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   sheetOuter: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    ...overlayDock,
     bottom: 0,
     paddingHorizontal: spacing.md,
     paddingBottom: sheetBottomInset,

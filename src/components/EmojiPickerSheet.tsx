@@ -24,6 +24,7 @@ import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayDock } from '../utils/frameWidth';
 
 interface Props {
   visible: boolean;
@@ -320,7 +321,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
 const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   sheetOuter: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
+    position: 'absolute', ...overlayDock, bottom: 0,
     paddingHorizontal: spacing.md, paddingBottom: sheetBottomInset,
   },
   handleArea: { alignItems: 'center', paddingTop: spacing.sm, paddingBottom: spacing.sm },

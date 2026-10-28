@@ -60,6 +60,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { awayStatus, nextAwayProject } from '../utils/awayDates';
 import type { Task } from '../types';
 import { useSheetMotion } from '../hooks/useSheetMotion';
+import { overlayDock } from '../utils/frameWidth';
 
 interface Props {
   visible: boolean;
@@ -733,8 +734,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   sheetOuter: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    ...overlayDock,
     top: 0,
     bottom: 0,
     paddingHorizontal: spacing.md,

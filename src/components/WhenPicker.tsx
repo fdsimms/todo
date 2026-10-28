@@ -13,6 +13,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  ScrollView,
   useWindowDimensions,
   Animated,
 } from 'react-native';
@@ -57,7 +58,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
-import { pickerCardWidthFor } from '../utils/frameWidth';
+import { pickerCardMaxHeightFor, pickerCardWidthFor } from '../utils/frameWidth';
 import { FieldLabel } from './FieldLabel';
 
 // Placeholder fields the snooze engine doesn't consider — only the ones it
@@ -229,8 +230,8 @@ export function WhenPicker({
   // ==== theme, and the task and calendar stores ====
   const colors = useColors();
   const { shadows } = useTheme();
-  const { width: windowWidth } = useWindowDimensions();
-  const styles = useMemo(() => makeStyles(colors, windowWidth), [colors, windowWidth]);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const styles = useMemo(() => makeStyles(colors, windowWidth, windowHeight), [colors, windowWidth, windowHeight]);
   const tasks = useTasksWhileOpen(visible);
   const projects = useProjectStore(useShallow(s => s.projects));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -643,6 +644,7 @@ export function WhenPicker({
             <SheetHeaderButton label={BUTTON_LABEL.save} onPress={handleSave} style={styles.headerSaveText} />
           </View>
 
+          <ScrollView style={styles.body} bounces={false} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {/* Natural language input */}
           {nlEnabled && (
             <>
@@ -983,6 +985,7 @@ export function WhenPicker({
               </TouchableOpacity>
             </>
           )}
+          </ScrollView>
         </Animated.View>
       </View>
     </SheetModal>
@@ -1021,7 +1024,7 @@ function QuickButton({
   );
 }
 
-const makeStyles = (colors: Colors, windowWidth: number) => {
+const makeStyles = (colors: Colors, windowWidth: number, windowHeight: number) => {
   // Read per render: a Mac window or an iPad in Split View is resized after launch.
   const cardWidth = pickerCardWidthFor(windowWidth);
   const cellSize = Math.floor((cardWidth - CAL_PADDING * 2) / 7);
@@ -1039,10 +1042,13 @@ const makeStyles = (colors: Colors, windowWidth: number) => {
   },
   card: {
     width: cardWidth,
+    maxHeight: pickerCardMaxHeightFor(windowHeight),
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
   },
+  // Everything under the header, so a short window scrolls it and leaves Cancel and Save where they are.
+  body: { flexShrink: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

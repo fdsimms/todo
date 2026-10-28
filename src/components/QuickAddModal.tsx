@@ -137,6 +137,7 @@ import { ORDINAL_OPTIONS } from '../utils/recurrenceLabels';
 import { ordinal } from '../utils/ordinal';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayCard } from '../utils/frameWidth';
 
 /** How long a draft left by tapping outside quick add waits to be picked up. */
 const QUICK_ADD_KEEP_DRAFT_MS = 10 * 60 * 1000;
@@ -3896,6 +3897,9 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   centeredContainer: {
     flex: 1,
     justifyContent: 'center',
+    // Capped and centered: on a Mac window the card is a dialog, not a banner
+    // (and `toolChip`'s flexGrow then fills a 448pt line, as it was drawn for).
+    alignItems: 'center',
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xl,
   },
@@ -3905,6 +3909,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   // content dissolving into the sheet wants.
   scrollFade: { bottom: spacing.md },
   sheet: {
+    ...overlayCard,
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,
     paddingHorizontal: spacing.md,

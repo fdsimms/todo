@@ -1,6 +1,9 @@
 import {
   MAX_CONTENT_WIDTH,
   MAX_DRAWER_WIDTH,
+  OVERLAY_CARD_MAX_WIDTH,
+  OVERLAY_SEARCH_MAX_WIDTH,
+  OVERLAY_SHEET_MAX_WIDTH,
   SIDEBAR_MIN_WINDOW_WIDTH,
   SIDEBAR_WIDTH,
   drawerWidthFor,
@@ -84,6 +87,27 @@ describe('monthCellSizeFor', () => {
   it('is measured against the column, not the window', () => {
     expect(monthCellSizeFor(1440, 16)).toBe(monthCellSizeFor(MAX_CONTENT_WIDTH, 16));
     expect(monthCellSizeFor(1440, 16)).toBe(98);
+  });
+});
+
+describe('overlay caps', () => {
+  // A cap that bound on a phone would change a layout that has always been right.
+  // 430 is the widest phone window; a card sits inside a 24pt gutter at the least.
+  const WIDEST_PHONE = 430;
+
+  it('never bind on a phone', () => {
+    expect(OVERLAY_CARD_MAX_WIDTH).toBeGreaterThanOrEqual(WIDEST_PHONE - 24 * 2);
+    expect(OVERLAY_SHEET_MAX_WIDTH).toBeGreaterThanOrEqual(WIDEST_PHONE - 16 * 2);
+    expect(OVERLAY_SEARCH_MAX_WIDTH).toBeGreaterThanOrEqual(WIDEST_PHONE - 16 * 2);
+  });
+
+  it('rank a prompt under a sheet under a list of results', () => {
+    expect(OVERLAY_CARD_MAX_WIDTH).toBeLessThan(OVERLAY_SHEET_MAX_WIDTH);
+    expect(OVERLAY_SHEET_MAX_WIDTH).toBeLessThan(OVERLAY_SEARCH_MAX_WIDTH);
+  });
+
+  it('stay inside the content column, so an overlay is never wider than the page behind it', () => {
+    expect(OVERLAY_SEARCH_MAX_WIDTH).toBeLessThanOrEqual(MAX_CONTENT_WIDTH);
   });
 });
 
