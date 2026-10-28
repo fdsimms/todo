@@ -921,7 +921,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     </TouchableOpacity>
                     <HelpText style={styles.help}>
                       {raiseBusyDays && boostBaselineKcal !== null
-                        ? `Adds the active calories Apple Health records beyond ${boostBaselineKcal.toLocaleString()} cal, a typical day for you. You can change that number under Daily targets, in Add active calories.`
+                        ? `Adds the active calories Apple Health records beyond ${boostBaselineKcal.toLocaleString()} cal, a typical day for you. To change that number, open Settings › Kitchen › Daily targets and find Add active calories.`
                         : 'Adds the active calories Apple Health records beyond a typical day. Off, the target stays the same every day.'}
                     </HelpText>
                   </>
