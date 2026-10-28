@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
+import { useTextScale } from '../hooks/useTextScale';
 import { font, spacing, type Colors } from '../theme';
 import {
   RECIPE_PAGE_MAX_LENGTH,
@@ -46,7 +47,8 @@ export function RecipeSourceFields({
   page, onPageChange, url, onUrlChange, showUrl, cookbooks,
 }: Props) {
   const colors = useColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const scale = useTextScale();
+  const styles = useMemo(() => makeStyles(colors, scale), [colors, scale]);
   const isBook = sourceType === 'cookbook';
 
   return (
@@ -132,13 +134,14 @@ export function RecipeSourceFields({
   );
 }
 
-function makeStyles(colors: Colors) {
+function makeStyles(colors: Colors, scale: number) {
   return StyleSheet.create({
-    fields: { gap: spacing.xsm, paddingTop: spacing.xs },
+    fields: { gap: spacing.sm, paddingTop: spacing.xs },
     line: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     // Wide enough for "Cookbook" at the caption size, and the same for every
-    // line so the boxes start at one edge.
-    label: { width: 68, fontSize: font.sm, color: colors.textTertiary },
+    // line so the boxes start at one edge. It scales with the system text
+    // size, since a fixed width would crowd or clip the label at a larger one.
+    label: { width: Math.round(68 * scale), fontSize: font.sm, color: colors.textTertiary },
     value: { fontSize: font.sm, color: colors.text },
   });
 }
