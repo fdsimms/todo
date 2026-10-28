@@ -43,6 +43,14 @@ interface Props {
   /** Left at the RN default (sentences) unless a field's content wants otherwise — a URL doesn't. */
   autoCapitalize?: TextInputProps['autoCapitalize'];
   keyboardType?: TextInputProps['keyboardType'];
+  /**
+   * The chip takes the whole width of its parent (a `flex: 1` item in a row)
+   * instead of hugging its text. For a field that sits in a form beside a label
+   * rather than inside a sentence: its box is then the same size read or
+   * editing, whatever is typed, so a long value scrolls inside it rather than
+   * resizing the row or being cut off by a neighbour.
+   */
+  fill?: boolean;
 }
 
 /**
@@ -72,7 +80,7 @@ interface Props {
 export function InlineEditableText({
   edits, editKey, value, onCommit, allowEmpty = false, textStyle,
   placeholder, accessibilityLabel, maxLength, multiline = false, numberOfLines,
-  autoCapitalize, keyboardType,
+  autoCapitalize, keyboardType, fill = false,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -121,7 +129,10 @@ export function InlineEditableText({
   if (editing) {
     return (
       <TextField
-        style={[styles.input, inputStyle, chipWidth ? { minWidth: Math.max(chipWidth, 56) } : null]}
+        style={[
+          styles.input, inputStyle,
+          fill ? styles.fill : chipWidth ? { minWidth: Math.max(chipWidth, 56) } : null,
+        ]}
         value={draft}
         onChangeText={setDraft}
         onBlur={commit}
@@ -144,12 +155,13 @@ export function InlineEditableText({
 
   return (
     <TouchableOpacity
+      style={fill ? styles.fill : undefined}
       activeOpacity={interaction.activeOpacity}
       onPress={() => { setDraft(value); setEditing(true); }}
       accessibilityRole="button"
       accessibilityLabel={`Edit ${accessibilityLabel}`}
     >
-      <View style={styles.readWrap} onLayout={e => setChipWidth(e.nativeEvent.layout.width)}>
+      <View style={[styles.readWrap, fill && styles.readWrapFill]} onLayout={e => setChipWidth(e.nativeEvent.layout.width)}>
         <Text style={[textStyle, !value && styles.placeholder]} numberOfLines={numberOfLines}>
           {value || placeholder || ''}
         </Text>
@@ -184,6 +196,10 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: CHIP_PAD_H,
       paddingVertical: CHIP_PAD_V,
     },
+    readWrapFill: { alignSelf: 'stretch' },
+    // A fill field's box, read or open: it claims the row's free width, with
+    // `minWidth: 0` so a long value shrinks into it rather than pushing past.
+    fill: { flex: 1, minWidth: 0 },
     // The same box with its border coloured in — the open field is the read
     // chip plus a focus ring, so flipping between them shifts nothing.
     // `minWidth` is what makes an emptied field typable: the inline ones sit

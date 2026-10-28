@@ -365,6 +365,7 @@ Where each component can appear.
 - `src/components/RecipePickerSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +5 more
 - `src/components/RecipeScaleChips.tsx` — on GroceryScreen, MealPlanScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/RecipeSortFilterSheet.tsx` — on RecipesScreen
+- `src/components/RecipeSourceFields.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/RecipeSourcePicker.tsx` — on GroceryScreen, KitchenScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/RecipeSourceSheet.tsx` — on GroceryScreen
 - `src/components/RecipeTabBar.tsx` — on RecipeDetailScreen, RecipesScreen
