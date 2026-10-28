@@ -103,7 +103,7 @@ import { PrintIngredientsSheet } from '../components/PrintIngredientsSheet';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
-import { convertScaledQuantity, showContainerCount } from '../utils/unitConvert';
+import { convertScaledQuantity, showContainerCount, STACKED_QTY_LENGTH } from '../utils/unitConvert';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { RecipeChoiceChips } from '../components/RecipeChoiceChips';
@@ -1506,6 +1506,28 @@ export function RecipeDetailScreen() {
       && catalogMatch.suggestedName !== ingredient.dismissedCatalogSuggestion
       ? catalogMatch
       : null;
+    // A long amount ("1/2 cup (4 ounces or 115 grams)") would claim the row's
+    // width ahead of the name and notes, so it drops under them instead.
+    const stackQty = scaledQuantity.length > STACKED_QTY_LENGTH;
+    const qtyGroup = !!scaledQuantity && (
+    <View style={[styles.qtyGroup, stackQty && styles.qtyGroupStacked]}>
+      <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
+        <Text
+          style={[styles.qtyText, scaledHere && styles.qtyTextScaled]}
+          numberOfLines={1}
+        >
+          {scaledQuantity}
+        </Text>
+      </View>
+      {/* Beside the pill rather than inside it: the pill is the
+          recipe's amount (or the app's conversion of it), and this is
+          a second measurement of the same thing. Only present when
+          the food's own portion table can say it. */}
+      {!!weightText && (
+        <Text style={styles.qtyWeight} numberOfLines={1}>{weightText}</Text>
+      )}
+    </View>
+    );
     return (
       <View style={choiceRuns.endsRun.has(ingredient.id) ? styles.choiceRunEnd : undefined}>
         {/* Its own treatment, deliberately not the section heading's. The two
@@ -1695,26 +1717,9 @@ export function RecipeDetailScreen() {
                 </TouchableOpacity>
               </View>
             )}
+            {stackQty && qtyGroup}
           </View>
-          {!!scaledQuantity && (
-            <View style={styles.qtyGroup}>
-              <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
-                <Text
-                  style={[styles.qtyText, scaledHere && styles.qtyTextScaled]}
-                  numberOfLines={1}
-                >
-                  {scaledQuantity}
-                </Text>
-              </View>
-              {/* Beside the pill rather than inside it: the pill is the
-                  recipe's amount (or the app's conversion of it), and this is
-                  a second measurement of the same thing. Only present when
-                  the food's own portion table can say it. */}
-              {!!weightText && (
-                <Text style={styles.qtyWeight} numberOfLines={1}>{weightText}</Text>
-              )}
-            </View>
-          )}
+          {!stackQty && qtyGroup}
           {!selectionMode && (
             <TouchableOpacity
               onPress={() => confirmRemove(ingredient)}
@@ -3959,6 +3964,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   qtyTextScaled: { color: colors.accent, fontWeight: fontWeight.medium },
   qtyGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  qtyGroupStacked: { alignSelf: 'flex-start', marginTop: spacing.xsm },
   qtyWeight: {
     color: colors.textSecondary,
     fontSize: font.xxs,

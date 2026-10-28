@@ -78,7 +78,7 @@ import { annotateSteps, stepIngredientLines } from '../utils/stepIngredients';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
-import { convertScaledQuantity, showContainerCount } from '../utils/unitConvert';
+import { convertScaledQuantity, showContainerCount, STACKED_QTY_LENGTH } from '../utils/unitConvert';
 import { ovenSetupsFor } from '../utils/ovenTemp';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { TextField } from './TextField';
@@ -1170,6 +1170,21 @@ export function CookModeSheet({
                     const lineKey = `${flat.recipe.id}:${flat.ingredient.id}`;
                     const lineChecked = checkedLines.has(lineKey);
                     const fromChoice = pickedFrom(flat);
+                    // A long amount would claim the row's width ahead of the name,
+                    // so it drops under it, as on the recipe page.
+                    const stackQty = showContainerCount(converted.text).length > STACKED_QTY_LENGTH;
+                    const qtyGroup = !!converted.text && (
+                      <View style={[styles.qtyGroup, stackQty ? styles.qtyGroupStacked : lineChecked && styles.lineChecked]}>
+                        <View style={[styles.qtyPill, marked && styles.qtyPillMarked]}>
+                          <Text style={[styles.qtyText, marked && styles.qtyTextMarked]} numberOfLines={1}>
+                            {showContainerCount(converted.text)}
+                          </Text>
+                        </View>
+                        {!!weight && (
+                          <Text style={styles.qtyWeight} numberOfLines={1}>{weight}</Text>
+                        )}
+                      </View>
+                    );
                     return (
                       <View key={lineKey}>
                         {rule && <View style={styles.panelDivider} />}
@@ -1209,19 +1224,9 @@ export function CookModeSheet({
                             {!!flat.ingredient.prep && (
                               <Text style={styles.panelPrep}>{flat.ingredient.prep}</Text>
                             )}
+                            {stackQty && qtyGroup}
                           </View>
-                          {!!converted.text && (
-                            <View style={[styles.qtyGroup, lineChecked && styles.lineChecked]}>
-                              <View style={[styles.qtyPill, marked && styles.qtyPillMarked]}>
-                                <Text style={[styles.qtyText, marked && styles.qtyTextMarked]} numberOfLines={1}>
-                                  {showContainerCount(converted.text)}
-                                </Text>
-                              </View>
-                              {!!weight && (
-                                <Text style={styles.qtyWeight} numberOfLines={1}>{weight}</Text>
-                              )}
-                            </View>
-                          )}
+                          {!stackQty && qtyGroup}
                         </TouchableOpacity>
                       </View>
                     );
@@ -1706,6 +1711,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The line's weight beside its pill (lineWeight.ts), same treatment as the
   // recipe page's.
   qtyGroup: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  qtyGroupStacked: { alignSelf: 'flex-start', marginTop: spacing.xsm },
   // The check beside each ingredient line, on mise en place and in the panel.
   // Same box and gold as a checked grocery row; the line it belongs to dims.
   lineBox: {
