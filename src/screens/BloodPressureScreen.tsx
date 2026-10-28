@@ -380,6 +380,7 @@ export function BloodPressureScreen() {
         </TouchableOpacity>
       </ScrollView>
       <LogBloodPressureSheet visible={logOpen} onClose={closeLog} />
+      {pullSearch.sheet}
     </View>
   );
 }
