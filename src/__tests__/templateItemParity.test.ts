@@ -108,7 +108,7 @@ const NOT_SEEDED: Record<string, string[]> = {
   'an alarm on one phone': ['alarmLink', 'alarmLinkLeavesOpen'],
   'not offered on a template yet': [
     'showStreak', 'streakRequiresWindow', 'streakCountsUnits', 'deadlineMonthDay', 'deadlineOnCalendar', 'logCompletionToCalendar',
-    'reminderKind', 'reminderTracksVisibility', 'reminderTimeAnchor', 'quotaIntervalMinutes', 'quotaAlwaysVisible', 'quotaRestAfterLog', 'quotaLoggedDayKey',
+    'reminderKind', 'reminderTracksVisibility', 'reminderTimeAnchor', 'quotaIntervalMinutes', 'quotaAlwaysVisible', 'quotaRestAfterLog', 'quotaLoggedDayKey', 'quotaTapTimes',
     'timedMinutes', 'followUpTaskEveryN', 'followUpTaskTitle', 'followUpTaskDraft', 'followUpTaskOneAtATime',
     'followUpTaskAtEnd', 'seriesMonthDays', 'seriesRepeatMonths', 'seriesDefaults', 'slipAllowance',
     'quotaRampHits', 'medicationExtras', 'mission',

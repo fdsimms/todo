@@ -3415,6 +3415,14 @@ export interface Task {
    * by `unlogQuotaUnit`, and never carried onto a successor.
    */
   quotaLoggedDayKey?: string | null;
+  /**
+   * The instant of each unit logged on this occurrence, oldest first, so a count
+   * of 1/5 can be traced to the tap that made it. Appended by `logQuotaUnit`
+   * (capped at `QUOTA_TAP_HISTORY`), popped by `unlogQuotaUnit`, and reset on
+   * every successor like `progressCount`. Display only: nothing reads it to
+   * decide anything, and the count stays `progressCount`.
+   */
+  quotaTapTimes?: string[];
 
   /**
    * Further medicines this task records alongside `medicationName`, for things

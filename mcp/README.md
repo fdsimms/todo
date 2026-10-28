@@ -141,7 +141,8 @@ only the fallback until the first sync.
 | `list_projects` | Active projects and how far through each one is, counting a recurring member once rather than once per completion, with each trip's away dates and destination. |
 | `get_project` | One project: its open tasks in order (each with its checklist and blockers), the most recently finished, its decisions, and its away dates, destination and whether it pauses tasks while away. |
 | `next_in_project` | The next unchecked checklist item in one project step (the first open step not waiting on anything, unless one is named), with how many items are checked. |
-| `list_recipes` / `get_recipe` | Recipes by name, tag or ingredient; one recipe's ingredients, steps and source. |
+| `list_recipes` / `get_recipe` | Recipes by name, tag or ingredient (paged, 50 a page; filters for a missing field or no meal type); one recipe's ingredients, steps and source. |
+| `lint_recipes` | Formatting problems across all recipes at once: notes or prep in an amount, truncated amounts, tracking links in a source, empty recipes. |
 | `list_meal_plan` | Planned meals over a range of days, the coming week by default. |
 | `list_people` / `get_person` | People in the user's own order; one person's details, gift ideas, other notes and shared history, each with its id. |
 | `upcoming_birthdays` | Birthdays and people's other dates (an anniversary) in the next N days, soonest first, each naming its occasion. |
@@ -192,6 +193,7 @@ only the fallback until the first sync.
 | `delete_medication_log` | **Write.** Deletes a recorded dose. |
 | `delete_task` | **Write.** Deletes tasks with their checklists, or single checklist items (up to 100 a call). Refuses a task the app generated. Each can be restored from Activity. |
 | `skip_occurrence` | **Write.** Moves a repeating task to its next date with nothing completed or missed, as the app's Skip does. |
+| `unlog_target_unit` | **Write.** Takes back the latest unit logged on a daily or weekly target, as the meter's undo does. `get_task`'s `target.loggedAt` says when each unit was logged. |
 | `reorder` | **Write.** Puts a list in order, the ones named first and the rest after in their old order. `kind` picks the list: `tasks` (a project's open steps, a task's checklist, a stack, or the Pinned block), `templates`, `projects` (and their categories), `categories` (Today's sections), `people`, `aisles`, `stores_and_lists` and `up_next`. |
 | `set_task_dates` | **Write.** Puts one task on several dates (one row per date), changes the set, or takes it back to one; optionally monthly. |
 | `duplicate_task` | **Write.** Copies a task and its checklist, with its progress started over. |
