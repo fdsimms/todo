@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -49,6 +49,7 @@ export function TimeSlotMenu({ visible, at, use24Hour, anchor, onNewTask, onNewE
       popoverWidth={260}
       scrimLabel="Close menu"
     >
+      <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
       <View>
         <TouchableOpacity
           style={styles.optionRow}
@@ -74,6 +75,7 @@ export function TimeSlotMenu({ visible, at, use24Hour, anchor, onNewTask, onNewE
           </>
         )}
       </View>
+      </ScrollView>
     </CardSheet>
   );
 }
