@@ -393,6 +393,16 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                     ))}
                   </View>
                 )}
+                {/* On a Mac, over the end of the title while the pointer is on
+                    the row, so the title keeps the room the trailing copy
+                    below no longer reserves (it draws nothing there). */}
+                <SwipeActionButtons
+                  placement="titleEnd"
+                  enabled={!selectionMode}
+                  whenAction={swipeWhen}
+                  selectAction={swipeSelect}
+                  dragHandle={onDrag}
+                />
               </TouchableOpacity>
 
               {onPressOpen && (
@@ -432,7 +442,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
               >
                 <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
               </TouchableOpacity>
-              <SwipeActionButtons enabled={!selectionMode} whenAction={swipeWhen} selectAction={swipeSelect} />
+              <SwipeActionButtons overlayOnHover enabled={!selectionMode} whenAction={swipeWhen} selectAction={swipeSelect} />
             </Reanimated.View>
             </PointerView>
           </SwipeableRow>

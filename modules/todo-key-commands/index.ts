@@ -4,7 +4,7 @@ import { Platform, type ViewProps } from 'react-native';
 
 export interface KeyCommandSpec {
   id: string;
-  /** A character, or "escape" / "up" / "down" / "left" / "right" / "return". */
+  /** A character, or "escape" / "up" / "down" / "left" / "right" / "return" / "delete". */
   input: string;
   modifiers: string[];
 }

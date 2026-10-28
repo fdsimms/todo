@@ -25,6 +25,7 @@ import { useSettingsStore, type PatchNoteQaStatus } from '../store/useSettingsSt
 import { haptics } from '../utils/haptics';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayDocked } from '../utils/frameWidth';
 
 interface Props {
   visible: boolean;
@@ -227,11 +228,13 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   backdropDim: {
     backgroundColor: colors.backdrop,
   },
   sheetOuter: {
+    ...overlayDocked,
     paddingHorizontal: spacing.md,
     paddingBottom: sheetBottomInset,
   },

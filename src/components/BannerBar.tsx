@@ -4,6 +4,7 @@ import { SwipeDismiss } from './SwipeDismiss';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, type Colors } from '../theme';
 import { useReduceMotion } from '../utils/useReduceMotion';
+import { OVERLAY_SHEET_MAX_WIDTH } from '../utils/frameWidth';
 
 /** How far a banner rises as it arrives, and drops as it goes. */
 const ENTER_RISE = 16;
@@ -159,7 +160,12 @@ export function BannerBar({
       style={[styles.wrap, { bottom, opacity: fade, transform: [{ translateY: rise }] }]}
       pointerEvents={leaving ? 'none' : 'box-none'}
     >
-      {onDismiss ? <SwipeDismiss onDismiss={onDismiss}>{bar}</SwipeDismiss> : bar}
+      {/* The bar is a phone-width strip. In a wider box (an uncapped column, a
+          Mac window) it keeps that width and sits in the middle, rather than
+          putting its label at one end and "Undo" a thousand points from it. */}
+      <View style={surface === 'card' ? styles.cap : styles.fill} pointerEvents="box-none">
+        {onDismiss ? <SwipeDismiss onDismiss={onDismiss}>{bar}</SwipeDismiss> : bar}
+      </View>
     </Animated.View>
   );
 }
@@ -169,7 +175,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     position: 'absolute',
     left: spacing.md,
     right: spacing.md,
+    alignItems: 'center',
   },
+  cap: {
+    width: '100%',
+    maxWidth: OVERLAY_SHEET_MAX_WIDTH,
+  },
+  // A bar inside a sheet is already in a framed column; it keeps the sheet's width.
+  fill: { width: '100%' },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',

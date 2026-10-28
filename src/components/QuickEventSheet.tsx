@@ -128,6 +128,7 @@ import { isDemoModeActive } from '../utils/demoState';
 import { TITLE_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayCard } from '../utils/frameWidth';
 
 /** How long a line left by tapping outside a new event waits to be picked up. */
 const QUICK_EVENT_KEEP_TEXT_MS = 10 * 60 * 1000;
@@ -2036,8 +2037,9 @@ const STEP_NAMES = ['When', 'Where', 'Details'] as const;
 const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   keyboardBacking: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.bgSecondary },
-  centeredContainer: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
+  centeredContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
   sheet: {
+    ...overlayCard,
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,
     padding: spacing.md,

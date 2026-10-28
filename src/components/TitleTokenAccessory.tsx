@@ -7,6 +7,7 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { useColors } from '../theme/ThemeContext';
 import type { TokenChip } from '../utils/titleTokenChips';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
+import { AccessoryBar } from './AccessoryBar';
 
 interface TokenDef {
   /** What `tokens` names it by. */
@@ -192,7 +193,7 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
   const chipsActive = !showMore && !!onChip && !!chips && chips.length > 0;
   const styles = makeStyles(colors);
   const bar = (
-    <View style={styles.bar}>
+    <AccessoryBar style={styles.bar}>
       {chipsActive ? (
         // "always" so a tap lands on a chip instead of first dismissing the
         // keyboard, which would take this bar away mid-tap.
@@ -291,7 +292,7 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
           <Ionicons name="checkmark" size={20} color={colors.onAccent} />
         </PressableScale>
       )}
-    </View>
+    </AccessoryBar>
   );
 
   if (floating) {
@@ -336,9 +337,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
-    backgroundColor: colors.bgSecondary,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.separator,
   },
   tokenGroup: {
     flexDirection: 'row',

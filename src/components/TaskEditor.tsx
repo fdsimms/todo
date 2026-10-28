@@ -214,6 +214,8 @@ import { FieldLabel } from './FieldLabel';
 import { describeMission, normalizeMission } from '../utils/missions';
 import { MissionPicker } from './MissionPicker';
 import { RotatingChevron } from './RotatingChevron';
+import { runningOnMac } from '../utils/runningOnMac';
+import { useEscapeHandler } from '../hooks/useEscapeHandler';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -368,6 +370,13 @@ interface Props {
   onClose: () => void;
   /** Drawn in place as the second pane beside Today's list, not as a sheet over it (see EditorSheet). */
   inline?: boolean;
+  /**
+   * Filled with this form's "does it differ from what it opened with" check, for a
+   * host that has to ask before it points the pane at something else. A sheet
+   * covers the list it was opened from, so nothing can re-point it; a pane sits
+   * beside a live list, where the next click is one tap away.
+   */
+  dirtyCheckRef?: React.MutableRefObject<(() => boolean) | null>;
 }
 
 type PickerMode = 'none' | 'reminder';
@@ -538,7 +547,7 @@ const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
 
 const NO_TASKS: Task[] = [];
 
-function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inline = false }: Props) {
+function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inline = false, dirtyCheckRef }: Props) {
   // ==== the task on screen ====
   // Duplicate swaps the open sheet onto the copy it made, so the copy can be
   // changed at once; the host's own task is what it shows again next time.
@@ -1212,11 +1221,20 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // before anything below it renders, so the form mounts once, already
   // filled. `draftLoadedFor` is what the draft was last loaded for, including
   // the close, so reopening on the same task object still starts afresh.
-  const [draftLoadedFor, setDraftLoadedFor] = useState<{ visible: boolean; task: Task | null | undefined }>(
-    { visible: false, task: undefined },
+  const [draftLoadedFor, setDraftLoadedFor] = useState<{ visible: boolean; task: Task | null | undefined; draft: Partial<TaskDraft> | null | undefined }>(
+    { visible: false, task: undefined, draft: undefined },
   );
-  if (draftLoadedFor.visible !== visible || (visible && draftLoadedFor.task !== task)) {
-    setDraftLoadedFor({ visible, task });
+  // In the pane, a new task's draft can be replaced while it stays open on no task at
+  // all ("More details" from quick add, with the pane already open on a blank form), and
+  // `task` is null before and after, so it alone left the old form showing and the typed
+  // text dropped. Only the pane: its draft comes from a store and keeps its identity, where
+  // other hosts may build one per render.
+  if (
+    draftLoadedFor.visible !== visible
+    || (visible && draftLoadedFor.task !== task)
+    || (inline && visible && draftLoadedFor.draft !== initialDraft)
+  ) {
+    setDraftLoadedFor({ visible, task, draft: initialDraft });
     if (visible) loadDraft();
     setShowAllFields(false);
     setRowsMounted(inline);
@@ -3379,6 +3397,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       reminderPlaceId,
       reminderPlaceOn: reminderPlaceId ? reminderPlaceOn : 'arrive',
     }) !== initialStateRef.current;
+  if (dirtyCheckRef) dirtyCheckRef.current = hasUnsavedChanges;
 
   // Completing or reopening from here closes the sheet, which takes any edits
   // not yet saved with it, so that is asked before it goes through.
@@ -3401,6 +3420,10 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       onClose();
     }
   };
+  // Escape closes the pane the way its Cancel does, asking first when there are edits. A
+  // sheet editor needs none of this: every sheet is closed by Escape through its own
+  // onRequestClose, which is handleCancel too.
+  useEscapeHandler(inline && visible, handleCancel);
 
   // A copy of the task as saved, which the sheet then shows (see `duplicated`
   // above). Edits not yet saved aren't in it, so it says so before it makes one.
@@ -3991,7 +4014,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
-      scrollContentStyle={styles.scrollContent}
+      // 320 is room for a software keyboard to scroll a lower field above it; a Mac
+      // has none, and the room was a blank screenful after the last card.
+      scrollContentStyle={runningOnMac() ? styles.scrollContentMac : styles.scrollContent}
       scrollEnabled={!draggingRow}
       // Gone while the field search is open: the search field is then the way
       // round the form, and the cards it hides would leave the bar half empty.
@@ -9016,6 +9041,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   disabled: { opacity: 0.4 },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 320 },
+  scrollContentMac: { paddingBottom: spacing.xl },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', paddingLeft: spacing.md },
   // Level with the title's first line: its paddingTop plus half the gap
   // between the box and one line of font.xl.

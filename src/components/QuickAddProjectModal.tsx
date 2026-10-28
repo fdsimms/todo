@@ -36,6 +36,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { matchTemplate } from '../utils/templateMatch';
 import type { TaskTemplate } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayCard } from '../utils/frameWidth';
 
 /** How long a name left by tapping outside waits to be picked up. */
 const QUICK_PROJECT_KEEP_TITLE_MS = 10 * 60 * 1000;
@@ -590,10 +591,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   centeredContainer: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xl,
   },
   sheet: {
+    ...overlayCard,
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,
     paddingHorizontal: spacing.md,

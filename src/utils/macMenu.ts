@@ -127,9 +127,12 @@ export function menuCommandTarget(id: string): MenuCommandTarget | null {
  * off, so one press has one handler. Plain keys always stay: no menu item has
  * one (see the header).
  */
-export function sinkShortcuts(menuItems: readonly MenuItemSpec[]): KeyShortcut[] {
+export function sinkShortcuts(
+  menuItems: readonly MenuItemSpec[],
+  shortcuts: readonly KeyShortcut[] = KEY_SHORTCUTS,
+): KeyShortcut[] {
   const menuChords = new Set(menuItems.filter(i => i.input !== '').map(i => chordKey(i)));
-  return KEY_SHORTCUTS.filter(s => !menuChords.has(chordKey(s)));
+  return shortcuts.filter(s => !menuChords.has(chordKey(s)));
 }
 
 /** Every chord the keyboard answers to with the menu bar up: the sink's and the menu's. */

@@ -28,6 +28,7 @@ import {
   type AwayShiftPlan,
 } from '../utils/awayShift';
 import type { Task } from '../types';
+import { overlayDock } from '../utils/frameWidth';
 
 /**
  * "The trip moved. Do these move with it?"
@@ -240,7 +241,7 @@ export function AwayShiftSheet({ visible, tasks, from, to, projectTitle, onClose
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
-  sheetOuter: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
+  sheetOuter: { position: 'absolute', ...overlayDock, bottom: 0, paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
   handleArea: { alignItems: 'center', paddingVertical: spacing.sm },
   handle: { width: 36, height: 5, borderRadius: 2.5, backgroundColor: colors.textTertiary },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.lg, padding: spacing.md },

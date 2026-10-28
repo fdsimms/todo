@@ -1,6 +1,6 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { NavigationContext } from '@react-navigation/native';
-import { Animated, PanResponder, StyleSheet, Text, View } from 'react-native';
+import { Animated, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
@@ -13,6 +13,10 @@ import { haptics } from '../utils/haptics';
 import { fabHomeState, type FabHomeState } from '../utils/fabDrop';
 import { useSettingsStore, type FabHand } from '../store/useSettingsStore';
 import { useFabPresenceStore } from '../store/useFabPresenceStore';
+import { useFrameWidth } from '../hooks/useFrameWidth';
+import { fabMenuAnchorFor, type FabMenuAnchor } from '../utils/fabAnchor';
+
+export type { FabMenuAnchor };
 
 /** Diameter of the standard list-screen FAB — also the room a list must leave below its last row. */
 export const FAB_SIZE = 56;
@@ -24,8 +28,15 @@ export const FAB_SIZE = 56;
  * `useBottomTabBarHeight()`, which already includes the inset (adding the inset
  * again put the tab screens' button 34pt above Today's) and doesn't exist on the
  * pushed detail pages at all.
+ *
+ * That is the phone's figure. With the sidebar there is no tab bar on any
+ * screen and no thumb, so the button rests `FAB_SIDEBAR_OFFSET` above the edge
+ * instead (`useFabBottom`), which is as far in as it already sits from the side.
  */
 export const FAB_BOTTOM_OFFSET = 64;
+
+/** Where the FAB rests above the bottom edge while the sidebar replaces the tab bar. */
+export const FAB_SIDEBAR_OFFSET = spacing.lg;
 
 /**
  * Distance from the bottom of the screen to the FAB's resting position.
@@ -36,8 +47,25 @@ export const FAB_BOTTOM_OFFSET = 64;
  * it, the padding that clears the last row) reads it here too.
  */
 export function useFabBottom(): number {
-  return useSafeAreaInsets().bottom + FAB_BOTTOM_OFFSET;
+  const inset = useSafeAreaInsets().bottom;
+  const { sidebar } = useFrameWidth();
+  return inset + (sidebar > 0 ? FAB_SIDEBAR_OFFSET : FAB_BOTTOM_OFFSET);
 }
+
+const FAB_BAR_GAP = 9;
+
+/**
+ * Where a bar that rides above the FAB (the undo bar, the ready offer) sits:
+ * clear of the button, whichever corner height it is at. Derived from the FAB's
+ * own position rather than from the tab bar's height, because the two parted
+ * ways when the sidebar took the tab bar away: the bar's bottom came out at 80
+ * while the button still occupied 64 to 120, and the bar covered it for as long
+ * as it was up. The gap is what the old tab-bar formula left on a phone.
+ */
+export function useAboveFabBottom(): number {
+  return useFabBottom() + FAB_SIZE + FAB_BAR_GAP;
+}
+
 
 /**
  * Turns the button into a thing you can also pull into the list behind it,
@@ -150,6 +178,12 @@ interface FabButtonProps {
   onLongPress?: () => void;
   /** Spoken name of what the hold does, offered to VoiceOver as an action too. */
   longPressLabel?: string;
+  /**
+   * The button's own container, for a caller that has to know where it is drawn:
+   * the menu measures it so it opens beside the button. The button sits in a
+   * corner of whatever pane holds it, and the menu is drawn over the whole window.
+   */
+  containerRef?: React.Ref<View>;
 }
 
 /**
@@ -161,7 +195,7 @@ interface FabButtonProps {
  */
 function FabButton({
   onPress, accessibilityLabel, icon, size, disabled, dimWhenDisabled, opacity,
-  drag, dragHint, dragLabel, onLongPress, longPressLabel,
+  drag, dragHint, dragLabel, onLongPress, longPressLabel, containerRef,
 }: FabButtonProps) {
   useReportFabPresence();
   const bottom = useFabBottom();
@@ -292,6 +326,7 @@ function FabButton({
 
   return (
     <Animated.View
+      ref={containerRef as React.Ref<never>}
       style={[styles.container, { bottom, opacity }]}
       pointerEvents={disabled ? 'none' : 'box-none'}
     >
@@ -433,15 +468,6 @@ export interface FabMenuItem {
   icon: React.ComponentProps<typeof Ionicons>['name'];
 }
 
-/** Where an open menu hangs from, in screen coordinates. */
-export interface FabMenuAnchor {
-  bottom: number;
-  left?: number;
-  right?: number;
-  /** Which way the pills grow — they're wider than the button. */
-  alignItems: 'flex-start' | 'flex-end';
-}
-
 interface FabMenuOverlayProps {
   items: FabMenuItem[];
   visible: boolean;
@@ -578,15 +604,34 @@ export function FabMenu({
 }: FabMenuProps) {
   const bottom = useFabBottom();
   const hand = useFabHand();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const buttonRef = useRef<View>(null);
+  // Where the menu hangs from. The menu is drawn in a Modal over the whole
+  // window, and the button rests in a corner of its own pane, so on a window
+  // wider than the column the two were hundreds of points apart. Measured as
+  // the menu opens; the corner it would sit in on a phone is the fallback.
+  const [measured, setMeasured] = useState<FabMenuAnchor | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
   const only = items.length === 1 ? items[0] : null;
   const tapItem = !only && tapKey ? items.find(i => i.key === tapKey) ?? null : null;
 
   const showMenu = () => {
-    setMenuVisible(true);
-    anim.setValue(0);
-    Animated.spring(anim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    const reveal = () => {
+      setMenuVisible(true);
+      anim.setValue(0);
+      Animated.spring(anim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    };
+    const node = buttonRef.current;
+    if (!node) {
+      setMeasured(null);
+      reveal();
+      return;
+    }
+    node.measureInWindow((x, y, w, h) => {
+      setMeasured(fabMenuAnchorFor({ x, y, width: w, height: h }, { width: windowWidth, height: windowHeight }, hand));
+      reveal();
+    });
   };
 
   const open = () => {
@@ -646,6 +691,7 @@ export function FabMenu({
         drag={drag}
         dragHint={dragHint}
         dragLabel={dragLabel}
+        containerRef={buttonRef}
       />
 
       {only ? null : (
@@ -656,7 +702,7 @@ export function FabMenu({
           onSelect={handleSelect}
           onDismiss={() => close()}
           size={size}
-          anchor={{
+          anchor={measured ?? {
             bottom,
             left: hand === 'left' ? spacing.lg : undefined,
             right: hand === 'left' ? undefined : spacing.lg,

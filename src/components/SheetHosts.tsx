@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { createStore, useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { Task } from '../types';
@@ -55,6 +55,18 @@ export type EditorSheetState = {
 
 export const EDITOR_CLOSED: EditorSheetState = { visible: false, task: null, draft: null };
 
+/** Each editor store's way of asking its open form whether it holds unsaved edits. */
+const dirtyChecks = new WeakMap<StoreApi<EditorSheetState>, () => boolean>();
+
+/**
+ * Whether the editor open in this store has edits it hasn't saved. Only the inline
+ * pane reports one; a sheet covers the list it opened from, so there is nothing
+ * to ask before re-pointing it.
+ */
+export function editorHasUnsavedChanges(store: StoreApi<EditorSheetState>): boolean {
+  return store.getState().visible && (dirtyChecks.get(store)?.() ?? false);
+}
+
 /** The editor as a sheet, or with `inline`, as the pane beside a list. */
 export const EditorSheetHost = React.memo(function EditorSheetHost({
   store,
@@ -66,7 +78,11 @@ export const EditorSheetHost = React.memo(function EditorSheetHost({
   inline?: boolean;
 }) {
   const { visible, task, draft } = useStore(store, useShallow(st => st));
-  if (inline) return <TaskEditor inline visible={visible} task={task} initialDraft={draft} onClose={onClose} />;
+  const dirtyCheckRef = useRef<(() => boolean) | null>(null);
+  if (inline) {
+    dirtyChecks.set(store, () => dirtyCheckRef.current?.() ?? false);
+    return <TaskEditor inline visible={visible} task={task} initialDraft={draft} onClose={onClose} dirtyCheckRef={dirtyCheckRef} />;
+  }
   return (
     <LazySheet open={visible} warm>
       <TaskEditor visible={visible} task={task} initialDraft={draft} onClose={onClose} />

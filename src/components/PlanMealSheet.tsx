@@ -30,6 +30,7 @@ import { slotLabel, upcomingDays } from '../utils/mealPlan';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayDock } from '../utils/frameWidth';
 
 /** Kept clear above the sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
@@ -283,8 +284,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: { backgroundColor: colors.backdrop },
   sheetOuter: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    ...overlayDock,
     bottom: 0,
     paddingHorizontal: spacing.md,
     paddingBottom: sheetBottomInset,

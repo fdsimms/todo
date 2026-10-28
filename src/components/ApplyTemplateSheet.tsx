@@ -83,6 +83,7 @@ import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
+import { overlayDock } from '../utils/frameWidth';
 
 interface Props {
   visible: boolean;
@@ -892,8 +893,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   sheetOuter: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    ...overlayDock,
     bottom: 0,
     paddingHorizontal: spacing.md,
     paddingBottom: sheetBottomInset,

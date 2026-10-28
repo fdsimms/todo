@@ -15,6 +15,7 @@ import { spacing, font, fontWeight, animation, type Colors } from '../theme';
 import type { GroceryItem } from '../types';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlayCard } from '../utils/frameWidth';
 
 /** How long a line left by tapping outside waits in the field to be picked up. */
 const GROCERY_ADD_KEEP_LINE_MS = 10 * 60 * 1000;
@@ -212,10 +213,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   topContainer: {
     flex: 1,
     justifyContent: 'flex-start',
+    alignItems: 'center',
     paddingTop: spacing.xl * 2,
     paddingHorizontal: spacing.lg,
   },
   sheet: {
+    ...overlayCard,
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,
     padding: spacing.md,

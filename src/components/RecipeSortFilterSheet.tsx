@@ -22,6 +22,7 @@ import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetMotion } from '../hooks/useSheetMotion';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
+import { overlayDocked } from '../utils/frameWidth';
 
 interface Props {
   visible: boolean;
@@ -276,9 +277,10 @@ export function RecipeSortFilterSheet({
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  modalRoot: { flex: 1, justifyContent: 'flex-end' },
+  modalRoot: { flex: 1, justifyContent: 'flex-end', alignItems: 'center' },
   overlay: { ...StyleSheet.absoluteFill, backgroundColor: colors.backdrop },
   sheet: {
+    ...overlayDocked,
     backgroundColor: colors.bgSecondary,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,

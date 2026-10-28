@@ -18,6 +18,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, type Colors, textScale } from '../theme';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
+import { overlayCard } from '../utils/frameWidth';
 
 interface Props {
   visible: boolean;
@@ -231,10 +232,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   centeredContainer: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xl,
   },
   sheet: {
+    ...overlayCard,
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,
     padding: spacing.md,

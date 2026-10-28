@@ -63,6 +63,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { Task, TaskGroup } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { overlaySearchCard } from '../utils/frameWidth';
 
 // Keeps the field's own value/onChangeText bound to the raw, fast-updating
 // `query` state below — only the quickSearch recompute waits on this delay.
@@ -832,9 +833,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   topContainer: {
     flex: 1,
     justifyContent: 'flex-start',
+    // Capped and centered, so search is a card over a Mac window and not a
+    // strip across it with every result row 1,500pt wide.
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
   },
   card: {
+    ...overlaySearchCard,
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,
     padding: spacing.sm,
