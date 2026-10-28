@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ScrollView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import type { FoodLogEntry } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -209,6 +209,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
       // fire once. A stepped count has no field to focus.
       onShow={() => amountRef.current?.focus()}
     >
+      <ScrollView keyboardShouldPersistTaps="handled" bounces={false} showsVerticalScrollIndicator={false}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
@@ -333,6 +334,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
         </View>
       </View>
       <NumberPadAccessory />
+      </ScrollView>
     </CardSheet>
   );
 }

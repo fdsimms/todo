@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
@@ -87,6 +87,7 @@ export function LabelSubjectSheet({ visible, initialName, onNext, onClose }: Pro
       controller={card}
       onRequestClose={() => dismiss(onClose)}
     >
+      <ScrollView keyboardShouldPersistTaps="handled" bounces={false} showsVerticalScrollIndicator={false}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
@@ -149,6 +150,7 @@ export function LabelSubjectSheet({ visible, initialName, onNext, onClose }: Pro
           )}
         </View>
       </View>
+      </ScrollView>
     </CardSheet>
   );
 }

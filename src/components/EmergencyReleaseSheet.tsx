@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { TextField } from './TextField';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -63,6 +63,7 @@ export function EmergencyReleaseSheet({ visible, reasons, formatTime, onClose }:
       controller={card}
       onRequestClose={() => dismiss()}
     >
+      <ScrollView keyboardShouldPersistTaps="handled" bounces={false} showsVerticalScrollIndicator={false}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss()} minWidth={56} />
@@ -116,6 +117,7 @@ export function EmergencyReleaseSheet({ visible, reasons, formatTime, onClose }:
           <Text style={styles.confirmText}>End all blocks</Text>
         </TouchableOpacity>
       </View>
+      </ScrollView>
     </CardSheet>
   );
 }
