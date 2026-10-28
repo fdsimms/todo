@@ -211,11 +211,13 @@ export const DEPTH_MIN_VALID = 0.1;
 export const DEPTH_AWAY_MS = 1500;
 
 /**
- * No depth reading at all for this long is a camera that didn't start or has
- * stopped (an empty frame still arrives as a reading), so the count moves to
- * the proximity sensor rather than waiting on a camera that won't come back.
+ * No depth reading at all for this long, with the app in front, is a camera
+ * that didn't start or has stopped (an empty frame still arrives as a
+ * reading), so the count moves to the proximity sensor rather than waiting on
+ * a camera that won't come back. Time behind the lock screen isn't counted:
+ * the camera can't run there, and resumes by itself once the app is back.
  */
-export const DEPTH_SILENCE_MS = 3000;
+export const DEPTH_SILENCE_MS = 5000;
 
 /** The phone turning faster than this (degrees per second) is being moved, not lying on the floor. */
 export const MOTION_ROTATION_DPS = 25;
