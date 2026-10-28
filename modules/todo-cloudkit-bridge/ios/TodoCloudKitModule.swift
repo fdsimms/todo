@@ -82,7 +82,7 @@ public class TodoCloudKitModule: Module {
     AsyncFunction("subscribeToChanges") { (promise: Promise) in
       self.ensureZone(self.zoneID) { error in
         if let error {
-          promise.reject("ERR_CLOUDKIT_ZONE", error.localizedDescription)
+          promise.fail("ERR_CLOUDKIT_ZONE", error.localizedDescription)
           return
         }
         let subscription = CKRecordZoneSubscription(zoneID: self.zoneID, subscriptionID: Self.subscriptionID)
@@ -92,7 +92,7 @@ public class TodoCloudKitModule: Module {
         self.database.save(subscription) { _, error in
           if let error {
             self.forgetZoneIfMissing(error, self.zoneID)
-            promise.reject("ERR_CLOUDKIT_SUBSCRIBE", error.localizedDescription)
+            promise.fail("ERR_CLOUDKIT_SUBSCRIBE", error.localizedDescription)
             return
           }
           DispatchQueue.main.async {
@@ -122,7 +122,7 @@ public class TodoCloudKitModule: Module {
     AsyncFunction("push") { (payload: String, promise: Promise) in
       self.ensureZone(self.zoneID) { error in
         if let error {
-          promise.reject("ERR_CLOUDKIT_ZONE", error.localizedDescription)
+          promise.fail("ERR_CLOUDKIT_ZONE", error.localizedDescription)
           return
         }
         self.savePayload(payload, promise: promise)
@@ -132,7 +132,7 @@ public class TodoCloudKitModule: Module {
     AsyncFunction("pull") { (since: String?, promise: Promise) in
       self.ensureZone(self.zoneID) { error in
         if let error {
-          promise.reject("ERR_CLOUDKIT_ZONE", error.localizedDescription)
+          promise.fail("ERR_CLOUDKIT_ZONE", error.localizedDescription)
           return
         }
         self.fetchChanges(since: since, promise: promise)
@@ -149,7 +149,7 @@ public class TodoCloudKitModule: Module {
     AsyncFunction("listImages") { (since: String?, promise: Promise) in
       self.ensureZone(self.imagesZoneID) { error in
         if let error {
-          promise.reject("ERR_CLOUDKIT_ZONE", error.localizedDescription)
+          promise.fail("ERR_CLOUDKIT_ZONE", error.localizedDescription)
           return
         }
         self.listImageNames(since: since, accumulated: [], accumulatedRemoved: [], promise: promise)
@@ -159,7 +159,7 @@ public class TodoCloudKitModule: Module {
     AsyncFunction("putImage") { (name: String, base64: String, promise: Promise) in
       self.ensureZone(self.imagesZoneID) { error in
         if let error {
-          promise.reject("ERR_CLOUDKIT_ZONE", error.localizedDescription)
+          promise.fail("ERR_CLOUDKIT_ZONE", error.localizedDescription)
           return
         }
         self.saveImage(name: name, base64: base64, promise: promise)
@@ -241,7 +241,7 @@ public class TodoCloudKitModule: Module {
     do {
       try payload.write(to: fileURL, atomically: true, encoding: .utf8)
     } catch {
-      promise.reject("ERR_CLOUDKIT_WRITE", error.localizedDescription)
+      promise.fail("ERR_CLOUDKIT_WRITE", error.localizedDescription)
       return
     }
 
@@ -254,7 +254,7 @@ public class TodoCloudKitModule: Module {
 
       if let error {
         self.forgetZoneIfMissing(error, self.zoneID)
-        promise.reject("ERR_CLOUDKIT_PUSH", error.localizedDescription)
+        promise.fail("ERR_CLOUDKIT_PUSH", error.localizedDescription)
       } else {
         promise.resolve(nil)
       }
@@ -347,7 +347,7 @@ public class TodoCloudKitModule: Module {
       // through silently. See the comment above recordWasChangedBlock.
       if let (recordID, reason) = decodeFailure {
         NSLog("[todo-cloudkit-bridge] dropping pull, %@ (%@)", recordID.recordName, reason)
-        promise.reject("ERR_CLOUDKIT_DECODE", "A record from iCloud could not be read (\(reason)).")
+        promise.fail("ERR_CLOUDKIT_DECODE", "A record from iCloud could not be read (\(reason)).")
         return
       }
 
@@ -376,7 +376,7 @@ public class TodoCloudKitModule: Module {
           self.fetchChanges(since: nil, promise: promise)
         } else {
           self.forgetZoneIfMissing(error, self.zoneID)
-          promise.reject("ERR_CLOUDKIT_PULL", error.localizedDescription)
+          promise.fail("ERR_CLOUDKIT_PULL", error.localizedDescription)
         }
       }
     }
@@ -412,11 +412,11 @@ public class TodoCloudKitModule: Module {
     }
     op.modifyRecordsResultBlock = { result in
       if let failure {
-        promise.reject("ERR_CLOUDKIT_COMPACT", failure.localizedDescription)
+        promise.fail("ERR_CLOUDKIT_COMPACT", failure.localizedDescription)
         return
       }
       if case .failure(let error) = result, !Self.isAlreadyGone(error) {
-        promise.reject("ERR_CLOUDKIT_COMPACT", error.localizedDescription)
+        promise.fail("ERR_CLOUDKIT_COMPACT", error.localizedDescription)
         return
       }
       self.deletePayloads(rest, promise: promise)
@@ -443,7 +443,7 @@ public class TodoCloudKitModule: Module {
   /// conflict to resolve.
   private func saveImage(name: String, base64: String, promise: Promise) {
     guard let bytes = Data(base64Encoded: base64) else {
-      promise.reject("ERR_CLOUDKIT_WRITE", "The photo could not be decoded.")
+      promise.fail("ERR_CLOUDKIT_WRITE", "The photo could not be decoded.")
       return
     }
 
@@ -453,7 +453,7 @@ public class TodoCloudKitModule: Module {
     do {
       try bytes.write(to: fileURL, options: .atomic)
     } catch {
-      promise.reject("ERR_CLOUDKIT_WRITE", error.localizedDescription)
+      promise.fail("ERR_CLOUDKIT_WRITE", error.localizedDescription)
       return
     }
 
@@ -468,7 +468,7 @@ public class TodoCloudKitModule: Module {
         promise.resolve(nil)
       } else if let error {
         self.forgetZoneIfMissing(error, self.imagesZoneID)
-        promise.reject("ERR_CLOUDKIT_PUSH", error.localizedDescription)
+        promise.fail("ERR_CLOUDKIT_PUSH", error.localizedDescription)
       } else {
         promise.resolve(nil)
       }
@@ -484,7 +484,7 @@ public class TodoCloudKitModule: Module {
         return
       }
       if let error {
-        promise.reject("ERR_CLOUDKIT_PULL", error.localizedDescription)
+        promise.fail("ERR_CLOUDKIT_PULL", error.localizedDescription)
         return
       }
       guard let asset = record?[Self.imageKey] as? CKAsset, let url = asset.fileURL else {
@@ -494,7 +494,7 @@ public class TodoCloudKitModule: Module {
       do {
         promise.resolve(try Data(contentsOf: url).base64EncodedString())
       } catch {
-        promise.reject("ERR_CLOUDKIT_DECODE", "A photo from iCloud could not be read.")
+        promise.fail("ERR_CLOUDKIT_DECODE", "A photo from iCloud could not be read.")
       }
     }
   }
@@ -507,7 +507,7 @@ public class TodoCloudKitModule: Module {
       if let ckError = error as? CKError, ckError.code == .unknownItem || ckError.code == .zoneNotFound {
         promise.resolve(nil)
       } else if let error {
-        promise.reject("ERR_CLOUDKIT_PUSH", error.localizedDescription)
+        promise.fail("ERR_CLOUDKIT_PUSH", error.localizedDescription)
       } else {
         promise.resolve(nil)
       }
@@ -559,7 +559,7 @@ public class TodoCloudKitModule: Module {
       >
     ) -> Void = { _, result in
       if let failure {
-        promise.reject("ERR_CLOUDKIT_PULL", failure.localizedDescription)
+        promise.fail("ERR_CLOUDKIT_PULL", failure.localizedDescription)
         return
       }
 
@@ -585,7 +585,7 @@ public class TodoCloudKitModule: Module {
           self.listImageNames(since: nil, accumulated: [], accumulatedRemoved: [], promise: promise)
         } else {
           self.forgetZoneIfMissing(error, self.imagesZoneID)
-          promise.reject("ERR_CLOUDKIT_PULL", error.localizedDescription)
+          promise.fail("ERR_CLOUDKIT_PULL", error.localizedDescription)
         }
       }
     }
@@ -682,5 +682,26 @@ public class TodoCloudKitAppDelegate: ExpoAppDelegateSubscriber {
       return
     }
     RemoteChangeRelay.shared.arrive(completionHandler)
+  }
+}
+
+/// A rejection that carries its message. `Promise.reject(code, description)`
+/// builds an `Exception` whose `reason` is the framework's placeholder, and the
+/// text JavaScript receives is made from `reason`, so the description never
+/// arrived: every failure read "undefined reason" and the iCloud error was lost.
+private final class CloudKitFailure: Exception, @unchecked Sendable {
+  private let detail: String
+
+  init(code: String, detail: String) {
+    self.detail = detail
+    super.init(name: code, description: detail, code: code)
+  }
+
+  override var reason: String { detail }
+}
+
+private extension Promise {
+  func fail(_ code: String, _ detail: String) {
+    reject(CloudKitFailure(code: code, detail: detail))
   }
 }
