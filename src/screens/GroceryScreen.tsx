@@ -59,6 +59,7 @@ import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeSc
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { StartTripPrompt } from '../components/StartTripPrompt';
+import { ReminderRemovalsCard } from '../components/ReminderRemovalsCard';
 import { featureHidden } from '../utils/simpleMode';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import {
@@ -1820,6 +1821,11 @@ export function GroceryScreen() {
           onClear={handleClearTrip}
         />
       )}
+      {/* Rows the Reminders mirror took off the list, asking which were
+          bought. Home list only, because the mirror only ever reads home, and
+          hidden while selecting like the cards above. Renders nothing when
+          there's nothing to ask. */}
+      {!selectionMode && !away && <ReminderRemovalsCard />}
       {/* A drag down the column of selection dots picks up a run of rows
           (#2944), as on every other selectable list. Outside the drop zones,
           the way ProjectsScreen nests the same two. */}

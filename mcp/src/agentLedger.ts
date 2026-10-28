@@ -362,6 +362,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return task;
     },
 
+    unlogTargetUnit(id) {
+      const before = snapshot(id);
+      const task = replica.unlogTargetUnit(id);
+      log({ action: 'edited', subject: 'task', title: task.title, taskId: id, note: `Take back a logged unit of "${task.title}" (${task.progressCount}/${task.targetCount})`, revert: before ? taskRevert(before, task) : null });
+      return task;
+    },
+
     reorderTasks(scope, ids) {
       const changed = replica.reorderTasks(scope, ids);
       for (const { before, after } of changed) {

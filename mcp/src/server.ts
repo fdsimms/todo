@@ -122,7 +122,7 @@ import { setVacationMode } from './vacationTools';
 import { withLogSyncNote } from './logSync';
 import { getSettings, updateSettings } from './settingsTools';
 import { SETTINGS_SPEC } from './settingsSpec';
-import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, renameTag, setCompletionDate, setTaskDates, skipOccurrence } from './taskTools';
+import { MAX_DELETE, deleteTag, deleteTasks, duplicateTask, renameTag, setCompletionDate, setTaskDates, skipOccurrence, unlogTargetUnit } from './taskTools';
 import { MAX_BATCH, MAX_QUICK_ADD, batchUpdateTasks, planDay, quickAdd, rebalanceWeek, type BatchChange } from './agentTools';
 import { SERVER_ICONS } from './serverIcon';
 import { generateId } from '../../src/utils/id';
@@ -3069,6 +3069,19 @@ function registerWriteTools(
         return json(withLink(await withWrite(() => skipOccurrence(replica, id)), LINKS?.task(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not skip it.' });
+      }
+    }
+  );
+
+  server.tool(
+    'unlog_target_unit',
+    "Take back the latest unit logged on a daily or weekly target (\"Read 1/5\" becomes 0/5), as the meter's undo does in the app. Only when the person says a tap was a mistake. get_task's target.loggedAt says when each unit was logged. The unit's coins and dose are taken back with it, and a streak that counts units falls by one. One unit per call; a finished target is reopened with reopen_task instead.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(withLink(await withWrite(() => unlogTargetUnit(replica, id)), LINKS?.task(id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not take back the unit.' });
       }
     }
   );

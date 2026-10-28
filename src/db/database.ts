@@ -2431,6 +2431,9 @@ function runInitDatabase(): void {
     // on every existing row, which reads as the pace rule it always had.
     'ALTER TABLE tasks ADD COLUMN quota_rest_after_log INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN quota_logged_day_key TEXT',
+    // Task.quotaTapTimes: when each unit of the current period was logged, as a JSON
+    // array of ISO instants. NULL on every existing row, which reads as none recorded.
+    'ALTER TABLE tasks ADD COLUMN quota_tap_times TEXT',
     // Task.medicationExtras: further medicines the task records beside
     // medication_name, as a JSON array. NULL on every existing row, which reads
     // as none.
@@ -4215,6 +4218,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     generatedReadyAt: (row.generated_ready_at as string | null) ?? null,
     quotaRestAfterLog: Boolean(row.quota_rest_after_log),
     quotaLoggedDayKey: (row.quota_logged_day_key as string | null) ?? null,
+    quotaTapTimes: parseIdList(row.quota_tap_times),
     // Read only alongside a name, for the reason Task.medicationName gives.
     ...(typeof row.reminder_place_id === 'string' && row.reminder_place_id
       ? { reminderPlaceId: row.reminder_place_id, reminderPlaceOn: row.reminder_place_on === 'leave' ? 'leave' as const : 'arrive' as const }
@@ -4447,9 +4451,9 @@ export function dbInsertTask(task: Task): void {
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
       rain_skip_mm, rain_skipped_on,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
-      slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, medication_extras, attachments, reminder_place_id, reminder_place_on,
+      slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, quota_tap_times, medication_extras, attachments, reminder_place_id, reminder_place_on,
       mission, alarm_sound, alarm_link, alarm_link_leaves_open, alarm_sound_pool
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4597,6 +4601,7 @@ export function dbInsertTask(task: Task): void {
       task.slotWaitingSince ?? null,
       task.quotaRestAfterLog ? 1 : 0,
       task.quotaLoggedDayKey ?? null,
+      task.quotaTapTimes?.length ? JSON.stringify(task.quotaTapTimes) : null,
       task.medicationName && task.medicationExtras?.length ? JSON.stringify(task.medicationExtras) : null,
       task.attachments?.length ? JSON.stringify(task.attachments) : null,
       task.reminderPlaceId ?? null,
@@ -4645,7 +4650,7 @@ export function dbUpdateTask(task: Task): void {
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
       rain_skip_mm=?, rain_skipped_on=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
-      slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, medication_extras=?, attachments=?, reminder_place_id=?, reminder_place_on=?,
+      slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, quota_tap_times=?, medication_extras=?, attachments=?, reminder_place_id=?, reminder_place_on=?,
       mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?, alarm_sound_pool=?
     WHERE id=?`,
     [
@@ -4795,6 +4800,7 @@ export function dbUpdateTask(task: Task): void {
       task.slotWaitingSince ?? null,
       task.quotaRestAfterLog ? 1 : 0,
       task.quotaLoggedDayKey ?? null,
+      task.quotaTapTimes?.length ? JSON.stringify(task.quotaTapTimes) : null,
       task.medicationName && task.medicationExtras?.length ? JSON.stringify(task.medicationExtras) : null,
       task.attachments?.length ? JSON.stringify(task.attachments) : null,
       task.reminderPlaceId ?? null,
@@ -6096,9 +6102,16 @@ export function dbFinishGroceryShopping(
   // list", and see `away` below for what that costs a trip.
   listId: string | null = null,
   // What a price was paid for where a receipt said; see finishShopping.
-  priceQuantityById: Readonly<Record<string, string>> = {}
+  priceQuantityById: Readonly<Record<string, string>> = {},
+  // Exactly these rows were bought, whether or not they're in the trolley: a
+  // shop recorded after the fact, for rows the Reminders mirror already took
+  // off the list (see reminderRemovals.ts). Null is the ordinary trip, which
+  // buys whatever is ticked on `listId`.
+  onlyIds: readonly string[] | null = null
 ): string[] {
   const away = listId !== null;
+  if (onlyIds && onlyIds.length === 0) return [];
+  const onlyPlaceholders = onlyIds ? onlyIds.map(() => '?').join(',') : '';
   // Joined rather than read off grocery_items' own checked/on_list, because
   // those answer for the home list alone now — see GroceryListEntry.
   const rows = db.getAllSync<{
@@ -6115,9 +6128,11 @@ export function dbFinishGroceryShopping(
     `SELECT i.id, i.quantity, i.quantity_from_recipe, i.preferred_product_id, i.brand_strict, i.price_history,
             i.last_purchased_at, i.purchase_interval_days, i.expires_at
        FROM grocery_items i
-       JOIN grocery_list_items e ON e.item_id = i.id
-      WHERE e.list_id = ? AND e.checked = 1`,
-    [listKey(listId)]
+      ${onlyIds
+        ? `WHERE i.id IN (${onlyPlaceholders})`
+        : `JOIN grocery_list_items e ON e.item_id = i.id
+      WHERE e.list_id = ? AND e.checked = 1`}`,
+    onlyIds ? [...onlyIds] : [listKey(listId)]
   );
   if (rows.length === 0) return [];
   // What a typed price was paid for. A quantity a recipe wrote ("3 cups") is
@@ -6133,8 +6148,8 @@ export function dbFinishGroceryShopping(
   // away trip does. A row still in another list's trolley stays in it: buying
   // milk for the rental is not buying the milk you need at home.
   db.runSync(
-    `DELETE FROM grocery_list_items WHERE list_id = ? AND checked = 1`,
-    [listKey(listId)]
+    `DELETE FROM grocery_list_items WHERE list_id = ? AND checked = 1${onlyIds ? ` AND item_id IN (${placeholders})` : ''}`,
+    onlyIds ? [listKey(listId), ...ids] : [listKey(listId)]
   );
   for (const id of ids) dbSyncGroceryHomeColumns(id);
   if (away) {

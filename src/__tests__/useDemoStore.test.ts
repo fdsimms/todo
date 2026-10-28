@@ -95,6 +95,8 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { sharedLinkLabel } from '../utils/sharedRecipeLinks';
+import { liveReminderRemovals } from '../utils/reminderRemovals';
+import { useReminderRemovalStore } from '../store/useReminderRemovalStore';
 import { isRepeatingTimer, isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRemaining } from '../utils/stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
@@ -3373,6 +3375,18 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   beforeAll(freshDemo);
   afterAll(() => {
     useDemoStore.getState().exitDemoMode();
+  });
+
+  // The card on Groceries asking which of a list cleared in Reminders was
+  // bought. Both starting states, and every row still live, so the card shows.
+  it('seeds a list cleared in Reminders, waiting to be marked as bought', () => {
+    const live = liveReminderRemovals(
+      useReminderRemovalStore.getState().removals,
+      useGroceryStore.getState().items,
+      new Date()
+    );
+    expect(live).toHaveLength(4);
+    expect(live.filter(r => r.inCart)).toHaveLength(3);
   });
 
   it('seeds every catalog-match state a recipe line can be in', () => {

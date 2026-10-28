@@ -1426,7 +1426,15 @@ interface GroceryStore extends UndoHistoryActions {
      * the list's quantity, a per-pound figure 75% too high. A row not named
      * here keeps the list's quantity, as before.
      */
-    priceQuantityById?: Readonly<Record<string, string>>
+    priceQuantityById?: Readonly<Record<string, string>>,
+    /**
+     * `itemIds` records exactly these rows as bought, on the home list, whether
+     * or not they're in the trolley: a shop confirmed after the fact, for rows
+     * the Reminders mirror took off the list when their reminders were cleared
+     * (`ReminderRemovalsCard`). Anything ticked but not named is left in the
+     * cart, since this is not the trip that bought it.
+     */
+    opts?: { itemIds?: readonly string[] }
   ) => number;
   /**
    * Records what one item cost, by hand. Writes the item's own price and — with
@@ -4257,8 +4265,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }
   },
 
-  finishShopping(shopId = null, priceById = {}, purchasedAt = new Date().toISOString(), frozenIds, priceQuantityById = {}) {
+  finishShopping(shopId = null, priceById = {}, purchasedAt = new Date().toISOString(), frozenIds, priceQuantityById = {}, opts) {
     const now = new Date(purchasedAt);
+    // Named rows rather than the ticked ones: see the `opts` note on the
+    // interface. Always the home list, because the mirror only ever reads home.
+    const onlyIds = opts?.itemIds ?? null;
+    const named = onlyIds ? new Set(onlyIds) : null;
     // The list being finished, and whether it is one you're away from home for.
     // **An away trip records nothing** — see GroceryList: no purchase count, no
     // price, no store link, no use-by day, and none of the pantry claims a
@@ -4267,8 +4279,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // the shop resolved below, the shelf-life days, the prices, and the
     // in-memory patch that mirrors the db. `dbFinishGroceryShopping` runs its
     // own shorter UPDATE off the same `listId`.
-    const listId = get().activeListId;
+    const listId = named ? null : get().activeListId;
     const away = isAwayList(listId);
+    // The membership rows this trip takes out of the trolley. One predicate, so
+    // the snapshot, the db's DELETE and the in-memory patch can't disagree.
+    const finishing = (e: GroceryListEntry) =>
+      e.listId === listId && e.checked && (!named || named.has(e.itemId));
     // A shop deleted between opening the finish sheet and confirming it would
     // otherwise write links nothing can resolve. Dropped outright when away:
     // a store 400 miles from home is not where you get this, and a link saying
@@ -4289,8 +4305,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // The trolley being finished, with its own ticks projected on — reading
       // `i.checked` off `items` would answer for the home list. See
       // GroceryListEntry.
-      for (const i of itemsOnList(get().items, get().listEntries, listId)) {
-        if (!i.checked) continue;
+      const bought = named
+        ? get().items.filter(i => named.has(i.id))
+        : itemsOnList(get().items, get().listEntries, listId).filter(i => i.checked);
+      for (const i of bought) {
         const expires = expiresAtForPurchase(i, now);
         if (expires) expiresAtById[i.id] = expires;
       }
@@ -4326,7 +4344,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // puts each row back in this trolley with the tick and the slot it had.
     // `dbFinishGroceryShopping` deletes the entries itself, so the patch below
     // mirrors that rather than writing again.
-    const beforeEntries = get().listEntries.filter(e => e.listId === listId && e.checked);
+    const beforeEntries = get().listEntries.filter(finishing);
     const ids = dbFinishGroceryShopping(
       purchasedAt,
       shop?.id ?? null,
@@ -4334,7 +4352,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       priceById,
       frozenIds ?? new Set(),
       listId,
-      priceQuantityById
+      priceQuantityById,
+      onlyIds
     );
     if (ids.length === 0) return 0;
     const done = new Set(ids);
@@ -4472,7 +4491,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // on each row are recomputed from what's left — a row still in another
       // list's trolley keeps saying so. Mirrors the DELETE
       // dbFinishGroceryShopping just ran.
-      const listEntries = s.listEntries.filter(e => !(e.listId === listId && e.checked));
+      const listEntries = s.listEntries.filter(e => !finishing(e));
       return {
         listEntries,
         itemProducts: s.itemProducts.map(p =>
@@ -4559,7 +4578,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
             : i
         ),
         itemShops,
-        cartHoldIds: [],
+        // A named-rows record leaves the rest of the cart where it is.
+        cartHoldIds: named ? s.cartHoldIds.filter(x => !done.has(x)) : [],
       };
     });
     // After the items patch, so the mirror is computed against the rows as they
@@ -4593,7 +4613,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     get().setLastAction({
       label: `Bought ${ids.length} ${ids.length === 1 ? 'thing' : 'things'}`,
       destructive: true,
-      redo: () => get().finishShopping(shopId, priceById, purchasedAt, frozenIds),
+      redo: () => get().finishShopping(shopId, priceById, purchasedAt, frozenIds, priceQuantityById, opts),
       undo: () => {
         // Back in the trolley they were in, each with the tick and the slot it
         // had — the membership half of putting a trip back.
