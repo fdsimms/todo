@@ -84,6 +84,13 @@ export interface WidgetBridge {
   writeWorkoutRoutineIndex?: (jsonString: string) => Promise<boolean>;
   drainPendingWorkoutStarts?: () => Promise<string>;
   drainSharedLinks: () => Promise<string[]>;
+  /**
+   * Screenshots saved by the share extension, to be read for tasks. Optional
+   * for the reason the dose drain is: a build predating them lacks the three.
+   */
+  listSharedImages?: () => Promise<string[]>;
+  readSharedImage?: (name: string) => Promise<string | null>;
+  deleteSharedImage?: (name: string) => Promise<boolean>;
   syncTimerLiveActivities: (jsonString: string) => Promise<boolean>;
   syncTripLiveActivity: (jsonString: string) => Promise<boolean>;
   syncLeaveLiveActivity: (jsonString: string) => Promise<boolean>;

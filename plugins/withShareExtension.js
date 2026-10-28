@@ -5,7 +5,8 @@ const { addAppExtensionTarget } = require('./lib/nativeTarget');
 
 // Injects a Share extension target ("TodoShareExtension") into the generated
 // Xcode project at prebuild time — the "dundundun" row in another app's share
-// sheet, for a recipe page the user is looking at. The Xcode-target plumbing
+// sheet, for a recipe page the user is looking at or a screenshot to read tasks
+// from. The Xcode-target plumbing
 // lives in ./lib/nativeTarget.js, shared with withWidgetExtension.js; what's
 // here is what's specific to being a share extension.
 //
@@ -19,7 +20,7 @@ const BUNDLE_ID_SUFFIX = 'ShareExtension';
 // would be a much quieter failure than the widget's.
 const DEPLOYMENT_TARGET = '15.1';
 const SOURCE_DIR = path.join(__dirname, '..', 'targets', 'todo-share');
-const SWIFT_FILES = ['ShareViewController.swift', 'SharedRecipeQueue.swift'].map(name => ({
+const SWIFT_FILES = ['ShareViewController.swift', 'SharedRecipeQueue.swift', 'SharedTaskImageQueue.swift'].map(name => ({
   dir: SOURCE_DIR,
   name,
 }));
@@ -38,7 +39,9 @@ const SWIFT_FILES = ['ShareViewController.swift', 'SharedRecipeQueue.swift'].map
 //  • NSExtensionActivationRule decides which apps show dundundun at all. Both
 //    keys are wanted: an app sharing a page properly attaches a web URL, and
 //    plenty of others share a plain string with the link inside it, which
-//    ShareViewController runs a link detector over. MaxCount 1 keeps the row
+//    ShareViewController runs a link detector over. Up to five images are the
+//    third: screenshots or photos shared to be read for tasks, as one source. The keys are
+//    alternatives, so any one of them shows the row. MaxCount keeps the row
 //    out of share sheets for a multi-select of ten things, where "import a
 //    recipe" isn't the offer being made.
 function shareInfoPlist() {
@@ -78,6 +81,8 @@ function shareInfoPlist() {
 				<integer>1</integer>
 				<key>NSExtensionActivationSupportsTextWithMaxCount</key>
 				<integer>1</integer>
+				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
+				<integer>5</integer>
 			</dict>
 		</dict>
 	</dict>
@@ -116,7 +121,7 @@ const withShareExtension = config => {
       // UIKit and Foundation are autolinked by Swift's own import directives;
       // both are named anyway so the target's Frameworks phase says what it
       // needs rather than relying on that, same as the widget's does.
-      frameworks: ['UIKit.framework', 'Foundation.framework'],
+      frameworks: ['UIKit.framework', 'Foundation.framework', 'ImageIO.framework'],
       extraBuildSettings: {
         // NSExtensionPrincipalClass above is `$(PRODUCT_MODULE_NAME).ShareViewController`,
         // and the default for PRODUCT_MODULE_NAME is derived from PRODUCT_NAME

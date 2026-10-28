@@ -5,7 +5,7 @@ import { addMenuItemShown } from '../utils/simpleMode';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isDemoModeActive } from '../utils/demoState';
 
-export type AddTaskType = 'stack' | 'template' | 'import' | 'event' | 'task';
+export type AddTaskType = 'stack' | 'template' | 'import' | 'importTasks' | 'event' | 'task';
 
 // Bottom-up, so plain "Task" — far and away the most common — lands closest
 // to the button. There's deliberately no "Recurring" entry: it created a plain
@@ -22,6 +22,7 @@ const ITEMS: FabMenuItem[] = [
   { key: 'stack', label: 'Stack', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
   { key: 'import', label: 'Import event', icon: 'scan-outline' },
+  { key: 'importTasks', label: 'Import tasks', icon: 'image-outline' },
   { key: 'event', label: 'Event', icon: 'calendar-outline' },
   { key: 'task', label: 'Task', icon: 'checkbox' },
 ];

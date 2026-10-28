@@ -158,6 +158,17 @@ import type { TaskDraft } from '../components/TaskEditor';
 import { InboxSortSheet } from '../components/InboxSortSheet';
 import { QuickSearchModal } from '../components/QuickSearchModal';
 import { EventImportSheet } from '../components/EventImportSheet';
+import { TaskImportSheet } from '../components/TaskImportSheet';
+import { SharedImageBanner } from '../components/SharedImageBanner';
+import { isDemoModeActive } from '../utils/demoState';
+import { useSharedImageStore } from '../store/useSharedImageStore';
+import {
+  MAX_SHARED_IMAGES_PER_READ,
+  discardSharedTaskImage,
+  listSharedTaskImages,
+  readSharedTaskImage,
+} from '../utils/sharedTaskImages';
+import type { RecipeImage } from '../services/aiSuggestions';
 import type { ExtractedCalendarEvent } from '../services/aiSuggestions';
 import { draftFromExtractedEvent, eventImportQuickSeed } from '../utils/calendarEventImport';
 import type { TaskKind } from '../utils/taskKinds';
@@ -1067,6 +1078,12 @@ export function TodayScreen() {
     open();
   }, [editorStore]);
   const [eventImportVisible, setEventImportVisible] = useState(false);
+  const [taskImportVisible, setTaskImportVisible] = useState(false);
+  // A screenshot shared in from another app, handed to the import sheet. The
+  // file stays in the App Group folder until the tasks are added or it is
+  // discarded, so closing the sheet leaves the banner up (see SharedImageBanner).
+  const sharedImageNames = useSharedImageStore(useShallow(s => s.names));
+  const [sharedImages, setSharedImages] = useState<{ names: string[]; images: RecipeImage[] } | null>(null);
   // Events still waiting to become a task, from an itinerary import that read
   // more than one. Drained one at a time by the effect below, which opens the
   // next as soon as the editor closes on the previous — see its own comment.
@@ -2490,6 +2507,27 @@ export function TodayScreen() {
     setQuickAddVisible(true);
   };
 
+  const discardAndRefreshSharedImages = async (names: string[]) => {
+    await Promise.all(names.map(discardSharedTaskImage));
+    useSharedImageStore.getState().setNames(await listSharedTaskImages());
+  };
+
+  // Reads up to MAX_SHARED_IMAGES_PER_READ of the waiting images as one source,
+  // oldest first, since a long thread is often shared as several screenshots.
+  const handleReadSharedImage = async () => {
+    const names = sharedImageNames.slice(0, MAX_SHARED_IMAGES_PER_READ);
+    if (names.length === 0) return;
+    const read = await Promise.all(names.map(async name => ({ name, image: await readSharedTaskImage(name) })));
+    // Any that are gone since they were listed (pruned by a newer share, or
+    // discarded elsewhere) are dropped from the list rather than blocking the rest.
+    const gone = read.filter(r => !r.image).map(r => r.name);
+    const present = read.filter((r): r is { name: string; image: RecipeImage } => !!r.image);
+    if (gone.length > 0) void discardAndRefreshSharedImages(gone);
+    if (present.length === 0) return;
+    setSharedImages({ names: present.map(r => r.name), images: present.map(r => r.image) });
+    setTaskImportVisible(true);
+  };
+
   const handleAddMenuSelect = (type: AddTaskType) => {
     switch (type) {
       case 'task':
@@ -2506,6 +2544,9 @@ export function TodayScreen() {
         break;
       case 'import':
         setEventImportVisible(true);
+        break;
+      case 'importTasks':
+        setTaskImportVisible(true);
         break;
       // No task: a one-line event ("lunch w/ @gideon sat 12pm") saved straight
       // into the calendar, with the calendar, alert and Busy/Free as chips.
@@ -5487,6 +5528,14 @@ export function TodayScreen() {
           <NewTasksBanner tasks={newTasks} onJumpToTask={jumpToTask} onDismiss={dismissNewTasksBanner} />
         )}
 
+        {sharedImageNames.length > 0 && !isDemoModeActive() && (
+          <SharedImageBanner
+            count={sharedImageNames.length}
+            onRead={handleReadSharedImage}
+            onDiscard={() => { void discardAndRefreshSharedImages(sharedImageNames.slice(0, MAX_SHARED_IMAGES_PER_READ)); }}
+          />
+        )}
+
         {/* Last of the things above the list, because it's the least urgent of
             them by a distance: anything the app actually has to *ask* is above
             it, and a tip is only ever an aside.
@@ -6195,6 +6244,20 @@ export function TodayScreen() {
             visible={eventImportVisible}
             onClose={() => setEventImportVisible(false)}
             onImported={handleEventsImported}
+          />
+        </LazySheet>
+
+        <LazySheet open={taskImportVisible}>
+          <TaskImportSheet
+            visible={taskImportVisible}
+            initialPhotos={sharedImages?.images}
+            onClose={() => { setTaskImportVisible(false); setSharedImages(null); }}
+            onAdd={drafts => {
+              const added = drafts.map(draft => useTaskStore.getState().addTask(draft));
+              setTemplateAppliedCount(added.length);
+              setTemplateAppliedDest(templateRunDestination(added));
+              if (sharedImages) void discardAndRefreshSharedImages(sharedImages.names);
+            }}
           />
         </LazySheet>
 

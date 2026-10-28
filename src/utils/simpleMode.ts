@@ -70,6 +70,7 @@ export type SimpleFeatureId =
   | 'awayDates'
   | 'effortRating'
   | 'calendarImport'
+  | 'taskImport'
   // Screens behind the menu.
   | 'templates'
   | 'calendarScreen'
@@ -164,6 +165,7 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'awayDates', label: "A project’s away dates", area: 'tasks' },
   { id: 'effortRating', label: 'Effort', area: 'tasks' },
   { id: 'calendarImport', label: 'Import event from photo or text', area: 'tasks' },
+  { id: 'taskImport', label: 'Import tasks from a photo', area: 'tasks' },
 
   { id: 'templates', label: 'Templates', area: 'screens', screen: 'Templates', contentScreen: true },
   // A content screen like Stacks and Templates: it holds Person rows that live
@@ -427,6 +429,7 @@ export const SIMPLE_ADD_MENU_FEATURES: Readonly<Record<string, SimpleFeatureId>>
   stack: 'stacks',
   template: 'templates',
   import: 'calendarImport',
+  importTasks: 'taskImport',
   // With the Calendar screen, so simplified mode keeps the button a plain
   // "open quick add" rather than growing a two-item menu around it.
   event: 'calendarScreen',

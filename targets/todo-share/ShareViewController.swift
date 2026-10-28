@@ -1,7 +1,9 @@
 import UIKit
+import ImageIO
 
 // The share-sheet entry point: "dundundun" in any app's Share menu, for a
-// recipe page the user is looking at (NYT Cooking, Serious Eats, a blog).
+// recipe page the user is looking at (NYT Cooking, Serious Eats, a blog), or for
+// a screenshot or photo to read tasks from.
 //
 // All this target does is capture the URL and hand it to the app through the
 // App Group — it deliberately does no fetching, no extraction and no writing to
@@ -30,16 +32,39 @@ class ShareViewController: UIViewController {
 
     extractSharedURL { [weak self] url in
       guard let self else { return }
-      let saved = url.map { SharedRecipeQueue.append($0) } ?? false
-      self.showCard(
-        title: saved ? "Saved to dundundun" : "Couldn’t save that",
-        detail: saved
-          ? "Open dundundun to import the recipe."
-          : "That share didn’t include a web address."
-      )
-      DispatchQueue.main.asyncAfter(deadline: .now() + Self.dismissDelay) {
-        self.extensionContext?.completeRequest(returningItems: nil)
+      if let url {
+        let saved = SharedRecipeQueue.append(url)
+        self.finish(
+          title: saved ? "Saved to dundundun" : "Couldn’t save that",
+          detail: saved ? "Open dundundun to import the recipe." : "Couldn’t save that web address."
+        )
+        return
       }
+      // No address in the share: a screenshot or photo, to be read for tasks.
+      // Tried second so a page shared with a preview image keeps going to the
+      // recipe queue it always has.
+      self.saveSharedImage { sawImage, saved in
+        if sawImage {
+          self.finish(
+            title: saved ? "Saved to dundundun" : "Couldn’t save that",
+            detail: saved
+              ? "Open dundundun to read the tasks in it."
+              : "That image couldn’t be saved."
+          )
+        } else {
+          self.finish(
+            title: "Couldn’t save that",
+            detail: "That share didn’t include a web address or an image."
+          )
+        }
+      }
+    }
+  }
+
+  private func finish(title: String, detail: String) {
+    showCard(title: title, detail: detail)
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.dismissDelay) {
+      self.extensionContext?.completeRequest(returningItems: nil)
     }
   }
 
@@ -105,6 +130,10 @@ class ShareViewController: UIViewController {
   // spelling resolves to.
   private static let urlType = "public.url"
   private static let textType = "public.plain-text"
+  private static let imageType = "public.image"
+  // How many images one share may carry. Matches the activation rule's MaxCount in
+  // plugins/withShareExtension.js, and MAX_SHARED_IMAGES_PER_READ in the app.
+  private static let maxImages = 5
 
   /// Rejects the `file://` URLs a share of a downloaded page or a photo carries.
   /// Only something fetchable over the network is worth queueing — the app has
@@ -122,6 +151,51 @@ class ShareViewController: UIViewController {
       if let url = match.url, isWebURL(url) { return url }
     }
     return nil
+  }
+
+  /// Saves every image attachment, up to `maxImages`. `completion(sawImage, saved)`
+  /// is always called, on the main queue, exactly once: `sawImage` is whether the
+  /// share had an image at all, so a share of neither kind can say so, and
+  /// `saved` is whether every one of them was saved.
+  ///
+  /// A share can hand an image over as a file URL, as raw data or as a
+  /// `UIImage`, depending on the app, so all three are read. Each goes through
+  /// ImageIO's thumbnailer (see SharedTaskImageQueue) rather than being decoded
+  /// whole. They load one after another, not at once, so at most one image is in
+  /// memory in an extension with a hard cap.
+  private func saveSharedImage(completion: @escaping (Bool, Bool) -> Void) {
+    let providers = (extensionContext?.inputItems as? [NSExtensionItem] ?? [])
+      .flatMap { $0.attachments ?? [] }
+      .filter { $0.hasItemConformingToTypeIdentifier(Self.imageType) }
+      .prefix(Self.maxImages)
+
+    func finish(_ sawImage: Bool, _ saved: Bool) {
+      DispatchQueue.main.async { completion(sawImage, saved) }
+    }
+
+    guard !providers.isEmpty else { return finish(false, false) }
+
+    let queue = Array(providers)
+    var allSaved = true
+
+    // Recursive rather than a loop because loadItem is asynchronous.
+    func saveImage(at index: Int) {
+      guard index < queue.count else { return finish(true, allSaved) }
+      queue[index].loadItem(forTypeIdentifier: Self.imageType, options: nil) { item, _ in
+        var saved = false
+        if let url = item as? URL, let source = CGImageSourceCreateWithURL(url as CFURL, nil) {
+          saved = SharedTaskImageQueue.save(source)
+        } else if let data = item as? Data, let source = CGImageSourceCreateWithData(data as CFData, nil) {
+          saved = SharedTaskImageQueue.save(source)
+        } else if let image = item as? UIImage {
+          saved = SharedTaskImageQueue.save(image)
+        }
+        if !saved { allSaved = false }
+        saveImage(at: index + 1)
+      }
+    }
+
+    saveImage(at: 0)
   }
 
   // MARK: - Confirmation card

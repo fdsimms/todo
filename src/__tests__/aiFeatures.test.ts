@@ -22,7 +22,7 @@ describe('aiFeaturesFor', () => {
     expect(aiFeaturesFor(false).map(f => f.id))
       .toEqual([
         'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'backfillSuggestions',
-        'calendarImport', 'nutritionLabelPhoto', 'workoutDraft',
+        'calendarImport', 'taskImport', 'nutritionLabelPhoto', 'workoutDraft',
       ]);
   });
 
@@ -35,6 +35,7 @@ describe('aiFeaturesFor', () => {
     expect(on).not.toContain('substitutes');
     expect(on).not.toContain('receiptImport');
     expect(on).not.toContain('calendarImport');
+    expect(on).not.toContain('taskImport');
     // Nothing else goes: recipe import and meal ideas still have a screen.
     expect(on).toContain('recipeExtraction');
     expect(on).toContain('mealIdeas');

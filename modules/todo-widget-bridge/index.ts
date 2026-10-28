@@ -14,6 +14,13 @@ interface TodoWidgetBridgeNativeModule {
   // Read-and-clear, same as drainPendingCompletions — see
   // src/utils/sharedRecipeLinks.ts.
   drainSharedLinks(): Promise<string[]>;
+  // Screenshots the share extension saved to be read for tasks — see
+  // src/hooks/useSharedTaskImages.ts. Unlike drainSharedLinks these are not
+  // read-and-clear: the file stays until `deleteSharedImage`, since it is the
+  // only copy until a person acts on it.
+  listSharedImages(): Promise<string[]>;
+  readSharedImage(name: string): Promise<string | null>;
+  deleteSharedImage(name: string): Promise<boolean>;
   // The catalog rows MarkDisposedIntent's entity query matches a spoken item
   // name against — see src/utils/pantryIndex.ts. Written for an extension to
   // read rather than to hand it work, which is why it's separate from the
@@ -109,6 +116,18 @@ export function drainPendingAddTasks(): Promise<string[]> {
 
 export function drainSharedLinks(): Promise<string[]> {
   return TodoWidgetBridge.drainSharedLinks();
+}
+
+export function listSharedImages(): Promise<string[]> {
+  return TodoWidgetBridge.listSharedImages();
+}
+
+export function readSharedImage(name: string): Promise<string | null> {
+  return TodoWidgetBridge.readSharedImage(name);
+}
+
+export function deleteSharedImage(name: string): Promise<boolean> {
+  return TodoWidgetBridge.deleteSharedImage(name);
 }
 
 export function writePantryIndex(jsonString: string): Promise<boolean> {
