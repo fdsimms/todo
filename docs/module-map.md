@@ -116,6 +116,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/coinBurst.ts` — BurstPiece, BURST_GRAVITY, burstPieces, burstOffset, burstOpacity
 - `src/utils/completionCalendarSync.ts` — logTaskCompletionToCalendar, completionEventLink, deleteCompletionEvent
 - `src/utils/completionTap.ts` — CompletionTap, completionTapFor, offersMealLogOnCompletion, TARGET_FINISH_TAP_GUARD_MS, isStrayTapOnFinishedTarget
+- `src/utils/componentShares.ts` — componentShares, amountUsedCounts
 - `src/utils/confirmDelete.ts` — confirmDelete
 - `src/utils/confirmDeleteGenerated.ts` — confirmDeleteGenerated
 - `src/utils/confirmDeleteTask.ts` — confirmDeleteTask
@@ -454,7 +455,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/recipeImportComponents.ts` — ReferenceCandidate, referencePageNumber, importableReferences, coveredIngredients, ComponentImportState, seededComponentKeys, nextComponentPhotos, coveringComponentKeys, ComponentCommit, componentCommitFor, +6 more
 - `src/utils/recipeImportPreview.ts` — ImportPreviewLine, methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines, previewToggleLabel
 - `src/utils/recipeLineOnHand.ts` — onHandStandInsNote
-- `src/utils/recipeNutrition.ts` — RecipeNutrition, NutritionLineState, recipeNutrition, componentShares, RecipeNutritionReading, readRecipeNutrition, NutritionLine, recipeNutritionLines, ExcludedNutritionLine, excludedNutritionLines, +10 more
+- `src/utils/recipeNutrition.ts` — RecipeNutrition, NutritionLineState, recipeNutrition, RecipeNutritionReading, readRecipeNutrition, NutritionLine, estimateRequestLine, recipeNutritionLines, ExcludedNutritionLine, excludedNutritionLines, +10 more
 - `src/utils/recipeNutritionEstimate.ts` — RecipeEstimateConfidence, RecipeNutritionEstimate, RawRecipeNutritionEstimate, readRecipeNutritionEstimate, describeRecipeNutritionEstimate
 - `src/utils/recipePageOffline.ts` — OfflineRecipeItem, servingsFromYield, recipeFromPageOffline
 - `src/utils/recipePhoto.ts` — MAX_PHOTO_EDGE, MAX_RECIPE_PHOTOS, RecipePhotoSource, RecipePhoto, RecipePhotoResult, photoTargetSize, CameraPermission, PhotoLibraryPermission, getCameraPermission, requestCameraPermission, +26 more
@@ -532,7 +533,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/settingsSearch.ts` — SettingsSearchResult, searchSettings
 - `src/utils/settingsSummary.ts` — SettingsSummaryInput, settingsSummaries
 - `src/utils/shakeDetect.ts` — ShakeSample, SHAKE_UPDATE_INTERVAL_MS, SHAKE_THRESHOLD_G, SHAKE_JOLTS_REQUIRED, SHAKE_WINDOW_MS, SHAKE_COOLDOWN_MS, SHAKE_ARM_DELAY_MS, ShakeState, createShakeState, armShakeState, +3 more
-- `src/utils/shareText.ts` — buildRecipeShareText, servingsLineFor, IngredientPrintSection, buildIngredientSections, buildIngredientsText, buildGroceryListShareText, buildGroceryListText, buildWeekPlanShareText
+- `src/utils/shareText.ts` — buildRecipeShareText, unscaledNoteFor, servingsLineFor, IngredientPrintSection, buildIngredientSections, buildIngredientsText, buildGroceryListShareText, buildGroceryListText, buildWeekPlanShareText
 - `src/utils/sharedRecipeLinks.ts` — SHARED_LINK_QUEUE_CAP, mergeSharedLinks, parseSharedLinkQueue, serializeSharedLinkQueue, sharedLinkLabel
 - `src/utils/sheetModal.ts` — SheetVisibilityStep, nextSheetVisibility, PresentationLevel, createPresentationLevel, PresentationLevelContext, subscribePresentation, canHideSheet, beginDismissal, endDismissal, canShowSheet, +14 more
 - `src/utils/sheetMotion.ts` — SHEET_TRAVEL_SLACK, sheetTravel

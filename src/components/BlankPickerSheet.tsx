@@ -37,6 +37,7 @@ import {
   shareOfBlank,
   withBlankFill,
 } from '../utils/recipeBlanks';
+import { entryResolution } from '../utils/recipeComponents';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, type MealPlanEntry, type Recipe, type RecipeBlank, type RecipeOverride } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -100,10 +101,9 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
   // it isn't cooking would be pre-picked and saved with nobody choosing it.
   const blanks = useMemo(
     () => (recipe
-      ? recipeBlanksIn(recipe, recipesById, {
-        chosen: entry?.recipeChoices ?? [],
-        ...(entry?.recipeOverrides.length ? { overrides: entry.recipeOverrides } : {}),
-      })
+      ? recipeBlanksIn(recipe, recipesById, entryResolution(
+        entry && { recipeChoices: entry.recipeChoices ?? [], recipeOverrides: entry.recipeOverrides },
+      ))
       : []),
     [recipe, recipesById, entry?.recipeChoices, entry?.recipeOverrides],
   );
