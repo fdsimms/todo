@@ -41,4 +41,10 @@ describe('amountUsedCounts', () => {
     expect(amountUsedCounts('2 tbsp', recipe('Sauce', { recipeYield: '4 servings' }))).toBe(false);
     expect(amountUsedCounts('2 tbsp', recipe('Sauce', { recipeYield: '1 cup' }))).toBe(true);
   });
+
+  it('reads a yield being typed in place of the saved one', () => {
+    const mix = recipe('Mix');
+    expect(amountUsedCounts('1 tbsp', mix, '3/4 cup')).toBe(true);
+    expect(amountUsedCounts('1 tbsp', mix, '  ')).toBe(false);
+  });
 });

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Recipe } from '../types';
-import { GROCERY_QUANTITY_MAX_LENGTH, RECIPE_CHOICE_GROUP_MAX_LENGTH } from '../types';
+import { GROCERY_QUANTITY_MAX_LENGTH, RECIPE_CHOICE_GROUP_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
@@ -57,6 +57,7 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
   const setComponentChoiceGroup = useRecipeStore(s => s.setComponentChoiceGroup);
   const makeComponentDefault = useRecipeStore(s => s.makeComponentDefault);
   const setComponentAmountUsed = useRecipeStore(s => s.setComponentAmountUsed);
+  const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
 
   const [label, setLabel] = useState('');
   // Held apart from the label for the same reason the ingredient sheet keeps
@@ -66,12 +67,17 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
   const [choiceOn, setChoiceOn] = useState(false);
   // Typed freely and saved with the label on the way out, like the group.
   const [amount, setAmount] = useState('');
+  // What the used recipe makes, asked right here when the amount can't be
+  // compared with it: the fix has to be where the problem shows, not on the
+  // other recipe's page. Saved onto that recipe's own Yield.
+  const [makes, setMakes] = useState('');
 
   useEffect(() => {
     if (component) {
       setLabel(component.component.choiceGroup ?? '');
       setChoiceOn(!!component.component.choiceGroup);
       setAmount(component.component.amountUsed ?? '');
+      setMakes(component.recipe?.recipeYield ?? '');
     }
   }, [component?.component.id, visible]);
 
@@ -113,10 +119,16 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
     return recipe.components.find(c => c.choiceGroup === group)?.id === component?.component.id;
   }, [recipe.components, component?.component.id, component?.component.choiceGroup, defaultIngredientName]);
 
+  // Asked only while the saved yield can't take the amount, judged on what is
+  // saved so the field doesn't vanish mid-word once the typed one fits.
+  const asksMakes = !!component?.recipe && !amountUsedCounts(amount, component.recipe);
+
   const saveAndClose = () => {
     if (component) {
       setComponentChoiceGroup(recipe.id, component.component.id, cleanChoiceGroup(label));
       setComponentAmountUsed(recipe.id, component.component.id, amount);
+      const part = component.recipe;
+      if (asksMakes && part && makes.trim() !== (part.recipeYield ?? '')) setRecipeYield(part.id, makes.trim() || null);
     }
     onClose();
   };
@@ -160,11 +172,31 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
             accessibilityLabel={`Amount of ${name} this recipe uses`}
           />
         </View>
-        {!amountUsedCounts(amount, component.recipe) && (
-          <Text style={styles.amountWarning}>
-            Nutrition counts all of {name.toLowerCase()} for now. To count only this much, set its
-            Yield to what it makes in the same kind of unit, like “3/4 cup”.
-          </Text>
+        {asksMakes && (
+          <>
+            <Text style={[styles.groupLabel, styles.groupLabelSpaced]}>{name} makes</Text>
+            <View style={styles.well}>
+              <TextField
+                style={styles.amountInput}
+                value={makes}
+                onChangeText={setMakes}
+                placeholder="e.g. 3/4 cup"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={RECIPE_SOURCE_MAX_LENGTH}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+                accessibilityLabel={`How much ${name} makes`}
+              />
+            </View>
+            {!amountUsedCounts(amount, component.recipe, makes) && (
+              <Text style={styles.amountWarning}>
+                {makes.trim()
+                  ? `${amount.trim()} can’t be compared with ${makes.trim()}, so nutrition counts the whole batch.`
+                  : 'Until this is filled in, nutrition counts the whole batch.'}
+              </Text>
+            )}
+          </>
         )}
         <HelpText style={styles.hint}>
           How much of {name.toLowerCase()} goes into this recipe, like “1 tbsp”, “2 fillets” or
@@ -326,5 +358,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   well: { ...fieldWell(colors), marginTop: spacing.xs },
   amountInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0, minHeight: 44 },
   hint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: font.xs * 1.4 },
+  groupLabelSpaced: { marginTop: spacing.md },
   amountWarning: { color: colors.warningText, fontSize: font.xs, lineHeight: font.xs * 1.4, marginVertical: spacing.xs },
 });

@@ -133,8 +133,9 @@ alongside. The share comes from the link's own **amount used** (typed in the she
 part opens; "1 tbsp", "2 fillets", or a bare "1/4" meaning a quarter of the batch), else from the
 parent's own ingredient line naming the part. It is measured against the part's `recipeYield` and only
 when the two compare (one dimension, or one counted unit); no amount, no yield, "to taste" or mismatched
-units count the whole batch, as before, and the sheet and the row say so (`amountUsedCounts`) rather than
-take the amount and ignore it. Shares compound down a chain of parts, and only through the links a cooking
+units count the whole batch, as before. The row says so, and the sheet asks what the part makes right
+under the amount, saving it to the part's own `recipeYield` (`amountUsedCounts`): a field the person has
+to go to another recipe's page to fix is a field nobody fixes. Shares compound down a chain of parts, and only through the links a cooking
 keeps (`activeComponents`), so a part both sides of an either/or use is counted at the picked side's share.
 Nutrition only, the planned-week total included (`PlannedIngredient.componentShare`): shopping and recipe
 cost still read whole parts, and `amountUsed` is shown on the row ("uses 1 tbsp") and settable over MCP

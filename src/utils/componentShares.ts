@@ -82,10 +82,14 @@ function usedFraction(parent: Recipe, component: RecipeComponent, part: Recipe):
  * it was typed and can't be compared with what the used recipe makes, so the
  * whole batch is counted instead. True with nothing typed (nothing to drop).
  * The screens that take the amount read this, so the input is never silently
- * ignored.
+ * ignored. `recipeYield` reads a yield being typed in place of the stored one.
  */
-export function amountUsedCounts(amount: string, part: Recipe | null): boolean {
+export function amountUsedCounts(
+  amount: string,
+  part: Recipe | null,
+  recipeYield: string | null = part?.recipeYield ?? null,
+): boolean {
   if (!amount.trim()) return true;
   if (!part) return false;
-  return fractionOf(amount, part.recipeYield) !== null;
+  return fractionOf(amount, recipeYield?.trim() || null) !== null;
 }
