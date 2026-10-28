@@ -6,6 +6,7 @@ import {
   findDuplicate,
   isQueueableFailure,
   sortPending,
+  splitEstimateSummary,
   summarizeEstimate,
   type PendingEstimate,
 } from '../utils/estimateQueue';
@@ -138,5 +139,17 @@ describe('summarizeEstimate', () => {
 
   it('keeps a stated zero', () => {
     expect(summarizeEstimate(estimate({ calorieKcal: 5, fatG: 0 }))).toBe('5 cal · 0 g fat');
+  });
+});
+
+describe('splitEstimateSummary', () => {
+  it('sets the calories apart from the macros', () => {
+    expect(splitEstimateSummary(estimate({ calorieKcal: 320, proteinG: 4, carbsG: 12, fatG: 0 })))
+      .toEqual({ calories: '320 cal', rest: '4 g protein · 12 g carbs · 0 g fat' });
+  });
+
+  it('returns null calories when none were stated, and no rest when only calories were', () => {
+    expect(splitEstimateSummary(estimate({ fatG: 12 }))).toEqual({ calories: null, rest: '12 g fat' });
+    expect(splitEstimateSummary(estimate({ calorieKcal: 90 }))).toEqual({ calories: '90 cal', rest: '' });
   });
 });

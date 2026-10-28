@@ -166,7 +166,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/energyBudget.ts` — BodySex, ActivityLevel, ACTIVITY_FACTOR, ACTIVITY_LABEL, ACTIVITY_LEVELS, BodyProfile, EMPTY_BODY_PROFILE, MIN_HEIGHT_CM, MAX_HEIGHT_CM, MIN_BIRTH_YEAR, +27 more
 - `src/utils/errorLog.ts` — ERROR_LOG_MAX_ROWS, ERROR_LOG_MAX_DAYS, buildErrorEntry, logError
 - `src/utils/estimateCalibration.ts` — MIN_CALIBRATION_SAMPLES, MIN_SANE_RATIO, MAX_SANE_RATIO, EstimateCalibration, calibrationPairs, calibrationFrom, calibratedAssumedMinutes, describeCalibration
-- `src/utils/estimateQueue.ts` — MAX_PENDING_ESTIMATES, PendingEstimateStatus, PendingEstimate, isQueueableFailure, canQueueAnother, findDuplicate, sortPending, awaitingEstimate, describePending, summarizeEstimate
+- `src/utils/estimateQueue.ts` — MAX_PENDING_ESTIMATES, PendingEstimateStatus, PendingEstimate, isQueueableFailure, canQueueAnother, findDuplicate, sortPending, awaitingEstimate, describePending, summarizeEstimate, +1 more
 - `src/utils/eventConflicts.ts` — FREE_SLOT_DAY_START_HOUR, FREE_SLOT_DAY_END_HOUR, overlappingEvents, firstFreeSlot, calendarCovers
 - `src/utils/eventDirections.ts` — openEventDirections, openEventJoinLink
 - `src/utils/eventLength.ts` — EVENT_LENGTH_PRESETS, describeEventLength, lengthToClock

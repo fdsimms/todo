@@ -6,9 +6,10 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
 import { MEAL_SLOT_LABELS } from '../types';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
-import { describePending, summarizeEstimate, type PendingEstimate } from '../utils/estimateQueue';
+import { describePending, splitEstimateSummary, type PendingEstimate } from '../utils/estimateQueue';
 import { describeEstimate } from '../utils/nutritionEstimate';
 import { haptics } from '../utils/haptics';
+import { HelpText } from './HelpText';
 import { InlineAction } from './InlineAction';
 import { PendingEstimateEditSheet } from './PendingEstimateEditSheet';
 
@@ -86,6 +87,9 @@ export function PendingEstimatesCard({ onRefine }: Props) {
         )}
       </View>
       <Text style={styles.summary}>{describePending(pending)}</Text>
+      {anyWaiting && (
+        <HelpText style={styles.help}>Waiting meals are estimated when you open the app online.</HelpText>
+      )}
 
       {pending.map(row => (
         <View key={row.id} style={styles.row}>
@@ -95,15 +99,13 @@ export function PendingEstimatesCard({ onRefine }: Props) {
             {row.status === 'ready' && row.estimate ? row.estimate.label : row.description}
           </Text>
           <Text style={styles.meta}>
-            {`${row.slot ? `${MEAL_SLOT_LABELS[row.slot]}, ` : ''}${format(new Date(row.atISO), 'EEE, MMM d, h:mm a')}`}
+            {`${row.slot ? `${MEAL_SLOT_LABELS[row.slot]} · ` : ''}${format(new Date(row.atISO), 'EEE, MMM d, h:mm a')}`}
           </Text>
 
           {row.status === 'waiting' && (
-            <View style={styles.statusLine}>
-              <Ionicons name="time-outline" size={iconSize.sm} color={colors.textSecondary} />
-              <Text style={styles.status}>
-                Waiting for a connection. It is estimated when you open the app online.
-              </Text>
+            <View style={styles.chip}>
+              <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
+              <Text style={styles.chipText}>Waiting for a connection</Text>
             </View>
           )}
 
@@ -111,14 +113,21 @@ export function PendingEstimatesCard({ onRefine }: Props) {
             <Text style={styles.error}>{row.error ?? 'This could not be estimated.'}</Text>
           )}
 
-          {row.status === 'ready' && row.estimate && (
-            <>
-              <Text style={styles.figures}>{summarizeEstimate(row.estimate)}</Text>
-              <Text style={styles.status}>
-                {`${row.estimate.quantity}. ${describeEstimate(row.estimate)}`}
-              </Text>
-            </>
-          )}
+          {row.status === 'ready' && row.estimate && (() => {
+            const { calories, rest } = splitEstimateSummary(row.estimate);
+            return (
+              <>
+                <Text style={styles.figures}>
+                  {calories !== null && <Text style={styles.calories}>{calories}</Text>}
+                  {calories !== null && rest ? '  ' : ''}
+                  {rest ? <Text style={styles.macros}>{rest}</Text> : null}
+                </Text>
+                <Text style={styles.note}>
+                  {`${row.estimate.quantity}. ${describeEstimate(row.estimate)}`}
+                </Text>
+              </>
+            );
+          })()}
 
           <View style={styles.actions}>
             {row.status === 'ready' && row.estimate && (
@@ -177,7 +186,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     padding: spacing.md,
-    gap: spacing.xs,
     marginBottom: spacing.md,
   },
   header: {
@@ -193,18 +201,33 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  summary: { color: colors.textSecondary, fontSize: font.xs, marginBottom: spacing.xs },
+  summary: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm },
+  help: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xs },
   row: {
     gap: spacing.xxs,
+    marginTop: spacing.smd,
     paddingTop: spacing.smd,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.separator,
   },
   name: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-  meta: { color: colors.textSecondary, fontSize: font.sm },
-  figures: { color: colors.text, fontSize: font.sm, marginTop: spacing.xxs },
-  statusLine: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.xsm, marginTop: spacing.xxs },
-  status: { flex: 1, color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
-  error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.xxs },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
+  meta: { color: colors.textSecondary, fontSize: font.xs },
+  figures: { marginTop: spacing.xs },
+  calories: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  macros: { color: colors.textSecondary, fontSize: font.sm },
+  note: { color: colors.textSecondary, fontSize: font.xs },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  chipText: { color: colors.textSecondary, fontSize: font.xs },
+  error: { color: colors.redText, fontSize: font.sm, lineHeight: 18, marginTop: spacing.xs },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.smd },
 });
