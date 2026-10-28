@@ -499,3 +499,15 @@ describe('optional lines are costed only when a meal picks them', () => {
     expect(estimateWeekCost([entry('2026-08-10', soup.id, { recipeChoices: [bread.id] })], byId, catalog, RANGE, [])?.totalMinor).toBe(800);
   });
 });
+
+describe('a line marked as never shopped for', () => {
+  it('is not counted as unpriced, so water alone cannot hide the cost', () => {
+    const priced = { lastPricedAt: NOW.toISOString() };
+    const dish = recipe('Stew', [
+      ing('Chicken', { quantity: '1 lb' }),
+      ing('Water', { quantity: '2 cups', excludeFromShoppingList: true }),
+    ]);
+    const catalog = [item({ name: 'Chicken', lastPriceMinor: 500, lastPriceQuantity: '1 lb', ...priced })];
+    expect(estimateRecipeCost(dish, catalog)).toEqual(expect.objectContaining({ totalMinor: 500, priced: 1, total: 1 }));
+  });
+});

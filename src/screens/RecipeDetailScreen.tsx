@@ -100,6 +100,7 @@ import {
   splitIngredientAnd,
   totalMinutes,
 } from '../utils/recipeUtils';
+import { amountUsedCounts } from '../utils/componentShares';
 import { buildIngredientSections, buildIngredientsText, buildRecipeShareText, servingsLineFor, unscaledNoteFor } from '../utils/shareText';
 import { PrintIngredientsSheet } from '../components/PrintIngredientsSheet';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
@@ -1948,6 +1949,8 @@ export function RecipeDetailScreen() {
             <Text style={styles.componentMeta} numberOfLines={1}>
               {target ? describeRecipe(target, null, { recipesById }) : 'No longer in your recipes'}
               {!!resolved.component.amountUsed && ` · uses ${resolved.component.amountUsed}`}
+              {!!resolved.component.amountUsed && !amountUsedCounts(resolved.component.amountUsed, target)
+                && ' (whole batch counted)'}
             </Text>
             {!!alternativeNote && (
               <Text style={styles.alternativeNote} numberOfLines={1}>{alternativeNote}</Text>

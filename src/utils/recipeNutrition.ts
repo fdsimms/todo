@@ -5,13 +5,13 @@ import type {
   MealPlanEntry,
   NutrientKey,
   Recipe,
-  RecipeComponent,
 } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import { nutritionFor } from './foodNutrition';
 import { panelMultiplier } from './ingredientGrams';
 import { resolvePluralKey } from './groceryPlural';
 import { itemKeyIndex } from './itemAliases';
+import { varietyIndex } from './itemVarieties';
 import { collectPlannedIngredients } from './mealPlanGroceries';
 import { flattenRecipeIngredients, optionalCounts, type ChoiceResolution } from './recipeComponents';
 import { normalizeScale, scaleQuantity } from './recipeScale';
@@ -19,9 +19,9 @@ import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import { hasUndecidedItem } from './itemEither';
 import { onHandNameKeys } from './grocerySuggest';
 import { groceryNameKey } from './groceryParse';
-import { parseQuantity, rationalToNumber } from './quantity';
 import { measureQuantity, ML_PER_TBSP } from './unitConvert';
 import { panOilShare } from './panOil';
+import { componentShares } from './componentShares';
 
 /**
  * What a recipe, or a week of planned meals, is made of.
@@ -249,6 +249,33 @@ interface Accumulator {
   lines: number;
 }
 
+/**
+ * The catalog by key for a nutrition read: names and other names first, then
+ * a generic its declared varieties cover ("onion" read off White onion), the
+ * same rule `matchIngredientToCatalog` links a line by. Without the varieties
+ * the catalog sheet called such a line linked while this one listed it as not
+ * in the catalog and offered to add a duplicate generic row.
+ */
+function nutritionKeyIndex(items: readonly GroceryItem[]): Map<string, GroceryItem> {
+  const byKey = itemKeyIndex(items);
+  for (const [generic, varieties] of varietyIndex(items)) {
+    if (!byKey.has(generic) && varieties[0]) byKey.set(generic, varieties[0]);
+  }
+  return byKey;
+}
+
+/**
+ * Water as a recipe writes it ("water", "cold water", "boiling water"). It
+ * has no nutrients, so it is left out of a dish's lines rather than counted
+ * against coverage as an ingredient missing from the catalog, which offered
+ * to add water to the catalog. Most imported recipes have a water line.
+ */
+const PLAIN_WATER = /^(?:(?:cold|cool|warm|hot|boiling|lukewarm|ice|iced|tap|filtered|room temperature)\s+)?water$/;
+
+function isPlainWater(nameKey: string): boolean {
+  return PLAIN_WATER.test(nameKey);
+}
+
 /** Folds the resolved lines into one reading, staples already dropped. */
 function fold(
   resolutions: readonly LineResolution[],
@@ -343,72 +370,6 @@ export function recipeNutrition(
   return readRecipeNutrition(recipe, items, products, recipesById, resolution, scale, swaps).nutrition;
 }
 
-/**
- * How much of each used recipe a dish actually eats, as a fraction of the
- * batch the part's own recipe makes, keyed by that recipe's id. A recipe not
- * in the map counts whole.
- *
- * A used recipe's lines are flattened in whole, so "1 tbsp Fishy Seasoning"
- * charged the dish for the entire 3/4 cup batch. The amount comes from the
- * link's own `amountUsed` when one was typed ("1 tbsp", "2 fillets", or a
- * bare "1/4" for a quarter of the batch), else from the parent's own
- * ingredient line naming the part. It is only believed when it can be
- * compared with the part's `recipeYield`: both measured in one dimension, or
- * both counting the same unit. Anything else (no amount, no yield, "to taste",
- * mismatched units) counts whole, as it always did. Shares compound down a
- * chain of parts. A recipe's `cookedWeightG` is not consulted: a line in
- * tablespoons has no weight until the part's own panel is worked out.
- */
-export function componentShares(
-  root: Recipe,
-  recipesById: ReadonlyMap<string, Recipe>,
-): Map<string, number> {
-  const shares = new Map<string, number>();
-  const visited = new Set<string>([root.id]);
-  const walk = (node: Recipe, share: number): void => {
-    for (const component of node.components ?? []) {
-      if (visited.has(component.recipeId)) continue;
-      const part = recipesById.get(component.recipeId);
-      if (!part) continue;
-      visited.add(part.id);
-      const used = usedFraction(node, component, part);
-      const partShare = share * (used ?? 1);
-      if (partShare !== 1) shares.set(part.id, partShare);
-      walk(part, partShare);
-    }
-  };
-  walk(root, 1);
-  return shares;
-}
-
-/** `amount` as a fraction of `yielded`, or null when the two cannot be compared. */
-function fractionOf(amount: string, yielded: string | null): number | null {
-  const q = parseQuantity(amount);
-  if (!q.amount) return null;
-  const used = rationalToNumber(q.amount);
-  if (!(used > 0)) return null;
-  // A bare number is a number of batches: "1/4" is a quarter of it.
-  if (q.unit === null && q.rest === '') return used;
-  if (!yielded) return null;
-  const a = measureQuantity(amount);
-  const y = measureQuantity(yielded);
-  if (a && y) return a.dimension === y.dimension && y.base > 0 ? a.base / y.base : null;
-  // Counts of one thing: "2 fillets" of "4 fillets".
-  const yq = parseQuantity(yielded);
-  if (q.unit && yq.amount && yq.unit === q.unit) {
-    const total = rationalToNumber(yq.amount);
-    return total > 0 ? used / total : null;
-  }
-  return null;
-}
-
-function usedFraction(parent: Recipe, component: RecipeComponent, part: Recipe): number | null {
-  if (component.amountUsed) return fractionOf(component.amountUsed, part.recipeYield);
-  if (!part.recipeYield) return null;
-  const line = parent.ingredients.find(i => i.nameKey === groceryNameKey(part.name));
-  return line ? fractionOf(line.quantity, part.recipeYield) : null;
-}
-
 /** A dish's figures, the lines behind them, and what is missing, from one walk. */
 export interface RecipeNutritionReading {
   /** The rollup, or null while too little of the dish is known to total it. */
@@ -492,6 +453,24 @@ export interface NutritionLine extends LineResolution {
    * negligible.
    */
   share: number;
+  /**
+   * The fraction of a used recipe's batch the dish eats (`componentShares`),
+   * already in `multiplier` like `share`. Written only when it isn't 1.
+   */
+  componentShare?: number;
+}
+
+/**
+ * One line as the AI estimate is asked about it: the line as shown, plus how
+ * little of it reaches the dish when that is not all of it (a used recipe's
+ * "1 tbsp" of a batch, the oil left in the pan). Sent bare, the estimate
+ * counted the whole batch and all the oil the figures beside it do not.
+ */
+export function estimateRequestLine(line: NutritionLine): string {
+  const text = line.prep ? `${line.quantity} ${line.name}, ${line.prep}` : `${line.quantity} ${line.name}`;
+  const eaten = line.share * (line.componentShare ?? 1);
+  if (!(eaten < 1)) return text;
+  return `${text} (only about ${Math.max(1, Math.round(eaten * 100))}% of this ends up in the dish)`;
 }
 
 /**
@@ -532,16 +511,17 @@ export function recipeNutritionLines(
   if (flat.length === 0) return [];
   if (hasUnresolvedChoice(flat) || hasUndecidedItem(flat)) return [];
 
-  const byKey = itemKeyIndex(items);
+  const byKey = nutritionKeyIndex(items);
   const productFor = preferredProductLookup(products);
   const factor = normalizeScale(scale);
-  const shares = componentShares(recipe, recipesById);
+  const shares = componentShares(recipe, recipesById, resolution);
 
   const out: NutritionLine[] = [];
   for (const line of flat) {
     // Excluded outright, same as a staple: not a line that failed to count,
     // not a line at all.
     if (line.ingredient.excludeFromNutrition) continue;
+    if (isPlainWater(line.ingredient.nameKey)) continue;
     // An optional line the meal didn't pick is not part of what was eaten.
     if (!optionalCounts(line.ingredient, resolution)) continue;
     const quantity = scaleQuantity(line.ingredient.quantity, factor).text;
@@ -558,6 +538,7 @@ export function recipeNutritionLines(
       ...resolved,
       multiplier: resolved.multiplier === null ? null : resolved.multiplier * share,
       share,
+      ...((shares.get(line.recipe.id) ?? 1) !== 1 ? { componentShare: shares.get(line.recipe.id) } : {}),
       id: line.ingredient.id,
       recipeId: line.recipe.id,
       name: line.ingredient.name,
@@ -645,7 +626,7 @@ export function weekNutrition(
   );
   if (planned.length === 0) return null;
 
-  const byKey = itemKeyIndex(items);
+  const byKey = nutritionKeyIndex(items);
   const productFor = preferredProductLookup(products);
   const resolved: LineResolution[] = [];
   for (const line of planned) {
@@ -659,13 +640,14 @@ export function weekNutrition(
     }
     // Measured as written, then scaled, like a single recipe's lines: the
     // planned row's own `quantity` is the scaled shopping text (see the header).
+    if (isPlainWater(line.nameKey)) continue;
     const one = resolveLine(
       line.nameKey,
       line.unscaled?.quantity ?? line.quantity,
-      null,
+      line.prep ?? null,
       byKey,
       productFor,
-      line.unscaled?.factor ?? 1,
+      (line.unscaled?.factor ?? 1) * (line.componentShare ?? 1),
     );
     if (!one) continue;
     // After resolving, for the staple reason on `NutritionLine.share`.

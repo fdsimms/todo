@@ -27,6 +27,7 @@ import {
 } from './quantity';
 import { normalizeScale, scaleQuantity } from './recipeScale';
 import { panOilShare } from './panOil';
+import { componentShares } from './componentShares';
 
 /**
  * Everything decidable about turning a week plan into a grocery add, kept
@@ -119,6 +120,19 @@ export interface PlannedIngredient {
    */
   nutritionShare?: number;
   /**
+   * `RecipeIngredient.prep`, carried through so `weekNutrition` weighs a line
+   * exactly as the recipe's own reading does: "drained" picks the drained row
+   * of a can's portion table, and "chopped" the chopped cup. Written only when
+   * the line has one.
+   */
+  prep?: string;
+  /**
+   * The fraction of a used recipe's batch this meal eats (`componentShares`),
+   * so the week counts "1 tbsp" of a seasoning rather than the whole jar, as
+   * the recipe page does. Written only when it is not 1.
+   */
+  componentShare?: number;
+  /**
    * The line as the recipe wrote it and the entry's scale, present only when
    * that scale isn't 1 (at 1, `quantity` already is the line as written).
    *
@@ -187,6 +201,7 @@ export function collectPlannedIngredients(
     // steak-with-roast on Friday shops for one side each night rather than both
     // twice. An entry that never answered resolves to the defaults.
     const resolution = entryResolution(entry, { onHand });
+    const shares = componentShares(recipe, recipesById, resolution);
     for (const flat of flattenRecipeIngredients(recipe, recipesById, resolution, swaps)) {
       // A staple you'd already have (RecipeIngredient.excludeFromShoppingList,
       // water at a stated amount most often) never becomes a shopping-list
@@ -212,6 +227,8 @@ export function collectPlannedIngredients(
           ? { nutritionShare: panOilShare(flat.ingredient, flat.recipe.steps ?? []) }
           : {}),
         ...(scale !== 1 ? { unscaled: { quantity: flat.ingredient.quantity, factor: scale } } : {}),
+        ...(flat.ingredient.prep ? { prep: flat.ingredient.prep } : {}),
+        ...((shares.get(flat.recipe.id) ?? 1) !== 1 ? { componentShare: shares.get(flat.recipe.id) } : {}),
       });
     }
   }

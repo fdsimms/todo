@@ -432,6 +432,14 @@ describe('panelMultiplier and servings', () => {
       .toBeNull();
   });
 
+  it('reads a per-100ml panel’s serving weight as a mass, never as millilitres', () => {
+    // A 40 g serving with no weighed volume can't become millilitres.
+    expect(panelMultiplier('1 serving', null, panel({ basis: 'per100ml', servingGrams: 40 }))).toBeNull();
+    // With a weighed cup (about 237 ml at 250 g), 40 g is about 38 ml.
+    const weighed = panel({ basis: 'per100ml', servingGrams: 40, portions: [{ amount: 1, label: 'cup', grams: 250 }] });
+    expect(panelMultiplier('1 serving', null, weighed)).toBeCloseTo(0.3785, 3);
+  });
+
   it('refuses a zero or negative serving count', () => {
     expect(panelMultiplier('0 servings', null, panel({ basis: 'perServing' }))).toBeNull();
   });

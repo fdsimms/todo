@@ -11,6 +11,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import type { ResolvedComponent } from '../utils/recipeComponents';
+import { amountUsedCounts } from '../utils/componentShares';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
@@ -159,6 +160,12 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
             accessibilityLabel={`Amount of ${name} this recipe uses`}
           />
         </View>
+        {!amountUsedCounts(amount, component.recipe) && (
+          <Text style={styles.amountWarning}>
+            Nutrition counts all of {name.toLowerCase()} for now. To count only this much, set its
+            Yield to what it makes in the same kind of unit, like “3/4 cup”.
+          </Text>
+        )}
         <HelpText style={styles.hint}>
           How much of {name.toLowerCase()} goes into this recipe, like “1 tbsp”, “2 fillets” or
           “1/4” for a quarter of what it makes. Nutrition counts only this much. Leave it empty to
@@ -319,4 +326,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   well: { ...fieldWell(colors), marginTop: spacing.xs },
   amountInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0, minHeight: 44 },
   hint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: font.xs * 1.4 },
+  amountWarning: { color: colors.warningText, fontSize: font.xs, lineHeight: font.xs * 1.4, marginVertical: spacing.xs },
 });

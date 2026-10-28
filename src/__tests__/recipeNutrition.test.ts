@@ -8,6 +8,7 @@ import {
   describeRecipeNutrition,
   describeRecipeNutritionRange,
   describeWeekNutrition,
+  estimateRequestLine,
   excludedNutritionLines,
   lineContribution,
   nutritionGaps,
@@ -1128,5 +1129,85 @@ describe('an "either one" pair', () => {
     expect(weekNutrition([entry('2026-08-10', r.id)], byId, catalog, RANGE, [], swaps())).toBeNull();
     const answered = entry('2026-08-10', r.id, { itemPicks: [{ pair: pairKey, use: 'vegan butter' }] });
     expect(weekNutrition([answered], byId, catalog, RANGE, [], swaps())?.total.calorieKcal).toBe(600);
+  });
+});
+
+describe('the week and the recipe page agree', () => {
+  const RANGE = { startKey: '2026-08-09', endKey: '2026-08-15' };
+
+  it('weighs a line by its prep in the week, as the recipe page does', () => {
+    const dish = recipe('Soup', [ing('Onion', { quantity: '1 cup', prep: 'chopped' })]);
+    const catalog = [item({
+      name: 'Onion',
+      nutrition: panel({
+        amounts: { calorieKcal: 40 },
+        portions: [{ amount: 1, label: 'cup, chopped', grams: 160 }, { amount: 1, label: 'cup, sliced', grams: 115 }],
+      }),
+    })];
+    const page = recipeNutrition(dish, catalog)!;
+    const week = weekNutrition([entry('2026-08-11', dish.id)], new Map([[dish.id, dish]]), catalog, RANGE)!;
+    expect(week.total.calorieKcal).toBe(page.total.calorieKcal);
+    expect(week.covered).toBe(1);
+  });
+
+  it('counts only the share of a used recipe the dish eats, in the week too', () => {
+    const mix = recipe('Mix', [ing('Salt mix', { quantity: '100 g' })], { recipeYield: '4 tbsp' });
+    const fish = recipe('Fish', [ing('Cod', { quantity: '100 g' })], {
+      components: [{ id: 'c-mix', recipeId: mix.id, name: 'Mix', choiceGroup: null, amountUsed: '1 tbsp' }],
+    });
+    const byId = new Map([[mix.id, mix], [fish.id, fish]]);
+    const catalog = [item({ name: 'Cod', nutrition: panel() }), item({ name: 'Salt mix', nutrition: panel() })];
+    const page = recipeNutrition(fish, catalog, [], byId)!;
+    const week = weekNutrition([entry('2026-08-11', fish.id)], byId, catalog, RANGE)!;
+    expect(page.total.calorieKcal).toBe(125);
+    expect(week.total.calorieKcal).toBe(125);
+  });
+});
+
+describe('a used recipe on both sides of an either/or', () => {
+  it('counts it at the share of the side the meal picked', () => {
+    const mix = recipe('Mix', [ing('Salt mix', { quantity: '120 g' })], { recipeYield: '12 tbsp' });
+    const fries = recipe('Fries', [], { components: [{ id: 'c-f', recipeId: mix.id, name: 'Mix', choiceGroup: null, amountUsed: '1 tbsp' }] });
+    const wings = recipe('Wings', [], { components: [{ id: 'c-w', recipeId: mix.id, name: 'Mix', choiceGroup: null, amountUsed: '6 tbsp' }] });
+    const dinner = recipe('Dinner', [], {
+      components: [
+        { id: 'c-fries', recipeId: fries.id, name: 'Fries', choiceGroup: 'Side' },
+        { id: 'c-wings', recipeId: wings.id, name: 'Wings', choiceGroup: 'Side' },
+      ],
+    });
+    const byId = new Map([mix, fries, wings, dinner].map(r => [r.id, r]));
+    const catalog = [item({ name: 'Salt mix', nutrition: panel() })];
+    const read = recipeNutrition(dinner, catalog, [], byId, { chosen: ['c-wings'] })!;
+    // Half of 120 g at 100 kcal/100g.
+    expect(read.total.calorieKcal).toBe(60);
+  });
+});
+
+describe('water', () => {
+  it('is not a line of the dish, so it is neither a gap nor something to add to the catalog', () => {
+    const dish = recipe('Brine', [ing('Salt', { quantity: '50 g' }), ing('Cold water', { quantity: '2 cups' })]);
+    const read = readRecipeNutrition(dish, [item({ name: 'Salt', nutrition: panel() })]);
+    expect(read.lines.map(l => l.name)).toEqual(['Salt']);
+    expect(read.gaps.unmatched).toEqual([]);
+  });
+});
+
+describe('a generic covered by a declared variety', () => {
+  it('reads the variety, as the catalog review sheet links it', () => {
+    const dish = recipe('Soup', [ing('Onion', { quantity: '100 g' })]);
+    const white = item({ name: 'White onion', varietyOfKey: 'onion', nutrition: panel({ amounts: { calorieKcal: 40 } }) });
+    const read = readRecipeNutrition(dish, [white]);
+    expect(read.lines[0].state).toBe('covered');
+    expect(read.nutrition!.total.calorieKcal).toBe(40);
+  });
+});
+
+describe('estimateRequestLine', () => {
+  it('says how little of a line reaches the dish when it is not all of it', () => {
+    const base = { id: 'x', recipeId: 'r', name: 'Olive oil', quantity: '3 tbsp', prep: null, state: 'unmatched', item: null, product: null, nutrition: null, multiplier: null } as const;
+    expect(estimateRequestLine({ ...base, share: 1 })).toBe('3 tbsp Olive oil');
+    expect(estimateRequestLine({ ...base, share: 0.25 })).toBe('3 tbsp Olive oil (only about 25% of this ends up in the dish)');
+    expect(estimateRequestLine({ ...base, share: 1, componentShare: 0.5, prep: 'warmed' }))
+      .toBe('3 tbsp Olive oil, warmed (only about 50% of this ends up in the dish)');
   });
 });
