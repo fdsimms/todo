@@ -5176,6 +5176,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const [rule, ...rest] = useSettingsStore.getState().speedBumpRules;
     expect(rest).toEqual([]);
     expect(rule).toMatchObject({ title: 'Wind down after Social', thresholdMinutes: 45, repeatEveryMinutes: 30, maxTimes: 3, blockMinutes: 15, enabled: true });
+    expect(useSettingsStore.getState().speedBumpWarnMinutes).toBe(5);
   });
 
   it('seeds a health rule whose task logs a dose when completed', () => {

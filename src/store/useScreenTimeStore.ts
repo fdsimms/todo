@@ -8,7 +8,7 @@ import { armableSpeedBumps } from '../utils/speedBump';
 import { getCurrentDayStart, dayKeyOf } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
 import { expandGroupNow, resolveGroupNow, useAppGroupStore } from './useAppGroupStore';
-import { DEFAULT_GROUP_ID } from '../utils/appGroups';
+import { DEFAULT_GROUP_ID, groupName } from '../utils/appGroups';
 import { createRefreshGuard } from '../utils/refreshGuard';
 
 /**
@@ -82,6 +82,13 @@ export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
       settings.speedBumpRules,
       id => resolveGroupNow(id ?? DEFAULT_GROUP_ID),
       id => expandGroupNow(id ?? DEFAULT_GROUP_ID),
+      {
+        leadMinutes: settings.speedBumpWarnMinutes,
+        blockedName: rule => {
+          const groups = useAppGroupStore.getState();
+          return groupName(groups.groups, rule.blockGroupId ?? rule.groupId, groups.meta);
+        },
+      },
     );
     if (bumps.length === 0) bridge.stopSpeedBumps();
     else await bridge.armSpeedBumps(bumps, dayKey);
@@ -135,6 +142,7 @@ export function useScreenTimeSync(): void {
         state.screenTimeTasks !== prev.screenTimeTasks ||
         state.screenTimeRules !== prev.screenTimeRules ||
         state.speedBumpRules !== prev.speedBumpRules ||
+        state.speedBumpWarnMinutes !== prev.speedBumpWarnMinutes ||
         // Moving the reset moves which day "today" is, and the day key is
         // baked into the armed monitor — same reason useWeatherSync watches it.
         state.dayResetTime !== prev.dayResetTime
