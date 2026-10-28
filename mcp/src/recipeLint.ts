@@ -33,6 +33,8 @@ export interface RecipeLint {
 
 /** A word that says what to do to an ingredient, so it belongs in prep, not the amount. */
 const PREP_WORD = /\b(divided|plus more|to taste|melted|softened|chopped|minced|diced|sliced|shredded|grated|crumbled|drained|rinsed|peeled|fresh|frozen)\b/i;
+/** The app's own notation for a size ("1, large"), which parseGroceryInput writes itself: not a note. */
+const SIZE_SUFFIX = /^[^,]*,\s*(small|medium|large|extra[- ]large)$/i;
 const TRACKING_PARAM = /[?&](unlocked_article_code|smid|utm_[a-z]+|fbclid|gclid)=/i;
 
 function quantityIssues(quantity: string): LintCode[] {
@@ -41,7 +43,7 @@ function quantityIssues(quantity: string): LintCode[] {
   const close = (quantity.match(/\)/g) ?? []).length;
   if (open !== close) out.push('quantity-unclosed-paren');
   else if (open > 0 || / \| /.test(quantity)) out.push('quantity-parenthetical');
-  if (quantity.includes(',') || PREP_WORD.test(quantity)) out.push('quantity-note');
+  if ((quantity.includes(',') && !SIZE_SUFFIX.test(quantity)) || PREP_WORD.test(quantity)) out.push('quantity-note');
   if (/\bor\b/i.test(quantity)) out.push('quantity-alternative');
   return out;
 }

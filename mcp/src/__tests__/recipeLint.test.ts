@@ -28,7 +28,7 @@ describe('lintRecipe', () => {
   });
 
   it('leaves a clean amount and a style choice alone', () => {
-    expect(codes(recipe({ id: 'a', name: 'A', ingredients: [line('1 1/2 cups'), line('2 tablespoons'), line('½ tsp'), line('')] }))).toEqual([]);
+    expect(codes(recipe({ id: 'a', name: 'A', ingredients: [line('1 1/2 cups'), line('2 tablespoons'), line('½ tsp'), line('1, large'), line('')] }))).toEqual([]);
   });
 
   it('flags tracking parameters in a source link, not a plain link', () => {
