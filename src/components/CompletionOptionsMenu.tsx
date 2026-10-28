@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -60,6 +60,7 @@ export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeo
       popoverWidth={300}
       scrimLabel="Close menu"
     >
+      <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
       {onTakeOff && takeOffCount ? (
         <>
           <TouchableOpacity
@@ -199,6 +200,7 @@ export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeo
           </TouchableOpacity>
         </>
       )}
+      </ScrollView>
     </CardSheet>
   );
 }
