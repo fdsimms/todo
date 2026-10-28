@@ -1,0 +1,4 @@
+{
+  "message": "Reviewing a scanned item is clearer. Each scan now asks \"What is this?\": a new item, or one you already have. A new item shows the name, brand and flavor you can edit. An item you already have keeps its own name, and a box at the bottom spells out what will be saved when you tap the button. A scan that only shares a word with one of your items (\"Lime\" in \"Edamame Chili Lime Flavored\") is no longer suggested as a match, and a guess you haven't accepted is added as a new item.",
+  "date": "2026-10-28"
+}

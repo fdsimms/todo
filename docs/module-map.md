@@ -516,7 +516,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, editSavedPlace, +7 more
 - `src/utils/scanItemType.ts` — itemTypeFromCategory, cleanModelItemType, catalogSpellingOf, ItemTypeMove, itemTypeMoveFor
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packSizeGrams, servingsIn, packageChoices, packageFractions, servingDescription, packageHelping
-- `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, newItemBox, nameFromScanFor, sourceLabelFor, sourceLineFor, variantFor, ScanBoxSource, scanBoxChoice, +12 more
+- `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, newItemBox, nameFromScanFor, sourceLabelFor, sourceLineFor, variantFor, ScanBoxSource, scanBoxChoice, +16 more
 - `src/utils/scheduleMovePrompt.ts` — confirmScheduleMove, confirmSegmentScope, confirmBulkSetWhen
 - `src/utils/screenLinks.ts` — screenKey, resolveScreen, quickActionScreens, quickActionScreenList, screenSymbol
 - `src/utils/screenSettingControls.ts` — ScreenSettingRead, ScreenSettingState, SCREEN_SETTING_TOGGLE_IDS, generatorKindOf, aiFeatureOf, screenSettingRead
