@@ -49,7 +49,7 @@ describe('equipmentAvailable with specific machines', () => {
   it('names the missing machine in the routine fit', () => {
     const legPress = EXERCISE_LIBRARY.find(e => e.equipment === 'leg_press')!.id;
     const g = gym({ equipment: ['dumbbell'] });
-    expect(describeRoutineFit(routineFit(g, routine([legPress]), none), 'Planet')).toBe('At Planet, 1 of 1 exercise needs leg press.');
+    expect(describeRoutineFit(routineFit(g, routine([legPress]), none), 'Planet')).toBe("Planet has no leg press, so 1 of 1 exercise can’t be done there.");
   });
 });
 
@@ -65,8 +65,12 @@ describe('unavailableExerciseIds and routineFit', () => {
   });
   it('describes the fit in the three cases', () => {
     expect(describeRoutineFit(routineFit(gym(), routine([cable]), none), 'Planet')).toBeNull();
-    expect(describeRoutineFit(routineFit(gym(), routine([cable, barbell]), none), 'Planet')).toBe('At Planet, 1 of 2 exercises need barbell.');
-    expect(describeRoutineFit(routineFit(gym(), routine([barbell]), none), 'Planet')).toBe('At Planet, 1 of 1 exercise needs barbell.');
+    expect(describeRoutineFit(routineFit(gym(), routine([cable, barbell]), none), 'Planet')).toBe("Planet has no barbell, so 1 of 2 exercises can’t be done there.");
+    expect(describeRoutineFit(routineFit(gym(), routine([barbell]), none), 'Planet')).toBe("Planet has no barbell, so 1 of 1 exercise can’t be done there.");
+  });
+  it('lists several missing pieces of equipment with "or"', () => {
+    const fit = routineFit(gym(), routine([barbell, byEquipment('dip_bars')]), none);
+    expect(describeRoutineFit(fit, 'Planet')).toBe("Planet has no barbell or dip bars, so 2 of 2 exercises can’t be done there.");
   });
 });
 
