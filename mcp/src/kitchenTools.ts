@@ -33,6 +33,9 @@ export interface SerializedRecipe {
   /** On the user's "Up next" shelf. */
   upNext?: boolean;
   cookbook?: string;
+  /** Set only when true: nothing saved under the recipe's steps, or its ingredients (a stub, or one not finished). */
+  noSteps?: boolean;
+  noIngredients?: boolean;
 }
 
 function serializeRecipe(r: Recipe, cookbooks: Map<string, string>): SerializedRecipe {
@@ -48,15 +51,35 @@ function serializeRecipe(r: Recipe, cookbooks: Map<string, string>): SerializedR
     ...(r.lastCookedAt ? { lastCooked: r.lastCookedAt } : {}),
     ...(r.upNext ? { upNext: true } : {}),
     ...(r.cookbookId && cookbooks.has(r.cookbookId) ? { cookbook: cookbooks.get(r.cookbookId) } : {}),
+    ...(r.steps.length === 0 ? { noSteps: true } : {}),
+    ...(r.ingredients.length === 0 && r.components.length === 0 && (r.blanks ?? []).length === 0 ? { noIngredients: true } : {}),
   };
+}
+
+/** A field a recipe can be missing, for list_recipes' `missing` filter. */
+export type RecipeGap = 'steps' | 'ingredients' | 'servings' | 'minutes' | 'mealType';
+
+function hasGap(r: Recipe, gap: RecipeGap): boolean {
+  switch (gap) {
+    case 'steps': return r.steps.length === 0;
+    case 'ingredients': return r.ingredients.length === 0 && r.components.length === 0 && (r.blanks ?? []).length === 0;
+    case 'servings': return !r.servings;
+    case 'minutes': return !r.estimatedMinutes;
+    case 'mealType': return !r.mealType;
+  }
 }
 
 export interface ListRecipesInput {
   /** Matches the name, a tag, or an ingredient. */
   query?: string;
+  /** A meal type, or 'none' for the recipes with no meal type set. */
   mealType?: string;
   upNext?: boolean;
+  /** Only recipes with this field empty. */
+  missing?: RecipeGap;
   limit?: number;
+  /** Rows to skip, for the page after the first RECIPE_LIMIT. */
+  offset?: number;
 }
 
 export function listRecipes(replica: Replica, input: ListRecipesInput = {}): { recipes: SerializedRecipe[]; matched: number } {
@@ -64,7 +87,8 @@ export function listRecipes(replica: Replica, input: ListRecipesInput = {}): { r
   const q = input.query?.trim().toLowerCase();
   const hits = replica
     .recipes()
-    .filter(r => !input.mealType || r.mealType === input.mealType)
+    .filter(r => !input.mealType || (input.mealType === 'none' ? !r.mealType : r.mealType === input.mealType))
+    .filter(r => !input.missing || hasGap(r, input.missing))
     .filter(r => input.upNext === undefined || r.upNext === input.upNext)
     .filter(r => !q
       || r.name.toLowerCase().includes(q)
@@ -72,7 +96,8 @@ export function listRecipes(replica: Replica, input: ListRecipesInput = {}): { r
       || r.ingredients.some(i => i.name.toLowerCase().includes(q)))
     .sort((a, b) => a.name.localeCompare(b.name));
   const limit = Math.min(Math.max(input.limit ?? RECIPE_LIMIT, 1), RECIPE_LIMIT);
-  return { matched: hits.length, recipes: hits.slice(0, limit).map(r => serializeRecipe(r, cookbooks)) };
+  const offset = Math.max(input.offset ?? 0, 0);
+  return { matched: hits.length, recipes: hits.slice(offset, offset + limit).map(r => serializeRecipe(r, cookbooks)) };
 }
 
 export interface RecipeDetail extends SerializedRecipe {

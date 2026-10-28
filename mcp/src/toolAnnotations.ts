@@ -79,6 +79,7 @@ export const READ_TOOLS: Record<string, string> = {
   template_library_check: 'Check all templates',
   list_recipes: 'List recipes',
   get_recipe: 'Recipe details',
+  lint_recipes: 'Check recipes for formatting problems',
   list_cookbooks: 'List cookbooks',
   list_saved_meals: 'List saved meals',
   list_meal_plan: 'Meal plan',

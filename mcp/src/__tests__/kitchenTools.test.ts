@@ -37,7 +37,14 @@ describe('listRecipes', () => {
     expect(listRecipes(stub()).recipes.map(r => r.name)).toEqual(['Chili', 'Soup']);
     expect(listRecipes(stub(), { query: 'spinach' }).recipes.map(r => r.id)).toEqual(['r2']);
     expect(listRecipes(stub(), { query: 'WINTER' }).recipes.map(r => r.id)).toEqual(['r2']);
-    expect(listRecipes(stub(), { upNext: true }).recipes).toEqual([{ id: 'r1', name: 'Chili', mealType: 'dinner', upNext: true, cookbook: 'Salt Fat' }]);
+    expect(listRecipes(stub(), { upNext: true }).recipes).toEqual([{ id: 'r1', name: 'Chili', mealType: 'dinner', upNext: true, cookbook: 'Salt Fat', noSteps: true, noIngredients: true }]);
+  });
+
+  it('finds recipes with no meal type, or a field left empty, and pages past the first rows', () => {
+    expect(listRecipes(stub(), { mealType: 'none' }).recipes.map(r => r.id)).toEqual(['r2']);
+    expect(listRecipes(stub(), { missing: 'ingredients' }).recipes.map(r => r.id)).toEqual(['r1']);
+    expect(listRecipes(stub(), { missing: 'steps' }).matched).toBe(2);
+    expect(listRecipes(stub(), { limit: 1, offset: 1 })).toMatchObject({ matched: 2, recipes: [{ id: 'r2' }] });
   });
 });
 
