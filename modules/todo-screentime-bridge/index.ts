@@ -413,6 +413,9 @@ export interface ScreenTimeSpeedBump {
   blockGroupIds: string[];
   blockMinutes: number;
   rungs: number[];
+  /** In step with `rungs`: minutes of use at which a heads-up notification goes out, 0 for none. */
+  warnRungs: number[];
+  warnText: string;
 }
 
 /**

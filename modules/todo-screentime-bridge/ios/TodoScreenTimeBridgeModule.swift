@@ -706,7 +706,7 @@ public class TodoScreenTimeBridgeModule: Module {
     /// extension does with a crossing is `raiseSpeedBump` in
     /// `TodoActivityMonitor.swift`.
     ///
-    /// `bumpsJson` is `[{ id, groupId, blockGroupIds, blockMinutes, rungs }]`.
+    /// `bumpsJson` is `[{ id, groupId, blockGroupIds, blockMinutes, rungs, warnRungs, warnText }]`.
     /// A call that changes nothing (same rules, same day, monitor still armed)
     /// does not restart the monitor: this runs on every foreground, and starting
     /// the activity again may start the day's count over, which would let a day
@@ -746,6 +746,15 @@ public class TodoScreenTimeBridgeModule: Module {
                 categories: selection.categoryTokens,
                 threshold: DateComponents(minute: minutes)
               )
+              // A heads-up is one more event, earlier on the same ladder. A zero
+              // means none for that rung (too early to have a minute before it).
+              if let warnAt = bump.warnRungs, index < warnAt.count, warnAt[index] > 0 {
+                events[DeviceActivityEvent.Name("\(ScreenTimeShared.speedBumpWarnEventPrefix)\(bump.id):\(index)")] = DeviceActivityEvent(
+                  applications: selection.applicationTokens,
+                  categories: selection.categoryTokens,
+                  threshold: DateComponents(minute: warnAt[index])
+                )
+              }
             }
           }
           guard !events.isEmpty else {

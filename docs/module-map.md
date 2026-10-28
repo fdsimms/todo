@@ -550,7 +550,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/snackNudgeTasks.ts` — DEFAULT_SNACK_NUDGE_FROM_HOUR, SNACK_NUDGE_FROM_HOUR_MIN, SNACK_NUDGE_FROM_HOUR_MAX, DEFAULT_SNACK_NUDGE_SHARE_PERCENT, SNACK_NUDGE_SHARE_PERCENT_MIN, SNACK_NUDGE_SHARE_PERCENT_MAX, SNACK_NUDGE_SHARE_PERCENT_STEP, clampSnackNudgeFromHour, clampSnackNudgeSharePercent, describeSnackNudgeHour, +4 more
 - `src/utils/snoozeEngine.ts` — SnoozeSuggestion, AWAY_PENALTY, computeSnoozeSuggestion
 - `src/utils/speechSupport.ts` — dictationSupported
-- `src/utils/speedBump.ts` — SPEED_BUMP_TITLE_MAX_LENGTH, SPEED_BUMP_BLOCK_MIN, SPEED_BUMP_BLOCK_MAX, SPEED_BUMP_BLOCK_DEFAULT, SPEED_BUMP_BLOCK_CHOICES, SPEED_BUMP_THRESHOLD_DEFAULT, SPEED_BUMP_TIMES_MIN, SPEED_BUMP_TIMES_MAX, SPEED_BUMP_REPEAT_MIN, SPEED_BUMP_REPEAT_MAX, +14 more
+- `src/utils/speedBump.ts` — SPEED_BUMP_TITLE_MAX_LENGTH, SPEED_BUMP_BLOCK_MIN, SPEED_BUMP_BLOCK_MAX, SPEED_BUMP_BLOCK_DEFAULT, SPEED_BUMP_BLOCK_CHOICES, SPEED_BUMP_THRESHOLD_DEFAULT, SPEED_BUMP_WARN_CHOICES, SPEED_BUMP_TIMES_MIN, SPEED_BUMP_TIMES_MAX, SPEED_BUMP_REPEAT_MIN, +19 more
 - `src/utils/stableLists.ts` — reuseUnchangedLists
 - `src/utils/stackPicker.ts` — StackOption, STACK_PICKER_COLLAPSED_ROWS, filterStacks, StackRows, stackRows
 - `src/utils/stackSort.ts` — stackMemberIdsAToZ
