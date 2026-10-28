@@ -537,7 +537,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/sheetModal.ts` — SheetVisibilityStep, nextSheetVisibility, PresentationLevel, createPresentationLevel, PresentationLevelContext, subscribePresentation, canHideSheet, beginDismissal, endDismissal, canShowSheet, +14 more
 - `src/utils/sheetMotion.ts` — SHEET_TRAVEL_SLACK, sheetTravel
 - `src/utils/shelfLabel.ts` — ScanBox, ScanText, printedPricesIn, priceNearBarcode
-- `src/utils/shieldReasonText.ts` — MAX_NAMED_GATES, shieldReasonLines, shieldHeadline, shieldHeadlineNote, shieldNotEnforced, selectionLabel
+- `src/utils/shieldReasonText.ts` — MAX_NAMED_GATES, shieldReasonLines, shieldHeadline, shieldHeadlineNote, shieldNotEnforced, shieldSkippedLine, selectionLabel
 - `src/utils/shieldRelease.ts` — SHIELD_RELEASES_SETTING, SHIELD_RELEASE_LOG_SETTING, MAX_RELEASE_LOG, MIN_RELEASE_REASON_LENGTH, MAX_RELEASE_REASON_LENGTH, ShieldReleases, NO_RELEASES, parseShieldReleases, withReleased, isGateReleased, +10 more
 - `src/utils/shoppingTrip.ts` — MAX_TRIP_STOPS, ShopCoverage, TripPlan, TripSummary, planTrip, summarizeTrip, describeShopCoverage, joinNames
 - `src/utils/shortNight.ts` — SHORT_NIGHT_MINUTES_MIN, SHORT_NIGHT_MINUTES_MAX, SHORT_NIGHT_MINUTES_STEP, SHORT_NIGHT_MINUTES_DEFAULT, clampShortNightMinutes, parseShortNightMinutes
