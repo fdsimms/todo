@@ -34,23 +34,30 @@ export const SHELF_LIFE_LEXICON: Record<string, number> = {
   arugula: 5, basil: 5, berries: 4, blackberries: 4, blueberries: 7,
   'bok choy': 6, broccoli: 6, cauliflower: 7, celery: 10, chard: 5,
   cilantro: 6, coriander: 6, cucumber: 7, dill: 6, eggplant: 6,
-  'green beans': 6, herbs: 6, kale: 6, lettuce: 6, mint: 6,
-  mushroom: 6, mushrooms: 6, parsley: 7, 'romaine lettuce': 6,
+  broccolini: 5, 'dandelion greens': 4, 'fresh parsley': 7,
+  'fresh rosemary': 10, 'fresh thyme': 10, 'green beans': 6, herbs: 6, kale: 6,
+  'king trumpet mushroom': 7, lettuce: 6, 'mung bean sprouts': 4, mint: 6,
+  mushroom: 6, mushrooms: 6, 'mustard greens': 5, 'oyster mushrooms': 5,
+  parsley: 7, 'romaine lettuce': 6, shishito: 5, 'string beans': 6,
   salad: 4, scallions: 7, 'green onion': 7, 'green onions': 7,
   spinach: 5, 'spring onions': 7, sprouts: 4, strawberries: 4,
   raspberries: 3, tomato: 6, tomatoes: 6, zucchini: 6,
 
   // ─── Fruit that ripens then goes ───
   avocado: 5, avocados: 5, banana: 5, bananas: 5, cherries: 5,
-  grapes: 8, kiwi: 8, mango: 6, nectarines: 5, peach: 5, peaches: 5,
+  'ataulfo mango': 6, grapes: 8, kiwi: 8, mango: 6, nectarines: 5, peach: 5, peaches: 5,
   pear: 6, pears: 6, plums: 6, pineapple: 5, watermelon: 6,
 
   // ─── Dairy and eggs ───
-  buttermilk: 10, cream: 7, 'cream cheese': 14, 'cottage cheese': 10,
-  'creme fraiche': 14, 'half and half': 10, 'heavy cream': 10,
-  milk: 7, 'oat milk': 7, 'almond milk': 7, 'soy milk': 7,
-  'ricotta': 7, 'sour cream': 14, yogurt: 14, yoghurt: 14,
+  burrata: 5, buttermilk: 10, cream: 7, 'cream cheese': 14, 'cottage cheese': 10,
+  'creme fraiche': 14, 'flavored yogurt': 14, 'half and half': 10,
+  'heavy cream': 10, milk: 7,
+  'ricotta': 7, skyr: 14, 'sour cream': 14, yogurt: 14, yoghurt: 14,
   'greek yogurt': 14, eggs: 21, egg: 21,
+  // Plant milks are deliberately absent: the shelf-stable carton keeps for
+  // months sealed and the refrigerated one carries its own printed date, so a
+  // purchase-based guess is wrong for one or the other. Opening them is what
+  // starts a clock (OPEN_SHELF_LIFE_LEXICON).
 
   // ─── Meat, seafood and deli — the short ones, on purpose ───
   bacon: 7, beef: 3, 'ground beef': 2, 'ground turkey': 2, chicken: 2,
@@ -62,7 +69,12 @@ export const SHELF_LIFE_LEXICON: Record<string, number> = {
   // ─── Prepared and bakery ───
   bagels: 5, baguette: 2, bread: 6, 'bread rolls': 5, brioche: 5,
   croissants: 3, hummus: 7, guacamole: 3, 'fresh pasta': 5,
-  'pizza dough': 5, salsa: 7, tofu: 7, tortillas: 10,
+  'pizza dough': 5, salsa: 7, tortillas: 10,
+  'plant based deli slices': 7,
+
+  // ─── Refrigerated protein that isn't meat ───
+  'extra firm tofu': 7, 'firm tofu': 7, 'marinated tofu': 7, seitan: 7,
+  tempeh: 10, tofu: 7,
 };
 
 /**
@@ -97,9 +109,12 @@ export const OPEN_SHELF_LIFE_LEXICON: Record<string, number> = {
   // Sauces and cans that go into the fridge once opened, where a jar of pesto
   // or half a can of coconut milk is exactly the thing forgotten at the back.
   pesto: 5, 'pasta sauce': 5, marinara: 5, 'tomato paste': 7, 'coconut milk': 4,
+  'vodka sauce': 5, 'chipotle peppers in adobo': 14,
 
   // ─── Vacuum packs and deli ───
-  bacon: 7, 'cold cuts': 4, ham: 4, 'sliced turkey': 4, tofu: 4,
+  bacon: 7, 'cold cuts': 4, ham: 4, 'sliced turkey': 4,
+  'plant based deli slices': 5, tofu: 4, 'extra firm tofu': 4, 'firm tofu': 4,
+  'marinated tofu': 4, tempeh: 7, seitan: 5,
 };
 
 /**

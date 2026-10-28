@@ -115,6 +115,25 @@ describe('shelfLifeDaysFor', () => {
   it('has nothing to say about an empty name', () => {
     expect(shelfLifeDaysFor('   ')).toBeNull();
   });
+
+  it('gives a plant milk no sealed day, since the carton may keep for months', () => {
+    for (const milk of ['oat milk', 'almond milk', 'soy milk']) {
+      expect(shelfLifeDaysFor(milk)).toBeNull();
+      // Opening one still starts a clock.
+      expect(openShelfLifeDaysFor(milk)).toBe(7);
+    }
+  });
+
+  it('dates the short-lived names a catalog holds in their own spelling', () => {
+    for (const name of [
+      'burrata', 'skyr', 'flavored yogurt', 'firm tofu', 'extra firm tofu',
+      'marinated tofu', 'tempeh', 'seitan', 'plant-based deli slices',
+      'fresh rosemary', 'fresh thyme', 'oyster mushrooms', 'mung bean sprouts',
+      'string beans', 'broccolini', 'Ataulfo mango',
+    ]) {
+      expect(shelfLifeDaysFor(name)).not.toBeNull();
+    }
+  });
 });
 
 describe('defaultExpiresAt', () => {
