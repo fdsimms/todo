@@ -1,5 +1,5 @@
 import type { Recipe, RecipeComponent } from '../types';
-import { amountUsedCounts, componentShares } from '../utils/componentShares';
+import { amountUsedCounts, componentShares, makesText, makesUnitsFor, splitMakes } from '../utils/componentShares';
 
 let seq = 0;
 
@@ -46,5 +46,37 @@ describe('amountUsedCounts', () => {
     const mix = recipe('Mix');
     expect(amountUsedCounts('1 tbsp', mix, '3/4 cup')).toBe(true);
     expect(amountUsedCounts('1 tbsp', mix, '  ')).toBe(false);
+  });
+});
+
+describe('the units "makes" is picked in', () => {
+  it('offers the amount’s own dimension, starting on a sensible one', () => {
+    expect(makesUnitsFor('1 tbsp')).toEqual({ units: ['tsp', 'tbsp', 'cup', 'ml', 'l'], defaultUnit: 'cup' });
+    expect(makesUnitsFor('30 ml')!.defaultUnit).toBe('ml');
+    expect(makesUnitsFor('2 oz')).toEqual({ units: ['g', 'kg', 'oz', 'lb'], defaultUnit: 'oz' });
+    expect(makesUnitsFor('2 fillets')).toEqual({ units: ['fillets'], defaultUnit: 'fillets' });
+  });
+
+  it('offers none when the amount names no unit', () => {
+    expect(makesUnitsFor('1/4')).toBeNull();
+    expect(makesUnitsFor('a pinch')).toBeNull();
+  });
+
+  it('writes a yield that always counts against the amount', () => {
+    const mix = recipe('Mix');
+    for (const unit of makesUnitsFor('1 tbsp')!.units) {
+      expect(amountUsedCounts('1 tbsp', mix, makesText('3/4', unit))).toBe(true);
+    }
+    expect(amountUsedCounts('2 fillets', mix, makesText('4', 'fillets'))).toBe(true);
+    expect(makesText('', 'cup')).toBeNull();
+    expect(makesText('lots', 'cup')).toBeNull();
+  });
+
+  it('reads a saved yield back into the picker, or not at all', () => {
+    const units = makesUnitsFor('1 tbsp')!.units;
+    expect(splitMakes('3/4 cup', units)).toEqual({ number: '3/4', unit: 'cup' });
+    expect(splitMakes('1 1/2 cups', units)).toEqual({ number: '1 1/2', unit: 'cup' });
+    expect(splitMakes('4 servings', units)).toBeNull();
+    expect(splitMakes(null, units)).toBeNull();
   });
 });

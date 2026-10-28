@@ -93,3 +93,48 @@ export function amountUsedCounts(
   if (!part) return false;
   return fractionOf(amount, recipeYield?.trim() || null) !== null;
 }
+
+/** The units "makes" is offered in, for an amount measured in each dimension. */
+const MAKES_UNITS = {
+  volume: ['tsp', 'tbsp', 'cup', 'ml', 'l'],
+  mass: ['g', 'kg', 'oz', 'lb'],
+} as const;
+
+/**
+ * The units a used recipe's "makes" can be picked in so it compares with
+ * `amount`, and the one to start on, or null when the amount names no unit
+ * to compare (a bare "1/4" needs no yield; "a pinch" can't be measured). Only
+ * units of the amount's own dimension are offered, so a filled-in answer always
+ * counts. A count ("2 fillets") offers just its own word, written as the
+ * amount wrote it, since that is the only thing it compares with.
+ */
+export function makesUnitsFor(amount: string): { units: string[]; defaultUnit: string } | null {
+  const q = parseQuantity(amount);
+  if (q.amount === null || !q.unitWritten) return null;
+  const measured = measureQuantity(amount);
+  if (measured?.dimension === 'volume') {
+    return { units: [...MAKES_UNITS.volume], defaultUnit: q.unit === 'ml' || q.unit === 'l' ? 'ml' : 'cup' };
+  }
+  if (measured?.dimension === 'mass') {
+    return { units: [...MAKES_UNITS.mass], defaultUnit: q.unit === 'g' || q.unit === 'kg' ? 'g' : 'oz' };
+  }
+  if (measured) return null;
+  return { units: [q.unitWritten], defaultUnit: q.unitWritten };
+}
+
+/** A saved yield read back as a number and one of `units`, or null when it isn't one. */
+export function splitMakes(recipeYield: string | null, units: readonly string[]): { number: string; unit: string } | null {
+  const text = recipeYield?.trim() ?? '';
+  const q = parseQuantity(text);
+  if (q.amount === null || !q.unit || q.trailing.trim()) return null;
+  const unit = units.find(u => parseQuantity(`1 ${u}`).unit === q.unit);
+  if (!unit) return null;
+  return { number: text.slice(0, text.length - q.rest.length).trim(), unit };
+}
+
+/** The yield a number and a unit write, or null for a number that isn't one. */
+export function makesText(number: string, unit: string): string | null {
+  const q = parseQuantity(number.trim());
+  if (q.amount === null || q.rest || !(rationalToNumber(q.amount) > 0)) return null;
+  return `${number.trim()} ${unit}`;
+}

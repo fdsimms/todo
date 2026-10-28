@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Recipe } from '../types';
-import { GROCERY_QUANTITY_MAX_LENGTH, RECIPE_CHOICE_GROUP_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
+import { GROCERY_QUANTITY_MAX_LENGTH, RECIPE_CHOICE_GROUP_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
@@ -11,7 +11,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import type { ResolvedComponent } from '../utils/recipeComponents';
-import { amountUsedCounts } from '../utils/componentShares';
+import { amountUsedCounts, makesText, makesUnitsFor, splitMakes } from '../utils/componentShares';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
@@ -69,15 +69,22 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
   const [amount, setAmount] = useState('');
   // What the used recipe makes, asked right here when the amount can't be
   // compared with it: the fix has to be where the problem shows, not on the
-  // other recipe's page. Saved onto that recipe's own Yield.
-  const [makes, setMakes] = useState('');
+  // other recipe's page. A number and a unit picked from the ones that compare
+  // with the amount (`makesUnitsFor`), saved onto that recipe's own Yield.
+  const [makesNumber, setMakesNumber] = useState('');
+  const [makesUnit, setMakesUnit] = useState<string | null>(null);
 
   useEffect(() => {
     if (component) {
       setLabel(component.component.choiceGroup ?? '');
       setChoiceOn(!!component.component.choiceGroup);
       setAmount(component.component.amountUsed ?? '');
-      setMakes(component.recipe?.recipeYield ?? '');
+      const saved = splitMakes(
+        component.recipe?.recipeYield ?? null,
+        makesUnitsFor(component.component.amountUsed ?? '')?.units ?? [],
+      );
+      setMakesNumber(saved?.number ?? '');
+      setMakesUnit(saved?.unit ?? null);
     }
   }, [component?.component.id, visible]);
 
@@ -122,13 +129,18 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
   // Asked only while the saved yield can't take the amount, judged on what is
   // saved so the field doesn't vanish mid-word once the typed one fits.
   const asksMakes = !!component?.recipe && !amountUsedCounts(amount, component.recipe);
+  const makesUnits = asksMakes ? makesUnitsFor(amount) : null;
+  // A unit picked for an earlier amount may not fit this one ("cup" once the
+  // amount says grams), so the pick falls back to the amount's own default.
+  const unit = makesUnits && makesUnit && makesUnits.units.includes(makesUnit) ? makesUnit : makesUnits?.defaultUnit ?? null;
+  const makes = makesUnits && unit ? makesText(makesNumber, unit) : null;
 
   const saveAndClose = () => {
     if (component) {
       setComponentChoiceGroup(recipe.id, component.component.id, cleanChoiceGroup(label));
       setComponentAmountUsed(recipe.id, component.component.id, amount);
       const part = component.recipe;
-      if (asksMakes && part && makes.trim() !== (part.recipeYield ?? '')) setRecipeYield(part.id, makes.trim() || null);
+      if (part && makes && makes !== part.recipeYield) setRecipeYield(part.id, makes);
     }
     onClose();
   };
@@ -172,29 +184,43 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
             accessibilityLabel={`Amount of ${name} this recipe uses`}
           />
         </View>
-        {asksMakes && (
+        {asksMakes && !makesUnits && (
+          <Text style={styles.amountWarning}>
+            Nutrition can’t measure “{amount.trim()}”, so it counts the whole batch.
+          </Text>
+        )}
+        {makesUnits && unit && (
           <>
             <Text style={[styles.groupLabel, styles.groupLabelSpaced]}>{name} makes</Text>
-            <View style={styles.well}>
-              <TextField
-                style={styles.amountInput}
-                value={makes}
-                onChangeText={setMakes}
-                placeholder="e.g. 3/4 cup"
-                placeholderTextColor={colors.textTertiary}
-                maxLength={RECIPE_SOURCE_MAX_LENGTH}
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="done"
-                accessibilityLabel={`How much ${name} makes`}
-              />
+            <View style={styles.makesRow}>
+              <View style={[styles.well, styles.makesWell]}>
+                <TextField
+                  style={styles.amountInput}
+                  value={makesNumber}
+                  onChangeText={setMakesNumber}
+                  placeholder="e.g. 3/4"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={12}
+                  keyboardType="numbers-and-punctuation"
+                  returnKeyType="done"
+                  accessibilityLabel={`How many ${unit} ${name} makes`}
+                />
+              </View>
+              {makesUnits.units.length > 1 ? (
+                <View style={styles.makesUnits}>
+                  <SegmentedControl
+                    label="Unit"
+                    options={makesUnits.units.map(u => ({ value: u, label: u }))}
+                    value={unit}
+                    onChange={setMakesUnit}
+                  />
+                </View>
+              ) : (
+                <Text style={styles.makesUnitWord}>{unit}</Text>
+              )}
             </View>
-            {!amountUsedCounts(amount, component.recipe, makes) && (
-              <Text style={styles.amountWarning}>
-                {makes.trim()
-                  ? `${amount.trim()} can’t be compared with ${makes.trim()}, so nutrition counts the whole batch.`
-                  : 'Until this is filled in, nutrition counts the whole batch.'}
-              </Text>
+            {!makes && (
+              <Text style={styles.amountWarning}>Until this is filled in, nutrition counts the whole batch.</Text>
             )}
           </>
         )}
@@ -359,5 +385,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   amountInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0, minHeight: 44 },
   hint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: font.xs * 1.4 },
   groupLabelSpaced: { marginTop: spacing.md },
+  makesRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
+  makesWell: { width: 92, marginTop: 0, paddingHorizontal: spacing.smd },
+  makesUnits: { flex: 1 },
+  makesUnitWord: { color: colors.text, fontSize: font.md },
   amountWarning: { color: colors.warningText, fontSize: font.xs, lineHeight: font.xs * 1.4, marginVertical: spacing.xs },
 });
