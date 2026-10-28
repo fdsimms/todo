@@ -38,10 +38,12 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
   TRAVEL_ARRIVE_CHOICES,
-  TRAVEL_MODES,
+  TRAVEL_MODE_LABELS,
   TRAVEL_ORIGIN_PHONE,
+  TRAVEL_SKIP_KEY,
   describeArrival,
   originCandidates,
+  travelModePickerOptions,
   travelOriginFor,
   type TravelMode,
 } from '../utils/travelTasks';
@@ -1149,13 +1151,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     { key: 'none', label: 'Never' },
     ...EVENT_REPEAT_PRESETS.map(p => ({ key: p.key, label: p.label })),
   ];
-  const travelModeOptions: EventOption[] = [
-    { key: 'default', label: walkUnderMinutes > 0 && defaultTravelMode !== 'walking'
-      ? `Settings default (Walk if ${walkUnderMinutes} min or less, else ${TRAVEL_MODE_LABELS[defaultTravelMode]})`
-      : `Settings default (${TRAVEL_MODE_LABELS[defaultTravelMode]})` },
-    ...TRAVEL_MODES.map(m => ({ key: m, label: TRAVEL_MODE_LABELS[m] })),
-    { key: TRAVEL_SKIP_KEY, label: 'Don’t add a leave-by task' },
-  ];
+  const travelModeOptions: EventOption[] = travelModePickerOptions(defaultTravelMode, walkUnderMinutes);
   const travelChipLabel = effectiveTravelSkip ? 'No leave-by task' : TRAVEL_MODE_LABELS[effectiveTravelMode ?? defaultTravelMode];
   const arriveOptions: EventOption[] = [
     { key: 'default', label: `Settings default (${describeArrival(defaultArriveEarly)})` },
@@ -2030,8 +2026,6 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   );
 }
 
-const TRAVEL_MODE_LABELS: Record<TravelMode, string> = { driving: 'Car', transit: 'Transit', walking: 'Walking' };
-const TRAVEL_SKIP_KEY = 'skip';
 
 /** A typed alert runs from a minute to a week before the event, as in a saved event. */
 const ALERT_RANGE = { min: 1, max: 7 * 24 * 60 };

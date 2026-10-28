@@ -1793,6 +1793,9 @@ interface SettingsStore {
   // for any event without one). Off by default: it sends the event's address
   // and the phone's position to Apple (src/services/travelTime.ts).
   travelEstimates: boolean;
+  // Also asks Apple Maps for the other two ways of getting there, so a row can
+  // list them side by side. Off by default: each is one more request per event.
+  travelCompareModes: boolean;
   // How that estimate travels.
   travelMode: TravelMode;
   // Walk instead of travelMode when Apple Maps puts the walk at this many
@@ -2453,6 +2456,7 @@ interface SettingsStore {
   setTravelLeadMinutes: (minutes: number) => void;
   setTravelArriveEarlyMinutes: (minutes: number) => void;
   setTravelEstimates: (on: boolean) => void;
+  setTravelCompareModes: (on: boolean) => void;
   setTravelMode: (mode: TravelMode) => void;
   setTravelWalkUnderMinutes: (minutes: number) => void;
   setTravelOriginPlaceId: (id: string | null) => void;
@@ -3261,6 +3265,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelLeadByCalendar: {},
   travelEventPrefs: {},
   travelEstimates: false,
+  travelCompareModes: false,
   travelMode: 'driving',
   travelWalkUnderMinutes: 0,
   travelOriginPlaceId: null,
@@ -3812,6 +3817,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const travelLeadByCalendar = parseTravelLeadByCalendar(dbGetSetting('travelLeadByCalendar'));
     const travelEventPrefs = parseTravelEventPrefs(dbGetSetting('travelEventPrefs'));
     const travelEstimates = dbGetSetting('travelEstimates') === 'true';
+    const travelCompareModes = dbGetSetting('travelCompareModes') === 'true';
     const storedTravelMode = dbGetSetting('travelMode');
     const travelMode: TravelMode = TRAVEL_MODES.find(m => m === storedTravelMode) ?? 'driving';
     const storedWalkUnder = parseInt(dbGetSetting('travelWalkUnderMinutes') ?? '', 10);
@@ -4331,6 +4337,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       transitAlerts,
       transitLines,
       travelArriveEarlyMinutes,
+      travelCompareModes,
       travelEstimates,
       travelEventPrefs,
       travelLeadByCalendar,
@@ -5048,6 +5055,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setTravelEstimates(on: boolean) {
     dbSetSetting('travelEstimates', on ? 'true' : 'false');
     set({ travelEstimates: on });
+  },
+
+  setTravelCompareModes(on: boolean) {
+    dbSetSetting('travelCompareModes', on ? 'true' : 'false');
+    set({ travelCompareModes: on });
   },
 
   setTravelMode(mode: TravelMode) {
