@@ -82,6 +82,8 @@ import { cookSteps, stepsFromNotes } from '../utils/cookMode';
 import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDurationOffers } from '../utils/stepTimers';
 import { featureHidden, featureShown } from '../utils/simpleMode';
 import { blankFillOf, describeBlankRule, recipeBlanksIn } from '../utils/recipeBlanks';
+import { blankSuggestions } from '../utils/blankPicker';
+import { kitchenInventory } from '../utils/kitchenInventory';
 import { BlankEditorSheet } from '../components/BlankEditorSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, flattenOverlay, type Colors } from '../theme';
@@ -276,6 +278,13 @@ export function RecipeDetailScreen() {
     [recipe, recipesById]
   );
   const blanks = recipe?.blanks ?? [];
+  const nonFoodAisles = useGroceryStore(s => s.nonFoodAisles);
+  // What the kitchen has, for the suggestions under each blank. Only worked out
+  // for a recipe that has blanks, since most don't.
+  const blankKitchen = useMemo(
+    () => (blanks.length > 0 ? kitchenInventory(groceryItems, [], new Date(), itemProducts) : []),
+    [blanks.length, groceryItems, itemProducts],
+  );
   const showBlankAction = featureShown('recipeComposition', simpleMode, blanks.length > 0);
   // ==== the resolved recipe: components, counts, cost, the scaled lines ====
   // The two lookups each row's weight caption and the shared text read
@@ -1978,7 +1987,10 @@ export function RecipeDetailScreen() {
   // line is what that meal filled it with.
   const renderBlank = (blank: RecipeBlank) => {
     const fill = blankFillOf(overrides, blank.id).map(l => l.name).join(', ');
-    const detail = fill || [blank.quantity, blank.options.join(', ')].filter(Boolean).join(' · ');
+    // Unfilled, the amount and the suggestions sit on their own lines, and a
+    // suggestion the kitchen has is marked, so the row answers "do I have any".
+    const suggestions = fill ? [] : blankSuggestions(blank, groceryItems, blankKitchen, nonFoodAisles);
+    const inKitchen = suggestions.filter(s => s.inKitchen).map(s => s.name);
     return (
       <TouchableOpacity
         key={blank.id}
@@ -1986,7 +1998,13 @@ export function RecipeDetailScreen() {
         activeOpacity={interaction.activeOpacity}
         onPress={() => { haptics.tap(); setEditingBlank(blank.id); }}
         accessibilityRole="button"
-        accessibilityLabel={[blank.label, describeBlankRule(blank.max), detail].filter(Boolean).join(', ')}
+        accessibilityLabel={[
+          blank.label,
+          describeBlankRule(blank.max),
+          fill || blank.quantity,
+          !fill && suggestions.length > 0 ? suggestions.map(s => s.name).join(', ') : '',
+          inKitchen.length > 0 ? `In your kitchen: ${inKitchen.join(', ')}` : '',
+        ].filter(Boolean).join(', ')}
         accessibilityHint="Opens it to edit"
       >
         {/* componentMarker's badge, like a used recipe in the same card: the
@@ -1996,7 +2014,19 @@ export function RecipeDetailScreen() {
         </View>
         <View style={styles.ingredientText}>
           <Text style={styles.ingredientName}>{blank.label}</Text>
-          {!!detail && <Text style={styles.blankDetail}>{detail}</Text>}
+          {!!(fill || blank.quantity) && <Text style={styles.blankDetail}>{fill || blank.quantity}</Text>}
+          {suggestions.length > 0 && (
+            <Text style={styles.blankSuggestions}>
+              {suggestions.map((s, i) => (
+                <Text key={s.name} style={s.inKitchen ? styles.blankHave : undefined}>
+                  {i > 0 ? ', ' : ''}
+                  {s.inKitchen && <Text style={styles.blankHaveDot}>{'\u25CF '}</Text>}
+                  {s.name}
+                  {!!s.caption && <Text style={styles.blankDetail}>{` (${s.caption})`}</Text>}
+                </Text>
+              ))}
+            </Text>
+          )}
         </View>
         <View style={styles.qtyPill}>
           <Text style={styles.qtyText} numberOfLines={1}>{describeBlankRule(blank.max)}</Text>
@@ -3722,6 +3752,14 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.xs,
   },
+  // The recipe's suggestions: dim, with the ones the kitchen has lifted to the
+  // text colour behind a green dot.
+  blankSuggestions: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  blankHave: { color: colors.text },
+  blankHaveDot: { color: colors.greenText },
   ingredientPrep: {
     color: colors.textTertiary,
     fontSize: font.xs,
