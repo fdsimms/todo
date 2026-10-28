@@ -354,6 +354,14 @@ interface RecipeStore {
    * name/quantity/aisle. Returns how many were new.
    */
   addStructuredIngredients: (recipeId: string, ingredients: RecipeIngredient[]) => number;
+  /**
+   * The whole ingredient list replaced in one write, deduped the way the add
+   * paths dedupe. Rows that keep their id keep everything pointing at them: a
+   * used recipe placed above a kept line stays there, and a mixed either/or
+   * keeps its label. Clearing the list and adding it back lost both, because
+   * the cleanup that runs on a removal saw the list empty for a moment.
+   */
+  replaceIngredients: (recipeId: string, ingredients: RecipeIngredient[]) => void;
   updateIngredient: (recipeId: string, ingredientId: string, patch: Partial<RecipeIngredient>) => void;
   /**
    * Turns one "cheddar or manchego" line into that many real ingredient rows,
@@ -927,6 +935,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     // After the recipe has left the list, which is what the reconcile reads to
     // turn "Make Chili" on Today back into a typed meal.
     if (recipe) mealPlan().reconcileRecipeSlots([id]);
+    stepTimers().removeForRecipe(id);
   },
 
   bulkDeleteRecipes(ids) {
@@ -940,6 +949,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     toDelete.forEach(r => deleteRecipeImage(r.imagePath));
     // And their planned meals' tasks, the same reconcile deleteRecipe runs.
     mealPlan().reconcileRecipeSlots(toDelete.map(r => r.id));
+    toDelete.forEach(r => stepTimers().removeForRecipe(r.id));
   },
 
   bulkSetVote(ids, vote) {
@@ -1093,6 +1103,16 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (added === 0) return 0;
     save(set, { ...recipe, ingredients: merged });
     return added;
+  },
+
+  replaceIngredients(recipeId, ingredients) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const next = mergeIngredients([], ingredients);
+    const keptIds = new Set(next.map(i => i.id));
+    const removed = new Set(recipe.ingredients.filter(i => !keptIds.has(i.id)).map(i => i.id));
+    const components = reanchorComponents(recipe.components, recipe.ingredients, removed);
+    save(set, dropLoneChoiceGroups({ ...recipe, ingredients: next, components }));
   },
 
   updateIngredient(recipeId, ingredientId, patch) {
@@ -1278,15 +1298,24 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const clean = cleanChoiceGroup(newLabel);
     if (!clean || clean === oldLabel) return null;
     // A name another group already has would fold the two into one either/or.
+    // Labels are shared by ingredients and used recipes, so both lists count,
+    // and both are renamed: renaming only the ingredient half split a mixed
+    // group in two, and the next load dropped each half as a lone option.
     if (recipe.ingredients.some(i => i.choiceGroup === clean)) return null;
+    if (recipe.components.some(c => c.choiceGroup === clean)) return null;
     let touched = false;
     const ingredients = recipe.ingredients.map(i => {
       if (i.choiceGroup !== oldLabel) return i;
       touched = true;
       return { ...i, choiceGroup: clean };
     });
+    const components = recipe.components.map(c => {
+      if (c.choiceGroup !== oldLabel) return c;
+      touched = true;
+      return { ...c, choiceGroup: clean };
+    });
     if (!touched) return null;
-    save(set, { ...recipe, ingredients });
+    save(set, { ...recipe, ingredients, components });
     return clean;
   },
 
@@ -1760,6 +1789,16 @@ function save(set: SetRecipes, recipe: Recipe): void {
 function mealPlan() {
   const { useMealPlanStore } = require('./useMealPlanStore') as typeof import('./useMealPlanStore');
   return useMealPlanStore.getState();
+}
+
+/**
+ * The step timer store, required lazily for the same reason as `mealPlan`. A
+ * deleted recipe's running timers have nowhere left on screen to be stopped
+ * from, so the delete stops them.
+ */
+function stepTimers() {
+  const { useStepTimerStore } = require('./useStepTimerStore') as typeof import('./useStepTimerStore');
+  return useStepTimerStore.getState();
 }
 
 /** `RecipeStep.section` read as `sectionsOf`'s generic `string | null` shape. */

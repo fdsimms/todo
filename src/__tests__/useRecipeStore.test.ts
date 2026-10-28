@@ -43,6 +43,12 @@ jest.mock('../store/useMealPlanStore', () => ({
   useMealPlanStore: { getState: () => mockMealPlan },
 }));
 
+// The step timers a delete stops, mocked for the same reason as the meal plan.
+const mockStepTimers = { removeForRecipe: jest.fn() };
+jest.mock('../store/useStepTimerStore', () => ({
+  useStepTimerStore: { getState: () => mockStepTimers },
+}));
+
 let seq = 0;
 function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
@@ -1497,6 +1503,26 @@ describe('mergeChoiceGroup', () => {
 });
 
 describe('renameChoiceGroup', () => {
+  it('renames a used recipe in the group too, and counts its label as taken', () => {
+    const r = makeRecipe('Bowl', {
+      ingredients: [
+        { id: 'i1', name: 'Rice', nameKey: 'rice', quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Base' },
+      ],
+      components: [
+        { id: 'c1', recipeId: 'pilaf', name: 'Pilaf', choiceGroup: 'Base' },
+        { id: 'c2', recipeId: 'chili', name: 'Chili', choiceGroup: 'Side' },
+      ],
+    });
+    seed([r]);
+
+    expect(useRecipeStore.getState().renameChoiceGroup(r.id, 'Base', 'Side')).toBeNull();
+    expect(useRecipeStore.getState().renameChoiceGroup(r.id, 'Base', 'Starch')).toBe('Starch');
+
+    const after = useRecipeStore.getState().recipeById(r.id)!;
+    expect(after.ingredients[0].choiceGroup).toBe('Starch');
+    expect(after.components.map(c => c.choiceGroup)).toEqual(['Starch', 'Side']);
+  });
+
   const withGroup = () => {
     const r = makeRecipe('Salsa', {
       ingredients: [
@@ -1760,6 +1786,16 @@ describe('deleteRecipe', () => {
     mockMealPlan.reconcileRecipeSlots.mockReset();
   });
 
+  it('stops the recipe’s step timers, which nothing on screen could reach once it’s gone', () => {
+    const r = makeRecipe('Risotto');
+    seed([r]);
+    mockStepTimers.removeForRecipe.mockClear();
+
+    useRecipeStore.getState().deleteRecipe(r.id);
+
+    expect(mockStepTimers.removeForRecipe).toHaveBeenCalledWith(r.id);
+  });
+
   it('leaves a parent’s link dangling rather than editing a recipe the user didn’t touch', () => {
     const steak = makeRecipe('Steak');
     const mash = makeRecipe('Mash');
@@ -1785,6 +1821,17 @@ describe('bulkDeleteRecipes', () => {
 
     expect(deleteRecipeImage).toHaveBeenCalledWith('recipe-images/a.jpg');
     expect(deleteRecipeImage).not.toHaveBeenCalledWith('recipe-images/b.jpg');
+  });
+
+  it('stops each deleted recipe’s step timers', () => {
+    const a = makeRecipe('Ragu');
+    const b = makeRecipe('Soup');
+    seed([a, b]);
+    mockStepTimers.removeForRecipe.mockClear();
+
+    useRecipeStore.getState().bulkDeleteRecipes([a.id]);
+
+    expect(mockStepTimers.removeForRecipe.mock.calls).toEqual([[a.id]]);
   });
 
   it('drops every named row, in one db call each, and leaves the rest', () => {

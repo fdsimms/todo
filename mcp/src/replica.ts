@@ -2670,10 +2670,25 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
    * A cookbook by title, ignoring case, whoever wrote it. The store's own
    * `ensureCookbook` keys on title and author together, so given only a title
    * it would make a second copy of a book that has an author.
+   *
+   * Two books can share a title (one by each author). The recipe's own book
+   * wins when it is one of them, so sending a recipe back with the title it
+   * was read with never moves it; otherwise more than one match is refused
+   * rather than guessed, since moving a recipe clears its page and author.
    */
-  function findCookbook(title: string): Cookbook | null {
+  function findCookbook(title: string, currentId: string | null = null): Cookbook | null {
     const wanted = title.trim().toLowerCase();
-    return db.dbGetAllCookbooks().find(c => c.title.trim().toLowerCase() === wanted) ?? null;
+    const matches = db.dbGetAllCookbooks().filter(c => c.title.trim().toLowerCase() === wanted);
+    const current = matches.find(c => c.id === currentId);
+    if (current) return current;
+    if (matches.length > 1) {
+      const by = matches.map(c => (c.author ? `one by ${c.author}` : 'one with no author')).join(', ');
+      throw new Error(
+        `There are ${matches.length} cookbooks called "${matches[0].title}" (${by}). `
+        + 'Rename one with rename_cookbook so the title says which, then try again.',
+      );
+    }
+    return matches[0] ?? null;
   }
 
   /**
@@ -2822,45 +2837,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     if (f.ovenTemp !== undefined || f.ovenTempUnit !== undefined) {
       store().setOvenTemp(id, f.ovenTemp !== undefined ? f.ovenTemp : current().ovenTemp, f.ovenTempUnit);
     }
-    if (f.ingredients !== undefined) {
-      // `optional` is written only when true (RecipeIngredient.optional), so a
-      // false takes the key off rather than storing it.
-      const withOptional = <T extends { optional?: boolean }>(row: T, given: boolean | undefined): T => {
-        if (given === undefined) return row;
-        const { optional: _was, ...rest } = row;
-        return (given ? { ...rest, optional: true } : rest) as T;
-      };
-      const made = f.ingredients
-        .map(line => {
-          const m = recipeUtils.makeIngredient(line.text, line.section?.trim() || null);
-          // `excludeFromNutrition` and `optional` ride along only when the call
-          // named them, so a rewrite that did not mention one leaves a kept
-          // line's answer alone.
-          return m
-            ? {
-              row: withOptional({ ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup), ...(line.excludeFromNutrition !== undefined ? { excludeFromNutrition: line.excludeFromNutrition } : {}) }, line.optional),
-              optional: line.optional,
-            }
-            : null;
-        })
-        .filter((x): x is NonNullable<typeof x> => x !== null);
-      // A line that is still wanted keeps its row (id and everything the text
-      // cannot say: aisle, optional, a repointed catalog key), with the amount
-      // and group the call gave. Its id is what a planned meal's pick, a step's
-      // onlyWhen and a one-off replacement point at, so a rewrite that gave
-      // every line a new one silently dropped them all. Matched on the same key
-      // the add paths dedupe on, so an edited quantity still counts as the line.
-      const unclaimed = [...current().ingredients];
-      const kept = made.map(({ row: line, optional }) => {
-        const key = recipeUtils.ingredientDedupeKey(line);
-        const at = unclaimed.findIndex(old => recipeUtils.ingredientDedupeKey(old) === key);
-        if (at < 0) return line;
-        const [old] = unclaimed.splice(at, 1);
-        return withOptional({ ...old, quantity: line.quantity, choiceGroup: line.choiceGroup, ...(line.excludeFromNutrition !== undefined ? { excludeFromNutrition: line.excludeFromNutrition } : {}) }, optional);
-      });
-      store().bulkRemoveIngredients(id, current().ingredients.map(i => i.id));
-      if (kept.length > 0) store().addStructuredIngredients(id, kept);
-    }
     if (f.steps !== undefined) {
       // A step whose text is unchanged keeps its id, so a cook question filed
       // under it (`CookQuestion.stepId`) and its timer and note survive an edit
@@ -2926,6 +2902,47 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           placements: new Map(),
         });
       }
+    }
+    // After the used recipes, so a mixed either/or (a line and a used recipe
+    // sharing a label) has both halves in place when the lines are written:
+    // written first, the line's label looked like a lone option and was cleared.
+    if (f.ingredients !== undefined) {
+      // `optional` is written only when true (RecipeIngredient.optional), so a
+      // false takes the key off rather than storing it.
+      const withOptional = <T extends { optional?: boolean }>(row: T, given: boolean | undefined): T => {
+        if (given === undefined) return row;
+        const { optional: _was, ...rest } = row;
+        return (given ? { ...rest, optional: true } : rest) as T;
+      };
+      const made = f.ingredients
+        .map(line => {
+          const m = recipeUtils.makeIngredient(line.text, line.section?.trim() || null);
+          // `excludeFromNutrition` and `optional` ride along only when the call
+          // named them, so a rewrite that did not mention one leaves a kept
+          // line's answer alone.
+          return m
+            ? {
+              row: withOptional({ ...m, choiceGroup: recipeUtils.cleanChoiceGroup(line.alternativeGroup), ...(line.excludeFromNutrition !== undefined ? { excludeFromNutrition: line.excludeFromNutrition } : {}) }, line.optional),
+              optional: line.optional,
+            }
+            : null;
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+      // A line that is still wanted keeps its row (id and everything the text
+      // cannot say: aisle, optional, a repointed catalog key), with the amount
+      // and group the call gave. Its id is what a planned meal's pick, a step's
+      // onlyWhen and a one-off replacement point at, so a rewrite that gave
+      // every line a new one silently dropped them all. Matched on the same key
+      // the add paths dedupe on, so an edited quantity still counts as the line.
+      const unclaimed = [...current().ingredients];
+      const kept = made.map(({ row: line, optional }) => {
+        const key = recipeUtils.ingredientDedupeKey(line);
+        const at = unclaimed.findIndex(old => recipeUtils.ingredientDedupeKey(old) === key);
+        if (at < 0) return line;
+        const [old] = unclaimed.splice(at, 1);
+        return withOptional({ ...old, quantity: line.quantity, choiceGroup: line.choiceGroup, ...(line.excludeFromNutrition !== undefined ? { excludeFromNutrition: line.excludeFromNutrition } : {}) }, optional);
+      });
+      store().replaceIngredients(id, kept);
     }
     if (f.prepTasks !== undefined) {
       for (const p of current().prepTasks) store().removePrepTask(id, p.id);
@@ -4904,7 +4921,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const bookTitle = patch.cookbook === undefined ? undefined : patch.cookbook?.trim() || null;
       const targetBook = bookTitle === undefined
         ? (recipe.cookbookId ? db.dbGetAllCookbooks().find(c => c.id === recipe.cookbookId) ?? null : null)
-        : bookTitle === null ? null : findCookbook(bookTitle);
+        : bookTitle === null ? null : findCookbook(bookTitle, recipe.cookbookId);
       const finalName = renamed?.name ?? recipe.name;
       const movingOrRenaming = renamed !== null || (bookTitle !== undefined && (targetBook?.id ?? null) !== recipe.cookbookId);
       // A book named by a title nobody has yet is made by this edit, so it is empty.
