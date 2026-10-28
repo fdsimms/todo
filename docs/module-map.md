@@ -536,6 +536,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/shakeDetect.ts` — ShakeSample, SHAKE_UPDATE_INTERVAL_MS, SHAKE_THRESHOLD_G, SHAKE_JOLTS_REQUIRED, SHAKE_WINDOW_MS, SHAKE_COOLDOWN_MS, SHAKE_ARM_DELAY_MS, ShakeState, createShakeState, armShakeState, +3 more
 - `src/utils/shareText.ts` — buildRecipeShareText, unscaledNoteFor, servingsLineFor, IngredientPrintSection, buildIngredientSections, buildIngredientsText, buildGroceryListShareText, buildGroceryListText, buildWeekPlanShareText
 - `src/utils/sharedRecipeLinks.ts` — SHARED_LINK_QUEUE_CAP, mergeSharedLinks, parseSharedLinkQueue, serializeSharedLinkQueue, sharedLinkLabel
+- `src/utils/sharedTaskImages.ts` — listSharedTaskImages, readSharedTaskImage, discardSharedTaskImage
 - `src/utils/sheetModal.ts` — SheetVisibilityStep, nextSheetVisibility, PresentationLevel, createPresentationLevel, PresentationLevelContext, subscribePresentation, canHideSheet, beginDismissal, endDismissal, canShowSheet, +14 more
 - `src/utils/sheetMotion.ts` — SHEET_TRAVEL_SLACK, sheetTravel
 - `src/utils/shelfLabel.ts` — ScanBox, ScanText, printedPricesIn, priceNearBarcode
@@ -600,6 +601,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskFiles.ts` — TASK_FILE_FOLDER, TASK_FILE_PREFIX, MAX_TASK_ATTACHMENTS, MAX_TASK_FILE_BYTES, isTaskFileName, taskFileNamesInUse, unreferencedTaskFiles, taskFileProblem, taskAttachmentsOnDevice, attachmentBadge, +1 more
 - `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, orderTravelRowsByTime, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, LATER_STACK_FOLD_MIN, +25 more
 - `src/utils/taskHome.ts` — TaskHome, taskHomeFor
+- `src/utils/taskImport.ts` — ImportCandidate, candidatesFromExtracted, candidatesToAdd, draftFromCandidate
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances, taskForTitleKey
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, COUNTDOWN_LADDER, +12 more
 - `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, dailyRepeatBlocker, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, pullForwardChoice
@@ -751,6 +753,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useSavedMealsStore.ts` — useSavedMealsStore
 - `src/store/useScreenTimeStore.ts` — useScreenTimeStore, useScreenTimeSync
 - `src/store/useSettingsStore.ts` — PatchNoteQaStatus, WeekStart, FabHand, MapsApp, MealsOnToday, NewTaskDefaults, DEFAULT_REMINDER_LEAD_OPTIONS, useSettingsStore
+- `src/store/useSharedImageStore.ts` — useSharedImageStore
 - `src/store/useSharedLinkStore.ts` — useSharedLinkStore
 - `src/store/useShieldReleaseStore.ts` — useShieldReleaseStore
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
@@ -841,6 +844,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useScrollToTopVisibility.ts` — useScrollToTopVisibility
 - `src/hooks/useSearchActions.ts` — SearchActionsView, useSearchActions, useSearchActionReceipts
 - `src/hooks/useSharedRecipeLinks.ts` — useSharedRecipeLinks
+- `src/hooks/useSharedTaskImages.ts` — useSharedTaskImages
 - `src/hooks/useSheetHiddenOffset.ts` — useSheetHiddenOffset
 - `src/hooks/useSheetMotion.ts` — useSheetMotion
 - `src/hooks/useSheetMount.ts` — useSheetMount
@@ -876,7 +880,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/services`
 
-- `src/services/aiSuggestions.ts` — forgetToolChoiceRefusals, describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, +28 more
+- `src/services/aiSuggestions.ts` — forgetToolChoiceRefusals, describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, +31 more
 - `src/services/foodSearch.ts` — FoodSearchHit, searchFoods, fetchFoodPortions, describeFoodSearchError, foodSearchErrorSettingsEntryId
 - `src/services/geocode.ts` — GeocodedPlace, geocodePlace
 - `src/services/onDeviceModel.ts` — isOnDeviceReady, onDeviceAvailability, describeOnDeviceAvailability, isOnDeviceErrorMessage, describeOnDeviceError, runOnDevice

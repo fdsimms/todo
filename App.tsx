@@ -33,6 +33,7 @@ import { quickActionScreenList } from './src/utils/screenLinks';
 import { useNavMenuOptions } from './src/hooks/useNavMenuOptions';
 import { useWidgetSync } from './src/utils/widgetSync';
 import { useSharedRecipeLinks } from './src/hooks/useSharedRecipeLinks';
+import { useSharedTaskImages } from './src/hooks/useSharedTaskImages';
 import { useReachOutPrompt } from './src/hooks/useReachOutPrompt';
 import { useFocusPlanReconcile, useFocusStepDoneHaptic } from './src/hooks/useFocusSession';
 import { useStepTimerStore } from './src/store/useStepTimerStore';
@@ -426,6 +427,7 @@ function AppRoot() {
   // deep links above: the queue is persisted to the settings table, so the DB
   // has to exist before the first drain writes to it.
   useSharedRecipeLinks();
+  useSharedTaskImages();
 
   // Keeps a running task/recipe timer's Lock Screen Live Activity in sync.
   useTimerLiveActivitySync();

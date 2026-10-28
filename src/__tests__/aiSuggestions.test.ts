@@ -12,6 +12,8 @@ import {
   suggestRecipeGroceries,
   extractRecipe,
   extractCalendarEvents,
+  extractTasks,
+  parseExtractedTasks,
   extractReceipt,
   suggestMealIdeas,
   draftMealRecipe,
@@ -43,6 +45,7 @@ const TEST_AI_FEATURE_CONFIG = {
   substitutes: { enabled: true, model: 'claude-haiku-5-5' },
   receiptImport: { enabled: true, model: 'claude-sonnet-5-5' },
   calendarImport: { enabled: true, model: 'claude-sonnet-5-5' },
+  taskImport: { enabled: true, model: 'claude-sonnet-5-5' },
   nutritionLabelPhoto: { enabled: true, model: 'claude-sonnet-5-5' },
   recipeNutritionEstimate: { enabled: true, model: 'claude-sonnet-5-5' },
   nutritionEstimate: { enabled: true, model: 'claude-sonnet-5-5' } as { enabled: boolean; model: string; webSearch?: boolean },
@@ -2443,6 +2446,67 @@ describe('extractCalendarEvents', () => {
     }));
     const events = await extractCalendarEvents('Dentist Feb 30. Flight Feb 29 2028.');
     expect(events.map(e => e.date)).toEqual([null, '2028-02-29']);
+  });
+});
+
+describe('extractTasks', () => {
+  it('reads tasks, refusing a date that does not exist', async () => {
+    mockFetchOnce(toolUseResponse('extract_tasks', {
+      tasks: [
+        { title: 'Call the dentist', date: '2026-10-30', notes: '555-0100' },
+        { title: 'Pay the invoice', date: '2026-02-30', notes: '' },
+      ],
+    }));
+    const tasks = await extractTasks('Call the dentist Fri. Pay the invoice.');
+    expect(tasks).toEqual([
+      { title: 'Call the dentist', date: '2026-10-30', notes: '555-0100' },
+      { title: 'Pay the invoice', date: null, notes: '' },
+    ]);
+  });
+
+  it('makes no request for an empty photo or empty text', async () => {
+    const spy = jest.spyOn(global, 'fetch');
+    await expect(extractTasks({ base64: '', mediaType: 'image/png' })).resolves.toEqual([]);
+    await expect(extractTasks('   ')).resolves.toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('sends the photo and today\'s logical date', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_tasks', { tasks: [] }));
+    await extractTasks({ base64: 'AAAA', mediaType: 'image/png' });
+    const body = JSON.parse((spy.mock.calls[0]?.[1] as RequestInit).body as string);
+    const content = body.messages[0].content as { type: string; text?: string }[];
+    expect(content[0].type).toBe('image');
+    expect(content[1].text).toMatch(/Today is \d{4}-\d{2}-\d{2}/);
+  });
+
+  it('throws when the feature is switched off', async () => {
+    mockSettings.aiFeatureConfig.taskImport.enabled = false;
+    await expect(extractTasks('Buy milk')).rejects.toThrow('AI feature disabled');
+  });
+});
+
+describe('parseExtractedTasks', () => {
+  it('drops blank titles and a repeat of the same title on the same day', () => {
+    expect(parseExtractedTasks([
+      { title: '  ', date: '', notes: '' },
+      { title: 'Call Sam', date: '2026-10-30', notes: '' },
+      { title: 'call sam', date: '2026-10-30', notes: 'again' },
+      { title: 'Call Sam', date: '2026-11-02', notes: '' },
+    ]).map(t => [t.title, t.date])).toEqual([
+      ['Call Sam', '2026-10-30'],
+      ['Call Sam', '2026-11-02'],
+    ]);
+  });
+
+  it('answers an empty list for anything that is not an array', () => {
+    expect(parseExtractedTasks(undefined)).toEqual([]);
+    expect(parseExtractedTasks('tasks')).toEqual([]);
+  });
+
+  it('caps the list at 20', () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ title: `Task ${i}`, date: '', notes: '' }));
+    expect(parseExtractedTasks(many)).toHaveLength(20);
   });
 });
 

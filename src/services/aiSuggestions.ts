@@ -2625,6 +2625,138 @@ function parseExtractedCalendarEvents(raw: unknown): ExtractedCalendarEvent[] {
   return result.slice(0, MAX_CALENDAR_EVENTS);
 }
 
+const MAX_IMPORTED_TASKS = 20;
+const MAX_TASK_IMPORT_TEXT_CHARS = 6_000;
+const MAX_IMPORTED_TASK_NOTES = 500;
+
+export interface ExtractedTask {
+  title: string;
+  /** YYYY-MM-DD, or null when the source gave no day. */
+  date: string | null;
+  /** One short line of context (who, where, a number to call). Empty string when there is none. */
+  notes: string;
+}
+
+/**
+ * Reads the things a person has to do out of a screenshot or photo of a
+ * message thread, an email, a note or a hand-written list, or out of pasted
+ * text of the same.
+ *
+ * Same split as `extractCalendarEvents`: a photo and a paste resolve to one
+ * prompt shape and one tool schema, and an empty source makes no request. It
+ * returns candidates and nothing else. `TaskImportSheet` shows every one with a
+ * tick, and nothing is written until the person adds them.
+ */
+export async function extractTasks(source: string | RecipeImage): Promise<ExtractedTask[]> {
+  const { apiKey, model } = requireFeature('taskImport');
+
+  const image = typeof source === 'string' ? null : source;
+  const text = typeof source === 'string' ? source.trim().slice(0, MAX_TASK_IMPORT_TEXT_CHARS) : '';
+  if (image ? !image.base64 : !text) return [];
+
+  // A "by Friday" or "Oct 30" with no year has to be resolved against the
+  // person's own day, so it goes through the logical today like the calendar
+  // reader does.
+  const today = dayKeyOf(getLogicalToday(useSettingsStore.getState().dayResetTime));
+
+  const taskRules = [
+    'Extract each distinct thing the reader has to do, as a task. Skip things other people said they would do, things already finished, and anything that is only information.',
+    'Give each task a short, concrete title that starts with a verb ("Call the dentist to reschedule", "Send Maya the budget spreadsheet"), not the source\'s wording verbatim when that is a whole sentence of chat.',
+    `Give its day as YYYY-MM-DD only when the source states or clearly implies one ("Friday", "by the 30th", "tomorrow"). Today is ${today}: resolve a day with no year to the soonest such day on or after today. Leave the day empty when none is given; never invent one.`,
+    'Put anything worth keeping in one short notes line: a name, a place, a phone number, an amount. Empty string when there is nothing beyond the title.',
+  ];
+  const prompt = image
+    ? [
+        'This is a screenshot or photo of something that holds tasks: a message thread, an email, a note, a hand-written or typed to-do list, or a page of notes. Read it and list every task in it, in the order they appear.',
+        ...taskRules,
+        'If the image is too blurry, dark or cut off to read, or holds no tasks at all, return an empty list rather than guessing.',
+      ].join('\n\n')
+    : [
+        'Read this pasted text, which may be a message, an email, notes or a list, and list every task in it, in the order they appear.',
+        ...taskRules,
+        'If it holds no tasks, return an empty list rather than guessing.',
+        `Text:\n${text}`,
+      ].join('\n\n');
+
+  const content = image
+    ? [
+        { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } },
+        { type: 'text', text: prompt },
+      ]
+    : prompt;
+
+  const data = await callAnthropic({
+    max_tokens: 2000,
+    tools: [{
+      name: 'extract_tasks',
+      description: 'List every task the reader has to do, found in this screenshot, photo or text',
+      input_schema: {
+        type: 'object',
+        properties: {
+          tasks: {
+            type: 'array',
+            description: 'Every task found, in the order they appear.',
+            items: {
+              type: 'object',
+              properties: {
+                title: {
+                  type: 'string',
+                  description: `A short, concrete task title starting with a verb. Under ${TITLE_MAX_LENGTH} characters.`,
+                },
+                date: {
+                  type: 'string',
+                  description: 'The day it is due, as YYYY-MM-DD. Empty string when the source gives no day.',
+                },
+                notes: {
+                  type: 'string',
+                  description: 'One short line of useful detail (a name, place, number). Empty string if there is none.',
+                },
+              },
+              required: ['title', 'date', 'notes'],
+            },
+          },
+        },
+        required: ['tasks'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'extract_tasks' },
+    messages: [{ role: 'user', content }],
+  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { tasks?: unknown } | undefined;
+  if (!input) throw new Error('No suggestions returned');
+
+  return parseExtractedTasks(input.tasks);
+}
+
+/**
+ * Validates the model's task array into `ExtractedTask`s.
+ *
+ * A repeat of the same title on the same day collapses to the first, since a
+ * thread that restates a request would otherwise offer it twice. A title alone
+ * is not the key: "Call Sam" on two different days is two tasks.
+ */
+export function parseExtractedTasks(raw: unknown): ExtractedTask[] {
+  if (!Array.isArray(raw)) return [];
+  const result: ExtractedTask[] = [];
+  const seen = new Set<string>();
+  for (const task of raw) {
+    const title = typeof task?.title === 'string' ? task.title.trim().slice(0, TITLE_MAX_LENGTH) : '';
+    if (!title) continue;
+    const date = typeof task.date === 'string' ? parseModelDayKey(task.date) : null;
+    const key = `${title.toLowerCase()}|${date ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      title,
+      date,
+      notes: typeof task.notes === 'string' ? task.notes.trim().slice(0, MAX_IMPORTED_TASK_NOTES) : '',
+    });
+  }
+  return result.slice(0, MAX_IMPORTED_TASKS);
+}
+
 /**
  * The nutrients a model-made estimate (a described meal, a whole recipe) must
  * state, shared so the two can't drift apart: the minerals were once added to

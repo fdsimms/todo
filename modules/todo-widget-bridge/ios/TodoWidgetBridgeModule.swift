@@ -22,6 +22,10 @@ private let pendingAddTasksFileName = "widget_pending_add_tasks.json"
 // on what a podspec costs a second target. The name is the widget's by history;
 // the job is the container's.
 private let sharedLinksFileName = "shared_recipe_links.json"
+// Likewise, the folder SharedTaskImageQueue.swift in the share extension saves
+// screenshots into. Files here are listed, read and deleted one at a time rather
+// than drained, since the file is the only copy until a person has acted on it.
+private let sharedTaskImagesDirectoryName = "shared_task_images"
 // Both matching MarkDisposedIntent.swift — same target, file-scoped `private`,
 // same split-copy convention as the two above.
 //
@@ -231,6 +235,24 @@ private func timerActivityMatches(_ attributes: TimerActivityAttributes, _ run: 
     return sameInstant(attributes.targetEndAt, ms: targetEndMs)
   }
   return true
+}
+
+// The folder of shared screenshots in the App Group container, or nil when the
+// group isn't reachable.
+private func sharedTaskImagesDirectoryURL() -> URL? {
+  FileManager.default
+    .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
+    .appendingPathComponent("Library/Application Support", isDirectory: true)
+    .appendingPathComponent(sharedTaskImagesDirectoryName, isDirectory: true)
+}
+
+// One file in that folder, by name. A name that isn't a bare file name is
+// refused: the name comes from JS, and "../" must not be able to reach past the
+// folder.
+private func sharedTaskImageURL(named name: String) -> URL? {
+  guard !name.isEmpty, name == (name as NSString).lastPathComponent, !name.hasPrefix(".")
+  else { return nil }
+  return sharedTaskImagesDirectoryURL()?.appendingPathComponent(name)
 }
 
 public class TodoWidgetBridgeModule: Module {
@@ -771,6 +793,54 @@ public class TodoWidgetBridgeModule: Module {
         try? FileManager.default.removeItem(at: fileURL)
       }
       return urls
+    }
+
+    // The screenshots and photos the share extension saved to be read for tasks,
+    // oldest first. Unlike drainSharedLinks this leaves the files in place: the
+    // app has to keep them until a person taps to read one (the read is an
+    // Anthropic call billed to them) or discards it, so deleting on read would
+    // lose a share made before the app next opened. See
+    // src/hooks/useSharedTaskImages.ts.
+    AsyncFunction("listSharedImages") { () -> [String] in
+      var names: [String] = []
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let directoryURL = sharedTaskImagesDirectoryURL() else { return }
+        let keys: [URLResourceKey] = [.creationDateKey]
+        guard let files = try? FileManager.default.contentsOfDirectory(
+          at: directoryURL, includingPropertiesForKeys: keys
+        ) else { return }
+        names = files
+          .filter { $0.pathExtension.lowercased() == "jpg" }
+          .sorted { a, b in
+            let da = (try? a.resourceValues(forKeys: Set(keys)).creationDate) ?? .distantPast
+            let db = (try? b.resourceValues(forKeys: Set(keys)).creationDate) ?? .distantPast
+            return da < db
+          }
+          .map { $0.lastPathComponent }
+      }
+      return names
+    }
+
+    // One saved image as base64, or nil when it is gone (already discarded, or
+    // pruned by the extension to make room for a newer one).
+    AsyncFunction("readSharedImage") { (name: String) -> String? in
+      var encoded: String?
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let fileURL = sharedTaskImageURL(named: name),
+              let data = try? Data(contentsOf: fileURL)
+        else { return }
+        encoded = data.base64EncodedString()
+      }
+      return encoded
+    }
+
+    AsyncFunction("deleteSharedImage") { (name: String) -> Bool in
+      var removed = false
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let fileURL = sharedTaskImageURL(named: name) else { return }
+        removed = (try? FileManager.default.removeItem(at: fileURL)) != nil
+      }
+      return removed
     }
 
     // ─── Live Activities (running timers) ─────────────────────────────────

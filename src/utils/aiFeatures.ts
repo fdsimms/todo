@@ -7,13 +7,13 @@ export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
   | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport'
   | 'cookHelp' | 'nutritionEstimate' | 'nutritionLabelPhoto' | 'backfillSuggestions'
-  | 'recipeNutritionEstimate' | 'workoutDraft' | 'scanItemType';
+  | 'recipeNutritionEstimate' | 'workoutDraft' | 'scanItemType' | 'taskImport';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
   'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
   'cookHelp', 'nutritionEstimate', 'nutritionLabelPhoto', 'backfillSuggestions',
-  'recipeNutritionEstimate', 'workoutDraft', 'scanItemType',
+  'recipeNutritionEstimate', 'workoutDraft', 'scanItemType', 'taskImport',
 ];
 
 export type AiModelId = 'claude-haiku-5-5' | 'claude-sonnet-5-5' | 'claude-opus-5-5';
@@ -159,6 +159,12 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     simple: true,
   },
   {
+    id: 'taskImport',
+    label: 'Import tasks from a photo',
+    hint: 'Reads the tasks out of a screenshot or photo of a message, note or list, for you to check before they’re added',
+    simple: true,
+  },
+  {
     id: 'nutritionLabelPhoto',
     label: 'Read a nutrition label from a photo',
     // Reached from `NutritionPanelSheet`'s own "Read from a photo" button, only
@@ -266,6 +272,12 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // over the default: a misread date or address is expensive to have
     // wrong, and the cost difference per import is negligible.
     calendarImport: { enabled: false, model: 'claude-sonnet-5-5' },
+    // Off by default for the reason calendarImport is: a screenshot of a
+    // message thread or an email is somebody else's words as often as the
+    // user's own, so sending one is an opt-in. Sonnet because the page is
+    // read, not typed: what counts as a task, and which date a casual "by
+    // Friday" means, is judgment, and nothing is saved before the review step.
+    taskImport: { enabled: false, model: 'claude-sonnet-5-5' },
     // Sonnet for the reason receiptImport and calendarImport both picked it over
     // the default: the cost difference per question is a fraction of a cent, and
     // the expensive failure here is a confident wrong answer about whether
