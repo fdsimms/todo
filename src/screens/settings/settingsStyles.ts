@@ -80,8 +80,14 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   pillGroupHeading: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
-    marginTop: spacing.xs, marginBottom: spacing.sm, paddingHorizontal: spacing.md,
+    marginTop: spacing.md, marginBottom: spacing.sm, paddingHorizontal: spacing.md,
   },
+  // The pills under one of those headings: inset to the heading's own edge so
+  // the two line up, with room below before the next group or row.
+  pillGroupRowUnderHeading: { paddingHorizontal: spacing.md, paddingBottom: spacing.xs },
+  // Wraps the whole run of headed pill groups, so the last one clears whatever
+  // follows it (the next row's divider) by as much as the groups clear each other.
+  pillGroupStack: { paddingBottom: spacing.md },
   // A stepper paired with its own unit pills, sitting under a `tight` row —
   // the unit pills stay one group and wrap together rather than splitting off
   // on their own at a narrow width (same idiom as ProjectEditor's cadenceRow).
