@@ -1217,9 +1217,25 @@ export interface GroceryWriteResult {
 export function addGroceryItem(
   replica: Replica,
   name: string,
-  opts?: { quantity?: string | null; note?: string | null; listId?: string | null; inCart?: boolean },
+  opts?: { quantity?: string | null; note?: string | null; listId?: string | null; inCart?: boolean; catalogOnly?: boolean },
 ): GroceryWriteResult {
-  const { inCart, ...addOpts } = opts ?? {};
+  const { inCart, catalogOnly, ...addOpts } = opts ?? {};
+  // A catalog row on no list, for something the person wants known (a kind of
+  // salt) without it being something to buy. Not the pantry add either, which
+  // would say they have it.
+  if (catalogOnly) {
+    if (inCart) throw new Error('catalogOnly puts nothing on a list, so it cannot be combined with inCart.');
+    if (addOpts.quantity || addOpts.note || addOpts.listId) {
+      throw new Error('catalogOnly puts nothing on a list, so quantity, note and list have nothing to attach to. Leave them out, or leave catalogOnly out to put the item on a list.');
+    }
+    const { item, isNew } = replica.createCatalogItem(name);
+    return {
+      item: serializeWithHome(replica, item, null),
+      outcome: isNew
+        ? `Added "${item.name}" to the catalog, filed under ${item.aisle}. It is on no list and not marked as in the pantry.`
+        : `"${item.name}" was already in the catalog, so nothing changed.`,
+    };
+  }
   const { item, isNew, wasOnList } = replica.addGroceryItem(name, addOpts);
   // Something that came home without being listed: the same two writes the
   // app's "Add to cart" makes (`addToCartMany`), so the trip can record it and
