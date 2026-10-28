@@ -1155,9 +1155,12 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // the freezer and purchase history, and `openedAt` is none of the three, so
     // the sheet recomputing its rows live still lands on the same set.
     set({ cookRecap: cooked ? cookRecapFor(next) : null });
-    // Ticking the meal is finishing the cook, so its timer ends with it (see
+    // Ticking the meal is finishing the cook, so its timers end with it (see
     // finishCookForRecipe). Un-ticking never restarts one.
-    if (cooked && next.recipeId) useRecipeStore.getState().stopCookTimer(next.recipeId);
+    if (cooked && next.recipeId) {
+      useRecipeStore.getState().stopCookTimer(next.recipeId);
+      useRecipeStore.getState().stopPrepTimer(next.recipeId);
+    }
     if (cooked) markConsumedOpened(next);
     // Ticking the meal ticks its task, and un-ticking un-ticks it. The
     // ping-pong this would otherwise cause is broken by the guard above plus
@@ -1246,7 +1249,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // left going kept announcing a dish that was already on the table. A no-op
     // when nothing is running or banked, and the Live Activity's Done already
     // stops it first (deepLinks), so the elapsed run is banked exactly once.
+    // Snapshotted first, so undoing "Cooked X" puts a still-running cook back
+    // rather than leaving the timer stopped and its minutes logged.
+    const timers = useRecipeStore.getState().cookTimerSnapshot(recipeId);
+    const restoreTimers = () => { if (timers) useRecipeStore.getState().restoreCookTimers(recipeId, timers); };
     useRecipeStore.getState().stopCookTimer(recipeId);
+    // The prep timer too, which Start cooking paused rather than stopped: its
+    // time belongs to this cooking, and left banked the next one resumed it.
+    useRecipeStore.getState().stopPrepTimer(recipeId);
     const dayKey = dayKeyOf(getLogicalToday());
     // Read straight from SQLite rather than from `entries`, which holds only
     // whatever window the plan screen last asked for and is empty until someone
@@ -1263,7 +1273,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         get().setLastAction({
           label: `Cooked “${titleForEntry(entry, recipeIndex(recipes))}”`,
           redo: () => get().finishCookForRecipe(recipeId),
-          undo,
+          undo: () => { undo(); restoreTimers(); },
         });
       }
       return;
@@ -1279,7 +1289,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     get().setLastAction({
       label: `Cooked “${recipe.name}”`,
       redo: () => get().finishCookForRecipe(recipeId),
-      undo: () => useRecipeStore.getState().restoreCookStats(recipeId, before),
+      undo: () => { useRecipeStore.getState().restoreCookStats(recipeId, before); restoreTimers(); },
     });
   },
 

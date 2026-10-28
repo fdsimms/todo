@@ -10,7 +10,7 @@ import { withAgentLedger, type AgentLedgerEntry } from '../agentLedger';
 import {
   copyRoutineVersionOut, deleteGym, deleteProgram, deleteRoutine, deleteWorkout, listWorkouts, mergeRoutinesOut, programHistoryOut, saveGym,
   logWorkout, nextWorkout, restoreProgramVersionOut, restoreRoutineVersionOut, routineHistoryOut, routineItemsFrom, saveProgram, saveRoutine,
-  updateWorkout, scaleWorkoutWeights,
+  updateWorkout, scaleWorkoutWeights, createExercise, updateExercise,
 } from '../workoutTools';
 import { createTask, getTask, updateTask } from '../tools';
 
@@ -40,6 +40,49 @@ describe('the workout write tools', () => {
     replica.refresh();
     entries = [];
     ledgered = withAgentLedger(replica, e => { entries.push(...e); });
+  });
+
+  describe('create_exercise', () => {
+    it('makes a custom exercise that a workout can then log, and records it', () => {
+      const { exercise } = createExercise(ledgered, {
+        name: 'Tib bar raise', kind: 'weight_reps', equipment: 'other', primaryMuscles: [], otherNames: ['Tibialis raise'],
+      });
+      expect(exercise).toMatchObject({ name: 'Tib bar raise', custom: true, otherNames: ['Tibialis raise'] });
+      expect(entries).toEqual([expect.objectContaining({ action: 'created', subject: 'exercise', title: 'Tib bar raise' })]);
+      const { workout } = logWorkout(replica, {
+        startedAt: new Date(2026, 9, 7, 18).toISOString(), exercises: [{ exerciseId: exercise.id, sets: [{ weightKg: 30, reps: 10 }] }],
+      }, new Date(2026, 9, 8));
+      expect(workout.exercises[0].name).toBe('Tib bar raise');
+    });
+
+    it('corrects and archives one it made, and records each change', () => {
+      const { exercise } = createExercise(replica, { name: 'Tib bar raise', kind: 'weight_reps', equipment: 'other', primaryMuscles: [] });
+      const changed = updateExercise(ledgered, exercise.id, { name: 'Tibialis raise', equipment: 'machine', notes: 'Toes up' }).exercise;
+      expect(changed).toMatchObject({ name: 'Tibialis raise', equipment: 'machine', notes: 'Toes up', custom: true });
+      expect(updateExercise(ledgered, exercise.id, { archived: true }).exercise.archived).toBe(true);
+      expect(entries).toEqual([
+        expect.objectContaining({ action: 'edited', subject: 'exercise', title: 'Tibialis raise' }),
+        expect.objectContaining({ action: 'edited', subject: 'exercise', title: 'Tibialis raise' }),
+      ]);
+    });
+
+    it('keeps a built-in\'s movement and a logged exercise\'s kind, and refuses an empty change', () => {
+      expect(() => updateExercise(replica, BENCH, { equipment: 'machine' })).toThrow(/built-in exercise keeps/);
+      expect(updateExercise(replica, BENCH, { notes: 'Pause on the chest' }).exercise).toMatchObject({ notes: 'Pause on the chest', changedByYou: true });
+      const { exercise } = createExercise(replica, { name: 'Tib bar raise', kind: 'weight_reps', equipment: 'other', primaryMuscles: [] });
+      logWorkout(replica, {
+        startedAt: new Date(2026, 9, 7, 18).toISOString(), exercises: [{ exerciseId: exercise.id, sets: [{ weightKg: 10, reps: 15 }] }],
+      }, new Date(2026, 9, 8));
+      expect(() => updateExercise(replica, exercise.id, { kind: 'duration' })).toThrow(/sets logged/);
+      expect(() => updateExercise(replica, exercise.id, {})).toThrow(/Nothing to change/);
+      expect(() => updateExercise(replica, 'gone', { notes: 'x' })).toThrow(/No exercise with id gone/);
+    });
+
+    it('refuses a name another exercise already goes by', () => {
+      createExercise(replica, { name: 'Tib bar raise', kind: 'weight_reps', equipment: 'barbell', primaryMuscles: [] });
+      expect(() => createExercise(replica, { name: 'tib bar raise', kind: 'weight_reps', equipment: 'barbell', primaryMuscles: [] }))
+        .toThrow(/already taken/);
+    });
   });
 
   describe('save_gym', () => {
@@ -318,7 +361,7 @@ describe('the workout write tools', () => {
       const started = saveProgram(ledgered, {
         id: program.id, trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 105 }], startNextCycle: true,
       }, new Date(2026, 9, 9, 9));
-      expect(started.note).toMatch(/starts again from this moment/);
+      expect(started.note).toMatch(/starts again with the new cycle/);
       expect(started.program.cycleDone).toBeUndefined();
       expect(started.program).toMatchObject({ week: 1, workoutsDone: 0, trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 105 }] });
       expect(replica.workoutPrograms()[0].startedAt).toBe(new Date(2026, 9, 9, 9).toISOString());
@@ -328,6 +371,22 @@ describe('the workout write tools', () => {
       expect(after.program?.cycleDone).toBeUndefined();
       expect(after.exercises[0].proposal?.sets[0].weightKg).toBe(67.5);
       expect(entries).toEqual([expect.objectContaining({ action: 'edited', subject: 'program', title: 'Wave' })]);
+    });
+
+    it('counts from the new cycle\'s first workout when one is already done', () => {
+      const a = saveRoutine(replica, { name: 'Squat day', exercises: [{ exerciseId: 'lib:back-squat', sets: [{ repsMin: 5, repsMax: 5 }] }] }).routine;
+      const { program } = saveProgram(replica, {
+        name: 'Wave', routineIds: [a.id], scheme: 'percent', weeks: 1, trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 100 }],
+      });
+      const sets = [{ exerciseId: 'lib:back-squat', sets: [{ weightKg: 65, reps: 5 }] }];
+      logWorkout(replica, { routineId: a.id, startedAt: new Date(2026, 9, 6, 18).toISOString(), exercises: sets }, new Date(2026, 9, 8, 20));
+      const firstOfNext = new Date(2026, 9, 8, 18).toISOString();
+      logWorkout(replica, { routineId: a.id, startedAt: firstOfNext, exercises: sets }, new Date(2026, 9, 8, 20));
+      expect(nextWorkout(replica, { programId: program.id }).program).toMatchObject({ cycleDone: true });
+
+      const started = saveProgram(replica, { id: program.id, startNextCycle: true }, new Date(2026, 9, 9, 9));
+      expect(replica.workoutPrograms()[0].startedAt).toBe(firstOfNext);
+      expect(started.program).toMatchObject({ workoutsDone: 1 });
     });
 
     it('leaves the count alone without it, and needs a program that exists', () => {
@@ -462,6 +521,29 @@ describe('the workout write tools', () => {
       }, now);
       expect(replica.workoutSession(workout.id)).toMatchObject({ healthWritePending: true, healthWorkoutId: null });
       expect(workout.inAppleHealth).toBeUndefined();
+      // Said, so the agent can tell the person it reaches Health when the phone next opens.
+      expect(workout.pendingAppleHealth).toBe(true);
+    });
+
+    it('refuses a second workout starting in the same minute, naming the first', () => {
+      const input = { startedAt: new Date(2026, 9, 7, 18).toISOString(), exercises: [{ exerciseId: BENCH, sets: [{ reps: 5 }] }] };
+      const { workout } = logWorkout(ledgered, input, now);
+      expect(() => logWorkout(ledgered, { ...input, startedAt: new Date(2026, 9, 7, 18, 0, 40).toISOString() }, now))
+        .toThrow(new RegExp(`id ${workout.id}`));
+      expect(replica.workoutSessions('2026-10-07', '2026-10-07')).toHaveLength(1);
+    });
+
+    it('logs a superset as one, as save_routine says it', () => {
+      const { workout } = logWorkout(ledgered, {
+        startedAt: new Date(2026, 9, 7, 18).toISOString(),
+        exercises: [
+          { exerciseId: BENCH, sets: [{ reps: 8 }] },
+          { exerciseId: FLY, sets: [{ reps: 12 }], supersetWithPrevious: true },
+        ],
+      }, now);
+      const keys = replica.workoutSets(workout.id).map(st => st.supersetKey);
+      expect(keys[0]).not.toBeNull();
+      expect(keys).toEqual([keys[0], keys[0]]);
     });
 
     it('takes its title from the routine it followed', () => {
@@ -544,6 +626,30 @@ describe('the workout write tools', () => {
         exercises: [{ exerciseId: BENCH, sets: [{ weightKg: 85, reps: 8 }] }],
       });
       expect(replica.workoutSets(w.id)[0].completedAt).toBe(new Date(2026, 9, 6, 7, 20).toISOString());
+    });
+
+    it('keeps a set\'s note, RPE and kind when its sets are resent without them, and clears one sent as null', () => {
+      const w = logWorkout(ledgered, {
+        startedAt: new Date(2026, 9, 7, 18).toISOString(),
+        exercises: [{ exerciseId: BENCH, sets: [{ kind: 'warmup', weightKg: 40, reps: 10 }, { weightKg: 85, reps: 5, rpe: 8, note: 'left shoulder twinge' }] }],
+      }, new Date(2026, 9, 8)).workout;
+      updateWorkout(ledgered, w.id, { exercises: [{ exerciseId: BENCH, sets: [{ weightKg: 40, reps: 10 }, { weightKg: 87.5, reps: 5 }] }] });
+      expect(replica.workoutSets(w.id).map(st => [st.kind, st.weightKg, st.rpe, st.note])).toEqual([
+        ['warmup', 40, null, null],
+        ['working', 87.5, 8, 'left shoulder twinge'],
+      ]);
+      updateWorkout(ledgered, w.id, { exercises: [{ exerciseId: BENCH, sets: [{ weightKg: 40 }, { note: null, rpe: null }] }] });
+      expect(replica.workoutSets(w.id).map(st => [st.reps, st.weightKg, st.rpe, st.note])).toEqual([
+        [10, 40, null, null],
+        [5, 87.5, null, null],
+      ]);
+    });
+
+    it('moves a workout to a bare day at the time it started, not noon', () => {
+      const w = log();
+      const moved = updateWorkout(ledgered, w.id, { startedAt: '2026-10-06' }, new Date(2026, 9, 8)).workout;
+      expect(moved.startedAt).toBe(new Date(2026, 9, 6, 18).toISOString());
+      expect(moved.endedAt).toBe(new Date(2026, 9, 6, 18, 40).toISOString());
     });
 
     it('keeps an exercise\'s superset and a set\'s time when its sets are replaced', () => {

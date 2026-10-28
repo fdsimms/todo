@@ -450,3 +450,14 @@ describe('describeUnscaled', () => {
     expect(describeUnscaled(2, 1)).toBeNull();
   });
 });
+
+describe('scaleQuantity: a hyphenated mixed number', () => {
+  it('scales "1-1/2 cups" as one amount', () => {
+    expect(scaleQuantity('1-1/2 cups', 2).text).toBe('3 cups');
+    expect(scaleQuantity('1-1/4 cups', 0.5).text).toBe('5/8 cup');
+  });
+
+  it('drops a metric aside it can no longer vouch for', () => {
+    expect(scaleQuantity('200 g (7 oz)', 2).text).toBe('400 g');
+  });
+});

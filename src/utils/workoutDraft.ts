@@ -17,7 +17,7 @@
 //
 // The model call is `draftWorkoutFromText` in `src/services/aiSuggestions.ts`;
 // docs/arch/workouts.md ("Describing a workout") has the reasoning.
-import type { ExerciseKind, ProgressionScheme, RoutineSetTarget, WorkoutRoutineItem, WorkoutSetKind } from '../types';
+import type { Exercise, ExerciseKind, ProgressionScheme, RoutineSetTarget, WorkoutRoutineItem, WorkoutSetKind } from '../types';
 import type { ExerciseInput } from '../store/useWorkoutStore';
 import { MAX_ROUTINE_SETS, MAX_WARMUP_SETS, defaultTargets } from './workoutRoutine';
 import { REST_SECONDS_MAX, cleanWorkoutName, exerciseNameKey } from './workoutData';
@@ -25,12 +25,15 @@ import { MAX_WEIGHT_KG, unitToKg, type WeightUnit } from './weightLog';
 import {
   NEW_EXERCISE_PREFIX,
   guessEquipment,
+  heldInTwoDumbbells,
   inferExerciseKind,
   type ImportedSession,
   type ImportedSet,
   type NameResolution,
 } from './workoutCsv';
 import { generateId } from './id';
+import { onLogicalDay } from './clockTime';
+import { storedKgFromShown } from './dumbbellLoad';
 
 /** What a description is read as. A routine is a plan; a log is a workout that already happened. */
 export type DescribeMode = 'routine' | 'log';
@@ -215,7 +218,7 @@ const DISTANCE_KINDS: readonly ExerciseKind[] = ['distance', 'weight_distance'];
  * description with no sets for it gets the same three the editor gives an
  * exercise added by hand, rather than none.
  */
-function targetsFor(e: DraftExercise, kind: ExerciseKind, fallback: WeightUnit): RoutineSetTarget[] {
+function targetsFor(e: DraftExercise, kind: ExerciseKind, fallback: WeightUnit, halve = false): RoutineSetTarget[] {
   if (e.sets.length === 0) return defaultTargets(kind);
   const targets = e.sets.map((s): RoutineSetTarget => {
     const reps = REPS_KINDS.includes(kind);
@@ -225,7 +228,10 @@ function targetsFor(e: DraftExercise, kind: ExerciseKind, fallback: WeightUnit):
       repsMin,
       repsMax: reps ? (s.kind === 'amrap' ? repsMin : s.repsMax ?? s.reps) : null,
     };
-    if (WEIGHT_KINDS.includes(kind)) t.weightKg = kgOf(s, fallback);
+    if (WEIGHT_KINDS.includes(kind)) {
+      const kg = kgOf(s, fallback);
+      t.weightKg = halve && kg !== null ? storedKgFromShown(kg, 2) : kg;
+    }
     if (s.rpe !== null) t.rpe = s.rpe;
     if (kind === 'duration') t.durationSeconds = s.durationSeconds;
     if (DISTANCE_KINDS.includes(kind)) t.distanceM = s.distanceM;
@@ -240,12 +246,18 @@ function targetsFor(e: DraftExercise, kind: ExerciseKind, fallback: WeightUnit):
  * `resolutions` (keyed by name key, as the import's are). A name with no
  * resolution, or `skip`, is left out. `kindOf` reads what a library exercise
  * records.
+ *
+ * `pairTotals` is the person's Dumbbell weights set to Pair total: a weight
+ * said for an exercise held in two dumbbells is both added together, the way
+ * they type it in the app, and is halved to the one dumbbell a target stores
+ * (`buildImportPlan`'s rule, with `exercises` read the same way).
  */
 export function routineFromDraft(
   draft: WorkoutDraft,
   resolutions: Readonly<Record<string, NameResolution | undefined>>,
   kindOf: (exerciseId: string) => ExerciseKind,
   fallback: WeightUnit,
+  options: { pairTotals?: boolean; exercises?: readonly Exercise[] } = {},
 ): RoutineDraft {
   const items: WorkoutRoutineItem[] = [];
   const newExercises: Record<string, ExerciseInput> = {};
@@ -279,7 +291,8 @@ export function routineFromDraft(
       supersetKey = null;
     }
 
-    const targets = targetsFor(e, kind, fallback);
+    const halve = options.pairTotals === true && heldInTwoDumbbells(resolution, e.name, options.exercises ?? []);
+    const targets = targetsFor(e, kind, fallback, halve);
     const ramp = e.warmupRamp && kind === 'weight_reps' && !targets.some(t => t.kind === 'warmup');
     items.push({
       exerciseId,
@@ -303,17 +316,46 @@ const localDay = (d: Date) =>
 /** How far ahead of now a start may be and still be a workout that happened. The MCP server's `log_workout` allows the same. */
 const FUTURE_SLACK_MS = 5 * 60 * 1000;
 
+/** What placing a described workout needs besides the day and time it was given. */
+export interface DescribedStartOptions {
+  /**
+   * The person's "day starts at". A time before it is the small hours at the
+   * end of the logical day (`onLogicalDay`), so "1am" said at 1:30 under a
+   * 4 AM start is an hour ago, not a day and an hour.
+   */
+  dayResetTime?: string;
+  /**
+   * Starts already in the log (ISO). A workout given no time takes the first
+   * minute from noon that none of them starts in, so a second untimed workout
+   * on a day isn't refused as a duplicate of the first (`indexHas`).
+   */
+  taken?: readonly string[];
+}
+
+const minuteOf = (ms: number) => Math.floor(ms / 60_000);
+
 /**
  * When a described workout started. A day with no time is noon, which is still
  * ahead of "this morning" when the day is today, so it is held to now then.
  * `todayKey` is the logical day, which is what the model was told "today" was.
  */
-export function startOfDescribed(date: string | null, time: string | null, todayKey: string, now: Date): Date {
+export function startOfDescribed(
+  date: string | null,
+  time: string | null,
+  todayKey: string,
+  now: Date,
+  options: DescribedStartOptions = {},
+): Date {
   const day = date ?? todayKey;
   const [y, m, d] = day.split('-').map(Number);
-  const clock = time ? time.split(':').map(Number) : null;
-  const at = new Date(y, m - 1, d, clock ? clock[0] : 12, clock ? clock[1] : 0);
-  return !clock && at.getTime() > now.getTime() && localDay(at) === localDay(now) ? new Date(now.getTime()) : at;
+  const [rh, rm] = (options.dayResetTime ?? '00:00').split(':').map(Number);
+  const dayStart = new Date(y, m - 1, d, rh, rm);
+  if (time) return onLogicalDay(dayStart, time);
+  let at = onLogicalDay(dayStart, '12:00');
+  if (at.getTime() > now.getTime() && localDay(at) === localDay(now)) at = new Date(now.getTime());
+  const taken = new Set((options.taken ?? []).map(t => minuteOf(Date.parse(t))));
+  while (taken.has(minuteOf(at.getTime()))) at = new Date(at.getTime() + 60_000);
+  return at;
 }
 
 export type SessionFromDraft =
@@ -326,8 +368,14 @@ export type SessionFromDraft =
  * out) as a file does. A set with no reps, weight, time or distance records
  * nothing and is left out, and counted.
  */
-export function sessionFromDraft(draft: WorkoutDraft, fallback: WeightUnit, todayKey: string, now: Date): SessionFromDraft {
-  const start = startOfDescribed(draft.date, draft.time, todayKey, now);
+export function sessionFromDraft(
+  draft: WorkoutDraft,
+  fallback: WeightUnit,
+  todayKey: string,
+  now: Date,
+  options: DescribedStartOptions = {},
+): SessionFromDraft {
+  const start = startOfDescribed(draft.date, draft.time, todayKey, now, options);
   if (start.getTime() > now.getTime() + FUTURE_SLACK_MS) {
     return { ok: false, error: 'That date is in the future. A logged workout is one that already happened. Describe it as a routine to plan it.' };
   }

@@ -1,6 +1,7 @@
 import DeviceActivity
 import Foundation
 import ManagedSettings
+import UserNotifications
 
 #if canImport(FamilyControls)
 import FamilyControls
@@ -43,6 +44,10 @@ class TodoActivityMonitor: DeviceActivityMonitor {
     super.eventDidReachThreshold(event, activity: activity)
 
     let raw = event.rawValue
+    if raw.hasPrefix(ScreenTimeShared.speedBumpWarnEventPrefix) {
+      warnSpeedBump(event: raw)
+      return
+    }
     if raw.hasPrefix(ScreenTimeShared.speedBumpEventPrefix) {
       raiseSpeedBump(event: raw)
       return
@@ -57,6 +62,41 @@ class TodoActivityMonitor: DeviceActivityMonitor {
     // wake this more than once for an event that has already fired, and a
     // duplicate here would be a duplicate task.
     ScreenTimeShared.appendCrossing(ScreenTimeCrossing(ruleId: ruleId, dayKey: dayKey))
+  }
+
+  /// A speed bump's heads-up was crossed: tell the person a block is close.
+  ///
+  /// A local notification and nothing else, so it can be wrong in only one
+  /// direction (a warning for a block that does not come), and every guard here
+  /// is there to keep that rare: it fires once per rung per day (the same record
+  /// the block itself uses, under the heads-up's own event name), and not while
+  /// a speed bump block is already running, since use during one is not counted
+  /// and the next rung is further off than the text would say. Needs the app's
+  /// notification permission, which the extension cannot ask for; without it the
+  /// add is dropped by the system.
+  ///
+  /// Not verified without a device: that an extension can post a notification
+  /// through `UNUserNotificationCenter.current().add` from this callback.
+  private func warnSpeedBump(event raw: String) {
+    let body = String(raw.dropFirst(ScreenTimeShared.speedBumpWarnEventPrefix.count))
+    guard let split = body.lastIndex(of: ":") else { return }
+    let ruleId = String(body[..<split])
+    guard !ruleId.isEmpty,
+          let bump = ScreenTimeShared.readSpeedBumps().first(where: { $0.id == ruleId }),
+          let text = bump.warnText, !text.isEmpty,
+          let dayKey = ScreenTimeShared.readDayKey()
+    else { return }
+
+    guard ScreenTimeShared.recordSpeedBumpFired(dayKey: dayKey, event: raw) else { return }
+    if !ScreenTimeShared.activeSpeedBumpGroupIds(now: Date()).isEmpty { return }
+
+    let content = UNMutableNotificationContent()
+    content.title = "Speed bump coming up"
+    content.body = text
+    content.sound = UNNotificationSound.default
+    // Keyed by the event, so a repeat of the same wake replaces rather than stacks.
+    let request = UNNotificationRequest(identifier: "todo.speedBumpWarn.\(raw)", content: content, trigger: nil)
+    UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
   }
 
   /// A speed bump rung was crossed: block the rule's groups for a short time.

@@ -747,6 +747,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'word', 'match', 'days before', 'lead time', 'prep', 'pack', 'event rule'] },
   { id: 'travelEstimates', requires: 'gen:travel', groupId: 'generated', label: 'Estimate travel time', section: 'Leave-by reminders',
     keywords: ['apple maps', 'eta', 'commute', 'traffic', 'driving', 'transit', 'walking', 'how long', 'leave'] },
+  { id: 'travelCompareModes', requires: 'travelEstimates', groupId: 'generated', label: 'Compare ways to get there', section: 'Leave-by reminders',
+    keywords: ['transit', 'walking', 'driving', 'car', 'walk', 'fastest', 'options', 'modes', 'alternatives', 'which way', 'commute'] },
   { id: 'travelWalkUnder', requires: 'travelEstimates', groupId: 'generated', label: 'Walk if close', section: 'Leave-by reminders',
     keywords: ['walking', 'on foot', 'short trip', 'nearby', 'minutes', 'transit', 'driving', 'default mode', 'commute'] },
   { id: 'travelOrigin', requires: 'travelEstimates', groupId: 'generated', label: 'Start from', section: 'Leave-by reminders',

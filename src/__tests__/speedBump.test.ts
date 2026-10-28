@@ -3,6 +3,10 @@ import {
   SPEED_BUMP_BLOCK_MIN,
   armableSpeedBumps,
   clampBumpBlockMinutes,
+  clampBumpWarn,
+  parseBumpWarn,
+  speedBumpWarnRungs,
+  speedBumpWarnText,
   describeSpeedBump,
   liveSpeedBump,
   newSpeedBumpRule,
@@ -102,7 +106,7 @@ describe('armableSpeedBumps', () => {
 
   it('counts the group it names and blocks it too when no other is named', () => {
     const [bump] = armableSpeedBumps([rule({ groupId: 'social' })]);
-    expect(bump).toEqual({ id: 'r1', groupId: 'social', blockGroupIds: ['social'], blockMinutes: 15, rungs: [45] });
+    expect(bump).toEqual({ id: 'r1', groupId: 'social', blockGroupIds: ['social'], blockMinutes: 15, rungs: [45], warnRungs: [0], warnText: '' });
   });
 
   it('blocks a different group when one is named, with a supergroup already expanded', () => {
@@ -165,5 +169,44 @@ describe('newSpeedBumpRule', () => {
   it('starts on, once a day, for a quarter hour', () => {
     const made = newSpeedBumpRule('Wind down', 'social');
     expect(made).toMatchObject({ title: 'Wind down', groupId: 'social', blockMinutes: 15, repeatEveryMinutes: null, maxTimes: 1, enabled: true });
+  });
+});
+
+describe('speed bump heads-ups', () => {
+  it('puts each heads-up the lead before its rung, in step with the rungs', () => {
+    expect(speedBumpWarnRungs([45, 75, 105], 5)).toEqual([40, 70, 100]);
+  });
+
+  it('is all zeros when off', () => {
+    expect(speedBumpWarnRungs([45, 75], 0)).toEqual([0, 0]);
+  });
+
+  it('gives a rung with no minute left before it no heads-up', () => {
+    expect(speedBumpWarnRungs([5, 15], 10)).toEqual([0, 5]);
+  });
+
+  it('reads anything but an offered lead as off', () => {
+    expect(clampBumpWarn(7)).toBe(0);
+    expect(parseBumpWarn('10')).toBe(10);
+    expect(parseBumpWarn('')).toBe(0);
+    expect(parseBumpWarn(null)).toBe(0);
+    expect(speedBumpWarnRungs([45], 7)).toEqual([0]);
+  });
+
+  it('hands the native side the rungs, the heads-ups and the sentence', () => {
+    const [bump] = armableSpeedBumps(
+      [rule({ repeatEveryMinutes: 30, maxTimes: 2 })],
+      undefined,
+      undefined,
+      { leadMinutes: 5, blockedName: () => 'Games' },
+    );
+    expect(bump.rungs).toEqual([45, 75]);
+    expect(bump.warnRungs).toEqual([40, 70]);
+    expect(bump.warnText).toBe('Games will be blocked in about 5 minutes.');
+  });
+
+  it('arms no heads-ups unless asked', () => {
+    const [bump] = armableSpeedBumps([rule()]);
+    expect(bump.warnRungs).toEqual([0]);
   });
 });

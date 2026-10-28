@@ -71,11 +71,11 @@ import {
   describeLastLoad, exerciseIdsDoneAt, gymIncrementKg, gymSettingFor, gymSwapCandidates, unavailableExerciseIds, withGymBar,
 } from '../utils/gyms';
 import { lastTimeNotes } from '../utils/lastTimeNotes';
-import { parseSetCell } from '../utils/workoutCell';
+import { parseSetCell, typedTickValues } from '../utils/workoutCell';
 import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
 import { exerciseDayNote, exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
-import { currentRoutineVersion, finishVersionText, routineVersionsOf, versionNumber } from '../utils/routineVersions';
+import { currentRoutineVersion, finishVersionText, routineVersionsOf, sessionPlan, versionNumber } from '../utils/routineVersions';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
 import { formatRecordChange, recordLabel, recordShortLabel } from '../utils/workoutRecordText';
@@ -181,6 +181,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const linkedTask = useTaskStore(s => (session?.taskId ? s.tasks.find(t => t.id === session.taskId) ?? null : null));
   const sets = useMemo(() => cachedSets ?? [], [cachedSets]);
   const routine = session?.routineId ? routines.find(r => r.id === session.routineId) ?? null : null;
+  // The version the workout was started on, which its rests and suggestions are read from (`sessionPlan`).
+  const startedPlan = useMemo(() => (session ? sessionPlan(session, routines, routineVersions) : null), [session, routines, routineVersions]);
   // Which version of the routine this workout is on, and the current one's
   // number. A workout started from an older version (History's "Start a
   // workout from it") is measured against that version, and its summary
@@ -302,6 +304,30 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     useWorkoutStore.getState().editSet(session.id, setId, patch);
   }, [session]);
 
+  // What each set's cells hold while they are being typed in, so a tick
+  // tapped before the field loses focus writes the typed number rather than
+  // the dimmed one (`typedTickValues`). Cleared when a cell commits or its
+  // set is ticked.
+  const typedRef = useRef(new Map<string, Partial<Record<SetField, string>>>());
+  const noteTyping = useCallback((setId: string, field: SetField, text: string | null) => {
+    const row = { ...typedRef.current.get(setId) };
+    if (text === null) delete row[field];
+    else row[field] = text;
+    if (Object.keys(row).length === 0) typedRef.current.delete(setId);
+    else typedRef.current.set(setId, row);
+  }, []);
+
+  // The summary's effort and notes are written as they change, the way the
+  // workout page writes them, so Close (which keeps the workout running), the
+  // back gesture or the app being closed doesn't lose them before Save.
+  const saveEffort = (n: number | null) => {
+    setEffort(n);
+    if (session) useWorkoutStore.getState().updateSession(session.id, { effort: n });
+  };
+  const saveNotes = () => {
+    if (session && sessionNotes.trim() !== session.notes) useWorkoutStore.getState().updateSession(session.id, { notes: sessionNotes });
+  };
+
   const toggleSet = (set: WorkoutSet, exercise: SessionExercise) => {
     if (!session) return;
     if (set.completedAt !== null) {
@@ -312,8 +338,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     haptics.impactMedium();
     // The write, the rest it starts and where the card goes are `tickSet`'s,
     // shared with the Lock Screen's "Done set".
-    // A field left empty is done at the dimmed number the row showed in it.
-    const next = tickSet(session.id, set.id, new Date(), ghostFill(set, exercise));
+    // A field left empty is done at the dimmed number the row showed in it,
+    // and one still being typed in at what was typed.
+    const scale = weightScale(catalogExercise(exerciseRows, exercise.exerciseId), dumbbellEntry);
+    const values = typedTickValues(ghostFill(set, exercise), typedRef.current.get(set.id) ?? {}, unit, scale);
+    typedRef.current.delete(set.id);
+    const next = tickSet(session.id, set.id, new Date(), values);
     if (!next) return;
     // A tick that sets a record is worth a different buzz than an ordinary one.
     const records = liveSetRecords(
@@ -755,7 +785,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     <Text style={styles.kvLabel}>Effort</Text>
                     <CountStepper
                       value={effort}
-                      onChange={setEffort}
+                      onChange={saveEffort}
                       min={WORKOUT_EFFORT.min}
                       max={WORKOUT_EFFORT.max}
                       start={WORKOUT_EFFORT.start}
@@ -771,6 +801,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     style={styles.notesInput}
                     value={sessionNotes}
                     onChangeText={setSessionNotes}
+                    onBlur={saveNotes}
                     placeholder="e.g. Shoulder felt fine on the last set"
                     placeholderTextColor={colors.textTertiary}
                     multiline
@@ -905,7 +936,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             {/* One card per shown exercise: the one the sheet is on, or every one in All. The param keeps the name `viewed`, so the card body reads as it always has. */}
             {reordering && (
               <>
-                <Text style={styles.reorderHint}>Hold and drag to reorder</Text>
+                <Text style={styles.reorderHint}>Touch and hold, then drag to reorder</Text>
                 <View style={styles.reorderCard}>
                   <SortableList
                     data={reorderRows}
@@ -980,7 +1011,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const viewedGroup = supersetGroup(exercises, viewed.exerciseId);
               const restChip = session && viewedGroup[viewedGroup.length - 1]?.exerciseId === viewed.exerciseId
                 ? {
-                    seconds: restSecondsFor(routine, viewed.exerciseId, defaultRestSeconds, session.restOverrides),
+                    seconds: restSecondsFor(startedPlan, viewed.exerciseId, defaultRestSeconds, session.restOverrides),
                     overridden: session.restOverrides?.[viewed.exerciseId] !== undefined,
                   }
                 : null;
@@ -992,7 +1023,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const shownProposal: ExerciseProposal | null = session ? exerciseProposal({
                 exerciseId: viewed.exerciseId,
                 exercises: exerciseRows,
-                routine,
+                routine: startedPlan,
                 program,
                 sessions: sessionsList,
                 routines,
@@ -1268,6 +1299,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             done={done}
                             ghost={ghostText(set, viewed, f, unit, scale)}
                             onEdit={patch => edit(set.id, patch)}
+                            onTyping={text => noteTyping(set.id, f, text)}
                             styles={styles}
                             placeholderColor={colors.textTertiary}
                             accessibilityLabel={`${setName(set.kind, label)} ${fieldLabel(f, kind)}`}
@@ -1388,8 +1420,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       <ExerciseRestSheet
         visible={visible && restFor !== null && session !== null}
         exerciseName={restFor ? catalogExercise(exerciseRows, restFor)?.name ?? 'This exercise' : ''}
-        seconds={session && restFor ? restSecondsFor(routine, restFor, defaultRestSeconds, session.restOverrides) : 0}
-        fallbackSeconds={restFor ? restSecondsFor(routine, restFor, defaultRestSeconds) : 0}
+        seconds={session && restFor ? restSecondsFor(startedPlan, restFor, defaultRestSeconds, session.restOverrides) : 0}
+        fallbackSeconds={restFor ? restSecondsFor(startedPlan, restFor, defaultRestSeconds) : 0}
         overridden={!!session && !!restFor && session.restOverrides?.[restFor] !== undefined}
         onChange={seconds => { if (session && restFor) useWorkoutStore.getState().setSessionRest(session.id, restFor, seconds); }}
         onClose={() => setRestFor(null)}
@@ -1470,7 +1502,7 @@ function heaviestLine(set: WorkoutSet, kind: ExerciseKind, unit: WeightUnit, sca
  * value reads dim and a done one reads full, as the cells did before they
  * became fields.
  */
-function SetInput({ set, field, unit, scale, done, ghost, onEdit, styles, placeholderColor, accessibilityLabel }: {
+function SetInput({ set, field, unit, scale, done, ghost, onEdit, onTyping, styles, placeholderColor, accessibilityLabel }: {
   set: WorkoutSet;
   field: SetField;
   unit: WeightUnit;
@@ -1479,18 +1511,33 @@ function SetInput({ set, field, unit, scale, done, ghost, onEdit, styles, placeh
   /** The last done set's number, shown dimmed in an empty cell. */
   ghost: string | null;
   onEdit: (patch: Partial<WorkoutSet>) => void;
+  /** The text while it is being typed, and null once it is written or dropped. */
+  onTyping: (text: string | null) => void;
   styles: ReturnType<typeof makeStyles>;
   placeholderColor: string;
   accessibilityLabel: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
+  // Only text typed since focus is written: focusing an empty cell and then
+  // ticking the set wrote the dimmed number, and the blur after it wrote the
+  // untouched empty draft over it.
+  const typed = useRef(false);
   const shown = valueText(set, field, unit, scale) ?? '';
   // Distance is typed in meters; the row's own read-back says "1.2 km".
   const stored = field === 'distance' && set.distanceM !== null ? String(Math.round(set.distanceM)) : shown;
+  // A tick takes what the cell held (`typedTickValues`), so the draft is spent.
+  useEffect(() => {
+    typed.current = false;
+    setDraft(null);
+  }, [set.completedAt]);
   const commit = () => {
     if (draft === null) return;
-    const patch = parseSetCell(field, draft, unit, scale);
+    const wasTyped = typed.current;
+    typed.current = false;
     setDraft(null);
+    onTyping(null);
+    if (!wasTyped) return;
+    const patch = parseSetCell(field, draft, unit, scale);
     if (patch) onEdit(patch);
   };
   return (
@@ -1498,10 +1545,10 @@ function SetInput({ set, field, unit, scale, done, ghost, onEdit, styles, placeh
       <TextField
         style={[styles.cellInput, !done && styles.valuePlanned]}
         value={draft ?? stored}
-        onChangeText={setDraft}
+        onChangeText={t => { typed.current = true; setDraft(t); onTyping(t); }}
         onBlur={commit}
         onSubmitEditing={commit}
-        onFocus={() => setDraft(stored)}
+        onFocus={() => { typed.current = false; setDraft(stored); }}
         placeholder={ghost ?? '–'}
         placeholderTextColor={placeholderColor}
         keyboardType={field === 'weight' || field === 'distance' ? 'decimal-pad' : field === 'duration' ? 'numbers-and-punctuation' : 'number-pad'}
@@ -1752,7 +1799,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   setNumber: { color: colors.textSecondary, fontSize: font.md, fontWeight: fontWeight.semibold },
   setBadge: { color: colors.orangeText, fontSize: font.md, fontWeight: fontWeight.bold },
   recordPill: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, height: 22, paddingHorizontal: spacing.sm,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, minHeight: 22, paddingHorizontal: spacing.sm,
     borderRadius: radius.full, backgroundColor: colors.accentSubtle,
   },
   recordPillText: { color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.bold, letterSpacing: 0.4 },

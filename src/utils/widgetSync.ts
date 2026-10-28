@@ -65,6 +65,7 @@ import { applyProposal } from './workoutProposalApply';
 import { REST_NUDGE_FORWARD_SECONDS } from './stepTimers';
 import type { PlannedRoutineSet } from '../store/useWorkoutStore';
 import type { RestTimer, WorkoutSet } from '../types';
+import { sessionPlan } from './routineVersions';
 
 const DEBOUNCE_MS = 300;
 
@@ -588,7 +589,7 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
           break;
         }
         case 'watchHealthRetracted':
-          useWatchHealthStore.getState().retracted(action.workoutId);
+          useWatchHealthStore.getState().retracted(action.workoutId, action.notFound);
           break;
         // What the watch adds to the phone's workout, each through the store
         // action workout mode itself uses, with the watch's ids where it made
@@ -982,6 +983,7 @@ function watchWorkoutSection(): WatchWorkoutSnapshot | null {
           session: live,
           sets: workouts.setsBySession[live.id] ?? [],
           routine: live.routineId ? workouts.routines.find(r => r.id === live.routineId) ?? null : null,
+          plan: sessionPlan(live, workouts.routines, workouts.routineVersions),
           rest,
         }
       : null,

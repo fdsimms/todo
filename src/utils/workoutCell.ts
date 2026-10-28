@@ -53,3 +53,29 @@ export function parseSetCell(field: SetField, text: string, unit: WeightUnit, sc
   if (field === 'weight') return { weightKg: scale === 1 ? weightFromDisplay(n, unit) : storedKgFromTyped(n, unit, scale) };
   return { [key]: Math.round(n) };
 }
+
+/** The numbers a tick writes, in kilograms: `TickValues`, without its store import. */
+type CellValues = Partial<Pick<WorkoutSet, 'weightKg' | 'reps' | 'durationSeconds' | 'distanceM'>>;
+
+/**
+ * What a tick writes when cells of its row are still being typed in: a number
+ * typed wins over the dimmed one `ghost` would fill in, and over a planned one.
+ * A cell typed empty, or with text that isn't a number, falls back to the
+ * ghost, the way an empty cell nobody touched does. Without this the tick wrote
+ * the ghost and the typed number reached the set only when the field lost focus.
+ */
+export function typedTickValues(
+  ghost: CellValues,
+  typed: Partial<Record<SetField, string>>,
+  unit: WeightUnit,
+  scale = 1,
+): CellValues {
+  const out: CellValues = { ...ghost };
+  for (const field of Object.keys(typed) as SetField[]) {
+    const text = typed[field];
+    if (text === undefined || text.trim() === '') continue;
+    const patch = parseSetCell(field, text, unit, scale);
+    if (patch) Object.assign(out, patch);
+  }
+  return out;
+}

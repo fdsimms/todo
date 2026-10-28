@@ -25,6 +25,7 @@ import {
   routineHistory,
   routineVersionTrained,
   routineVersionsOf,
+  sessionPlan,
   sessionVersionId,
   summarizeDiff,
   summarizeProgramDiff,
@@ -389,5 +390,20 @@ describe('a program workout from before its first version', () => {
     const early = session('s', 3, { programId: 'p1' });
     expect(programVersionTrained(program, [], [early])).toBe(true);
     expect(programHistory(program, [], [], [], [early])[0].workouts).toBe(1);
+  });
+});
+
+describe('sessionPlan', () => {
+  const routine = { id: 'r', items: [{ exerciseId: 'a', restSeconds: 90 }] } as unknown as WorkoutRoutine;
+  const v1 = { id: 'v1', routineId: 'r', createdAt: '2026-01-01T00:00:00.000Z', items: [{ exerciseId: 'a', restSeconds: 180 }] } as unknown as WorkoutRoutineVersion;
+  const v2 = { id: 'v2', routineId: 'r', createdAt: '2026-02-01T00:00:00.000Z', items: [{ exerciseId: 'a', restSeconds: 90 }] } as unknown as WorkoutRoutineVersion;
+
+  it('reads the version the workout was started on', () => {
+    expect(sessionPlan({ routineId: 'r', routineVersionId: 'v1' }, [routine], [v1, v2])).toBe(v1);
+  });
+
+  it('falls back to the routine for a version this device lacks, and to nothing without a routine', () => {
+    expect(sessionPlan({ routineId: 'r', routineVersionId: 'gone' }, [routine], [v1, v2])).toBe(routine);
+    expect(sessionPlan({ routineId: null, routineVersionId: null }, [routine], [v1])).toBeNull();
   });
 });

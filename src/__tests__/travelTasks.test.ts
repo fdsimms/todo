@@ -15,6 +15,9 @@ import {
   estimatedLeadMinutes,
   estimateFor,
   needsTravelEstimate,
+  travelChoices,
+  switchEstimateMode,
+  travelModePickerOptions,
   TRAVEL_ESTIMATE_STALE_MS,
   eventHasLocation,
   eventIsTravelEligible,
@@ -672,5 +675,68 @@ describe('travel keys across devices', () => {
     const e = event({ id: 'evt-1', externalId: 'server-1' });
     expect(travelEventOf(travelSourceId(e), [e])?.id).toBe('evt-1');
     expect(travelEventOf(`evt-1|${e.start}`, [e])?.id).toBe('evt-1');
+  });
+});
+
+describe('travelChoices', () => {
+  const held = { minutes: 13, location: 'x', mode: 'transit' as const, origin: 'current', at: 0 };
+
+  it('is empty without other modes, so the row keeps its single note', () => {
+    expect(travelChoices(null)).toEqual([]);
+    expect(travelChoices(held)).toEqual([]);
+    expect(travelChoices({ ...held, others: {} })).toEqual([]);
+  });
+
+  it('lists the mode in use first, then the others shortest first, and marks the fastest', () => {
+    const choices = travelChoices({ ...held, others: { walking: 22, driving: 8 } });
+    expect(choices.map(c => c.label)).toEqual(['Transit 13 min', 'Car 8 min', 'Walk 22 min']);
+    expect(choices.map(c => c.selected)).toEqual([true, false, false]);
+    expect(choices.map(c => c.fastest)).toEqual([false, true, false]);
+  });
+
+  it('marks the selected mode fastest when it is, and lets it win a tie', () => {
+    const choices = travelChoices({ ...held, minutes: 8, others: { walking: 8, driving: 20 } });
+    expect(choices.filter(c => c.fastest).map(c => c.mode)).toEqual(['transit']);
+  });
+
+  it('writes hours the way the single note does', () => {
+    expect(travelChoices({ ...held, others: { driving: 70 } })[1].label).toBe('Car 1 hr 10 min');
+  });
+});
+
+describe('switchEstimateMode', () => {
+  const held = { minutes: 13, location: 'x', mode: 'transit' as const, origin: 'current', at: 5, walkUnder: 20, others: { walking: 22, driving: 8 } };
+
+  it('re-files the trip under the new mode and moves the old one among the others', () => {
+    const next = switchEstimateMode(held, 'walking');
+    expect(next).toMatchObject({ minutes: 22, mode: 'walking', at: 5, others: { transit: 13, driving: 8 } });
+    expect(next).not.toHaveProperty('walkUnder');
+  });
+
+  it('keeps the held estimate for the mode already in use and refuses one it never asked', () => {
+    expect(switchEstimateMode(held, 'transit')).toBe(held);
+    expect(switchEstimateMode({ ...held, others: { driving: 8 } }, 'walking')).toBeNull();
+  });
+});
+
+describe('needsTravelEstimate with the comparison on', () => {
+  const e = { id: 'a', start: new Date(2026, 9, 5, 14).toISOString(), location: 'x' };
+  const now = new Date(2026, 9, 5, 9);
+  const base = { minutes: 13, location: 'x', mode: 'driving' as const, origin: 'current', at: now.getTime() };
+
+  it('asks again for an estimate read before the others were wanted, once', () => {
+    const estimates = { [travelSourceId(e)]: base };
+    expect(needsTravelEstimate(e, estimates, 'driving', 'current', now, 0, false)).toBe(false);
+    expect(needsTravelEstimate(e, estimates, 'driving', 'current', now, 0, true)).toBe(true);
+    const asked = { [travelSourceId(e)]: { ...base, others: {} } };
+    expect(needsTravelEstimate(e, asked, 'driving', 'current', now, 0, true)).toBe(false);
+  });
+});
+
+describe('travelModePickerOptions', () => {
+  it('says what the default row resolves to, including Walk if close', () => {
+    expect(travelModePickerOptions('driving', 0)[0].label).toBe('Settings default (Car)');
+    expect(travelModePickerOptions('transit', 15)[0].label).toBe('Settings default (Walk if 15 min or less, else Transit)');
+    expect(travelModePickerOptions('driving', 0).map(o => o.key)).toEqual(['default', 'driving', 'transit', 'walking', 'skip']);
   });
 });

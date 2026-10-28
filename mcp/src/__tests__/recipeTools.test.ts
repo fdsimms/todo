@@ -132,6 +132,44 @@ describe('update_recipe', () => {
     expect(out.cookbook).toBeUndefined();
   });
 
+  it('keeps a recipe in its own book when another book shares the title, and refuses to guess between two', () => {
+    saveRecipe(replica, { name: 'Soup', cookbook: 'Dinner' });
+    const r = saveRecipe(replica, { name: 'Dal', cookbook: 'Dinner (other)', sourcePage: '42' });
+    const other = listCookbooks(replica).cookbooks.find(c => c.title === 'Dinner (other)')!;
+    renameCookbook(replica, other.id, 'Dinner', 'Meera Sodha');
+
+    // Sent back with the title it was read with: no move, page kept.
+    const out = updateRecipe(replica, r.id, { cookbook: 'Dinner', notes: 'x' });
+    expect(stored(r.id).cookbookId).toBe(other.id);
+    expect(out.page).toBe('42');
+
+    const loose = saveRecipe(replica, { name: 'Rice' });
+    expect(() => updateRecipe(replica, loose.id, { cookbook: 'Dinner' })).toThrow(/2 cookbooks called "Dinner"/);
+  });
+
+  it('keeps a mixed either/or and a placed used recipe when the ingredients are rewritten', () => {
+    const pilaf = saveRecipe(replica, { name: 'Pilaf' });
+    const bowl = saveRecipe(replica, {
+      name: 'Bowl',
+      ingredients: [{ text: '1 cup rice', alternativeGroup: 'Base' }, { text: '2 eggs' }],
+      components: [{ recipeId: pilaf.id, choiceGroup: 'Base' }],
+    });
+    // Written in one call, the line's half of the group survives too.
+    expect(stored(bowl.id).ingredients[0].choiceGroup).toBe('Base');
+    const eggs = stored(bowl.id).ingredients[1];
+    const placed = stored(bowl.id).components.map(c => ({ ...c, placement: { before: eggs.id, section: null } }));
+    mockRaw.runSync('UPDATE recipes SET components = ? WHERE id = ?', [JSON.stringify(placed), bowl.id]);
+    replica.refresh();
+
+    updateRecipe(replica, bowl.id, { ingredients: [{ text: '1 cup rice', alternativeGroup: 'Base' }, { text: '3 eggs' }] });
+
+    const after = stored(bowl.id);
+    expect(after.components[0].choiceGroup).toBe('Base');
+    expect(after.ingredients[0].choiceGroup).toBe('Base');
+    expect(after.components[0].placement?.before).toBe(eggs.id);
+    expect(after.ingredients.map(i => i.quantity)).toEqual(['1 cup', '3']);
+  });
+
   it('refuses an author on a recipe in a cookbook, and writes nothing from a refused edit', () => {
     const r = saveRecipe(replica, { name: 'Pie', cookbook: 'Baking' });
     expect(() => updateRecipe(replica, r.id, { author: 'Sam' })).toThrow(/rename_cookbook/);

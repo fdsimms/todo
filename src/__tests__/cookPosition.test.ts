@@ -38,3 +38,20 @@ describe('cookPosition', () => {
     expect(savedCookPosition('r1')).toBeNull();
   });
 });
+
+describe('restingCookPosition: a step moved while the sheet was closed', () => {
+  afterEach(() => clearCookPosition('r1'));
+
+  it('resumes on the same step, found by its id', () => {
+    saveCookPosition('r1', { rawIndex: 1, finished: false, stepId: 's-sear' });
+    // A step was added above it.
+    expect(restingCookPosition('r1', true, true, ['s-prep', 's-new', 's-sear'])).toEqual(
+      expect.objectContaining({ rawIndex: 2, finished: false }),
+    );
+  });
+
+  it('keeps the saved index when the step is gone', () => {
+    saveCookPosition('r1', { rawIndex: 1, finished: false, stepId: 's-gone' });
+    expect(restingCookPosition('r1', true, true, ['s-a', 's-b']).rawIndex).toBe(1);
+  });
+});

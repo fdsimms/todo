@@ -625,6 +625,16 @@ describe('watch workout taps', () => {
       ]);
     });
 
+    it('reads a retraction the watch found nothing to delete for, and keeps it on a requeue', () => {
+      const [missing, gone] = parseQuietTaps(JSON.stringify([
+        { kind: 'healthRetracted', id: 'HK-OLD', notFound: true, at: AT },
+        { kind: 'healthRetracted', id: 'HK-NEW', at: AT },
+      ]));
+      expect(missing.notFound).toBe(true);
+      expect(gone.notFound).toBeUndefined();
+      expect(parseQuietTaps(JSON.stringify([missing]))[0].notFound).toBe(true);
+    });
+
     it('reads a saved workout the app put back on the queue for a drain in front, by its own key', () => {
       const [t] = parseQuietTaps(JSON.stringify([{
         kind: 'healthWorkout', id: 'w1', sessionId: 'w1', healthWorkoutId: 'HK-W', listId: null, at: AT,
@@ -994,7 +1004,7 @@ describe('watch workout taps', () => {
       ], none)).toEqual([
         { type: 'watchMeasuring', sessionId: 'w1', on: true },
         { type: 'watchHealthWorkout', sessionId: 'w1', workoutId: 'HK-W', span: null },
-        { type: 'watchHealthRetracted', workoutId: 'HK-OLD' },
+        { type: 'watchHealthRetracted', workoutId: 'HK-OLD', notFound: false },
         { type: 'watchHealthWorkout', sessionId: 'gone', workoutId: null, span: null },
       ]);
     });

@@ -300,7 +300,7 @@ export function CookModeSheet({
   // The recipe's blanks (RecipeBlank): a grain bowl's whole ingredient list can
   // be blanks. A filled one is already in `ingredients` as the lines picked for
   // it; this is where it gets filled, or filled differently.
-  const blanks = useMemo(() => recipeBlanksIn(recipe, recipesById), [recipe, recipesById]);
+  const blanks = useMemo(() => recipeBlanksIn(recipe, recipesById, resolution), [recipe, recipesById, resolution]);
   // The oven settings of every dish being cooked: a "Preheat oven" line to tick
   // off with the rest of the gathering. A recipe that only has a temperature
   // still has a mise en place worth opening.
@@ -322,20 +322,24 @@ export function CookModeSheet({
       recipeId: recipe.id,
       date: getLogicalDayKey(new Date()),
       recipeOverrides: [...(overrides ?? [])],
+      recipeChoices: [...choices],
     }),
-    [recipe.id, overrides],
+    [recipe.id, overrides, choices],
   );
 
   // -1 is the mise en place screen, ahead of step 0 — screen state like the
   // step position itself, reset the same way on close.
+  // Seeded with the real `hasIngredients`: the sheet first mounts already open
+  // (LazySheet), so the close-time reset below never runs before the first
+  // cooking, and a hard-coded false opened it on step 1 past the mise en place.
   const [rawIndex, setRawIndex] = useState(
-    () => restingCookPosition(recipe.id, recipe.timerStartedAt !== null, false).rawIndex,
+    () => restingCookPosition(recipe.id, recipe.timerStartedAt !== null, hasIngredients, steps.map(s => s.id)).rawIndex,
   );
   // Past the last step: the end screen, which offers the post-cook sheet
   // rather than closing on the cook. Screen state like the position, and
   // reset the same way on close.
   const [finished, setFinished] = useState(
-    () => restingCookPosition(recipe.id, recipe.timerStartedAt !== null, false).finished,
+    () => restingCookPosition(recipe.id, recipe.timerStartedAt !== null, hasIngredients).finished,
   );
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
   // Two separate marks per line, both screen state and nothing more: they
@@ -402,7 +406,7 @@ export function CookModeSheet({
   const cookRunning = recipe.timerStartedAt !== null;
   useEffect(() => {
     if (!visible) {
-      const rest = restingCookPosition(recipe.id, cookRunning, hasIngredients);
+      const rest = restingCookPosition(recipe.id, cookRunning, hasIngredients, steps.map(s => s.id));
       setRawIndex(rest.rawIndex);
       setFinished(rest.finished);
       setIngredientsOpen(false);
@@ -414,11 +418,14 @@ export function CookModeSheet({
         setGatheredLines(new Set());
       }
     }
-  }, [visible, hasIngredients, cookRunning, recipe.id]);
+  }, [visible, hasIngredients, cookRunning, recipe.id, steps]);
   useEffect(() => {
     if (!cookRunning) clearCookPosition(recipe.id);
-    else if (visible) saveCookPosition(recipe.id, { rawIndex, finished });
-  }, [visible, cookRunning, recipe.id, rawIndex, finished]);
+    else if (visible) {
+      const stepId = rawIndex >= 0 ? steps[rawIndex]?.id : undefined;
+      saveCookPosition(recipe.id, { rawIndex, finished, ...(stepId ? { stepId } : {}) });
+    }
+  }, [visible, cookRunning, recipe.id, rawIndex, finished, steps]);
 
   // An answer belongs to the sentence it was given about, so moving off that
   // step takes it with it — including a half-typed question, which on the next
@@ -610,6 +617,9 @@ export function CookModeSheet({
     const stepTimerIds = stepTimers.timers.map(t => t.id);
     const discard = () => {
       cookTimer.onReset();
+      // Prep too: Start cooking paused it, and left banked it was picked up by
+      // the next cooking's prep and logged as part of it.
+      useRecipeStore.getState().resetPrepTimer(recipe.id);
       for (const id of stepTimerIds) useStepTimerStore.getState().remove(id);
       close();
     };

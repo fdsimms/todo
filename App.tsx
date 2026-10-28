@@ -43,6 +43,7 @@ import { useLeaveLiveActivitySync } from './src/utils/leaveLiveActivity';
 import { useFocusLiveActivitySync } from './src/utils/focusLiveActivity';
 import { useWorkoutLiveActivitySync } from './src/hooks/useWorkoutLiveActivitySync';
 import { useWatchClashPrompt } from './src/hooks/useWatchClashPrompt';
+import { useWatchRetractNotice } from './src/hooks/useWatchRetractNotice';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
 import { useWeatherSync, useWeatherStore } from './src/store/useWeatherStore';
@@ -448,6 +449,7 @@ function AppRoot() {
   // Asks which to keep when a workout the Apple Watch ran on its own overlaps
   // one the phone logged. App-level, since it can arrive on any tab.
   useWatchClashPrompt();
+  useWatchRetractNotice();
 
   // Drops a completed, archived or deleted task out of a running focus plan, from
   // whichever tab did it. App-level because a blurred tab no longer renders.

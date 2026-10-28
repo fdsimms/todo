@@ -18,6 +18,11 @@ import { FOOD_KINDS, FOOD_KIND_LABELS } from '../utils/foodKinds';
 import { RECIPE_BLANK_LABEL_MAX_LENGTH } from '../utils/recipeBlanks';
 import { GROCERY_QUANTITY_MAX_LENGTH, type FoodKind } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { AmountUnitField } from './AmountUnitField';
+import { ingredientAmountGroups } from '../utils/amountUnit';
+
+/** The amount's unit menu, the one an ingredient's own amount uses: a blank's fill becomes ingredient lines. */
+const AMOUNT_GROUPS = ingredientAmountGroups();
 
 interface Props {
   visible: boolean;
@@ -176,14 +181,12 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
           <SegmentedControl options={COUNT_OPTIONS} value={count} onChange={setCount} label="How many" />
 
           <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Amount</Text>
-          <TextField
-            style={styles.input}
+          <AmountUnitField
+            name="BlankEditorSheet unit"
             value={quantity}
             onChangeText={setQuantity}
-            placeholder="e.g. 2 cups"
-            placeholderTextColor={colors.textTertiary}
+            groups={AMOUNT_GROUPS}
             maxLength={GROCERY_QUANTITY_MAX_LENGTH}
-            returnKeyType="next"
             accessibilityLabel="Amount"
           />
           <HelpText style={styles.hint}>Split evenly across what you pick.</HelpText>

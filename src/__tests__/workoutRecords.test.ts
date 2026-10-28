@@ -479,6 +479,15 @@ describe('isNewRecordRow', () => {
     expect(rows).toEqual(expect.arrayContaining(['weight', 'e1rm', 'repsAt3']));
   });
 
+  it('keeps the badge when a later session equals the record with more reps', () => {
+    const s3 = session('s3', 10, 9);
+    const sets = [set('s1', { weightKg: 100, reps: 5 }), set('s2', { weightKg: 105, reps: 5 }), set('s3', { weightKg: 105, reps: 6 })];
+    const a = analyzeExercise(BENCH, 'weight_reps', sets, [s1, s2, s3]);
+    const weight = a.records.find(r => r.type === 'weight')!;
+    expect(weight.sessionId).toBe('s3');
+    expect(isNewRecordRow(weight, a.events, today)).toBe(true);
+  });
+
   it('lets the badge lapse once the record is older than the window', () => {
     const a = analyzeExercise(BENCH, 'weight_reps', [set('s1', { weightKg: 100, reps: 3 }), set('s2', { weightKg: 105, reps: 3 })], [s1, s2]);
     expect(a.records.some(r => isNewRecordRow(r, a.events, '2026-11-30'))).toBe(false);

@@ -1508,11 +1508,13 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
 - **After an `await`, check the result still belongs where it's about to be written.** A sheet
   can close, a cook can move to the next step, and a row can be edited or deleted while a model
   or Health call is in flight, and five fixes in one audit were this one bug: `InventRecipeSheet`
-  appending a draft after close (`visibleRef`), `CookModeSheet` filing an answer under the wrong
+  appending a draft after close, `CookModeSheet` filing an answer under the wrong
   step (`stepIdRef`), `recordHealthWrite` stamping sample ids over a corrected or deleted food log
   row (it re-reads the row), and `RecipeNutritionSheet` showing one recipe's estimate on another
   (`estimateKey`). Capture what the request was about before the `await` and compare after it;
-  `refreshGuard.ts` is the store-level form of the same check.
+  `refreshGuard.ts` is the store-level form of the same check. For a sheet, "is it still open" is
+  not that check, since Cancel and a reopen pass it: compare a counter bumped on every close
+  (`openingRef` in `InventRecipeSheet`).
 - **An "already exists" check calls the same key function as the refusal it predicts.** The AI
   recipe sheets pre-checked names with a bare `toLowerCase()` while `addRecipe` refuses on
   `groceryNameKey`, so "Chicken Tacos" and "Chicken taco" were two names to the sheet and one to

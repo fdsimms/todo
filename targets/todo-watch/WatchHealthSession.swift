@@ -308,49 +308,71 @@ final class WatchHealthSession: NSObject, HKWorkoutSessionDelegate, HKLiveWorkou
 
     // ==== retracting for the phone ====
 
+    /// How one retraction ended. `deleted` and `notFound` both take the id off
+    /// the phone's list; `retry` leaves it there for the next try.
+    enum RetractOutcome { case deleted, notFound, retry }
+
     /// Deletes workouts this app saved, by id, each with the active energy
-    /// saved with it, and calls back with the ids it dealt with: deleted, or
-    /// already gone (nothing matched, or `errorNoData`). Any other error
-    /// leaves the id out, so the phone's list keeps it and the next try
-    /// (the next snapshot, the app coming to the front) has another go: the
-    /// usual one is `errorDatabaseInaccessible`, the watch locked. Heart rate
-    /// taken during one stays in Health as readings: this app never shares
-    /// heart rate, so it may not delete it (`delete(_:withCompletion:)`:
+    /// saved with it, and calls back with the ids it deleted and the ids it
+    /// found nothing for. A lookup that finds nothing still deletes by the
+    /// id, since the read can miss a workout the delete reaches; only a delete
+    /// that matched nothing (watchOS keeps only recent samples on the watch,
+    /// so an older workout is out of its reach) counts as not found, which the
+    /// phone tells the person about rather than reading as removed. Any other
+    /// error leaves the id out of both, so the phone's list keeps it and the
+    /// next try (the next snapshot, the app coming to the front) has another
+    /// go: the usual one is `errorDatabaseInaccessible`, the watch locked.
+    /// Heart rate taken during one stays in Health as readings: this app never
+    /// shares heart rate, so it may not delete it (`delete(_:withCompletion:)`:
     /// "Your app can delete only those objects that it has previously saved").
-    func retract(_ ids: [String], completion: @escaping ([String]) -> Void) {
-        guard Self.isAvailable, !ids.isEmpty else { completion([]); return }
+    func retract(_ ids: [String], completion: @escaping (_ deleted: [String], _ notFound: [String]) -> Void) {
+        guard Self.isAvailable, !ids.isEmpty else { completion([], []); return }
         let tally = DispatchQueue(label: "WatchHealthSession.retract")
         let group = DispatchGroup()
-        var dealt: [String] = []
+        var deleted: [String] = []
+        var notFound: [String] = []
         for id in ids {
             guard let uuid = UUID(uuidString: id) else {
                 // Not an id HealthKit ever gave out: nothing will ever match it.
-                tally.sync { dealt.append(id) }
+                tally.sync { deleted.append(id) }
                 continue
             }
             group.enter()
-            let answered = { (gone: Bool) in tally.async { if gone { dealt.append(id) }; group.leave() } }
+            let answered = { (outcome: RetractOutcome) in
+                tally.async {
+                    if outcome == .deleted { deleted.append(id) }
+                    if outcome == .notFound { notFound.append(id) }
+                    group.leave()
+                }
+            }
             let byId = HKQuery.predicateForObject(with: uuid)
+            // The workout itself, by id, which needs no read. Nothing deleted
+            // means the watch's store doesn't hold it.
+            let deleteWorkout = { [weak self] in
+                guard let self else { answered(.retry); return }
+                self.store.deleteObjects(of: HKObjectType.workoutType(), predicate: byId) { ok, count, error in
+                    if let error { answered(Self.isNoData(error) ? .notFound : .retry); return }
+                    answered(ok && count > 0 ? .deleted : ok ? .notFound : .retry)
+                }
+            }
             // The energy goes first, while the workout it hangs off is still
-            // there to be found; then the workout itself, which needs no read.
-            // A step that fails stops there, so energy is never left behind
-            // with no workout to find it by.
+            // there to be found; then the workout. A step that fails stops
+            // there, so energy is never left behind with no workout to find it by.
             let query = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: byId, limit: 1, sortDescriptors: nil) { [weak self] _, samples, error in
-                guard let self else { answered(false); return }
-                if let error { answered(Self.isNoData(error)); return }
-                guard let workout = samples?.first as? HKWorkout else { answered(true); return }
+                guard let self else { answered(.retry); return }
+                if let error, !Self.isNoData(error) { answered(.retry); return }
+                guard let workout = samples?.first as? HKWorkout else { deleteWorkout(); return }
                 self.store.deleteObjects(of: Self.activeEnergyType, predicate: HKQuery.predicateForObjects(from: workout)) { ok, _, error in
-                    guard ok || error.map(Self.isNoData) == true else { answered(false); return }
-                    self.store.deleteObjects(of: HKObjectType.workoutType(), predicate: byId) { ok, _, error in
-                        answered(ok || error.map(Self.isNoData) == true)
-                    }
+                    guard ok || error.map(Self.isNoData) == true else { answered(.retry); return }
+                    deleteWorkout()
                 }
             }
             store.execute(query)
         }
         group.notify(queue: tally) {
-            let done = dealt
-            DispatchQueue.main.async { completion(done) }
+            let done = deleted
+            let missing = notFound
+            DispatchQueue.main.async { completion(done, missing) }
         }
     }
 
@@ -538,19 +560,22 @@ extension WatchStore {
     }
 
     /// Retracts what the phone asks (`retractWorkouts`) and says so with a tap
-    /// per workout dealt with, which takes it off the phone's list. One the
-    /// delete couldn't reach (the watch locked) stays on it and is tried
-    /// again with the next snapshot or when the app comes to the front.
+    /// per workout dealt with, which takes it off the phone's list; one it
+    /// found nothing for says so too (`notFound`), and the phone tells the
+    /// person it may still be in Health. One the delete couldn't reach (the
+    /// watch locked) stays on the list and is tried again with the next
+    /// snapshot or when the app comes to the front.
     func processRetractions() {
         guard let ids = workoutSection?.retractWorkouts, !ids.isEmpty else { return }
         let local = self.local
         let todo = ids.filter { !local.retractedWorkouts.contains($0) && !retractionsInFlight.contains($0) }
         guard !todo.isEmpty else { return }
         retractionsInFlight.formUnion(todo)
-        WatchHealthSession.shared.retract(todo) { [weak self] done in
+        WatchHealthSession.shared.retract(todo) { [weak self] deleted, notFound in
             guard let self else { return }
             self.retractionsInFlight.subtract(todo)
-            for id in done { self.recordWorkoutTap(kind: "healthRetracted", itemId: id) }
+            for id in deleted { self.recordWorkoutTap(kind: "healthRetracted", itemId: id) }
+            for id in notFound { self.recordWorkoutTap(kind: "healthRetracted", itemId: id, notFound: true) }
         }
     }
 

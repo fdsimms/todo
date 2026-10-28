@@ -638,12 +638,16 @@ export function isNewRecord(dayKey: string, todayKey: string): boolean {
  * broke exactly this record. The badge follows the record events and not the
  * row's day, because the events are where "a record" is defined: a first
  * session, or an equal weight with more reps, holds a row but broke nothing.
+ *
+ * The event is matched by what it set, not by the session holding the row
+ * now: a later session that equals the weight with more reps takes the row
+ * (`heavier` breaks the tie on reps) without breaking anything, and the
+ * record set a few days before it is still new.
  */
 export function isNewRecordRow(row: RecordRow, events: readonly RecordEvent[], todayKey: string): boolean {
   return events.some(e => e.type === row.type
     && e.reps === row.reps
     && e.value === row.value
-    && e.sessionId === row.sessionId
     && isNewRecord(e.dayKey, todayKey));
 }
 

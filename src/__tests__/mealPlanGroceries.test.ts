@@ -556,6 +556,17 @@ describe('plannedIngredientsForRecipe', () => {
       ]);
     });
 
+    it('sends a left-open group as no choice when this meal replaced its other option', () => {
+      const chili = chiliWithPeppers();
+      const key = choiceGroupKey(chili.id, 'Pepper');
+      const jalapeno = chili.ingredients[2];
+      const planned = plannedIngredientsForRecipe(chili, undefined, {
+        undecided: [key],
+        overrides: [{ targetId: jalapeno.id, replacement: null }],
+      });
+      expect(planned.map(p => [p.name, p.choiceGroup])).toEqual([['Beans', null], ['Serrano', null]]);
+    });
+
     it('leaves the recipe\'s other groups resolved', () => {
       const chili = chiliWithPeppers();
       chili.ingredients.push(

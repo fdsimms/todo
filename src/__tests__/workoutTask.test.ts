@@ -1,5 +1,5 @@
 import type { Task, TaskDraft } from '../types';
-import { linkedTaskLine, rotationPickFor, workoutTaskEffect } from '../utils/workoutTask';
+import { linkedTaskLine, rotationPickFor, routineMergePatch, workoutTaskEffect } from '../utils/workoutTask';
 import { newTaskFromDraft } from '../utils/taskDraft';
 import { initDatabase } from '../db/database';
 
@@ -90,5 +90,27 @@ describe('a rotation', () => {
     expect(workoutTaskEffect(rotation(), rotationPickFor(rotation(), { routineId: 'other' }, monday, 1))).toBe('none');
     const asks = rotation({ deliverableKind: 'text' });
     expect(rotationPickFor(asks, { routineId: 'r1' }, monday, 1)).toBeNull();
+  });
+});
+
+describe('routineMergePatch', () => {
+  const members = [
+    { id: 'm1', title: 'Push', linkUrl: null, workoutRoutineId: 'old' },
+    { id: 'm2', title: 'Run', linkUrl: null },
+  ];
+  const base = { completed: false, workoutRoutineId: null, rotationItems: [] };
+
+  it('points a rotation member at the routine kept', () => {
+    const patch = routineMergePatch({ ...base, rotationItems: members }, 'old', 'kept');
+    expect(patch).toEqual({ rotationItems: [{ ...members[0], workoutRoutineId: 'kept' }, members[1]] });
+  });
+
+  it('points the task itself at it too', () => {
+    expect(routineMergePatch({ ...base, workoutRoutineId: 'old' }, 'old', 'kept')).toEqual({ workoutRoutineId: 'kept' });
+  });
+
+  it('leaves a finished task, and one that names the routine nowhere, alone', () => {
+    expect(routineMergePatch({ ...base, completed: true, workoutRoutineId: 'old', rotationItems: members }, 'old', 'kept')).toBeNull();
+    expect(routineMergePatch({ ...base, rotationItems: members }, 'other', 'kept')).toBeNull();
   });
 });

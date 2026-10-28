@@ -47,6 +47,11 @@ import { FieldClearButton } from './FieldClearButton';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { AmountUnitField } from './AmountUnitField';
+import { ingredientAmountGroups } from '../utils/amountUnit';
+
+/** The ratio's unit menu, the same one an ingredient's amount uses. */
+const RATIO_GROUPS = ingredientAmountGroups();
 
 interface Props {
   visible: boolean;
@@ -536,22 +541,26 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
               <Text style={styles.ratioFieldLabel} numberOfLines={1}>{picked.name}</Text>
             </View>
             <View style={styles.ratioRow}>
-              <TextField
-                style={[styles.input, styles.ratioInput]}
+              {/* Number and unit from the menu: a ratio whose two units don't
+                  read, or don't match the recipe line, quietly doesn't convert. */}
+              <AmountUnitField
+                name="SubstituteSheet from unit"
+                style={styles.ratioField}
                 value={ratioFrom}
                 onChangeText={setRatioFrom}
-                placeholder="e.g. 1/4 tsp"
-                placeholderTextColor={colors.textTertiary}
+                groups={RATIO_GROUPS}
+                placeholder="e.g. 1"
                 maxLength={GROCERY_NAME_MAX_LENGTH}
                 accessibilityLabel={`Amount of ${item.name} this ratio is written for`}
               />
               <Ionicons name="arrow-forward" size={iconSize.sm} color={colors.textTertiary} />
-              <TextField
-                style={[styles.input, styles.ratioInput]}
+              <AmountUnitField
+                name="SubstituteSheet to unit"
+                style={styles.ratioField}
                 value={ratioTo}
                 onChangeText={setRatioTo}
-                placeholder="e.g. 1 clove"
-                placeholderTextColor={colors.textTertiary}
+                groups={RATIO_GROUPS}
+                placeholder="e.g. 1"
                 maxLength={GROCERY_NAME_MAX_LENGTH}
                 accessibilityLabel={`Equivalent amount of ${picked.name}`}
               />
@@ -991,7 +1000,7 @@ function makeStyles(colors: Colors) {
     ratioRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     // bgTertiary rather than the note field's bgSecondary — a step down, to
     // read as a pair of small numeric fields rather than a paragraph field.
-    ratioInput: { flex: 1, backgroundColor: colors.bgTertiary },
+    ratioField: { flex: 1 },
     previewCard: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,

@@ -1126,6 +1126,8 @@ export type UnattendedSubject =
   | 'program'
   // A gym (`Gym`) an agent saved or deleted. Record only.
   | 'gym'
+  // A custom exercise (`Exercise`) an agent made. Record only.
+  | 'exercise'
   // A logged workout (`WorkoutSession`) an agent wrote after the fact, changed or deleted.
   // Titled by kind, never by what was lifted, for the mood entry's reason. Record only.
   | 'workout';

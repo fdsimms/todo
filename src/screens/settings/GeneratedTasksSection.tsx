@@ -1417,6 +1417,22 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               accessibilityLabelFor={o => `Estimate the trip ${o.label.toLowerCase()}`}
             />
           )}
+          {s.travelEstimates && (
+            <>
+              <View style={styles.sep} />
+              <SettingsRow
+                entryId="travelCompareModes"
+                icon="git-compare-outline"
+                iconColor={s.travelCompareModes ? colors.accent : undefined}
+                label="Compare ways to get there"
+                hint={s.travelCompareModes
+                  ? 'Each leave-by task lists the trip by car, transit and on foot, with the shortest marked. Tap one to use it for that event. Asks Apple Maps for all three, so it sends the same addresses up to three times.'
+                  : 'Each leave-by task shows only the mode above.'}
+                toggle={s.travelCompareModes}
+                onPress={() => s.setTravelCompareModes(!s.travelCompareModes)}
+              />
+            </>
+          )}
           {s.travelEstimates && s.travelMode !== 'walking' && (
             <>
               <View style={styles.sep} />

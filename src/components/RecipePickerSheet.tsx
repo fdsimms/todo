@@ -292,6 +292,12 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     });
   };
 
+  // The responder is built once, so it calls the latest `dismiss` through a
+  // ref: its own first-render copy saw `planned` as empty forever, and a swipe
+  // down skipped the prep-task offer every other way out makes.
+  const dismissRef = useRef(dismiss);
+  dismissRef.current = dismiss;
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -300,7 +306,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
         if (dy > 0) translateY.setValue(dy);
       },
       onPanResponderRelease: (_, { dy, vy }) => {
-        if (dy > 80 || vy > 1.2) dismiss();
+        if (dy > 80 || vy > 1.2) dismissRef.current();
         else sheet.restore();
       },
     })

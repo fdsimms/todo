@@ -410,3 +410,27 @@ describe('stepIngredientLines', () => {
     expect(read.swappedTo).toBe('Oat milk');
   });
 });
+
+describe('an amount said elsewhere in the sentence', () => {
+  it('still gives the amount when the same figure belongs to another ingredient', () => {
+    const steps = [step('Add 1 cup flour, then fold in the sugar.')];
+    const lines = [line('flour', '1 cup'), line('sugar', '1 cup')];
+    expect(readOne(steps, lines)).toBe('Add 1 cup flour, then fold in the sugar (1 cup).');
+  });
+
+  it('still gives a count the sentence used for a time', () => {
+    const steps = [step('Bake 3 minutes, then add the eggs.')];
+    expect(readOne(steps, [line('eggs', '3')])).toBe('Bake 3 minutes, then add the eggs (3).');
+  });
+
+  it('keeps quiet when the amount sits right before the name', () => {
+    expect(annotateSteps([step('Whisk 3 large eggs.')], [line('eggs', '3')]).size).toBe(0);
+  });
+});
+
+describe('a letter whose lower case is longer', () => {
+  it('keeps the note on the ingredient it belongs to', () => {
+    const steps = [step('İİ Add the onions now.')];
+    expect(readOne(steps, [line('onions', '2')])).toBe('İİ Add the onions (2) now.');
+  });
+});

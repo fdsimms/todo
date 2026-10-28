@@ -187,7 +187,7 @@ import {
 } from '../utils/wanikaniTasks';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseBlockOfferRules, serializeBlockOfferRules } from '../utils/blockOfferTasks';
-import { parseSpeedBumpRules, serializeSpeedBumpRules } from '../utils/speedBump';
+import { clampBumpWarn, parseBumpWarn, parseSpeedBumpRules, serializeSpeedBumpRules } from '../utils/speedBump';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
 import { parseReminderCaptures, serializeReminderCaptures } from '../utils/reminderCaptures';
 import {
@@ -1795,6 +1795,10 @@ interface SettingsStore {
   // for any event without one). Off by default: it sends the event's address
   // and the phone's position to Apple (src/services/travelTime.ts).
   travelEstimates: boolean;
+  // Also asks Apple Maps for the other two ways of getting there, so a row can
+  // list them side by side. On by default, but only acts once travelEstimates is
+  // on (its opt-in); each mode is one more request per event.
+  travelCompareModes: boolean;
   // How that estimate travels.
   travelMode: TravelMode;
   // Walk instead of travelMode when Apple Maps puts the walk at this many
@@ -1870,6 +1874,8 @@ interface SettingsStore {
   // passes a threshold (src/utils/speedBump.ts). No shipped defaults, and
   // armed whether or not Screen Time tasks are on.
   speedBumpRules: SpeedBumpRule[];
+  // Minutes before a speed bump block that a notification warns of it; 0 is off.
+  speedBumpWarnMinutes: number;
   // The daily "log how you're feeling" task (see src/utils/moodTasks.ts). Off
   // by default, the same call pantryCheck and birthdayGift make: it adds a
   // surface nobody had, and there is no recorded intent to point at — nobody
@@ -2455,6 +2461,7 @@ interface SettingsStore {
   setTravelLeadMinutes: (minutes: number) => void;
   setTravelArriveEarlyMinutes: (minutes: number) => void;
   setTravelEstimates: (on: boolean) => void;
+  setTravelCompareModes: (on: boolean) => void;
   setTravelMode: (mode: TravelMode) => void;
   setTravelWalkUnderMinutes: (minutes: number) => void;
   setTravelOriginPlaceId: (id: string | null) => void;
@@ -2480,6 +2487,7 @@ interface SettingsStore {
   setBlockOfferTaskCategory: (category: string | null) => void;
   setBlockOfferRules: (rules: BlockOfferRule[]) => void;
   setSpeedBumpRules: (rules: SpeedBumpRule[]) => void;
+  setSpeedBumpWarnMinutes: (minutes: number) => void;
   setMoodLogTasks: (on: boolean) => void;
   setMoodLogTaskCategory: (category: string | null) => void;
   setMoodLogLastDayKey: (dayKey: string | null) => void;
@@ -3263,6 +3271,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelLeadByCalendar: {},
   travelEventPrefs: {},
   travelEstimates: false,
+  travelCompareModes: true,
   travelMode: 'driving',
   travelWalkUnderMinutes: 0,
   travelOriginPlaceId: null,
@@ -3286,6 +3295,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   blockOfferTaskCategory: null,
   blockOfferRules: [],
   speedBumpRules: [],
+  speedBumpWarnMinutes: 0,
   moodLogTasks: false,
   moodLogTaskCategory: null,
   moodLogLastDayKey: null,
@@ -3819,6 +3829,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const travelLeadByCalendar = parseTravelLeadByCalendar(dbGetSetting('travelLeadByCalendar'));
     const travelEventPrefs = parseTravelEventPrefs(dbGetSetting('travelEventPrefs'));
     const travelEstimates = dbGetSetting('travelEstimates') === 'true';
+    const travelCompareModes = dbGetSetting('travelCompareModes') !== 'false';
     const storedTravelMode = dbGetSetting('travelMode');
     const travelMode: TravelMode = TRAVEL_MODES.find(m => m === storedTravelMode) ?? 'driving';
     const storedWalkUnder = parseInt(dbGetSetting('travelWalkUnderMinutes') ?? '', 10);
@@ -3958,6 +3969,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const blockOfferTaskCategory = dbGetSetting('blockOfferTaskCategory') || null;
     const blockOfferRules = parseBlockOfferRules(dbGetSetting('blockOfferRules'));
     const speedBumpRules = parseSpeedBumpRules(dbGetSetting('speedBumpRules'));
+    const speedBumpWarnMinutes = parseBumpWarn(dbGetSetting('speedBumpWarnMinutes'));
     // Same TEXT-column parse as every other numeric setting here: an
     // unparseable or missing row (a fresh install, or one that predates this
     // setting) reads back as 0 — never nudge — matching DEFAULT_NUDGE_CADENCE_DAYS.
@@ -4325,6 +4337,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       snackNudgeTasks,
       sortOption,
       speedBumpRules,
+      speedBumpWarnMinutes,
       standardDrinkGrams,
       stepGoal,
       sunLocation,
@@ -4338,6 +4351,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       transitAlerts,
       transitLines,
       travelArriveEarlyMinutes,
+      travelCompareModes,
       travelEstimates,
       travelEventPrefs,
       travelLeadByCalendar,
@@ -5057,6 +5071,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ travelEstimates: on });
   },
 
+  setTravelCompareModes(on: boolean) {
+    dbSetSetting('travelCompareModes', on ? 'true' : 'false');
+    set({ travelCompareModes: on });
+  },
+
   setTravelMode(mode: TravelMode) {
     dbSetSetting('travelMode', mode);
     set({ travelMode: mode });
@@ -5202,6 +5221,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setSpeedBumpRules(rules: SpeedBumpRule[]) {
     dbSetSetting('speedBumpRules', serializeSpeedBumpRules(rules));
     set({ speedBumpRules: rules });
+  },
+
+  setSpeedBumpWarnMinutes(minutes: number) {
+    const next = clampBumpWarn(minutes);
+    dbSetSetting('speedBumpWarnMinutes', String(next));
+    set({ speedBumpWarnMinutes: next });
   },
 
   setMoodLogTasks(on: boolean) {

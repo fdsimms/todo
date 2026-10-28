@@ -102,6 +102,21 @@ describe('applyLocationGym', () => {
   });
 });
 
+describe('applyLocationGym, while the fix is coming', () => {
+  it('keeps a gym the person picked by hand before the position came back', async () => {
+    const home = addGym('Home', [41, -70]);
+    addGym('Planet', [40, -74]);
+    const work = addGym('Work', null);
+    const s = startAt(home.id);
+    mockLocation.mockImplementation(async () => {
+      useWorkoutStore.getState().updateSession(s.id, { gymId: work.id });
+      return HERE;
+    });
+    await applyLocationGym(s.id);
+    expect(gymOf(s.id)).toBe(work.id);
+  });
+});
+
 describe('defaultGymId', () => {
   it('is the gym of the last workout that had one', () => {
     const a = addGym('A', null);

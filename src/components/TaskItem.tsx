@@ -103,7 +103,9 @@ import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
-import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, describeTravelEstimate, travelRowEstimate, travelSourceEventId, travelSourceStart, travelWalkUnderFor } from '../utils/travelTasks';
+import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, travelSourceStart, travelWalkUnderFor, type TravelChoice } from '../utils/travelTasks';
+import { setTravelModeForEvent } from '../utils/travelModeWrite';
+import { TravelModeSheet } from './TravelModeSheet';
 import { openEventInSystemCalendar } from '../utils/calendarSync';
 import { alertFailedWithSettings } from '../utils/permissionAlert';
 import { isDemoModeActive } from '../utils/demoState';
@@ -841,6 +843,22 @@ const TaskItemRow = React.memo(function TaskItem({
     );
   });
   const travelNote = travelHeld ? describeTravelEstimate(travelHeld.minutes, travelHeld.mode) : null;
+  // The other ways of getting there, when Compare ways to get there is on.
+  const travelCompareModes = useSettingsStore(s => s.travelCompareModes);
+  const travelOptions = travelCompareModes ? travelChoices(travelHeld) : [];
+  const [showTravelPicker, setShowTravelPicker] = useState(false);
+  const mountTravelPicker = useSheetMount(showTravelPicker);
+  // A tap on another way switches the event to it; a tap on the one in use (or
+  // on the lone estimate) opens the full "Getting there" card, which is also
+  // where the Settings default and "no leave-by task" are.
+  const handleTravelChoice = (choice: TravelChoice) => {
+    haptics.tap();
+    const sourceId = task.generatedSourceId;
+    const eventId = sourceId ? localTravelEventId(sourceId) : null;
+    if (!sourceId || !eventId) return;
+    if (choice.selected) { setShowTravelPicker(true); return; }
+    setTravelModeForEvent(eventId, sourceId, choice.mode);
+  };
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const travelArrival = travelArrivalNote(task, travelHeld?.minutes ?? null, ms => formatTimeOfDay(new Date(ms), use24HourTime));
   // The same row's disruption note ("G skipping stops; F delayed"), which is no
@@ -4034,12 +4052,48 @@ const TaskItemRow = React.memo(function TaskItem({
                 <Text style={styles.scheduledLabel} numberOfLines={1}>{placeReminderLabel}</Text>
               </View>
             )}
-            {travelNote !== null && (
-              <View style={styles.metaChip} accessibilityLabel={`Travel time ${travelNote}`}>
+            {travelNote !== null && travelOptions.length === 0 && (
+              <TouchableOpacity
+                style={styles.metaChip}
+                disabled={selectionMode}
+                onPress={() => { haptics.tap(); setShowTravelPicker(true); }}
+                hitSlop={8}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Travel time ${travelNote}`}
+                accessibilityHint="Choose how you get there"
+              >
                 <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
                   {travelNote}
                 </Text>
+              </TouchableOpacity>
+            )}
+            {/* Every way of getting there, side by side, so the shortest is
+                visible before leaving. The one the reminder is based on is
+                filled; the others switch the event to them. */}
+            {travelOptions.length > 0 && (
+              <View style={styles.travelChoices}>
+                {travelOptions.map(choice => (
+                  <TouchableOpacity
+                    key={choice.mode}
+                    style={[styles.travelChoice, choice.selected && styles.travelChoiceSelected]}
+                    disabled={selectionMode}
+                    onPress={() => handleTravelChoice(choice)}
+                    hitSlop={6}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: choice.selected }}
+                    accessibilityLabel={`${choice.label}${choice.fastest ? ', fastest' : ''}${choice.selected ? ', in use' : ''}`}
+                    accessibilityHint={choice.selected ? 'Choose how you get there' : 'Use this way of getting there'}
+                  >
+                    {choice.selected && <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.accentText} />}
+                    <Text style={choice.selected ? styles.travelChoiceSelectedLabel : styles.scheduledLabel} numberOfLines={1}>
+                      {choice.label}
+                      {choice.fastest && <Text style={styles.travelChoiceFastest}>{' · fastest'}</Text>}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             )}
             {/* When leaving at the reminder gets you there, against the start. On
@@ -5577,6 +5631,14 @@ const TaskItemRow = React.memo(function TaskItem({
           onUndoSlip={() => undoSlip(task.id)}
         />
       )}
+      {mountTravelPicker && (
+        <TravelModeSheet
+          visible={showTravelPicker}
+          eventId={task.generatedSourceId ? localTravelEventId(task.generatedSourceId) : null}
+          sourceId={task.generatedSourceId ?? null}
+          onClose={() => setShowTravelPicker(false)}
+        />
+      )}
       {mountPantryCheck && pantryCheckId && (
         <PantryCheckSheet
           visible={showPantryCheck}
@@ -6135,6 +6197,35 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
   },
   travelDisruptionChip: {
     flexBasis: '100%',
+  },
+  travelChoices: {
+    flexBasis: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xsm,
+  },
+  travelChoice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.controlBorder,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm + 1,
+    paddingVertical: 3,
+  },
+  travelChoiceSelected: {
+    backgroundColor: colors.accentSubtle,
+    borderColor: 'transparent',
+  },
+  travelChoiceSelectedLabel: {
+    color: colors.accentText,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+  },
+  travelChoiceFastest: {
+    color: colors.greenText,
+    fontWeight: fontWeight.semibold,
   },
   travelDisruptionLabel: {
     color: colors.warningText,

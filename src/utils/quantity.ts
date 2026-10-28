@@ -385,6 +385,10 @@ const UNICODE_FRACTION = new RegExp(`^(?:(\\d+)\\s*)?([${UNICODE_FRACTION_CHARS}
 // look like a bare decimal's leading digit too ("1½" vs "1.5").
 const MIXED_NUMBER = /^(\d+)\s+(\d+)\/(\d+)/;
 const FRACTION = /^(\d+)\/(\d+)/;
+// "1-1/2": the hyphenated mixed number many US recipe sites print. Only with a
+// proper fraction after the hyphen, which no range is ("1 to 1/2" would run
+// backwards), so "1-2" and "1/2-1" still read as ranges.
+const HYPHENATED_MIXED = /^(\d+)-(\d+)\/(\d+)/;
 const DECIMAL = /^(?:\d+(?:\.\d+)?|\.\d+)/;
 
 /** parseGroceryInput's trailing-count notation, on its own. */
@@ -405,7 +409,7 @@ const LEADING_WORD = /^[a-z]+/i;
  * canonical `'fl oz'` regardless of which of the three spellings was typed,
  * matching how `unitKey` collapses a plural onto its singular.
  */
-const FLUID_OUNCE = /^fl\.?\s*oz\.?\b|^fluid\s+ounces?\b/i;
+const FLUID_OUNCE = /^fl\.?\s*oz\b\.?|^fluid\s+ounces?\b/i;
 
 /**
  * A bare sized container's trailing half — "oz can" out of "14 oz can", and
@@ -451,6 +455,18 @@ function readLeadingAmount(text: string): LeadingAmount | null {
       length: unicodeFraction[0].length,
       decimal: false,
     };
+  }
+  const hyphenated = HYPHENATED_MIXED.exec(text);
+  if (hyphenated) {
+    const num = Number(hyphenated[2]);
+    const den = Number(hyphenated[3]);
+    if (den !== 0 && num < den) {
+      return {
+        value: rational(Number(hyphenated[1]) * den + num, den),
+        length: hyphenated[0].length,
+        decimal: false,
+      };
+    }
   }
   const mixed = MIXED_NUMBER.exec(text);
   if (mixed) {

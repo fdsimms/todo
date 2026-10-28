@@ -131,6 +131,7 @@ import { timed } from './perfLog';
 import { savePerfRun } from './perfReport';
 import { catchUpPasses, rebuildNotificationQueue } from './maintenancePasses';
 import { drainWatchQueues, writeWidgetSnapshotNow } from './widgetSync';
+import { syncWorkoutLiveActivityNow } from '../hooks/useWorkoutLiveActivitySync';
 import { widgetBridge } from './widgetBridge';
 import { reconcileAppShield } from './appShieldReconcile';
 import { useWaniKaniStore } from '../store/useWaniKaniStore';
@@ -334,6 +335,9 @@ export async function runWatchWork(): Promise<boolean> {
   if (isDemoModeActive()) return false;
   if (!runStartupStep('initialize stores', openStoresIfClosed)) return false;
   await drainWatchQueues(AppState.currentState === 'active' ? 'app' : 'requeue');
+  // The Lock Screen's workout first, and now: the snapshot write below ends
+  // the background time, so the activity's debounced update would never run.
+  syncWorkoutLiveActivityNow();
   // Now rather than debounced: in the background this write is what ends the
   // time WatchSession asked iOS for, and the watch is waiting on it to settle
   // its taps.
