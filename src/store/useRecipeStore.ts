@@ -64,6 +64,16 @@ export interface CookStats {
   lastCookedAt: string | null;
 }
 
+/**
+ * A recipe's two timers and what stopping them logs, as they stood before a
+ * finished cook stopped them. Undoing "Cooked X" hands it back, so the timer
+ * runs on from where it was and the logged minutes come off again.
+ */
+export type CookTimerSnapshot = Pick<Recipe,
+  | 'timerStartedAt' | 'timerElapsedSeconds' | 'lastCookMinutes' | 'cookTimeCount' | 'totalCookMinutes'
+  | 'estimatedMinutes' | 'prepTimerStartedAt' | 'prepTimerElapsedSeconds' | 'lastPrepMinutes'
+  | 'prepTimeCount' | 'totalPrepMinutes' | 'prepMinutes'>;
+
 interface RecipeStore {
   recipes: Recipe[];
   /**
@@ -294,6 +304,10 @@ interface RecipeStore {
    * gets to reach in here.
    */
   restoreCookStats: (id: string, stats: CookStats) => void;
+  /** The timers as they stand now, for `restoreCookTimers`; null when the recipe doesn't resolve. */
+  cookTimerSnapshot: (id: string) => CookTimerSnapshot | null;
+  /** Puts the timers back to a snapshot. For undo only, like `restoreCookStats`. */
+  restoreCookTimers: (id: string, snapshot: CookTimerSnapshot) => void;
 
   /** null clears it. Rounded and floored at 1 minute, same clamp as a task's estimate. */
   setEstimatedMinutes: (id: string, minutes: number | null) => void;
@@ -984,6 +998,31 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     save(set, { ...recipe, ...stats });
+  },
+
+  cookTimerSnapshot(id) {
+    const r = get().recipes.find(x => x.id === id);
+    if (!r) return null;
+    return {
+      timerStartedAt: r.timerStartedAt,
+      timerElapsedSeconds: r.timerElapsedSeconds,
+      lastCookMinutes: r.lastCookMinutes,
+      cookTimeCount: r.cookTimeCount,
+      totalCookMinutes: r.totalCookMinutes,
+      estimatedMinutes: r.estimatedMinutes,
+      prepTimerStartedAt: r.prepTimerStartedAt,
+      prepTimerElapsedSeconds: r.prepTimerElapsedSeconds,
+      lastPrepMinutes: r.lastPrepMinutes,
+      prepTimeCount: r.prepTimeCount,
+      totalPrepMinutes: r.totalPrepMinutes,
+      prepMinutes: r.prepMinutes,
+    };
+  },
+
+  restoreCookTimers(id, snapshot) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, ...snapshot });
   },
 
   setEstimatedMinutes(id, minutes) {

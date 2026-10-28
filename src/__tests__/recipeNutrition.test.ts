@@ -1150,6 +1150,14 @@ describe('the week and the recipe page agree', () => {
     expect(week.covered).toBe(1);
   });
 
+  it('counts a line marked as never shopped for, as the recipe page does', () => {
+    const dish = recipe('Brine', [ing('Salt', { quantity: '50 g', excludeFromShoppingList: true })]);
+    const catalog = [item({ name: 'Salt', nutrition: panel({ amounts: { sodiumMg: 38000 } }) })];
+    const page = recipeNutrition(dish, catalog)!;
+    const week = weekNutrition([entry('2026-08-11', dish.id)], new Map([[dish.id, dish]]), catalog, RANGE)!;
+    expect(week.total.sodiumMg).toBe(page.total.sodiumMg);
+  });
+
   it('counts only the share of a used recipe the dish eats, in the week too', () => {
     const mix = recipe('Mix', [ing('Salt mix', { quantity: '100 g' })], { recipeYield: '4 tbsp' });
     const fish = recipe('Fish', [ing('Cod', { quantity: '100 g' })], {

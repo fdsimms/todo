@@ -1249,6 +1249,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // left going kept announcing a dish that was already on the table. A no-op
     // when nothing is running or banked, and the Live Activity's Done already
     // stops it first (deepLinks), so the elapsed run is banked exactly once.
+    // Snapshotted first, so undoing "Cooked X" puts a still-running cook back
+    // rather than leaving the timer stopped and its minutes logged.
+    const timers = useRecipeStore.getState().cookTimerSnapshot(recipeId);
+    const restoreTimers = () => { if (timers) useRecipeStore.getState().restoreCookTimers(recipeId, timers); };
     useRecipeStore.getState().stopCookTimer(recipeId);
     // The prep timer too, which Start cooking paused rather than stopped: its
     // time belongs to this cooking, and left banked the next one resumed it.
@@ -1269,7 +1273,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         get().setLastAction({
           label: `Cooked “${titleForEntry(entry, recipeIndex(recipes))}”`,
           redo: () => get().finishCookForRecipe(recipeId),
-          undo,
+          undo: () => { undo(); restoreTimers(); },
         });
       }
       return;
@@ -1285,7 +1289,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     get().setLastAction({
       label: `Cooked “${recipe.name}”`,
       redo: () => get().finishCookForRecipe(recipeId),
-      undo: () => useRecipeStore.getState().restoreCookStats(recipeId, before),
+      undo: () => { useRecipeStore.getState().restoreCookStats(recipeId, before); restoreTimers(); },
     });
   },
 

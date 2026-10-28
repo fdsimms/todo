@@ -622,7 +622,7 @@ export function weekNutrition(
   swaps: StandingSwapMap = NO_STANDING_SWAPS,
 ): RecipeNutrition | null {
   const planned = collectPlannedIngredients(
-    entries, recipesById, range, swaps, onHandNameKeys(items, new Date(), products)
+    entries, recipesById, range, swaps, onHandNameKeys(items, new Date(), products), { includeNotShopped: true },
   );
   if (planned.length === 0) return null;
 

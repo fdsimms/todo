@@ -165,6 +165,8 @@ const mockRecipeState = {
   restoreCookStats: jest.fn(),
   stopCookTimer: jest.fn(),
   stopPrepTimer: jest.fn(),
+  cookTimerSnapshot: jest.fn((): unknown => null),
+  restoreCookTimers: jest.fn(),
   setUpNext: jest.fn(),
   // A name-only recipe, refused on a taken name the way the real store is, so
   // saveEntryAsRecipe's two branches are both reachable.
@@ -3285,6 +3287,17 @@ describe('finishCookForRecipe', () => {
       expect.objectContaining({ id: dinner.id, cookedAt: null })
     );
     expect(mockRecipeState.restoreCookStats).toHaveBeenCalledWith('r1', stats);
+  });
+
+  it('puts a running cook timer back on undo, rather than leaving it stopped and logged', () => {
+    const running = { timerStartedAt: localIso('2026-01-01T18:00'), timerElapsedSeconds: 0 };
+    mockRecipeState.cookTimerSnapshot.mockReturnValueOnce(running);
+    planToday([entry(today, 'dinner', { recipeId: 'r1', title: 'Ragu' })]);
+
+    useMealPlanStore.getState().finishCookForRecipe('r1');
+    useMealPlanStore.getState().lastAction!.undo();
+
+    expect(mockRecipeState.restoreCookTimers).toHaveBeenCalledWith('r1', running);
   });
 
   it('registers an undo for the off-plan cooking too', () => {

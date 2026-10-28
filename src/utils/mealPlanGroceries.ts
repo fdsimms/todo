@@ -184,6 +184,12 @@ export function collectPlannedIngredients(
    * never answered resolving to its first-listed option exactly as before.
    */
   onHand: ReadonlySet<string> = new Set(),
+  /**
+   * Keep the lines marked as never shopped for. Only `weekNutrition` asks:
+   * salt marked "not on the shopping list" is still in the food, and left out
+   * the week counted no sodium for a dish whose own page did.
+   */
+  options: { includeNotShopped?: boolean } = {},
 ): PlannedIngredient[] {
   const out: PlannedIngredient[] = [];
   for (const entry of entries) {
@@ -206,7 +212,7 @@ export function collectPlannedIngredients(
       // A staple you'd already have (RecipeIngredient.excludeFromShoppingList,
       // water at a stated amount most often) never becomes a shopping-list
       // add — it stays on the recipe, this just skips it here.
-      if (flat.ingredient.excludeFromShoppingList) continue;
+      if (flat.ingredient.excludeFromShoppingList && !options.includeNotShopped) continue;
       out.push({
         name: flat.ingredient.name,
         nameKey: flat.ingredient.nameKey,
@@ -292,7 +298,7 @@ export function plannedIngredientsForRecipe(
 ): PlannedIngredient[] {
   const factor = normalizeScale(scale);
   const undecided = new Set(resolution?.undecided ?? []);
-  return flattenRecipeIngredients(recipe, recipesById, resolution, swaps)
+  const rows: PlannedIngredient[] = flattenRecipeIngredients(recipe, recipesById, resolution, swaps)
     // Same skip collectPlannedIngredients makes, for the same reason — see its
     // own comment.
     .filter(flat => !flat.ingredient.excludeFromShoppingList)
@@ -317,6 +323,12 @@ export function plannedIngredientsForRecipe(
       ...(flat.either?.undecided ? { undecidedItem: true as const } : {}),
       ...(optionalCounts(flat.ingredient, resolution) ? {} : { optional: true }),
     }));
+  // A group left open with only one option still coming through (this meal
+  // replaced the other) is no choice: sent as one, it reached the list as half
+  // an either/or with nothing to say what it was an alternative to.
+  const members = new Map<string, number>();
+  for (const row of rows) if (row.choiceGroup) members.set(row.choiceGroup, (members.get(row.choiceGroup) ?? 0) + 1);
+  return rows.map(row => (row.choiceGroup && members.get(row.choiceGroup) === 1 ? { ...row, choiceGroup: null } : row));
 }
 
 /**

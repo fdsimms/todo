@@ -1252,11 +1252,17 @@ export function describeComponents(
   if (count === 0) return '';
   const base = count === 1 ? '1 component' : `${count} components`;
   if (!recipesById) return base;
-  const fromComponents = countChoiceAware(
-    flattenRecipeIngredients(recipe, recipesById)
-      .filter(f => f.depth > 0)
-      .map(f => f.ingredient),
-  );
+  // Counted per part: a label belongs to the recipe it's written on, so two
+  // parts each with a "Cheese" choice are two choices, not one.
+  const byPart = new Map<string, RecipeIngredient[]>();
+  for (const f of flattenRecipeIngredients(recipe, recipesById)) {
+    if (f.depth === 0) continue;
+    const lines = byPart.get(f.recipe.id);
+    if (lines) lines.push(f.ingredient);
+    else byPart.set(f.recipe.id, [f.ingredient]);
+  }
+  let fromComponents = 0;
+  for (const lines of byPart.values()) fromComponents += countChoiceAware(lines);
   if (fromComponents === 0) return base;
   return `${base} with ${fromComponents === 1 ? '1 ingredient' : `${fromComponents} ingredients`}`;
 }
