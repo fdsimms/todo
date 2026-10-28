@@ -348,3 +348,24 @@ describe('parseQuantity written-out forms', () => {
     expect(parseQuantity('1 tbsp. + 1 tsp.').trailing.trim().startsWith('+')).toBe(true);
   });
 });
+
+describe('parseQuantity: a hyphenated mixed number', () => {
+  it('reads "1-1/2 cups" as one and a half, not a range running backwards', () => {
+    const q = parseQuantity('1-1/2 cups');
+    expect(q.amount).toEqual({ num: 3, den: 2 });
+    expect(q.rangeMax).toBeNull();
+    expect(q.unit).toBe('cup');
+  });
+
+  it('still reads a real range, whichever end is the fraction', () => {
+    expect(parseQuantity('1-2 cups').rangeMax).toEqual({ num: 2, den: 1 });
+    expect(parseQuantity('1/2-1 cup').rangeMax).toEqual({ num: 1, den: 1 });
+    const mixedLow = parseQuantity('1-1/2-2 cups');
+    expect(mixedLow.amount).toEqual({ num: 3, den: 2 });
+    expect(mixedLow.rangeMax).toEqual({ num: 2, den: 1 });
+  });
+
+  it('leaves the full stop of "fl. oz." with the unit', () => {
+    expect(parseQuantity('2 fl. oz.').trailing).toBe('');
+  });
+});

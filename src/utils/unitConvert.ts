@@ -354,6 +354,23 @@ function compoundTail(first: KnownUnit, trailing: string): { base: number; trail
   return { base: value * known.base, trailing: q.trailing };
 }
 
+/**
+ * Trailing text with a parenthesised restatement of the amount taken off the
+ * end: the " (360 ml)" of "1 1/2 cups (360 ml)", the " (7 oz)" groceryParse
+ * writes for "200g/7oz". Kept, it contradicted the converted figure beside it
+ * ("≈350 ml (360 ml)"). Only an aside that is itself a measurement off the
+ * table goes; any other parenthesis ("(packed)") is prose and stays.
+ */
+function withoutMeasureAside(trailing: string): string {
+  const aside = /\s*\(([^()]*)\)\s*$/.exec(trailing);
+  if (!aside) return trailing;
+  const q = parseQuantity(aside[1]);
+  if (q.amount === null || q.rangeMax || q.container || q.trailing || !q.unit || !KNOWN_UNITS[q.unit]) {
+    return trailing;
+  }
+  return trailing.slice(0, aside.index);
+}
+
 function convertOne(part: string, target: 'metric' | 'us'): ConvertedQuantity {
   const q = parseQuantity(part);
   const unchanged: ConvertedQuantity = { text: q.raw, converted: false };
@@ -381,7 +398,7 @@ function convertOne(part: string, target: 'metric' | 'us'): ConvertedQuantity {
     if (target !== 'us' || known.dimension !== 'volume') return unchanged;
     const stepped = stepDownUsVolume(q.amount, q.unit);
     if (!stepped) return unchanged;
-    return { text: `${stepped.text} ${stepped.unit}${q.trailing}`, converted: true };
+    return { text: `${stepped.text} ${stepped.unit}${withoutMeasureAside(q.trailing)}`, converted: true };
   }
 
   const base = value * known.base + (tail?.base ?? 0);
@@ -392,7 +409,7 @@ function convertOne(part: string, target: 'metric' | 'us'): ConvertedQuantity {
 
   // Whatever followed the unit is prose — a size clause ("1 cup, packed"), a
   // prep note — and carries through untouched, exactly as scaling carries it.
-  return { text: `${rendered}${tail ? tail.trailing : q.trailing}`, converted: true };
+  return { text: `${rendered}${withoutMeasureAside(tail ? tail.trailing : q.trailing)}`, converted: true };
 }
 
 export interface MeasuredQuantity {

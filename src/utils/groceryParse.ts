@@ -213,6 +213,18 @@ const MEASURE_UNITS = new Set([
   'tbsp', 'tsp', 'tablespoon', 'tablespoons', 'teaspoon', 'teaspoons',
   'pt', 'pint', 'pints', 'qt', 'quart', 'quarts', 'gal', 'gallon', 'gallons',
 ]);
+// "200g/7oz plain flour", "1 cup / 240ml milk": one amount in two systems,
+// the way a UK recipe prints it. Restated as the first measure with the second
+// as its aside ("200 g (7 oz)"), the shape a US recipe prints the same thing
+// in, so scaling and conversion read the first and set the aside down.
+const SLASH_MEASURES = new RegExp(
+  `^(${AMOUNT})\\s*([a-z]+)\\.?\\s*\\/\\s*(${AMOUNT})\\s*([a-z]+)\\.?\\s+(.+)$`,
+  'i',
+);
+// "1-1/2 cups": a mixed number written with a hyphen, as many US recipe sites
+// print it. Only a proper fraction after the hyphen, so a real range ("1-2",
+// "1/2-1") is left for RANGE_QTY.
+const HYPHENATED_MIXED = /^(\d+)-(\d+)\/(\d+)(?=\s|[a-z])/i;
 // "1 can (14 oz) coconut milk": the size after the container, written in
 // parentheses. Restated as CONTAINER_QTY would have it ("1 14 oz can").
 const CONTAINER_THEN_SIZE = /^(\d+)\s+([a-z]+)\s+\((\d+(?:\.\d+)?)\s*-?\s*([a-z]+)\.?\)\s+(.+)$/i;
@@ -226,6 +238,18 @@ function measureQuantity(input: string): { name: string; quantity: string } | nu
     if (isSizedContainer(sizeUnit, container) && rest.trim()) {
       const sized = extractLeadingSize(rest.trim(), `${count} ${size} ${sizeUnit} ${container}`);
       return { name: clampName(sized.name), quantity: clampQuantity(sized.quantity) };
+    }
+  }
+
+  const slashed = SLASH_MEASURES.exec(input);
+  if (slashed) {
+    const [, first, unit1Raw, second, unit2Raw, rest] = slashed;
+    const unit1 = unit1Raw.toLowerCase();
+    const unit2 = unit2Raw.toLowerCase();
+    if (MEASURE_UNITS.has(unit1) && MEASURE_UNITS.has(unit2) && rest.trim()) {
+      const quantity =
+        `${first} ${UNIT_ABBREVIATIONS[unit1] ?? unit1} (${second} ${UNIT_ABBREVIATIONS[unit2] ?? unit2})`;
+      return { name: clampName(rest), quantity: clampQuantity(quantity) };
     }
   }
 
@@ -272,7 +296,9 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
     // The fraction slash (U+2044) is what some recipe pages print in "1⁄2".
     .replace(/⁄/g, '/')
     .replace(/\s+/g, ' ')
-    .replace(HYPHENATED_COUNT, '$1 $2 ');
+    .replace(HYPHENATED_COUNT, '$1 $2 ')
+    .replace(HYPHENATED_MIXED, (whole, units: string, num: string, den: string) =>
+      Number(num) < Number(den) ? `${units} ${num}/${den}` : whole);
   if (!input) return { name: '', quantity: null };
 
   const measure = measureQuantity(input);

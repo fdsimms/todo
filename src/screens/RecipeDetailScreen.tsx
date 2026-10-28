@@ -100,11 +100,11 @@ import {
   splitIngredientAnd,
   totalMinutes,
 } from '../utils/recipeUtils';
-import { buildIngredientSections, buildIngredientsText, buildRecipeShareText, servingsLineFor } from '../utils/shareText';
+import { buildIngredientSections, buildIngredientsText, buildRecipeShareText, servingsLineFor, unscaledNoteFor } from '../utils/shareText';
 import { PrintIngredientsSheet } from '../components/PrintIngredientsSheet';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
-import { describeUnscaled, formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
+import { formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
 import { convertScaledQuantity, showContainerCount, STACKED_QTY_LENGTH } from '../utils/unitConvert';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
@@ -418,13 +418,10 @@ export function RecipeDetailScreen() {
 
   // Only lines that *have* a quantity can fail to scale; a line with none was
   // never going to say a number either way.
-  const unscaledNote = useMemo(() => {
-    if (!recipe) return null;
-    const count = recipe.ingredients.filter(
-      i => i.quantity.trim() && !scaleQuantity(i.quantity, scale).scaled
-    ).length;
-    return describeUnscaled(count, scale);
-  }, [recipe, scale]);
+  const unscaledNote = useMemo(
+    () => (recipe ? unscaledNoteFor(recipe, recipesById, scale) : null),
+    [recipe, recipesById, scale],
+  );
 
   // Priced through the same flattening the shopping read uses (components,
   // standing swaps, this much of the recipe) — null while too little of it is
@@ -706,6 +703,7 @@ export function RecipeDetailScreen() {
           name: recipe.name,
           servingsLine: servingsLineFor(recipe, scale),
           sections: buildIngredientSections(recipe, recipesById, { scale, unitSystem, weights: weightLookups }),
+          unscaledNote: unscaledNoteFor(recipe, recipesById, scale),
         }
       : null),
     [printMounted, recipe, recipesById, scale, unitSystem, weightLookups]
