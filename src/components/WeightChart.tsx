@@ -1,12 +1,13 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, PanResponder, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
-import Svg, { Circle, Line, Polyline } from 'react-native-svg';
+import Svg, { Circle, ClipPath, Defs, G, Line, Polyline, Rect } from 'react-native-svg';
 import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
 import { useGuideGutter } from './ChartGuides';
 import { spacing, font, fontWeight, radius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyToDate } from '../utils/dateUtils';
+import { isZoomed, pinchRange, type PinchStart, type ZoomRange } from '../utils/chartZoom';
 import {
   formatWeight,
   kgToUnit,
@@ -79,6 +80,17 @@ import type { PacePlotPoint } from '../utils/weightGoal';
  * arbitration that library is for. It changes nothing about the single
  * accessibility element above: the touch layer has no accessible children of
  * its own, so a screen-reader user still gets just the spoken summary.
+ *
+ * **Two fingers zoom the time axis; one finger still scrubs.** A pinch narrows
+ * the window to a slice (`ZoomRange`, in the same day-offset units `xFor`
+ * already uses), about the point between the fingers, and sliding them pans.
+ * The `PanResponder` hands over every touch in `nativeEvent.touches`, so the
+ * same responder that scrubs reads the second finger and no gesture-handler
+ * arbitration is needed. The y-axis refits to the slice, because the point of
+ * zooming is the wobble a whole window's range flattens. Double-tapping puts
+ * the whole window back, and so does picking another window (the points
+ * change). Nothing is stored: the range is local state, `null` meaning "all of
+ * it", and a chart nobody pinches draws exactly as it did.
  */
 
 const CHART_HEIGHT = 160;
@@ -144,7 +156,22 @@ export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange 
   const [width, setWidth] = useState(0);
   const gutter = useGuideGutter(GUIDE_LABEL_WIDTH);
 
-  const domain = useMemo(() => weightDomain(points, targetKg), [points, targetKg]);
+  const lastIndex = Math.max(1, points.length - 1);
+
+  // The slice of the window being looked at, or null for all of it. A different
+  // window (another range pill) is a different axis, so a zoom doesn't survive it.
+  const [range, setRange] = useState<ZoomRange | null>(null);
+  const windowKey = `${points.length}:${points[0]?.dayKey ?? ''}`;
+  useEffect(() => { setRange(null); }, [windowKey]);
+  const lo = range?.lo ?? 0;
+  const hi = range?.hi ?? lastIndex;
+
+  const domain = useMemo(() => {
+    if (range === null) return weightDomain(points, targetKg);
+    const slice = points.slice(Math.max(0, Math.floor(range.lo)), Math.ceil(range.hi) + 1);
+    // A slice with no reading in it (zoomed into a gap) keeps the whole window's scale.
+    return weightDomain(slice, targetKg) ?? weightDomain(points, targetKg);
+  }, [points, targetKg, range]);
   const ticks = useMemo(() => (domain ? weightTicks(domain, unit) : []), [domain, unit]);
   const segments = useMemo(() => weightSegments(points), [points]);
   const trendSegments = useMemo(() => weightTrendSegments(points), [points]);
@@ -179,8 +206,7 @@ export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange 
 
   // A single-day window has no span to divide by, so its one reading is drawn
   // in the middle rather than at x=0 with a NaN beside it.
-  const lastIndex = Math.max(1, points.length - 1);
-  const xFor = (index: number) => gutter + (index / lastIndex) * Math.max(width - gutter, 0);
+  const xFor = (index: number) => gutter + ((index - lo) / (hi - lo)) * Math.max(width - gutter, 0);
 
   // The scrubbed reading, by its position in `plotPoints`/`trendPoints` — not a
   // dayKey, so a touch between two readings resolves to whichever is nearer in
@@ -188,13 +214,19 @@ export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange 
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   const scrubIndexRef = useRef<number | null>(null);
 
+  // The responder below is built once and outlives every render, so what it
+  // reads lives in a ref refreshed each render rather than in its closure.
+  const latest = useRef({ plotPoints, width, gutter, lo, hi, range, lastIndex });
+  latest.current = { plotPoints, width, gutter, lo, hi, range, lastIndex };
+
   const scrubTo = (event: GestureResponderEvent) => {
-    if (plotPoints.length === 0 || width === 0) return;
+    const { plotPoints: plotted, width: w, gutter: g, lo: from, hi: to } = latest.current;
+    if (plotted.length === 0 || w === 0) return;
     const x = event.nativeEvent.locationX;
     let nearest = 0;
     let nearestDistance = Infinity;
-    for (let i = 0; i < plotPoints.length; i++) {
-      const distance = Math.abs(xFor(plotPoints[i].index) - x);
+    for (let i = 0; i < plotted.length; i++) {
+      const distance = Math.abs(g + ((plotted[i].index - from) / (to - from)) * Math.max(w - g, 0) - x);
       if (distance < nearestDistance) {
         nearestDistance = distance;
         nearest = i;
@@ -207,15 +239,72 @@ export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange 
 
   const onScrubChangeRef = useRef(onScrubChange);
   onScrubChangeRef.current = onScrubChange;
-  const startScrub = (event: GestureResponderEvent) => {
-    onScrubChangeRef.current?.(true);
-    scrubTo(event);
-  };
+
+  const plotRef = useRef<View>(null);
+  /** The plot's left edge in window coordinates; a touch's `pageX` counts from the window. */
+  const plotLeftRef = useRef<number | null>(null);
+  const pinchRef = useRef<PinchStart | null>(null);
+  /** Set once a second finger lands, and held until every finger lifts, so the one left behind doesn't start a scrub. */
+  const pinchedRef = useRef(false);
+  const lastTapRef = useRef(0);
 
   const endScrub = () => {
     scrubIndexRef.current = null;
     setScrubIndex(null);
     onScrubChangeRef.current?.(false);
+  };
+
+  const startScrub = (event: GestureResponderEvent) => {
+    onScrubChangeRef.current?.(true);
+    pinchedRef.current = false;
+    pinchRef.current = null;
+    plotRef.current?.measureInWindow(x => { plotLeftRef.current = x; });
+    scrubTo(event);
+  };
+
+  const fractionAt = (pageX: number) => {
+    const { width: w, gutter: g } = latest.current;
+    const left = plotLeftRef.current;
+    const span = Math.max(w - g, 1);
+    if (left === null) return 0.5;
+    return Math.min(Math.max((pageX - left - g) / span, 0), 1);
+  };
+
+  const moveTouches = (event: GestureResponderEvent) => {
+    const touches = event.nativeEvent.touches;
+    if (touches.length >= 2) {
+      const [a, b] = touches;
+      const distance = Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
+      const mid = fractionAt((a.pageX + b.pageX) / 2);
+      const { lo: from, hi: to, lastIndex: last } = latest.current;
+      if (pinchRef.current === null) {
+        pinchRef.current = { range: { lo: from, hi: to }, midFraction: mid, distance };
+        if (!pinchedRef.current) {
+          pinchedRef.current = true;
+          scrubIndexRef.current = null;
+          setScrubIndex(null);
+        }
+        return;
+      }
+      const next = pinchRange(pinchRef.current, mid, distance, last);
+      setRange(isZoomed(next, last) ? next : null);
+      return;
+    }
+    pinchRef.current = null;
+    if (!pinchedRef.current) scrubTo(event);
+  };
+
+  const releaseTouches = (event: GestureResponderEvent, gesture: { dx: number; dy: number }) => {
+    const pinched = pinchedRef.current;
+    pinchedRef.current = false;
+    pinchRef.current = null;
+    // A second quick tap with no travel gives the whole window back.
+    if (!pinched && Math.abs(gesture.dx) < 8 && Math.abs(gesture.dy) < 8) {
+      const now = Date.now();
+      if (now - lastTapRef.current < 300 && latest.current.range !== null) setRange(null);
+      lastTapRef.current = now;
+    }
+    endScrub();
   };
 
   const panResponder = useMemo(() => PanResponder.create({
@@ -228,11 +317,12 @@ export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange 
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: startScrub,
-    onPanResponderMove: scrubTo,
-    onPanResponderRelease: endScrub,
+    onPanResponderMove: moveTouches,
+    onPanResponderRelease: releaseTouches,
     onPanResponderTerminate: endScrub,
     onPanResponderTerminationRequest: () => false,
-  }), [plotPoints, width]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reads everything through refs
+  }), []);
 
   // The caller draws an empty state instead; a chart of nothing is a box.
   if (!domain) return null;
@@ -253,9 +343,17 @@ export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange 
 
   return (
     <View accessible accessibilityLabel={summary}>
-      <View style={styles.plot} onLayout={onLayout} {...panResponder.panHandlers}>
+      <View ref={plotRef} style={styles.plot} onLayout={onLayout} {...panResponder.panHandlers}>
         {width > 0 && (
           <Svg width={width} height={CHART_HEIGHT}>
+            {/* Zoomed, the line runs on past both edges of the plot; the clip keeps it
+                off the weight labels in the gutter. Unzoomed, nothing needs one. */}
+            <Defs>
+              <ClipPath id="weight-plot-clip">
+                <Rect x={gutter} y={0} width={Math.max(width - gutter, 0)} height={CHART_HEIGHT} />
+              </ClipPath>
+            </Defs>
+            <G clipPath={range !== null ? 'url(#weight-plot-clip)' : undefined}>
             {/* A line at each round weight, so the axis can be read anywhere on
                 the plot. Drawn first, under the plan and the readings. */}
             {ticks.map(tick => (
@@ -328,6 +426,7 @@ export function WeightChart({ points, unit, targetKg, pacePoints, onScrubChange 
                 ))}
               </React.Fragment>
             ))}
+            </G>
             {scrubbed && (
               <>
                 <Line
