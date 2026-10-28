@@ -441,6 +441,10 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           // occurrence goes back to this.
           ...(proratedFrom(task) !== null ? { fullCount: proratedFrom(task) } : {}),
           done: task.progressCount ?? 0,
+          // When each unit this period was logged, so a count the person doesn't
+          // remember making can be traced to a tap. Absent on units logged before
+          // the times were kept.
+          ...(task.quotaTapTimes?.length ? { loggedAt: task.quotaTapTimes } : {}),
           ...(task.targetUnit ? { unit: task.targetUnit } : {}),
           ...(task.allowOvershoot ? { allowOvershoot: true } : {}),
           ...(task.coinsPerTap ? { coinsPerTap: true as const } : {}),

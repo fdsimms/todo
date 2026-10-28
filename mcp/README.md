@@ -192,6 +192,7 @@ only the fallback until the first sync.
 | `delete_medication_log` | **Write.** Deletes a recorded dose. |
 | `delete_task` | **Write.** Deletes tasks with their checklists, or single checklist items (up to 100 a call). Refuses a task the app generated. Each can be restored from Activity. |
 | `skip_occurrence` | **Write.** Moves a repeating task to its next date with nothing completed or missed, as the app's Skip does. |
+| `unlog_target_unit` | **Write.** Takes back the latest unit logged on a daily or weekly target, as the meter's undo does. `get_task`'s `target.loggedAt` says when each unit was logged. |
 | `reorder` | **Write.** Puts a list in order, the ones named first and the rest after in their old order. `kind` picks the list: `tasks` (a project's open steps, a task's checklist, a stack, or the Pinned block), `templates`, `projects` (and their categories), `categories` (Today's sections), `people`, `aisles`, `stores_and_lists` and `up_next`. |
 | `set_task_dates` | **Write.** Puts one task on several dates (one row per date), changes the set, or takes it back to one; optionally monthly. |
 | `duplicate_task` | **Write.** Copies a task and its checklist, with its progress started over. |

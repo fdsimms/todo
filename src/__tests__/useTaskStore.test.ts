@@ -14885,6 +14885,19 @@ describe('quota tasks', () => {
       expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.quotaLoggedDayKey).toBeNull();
     });
 
+    it('records when each unit was logged, and an undo drops the latest', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 0 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      useTaskStore.getState().logQuotaUnit('water');
+      const times = () => useTaskStore.getState().tasks.find(t => t.id === 'water')!.quotaTapTimes;
+      expect(times()).toHaveLength(2);
+      expect(Number.isNaN(Date.parse(times()![0]))).toBe(false);
+
+      const first = times()![0];
+      useTaskStore.getState().unlogQuotaUnit('water');
+      expect(times()).toEqual([first]);
+    });
+
     it('logs one unit without completing the task', () => {
       useTaskStore.setState({ tasks: [quota({ progressCount: 3 })] });
       useTaskStore.getState().logQuotaUnit('water');

@@ -61,6 +61,14 @@ export function skipOccurrence(replica: Replica, id: string): { task: Serialized
   };
 }
 
+export function unlogTargetUnit(replica: Replica, id: string): { task: SerializedTask; note: string } {
+  const task = replica.unlogTargetUnit(id);
+  return {
+    task: serializeTasks(replica, [task])[0],
+    note: `Took back the latest unit. "${task.title}" is at ${task.progressCount}/${task.targetCount} this period.`,
+  };
+}
+
 export interface ReorderInput {
   projectId?: string;
   parentId?: string;

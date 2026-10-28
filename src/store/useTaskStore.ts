@@ -1413,6 +1413,9 @@ let autoCompleteTimer: ReturnType<typeof setTimeout> | null = null;
 // only catches a hold whose row went away without releasing it — a screen
 // change or a filter mid-window — where the release would otherwise never come.
 const QUOTA_HOLD_BACKSTOP_MS = 30000;
+
+/** How many logged units' times a target remembers; a week holds far fewer, and a water target's day is the long case. */
+const QUOTA_TAP_HISTORY = 50;
 let quotaHoldTimer: ReturnType<typeof setTimeout> | null = null;
 // Ids of tasks completed while pinned, whose pin should be cleared once the
 // completion hold above expires — keeps a pinned row from vanishing out of
@@ -5385,6 +5388,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       progressCount: task.progressCount + 1,
       // What quotaRestAfterLog reads to rest the row until the next day.
       quotaLoggedDayKey: getCurrentLogicalDayKey(),
+      quotaTapTimes: [...(task.quotaTapTimes ?? []), new Date().toISOString()].slice(-QUOTA_TAP_HISTORY),
       ...(hadCountdown ? { timerStartedAt: null, timerElapsedSeconds: 0 } : {}),
       // streakDate is stamped too: the first unit of a task that has never
       // completed would otherwise leave a total with no date to read it by.
@@ -5530,6 +5534,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       progressCount: task.progressCount - 1,
       // An undone log must not keep the row resting.
       quotaLoggedDayKey: null,
+      quotaTapTimes: (task.quotaTapTimes ?? []).slice(0, -1),
       ...(countsUnits(task) && task.streakCount > 0 ? { streakCount: task.streakCount - 1 } : {}),
     };
     dbUpdateTask(updated);
@@ -5808,6 +5813,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         pinned: !!task.pinEachOccurrence,
         progressCount: 0,
         quotaLoggedDayKey: null,
+        quotaTapTimes: [],
         // Same as completeTask's successor: the count resets, the mute carries.
         postponeCount: 0,
         driftingSince: null,

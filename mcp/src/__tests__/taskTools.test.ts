@@ -5,7 +5,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { deleteTag, deleteTasks, duplicateTask, renameTag, reorderTasks, setCompletionDate, setTaskDates, skipOccurrence } from '../taskTools';
+import { deleteTag, deleteTasks, duplicateTask, renameTag, reorderTasks, setCompletionDate, setTaskDates, skipOccurrence, unlogTargetUnit } from '../taskTools';
 import { createTask, getTask, listTasks, updateTask } from '../tools';
 import { logFood, saveMealFromEntries } from '../logTools';
 import { agentRevertPlan } from '../../../src/utils/agentRevert';
@@ -180,6 +180,30 @@ describe('skip_occurrence', () => {
 
   it('refuses a task that does not repeat', () => {
     expect(() => skipOccurrence(replica, make('Once').id)).toThrow(/doesn't repeat/);
+  });
+});
+
+describe('unlog_target_unit', () => {
+  const weekly = (progress: number, times: string[]) => {
+    const made = make('Read', { targetCount: 5, quotaPeriod: 'week' });
+    mockRaw.runSync('UPDATE tasks SET progress_count = ?, quota_tap_times = ? WHERE id = ?', [progress, JSON.stringify(times), made.id]);
+    replica.refresh();
+    return made.id;
+  };
+
+  it('takes back the latest unit and its time', () => {
+    const id = weekly(2, ['2026-10-26T15:00:00.000Z', '2026-10-27T15:00:00.000Z']);
+    const result = unlogTargetUnit(replica, id);
+    const row = replica.taskById(id)!;
+    expect(row.progressCount).toBe(1);
+    expect(row.quotaTapTimes).toEqual(['2026-10-26T15:00:00.000Z']);
+    expect(result.note).toMatch(/1\/5/);
+    expect(ledger().find(e => e.taskId === id)?.action).toBe('edited');
+  });
+
+  it('refuses a target with nothing logged, and a task with no target', () => {
+    expect(() => unlogTargetUnit(replica, weekly(0, []))).toThrow(/nothing logged/);
+    expect(() => unlogTargetUnit(replica, make('Plain').id)).toThrow(/no daily or weekly target/);
   });
 });
 
