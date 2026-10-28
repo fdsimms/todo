@@ -1180,6 +1180,33 @@ describe('finishShopping', () => {
     expect(after.find(i => i.id === eggs.id)!.onList).toBe(true);
   });
 
+  // A shop confirmed after the fact, for rows the Reminders mirror already
+  // took off the list (reminderRemovals.ts). Always the home list, and
+  // anything ticked but not named stays in the cart.
+  it('records named rows that are no longer on the list, and leaves the cart alone', () => {
+    const milk = makeItem({ name: 'Milk', onList: false, purchaseCount: 2 });
+    const bread = makeItem({ name: 'Bread', onList: true, checked: true });
+    seed([milk, bread], {
+      activeListId: 'airbnb',
+      lists: [{ id: 'airbnb', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' }],
+    });
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
+    const when = '2026-10-27T15:00:00.000Z';
+
+    expect(useGroceryStore.getState().finishShopping(null, {}, when, undefined, {}, { itemIds: [milk.id] })).toBe(1);
+
+    const call = (dbFinishGroceryShopping as jest.Mock).mock.calls[0];
+    // The home list, not the away list on screen, and only the named row.
+    expect(call[5]).toBeNull();
+    expect(call[7]).toEqual([milk.id]);
+    const byId = new Map(useGroceryStore.getState().items.map(i => [i.id, i]));
+    expect(byId.get(milk.id)!.purchaseCount).toBe(3);
+    expect(byId.get(milk.id)!.lastPurchasedAt).toBe(when);
+    expect(byId.get(bread.id)!.onList).toBe(true);
+    expect(byId.get(bread.id)!.checked).toBe(true);
+    expect(useGroceryStore.getState().listEntries.some(e => e.itemId === bread.id && e.checked)).toBe(true);
+  });
+
   it('updates the purchase interval in memory the way the db does', () => {
     const milk = makeItem({
       name: 'Milk', onList: true, checked: true, purchaseCount: 3,
@@ -1284,7 +1311,7 @@ describe('finishShopping', () => {
     const receiptDate = '2026-08-15T12:00:00.000Z';
     useGroceryStore.getState().finishShopping(null, {}, receiptDate);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(receiptDate, null, expect.any(Object), {}, expect.any(Set), null, {});
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(receiptDate, null, expect.any(Object), {}, expect.any(Set), null, {}, null);
     expect(useGroceryStore.getState().items.find(i => i.id === milk.id)!.lastPurchasedAt)
       .toBe(receiptDate);
   });
@@ -2684,7 +2711,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping(costco.id);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), costco.id, expect.any(Object), expect.any(Object), expect.any(Set), null, {});
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), costco.id, expect.any(Object), expect.any(Object), expect.any(Set), null, {}, null);
     const links = useGroceryStore.getState().itemShops;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ itemId: milk.id, shopId: costco.id, purchaseCount: 1 });
@@ -2933,7 +2960,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping();
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null, {});
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null, {}, null);
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
     // ...and the item-level count still moved, which is what makes the two
     // numbers diverge and why nothing may sum links to get a total.
@@ -2948,7 +2975,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping('shop-deleted-mid-sheet');
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null, {});
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null, {}, null);
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
   });
 
@@ -8603,7 +8630,7 @@ describe('separate shopping lists', () => {
       useGroceryStore.getState().finishShopping(null, {});
 
       expect(dbFinishGroceryShopping).toHaveBeenCalledWith(
-        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id, {}
+        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id, {}, null
       );
     });
 
@@ -8648,7 +8675,7 @@ describe('separate shopping lists', () => {
       // And the db is told nothing to record either, rather than being trusted
       // to drop it on its own.
       expect(dbFinishGroceryShopping).toHaveBeenCalledWith(
-        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id, {}
+        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id, {}, null
       );
     });
 
