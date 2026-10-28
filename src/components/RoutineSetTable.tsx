@@ -45,6 +45,13 @@ interface Props {
   /** "32.5, 50 and 65 kg": what a ramp lays out from the target weight, or null with none to ramp from. */
   rampLoads: string | null;
   onChange: (change: (item: WorkoutRoutineItem) => WorkoutRoutineItem) => void;
+  /**
+   * What the focused cell would write if it lost focus now, and null once it
+   * has. A cell writes on blur, and a header Save isn't in the scroll view, so
+   * tapping it doesn't blur the cell: the editor applies this before it reads
+   * the rows.
+   */
+  onPendingChange?: (write: ((item: WorkoutRoutineItem) => WorkoutRoutineItem) | null) => void;
 }
 
 /** The card open over the table: a set's type menu. */
@@ -58,7 +65,7 @@ const EDITABLE: readonly SetField[] = ['weight', 'reps', 'duration'];
 
 const anchorOf = (e: GestureResponderEvent): CardAnchor => ({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
 
-export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoads, onChange }: Props) {
+export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoads, onChange, onPendingChange }: Props) {
   const colors = useColors();
   const textScale = useTextScale();
   const styles = useMemo(() => makeStyles(colors, textScale), [colors, textScale]);
@@ -213,8 +220,12 @@ export function RoutineSetTable({ item, kind, unit, scale, weightSuffix, rampLoa
                     field={f}
                     placeholder={placeholderFor(t, f, index)}
                     onCommit={v => commitCell(index, f, v)}
-                    onDraft={v => publishOffer(index, f, v)}
-                    onLeave={() => clearApplyOffer(cellKey(index, f))}
+                    onDraft={v => {
+                      publishOffer(index, f, v);
+                      const write = v.trim() !== (text ?? '') ? writerFor(f, v) : null;
+                      onPendingChange?.(write ? i => write(i, index) : null);
+                    }}
+                    onLeave={() => { clearApplyOffer(cellKey(index, f)); onPendingChange?.(null); }}
                     styles={styles}
                     placeholderColor={colors.textTertiary}
                     accessibilityLabel={`${name} ${fieldLabel(f, kind).toLowerCase()}`}

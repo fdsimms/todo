@@ -102,6 +102,10 @@ struct WatchTap: Codable, Identifiable {
     /// copy made before the person retimed the workout there.
     var workoutStart: Date? = nil
     var workoutEnd: Date? = nil
+    /// "healthRetracted": true when the watch found nothing to delete by the
+    /// id (watchOS keeps only recent samples on the watch), so the workout may
+    /// still be in Health and the phone says so.
+    var notFound: Bool? = nil
 
     /// The workout's kinds. Sent at once rather than held for Undo: a set's
     /// rest starts on the phone from it, and the rest screen is the answer to
@@ -142,6 +146,7 @@ struct WatchTap: Codable, Identifiable {
         if let direction { info["direction"] = direction }
         if let on { info["on"] = on }
         if let healthWorkoutId { info["workoutId"] = healthWorkoutId }
+        if let notFound { info["notFound"] = notFound }
         if let workoutStart, let workoutEnd {
             info["start"] = Self.isoText(workoutStart)
             info["end"] = Self.isoText(workoutEnd)

@@ -2,7 +2,10 @@ import { AppState } from 'react-native';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 
 /**
- * Writes the workouts an agent logged over MCP to Apple Health, from the phone.
+ * Writes the workouts waiting for Apple Health (`healthWritePending`) from the
+ * phone: one an agent logged over MCP, one described and confirmed, one the
+ * Apple Watch was measuring whose own copy never came, and a finish applied in
+ * the background, where HealthKit can't be written.
  *
  * `runPendingHealthFoodWrites` for sessions, run exactly where it runs: at
  * launch, whenever the app comes to the front, and after a sync that applied

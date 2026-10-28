@@ -67,7 +67,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useGymStore } from '../store/useGymStore';
 import { describeRoutineFit, routineFit, startingGymId } from '../utils/gyms';
-import { currentProgram, describeProgress, isRunnableProgram, programProgress } from '../utils/workoutProgram';
+import { currentProgram, describeProgress, isRunnableProgram, nextCycleStart, programProgress } from '../utils/workoutProgram';
 import { trainingMaxRaises } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
 import { withThousands } from '../utils/workoutRecordText';
@@ -585,16 +585,16 @@ export function WorkoutsScreen() {
   const renderProgram = useCallback(({ item }: { item: WorkoutProgram }) => {
     const progress = programProgress(item, sessions, routines);
     const next = progress.nextRoutineId ? routineName(progress.nextRoutineId) : null;
-    // The raised maxes for the next cycle of a percentage program, offered at
-    // the moment one ends; starting the next cycle writes them and counts the
-    // weeks again from now.
+    // The raised maxes for the next cycle of a percentage program, offered
+    // through the first week after one ends; starting the next cycle writes
+    // them and counts the weeks again from that week's first workout.
     const raises = progress.cycleDone && item.scheme === 'percent'
       ? trainingMaxRaises(item, id => catalogExercise(exercises, id)?.primaryMuscles ?? [], workoutUnit)
       : [];
     const startNextCycle = () => {
       useWorkoutStore.getState().updateProgram(item.id, {
         trainingMaxes: raises.map(r => ({ exerciseId: r.exerciseId, kg: r.toKg })),
-        startedAt: new Date().toISOString(),
+        startedAt: nextCycleStart(progress),
       });
       haptics.success();
     };

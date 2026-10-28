@@ -50,7 +50,7 @@ import {
   dbTransaction,
 } from '../db/database';
 import { generateId } from '../utils/id';
-import { rotationPickFor, workoutTaskEffect } from '../utils/workoutTask';
+import { rotationPickFor, routineMergePatch, workoutTaskEffect } from '../utils/workoutTask';
 import { swappableSets } from '../utils/exerciseSwap';
 import { exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import {
@@ -356,6 +356,13 @@ export type WorkoutRefusal =
 
 /** The setting that holds the group names the person made, so a group can exist with no routine in it. */
 const ROUTINE_GROUPS_KEY = 'workoutRoutineGroups';
+/**
+ * The live session this device started. Device-local (not in
+ * SYNCED_SETTING_KEYS): the idle discard only throws away a workout started
+ * here, never one that synced in from another device, whose deletion would
+ * sync back and end it there.
+ */
+const STARTED_HERE_KEY = 'workoutSessionStartedHere';
 
 function readRoutineGroups(raw: string | null): string[] {
   if (!raw) return [];
@@ -516,7 +523,10 @@ interface WorkoutStore {
   /**
    * Ends a session now (or at `endedAt`). Refuses one already finished
    * (`finished`). Deletes the planned sets never ticked and completes the
-   * task it was started from (see `FinishOptions`). This is workout mode's
+   * task it was started from (see `FinishOptions`). A session with no set
+   * done is discarded instead (`empty`): workout mode offers Discard then,
+   * but the Apple Watch's Finish reaches here too, and an empty workout must
+   * not complete a task or reach Health. This is workout mode's
    * Save, a person's tap, so it is also what writes the workout to Health
    * while writing is on (`logWorkoutToHealth`).
    */
@@ -530,17 +540,6 @@ interface WorkoutStore {
    */
   addFinishedSession: (input: FinishedSessionInput) => { session: WorkoutSession; sets: WorkoutSet[] } | WorkoutRefusal;
   /**
-   * Writes the workouts an import plan names (`buildImportPlan`), and the
-   * custom exercises it needs, in one transaction. A session already in the
-   * log (same id, or the same start time, whatever it is called) is skipped
-   * again here, so a plan made before another device synced in the same
-   * workout can't double it.
-   * `creates` maps each `new:<key>` reference's key to the exercise to make;
-   * a name that has become taken since resolves to the exercise holding it.
-   * Never written to Health: an imported workout came from an app that most
-   * likely wrote it there already.
-   */
-  /**
    * Writes a workout the Apple Watch ran on its own (`watchWorkout.ts`), once:
    * a session id already in the log is a repeat delivery and writes nothing
    * (`duplicate`). The session and its sets keep the watch's ids, and its
@@ -553,6 +552,17 @@ interface WorkoutStore {
    * `deferHealthWrite` is `FinishOptions`' own.
    */
   addWatchSession: (input: WatchSessionInput, options?: { now?: Date; deferHealthWrite?: boolean }) => WatchSessionResult | WorkoutRefusal;
+  /**
+   * Writes the workouts an import plan names (`buildImportPlan`), and the
+   * custom exercises it needs, in one transaction. A session already in the
+   * log (same id, or the same start time, whatever it is called) is skipped
+   * again here, so a plan made before another device synced in the same
+   * workout can't double it.
+   * `creates` maps each `new:<key>` reference's key to the exercise to make;
+   * a name that has become taken since resolves to the exercise holding it.
+   * Never written to Health: an imported workout came from an app that most
+   * likely wrote it there already.
+   */
   importSessions: (
     sessions: PlannedImportSession[],
     creates: Record<string, ExerciseInput>,
@@ -573,8 +583,9 @@ interface WorkoutStore {
   /**
    * Throws away the live session when nothing was done in it for
    * `IDLE_SESSION_MS`, and says whether it did. A workout with any set done is
-   * never touched. Run at launch (`retentionPasses`), where a forgotten one is
-   * found with a person present.
+   * never touched, nor one the Apple Watch is measuring, nor one started on
+   * another device. Run at launch (`retentionPasses`), where a forgotten one
+   * is found with a person present.
    */
   discardIdleSession: (now?: Date) => boolean;
 
@@ -1498,16 +1509,17 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         sessions: get().sessions.map(s => sessionById.get(s.id) ?? s),
         programs: get().programs.map(p => programById.get(p.id) ?? p),
       });
-      // A task still to do starts the merged routine now. A finished one keeps
-      // naming the old routine, as a session does: it is a record of what ran.
-      // The MCP replica passes `moveTasks` to do this through its own task
-      // writes, since it never loads the task store (see `taskStore`).
+      // A task still to do starts the merged routine now, and so does a
+      // rotation member that named the old one (`routineMergePatch`). The MCP
+      // replica passes `moveTasks` to do this through its own task writes,
+      // since it never loads the task store (see `taskStore`).
       if (options.moveTasks) {
         options.moveTasks(fromId, intoId);
       } else {
         const tasks = taskStore();
         for (const t of tasks.tasks) {
-          if (t.workoutRoutineId === fromId && !t.completed) tasks.updateTask(t.id, { workoutRoutineId: intoId });
+          const patch = routineMergePatch(t, fromId, intoId);
+          if (patch) tasks.updateTask(t.id, patch);
         }
       }
       return intoRow;
@@ -1824,6 +1836,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         timesEdited: false,
       };
       putSession(row);
+      dbSetSetting(STARTED_HERE_KEY, row.id);
       const planned = (routine
         ? get().plannedSetsForRoutine(routine.id, row.id, routineVersionId)
         : (input.planned ?? []).filter(p => exerciseKnown(p.exerciseId))
@@ -1940,7 +1953,11 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const endedAt = patch.endedAt ?? nowIso();
       if (new Date(endedAt).getTime() < new Date(patch.startedAt ?? existing.startedAt).getTime()) return 'order';
       const sets = get().loadSets(id);
-      const { dropSetIds } = finishPlan(sets);
+      const { dropSetIds, loggedCount } = finishPlan(sets);
+      if (loggedCount === 0) {
+        get().deleteSession(id);
+        return 'empty';
+      }
       if (dropSetIds.length > 0) {
         const before = new Map(sets.map(s => [s.id, s]));
         const kept = renumber(sets.filter(s => !dropSetIds.includes(s.id)));
@@ -2213,7 +2230,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
 
     discardIdleSession(now = new Date()) {
       const live = get().liveSession();
-      if (!live || !isIdleLiveSession(live, get().loadSets(live.id), now)) return false;
+      if (!live || dbGetSetting(STARTED_HERE_KEY) !== live.id) return false;
+      if (!isIdleLiveSession(live, get().loadSets(live.id), now)) return false;
       get().deleteSession(live.id);
       return true;
     },

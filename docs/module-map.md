@@ -494,7 +494,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/routinePicker.ts` — RoutineOption, RoutineFilterResult, filterRoutines, resolveRoutineSubmit
 - `src/utils/routineProgress.ts` — RoutineWorkoutPoint, RoutineExerciseProgress, RoutineProgress, routineSessions, RoutineProgressInput, routineProgress, volumeForChart
 - `src/utils/routineUpdate.ts` — RoutineChange, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
-- `src/utils/routineVersions.ts` — initialRoutineVersionId, initialProgramVersionId, implicitRoutineVersion, routineVersionsOf, currentRoutineVersion, versionNumber, versionAt, sessionVersionId, routineSessionsByVersion, routineVersionTrained, +34 more
+- `src/utils/routineVersions.ts` — initialRoutineVersionId, initialProgramVersionId, implicitRoutineVersion, routineVersionsOf, sessionPlan, currentRoutineVersion, versionNumber, versionAt, sessionVersionId, routineSessionsByVersion, +35 more
 - `src/utils/rsvp.ts` — parseGuestNames
 - `src/utils/ruleCategory.ts` — parseRuleCategory, ruleCategoryFor, renameInRuleCategories, withRuleCategory
 - `src/utils/ruleEstimate.ts` — GeneratorEstimate, GeneratorEstimates, holdsKindEstimate, parseRuleEstimate, ruleEstimateDraft, withRuleEstimate, parseGeneratorEstimates, withGeneratorEstimate
@@ -561,7 +561,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/stepGoal.ts` — STEP_GOAL_MIN, STEP_GOAL_MAX, STEP_GOAL_STEP, STEP_GOAL_DEFAULT, clampStepGoal, parseStepGoal
 - `src/utils/stepIngredients.ts` — AnnotatableStep, StepIngredientLine, StepSegment, stepIngredientLines, annotateSteps, stepNamesIngredient
 - `src/utils/stepTimers.ts` — StepDuration, MIN_STEP_TIMER_SECONDS, MAX_STEP_TIMER_SECONDS, parseStepDurations, formatStepDuration, describeStepDuration, stepTimerElapsed, MAX_REPEAT_ROUNDS, DEFAULT_REPEAT_ROUNDS, REPEAT_RINGS_PAST_TARGET, +29 more
-- `src/utils/stepper.ts` — StepRange, clampCount, parseStepperInput, stepCount, canStep, holdRepeatDelay
+- `src/utils/stepper.ts` — StepRange, clampCount, typedStepperValue, parseStepperInput, stepCount, canStep, holdRepeatDelay
 - `src/utils/storageReport.ts` — StorageTable, StorageStats, formatBytes, MIN_RECLAIMABLE_BYTES, worthOptimizing, optimizeBlockedReason, topAreas, describeAreas
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
 - `src/utils/storedFileBackup.ts` — storedFileNamesIn, collectStoredFiles, restoreStoredFiles
@@ -671,15 +671,15 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapKind, WATCH_NOTE_MAX, WatchTickValues, WatchDoneSet, QuietTapAction, QuietTapWorkouts, WidgetNeedsAppReason, widgetTapNeedsAppReason, WatchQuestion, +12 more
 - `src/utils/widgetSnapshot.ts` — SnapshotCaps, WIDGET_CAPS, WATCH_CAPS, WidgetTask, WidgetUpcomingTask, WidgetGroceryList, WidgetGroceryRow, WidgetGroceries, WidgetMeal, WidgetKitchenItem, +19 more
 - `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
-- `src/utils/workoutCell.ts` — setFieldMax, parseRepsTarget, parseSetCell
+- `src/utils/workoutCell.ts` — setFieldMax, parseRepsTarget, parseSetCell, typedTickValues
 - `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +35 more
 - `src/utils/workoutData.ts` — EXERCISE_KINDS, FREE_EQUIPMENT, ACCESSORY_EQUIPMENT, STRENGTH_MACHINES, CARDIO_MACHINES, EXERCISE_EQUIPMENT, machineParent, EquipmentGroup, equipmentGroup, MUSCLE_GROUPS, +43 more
-- `src/utils/workoutDraft.ts` — DescribeMode, DESCRIBE_MAX_LENGTH, MAX_DRAFT_EXERCISES, DraftSet, DraftExercise, WorkoutDraft, readWorkoutDraft, draftNames, newExerciseFor, RoutineDraft, +4 more
+- `src/utils/workoutDraft.ts` — DescribeMode, DESCRIBE_MAX_LENGTH, MAX_DRAFT_EXERCISES, DraftSet, DraftExercise, WorkoutDraft, readWorkoutDraft, draftNames, newExerciseFor, RoutineDraft, +5 more
 - `src/utils/workoutHistory.ts` — HEALTH_HISTORY_MAX_DAYS, WorkoutHistoryRow, healthHistoryWindow, SAME_WORKOUT_START_MS, overlapsSession, interleaveHistory, healthWorkoutSource, healthWorkoutTitle, healthWorkoutLine
 - `src/utils/workoutLink.ts` — WORKOUT_LINK_VERBS, WorkoutLinkVerb, WorkoutLink, WORKOUT_OPEN_URL, workoutLinkUrl, WorkoutLinkPlan, planWorkoutLink
 - `src/utils/workoutLinkActions.ts` — applyWorkoutLink, skipRestFromLink
 - `src/utils/workoutLiveActivity.ts` — WorkoutRunPhase, WorkoutRun, buildWorkoutRun, workoutActivitySessionId
-- `src/utils/workoutProgram.ts` — ProgramProgress, liveRotation, programSessions, programProgress, isRunnableProgram, currentProgram, weekLabel, describeProgress
+- `src/utils/workoutProgram.ts` — ProgramProgress, nextCycleStart, liveRotation, programSessions, programProgress, isRunnableProgram, currentProgram, weekLabel, describeProgress
 - `src/utils/workoutProgramLibrary.ts` — LibraryProgramRoutine, LibraryProgram, PROGRAM_LIBRARY, libraryProgram, percentExercises
 - `src/utils/workoutProgression.ts` — LINEAR_DELOAD_AFTER, DELOAD_FRACTION, DEFAULT_TARGET_RPE, RPE_LOAD_PER_POINT, DEFAULT_WAVE_PERCENTS, WAVE_STEP_POINTS, WAVE_DELOAD_POINTS, TRAINING_MAX_FRACTION, defaultIncrementKg, incrementFor, +26 more
 - `src/utils/workoutProposal.ts` — ExerciseProposalInput, ExerciseProposal, exerciseProposal, proposalRamp, proposalWrites
@@ -689,7 +689,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, MAX_WARMUP_SETS, defaultTargets, newRoutineItem, withWarmups, WarmupMode, warmupMode, DEFAULT_WARMUP_SETS, +34 more
 - `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, movedExerciseOrder, exerciseBlocks, joinedSuperset, leftSuperset, nextSet, +32 more
 - `src/utils/workoutSiri.ts` — WorkoutRoutineIndexEntry, MAX_ROUTINE_INDEX_ENTRIES, buildRoutineIndex, QueuedWorkoutStart, parseQueuedWorkoutStarts, newestWorkoutStart, WorkoutStartPlan, QUEUED_START_MAX_AGE_MS, resolveQueuedWorkoutStart, myWorkoutStart
-- `src/utils/workoutTask.ts` — WorkoutTaskEffect, rotationPickFor, workoutTaskEffect, linkedTaskLine
+- `src/utils/workoutTask.ts` — WorkoutTaskEffect, rotationPickFor, workoutTaskEffect, linkedTaskLine, routineMergePatch
 - `src/utils/workoutTick.ts` — TickRest, TickOutcome, restLabelFor, tickOutcome, TickValues, tickSet
 - `src/utils/workoutTimes.ts` — withClock, shiftDays, spanMinutes, sameMinute, workoutTimesProblem
 
@@ -858,11 +858,12 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useWakeUpTaskSync.ts` — useWakeUpTaskSync
 - `src/hooks/useWaniKaniSync.ts` — useWaniKaniSync
 - `src/hooks/useWatchClashPrompt.ts` — useWatchClashPrompt
+- `src/hooks/useWatchRetractNotice.ts` — useWatchRetractNotice
 - `src/hooks/useWeatherWaitSync.ts` — useWeatherWaitSync
 - `src/hooks/useWeighIn.ts` — useWeighIn, WeighIn
 - `src/hooks/useWithoutLockedTasks.ts` — useWithoutLockedTasks
 - `src/hooks/useWorkoutHeartRate.ts` — useWorkoutHeartRate
-- `src/hooks/useWorkoutLiveActivitySync.ts` — useWorkoutLiveActivitySync
+- `src/hooks/useWorkoutLiveActivitySync.ts` — syncWorkoutLiveActivityNow, useWorkoutLiveActivitySync
 - `src/hooks/useWorkoutStats.ts` — WORKOUT_STATS_WEEKS, WorkoutStatsRecord, WorkoutStats, useWorkoutStats
 
 ## `src/db`

@@ -211,6 +211,9 @@ jest.mock('../utils/widgetSync', () => ({
     return Promise.resolve();
   },
 }));
+jest.mock('../hooks/useWorkoutLiveActivitySync', () => ({
+  syncWorkoutLiveActivityNow: () => { mockCalls.push('syncWorkoutLiveActivity'); },
+}));
 jest.mock('../utils/appShieldReconcile', () => ({
   reconcileAppShield: () => { mockCalls.push('reconcileAppShield'); return null; },
   gateTitlesNow: () => [],
@@ -512,13 +515,15 @@ describe('runWatchWork', () => {
     expect(mockCalls).toEqual([
       'initialize', 'initializeSettings', 'initializeSync',
       'drainWatchQueues:requeue',
+      // Before the snapshot, whose write ends the background time.
+      'syncWorkoutLiveActivity',
       'writeWidgetSnapshot',
     ]);
   });
 
   it('hands a tap to the Today screen when the app is in front, without reopening anything', async () => {
     expect(await runWatchWork()).toBe(true);
-    expect(mockCalls).toEqual(['drainWatchQueues:app', 'writeWidgetSnapshot']);
+    expect(mockCalls).toEqual(['drainWatchQueues:app', 'syncWorkoutLiveActivity', 'writeWidgetSnapshot']);
   });
 
   it('is registered with the bridge when the module loads, not from a component', async () => {
@@ -527,6 +532,6 @@ describe('runWatchWork', () => {
     mockAppState = 'background';
     watchListeners[0]();
     await new Promise(resolve => setImmediate(resolve));
-    expect(mockCalls).toEqual(['drainWatchQueues:requeue', 'writeWidgetSnapshot']);
+    expect(mockCalls).toEqual(['drainWatchQueues:requeue', 'syncWorkoutLiveActivity', 'writeWidgetSnapshot']);
   });
 });

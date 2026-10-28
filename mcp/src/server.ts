@@ -78,7 +78,7 @@ import {
   type RepeatEvery,
   type TaskFieldsInput,
 } from './taskFields';
-import type { DeliverableKind, ExerciseEquipment, MealSlot, TimeOfDay } from '../../src/types';
+import type { DeliverableKind, ExerciseEquipment, ExerciseKind, MealSlot, MuscleGroup, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
 import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
 import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
@@ -112,11 +112,11 @@ import { addCookware, deleteCookware, listCookware, updateCookware } from './coo
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { DEFAULT_FAST_LIMIT, MAX_FAST_LIMIT, listFasts } from './fastTools';
 import {
-  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteRoutineGroup, deleteWorkout, exerciseHistory, listExercises,
+  DEFAULT_EXERCISE_LIMIT, MAX_EXERCISE_LIMIT, deleteGym, deleteProgram, deleteRoutine, deleteRoutineGroup, deleteWorkout, exerciseHistory, listExercises, createExercise, updateExercise,
   listWorkouts, logWorkout, nextWorkout, routineHistoryOut, restoreRoutineVersionOut, copyRoutineVersionOut, mergeRoutinesOut,
   programHistoryOut, restoreProgramVersionOut, saveGym, saveProgram, saveRoutine, saveRoutineGroup, updateWorkout, scaleWorkoutWeights,
 } from './workoutTools';
-import { EXERCISE_EQUIPMENT, MUSCLE_GROUPS } from '../../src/utils/workoutData';
+import { EXERCISE_EQUIPMENT, EXERCISE_KINDS, MUSCLE_GROUPS } from '../../src/utils/workoutData';
 import { deleteJournalEntry, listJournalEntries, logJournalEntry, searchJournalEntries, updateJournalEntry } from './journalTools';
 import { setVacationMode } from './vacationTools';
 import { withLogSyncNote } from './logSync';
@@ -607,6 +607,50 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   );
 
   server.tool(
+    'create_exercise',
+    'Make a custom exercise for one the library does not have, so a workout or routine that uses it can be logged or saved. Search list_exercises first, including by the person\'s own wording (a query matches other names too), and ask before making one: a duplicate of a built-in splits its history. kind is what a set records. A name or other name another exercise already goes by is refused.',
+    {
+      name: z.string().min(1).max(80),
+      kind: z.enum(EXERCISE_KINDS as [ExerciseKind, ...ExerciseKind[]]).describe('What a set records: weight_reps, bodyweight_reps, assisted_reps, duration, distance or weight_distance.'),
+      equipment: z.enum(EXERCISE_EQUIPMENT as [ExerciseEquipment, ...ExerciseEquipment[]]),
+      primaryMuscles: z.array(z.enum(MUSCLE_GROUPS as [MuscleGroup, ...MuscleGroup[]])).max(MUSCLE_GROUPS.length).describe('The muscles it mainly trains. May be empty when unsure.'),
+      secondaryMuscles: z.array(z.enum(MUSCLE_GROUPS as [MuscleGroup, ...MuscleGroup[]])).max(MUSCLE_GROUPS.length).optional(),
+      otherNames: z.array(z.string().min(1).max(80)).max(10).optional().describe('Other names the person calls it.'),
+      notes: z.string().max(2000).optional(),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => createExercise(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not make the exercise.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_exercise',
+    'Correct an exercise by its id from list_exercises: a custom one (one create_exercise or the person made) in full; a built-in only in the person\'s own words for it (name, otherNames, notes) and whether it is archived, since what the movement is belongs to the library. Fields left out stay. archived: true takes it out of the pickers and the list with its history kept (an exercise is never deleted); false brings it back. A kind can\'t change once sets are logged against it. Only what the person asked for.',
+    {
+      id: z.string().min(1).describe('From list_exercises.'),
+      name: z.string().min(1).max(80).optional(),
+      kind: z.enum(EXERCISE_KINDS as [ExerciseKind, ...ExerciseKind[]]).optional().describe('Custom exercises only, and only before any set is logged.'),
+      equipment: z.enum(EXERCISE_EQUIPMENT as [ExerciseEquipment, ...ExerciseEquipment[]]).optional().describe('Custom exercises only.'),
+      primaryMuscles: z.array(z.enum(MUSCLE_GROUPS as [MuscleGroup, ...MuscleGroup[]])).max(MUSCLE_GROUPS.length).optional().describe('Custom exercises only. Replaces the list.'),
+      secondaryMuscles: z.array(z.enum(MUSCLE_GROUPS as [MuscleGroup, ...MuscleGroup[]])).max(MUSCLE_GROUPS.length).optional().describe('Custom exercises only. Replaces the list.'),
+      otherNames: z.array(z.string().min(1).max(80)).max(10).optional().describe('Replaces the list.'),
+      notes: z.string().max(2000).optional(),
+      archived: z.boolean().optional(),
+    },
+    async ({ id, ...input }) => {
+      try {
+        return json(await withWrite(() => updateExercise(replica, id, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the exercise.' });
+      }
+    }
+  );
+
+  server.tool(
     'list_workouts',
     'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise), programs and gyms (where they train, the equipment each has and a note for an exercise there). Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets, and never work anything out from body weight.',
     logRange,
@@ -635,7 +679,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'next_workout',
-    'The next workout and the load proposed for each exercise in it, in one call: a program\'s next routine (worked out from the workouts finished in it, so the week and the next routine are never set by hand), or a routine named directly. With neither, the current program (list_workouts marks it isCurrent; the only program in use counts, and with several and none picked it asks you to name one). Each weight and reps exercise carries the proposal workout mode shows ("Up 2.5 kg because every set last time reached 8"), from its routine\'s progression or the program\'s scheme: rep range, linear (about 10% lighter after 3 short workouts in a row), percent of a training max (a wave by week), or RPE. weightKg is kilograms; headline and reason are the phone\'s words in its own unit. A proposal is a suggestion the person confirms on the phone: never write it into a routine or log it as done. A percentage program that has just finished a cycle carries trainingMaxRaises, a proposal too. Workout history arrives only with Include health logs on; without it, loads that move on from history are missing.',
+    'The next workout and the load proposed for each exercise in it, in one call: a program\'s next routine (worked out from the workouts finished in it, so the week and the next routine are never set by hand), or a routine named directly. With neither, the current program (list_workouts marks it isCurrent; the only program in use counts, and with several and none picked it asks you to name one). Each weight and reps exercise carries the proposal workout mode shows ("Up 2.5 kg because every set last time reached 8"), from its routine\'s progression or the program\'s scheme: rep range, linear (at least 10% lighter after 3 short workouts in a row: the nearest load the plates make at or under 90%), percent of a training max (a wave by week), or RPE. weightKg is kilograms; headline and reason are the phone\'s words in its own unit. A proposal is a suggestion the person confirms on the phone: never write it into a routine or log it as done. A percentage program that has just finished a cycle carries trainingMaxRaises, a proposal too. Workout history arrives only with Include health logs on; without it, loads that move on from history are missing.',
     {
       programId: z.string().min(1).optional().describe('A program from list_workouts, for its next routine.'),
       routineId: z.string().min(1).optional().describe('A routine from list_workouts, for its own exercises.'),
@@ -671,6 +715,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   const loggedExercises = z.array(z.object({
     exerciseId: z.string().min(1).describe('From list_exercises.'),
     sets: z.array(loggedSet).min(1).max(50),
+    supersetWithPrevious: z.boolean().optional().describe('Done with the exercise before it as a superset: set by set, back to back.'),
   })).min(1).max(40);
 
   server.tool(
@@ -861,7 +906,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         kg: z.number().positive().max(1000).describe('In kg, whatever unit the person said; convert pounds.'),
       })).max(30).optional().describe('For a percentage scheme: the weight its sets are percentages of. Replaces them all when given.'),
       isCurrent: z.boolean().optional().describe('true makes this the current program: the one next_workout, "my workout" and the phone\'s Start default to when several are in use. false clears that if it is the current one. Only worth setting with two or more programs; a single program is current without it.'),
-      startNextCycle: z.literal(true).optional().describe('Needs id. Counts the program\'s weeks again from now, which is what the phone\'s "Start next cycle" does after a cycle ends. Use it with the raised trainingMaxes once the person agrees; without it the cycle stays finished and the phone offers the raise again.'),
+      startNextCycle: z.literal(true).optional().describe('Needs id. Counts the program\'s weeks again from the new cycle\'s first workout (now, when none is done yet), which is what the phone\'s "Start next cycle" does after a cycle ends. Use it with the raised trainingMaxes once the person agrees; without it the cycle stays finished and the phone offers the raise again.'),
     },
     async input => {
       try {
@@ -887,7 +932,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'log_workout',
-    'Record a workout the person did and told you about, after the fact: when it started, how long it took if they said, and each exercise with the sets they did (weights in kg; convert pounds). Log only what they described. Never fill in sets, weights or reps they did not give, never log a workout that has not happened, and never log one to stand for a task being done. It does not complete any task: if the workout was a scheduled one, complete_task does that separately, and only if they ask. A workout in progress on the phone is the phone\'s; this never starts or finishes one. Workout history syncs to the phone only with Include health logs on. If the person\'s phone saves workouts to Apple Health, it writes this one there on its next foreground, as long as it ended in the last week. One logged with no duration waits for one: a duration added later with update_workout, within that week, gets it written.',
+    'Record a workout the person did and told you about, after the fact: when it started, how long it took if they said, and each exercise with the sets they did (weights in kg; convert pounds). Log only what they described. Never fill in sets, weights or reps they did not give, never log a workout that has not happened, and never log one to stand for a task being done. It does not complete any task: if the workout was a scheduled one, complete_task does that separately, and only if they ask. A workout in progress on the phone is the phone\'s; this never starts or finishes one. Workout history syncs to the phone only with Include health logs on. If the person\'s phone saves workouts to Apple Health, it writes this one there on its next foreground, as long as it ended in the last week. One logged with no duration waits for one: a duration added later with update_workout, within that week, gets it written. A workout already starting in the same minute is refused with its id, so a retried call never logs it twice.',
     {
       title: z.string().min(1).max(80).optional().describe('Default the routine\'s name, or "Workout".'),
       routineId: z.string().min(1).nullable().optional().describe('The routine it followed, from list_workouts.'),
@@ -908,13 +953,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'update_workout',
-    'Correct a finished workout by its id from list_workouts: its title, notes, effort, start or length, or its sets (exercises replaces every set when given; weights in kg). Only what the person tells you was wrong. A workout still in progress on the phone is refused, and so is a new start or length for one marked inAppleHealth, which only the phone can correct.',
+    'Correct a finished workout by its id from list_workouts: its title, notes, effort, start or length, or its sets (exercises replaces every set when given; weights in kg). In a set, a field left out keeps that set\'s value (matched by position within its exercise) and null clears it, so resend only what changed: a weight fixed this way keeps the set\'s note, RPE and kind. Only what the person tells you was wrong. A workout still in progress on the phone is refused, and so is a new start or length for one marked inAppleHealth, which only the phone can correct.',
     {
       id: z.string().min(1),
       title: z.string().min(1).max(80).optional(),
       notes: z.string().max(2000).optional(),
       effort: z.number().int().min(1).max(10).nullable().optional(),
-      startedAt: z.string().min(1).optional().describe('An ISO date-time, or YYYY-MM-DD. Keeps the length it had unless durationMinutes is given.'),
+      startedAt: z.string().min(1).optional().describe('An ISO date-time, or YYYY-MM-DD to move it to that day at the time it started. Keeps the length it had unless durationMinutes is given.'),
       durationMinutes: z.number().min(0).max(1440).nullable().optional(),
       exercises: loggedExercises.optional(),
     },

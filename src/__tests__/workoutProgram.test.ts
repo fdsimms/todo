@@ -23,7 +23,7 @@ beforeEach(() => { day = 0; });
 describe('programProgress', () => {
   it('starts at the first routine, week 1', () => {
     expect(programProgress(program(), [])).toEqual({
-      sessionsDone: 0, passes: 0, nextIndex: 0, nextRoutineId: 'A', week: 1, weeks: null, cycleDone: false,
+      sessionsDone: 0, passes: 0, nextIndex: 0, nextRoutineId: 'A', week: 1, weeks: null, cycleDone: false, cycleStartedAt: null,
     });
   });
 
@@ -66,10 +66,42 @@ describe('programProgress', () => {
   it('counts weeks within a cycle and says when one has just been done', () => {
     const p = program({ weeks: 2 });
     const done = programProgress(p, [session('A'), session('B'), session('A'), session('B')]);
-    expect(done).toMatchObject({ passes: 2, week: 1, weeks: 2, cycleDone: true });
-    const moreOf = programProgress(p, [session('A'), session('B'), session('A'), session('B'), session('A')]);
-    expect(moreOf).toMatchObject({ week: 1, cycleDone: false });
+    expect(done).toMatchObject({ passes: 2, week: 1, weeks: 2, cycleDone: true, cycleStartedAt: null });
+    // Still offered through the first week of the next cycle, with where it began.
+    const cycle = [session('A'), session('B'), session('A'), session('B')];
+    const first = session('A');
+    const moreOf = programProgress(p, [...cycle, first]);
+    expect(moreOf).toMatchObject({ week: 1, cycleDone: true, cycleStartedAt: first.startedAt });
     expect(programProgress(p, [session('A'), session('B')])).toMatchObject({ week: 2, cycleDone: false });
+  });
+
+  it('offers the next cycle when its last day was skipped', () => {
+    // Week 2 of 2: A, B and C done, D (a deload day) skipped, the next cycle's A begun.
+    const p = program({ rotation: ['A', 'B', 'C', 'D'], weeks: 2 });
+    const cycle = [
+      session('A'), session('B'), session('C'), session('D'),
+      session('A'), session('B'), session('C'),
+    ];
+    const next = session('A');
+    const done = programProgress(p, [...cycle, next]);
+    expect(done).toMatchObject({ passes: 2, week: 1, nextRoutineId: 'B', cycleDone: true, cycleStartedAt: next.startedAt });
+  });
+
+  it('reads the same routine twice in a row as a redo, not a week', () => {
+    const p = program({ rotation: ['Press', 'Deadlift', 'Bench', 'Squat'] });
+    expect(programProgress(p, [session('Press'), session('Press')]))
+      .toMatchObject({ sessionsDone: 2, passes: 0, week: 1, nextRoutineId: 'Deadlift' });
+    // A two-routine rotation was the worst case: A twice made a week.
+    expect(programProgress(program(), [session('A'), session('A')])).toMatchObject({ passes: 0, nextRoutineId: 'B' });
+  });
+
+  it('still moves on for a rotation of one routine', () => {
+    expect(programProgress(program({ rotation: ['A'] }), [session('A'), session('A')])).toMatchObject({ passes: 2, week: 3 });
+  });
+
+  it('still reads any other earlier routine as the next week begun', () => {
+    const p = program({ rotation: ['A', 'B', 'C', 'D'] });
+    expect(programProgress(p, [session('A'), session('B'), session('A')])).toMatchObject({ passes: 1, week: 2, nextRoutineId: 'B' });
   });
 
   it('counts from startedAt, which is how a program starts over', () => {

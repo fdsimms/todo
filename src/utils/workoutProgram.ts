@@ -23,6 +23,14 @@ import { PROGRESSION_LABELS } from './workoutRoutine';
  * nothing. A routine can come round more than once in a rotation (A, B, A),
  * which is why this walks the sessions rather than looking up the last one.
  *
+ * **Doing the last routine again is a redo, not a skip.** Read as "later in
+ * the rotation", a second Press straight after Press wrapped round into the
+ * next week, skipping the rest of this one and moving every percentage on. So
+ * a session of the routine the one before it was changes nothing, unless it is
+ * also the next one due (a rotation of one routine). Any other earlier routine
+ * still reads as the next week begun, which is how the rest of a week (a
+ * deload's last days) is skipped.
+ *
  * `startedAt` is where the count starts: sessions before it don't count, which
  * is how a program starts over (a new cycle with raised training maxes).
  */
@@ -39,10 +47,29 @@ export interface ProgramProgress {
   week: number;
   weeks: number | null;
   /**
-   * A whole cycle has just been done and nothing of the next one yet: the
-   * moment to raise a percentage program's training maxes.
+   * A whole cycle has been done and the program is in the first week of the
+   * next: the time to raise a percentage program's training maxes. It covers
+   * the whole week rather than only the moment before its first workout, so a
+   * skipped last day (which steps straight past that moment) still offers it.
    */
   cycleDone: boolean;
+  /**
+   * While `cycleDone`, when the first workout after the program's first cycle
+   * was started, or null before there is one. "Start next cycle" counts from
+   * here, so workouts already done past the cycle keep counting. It is the
+   * first cycle's end rather than the latest because the count only restarts
+   * when the next cycle is started: anything after that end is past it.
+   */
+  cycleStartedAt: string | null;
+}
+
+/**
+ * Where "Start next cycle" counts the program from: the first workout of the
+ * new cycle when one is done (so it keeps counting, as week 1's first day),
+ * else now.
+ */
+export function nextCycleStart(progress: Pick<ProgramProgress, 'cycleStartedAt'>, now: Date = new Date()): string {
+  return progress.cycleStartedAt ?? now.toISOString();
 }
 
 /** The rotation with routines nobody has any more left out, when the caller knows which exist. */
@@ -76,13 +103,20 @@ export function programProgress(
   const n = rotation.length;
   const weeks = program.weeks !== null && program.weeks > 0 ? program.weeks : null;
   if (n === 0) {
-    return { sessionsDone: counted.length, passes: 0, nextIndex: null, nextRoutineId: null, week: 1, weeks, cycleDone: false };
+    return { sessionsDone: counted.length, passes: 0, nextIndex: null, nextRoutineId: null, week: 1, weeks, cycleDone: false, cycleStartedAt: null };
   }
-  // `step` counts rotation slots gone through, skipped ones included.
+  // `step` counts rotation slots gone through, skipped ones included. `slots`
+  // is the slot each session landed on, for where the latest cycle began.
   let step = 0;
+  let previous: string | null = null;
+  const slots: { slot: number; startedAt: string }[] = [];
   for (const s of counted) {
+    const redo = s.routineId === previous;
+    previous = s.routineId;
     for (let k = 0; k < n; k++) {
       if (rotation[(step + k) % n] === s.routineId) {
+        if (redo && k > 0) break;
+        slots.push({ slot: step + k, startedAt: s.startedAt });
         step += k + 1;
         break;
       }
@@ -91,8 +125,9 @@ export function programProgress(
   const passes = Math.floor(step / n);
   const nextIndex = step % n;
   const week = weeks !== null ? (passes % weeks) + 1 : passes + 1;
-  const cycleDone = weeks !== null && passes > 0 && passes % weeks === 0 && nextIndex === 0;
-  return { sessionsDone: counted.length, passes, nextIndex, nextRoutineId: rotation[nextIndex], week, weeks, cycleDone };
+  const cycleDone = weeks !== null && passes > 0 && passes % weeks === 0;
+  const cycleStartedAt = cycleDone && weeks !== null ? slots.find(x => x.slot >= weeks * n)?.startedAt ?? null : null;
+  return { sessionsDone: counted.length, passes, nextIndex, nextRoutineId: rotation[nextIndex], week, weeks, cycleDone, cycleStartedAt };
 }
 
 /** A program that can be the current one: not archived, and with something in its rotation. */
@@ -128,7 +163,8 @@ export function weekLabel(progress: Pick<ProgramProgress, 'week' | 'weeks'>): st
 
 /**
  * The line under a program's name: "Week 2 of 8 · Rep range · Next: Lower A".
- * A cycle just finished says so in place of the week.
+ * A cycle just finished says so in place of the week, until a workout of the
+ * next one is done.
  */
 export function describeProgress(
   program: Pick<WorkoutProgram, 'scheme' | 'weeks'>,
@@ -136,7 +172,7 @@ export function describeProgress(
   routineName: (id: string) => string | null,
 ): string {
   const parts: string[] = [];
-  parts.push(progress.cycleDone && progress.weeks !== null
+  parts.push(progress.cycleDone && progress.nextIndex === 0 && progress.weeks !== null
     ? `${progress.weeks}-week program done`
     : weekLabel(progress));
   if (program.scheme) parts.push(PROGRESSION_LABELS[program.scheme]);

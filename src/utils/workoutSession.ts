@@ -697,10 +697,17 @@ export const IDLE_SESSION_MS = 30 * 60 * 1000;
 /**
  * A live session started `IDLE_SESSION_MS` ago or more with nothing done in
  * it. One set done makes it the person's, so this never names a workout with
- * anything logged, however long ago it began.
+ * anything logged, however long ago it began. Nor one the Apple Watch is
+ * measuring: a long cardio set ticked only at the end is a workout going on,
+ * and discarding it throws the watch's heart rate away with it.
  */
-export function isIdleLiveSession(session: Pick<WorkoutSession, 'endedAt' | 'startedAt'>, sets: readonly WorkoutSet[], now: Date): boolean {
+export function isIdleLiveSession(
+  session: Pick<WorkoutSession, 'endedAt' | 'startedAt' | 'measuredOnWatch'>,
+  sets: readonly WorkoutSet[],
+  now: Date,
+): boolean {
   return session.endedAt === null
+    && !session.measuredOnWatch
     && !sets.some(isDone)
     && now.getTime() - Date.parse(session.startedAt) >= IDLE_SESSION_MS;
 }

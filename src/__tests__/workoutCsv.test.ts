@@ -145,6 +145,10 @@ describe('parseCsv', () => {
     expect(rows[2]).toEqual(['say "hi" there', 'y', '4']);
   });
 
+  it('reads a doubled quote before a comma as an escaped quote in a comma file', () => {
+    expect(parseCsv('a,b,c\n"felt ""easy"", go heavier",x,3\n')[1]).toEqual(['felt "easy", go heavier', 'x', '3']);
+  });
+
   it('still reads a properly doubled quote at the end of a field', () => {
     expect(parseCsv('a,b\n"ends with ""","next"\n')[1]).toEqual(['ends with "', 'next']);
     expect(parseCsv('a,b\n"""",x\n')[1]).toEqual(['"', 'x']);
@@ -323,10 +327,19 @@ describe('parseWorkoutCsv: Strong S2 (Android)', () => {
     expect(run.sets[0].durationSeconds).toBe(1500);
   });
 
-  it('reads a comma decimal only when the file is semicolon-delimited', () => {
-    const commaFile = 'Date,Workout Name,Exercise Name,Weight (kg),Reps\n2023-05-01 09:00:00,Legs,Squat,"82,5",5\n';
-    // In a comma file "82,5" is a thousands-style 825, never 82.5.
-    expect(ok(parseWorkoutCsv(commaFile)).sessions[0].sets[0].weightKg).toBe(825);
+  it('reads a comma as a thousands separator only before groups of three digits', () => {
+    const file = (weight: string) => `Date,Workout Name,Exercise Name,Weight (kg),Reps\n2023-05-01 09:00:00,Legs,Squat,"${weight}",5\n`;
+    // A comma before one or two digits can't be a thousands separator.
+    expect(ok(parseWorkoutCsv(file('82,5'))).sessions[0].sets[0].weightKg).toBe(82.5);
+    expect(ok(parseWorkoutCsv(file('102,25'))).sessions[0].sets[0].weightKg).toBe(102.25);
+    expect(ok(parseWorkoutCsv(file('1,000'))).sessions[0].sets[0].weightKg).toBe(1000);
+  });
+
+  it('drops a weight past the most a set holds, as a misread cell', () => {
+    const file = 'Date,Workout Name,Exercise Name,Weight (kg),Reps\n2023-05-01 09:00:00,Legs,Squat,"1,500",5\n';
+    const [set] = ok(parseWorkoutCsv(file)).sessions[0].sets;
+    expect(set.weightKg).toBeNull();
+    expect(set.reps).toBe(5);
   });
 });
 
@@ -948,6 +961,7 @@ describe('export', () => {
       expect(s.sets[1].weightKg).toBeCloseTo(82.5, unit === 'kg' ? 3 : 0);
       expect(s.sets[1].reps).toBe(8);
       expect(s.sets[1].note).toBe('slow, paused');
+      expect(s.notes).toBe('Felt "good", slept well');
       expect(s.sets[1].rpe).toBe(8);
       expect(new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime()).toBe(65 * 60 * 1000);
     }

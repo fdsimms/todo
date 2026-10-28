@@ -57,10 +57,12 @@ function bridge() {
 export const WORKOUT_HEALTH_ACTIVITY = 'traditionalStrengthTraining' as const;
 
 /**
- * How long a workout an agent logged may wait for the phone, counted from when
- * it ended, before it is dropped unwritten. The food log's limit, for its
- * reason: a phone left off, or a switch turned on a month later, must not send
- * a backlog to Health.
+ * How long a workout waiting for its Health write may wait for the phone,
+ * counted from when it ended, before it is dropped unwritten: one an agent
+ * logged, one described and confirmed, one the Apple Watch was measuring (past
+ * `WATCH_WORKOUT_WAIT_MINUTES`), or a finish applied in the background. The
+ * food log's limit, for its reason: a phone left off, or a switch turned on a
+ * month later, must not send a backlog to Health.
  */
 export const PENDING_WORKOUT_WRITE_MAX_AGE_DAYS = 7;
 
