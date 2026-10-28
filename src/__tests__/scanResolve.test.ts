@@ -1,18 +1,21 @@
 import {
   alreadyScanned,
   classifyTypedEntry,
+  itemEndsProductName,
   matchScans,
   nameFromScanFor,
   newItemBox,
   scanBoxChoice,
   scanBoxFor,
   scanLinkTarget,
+  scanOutcome,
   scannedItemFor,
   shopperNameFor,
   sourceLabelFor,
   sourceLineFor,
   unknownScannedItem,
   variantFor,
+  type ScanOutcomeInput,
   type ScannedItem,
 } from '../utils/scanResolve';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -508,5 +511,106 @@ describe('classifyTypedEntry', () => {
 
   it('says nothing for an empty field', () => {
     expect(classifyTypedEntry('   ', true)).toBeNull();
+  });
+});
+
+describe('itemEndsProductName', () => {
+  it('accepts an item that is the noun a product name ends on', () => {
+    expect(itemEndsProductName('Milk', '2% Reduced Fat Milk')).toBe(true);
+    expect(itemEndsProductName('Olive oil', 'Extra Virgin Olive Oil')).toBe(true);
+    expect(itemEndsProductName('Limes', 'Persian Lime')).toBe(true);
+  });
+
+  it('refuses an item that is only a modifier earlier in the name', () => {
+    expect(itemEndsProductName('Lime', 'Edamame Chili Lime Flavored')).toBe(false);
+    expect(itemEndsProductName('Milk', 'Milk Chocolate Bar')).toBe(false);
+    expect(itemEndsProductName('Chicken', 'Chicken Noodle Soup')).toBe(false);
+  });
+
+  it('counts a trailing flavored against the word before it', () => {
+    expect(itemEndsProductName('Lime', 'Sparkling Water Lime Flavored')).toBe(false);
+    expect(itemEndsProductName('Water', 'Sparkling Lime Flavored Water')).toBe(true);
+  });
+
+  it('leaves an item longer than the product name to the matcher', () => {
+    expect(itemEndsProductName('Chicken breast', 'Chicken')).toBe(true);
+  });
+});
+
+describe('matchScans, modifier guesses', () => {
+  it('does not offer a one-word item for a product it only flavors', () => {
+    const lime = makeItem({ name: 'Lime' });
+    const [match] = matchScans([scan({ name: 'Edamame Chili Lime Flavored' })], [lime]);
+    expect(match.itemId).toBeNull();
+    expect(match.confidence).toBeNull();
+  });
+
+  it('drops the same guess from the off-list pass', () => {
+    const lime = makeItem({ name: 'Lime', onList: false });
+    const [match] = matchScans([scan({ name: 'Edamame Chili Lime Flavored' })], [lime]);
+    expect(match.offListMatchId).toBeNull();
+    expect(match.offListConfidence).toBeNull();
+  });
+
+  it('keeps a barcode the person linked even when the words would not match', () => {
+    const lime = makeItem({ name: 'Lime' });
+    const [match] = matchScans(
+      [scan({ name: 'Edamame Chili Lime Flavored', gtin: '1' })],
+      [lime],
+      () => lime.id
+    );
+    expect(match.itemId).toBe(lime.id);
+    expect(match.confidence).toBe('remembered');
+  });
+});
+
+describe('scanOutcome', () => {
+  const base: ScanOutcomeInput = {
+    included: true,
+    needsNutrition: false,
+    mode: 'new',
+    name: 'Edamame Chili Lime Flavored',
+    itemOnList: false,
+    brand: 'Biena',
+    variant: null,
+    filedAs: null,
+    nutrition: { text: '433 cal per 100g, 8 nutrients', source: 'database' },
+    hasGtin: true,
+    price: null,
+    frozen: false,
+  };
+
+  it('lists what a new item will save', () => {
+    const { held, lines } = scanOutcome(base);
+    expect(held).toBeNull();
+    expect(lines.map(l => l.label)).toEqual(['Item', 'Brand', 'Nutrition', 'Barcode']);
+    expect(lines[0]).toMatchObject({ text: 'Edamame Chili Lime Flavored, new', strong: true });
+    expect(lines[2].text).toBe('433 cal per 100g, 8 nutrients, from the barcode lookup');
+  });
+
+  it('says an existing item keeps its name and what the scan is filed as', () => {
+    const { lines } = scanOutcome({
+      ...base,
+      mode: 'existing',
+      name: 'Lime',
+      itemOnList: true,
+      filedAs: 'Biena Edamame Chili Flavored',
+    });
+    expect(lines[0].text).toBe('Lime, on your list');
+    expect(lines.find(l => l.label === 'Filed as')?.text).toBe('Biena Edamame Chili Flavored');
+    expect(lines.find(l => l.label === 'Barcode')?.text).toBe('Remembered as Lime');
+  });
+
+  it('names the freezer and the shelf price only when they apply', () => {
+    const { lines } = scanOutcome({ ...base, price: '$3.49', frozen: true });
+    expect(lines.slice(-2).map(l => l.label)).toEqual(['Price', 'Goes in']);
+    expect(scanOutcome(base).lines.some(l => l.label === 'Price' || l.label === 'Goes in')).toBe(false);
+  });
+
+  it('gives a reason instead of lines when the row will not be saved', () => {
+    expect(scanOutcome({ ...base, included: false }).held).toMatch(/Not included/);
+    expect(scanOutcome({ ...base, needsNutrition: true }).held).toMatch(/nutrition/);
+    expect(scanOutcome({ ...base, name: '  ' }).held).toMatch(/name/);
+    expect(scanOutcome({ ...base, included: false }).lines).toEqual([]);
   });
 });

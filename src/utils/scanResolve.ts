@@ -10,6 +10,7 @@ import type { ReceiptLine } from '../services/aiSuggestions';
 import type { ProductRecord } from '../services/productLookup';
 import { normalizeGtin } from './gtin';
 import { normalizePlu } from './plu';
+import { groceryNameKey } from './groceryParse';
 
 /**
  * Reading a scanned barcode against the grocery catalog.
@@ -423,7 +424,63 @@ export function matchScans(
         return scan ? resolveScan(scan) : null;
       }
     : undefined;
-  return matchReceiptLines(lines, items, aliasFor);
+  return matchReceiptLines(lines, items, aliasFor).map((match, index) =>
+    withoutModifierGuesses(match, scans[index].name, items)
+  );
+}
+
+/** "lime" and "limes" are the same word here; the matcher's own plural rule is as crude. */
+function sameWord(a: string, b: string): boolean {
+  return a === b || a === `${b}s` || b === `${a}s`;
+}
+
+/**
+ * Whether a catalog name is what a longer product name *is*, rather than a word
+ * somewhere inside it.
+ *
+ * English puts the noun last and the modifiers before it: "2% Reduced Fat Milk"
+ * is milk, but "Milk Chocolate Bar" is not, and "Lime Sparkling Water" and
+ * "Chili Lime Flavored Edamame" are not limes. The matcher's `'likely'` tier
+ * only asks whether the item's words appear at a word boundary, so on a scan,
+ * where the product name is always the longer one, it offered "Lime" for the
+ * edamame. This is the rule that refuses it: for a one-sided containment the
+ * item has to end the product name. A trailing "flavored" or "style" therefore
+ * counts against it: "Lime Flavored" names the flavor, never the food.
+ *
+ * An item longer than the product name ("Chicken Breast" for "Chicken") is not
+ * the case this guards, and is left to the matcher.
+ */
+export function itemEndsProductName(itemName: string, productName: string): boolean {
+  const itemWords = groceryNameKey(itemName).split(' ').filter(Boolean);
+  const productWords = groceryNameKey(productName).split(' ').filter(Boolean);
+  if (itemWords.length === 0 || productWords.length <= itemWords.length) return true;
+  const tail = productWords.slice(-itemWords.length);
+  return tail.length === itemWords.length && tail.every((w, i) => sameWord(w, itemWords[i]));
+}
+
+/**
+ * A scan's matches with the `'likely'` ones that only share a modifier taken
+ * out. Only `'likely'` is judged: an exact name, a remembered phrase and a
+ * barcode someone already linked are not guesses about word order.
+ */
+function withoutModifierGuesses(
+  match: ReceiptMatch,
+  productName: string,
+  items: readonly GroceryItem[]
+): ReceiptMatch {
+  const holds = (id: string | null, confidence: ReceiptMatch['confidence']): boolean => {
+    if (!id || confidence !== 'likely') return true;
+    const item = items.find(i => i.id === id);
+    return !item || itemEndsProductName(item.name, productName);
+  };
+  const onList = holds(match.itemId, match.confidence);
+  const offList = holds(match.offListMatchId, match.offListConfidence);
+  if (onList && offList) return match;
+  return {
+    ...match,
+    ...(onList ? {} : { itemId: null, confidence: null, duplicateOf: null, inTrolley: false }),
+    ...(offList ? {} : { offListMatchId: null, offListConfidence: null }),
+  };
 }
 
 /**
@@ -517,4 +574,84 @@ export function classifyTypedEntry(raw: string, allowNames: boolean): TypedEntry
 /** Whether a name ends in a size ("-- 6 oz"), which belongs in the quantity and not the name. */
 export function hasTrailingSize(name: string): boolean {
   return TRAILING_SIZE.test(name.trim());
+}
+
+/** One line of what Add will do with a scanned row. */
+export interface ScanOutcomeLine {
+  label: string;
+  text: string;
+  /** The line that names the item, drawn heavier. */
+  strong?: boolean;
+}
+
+export interface ScanOutcomeInput {
+  /** Whether the row is going in. A row left unchecked is not saved at all. */
+  included: boolean;
+  /** Set while a log can't take the row yet: what it is waiting for. */
+  needsNutrition: boolean;
+  /** `'new'` mints an item; `'existing'` files the scan under one already there. */
+  mode: 'new' | 'existing';
+  /** What the item is called after Add: the typed name, or the existing item's own. */
+  name: string;
+  /** For an existing item: whether it is on the shopping list right now. */
+  itemOnList: boolean;
+  brand: string | null;
+  variant: string | null;
+  /** For an existing item: the brand and flavor the scan is filed as, already worded. */
+  filedAs: string | null;
+  /** The figures that travel with it, already worded ("433 cal per 100g, 8 nutrients"). */
+  nutrition: { text: string; source: 'catalog' | 'database' } | null;
+  hasGtin: boolean;
+  /** The shelf price already formatted, or null. */
+  price: string | null;
+  /** Goes in the freezer, in a context where that means something. */
+  frozen: boolean;
+}
+
+/**
+ * What a scanned row will actually save, as plain lines for the box at the foot
+ * of its editor.
+ *
+ * Written from the same facts the apply step reads, because the point of the box
+ * is that it can't disagree with Add: an editor that shows five controls and
+ * never says which of them count was the thing people couldn't follow. `held` is
+ * set instead of lines when the row won't be saved at all, and says why.
+ */
+export function scanOutcome(input: ScanOutcomeInput): { held: string | null; lines: ScanOutcomeLine[] } {
+  if (!input.included) return { held: 'Not included. Check the box to include it.', lines: [] };
+  if (input.needsNutrition) return { held: 'Can\u2019t be logged until it has nutrition facts.', lines: [] };
+  const name = input.name.trim();
+  if (!name) return { held: 'Needs a name before it can be included.', lines: [] };
+
+  const lines: ScanOutcomeLine[] = [];
+  if (input.mode === 'new') {
+    lines.push({ label: 'Item', text: `${name}, new`, strong: true });
+    if (input.brand) lines.push({ label: 'Brand', text: input.brand });
+    if (input.variant) lines.push({ label: 'Flavor', text: input.variant });
+  } else {
+    lines.push({
+      label: 'Item',
+      text: `${name}, ${input.itemOnList ? 'on your list' : 'already in your catalog'}`,
+      strong: true,
+    });
+    if (input.filedAs) lines.push({ label: 'Filed as', text: input.filedAs });
+  }
+  if (input.nutrition) {
+    lines.push({
+      label: 'Nutrition',
+      text:
+        input.nutrition.source === 'database'
+          ? `${input.nutrition.text}, from the barcode lookup`
+          : 'Already on file for this item',
+    });
+  }
+  if (input.hasGtin) {
+    lines.push({
+      label: 'Barcode',
+      text: input.mode === 'new' ? 'Remembered for next time' : `Remembered as ${name}`,
+    });
+  }
+  if (input.price) lines.push({ label: 'Price', text: `${input.price} from the shelf label` });
+  if (input.frozen) lines.push({ label: 'Goes in', text: 'The freezer' });
+  return { held: null, lines };
 }
