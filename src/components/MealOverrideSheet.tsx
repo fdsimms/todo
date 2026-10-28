@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { PillGroup } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
@@ -120,6 +120,7 @@ export function MealOverrideSheet({ visible, entry: liveEntry, recipe: liveRecip
       controller={card}
       onRequestClose={handleCancel}
     >
+      <ScrollView keyboardShouldPersistTaps="handled" bounces={false} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => handleCancel(card.close)} />
         <Text style={styles.headerTitle}>Change for this meal</Text>
@@ -192,6 +193,7 @@ export function MealOverrideSheet({ visible, entry: liveEntry, recipe: liveRecip
           the meal or week is.
         </HelpText>
       </View>
+      </ScrollView>
     </CardSheet>
   );
 }

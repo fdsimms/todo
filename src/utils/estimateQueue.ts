@@ -150,10 +150,21 @@ const SUMMARY_FIGURES: readonly { key: 'calorieKcal' | 'proteinG' | 'carbsG' | '
  * as zero, the rule `FoodNutrition.amounts` states.
  */
 export function summarizeEstimate(estimate: NutritionEstimate): string {
-  return SUMMARY_FIGURES
-    .flatMap(({ key, suffix }) => {
-      const value = estimate.amounts[key];
-      return value === undefined ? [] : [`${Math.round(value).toLocaleString('en-US')}${suffix}`];
-    })
-    .join(' · ');
+  const { calories, rest } = splitEstimateSummary(estimate);
+  return [calories, rest].filter(Boolean).join(' · ');
+}
+
+/**
+ * `summarizeEstimate` in two pieces, so a card can set the calorie figure apart
+ * from the macros. Either is null/empty when the model did not state it.
+ */
+export function splitEstimateSummary(estimate: NutritionEstimate): { calories: string | null; rest: string } {
+  const figures = SUMMARY_FIGURES.flatMap(({ key, suffix }) => {
+    const value = estimate.amounts[key];
+    return value === undefined ? [] : [{ key, text: `${Math.round(value).toLocaleString('en-US')}${suffix}` }];
+  });
+  return {
+    calories: figures.find(f => f.key === 'calorieKcal')?.text ?? null,
+    rest: figures.filter(f => f.key !== 'calorieKcal').map(f => f.text).join(' · '),
+  };
 }

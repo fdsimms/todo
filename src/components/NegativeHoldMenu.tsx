@@ -1,5 +1,5 @@
 import React, { Fragment, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -111,6 +111,7 @@ export function NegativeHoldMenu({ visible, anchor, hold, onCount, onReopen, onS
       popoverWidth={300}
       scrimLabel="Close menu"
     >
+      <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
       {rows.map((row, i) => (
         <Fragment key={row.key}>
           {i > 0 && <View style={styles.sep} />}
@@ -134,6 +135,7 @@ export function NegativeHoldMenu({ visible, anchor, hold, onCount, onReopen, onS
           </TouchableOpacity>
         </Fragment>
       ))}
+      </ScrollView>
     </CardSheet>
   );
 }

@@ -36,7 +36,8 @@ const PANTRY_ANSWERS: { value: PantryAnswer; label: string }[] = [
  *
  * A dose row that states an amount carries the same stepper, moving the amount
  * a step at a time (`doseStepper`): a counted unit by one, a measured one by
- * the amount itself.
+ * the amount itself. The number between − and + is the amount (the unit stays
+ * in the line under the title), as the glasses count is for water.
  *
  * A symptom row carries its severity pills on a line of their own under the
  * title, so the name keeps the whole row: tapping a pill logs at that severity.
@@ -210,9 +211,12 @@ export function SearchActionRow({ action, description, describe, receipt, layout
       haptics.tap();
       setCount(g => Math.min(maxCount, Math.max(1, g + delta)));
     };
-    const [fewer, more, valueLabel] = action.kind === 'water'
-      ? ['Fewer glasses', 'More glasses', `${count} ${count === 1 ? 'glass' : 'glasses'}`]
-      : ['Smaller dose', 'Larger dose', 'Dose amount'];
+    // A dose shows its amount, not the step count: 200 mg stepped twice reads
+    // 400, matching what the line under the title says it will record.
+    const doseAmount = stepped.kind === 'dose' ? stepped.dose.amount : null;
+    const [fewer, more, valueText, valueLabel] = action.kind === 'water'
+      ? ['Fewer glasses', 'More glasses', String(count), `${count} ${count === 1 ? 'glass' : 'glasses'}`]
+      : ['Smaller dose', 'Larger dose', String(doseAmount ?? count), `Dose of ${doseAmount ?? count} ${action.dose.unit ?? ''}`.trim()];
     // The button and the stepper are siblings rather than nested, so a screen
     // reader reads the row as one button and the stepper as its own controls.
     return (
@@ -227,9 +231,7 @@ export function SearchActionRow({ action, description, describe, receipt, layout
           >
             <Ionicons name="remove" size={iconSize.sm} color={colors.text} style={count <= 1 ? styles.stepOff : undefined} />
           </PressableScale>
-          {action.kind === 'water' && (
-            <Text style={styles.stepValue} accessibilityLabel={valueLabel}>{count}</Text>
-          )}
+          <Text style={styles.stepValue} accessibilityLabel={valueLabel}>{valueText}</Text>
           <PressableScale
             onPress={() => step(1)}
             disabled={count >= maxCount}

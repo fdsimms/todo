@@ -1169,6 +1169,10 @@ kept, and asked about again each time the app comes to the front.
   button. Logging from the panel removes the queued row, and dismissing the
   panel leaves it. Save for later is offered only for a first ask, never for a
   refinement, so answers are never folded into a saved description twice.
+- **A meal that hasn't been estimated can be edited, a ready one can't.** Edit on
+  a waiting or failed row fixes the words (`rename`, `PendingEstimateEditSheet`);
+  a failed one goes back to waiting and is asked again. A ready meal's figures
+  answer the old words, so its way to change is Refine, never a silent rename.
 - **Device-local.** `pending_estimates` is in both `BACKUP_EXCLUDED_TABLES` and
   `SYNC_EXCLUDED_TABLES`: a request belongs to the phone that lost its signal,
   and syncing one would have a second phone estimate and offer to log the same

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -50,6 +50,7 @@ export function GroceryGroupMenu({ visible, onClose, value, onChange, storeDisab
       popoverWidth={260}
       scrimLabel="Close menu"
     >
+      <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
       <Text style={styles.label}>Group by</Text>
       {OPTIONS.map(option => {
         const disabled = option.value === 'store' && !!storeDisabled;
@@ -75,6 +76,7 @@ export function GroceryGroupMenu({ visible, onClose, value, onChange, storeDisab
           </React.Fragment>
         );
       })}
+      </ScrollView>
     </CardSheet>
   );
 }

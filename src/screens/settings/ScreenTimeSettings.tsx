@@ -717,6 +717,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           hint={groupHint(DEFAULT_GROUP_ID)}
           alwaysShowHint={groupLocked(DEFAULT_GROUP_ID)}
           value={countLabel(DEFAULT_GROUP_ID)}
+          stackValue
           onPress={() => handleGroupRow(DEFAULT_GROUP_ID, groupsMeta.baseName)}
         />
         {customGroups.map(group => (
@@ -730,6 +731,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
                 hint={supergroupHint(group)}
                 alwaysShowHint
                 value={supergroupCount(group.id)}
+                stackValue
                 onPress={() => handleSupergroupRow(group.id, group.name)}
               />
             ) : (
@@ -740,6 +742,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
                 hint={groupHint(group.id)}
                 alwaysShowHint={groupLocked(group.id)}
                 value={countLabel(group.id)}
+                stackValue
                 onPress={() => handleGroupRow(group.id, group.name)}
               />
             )}

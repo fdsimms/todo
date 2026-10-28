@@ -308,6 +308,7 @@ Where each component can appear.
 - `src/components/PantryCheckSheet.tsx` — on CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/PantryReviewSheet.tsx` — on KitchenScreen
 - `src/components/PatchNotesModal.tsx` — on SettingsGroupScreen
+- `src/components/PendingEstimateEditSheet.tsx` — on FoodLogScreen
 - `src/components/PendingEstimatesCard.tsx` — on FoodLogScreen
 - `src/components/PeriodNav.tsx` — on CalendarScreen, MealPlanScreen
 - `src/components/PersonDateRows.tsx` — on PeopleScreen, PersonDetailScreen

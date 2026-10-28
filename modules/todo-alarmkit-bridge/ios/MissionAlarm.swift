@@ -193,13 +193,25 @@ enum MissionLoop {
   /// Records the mission as pending and puts its next ring `seconds` out,
   /// replacing the one already waiting, so there is only ever one.
   ///
+  /// `sparingRing` is the app's own push (the counter's heartbeat, or its
+  /// Cancel), which nobody pressed on the alarm: if the waiting ring is
+  /// already sounding, it is left to sound and nothing changes. Replacing it
+  /// cancels it, and an app that came back to the front mid-ring (a timer
+  /// catching up, the counter reopening as the ring came due) cut every ring
+  /// after the first off within a second or so. Stop and the mission button
+  /// replace it, since pressing one is what ends that ring.
+  ///
   /// The ring is scheduled first and the store is changed after, under the
   /// lock `complete` takes, so the two can't interleave. A mission ended
   /// while the schedule was awaited stays ended: the ring just made is
   /// cancelled and nothing is written. Before this, a heartbeat re-arm that
   /// was mid-flight when the person gave up wrote the mission back as
   /// pending, and the alarm kept coming back.
-  static func rearm(_ incoming: MissionPayload, after seconds: Double) async {
+  static func rearm(_ incoming: MissionPayload, after seconds: Double, sparingRing: Bool = false) async {
+    if sparingRing, let waiting = MissionStore.read()[incoming.key]?.rearmId,
+       let waitingId = UUID(uuidString: waiting), isAlerting(waitingId) {
+      return
+    }
     let started = Date()
     // JS defers a mission without knowing its sound; the one the alarm rang
     // with is kept.
@@ -236,6 +248,13 @@ enum MissionLoop {
       )
       MissionStore.write(missions)
     }
+  }
+
+  /// Whether this alarm is sounding right now. A read that fails says no,
+  /// which is the push going ahead as it did before this check existed.
+  static func isAlerting(_ id: UUID) -> Bool {
+    guard let alarms = try? AlarmManager.shared.alarms else { return false }
+    return alarms.contains { $0.id == id && $0.state == .alerting }
   }
 
   /// The mission is over, done or given up: its waiting ring is cancelled

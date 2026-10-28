@@ -166,7 +166,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/energyBudget.ts` — BodySex, ActivityLevel, ACTIVITY_FACTOR, ACTIVITY_LABEL, ACTIVITY_LEVELS, BodyProfile, EMPTY_BODY_PROFILE, MIN_HEIGHT_CM, MAX_HEIGHT_CM, MIN_BIRTH_YEAR, +27 more
 - `src/utils/errorLog.ts` — ERROR_LOG_MAX_ROWS, ERROR_LOG_MAX_DAYS, buildErrorEntry, logError
 - `src/utils/estimateCalibration.ts` — MIN_CALIBRATION_SAMPLES, MIN_SANE_RATIO, MAX_SANE_RATIO, EstimateCalibration, calibrationPairs, calibrationFrom, calibratedAssumedMinutes, describeCalibration
-- `src/utils/estimateQueue.ts` — MAX_PENDING_ESTIMATES, PendingEstimateStatus, PendingEstimate, isQueueableFailure, canQueueAnother, findDuplicate, sortPending, awaitingEstimate, describePending, summarizeEstimate
+- `src/utils/estimateQueue.ts` — MAX_PENDING_ESTIMATES, PendingEstimateStatus, PendingEstimate, isQueueableFailure, canQueueAnother, findDuplicate, sortPending, awaitingEstimate, describePending, summarizeEstimate, +1 more
 - `src/utils/eventConflicts.ts` — FREE_SLOT_DAY_START_HOUR, FREE_SLOT_DAY_END_HOUR, overlappingEvents, firstFreeSlot, calendarCovers
 - `src/utils/eventDirections.ts` — openEventDirections, openEventJoinLink
 - `src/utils/eventLength.ts` — EVENT_LENGTH_PRESETS, describeEventLength, lengthToClock
@@ -227,7 +227,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryProduct.ts` — productKeyFor, canonicalBrand, describeProduct, describeProductOfItem, describeCatalogItem, productsForItem, productForGtin, preferredProductOf, describePreferredProduct, ratingCandidate, +4 more
 - `src/utils/groceryReminderMirror.ts` — GroceryReminderLink, GroceryLinkIndex, parseGroceryLinks, serializeGroceryLinks, withGroceryLinks, MirrorItem, MirrorReminder, mirrorNote, mirrorTitleFor, normalizeMirrorTitle, +2 more
 - `src/utils/groceryReorder.ts` — GroceryDropRow, GroceryPlacement, resolveGroceryDrop, KeyedGroceryDropRow, placeNewGroceryItems, groceryDragRange
-- `src/utils/groceryRowQuantity.ts` — QUANTITY_BESIDE_NAME_MAX_CHARS, quantityCharsForPill, NameRowSpace, groceryRowNameSpace, recipeToListNameSpace, addMealsToListNameSpace, quantityFitsBesideName
 - `src/utils/groceryShelfLife.ts` — SHELF_LIFE_LEXICON, OPEN_SHELF_LIFE_LEXICON, openShelfLifeDaysFor, shelfLifeDaysFor, clampExpiryDays, expiryKeyFor, defaultExpiresAt, expiresAtForPurchase, expiresAtForOpening, liveExpiresAt, +2 more
 - `src/utils/groceryShops.ts` — isUnavailable, isAsserted, lacksWantedProduct, countsForItem, sellsAisle, isOutOfRange, describeShopAisles, shopWalkOrder, shopAisleOrderToSave, describeOwnAisleOrders, +14 more
 - `src/utils/grocerySuggest.ts` — GrocerySuggestion, GrocerySection, GroceryRecipeSection, NO_RECIPE_LABEL, matchWeight, rankGrocerySuggestions, buyAgainItems, rankedCatalogItems, sectionsInAisleOrder, buildGrocerySections, +17 more
@@ -735,7 +734,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useMissionStore.ts` — useMissionStore
 - `src/store/useMoodStore.ts` — MoodLogPatch, useMoodStore
 - `src/store/useNfcKeyStore.ts` — KeyScanResult, EnrollResult, useNfcKeyStore
-- `src/store/usePendingEstimateStore.ts` — PendingEstimateDraft, EnqueueResult, usePendingEstimateStore
+- `src/store/usePendingEstimateStore.ts` — PendingEstimateDraft, EnqueueResult, RenameResult, usePendingEstimateStore
 - `src/store/usePendingRecipeEstimateStore.ts` — PendingRecipeEstimateDraft, usePendingRecipeEstimateStore
 - `src/store/usePersonGroupStore.ts` — usePersonGroupStore
 - `src/store/usePersonNoteStore.ts` — PersonNotePatch, usePersonNoteStore
