@@ -2226,6 +2226,11 @@ Four decisions in it are not obvious and are all load-bearing:
   much they move. Only the *excess* is added, so an ordinary day changes
   nothing at all. Somebody whose target really did come from a resting rate
   sets the baseline to zero and gets the naive behaviour deliberately.
+  `WeightGoalSheet` mirrors the switch under its calorie figure, since every
+  basis there already covers a typical day. Turning it on from the sheet starts
+  the baseline at the person's own typical day and has no stepper, so it can't
+  be set to a number that counts the same movement twice; the stepper under
+  Daily targets still can.
 - **It raises and never lowers.** Active energy accrues through the day, so a
   signed adjustment would open every morning several hundred calories below
   the target and climb back to it. That is a wrong number for half the day,
