@@ -673,24 +673,26 @@ export function HealthSettings() {
             label="Nutrients written per meal"
             value={`${healthWriteNutrients.length} of ${HEALTH_WRITABLE_NUTRIENTS.length}`}
           />
-          {healthNutrientSections().map(section => (
-            <View key={section.heading ?? 'other'}>
-              {section.heading ? <Text style={styles.pillGroupHeading}>{section.heading}</Text> : null}
-              <View style={styles.pillGroupRow}>
-                <PillGroup
-                  noun="nutrient"
-                  limit={section.keys.length}
-                  options={section.keys.map(key => ({
-                    key,
-                    label: NUTRIENT_LABEL[key].label,
-                    selected: healthWriteNutrients.includes(key),
-                    accessibilityLabel: `Write ${NUTRIENT_LABEL[key].label} to Health`,
-                    onPress: () => toggleWriteNutrient(key),
-                  }))}
-                />
+          <View style={styles.pillGroupStack}>
+            {healthNutrientSections().map(section => (
+              <View key={section.heading ?? 'other'}>
+                {section.heading ? <Text style={styles.pillGroupHeading}>{section.heading}</Text> : null}
+                <View style={section.heading ? styles.pillGroupRowUnderHeading : styles.pillGroupRow}>
+                  <PillGroup
+                    noun="nutrient"
+                    limit={section.keys.length}
+                    options={section.keys.map(key => ({
+                      key,
+                      label: NUTRIENT_LABEL[key].label,
+                      selected: healthWriteNutrients.includes(key),
+                      accessibilityLabel: `Write ${NUTRIENT_LABEL[key].label} to Health`,
+                      onPress: () => toggleWriteNutrient(key),
+                    }))}
+                  />
+                </View>
               </View>
-            </View>
-          ))}
+            ))}
+          </View>
           {/* Only inside the Workouts area: a switch for something the app
               can't do while the area is off would be a row about nothing. */}
           {workoutsEnabled && (

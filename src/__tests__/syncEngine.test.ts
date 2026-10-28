@@ -927,6 +927,24 @@ describe('recipe photos', () => {
     expect(retry.imageProblem).toBeUndefined();
   });
 
+  it('drops a native module’s code and source position from a photo problem', async () => {
+    const a = new PhotoDevice('a');
+    a.write('t1', 'Chili', '2026-01-01T00:00:00.000Z');
+    a.take('p1.jpg', 'AAAA');
+    const cloud = new FakeCloud();
+    const push = cloud.push.bind(cloud);
+    cloud.push = async (payload: string) => {
+      if (payload.includes('"images"')) {
+        throw new Error('ERR_CLOUDKIT_PUSH: iCloud storage is full (at ExpoModulesCore/Promise.swift:65)');
+      }
+      return push(payload);
+    };
+
+    const result = await runSync(cloud, a);
+
+    expect(result.imageProblem).toBe('iCloud storage is full');
+  });
+
   it('forgets names of photos that are gone as it next records what was sent', async () => {
     const a = new PhotoDevice('a');
     a.take('old.jpg', 'OLD');
