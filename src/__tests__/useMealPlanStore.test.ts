@@ -164,6 +164,7 @@ const mockRecipeState = {
   markCooked: jest.fn(),
   restoreCookStats: jest.fn(),
   stopCookTimer: jest.fn(),
+  stopPrepTimer: jest.fn(),
   setUpNext: jest.fn(),
   // A name-only recipe, refused on a taken name the way the real store is, so
   // saveEntryAsRecipe's two branches are both reachable.
@@ -1200,6 +1201,8 @@ describe('setCooked', () => {
 
     useMealPlanStore.getState().setCooked(dinner.id, true);
     expect(mockRecipeState.stopCookTimer).toHaveBeenCalledWith('r1');
+    // And the prep timer Start cooking paused, so the next cooking doesn't resume it.
+    expect(mockRecipeState.stopPrepTimer).toHaveBeenCalledWith('r1');
 
     mockRecipeState.stopCookTimer.mockClear();
     useMealPlanStore.getState().setCooked(dinner.id, false);

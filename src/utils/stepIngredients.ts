@@ -283,6 +283,7 @@ export function annotateSteps(
           mention.candidate,
           step.text,
           (spread.get(spreadKey(step.recipeId, mention.candidate.id)) ?? 0) > 1,
+          mention,
         ),
       }))
       // A mention with nothing to say still claimed its span — that is what
@@ -308,7 +309,7 @@ export function annotateSteps(
 export function stepNamesIngredient(stepText: string, name: string): boolean {
   const key = name.trim().toLowerCase();
   if (key.length < MIN_NAME_LENGTH) return false;
-  return firstWholeWord(stepText.toLowerCase(), key, []) !== null;
+  return firstWholeWord(lowerKeepingOffsets(stepText), key, []) !== null;
 }
 
 function spreadKey(recipeId: string, name: string): string {
@@ -450,7 +451,7 @@ function candidatesByRecipe(
  */
 function mentionsIn(text: string, candidates: readonly Candidate[]): Mention[] {
   if (candidates.length === 0) return [];
-  const haystack = text.toLowerCase();
+  const haystack = lowerKeepingOffsets(text);
   const claimed: Mention[] = [];
   const spoken = new Set<string>();
   for (const candidate of candidates) {
@@ -487,6 +488,21 @@ function firstWholeWord(
     from = at + 1;
   }
   return null;
+}
+
+/**
+ * `text` lower-cased one UTF-16 unit at a time, leaving any character whose
+ * lower case is longer ("İ" is two) as it was. The offsets found in it are
+ * sliced out of the original text, so the two have to stay the same length:
+ * a plain `toLowerCase()` shifted every mention after an "İ" by one.
+ */
+function lowerKeepingOffsets(text: string): string {
+  let out = '';
+  for (let i = 0; i < text.length; i += 1) {
+    const lower = text[i].toLowerCase();
+    out += lower.length === 1 ? lower : text[i];
+  }
+  return out;
 }
 
 function wholeWord(haystack: string, at: number, end: number): boolean {
@@ -547,6 +563,7 @@ function describeMention(
   candidate: Candidate,
   stepText: string,
   spread: boolean,
+  mention: { start: number; end: number },
 ): string | null {
   const parts: string[] = [];
   const { swappedTo, quantity, weight } = candidate;
@@ -563,8 +580,8 @@ function describeMention(
     // the lemon" gets neither, and a method that wrote "2 cups flour" is still
     // owed the grams it didn't say.
     const amount = [
-      alreadySaid(stepText, quantity) ? null : quantity,
-      weight && !alreadySaid(stepText, weight) ? weight : null,
+      saidBeside(stepText, quantity, mention) ? null : quantity,
+      weight && !saidBeside(stepText, weight, mention) ? weight : null,
     ].filter((part): part is string => part !== null).join(', ');
     if (amount) parts.push(spread ? `${amount} in total` : amount);
   }
@@ -610,6 +627,32 @@ function alreadySaid(stepText: string, phrase: string): boolean {
     const at = haystack.indexOf(said, from);
     if (at < 0) return false;
     if (wholeWord(haystack, at, at + said.length)) return true;
+    from = at + 1;
+  }
+  return false;
+}
+
+/**
+ * Does the sentence give this amount for this mention? `alreadySaid`, held to
+ * the words around the mention: the amount just before it ("add 200 g of the
+ * sugar", "3 large eggs") or in parentheses just after it. Anywhere in the
+ * sentence was too loose, since "Add 1 cup flour, then fold in the sugar"
+ * says nothing about how much sugar, and nor does "Bake 3 minutes, then add
+ * the eggs" about the eggs.
+ */
+function saidBeside(stepText: string, phrase: string, mention: { start: number; end: number }): boolean {
+  const said = phrase.replace(/^≈\s*/, '').trim().toLowerCase();
+  if (!said) return false;
+  const haystack = lowerKeepingOffsets(stepText);
+  let from = 0;
+  while (from <= haystack.length - said.length) {
+    const at = haystack.indexOf(said, from);
+    if (at < 0) return false;
+    const end = at + said.length;
+    if (wholeWord(haystack, at, end)) {
+      if (end <= mention.start && /^\s*(?:[a-z-]+\s+){0,3}$/.test(haystack.slice(end, mention.start))) return true;
+      if (at >= mention.end && /^\s*\(\s*$/.test(haystack.slice(mention.end, at))) return true;
+    }
     from = at + 1;
   }
   return false;
