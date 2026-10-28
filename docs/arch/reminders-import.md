@@ -112,7 +112,7 @@ on `rerunRequested`, which is safe only because a second pass over a settled pai
 `groceryReminderMirror.test.ts` pins that with the convergence cases, and a plan that kept finding
 work would be a loop writing to both apps for ever.
 
-Six things that are the way they are for a reason:
+Seven things that are the way they are for a reason:
 
 - **The link record is device-local**, in the settings table under `groceryImportLinks`, not a
   column on `grocery_items`. That table syncs (`SYNC_TRACKED_TABLES`) and an EventKit id names a
@@ -137,6 +137,19 @@ Six things that are the way they are for a reason:
   cleared it and push the clearing. Both sides holding different notes is a conflict like any
   other, and the app wins it. An imported reminder's notes become the row's note unless the row
   is a catalog item re-listed with a note of its own.
+- **A row it takes off the list is kept for the pantry to ask about** (`src/utils/reminderRemovals.ts`,
+  `useReminderRemovalStore`, `ReminderRemovalsCard` on Groceries). Reminders hides a completed
+  reminder and the usual tidy-up is deleting them, so a household shopping from Reminders cleared
+  its list and never finished a trip in the app, and nothing it bought reached the purchase record
+  the pantry is read from. The mirror records each removal (and whether the row was in the cart) in
+  `groceryImportRemovals`, device-local beside the links; the card asks which were bought, with the
+  in-cart rows pre-selected, and records those through `finishShopping`'s `itemIds`. **It never
+  assumes a purchase**: a deleted reminder is either a cleared shop or a thing that stopped being
+  wanted, and only the person knows which. A removal stops being asked about once the row is back
+  on the list, bought since, or two weeks old. **The purchase is dated from the check, not the
+  deletion**, since a list is cleared days after the shop and the cadence is measured from the
+  date: each link keeps `checkedAt` (Reminders' own completion date, or the pass that saw an
+  in-app check), and the card records one purchase per day the rows were checked, under one undo.
 - **A mirrored pass marks the whole list handled** (`rememberHandled(listId, present, present)`),
   so switching two-way back off hands the one-way drain a clean slate rather than a list it reads
   as one big backlog — including the reminders the mirror itself wrote.

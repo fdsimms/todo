@@ -1160,6 +1160,52 @@ describe('importReminders — the two-way grocery mirror', () => {
     expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
   });
 
+  // A list cleared in Reminders after a shop: the row is kept for the
+  // Groceries card to offer as a purchase (reminderRemovals.ts).
+  it('keeps what it took off the list, and whether it was in the cart', async () => {
+    mockSettingsRows.groceryImportLinks = JSON.stringify({
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: true, note: '', seen: true }],
+    });
+    mockGroceryItems = [row({ id: 'i1', name: 'milk', checked: true })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([]);
+
+    await freshSync().importReminders();
+
+    const kept = JSON.parse(mockSettingsRows.groceryImportRemovals ?? '[]');
+    expect(kept).toEqual([{ itemId: 'i1', inCart: true, removedAt: expect.any(String) }]);
+  });
+
+  it('dates what it took off the list from when it was checked, when the link knows', async () => {
+    const checkedAt = new Date(2026, 9, 25, 11, 30).toISOString();
+    mockSettingsRows.groceryImportLinks = JSON.stringify({
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: true, note: '', seen: true, checkedAt }],
+    });
+    mockGroceryItems = [row({ id: 'i1', name: 'milk', checked: true })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([]);
+
+    await freshSync().importReminders();
+
+    const kept = JSON.parse(mockSettingsRows.groceryImportRemovals ?? '[]');
+    expect(kept).toEqual([{ itemId: 'i1', inCart: true, removedAt: expect.any(String), checkedAt }]);
+  });
+
+  // The completion date is what a later deletion's purchase is dated from,
+  // so it has to survive onto the link before the reminder goes.
+  it('keeps when a reminder was checked off in Reminders on its link', async () => {
+    mockSettingsRows.groceryImportLinks = JSON.stringify({
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],
+    });
+    mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
+    const done = new Date(2026, 9, 25, 11, 30);
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('r1', { title: 'milk', completed: true, completionDate: done }),
+    ]);
+
+    await freshSync().importReminders();
+
+    expect(links()[MIRROR_LIST.id][0]).toMatchObject({ checked: true, checkedAt: done.toISOString() });
+  });
+
   it('renames the row when the reminder is renamed there', async () => {
     mockSettingsRows.groceryImportLinks = JSON.stringify({
       [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, note: '', seen: true }],

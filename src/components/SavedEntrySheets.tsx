@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
@@ -180,6 +180,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
 
   return (
     <CardSheet name="SavedPlaceSheet" visible={visible} controller={card} onRequestClose={() => finish()}>
+      <ScrollView keyboardShouldPersistTaps="handled" bounces={false} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => finish()} />
         <Text style={styles.headerTitle}>{isNew ? 'New place' : 'Edit place'}</Text>
@@ -225,6 +226,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
           />
         </View>
       </View>
+      </ScrollView>
     </CardSheet>
   );
 }
@@ -304,6 +306,7 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
 
   return (
     <CardSheet name="SavedEventSheet" visible={visible} controller={card} onRequestClose={() => finish()}>
+      <ScrollView keyboardShouldPersistTaps="handled" bounces={false} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => finish()} />
         <Text style={styles.headerTitle}>{isNew ? 'New saved event' : 'Edit saved event'}</Text>
@@ -354,6 +357,7 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
           label="Alert"
         />
       </View>
+      </ScrollView>
     </CardSheet>
   );
 }

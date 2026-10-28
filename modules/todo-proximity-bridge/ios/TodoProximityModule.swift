@@ -83,6 +83,7 @@ public class TodoProximityModule: Module {
   private func startMonitoring() {
     guard observer == nil else { return }
     UIDevice.current.isProximityMonitoringEnabled = true
+    keepMonitoringOn(attemptsLeft: 10)
     observer = NotificationCenter.default.addObserver(
       forName: UIDevice.proximityStateDidChangeNotification,
       object: nil,
@@ -92,6 +93,24 @@ public class TodoProximityModule: Module {
         "near": UIDevice.current.proximityState,
         "at": Date().timeIntervalSince1970 * 1000,
       ])
+    }
+  }
+
+  /// Turning monitoring on can fail without saying so, and reads back false:
+  /// it does on a device with no sensor, and may while the Face ID camera is
+  /// still being let go of (the counter turns this on the moment it gives up
+  /// on depth, while the camera's stop is still on its way). Nothing would
+  /// then ever arrive, so it is set again for a few seconds until it holds.
+  /// Not verified on a device: whether the camera is what refused it.
+  private func keepMonitoringOn(attemptsLeft: Int) {
+    guard attemptsLeft > 0 else { return }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+      guard let self, self.observer != nil else { return }
+      let device = UIDevice.current
+      if !device.isProximityMonitoringEnabled {
+        device.isProximityMonitoringEnabled = true
+      }
+      self.keepMonitoringOn(attemptsLeft: attemptsLeft - 1)
     }
   }
 

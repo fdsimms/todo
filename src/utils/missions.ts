@@ -18,7 +18,9 @@ import { normalizePushupCount, PUSHUP_DEFAULT_COUNT } from './pushupCounter';
  * mission is done (`completeMission`). While the counter is open the next ring
  * is pushed back `MISSION_COUNTING_GRACE_SECONDS` at a time, renewed every
  * `MISSION_HEARTBEAT_MS`, so it never rings mid-set but still comes back if
- * the app dies with the counter up.
+ * the app dies with the counter up. That push never cuts off a ring that is
+ * already sounding (`sparingRing` in MissionAlarm.swift): the ring stops when
+ * the person presses Stop on it, or when the mission is done.
  *
  * The one way out other than the mission is Give up, held for
  * `MISSION_GIVE_UP_HOLD_MS` and shown on the alarm's row, so a sensor that

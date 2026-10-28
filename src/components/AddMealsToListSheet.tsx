@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, View, Text, TouchableOpacity, ScrollView, StyleSheet, useWindowDimensions } from 'react-native';
+import { Alert, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -32,7 +32,6 @@ import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
 import { convertQuantity, showContainerCount } from '../utils/unitConvert';
-import { addMealsToListNameSpace, quantityFitsBesideName } from '../utils/groceryRowQuantity';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { InlineAction } from './InlineAction';
@@ -131,7 +130,6 @@ export function AddMealsToListSheet({
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
 
   const unitSystem = useSettingsStore(s => s.unitSystem);
 
@@ -420,21 +418,6 @@ export function AddMealsToListSheet({
                               // markAlreadyHave.
                               const canMarkHave = category === 'needToBuy';
                               const subs = substitutesByKey.get(row.nameKey);
-                              // Beside the name when both fit, under it when
-                              // the quantity is too long for the capped pill
-                              // or the name too long to share the line with
-                              // it. RecipeToListSheet's rule, with this
-                              // sheet's wider pill (#2946): see
-                              // groceryRowQuantity.ts.
-                              const quantityBesideName =
-                                !!shownQuantity &&
-                                quantityFitsBesideName(shownQuantity, {
-                                  name: row.name,
-                                  space: addMealsToListNameSpace(windowWidth, {
-                                    substitutes: subs?.length ?? 0,
-                                    pantryButton: canMarkHave,
-                                  }),
-                                });
                               return (
                                 <React.Fragment key={row.nameKey}>
                                   {i > 0 && <View style={styles.sep} />}
@@ -468,42 +451,30 @@ export function AddMealsToListSheet({
                                             captions under it are qualifiers, so
                                             clipping one costs less than
                                             clipping this. */}
-                                        <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={2}>
-                                          {row.name}
-                                        </Text>
+                                        {/* The quantity follows the name on its line, and the
+                                            row's wrap drops it under the name
+                                            when the two don't fit (#2946). Still
+                                            inside the row's touchable, so
+                                            tapping it checks the row. */}
+                                        <View style={styles.nameLine}>
+                                          <Text style={[styles.name, styles.nameInLine, !interactive && styles.nameDisabled]} numberOfLines={2}>
+                                            {row.name}
+                                          </Text>
+                                          {!!shownQuantity && (
+                                            <View style={[styles.qtyPill, styles.qtyPillInline]}>
+                                              <Text style={[styles.qtyText, styles.qtyTextUnder]} numberOfLines={2}>
+                                                {shownQuantity}
+                                              </Text>
+                                            </View>
+                                          )}
+                                        </View>
                                         {!!swapNote && (
                                           <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
-                                        )}
-                                        {/* A quantity that can't share the
-                                            line with the name, on its own line
-                                            under it: the same pill, left-aligned
-                                            and as wide as the text column, after
-                                            the swap note so the order on screen
-                                            is the order the label reads out.
-                                            Still inside the row's touchable, so
-                                            tapping it checks the row. */}
-                                        {!!shownQuantity && !quantityBesideName && (
-                                          <View style={[styles.qtyPill, styles.qtyPillUnder]}>
-                                            <Text style={[styles.qtyText, styles.qtyTextUnder]} numberOfLines={2}>
-                                              {shownQuantity}
-                                            </Text>
-                                          </View>
                                         )}
                                         {!!subtitle && (
                                           <Text style={styles.sources} numberOfLines={1}>{subtitle}</Text>
                                         )}
                                       </View>
-                                      {quantityBesideName && (
-                                        <View style={styles.qtyPill}>
-                                          {/* Two lines, same call as the name
-                                              above: "1 large pie…" names no
-                                              amount anyone can shop to. The
-                                              pill is capped by width, not by
-                                              lines, so the second one costs
-                                              the row no width. */}
-                                          <Text style={styles.qtyText} numberOfLines={2}>{shownQuantity}</Text>
-                                        </View>
-                                      )}
                                     </TouchableOpacity>
                                     {!!subs && (
                                       <TouchableOpacity
@@ -653,15 +624,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   checkboxOn: { backgroundColor: colors.accentFill, borderColor: colors.accent },
   checkboxDisabled: { opacity: 0.4 },
   body: { flex: 1, gap: spacing.xxs },
+  // The name and its quantity pill: one line when both fit, and the wrap puts
+  // the pill under the name when they don't (#2946).
+  nameLine: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: spacing.sm, rowGap: spacing.xxs },
+  nameInLine: { flexShrink: 1 },
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   nameDisabled: { color: colors.textSecondary },
   sources: { fontSize: font.xs, color: colors.textTertiary },
   // Accent where `sources` is grey: this row isn't what the recipe wrote, and
   // that has to survive a glance down a week's worth of rows.
   swapNote: { fontSize: font.xs, color: colors.accent, fontWeight: fontWeight.medium },
-  // addMealsToListNameSpace (groceryRowQuantity.ts) counts this cap, the
-  // checkbox, the row and list padding and the trailing buttons to work out
-  // what a name has beside it. Change one and change it there too.
   qtyPill: {
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.sm,
@@ -669,12 +641,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 3,
     maxWidth: 110,
   },
-  // A quantity's own line under the name (#2946), as in RecipeToListSheet.
-  qtyPillUnder: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    marginTop: spacing.xxs,
-  },
+  // The pill on the name's line: the text column's full width to grow into,
+  // since the wrap moves it under the name before it would need to shrink.
+  qtyPillInline: { maxWidth: '100%' },
   qtyTextUnder: { textAlign: 'left' },
   // Centred for the two-line case: the pill takes the width of its longest
   // line, so this only moves the shorter one ("1 large" / "piece") and is a

@@ -29,6 +29,7 @@ import { installSupplementDoseEffects } from './supplementDoseSync';
 import { useRewardStore } from '../store/useRewardStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useReminderRemovalStore } from '../store/useReminderRemovalStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { repeatTimerExcerpt, stepDurationOffers, stepTimerExcerpt } from './stepTimers';
@@ -2462,6 +2463,7 @@ export function seedDemoData(): void {
     const recipes = seedRecipes();
     seedGroceries(recipes, today);
     seedMealPlanAndFridge(recipes, today);
+    seedReminderRemovals();
   }
 
   // Rides the same switch as the rest of the kitchen, because everything it can
@@ -2492,6 +2494,23 @@ export function seedDemoData(): void {
     { id: 'demo-note-errands', text: 'Errands happen on Saturdays.', at: today.toISOString() },
     { id: 'demo-note-evenings', text: "Don’t schedule work after 6 PM.", at: today.toISOString() },
   ]);
+}
+
+/**
+ * A list cleared in the Reminders app after a shop, so the Groceries card that
+ * asks which of it was bought has something to ask (`reminderRemovals.ts`).
+ * The mirror never runs in demo mode, so the removals are recorded through the
+ * store it records them with. Three were in the cart and one wasn't, which is
+ * the card's two starting states. All four are catalog rows nobody has bought,
+ * because a purchase after the removal is what retires one.
+ */
+function seedReminderRemovals(): void {
+  const items = useGroceryStore.getState().items;
+  const removed = ([['Lemons', true], ['Almonds', true], ['Dish soap', true], ['Salsa', false]] as const)
+    .map(([name, checked]) => ({ item: items.find(i => i.name === name && !i.onList), checked }))
+    .filter((r): r is { item: GroceryItem; checked: boolean } => !!r.item)
+    .map(r => ({ itemId: r.item.id, checked: r.checked }));
+  useReminderRemovalStore.getState().record(removed, new Date(Date.now() - 60 * 60 * 1000).toISOString());
 }
 
 /**
