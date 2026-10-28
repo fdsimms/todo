@@ -16,7 +16,7 @@ import {
   retractWorkoutFromHealth,
   workoutHealthWriteOn,
 } from '../utils/healthWorkoutSync';
-import { useWorkoutStore, workoutContentCount, type WatchSessionInput } from '../store/useWorkoutStore';
+import { useWorkoutStore, workoutContentCount, type FinishOptions, type WatchSessionInput } from '../store/useWorkoutStore';
 import { useWatchClashStore } from '../store/useWatchClashStore';
 import { catalogExercise, searchExercises } from '../utils/exerciseCatalog';
 import { newTaskFromDraft } from '../utils/taskDraft';
@@ -111,6 +111,12 @@ const reload = () => state().initialize();
 const ok = <T,>(v: T | string): T => {
   if (typeof v === 'string') throw new Error(`refused: ${v}`);
   return v;
+};
+/** Finishes a live session, ticking one set first if none is done: a finish with nothing done is a discard. */
+const finish = (id: string, options?: FinishOptions) => {
+  const live = state().sessions.find(x => x.id === id)?.endedAt === null;
+  if (live && !state().loadSets(id).some(x => x.completedAt !== null)) ok(state().logSet(id, { exerciseId: 'lib:back-squat', reps: 5 }));
+  return state().finishSession(id, options);
 };
 
 describe('custom exercises', () => {
@@ -454,10 +460,29 @@ describe('a live session', () => {
       expect(state().liveSession()?.id).toBe(s.id);
     });
 
+    it('keeps one the Apple Watch is measuring', () => {
+      const s = routineSession();
+      dbSaveWorkoutSession({ ...dbGetWorkoutSession(s.id)!, measuredOnWatch: true });
+      reload();
+      expect(state().discardIdleSession(later(s, 600))).toBe(false);
+      expect(state().liveSession()?.id).toBe(s.id);
+    });
+
+    it('keeps one that synced in from another device', () => {
+      const s = routineSession();
+      // Arriving by sync writes the row without this device starting it.
+      dbSaveWorkoutSession({ ...dbGetWorkoutSession(s.id)!, id: 'from-ipad' });
+      state().deleteSession(s.id);
+      reload();
+      expect(state().liveSession()?.id).toBe('from-ipad');
+      expect(state().discardIdleSession(later(s, 600))).toBe(false);
+      expect(state().liveSession()?.id).toBe('from-ipad');
+    });
+
     it('does nothing with no live session, and never touches a finished one', () => {
       expect(state().discardIdleSession()).toBe(false);
       const s = routineSession();
-      state().finishSession(s.id);
+      finish(s.id);
       expect(state().discardIdleSession(later(s, 600))).toBe(false);
     });
   });
@@ -600,11 +625,23 @@ describe('a live session', () => {
 
   it('finishes once, with the effort typed and nothing derived', () => {
     const s = ok(state().startSession());
-    const done = ok(state().finishSession(s.id, { effort: 7.6, notes: ' Felt strong ' }));
+    const done = ok(finish(s.id, { effort: 7.6, notes: ' Felt strong ' }));
     expect(done).toMatchObject({ effort: 8, notes: 'Felt strong' });
     expect(done.endedAt).not.toBeNull();
     expect(state().liveSession()).toBeNull();
     expect(state().finishSession(s.id)).toBe('finished');
+  });
+
+  it('discards a finish with nothing done, so it completes no task and writes nothing to Health', () => {
+    mockTasks = [task('t1')];
+    mockWriteOn.mockReturnValue(true);
+    const s = ok(state().startSession({ taskId: 't1' }));
+    ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', reps: 5, completedAt: null }));
+    expect(state().finishSession(s.id)).toBe('empty');
+    expect(state().sessions).toEqual([]);
+    expect(dbGetWorkoutSets(s.id)).toEqual([]);
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+    expect(mockWrite).not.toHaveBeenCalled();
   });
 
   it('keeps the planned sets when a finish is refused for ending before it started', () => {
@@ -652,7 +689,7 @@ describe('a session from a routine', () => {
     for (const s of state().loadSets(before.id)) {
       ok(state().editSet(before.id, s.id, { weightKg: s.kind === 'warmup' ? 40 : 80, reps: 8, completedAt: new Date(2026, 9, 1, 18, 10).toISOString() }));
     }
-    ok(state().finishSession(before.id));
+    ok(finish(before.id));
 
     const s = ok(state().startSession({ routineId: r.id }));
     const sets = dbGetWorkoutSets(s.id);
@@ -698,7 +735,7 @@ describe('a session from a routine', () => {
     const r = ok(state().addRoutine('Push A', items));
     const before = ok(state().startSession({ routineId: r.id }));
     for (const x of state().loadSets(before.id)) ok(state().editSet(before.id, x.id, { completedAt: new Date().toISOString() }));
-    ok(state().finishSession(before.id));
+    ok(finish(before.id));
     const s = ok(state().startSession());
     ok(state().logSet(s.id, { id: 'TAKEN', exerciseId: 'lib:back-squat' }));
     expect(state().addSessionExercise(s.id, bench, { ids: ['TAKEN', 'B'] })).toBe('taken');
@@ -751,7 +788,7 @@ describe('a session from a routine', () => {
   it('refuses a rest on a workout that is over', () => {
     const s = ok(state().startSession());
     ok(state().logSet(s.id, { exerciseId: bench }));
-    state().finishSession(s.id);
+    finish(s.id);
     expect(state().setSessionRest(s.id, bench, 30)).toBe(false);
   });
 
@@ -760,7 +797,7 @@ describe('a session from a routine', () => {
     const s = ok(state().startSession({ routineId: r.id }));
     const [, second] = state().loadSets(s.id);
     ok(state().editSet(s.id, second.id, { completedAt: new Date().toISOString() }));
-    ok(state().finishSession(s.id));
+    ok(finish(s.id));
     expect(dbGetWorkoutSets(s.id).map(x => [x.exerciseId, x.setIndex])).toEqual([[bench, 0]]);
     expect(state().setCounts[s.id]).toBe(1);
   });
@@ -768,19 +805,19 @@ describe('a session from a routine', () => {
   it('completes the task it was started from, once, and only an open one', () => {
     mockTasks = [task('t1'), task('t2', {}, { completed: true, completedAt: new Date().toISOString() })];
     const a = ok(state().startSession({ taskId: 't1' }));
-    ok(state().finishSession(a.id));
+    ok(finish(a.id));
     expect(mockCompleteTask).toHaveBeenCalledWith('t1');
     const b = ok(state().startSession({ taskId: 't2' }));
-    ok(state().finishSession(b.id));
+    ok(finish(b.id));
     const c = ok(state().startSession({ taskId: 'gone' }));
-    ok(state().finishSession(c.id));
+    ok(finish(c.id));
     expect(mockCompleteTask).toHaveBeenCalledTimes(1);
   });
 
   it('logs one workout on a target below its count, the way its checkbox would', () => {
     mockTasks = [task('t3', { targetCount: 3, quotaPeriod: 'week', recurrenceType: 'weekly', recurrenceInterval: 1 })];
     const s = ok(state().startSession({ taskId: 't3' }));
-    ok(state().finishSession(s.id));
+    ok(finish(s.id));
     expect(mockLogQuotaUnit).toHaveBeenCalledWith('t3');
     expect(mockCompleteTask).not.toHaveBeenCalled();
   });
@@ -793,20 +830,20 @@ describe('a session from a routine', () => {
     ];
     mockTasks = [task('rot', { rotationEnabled: true, rotationItems: members, recurrenceType: 'weekly', recurrenceInterval: 1 })];
     const s = ok(state().startSession({ routineId: r.id, taskId: 'rot' }));
-    ok(state().finishSession(s.id));
+    ok(finish(s.id));
     expect(mockLogRotationUnit).toHaveBeenCalledWith('rot', 'cardio');
     expect(mockCompleteTask).not.toHaveBeenCalled();
     mockLogRotationUnit.mockClear();
     mockTasks = [task('rot2', { rotationEnabled: true, rotationItems: members.slice(1).concat({ id: 'x', title: 'X', linkUrl: null }), recurrenceType: 'weekly', recurrenceInterval: 1 })];
     const other = ok(state().startSession({ routineId: r.id, taskId: 'rot2' }));
-    ok(state().finishSession(other.id));
+    ok(finish(other.id));
     expect(mockLogRotationUnit).not.toHaveBeenCalled();
   });
 
   it('leaves the task alone when asked to, for a task that asks a question first', () => {
     mockTasks = [task('t1')];
     const s = ok(state().startSession({ taskId: 't1' }));
-    ok(state().finishSession(s.id, { completeLinkedTask: false }));
+    ok(finish(s.id, { completeLinkedTask: false }));
     expect(mockCompleteTask).not.toHaveBeenCalled();
   });
 
@@ -850,7 +887,7 @@ describe('a session from a routine', () => {
     it('moves the unticked sets to the other exercise, in its place, with its own last weights', () => {
       const before = ok(state().startSession({ at: new Date(2026, 9, 1, 18) }));
       ok(state().logSet(before.id, { exerciseId: dbPress, kind: 'working', weightKg: 30, reps: 10, completedAt: tick }));
-      ok(state().finishSession(before.id));
+      ok(finish(before.id));
 
       const s = ok(state().startSession());
       ok(state().logSet(s.id, { exerciseId: bench, kind: 'working', weightKg: 60, reps: 8, completedAt: null }));
@@ -1104,8 +1141,9 @@ describe('history', () => {
   it('lists sessions newest first and loads a finished one\'s sets on demand', () => {
     const older = ok(state().startSession({ title: 'Older', at: new Date(2026, 9, 1, 18) }));
     ok(state().logSet(older.id, { exerciseId: 'lib:back-squat', reps: 5, completedAt: new Date(2026, 9, 1, 18, 5).toISOString() }));
-    ok(state().finishSession(older.id));
+    ok(finish(older.id));
     const newer = ok(state().startSession({ title: 'Newer', at: new Date(2026, 9, 3, 18) }));
+    ok(state().logSet(newer.id, { exerciseId: 'lib:leg-press', reps: 10 }));
     ok(state().finishSession(newer.id));
     reload();
     expect(state().sessions.map(s => s.title)).toEqual(['Newer', 'Older']);
@@ -1118,7 +1156,7 @@ describe('history', () => {
   it('reads every done set across sessions, leaving planned ones out', () => {
     const a = ok(state().startSession({ at: new Date(2026, 9, 1, 18) }));
     ok(state().logSet(a.id, { exerciseId: 'lib:back-squat', reps: 5, completedAt: new Date(2026, 9, 1, 18, 5).toISOString() }));
-    ok(state().finishSession(a.id));
+    ok(finish(a.id));
     const b = ok(state().startSession({ at: new Date(2026, 9, 3, 18) }));
     ok(state().logSet(b.id, { exerciseId: 'lib:barbell-bench-press', reps: 8, completedAt: new Date(2026, 9, 3, 18, 5).toISOString() }));
     ok(state().logSet(b.id, { exerciseId: 'lib:barbell-bench-press', reps: 8, completedAt: null }));
@@ -1130,7 +1168,7 @@ describe('history', () => {
   it('deletes a finished session and its sets', () => {
     const s = ok(state().startSession());
     ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', reps: 5 }));
-    ok(state().finishSession(s.id));
+    ok(finish(s.id));
     state().deleteSession(s.id);
     reload();
     expect(state().sessions).toEqual([]);
@@ -1164,7 +1202,7 @@ describe('Apple Health', () => {
   const finishOne = () => {
     const live = ok(state().startSession({ title: 'Upper', at: new Date(2026, 9, 5, 9) }));
     ok(state().logSet(live.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }));
-    return ok(state().finishSession(live.id, { endedAt: at(10) }));
+    return ok(finish(live.id, { endedAt: at(10) }));
   };
   const logged = (extra: Record<string, unknown> = {}) => ok(state().addFinishedSession({
     startedAt: at(7), endedAt: at(8), sets: [{ exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }], ...extra,
@@ -1189,7 +1227,7 @@ describe('Apple Health', () => {
     mockWriteOn.mockReturnValue(true);
     const live = ok(state().startSession({ title: 'Upper', at: new Date(2026, 9, 5, 9) }));
     ok(state().logSet(live.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }));
-    ok(state().finishSession(live.id, { endedAt: at(10), deferHealthWrite: true }));
+    ok(finish(live.id, { endedAt: at(10), deferHealthWrite: true }));
     expect(mockWrite).not.toHaveBeenCalled();
     expect(dbGetWorkoutSession(live.id)).toMatchObject({ healthWorkoutId: null, healthWritePending: true });
   });
@@ -1455,7 +1493,7 @@ describe('a workout the Apple Watch measured', () => {
     const live = going();
     state().markWatchMeasuring(live.id, true);
     expect(row(live.id).measuredOnWatch).toBe(true);
-    ok(state().finishSession(live.id, { endedAt: endedAgo(1) }));
+    ok(finish(live.id, { endedAt: endedAgo(1) }));
     expect(mockWrite).not.toHaveBeenCalled();
     expect(row(live.id)).toMatchObject({ healthWorkoutId: null, healthWritePending: true, measuredOnWatch: true });
     // The pending pass waits for the watch's copy.
@@ -1466,7 +1504,7 @@ describe('a workout the Apple Watch measured', () => {
   it('takes the watch’s workout when it arrives, and the pending pass then has nothing to write', async () => {
     const live = going();
     state().markWatchMeasuring(live.id, true);
-    ok(state().finishSession(live.id, { endedAt: endedAgo(1) }));
+    ok(finish(live.id, { endedAt: endedAgo(1) }));
     state().recordWatchHealthWorkout(live.id, 'HK-WATCH');
     expect(row(live.id)).toMatchObject({ healthWorkoutId: 'HK-WATCH', healthWritePending: false, measuredOnWatch: true });
     await state().writePendingHealthSessions();
@@ -1477,7 +1515,7 @@ describe('a workout the Apple Watch measured', () => {
   it('writes the phone’s own once the watch has been silent past the wait, and the watch’s still takes over later', async () => {
     const live = going();
     state().markWatchMeasuring(live.id, true);
-    ok(state().finishSession(live.id, { endedAt: endedAgo(WATCH_WORKOUT_WAIT_MINUTES + 1) }));
+    ok(finish(live.id, { endedAt: endedAgo(WATCH_WORKOUT_WAIT_MINUTES + 1) }));
     mockWrite.mockResolvedValue(written('HK-PHONE'));
     await state().writePendingHealthSessions();
     await flush();
@@ -1494,7 +1532,7 @@ describe('a workout the Apple Watch measured', () => {
     mockWrite.mockReturnValue(new Promise(r => { land = r; }));
     const live = going();
     // Finished before the watch said it was measuring, so the phone wrote.
-    ok(state().finishSession(live.id, { endedAt: endedAgo(1) }));
+    ok(finish(live.id, { endedAt: endedAgo(1) }));
     state().markWatchMeasuring(live.id, true);
     state().recordWatchHealthWorkout(live.id, 'HK-WATCH');
     land(written('HK-PHONE'));
@@ -1507,7 +1545,7 @@ describe('a workout the Apple Watch measured', () => {
     const live = going();
     state().markWatchMeasuring(live.id, true);
     state().recordWatchHealthWorkout(live.id, 'HK-WATCH');
-    ok(state().finishSession(live.id, { endedAt: endedAgo(0) }));
+    ok(finish(live.id, { endedAt: endedAgo(0) }));
     expect(mockWrite).not.toHaveBeenCalled();
     expect(row(live.id)).toMatchObject({ healthWorkoutId: 'HK-WATCH', healthWritePending: false });
   });
@@ -1542,7 +1580,7 @@ describe('a workout the Apple Watch measured', () => {
   it('lets the phone write as Save would once the watch stops without saving', () => {
     const live = going();
     state().markWatchMeasuring(live.id, true);
-    ok(state().finishSession(live.id, { endedAt: endedAgo(1) }));
+    ok(finish(live.id, { endedAt: endedAgo(1) }));
     state().markWatchMeasuring(live.id, false);
     expect(row(live.id)).toMatchObject({ measuredOnWatch: false, healthWritePending: true });
   });
@@ -1567,7 +1605,7 @@ describe('a workout the Apple Watch measured', () => {
   it('rewrites a retimed watch workout as the phone’s own, and asks the watch to retract its copy only once that lands', async () => {
     const live = going();
     state().markWatchMeasuring(live.id, true);
-    ok(state().finishSession(live.id, { endedAt: endedAgo(10) }));
+    ok(finish(live.id, { endedAt: endedAgo(10) }));
     state().recordWatchHealthWorkout(live.id, 'HK-WATCH');
     let land: (v: unknown) => void = () => {};
     mockWrite.mockReturnValue(new Promise(r => { land = r; }));
@@ -1587,7 +1625,7 @@ describe('a workout the Apple Watch measured', () => {
   it('keeps the watch’s copy when Health refuses a retime’s rewrite, so Health is never left with neither', async () => {
     const live = going();
     state().markWatchMeasuring(live.id, true);
-    ok(state().finishSession(live.id, { endedAt: endedAgo(10) }));
+    ok(finish(live.id, { endedAt: endedAgo(10) }));
     state().recordWatchHealthWorkout(live.id, 'HK-WATCH');
     mockWrite.mockResolvedValue({ outcome: 'refused', workoutId: null, sampleIds: [] });
     const movedTo = endedAgo(5);
@@ -1601,7 +1639,7 @@ describe('a workout the Apple Watch measured', () => {
   it('still asks the watch to retract its copy when the rewrite was saved with the phone locked', async () => {
     const live = going();
     state().markWatchMeasuring(live.id, true);
-    ok(state().finishSession(live.id, { endedAt: endedAgo(10) }));
+    ok(finish(live.id, { endedAt: endedAgo(10) }));
     state().recordWatchHealthWorkout(live.id, 'HK-WATCH');
     mockWrite.mockResolvedValue(written(null));
     ok(state().updateSession(live.id, { endedAt: endedAgo(5) }));
@@ -1618,7 +1656,7 @@ describe('a workout the Apple Watch measured', () => {
     const retimedWhileWaiting = () => {
       const live = going();
       state().markWatchMeasuring(live.id, true);
-      ok(state().finishSession(live.id, { endedAt: endedAgo(10) }));
+      ok(finish(live.id, { endedAt: endedAgo(10) }));
       const savedAt = { start: row(live.id).startedAt, end: row(live.id).endedAt! };
       const movedTo = endedAgo(5);
       ok(state().updateSession(live.id, { endedAt: movedTo }));
@@ -1672,7 +1710,7 @@ describe('a workout the Apple Watch measured', () => {
     it('takes a copy saved at the row’s own times as it is', () => {
       const live = going();
       state().markWatchMeasuring(live.id, true);
-      ok(state().finishSession(live.id, { endedAt: endedAgo(10) }));
+      ok(finish(live.id, { endedAt: endedAgo(10) }));
       state().recordWatchHealthWorkout(live.id, 'HK-WATCH', { start: row(live.id).startedAt, end: row(live.id).endedAt! });
       expect(mockWrite).not.toHaveBeenCalled();
       expect(mockWatchRetract).not.toHaveBeenCalled();
@@ -1686,7 +1724,7 @@ describe('a workout the Apple Watch measured', () => {
     const finishedWithWatch = () => {
       const live = going();
       state().markWatchMeasuring(live.id, true);
-      ok(state().finishSession(live.id, { endedAt: endedAgo(10) }));
+      ok(finish(live.id, { endedAt: endedAgo(10) }));
       return live.id;
     };
     const copy = (id: string, offMs: number, startOffMs = 0) => ({
@@ -1754,7 +1792,7 @@ describe('a workout the Apple Watch measured', () => {
 
   it('records that the times were edited only when an edit moves them', () => {
     const live = going();
-    ok(state().finishSession(live.id, { endedAt: endedAgo(10) }));
+    ok(finish(live.id, { endedAt: endedAgo(10) }));
     // Finishing writes the first end through the same action, and isn't an edit.
     expect(row(live.id).timesEdited).toBe(false);
     ok(state().updateSession(live.id, { title: 'Push B', notes: 'Felt strong' }));
@@ -1923,7 +1961,7 @@ describe('routine and program history', () => {
   const versionsOf = (routineId: string) => state().routineVersions.filter(v => v.routineId === routineId);
   const train = (routineId: string, extra: { routineVersionId?: string } = {}) => {
     const s = ok(state().startSession({ routineId, ...extra }));
-    ok(state().finishSession(s.id));
+    ok(finish(s.id));
     return state().sessions.find(x => x.id === s.id)!;
   };
 
@@ -2025,9 +2063,11 @@ describe('routine and program history', () => {
     train(into.id);
     jest.useRealTimers();
     const p = ok(state().addProgram({ name: 'HW', rotation: [old.id] }));
+    const member = { id: 'm1', title: 'Day one', linkUrl: null, workoutRoutineId: old.id };
     mockTasks = [
-      { id: 't1', completed: false, workoutRoutineId: old.id } as Task,
-      { id: 't2', completed: true, workoutRoutineId: old.id } as Task,
+      { id: 't1', completed: false, workoutRoutineId: old.id, rotationItems: [] } as unknown as Task,
+      { id: 't2', completed: true, workoutRoutineId: old.id, rotationItems: [] } as unknown as Task,
+      { id: 't3', completed: false, workoutRoutineId: null, rotationItems: [member] } as unknown as Task,
     ];
 
     const merged = ok(state().mergeRoutines(old.id, into.id));
@@ -2036,8 +2076,10 @@ describe('routine and program history', () => {
     expect(versionsOf(into.id).map(v => v.name)).toEqual(['HW Day One', 'HW Day One v2']);
     expect(state().sessions.find(s => s.id === s1.id)).toMatchObject({ routineId: into.id, routineVersionId: old.currentVersionId });
     expect(state().programs.find(x => x.id === p.id)!.rotation).toEqual([into.id]);
-    expect(mockUpdateTask).toHaveBeenCalledTimes(1);
+    expect(mockUpdateTask).toHaveBeenCalledTimes(2);
     expect(mockUpdateTask).toHaveBeenCalledWith('t1', { workoutRoutineId: into.id });
+    // A rotation member that named the old routine names the kept one.
+    expect(mockUpdateTask).toHaveBeenCalledWith('t3', { rotationItems: [{ ...member, workoutRoutineId: into.id }] });
     mockTasks = [];
 
     expect(state().mergeRoutines(into.id, into.id)).toBe('same');
@@ -2073,7 +2115,7 @@ describe('routine and program history', () => {
     expect(pv()[0].routineVersionIds).toEqual({ [a.id]: a.currentVersionId, [b.id]: b.currentVersionId });
 
     const s = ok(state().startSession({ routineId: a.id, programId: p.id }));
-    ok(state().finishSession(s.id));
+    ok(finish(s.id));
     expect(state().programVersionTrained(p.id)).toBe(true);
     ok(state().updateProgram(p.id, { trainingMaxes: [{ exerciseId: squat, kg: 100 }], name: 'HW 2' }));
     expect(pv()).toHaveLength(1);
@@ -2108,7 +2150,7 @@ describe('routine and program history', () => {
     const first = p.currentVersionId!;
     expect(ok(state().labelProgramVersion(first, ' Block one ')).label).toBe('Block one');
     const s = ok(state().startSession({ routineId: a.id, programId: p.id }));
-    ok(state().finishSession(s.id));
+    ok(finish(s.id));
     ok(state().updateProgram(p.id, { rotation: [a.id], weeks: 4 }));
     state().deleteRoutine(b.id);
     const restored = ok(state().restoreProgramVersion(first));

@@ -110,6 +110,7 @@ import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { sectionListPatch } from '../../src/utils/listMode';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
 import { programVersionsOf, routineVersionsOf } from '../../src/utils/routineVersions';
+import { routineMergePatch } from '../../src/utils/workoutTask';
 import { sunAnchorHHMM } from '../../src/utils/sunTimes';
 import { SERVER_SHARING_KEY_PREFIX, type ServerSharing } from '../../src/db/syncTracking';
 import type { AwaySpan } from '../../src/utils/awayDates';
@@ -4672,8 +4673,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         // The same rule as the phone's: a task still to do starts the kept
         // routine, and a finished one keeps naming the old one as provenance.
         moveTasks: (oldId, newId) => {
-          for (const t of db.dbGetAllTasks().filter(t => t.workoutRoutineId === oldId && !t.completed)) {
-            replica.updateTask(t.id, { workoutRoutineId: newId });
+          for (const t of db.dbGetAllTasks()) {
+            const patch = routineMergePatch(t, oldId, newId);
+            if (patch) replica.updateTask(t.id, patch);
           }
         },
       });

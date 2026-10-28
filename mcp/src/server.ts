@@ -860,7 +860,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         kg: z.number().positive().max(1000).describe('In kg, whatever unit the person said; convert pounds.'),
       })).max(30).optional().describe('For a percentage scheme: the weight its sets are percentages of. Replaces them all when given.'),
       isCurrent: z.boolean().optional().describe('true makes this the current program: the one next_workout, "my workout" and the phone\'s Start default to when several are in use. false clears that if it is the current one. Only worth setting with two or more programs; a single program is current without it.'),
-      startNextCycle: z.literal(true).optional().describe('Needs id. Counts the program\'s weeks again from now, which is what the phone\'s "Start next cycle" does after a cycle ends. Use it with the raised trainingMaxes once the person agrees; without it the cycle stays finished and the phone offers the raise again.'),
+      startNextCycle: z.literal(true).optional().describe('Needs id. Counts the program\'s weeks again from the new cycle\'s first workout (now, when none is done yet), which is what the phone\'s "Start next cycle" does after a cycle ends. Use it with the raised trainingMaxes once the person agrees; without it the cycle stays finished and the phone offers the raise again.'),
     },
     async input => {
       try {

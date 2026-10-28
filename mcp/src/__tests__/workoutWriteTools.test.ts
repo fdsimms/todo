@@ -318,7 +318,7 @@ describe('the workout write tools', () => {
       const started = saveProgram(ledgered, {
         id: program.id, trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 105 }], startNextCycle: true,
       }, new Date(2026, 9, 9, 9));
-      expect(started.note).toMatch(/starts again from this moment/);
+      expect(started.note).toMatch(/starts again with the new cycle/);
       expect(started.program.cycleDone).toBeUndefined();
       expect(started.program).toMatchObject({ week: 1, workoutsDone: 0, trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 105 }] });
       expect(replica.workoutPrograms()[0].startedAt).toBe(new Date(2026, 9, 9, 9).toISOString());
@@ -328,6 +328,22 @@ describe('the workout write tools', () => {
       expect(after.program?.cycleDone).toBeUndefined();
       expect(after.exercises[0].proposal?.sets[0].weightKg).toBe(67.5);
       expect(entries).toEqual([expect.objectContaining({ action: 'edited', subject: 'program', title: 'Wave' })]);
+    });
+
+    it('counts from the new cycle\'s first workout when one is already done', () => {
+      const a = saveRoutine(replica, { name: 'Squat day', exercises: [{ exerciseId: 'lib:back-squat', sets: [{ repsMin: 5, repsMax: 5 }] }] }).routine;
+      const { program } = saveProgram(replica, {
+        name: 'Wave', routineIds: [a.id], scheme: 'percent', weeks: 1, trainingMaxes: [{ exerciseId: 'lib:back-squat', kg: 100 }],
+      });
+      const sets = [{ exerciseId: 'lib:back-squat', sets: [{ weightKg: 65, reps: 5 }] }];
+      logWorkout(replica, { routineId: a.id, startedAt: new Date(2026, 9, 6, 18).toISOString(), exercises: sets }, new Date(2026, 9, 8, 20));
+      const firstOfNext = new Date(2026, 9, 8, 18).toISOString();
+      logWorkout(replica, { routineId: a.id, startedAt: firstOfNext, exercises: sets }, new Date(2026, 9, 8, 20));
+      expect(nextWorkout(replica, { programId: program.id }).program).toMatchObject({ cycleDone: true });
+
+      const started = saveProgram(replica, { id: program.id, startNextCycle: true }, new Date(2026, 9, 9, 9));
+      expect(replica.workoutPrograms()[0].startedAt).toBe(firstOfNext);
+      expect(started.program).toMatchObject({ workoutsDone: 1 });
     });
 
     it('leaves the count alone without it, and needs a program that exists', () => {

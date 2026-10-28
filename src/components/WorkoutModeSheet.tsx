@@ -71,7 +71,7 @@ import {
   describeLastLoad, exerciseIdsDoneAt, gymIncrementKg, gymSettingFor, gymSwapCandidates, unavailableExerciseIds, withGymBar,
 } from '../utils/gyms';
 import { lastTimeNotes } from '../utils/lastTimeNotes';
-import { parseSetCell } from '../utils/workoutCell';
+import { parseSetCell, typedTickValues } from '../utils/workoutCell';
 import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
 import { exerciseDayNote, exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
@@ -302,6 +302,19 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     useWorkoutStore.getState().editSet(session.id, setId, patch);
   }, [session]);
 
+  // What each set's cells hold while they are being typed in, so a tick
+  // tapped before the field loses focus writes the typed number rather than
+  // the dimmed one (`typedTickValues`). Cleared when a cell commits or its
+  // set is ticked.
+  const typedRef = useRef(new Map<string, Partial<Record<SetField, string>>>());
+  const noteTyping = useCallback((setId: string, field: SetField, text: string | null) => {
+    const row = { ...typedRef.current.get(setId) };
+    if (text === null) delete row[field];
+    else row[field] = text;
+    if (Object.keys(row).length === 0) typedRef.current.delete(setId);
+    else typedRef.current.set(setId, row);
+  }, []);
+
   const toggleSet = (set: WorkoutSet, exercise: SessionExercise) => {
     if (!session) return;
     if (set.completedAt !== null) {
@@ -312,8 +325,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     haptics.impactMedium();
     // The write, the rest it starts and where the card goes are `tickSet`'s,
     // shared with the Lock Screen's "Done set".
-    // A field left empty is done at the dimmed number the row showed in it.
-    const next = tickSet(session.id, set.id, new Date(), ghostFill(set, exercise));
+    // A field left empty is done at the dimmed number the row showed in it,
+    // and one still being typed in at what was typed.
+    const scale = weightScale(catalogExercise(exerciseRows, exercise.exerciseId), dumbbellEntry);
+    const values = typedTickValues(ghostFill(set, exercise), typedRef.current.get(set.id) ?? {}, unit, scale);
+    typedRef.current.delete(set.id);
+    const next = tickSet(session.id, set.id, new Date(), values);
     if (!next) return;
     // A tick that sets a record is worth a different buzz than an ordinary one.
     const records = liveSetRecords(
@@ -1268,6 +1285,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             done={done}
                             ghost={ghostText(set, viewed, f, unit, scale)}
                             onEdit={patch => edit(set.id, patch)}
+                            onTyping={text => noteTyping(set.id, f, text)}
                             styles={styles}
                             placeholderColor={colors.textTertiary}
                             accessibilityLabel={`${setName(set.kind, label)} ${fieldLabel(f, kind)}`}
@@ -1470,7 +1488,7 @@ function heaviestLine(set: WorkoutSet, kind: ExerciseKind, unit: WeightUnit, sca
  * value reads dim and a done one reads full, as the cells did before they
  * became fields.
  */
-function SetInput({ set, field, unit, scale, done, ghost, onEdit, styles, placeholderColor, accessibilityLabel }: {
+function SetInput({ set, field, unit, scale, done, ghost, onEdit, onTyping, styles, placeholderColor, accessibilityLabel }: {
   set: WorkoutSet;
   field: SetField;
   unit: WeightUnit;
@@ -1479,18 +1497,33 @@ function SetInput({ set, field, unit, scale, done, ghost, onEdit, styles, placeh
   /** The last done set's number, shown dimmed in an empty cell. */
   ghost: string | null;
   onEdit: (patch: Partial<WorkoutSet>) => void;
+  /** The text while it is being typed, and null once it is written or dropped. */
+  onTyping: (text: string | null) => void;
   styles: ReturnType<typeof makeStyles>;
   placeholderColor: string;
   accessibilityLabel: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
+  // Only text typed since focus is written: focusing an empty cell and then
+  // ticking the set wrote the dimmed number, and the blur after it wrote the
+  // untouched empty draft over it.
+  const typed = useRef(false);
   const shown = valueText(set, field, unit, scale) ?? '';
   // Distance is typed in meters; the row's own read-back says "1.2 km".
   const stored = field === 'distance' && set.distanceM !== null ? String(Math.round(set.distanceM)) : shown;
+  // A tick takes what the cell held (`typedTickValues`), so the draft is spent.
+  useEffect(() => {
+    typed.current = false;
+    setDraft(null);
+  }, [set.completedAt]);
   const commit = () => {
     if (draft === null) return;
-    const patch = parseSetCell(field, draft, unit, scale);
+    const wasTyped = typed.current;
+    typed.current = false;
     setDraft(null);
+    onTyping(null);
+    if (!wasTyped) return;
+    const patch = parseSetCell(field, draft, unit, scale);
     if (patch) onEdit(patch);
   };
   return (
@@ -1498,10 +1531,10 @@ function SetInput({ set, field, unit, scale, done, ghost, onEdit, styles, placeh
       <TextField
         style={[styles.cellInput, !done && styles.valuePlanned]}
         value={draft ?? stored}
-        onChangeText={setDraft}
+        onChangeText={t => { typed.current = true; setDraft(t); onTyping(t); }}
         onBlur={commit}
         onSubmitEditing={commit}
-        onFocus={() => setDraft(stored)}
+        onFocus={() => { typed.current = false; setDraft(stored); }}
         placeholder={ghost ?? '–'}
         placeholderTextColor={placeholderColor}
         keyboardType={field === 'weight' || field === 'distance' ? 'decimal-pad' : field === 'duration' ? 'numbers-and-punctuation' : 'number-pad'}

@@ -1,4 +1,4 @@
-import { parseRepsTarget, parseSetCell } from '../utils/workoutCell';
+import { parseRepsTarget, parseSetCell, typedTickValues } from '../utils/workoutCell';
 
 describe('parseSetCell', () => {
   it('clears a value when the text is blank', () => {
@@ -49,5 +49,21 @@ describe('parseRepsTarget', () => {
     expect(parseRepsTarget('abc')).toBeUndefined();
     expect(parseRepsTarget('8-')).toBeUndefined();
     expect(parseRepsTarget('-5')).toBeUndefined();
+  });
+});
+
+describe('typedTickValues', () => {
+  it('lets a number still being typed win over the ghost and the plan', () => {
+    expect(typedTickValues({ reps: 8 }, { reps: '10' }, 'kg')).toEqual({ reps: 10 });
+    expect(typedTickValues({}, { weight: '82.5' }, 'kg')).toEqual({ weightKg: 82.5 });
+  });
+
+  it('keeps the ghost for a cell typed empty or with text that is not a number', () => {
+    expect(typedTickValues({ reps: 8 }, { reps: '' }, 'kg')).toEqual({ reps: 8 });
+    expect(typedTickValues({ reps: 8 }, { reps: 'x' }, 'kg')).toEqual({ reps: 8 });
+  });
+
+  it('halves a typed pair total like the cell does', () => {
+    expect(typedTickValues({}, { weight: '40' }, 'kg', 2)).toEqual(parseSetCell('weight', '40', 'kg', 2));
   });
 });

@@ -31,7 +31,7 @@ import type { SetInput } from '../../src/store/useWorkoutStore';
 import { catalogExercise, exerciseName, searchExercises, type CatalogExercise } from '../../src/utils/exerciseCatalog';
 import { analyzeExercise, countsForRecords, volumeUnit, type RecordSession, type RecordType } from '../../src/utils/workoutRecords';
 import { recordLabel } from '../../src/utils/workoutRecordText';
-import { currentProgram, isRunnableProgram, programProgress, type ProgramProgress } from '../../src/utils/workoutProgram';
+import { currentProgram, isRunnableProgram, nextCycleStart, programProgress, type ProgramProgress } from '../../src/utils/workoutProgram';
 import { proposalHeadline, schemeFor, trainingMaxRaises, type SetProposal } from '../../src/utils/workoutProgression';
 import { exerciseProposal, proposalRamp } from '../../src/utils/workoutProposal';
 
@@ -306,7 +306,7 @@ export interface ProgramRow {
   next?: { routineId: string; name: string };
   /** The program next_workout and the phone's Start default to: the one picked with save_program's isCurrent, or the only one in use. */
   isCurrent?: true;
-  /** A whole cycle was just finished: the moment a percentage program's training maxes are raised. */
+  /** A whole cycle is done and this is the first week of the next, until startNextCycle: the time a percentage program's training maxes are raised. */
   cycleDone?: true;
 }
 
@@ -1108,6 +1108,9 @@ export function saveProgram(replica: Replica, input: SaveProgramInput, now: Date
     if (unknown.length) throw unknownError(unknown);
   }
   const maxes: TrainingMax[] | undefined = input.trainingMaxes?.map(t => ({ exerciseId: t.exerciseId, kg: t.kg }));
+  // Counted from the new cycle's first workout when one is done, as the phone does.
+  const before = input.startNextCycle ? replica.workoutPrograms().find(p => p.id === input.id) : undefined;
+  const cycleFrom = before ? nextCycleStart(programProgress(before, allSessions(replica), replica.workoutRoutines()), now) : now.toISOString();
   const program = replica.saveProgram({
     id: input.id,
     ...(input.name !== undefined ? { name: input.name } : {}),
@@ -1115,7 +1118,7 @@ export function saveProgram(replica: Replica, input: SaveProgramInput, now: Date
     ...(input.scheme !== undefined ? { scheme: input.scheme } : {}),
     ...(input.weeks !== undefined ? { weeks: input.weeks } : {}),
     ...(maxes !== undefined ? { trainingMaxes: maxes } : {}),
-    ...(input.startNextCycle ? { startedAt: now.toISOString() } : {}),
+    ...(input.startNextCycle ? { startedAt: cycleFrom } : {}),
   });
   const routines = replica.workoutRoutines();
   // Not an error: the program is already saved by here, so a refusal would
@@ -1129,7 +1132,7 @@ export function saveProgram(replica: Replica, input: SaveProgramInput, now: Date
   const current = currentProgram(replica.workoutPrograms(), replica.currentProgramId());
   return {
     program: programRow(program, programProgress(program, allSessions(replica), routines), replica.exercises(), new Map(routines.map(r => [r.id, r.name])), program.id === current?.id),
-    note: `${notCurrent ? 'Saved, but not made current: a program needs routines in its rotation (routineIds), and not to be archived, to be the current one. ' : ''}A plan. Which week it is and which routine is next are worked out from the workouts finished in it, never set${input.startNextCycle ? ', and the count now starts again from this moment' : ''}. To put it on the schedule, create or update a task with workoutProgramId: its row then starts the next routine.`,
+    note: `${notCurrent ? 'Saved, but not made current: a program needs routines in its rotation (routineIds), and not to be archived, to be the current one. ' : ''}A plan. Which week it is and which routine is next are worked out from the workouts finished in it, never set${input.startNextCycle ? ', and the count now starts again with the new cycle' : ''}. To put it on the schedule, create or update a task with workoutProgramId: its row then starts the next routine.`,
   };
 }
 
