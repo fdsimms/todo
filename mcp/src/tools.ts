@@ -50,6 +50,7 @@ import {
 } from './taskFields';
 import { hasCountedTarget, serializeTasks, type SerializedTask } from './serialize';
 import { localDateInput } from './timeZone';
+import { updateGroceryItem } from './groceryTools';
 // Pure over the rows it is handed (types only), so safe to import for its
 // value where awayDates, which reaches the settings store, is not.
 
@@ -1217,9 +1218,29 @@ export interface GroceryWriteResult {
 export function addGroceryItem(
   replica: Replica,
   name: string,
-  opts?: { quantity?: string | null; note?: string | null; listId?: string | null; inCart?: boolean },
+  opts?: { quantity?: string | null; note?: string | null; listId?: string | null; inCart?: boolean; catalogOnly?: boolean; kindOf?: string | null },
 ): GroceryWriteResult {
-  const { inCart, ...addOpts } = opts ?? {};
+  const { inCart, catalogOnly, kindOf, ...addOpts } = opts ?? {};
+  // A catalog row on no list, for something the person wants known (a kind of
+  // salt) without it being something to buy. Not the pantry add either, which
+  // would say they have it.
+  if (catalogOnly) {
+    if (inCart) throw new Error('catalogOnly puts nothing on a list, so it cannot be combined with inCart.');
+    if (addOpts.quantity || addOpts.note || addOpts.listId) {
+      throw new Error('catalogOnly puts nothing on a list, so quantity, note and list have nothing to attach to. Leave them out, or leave catalogOnly out to put the item on a list.');
+    }
+    const { item: created, isNew } = replica.createCatalogItem(name);
+    // The same write update_grocery_item makes, so a kind filed here is
+    // recorded and undone exactly as one filed there.
+    const kinded = kindOf !== undefined ? updateGroceryItem(replica, { id: created.id, kindOf }) : null;
+    const item = replica.groceryItems().find(i => i.id === created.id) ?? created;
+    const base = isNew
+      ? `Added "${item.name}" to the catalog, filed under ${item.aisle}. It is on no list and not marked as in the pantry.`
+      : `"${item.name}" was already in the catalog, so it was left as it was.`;
+    const kind = kinded && kinded.changed.length > 0 ? ` It is now ${kinded.changed.join(', ')}.` : '';
+    return { item: serializeWithHome(replica, item, null), outcome: base + kind };
+  }
+  if (kindOf !== undefined) throw new Error('kindOf is only taken with catalogOnly. For an item on the list, set it with update_grocery_item.');
   const { item, isNew, wasOnList } = replica.addGroceryItem(name, addOpts);
   // Something that came home without being listed: the same two writes the
   // app's "Add to cart" makes (`addToCartMany`), so the trip can record it and

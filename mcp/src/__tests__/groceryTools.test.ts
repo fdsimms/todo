@@ -126,6 +126,39 @@ describe('the catalog tools', () => {
     });
   });
 
+  describe('add_grocery_item with catalogOnly', () => {
+    it('creates the catalog item on no list and not in the pantry', () => {
+      const result = addGroceryItem(replica, 'table salt', { catalogOnly: true });
+      expect(result.outcome).toMatch(/on no list/);
+      const row = replica.groceryItems().find(i => i.name === 'table salt')!;
+      expect(row).toBeDefined();
+      expect(row.onHandUntil ?? null).toBeNull();
+      expect(replica.groceryListEntries().some(e => e.itemId === row.id)).toBe(false);
+    });
+
+    it('leaves an item already on the list where it is', () => {
+      addGroceryItem(replica, 'milk');
+      const result = addGroceryItem(replica, 'milk', { catalogOnly: true });
+      expect(result.outcome).toMatch(/already in the catalog/);
+      expect(replica.groceryListEntries().some(e => e.itemId === idOf('milk'))).toBe(true);
+    });
+
+    it('files it as a kind of another item in the same call', () => {
+      const result = addGroceryItem(replica, 'table salt', { catalogOnly: true, kindOf: 'salt' });
+      expect(result.outcome).toMatch(/a kind of "salt"/);
+      expect(replica.groceryItems().find(i => i.name === 'table salt')!.varietyOfKey).toBe('salt');
+    });
+
+    it('refuses kindOf on a plain add, and says where to set it', () => {
+      expect(() => addGroceryItem(replica, 'table salt', { kindOf: 'salt' })).toThrow(/update_grocery_item/);
+    });
+
+    it('refuses the options that need a list, and says why', () => {
+      expect(() => addGroceryItem(replica, 'salt', { catalogOnly: true, inCart: true })).toThrow(/inCart/);
+      expect(() => addGroceryItem(replica, 'salt', { catalogOnly: true, quantity: '1' })).toThrow(/nothing to attach/);
+    });
+  });
+
   describe('update_grocery_item', () => {
     it('moves an item to an aisle that exists, remembers it for the name, and says which aisles exist when it does not', () => {
       addGroceryItem(replica, 'milk');
