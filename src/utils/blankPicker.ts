@@ -159,6 +159,34 @@ export function needsUsing(candidate: BlankCandidate): boolean {
   return candidate.freshness === 'due' || candidate.freshness === 'soon';
 }
 
+/** One of a blank's own suggestions, and whether the kitchen has it. */
+export interface BlankSuggestion {
+  name: string;
+  inKitchen: boolean;
+  /** The pantry's own sentence about it, only when it is due or close to it; null otherwise. */
+  caption: string | null;
+}
+
+/**
+ * The recipe's named suggestions for `blank` against the kitchen, in the order
+ * written, for the recipe page's row. Only the recipe's own options: what the
+ * person usually buys of the kind is the picker's offer, and a row listing it
+ * would turn into a pantry dump. Read off `blankChoices`, so "in the kitchen"
+ * means exactly what it means in the picker (past its use-by is not).
+ */
+export function blankSuggestions(
+  blank: RecipeBlank,
+  items: readonly GroceryItem[],
+  kitchen: readonly KitchenEntry[],
+  nonFoodAisles: readonly string[] = [],
+): BlankSuggestion[] {
+  const have = new Map(blankChoices(blank, items, kitchen, nonFoodAisles).kitchen.map(c => [c.nameKey, c]));
+  return blank.options.map(name => {
+    const candidate = have.get(groceryNameKey(name));
+    return { name, inKitchen: !!candidate, caption: candidate && needsUsing(candidate) ? candidate.caption : null };
+  });
+}
+
 /**
  * What the picker starts with for a blank this meal hasn't filled. Only ever a
  * starting point the person sees before anything is saved: nothing is written

@@ -1,4 +1,4 @@
-import { blankChoices, defaultBlankPicks, lastBlankFill, needsUsing, togglePick, USUAL_CANDIDATE_LIMIT } from '../utils/blankPicker';
+import { blankChoices, blankSuggestions, defaultBlankPicks, lastBlankFill, needsUsing, togglePick, USUAL_CANDIDATE_LIMIT } from '../utils/blankPicker';
 import type { KitchenEntry } from '../utils/kitchenInventory';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { GroceryItem, LeftoverFreshness, MealPlanEntry, RecipeBlank, RecipeOverride } from '../types';
@@ -155,6 +155,33 @@ describe('blankChoices', () => {
     const box: KitchenEntry = { ...entry(peas), id: 'product-1', kind: 'product', sourceId: 'box-1', itemId: peas.id };
     const choices = blankChoices(blank(), [peas, batteries], [box, entry(peas), leftover, entry(batteries)], ['Household']);
     expect(choices.kitchen.map(c => [c.name, c.itemId])).toEqual([['frozen peas', peas.id]]);
+  });
+});
+
+describe('blankSuggestions', () => {
+  const spinach = makeItem({ name: 'spinach' });
+  const kale = makeItem({ name: 'kale' });
+  const arugula = makeItem({ name: 'arugula' });
+  const items = [spinach, kale, arugula];
+
+  it('marks the recipe’s own options the kitchen has, in the order written, with a caption only when one is due', () => {
+    const kitchen = [entry(spinach, 'due', '1 day left'), entry(kale, 'fresh', 'Good until Aug 20')];
+    expect(blankSuggestions(blank({ options: ['spinach', 'kale', 'collards'] }), items, kitchen)).toEqual([
+      { name: 'spinach', inKitchen: true, caption: '1 day left' },
+      { name: 'kale', inKitchen: true, caption: null },
+      { name: 'collards', inKitchen: false, caption: null },
+    ]);
+  });
+
+  it('does not count something past its use-by, and leaves out what the kitchen has that the recipe did not name', () => {
+    const kitchen = [entry(spinach, 'over', '3 days past use-by'), entry(arugula)];
+    expect(blankSuggestions(blank({ options: ['spinach', 'kale'] }), items, kitchen).map(s => [s.name, s.inKitchen])).toEqual([
+      ['spinach', false], ['kale', false],
+    ]);
+  });
+
+  it('is empty for a blank with no suggestions', () => {
+    expect(blankSuggestions(blank(), items, [entry(spinach)])).toEqual([]);
   });
 });
 
