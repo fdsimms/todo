@@ -583,6 +583,7 @@ public class TodoScreenTimeBridgeModule: Module {
           store.shield.webDomains = nil
           store.shield.webDomainCategories = nil
           store.application.denyAppRemoval = nil
+          ScreenTimeShared.clearSpreadShards()
           // Nothing is held now, so every staged removal becomes live.
           ScreenTimeShared.promotePendingSelections(holding: [])
           cleared = true
@@ -597,17 +598,24 @@ public class TodoScreenTimeBridgeModule: Module {
     /// than from what the app last asked for. `applyShield` returning true only
     /// says a write was made; this is how the Screen Time page can tell a block
     /// that is up from one that was lifted behind the app's back. `categories`
-    /// counts an allowlist (everything except some apps) as one.
+    /// counts an allowlist (everything except some apps) as one. Apps and
+    /// websites are summed over every store the shield is spread across, and
+    /// `skippedApplications`/`skippedWebsites` are what the last write had no
+    /// store left for, which iOS is not blocking.
     Function("shieldedCounts") { () -> [String: Int] in
-      var counts = ["applications": 0, "categories": 0, "websites": 0]
+      var counts = ["applications": 0, "categories": 0, "websites": 0, "skippedApplications": 0, "skippedWebsites": 0]
       #if canImport(ManagedSettings)
       if #available(iOS 16.0, *) {
         TodoScreenTimeExceptionCatcher.runCatchingExceptions {
           let store = ManagedSettingsStore(named: .init(Self.shieldStoreName))
-          counts["applications"] = store.shield.applications?.count ?? 0
+          let spread = ScreenTimeShared.spreadShieldCounts()
+          counts["applications"] = spread.applications
           counts["categories"] = store.shield.applicationCategories == nil ? 0 : 1
-          counts["websites"] = (store.shield.webDomains?.count ?? 0)
+          counts["websites"] = spread.websites
             + (store.shield.webDomainCategories == nil ? 0 : 1)
+          let skipped = ScreenTimeShared.readShieldSpread()
+          counts["skippedApplications"] = skipped?.skippedApplications ?? 0
+          counts["skippedWebsites"] = skipped?.skippedWebsites ?? 0
         }
       }
       #endif

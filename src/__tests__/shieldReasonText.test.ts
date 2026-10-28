@@ -1,4 +1,4 @@
-import { MAX_NAMED_GATES, selectionLabel, shieldHeadline, shieldHeadlineNote, shieldNotEnforced, shieldReasonLines } from '../utils/shieldReasonText';
+import { MAX_NAMED_GATES, selectionLabel, shieldHeadline, shieldHeadlineNote, shieldNotEnforced, shieldReasonLines, shieldSkippedLine } from '../utils/shieldReasonText';
 
 const time = (iso: string) => (iso === 'bad' ? null : '10:30 AM');
 
@@ -117,5 +117,25 @@ describe('shieldNotEnforced', () => {
   it('treats an unreadable shield as unknown, and says nothing without a block', () => {
     expect(shieldNotEnforced(true, null)).toBe(false);
     expect(shieldNotEnforced(false, none)).toBe(false);
+  });
+});
+
+describe('shieldSkippedLine', () => {
+  it('says nothing when nothing was skipped, no block is up, or the build cannot say', () => {
+    expect(shieldSkippedLine(true, { skippedApplications: 0, skippedWebsites: 0 })).toBeNull();
+    expect(shieldSkippedLine(true, {})).toBeNull();
+    expect(shieldSkippedLine(false, { skippedApplications: 3 })).toBeNull();
+    expect(shieldSkippedLine(true, null)).toBeNull();
+  });
+
+  it('counts what iOS left open', () => {
+    expect(shieldSkippedLine(true, { skippedApplications: 12, skippedWebsites: 0 }))
+      .toBe('This block holds more than iOS can enforce, so 12 apps aren’t blocked. Pick a category in place of single apps to cover them.');
+    expect(shieldSkippedLine(true, { skippedApplications: 1, skippedWebsites: 3 }))
+      .toContain('so 1 app and 3 websites aren’t blocked.');
+  });
+
+  it('agrees with a single item', () => {
+    expect(shieldSkippedLine(true, { skippedWebsites: 1 })).toContain('so 1 website isn’t blocked.');
   });
 });

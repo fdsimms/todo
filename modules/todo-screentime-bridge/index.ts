@@ -33,6 +33,12 @@ export interface ScreenTimeSelectionCount {
   websites?: number;
 }
 
+/** What the system shield holds, plus what the last write had no room for (absent from an older build). */
+export interface ScreenTimeShieldedCount extends ScreenTimeSelectionCount {
+  skippedApplications?: number;
+  skippedWebsites?: number;
+}
+
 /** One `{ id, thresholdMinutes }` rule, as the native side decodes it. */
 export interface ScreenTimeMonitorRule {
   id: string;
@@ -58,7 +64,7 @@ interface TodoScreenTimeNativeModule {
   clearSelection(groupId: string): boolean;
   applyShield(groupIdsJson: string): boolean;
   clearShield(): boolean;
-  shieldedCounts(): ScreenTimeSelectionCount;
+  shieldedCounts(): ScreenTimeShieldedCount;
   setShieldOptions(denyAppRemoval: boolean): boolean;
   setAllowGroups(groupIdsJson: string): boolean;
   setAllowSets(setsJson: string): boolean;
@@ -187,7 +193,7 @@ export function clearShield(): boolean {
  * the build predates the readback or the read threw, which a caller must treat
  * as "unknown", never as "nothing is blocked".
  */
-export function shieldedCounts(): ScreenTimeSelectionCount | null {
+export function shieldedCounts(): ScreenTimeShieldedCount | null {
   return degradeOnThrow(() => nativeModule!.shieldedCounts(), null);
 }
 

@@ -103,6 +103,29 @@ export function shieldNotEnforced(
   return held.applications + held.categories + (held.websites ?? 0) === 0;
 }
 
+/**
+ * The warning for a block holding more apps or websites than iOS will enforce.
+ * iOS shields at most 50 of each per store, and the native side spreads a big
+ * block across several stores, so this only says something when even that ran
+ * out (`skipped*` is what the last write had no room for). Null when nothing
+ * was skipped, the build can't say, or no block is up.
+ */
+export function shieldSkippedLine(
+  blocked: boolean,
+  held: { skippedApplications?: number; skippedWebsites?: number } | null,
+): string | null {
+  if (!blocked || held === null) return null;
+  const apps = held.skippedApplications ?? 0;
+  const sites = held.skippedWebsites ?? 0;
+  if (apps + sites === 0) return null;
+  const parts = [
+    apps > 0 ? `${apps} ${apps === 1 ? 'app' : 'apps'}` : null,
+    sites > 0 ? `${sites} ${sites === 1 ? 'website' : 'websites'}` : null,
+  ].filter(Boolean);
+  const verb = parts.length === 1 && apps + sites === 1 ? 'isn’t' : 'aren’t';
+  return `This block holds more than iOS can enforce, so ${parts.join(' and ')} ${verb} blocked. Pick a category in place of single apps to cover them.`;
+}
+
 /** The count of what is picked, as the page's subtitle and the apps row's value. */
 export function selectionLabel(applications: number, categories: number, websites = 0): string {
   const parts = [

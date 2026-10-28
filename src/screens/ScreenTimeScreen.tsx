@@ -25,7 +25,7 @@ import { clockTimeToken } from '../utils/clockTime';
 import { blockedForMs, formatBlockedFor, spokenBlockedFor } from '../utils/blockTimer';
 import { useBlockTimerStore } from '../store/useBlockTimerStore';
 import {
-  selectionLabel, shieldHeadline, shieldHeadlineNote, shieldNotEnforced, shieldReasonLines,
+  selectionLabel, shieldHeadline, shieldHeadlineNote, shieldNotEnforced, shieldReasonLines, shieldSkippedLine,
 } from '../utils/shieldReasonText';
 import { ScreenTimeSettings } from './settings/ScreenTimeSettings';
 import { SettingsFocusProvider, useSettingsFocusScroll } from './settings/SettingsFocus';
@@ -40,6 +40,8 @@ type ScreenTimeParams = {
 };
 
 type GroupCount = { applications: number; categories: number; websites?: number };
+/** What iOS holds, and what the last write had no room for (`shieldSkippedLine`). */
+type HeldCount = GroupCount & { skippedApplications?: number; skippedWebsites?: number };
 const NO_SELECTION: GroupCount = { applications: 0, categories: 0, websites: 0 };
 
 /**
@@ -172,7 +174,7 @@ export function ScreenTimeScreen() {
   // What iOS actually holds, read back from the system shield. The card above is
   // built from the app's own state, so without this a block lifted behind the
   // app's back (an extension callback, iOS) still reads "blocked".
-  const [held, setHeld] = useState<GroupCount | null>(null);
+  const [held, setHeld] = useState<HeldCount | null>(null);
   const readHeld = useCallback(() => setHeld(screenTimeBridge()?.shieldedCounts() ?? null), []);
   useEffect(() => {
     readHeld();
@@ -182,6 +184,7 @@ export function ScreenTimeScreen() {
     return () => { clearInterval(timer); sub.remove(); };
   }, [blocked, readHeld, reasons]);
   const notEnforced = shieldNotEnforced(blocked, held);
+  const skippedLine = shieldSkippedLine(blocked, held);
   // Putting the same shield back is idempotent, so the first sign of a mismatch
   // is repaired at once; the warning below stays only if that didn't take.
   const [repairTried, setRepairTried] = useState(false);
@@ -280,6 +283,14 @@ export function ScreenTimeScreen() {
                   >
                     <Text style={styles.warningAction}>Apply the block again</Text>
                   </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            {skippedLine && !notEnforced && (
+              <View style={styles.warning} accessible accessibilityRole="alert">
+                <Ionicons name="warning-outline" size={20} color={colors.warningText} />
+                <View style={styles.warningBody}>
+                  <Text style={styles.warningText}>{skippedLine}</Text>
                 </View>
               </View>
             )}

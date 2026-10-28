@@ -76,6 +76,36 @@ enum ScreenTimeShared {
   /// dangerous.
   static let shieldStoreName = "focusShield"
 
+  /// The most apps, and separately the most websites, one store's shield takes.
+  /// Apple's `ShieldSettings` docs: "Your app can shield up to 50 application
+  /// tokens at once", and the same for web domains. The docs don't say what
+  /// happens past it, and nothing errors: a group of 94 apps written to one
+  /// store left apps in it open while the app said they were blocked.
+  static let shieldTokensPerStore = 50
+
+  /// How many stores the shield's apps and websites are spread across, 50 of
+  /// each per store (`shieldStoreName(shard:)`). Shard 0 is `shieldStoreName`
+  /// itself and also holds the categories and the allowlist policy.
+  ///
+  /// **Never lower this.** A shard past the new count would still be holding
+  /// its apps with nothing left that clears it, the same trap renaming the
+  /// store would set. Raising it is safe. It stays under the 50 named stores
+  /// iOS allows an app (WWDC22, "What's new in Screen Time API").
+  static let shieldShardCount = 40
+
+  /// What the last `applyGroups` spread the shield across, and what it had no
+  /// room for. Read by the clear (which stores to empty) and by the Screen
+  /// Time page (what the block holds, and the warning when something didn't
+  /// fit). A missing file reads as "every shard may hold something".
+  static let shieldSpreadFileName = "screentime_shield_spread.json"
+
+  /// The store for one shard of the shield. Shard 0 is the original store, so
+  /// a shield written by a build from before the spread is still the one this
+  /// build clears.
+  static func shieldStoreName(shard: Int) -> String {
+    shard == 0 ? shieldStoreName : "\(shieldStoreName)\(shard)"
+  }
+
   /// The one-shot DeviceActivity window whose end lifts a penalty block.
   /// Deliberately a different activity from the usage monitor: stopping one
   /// must not disarm the other.
@@ -123,6 +153,17 @@ enum ScreenTimeShared {
           let options = try? JSONDecoder().decode(ShieldOptionsShared.self, from: data)
     else { return ShieldOptionsShared(denyAppRemoval: false) }
     return options
+  }
+
+  static func readShieldSpread() -> ShieldSpreadShared? {
+    guard let data = readData(shieldSpreadFileName) else { return nil }
+    return try? JSONDecoder().decode(ShieldSpreadShared.self, from: data)
+  }
+
+  @discardableResult
+  static func writeShieldSpread(_ spread: ShieldSpreadShared) -> Bool {
+    guard let data = try? JSONEncoder().encode(spread) else { return false }
+    return writeData(data, to: shieldSpreadFileName)
   }
 
   static func readAllowGroups() -> AllowGroupsShared {
@@ -235,6 +276,15 @@ struct SpeedBumpFiredShared: Codable {
 /// person turned it on, which is also what a missing or unreadable file means.
 struct ShieldOptionsShared: Codable {
   var denyAppRemoval: Bool
+}
+
+/// How far the last shield was spread, and what didn't fit even then. See
+/// `ScreenTimeShared.shieldSpreadFileName`.
+struct ShieldSpreadShared: Codable {
+  /// Stores 0..<shards may hold apps or websites; every store past it is empty.
+  var shards: Int
+  var skippedApplications: Int
+  var skippedWebsites: Int
 }
 
 /// The groups that block everything except their own apps. See
@@ -780,9 +830,8 @@ extension ScreenTimeShared {
       categories.formUnion(selection.categoryTokens)
       webDomains.formUnion(selection.webDomainTokens)
     }
+    writeSpreadShield(applications: applications, webDomains: webDomains)
     let store = ManagedSettingsStore(named: .init(shieldStoreName))
-    store.shield.applications = applications.isEmpty ? nil : applications
-    store.shield.webDomains = webDomains.isEmpty ? nil : webDomains
     if var open = allowedApplications.first {
       for other in allowedApplications.dropFirst() { open.formIntersection(other) }
       // This app is never shielded by an allowlist. Best effort: the token is
@@ -820,6 +869,77 @@ extension ScreenTimeShared {
     // false, so a lifted block leaves the store holding no setting at all.
     store.application.denyAppRemoval = (!groupIds.isEmpty && readShieldOptions().denyAppRemoval) ? true : nil
     return !applications.isEmpty || !categories.isEmpty || !webDomains.isEmpty || !allowedApplications.isEmpty
+  }
+
+  /// Write these apps and websites across the shield's stores, 50 of each per
+  /// store, and empty every store the last write used that this one doesn't.
+  /// The order is the tokens' encoded bytes rather than the set's, which is
+  /// seeded per process: the app and the monitor extension both write the
+  /// shield, and a token moved from one store to another between two writes is
+  /// open for the moment between them.
+  @available(iOS 16.0, *)
+  static func writeSpreadShield(applications: Set<ApplicationToken>, webDomains: Set<WebDomainToken>) {
+    let apps = shieldShards(applications)
+    let sites = shieldShards(webDomains)
+    let used = max(apps.shards.count, sites.shards.count)
+    let previous = readShieldSpread()?.shards ?? shieldShardCount
+    for shard in 0..<max(used, min(previous, shieldShardCount), 1) {
+      let store = ManagedSettingsStore(named: .init(shieldStoreName(shard: shard)))
+      let shardApps = shard < apps.shards.count ? apps.shards[shard] : []
+      let shardSites = shard < sites.shards.count ? sites.shards[shard] : []
+      store.shield.applications = shardApps.isEmpty ? nil : shardApps
+      store.shield.webDomains = shardSites.isEmpty ? nil : shardSites
+    }
+    writeShieldSpread(ShieldSpreadShared(shards: used, skippedApplications: apps.skipped, skippedWebsites: sites.skipped))
+  }
+
+  /// Empty the apps and websites of every shard past 0, which `clearShield`
+  /// empties itself along with everything else shard 0 holds.
+  @available(iOS 16.0, *)
+  static func clearSpreadShards() {
+    let previous = readShieldSpread()?.shards ?? shieldShardCount
+    if previous > 1 {
+      for shard in 1..<min(previous, shieldShardCount) {
+        let store = ManagedSettingsStore(named: .init(shieldStoreName(shard: shard)))
+        store.shield.applications = nil
+        store.shield.webDomains = nil
+      }
+    }
+    writeShieldSpread(ShieldSpreadShared(shards: 0, skippedApplications: 0, skippedWebsites: 0))
+  }
+
+  /// What the shield's stores hold between them, read back from the stores.
+  @available(iOS 16.0, *)
+  static func spreadShieldCounts() -> (applications: Int, websites: Int) {
+    let shards = min(readShieldSpread()?.shards ?? shieldShardCount, shieldShardCount)
+    var applications = 0
+    var websites = 0
+    for shard in 0..<max(shards, 1) {
+      let store = ManagedSettingsStore(named: .init(shieldStoreName(shard: shard)))
+      applications += store.shield.applications?.count ?? 0
+      websites += store.shield.webDomains?.count ?? 0
+    }
+    return (applications, websites)
+  }
+
+  /// `tokens` in a stable order, cut into sets of `shieldTokensPerStore`, as
+  /// many as there are shards, and how many were left with no shard to go in.
+  @available(iOS 16.0, *)
+  static func shieldShards<T: Codable & Hashable>(_ tokens: Set<T>) -> (shards: [Set<T>], skipped: Int) {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = .sortedKeys
+    let ordered = tokens
+      .map { (token: $0, key: (try? encoder.encode($0)) ?? Data()) }
+      .sorted { $0.key.lexicographicallyPrecedes($1.key) }
+      .map { $0.token }
+    var shards: [Set<T>] = []
+    var index = 0
+    while index < ordered.count && shards.count < shieldShardCount {
+      let end = min(index + shieldTokensPerStore, ordered.count)
+      shards.append(Set(ordered[index..<end]))
+      index = end
+    }
+    return (shards, ordered.count - index)
   }
   #endif
   #endif
