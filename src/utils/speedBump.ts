@@ -40,6 +40,13 @@ export const SPEED_BUMP_BLOCK_CHOICES: readonly number[] = [15, 30, 45, 60, 120]
 export const SPEED_BUMP_THRESHOLD_DEFAULT = 45;
 
 /**
+ * How long before a block the heads-up notification goes out, in minutes; 0 is
+ * off. One setting for every rule, off until someone turns it on, since a
+ * notification is a surface nobody asked for.
+ */
+export const SPEED_BUMP_WARN_CHOICES: readonly number[] = [0, 5, 10];
+
+/**
  * How many times a rule can fire in a day. Every rung is a separate event armed
  * with iOS, and how many events one monitor accepts is not documented, so the
  * ceiling stays small until a device shows more works.
@@ -68,6 +75,30 @@ export function clampBumpTimes(times: number): number {
 export function clampBumpRepeat(minutes: number): number {
   if (!Number.isFinite(minutes)) return SPEED_BUMP_REPEAT_DEFAULT;
   return Math.min(SPEED_BUMP_REPEAT_MAX, Math.max(SPEED_BUMP_REPEAT_MIN, Math.round(minutes)));
+}
+
+/** A stored lead time, or off for anything that is not one of the choices. */
+export function clampBumpWarn(minutes: number): number {
+  return SPEED_BUMP_WARN_CHOICES.includes(minutes) ? minutes : 0;
+}
+
+export function parseBumpWarn(raw: string | null | undefined): number {
+  return clampBumpWarn(Number(raw));
+}
+
+/**
+ * The cumulative minutes at which each rung's heads-up fires, in step with
+ * `rungs`. A rung too early to have a heads-up before it (under a minute of use
+ * would be left) gets 0, which the native side reads as none.
+ */
+export function speedBumpWarnRungs(rungs: readonly number[], leadMinutes: number): number[] {
+  const lead = clampBumpWarn(leadMinutes);
+  return rungs.map(at => (lead > 0 && at - lead >= 1 ? at - lead : 0));
+}
+
+/** The notification text. "About" because iOS does not say when in the interval an event fires. */
+export function speedBumpWarnText(blockedName: string, leadMinutes: number): string {
+  return `${blockedName} will be blocked in about ${leadMinutes} minutes.`;
 }
 
 /** A rule as the sheet adds it: on, once a day, a quarter hour. */
@@ -152,6 +183,10 @@ export interface NativeSpeedBump {
   blockMinutes: number;
   /** Cumulative minutes of use that fire it. */
   rungs: number[];
+  /** In step with `rungs`: the minutes of use at which a heads-up goes out, 0 for none. */
+  warnRungs: number[];
+  /** What the heads-up says; the extension knows no group names. */
+  warnText: string;
 }
 
 /**
@@ -165,17 +200,22 @@ export function armableSpeedBumps(
   resolveTimed: (groupId: string | undefined) => string = id => id ?? DEFAULT_GROUP_ID,
   /** The groups the block holds, supergroups expanded and a missing group Default. */
   resolveBlocked: (groupId: string | undefined) => string[] = id => [id ?? DEFAULT_GROUP_ID],
+  /** The heads-up lead in minutes (0 is off) and the name of what a rule blocks. */
+  warn: { leadMinutes: number; blockedName: (rule: SpeedBumpRule) => string } = { leadMinutes: 0, blockedName: () => '' },
 ): NativeSpeedBump[] {
   return rules
     .filter(rule => rule.enabled)
     .map(rule => {
       const timed = resolveTimed(rule.groupId);
+      const rungs = speedBumpRungs(rule);
       return {
         id: rule.id,
         groupId: timed,
         blockGroupIds: resolveBlocked(rule.blockGroupId ?? rule.groupId),
         blockMinutes: clampBumpBlockMinutes(rule.blockMinutes),
-        rungs: speedBumpRungs(rule),
+        rungs,
+        warnRungs: speedBumpWarnRungs(rungs, warn.leadMinutes),
+        warnText: clampBumpWarn(warn.leadMinutes) > 0 ? speedBumpWarnText(warn.blockedName(rule), clampBumpWarn(warn.leadMinutes)) : '',
       };
     })
     .filter(bump => bump.rungs.length > 0 && bump.blockGroupIds.length > 0);

@@ -11,6 +11,7 @@ import { haptics } from '../utils/haptics';
 import { addCustomPortion, NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { unfixableQuantityReason, weighableLine, type LineWeighing } from '../utils/ingredientGrams';
 import {
+  estimateRequestLine,
   lineContribution,
   perServing,
   type ExcludedNutritionLine,
@@ -200,7 +201,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
     () => [
       recipeName,
       servings ?? '',
-      ...reading.lines.map(line => `${line.quantity}|${line.name}|${line.prep ?? ''}`),
+      ...reading.lines.map(estimateRequestLine),
     ].join('\n'),
     [recipeName, servings, reading.lines]
   );
@@ -216,8 +217,7 @@ export function RecipeNutritionSheet({ visible, reading, recipeId, recipeName, s
   const queuedRows = usePendingRecipeEstimateStore(s => s.pending);
   const queuedRow = useMemo(() => liveFor(queuedRows, recipeId, estimateKey), [queuedRows, recipeId, estimateKey]);
   // What an estimate asked now would send, and what a saved one sent.
-  const askedLines = () => reading.lines.map(line =>
-    line.prep ? `${line.quantity} ${line.name}, ${line.prep}` : `${line.quantity} ${line.name}`);
+  const askedLines = () => reading.lines.map(estimateRequestLine);
   // What the request in flight was asked about, read back after the await:
   // the reset above clears a guess when the recipe changes, but a reply
   // already on its way landed after it, so one recipe's estimate sat under

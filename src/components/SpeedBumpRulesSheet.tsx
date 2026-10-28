@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { SpeedBumpRule } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing } from '../theme';
+import { font, fontWeight, radius, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { screenTimeBridge } from '../utils/screenTimeBridge';
 import { allGroups, groupName, plainGroups, resolveGroupId } from '../utils/appGroups';
@@ -17,6 +17,7 @@ import {
   SPEED_BUMP_THRESHOLD_DEFAULT,
   SPEED_BUMP_TIMES_MAX,
   SPEED_BUMP_TITLE_MAX_LENGTH,
+  SPEED_BUMP_WARN_CHOICES,
   describeSpeedBump,
   newSpeedBumpRule,
 } from '../utils/speedBump';
@@ -25,6 +26,7 @@ import { describeDuration } from '../utils/manualBlock';
 import { useGroupSelectionCounts } from '../hooks/useGroupSelectionCounts';
 import { PillGroup } from './PillGroup';
 import { CountStepper } from './CountStepper';
+import { HelpText } from './HelpText';
 import { InlineAction } from './InlineAction';
 import { SegmentedControl } from './SegmentedControl';
 import { RuleFieldLabel, RuleListSheet, RuleSheetNoticeCard } from './RuleListSheet';
@@ -55,6 +57,8 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const rules = useSettingsStore(useShallow(s => s.speedBumpRules));
   const setRules = useSettingsStore(s => s.setSpeedBumpRules);
+  const warnMinutes = useSettingsStore(s => s.speedBumpWarnMinutes);
+  const setWarnMinutes = useSettingsStore(s => s.setSpeedBumpWarnMinutes);
 
   const customGroups = useAppGroupStore(s => s.groups);
   const groupsMeta = useAppGroupStore(s => s.meta);
@@ -208,32 +212,44 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
       emptyTitle="No speed bumps"
       emptySubtitle="Add one to block a group of apps for a short while after you spend a set time on another."
       header={
-        authorization !== null && authorization !== 'approved' ? (
-          <RuleSheetNoticeCard
-            icon="hourglass-outline"
-            iconColor={authorization === 'denied' ? colors.warningText : colors.textSecondary}
-            title="Screen Time access"
-            hint={
-              authorization === 'denied'
-                ? 'Blocked. Speed bumps can’t see your app usage until you turn access back on in Settings.'
-                : authorization === 'notDetermined'
-                ? 'Not allowed yet. Speed bumps can’t see your app usage until you allow it.'
-                : 'Not available on this device.'
-            }
-            action={(authorization === 'denied' || authorization === 'notDetermined') && (
-              <InlineAction
-                label={authorization === 'denied' ? 'Open Settings' : 'Allow'}
-                onPress={async () => {
-                  haptics.tap();
-                  if (authorization === 'denied') { Linking.openSettings(); return; }
-                  const bridge = screenTimeBridge();
-                  if (bridge) await bridge.requestScreenTimeAuthorization();
-                  refreshNativeState();
-                }}
-              />
-            )}
-          />
-        ) : undefined
+        <>
+          {authorization !== null && authorization !== 'approved' ? (
+            <RuleSheetNoticeCard
+              icon="hourglass-outline"
+              iconColor={authorization === 'denied' ? colors.warningText : colors.textSecondary}
+              title="Screen Time access"
+              hint={
+                authorization === 'denied'
+                  ? 'Blocked. Speed bumps can’t see your app usage until you turn access back on in Settings.'
+                  : authorization === 'notDetermined'
+                  ? 'Not allowed yet. Speed bumps can’t see your app usage until you allow it.'
+                  : 'Not available on this device.'
+              }
+              action={(authorization === 'denied' || authorization === 'notDetermined') && (
+                <InlineAction
+                  label={authorization === 'denied' ? 'Open Settings' : 'Allow'}
+                  onPress={async () => {
+                    haptics.tap();
+                    if (authorization === 'denied') { Linking.openSettings(); return; }
+                    const bridge = screenTimeBridge();
+                    if (bridge) await bridge.requestScreenTimeAuthorization();
+                    refreshNativeState();
+                  }}
+                />
+              )}
+            />
+          ) : null}
+          <View style={[styles.warnCard, { backgroundColor: colors.bgSecondary }]}>
+            <Text style={[styles.warnTitle, { color: colors.text }]}>Warn me first</Text>
+            <HelpText style={[styles.warnHint, { color: colors.textSecondary }]}>Sends a notification shortly before a speed bump blocks apps.</HelpText>
+            <SegmentedControl<number>
+              label="Warn me first"
+              options={SPEED_BUMP_WARN_CHOICES.map(m => ({ value: m, label: m === 0 ? 'Off' : `${m} min` }))}
+              value={warnMinutes}
+              onChange={minutes => { haptics.tap(); setWarnMinutes(minutes); }}
+            />
+          </View>
+        </>
       }
     />
   );
@@ -246,4 +262,7 @@ const styles = StyleSheet.create({
   // adds after this, the same 24pt the sections have between them.
   sections: { gap: spacing.lg, marginBottom: spacing.smd },
   field: { gap: spacing.xs },
+  warnCard: { borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md, gap: spacing.smd },
+  warnTitle: { fontSize: font.md, fontWeight: fontWeight.medium },
+  warnHint: { fontSize: font.xs, lineHeight: 16 },
 });

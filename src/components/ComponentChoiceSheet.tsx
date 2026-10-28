@@ -2,20 +2,21 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Recipe } from '../types';
-import { GROCERY_QUANTITY_MAX_LENGTH, RECIPE_CHOICE_GROUP_MAX_LENGTH } from '../types';
+import { GROCERY_QUANTITY_MAX_LENGTH, RECIPE_CHOICE_GROUP_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
-import { fieldWell } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import type { ResolvedComponent } from '../utils/recipeComponents';
+import { amountUnitsFor, amountUsedCounts, BATCH_LABEL, makesUnitsFor } from '../utils/componentShares';
+import { NO_UNIT } from '../utils/amountUnit';
+import { AmountUnitField } from './AmountUnitField';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { SegmentedControl } from './SegmentedControl';
-import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
 import { useSheetSubject } from '../hooks/useSheetSubject';
@@ -44,6 +45,9 @@ interface Props {
  * as an alternative for itself, a question nobody could answer without knowing
  * the data model.
  */
+/** "No unit" in Amount used is a share of the batch (`fractionOf` reads a bare "1/4" so). */
+const BATCH_LABELS = { [NO_UNIT]: BATCH_LABEL };
+
 export function ComponentChoiceSheet({ visible, recipe, component: liveComponent, onClose }: Props) {
   // Held past the host clearing it, so the `return null` below can't tear the
   // presented sheet out of the tree while it is still closing: every host
@@ -56,6 +60,7 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
   const setComponentChoiceGroup = useRecipeStore(s => s.setComponentChoiceGroup);
   const makeComponentDefault = useRecipeStore(s => s.makeComponentDefault);
   const setComponentAmountUsed = useRecipeStore(s => s.setComponentAmountUsed);
+  const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
 
   const [label, setLabel] = useState('');
   // Held apart from the label for the same reason the ingredient sheet keeps
@@ -63,14 +68,22 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
   // deriving this from the label would snap the control straight back to
   // "Always included" the moment someone opens the picker with no groups yet.
   const [choiceOn, setChoiceOn] = useState(false);
-  // Typed freely and saved with the label on the way out, like the group.
+  // A number and a unit from the menu (`amountUnitsFor`, `AmountUnitField`),
+  // saved with the label on the way out, like the group. Free text let an
+  // amount be typed that nothing could compare with what the used recipe makes.
   const [amount, setAmount] = useState('');
+  // What the used recipe makes, asked right here when the amount can't be
+  // compared with it: the fix has to be where the problem shows, not on the
+  // other recipe's page. Picked in the units that compare with the amount
+  // (`makesUnitsFor`) and saved onto that recipe's own Yield.
+  const [makes, setMakes] = useState('');
 
   useEffect(() => {
     if (component) {
       setLabel(component.component.choiceGroup ?? '');
       setChoiceOn(!!component.component.choiceGroup);
       setAmount(component.component.amountUsed ?? '');
+      setMakes(component.recipe?.recipeYield ?? '');
     }
   }, [component?.component.id, visible]);
 
@@ -112,10 +125,20 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
     return recipe.components.find(c => c.choiceGroup === group)?.id === component?.component.id;
   }, [recipe.components, component?.component.id, component?.component.choiceGroup, defaultIngredientName]);
 
+  const amountUnits = useMemo(() => amountUnitsFor(component?.recipe ?? null), [component?.recipe]);
+
+  // Asked only while the saved yield can't take the amount, judged on what is
+  // saved so the field doesn't vanish mid-word once the typed one fits.
+  const asksMakes = !!component?.recipe && !amountUsedCounts(amount, component.recipe);
+  const makesUnits = useMemo(() => (asksMakes ? makesUnitsFor(amount) : null), [asksMakes, amount]);
+  const makesCounts = !!component?.recipe && amountUsedCounts(amount, component.recipe, makes);
+
   const saveAndClose = () => {
     if (component) {
       setComponentChoiceGroup(recipe.id, component.component.id, cleanChoiceGroup(label));
       setComponentAmountUsed(recipe.id, component.component.id, amount);
+      const part = component.recipe;
+      if (part && makesUnits && makes.trim() && makes.trim() !== part.recipeYield) setRecipeYield(part.id, makes.trim());
     }
     onClose();
   };
@@ -145,24 +168,51 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
     >
       <View style={styles.sectionCard}>
         <Text style={styles.groupLabel}>Amount used</Text>
-        <View style={styles.well}>
-          <TextField
-            style={styles.amountInput}
-            value={amount}
-            onChangeText={setAmount}
-            placeholder="e.g. 1 tbsp"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={GROCERY_QUANTITY_MAX_LENGTH}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="done"
-            accessibilityLabel={`Amount of ${name} this recipe uses`}
-          />
-        </View>
+        <AmountUnitField
+          name="ComponentChoiceSheet amount unit"
+          style={styles.unitField}
+          value={amount}
+          onChangeText={setAmount}
+          groups={amountUnits.groups}
+          defaultUnit={amountUnits.defaultUnit}
+          unitLabels={BATCH_LABELS}
+          placeholder="e.g. 1"
+          otherPlaceholder="e.g. a pinch"
+          maxLength={GROCERY_QUANTITY_MAX_LENGTH}
+          accessibilityLabel={`Amount of ${name} this recipe uses`}
+        />
+        {asksMakes && !makesUnits && (
+          <Text style={styles.amountWarning}>
+            Nutrition can’t measure “{amount.trim()}”, so it counts the whole batch.
+          </Text>
+        )}
+        {makesUnits && (
+          <>
+            <Text style={[styles.groupLabel, styles.groupLabelSpaced]}>{name} makes</Text>
+            <AmountUnitField
+              name="ComponentChoiceSheet makes unit"
+              style={styles.unitField}
+              value={makes}
+              onChangeText={setMakes}
+              groups={makesUnits.groups}
+              defaultUnit={makesUnits.defaultUnit}
+              placeholder="e.g. 3/4"
+              maxLength={RECIPE_SOURCE_MAX_LENGTH}
+              accessibilityLabel={`How much ${name} makes`}
+            />
+            {!makesCounts && (
+              <Text style={styles.amountWarning}>
+                {makes.trim()
+                  ? `${amount.trim()} can’t be compared with ${makes.trim()}, so nutrition counts the whole batch.`
+                  : 'Until this is filled in, nutrition counts the whole batch.'}
+              </Text>
+            )}
+          </>
+        )}
         <HelpText style={styles.hint}>
-          How much of {name.toLowerCase()} goes into this recipe, like “1 tbsp”, “2 fillets” or
-          “1/4” for a quarter of what it makes. Nutrition counts only this much. Leave it empty to
-          count everything it makes.
+          How much of {name.toLowerCase()} goes into this recipe. Pick “{BATCH_LABEL}” for a share
+          of everything it makes, like 1/4. Nutrition counts only this much. Leave it empty to count
+          everything it makes.
         </HelpText>
       </View>
 
@@ -315,8 +365,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   defaultRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
   defaultText: { color: colors.text, fontSize: font.sm },
-  // The card is bgSecondary, so the field steps up to bgTertiary.
-  well: { ...fieldWell(colors), marginTop: spacing.xs },
-  amountInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0, minHeight: 44 },
   hint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: font.xs * 1.4 },
+  groupLabelSpaced: { marginTop: spacing.md },
+  unitField: { marginTop: spacing.xs },
+  amountWarning: { color: colors.warningText, fontSize: font.xs, lineHeight: font.xs * 1.4, marginVertical: spacing.xs },
 });

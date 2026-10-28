@@ -21,6 +21,8 @@ export interface IngredientPrintInput {
   madeBy?: string;
   /** Include the guessed allergen line. */
   showAllergens: boolean;
+  /** The scaled list's footnote (`unscaledNoteFor`), under the amounts on the full page; null for none. */
+  unscaledNote?: string | null;
 }
 
 export const ALLERGEN_CAVEAT = 'Guessed from the ingredient names, so it can miss things. Check labels if you have an allergy.';
@@ -82,6 +84,7 @@ ${input.servingsLine ? `<div class="sub">${e(input.servingsLine)}</div>` : ''}
 ${allergens}
 <div class="main">Ingredients</div>
 <div class="cols">${sections}</div>
+${input.unscaledNote ? `<div class="caveat">${e(input.unscaledNote)}.</div>` : ''}
 </body></html>`;
 }
 

@@ -179,6 +179,18 @@ function load(): StepTimer[] {
   return timers;
 }
 
+/**
+ * The timers, hydrated first if they weren't yet. Every write reads through
+ * this, so a write that lands before the startup hydrate (a Lock Screen Done
+ * handled while the app is still launching) acts on the persisted timers,
+ * rather than on an empty list that the hydrate would then replace, bringing
+ * the timer and its alarm back.
+ */
+function live(get: () => StepTimerState): StepTimer[] {
+  if (!get().hydrated) get().hydrate();
+  return get().timers;
+}
+
 export const useStepTimerStore = create<StepTimerState>((set, get) => ({
   timers: [],
   hydrated: false,
@@ -225,7 +237,7 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
     };
     // A step naming one duration can want two timers running against it (two
     // pans, two batches), so nothing here collapses onto an existing row.
-    commit(set, [...get().timers, timer], timer);
+    commit(set, [...live(get), timer], timer);
     return timer;
   },
 
@@ -252,78 +264,78 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
     };
     // The rest it replaces goes with its alarm: a rest after set 2 still
     // pending when set 3 is logged would otherwise ring halfway through it.
-    const replaced = get().timers.filter(t => t.kind === 'rest');
+    const replaced = live(get).filter(t => t.kind === 'rest');
     for (const old of replaced) cancelStepAlarm(old.id);
-    commit(set, [...get().timers.filter(t => t.kind !== 'rest'), timer], timer);
+    commit(set, [...live(get).filter(t => t.kind !== 'rest'), timer], timer);
     return timer;
   },
 
   pause: id => {
-    const timer = get().timers.find(t => t.id === id);
+    const timer = live(get).find(t => t.id === id);
     if (!timer || !isStepTimerRunning(timer)) return;
     const paused: StepTimer = { ...timer, startedAt: null, elapsedSeconds: stepTimerElapsed(timer) };
-    commit(set, get().timers.map(t => (t.id === id ? paused : t)), paused);
+    commit(set, live(get).map(t => (t.id === id ? paused : t)), paused);
   },
 
   resume: id => {
-    const timer = get().timers.find(t => t.id === id);
+    const timer = live(get).find(t => t.id === id);
     if (!timer || isStepTimerRunning(timer)) return;
     const resumed: StepTimer = { ...timer, startedAt: new Date().toISOString() };
-    commit(set, get().timers.map(t => (t.id === id ? resumed : t)), resumed);
+    commit(set, live(get).map(t => (t.id === id ? resumed : t)), resumed);
   },
 
   addTime: (id, seconds = STEP_TIMER_NUDGE_SECONDS) => {
-    const timer = get().timers.find(t => t.id === id);
+    const timer = live(get).find(t => t.id === id);
     // A repeating timer's count is whole intervals of its length, so changing
     // the length would rewrite how many times it had gone off.
     if (!timer || isRepeatingTimer(timer)) return;
     // Measured from now, not from the original length; see nudgedDuration.
     const extended: StepTimer = { ...timer, durationSeconds: nudgedDuration(timer, seconds) };
-    commit(set, get().timers.map(t => (t.id === id ? extended : t)), extended);
+    commit(set, live(get).map(t => (t.id === id ? extended : t)), extended);
   },
 
   setRepeatTarget: (id, target) => {
-    const timer = get().timers.find(t => t.id === id);
+    const timer = live(get).find(t => t.id === id);
     if (!timer || !isRepeatingTimer(timer) || !validRepeatTarget(target)) return;
     const changed: StepTimer = { ...timer, repeatTarget: target };
-    commit(set, get().timers.map(t => (t.id === id ? changed : t)), changed);
+    commit(set, live(get).map(t => (t.id === id ? changed : t)), changed);
   },
 
   rearm: id => {
-    const timer = get().timers.find(t => t.id === id);
+    const timer = live(get).find(t => t.id === id);
     if (timer && isStepTimerRunning(timer)) scheduleStepAlarm(timer);
   },
 
   restart: id => {
-    const timer = get().timers.find(t => t.id === id);
+    const timer = live(get).find(t => t.id === id);
     if (!timer) return;
     const restarted: StepTimer = {
       ...timer,
       startedAt: new Date().toISOString(),
       elapsedSeconds: 0,
     };
-    commit(set, get().timers.map(t => (t.id === id ? restarted : t)), restarted);
+    commit(set, live(get).map(t => (t.id === id ? restarted : t)), restarted);
   },
 
   remove: id => {
-    if (!get().timers.some(t => t.id === id)) return;
+    if (!live(get).some(t => t.id === id)) return;
     cancelStepAlarm(id);
-    commit(set, get().timers.filter(t => t.id !== id), null);
+    commit(set, live(get).filter(t => t.id !== id), null);
   },
 
   removeForRecipe: recipeId => {
     const mine = (t: StepTimer) => t.kind === 'recipe' && t.recipeId === recipeId;
-    const going = get().timers.filter(mine);
+    const going = live(get).filter(mine);
     if (going.length === 0) return;
     for (const timer of going) cancelStepAlarm(timer.id);
-    commit(set, get().timers.filter(t => !mine(t)), null);
+    commit(set, live(get).filter(t => !mine(t)), null);
   },
 
   removeRestsOutside: liveSessionId => {
     const stale = (t: StepTimer) => t.kind === 'rest' && t.sessionId !== liveSessionId;
-    const going = get().timers.filter(stale);
+    const going = live(get).filter(stale);
     if (going.length === 0) return;
     for (const timer of going) cancelStepAlarm(timer.id);
-    commit(set, get().timers.filter(t => !stale(t)), null);
+    commit(set, live(get).filter(t => !stale(t)), null);
   },
 }));

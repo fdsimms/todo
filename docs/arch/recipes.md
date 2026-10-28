@@ -127,15 +127,21 @@ meal that uses it. The graph walk — flatten, cycle check, reverse lookup — l
   about `servings` is consulted, and nothing is written back onto the recipe.
 
 **A used recipe's nutrition counts the share the parent eats, not the whole batch (`componentShares`,
-`recipeNutrition.ts`, `RecipeComponent.amountUsed`).** Flattening lists a part's lines in whole, which is
+`componentShares.ts`, `RecipeComponent.amountUsed`).** Flattening lists a part's lines in whole, which is
 right for shopping and wrong for "1 tbsp Fishy Seasoning" out of a 3/4 cup batch, or a sauce only served
-alongside. The share comes from the link's own **amount used** (typed in the sheet a long press on the
-part opens; "1 tbsp", "2 fillets", or a bare "1/4" meaning a quarter of the batch), else from the
+alongside. The share comes from the link's own **amount used** (set in the sheet a long press on the part
+opens, as a number and a unit from a menu (`amountUnitsFor`): a volume or a weight, the part's own count
+word, or "of the batch", stored as a bare "1/4" meaning a quarter of it), else from the
 parent's own ingredient line naming the part. It is measured against the part's `recipeYield` and only
 when the two compare (one dimension, or one counted unit); no amount, no yield, "to taste" or mismatched
-units count the whole batch, as before. Shares compound down a chain of parts. Nutrition only: shopping,
-the planned-week total and recipe cost still read whole parts, and `amountUsed` is shown on the row ("uses
-1 tbsp") and settable over MCP (`update_recipe` components).
+units count the whole batch, as before. The row says so, and the sheet asks what the part makes right
+under the amount, in the same field with only the units that compare with it (`makesUnitsFor`),
+saving it to the part's own `recipeYield` (`amountUsedCounts`): a field the person has to go to another
+recipe's page to fix is a field nobody fixes, and a free-text yield could be filled in and still not count. Shares compound down a chain of parts, and only through the links a cooking
+keeps (`activeComponents`), so a part both sides of an either/or use is counted at the picked side's share.
+Nutrition only, the planned-week total included (`PlannedIngredient.componentShare`): shopping and recipe
+cost still read whole parts, and `amountUsed` is shown on the row ("uses 1 tbsp") and settable over MCP
+(`update_recipe` components).
 
 **A line can be left out of a recipe's nutrition (`RecipeIngredient.excludeFromNutrition`), and the app only offers it.**
 It is per line, not per catalog item, because the same ingredient is eaten in one recipe and removed in another
@@ -882,6 +888,16 @@ reader; the scaler, the converter, the price comparison, the substitute ratio, `
 - **`rest` is kept alongside `unit`**, and that isn't redundancy: `substituteQuantity` compares the
   *whole* tail so a per-clove ratio can't take "3 cloves, minced", and `SubstituteSheet`'s hint names
   back what the user typed.
+- **It is typed through one field, `AmountUnitField` (`amountUnit.ts`), wherever a recipe-side amount
+  is asked for**: an ingredient's "How much", a substitute's ratio, a blank's amount and each pick's,
+  and a used recipe's Amount used and makes. A number and a unit from the `ChoiceMenuChip` menu, read
+  from and written back to the same string, so nothing downstream changed. Free text let an amount be
+  typed that the arithmetic couldn't read, with nothing to say so. The menu ends in "Something else",
+  which hands back plain text, because "1 14 oz can" and "to taste" are real amounts; a saved amount the
+  menu can't read opens there as written rather than being reshaped, and long spellings ("2 tablespoons")
+  open on their menu entry. Left as free text on purpose: the grocery quantity (amounts there are mostly
+  bare counts and packs, and it is typed fast on the list), the import review's pills (they hold what was
+  read off a page, to be corrected), and a nutrition panel's serving size (printed text, "2/3 cup (55g)").
 - **A shared parse is not a shared licence.** What each module may *do* with the result is still its
   own rule, written where it lives — scaling never converts, conversion is display-only and marks
   `≈`, `mergeQuantities` still won't collapse units that merely measure alike.

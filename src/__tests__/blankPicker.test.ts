@@ -90,6 +90,14 @@ describe('blankChoices', () => {
     expect(choices.stale.map(c => [c.name, c.caption])).toEqual([['string beans', '11 days past use-by']]);
   });
 
+  it('offers an item as fresh when any of it is, even with an old box of it sorted first', () => {
+    const tofu = makeItem({ name: 'tofu' });
+    const old = { ...entry(tofu, 'over', '27 days past use-by'), id: 'box-old' };
+    const choices = blankChoices(blank({ kind: null, options: ['tofu'] }), [tofu], [old, entry(tofu, 'fresh', 'Good until Aug 20')]);
+    expect(choices.kitchen.map(c => [c.name, c.caption])).toEqual([['tofu', 'Good until Aug 20']]);
+    expect(choices.stale).toEqual([]);
+  });
+
   it('follows with what is usually bought of the kind, by purchase count, and never something never bought', () => {
     expect(blankChoices(blank(), items, kitchen).others.map(c => [c.name, c.source])).toEqual([
       ['broccoli', 'usual'], ['carrots', 'usual'],

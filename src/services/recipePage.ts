@@ -90,13 +90,27 @@ const MESSAGES: Record<RecipePageErrorCode, string> = {
 };
 
 /**
+ * The same failures for an import with no API key, which can only read a
+ * link: the messages above end by sending the person to paste the recipe, and
+ * without a key there is no paste to go to.
+ */
+const KEYLESS_MESSAGES: Partial<Record<RecipePageErrorCode, string>> = {
+  blocked: 'That site wouldn’t let dundundun read the page. Add an Anthropic API key in Settings to import a recipe you copy or photograph instead.',
+  notHtml: 'That link isn’t a web page. Add an Anthropic API key in Settings to import a recipe you copy or photograph instead.',
+  tooLarge: 'That page is too big to read. Add an Anthropic API key in Settings to import a recipe you copy or photograph instead.',
+  noRecipe: 'Nothing readable came back from that page. Some sites build the recipe in the browser. Add an Anthropic API key in Settings to import one you copy or photograph instead.',
+};
+
+/**
  * The one error mapper the import sheets call. A run is now a page fetch
  * *then* an extraction, so both failures arrive at the same catch — and mapping
  * only the second would render "That site wouldn't let us in" as "check your
  * API key in Settings".
  */
-export function describeImportError(error: unknown, source?: string): string {
-  if (isRecipePageError(error)) return MESSAGES[error.recipePageCode];
+export function describeImportError(error: unknown, source?: string, options: { keyless?: boolean } = {}): string {
+  if (isRecipePageError(error)) {
+    return (options.keyless ? KEYLESS_MESSAGES[error.recipePageCode] : undefined) ?? MESSAGES[error.recipePageCode];
+  }
   return describeAIError(error, source);
 }
 

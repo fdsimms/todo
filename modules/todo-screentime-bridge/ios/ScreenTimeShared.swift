@@ -147,6 +147,9 @@ enum ScreenTimeShared {
   static let speedBumpWindowName = "todo.speedBumpWindow"
   /// Prefix of a speed bump event's name: `bump:<rule id>:<rung>`.
   static let speedBumpEventPrefix = "bump:"
+  /// Prefix of a speed bump's heads-up event: `bumpwarn:<rule id>:<rung>`. It
+  /// does not start with `speedBumpEventPrefix`, so the two never match each other.
+  static let speedBumpWarnEventPrefix = "bumpwarn:"
 
   static func readShieldOptions() -> ShieldOptionsShared {
     guard let data = readData(shieldOptionsFileName),
@@ -245,6 +248,12 @@ struct SpeedBumpShared: Codable {
   let blockGroupIds: [String]
   let blockMinutes: Int
   let rungs: [Int]
+  /// In step with `rungs`: minutes of use at which a heads-up goes out, 0 for
+  /// none. Absent from a file an older build armed, which reads as no heads-ups.
+  let warnRungs: [Int]?
+  /// What the heads-up says. The extension knows no group names, so the app
+  /// writes the sentence.
+  let warnText: String?
 }
 
 /// What the app last armed: the day and the rules exactly as handed over.

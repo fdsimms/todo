@@ -604,3 +604,17 @@ describe('a repeating timer in storage', () => {
     expect(prompt?.message).toContain('2 of 5 so far');
   });
 });
+
+describe('parseStepDurations: two durations joined by "and"', () => {
+  it('offers each one rather than folding the second into the first chip', () => {
+    expect(parseStepDurations('Steam for 5 minutes and 10 minutes for larger ones').map(d => [d.text, d.seconds]))
+      .toEqual([['5 minutes', 300], ['10 minutes', 600]]);
+    expect(parseStepDurations('Bake 25-30 minutes and 5 minutes more').map(d => [d.text, d.seconds, d.maxSeconds]))
+      .toEqual([['25-30 minutes', 1500, 1800], ['5 minutes', 300, null]]);
+  });
+
+  it('still reads a compound that runs downwards as one duration', () => {
+    expect(parseStepDurations('Roast for 1 hour and 20 minutes').map(d => [d.text, d.seconds]))
+      .toEqual([['1 hour and 20 minutes', 4800]]);
+  });
+});

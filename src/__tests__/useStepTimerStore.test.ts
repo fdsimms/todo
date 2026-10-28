@@ -378,3 +378,21 @@ describe('repeating timers', () => {
     expect(mockSchedule).not.toHaveBeenCalled();
   });
 });
+
+describe('a write before the startup hydrate', () => {
+  it('acts on the saved timers rather than on an empty list the hydrate would undo', () => {
+    // A Lock Screen Done handled while the app is still launching.
+    const saved: RecipeStepTimer = {
+      kind: 'recipe', id: 't-saved', recipeId: 'r1', recipeName: 'Rice', stepId: 's1', stepLabel: 'Step 1 of 2',
+      durationSeconds: 600, startedAt: new Date().toISOString(), elapsedSeconds: 0, createdAt: new Date().toISOString(),
+    };
+    mockGet.mockReturnValue(JSON.stringify([saved]));
+
+    useStepTimerStore.getState().remove('t-saved');
+    useStepTimerStore.getState().hydrate();
+
+    expect(useStepTimerStore.getState().timers).toEqual([]);
+    expect(mockDelete).toHaveBeenCalled();
+    expect(mockCancel).toHaveBeenCalledWith('t-saved');
+  });
+});

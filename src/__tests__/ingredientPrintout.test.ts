@@ -53,3 +53,11 @@ describe('ingredientFileName', () => {
     expect(ingredientFileName('???', 'page')).toBe('recipe-ingredients.pdf');
   });
 });
+
+describe('ingredientPageHtml: the unscaled footnote', () => {
+  it('prints it under the amounts when there is one', () => {
+    expect(ingredientPageHtml({ ...input, unscaledNote: '1 ingredient couldn’t be scaled automatically. Adjust by eye' }))
+      .toContain('Adjust by eye');
+    expect(ingredientPageHtml(input)).not.toContain('Adjust by eye');
+  });
+});

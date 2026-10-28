@@ -13,6 +13,12 @@ export interface CookPosition {
   rawIndex: number;
   /** Past the last step, on the end screen. */
   finished: boolean;
+  /**
+   * The step `rawIndex` was on, when it was on one. Restored by id when the
+   * step is still there, so a step added or removed above it while the sheet
+   * was closed doesn't hand the cook the step next to theirs.
+   */
+  stepId?: string;
 }
 
 const positions = new Map<string, CookPosition>();
@@ -62,7 +68,11 @@ export function restingCookPosition(
   recipeId: string,
   cookRunning: boolean,
   hasIngredients: boolean,
+  /** The method's step ids as they are now, to find a saved step by. */
+  stepIds: readonly string[] = [],
 ): CookPosition {
   const saved = cookRunning ? savedCookPosition(recipeId) : null;
-  return saved ?? { rawIndex: hasIngredients ? -1 : 0, finished: false };
+  if (!saved) return { rawIndex: hasIngredients ? -1 : 0, finished: false };
+  const at = saved.stepId ? stepIds.indexOf(saved.stepId) : -1;
+  return at >= 0 ? { ...saved, rawIndex: at } : saved;
 }

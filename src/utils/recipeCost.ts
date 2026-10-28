@@ -190,6 +190,10 @@ export function estimateRecipeCost(
   for (const line of flat) {
     // An optional line the meal didn't pick isn't bought for it.
     if (!optionalCounts(line.ingredient, resolution)) continue;
+    // Nor is one marked as never shopped for (water, most often): the week's
+    // reading already leaves it out, and counted here as unpriced it could
+    // hold the recipe under the coverage floor on its own.
+    if (line.ingredient.excludeFromShoppingList) continue;
     // Costed as written, then scaled: see the header for why not the scaled text.
     accumulate(acc, line.ingredient.nameKey, line.ingredient.quantity, factor, byKey);
   }

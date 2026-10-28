@@ -5,13 +5,13 @@ import type {
   MealPlanEntry,
   NutrientKey,
   Recipe,
-  RecipeComponent,
 } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import { nutritionFor } from './foodNutrition';
 import { panelMultiplier } from './ingredientGrams';
 import { resolvePluralKey } from './groceryPlural';
 import { itemKeyIndex } from './itemAliases';
+import { varietyIndex } from './itemVarieties';
 import { collectPlannedIngredients } from './mealPlanGroceries';
 import { flattenRecipeIngredients, optionalCounts, type ChoiceResolution } from './recipeComponents';
 import { normalizeScale, scaleQuantity } from './recipeScale';
@@ -19,9 +19,9 @@ import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import { hasUndecidedItem } from './itemEither';
 import { onHandNameKeys } from './grocerySuggest';
 import { groceryNameKey } from './groceryParse';
-import { parseQuantity, rationalToNumber } from './quantity';
 import { measureQuantity, ML_PER_TBSP } from './unitConvert';
 import { panOilShare } from './panOil';
+import { componentShares } from './componentShares';
 
 /**
  * What a recipe, or a week of planned meals, is made of.
@@ -31,8 +31,8 @@ import { panOilShare } from './panOil';
  * coverage and the declining-rather-than-answering rule, and every one of
  * those applies here unchanged, with one exception noted where it lives
  * (`resolveLine`'s staple carve-out — a staple has no marginal *cost* at any
- * quantity, which cost's own exclusion is right to rely on, but it still has
- * real calories once the amount is more than a dash). What else is new is
+ * quantity, which cost's own exclusion is right to rely on, but its calories
+ * and sodium are real, so here it counts whenever it can be counted). What else is new is
  * below.
  *
  * **Coverage is per nutrient, not just per line**, which is the difference from
@@ -82,7 +82,7 @@ export interface RecipeNutrition {
   reported: Partial<Record<NutrientKey, number>>;
   /** Lines that resolved to an amount of a food whose panel is known… */
   covered: number;
-  /** …out of how many the dish calls for, negligible staples excluded from both sides (see `resolveLine`). */
+  /** …out of how many the dish calls for, staples that can't be counted excluded from both sides (see `resolveLine`). */
   lines: number;
   /**
    * How many servings *this* total is, which is the recipe's own count times
@@ -201,19 +201,17 @@ function isBulkStapleQuantity(quantity: string, factor: number): boolean {
  * offering to fix a line the total had already counted is exactly how that
  * drift would show up.
  *
- * A staple is null rather than a state of its own: it is excluded from *both*
- * sides of the coverage fraction, so it is not a line that failed, it is not a
- * line at all. Salt missing a nutrition panel is not a gap in a dish's figures
- * — **unless the line itself says otherwise**. `isBulkStapleQuantity` is the
- * one exception: a staple written in a genuinely large amount (100 g or a
- * tablespoon and up) is treated as an
- * ordinary ingredient (falling through to `unmatched`/`noPanel`/`unmeasured`/
- * `covered` below) rather than silently dropped, because a pound of something
- * is a real contribution to a dish's figures whether or not it's also
- * something the cook always keeps stocked. `recipeCost.ts` doesn't need this
- * — being stocked already, rather than bought for this recipe, is a reason a
- * staple has no marginal *cost* here at any quantity, which is a different
- * claim from "this amount has no calories".
+ * **A staple counts whenever it can be counted.** One with figures and an
+ * amount they can measure is `covered` like any other line: a teaspoon of salt
+ * is 2,300 mg of sodium, and dropping it for being something the cook always
+ * keeps stocked threw that away. Only a staple that *can't* be counted (no
+ * figures, or an amount like "a pinch" they can't measure) gets the carve-out:
+ * null, out of *both* sides of the coverage fraction, so salt with no panel is
+ * not a gap in the dish. `isBulkStapleQuantity` limits even that: a staple
+ * written in a genuinely large amount (100 g or a tablespoon and up) that
+ * can't be counted is a real gap, because a pound of something is a real part
+ * of the dish. `recipeCost.ts` skips staples at any quantity, which is a
+ * different claim: being stocked already, they cost this recipe nothing.
  */
 function resolveLine(
   nameKey: string,
@@ -229,15 +227,16 @@ function resolveLine(
   // needs sits right there.
   const resolved = byKey.has(nameKey) ? nameKey : resolvePluralKey(nameKey, byKey.keys());
   const item = resolved ? byKey.get(resolved) : undefined;
-  if (item?.isStaple && !isBulkStapleQuantity(quantity, factor)) return null;
   if (!item) return { state: 'unmatched', item: null, product: null, nutrition: null, multiplier: null };
+  // A staple that can't be counted is no gap, unless it's a bulk amount (above).
+  const negligible = item.isStaple && !isBulkStapleQuantity(quantity, factor);
 
   const product = productFor(item);
   const nutrition = nutritionFor(item, product);
-  if (!nutrition) return { state: 'noPanel', item, product, nutrition: null, multiplier: null };
+  if (!nutrition) return negligible ? null : { state: 'noPanel', item, product, nutrition: null, multiplier: null };
 
   const multiplier = panelMultiplier(quantity, prep, nutrition);
-  if (multiplier === null) return { state: 'unmeasured', item, product, nutrition, multiplier: null };
+  if (multiplier === null) return negligible ? null : { state: 'unmeasured', item, product, nutrition, multiplier: null };
 
   return { state: 'covered', item, product, nutrition, multiplier: multiplier * factor };
 }
@@ -247,6 +246,33 @@ interface Accumulator {
   reported: Partial<Record<NutrientKey, number>>;
   covered: number;
   lines: number;
+}
+
+/**
+ * The catalog by key for a nutrition read: names and other names first, then
+ * a generic its declared varieties cover ("onion" read off White onion), the
+ * same rule `matchIngredientToCatalog` links a line by. Without the varieties
+ * the catalog sheet called such a line linked while this one listed it as not
+ * in the catalog and offered to add a duplicate generic row.
+ */
+function nutritionKeyIndex(items: readonly GroceryItem[]): Map<string, GroceryItem> {
+  const byKey = itemKeyIndex(items);
+  for (const [generic, varieties] of varietyIndex(items)) {
+    if (!byKey.has(generic) && varieties[0]) byKey.set(generic, varieties[0]);
+  }
+  return byKey;
+}
+
+/**
+ * Water as a recipe writes it ("water", "cold water", "boiling water"). It
+ * has no nutrients, so it is left out of a dish's lines rather than counted
+ * against coverage as an ingredient missing from the catalog, which offered
+ * to add water to the catalog. Most imported recipes have a water line.
+ */
+const PLAIN_WATER = /^(?:(?:cold|cool|warm|hot|boiling|lukewarm|ice|iced|tap|filtered|room temperature)\s+)?water$/;
+
+function isPlainWater(nameKey: string): boolean {
+  return PLAIN_WATER.test(nameKey);
 }
 
 /** Folds the resolved lines into one reading, staples already dropped. */
@@ -343,77 +369,11 @@ export function recipeNutrition(
   return readRecipeNutrition(recipe, items, products, recipesById, resolution, scale, swaps).nutrition;
 }
 
-/**
- * How much of each used recipe a dish actually eats, as a fraction of the
- * batch the part's own recipe makes, keyed by that recipe's id. A recipe not
- * in the map counts whole.
- *
- * A used recipe's lines are flattened in whole, so "1 tbsp Fishy Seasoning"
- * charged the dish for the entire 3/4 cup batch. The amount comes from the
- * link's own `amountUsed` when one was typed ("1 tbsp", "2 fillets", or a
- * bare "1/4" for a quarter of the batch), else from the parent's own
- * ingredient line naming the part. It is only believed when it can be
- * compared with the part's `recipeYield`: both measured in one dimension, or
- * both counting the same unit. Anything else (no amount, no yield, "to taste",
- * mismatched units) counts whole, as it always did. Shares compound down a
- * chain of parts. A recipe's `cookedWeightG` is not consulted: a line in
- * tablespoons has no weight until the part's own panel is worked out.
- */
-export function componentShares(
-  root: Recipe,
-  recipesById: ReadonlyMap<string, Recipe>,
-): Map<string, number> {
-  const shares = new Map<string, number>();
-  const visited = new Set<string>([root.id]);
-  const walk = (node: Recipe, share: number): void => {
-    for (const component of node.components ?? []) {
-      if (visited.has(component.recipeId)) continue;
-      const part = recipesById.get(component.recipeId);
-      if (!part) continue;
-      visited.add(part.id);
-      const used = usedFraction(node, component, part);
-      const partShare = share * (used ?? 1);
-      if (partShare !== 1) shares.set(part.id, partShare);
-      walk(part, partShare);
-    }
-  };
-  walk(root, 1);
-  return shares;
-}
-
-/** `amount` as a fraction of `yielded`, or null when the two cannot be compared. */
-function fractionOf(amount: string, yielded: string | null): number | null {
-  const q = parseQuantity(amount);
-  if (!q.amount) return null;
-  const used = rationalToNumber(q.amount);
-  if (!(used > 0)) return null;
-  // A bare number is a number of batches: "1/4" is a quarter of it.
-  if (q.unit === null && q.rest === '') return used;
-  if (!yielded) return null;
-  const a = measureQuantity(amount);
-  const y = measureQuantity(yielded);
-  if (a && y) return a.dimension === y.dimension && y.base > 0 ? a.base / y.base : null;
-  // Counts of one thing: "2 fillets" of "4 fillets".
-  const yq = parseQuantity(yielded);
-  if (q.unit && yq.amount && yq.unit === q.unit) {
-    const total = rationalToNumber(yq.amount);
-    return total > 0 ? used / total : null;
-  }
-  return null;
-}
-
-function usedFraction(parent: Recipe, component: RecipeComponent, part: Recipe): number | null {
-  if (component.amountUsed) return fractionOf(component.amountUsed, part.recipeYield);
-  if (!part.recipeYield) return null;
-  const line = parent.ingredients.find(i => i.nameKey === groceryNameKey(part.name));
-  return line ? fractionOf(line.quantity, part.recipeYield) : null;
-}
-
 /** A dish's figures, the lines behind them, and what is missing, from one walk. */
 export interface RecipeNutritionReading {
   /** The rollup, or null while too little of the dish is known to total it. */
   nutrition: RecipeNutrition | null;
-  /** Every line that counts toward the fraction, negligible staples excluded. */
+  /** Every line that counts toward the fraction, staples that can't be counted excluded. */
   lines: NutritionLine[];
   gaps: NutritionGaps;
   /**
@@ -492,6 +452,24 @@ export interface NutritionLine extends LineResolution {
    * negligible.
    */
   share: number;
+  /**
+   * The fraction of a used recipe's batch the dish eats (`componentShares`),
+   * already in `multiplier` like `share`. Written only when it isn't 1.
+   */
+  componentShare?: number;
+}
+
+/**
+ * One line as the AI estimate is asked about it: the line as shown, plus how
+ * little of it reaches the dish when that is not all of it (a used recipe's
+ * "1 tbsp" of a batch, the oil left in the pan). Sent bare, the estimate
+ * counted the whole batch and all the oil the figures beside it do not.
+ */
+export function estimateRequestLine(line: NutritionLine): string {
+  const text = line.prep ? `${line.quantity} ${line.name}, ${line.prep}` : `${line.quantity} ${line.name}`;
+  const eaten = line.share * (line.componentShare ?? 1);
+  if (!(eaten < 1)) return text;
+  return `${text} (only about ${Math.max(1, Math.round(eaten * 100))}% of this ends up in the dish)`;
 }
 
 /**
@@ -503,9 +481,9 @@ export interface NutritionLine extends LineResolution {
  * own rules would eventually disagree with the count that sent someone looking
  * for them.
  *
- * A negligible staple is absent, exactly as it's absent from both sides of
- * that fraction — but one written in a bulk weight isn't (see `resolveLine`),
- * so it shows up here like any other line, gap and all.
+ * A staple that can't be counted is absent, exactly as it's absent from both
+ * sides of that fraction — but one written in a bulk weight isn't (see
+ * `resolveLine`), so it shows up here like any other line, gap and all.
  *
  * **A dish with an undecided either/or comes back empty**, matching the
  * refusal `recipeNutrition` already makes and for the same reason: both
@@ -532,16 +510,17 @@ export function recipeNutritionLines(
   if (flat.length === 0) return [];
   if (hasUnresolvedChoice(flat) || hasUndecidedItem(flat)) return [];
 
-  const byKey = itemKeyIndex(items);
+  const byKey = nutritionKeyIndex(items);
   const productFor = preferredProductLookup(products);
   const factor = normalizeScale(scale);
-  const shares = componentShares(recipe, recipesById);
+  const shares = componentShares(recipe, recipesById, resolution);
 
   const out: NutritionLine[] = [];
   for (const line of flat) {
     // Excluded outright, same as a staple: not a line that failed to count,
     // not a line at all.
     if (line.ingredient.excludeFromNutrition) continue;
+    if (isPlainWater(line.ingredient.nameKey)) continue;
     // An optional line the meal didn't pick is not part of what was eaten.
     if (!optionalCounts(line.ingredient, resolution)) continue;
     const quantity = scaleQuantity(line.ingredient.quantity, factor).text;
@@ -558,6 +537,7 @@ export function recipeNutritionLines(
       ...resolved,
       multiplier: resolved.multiplier === null ? null : resolved.multiplier * share,
       share,
+      ...((shares.get(line.recipe.id) ?? 1) !== 1 ? { componentShare: shares.get(line.recipe.id) } : {}),
       id: line.ingredient.id,
       recipeId: line.recipe.id,
       name: line.ingredient.name,
@@ -641,11 +621,11 @@ export function weekNutrition(
   swaps: StandingSwapMap = NO_STANDING_SWAPS,
 ): RecipeNutrition | null {
   const planned = collectPlannedIngredients(
-    entries, recipesById, range, swaps, onHandNameKeys(items, new Date(), products)
+    entries, recipesById, range, swaps, onHandNameKeys(items, new Date(), products), { includeNotShopped: true },
   );
   if (planned.length === 0) return null;
 
-  const byKey = itemKeyIndex(items);
+  const byKey = nutritionKeyIndex(items);
   const productFor = preferredProductLookup(products);
   const resolved: LineResolution[] = [];
   for (const line of planned) {
@@ -659,13 +639,14 @@ export function weekNutrition(
     }
     // Measured as written, then scaled, like a single recipe's lines: the
     // planned row's own `quantity` is the scaled shopping text (see the header).
+    if (isPlainWater(line.nameKey)) continue;
     const one = resolveLine(
       line.nameKey,
       line.unscaled?.quantity ?? line.quantity,
-      null,
+      line.prep ?? null,
       byKey,
       productFor,
-      line.unscaled?.factor ?? 1,
+      (line.unscaled?.factor ?? 1) * (line.componentShare ?? 1),
     );
     if (!one) continue;
     // After resolving, for the staple reason on `NutritionLine.share`.
@@ -808,7 +789,7 @@ export function describeRecipeNutritionRange(
 export interface NutritionGaps {
   /** Lines that reached the total. */
   covered: number;
-  /** Lines the dish calls for, negligible staples excluded — the denominator on screen. */
+  /** Lines the dish calls for, staples that can't be counted excluded — the denominator on screen. */
   total: number;
   /**
    * The lines somebody can answer from the recipe page: a catalog row missing

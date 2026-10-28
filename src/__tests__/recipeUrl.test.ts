@@ -66,9 +66,15 @@ describe('normalizeRecipeUrl', () => {
     expect(normalizeRecipeUrl('HTTPS://Example.COM/Chili')).toBe('https://example.com/Chili');
   });
 
-  it('keeps the query and fragment intact', () => {
+  it('keeps the query intact and drops a fragment, which never reaches the server', () => {
     expect(normalizeRecipeUrl('example.com/r?id=7&x=2#steps'))
-      .toBe('https://example.com/r?id=7&x=2#steps');
+      .toBe('https://example.com/r?id=7&x=2');
+    expect(normalizeRecipeUrl('https://site.com/r#recipe')).toBe(normalizeRecipeUrl('https://site.com/r'));
+  });
+
+  it('keeps a hash route, which is the page itself', () => {
+    expect(normalizeRecipeUrl('example.com/#/recipes/12')).toBe('https://example.com/#/recipes/12');
+    expect(normalizeRecipeUrl('example.com/#!/recipes/12')).toBe('https://example.com/#!/recipes/12');
   });
 
   it('allows a port', () => {
@@ -486,5 +492,41 @@ describe('parseRecipePage', () => {
 
   it('never sets the site name from the bare host', () => {
     expect(parseRecipePage('<html><body>nothing</body></html>', LIMIT).siteName).toBeNull();
+  });
+});
+
+describe('parsing gaps a page can fall into', () => {
+  it('keeps a bare "<" or ">" in the text', () => {
+    expect(htmlToText('Bake until it reads < 165F, then rest > 5 min.'))
+      .toBe('Bake until it reads < 165F, then rest > 5 min.');
+    expect(htmlToText('the <b>onion</b>.')).toBe('the onion.');
+  });
+
+  it('reads the zero years and months plugins write, and fractional hours and minutes', () => {
+    expect(parseIsoDuration('P0Y0M0DT0H35M0S')).toBe(35);
+    expect(parseIsoDuration('PT0.5H')).toBe(30);
+    expect(parseIsoDuration('PT7.5M')).toBe(8);
+    expect(parseIsoDuration('P1M')).toBeNull();
+  });
+
+  it('finds a recipe a page names as its main entity', () => {
+    const page = ldPage({ '@type': 'WebPage', mainEntity: { '@type': 'Recipe', name: 'Dal', recipeIngredient: ['1 cup lentils'] } });
+    expect(parseRecipeJsonLd(page)?.name).toBe('Dal');
+  });
+
+  it('decodes entities in an author’s name', () => {
+    const page = ldPage({ '@type': 'Recipe', name: 'Dal', author: { '@type': 'Person', name: 'Ren&eacute;e' } });
+    expect(parseRecipeJsonLd(page)?.author).toBe('Renée');
+  });
+});
+
+describe('parseRecipePage: ingredients published, method not', () => {
+  it('sends the page text along so the method can still be read', () => {
+    const html = ldPage({ '@type': 'Recipe', name: 'Dal', recipeIngredient: ['1 cup lentils'] }, '<p>Rinse the lentils and simmer for 20 minutes.</p>');
+    const page = parseRecipePage(html, 4_000);
+    expect(page.structured).toBe(true);
+    expect(page.steps).toEqual([]);
+    expect(page.text).toContain('1 cup lentils');
+    expect(page.text).toContain('Rinse the lentils and simmer');
   });
 });

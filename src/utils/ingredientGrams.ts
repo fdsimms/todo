@@ -446,7 +446,12 @@ export function panelMultiplier(
     if (!(servings > 0)) return null;
     if (nutrition.basis === 'perServing') return servings;
     if (nutrition.servingGrams !== null && nutrition.servingGrams > 0) {
-      return (servings * nutrition.servingGrams) / 100;
+      if (nutrition.basis === 'per100g') return (servings * nutrition.servingGrams) / 100;
+      // `servingGrams` is a mass, and a per-100ml panel counts millilitres:
+      // read as millilitres, a 40 g serving was 40 ml. Only a weighed volume
+      // in the food's own portion table can relate the two.
+      const millilitres = volumeFromMass(servings * nutrition.servingGrams, portionsWithServing(nutrition), prep);
+      return millilitres === null ? null : millilitres / 100;
     }
     return null;
   }

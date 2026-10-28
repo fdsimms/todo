@@ -100,11 +100,12 @@ import {
   splitIngredientAnd,
   totalMinutes,
 } from '../utils/recipeUtils';
-import { buildIngredientSections, buildIngredientsText, buildRecipeShareText, servingsLineFor } from '../utils/shareText';
+import { amountUsedCounts } from '../utils/componentShares';
+import { buildIngredientSections, buildIngredientsText, buildRecipeShareText, servingsLineFor, unscaledNoteFor } from '../utils/shareText';
 import { PrintIngredientsSheet } from '../components/PrintIngredientsSheet';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
-import { describeUnscaled, formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
+import { formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
 import { convertScaledQuantity, showContainerCount, STACKED_QTY_LENGTH } from '../utils/unitConvert';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
@@ -418,13 +419,10 @@ export function RecipeDetailScreen() {
 
   // Only lines that *have* a quantity can fail to scale; a line with none was
   // never going to say a number either way.
-  const unscaledNote = useMemo(() => {
-    if (!recipe) return null;
-    const count = recipe.ingredients.filter(
-      i => i.quantity.trim() && !scaleQuantity(i.quantity, scale).scaled
-    ).length;
-    return describeUnscaled(count, scale);
-  }, [recipe, scale]);
+  const unscaledNote = useMemo(
+    () => (recipe ? unscaledNoteFor(recipe, recipesById, scale) : null),
+    [recipe, recipesById, scale],
+  );
 
   // Priced through the same flattening the shopping read uses (components,
   // standing swaps, this much of the recipe) — null while too little of it is
@@ -449,8 +447,10 @@ export function RecipeDetailScreen() {
   // A blank this view hasn't filled (RecipeBlank) adds whatever is picked for
   // it, which no figure can know yet, so the total says it is the rest of the dish.
   const hasOpenBlank = useMemo(
-    () => (recipe ? recipeBlanksIn(recipe, recipesById).some(({ blank }) => blankFillOf(overrides, blank.id).length === 0) : false),
-    [recipe, recipesById, overrides]
+    () => (recipe
+      ? recipeBlanksIn(recipe, recipesById, choiceResolution).some(({ blank }) => blankFillOf(overrides, blank.id).length === 0)
+      : false),
+    [recipe, recipesById, overrides, choiceResolution]
   );
 
   // The same flattening again, with grams in place of prices. One reading
@@ -706,6 +706,7 @@ export function RecipeDetailScreen() {
           name: recipe.name,
           servingsLine: servingsLineFor(recipe, scale),
           sections: buildIngredientSections(recipe, recipesById, { scale, unitSystem, weights: weightLookups }),
+          unscaledNote: unscaledNoteFor(recipe, recipesById, scale),
         }
       : null),
     [printMounted, recipe, recipesById, scale, unitSystem, weightLookups]
@@ -1950,6 +1951,8 @@ export function RecipeDetailScreen() {
             <Text style={styles.componentMeta} numberOfLines={1}>
               {target ? describeRecipe(target, null, { recipesById }) : 'No longer in your recipes'}
               {!!resolved.component.amountUsed && ` · uses ${resolved.component.amountUsed}`}
+              {!!resolved.component.amountUsed && !amountUsedCounts(resolved.component.amountUsed, target)
+                && ' (whole batch counted)'}
             </Text>
             {!!alternativeNote && (
               <Text style={styles.alternativeNote} numberOfLines={1}>{alternativeNote}</Text>

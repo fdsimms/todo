@@ -1,7 +1,7 @@
 import type { GroceryItem, MealPlanEntry, MealSlot, Recipe, RecipeComponent, RecipeIngredient } from '../types';
 import {
   buildGroceryListShareText, buildGroceryListText, buildIngredientsText, buildRecipeShareText,
-  buildIngredientSections, buildWeekPlanShareText, servingsLineFor,
+  buildIngredientSections, buildWeekPlanShareText, servingsLineFor, unscaledNoteFor,
 } from '../utils/shareText';
 import { weightLookups } from '../utils/lineWeight';
 
@@ -645,5 +645,19 @@ describe('servingsLineFor', () => {
   it('words the scaled servings, and is null with none stated', () => {
     expect(servingsLineFor(recipe('s1', 'A', { servings: 6 }), 2)).toBe('Serves 12');
     expect(servingsLineFor(recipe('s2', 'B'), 1)).toBeNull();
+  });
+});
+
+describe('unscaledNoteFor', () => {
+  it('counts a used recipe’s lines too, and the share text carries it', () => {
+    const sauce = recipe('u-sauce', 'Sauce', { ingredients: [ing('salt', { quantity: 'a pinch' })] });
+    const main = recipe('u-main', 'Main', {
+      ingredients: [ing('flour', { quantity: '1 cup' }), ing('pepper', { quantity: 'to taste' })],
+      components: [link('u-sauce', 'Sauce')],
+    });
+    const byId = new Map([[sauce.id, sauce], [main.id, main]]);
+    expect(unscaledNoteFor(main, byId, 2)).toBe('2 ingredients couldn’t be scaled automatically. Adjust by eye');
+    expect(unscaledNoteFor(main, byId, 1)).toBeNull();
+    expect(buildRecipeShareText(main, byId, { scale: 2 })).toContain('Adjust by eye');
   });
 });
