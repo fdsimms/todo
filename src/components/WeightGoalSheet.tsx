@@ -47,6 +47,7 @@ import { describeLeftOut, describeLogBasis as describeLogWorking } from '../util
 import { format } from 'date-fns/format';
 import { readMeasuredExpenditure } from '../utils/adaptiveExpenditureRead';
 import {
+  snapToBaselineStep,
   typicalActiveEnergyKcal,
   TYPICAL_ACTIVE_ENERGY_WINDOW_DAYS,
 } from '../utils/activeEnergyBoost';
@@ -183,6 +184,9 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
    */
   const [typicalActiveKcal, setTypicalActiveKcal] = useState<number | null>(null);
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
+  const activeEnergyBoost = useSettingsStore(useShallow(s => s.activeEnergyBoost));
+  const setActiveEnergyBoost = useSettingsStore(s => s.setActiveEnergyBoost);
+  const [raiseBusyDays, setRaiseBusyDays] = useState(false);
   // Nothing preselected, and not persisted: a split is a one-off choice made
   // when applying targets, not a setting. See MACRO_PRESETS on why the app has
   // no opinion about which one.
@@ -243,6 +247,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
       : 'activity');
     setCountDigestion(storedGoal?.countDigestion !== false);
     setReanchor(false);
+    setRaiseBusyDays(activeEnergyBoost !== null);
 
     if (storedGoal) {
       setDirection(goalDirection(storedGoal));
@@ -352,6 +357,17 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     : basis === 'log' && logBudget !== null
       ? logBudget
       : multiplierBudget;
+  // Whether the activity level is what the figure on screen is built from.
+  const usesMultiplier = budget === multiplierBudget;
+
+  // The "busy days" switch is the Daily targets setting, shown here because the
+  // figure above already includes a typical day. It starts the baseline at that
+  // typical day, so it can only be offered once there is one to start from (or
+  // while the setting is already on, so it can be turned off).
+  const showBoostToggle = typicalActiveKcal !== null || activeEnergyBoost !== null;
+  const boostBaselineKcal = activeEnergyBoost !== null
+    ? activeEnergyBoost.baselineKcal
+    : typicalActiveKcal !== null ? snapToBaselineStep(typicalActiveKcal) : null;
 
   // ==== saving, clearing, applying targets ====
 
@@ -382,6 +398,12 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     // re-syncs on the multiplier basis, or on the log basis when that is the
     // one saved on the goal, via useSettingsStore.syncWeightGoalCalorieTarget.
     if (budget !== null) setNutritionTarget('calorieKcal', budget.proposedKcal);
+    // An existing baseline is left alone; only a switch that changed writes.
+    if (raiseBusyDays && activeEnergyBoost === null && boostBaselineKcal !== null) {
+      setActiveEnergyBoost({ baselineKcal: boostBaselineKcal });
+    } else if (!raiseBusyDays && activeEnergyBoost !== null) {
+      setActiveEnergyBoost(null);
+    }
     return true;
   };
 
@@ -447,7 +469,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
     : 'activity';
   const basisUnsaved = storedGoal === null
     || savedBasis !== basis
-    || (basis === 'health' && (storedGoal.countDigestion !== false) !== countDigestion);
+    || (basis === 'health' && (storedGoal.countDigestion !== false) !== countDigestion)
+    || raiseBusyDays !== (activeEnergyBoost !== null);
   const showApplyButton = budget !== null && canSave && (!alreadyApplied || basisUnsaved);
   const applyLabel = budget === null
     ? ''
@@ -656,20 +679,6 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
               </HelpText>
             </View>
 
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Activity</Text>
-              <SegmentedControl
-                options={ACTIVITY_LEVELS.map(level => ({
-                  value: level,
-                  label: ACTIVITY_LABEL[level].label,
-                }))}
-                value={activity}
-                onChange={next => setActivity(next)}
-                columns={2}
-                label="Activity"
-              />
-              <Text style={styles.help}>{ACTIVITY_LABEL[activity].hint}</Text>
-            </View>
           </View>
 
           <Text style={styles.sectionTitle}>DAILY CALORIES</Text>
@@ -799,8 +808,29 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                     ? <><Text style={styles.basisCaptionLead}>What Apple Health measured.</Text>{` Your resting rate, plus ${(typicalActiveKcal ?? 0).toLocaleString()} cal of activity on a typical recent day${countDigestion ? `, plus about ${Math.round(budget.maintenanceKcal * DIGESTION_SHARE).toLocaleString()} cal for digesting food` : ''}.`}</>
                     : basis === 'log'
                       ? <><Text style={styles.basisCaptionLead}>What you actually ate and weighed.</Text>{' Needs no guess about how active you are.'}</>
-                      : <><Text style={styles.basisCaptionLead}>The activity level you picked above</Text>{', times your resting rate.'}</>}
+                      : <><Text style={styles.basisCaptionLead}>The activity level you pick here</Text>{', times your resting rate.'}</>}
                 </Text>
+                {/* Only while the figure actually uses it. Under a measured
+                    basis the level changes nothing, so a picker there is a
+                    control that does nothing; it comes back whenever the
+                    multiplier is what is on screen, including as the fallback
+                    before a measurement exists. */}
+                {usesMultiplier && (
+                  <View style={styles.field}>
+                    <Text style={styles.fieldLabel}>Activity</Text>
+                    <SegmentedControl
+                      options={ACTIVITY_LEVELS.map(level => ({
+                        value: level,
+                        label: ACTIVITY_LABEL[level].label,
+                      }))}
+                      value={activity}
+                      onChange={next => setActivity(next)}
+                      columns={2}
+                      label="Activity"
+                    />
+                    <Text style={styles.help}>{ACTIVITY_LABEL[activity].hint}</Text>
+                  </View>
+                )}
                 {basis === 'log' && logResult && logResult.kind !== 'measured' && (
                   <Text style={styles.help}>
                     {describeLogWorking(logResult, kg => `${kgToUnit(kg, unit).toFixed(1)} ${unit}`, key => format(dayKeyToDate(key), 'MMM d'))}
@@ -870,6 +900,33 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                   </>
                 )}
 
+                {/* Every basis already covers a typical day of movement, so
+                    switching this on starts the baseline at the person's own
+                    typical day and only activity beyond it is added. That is
+                    why there is no stepper here: a baseline of zero would
+                    count the same walks twice (it stays settable under Daily
+                    targets). Staged with the goal and written by `commit`. */}
+                {showBoostToggle && (
+                  <>
+                    <TouchableOpacity
+                      style={styles.toggleRow}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => { haptics.tap(); setRaiseBusyDays(on => !on); }}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: raiseBusyDays }}
+                      accessibilityLabel="Raise the target on busy days"
+                    >
+                      <Text style={styles.toggleLabel}>Raise the target on busy days</Text>
+                      <Toggle value={raiseBusyDays} />
+                    </TouchableOpacity>
+                    <HelpText style={styles.help}>
+                      {raiseBusyDays && boostBaselineKcal !== null
+                        ? `Adds active calories beyond ${boostBaselineKcal.toLocaleString()} cal, a typical day for you. Your target already covers a typical day, so nothing is counted twice. Change the typical day under Daily targets.`
+                        : 'Adds the active calories Apple Health records beyond a typical day. Off, the target stays the same every day.'}
+                    </HelpText>
+                  </>
+                )}
+
                 {budget.raisedToFloor && (
                   <Text style={styles.warning}>
                     The arithmetic came to {budget.arithmeticKcal.toLocaleString()} cal.
@@ -881,9 +938,9 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
 
                 <HelpText style={styles.help}>
                   {measuredBasis
-                    ? `Still an estimate. The resting rate comes from a population formula (Mifflin-St Jeor), ${countDigestion ? 'digestion is a rule of thumb, and ' : ''}only the activity is measured. Adjust it based on what the scale shows. To raise the target on days you move more than usual, turn on Add active calories under Daily targets.`
+                    ? `Still an estimate. The resting rate comes from a population formula (Mifflin-St Jeor), ${countDigestion ? 'digestion is a rule of thumb, and ' : ''}only the activity is measured. Adjust it based on what the scale shows.`
                     : basis === 'log' && logBudget !== null
-                      ? 'Days with one meal logged are left out, so under-logging reads low. Keep Add active calories off in Daily targets, or busy days count twice.'
+                      ? 'Days with one meal logged are left out, so under-logging reads low.'
                       : 'An estimate from a population formula (Mifflin-St Jeor). Adjust it based on what the scale shows.'}
                 </HelpText>
               </>
