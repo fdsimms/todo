@@ -252,8 +252,13 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
   ].filter(Boolean).join(' · ');
 
   // ==== filling the drafts from the recipe ====
+  // Keyed on the recipe's id and the open, not on `recipe`: every store reload
+  // (a sync from another device, every few seconds while one is applying)
+  // rebuilds the object, and reseeding on that wiped what was being typed,
+  // and emptied a new recipe's name so that Done deleted it. Same keying
+  // CookbookEditor's load uses, for the same reason.
   useEffect(() => {
-    if (!recipe) return;
+    if (!recipe || !visible) return;
     setName(draft ? '' : recipe.name);
     setNotesDraft(recipe.notes);
     setUrl(recipe.sourceUrl ?? '');
@@ -291,7 +296,8 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     setAuthorOpen(false);
     setSourceOpen(false);
     setLinkOpen(false);
-  }, [recipe]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipe?.id, visible]);
 
   // ==== save and close ====
   const saveAndClose = () => {
@@ -301,13 +307,6 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     if (draft && !name.trim() && recipe.ingredients.length === 0 && recipe.steps.length === 0) {
       deleteRecipe(recipe.id);
       onDeleted();
-      return;
-    }
-    // renameRecipe refuses an empty name or a collision, and says so by
-    // returning false — surfacing it here rather than silently discarding the
-    // edit, which is what a plain `if (trimmed)` would do.
-    if (name.trim() && name.trim() !== recipe.name && !renameRecipe(recipe.id, name)) {
-      Alert.alert('That name is taken', 'Another recipe already has that name.');
       return;
     }
     const book = cookbooks.find(c => c.id === recipe.cookbookId);
@@ -334,6 +333,15 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
   // ==== committing drafts ====
   const commit = (cookbookIntent: CookbookEditIntent) => {
     if (!recipe) return;
+    // renameRecipe refuses an empty name or a collision, and says so by
+    // returning false — surfacing it here rather than silently discarding the
+    // edit, which is what a plain `if (trimmed)` would do. Here rather than
+    // ahead of the cookbook question, so a Cancel there writes nothing at all
+    // instead of keeping the rename and dropping the rest.
+    if (name.trim() && name.trim() !== recipe.name && !renameRecipe(recipe.id, name)) {
+      Alert.alert('That name is taken', 'Another recipe already has that name.');
+      return;
+    }
     setNotes(recipe.id, notes);
     setSourceUrl(recipe.id, url);
     // A cookbook with a title goes on the shelf and is linked. Everything else

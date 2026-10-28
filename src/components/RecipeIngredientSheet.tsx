@@ -5,7 +5,7 @@
 //
 //   ==== <name> ====        the section banners through the logic half
 //   makeStyles              styles, at the bottom
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useContext, useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
+import { EmbeddedPaneContext } from './EmbeddedRoute';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient } from '../types';
 import {
@@ -104,6 +105,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
+  const embedded = useContext(EmbeddedPaneContext);
 
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
   const splitIngredientAlternatives = useRecipeStore(s => s.splitIngredientAlternatives);
@@ -303,8 +305,17 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   }, [askPan, ingredient, allRecipes, recipeId, groceryItems, itemProducts, quantity, prep, cookingShare]);
 
   // ==== save and close ====
+  // Every way out writes the drafts first: Done, and also opening a recipe or
+  // a setting from the catalog card, splitting the line or merging it back.
+  // Those closed with a bare `onClose`, so an edited amount was lost, and a
+  // split cloned the stored row rather than what was on screen.
   const saveAndClose = () => {
-    if (!ingredient) { onClose(); return; }
+    commitEdits();
+    onClose();
+  };
+
+  const commitEdits = () => {
+    if (!ingredient) return;
     // Tapping Done can beat the group name field's own blur — flush it here
     // instead of trusting stale `choiceGroup` state.
     const typedChoiceGroup = editingGroupName ? commitGroupRename() : cleanChoiceGroup(choiceGroup);
@@ -331,7 +342,6 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
       cookedInPan,
       excludeFromShoppingList,
     });
-    onClose();
   };
 
   if (!ingredient) return null;
@@ -440,6 +450,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
   const acceptAndSplit = () => {
     if (!ingredient || !andOffer) return;
+    commitEdits();
     if (!splitIngredientAnd(recipeId, ingredient.id)) { haptics.error(); return; }
     haptics.success();
     animateLayout();
@@ -448,6 +459,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
   const acceptSplit = () => {
     if (!ingredient || !alternatives) return;
+    commitEdits();
     const created = splitIngredientAlternatives(
       recipeId, ingredient.id, alternatives, splitGroupName
     );
@@ -528,6 +540,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
 
   const mergeBack = () => {
     if (!ingredient) return;
+    commitEdits();
     const merged = mergeChoiceGroup(recipeId, ingredient.id);
     if (!merged) return;
     haptics.success();
@@ -1217,12 +1230,17 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
         onClose={() => setEditingItemId(null)}
         onOpenRecipe={openRecipeId => {
           setEditingItemId(null);
-          onClose();
-          navigation.navigate('RecipeDetail', { recipeId: openRecipeId });
+          saveAndClose();
+          // Pushed, not navigated: this sheet sits on a recipe's own page, and
+          // navigating to the same route swapped the params in place, carrying
+          // this recipe's half-typed notes and step drafts onto the next one.
+          // In a pane, navigate is what replaces the pane's recipe.
+          if (embedded) navigation.navigate('RecipeDetail', { recipeId: openRecipeId });
+          else navigation.push('RecipeDetail', { recipeId: openRecipeId });
         }}
         onOpenSettings={entryId => {
           setEditingItemId(null);
-          onClose();
+          saveAndClose();
           navigateToFoodSearchSettings(navigation, entryId);
         }}
         recipeExists={openRecipeId => allRecipes.some(r => r.id === openRecipeId)}
