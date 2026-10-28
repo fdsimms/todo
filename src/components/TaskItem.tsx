@@ -4355,6 +4355,17 @@ const TaskItemRow = React.memo(function TaskItem({
             </PressableScale>
           </View>
         )}
+        {/* On a Mac the select and reschedule buttons float over the end of the
+            title while the pointer is on the row, rather than holding 64pt of
+            it for good (the trailing copy below draws nothing there). */}
+        {showActions && (
+          <SpotlitSwipeActionButtons
+            placement="titleEnd"
+            enabled={!selectionMode}
+            whenAction={swipeWhen}
+            selectAction={swipeSelect}
+          />
+        )}
       </TouchableOpacity>
 
       {/* A sibling of the trailing action buttons, not of the title text it
@@ -4545,6 +4556,7 @@ const TaskItemRow = React.memo(function TaskItem({
 
       {showActions && (
         <SpotlitSwipeActionButtons
+          overlayOnHover
           enabled={!selectionMode}
           whenAction={swipeWhen}
           selectAction={swipeSelect}

@@ -23,8 +23,9 @@ import { runAfterPaint } from './src/utils/afterPaint';
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
 import { useNotificationTapSync } from './src/utils/notificationTapSync';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
+import { runningOnMac } from './src/utils/runningOnMac';
+import { setDeviceIsMac } from './src/utils/deviceKind';
 import { useKeyShortcuts } from './src/hooks/useKeyShortcuts';
-import { useMacMirroringDefault } from './src/hooks/useMacMirroringDefault';
 import { useMenuBar } from './src/hooks/useMenuBar';
 import { useMacWindow } from './src/hooks/useMacWindow';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
@@ -96,6 +97,10 @@ SplashScreen.setOptions({ fade: true, duration: animation.duration.normal });
 // optimization layer.
 enableScreens(false);
 
+// Before any store initializes: the settings store turns iPhone Mirroring mode on for a
+// Mac that was never asked (see `deviceKind.ts` for why it can't ask the device itself).
+setDeviceIsMac(runningOnMac());
+
 /**
  * The menu bar and the Mac window's title and size. A component of its own
  * rather than hooks in AppContent: the menu follows every screen the side menu
@@ -115,8 +120,6 @@ function AppContent() {
   // Beside the shake: both are app-wide ways in from outside the screen, and
   // the shortcuts' ⌘Z is the shake's replacement in iPhone Mirroring.
   useKeyShortcuts();
-  // A Mac gets iPhone Mirroring mode's buttons and shortcuts without asking for them.
-  useMacMirroringDefault();
   return (
     <View style={{ flex: 1 }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />

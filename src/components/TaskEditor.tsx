@@ -214,6 +214,7 @@ import { FieldLabel } from './FieldLabel';
 import { describeMission, normalizeMission } from '../utils/missions';
 import { MissionPicker } from './MissionPicker';
 import { RotatingChevron } from './RotatingChevron';
+import { runningOnMac } from '../utils/runningOnMac';
 
 /** The kind picker's segments. The hint under the track says what the pick does. */
 const TASK_KIND_SEGMENTS = TASK_KIND_META.map(meta => ({
@@ -3991,7 +3992,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
-      scrollContentStyle={styles.scrollContent}
+      // 320 is room for a software keyboard to scroll a lower field above it; a Mac
+      // has none, and the room was a blank screenful after the last card.
+      scrollContentStyle={runningOnMac() ? styles.scrollContentMac : styles.scrollContent}
       scrollEnabled={!draggingRow}
       // Gone while the field search is open: the search field is then the way
       // round the form, and the cards it hides would leave the bar half empty.
@@ -9016,6 +9019,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   disabled: { opacity: 0.4 },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 320 },
+  scrollContentMac: { paddingBottom: spacing.xl },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', paddingLeft: spacing.md },
   // Level with the title's first line: its paddingTop plus half the gap
   // between the box and one line of font.xl.

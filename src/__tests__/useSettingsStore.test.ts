@@ -2,6 +2,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { dbGetAllSettings, dbGetSetting, dbSetSetting } from '../db/database';
 import type { MealSlot } from '../types';
 import { loadAnthropicApiKey, saveAnthropicApiKey } from '../utils/secureApiKey';
+import { setDeviceIsMac } from '../utils/deviceKind';
 
 jest.mock('../db/database', () => ({
   dbGetSetting: jest.fn().mockReturnValue(null),
@@ -1576,6 +1577,47 @@ describe('mirroringMode', () => {
     useSettingsStore.getState().setMirroringMode(true);
     expect(dbSetSetting).toHaveBeenCalledWith('mirroringMode', 'true');
     expect(useSettingsStore.getState().mirroringMode).toBe(true);
+  });
+
+  describe('on a Mac', () => {
+    beforeEach(() => setDeviceIsMac(true));
+    afterEach(() => setDeviceIsMac(false));
+
+    it('is on when nobody has been asked', () => {
+      useSettingsStore.getState().initialize();
+      expect(useSettingsStore.getState().mirroringMode).toBe(true);
+    });
+
+    // The default used to be set once after launch, and every later initialize()
+    // (after a sync that applied rows, entering or leaving demo mode, a restore)
+    // read the absent value back as off. So the hover buttons, ⌘Z and Escape went
+    // quiet on a Mac the first time it synced, with the setting reading "off".
+    it('is still on after initialize runs again', () => {
+      useSettingsStore.getState().initialize();
+      useSettingsStore.getState().initialize();
+      useSettingsStore.getState().initialize();
+      expect(useSettingsStore.getState().mirroringMode).toBe(true);
+    });
+
+    it('writes nothing, so the default keeps following the device', () => {
+      useSettingsStore.getState().initialize();
+      expect(dbSetSetting).not.toHaveBeenCalledWith('mirroringMode', expect.anything());
+    });
+
+    it('stays off for someone who turned it off', () => {
+      (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+        key === 'mirroringMode' ? 'false' : null,
+      );
+      useSettingsStore.getState().initialize();
+      useSettingsStore.getState().initialize();
+      expect(useSettingsStore.getState().mirroringMode).toBe(false);
+    });
+  });
+
+  it('is off on a phone with nothing stored, however often initialize runs', () => {
+    useSettingsStore.getState().initialize();
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mirroringMode).toBe(false);
   });
 });
 

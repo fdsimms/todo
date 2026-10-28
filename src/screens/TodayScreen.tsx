@@ -4111,6 +4111,7 @@ export function TodayScreen() {
         expanded={expandedTaskId === task.id}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
         onEdit={handleRowEdit}
+        paneActive={paneEditingTaskId === task.id}
         subtaskCount={subs.items.length}
         subtaskDoneCount={subs.doneCount}
         subtasks={subs.items}
@@ -4168,6 +4169,7 @@ export function TodayScreen() {
         expanded={expandedTaskId === task.id}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
         onEdit={handleRowEdit}
+        paneActive={paneEditingTaskId === task.id}
         subtaskCount={subs.items.length}
         subtaskDoneCount={subs.doneCount}
         subtasks={subs.items}
@@ -5341,6 +5343,7 @@ export function TodayScreen() {
                     expanded={expandedTaskId === item.task.id}
                     spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
                     onEdit={handleRowEdit}
+                    paneActive={paneEditingTaskId === item.task.id}
                     subtaskCount={subs.items.length}
                     subtaskDoneCount={subs.doneCount}
                     subtasks={subs.items}
@@ -5682,6 +5685,7 @@ export function TodayScreen() {
                     expanded={expandedTaskId === item.id}
                     spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
                     onEdit={handleRowEdit}
+                    paneActive={paneEditingTaskId === item.id}
                     subtaskCount={subs.items.length}
                     subtaskDoneCount={subs.doneCount}
                     subtasks={subs.items}

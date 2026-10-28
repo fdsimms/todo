@@ -1,11 +1,11 @@
-import React, { useContext } from 'react';
-import { TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useContext, useEffect, useRef } from 'react';
+import { Animated, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { RowHoverContext, type SelectAction, type UndoAction, type WhenAction } from './SwipeableRow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { PointerView } from './PointerView';
 import { useColors } from '../theme/ThemeContext';
-import { iconSize, spacing } from '../theme';
+import { animation, iconSize, radius, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -20,6 +20,20 @@ interface Props {
    * (selection mode, a drag): pass the row's `SwipeableRow` `enabled`.
    */
   enabled?: boolean;
+  /**
+   * Where the buttons are drawn. 'trailing' (the default) is the row's last
+   * control, in line with the others. 'titleEnd' is for a row whose title is
+   * squeezed by them: on a Mac they float over the end of the title and reserve
+   * no room of their own, so put this inside the title's container and pair it
+   * with a trailing copy that passes `overlayOnHover`. Off a Mac (no pointer to
+   * wait for) it draws nothing and the trailing copy does the work.
+   */
+  placement?: 'trailing' | 'titleEnd';
+  /**
+   * On a Mac, draw nothing here: this row's `titleEnd` copy shows the buttons
+   * instead. Off a Mac this copy is the only one and draws as usual.
+   */
+  overlayOnHover?: boolean;
 }
 
 /**
@@ -42,21 +56,41 @@ interface Props {
  * dimmer than `SelectionDot` so a list doesn't look mid-selection at rest.
  *
  * **On a Mac they wait for the pointer** (`RowHoverContext`): drawn only while
- * it is over the row, the way a Mac list shows a row's controls. They keep
- * their space while hidden, so a title never re-wraps and the rows below never
- * move as the pointer passes down the list.
+ * it is over the row, the way a Mac list shows a row's controls. A trailing
+ * copy keeps its space while hidden, so a title never re-wraps and the rows
+ * below never move as the pointer passes down the list. A hidden button also
+ * takes no touches, or a click on the empty end of a row whose hover was missed
+ * (a reflow slid it under a still pointer) would land on an invisible one.
+ *
+ * Two buttons and the row's own controls leave a title 208pt in a 400pt list
+ * pane, so the task row and the stack header draw them over the end of the
+ * title instead (`placement="titleEnd"`): nothing is reserved, and nothing but
+ * the title's last few characters is covered while the pointer is there.
  */
-export function SwipeActionButtons({ undoAction, whenAction, selectAction, enabled = true }: Props) {
+export function SwipeActionButtons({
+  undoAction, whenAction, selectAction, enabled = true, placement = 'trailing', overlayOnHover = false,
+}: Props) {
   const colors = useColors();
   const mirroringMode = useSettingsStore(s => s.mirroringMode);
   const hovered = useContext(RowHoverContext);
+  const hidden = hovered === false;
+  const fade = useHoverFade(hidden);
   if (!mirroringMode || !enabled) return null;
-  const buttonStyle = hovered === false ? [styles.button, styles.hidden] : styles.button;
+  const overlay = placement === 'titleEnd';
+  const tracksHover = hovered !== null;
+  // The two copies of a row's buttons split the cases between them, so exactly one is ever drawn.
+  if (overlay ? !tracksHover : tracksHover && overlayOnHover) return null;
 
-  return (
+  const buttonStyle = overlay
+    ? [styles.button, styles.overlayButton, { backgroundColor: colors.bgTertiary }]
+    : hidden ? [styles.button, styles.hidden] : styles.button;
+  // A hidden trailing button keeps its space but is not there to be clicked.
+  const buttonEvents = !overlay && hidden ? 'none' : undefined;
+
+  const buttons = (
     <>
       {undoAction ? (
-        <PointerView toolTip={undoAction.accessibilityLabel}>
+        <PointerView toolTip={undoAction.accessibilityLabel} pointerEvents={buttonEvents}>
           <TouchableOpacity
             onPress={() => { haptics.tap(); undoAction.onUndo(); }}
             hitSlop={8}
@@ -68,7 +102,7 @@ export function SwipeActionButtons({ undoAction, whenAction, selectAction, enabl
           </TouchableOpacity>
         </PointerView>
       ) : whenAction ? (
-        <PointerView toolTip={whenAction.accessibilityLabel}>
+        <PointerView toolTip={whenAction.accessibilityLabel} pointerEvents={buttonEvents}>
           <TouchableOpacity
             onPress={() => { haptics.tap(); whenAction.onAction(); }}
             hitSlop={8}
@@ -81,7 +115,7 @@ export function SwipeActionButtons({ undoAction, whenAction, selectAction, enabl
         </PointerView>
       ) : null}
       {selectAction && (
-        <PointerView toolTip={selectAction.accessibilityLabel}>
+        <PointerView toolTip={selectAction.accessibilityLabel} pointerEvents={buttonEvents}>
           <TouchableOpacity
             // No tap of its own: onSelect enters selection mode, which fires a
             // heavy impact (useRowSelection), and the two landed together.
@@ -97,6 +131,29 @@ export function SwipeActionButtons({ undoAction, whenAction, selectAction, enabl
       )}
     </>
   );
+
+  if (!overlay) return buttons;
+  return (
+    <Animated.View
+      style={[styles.overlay, { opacity: fade }]}
+      pointerEvents={hidden ? 'none' : 'box-none'}
+    >
+      {buttons}
+    </Animated.View>
+  );
+}
+
+/** 1 while the pointer is over the row, 0 while it isn't, eased rather than snapped. */
+function useHoverFade(hidden: boolean): Animated.Value {
+  const value = useRef(new Animated.Value(hidden ? 0 : 1)).current;
+  useEffect(() => {
+    Animated.timing(value, {
+      toValue: hidden ? 0 : 1,
+      duration: animation.duration.fast,
+      useNativeDriver: true,
+    }).start();
+  }, [hidden, value]);
+  return value;
 }
 
 /**
@@ -116,5 +173,20 @@ const styles = StyleSheet.create({
   },
   hidden: {
     opacity: 0,
+  },
+  // Over the end of the title, vertically centered, out of the layout entirely.
+  overlay: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  // Each is a chip of its own, opaque, so it reads over the title text it covers.
+  overlayButton: {
+    borderRadius: radius.full,
+    padding: spacing.xsm,
   },
 });

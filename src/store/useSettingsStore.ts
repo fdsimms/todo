@@ -2,6 +2,8 @@ import { NO_MOOD_CONTEXT_SOURCES, parseMoodContextSources, parseMoodEventTags, t
 import { parseTaskTypeFilters, type TaskTypeFilter } from '../utils/taskTypeFilter';
 import { create } from 'zustand';
 import { dbGetAllSettings, dbGetDeviceId, dbGetSetting, dbSetSetting } from '../db/database';
+import { shouldDefaultMirroringOn } from '../utils/mirroringDefault';
+import { deviceIsMac } from '../utils/deviceKind';
 import type { ThemeMode } from '../theme';
 import type { WeightUnit } from '../utils/weightLog';
 import type { DumbbellEntry } from '../utils/dumbbellLoad';
@@ -3486,7 +3488,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const simpleTaskForm = dbGetSetting('simpleTaskForm') === 'true';
     const simpleMode = dbGetSetting('simpleMode') === 'true';
     const hideHelpText = dbGetSetting('hideHelpText') === 'true';
-    const mirroringMode = dbGetSetting('mirroringMode') === 'true';
+    // Never asked, on a Mac, is on (`shouldDefaultMirroringOn`). Decided here, on every
+    // initialize, rather than once by a hook after launch: this runs again after each
+    // sync that applied rows, entering or leaving demo mode and a restore, and a default
+    // set once from outside was read back as the stored `false` by the first of those.
+    const storedMirroring = dbGetSetting('mirroringMode');
+    const mirroringMode = storedMirroring === 'true' || shouldDefaultMirroringOn(storedMirroring, deviceIsMac());
     // `!== 'false'`, not `=== 'true'` — defaults on, same reasoning as
     // hapticsEnabled/shakeToUndoEnabled above.
     const timerLiveActivity = dbGetSetting('timerLiveActivity') !== 'false';
