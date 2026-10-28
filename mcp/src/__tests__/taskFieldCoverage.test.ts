@@ -51,7 +51,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
     'previousStreakDate', 'priorBestStreak', 'previousFollowUpTaskTally', 'followUpTaskSourceId',
     'generatedSourceId', 'generatedReadyAt', 'waitingFollowUpDeclinedAt', 'timerStartedAt',
     'timerElapsedSeconds', 'estimateBeforeTiming', 'seriesDefaults', 'pendingImport', 'reminderTimeAnchor',
-    'reminderUtcOffsetMinutes', 'createdAt', 'archivedAt', 'previousOccurrenceId', 'rainSkippedOn', 'slotDecidedOn',
+    'reminderUtcOffsetMinutes', 'archivedAt', 'previousOccurrenceId', 'rainSkippedOn', 'slotDecidedOn',
     'quotaLoggedDayKey',
   ],
 
