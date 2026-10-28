@@ -1398,8 +1398,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       : boxChoice
                         ? 'Read from the barcode lookup'
                         : boxCount > 0
-                          ? 'Optional. Tap to choose one'
-                          : 'Optional. Tap to add one';
+                          ? 'Optional'
+                          : 'Optional. Add one if you know it';
                 // Whether figures already exist for what this row resolves to:
                 // the product's or the catalog row's own, else the barcode
                 // database's. Only then is "Add from label" a real next step.
@@ -1697,86 +1697,62 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         </View>
                       )}
 
-                      {/* Once the row is matched to an item. With brands on file it
-                          is a choice among them; without, it is the way to add the
-                          first one, so the brand and flavor can be recorded from
-                          here rather than in the grocery screen afterwards. A row
-                          that is new has these as the Brand and Flavor fields
-                          above, which is why this line isn't shown for it. */}
-                      {!!rowItemId && boxChoice ? (
-                        <>
-                          <View style={styles.fieldPair}>
-                            {([
-                              ['BRAND', boxChoice.brand, 'Brand'],
-                              ['FLAVOR OR TYPE', boxChoice.variant, 'Flavor or type'],
-                            ] as const).map(([label, value, spoken]) => (
-                              <TouchableOpacity
-                                key={label}
-                                style={styles.fieldHalf}
-                                activeOpacity={interaction.activeOpacity}
-                                onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'box' ? null : { key: row.key, mode: 'box' }))}
-                                accessibilityRole="button"
-                                accessibilityLabel={`${spoken}: ${value ?? 'none'}. Change which brand or flavor of ${resolvedName ?? 'this item'} this is`}
-                              >
-                                <Text style={styles.fieldLabel}>{label}</Text>
-                                <View style={styles.fieldValueBox}>
-                                  <Text
-                                    style={[styles.fieldValue, !value && { color: colors.textTertiary }]}
-                                    numberOfLines={2}
-                                  >
-                                    {value ?? 'None'}
-                                  </Text>
-                                  <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
-                                </View>
-                              </TouchableOpacity>
-                            ))}
+                      {/* Once the row is matched to an item: which brand and flavor of
+                          it this is. One line saying what it will be filed as, and
+                          one control; the picker (the item's boxes, and the form for
+                          a new one) opens in its place so the two never share the
+                          screen. A row that is new has the Brand and Flavor fields
+                          above instead, which is why this isn't shown for it. */}
+                      {!!rowItemId && (
+                        picking?.key === row.key && picking.mode === 'box' ? (
+                          <View style={styles.pickerWrap}>
+                            <ProductPicker
+                              itemId={rowItemId}
+                              products={itemProducts}
+                              // Before anybody picks, the row is already filed against
+                              // whichever box its own barcode names, so that is what
+                              // the list shows as current rather than nothing.
+                              value={row.pickedProductId ?? gtinProductFor(row.gtin)?.id ?? null}
+                              allowNone={false}
+                              onCreate={fields => {
+                                if (!rowItemId) return false;
+                                const made = addProduct(rowItemId, fields, { promote: false });
+                                if (!made) return false;
+                                setPicking(null);
+                                patchRow(row.key, { pickedProductId: made.id });
+                                return true;
+                              }}
+                              onPick={product => {
+                                setPicking(null);
+                                if (product) patchRow(row.key, { pickedProductId: product.id });
+                              }}
+                              onClose={() => setPicking(null)}
+                              label={resolvedName ? `WHICH ${resolvedName.toUpperCase()}` : 'WHICH ONE'}
+                            />
                           </View>
-                          <Text style={styles.rowLabel}>{boxNote}. Tap to change</Text>
-                        </>
-                      ) : !!rowItemId && (
-                        <ActionRow
-                          icon="pricetag-outline"
-                          title="No brand or flavor chosen"
-                          note={boxNote}
-                          tone="muted"
-                          onPress={() => setPicking(p => (p?.key === row.key && p.mode === 'box' ? null : { key: row.key, mode: 'box' }))}
-                          accessibilityLabel={
-                            boxCount > 0
-                              ? `Choose which brand or flavor of ${resolvedName ?? 'this item'} this is`
-                              : `Add a brand or flavor to ${resolvedName ?? 'this item'}`
-                          }
-                        />
-                      )}
-                      {/* The second question, and deliberately its own control
-                          rather than a step of the first: which item this is, then
-                          which kind of it. Most scans never need it, because the
-                          barcode's own words derive one perfectly well, so it sits
-                          behind its own tap rather than lengthening every row. */}
-                      {picking?.key === row.key && picking.mode === 'box' && (
-                        <View style={styles.pickerWrap}>
-                          <ProductPicker
-                            itemId={rowItemId}
-                            products={itemProducts}
-                            // Before anybody picks, the row is already filed against
-                            // whichever box its own barcode names, so that is what
-                            // the list shows as current rather than nothing.
-                            value={row.pickedProductId ?? gtinProductFor(row.gtin)?.id ?? null}
-                            allowNone={false}
-                            onCreate={fields => {
-                              if (!rowItemId) return false;
-                              const made = addProduct(rowItemId, fields, { promote: false });
-                              if (!made) return false;
-                              setPicking(null);
-                              patchRow(row.key, { pickedProductId: made.id });
-                              return true;
-                            }}
-                            onPick={product => {
-                              setPicking(null);
-                              if (product) patchRow(row.key, { pickedProductId: product.id });
-                            }}
-                            label={resolvedName ? `WHICH KIND OF ${resolvedName.toUpperCase()}` : 'WHICH KIND'}
-                          />
-                        </View>
+                        ) : (
+                          <View style={styles.boxSummary}>
+                            <View style={styles.boxSummaryText}>
+                              <Text style={styles.fieldLabel}>WHICH ONE</Text>
+                              <Text style={styles.boxSummaryTitle} numberOfLines={2}>
+                                {boxText ?? 'No brand or flavor chosen'}
+                              </Text>
+                              <Text style={styles.rowLabel}>{boxNote}</Text>
+                            </View>
+                            <InlineAction
+                              label={boxChoice ? 'Change' : boxCount > 0 ? 'Choose' : 'Add'}
+                              variant="neutral"
+                              onPress={() => setPicking({ key: row.key, mode: 'box' })}
+                              accessibilityLabel={
+                                boxChoice
+                                  ? `Change which brand or flavor of ${resolvedName ?? 'this item'} this is. Now ${boxText ?? 'none'}`
+                                  : boxCount > 0
+                                    ? `Choose which brand or flavor of ${resolvedName ?? 'this item'} this is`
+                                    : `Add a brand or flavor to ${resolvedName ?? 'this item'}`
+                              }
+                            />
+                          </View>
+                        )
                       )}
 
                       {!needsNutrition && nutritionBlock}
@@ -1982,6 +1958,9 @@ function makeStyles(colors: Colors) {
     rowCaption: { color: colors.textSecondary, fontSize: font.xs, flexShrink: 1 },
     // Sits directly under the line that opened it, inside the editor's own padding.
     pickerWrap: { paddingTop: spacing.xs },
+    boxSummary: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    boxSummaryText: { flex: 1 },
+    boxSummaryTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     rowError: { color: colors.orangeText, fontSize: font.xs },
     // Tighter than `InlineAction`'s own default so a "Confirm" pill sitting
     // beside a caption reads as part of the line, not a control from a denser
@@ -2008,19 +1987,6 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
       marginBottom: spacing.xs,
     },
-    // A tappable value shown in the shape of a field, for a brand or flavor the
-    // row already has and a tap changes rather than types.
-    fieldValueBox: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: spacing.xs,
-      paddingHorizontal: spacing.smd,
-      minHeight: 44,
-      backgroundColor: colors.bgSunken,
-      borderRadius: radius.md,
-    },
-    fieldValue: { flex: 1, color: colors.text, fontSize: font.md },
     fieldInput: {
       color: colors.text,
       fontSize: font.md,

@@ -63,9 +63,16 @@ interface Props {
    * Returns whether the box was made.
    */
   onCreate?: (fields: { brand: string | null; variant: string | null }) => boolean;
+  /**
+   * Puts a Done button on the label row, for a caller that opens the picker in
+   * place of a summary and has no other way back. A pick closes it too, but
+   * with nothing in the list current (a box named only by its barcode) there is
+   * nothing to pick to leave.
+   */
+  onClose?: () => void;
 }
 
-export function ProductPicker({ itemId, products, value, onPick, label, allowNone = true, onCreate }: Props) {
+export function ProductPicker({ itemId, products, value, onPick, label, allowNone = true, onCreate, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const boxes = useMemo(
@@ -106,7 +113,14 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
 
   return (
     <View style={styles.wrap}>
-      {!!label && <Text style={styles.label}>{label}</Text>}
+      {(!!label || !!onClose) && (
+        <View style={styles.labelRow}>
+          <Text style={[styles.label, styles.labelText]}>{label}</Text>
+          {!!onClose && (
+            <InlineAction label={BUTTON_LABEL.done} variant="neutral" onPress={onClose} />
+          )}
+        </View>
+      )}
       {allowNone && row('none', 'Just the food, no particular variant', value === null, () => onPick(null))}
       {boxes.map(box =>
         row(box.id, describeProduct(box) ?? 'Unnamed variant', value === box.id, () => onPick(box))
@@ -124,6 +138,7 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
       )}
       {!!onCreate && adding && (
         <View style={styles.form}>
+          <Text style={styles.label}>NEW BRAND OR FLAVOR</Text>
           <View style={styles.pair}>
             <View style={styles.half}>
               <Text style={styles.fieldLabel}>BRAND</Text>
@@ -188,6 +203,8 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
       marginBottom: spacing.xs,
     },
+    labelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+    labelText: { flex: 1, marginBottom: 0 },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
