@@ -3167,7 +3167,8 @@ function registerWriteTools(
       note: z.string().nullable().optional(),
       list: z.string().optional().describe('A separate list by name or id (see grocery_setup). The list at home when omitted.'),
       inCart: z.boolean().optional().describe("True when it is already bought: the person grabbed it at the store without it being on the list, or got it instead of something the store did not have. It is put on the list already checked off, so the trip records it as bought. Ticks it even if it was already on the list. Leave it out for something still to buy."),
-      catalogOnly: z.boolean().optional().describe("True to create the catalog item without putting it on any list, for something the person wants the app to know (a kind of salt to mark with update_grocery_item's kindOf) rather than something to buy. It is not marked as in the pantry either. An item already in the catalog is left as it is. Not combinable with inCart, quantity, note or list."),
+      catalogOnly: z.boolean().optional().describe("True to create the catalog item without putting it on any list, for something the person wants the app to know (a kind of salt, with kindOf) rather than something to buy. It is not marked as in the pantry either. An item already in the catalog is left as it is. Not combinable with inCart, quantity, note or list."),
+      kindOf: z.string().nullable().optional().describe('With catalogOnly: the generic this item is a kind of ("fine sea salt" is a kind of "salt"), as update_grocery_item\'s kindOf, so one call creates and files it. Applied even to an item that already exists. Refused without catalogOnly.'),
     },
     async ({ name, list, ...rest }) => {
       try {

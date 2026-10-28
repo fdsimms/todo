@@ -143,6 +143,16 @@ describe('the catalog tools', () => {
       expect(replica.groceryListEntries().some(e => e.itemId === idOf('milk'))).toBe(true);
     });
 
+    it('files it as a kind of another item in the same call', () => {
+      const result = addGroceryItem(replica, 'table salt', { catalogOnly: true, kindOf: 'salt' });
+      expect(result.outcome).toMatch(/a kind of "salt"/);
+      expect(replica.groceryItems().find(i => i.name === 'table salt')!.varietyOfKey).toBe('salt');
+    });
+
+    it('refuses kindOf on a plain add, and says where to set it', () => {
+      expect(() => addGroceryItem(replica, 'table salt', { kindOf: 'salt' })).toThrow(/update_grocery_item/);
+    });
+
     it('refuses the options that need a list, and says why', () => {
       expect(() => addGroceryItem(replica, 'salt', { catalogOnly: true, inCart: true })).toThrow(/inCart/);
       expect(() => addGroceryItem(replica, 'salt', { catalogOnly: true, quantity: '1' })).toThrow(/nothing to attach/);
