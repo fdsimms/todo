@@ -1366,7 +1366,7 @@ argued out before it was built; read them before reopening one.
   walk, and an estimate carries the `walkUnder` it was asked under, so changing the number asks again
   instead of keeping a mode the old number chose. A reader of a held estimate passes `walkUnder` too.
 - **"Compare ways to get there" lists every mode on the row, and a tap on one switches the event to it.**
-  `travelCompareModes` (off by default, under `travelEstimates`, device-local like it) makes
+  `travelCompareModes` (on by default but under `travelEstimates`, so it asks nothing until that opt-in is on; device-local like it) makes
   `useTravelTimeStore.refresh` ask the other modes after the one in use, so the three requests go to the
   same service for the same addresses and the switch says so. They are filed on the estimate as `others`
   (`{}` means asked and none routed, absent means never asked, which is what `needsTravelEstimate`'s

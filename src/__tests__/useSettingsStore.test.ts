@@ -1489,6 +1489,16 @@ describe('travel estimates', () => {
     expect(useSettingsStore.getState().travelMode).toBe('driving');
   });
 
+  it('compare modes is on by default and stays off once switched off', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().travelCompareModes).toBe(true);
+    useSettingsStore.getState().setTravelCompareModes(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('travelCompareModes', 'false');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'travelCompareModes' ? 'false' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().travelCompareModes).toBe(false);
+  });
+
   it('round-trip, and an unknown mode falls back to driving', () => {
     useSettingsStore.getState().setTravelEstimates(true);
     useSettingsStore.getState().setTravelMode('transit');

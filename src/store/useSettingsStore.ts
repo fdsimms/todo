@@ -1794,7 +1794,8 @@ interface SettingsStore {
   // and the phone's position to Apple (src/services/travelTime.ts).
   travelEstimates: boolean;
   // Also asks Apple Maps for the other two ways of getting there, so a row can
-  // list them side by side. Off by default: each is one more request per event.
+  // list them side by side. On by default, but only acts once travelEstimates is
+  // on (its opt-in); each mode is one more request per event.
   travelCompareModes: boolean;
   // How that estimate travels.
   travelMode: TravelMode;
@@ -3265,7 +3266,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   travelLeadByCalendar: {},
   travelEventPrefs: {},
   travelEstimates: false,
-  travelCompareModes: false,
+  travelCompareModes: true,
   travelMode: 'driving',
   travelWalkUnderMinutes: 0,
   travelOriginPlaceId: null,
@@ -3817,7 +3818,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const travelLeadByCalendar = parseTravelLeadByCalendar(dbGetSetting('travelLeadByCalendar'));
     const travelEventPrefs = parseTravelEventPrefs(dbGetSetting('travelEventPrefs'));
     const travelEstimates = dbGetSetting('travelEstimates') === 'true';
-    const travelCompareModes = dbGetSetting('travelCompareModes') === 'true';
+    const travelCompareModes = dbGetSetting('travelCompareModes') !== 'false';
     const storedTravelMode = dbGetSetting('travelMode');
     const travelMode: TravelMode = TRAVEL_MODES.find(m => m === storedTravelMode) ?? 'driving';
     const storedWalkUnder = parseInt(dbGetSetting('travelWalkUnderMinutes') ?? '', 10);
