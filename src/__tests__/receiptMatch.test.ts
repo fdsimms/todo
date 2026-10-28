@@ -5,7 +5,9 @@ import {
   matchReceiptShop,
   receiptCautionsFor,
   receiptMatchConfidence,
+  receiptOutcome,
   unclaimedAddTarget,
+  type ReceiptOutcomeInput,
 } from '../utils/receiptMatch';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { ReceiptLine } from '../services/aiSuggestions';
@@ -823,5 +825,52 @@ describe('unclaimedAddTarget (#2923)', () => {
     });
     expect(unclaimedAddTarget(match, null, '   ').name).toBe('org bnls chkn brst');
     expect(unclaimedAddTarget(match, null).name).toBe('org bnls chkn brst');
+  });
+});
+
+describe('receiptOutcome', () => {
+  const base: ReceiptOutcomeInput = {
+    pantry: false,
+    marked: 0,
+    filed: 0,
+    created: 0,
+    total: 6,
+    recorded: null,
+    receiptTotal: null,
+  };
+
+  it('says nothing is going anywhere rather than listing zeros', () => {
+    expect(receiptOutcome(base)).toEqual({
+      held: 'Nothing is checked yet. Check the lines you want to use.',
+      lines: [],
+    });
+  });
+
+  it('words each kind of line for the list or the pantry', () => {
+    expect(receiptOutcome({ ...base, marked: 3 }).lines).toEqual([
+      '3 items come off your list',
+      '3 lines left out',
+    ]);
+    expect(receiptOutcome({ ...base, pantry: true, marked: 1 }).lines[0]).toBe('1 item goes in the pantry');
+  });
+
+  it('counts filed and new lines apart, and what is left out', () => {
+    const { lines } = receiptOutcome({ ...base, marked: 2, filed: 1, created: 2 });
+    expect(lines).toEqual([
+      '2 items come off your list',
+      '1 item filed under an item you already have',
+      '2 items added as new items',
+      '1 line left out',
+    ]);
+  });
+
+  it('adds the recorded price, against the receipt total when it has one', () => {
+    expect(receiptOutcome({ ...base, total: 1, marked: 1, recorded: '$4.20' }).lines).toEqual([
+      '1 item comes off your list',
+      'Recording $4.20',
+    ]);
+    expect(
+      receiptOutcome({ ...base, total: 1, marked: 1, recorded: '$4.20', receiptTotal: '$9.00' }).lines.pop()
+    ).toBe('Recording $4.20 of the $9.00 on this receipt');
   });
 });

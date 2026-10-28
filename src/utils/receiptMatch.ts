@@ -689,3 +689,62 @@ export function unclaimedAddTarget(
   if (match.offListMatchId) return { existingItemId: match.offListMatchId, name: match.line.name };
   return { existingItemId: null, name: typedName?.trim() || match.line.name };
 }
+
+export interface ReceiptOutcomeInput {
+  /** Pantry context puts lines in the kitchen; shopping takes them off the list. */
+  pantry: boolean;
+  /** Matched lines that are checked: they act on the item they matched. */
+  marked: number;
+  /** Left-alone lines that are checked and land on an item already in the catalog. */
+  filed: number;
+  /** Left-alone lines that are checked and mint a new item. */
+  created: number;
+  /** Every line the receipt held, checked or not. */
+  total: number;
+  /** What the checked prices add up to, already formatted, or null when none printed one. */
+  recorded: string | null;
+  /** The receipt's own total, already formatted, or null. */
+  receiptTotal: string | null;
+}
+
+/**
+ * What applying a receipt will do, as plain sentences for the box at the foot of
+ * the review.
+ *
+ * A receipt review is two lists of checkboxes whose meaning differs by list
+ * (a matched line acts on an item, a left-alone one adds something), so the
+ * checks alone never said what would happen. This counts the same sets the
+ * apply step reads, which is what lets it be trusted: it cannot offer a count
+ * Apply won't honor. `held` is set instead of lines when nothing is checked.
+ */
+export function receiptOutcome(input: ReceiptOutcomeInput): { held: string | null; lines: string[] } {
+  const going = input.marked + input.filed + input.created;
+  if (going === 0) return { held: 'Nothing is checked yet. Check the lines you want to use.', lines: [] };
+  const lines: string[] = [];
+  const items = (n: number) => `${n} ${n === 1 ? 'item' : 'items'}`;
+  if (input.marked > 0) {
+    lines.push(
+      input.pantry
+        ? `${items(input.marked)} ${input.marked === 1 ? 'goes' : 'go'} in the pantry`
+        : `${items(input.marked)} ${input.marked === 1 ? 'comes' : 'come'} off your list`
+    );
+  }
+  if (input.filed > 0) {
+    lines.push(
+      `${items(input.filed)} filed under ${input.filed === 1 ? 'an item' : 'items'} you already have`
+    );
+  }
+  if (input.created > 0) {
+    lines.push(`${items(input.created)} added as ${input.created === 1 ? 'a new item' : 'new items'}`);
+  }
+  const leftOut = input.total - going;
+  if (leftOut > 0) lines.push(`${leftOut} ${leftOut === 1 ? 'line' : 'lines'} left out`);
+  if (input.recorded) {
+    lines.push(
+      input.receiptTotal
+        ? `Recording ${input.recorded} of the ${input.receiptTotal} on this receipt`
+        : `Recording ${input.recorded}`
+    );
+  }
+  return { held: null, lines };
+}
