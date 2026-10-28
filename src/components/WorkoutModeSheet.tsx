@@ -75,7 +75,7 @@ import { parseSetCell, typedTickValues } from '../utils/workoutCell';
 import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
 import { exerciseDayNote, exerciseDayNotePatches } from '../utils/exerciseDayNote';
 import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
-import { currentRoutineVersion, finishVersionText, routineVersionsOf, versionNumber } from '../utils/routineVersions';
+import { currentRoutineVersion, finishVersionText, routineVersionsOf, sessionPlan, versionNumber } from '../utils/routineVersions';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
 import { formatRecordChange, recordLabel, recordShortLabel } from '../utils/workoutRecordText';
@@ -181,6 +181,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const linkedTask = useTaskStore(s => (session?.taskId ? s.tasks.find(t => t.id === session.taskId) ?? null : null));
   const sets = useMemo(() => cachedSets ?? [], [cachedSets]);
   const routine = session?.routineId ? routines.find(r => r.id === session.routineId) ?? null : null;
+  // The version the workout was started on, which its rests are read from (`sessionPlan`).
+  const restPlan = useMemo(() => (session ? sessionPlan(session, routines, routineVersions) : null), [session, routines, routineVersions]);
   // Which version of the routine this workout is on, and the current one's
   // number. A workout started from an older version (History's "Start a
   // workout from it") is measured against that version, and its summary
@@ -314,6 +316,17 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     if (Object.keys(row).length === 0) typedRef.current.delete(setId);
     else typedRef.current.set(setId, row);
   }, []);
+
+  // The summary's effort and notes are written as they change, the way the
+  // workout page writes them, so Close (which keeps the workout running), the
+  // back gesture or the app being closed doesn't lose them before Save.
+  const saveEffort = (n: number | null) => {
+    setEffort(n);
+    if (session) useWorkoutStore.getState().updateSession(session.id, { effort: n });
+  };
+  const saveNotes = () => {
+    if (session && sessionNotes.trim() !== session.notes) useWorkoutStore.getState().updateSession(session.id, { notes: sessionNotes });
+  };
 
   const toggleSet = (set: WorkoutSet, exercise: SessionExercise) => {
     if (!session) return;
@@ -772,7 +785,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     <Text style={styles.kvLabel}>Effort</Text>
                     <CountStepper
                       value={effort}
-                      onChange={setEffort}
+                      onChange={saveEffort}
                       min={WORKOUT_EFFORT.min}
                       max={WORKOUT_EFFORT.max}
                       start={WORKOUT_EFFORT.start}
@@ -788,6 +801,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     style={styles.notesInput}
                     value={sessionNotes}
                     onChangeText={setSessionNotes}
+                    onBlur={saveNotes}
                     placeholder="e.g. Shoulder felt fine on the last set"
                     placeholderTextColor={colors.textTertiary}
                     multiline
@@ -922,7 +936,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             {/* One card per shown exercise: the one the sheet is on, or every one in All. The param keeps the name `viewed`, so the card body reads as it always has. */}
             {reordering && (
               <>
-                <Text style={styles.reorderHint}>Hold and drag to reorder</Text>
+                <Text style={styles.reorderHint}>Touch and hold, then drag to reorder</Text>
                 <View style={styles.reorderCard}>
                   <SortableList
                     data={reorderRows}
@@ -997,7 +1011,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const viewedGroup = supersetGroup(exercises, viewed.exerciseId);
               const restChip = session && viewedGroup[viewedGroup.length - 1]?.exerciseId === viewed.exerciseId
                 ? {
-                    seconds: restSecondsFor(routine, viewed.exerciseId, defaultRestSeconds, session.restOverrides),
+                    seconds: restSecondsFor(restPlan, viewed.exerciseId, defaultRestSeconds, session.restOverrides),
                     overridden: session.restOverrides?.[viewed.exerciseId] !== undefined,
                   }
                 : null;
@@ -1406,8 +1420,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       <ExerciseRestSheet
         visible={visible && restFor !== null && session !== null}
         exerciseName={restFor ? catalogExercise(exerciseRows, restFor)?.name ?? 'This exercise' : ''}
-        seconds={session && restFor ? restSecondsFor(routine, restFor, defaultRestSeconds, session.restOverrides) : 0}
-        fallbackSeconds={restFor ? restSecondsFor(routine, restFor, defaultRestSeconds) : 0}
+        seconds={session && restFor ? restSecondsFor(restPlan, restFor, defaultRestSeconds, session.restOverrides) : 0}
+        fallbackSeconds={restFor ? restSecondsFor(restPlan, restFor, defaultRestSeconds) : 0}
         overridden={!!session && !!restFor && session.restOverrides?.[restFor] !== undefined}
         onChange={seconds => { if (session && restFor) useWorkoutStore.getState().setSessionRest(session.id, restFor, seconds); }}
         onClose={() => setRestFor(null)}
@@ -1785,7 +1799,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   setNumber: { color: colors.textSecondary, fontSize: font.md, fontWeight: fontWeight.semibold },
   setBadge: { color: colors.orangeText, fontSize: font.md, fontWeight: fontWeight.bold },
   recordPill: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, height: 22, paddingHorizontal: spacing.sm,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, minHeight: 22, paddingHorizontal: spacing.sm,
     borderRadius: radius.full, backgroundColor: colors.accentSubtle,
   },
   recordPillText: { color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.bold, letterSpacing: 0.4 },

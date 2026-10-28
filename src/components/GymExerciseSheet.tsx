@@ -19,6 +19,7 @@ import {
   WEIGHT_PLACES, WEIGHT_STEP, formatWeightWithUnit, weightFromDisplay, weightToDisplay,
 } from '../utils/workoutData';
 import { BUTTON_LABEL } from '../copy/shared';
+import { confirmDiscard } from '../utils/confirmDiscard';
 
 export interface GymExerciseSubject {
   gymId: string;
@@ -70,6 +71,13 @@ export function GymExerciseSheet({ visible, subject: liveSubject, onClose }: Pro
   }, [visible, key]);
 
   if (!subject) return null;
+  // The note and the two numbers wait for Save, so leaving with them changed asks first.
+  const saved = settings.find(s => s.id === key);
+  const dirty = notes !== (saved?.notes ?? '') || barKg !== (saved?.barKg ?? null) || incrementKg !== (saved?.incrementKg ?? null);
+  const handleCancel = () => {
+    if (!dirty) { finish(); return; }
+    confirmDiscard(() => finish());
+  };
   const gym = gyms.find(g => g.id === subject.gymId);
   const info = catalogExercise(exercises, subject.exerciseId);
   const plateLoaded = !!info && isPlateLoaded(info.equipment);
@@ -86,9 +94,9 @@ export function GymExerciseSheet({ visible, subject: liveSubject, onClose }: Pro
   };
 
   return (
-    <CardSheet name="GymExerciseSheet" visible={visible} controller={card} onRequestClose={() => finish()}>
+    <CardSheet name="GymExerciseSheet" visible={visible} controller={card} onRequestClose={handleCancel}>
       <View style={styles.header}>
-        <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => finish()} />
+        <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />
         <View style={styles.titleWrap}>
           <Text style={styles.title} numberOfLines={1}>{info?.name ?? 'Exercise'}</Text>
           <Text style={styles.subtitle} numberOfLines={1}>{gym ? `At ${gym.name}` : 'At this gym'}</Text>

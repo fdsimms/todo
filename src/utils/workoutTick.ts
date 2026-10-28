@@ -4,6 +4,7 @@ import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { catalogExercise } from './exerciseCatalog';
 import { afterLog, restSecondsFor, sessionExercises, setLabels, type AfterLog } from './workoutSession';
+import { sessionPlan } from './routineVersions';
 
 /**
  * Ticking a set off: the one thing that moves a live workout on. Workout
@@ -95,7 +96,8 @@ export function tickSet(sessionId: string, setId: string, now: Date = new Date()
   const done = store.editSet(sessionId, setId, { ...values, completedAt: now.toISOString() });
   if (typeof done === 'string') return null;
   const workouts = useWorkoutStore.getState();
-  const routine = session.routineId ? workouts.routines.find(r => r.id === session.routineId) ?? null : null;
+  // The version it was started on, as its sets were laid out from.
+  const routine = sessionPlan(session, workouts.routines, workouts.routineVersions);
   const outcome = tickOutcome(workouts.setsBySession[sessionId] ?? [], setId, {
     routine,
     defaultRestSeconds: useSettingsStore.getState().defaultRestSeconds,

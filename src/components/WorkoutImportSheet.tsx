@@ -190,11 +190,13 @@ export function WorkoutImportSheet({ visible, onClose, fileText = '', described 
     [ok, resolutions, sessionsInLog, pairTotals, exercises],
   );
 
-  const dirty = Object.keys(choices).length > 0 || unitTouched || dumbbellTouched;
+  // A described workout is the person's own words and a paid request, so it is
+  // unsaved work before anything on the review is touched.
+  const dirty = !!described || Object.keys(choices).length > 0 || unitTouched || dumbbellTouched;
   const handleCancel = () => {
     if (!dirty) { onClose(); return; }
     confirmDiscard(onClose, described
-      ? { title: 'Discard this workout?', message: 'It hasn’t been logged yet. If you leave now, your choices will be lost.' }
+      ? { title: 'Discard this workout?', message: 'It hasn’t been logged yet. If you leave now, it will be lost.' }
       : {
         title: 'Discard this import?',
         message: 'Nothing has been imported yet. If you leave now, your choices will be lost.',

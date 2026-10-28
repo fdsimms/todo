@@ -1571,15 +1571,22 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   unit (`workoutLoads`), returns the proposed sets in kg beside the phone's own words for them, and
   says that a proposal is the person's to accept. `log_workout` writes a workout the person describes, after the fact, finished
   and with every set done, through `addFinishedSession`; it refuses one with no sets, one that
-  starts in the future and one that ends before it starts, and it never completes a task, since a
-  record of a workout is not the person ticking the task off. `update_workout` and
+  starts in the future, one that ends before it starts, and one starting in the same minute as a
+  workout already logged (naming that one, so a retried call can't log it twice), and it never
+  completes a task, since a record of a workout is not the person ticking the task off.
+  `create_exercise` makes a custom exercise through `addExercise` for one the library lacks, so
+  such a workout isn't a dead end; the tool asks the agent to search and ask first, and the
+  exercise is corrected on the phone. `update_workout` and
   `delete_workout` refuse the session in progress on the phone, which only the person ends.
   `scale_workout_weights` is the one-call form of the same correction across many workouts (a pair
   total stored as one dumbbell, or the wrong unit): it multiplies the named exercises' weights over a
   range, describes the change until `apply: true`, skips the session in progress, and rewrites sets
   carrying every field over. `update_workout`'s `exercises` rebuilds sets from only the fields it
   exposes, so an exercise already in the workout keeps its superset and a set already there keeps its
-  time (`setsKeepingWhatTheInputCannotSay`). Each
+  time (`setsKeepingWhatTheInputCannotSay`), and a field the call leaves out keeps the set's value
+  (null clears it), the chain-step rule: resending sets to fix one weight used to erase each set's
+  note and RPE and turn a warm-up into a working set. A bare day for `startedAt` keeps the workout's
+  time of day. Each
   write is recorded in Activity, a routine under its name and a workout titled by kind
   ("Workout"), never by what was lifted, the mood entry's reason. Weights are kilograms on the wire.
   A task names its routine with `workoutRoutineId`, or a program with `workoutProgramId` (never

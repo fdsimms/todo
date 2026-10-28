@@ -540,17 +540,6 @@ interface WorkoutStore {
    */
   addFinishedSession: (input: FinishedSessionInput) => { session: WorkoutSession; sets: WorkoutSet[] } | WorkoutRefusal;
   /**
-   * Writes the workouts an import plan names (`buildImportPlan`), and the
-   * custom exercises it needs, in one transaction. A session already in the
-   * log (same id, or the same start time, whatever it is called) is skipped
-   * again here, so a plan made before another device synced in the same
-   * workout can't double it.
-   * `creates` maps each `new:<key>` reference's key to the exercise to make;
-   * a name that has become taken since resolves to the exercise holding it.
-   * Never written to Health: an imported workout came from an app that most
-   * likely wrote it there already.
-   */
-  /**
    * Writes a workout the Apple Watch ran on its own (`watchWorkout.ts`), once:
    * a session id already in the log is a repeat delivery and writes nothing
    * (`duplicate`). The session and its sets keep the watch's ids, and its
@@ -563,6 +552,17 @@ interface WorkoutStore {
    * `deferHealthWrite` is `FinishOptions`' own.
    */
   addWatchSession: (input: WatchSessionInput, options?: { now?: Date; deferHealthWrite?: boolean }) => WatchSessionResult | WorkoutRefusal;
+  /**
+   * Writes the workouts an import plan names (`buildImportPlan`), and the
+   * custom exercises it needs, in one transaction. A session already in the
+   * log (same id, or the same start time, whatever it is called) is skipped
+   * again here, so a plan made before another device synced in the same
+   * workout can't double it.
+   * `creates` maps each `new:<key>` reference's key to the exercise to make;
+   * a name that has become taken since resolves to the exercise holding it.
+   * Never written to Health: an imported workout came from an app that most
+   * likely wrote it there already.
+   */
   importSessions: (
     sessions: PlannedImportSession[],
     creates: Record<string, ExerciseInput>,

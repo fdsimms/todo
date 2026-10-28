@@ -654,7 +654,11 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
                       >
                         <Text style={styles.itemName}>{exName}</Text>
                         <Text style={styles.itemSummary}>
-                          {describeRoutineItem(row.item, { kind, unit, defaultRestSeconds: defaultRest, role: itemRole })}
+                          {describeRoutineItem(row.item, {
+                            kind, unit, defaultRestSeconds: defaultRest, role: itemRole,
+                            scale: weightScale(catalogExercise(exercises, row.item.exerciseId), dumbbellEntry),
+                            weightSuffix: weightHeadingSuffix(catalogExercise(exercises, row.item.exerciseId), dumbbellEntry),
+                          })}
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => toggleOpen(row.id)} hitSlop={8} accessibilityElementsHidden importantForAccessibility="no">

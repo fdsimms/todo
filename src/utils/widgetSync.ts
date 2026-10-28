@@ -65,6 +65,7 @@ import { applyProposal } from './workoutProposalApply';
 import { REST_NUDGE_FORWARD_SECONDS } from './stepTimers';
 import type { PlannedRoutineSet } from '../store/useWorkoutStore';
 import type { RestTimer, WorkoutSet } from '../types';
+import { sessionPlan } from './routineVersions';
 
 const DEBOUNCE_MS = 300;
 
@@ -982,6 +983,7 @@ function watchWorkoutSection(): WatchWorkoutSnapshot | null {
           session: live,
           sets: workouts.setsBySession[live.id] ?? [],
           routine: live.routineId ? workouts.routines.find(r => r.id === live.routineId) ?? null : null,
+          restPlan: sessionPlan(live, workouts.routines, workouts.routineVersions),
           rest,
         }
       : null,

@@ -64,6 +64,25 @@ export function routineVersionsOf(
   return own.length > 0 ? own : [implicitRoutineVersion(routine)];
 }
 
+/**
+ * The plan a session's rests are read from: the version of its routine it was
+ * started on, so a workout started from an old version (History's "Start a
+ * workout from it") rests as that version said, as its sets were laid out. The
+ * routine as it is when the version isn't one this device has.
+ */
+export function sessionPlan(
+  session: Pick<WorkoutSession, 'routineId' | 'routineVersionId'>,
+  routines: readonly WorkoutRoutine[],
+  versions: readonly WorkoutRoutineVersion[],
+): Pick<WorkoutRoutine, 'items'> | null {
+  const routine = session.routineId ? routines.find(r => r.id === session.routineId) : undefined;
+  if (!routine) return null;
+  const version = session.routineVersionId
+    ? routineVersionsOf(routine, versions).find(v => v.id === session.routineVersionId)
+    : undefined;
+  return version ?? routine;
+}
+
 /** The version the routine is on: the one it names, or its newest when it names none this device has. */
 export function currentRoutineVersion(
   routine: WorkoutRoutine,
