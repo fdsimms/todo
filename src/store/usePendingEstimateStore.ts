@@ -42,6 +42,8 @@ export interface PendingEstimateDraft {
 
 export type EnqueueResult = 'queued' | 'duplicate' | 'full' | 'empty';
 
+export type RenameResult = 'saved' | 'duplicate' | 'empty' | 'unavailable';
+
 interface PendingEstimateStore {
   pending: PendingEstimate[];
   initialized: boolean;
@@ -61,6 +63,13 @@ interface PendingEstimateStore {
   drain: () => Promise<void>;
   /** Puts a failed meal back to waiting and asks again. */
   retry: (id: string) => Promise<void>;
+  /**
+   * Corrects the words of a meal that has not been estimated (waiting or
+   * failed). A failed one goes back to waiting and is asked again, since the
+   * text it failed on is gone. A ready meal is refused: its figures answer the
+   * old words, and Refine is how those change.
+   */
+  rename: (id: string, description: string) => RenameResult;
   /**
    * Logs a ready meal, the tap that confirms it. Returns the entry, or null
    * when the meal is not ready or the food log refused it.
@@ -162,6 +171,19 @@ export const usePendingEstimateStore = create<PendingEstimateStore>((set, get) =
       if (!row || row.status !== 'failed') return;
       save({ ...row, status: 'waiting', error: null });
       await get().drain();
+    },
+
+    rename(id, description) {
+      const row = get().pending.find(p => p.id === id);
+      if (!row || row.status === 'ready') return 'unavailable';
+      const clean = description.trim();
+      if (!clean) return 'empty';
+      const others = get().pending.filter(p => p.id !== id);
+      if (findDuplicate(others, clean, row.atISO)) return 'duplicate';
+      const wasFailed = row.status === 'failed';
+      save({ ...row, description: clean, status: 'waiting', error: null });
+      if (wasFailed) void get().drain();
+      return 'saved';
     },
 
     log(id) {

@@ -734,7 +734,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useMissionStore.ts` — useMissionStore
 - `src/store/useMoodStore.ts` — MoodLogPatch, useMoodStore
 - `src/store/useNfcKeyStore.ts` — KeyScanResult, EnrollResult, useNfcKeyStore
-- `src/store/usePendingEstimateStore.ts` — PendingEstimateDraft, EnqueueResult, usePendingEstimateStore
+- `src/store/usePendingEstimateStore.ts` — PendingEstimateDraft, EnqueueResult, RenameResult, usePendingEstimateStore
 - `src/store/usePendingRecipeEstimateStore.ts` — PendingRecipeEstimateDraft, usePendingRecipeEstimateStore
 - `src/store/usePersonGroupStore.ts` — usePersonGroupStore
 - `src/store/usePersonNoteStore.ts` — PersonNotePatch, usePersonNoteStore

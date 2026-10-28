@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
@@ -10,6 +10,7 @@ import { describePending, summarizeEstimate, type PendingEstimate } from '../uti
 import { describeEstimate } from '../utils/nutritionEstimate';
 import { haptics } from '../utils/haptics';
 import { InlineAction } from './InlineAction';
+import { PendingEstimateEditSheet } from './PendingEstimateEditSheet';
 
 /**
  * Meals described with no connection, on the Food log screen.
@@ -40,6 +41,7 @@ export function PendingEstimatesCard({ onRefine }: Props) {
 
   const pending = usePendingEstimateStore(s => s.pending);
   const draining = usePendingEstimateStore(s => s.draining);
+  const [editing, setEditing] = useState<PendingEstimate | null>(null);
 
   if (pending.length === 0) return null;
 
@@ -138,6 +140,15 @@ export function PendingEstimatesCard({ onRefine }: Props) {
                 accessibilityLabel={`Refine ${row.estimate.label} with an amount or answers`}
               />
             )}
+            {row.status !== 'ready' && (
+              <InlineAction
+                label="Edit"
+                icon="create-outline"
+                variant="neutral"
+                onPress={() => { haptics.tap(); setEditing(row); }}
+                accessibilityLabel={`Edit ${row.description}`}
+              />
+            )}
             {row.status === 'failed' && (
               <InlineAction
                 label="Try again"
@@ -156,6 +167,7 @@ export function PendingEstimatesCard({ onRefine }: Props) {
           </View>
         </View>
       ))}
+      <PendingEstimateEditSheet row={editing} onClose={() => setEditing(null)} />
     </View>
   );
 }
