@@ -166,6 +166,8 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
    * (the target follows it), so a reopened sheet opens on what was saved.
    */
   const [basis, setBasis] = useState<'activity' | 'health' | 'log'>('activity');
+  // Set by "Hold at current weight" to move a saved Maintain goal's anchor.
+  const [reanchor, setReanchor] = useState(false);
   const measuredBasis = basis === 'health';
   /**
    * Whether the Apple Health figure adds the energy spent digesting food. On by
@@ -240,6 +242,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
       ? storedGoal.maintenanceBasis
       : 'activity');
     setCountDigestion(storedGoal?.countDigestion !== false);
+    setReanchor(false);
 
     if (storedGoal) {
       setDirection(goalDirection(storedGoal));
@@ -271,10 +274,19 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
    * kilograms ago would both aim at the wrong number and read back as a losing
    * goal. Switching to Maintain therefore begins a new phase from today's
    * weight, which is also the only reading of the word that means anything.
+   *
+   * **A Maintain goal that is already saved keeps its own weight**, though.
+   * Re-anchoring on every open made a later save (to change anything else)
+   * quietly move what was being held to whatever the latest weigh-in was.
+   * `reanchor` is the explicit way to move it.
    */
-  const startKg = maintaining
-    ? (currentKg ?? storedGoal?.startKg ?? null)
-    : (storedGoal?.startKg ?? currentKg);
+  const keepsStoredHold =
+    maintaining && !reanchor && storedGoal !== null && goalDirection(storedGoal) === 'maintain';
+  const startKg = keepsStoredHold
+    ? storedGoal.startKg
+    : maintaining
+      ? (currentKg ?? storedGoal?.startKg ?? null)
+      : (storedGoal?.startKg ?? currentKg);
   const targetKg = maintaining ? startKg : parseWeightInput(targetText, unit);
   const rateKg = rate === null ? null : unitToKg(rate, unit);
   // A start that isn't the stored one is a new phase, so the pace line restarts
@@ -535,10 +547,23 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
             )}
 
             <Text style={styles.help}>
-              {maintaining
-                ? `Holding ${formatWeight(startKg, unit)}, your latest weigh-in.`
-                : `Measured from ${formatWeight(startKg, unit)}${restarting ? ', your latest weigh-in.' : ', where this goal started.'}`}
+              {keepsStoredHold && storedGoal
+                ? `Holding ${formatWeight(startKg, unit)}, set ${format(dayKeyToDate(storedGoal.startDayKey), 'MMM d')}.`
+                : maintaining
+                  ? `Holding ${formatWeight(startKg, unit)}, your latest weigh-in.`
+                  : `Measured from ${formatWeight(startKg, unit)}${restarting ? ', your latest weigh-in.' : ', where this goal started.'}`}
             </Text>
+            {keepsStoredHold && currentKg !== null && formatWeight(currentKg, unit) !== formatWeight(startKg, unit) && (
+              <View style={styles.field}>
+                <InlineAction
+                  variant="neutral"
+                  surface="card"
+                  icon="locate-outline"
+                  label={`Hold at ${formatWeight(currentKg, unit)} instead`}
+                  onPress={() => { haptics.tap(); setReanchor(true); }}
+                />
+              </View>
+            )}
           </View>
 
           {!canSave && !maintaining && targetKg !== null && (
