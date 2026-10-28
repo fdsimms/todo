@@ -115,6 +115,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, carryClockTime, overdueDayCount, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, dateToHHMM, +1 more
 - `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, subscribeToCloudKitChanges, addCloudKitChangeListener, cloudKitChangeHandled, cloudKitTransport
 - `src/utils/coinBurst.ts` — BurstPiece, BURST_GRAVITY, burstPieces, burstOffset, burstOpacity
+- `src/utils/columnCap.ts` — WIDE_LIST_ROUTES, DASHBOARD_ROUTES, UNCAPPED_WIDTH, dashboardColumnsFor, columnCapFor
+- `src/utils/columnDeal.ts` — DealtRow, dealColumns
 - `src/utils/completionCalendarSync.ts` — logTaskCompletionToCalendar, completionEventLink, deleteCompletionEvent
 - `src/utils/completionTap.ts` — CompletionTap, completionTapFor, offersMealLogOnCompletion, TARGET_FINISH_TAP_GUARD_MS, isStrayTapOnFinishedTarget
 - `src/utils/componentShares.ts` — componentShares, amountUsedCounts, MakesUnits, makesUnitsFor, BATCH_LABEL, amountUnitsFor
@@ -211,7 +213,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodQueue.ts` — QueuedFood, QUEUED_FOOD_MAX_LENGTH, parseQueuedFoods
 - `src/utils/foodRecall.ts` — RECALL_MIN_QUERY, RECALL_LIMIT, RecalledFood, describedGrams, estimateWholeGrams, describedEstimateFactor, descriptionClauses, recallWeight, recallFoods, recallMeasuringPanel, +14 more
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
-- `src/utils/frameWidth.ts` — MAX_CONTENT_WIDTH, MAX_DRAWER_WIDTH, SIDEBAR_MIN_WINDOW_WIDTH, SIDEBAR_WIDTH, sidebarWidthFor, frameWidthFor, frameLeftFor, drawerWidthFor, monthCellSizeFor, pickerCardWidthFor, +9 more
+- `src/utils/frameWidth.ts` — MAX_CONTENT_WIDTH, LIST_CONTENT_WIDTH, DASHBOARD_CONTENT_WIDTH, DASHBOARD_TWO_COLUMN_MIN_WIDTH, MAX_DRAWER_WIDTH, SIDEBAR_MIN_WINDOW_WIDTH, SIDEBAR_WIDTH, sidebarWidthFor, frameWidthFor, frameLeftFor, +12 more
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
 - `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, bulkSetCategoryOffering, offerFollowUpWriteBack
@@ -634,6 +636,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/titleSuggestions.ts` — TitleSuggestion, suggestTitles
 - `src/utils/titleTokenChips.ts` — TokenChipKind, TokenChip, TokenChipSet, TokenChipSources, MAX_TOKEN_CHIPS, tokenChipsFor, applyTokenChip
 - `src/utils/titleWrap.ts` — KEEP_TOGETHER_MAX_CHARS, keepTailTogether
+- `src/utils/todayGlance.ts` — GlanceEvent, GLANCE_EVENT_LIMIT, glanceEvents
 - `src/utils/todayProjectBands.ts` — TodayProjectBand, TodayProjectBands, buildTodayProjectBands
 - `src/utils/tooltipAim.ts` — TOOLTIP_CARET_W, aimTooltip
 - `src/utils/transitAlerts.ts` — TransitEffect, TransitAlert, TransitSnapshot, TRANSIT_LINES, parseTransitLines, effectOfAlertType, parseSubwayAlerts, alertOverlaps, LIVE_ALERT_MAX_AGE_MS, PLANNED_ALERT_MAX_AGE_MS, +5 more

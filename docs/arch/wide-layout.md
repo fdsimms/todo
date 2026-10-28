@@ -6,7 +6,7 @@ for iPad" app in a resizable window. This is the route to a desktop-friendly app
 
 ## What is built
 
-**Everything is drawn in one centered column, `AppFrame`, no wider than `MAX_CONTENT_WIDTH` (720).**
+**Everything is drawn in one centered column, `AppFrame`, no wider than `MAX_CONTENT_WIDTH` (720), except where a screen asks for more (two panes, and "Lists and dashboards" below).**
 `src/utils/frameWidth.ts` holds the numbers and `useFrameWidth` reads them. A phone is narrower than
 the cap, so there the frame is two Views that change nothing. It wraps the navigator and everything
 that overlays it in `AppNavigator`, and `SheetModal` wraps a full-screen sheet in it too (a Modal
@@ -141,6 +141,42 @@ they always were, and a tap pushes the page. Four things to know:
   trailing ellipsis (a long press drags), and is outlined while it is the one open.
 - **Anything else that opens the same page still pushes it** (a meal plan row, a search result, a
   deep link). Only the list screen's own rows and the "new" flows open it in the pane.
+- **Today's pane shows the day while nothing is open in it** (`TodayGlance`): done and left, the same
+  "planned" and "events left" line the list's header draws (so the two can't disagree, and simplified mode
+  drops it from both), and the events still ahead (`glanceEvents`). It offers nothing to tap, because the list
+  is where you act. With no tasks at all, or on Later, Unscheduled and Inbox, the old icon and hint stay.
+
+## Lists and dashboards (`columnCapFor`)
+
+The 720pt column is right for a form and wrong for a screen with more to show: Stats on a 14-inch
+window was a 720pt strip with 280pt of empty background each side. **Which width a screen gets is by
+route and only once the sidebar shows** (`columnCapFor`, `src/utils/columnCap.ts`), so a phone and an
+upright iPad keep 720. Three answers:
+
+- **A list of rows** (`WIDE_LIST_ROUTES`: Search, People, Logbook, Tags and the rest) gets 960. A row is a
+  title and a figure, so it has no layout to break, but past 960 the eye has too far to travel.
+- **A dashboard** (`DASHBOARD_ROUTES`: Stats, Mood, Sleep) gets 1040 and **deals its cards into two
+  columns** (`WideScroll`, `dealColumns`), but only when it has the room (`dashboardColumnsFor`, 880pt of
+  column), because a single card wider than 720 only stretches its chart.
+- **Anything on neither list keeps 720.** That is the default on purpose: the Calendar and Meal plan size
+  their cells off the column, so widening one by default would change them. Putting a screen on a list is a
+  decision about that screen, made by looking at it.
+
+Four rules for `WideScroll`, because each is a place it would break quietly:
+
+- **Each child element is a section**, dealt whole. A title `Text` beside a card `View` is two children and
+  would land in different columns, so a screen wraps the pair (`<>` is enough). `null` and `false` take no
+  place, so a hidden section leaves no hole. A `WideSpan` takes the full width: the summary row, a range
+  control, a long list of entries.
+- **Sections go left, right, left, right**, not into the shorter column. Which is shorter isn't known until
+  both are laid out, and waiting for that draws the page once in the wrong shape. The columns end unevenly,
+  which reads as two stacks; a grid of rows would leave a gap under every card shorter than its neighbor.
+- **A route is a dashboard if and only if its screen renders a `WideScroll`**
+  (`noDashboardWithoutWideScroll.test.ts`). Listed without one it is a single card stretched to 1040; used
+  without being listed it deals two 350pt columns into the 720 cap.
+- **Below two columns it is a plain `ScrollView`** with its children passed straight through, so a phone,
+  an upright iPad and a narrow Mac window draw what they always did. Crossing the breakpoint remounts the
+  cards (they move to a different parent), so a card's own scroll or scrub state doesn't survive a resize.
 
 ## The Mac's own conventions (phase 5)
 

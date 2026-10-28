@@ -11,6 +11,23 @@
 /** The widest the app's column gets. About the width of an iPad held upright. */
 export const MAX_CONTENT_WIDTH = 720;
 
+/**
+ * How wide a screen that is only a list of rows gets once the sidebar shows
+ * (`columnCapFor`). A row is a title and a figure, so a line past this makes the
+ * eye travel further than the row is worth.
+ */
+export const LIST_CONTENT_WIDTH = 960;
+
+/**
+ * How wide a dashboard (Stats, Mood, Sleep) gets when it can lay its cards out
+ * in two columns (`dashboardColumnsFor`): about 500pt a card, the width a chart
+ * is already read at in the single column.
+ */
+export const DASHBOARD_CONTENT_WIDTH = 1040;
+
+/** The narrowest a dashboard's column can be and still hold two cards side by side. */
+export const DASHBOARD_TWO_COLUMN_MIN_WIDTH = 880;
+
 /** The widest the side menu gets as a drawer. A phone's 85% is already under this. */
 export const MAX_DRAWER_WIDTH = 400;
 

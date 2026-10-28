@@ -10,7 +10,6 @@ import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   Animated,
   TouchableOpacity,
@@ -29,6 +28,7 @@ import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { WideScroll, WideSpan } from '../components/WideScroll';
 import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
 import { PillGroup, type PillGroupOption } from '../components/PillGroup';
 import { NutrientDayChart } from '../components/NutrientDayChart';
@@ -633,7 +633,7 @@ export function StatsScreen() {
           bottomOffset={tabBarHeight}
         />
       ) : (
-        <ScrollView
+        <WideScroll
           ref={scrollTop.ref}
           {...scrollTop.listProps}
           refreshControl={pullSearch.refreshControl}
@@ -644,22 +644,24 @@ export function StatsScreen() {
 
           {/* Summary cards */}
           {hasTaskData && (
-          <StaggerIn index={0}>
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryCard}>
-              <Text style={[styles.summaryValue, { color: colors.accent }]}>{todayCount}</Text>
-              <Text style={styles.summaryLabel}>Today</Text>
+          <WideSpan>
+            <StaggerIn index={0}>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryCard}>
+                <Text style={[styles.summaryValue, { color: colors.accent }]}>{todayCount}</Text>
+                <Text style={styles.summaryLabel}>Today</Text>
+              </View>
+              <View style={styles.summaryCard}>
+                <Text style={[styles.summaryValue, { color: colors.accent }]}>{weekCount}</Text>
+                <Text style={styles.summaryLabel}>This week</Text>
+              </View>
+              <View style={styles.summaryCard}>
+                <Text style={[styles.summaryValue, { color: colors.orangeText }]}>{streaks.length}</Text>
+                <Text style={styles.summaryLabel}>Active streaks</Text>
+              </View>
             </View>
-            <View style={styles.summaryCard}>
-              <Text style={[styles.summaryValue, { color: colors.accent }]}>{weekCount}</Text>
-              <Text style={styles.summaryLabel}>This week</Text>
-            </View>
-            <View style={styles.summaryCard}>
-              <Text style={[styles.summaryValue, { color: colors.orangeText }]}>{streaks.length}</Text>
-              <Text style={styles.summaryLabel}>Active streaks</Text>
-            </View>
-          </View>
-          </StaggerIn>
+            </StaggerIn>
+          </WideSpan>
           )}
 
           {/* Completed per day — last 7 days */}
@@ -1458,7 +1460,7 @@ export function StatsScreen() {
             </StaggerIn>
           )}
 
-        </ScrollView>
+        </WideScroll>
       )}
       <ScrollToTopButton {...scrollTop.buttonProps} />
       <LazySheet open={openTask !== null} warm>

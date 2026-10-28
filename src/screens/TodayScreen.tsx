@@ -188,7 +188,7 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
-import { getDayStart, getLogicalDayKey, getLogicalToday, isBeforeDayReset, liveStreakCount } from '../utils/dateUtils';
+import { formatTimeOfDay, getDayStart, getLogicalDayKey, getLogicalToday, isBeforeDayReset, liveStreakCount } from '../utils/dateUtils';
 import { effectiveCalorieTargetKcal } from '../utils/activeEnergyBoost';
 import { QuickEventSheet, type QuickEventSeed } from '../components/QuickEventSheet';
 import { useEventTaskLinkStore } from '../store/useEventTaskLinkStore';
@@ -222,6 +222,7 @@ import {
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { TodayGlance } from '../components/TodayGlance';
 import { AgentSuggestionCards, useSuggestionCount } from '../components/AgentSuggestionCards';
 import { AllClearMark } from '../components/AllClearMark';
 import { CompletionCollapse } from '../components/CompletionCollapse';
@@ -251,6 +252,7 @@ import { projectMoveTargets } from '../utils/projectList';
 import { emitNowTick } from '../utils/nowTick';
 import { useNowTick } from '../hooks/useNowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
+import { glanceEvents } from '../utils/todayGlance';
 import { LazySheet } from '../components/LazySheet';
 import { TwoPane } from '../components/TwoPane';
 import { useTwoPane } from '../hooks/useTwoPane';
@@ -5326,6 +5328,18 @@ export function TodayScreen() {
           .join(' · ')
       : undefined;
 
+  // What the empty right-hand pane shows beside the list (TodayGlance): the
+  // events still ahead, off the same read as the "events left" figure above.
+  const glanceEventList = useMemo(
+    () => glanceEvents(
+      todayCalendarEvents,
+      new Date(),
+      isEventHidden,
+      at => formatTimeOfDay(at, use24HourTime),
+    ),
+    [todayCalendarEvents, isEventHidden, use24HourTime, minuteTick],
+  );
+
 
   const showCoinPill = rewardsEnabled && !featureHidden('rewardsScreen', simpleMode);
   const savingGoal = useMemo(() => {
@@ -6457,11 +6471,20 @@ export function TodayScreen() {
       detail={(
         <>
           {!editorVisible && (
-            <EmptyState
-              icon="create-outline"
-              title="Pick a task to edit"
-              subtitle="Its details open here. Select a task in the list, or add a new one."
-            />
+            viewMode === 'today' && completedToday.length + visibleTasks.length > 0 ? (
+              <TodayGlance
+                done={completedToday.length}
+                left={visibleTasks.length}
+                summary={workloadLine}
+                events={glanceEventList}
+              />
+            ) : (
+              <EmptyState
+                icon="create-outline"
+                title="Pick a task to edit"
+                subtitle="Its details open here. Select a task in the list, or add a new one."
+              />
+            )
           )}
           <EditorSheetHost store={editorStore} onClose={closeEditor} inline />
         </>
