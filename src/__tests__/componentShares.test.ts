@@ -51,10 +51,13 @@ describe('amountUsedCounts', () => {
 
 describe('the units "makes" is picked in', () => {
   it('offers the amount’s own dimension, starting on a sensible one', () => {
-    expect(makesUnitsFor('1 tbsp')).toEqual({ units: ['tsp', 'tbsp', 'cup', 'ml', 'l'], defaultUnit: 'cup' });
+    expect(makesUnitsFor('1 tbsp')).toEqual(expect.objectContaining({
+      units: ['tsp', 'tbsp', 'fl oz', 'cup', 'pint', 'quart', 'ml', 'liter'],
+      defaultUnit: 'cup',
+    }));
     expect(makesUnitsFor('30 ml')!.defaultUnit).toBe('ml');
-    expect(makesUnitsFor('2 oz')).toEqual({ units: ['g', 'kg', 'oz', 'lb'], defaultUnit: 'oz' });
-    expect(makesUnitsFor('2 fillets')).toEqual({ units: ['fillets'], defaultUnit: 'fillets' });
+    expect(makesUnitsFor('2 oz')).toEqual(expect.objectContaining({ units: ['g', 'kg', 'oz', 'lb'], defaultUnit: 'oz' }));
+    expect(makesUnitsFor('2 fillets')).toEqual({ groups: [{ heading: null, units: ['fillets'] }], units: ['fillets'], defaultUnit: 'fillets' });
   });
 
   it('offers none when the amount names no unit', () => {
@@ -64,8 +67,10 @@ describe('the units "makes" is picked in', () => {
 
   it('writes a yield that always counts against the amount', () => {
     const mix = recipe('Mix');
-    for (const unit of makesUnitsFor('1 tbsp')!.units) {
-      expect(amountUsedCounts('1 tbsp', mix, makesText('3/4', unit))).toBe(true);
+    for (const amount of ['1 tbsp', '2 oz']) {
+      for (const unit of makesUnitsFor(amount)!.units) {
+        expect(amountUsedCounts(amount, mix, makesText('3/4', unit))).toBe(true);
+      }
     }
     expect(amountUsedCounts('2 fillets', mix, makesText('4', 'fillets'))).toBe(true);
     expect(makesText('', 'cup')).toBeNull();

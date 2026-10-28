@@ -16,6 +16,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { SegmentedControl } from './SegmentedControl';
+import { ChoiceMenuChip } from './ChoiceMenuChip';
 import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
 import { PillGroup } from './PillGroup';
@@ -192,29 +193,33 @@ export function ComponentChoiceSheet({ visible, recipe, component: liveComponent
         {makesUnits && unit && (
           <>
             <Text style={[styles.groupLabel, styles.groupLabelSpaced]}>{name} makes</Text>
-            <View style={styles.makesRow}>
-              <View style={[styles.well, styles.makesWell]}>
-                <TextField
-                  style={styles.amountInput}
-                  value={makesNumber}
-                  onChangeText={setMakesNumber}
-                  placeholder="e.g. 3/4"
-                  placeholderTextColor={colors.textTertiary}
-                  maxLength={12}
-                  keyboardType="numbers-and-punctuation"
-                  returnKeyType="done"
-                  accessibilityLabel={`How many ${unit} ${name} makes`}
-                />
-              </View>
+            {/* The number and its unit in one field, the unit a chip opening
+                the menu every other amount-and-unit field in the app uses
+                (DoseAmountField, UnitMenuChip): eight units in a segmented
+                track read as eight equal choices and outweighed the number. */}
+            <View style={styles.makesField}>
+              <TextField
+                style={styles.amountInput}
+                value={makesNumber}
+                onChangeText={setMakesNumber}
+                placeholder="e.g. 3/4"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={12}
+                keyboardType="numbers-and-punctuation"
+                returnKeyType="done"
+                accessibilityLabel={`How many ${unit} ${name} makes`}
+              />
               {makesUnits.units.length > 1 ? (
-                <View style={styles.makesUnits}>
-                  <SegmentedControl
-                    label="Unit"
-                    options={makesUnits.units.map(u => ({ value: u, label: u }))}
-                    value={unit}
-                    onChange={setMakesUnit}
-                  />
-                </View>
+                <ChoiceMenuChip
+                  name="ComponentChoiceSheet makes unit"
+                  noun="Unit"
+                  groups={makesUnits.groups.map(g => ({
+                    ...(g.heading ? { heading: g.heading } : {}),
+                    options: g.units.map(u => ({ key: u, label: u })),
+                  }))}
+                  selectedKey={unit}
+                  onSelect={setMakesUnit}
+                />
               ) : (
                 <Text style={styles.makesUnitWord}>{unit}</Text>
               )}
@@ -385,9 +390,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   amountInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0, minHeight: 44 },
   hint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: font.xs * 1.4 },
   groupLabelSpaced: { marginTop: spacing.md },
-  makesRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.xs },
-  makesWell: { width: 92, marginTop: 0, paddingHorizontal: spacing.smd },
-  makesUnits: { flex: 1 },
-  makesUnitWord: { color: colors.text, fontSize: font.md },
+  makesField: { ...fieldWell(colors), marginTop: spacing.xs, paddingLeft: spacing.md, paddingRight: spacing.xs, gap: spacing.sm },
+  makesUnitWord: { color: colors.text, fontSize: font.md, paddingRight: spacing.smd },
   amountWarning: { color: colors.warningText, fontSize: font.xs, lineHeight: font.xs * 1.4, marginVertical: spacing.xs },
 });

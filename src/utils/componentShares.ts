@@ -94,11 +94,24 @@ export function amountUsedCounts(
   return fractionOf(amount, recipeYield?.trim() || null) !== null;
 }
 
-/** The units "makes" is offered in, for an amount measured in each dimension. */
+/** The units "makes" is offered in, grouped by system, for an amount measured in each dimension. */
 const MAKES_UNITS = {
-  volume: ['tsp', 'tbsp', 'cup', 'ml', 'l'],
-  mass: ['g', 'kg', 'oz', 'lb'],
+  volume: [
+    { heading: 'US', units: ['tsp', 'tbsp', 'fl oz', 'cup', 'pint', 'quart'] },
+    { heading: 'METRIC', units: ['ml', 'liter'] },
+  ],
+  mass: [
+    { heading: 'METRIC', units: ['g', 'kg'] },
+    { heading: 'US', units: ['oz', 'lb'] },
+  ],
 } as const;
+
+export interface MakesUnits {
+  /** For the menu; a count's one word has no heading and needs no menu. */
+  groups: { heading: string | null; units: string[] }[];
+  units: string[];
+  defaultUnit: string;
+}
 
 /**
  * The units a used recipe's "makes" can be picked in so it compares with
@@ -108,18 +121,19 @@ const MAKES_UNITS = {
  * counts. A count ("2 fillets") offers just its own word, written as the
  * amount wrote it, since that is the only thing it compares with.
  */
-export function makesUnitsFor(amount: string): { units: string[]; defaultUnit: string } | null {
+export function makesUnitsFor(amount: string): MakesUnits | null {
   const q = parseQuantity(amount);
   if (q.amount === null || !q.unitWritten) return null;
   const measured = measureQuantity(amount);
-  if (measured?.dimension === 'volume') {
-    return { units: [...MAKES_UNITS.volume], defaultUnit: q.unit === 'ml' || q.unit === 'l' ? 'ml' : 'cup' };
-  }
-  if (measured?.dimension === 'mass') {
-    return { units: [...MAKES_UNITS.mass], defaultUnit: q.unit === 'g' || q.unit === 'kg' ? 'g' : 'oz' };
-  }
+  const of = (groups: readonly { heading: string; units: readonly string[] }[], defaultUnit: string): MakesUnits => ({
+    groups: groups.map(g => ({ heading: g.heading, units: [...g.units] })),
+    units: groups.flatMap(g => g.units),
+    defaultUnit,
+  });
+  if (measured?.dimension === 'volume') return of(MAKES_UNITS.volume, measured.system === 'metric' ? 'ml' : 'cup');
+  if (measured?.dimension === 'mass') return of(MAKES_UNITS.mass, measured.system === 'metric' ? 'g' : 'oz');
   if (measured) return null;
-  return { units: [q.unitWritten], defaultUnit: q.unitWritten };
+  return { groups: [{ heading: null, units: [q.unitWritten] }], units: [q.unitWritten], defaultUnit: q.unitWritten };
 }
 
 /** A saved yield read back as a number and one of `units`, or null when it isn't one. */
