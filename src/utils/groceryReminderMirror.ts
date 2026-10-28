@@ -264,8 +264,13 @@ export interface GroceryReminderPlan {
   renameItems: { itemId: string; name: string; quantity: string | null; title: string }[];
   /** A row whose note to replace, because its reminder's notes were edited. */
   setNotes: { itemId: string; note: string }[];
-  /** A row to take off the list, because its reminder was deleted. */
-  removeItems: { itemId: string }[];
+  /**
+   * A row to take off the list, because its reminder was deleted. `checked` is
+   * whether the row was in the cart when it went, which is what tells a list
+   * cleared after a shop from a reminder deleted because it wasn't wanted (see
+   * `reminderRemovals.ts`, which keeps these for the person to confirm).
+   */
+  removeItems: { itemId: string; checked: boolean }[];
   /**
    * Every link that survives this pass, carrying the state the two sides agree
    * on *once the actions above have been applied*. The two that mint an id —
@@ -411,7 +416,7 @@ export function planGroceryReminderSync(
       // Deleted in the Reminders app. The row comes off the list and stays in
       // the catalog — `removeFromList` parks rather than deletes, so nothing
       // recorded about the item (its aisle, its store, its price) is lost.
-      plan.removeItems.push({ itemId: item.id });
+      plan.removeItems.push({ itemId: item.id, checked: item.checked });
       claimedItems.add(item.id);
       if (item.nameKey) claimedKeys.add(item.nameKey);
       continue;

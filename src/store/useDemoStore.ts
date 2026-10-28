@@ -19,6 +19,7 @@ import { useAlarmStore } from './useAlarmStore';
 import { useGroceryStore } from './useGroceryStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
+import { useReminderRemovalStore } from './useReminderRemovalStore';
 import { usePersonStore } from './usePersonStore';
 import { usePersonGroupStore } from './usePersonGroupStore';
 import { useFoodLogStore } from './useFoodLogStore';
@@ -61,6 +62,7 @@ export function reloadAfterDataReplaced(): void {
   useTaskStore.getState().initialize();
   useSettingsStore.getState().initialize();
   useSharedLinkStore.getState().reload();
+  useReminderRemovalStore.getState().reload();
   useStepTimerStore.getState().reload();
   clearUndoHistories();
 }
@@ -103,6 +105,7 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // through to `settings`, so without this the real queue would still be on
     // screen inside the demo and the demo's own writes would land on it.
     useSharedLinkStore.getState().reload();
+    useReminderRemovalStore.getState().reload();
     // And the step timer stack, for the same reason and with one more of its
     // own: a real timer counting down the real dinner must not still be on
     // screen inside the demo, where Pause would write to the scratch database
@@ -154,6 +157,7 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // And back to the real queue, so the demo's invented shared link leaves
     // with the rest of the scratch database.
     useSharedLinkStore.getState().reload();
+    useReminderRemovalStore.getState().reload();
     useStepTimerStore.getState().reload();
     useNfcKeyStore.getState().reload();
     useAppGroupStore.getState().reload();

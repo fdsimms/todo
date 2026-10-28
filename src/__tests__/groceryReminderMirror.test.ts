@@ -418,9 +418,20 @@ describe('planGroceryReminderSync — either side going away', () => {
 
   it('takes the row off the list when the reminder is deleted there', () => {
     const plan = planGroceryReminderSync([item({ id: 'i1', name: 'milk' })], [], linked);
-    expect(plan.removeItems).toEqual([{ itemId: 'i1' }]);
+    expect(plan.removeItems).toEqual([{ itemId: 'i1', checked: false }]);
     expect(plan.createReminders).toEqual([]);
     expect(plan.links).toEqual([]);
+  });
+
+  // A cleared list after a shop: the row was in the cart when its reminder
+  // went, which is what reminderRemovals.ts later offers as a purchase.
+  it('says whether a row taken off the list was in the cart', () => {
+    const plan = planGroceryReminderSync(
+      [item({ id: 'i1', name: 'milk', checked: true })],
+      [],
+      [link({ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: true })]
+    );
+    expect(plan.removeItems).toEqual([{ itemId: 'i1', checked: true }]);
   });
 
   it('forgets a link whose two halves have both gone', () => {
@@ -447,7 +458,7 @@ describe('planGroceryReminderSync — either side going away', () => {
       [],
       [link({ reminderId: 'r1', itemId: 'i1', name: 'milk', seen: true })]
     );
-    expect(plan.removeItems).toEqual([{ itemId: 'i1' }]);
+    expect(plan.removeItems).toEqual([{ itemId: 'i1', checked: false }]);
     expect(plan.createReminders).toEqual([]);
   });
 
@@ -459,7 +470,7 @@ describe('planGroceryReminderSync — either side going away', () => {
     );
     // r1 is gone, so the row is un-listed; r2 names the row we just claimed, so
     // it is left alone rather than adding it straight back.
-    expect(plan.removeItems).toEqual([{ itemId: 'i1' }]);
+    expect(plan.removeItems).toEqual([{ itemId: 'i1', checked: false }]);
     expect(plan.addItems).toEqual([]);
   });
 });

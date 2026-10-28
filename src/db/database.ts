@@ -6096,9 +6096,16 @@ export function dbFinishGroceryShopping(
   // list", and see `away` below for what that costs a trip.
   listId: string | null = null,
   // What a price was paid for where a receipt said; see finishShopping.
-  priceQuantityById: Readonly<Record<string, string>> = {}
+  priceQuantityById: Readonly<Record<string, string>> = {},
+  // Exactly these rows were bought, whether or not they're in the trolley: a
+  // shop recorded after the fact, for rows the Reminders mirror already took
+  // off the list (see reminderRemovals.ts). Null is the ordinary trip, which
+  // buys whatever is ticked on `listId`.
+  onlyIds: readonly string[] | null = null
 ): string[] {
   const away = listId !== null;
+  if (onlyIds && onlyIds.length === 0) return [];
+  const onlyPlaceholders = onlyIds ? onlyIds.map(() => '?').join(',') : '';
   // Joined rather than read off grocery_items' own checked/on_list, because
   // those answer for the home list alone now — see GroceryListEntry.
   const rows = db.getAllSync<{
@@ -6115,9 +6122,11 @@ export function dbFinishGroceryShopping(
     `SELECT i.id, i.quantity, i.quantity_from_recipe, i.preferred_product_id, i.brand_strict, i.price_history,
             i.last_purchased_at, i.purchase_interval_days, i.expires_at
        FROM grocery_items i
-       JOIN grocery_list_items e ON e.item_id = i.id
-      WHERE e.list_id = ? AND e.checked = 1`,
-    [listKey(listId)]
+      ${onlyIds
+        ? `WHERE i.id IN (${onlyPlaceholders})`
+        : `JOIN grocery_list_items e ON e.item_id = i.id
+      WHERE e.list_id = ? AND e.checked = 1`}`,
+    onlyIds ? [...onlyIds] : [listKey(listId)]
   );
   if (rows.length === 0) return [];
   // What a typed price was paid for. A quantity a recipe wrote ("3 cups") is
@@ -6133,8 +6142,8 @@ export function dbFinishGroceryShopping(
   // away trip does. A row still in another list's trolley stays in it: buying
   // milk for the rental is not buying the milk you need at home.
   db.runSync(
-    `DELETE FROM grocery_list_items WHERE list_id = ? AND checked = 1`,
-    [listKey(listId)]
+    `DELETE FROM grocery_list_items WHERE list_id = ? AND checked = 1${onlyIds ? ` AND item_id IN (${placeholders})` : ''}`,
+    onlyIds ? [listKey(listId), ...ids] : [listKey(listId)]
   );
   for (const id of ids) dbSyncGroceryHomeColumns(id);
   if (away) {

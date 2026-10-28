@@ -477,6 +477,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/reminderDefault.ts` — DEFAULT_REMINDER_HHMM, defaultReminderAt
 - `src/utils/reminderNudge.ts` — ReminderNudge, nudgeReminderPastMeeting, meetingSignature, meetingAtStart
 - `src/utils/reminderPermission.ts` — askForReminderPermissionIfNeeded
+- `src/utils/reminderRemovals.ts` — ReminderRemoval, REMINDER_REMOVAL_KEEP_DAYS, parseReminderRemovals, serializeReminderRemovals, addReminderRemovals, liveReminderRemovals, reminderPurchaseTime, defaultBoughtIds
 - `src/utils/remindersImport.ts` — draftFromReminder, recurrenceFromRule, reminderTimeFromAlarms, scheduleToDraft, pendingImportFor, describePendingImport, isImportableList, reminderListOptions, findReminderList, reminderCreatedAt, +14 more
 - `src/utils/remindersImportSync.ts` — RemindersPermission, ImportOutcome, lastImportOutcome, getRemindersPermission, requestRemindersPermission, listReminderLists, countImportableReminders, groceryMirrorSignature, importReminders, useRemindersImportSync
 - `src/utils/removedBeforeEating.ts` — isUsuallyRemovedBeforeEating
@@ -743,6 +744,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useProjectLockStore.ts` — useProjectLockStore, isProjectHidden, isProjectLocked
 - `src/store/useProjectStore.ts` — projectProgress, projectDecisions, AnswerTally, projectAnswerTallies, answerTallyParts, describeAnswerTally, projectCompletedRows, isProjectPastWindow, CreateProjectOptions, useProjectStore
 - `src/store/useRecipeStore.ts` — CookStats, useRecipeStore
+- `src/store/useReminderRemovalStore.ts` — useReminderRemovalStore
 - `src/store/useRewardStore.ts` — COIN_BURST_MS, RewardDetails, useRewardStore
 - `src/store/useSavedMealsStore.ts` — useSavedMealsStore
 - `src/store/useScreenTimeStore.ts` — useScreenTimeStore, useScreenTimeSync
