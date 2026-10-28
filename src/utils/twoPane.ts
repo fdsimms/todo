@@ -47,6 +47,29 @@ export function twoPaneFor(windowWidth: number): boolean {
 }
 
 /**
+ * The layout a screen keeps while a form is open in it, given what the window
+ * just did. `hold` is the layout being kept (true for two panes), or null when
+ * the window's own is in use; `previousRoom` and `room` are whether the window
+ * had room for two panes a render ago and now.
+ *
+ * Crossing the breakpoint with an editor open swaps its host (a sheet for a
+ * pane, or back), and a form can't survive that: it is a different component
+ * in a different place, so it comes back fresh and an unsaved edit is gone.
+ * Resizing is the Mac's main gesture and it takes one nudge across 1100pt to do
+ * it. So the layout the editor opened in is kept until it closes, which is the
+ * caller's `null`, or until the window comes back to it.
+ */
+export function nextLayoutHold(
+  hold: boolean | null,
+  previousRoom: boolean,
+  room: boolean,
+  editorOpen: boolean,
+): boolean | null {
+  if (hold !== null) return hold === room ? null : hold;
+  return editorOpen && previousRoom !== room ? previousRoom : null;
+}
+
+/**
  * How far in from the column's right edge the floating bars' layer ends
  * (`FloatingLayer`): none, except on a two-pane screen, where the layer ends at
  * the list pane so a bar sits over the list and beside the add button instead of

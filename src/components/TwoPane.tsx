@@ -10,6 +10,11 @@ interface Props {
   list: React.ReactNode;
   /** What is open beside it. Drawn only when the window has room. */
   detail: React.ReactNode;
+  /**
+   * The layout to use in place of the window's. For a screen that holds one while a
+   * form is open in it, so a resize can't swap the form's host out from under it.
+   */
+  twoPane?: boolean;
 }
 
 /**
@@ -18,9 +23,10 @@ interface Props {
  * in both, so crossing the breakpoint keeps its scroll position, its search
  * and a selection in progress instead of remounting it.
  */
-export function TwoPane({ list, detail }: Props) {
+export function TwoPane({ list, detail, twoPane: held }: Props) {
   const colors = useColors();
-  const twoPane = useTwoPane();
+  const roomForTwoPane = useTwoPane();
+  const twoPane = held ?? roomForTwoPane;
   const { width: windowWidth } = useWindowDimensions();
   // The page beside the list is a phone-shaped form or screen. In a 1,200pt pane its
   // rows put a label at one end and its value a thousand points away, so it takes

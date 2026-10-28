@@ -107,7 +107,9 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from 'zustand';
-import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
+import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, editorHasUnsavedChanges, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
+import { confirmDiscard } from '../utils/confirmDiscard';
+import { nextLayoutHold } from '../utils/twoPane';
 import { MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
 import { SuggestedPinsSheet } from '../components/SuggestedPinsSheet';
 import { MorningCheckInSheet } from '../components/MorningCheckInSheet';
@@ -829,9 +831,27 @@ const OPEN_TASK_WAIT_MS = 20_000;
 export function TodayScreen() {
   // ==== store bindings, navigation, layout insets ====
   const insets = useSafeAreaInsets();
+  // In a store, for the reason quickAddStore gives. This screen reads it only
+  // while something here depends on it: the two-pane layout, which lights the
+  // row being edited and shows a placeholder beside the list, and an itinerary
+  // import waiting for the editor to close before opening the next entry. Made
+  // here, ahead of the layout below, which has to know whether an editor is open.
+  const editorStore = useSheetStore<EditorSheetState>(EDITOR_CLOSED);
   // On a window with room for two panes (`twoPaneFor`) the task editor opens
   // beside the list, drawn in place, instead of as a sheet over it.
-  const twoPane = useTwoPane();
+  const roomForTwoPane = useTwoPane();
+  // Resizing the window across the breakpoint with an editor open used to swap
+  // its host: widening unmounted the sheet and mounted the pane, narrowing the
+  // reverse, and either way the form came back fresh and an unsaved edit was gone.
+  // So the layout the editor opened in is held until it closes (`closeEditor`), or
+  // until the window comes back to it. Decided while rendering, not in an effect:
+  // an effect runs after the host has already been torn out.
+  const [layoutHold, setLayoutHold] = useState<boolean | null>(null);
+  const [lastRoomForTwoPane, setLastRoomForTwoPane] = useState(roomForTwoPane);
+  if (lastRoomForTwoPane !== roomForTwoPane) setLastRoomForTwoPane(roomForTwoPane);
+  const nextHold = nextLayoutHold(layoutHold, lastRoomForTwoPane, roomForTwoPane, editorStore.getState().visible);
+  if (nextHold !== layoutHold) setLayoutHold(nextHold);
+  const twoPane = layoutHold ?? roomForTwoPane;
   const navigation = useNavigation();
   // A task row's category chip opens that category's page. Stable, because
   // TaskItem is memoized.
@@ -1017,14 +1037,23 @@ export function TodayScreen() {
     });
     return true;
   }, []);
-  // In a store, for the reason quickAddStore gives. This screen reads it only
-  // while something here depends on it: the two-pane layout, which lights the
-  // row being edited and shows a placeholder beside the list, and an itinerary
-  // import waiting for the editor to close before opening the next entry.
-  const editorStore = useSheetStore<EditorSheetState>(EDITOR_CLOSED);
   const setEditorVisible = useCallback((visible: boolean) => editorStore.setState({ visible }), [editorStore]);
   const setEditingTask = useCallback((task: Task | null) => editorStore.setState({ task }), [editorStore]);
   const setEditorInitialDraft = useCallback((draft: Partial<TaskDraft> | null) => editorStore.setState({ draft }), [editorStore]);
+  // Every way of pointing the editor somewhere goes through this. Beside the list, the editor
+  // is a pane, and the next click on a row is one tap from a form holding edits nobody has
+  // saved: opening another task over it threw them away with nothing said. A sheet covers
+  // the list it was opened from, so this asks only while the pane is up and dirty, in the
+  // app's usual "Discard changes?" alert; Keep editing leaves everything as it was.
+  const twoPaneRef = useRef(twoPane);
+  twoPaneRef.current = twoPane;
+  const switchEditor = useCallback((open: () => void) => {
+    if (twoPaneRef.current && editorHasUnsavedChanges(editorStore)) {
+      confirmDiscard(open);
+      return;
+    }
+    open();
+  }, [editorStore]);
   const [eventImportVisible, setEventImportVisible] = useState(false);
   // Events still waiting to become a task, from an itinerary import that read
   // more than one. Drained one at a time by the effect below, which opens the
@@ -1086,6 +1115,7 @@ export function TodayScreen() {
   const editorReturnToRef = useRef<string | null>(null);
   const closeEditor = useCallback(() => {
     setEditorVisible(false);
+    setLayoutHold(null);
     setExpandedTaskId(null);
     const returnTo = editorReturnToRef.current;
     editorReturnToRef.current = null;
@@ -1111,10 +1141,12 @@ export function TodayScreen() {
   // something actually happens, so cancelling the confirm doesn't cost the
   // user the selection they just built.
   const handleOpenTaskFromDeliverable = useCallback((task: Task) => {
-    setEditingTask(task);
-    setEditorInitialDraft(null);
-    setEditorVisible(true);
-  }, []);
+    switchEditor(() => {
+      setEditingTask(task);
+      setEditorInitialDraft(null);
+      setEditorVisible(true);
+    });
+  }, [switchEditor]);
   const { requestComplete, enqueue, queueProps } = useAnswerFirstCompletion(handleOpenTaskFromDeliverable);
   const handleBulkComplete = () => {
     const ids = Array.from(selectedIds);
@@ -2279,9 +2311,11 @@ export function TodayScreen() {
   }, [navigation]);
 
   const openEditor = (task?: Task) => {
-    setEditingTask(task ?? null);
-    setEditorInitialDraft(null);
-    setEditorVisible(true);
+    switchEditor(() => {
+      setEditingTask(task ?? null);
+      setEditorInitialDraft(null);
+      setEditorVisible(true);
+    });
   };
 
   // The row handlers below are shared verbatim by all five TaskItem call sites
@@ -2292,24 +2326,40 @@ export function TodayScreen() {
   // Props) so one callback serves the whole list rather than one closure per
   // row, which is what lets the identity be stable at all.
   //
-  // Empty deps throughout, and each is written so that's provably safe: the
-  // expand toggle reaches state only through the functional form of setState,
-  // and the editor resolves its task from the store at call time instead of
-  // capturing it. Neither can read a stale value from its frozen closure.
-  const handleRowPress = useCallback((id: string) => {
+  // Their deps are values that never change identity (a store made once, a
+  // setter, a ref), so each is as stable as an empty list would be, and each
+  // is written so a frozen closure can't read a stale value: the expand toggle
+  // reaches state only through the functional form of setState, the editor
+  // resolves its task from the store at call time instead of capturing it, and
+  // whether the window has two panes is read from a ref.
+  const handleRowEdit = useCallback((id: string) => {
+    switchEditor(() => {
+      setEditingTask(useTaskStore.getState().tasks.find(t => t.id === id) ?? null);
+      setEditorInitialDraft(null);
+      setEditorVisible(true);
+    });
+  }, [switchEditor]);
+
+  // With room for the pane (`twoPane`), a click opens the task in it and the row stays as
+  // it was. Expanding the row first, then finding the pencil inside it, took three clicks
+  // to move from one task to the next, and the spotlight dimmed the rest of a list that
+  // is meant to stay live beside the form. A pinned copy is keyed `pin-<id>`, so the id
+  // is the task's own. Returns true for TaskItem: the press is handled, nothing to expand.
+  const handleRowPress = useCallback((id: string): boolean => {
+    if (twoPaneRef.current) {
+      const taskId = id.startsWith('pin-') ? id.slice(4) : id;
+      const open = editorStore.getState();
+      if (!(open.visible && open.task?.id === taskId)) handleRowEdit(taskId);
+      return true;
+    }
     setExpandedTaskId(prev => {
       // A tap landing while a *different* row is spotlighted just dismisses
       // that one, rather than expanding the row that was tapped.
       if (prev !== null && prev !== id) return null;
       return prev === id ? null : id;
     });
-  }, []);
-
-  const handleRowEdit = useCallback((id: string) => {
-    setEditingTask(useTaskStore.getState().tasks.find(t => t.id === id) ?? null);
-    setEditorInitialDraft(null);
-    setEditorVisible(true);
-  }, []);
+    return false;
+  }, [editorStore, handleRowEdit]);
 
   // A task link (dundundun://task?id=…, or the MCP server's https form of it)
   // opens that task's editor, through the same stamped-param handoff as the
@@ -2372,16 +2422,19 @@ export function TodayScreen() {
   }, [navigation]);
 
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
-    // The draft carries everything the sheet had, including the seeded
-    // category; only the placement is let go of, and the editor has no notion
-    // of one anyway.
-    // A stack just named for this sheet stays: the draft is filed into it,
-    // and the editor hasn't saved it yet.
-    namedStackIdRef.current = null;
-    closeQuickAdd();
-    setEditingTask(null);
-    setEditorInitialDraft(draft);
-    setEditorVisible(true);
+    // Asked before quick add closes, so Keep editing leaves what was typed there where it is.
+    switchEditor(() => {
+      // The draft carries everything the sheet had, including the seeded
+      // category; only the placement is let go of, and the editor has no notion
+      // of one anyway.
+      // A stack just named for this sheet stays: the draft is filed into it,
+      // and the editor hasn't saved it yet.
+      namedStackIdRef.current = null;
+      closeQuickAdd();
+      setEditingTask(null);
+      setEditorInitialDraft(draft);
+      setEditorVisible(true);
+    });
   };
 
   /**
@@ -6240,6 +6293,7 @@ export function TodayScreen() {
 
   return (
     <TwoPane
+      twoPane={twoPane}
       list={screenBody}
       detail={(
         <>
@@ -6247,7 +6301,7 @@ export function TodayScreen() {
             <EmptyState
               icon="create-outline"
               title="Pick a task to edit"
-              subtitle="Its details open here. Tap the pencil on a task, or add a new one."
+              subtitle="Its details open here. Select a task in the list, or add a new one."
             />
           )}
           <EditorSheetHost store={editorStore} onClose={closeEditor} inline />

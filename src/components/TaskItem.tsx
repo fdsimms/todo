@@ -271,7 +271,8 @@ interface Props {
   // a fresh arrow per row per render, which is what makes the memo below
   // actually hold (see the handlers in TodayScreen). Callers that don't need
   // the id can keep ignoring it — a zero-argument arrow still satisfies these.
-  onPress: (id: string) => void;
+  /** Returns true when the screen opened the task somewhere else (Today's editor pane), so the row has nothing to expand. */
+  onPress: (id: string) => void | boolean;
   /**
    * What this row calls itself when it reports a *press* back, for the one
    * case where a task has more than one row on screen: Today's pinned block
@@ -1835,7 +1836,9 @@ const TaskItemRow = React.memo(function TaskItem({
     // A notice whose panel would be empty has nothing to open — see
     // `expandable`. Marking it seen above still counts: it was read.
     if (!expandable) return;
-    onPress(rowId);
+    // A screen that opens the task somewhere else (Today's editor pane) says so, and the
+    // row has nothing to expand or start editing in place.
+    if (onPress(rowId) === true) return;
     // A list line opens with its text ready to edit: fixing a typo in a line
     // is the common want, and it used to take a second tap on a title nothing
     // said was tappable. Opening a line that's already open closes it instead.
