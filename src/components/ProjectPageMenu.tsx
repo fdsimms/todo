@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -77,6 +77,7 @@ export function ProjectPageMenu({ visible, onClose, anchor, project }: Props) {
       popoverWidth={300}
       scrimLabel="Close menu"
     >
+      <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
       <MenuRow card={card}
         icon={board ? 'list-outline' : 'grid-outline'}
         label={board ? 'View as list' : 'View as board'}
@@ -118,6 +119,7 @@ export function ProjectPageMenu({ visible, onClose, anchor, project }: Props) {
         destructive
         onPress={actions.confirmDelete}
       />
+      </ScrollView>
     </CardSheet>
   );
 }

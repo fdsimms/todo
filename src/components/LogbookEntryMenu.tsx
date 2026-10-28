@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  ScrollView,
   StyleSheet,
 } from 'react-native';
 import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
@@ -131,6 +132,7 @@ export function LogbookEntryMenu({
         />
       }
     >
+      <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
       <View style={styles.optionsCard}>
         {onDoAgain && (
           <>
@@ -197,6 +199,7 @@ export function LogbookEntryMenu({
           <Text style={[styles.optionLabel, styles.destructiveLabel]}>Delete entry</Text>
         </TouchableOpacity>
       </View>
+      </ScrollView>
     </CardSheet>
   );
 }
