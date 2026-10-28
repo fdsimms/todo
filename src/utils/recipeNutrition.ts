@@ -31,8 +31,8 @@ import { componentShares } from './componentShares';
  * coverage and the declining-rather-than-answering rule, and every one of
  * those applies here unchanged, with one exception noted where it lives
  * (`resolveLine`'s staple carve-out — a staple has no marginal *cost* at any
- * quantity, which cost's own exclusion is right to rely on, but it still has
- * real calories once the amount is more than a dash). What else is new is
+ * quantity, which cost's own exclusion is right to rely on, but its calories
+ * and sodium are real, so here it counts whenever it can be counted). What else is new is
  * below.
  *
  * **Coverage is per nutrient, not just per line**, which is the difference from
@@ -82,7 +82,7 @@ export interface RecipeNutrition {
   reported: Partial<Record<NutrientKey, number>>;
   /** Lines that resolved to an amount of a food whose panel is known… */
   covered: number;
-  /** …out of how many the dish calls for, negligible staples excluded from both sides (see `resolveLine`). */
+  /** …out of how many the dish calls for, staples that can't be counted excluded from both sides (see `resolveLine`). */
   lines: number;
   /**
    * How many servings *this* total is, which is the recipe's own count times
@@ -201,19 +201,17 @@ function isBulkStapleQuantity(quantity: string, factor: number): boolean {
  * offering to fix a line the total had already counted is exactly how that
  * drift would show up.
  *
- * A staple is null rather than a state of its own: it is excluded from *both*
- * sides of the coverage fraction, so it is not a line that failed, it is not a
- * line at all. Salt missing a nutrition panel is not a gap in a dish's figures
- * — **unless the line itself says otherwise**. `isBulkStapleQuantity` is the
- * one exception: a staple written in a genuinely large amount (100 g or a
- * tablespoon and up) is treated as an
- * ordinary ingredient (falling through to `unmatched`/`noPanel`/`unmeasured`/
- * `covered` below) rather than silently dropped, because a pound of something
- * is a real contribution to a dish's figures whether or not it's also
- * something the cook always keeps stocked. `recipeCost.ts` doesn't need this
- * — being stocked already, rather than bought for this recipe, is a reason a
- * staple has no marginal *cost* here at any quantity, which is a different
- * claim from "this amount has no calories".
+ * **A staple counts whenever it can be counted.** One with figures and an
+ * amount they can measure is `covered` like any other line: a teaspoon of salt
+ * is 2,300 mg of sodium, and dropping it for being something the cook always
+ * keeps stocked threw that away. Only a staple that *can't* be counted (no
+ * figures, or an amount like "a pinch" they can't measure) gets the carve-out:
+ * null, out of *both* sides of the coverage fraction, so salt with no panel is
+ * not a gap in the dish. `isBulkStapleQuantity` limits even that: a staple
+ * written in a genuinely large amount (100 g or a tablespoon and up) that
+ * can't be counted is a real gap, because a pound of something is a real part
+ * of the dish. `recipeCost.ts` skips staples at any quantity, which is a
+ * different claim: being stocked already, they cost this recipe nothing.
  */
 function resolveLine(
   nameKey: string,
@@ -229,15 +227,16 @@ function resolveLine(
   // needs sits right there.
   const resolved = byKey.has(nameKey) ? nameKey : resolvePluralKey(nameKey, byKey.keys());
   const item = resolved ? byKey.get(resolved) : undefined;
-  if (item?.isStaple && !isBulkStapleQuantity(quantity, factor)) return null;
   if (!item) return { state: 'unmatched', item: null, product: null, nutrition: null, multiplier: null };
+  // A staple that can't be counted is no gap, unless it's a bulk amount (above).
+  const negligible = item.isStaple && !isBulkStapleQuantity(quantity, factor);
 
   const product = productFor(item);
   const nutrition = nutritionFor(item, product);
-  if (!nutrition) return { state: 'noPanel', item, product, nutrition: null, multiplier: null };
+  if (!nutrition) return negligible ? null : { state: 'noPanel', item, product, nutrition: null, multiplier: null };
 
   const multiplier = panelMultiplier(quantity, prep, nutrition);
-  if (multiplier === null) return { state: 'unmeasured', item, product, nutrition, multiplier: null };
+  if (multiplier === null) return negligible ? null : { state: 'unmeasured', item, product, nutrition, multiplier: null };
 
   return { state: 'covered', item, product, nutrition, multiplier: multiplier * factor };
 }
@@ -374,7 +373,7 @@ export function recipeNutrition(
 export interface RecipeNutritionReading {
   /** The rollup, or null while too little of the dish is known to total it. */
   nutrition: RecipeNutrition | null;
-  /** Every line that counts toward the fraction, negligible staples excluded. */
+  /** Every line that counts toward the fraction, staples that can't be counted excluded. */
   lines: NutritionLine[];
   gaps: NutritionGaps;
   /**
@@ -482,9 +481,9 @@ export function estimateRequestLine(line: NutritionLine): string {
  * own rules would eventually disagree with the count that sent someone looking
  * for them.
  *
- * A negligible staple is absent, exactly as it's absent from both sides of
- * that fraction — but one written in a bulk weight isn't (see `resolveLine`),
- * so it shows up here like any other line, gap and all.
+ * A staple that can't be counted is absent, exactly as it's absent from both
+ * sides of that fraction — but one written in a bulk weight isn't (see
+ * `resolveLine`), so it shows up here like any other line, gap and all.
  *
  * **A dish with an undecided either/or comes back empty**, matching the
  * refusal `recipeNutrition` already makes and for the same reason: both
@@ -790,7 +789,7 @@ export function describeRecipeNutritionRange(
 export interface NutritionGaps {
   /** Lines that reached the total. */
   covered: number;
-  /** Lines the dish calls for, negligible staples excluded — the denominator on screen. */
+  /** Lines the dish calls for, staples that can't be counted excluded — the denominator on screen. */
   total: number;
   /**
    * The lines somebody can answer from the recipe page: a catalog row missing

@@ -248,7 +248,8 @@ describe('recipeNutrition', () => {
     expect(read.reported.calorieKcal).toBe(3);
   });
 
-  it('excludes a staple from both sides of the fraction', () => {
+  it('leaves out a staple it can\'t count, from both sides of the fraction', () => {
+    // No portion table, so a teaspoon of salt can't be weighed: not a gap.
     const dish = recipe('Chicken', [
       ing('Chicken', { quantity: '200 g' }),
       ing('Salt', { quantity: '1 tsp' }),
@@ -280,15 +281,30 @@ describe('recipeNutrition', () => {
     expect(read.total.calorieKcal).toBe(Math.round((200 + 453.59237 * 4) * 10) / 10);
   });
 
-  it('still excludes a staple written in a small weight', () => {
-    // A packet of yeast, well under the bulk threshold — stays waved through.
+  it('counts a staple in a small amount whenever it has figures to count it by', () => {
+    // A teaspoon of salt is a lot of sodium, whatever the cook keeps stocked.
+    const dish = recipe('Bread', [
+      ing('Flour', { quantity: '200 g' }),
+      ing('Salt', { quantity: '6 g' }),
+    ]);
+    const catalog = [
+      item({ name: 'Flour', nutrition: panel() }),
+      item({ name: 'Salt', isStaple: true, nutrition: panel({ amounts: { sodiumMg: 38758 } }) }),
+    ];
+    const read = recipeNutrition(dish, catalog)!;
+    expect(read.lines).toBe(2);
+    expect(read.covered).toBe(2);
+    expect(read.total.sodiumMg).toBeCloseTo(2325.5, 0);
+  });
+
+  it('still leaves out a small staple with no figures, which is no gap', () => {
     const dish = recipe('Bread', [
       ing('Flour', { quantity: '200 g' }),
       ing('Yeast', { quantity: '7 g' }),
     ]);
     const catalog = [
       item({ name: 'Flour', nutrition: panel() }),
-      item({ name: 'Yeast', isStaple: true, nutrition: panel() }),
+      item({ name: 'Yeast', isStaple: true }),
     ];
     const read = recipeNutrition(dish, catalog)!;
     expect(read.lines).toBe(1);
@@ -820,10 +836,10 @@ describe('recipeNutritionLines', () => {
     expect(nutritionGaps([line]).fillable).toHaveLength(0);
   });
 
-  it('weighs a staple against the scaled amount, not the written one', () => {
+  it('weighs a staple with no figures against the scaled amount, not the written one', () => {
     // 60 g of a staple is a dash; doubled it is 120 g, past the bulk line.
     const dish = recipe('Bread', [ing('Sugar', { quantity: '60 g' })]);
-    const catalog = [item({ name: 'Sugar', isStaple: true, nutrition: panel() })];
+    const catalog = [item({ name: 'Sugar', isStaple: true })];
     expect(recipeNutritionLines(dish, catalog)).toHaveLength(0);
     expect(recipeNutritionLines(dish, catalog, [], undefined, undefined, 2)).toHaveLength(1);
   });
