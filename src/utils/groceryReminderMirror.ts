@@ -74,6 +74,17 @@ export interface GroceryReminderLink {
    * shop is neither.
    */
   seen: boolean;
+  /**
+   * When the pair was checked, while it is. The Reminders app's own completion
+   * date when the check came from there, else the pass that saw the app's
+   * check (which runs moments after it). Absent while unchecked, and on a
+   * record from before this was kept whose reminder gave no completion date.
+   *
+   * It's here for the one moment the reminder can no longer say: when it is
+   * deleted, this is how `reminderRemovals.ts` dates the purchase it offers,
+   * since the deletion itself usually comes days after the shop.
+   */
+  checkedAt?: string;
 }
 
 /** Links by reminder-list id, same per-list shape as `HandledReminderIndex`. */
@@ -118,11 +129,17 @@ export function parseGroceryLinks(raw: string | null | undefined): GroceryLinkIn
         // many times over by now. Defaulting it to false would read every one
         // of them as unconfirmed on the upgrade pass.
         seen: link.seen !== false,
+        ...(validIso(link.checkedAt) ? { checkedAt: link.checkedAt as string } : {}),
       });
     }
     if (kept.length > 0) out[listId] = kept;
   }
   return out;
+}
+
+/** A string `Date.parse` can read, or nothing. */
+function validIso(value: unknown): value is string {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
 }
 
 export function serializeGroceryLinks(index: GroceryLinkIndex): string {
@@ -166,6 +183,8 @@ export interface MirrorReminder {
   completed: boolean;
   /** The reminder's notes field, trimmed, and empty when it has none. See `mirrorNote`. */
   notes: string;
+  /** When it was completed, ISO, if it is and EventKit says. See `GroceryReminderLink.checkedAt`. */
+  completedAt?: string | null;
 }
 
 /**
@@ -270,7 +289,7 @@ export interface GroceryReminderPlan {
    * cleared after a shop from a reminder deleted because it wasn't wanted (see
    * `reminderRemovals.ts`, which keeps these for the person to confirm).
    */
-  removeItems: { itemId: string; checked: boolean }[];
+  removeItems: { itemId: string; checked: boolean; checkedAt?: string }[];
   /**
    * Every link that survives this pass, carrying the state the two sides agree
    * on *once the actions above have been applied*. The two that mint an id —
@@ -321,7 +340,9 @@ const EMPTY_PLAN = (): GroceryReminderPlan => ({
 export function planGroceryReminderSync(
   items: readonly MirrorItem[],
   reminders: readonly MirrorReminder[],
-  links: readonly GroceryReminderLink[]
+  links: readonly GroceryReminderLink[],
+  /** When this pass runs: the check time for a row checked in the app. */
+  now: Date = new Date()
 ): GroceryReminderPlan {
   const plan = EMPTY_PLAN();
 
@@ -349,7 +370,7 @@ export function planGroceryReminderSync(
   const reconcilePair = (
     reminder: MirrorReminder,
     item: MirrorItem,
-    shadow: { name: string; checked: boolean; note: string }
+    shadow: { name: string; checked: boolean; note: string; checkedAt?: string }
   ): void => {
     claimedReminders.add(reminder.id);
     claimedItems.add(item.id);
@@ -399,7 +420,21 @@ export function planGroceryReminderSync(
         notes: note,
       });
     }
-    plan.links.push({ reminderId: reminder.id, itemId: item.id, name: title, checked, note, seen: true });
+    // A check already on record keeps its time. A fresh one takes the
+    // reminder's completion date when Reminders is where it was checked, and
+    // this pass's time when the app was (the pass follows the tap closely).
+    // A pair checked before this was kept, with no completion date to read,
+    // stays undated rather than being dated now.
+    let checkedAt: string | undefined;
+    if (checked) {
+      const completedAt = reminderChecked && validIso(reminder.completedAt) ? reminder.completedAt : undefined;
+      if (shadow.checked) checkedAt = shadow.checkedAt ?? completedAt;
+      else checkedAt = completedAt ?? now.toISOString();
+    }
+    plan.links.push({
+      reminderId: reminder.id, itemId: item.id, name: title, checked, note, seen: true,
+      ...(checkedAt ? { checkedAt } : {}),
+    });
   };
 
   // Pass 1 — the links we already hold.
@@ -416,7 +451,11 @@ export function planGroceryReminderSync(
       // Deleted in the Reminders app. The row comes off the list and stays in
       // the catalog — `removeFromList` parks rather than deletes, so nothing
       // recorded about the item (its aisle, its store, its price) is lost.
-      plan.removeItems.push({ itemId: item.id, checked: item.checked });
+      plan.removeItems.push({
+        itemId: item.id,
+        checked: item.checked,
+        ...(item.checked && link.checkedAt ? { checkedAt: link.checkedAt } : {}),
+      });
       claimedItems.add(item.id);
       if (item.nameKey) claimedKeys.add(item.nameKey);
       continue;

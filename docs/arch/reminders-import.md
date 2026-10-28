@@ -146,7 +146,10 @@ Seven things that are the way they are for a reason:
   in-cart rows pre-selected, and records those through `finishShopping`'s `itemIds`. **It never
   assumes a purchase**: a deleted reminder is either a cleared shop or a thing that stopped being
   wanted, and only the person knows which. A removal stops being asked about once the row is back
-  on the list, bought since, or two weeks old.
+  on the list, bought since, or two weeks old. **The purchase is dated from the check, not the
+  deletion**, since a list is cleared days after the shop and the cadence is measured from the
+  date: each link keeps `checkedAt` (Reminders' own completion date, or the pass that saw an
+  in-app check), and the card records one purchase per day the rows were checked, under one undo.
 - **A mirrored pass marks the whole list handled** (`rememberHandled(listId, present, present)`),
   so switching two-way back off hands the one-way drain a clean slate rather than a list it reads
   as one big backlog — including the reminders the mirror itself wrote.

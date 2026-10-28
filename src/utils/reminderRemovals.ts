@@ -12,6 +12,12 @@ import type { GroceryItem } from '../types';
  * the app, so none of what it bought reached the purchase record the pantry is
  * read from (`probablyHaveReason`, `docs/arch/groceries.md`).
  *
+ * **Dated from the check, not the deletion.** A list is usually cleared days
+ * after the shop, and the item's purchase cadence is measured from the date,
+ * so the mirror keeps when each row was checked and the purchase uses that
+ * (`ReminderRemoval.checkedAt`), falling back to the removal only when no
+ * check time is known.
+ *
  * **Confirmed, never assumed.** A deleted reminder is either a list cleared
  * after a shop or a thing that stopped being wanted, and only the person
  * knows which. So nothing here writes a purchase: it holds the rows until
@@ -32,6 +38,13 @@ export interface ReminderRemoval {
   inCart: boolean;
   /** When the mirror took it off the list. ISO. */
   removedAt: string;
+  /**
+   * When it was checked, for a row that was in the cart and whose check time
+   * the mirror knew (`GroceryReminderLink.checkedAt`). The purchase is dated
+   * from this rather than `removedAt`, because a list is usually cleared days
+   * after the shop and the item's purchase cadence is measured from the date.
+   */
+  checkedAt?: string;
 }
 
 /**
@@ -57,11 +70,12 @@ export function parseReminderRemovals(raw: string | null): ReminderRemoval[] {
   const seen = new Set<string>();
   for (const entry of parsed) {
     if (!entry || typeof entry !== 'object') continue;
-    const { itemId, inCart, removedAt } = entry as Record<string, unknown>;
+    const { itemId, inCart, removedAt, checkedAt } = entry as Record<string, unknown>;
     if (typeof itemId !== 'string' || !itemId || seen.has(itemId)) continue;
     if (typeof removedAt !== 'string' || Number.isNaN(Date.parse(removedAt))) continue;
     seen.add(itemId);
-    out.push({ itemId, inCart: inCart === true, removedAt });
+    const dated = inCart === true && typeof checkedAt === 'string' && !Number.isNaN(Date.parse(checkedAt));
+    out.push({ itemId, inCart: inCart === true, removedAt, ...(dated ? { checkedAt } : {}) });
   }
   return out;
 }
@@ -76,15 +90,25 @@ export function serializeReminderRemovals(removals: readonly ReminderRemoval[]):
  */
 export function addReminderRemovals(
   existing: readonly ReminderRemoval[],
-  removed: readonly { itemId: string; checked: boolean }[],
+  removed: readonly { itemId: string; checked: boolean; checkedAt?: string }[],
   removedAt: string
 ): ReminderRemoval[] {
   if (removed.length === 0) return [...existing];
   const incoming = new Set(removed.map(r => r.itemId));
   return [
     ...existing.filter(r => !incoming.has(r.itemId)),
-    ...removed.map(r => ({ itemId: r.itemId, inCart: r.checked, removedAt })),
+    ...removed.map(r => ({
+      itemId: r.itemId,
+      inCart: r.checked,
+      removedAt,
+      ...(r.checked && r.checkedAt ? { checkedAt: r.checkedAt } : {}),
+    })),
   ];
+}
+
+/** When a confirmed removal was bought: its check, else when it came off the list. */
+export function purchaseTimeOf(removal: ReminderRemoval): string {
+  return removal.checkedAt ?? removal.removedAt;
 }
 
 /**
@@ -92,8 +116,9 @@ export function addReminderRemovals(
  * - it no longer exists;
  * - it is back on the list, since that is a plan to buy it, which answers
  *   the question better than the card could;
- * - it has been bought since it was removed (a trip finished in the app, a
- *   receipt, or this card's own answer on another device);
+ * - it has been bought since it was checked, or removed if it never was (a
+ *   trip finished in the app, a receipt, or this card's own answer, here or
+ *   on another device);
  * - it has waited longer than `REMINDER_REMOVAL_KEEP_DAYS`.
  *
  * Only the home list matters (`onList` is the home list's mirror column),
@@ -109,22 +134,43 @@ export function liveReminderRemovals(
   return removals.filter(r => {
     const item = byId.get(r.itemId);
     if (!item || item.onList) return false;
-    const removed = Date.parse(r.removedAt);
-    if (now.getTime() - removed > REMINDER_REMOVAL_KEEP_DAYS * DAY_MS) return false;
-    if (item.lastPurchasedAt && Date.parse(item.lastPurchasedAt) >= removed) return false;
+    if (now.getTime() - Date.parse(r.removedAt) > REMINDER_REMOVAL_KEEP_DAYS * DAY_MS) return false;
+    if (item.lastPurchasedAt && Date.parse(item.lastPurchasedAt) >= Date.parse(purchaseTimeOf(r))) return false;
     return true;
   });
 }
 
 /**
- * When the confirmed rows were bought, for `finishShopping`. The latest
- * removal among them: a reminder is cleared after the shop, never before it,
- * so that is the closest the record can get, and it is also the stamp that
- * retires every one of them in `liveReminderRemovals`. Never later than now.
+ * The confirmed rows as `finishShopping` calls, one per day they were bought,
+ * oldest first. A trip records one time for everything in it, and items
+ * checked on different days were different shops, so each day gets its own.
+ * Within a day the latest time stands for all of it, which is also the stamp
+ * that retires every row in the group (`liveReminderRemovals`). Never later
+ * than now.
  */
-export function reminderPurchaseTime(bought: readonly ReminderRemoval[], now: Date): string {
-  const latest = Math.max(...bought.map(r => Date.parse(r.removedAt)));
-  return new Date(Number.isFinite(latest) ? Math.min(latest, now.getTime()) : now.getTime()).toISOString();
+export function purchaseGroups(
+  bought: readonly ReminderRemoval[],
+  now: Date
+): { purchasedAt: string; itemIds: string[] }[] {
+  const byDay = new Map<string, { latest: number; itemIds: string[] }>();
+  for (const r of bought) {
+    const time = Math.min(Date.parse(purchaseTimeOf(r)), now.getTime());
+    // The local calendar day, from the date's own fields. Not `dayKeyOf`,
+    // whose module reaches the settings store and the database; this one is
+    // only a grouping key and never stored.
+    const d = new Date(time);
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const group = byDay.get(key);
+    if (group) {
+      group.latest = Math.max(group.latest, time);
+      group.itemIds.push(r.itemId);
+    } else {
+      byDay.set(key, { latest: time, itemIds: [r.itemId] });
+    }
+  }
+  return [...byDay.values()]
+    .sort((a, b) => a.latest - b.latest)
+    .map(g => ({ purchasedAt: new Date(g.latest).toISOString(), itemIds: g.itemIds }));
 }
 
 /** The rows a fresh card starts with selected: the ones that were in the cart. */

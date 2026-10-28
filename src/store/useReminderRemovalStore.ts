@@ -5,7 +5,7 @@ import {
   addReminderRemovals,
   liveReminderRemovals,
   parseReminderRemovals,
-  reminderPurchaseTime,
+  purchaseGroups,
   serializeReminderRemovals,
   type ReminderRemoval,
 } from '../utils/reminderRemovals';
@@ -40,11 +40,15 @@ interface ReminderRemovalState {
    */
   reload: () => void;
   /** One mirror pass's removals. `removedAt` defaults to now. */
-  record: (removed: readonly { itemId: string; checked: boolean }[], removedAt?: string) => void;
+  record: (removed: readonly { itemId: string; checked: boolean; checkedAt?: string }[], removedAt?: string) => void;
   /**
    * The card's answer about the rows it showed. `boughtIds` are recorded as a
    * purchase through `finishShopping`, which is what puts them in the pantry,
    * and every other shown row is forgotten. Returns how many were recorded.
+   *
+   * One `finishShopping` per day the rows were checked (`purchaseGroups`), so
+   * each is dated from its own shop, filed as a single undo entry when there
+   * is more than one: the card was one tap, so its undo is too.
    *
    * A bought row is left in the record rather than deleted: the purchase is
    * what retires it (`liveReminderRemovals`), so undoing the purchase brings
@@ -94,14 +98,21 @@ export const useReminderRemovalStore = create<ReminderRemovalState>((set, get) =
       .filter(r => wanted.has(r.itemId));
     let recorded = 0;
     if (bought.length > 0) {
-      recorded = useGroceryStore.getState().finishShopping(
-        null,
-        {},
-        reminderPurchaseTime(bought, now),
-        undefined,
-        {},
-        { itemIds: bought.map(r => r.itemId) }
-      );
+      const grocery = useGroceryStore.getState();
+      const stackBefore = grocery.undoStack;
+      const groups = purchaseGroups(bought, now);
+      const record = (g: { purchasedAt: string; itemIds: string[] }) =>
+        useGroceryStore.getState().finishShopping(null, {}, g.purchasedAt, undefined, {}, { itemIds: g.itemIds });
+      for (const g of groups) recorded += record(g);
+      if (groups.length > 1 && recorded > 0) {
+        const parts = useGroceryStore.getState().undoStack.slice(stackBefore.length);
+        useGroceryStore.getState().setLastAction({
+          label: `Bought ${recorded} ${recorded === 1 ? 'thing' : 'things'}`,
+          destructive: true,
+          undo: () => [...parts].reverse().forEach(p => p.undo()),
+          redo: () => groups.forEach(record),
+        }, { replacing: stackBefore });
+      }
     }
     const forgotten = new Set(shownIds.filter(id => !wanted.has(id)));
     if (forgotten.size > 0) {

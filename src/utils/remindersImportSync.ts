@@ -516,6 +516,17 @@ interface MirrorOutcome {
  * parks a row in the catalog with its aisle, its stores and its price intact),
  * then the reminders that need writing or updating, and the deletes last.
  */
+/**
+ * EventKit's completion date as ISO, or null. expo-calendar types it as a
+ * string or a Date and it can be absent on a completed reminder, so anything
+ * that won't parse is no date rather than a wrong one.
+ */
+function completionIso(value: string | Date | null | undefined): string | null {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? null : new Date(time).toISOString();
+}
+
 async function mirrorOnce(): Promise<MirrorOutcome | null> {
   if (Platform.OS !== 'ios') return null;
   // The guard notifications.ts and the two calendar mirrors already keep. Demo
@@ -569,6 +580,7 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
         title: reminder.title?.trim() ?? '',
         completed: reminder.completed === true,
         notes: mirrorNote(reminder.notes),
+        completedAt: completionIso(reminder.completionDate),
       });
       if (typeof reminder.location === 'string' && reminder.location) {
         locations.set(reminder.id, reminder.location);

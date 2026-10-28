@@ -549,6 +549,87 @@ describe('planGroceryReminderSync — notes (#2933)', () => {
   });
 });
 
+// When a pair was checked, kept so a deleted reminder can still date the
+// purchase reminderRemovals.ts offers (the deletion is usually days later).
+describe('planGroceryReminderSync — when a pair was checked', () => {
+  const NOW = new Date('2026-10-28T18:00');
+  const DONE = new Date('2026-10-25T11:30').toISOString();
+
+  it('dates a check made in the app to this pass', () => {
+    const plan = planGroceryReminderSync(
+      [item({ id: 'i1', name: 'milk', checked: true })],
+      [reminder({ id: 'r1', title: 'milk' })],
+      [link({ reminderId: 'r1', itemId: 'i1', name: 'milk' })],
+      NOW
+    );
+    expect(plan.links[0].checkedAt).toBe(NOW.toISOString());
+  });
+
+  it('dates a check made in Reminders to its completion date', () => {
+    const plan = planGroceryReminderSync(
+      [item({ id: 'i1', name: 'milk' })],
+      [reminder({ id: 'r1', title: 'milk', completed: true, completedAt: DONE })],
+      [link({ reminderId: 'r1', itemId: 'i1', name: 'milk' })],
+      NOW
+    );
+    expect(plan.setChecked).toEqual([{ itemId: 'i1', checked: true }]);
+    expect(plan.links[0].checkedAt).toBe(DONE);
+  });
+
+  it('keeps the time it already has on a later pass', () => {
+    const plan = planGroceryReminderSync(
+      [item({ id: 'i1', name: 'milk', checked: true })],
+      [reminder({ id: 'r1', title: 'milk', completed: true, completedAt: DONE })],
+      [link({ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: true, checkedAt: '2026-10-24T09:00:00.000Z' })],
+      NOW
+    );
+    expect(plan.links[0].checkedAt).toBe('2026-10-24T09:00:00.000Z');
+  });
+
+  it('leaves a pair checked before this was kept undated, rather than dating it now', () => {
+    const plan = planGroceryReminderSync(
+      [item({ id: 'i1', name: 'milk', checked: true })],
+      [reminder({ id: 'r1', title: 'milk', completed: true })],
+      [link({ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: true })],
+      NOW
+    );
+    expect(plan.links[0].checkedAt).toBeUndefined();
+  });
+
+  it('drops the time when the pair is unchecked', () => {
+    const plan = planGroceryReminderSync(
+      [item({ id: 'i1', name: 'milk', checked: false })],
+      [reminder({ id: 'r1', title: 'milk', completed: true, completedAt: DONE })],
+      [link({ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: true, checkedAt: DONE })],
+      NOW
+    );
+    expect(plan.links[0].checked).toBe(false);
+    expect(plan.links[0].checkedAt).toBeUndefined();
+  });
+
+  it('hands the time on when a checked row is taken off the list', () => {
+    const plan = planGroceryReminderSync(
+      [item({ id: 'i1', name: 'milk', checked: true })],
+      [],
+      [link({ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: true, checkedAt: DONE })],
+      NOW
+    );
+    expect(plan.removeItems).toEqual([{ itemId: 'i1', checked: true, checkedAt: DONE }]);
+  });
+
+  it('reads the time back from the stored record, and ignores one that is not a date', () => {
+    const raw = JSON.stringify({
+      L: [
+        { reminderId: 'r1', itemId: 'i1', name: 'milk', checked: true, checkedAt: DONE },
+        { reminderId: 'r2', itemId: 'i2', name: 'eggs', checked: true, checkedAt: 'soon' },
+      ],
+    });
+    const links = parseGroceryLinks(raw).L;
+    expect(links[0].checkedAt).toBe(DONE);
+    expect(links[1].checkedAt).toBeUndefined();
+  });
+});
+
 describe('planGroceryReminderSync — convergence', () => {
   // Applying a plan and running again must produce nothing: a pass that keeps
   // finding work is a pass that keeps writing to both apps for ever.

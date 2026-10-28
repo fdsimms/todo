@@ -9,9 +9,19 @@ jest.mock('../db/database', () => ({
 }));
 
 const mockFinish = jest.fn().mockReturnValue(0);
+const mockSetLastAction = jest.fn();
 let mockItems: { id: string; onList: boolean; lastPurchasedAt: string | null }[] = [];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let mockUndoStack: any[] = [];
 jest.mock('../store/useGroceryStore', () => ({
-  useGroceryStore: { getState: () => ({ items: mockItems, finishShopping: mockFinish }) },
+  useGroceryStore: {
+    getState: () => ({
+      items: mockItems,
+      finishShopping: mockFinish,
+      undoStack: mockUndoStack,
+      setLastAction: mockSetLastAction,
+    }),
+  },
 }));
 
 const mockGet = dbGetSetting as jest.MockedFunction<typeof dbGetSetting>;
@@ -25,6 +35,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockGet.mockReturnValue(null);
   mockItems = [];
+  mockUndoStack = [];
   useReminderRemovalStore.setState({ removals: [], hydrated: false });
 });
 
@@ -71,8 +82,10 @@ describe('record', () => {
 
 describe('answer', () => {
   it('records the bought rows as a purchase at the time they came off, and forgets the rest', () => {
-    const milkAt = recent(5);
-    const eggsAt = recent(3);
+    // Two times on today's date, so they're one shop whatever the hour.
+    const today = new Date();
+    const milkAt = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 1).toISOString();
+    const eggsAt = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 2).toISOString();
     mockItems = [
       { id: 'milk', onList: false, lastPurchasedAt: null },
       { id: 'eggs', onList: false, lastPurchasedAt: null },
@@ -90,9 +103,54 @@ describe('answer', () => {
 
     expect(useReminderRemovalStore.getState().answer(['milk', 'eggs'], ['milk', 'eggs', 'foil'])).toBe(2);
 
-    expect(mockFinish).toHaveBeenCalledWith(null, {}, eggsAt, undefined, {}, { itemIds: ['milk', 'eggs'] });
+    // Capped at now, which only matters in the first two minutes of the day.
+    const expected = new Date(Math.min(Date.parse(eggsAt), Date.now())).toISOString();
+    expect(mockFinish).toHaveBeenCalledWith(null, {}, expected, undefined, {}, { itemIds: ['milk', 'eggs'] });
+    expect(mockSetLastAction).not.toHaveBeenCalled();
     // The bought rows stay, so an undo of the purchase brings the question back.
     expect(useReminderRemovalStore.getState().removals.map(r => r.itemId)).toEqual(['milk', 'eggs']);
+  });
+
+  // Checked on two different days: two shops, each dated from its own, and
+  // one undo for the one tap.
+  it('dates each day it was checked separately, under one undo entry', () => {
+    const day1 = new Date(Date.now() - 3 * 24 * 3600_000);
+    const day2 = new Date(Date.now() - 1 * 24 * 3600_000);
+    mockItems = [
+      { id: 'milk', onList: false, lastPurchasedAt: null },
+      { id: 'eggs', onList: false, lastPurchasedAt: null },
+    ];
+    useReminderRemovalStore.setState({
+      hydrated: true,
+      removals: [
+        { itemId: 'milk', inCart: true, removedAt: recent(0), checkedAt: day1.toISOString() },
+        { itemId: 'eggs', inCart: true, removedAt: recent(0), checkedAt: day2.toISOString() },
+      ],
+    });
+    const undoMilk = jest.fn();
+    const undoEggs = jest.fn();
+    mockFinish.mockImplementation((_s, _p, at: string) => {
+      mockUndoStack = [...mockUndoStack, { label: 'Bought 1 thing', undo: at === day1.toISOString() ? undoMilk : undoEggs }];
+      return 1;
+    });
+
+    expect(useReminderRemovalStore.getState().answer(['milk', 'eggs'], ['milk', 'eggs'])).toBe(2);
+
+    expect(mockFinish.mock.calls.map(c => [c[2], c[5]])).toEqual([
+      [day1.toISOString(), { itemIds: ['milk'] }],
+      [day2.toISOString(), { itemIds: ['eggs'] }],
+    ]);
+    expect(mockSetLastAction).toHaveBeenCalledTimes(1);
+    const [action, opts] = mockSetLastAction.mock.calls[0];
+    expect(action.label).toBe('Bought 2 things');
+    expect(opts).toEqual({ replacing: [] });
+    action.undo();
+    expect(undoEggs).toHaveBeenCalled();
+    expect(undoMilk).toHaveBeenCalled();
+    // Newest first, the order the stack would have undone them in.
+    expect(undoEggs.mock.invocationCallOrder[0]).toBeLessThan(undoMilk.mock.invocationCallOrder[0]);
+    mockFinish.mockReset();
+    mockFinish.mockReturnValue(0);
   });
 
   it('records nothing when none were bought, and clears the record', () => {
