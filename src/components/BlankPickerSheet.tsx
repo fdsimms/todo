@@ -40,6 +40,11 @@ import {
 import { entryResolution } from '../utils/recipeComponents';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, type MealPlanEntry, type Recipe, type RecipeBlank, type RecipeOverride } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { AmountUnitField } from './AmountUnitField';
+import { ingredientAmountGroups } from '../utils/amountUnit';
+
+/** A pick's unit menu, the one an ingredient's own amount uses: each pick becomes an ingredient line. */
+const AMOUNT_GROUPS = ingredientAmountGroups();
 
 /**
  * What the picker needs to know about the cooking it fills: a planned meal, or
@@ -443,12 +448,12 @@ export function BlankPickerSheet({ visible, entry: liveEntry, recipe: liveRecipe
                   return (
                     <View key={key} style={styles.amountEditRow}>
                       <Text style={styles.amountName} numberOfLines={1}>{name}</Text>
-                      <TextField
-                        style={[styles.input, styles.amountInput]}
+                      <AmountUnitField
+                        name="BlankPickerSheet unit"
+                        style={styles.amountInput}
                         value={value}
                         onChangeText={text => setAmount(blank, key, text)}
-                        placeholder="e.g. 1 cup"
-                        placeholderTextColor={colors.textTertiary}
+                        groups={AMOUNT_GROUPS}
                         maxLength={GROCERY_QUANTITY_MAX_LENGTH}
                         accessibilityLabel={`Amount of ${name}`}
                       />

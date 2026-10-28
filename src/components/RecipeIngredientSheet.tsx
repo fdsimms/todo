@@ -17,6 +17,8 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { EmbeddedPaneContext } from './EmbeddedRoute';
+import { AmountUnitField } from './AmountUnitField';
+import { ingredientAmountGroups } from '../utils/amountUnit';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient } from '../types';
 import {
@@ -68,6 +70,9 @@ interface Props {
 }
 
 /** "1 cup flour": a part of an "and" split as the new line will read. */
+/** The ingredient's unit menu. Built once: the field reads its units from it on every render. */
+const INGREDIENT_AMOUNT_GROUPS = ingredientAmountGroups();
+
 const andPartLabel = (part: AndSplitPart) => [part.quantity, part.name].filter(Boolean).join(' ');
 
 /**
@@ -757,16 +762,14 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
         <View style={styles.separator} />
 
         <Text style={styles.groupLabel}>How much</Text>
-        <TextField
-          ref={quantityInputRef}
-          style={styles.input}
+        <AmountUnitField
+          name="RecipeIngredientSheet unit"
+          inputRef={quantityInputRef}
           value={quantity}
           onChangeText={setQuantity}
+          groups={INGREDIENT_AMOUNT_GROUPS}
           returnKeyType="next"
-          blurOnSubmit={false}
           onSubmitEditing={() => prepInputRef.current?.focus()}
-          placeholder="e.g. 2 lb"
-          placeholderTextColor={colors.textTertiary}
           maxLength={RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH}
           accessibilityLabel="Quantity"
         />

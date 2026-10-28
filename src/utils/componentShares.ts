@@ -3,6 +3,7 @@ import { activeComponents, type ChoiceResolution } from './recipeComponents';
 import { groceryNameKey } from './groceryParse';
 import { parseQuantity, rationalToNumber } from './quantity';
 import { measureQuantity } from './unitConvert';
+import { NO_UNIT, OTHER_UNIT, VOLUME_UNITS, WEIGHT_UNITS } from './amountUnit';
 
 /**
  * How much of each used recipe a dish actually eats, as a fraction of the
@@ -136,41 +137,17 @@ export function makesUnitsFor(amount: string): MakesUnits | null {
   return { groups: [{ heading: null, units: [q.unitWritten] }], units: [q.unitWritten], defaultUnit: q.unitWritten };
 }
 
-/** A saved yield read back as a number and one of `units`, or null when it isn't one. */
-export function splitMakes(recipeYield: string | null, units: readonly string[]): { number: string; unit: string } | null {
-  const text = recipeYield?.trim() ?? '';
-  const q = parseQuantity(text);
-  if (q.amount === null || !q.unit || q.trailing.trim()) return null;
-  const unit = units.find(u => parseQuantity(`1 ${u}`).unit === q.unit);
-  if (!unit) return null;
-  return { number: text.slice(0, text.length - q.rest.length).trim(), unit };
-}
-
-/** The yield a number and a unit write, or null for a number that isn't one. */
-export function makesText(number: string, unit: string): string | null {
-  const q = parseQuantity(number.trim());
-  if (q.amount === null || q.rest || !(rationalToNumber(q.amount) > 0)) return null;
-  return `${number.trim()} ${unit}`;
-}
+/** What "Amount used" calls a bare number: a share of everything the used recipe makes. */
+export const BATCH_LABEL = 'of the batch';
 
 /**
- * The unit "Amount used" picks for a share of the whole batch: the amount is
- * then a bare number, "1/4", which `fractionOf` reads as a quarter of it and
- * needs no yield to compare with.
- */
-export const BATCH_UNIT = 'of the batch';
-
-const AMOUNT_GROUPS = [
-  { heading: 'VOLUME', units: ['tsp', 'tbsp', 'fl oz', 'cup', 'pint', 'quart', 'ml', 'liter'] },
-  { heading: 'WEIGHT', units: ['g', 'kg', 'oz', 'lb'] },
-];
-
-/**
- * The units "Amount used" is picked in: a share of the batch, every volume and
- * weight, and the used recipe's own count word when its yield is a count
- * ("4 fillets" offers "fillets"), which is the only count it compares with.
- * Starts on the share when the part says nothing about what it makes, and on
- * a unit of its yield's own kind when it does.
+ * The units "Amount used" is picked in, for `AmountUnitField`: a share of the
+ * batch (`NO_UNIT`, a bare "1/4" that `fractionOf` reads as a quarter of it,
+ * labelled `BATCH_LABEL`), every volume and weight, the used recipe's own count
+ * word when its yield is a count ("4 fillets" offers "fillets"), which is the
+ * only count it compares with, and "Something else" for an amount saved before
+ * the menu existed. Starts on the share when the part says nothing about what it
+ * makes, and on a unit of its yield's own kind when it does.
  */
 export function amountUnitsFor(part: Recipe | null): MakesUnits {
   const yieldText = part?.recipeYield?.trim() ?? '';
@@ -178,26 +155,14 @@ export function amountUnitsFor(part: Recipe | null): MakesUnits {
   const q = yieldText ? parseQuantity(yieldText) : null;
   const countWord = !measured && q?.amount !== null && q?.unitWritten ? q.unitWritten : null;
   const groups = [
-    { heading: null, units: [BATCH_UNIT] },
-    ...AMOUNT_GROUPS.map(g => ({ heading: g.heading, units: [...g.units] })),
+    { heading: null, units: [NO_UNIT] },
+    { heading: 'VOLUME', units: [...VOLUME_UNITS] },
+    { heading: 'WEIGHT', units: [...WEIGHT_UNITS] },
     ...(countWord ? [{ heading: 'COUNT', units: [countWord] }] : []),
+    { heading: null, units: [OTHER_UNIT] },
   ];
   const defaultUnit = measured?.dimension === 'volume' ? (measured.system === 'metric' ? 'ml' : 'tbsp')
     : measured?.dimension === 'mass' ? (measured.system === 'metric' ? 'g' : 'oz')
-    : countWord ?? BATCH_UNIT;
+    : countWord ?? NO_UNIT;
   return { groups, units: groups.flatMap(g => g.units), defaultUnit };
-}
-
-/** A saved "Amount used" read back as a number and one of `units`, or null when it isn't one. */
-export function splitAmountUsed(amountUsed: string | null, units: readonly string[]): { number: string; unit: string } | null {
-  const text = amountUsed?.trim() ?? '';
-  const q = parseQuantity(text);
-  if (q.amount !== null && q.unit === null && !q.rest && units.includes(BATCH_UNIT)) return { number: text, unit: BATCH_UNIT };
-  return splitMakes(text, units.filter(u => u !== BATCH_UNIT));
-}
-
-/** The "Amount used" a number and a unit write, or null for a number that isn't one. */
-export function amountUsedText(number: string, unit: string): string | null {
-  const text = makesText(number, unit);
-  return text && unit === BATCH_UNIT ? number.trim() : text;
 }

@@ -45,6 +45,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/allDaySpans.ts` — AllDayBar, AllDayLayout, layoutAllDay
 - `src/utils/allergenGuess.ts` — Allergen, guessAllergens, describeAllergens
 - `src/utils/amountMath.ts` — resolveAmountMath, AmountOperator, AMOUNT_OPERATORS, appendOperator
+- `src/utils/amountUnit.ts` — NO_UNIT, OTHER_UNIT, AmountUnitGroup, VOLUME_UNITS, WEIGHT_UNITS, COUNT_UNITS, ingredientAmountGroups, amountUnitLabel, readAmount, writeAmount
 - `src/utils/appGate.ts` — isGateTask, gateGroupFor, outstandingGates, gateShieldWanted, GATE_WINDOW_MINUTES, GATE_ARM_HORIZON_MS, GateWindow, gateWindowFor, PendingGate, nextPendingGate, +1 more
 - `src/utils/appGroups.ts` — APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, BASE_GROUP_NAME_SETTING, FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, MAX_APP_GROUPS, MAX_SUPERGROUPS, MAX_GROUP_NAME_LENGTH, AppGroup, +31 more
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
@@ -116,7 +117,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/coinBurst.ts` — BurstPiece, BURST_GRAVITY, burstPieces, burstOffset, burstOpacity
 - `src/utils/completionCalendarSync.ts` — logTaskCompletionToCalendar, completionEventLink, deleteCompletionEvent
 - `src/utils/completionTap.ts` — CompletionTap, completionTapFor, offersMealLogOnCompletion, TARGET_FINISH_TAP_GUARD_MS, isStrayTapOnFinishedTarget
-- `src/utils/componentShares.ts` — componentShares, amountUsedCounts, MakesUnits, makesUnitsFor, splitMakes, makesText, BATCH_UNIT, amountUnitsFor, splitAmountUsed, amountUsedText
+- `src/utils/componentShares.ts` — componentShares, amountUsedCounts, MakesUnits, makesUnitsFor, BATCH_LABEL, amountUnitsFor
 - `src/utils/confirmDelete.ts` — confirmDelete
 - `src/utils/confirmDeleteGenerated.ts` — confirmDeleteGenerated
 - `src/utils/confirmDeleteTask.ts` — confirmDeleteTask
