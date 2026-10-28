@@ -129,8 +129,9 @@ meal that uses it. The graph walk — flatten, cycle check, reverse lookup — l
 **A used recipe's nutrition counts the share the parent eats, not the whole batch (`componentShares`,
 `componentShares.ts`, `RecipeComponent.amountUsed`).** Flattening lists a part's lines in whole, which is
 right for shopping and wrong for "1 tbsp Fishy Seasoning" out of a 3/4 cup batch, or a sauce only served
-alongside. The share comes from the link's own **amount used** (typed in the sheet a long press on the
-part opens; "1 tbsp", "2 fillets", or a bare "1/4" meaning a quarter of the batch), else from the
+alongside. The share comes from the link's own **amount used** (set in the sheet a long press on the part
+opens, as a number and a unit from a menu (`amountUnitsFor`): a volume or a weight, the part's own count
+word, or "of the batch", stored as a bare "1/4" meaning a quarter of it), else from the
 parent's own ingredient line naming the part. It is measured against the part's `recipeYield` and only
 when the two compare (one dimension, or one counted unit); no amount, no yield, "to taste" or mismatched
 units count the whole batch, as before. The row says so, and the sheet asks what the part makes right

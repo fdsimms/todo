@@ -1,5 +1,7 @@
 import type { Recipe, RecipeComponent } from '../types';
-import { amountUsedCounts, componentShares, makesText, makesUnitsFor, splitMakes } from '../utils/componentShares';
+import {
+  amountUnitsFor, amountUsedCounts, amountUsedText, BATCH_UNIT, componentShares, makesText, makesUnitsFor, splitAmountUsed, splitMakes,
+} from '../utils/componentShares';
 
 let seq = 0;
 
@@ -83,5 +85,38 @@ describe('the units "makes" is picked in', () => {
     expect(splitMakes('1 1/2 cups', units)).toEqual({ number: '1 1/2', unit: 'cup' });
     expect(splitMakes('4 servings', units)).toBeNull();
     expect(splitMakes(null, units)).toBeNull();
+  });
+});
+
+describe('the units "Amount used" is picked in', () => {
+  it('offers a share of the batch, every volume and weight, and the part’s own count', () => {
+    expect(amountUnitsFor(recipe('Mix')).units).toEqual([
+      BATCH_UNIT, 'tsp', 'tbsp', 'fl oz', 'cup', 'pint', 'quart', 'ml', 'liter', 'g', 'kg', 'oz', 'lb',
+    ]);
+    expect(amountUnitsFor(recipe('Fish', { recipeYield: '4 fillets' })).units).toContain('fillets');
+  });
+
+  it('starts on a unit of the yield’s own kind, or on a share when there is no yield', () => {
+    expect(amountUnitsFor(recipe('Mix')).defaultUnit).toBe(BATCH_UNIT);
+    expect(amountUnitsFor(recipe('Mix', { recipeYield: '3/4 cup' })).defaultUnit).toBe('tbsp');
+    expect(amountUnitsFor(recipe('Dough', { recipeYield: '900 g' })).defaultUnit).toBe('g');
+    expect(amountUnitsFor(recipe('Fish', { recipeYield: '4 fillets' })).defaultUnit).toBe('fillets');
+  });
+
+  it('writes and reads back each kind of amount', () => {
+    const units = amountUnitsFor(recipe('Fish', { recipeYield: '4 fillets' })).units;
+    expect(amountUsedText('1/4', BATCH_UNIT)).toBe('1/4');
+    expect(amountUsedText('1', 'tbsp')).toBe('1 tbsp');
+    expect(amountUsedText('', 'tbsp')).toBeNull();
+    expect(splitAmountUsed('1/4', units)).toEqual({ number: '1/4', unit: BATCH_UNIT });
+    expect(splitAmountUsed('2 tbsp', units)).toEqual({ number: '2', unit: 'tbsp' });
+    expect(splitAmountUsed('2 fillets', units)).toEqual({ number: '2', unit: 'fillets' });
+    expect(splitAmountUsed('a pinch', units)).toBeNull();
+  });
+
+  it('counts a share of the batch, and an amount in the yield’s own count', () => {
+    const fish = recipe('Fish', { recipeYield: '4 fillets' });
+    expect(amountUsedCounts(amountUsedText('1/4', BATCH_UNIT)!, recipe('Mix'))).toBe(true);
+    expect(amountUsedCounts(amountUsedText('2', 'fillets')!, fish)).toBe(true);
   });
 });
