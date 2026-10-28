@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, AppState, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -140,6 +140,9 @@ export function PushupCounterSheet({
   // null while what the device can count with is being worked out.
   const [modes, setModes] = useState<CountModes | null>(null);
   const [mode, setMode] = useState<CountMode | null>(null);
+  // The camera went quiet and the count moved off it, rather than the person
+  // switching: the card says so, and offers the camera again.
+  const [cameraLost, setCameraLost] = useState(false);
   const reps = mode === 'depth' ? depth.count : counter.count;
   const counted = reps >= target;
   const countedRef = useRef(false);
@@ -154,6 +157,7 @@ export function PushupCounterSheet({
     setDepth(initialDepthState());
     setModes(null);
     setMode(null);
+    setCameraLost(false);
     countedRef.current = false;
     let live = true;
     countModes().then(found => {
@@ -167,15 +171,27 @@ export function PushupCounterSheet({
   }, [visible, subjectKey]);
 
   // From depth to the fallback, carrying the reps counted so far.
-  const fallBack = useCallback(() => {
+  const fallBack = useCallback((lost: boolean) => {
     if (!modes) return;
     setCounter({ ...initialPushupState(), count: depthCountRef.current });
+    setCameraLost(lost);
     setMode(modes.fallback);
   }, [modes]);
 
+  // And back, after the camera went quiet: whatever stopped it (Face ID
+  // unlocking the phone, another app) has usually let go by now.
+  const retryCamera = useCallback(() => {
+    setDepth({ ...initialDepthState(), count: counter.count });
+    setCameraLost(false);
+    setMode('depth');
+  }, [counter.count]);
+
   // Listening starts the camera, so only while there is something to count. A
   // camera that never starts, or stops partway, sends nothing at all, which
-  // no reading can report, so the silence is what's watched.
+  // no reading can report, so the silence is what's watched. Only silence
+  // while the app is in front counts: opened from an alarm, the counter is up
+  // while Face ID is still unlocking the phone, which holds the camera, and
+  // timing that out handed every alarm's count to the proximity sensor.
   useEffect(() => {
     if (!visible || mode !== 'depth' || counted) return;
     let lastHeard = Date.now();
@@ -184,7 +200,11 @@ export function PushupCounterSheet({
       setDepth(prev => feedDepth(prev, reading));
     });
     const watch = setInterval(() => {
-      if (Date.now() - lastHeard >= DEPTH_SILENCE_MS) fallBack();
+      if (AppState.currentState !== 'active') {
+        lastHeard = Date.now();
+        return;
+      }
+      if (Date.now() - lastHeard >= DEPTH_SILENCE_MS) fallBack(true);
     }, 500);
     return () => {
       clearInterval(watch);
@@ -330,7 +350,7 @@ export function PushupCounterSheet({
                 <View style={styles.cardIcon}>
                   <Ionicons name={mode === 'tap' ? 'hand-left-outline' : 'phone-portrait-outline'} size={iconSize.sm} color={colors.accentText} />
                 </View>
-                <Text style={styles.cardText}>{cardText(mode, modes?.depthBlocked === true)}</Text>
+                <Text style={styles.cardText}>{cardText(mode, modes?.depthBlocked === true, cameraLost)}</Text>
               </View>
               {mode === 'depth' && reps === 0 && modes && (
                 <InlineAction
@@ -338,7 +358,17 @@ export function PushupCounterSheet({
                   icon="swap-horizontal-outline"
                   variant="neutral"
                   surface="page"
-                  onPress={fallBack}
+                  onPress={() => fallBack(false)}
+                  style={styles.switchMode}
+                />
+              )}
+              {mode !== 'depth' && cameraLost && (
+                <InlineAction
+                  label="Try the camera again"
+                  icon="refresh-outline"
+                  variant="neutral"
+                  surface="page"
+                  onPress={retryCamera}
                   style={styles.switchMode}
                 />
               )}
@@ -356,16 +386,21 @@ export function PushupCounterSheet({
 }
 
 /** The card under the status: where the phone goes, or how to count without a sensor. */
-function cardText(mode: CountMode, depthBlocked: boolean): string {
+function cardText(mode: CountMode, depthBlocked: boolean, cameraLost: boolean): string {
   switch (mode) {
     case 'depth':
       return 'Lay the phone face up on the floor under your face. The front camera measures how far away you are, and a rep doesn’t count if the phone moves or isn’t lying flat. Nothing is recorded.';
     case 'proximity':
+      if (cameraLost) {
+        return 'The Face ID camera stopped sending readings, so the proximity sensor is counting instead. Lay the phone face up on the floor under your chest. Each time you go down, it counts.';
+      }
       return depthBlocked
         ? 'Lay the phone face up on the floor under your chest. Each time you go down, it counts. Camera access is off. Turn it on in Settings to count with the Face ID camera instead.'
         : 'Lay the phone face up on the floor under your chest. Each time you go down, it counts.';
     case 'tap':
-      return 'This device has no proximity sensor. Tap the circle after each pushup.';
+      return cameraLost
+        ? 'The Face ID camera stopped sending readings. Tap the circle after each pushup.'
+        : 'This device has no proximity sensor. Tap the circle after each pushup.';
   }
 }
 

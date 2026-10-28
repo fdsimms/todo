@@ -116,11 +116,12 @@ public class TodoAlarmKitModule: Module {
     }
 
     // Marks a mission pending and puts its next ring `seconds` out: 15 when
-    // the counter closes unfinished, a minute (renewed) while it is open.
+    // the counter closes unfinished, a minute (renewed) while it is open. A
+    // ring already sounding is left alone (`sparingRing`).
     AsyncFunction("deferMission") { (missionJson: String, seconds: Double) -> Bool in
       guard #available(iOS 26, *) else { return false }
       guard let mission = MissionPayload.decode(missionJson) else { return false }
-      await MissionLoop.rearm(mission, after: seconds)
+      await MissionLoop.rearm(mission, after: seconds, sparingRing: true)
       return true
     }
 

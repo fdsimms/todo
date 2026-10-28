@@ -43,6 +43,12 @@ final class TodoDepthReader: NSObject, AVCaptureDepthDataOutputDelegate {
   private let sessionQueue = DispatchQueue(label: "todo.depth.session")
   private let dataQueue = DispatchQueue(label: "todo.depth.data", qos: .userInitiated)
   private var session: AVCaptureSession?
+  private var runtimeErrorObserver: NSObjectProtocol?
+  /// Restarts after a runtime error this session has had. Capped, so a camera
+  /// that fails every time it starts doesn't spin: JS falls back once the
+  /// readings stay silent.
+  private var restarts = 0
+  private static let maxRestarts = 3
   private var lastSentAt: TimeInterval = 0
   private let onReading: (Reading) -> Void
 
@@ -57,8 +63,24 @@ final class TodoDepthReader: NSObject, AVCaptureDepthDataOutputDelegate {
 
   func stop() {
     sessionQueue.async {
+      if let observer = self.runtimeErrorObserver {
+        NotificationCenter.default.removeObserver(observer)
+      }
+      self.runtimeErrorObserver = nil
       self.session?.stopRunning()
       self.session = nil
+    }
+  }
+
+  // An interruption (Face ID unlocking the phone as the app opens from an
+  // alarm, another app taking the camera) ends by itself and the session
+  // resumes on its own. A runtime error doesn't: the session stops for good
+  // unless it is started again, which is what Apple's capture samples do.
+  private func restartAfterRuntimeError(_ failed: AVCaptureSession) {
+    sessionQueue.async {
+      guard self.session === failed, !failed.isRunning, self.restarts < Self.maxRestarts else { return }
+      self.restarts += 1
+      failed.startRunning()
     }
   }
 
@@ -125,6 +147,15 @@ final class TodoDepthReader: NSObject, AVCaptureDepthDataOutputDelegate {
     }
 
     session.commitConfiguration()
+    restarts = 0
+    runtimeErrorObserver = NotificationCenter.default.addObserver(
+      forName: AVCaptureSession.runtimeErrorNotification,
+      object: session,
+      queue: nil
+    ) { [weak self, weak session] _ in
+      guard let self, let session else { return }
+      self.restartAfterRuntimeError(session)
+    }
     session.startRunning()
     self.session = session
   }
