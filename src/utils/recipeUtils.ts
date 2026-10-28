@@ -1284,6 +1284,33 @@ export function cleanChoiceGroup(raw: string | null | undefined): string | null 
 }
 
 /**
+ * `recipe` with every choice group that has a single member set free of its
+ * label, or `recipe` itself when none does.
+ *
+ * A group is a choice only while two or more rows share its label. Deleting or
+ * un-grouping the other options used to leave the survivor holding a label for a
+ * choice nobody could make: a "Pick one" card with one option, and no control
+ * on that row saying how to leave it. Rows (ingredients and components share
+ * labels) are counted together, as `recipeChoiceGroups` reads them.
+ */
+export function dropLoneChoiceGroups<
+  R extends {
+    ingredients: readonly { choiceGroup: string | null }[];
+    components: readonly { choiceGroup: string | null }[];
+  },
+>(recipe: R): R {
+  const counts = new Map<string, number>();
+  for (const row of [...(recipe.ingredients ?? []), ...(recipe.components ?? [])]) {
+    if (row.choiceGroup) counts.set(row.choiceGroup, (counts.get(row.choiceGroup) ?? 0) + 1);
+  }
+  const lone = new Set([...counts].filter(([, n]) => n < 2).map(([label]) => label));
+  if (lone.size === 0) return recipe;
+  const free = <T extends { choiceGroup: string | null }>(row: T): T =>
+    row.choiceGroup && lone.has(row.choiceGroup) ? { ...row, choiceGroup: null } : row;
+  return { ...recipe, ingredients: recipe.ingredients.map(free), components: recipe.components.map(free) };
+}
+
+/**
  * The name a choice group gets when nobody has typed one: its options joined
  * with "or", and when that would run past the label cap, the first option and a
  * count ("Dandelion greens or 2 more").

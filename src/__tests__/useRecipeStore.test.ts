@@ -773,6 +773,31 @@ describe('addStructuredIngredients', () => {
     expect(useRecipeStore.getState().recipeById(r.id)!.ingredients).toEqual([]);
   });
 
+  it('frees the last option of a choice group when the others are removed', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addIngredient(r.id, 'Salt')!;
+    const b = useRecipeStore.getState().addIngredient(r.id, 'Sea salt')!;
+    useRecipeStore.getState().updateIngredient(r.id, a.id, { choiceGroup: 'Salt' });
+    useRecipeStore.getState().updateIngredient(r.id, b.id, { choiceGroup: 'Salt' });
+    expect(useRecipeStore.getState().recipeById(r.id)!.ingredients.map(i => i.choiceGroup)).toEqual(['Salt', 'Salt']);
+
+    useRecipeStore.getState().removeIngredient(r.id, b.id);
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.ingredients[0].choiceGroup).toBeNull();
+  });
+
+  it('frees a lone choice group already stored when the recipes load', () => {
+    const r = makeRecipe('Ragu');
+    (dbGetAllRecipes as jest.Mock).mockReturnValueOnce([
+      { ...r, ingredients: [{ ...makeIngredient('Salt'), choiceGroup: 'Salt' }] },
+    ]);
+
+    useRecipeStore.getState().initialize();
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.ingredients[0].choiceGroup).toBeNull();
+  });
+
   it('reorders, and keeps anything the caller did not name', () => {
     const r = makeRecipe('Ragu');
     seed([r]);
