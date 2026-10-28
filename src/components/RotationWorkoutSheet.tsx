@@ -155,5 +155,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
   },
-  hint: { marginTop: spacing.xs },
+  hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xs },
 });
