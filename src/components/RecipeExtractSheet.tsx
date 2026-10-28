@@ -16,7 +16,7 @@ import {
 import { SheetModal } from './SheetModal';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useShallow } from 'zustand/react/shallow';
-import { RECIPE_PAGE_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH, type Recipe, type RecipeSourceType } from '../types';
+import { RECIPE_SOURCE_MAX_LENGTH, type Recipe, type RecipeSourceType } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import {
   spacing,
@@ -50,7 +50,7 @@ import {
   methodRowMeta, prepTasksRowMeta, methodPreviewLines, prepTaskPreviewLines,
 } from '../utils/recipeImportPreview';
 import { InlineEditableText } from './InlineEditableText';
-import { CookbookShelfChips } from './CookbookShelfChips';
+import { RecipeSourceFields } from './RecipeSourceFields';
 import { usePendingEdits } from '../hooks/usePendingEdits';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { useRecipeComponentImports } from '../hooks/useRecipeComponentImports';
@@ -833,80 +833,23 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           meta={sourceMeta}
           accessibilityLabel={sourceMeta ? `Where it’s from, ${sourceMeta}` : 'Where it’s from'}
         >
-          <View style={styles.detailFields}>
-            <InlineEditableText
-              edits={edits}
-              editKey="source:site"
-              value={siteName}
-              onCommit={setSiteName}
-              allowEmpty
-              textStyle={styles.detailValue}
-              placeholder={importedSourceType === 'cookbook' ? 'e.g. Salt Fat Acid Heat' : 'e.g. NYT Cooking'}
-              accessibilityLabel="source"
-              maxLength={RECIPE_SOURCE_MAX_LENGTH}
-              numberOfLines={1}
-            />
-            <Text style={styles.detailSep}>by</Text>
-            <InlineEditableText
-              edits={edits}
-              editKey="source:author"
-              value={sourceAuthor}
-              onCommit={setSourceAuthor}
-              allowEmpty
-              textStyle={styles.detailValue}
-              placeholder="e.g. Kenji"
-              accessibilityLabel="author"
-              maxLength={RECIPE_SOURCE_MAX_LENGTH}
-              numberOfLines={1}
-            />
-            {importedSourceType === 'cookbook' && (
-              <>
-                <Text style={styles.detailSep}>page</Text>
-                <InlineEditableText
-                  edits={edits}
-                  editKey="source:page"
-                  value={sourcePageText}
-                  onCommit={setSourcePageText}
-                  allowEmpty
-                  textStyle={styles.detailValue}
-                  placeholder="e.g. 142"
-                  accessibilityLabel="page number"
-                  maxLength={RECIPE_PAGE_MAX_LENGTH}
-                  numberOfLines={1}
-                />
-              </>
-            )}
-          </View>
-          {importedSourceType === 'cookbook' && (
-            <CookbookShelfChips
-              cookbooks={cookbooks}
-              title={siteName}
-              author={sourceAuthor}
-              onPick={book => { setSiteName(book.title); setSourceAuthor(book.author ?? ''); }}
-            />
-          )}
-          {/* A link import's URL comes from the page it fetched and isn't
-              editable — this is only for the two imports that never had a
-              page to read one off. Left blank, the recipe's existing link
-              (if any) stays untouched; see the comment by sourceMeta above. */}
-          {!input.page && (
-            <View style={styles.detailFields}>
-              <Text style={styles.detailSep}>Link</Text>
-              <InlineEditableText
-                edits={edits}
-                editKey="source:url"
-                value={sourceUrlText}
-                onCommit={setSourceUrlText}
-                allowEmpty
-                textStyle={styles.detailValue}
-                placeholder="e.g. example.com/chili-recipe"
-                accessibilityLabel="source URL"
-                numberOfLines={1}
-                autoCapitalize="none"
-                keyboardType="url"
-              />
-            </View>
-          )}
+          <RecipeSourceFields
+            edits={edits}
+            sourceType={importedSourceType}
+            site={siteName}
+            onSiteChange={setSiteName}
+            author={sourceAuthor}
+            onAuthorChange={setSourceAuthor}
+            page={sourcePageText}
+            onPageChange={setSourcePageText}
+            url={sourceUrlText}
+            onUrlChange={setSourceUrlText}
+            // A link import's URL comes from the page it fetched and isn't
+            // editable, so the field is only for the imports that never had a
+            // page to read one off.
+            showUrl={!input.page}
+            cookbooks={cookbooks}
+          />
         </ImportApplyRow>
 
         {renderReferences()}
