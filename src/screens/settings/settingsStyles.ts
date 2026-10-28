@@ -52,6 +52,8 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   /** Only when the row has its own control under the hint rather than beside it. */
   rowHintSpaced: { marginBottom: spacing.sm },
   rowValue: disclosureValue(colors),
+  /** A value stacked under the hint (`stackValue`), left-aligned with the label. */
+  rowValueBelow: { textAlign: 'left', marginTop: spacing.xsm },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
 
   // The unfolded "what simplified mode hides" list. Reads as prose per area
