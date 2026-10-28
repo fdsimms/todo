@@ -631,3 +631,7 @@ export function showContainerCount(text: string): string {
   if (!m || !isSizedContainer(m[2], m[3])) return text;
   return `${m[1]} \u00d7 ${text.slice(m[0].length)}`;
 }
+
+// Past this many characters an ingredient's amount sits under its name rather than
+// beside it, so the name and notes keep the width of the row.
+export const STACKED_QTY_LENGTH = 14;

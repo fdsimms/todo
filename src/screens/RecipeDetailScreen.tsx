@@ -103,7 +103,7 @@ import { PrintIngredientsSheet } from '../components/PrintIngredientsSheet';
 import { allSectionsOf, sectionsFromMergedOrder, type SectionListEntry } from '../utils/recipeSections';
 import { PillGroup } from '../components/PillGroup';
 import { describeUnscaled, formatScale, normalizeScale, scaleQuantity } from '../utils/recipeScale';
-import { convertScaledQuantity, showContainerCount } from '../utils/unitConvert';
+import { convertScaledQuantity, showContainerCount, STACKED_QTY_LENGTH } from '../utils/unitConvert';
 import { ingredientWeightText, weightLookups as buildWeightLookups } from '../utils/lineWeight';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { RecipeChoiceChips } from '../components/RecipeChoiceChips';
@@ -3320,10 +3320,6 @@ export function RecipeDetailScreen() {
     </View>
   );
 }
-
-// Past this many characters an ingredient's amount sits under its name rather than
-// beside it, so the name and notes keep the width of the row.
-const STACKED_QTY_LENGTH = 14;
 
 const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   container: {
