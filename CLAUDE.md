@@ -72,18 +72,24 @@ open an issue, or leave it, whichever they pick) before you finish the task it t
 
 ## Similar components found in passing
 
-If a fix or a bit of polish applies to one component and you notice a near-identical sibling has
-the same issue — same copy-pasted structure, same missing treatment, same bug — don't leave it
-alone just because the user only pointed at the first one. Ask whether to apply it to the others
-too, the same "stop and ask, don't just mention" duty as "Bugs found in passing" above, and expect
-the answer to usually be yes: a request framed around one instance of a pattern is rarely a
-request to leave the rest inconsistent, it's just that the user only noticed (or only ran into)
-the one. Raise it as soon as you spot it — `AskUserQuestion` if the harness has it, a plain
-question in chat otherwise — rather than filing it away in a PR description as a "happy to also do
-the others" aside. This app already has a name for the failure mode a hand-rolled copy invites
-(the drift `SheetHeaderButton`, `InlineAction`, and this note's own siblings were created to undo);
-leaving three near-identical components unfixed because only the fourth was named is how that
-drift starts.
+When a fix or a bit of polish applies to one component, **go and look for its siblings yourself,
+without being asked.** Grep for the shared shape (the same primitive, the same copy-pasted
+structure, the same missing treatment) and check each hit for the same issue. A request framed
+around one instance of a pattern is rarely a request to leave the rest inconsistent; the user only
+noticed, or only ran into, the one. Leaving three near-identical components unfixed because only
+the fourth was named is how the drift `SheetHeaderButton`, `InlineAction` and this note's own
+siblings were created to undo starts. A menu that overflows its card is the typical case: check
+every other menu built on the same `CardSheet` before calling it done.
+
+What you do with what you find depends on the fix:
+
+- **The same mechanical change applied again** (the same wrapper, the same token, the same prop):
+  make it in the same PR, as a separate commit if the history is worth keeping, and list the
+  components touched in the description. Don't stop to ask first.
+- **A sibling that needs its own design call, or where you can't tell whether it has the issue:**
+  ask, the same "stop and ask, don't just mention" duty as "Bugs found in passing" above
+  (`AskUserQuestion` if the harness has it, a plain question in chat otherwise), rather than
+  filing it away in a PR description as a "happy to also do the others" aside.
 
 This is distinct from "Stay in scope" below, which is about *unrelated* adjacent code that merely
 looks improvable — a different concern living near the one you were asked about. This is the same
