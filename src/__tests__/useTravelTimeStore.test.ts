@@ -9,6 +9,7 @@ const mockSettings = {
   calendarReadEnabled: true,
   travelMode: 'driving' as 'driving' | 'transit' | 'walking',
   travelWalkUnderMinutes: 0,
+  travelCompareModes: false,
   travelOriginPlaceId: null as string | null,
   travelLeadMinutes: 30,
   travelArriveEarlyMinutes: 0,
@@ -52,6 +53,7 @@ beforeEach(() => {
   mockSettings.travelEstimates = true;
   mockSettings.travelMode = 'driving';
   mockSettings.travelWalkUnderMinutes = 0;
+  mockSettings.travelCompareModes = false;
   mockSettings.travelEventPrefs = {};
   mockSettings.travelOriginPlaceId = null;
   mockPlaces = [];
@@ -226,5 +228,53 @@ describe('refresh', () => {
     resolve(18);
     await pending;
     expect(useTravelTimeStore.getState().estimates).toEqual({});
+  });
+});
+
+describe('refresh with the comparison on', () => {
+  const e = event('a', 14);
+
+  it('also asks the other two modes and files them with the estimate', async () => {
+    mockSettings.travelCompareModes = true;
+    estimateMock.mockImplementation(async (_e, _d, mode) => ({ driving: 8, transit: 13, walking: 22 })[mode]);
+    await useTravelTimeStore.getState().refresh();
+    expect(estimateMock.mock.calls.map(c => c[2]).sort()).toEqual(['driving', 'transit', 'walking']);
+    expect(useTravelTimeStore.getState().estimates[key(e)]).toMatchObject({ minutes: 8, mode: 'driving', others: { transit: 13, walking: 22 } });
+  });
+
+  it('keeps a mode that cannot be routed out of the others, and does not ask again for it', async () => {
+    mockSettings.travelCompareModes = true;
+    estimateMock.mockImplementation(async (_e, _d, mode) => (mode === 'transit' ? null : 10));
+    await useTravelTimeStore.getState().refresh();
+    expect(useTravelTimeStore.getState().estimates[key(e)].others).toEqual({ walking: 10 });
+    estimateMock.mockClear();
+    await useTravelTimeStore.getState().refresh();
+    expect(estimateMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses the walk it already asked for under Walk if close', async () => {
+    mockSettings.travelCompareModes = true;
+    mockSettings.travelWalkUnderMinutes = 20;
+    estimateMock.mockImplementation(async (_e, _d, mode) => (mode === 'walking' ? 35 : 12));
+    await useTravelTimeStore.getState().refresh();
+    expect(estimateMock.mock.calls.filter(c => c[2] === 'walking')).toHaveLength(1);
+    expect(useTravelTimeStore.getState().estimates[key(e)]).toMatchObject({ mode: 'driving', others: { walking: 35, transit: 12 } });
+  });
+
+  it('asks nothing extra with the comparison off, and fills the others in once it is switched on', async () => {
+    await useTravelTimeStore.getState().refresh();
+    expect(estimateMock).toHaveBeenCalledTimes(1);
+    expect(useTravelTimeStore.getState().estimates[key(e)].others).toBeUndefined();
+    mockSettings.travelCompareModes = true;
+    await useTravelTimeStore.getState().refresh();
+    expect(useTravelTimeStore.getState().estimates[key(e)].others).toBeDefined();
+  });
+
+  it('switchMode re-files a held estimate under another mode it answered', async () => {
+    mockSettings.travelCompareModes = true;
+    estimateMock.mockImplementation(async (_e, _d, mode) => ({ driving: 8, transit: 13, walking: 22 })[mode]);
+    await useTravelTimeStore.getState().refresh();
+    useTravelTimeStore.getState().switchMode(key(e), 'walking');
+    expect(useTravelTimeStore.getState().estimates[key(e)]).toMatchObject({ minutes: 22, mode: 'walking', others: { driving: 8, transit: 13 } });
   });
 });

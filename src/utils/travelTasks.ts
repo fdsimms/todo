@@ -235,6 +235,14 @@ export interface TravelEstimate {
    * old number.
    */
   walkUnder?: number;
+  /**
+   * Minutes by each of the other modes, asked alongside this one while
+   * `travelCompareModes` is on. Absent means they were never asked (an
+   * estimate read with the switch off); `{}` means they were asked and none
+   * could be routed, which is not the same, or the next sweep would ask again
+   * for ever.
+   */
+  others?: Partial<Record<TravelMode, number>>;
 }
 
 /** `travelOriginKey` for a trip that starts from wherever the phone is. */
@@ -331,13 +339,98 @@ export function estimatedLeadMinutes(minutes: number): number {
 
 const MODE_WORDS: Record<TravelMode, string> = { driving: 'by car', transit: 'by transit', walking: 'on foot' };
 
-/** "25 min by transit", "1 hr 10 min by car": the estimate as the row says it. */
-export function describeTravelEstimate(minutes: number, mode: TravelMode): string {
+function describeMinutes(minutes: number): string {
   const rounded = Math.max(1, Math.round(minutes));
   const hours = Math.floor(rounded / 60);
   const rest = rounded % 60;
-  const span = hours === 0 ? `${rest} min` : rest === 0 ? `${hours} hr` : `${hours} hr ${rest} min`;
-  return `${span} ${MODE_WORDS[mode]}`;
+  return hours === 0 ? `${rest} min` : rest === 0 ? `${hours} hr` : `${hours} hr ${rest} min`;
+}
+
+/** "25 min by transit", "1 hr 10 min by car": the estimate as the row says it. */
+export function describeTravelEstimate(minutes: number, mode: TravelMode): string {
+  return `${describeMinutes(minutes)} ${MODE_WORDS[mode]}`;
+}
+
+const CHOICE_LABELS: Record<TravelMode, string> = { driving: 'Car', transit: 'Transit', walking: 'Walk' };
+
+/** The mode names the "Getting there" picker lists. */
+export const TRAVEL_MODE_LABELS: Record<TravelMode, string> = { driving: 'Car', transit: 'Transit', walking: 'Walking' };
+
+/** The picker's key for "no leave-by task for this event"; the other keys are `'default'` and a `TravelMode`. */
+export const TRAVEL_SKIP_KEY = 'skip';
+
+/**
+ * The rows of the "Getting there" picker, written once for the event card and
+ * for a "Leave for X" row's own chip. The default row says what it resolves to,
+ * including "Walk if close", since that is the answer a person is overriding.
+ */
+export function travelModePickerOptions(
+  defaultMode: TravelMode,
+  walkUnderMinutes: number,
+): { key: string; label: string }[] {
+  return [
+    { key: 'default', label: walkUnderMinutes > 0 && defaultMode !== 'walking'
+      ? `Settings default (Walk if ${walkUnderMinutes} min or less, else ${TRAVEL_MODE_LABELS[defaultMode]})`
+      : `Settings default (${TRAVEL_MODE_LABELS[defaultMode]})` },
+    ...TRAVEL_MODES.map(m => ({ key: m as string, label: TRAVEL_MODE_LABELS[m] })),
+    { key: TRAVEL_SKIP_KEY, label: 'Don’t add a leave-by task' },
+  ];
+}
+
+/** One way of getting there, as a row of them shows it. */
+export interface TravelChoice {
+  mode: TravelMode;
+  minutes: number;
+  /** The mode the reminder is based on. */
+  selected: boolean;
+  /** The shortest of the choices; the selected one wins a tie. Never set when there is only one. */
+  fastest: boolean;
+  /** "Transit 13 min". */
+  label: string;
+}
+
+/**
+ * The modes a "Leave for X" row lists side by side: the one the reminder is
+ * based on first, then the others shortest first. Empty unless at least one
+ * other mode was routed, since a lone choice is what the single note already
+ * says. Never decides anything: the selected mode stays the one picked, and
+ * "fastest" is a label on a number, not a switch.
+ */
+export function travelChoices(held: TravelEstimate | null): TravelChoice[] {
+  if (!held) return [];
+  const others = TRAVEL_MODES
+    .filter(mode => mode !== held.mode && typeof held.others?.[mode] === 'number')
+    .map(mode => ({ mode, minutes: held.others?.[mode] as number }))
+    .sort((a, b) => a.minutes - b.minutes);
+  if (others.length === 0) return [];
+  const all = [{ mode: held.mode, minutes: held.minutes }, ...others];
+  const shortest = Math.min(...all.map(c => Math.round(c.minutes)));
+  const fastestMode = all.find(c => Math.round(c.minutes) === shortest)?.mode;
+  return all.map(c => ({
+    mode: c.mode,
+    minutes: c.minutes,
+    selected: c.mode === held.mode,
+    fastest: c.mode === fastestMode,
+    label: `${CHOICE_LABELS[c.mode]} ${describeMinutes(c.minutes)}`,
+  }));
+}
+
+/**
+ * The held estimate after the person picks another of its modes from the row:
+ * the same trip read for the new mode, with the old one moved among the
+ * others. Lets the row change at once instead of blanking until Apple Maps
+ * answers again; `at` is kept, so it is still refreshed when it goes stale. The
+ * walk-under threshold is dropped because an event with its own mode ignores
+ * it. Null when the mode wasn't one of the answers.
+ */
+export function switchEstimateMode(held: TravelEstimate, mode: TravelMode): TravelEstimate | null {
+  if (mode === held.mode) return held;
+  const minutes = held.others?.[mode];
+  if (typeof minutes !== 'number') return null;
+  const { walkUnder: _dropped, ...rest } = held;
+  const others = { ...held.others, [held.mode]: held.minutes };
+  delete others[mode];
+  return { ...rest, minutes, mode, others };
 }
 
 /**
@@ -351,9 +444,11 @@ export function needsTravelEstimate(
   origin: string,
   now: Date,
   walkUnder = 0,
+  wantsOthers = false,
 ): boolean {
   const held = estimateFor(event, estimates, mode, origin, walkUnder);
-  return !held || now.getTime() - held.at >= TRAVEL_ESTIMATE_STALE_MS;
+  if (!held || now.getTime() - held.at >= TRAVEL_ESTIMATE_STALE_MS) return true;
+  return wantsOthers && held.others === undefined;
 }
 
 /** An event title is someone else's text and can be long; the row has one line for it. */

@@ -91,6 +91,7 @@ export function useTravelTaskSync(): void {
         state.initialized !== prev.initialized ||
         state.travelTasks !== prev.travelTasks ||
         state.travelEstimates !== prev.travelEstimates ||
+        state.travelCompareModes !== prev.travelCompareModes ||
         state.travelMode !== prev.travelMode ||
         state.travelWalkUnderMinutes !== prev.travelWalkUnderMinutes ||
         state.travelEventPrefs !== prev.travelEventPrefs ||

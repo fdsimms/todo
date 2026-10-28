@@ -16,7 +16,10 @@ import {
   leadWithArrival,
   travelLeaveAt,
   travelSourceId,
+  switchEstimateMode,
   TRAVEL_ESTIMATES_PER_REFRESH,
+  TRAVEL_MODES,
+  type TravelMode,
   type TravelEstimate,
   type TravelOrigin,
   type TravelEstimates,
@@ -38,6 +41,13 @@ interface TravelTimeState {
   refreshing: boolean;
   /** Estimates every upcoming travel event that has none, or a stale one, a few at a time. */
   refresh: () => Promise<void>;
+  /**
+   * Re-files one held estimate under another of the modes it already answered
+   * (a tap on a row's other choice), before the preference that makes it the
+   * event's mode is written, so the row changes at once instead of blanking
+   * while the next refresh asks again.
+   */
+  switchMode: (sourceId: string, mode: TravelMode) => void;
   clear: () => void;
 }
 
@@ -85,7 +95,7 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
       travelOriginForEvent(eventId, settings.travelEventPrefs, settings.travelOriginPlaceId, places);
     const held = get().estimates;
     const wanted = upcoming
-      .filter(event => needsTravelEstimate(event, held, travelModeFor(event.id, settings.travelEventPrefs, settings.travelMode), travelOriginKey(originOf(event.id)), now, walkUnderOf(event.id)))
+      .filter(event => needsTravelEstimate(event, held, travelModeFor(event.id, settings.travelEventPrefs, settings.travelMode), travelOriginKey(originOf(event.id)), now, walkUnderOf(event.id), settings.travelCompareModes))
       .slice(0, TRAVEL_ESTIMATES_PER_REFRESH);
 
     // Estimates for occurrences no longer coming up are dropped either way.
@@ -117,9 +127,12 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
         const walkUnder = walkUnderOf(event.id);
         let filedMode = mode;
         let minutes: number | null = null;
+        // Every mode answered so far, so the comparison below never asks one twice.
+        const answered: Partial<Record<TravelMode, number>> = {};
         if (walkUnder > 0) {
           const walk = await estimateTravelMinutes(event, departAt, 'walking', origin);
           if (!estimateGuard.isCurrent(token)) return;
+          if (walk !== null) answered.walking = walk;
           if (walk !== null && walk <= walkUnder) { minutes = walk; filedMode = 'walking'; }
         }
         if (minutes === null) {
@@ -127,11 +140,26 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
           if (!estimateGuard.isCurrent(token)) return;
         }
         if (minutes === null) continue;
+        answered[filedMode] = minutes;
+        let others: Partial<Record<TravelMode, number>> | undefined;
+        if (settings.travelCompareModes) {
+          others = {};
+          for (const other of TRAVEL_MODES) {
+            if (other === filedMode) continue;
+            let theirs = answered[other] ?? null;
+            if (theirs === null) {
+              theirs = await estimateTravelMinutes(event, departAt, other, origin);
+              if (!estimateGuard.isCurrent(token)) return;
+            }
+            if (theirs !== null) others[other] = theirs;
+          }
+        }
         fresh[travelSourceId(event)] = {
           minutes,
           location: (event.location ?? '').trim(),
           mode: filedMode,
           ...(walkUnder > 0 ? { walkUnder } : {}),
+          ...(others ? { others } : {}),
           origin: travelOriginKey(origin),
           at: Date.now(),
         };
@@ -140,6 +168,12 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
     } finally {
       set({ refreshing: false });
     }
+  },
+
+  switchMode(sourceId, mode) {
+    const held = get().estimates[sourceId];
+    const next = held ? switchEstimateMode(held, mode) : null;
+    if (next && next !== held) set({ estimates: { ...get().estimates, [sourceId]: next } });
   },
 
   clear() {

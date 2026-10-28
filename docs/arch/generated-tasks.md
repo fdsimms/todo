@@ -1365,6 +1365,20 @@ argued out before it was built; read them before reopening one.
   own pick, or when the Settings mode is already walking) and accepts either the Settings mode or a
   walk, and an estimate carries the `walkUnder` it was asked under, so changing the number asks again
   instead of keeping a mode the old number chose. A reader of a held estimate passes `walkUnder` too.
+- **"Compare ways to get there" lists every mode on the row, and a tap on one switches the event to it.**
+  `travelCompareModes` (on by default but under `travelEstimates`, so it asks nothing until that opt-in is on; device-local like it) makes
+  `useTravelTimeStore.refresh` ask the other modes after the one in use, so the three requests go to the
+  same service for the same addresses and the switch says so. They are filed on the estimate as `others`
+  (`{}` means asked and none routed, absent means never asked, which is what `needsTravelEstimate`'s
+  `wantsOthers` keys on), and a walk already asked for under "Walk if close" is reused, not asked twice.
+  `travelChoices` is the row's list: the mode in use first, the rest shortest first, "fastest" a label on a
+  number and never a switch, so **the reminder stays on the mode the person picked** and nothing moves it to
+  the shortest. A tap on another choice goes through `setTravelModeForEvent` (`travelModeWrite.ts`), the
+  same `travelEventPrefs` write the event card's chip makes, and re-files the held estimate first
+  (`switchEstimateMode`) so the row changes at once rather than blanking until Apple Maps answers. A tap on
+  the choice in use, or on the lone note with the comparison off, opens `TravelModeSheet`, the card's
+  "Getting there" list (`travelModePickerOptions`, shared with `QuickEventSheet`), which is also the only
+  way to the Settings default and "no leave-by task" from the row.
 - **One event can override the mode, how early to arrive and where the trip starts, and that stays in the app.** The quick
   event sheet shows "Getting there" and "Arrive" chips for an event with a place and a time (plus "Start from" while estimates are on), saved
   to `travelEventPrefs` (`TravelEventPref`) by calendar event id, so a repeating event keeps its
