@@ -1,4 +1,5 @@
 import {
+  brandForNewBox,
   canonicalBrand,
   describeProduct,
   describeProductOfItem,
@@ -97,6 +98,35 @@ describe('describeProduct', () => {
     expect(describeProduct({ brand: '  ', variant: 'low fat' })).toBe('low fat');
     expect(describeProduct({ brand: 'Oatly', variant: '   ' })).toBe('Oatly');
     expect(describeProduct({ brand: '', variant: '' })).toBeNull();
+  });
+});
+
+describe('brandForNewBox', () => {
+  it("offers the picked box's brand", () => {
+    const boxes = [
+      product({ id: 'a', brand: 'SoyBoy' }),
+      product({ id: 'b', brand: "Trader Joe's" }),
+    ];
+    expect(brandForNewBox(boxes, 'b')).toBe("Trader Joe's");
+  });
+
+  it('offers the only brand the item has when nothing is picked', () => {
+    const boxes = [
+      product({ id: 'a', brand: 'SoyBoy', variant: 'Plain' }),
+      product({ id: 'b', brand: 'soyboy', variant: 'Asian' }),
+      product({ id: 'c', brand: null, variant: 'Loose' }),
+    ];
+    expect(brandForNewBox(boxes, null)).toBe('SoyBoy');
+  });
+
+  it('guesses nothing between two brands', () => {
+    const boxes = [product({ id: 'a', brand: 'SoyBoy' }), product({ id: 'b', brand: 'Nasoya' })];
+    expect(brandForNewBox(boxes, null)).toBeNull();
+  });
+
+  it('is null when no box has a brand', () => {
+    expect(brandForNewBox([product({ id: 'a', variant: 'Plain' })], 'a')).toBeNull();
+    expect(brandForNewBox([], null)).toBeNull();
   });
 });
 

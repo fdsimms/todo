@@ -4,7 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import type { ItemProduct } from '../types';
-import { describeProduct, productsForItem } from '../utils/groceryProduct';
+import { brandForNewBox, describeProduct, productsForItem } from '../utils/groceryProduct';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
@@ -73,6 +73,10 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
     [itemId, products]
   );
 
+  // Opens the form on the brand already in play, so a new flavor of it is one
+  // field. The box the pick sits on wins; see `brandForNewBox`.
+  const startBrand = useMemo(() => brandForNewBox(boxes, value), [boxes, value]);
+
   const [adding, setAdding] = useState(false);
   const [brand, setBrand] = useState('');
   const [variant, setVariant] = useState('');
@@ -113,7 +117,7 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
             label="New brand or flavor"
             icon="add"
             variant="neutral"
-            onPress={() => setAdding(true)}
+            onPress={() => { setBrand(startBrand ?? ''); setVariant(''); setAdding(true); }}
             accessibilityLabel="Add a new brand or flavor to this item"
           />
         </View>
@@ -144,6 +148,9 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
                 placeholderTextColor={colors.textTertiary}
                 autoCapitalize="words"
                 autoCorrect={false}
+                // The brand is already filled in when there is one to offer, so
+                // the cursor goes to the field that still needs typing.
+                autoFocus={!!startBrand}
                 accessibilityLabel="Flavor or type"
               />
             </View>
@@ -159,7 +166,11 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
               }}
               accessibilityLabel="Save this brand or flavor"
             />
-            <InlineAction label={BUTTON_LABEL.cancel} variant="neutral" onPress={() => setAdding(false)} />
+            <InlineAction
+              label={BUTTON_LABEL.cancel}
+              variant="neutral"
+              onPress={() => { setAdding(false); setBrand(''); setVariant(''); }}
+            />
           </View>
         </View>
       )}

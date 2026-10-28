@@ -216,6 +216,30 @@ export function productsForItem(
 }
 
 /**
+ * The brand a "new box" form should open with, so adding another flavor of what
+ * you already buy doesn't mean retyping the maker.
+ *
+ * The brand of the box currently picked wins, since that is the one the person
+ * is looking at. Failing that, a brand is offered only when the item has exactly
+ * one (by `productKeyFor`'s own comparison): with two to choose from, picking one
+ * for them is a guess, and an empty field is the honest answer. Null when no
+ * box has a brand.
+ */
+export function brandForNewBox(
+  boxes: readonly Pick<ItemProduct, 'id' | 'brand'>[],
+  currentId: string | null
+): string | null {
+  const current = boxes.find(b => b.id === currentId)?.brand?.trim();
+  if (current) return current;
+  const brands = new Map<string, string>();
+  for (const box of boxes) {
+    const brand = box.brand?.trim();
+    if (brand && !brands.has(groceryNameKey(brand))) brands.set(groceryNameKey(brand), brand);
+  }
+  return brands.size === 1 ? [...brands.values()][0] : null;
+}
+
+/**
  * The box a barcode was last confirmed against, or null.
  *
  * The most specific answer a scan can get, and the reason `ItemProduct.gtin`
