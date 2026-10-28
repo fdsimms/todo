@@ -588,7 +588,7 @@ async function processQuietWidgetTaps(handOff: 'app' | 'requeue' = 'app'): Promi
           break;
         }
         case 'watchHealthRetracted':
-          useWatchHealthStore.getState().retracted(action.workoutId);
+          useWatchHealthStore.getState().retracted(action.workoutId, action.notFound);
           break;
         // What the watch adds to the phone's workout, each through the store
         // action workout mode itself uses, with the watch's ids where it made

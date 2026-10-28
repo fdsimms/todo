@@ -16,8 +16,11 @@ import type { WorkoutSession } from '../types';
  *   or on another device, heard of by sync: `askWatchAboutSyncedDeletes`), or
  *   whose times they changed (once the phone's own copy at the new times is
  *   in). The watch deletes each, with the energy saved with it, and says so
- *   with a `healthRetracted` tap, which takes it off the list; one it couldn't
- *   delete (the watch locked) it leaves unanswered and tries again. Kept until
+ *   with a `healthRetracted` tap, which takes it off the list. One it found
+ *   nothing to delete for (watchOS keeps only recent samples on the watch)
+ *   says so (`notFound`), and the person is told it may still be in Health
+ *   (`useWatchRetractNotice`); one it couldn't delete (the watch locked) it
+ *   leaves unanswered and tries again. Kept until
  *   then, since the watch may be away for days; capped, oldest dropped, so a
  *   watch that is never seen again can't grow it for ever.
  * - `drop`: workouts deleted on the phone while the watch may still be

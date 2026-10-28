@@ -333,7 +333,10 @@ final class WatchSession: NSObject, WCSessionDelegate {
       appendToQueue(watchQuietTapsFileName, entry)
     case "healthRetracted":
       guard let workoutId = info["id"] as? String, !workoutId.isEmpty else { return }
-      appendToQueue(watchQuietTapsFileName, ["kind": kind, "id": workoutId, "at": at, "watchTapId": tapId])
+      var entry: [String: Any] = ["kind": kind, "id": workoutId, "at": at, "watchTapId": tapId]
+      // The watch found nothing to delete by the id, so it may still be in Health.
+      if info["notFound"] as? Bool == true { entry["notFound"] = true }
+      appendToQueue(watchQuietTapsFileName, entry)
     default:
       // A kind this build doesn't know is dropped without its receipt, so a
       // watch newer than this app keeps drawing it rather than settling it.

@@ -123,6 +123,12 @@ export interface QuietTap {
    */
   workoutStart?: string;
   workoutEnd?: string;
+  /**
+   * `healthRetracted`: the watch found nothing to delete by the id (watchOS
+   * keeps only recent samples on the watch), so the workout may still be in
+   * Health. Absent when it was deleted.
+   */
+  notFound?: boolean;
 }
 
 /**
@@ -223,8 +229,11 @@ export type QuietTapAction =
   | { type: 'watchMeasuring'; sessionId: string; on: boolean }
   /** `recordWatchHealthWorkout`: the watch saved a session's workout to Health. */
   | { type: 'watchHealthWorkout'; sessionId: string; workoutId: string | null; span: WatchWorkoutSpan | null }
-  /** The watch dealt with a workout the phone asked it to retract (`useWatchHealthStore.retracted`). */
-  | { type: 'watchHealthRetracted'; workoutId: string }
+  /**
+   * The watch dealt with a workout the phone asked it to retract
+   * (`useWatchHealthStore.retracted`): deleted it, or found nothing to delete.
+   */
+  | { type: 'watchHealthRetracted'; workoutId: string; notFound: boolean }
   /** `addPlannedSet` with the watch's id. */
   | { type: 'addWorkoutSet'; sessionId: string; exerciseId: string; setId: string }
   /** `addSessionExercise` with the watch's ids. */
@@ -409,6 +418,7 @@ export function parseQuietTaps(json: string): QuietTap[] {
         }
       }
     }
+    if (kind === 'healthRetracted' && fields.notFound === true) tap.notFound = true;
     if (kind === 'watchSession') {
       const workout = parseWatchSession(fields.workout);
       if (!workout || workout.id !== id) continue;
@@ -615,7 +625,7 @@ export function planQuietTaps(
       continue;
     }
     if (tap.kind === 'healthRetracted') {
-      actions.push({ type: 'watchHealthRetracted', workoutId: tap.id });
+      actions.push({ type: 'watchHealthRetracted', workoutId: tap.id, notFound: tap.notFound === true });
       continue;
     }
     if (tap.kind === 'watchSession') {
