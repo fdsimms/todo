@@ -30,7 +30,7 @@ import {
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeSubstitutes, substitutesFor, type Substitute } from '../utils/itemSubs';
-import { alternativeCaptions, applyChoice, choiceGroupKey, recipeChoiceGroups } from '../utils/recipeComponents';
+import { alternativeCaptions, applyChoice, choiceGroupKey, isGroupSkipped, recipeChoiceGroups, toggleSkipGroup } from '../utils/recipeComponents';
 import { normalizeScale } from '../utils/recipeScale';
 import { featureShown } from '../utils/simpleMode';
 import { convertQuantity, showContainerCount } from '../utils/unitConvert';
@@ -533,38 +533,58 @@ export function RecipeToListSheet({
               {choiceGroups.map(group => {
                 const key = choiceGroupKey(group.recipe.id, group.label);
                 const open = undecided.includes(key);
+                const skip = isGroupSkipped(choices, group);
                 return (
                   <RecipeChoiceChips
                     key={key}
                     group={group}
-                    activeOptionId={open ? null : group.active.id}
+                    activeOptionId={open || skip ? null : group.active.id}
                     onPick={optionId => {
                       setUndecided(prev => prev.filter(k => k !== key));
                       setChoices(prev => applyChoice(prev, group, optionId));
                     }}
                     hint={open
                       ? `All ${group.options.length} go on the list. Check off the one you get and the rest come off.`
-                      : null}
+                      : skip ? 'None of these go on the list.' : null}
                     // Ingredients only. A component group names a dish, and two
                     // dishes' worth of lines on the list is not something one
                     // tick at the shelf could ever take back off — see
                     // ChoiceResolution.undecided.
                     extraChip={group.kind === 'ingredient' ? (
-                      <TouchableOpacity
-                        style={[styles.choiceChip, open && styles.choiceChipOn]}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => {
-                          haptics.tap();
-                          setUndecided(prev => (open ? prev.filter(k => k !== key) : [...prev, key]));
-                        }}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: open }}
-                        accessibilityLabel={`${group.label}: put both on the list and decide at the store`}
-                      >
-                        <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
-                          Decide at the store
-                        </Text>
-                      </TouchableOpacity>
+                      <>
+                        <TouchableOpacity
+                          style={[styles.choiceChip, open && styles.choiceChipOn]}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => {
+                            haptics.tap();
+                            setChoices(prev => (skip ? toggleSkipGroup(prev, group) : prev));
+                            setUndecided(prev => (open ? prev.filter(k => k !== key) : [...prev, key]));
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: open }}
+                          accessibilityLabel={`${group.label}: put both on the list and decide at the store`}
+                        >
+                          <Text style={[styles.choiceChipText, open && styles.choiceChipTextOn]}>
+                            Decide at the store
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.choiceChip, skip && styles.choiceChipOn]}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => {
+                            haptics.tap();
+                            setUndecided(prev => prev.filter(k => k !== key));
+                            setChoices(prev => toggleSkipGroup(prev, group));
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: skip }}
+                          accessibilityLabel={`${group.label}: not needed, leave it off the list`}
+                        >
+                          <Text style={[styles.choiceChipText, skip && styles.choiceChipTextOn]}>
+                            Not needed
+                          </Text>
+                        </TouchableOpacity>
+                      </>
                     ) : null}
                   />
                 );

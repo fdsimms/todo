@@ -33,6 +33,7 @@ import {
   describeOverrides,
   optionalCounts,
   toggleOptionalPick,
+  skipPickId,
 } from '../utils/recipeComponents';
 import type { Recipe, RecipeComponent, RecipeIngredient, RecipeOverride, RecipePrepTask } from '../types';
 
@@ -738,6 +739,25 @@ describe('choice groups', () => {
       const key = choiceGroupKey(taco.id, 'Tortillas');
       expect(activeIngredients(taco, { undecided: [key] }).map(i => i.name))
         .toEqual(['Fish', 'Corn tortillas']);
+    });
+
+    it('refuses to skip a mixed group, since a dish is picked rather than left off', () => {
+      const { taco } = mixedLibrary();
+      const key = choiceGroupKey(taco.id, 'Tortillas');
+      expect(activeIngredients(taco, { chosen: [skipPickId(taco.id, 'Tortillas')] }).map(i => i.name))
+        .toEqual(['Fish', 'Corn tortillas']);
+    });
+
+    it('leaves a skipped ingredient group off entirely', () => {
+      const { taco } = mixedLibrary();
+      const withPepper = { ...taco, ingredients: [
+        ...taco.ingredients,
+        { ...taco.ingredients[0], id: 'p1', name: 'Serrano', nameKey: 'serrano', choiceGroup: 'Pepper' },
+        { ...taco.ingredients[0], id: 'p2', name: 'Jalapeño', nameKey: 'jalapeno', choiceGroup: 'Pepper' },
+      ] };
+      expect(activeIngredients(withPepper, { chosen: [skipPickId(withPepper.id, 'Pepper')] }).map(i => i.name))
+        .toEqual(['Fish', 'Corn tortillas']);
+      expect(activeIngredients(withPepper).map(i => i.name)).toContain('Serrano');
     });
 
     it('captions each side with the other, crossing the two lists', () => {

@@ -375,6 +375,42 @@ export interface ChoiceResolution {
   withOptional?: boolean;
 }
 
+const SKIP_PREFIX = 'skip:';
+
+/**
+ * The id stored in a meal's picks (`chosen`) when a whole ingredient group is
+ * "not needed": the group contributes no line to its shopping or figures.
+ *
+ * It lives in `chosen` rather than a column of its own so every path that
+ * already carries a meal's picks (sync, copy, the MCP replica, every
+ * `entryResolution` reader) carries it too. It can never collide with an option
+ * id, and a group that no longer exists just never matches (resolve-or-shrug).
+ * Ingredient groups only: a component names a dish, which is picked or replaced,
+ * not skipped.
+ */
+export function skipPickId(recipeId: string, label: string): string {
+  return `${SKIP_PREFIX}${choiceGroupKey(recipeId, label)}`;
+}
+
+/** The `choiceGroupKey`s a list of picks marks as not needed. */
+function skippedGroupKeys(chosen: readonly string[] | undefined): string[] | undefined {
+  const keys = (chosen ?? []).filter(id => id.startsWith(SKIP_PREFIX)).map(id => id.slice(SKIP_PREFIX.length));
+  return keys.length > 0 ? keys : undefined;
+}
+
+/** Whether `chosen` marks `group` as not needed. */
+export function isGroupSkipped(chosen: readonly string[], group: Pick<ChoiceGroup, 'recipe' | 'label'>): boolean {
+  return chosen.includes(skipPickId(group.recipe.id, group.label));
+}
+
+/** `chosen` with `group` marked not needed, or brought back (as its default) when it already is. */
+export function toggleSkipGroup(chosen: readonly string[], group: ChoiceGroup): string[] {
+  const id = skipPickId(group.recipe.id, group.label);
+  if (chosen.includes(id)) return chosen.filter(c => c !== id);
+  const optionIds = new Set(group.options.map(o => o.id));
+  return [...chosen.filter(c => !optionIds.has(c)), id];
+}
+
 /**
  * Whether an ingredient line counts toward a meal's figures and its shopping.
  *
@@ -501,10 +537,12 @@ function resolveGroupWinners(
   const ingredientGroups = groupOptions(recipe.ingredients);
   const chosen = new Set(resolution?.chosen ?? []);
   const onHand = resolution?.onHand;
+  const skipped = labelsInKeys(recipe, skippedGroupKeys(resolution?.chosen));
   const labels = new Set([...ingredientGroups.keys(), ...componentGroups.keys()]);
   for (const label of labels) {
     const ingredients = ingredientGroups.get(label) ?? [];
     const components = componentGroups.get(label) ?? [];
+    if (components.length === 0 && skipped?.has(label)) continue;
     if (components.length === 0 && undecided?.has(label)) {
       for (const ingredient of ingredients) ingredientIds.add(ingredient.id);
       continue;
@@ -524,8 +562,13 @@ function resolveGroupWinners(
 
 /** The labels of `recipe`'s own ingredient groups the resolution leaves open. */
 function undecidedLabelsOf(recipe: Recipe, resolution?: ChoiceResolution): Set<string> | undefined {
-  if (!resolution?.undecided?.length) return undefined;
-  const keys = new Set(resolution.undecided);
+  return labelsInKeys(recipe, resolution?.undecided);
+}
+
+/** The labels of `recipe`'s own ingredient groups named by `choiceGroupKey`s. */
+function labelsInKeys(recipe: Recipe, groupKeys: readonly string[] | undefined): Set<string> | undefined {
+  if (!groupKeys?.length) return undefined;
+  const keys = new Set(groupKeys);
   const labels = new Set<string>();
   for (const ingredient of recipe.ingredients) {
     if (ingredient.choiceGroup && keys.has(choiceGroupKey(recipe.id, ingredient.choiceGroup))) {
@@ -1134,7 +1177,8 @@ export function applyChoice(
   optionId: string,
 ): string[] {
   const optionIds = new Set(group.options.map(o => o.id));
-  const rest = choices.filter(id => !optionIds.has(id));
+  const skipId = skipPickId(group.recipe.id, group.label);
+  const rest = choices.filter(id => !optionIds.has(id) && id !== skipId);
   const isDefault = group.defaultId === optionId;
   return isDefault || !optionIds.has(optionId) ? rest : [...rest, optionId];
 }
