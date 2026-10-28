@@ -133,11 +133,11 @@ public class TodoSpeechModule: Module {
     AsyncFunction("start") { (promise: Promise) in
       DispatchQueue.main.async {
         guard self.speechAuthorized() && self.microphoneGranted() else {
-          promise.reject("E_PERMISSION", "Microphone or speech recognition isn't allowed.")
+          promise.fail("E_PERMISSION", "Microphone or speech recognition isn't allowed.")
           return
         }
         guard let recognizer = self.onDeviceRecognizer(), recognizer.isAvailable else {
-          promise.reject("E_UNAVAILABLE", "This phone can't turn speech into text without the internet.")
+          promise.fail("E_UNAVAILABLE", "This phone can't turn speech into text without the internet.")
           return
         }
 
@@ -165,7 +165,7 @@ public class TodoSpeechModule: Module {
           // A zero sample rate is what a missing or busy microphone reports,
           // and installTap on it raises an NSException Swift cannot catch.
           guard format.sampleRate > 0, format.channelCount > 0 else {
-            promise.reject("E_UNAVAILABLE", "The microphone isn't available right now.")
+            promise.fail("E_UNAVAILABLE", "The microphone isn't available right now.")
             return
           }
           input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
@@ -194,7 +194,7 @@ public class TodoSpeechModule: Module {
         } catch {
           engine.inputNode.removeTap(onBus: 0)
           try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-          promise.reject("E_START", "Recording couldn't start. Try again.")
+          promise.fail("E_START", "Recording couldn't start. Try again.")
           return
         }
 
@@ -272,5 +272,25 @@ public class TodoSpeechModule: Module {
         promise.resolve(nil)
       }
     }
+  }
+}
+
+/// A rejection that carries its message. `Promise.reject(code, description)`
+/// leaves the `Exception`'s `reason` as the framework's placeholder, which is
+/// what JavaScript's message is made from, so the description never arrived.
+private final class SpeechFailure: Exception, @unchecked Sendable {
+  private let detail: String
+
+  init(code: String, detail: String) {
+    self.detail = detail
+    super.init(name: code, description: detail, code: code)
+  }
+
+  override var reason: String { detail }
+}
+
+private extension Promise {
+  func fail(_ code: String, _ detail: String) {
+    reject(SpeechFailure(code: code, detail: detail))
   }
 }

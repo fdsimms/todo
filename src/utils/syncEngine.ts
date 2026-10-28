@@ -659,7 +659,11 @@ export async function runSync(
 }
 
 function messageOf(e: unknown, fallback: string): string {
-  if (e instanceof Error && e.message) return e.message;
+  if (e instanceof Error && e.message) {
+    // A native module's rejection reads `ERR_CODE: reason (at File.swift:65)`;
+    // the code and the source position are for logs, not for a person.
+    return e.message.replace(/^ERR_[A-Z_]+:\s*/, '').replace(/\s*\(at [^()]*:\d+\)\.?$/, '') || fallback;
+  }
   return fallback;
 }
 
