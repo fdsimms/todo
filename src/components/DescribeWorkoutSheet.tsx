@@ -118,6 +118,7 @@ export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWork
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const exercises = useWorkoutStore(s => s.exercises);
   const unit = useSettingsStore(s => s.workoutUnit);
+  const dumbbellEntry = useSettingsStore(s => s.dumbbellEntry);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   // ==== staged state ====
@@ -169,6 +170,8 @@ export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWork
       resolutions,
       id => catalogExercise(useWorkoutStore.getState().exercises, id)?.kind ?? 'weight_reps',
       unit,
+      // A weight said for two dumbbells is said the way the person types it.
+      { pairTotals: dumbbellEntry === 'pair', exercises: useWorkoutStore.getState().exercises },
     );
     if (into) into.onAdd(made);
     else onRoutine?.(made);
@@ -176,7 +179,10 @@ export function DescribeWorkoutSheet({ visible, mode, onClose, onRoutine, onWork
 
   const received = (d: WorkoutDraft) => {
     if (mode === 'log') {
-      const made = sessionFromDraft(d, unit, dayKeyOf(getLogicalToday()), new Date());
+      const made = sessionFromDraft(d, unit, dayKeyOf(getLogicalToday()), new Date(), {
+        dayResetTime: useSettingsStore.getState().dayResetTime,
+        taken: useWorkoutStore.getState().sessions.map(s => s.startedAt),
+      });
       if (!made.ok) { haptics.warning(); setError(made.error); return; }
       haptics.success();
       onWorkout?.(made.session);

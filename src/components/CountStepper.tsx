@@ -12,7 +12,7 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
-  canStep, clampCount, holdRepeatDelay, parseStepperInput, stepCount, type StepRange,
+  canStep, clampCount, holdRepeatDelay, parseStepperInput, stepCount, typedStepperValue, type StepRange,
 } from '../utils/stepper';
 import { TextField } from './TextField';
 
@@ -240,7 +240,13 @@ export function CountStepper({
         <TextField
           style={[styles.valueInput, inline && styles.valueInputInline]}
           value={draft}
-          onChangeText={setDraft}
+          onChangeText={text => {
+            setDraft(text);
+            // A number the stepper keeps as typed is written now, so a Save
+            // tapped before the field closes reads it (`typedStepperValue`).
+            const typed = typedStepperValue(text, range);
+            if (typed !== null && typed !== value) onChange(typed);
+          }}
           onBlur={commitEdit}
           onSubmitEditing={commitEdit}
           keyboardType={decimal ? 'decimal-pad' : 'number-pad'}

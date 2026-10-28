@@ -105,11 +105,12 @@ import type {
   TaskFieldDefaults,
   GeneratedTaskExtras,
 } from '../../src/types';
-import type { FinishedSessionInput, ProgramInput, SessionPatch, SetInput } from '../../src/store/useWorkoutStore';
+import type { ExerciseInput, ExercisePatch, FinishedSessionInput, ProgramInput, SessionPatch, SetInput } from '../../src/store/useWorkoutStore';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { sectionListPatch } from '../../src/utils/listMode';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
 import { programVersionsOf, routineVersionsOf } from '../../src/utils/routineVersions';
+import { routineMergePatch } from '../../src/utils/workoutTask';
 import { sunAnchorHHMM } from '../../src/utils/sunTimes';
 import { SERVER_SHARING_KEY_PREFIX, type ServerSharing } from '../../src/db/syncTracking';
 import type { AwaySpan } from '../../src/utils/awayDates';
@@ -1367,6 +1368,17 @@ export interface Replica {
   saveRoutineGroup(name: string, renameTo?: string): string;
   /** Its routines stay, in no group. Returns how many were in it. */
   deleteRoutineGroup(name: string): number;
+  /**
+   * Makes a custom exercise through `useWorkoutStore.addExercise`, so a name or
+   * other name another exercise already goes by is refused as on the phone.
+   */
+  addExercise(input: ExerciseInput): Exercise;
+  /**
+   * Edits an exercise through `useWorkoutStore.updateExercise`: a custom one
+   * in full, a built-in only in its name, other names, notes and archived
+   * flag. What a set records can't change once sets are logged (`hasHistory`).
+   */
+  updateExercise(id: string, patch: ExercisePatch): Exercise;
   /**
    * `saveGym` creates (no `id`) or changes a gym through `useGymStore`'s own
    * actions, so its name rules and refusals are the app's; fields left out
@@ -4640,6 +4652,17 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       store.deleteRoutineGroup(name);
       return held;
     },
+    addExercise(input) {
+      const made = workoutStore().addExercise(input);
+      if (typeof made === 'string') throw new Error(WORKOUT_REFUSALS[made]);
+      return made;
+    },
+    updateExercise(id, patch) {
+      const result = workoutStore().updateExercise(id, patch);
+      if (result === 'notFound') throw new Error(`No exercise with id ${id}. list_exercises names them.`);
+      if (typeof result === 'string') throw new Error(WORKOUT_REFUSALS[result]);
+      return result;
+    },
     saveGym(input) {
       const store = gymStore();
       const { id, exerciseNotes, isDefault, ...fields } = input;
@@ -4696,8 +4719,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         // The same rule as the phone's: a task still to do starts the kept
         // routine, and a finished one keeps naming the old one as provenance.
         moveTasks: (oldId, newId) => {
-          for (const t of db.dbGetAllTasks().filter(t => t.workoutRoutineId === oldId && !t.completed)) {
-            replica.updateTask(t.id, { workoutRoutineId: newId });
+          for (const t of db.dbGetAllTasks()) {
+            const patch = routineMergePatch(t, oldId, newId);
+            if (patch) replica.updateTask(t.id, patch);
           }
         },
       });

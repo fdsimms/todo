@@ -231,6 +231,8 @@ describe('describing an item', () => {
   it('reads warm-ups, sets, weight, the scheme and the rest', () => {
     expect(describeRoutineItem(bench, opts)).toBe('1 warm-up · 2 × 6–8 · 1 to failure · 80 kg · rep range · rest 2:30');
     expect(describeRoutineItem(withWarmupMode(bench, 'ramp'), opts)).toBe('ramp warm-up · 2 × 6–8 · 1 to failure · 80 kg · rep range · rest 2:30');
+    // A pair total, said as the set table says it.
+    expect(describeRoutineItem(bench, { ...opts, scale: 2, weightSuffix: ' pair' })).toContain('160 kg pair');
     expect(describeRoutineItem(newRoutineItem('a', 'weight_reps'), opts)).toBe('3 × 8–12 · rest 1:30');
     expect(describeRoutineItem({ ...newRoutineItem('a', 'weight_reps'), restSeconds: 0 }, opts)).toBe('3 × 8–12 · no rest');
     expect(describeRoutineItem(withSetWeight(bench, 1, 61.235), { ...opts, unit: 'lb' })).toContain('135 lb');

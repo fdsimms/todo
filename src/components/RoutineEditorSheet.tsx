@@ -181,15 +181,22 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   // saved from it says so in History.
   const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
   const baseline = useRef('');
+  // The focused set cell's text, not yet written (`RoutineSetTable`'s
+  // `onPendingChange`): Save applies it, since tapping Save doesn't blur it.
+  const pendingCell = useRef<{ rowId: string; write: (item: WorkoutRoutineItem) => WorkoutRoutineItem } | null>(null);
 
   useEffect(() => {
     if (!visible) return;
-    const n = routine?.name ?? seed?.name ?? '';
-    const t = routine?.notes ?? seed?.notes ?? '';
-    const r = toRows(routine?.items ?? seed?.items ?? []);
+    // A draft described last time is not this opening's: `described` is reset
+    // below, and the editor stays mounted (`LazySheet`), so reading it here
+    // filled a fresh "New routine" with the previous one.
+    const n = routine?.name ?? '';
+    const t = routine?.notes ?? '';
+    const r = toRows(routine?.items ?? []);
     setName(n);
     setNotes(t);
     setRows(r);
+    pendingCell.current = null;
     setOpenRowId(null);
     setPicking(null);
     setDescribed(null);
@@ -202,9 +209,9 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     setVersionOpen(false);
     setMergeOpen(false);
     setRestoredFrom(null);
-    // A draft is measured against an empty routine: nothing of it is saved
-    // yet, so leaving it untouched still has something to lose.
-    baseline.current = seed ? snapshotOf('', '', []) : snapshotOf(n, t, r);
+    // A draft described into the form later is measured against this empty
+    // routine: nothing of it is saved yet, so leaving it still has something to lose.
+    baseline.current = snapshotOf(n, t, r);
     // Loaded on open only: a sync landing mid-edit must not overwrite what is
     // being typed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -349,7 +356,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   const dirty = visible && snapshotOf(name, notes, rows) !== baseline.current;
 
   const handleCancel = () => {
-    if (!dirty) { onClose(); return; }
+    if (!dirty && !pendingCell.current) { onClose(); return; }
     confirmDiscard(onClose, routine ? {} : {
       title: 'Discard this routine?',
       message: 'It hasn’t been saved yet. If you leave now, it will be lost.',
@@ -370,7 +377,10 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     // Compared the way the store will read them, or a field the editor leaves
     // undefined (a superset key) would read as a change and ask on a rename.
     // An exercise still to be made has a `new:` id, which is a change anyway.
-    const planned = savedItems(rows);
+    const pending = pendingCell.current;
+    const planned = savedItems(pending
+      ? rows.map(r => (r.id === pending.rowId ? { ...r, item: pending.write(r.item) } : r))
+      : rows);
     if (routine && routineContentChanged(routine, { notes, items: readRoutineItems(planned) }) && store.routineVersionTrained(routine.id)) {
       const list = routineVersionsOf(routine, store.routineVersions);
       const current = currentRoutineVersion(routine, list);
@@ -644,7 +654,11 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
                       >
                         <Text style={styles.itemName}>{exName}</Text>
                         <Text style={styles.itemSummary}>
-                          {describeRoutineItem(row.item, { kind, unit, defaultRestSeconds: defaultRest, role: itemRole })}
+                          {describeRoutineItem(row.item, {
+                            kind, unit, defaultRestSeconds: defaultRest, role: itemRole,
+                            scale: weightScale(catalogExercise(exercises, row.item.exerciseId), dumbbellEntry),
+                            weightSuffix: weightHeadingSuffix(catalogExercise(exercises, row.item.exerciseId), dumbbellEntry),
+                          })}
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => toggleOpen(row.id)} hitSlop={8} accessibilityElementsHidden importantForAccessibility="no">
@@ -665,6 +679,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
                         colors={colors}
                         styles={styles}
                         onChange={change => updateItem(row.id, change)}
+                        onPendingChange={write => { pendingCell.current = write ? { rowId: row.id, write } : null; }}
                         onJoin={() => joinWithPrevious(index)}
                         onLeave={() => leave(index)}
                         onRemove={() => removeRow(row.id)}
@@ -753,6 +768,7 @@ interface ItemControlsProps {
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
   onChange: (change: (item: WorkoutRoutineItem) => WorkoutRoutineItem) => void;
+  onPendingChange: (write: ((item: WorkoutRoutineItem) => WorkoutRoutineItem) | null) => void;
   onJoin: () => void;
   onLeave: () => void;
   onRemove: () => void;
@@ -764,7 +780,7 @@ interface ItemControlsProps {
  * each label beside or above its one control so no row has to hold two.
  */
 function ItemControls({
-  item, kind, role, unit, scale, weightSuffix, defaultRest, canJoin, rampLoads, colors, styles, onChange, onJoin, onLeave, onRemove,
+  item, kind, role, unit, scale, weightSuffix, defaultRest, canJoin, rampLoads, colors, styles, onChange, onPendingChange, onJoin, onLeave, onRemove,
 }: ItemControlsProps) {
   const scheme = item.progression?.scheme ?? null;
   const [explainOpen, setExplainOpen] = useState(false);
@@ -772,7 +788,16 @@ function ItemControls({
   const ramp = item.warmupRamp === true;
   return (
     <View style={styles.controls}>
-      <RoutineSetTable item={item} kind={kind} unit={unit} scale={scale} weightSuffix={weightSuffix} rampLoads={rampLoads} onChange={onChange} />
+      <RoutineSetTable
+        item={item}
+        kind={kind}
+        unit={unit}
+        scale={scale}
+        weightSuffix={weightSuffix}
+        rampLoads={rampLoads}
+        onChange={onChange}
+        onPendingChange={onPendingChange}
+      />
 
       <View style={styles.section}>
         {kind === 'weight_reps' && (

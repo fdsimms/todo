@@ -261,6 +261,20 @@ describe('buildWatchWorkout', () => {
       expect(out.sets[0].rest).toBe(45);
     });
 
+    it('reads rests and the suggestion from the version the workout was started on', () => {
+      // The routine now asks for no progression and a short rest; the version it was started on asked for both.
+      const r1 = routine('r1', { items: [item(BENCH, 30)] });
+      const open = [0, 1, 2].map(i => set(BENCH, 0, i, { weightKg: 80, reps: 8 }));
+      const out = buildWatchWorkout(input({
+        live: { session: live({ routineId: 'r1' }), sets: open, routine: r1, plan: { items: [doubleItem] }, rest: null },
+        routines: [r1],
+        sessions: [finished, live({ routineId: 'r1' })],
+        historyFor: id => (id === BENCH ? lastTime : []),
+      }))!.live!;
+      expect(out.exercises[0]).toMatchObject({ rest: 150, suggestion: PROPOSED });
+      expect(out.sets[0].rest).toBe(150);
+    });
+
     it('carries each exercise’s rest, and its suggestion while workout mode would offer it', () => {
       const r1 = routine('r1', { items: [doubleItem] });
       const open = [0, 1, 2].map(i => set(BENCH, 0, i, { weightKg: 80, reps: 8 }));

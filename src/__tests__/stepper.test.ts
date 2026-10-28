@@ -1,4 +1,4 @@
-import { canStep, clampCount, holdRepeatDelay, parseStepperInput, stepCount } from '../utils/stepper';
+import { canStep, clampCount, holdRepeatDelay, parseStepperInput, stepCount, typedStepperValue } from '../utils/stepper';
 import { COUNTDOWN_LADDER } from '../utils/taskKinds';
 
 const range = { min: 2, max: 99 };
@@ -176,5 +176,29 @@ describe('stepCount with a ladder', () => {
     expect(stepCount(0.25, -1, ladder)).toBeNull();
     expect(stepCount(180, 1, ladder)).toBe(180);
     expect(stepCount(null, 1, ladder)).toBe(0.25);
+  });
+});
+
+describe('typedStepperValue', () => {
+  const range = { min: 5, max: 100 };
+
+  it('writes a number the stepper keeps as typed', () => {
+    expect(typedStepperValue('12', range)).toBe(12);
+    expect(typedStepperValue('100', range)).toBe(100);
+  });
+
+  it('waits on one it would clamp, on an empty field and on text that is not a number', () => {
+    // "1" on the way to "12": writing it would clamp to 5 under the finger.
+    expect(typedStepperValue('1', range)).toBeNull();
+    expect(typedStepperValue('150', range)).toBeNull();
+    expect(typedStepperValue('', { ...range, allowNull: true })).toBeNull();
+    expect(typedStepperValue('1x', range)).toBeNull();
+  });
+
+  it('keeps a decimal stepper to its own places', () => {
+    const kg = { min: 0, max: 500, step: 2.5, places: 2 };
+    expect(typedStepperValue('82.5', kg)).toBe(82.5);
+    expect(typedStepperValue('82.', kg)).toBe(82);
+    expect(typedStepperValue('82.125', kg)).toBeNull();
   });
 });

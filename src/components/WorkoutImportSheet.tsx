@@ -174,7 +174,8 @@ export function WorkoutImportSheet({ visible, onClose, fileText = '', described 
 
   // Asked only when the file has a weight for an exercise held in two dumbbells,
   // the one case where "each" and "pair" give different history. A described
-  // workout is typed in the app's own way, so it never asks.
+  // workout is said the way the person types it in the app, so it never asks
+  // and follows their Dumbbell weights setting instead.
   const hasTwoDumbbellSets = useMemo(() => {
     if (!ok || described) return false;
     return split.fresh.some(session => session.sets.some(s => {
@@ -182,18 +183,20 @@ export function WorkoutImportSheet({ visible, onClose, fileText = '', described 
       return s.weightKg !== null && !!r && heldInTwoDumbbells(r, s.exerciseName, exercises);
     }));
   }, [ok, described, split.fresh, resolutions, exercises]);
-  const pairTotals = hasTwoDumbbellSets && dumbbellEntry === 'pair';
+  const pairTotals = described ? dumbbellSetting === 'pair' : hasTwoDumbbellSets && dumbbellEntry === 'pair';
 
   const plan = useMemo(
     () => (ok ? buildImportPlan(ok.sessions, resolutions, sessionsInLog, { pairTotals, exercises }) : null),
     [ok, resolutions, sessionsInLog, pairTotals, exercises],
   );
 
-  const dirty = Object.keys(choices).length > 0 || unitTouched || dumbbellTouched;
+  // A described workout is the person's own words and a paid request, so it is
+  // unsaved work before anything on the review is touched.
+  const dirty = !!described || Object.keys(choices).length > 0 || unitTouched || dumbbellTouched;
   const handleCancel = () => {
     if (!dirty) { onClose(); return; }
     confirmDiscard(onClose, described
-      ? { title: 'Discard this workout?', message: 'It hasn’t been logged yet. If you leave now, your choices will be lost.' }
+      ? { title: 'Discard this workout?', message: 'It hasn’t been logged yet. If you leave now, it will be lost.' }
       : {
         title: 'Discard this import?',
         message: 'Nothing has been imported yet. If you leave now, your choices will be lost.',

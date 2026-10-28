@@ -38,6 +38,13 @@ export interface SerializedTask {
   id: string;
   title: string;
   completed: boolean;
+  /**
+   * When the row was first created, on whichever device made it. A row that
+   * synced in from another device keeps its original date, so this answers
+   * "what was added recently", and a duplicate whose twin is months older is
+   * the stale copy.
+   */
+  createdAt?: string;
   notes?: string;
   category?: string;
   tags?: string[];
@@ -173,6 +180,7 @@ export function serializeTask(replica: Replica, task: Task, names?: Map<string, 
     // `displayTitleFor` is for and why every reader in the app goes through it.
     title: replica.displayTitle(task),
     completed: task.completed,
+    createdAt: task.createdAt || undefined,
     notes: task.notes || undefined,
     category: task.category ?? undefined,
     tags: task.tags,

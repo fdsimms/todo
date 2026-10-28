@@ -361,7 +361,7 @@ export const PROGRESSION_LABELS: Record<ProgressionScheme, string> = {
  */
 export const PROGRESSION_HINTS: Record<ProgressionScheme, string> = {
   double: 'Workout mode suggests more weight once every working set reaches the top of the rep range.',
-  linear: 'Workout mode suggests more weight after every workout where each set reaches its reps, and about 10% less after three short workouts in a row.',
+  linear: 'Workout mode suggests more weight after every workout where each set reaches its reps, and at least 10% less after three short workouts in a row.',
   percent: 'Each set is a percentage of the training max set in the program.',
   rpe: 'Workout mode suggests a weight from how hard the last top set felt, from 1 to 10.',
 };
@@ -511,6 +511,14 @@ export interface DescribeItemOptions {
   /** The rest the setting gives an item that doesn't name its own. */
   defaultRestSeconds: number;
   role: SupersetRole;
+  /**
+   * 2 reads a stored one-dumbbell weight as a pair total, and `weightSuffix`
+   * (" each" or " pair", `weightHeadingSuffix`) says which, as the set table
+   * under it does: without them the line said "20 kg" under a table reading
+   * "40" in a "kg pair" column.
+   */
+  scale?: number;
+  weightSuffix?: string;
 }
 
 /**
@@ -551,7 +559,7 @@ export function describeRoutineItem(item: WorkoutRoutineItem, opts: DescribeItem
   if (item.warmupRamp) parts.push('ramp warm-up');
   else if (shape.warmups > 0) parts.push(`${shape.warmups} warm-up`);
   parts.push(describeSets(item, opts.kind));
-  if (shape.weightKg !== null) parts.push(formatWeightWithUnit(shape.weightKg, opts.unit));
+  if (shape.weightKg !== null) parts.push(`${formatWeightWithUnit(shape.weightKg * (opts.scale ?? 1), opts.unit)}${opts.weightSuffix ?? ''}`);
   if (item.progression) parts.push(PROGRESSION_LABELS[item.progression.scheme].toLowerCase());
   const rest = item.restSeconds ?? opts.defaultRestSeconds;
   if (opts.role === 'last') parts.push(rest > 0 ? `rest ${formatRestSeconds(rest)} after the superset` : 'no rest');

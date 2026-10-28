@@ -1,7 +1,7 @@
 import { format } from 'date-fns/format';
 import type { Exercise, ExerciseEquipment, WorkoutSession, WorkoutSet, WorkoutSetKind } from '../types';
 import { buildCatalog, catalogExercise, type CatalogExercise } from './exerciseCatalog';
-import { cleanWorkoutName, exerciseNameKey, machineParent, weightToDisplay } from './workoutData';
+import { MAX_SET_WEIGHT_KG, cleanWorkoutName, exerciseNameKey, machineParent, weightToDisplay } from './workoutData';
 import { csvCell } from './moodExport';
 import { dumbbellsUsed, storedKgFromShown } from './dumbbellLoad';
 import { unitToKg, type WeightUnit } from './weightLog';
@@ -127,8 +127,12 @@ export interface ParseOptions {
  * **A quote inside a quoted field is read leniently.** Strong's Android export
  * wraps text in quotes without doubling the ones inside (`"Bench "paused""`), so
  * a quote closes the field only when a delimiter, a line break or the end of the
- * file follows it; any other quote is part of the text. A doubled quote that is
- * followed by a delimiter is the inner quote and then the closing one.
+ * file follows it; any other quote is part of the text. In a semicolon file
+ * (the Android layouts), a doubled quote followed by a delimiter is the inner
+ * quote and then the closing one. In a comma file it is an escaped quote, as
+ * standard CSV writes it (Strong on iOS, and this app's own export, `csvCell`):
+ * read the Android way, a note like `felt "easy", go heavier` ended at the
+ * comma and pushed every later column one along.
  */
 export function parseCsv(text: string): string[][] {
   return readCsv(text).rows;
@@ -163,7 +167,7 @@ export function readCsv(text: string): { rows: string[][]; delimiter: ',' | ';' 
         // where it is an unescaped quote followed by the closing one.
         cell += '"';
         i++;
-        if (endsField(i + 1)) quoted = false;
+        if (delimiter === ';' && endsField(i + 1)) quoted = false;
       } else if (endsField(i + 1)) {
         quoted = false;
       } else {
@@ -278,13 +282,16 @@ export function parseImportDuration(raw: string): number | null {
 
 /**
  * A non-negative finite number from a cell, or null when empty or not a number.
- * A comma decimal ("82,5") is read only in a semicolon-delimited file, where a
- * comma can't be the delimiter; in a comma file a comma inside a number is a
- * thousands separator ("1,000").
+ * A comma decimal ("82,5") is read in a semicolon-delimited file, where a comma
+ * can't be the delimiter. In a comma file a comma is a thousands separator
+ * ("1,000") only when groups of three digits follow it; any other comma is a
+ * decimal one, so a quoted "82,5" is 82.5 rather than 825.
  */
 function num(raw: string | undefined, commaDecimal = false): number | null {
   let s = (raw ?? '').trim();
-  s = commaDecimal ? s.replace(/^(\d+),(\d+)$/, '$1.$2') : s.replace(/,/g, '');
+  if (commaDecimal) s = s.replace(/^(\d+),(\d+)$/, '$1.$2');
+  else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) s = s.replace(/,/g, '');
+  else s = s.replace(/^(\d+),(\d+)$/, '$1.$2');
   if (s === '') return null;
   const n = Number(s);
   return Number.isFinite(n) && n >= 0 ? n : null;
@@ -315,9 +322,11 @@ const unitFromWord = (raw: string): WeightUnit | null => {
 };
 
 /** The weight cell as kilograms, or null for none. A 0 is no load (a bodyweight set), not a weight. */
+/** Kilograms, or null for none, and for a load past `MAX_SET_WEIGHT_KG`, which is a misread cell rather than a lift. */
 function weightKg(value: number | null, unit: WeightUnit): number | null {
   if (value === null || value === 0) return null;
-  return round(unitToKg(value, unit), 3);
+  const kg = round(unitToKg(value, unit), 3);
+  return kg > MAX_SET_WEIGHT_KG ? null : kg;
 }
 
 // ==== Set markers ====

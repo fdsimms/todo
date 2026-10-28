@@ -15,8 +15,9 @@
  * Every weight is kilograms, whatever unit the person's phone shows.
  */
 import { dumbbellsUsed } from '../../src/utils/dumbbellLoad';
+import { generateId } from '../../src/utils/id';
 import type {
-  Exercise, ExerciseEquipment, Gym, GymExerciseSetting, MuscleGroup, ProgressionScheme, RoutineSetTarget, TrainingMax, WorkoutProgram, WorkoutRoutine,
+  Exercise, ExerciseEquipment, ExerciseKind, Gym, GymExerciseSetting, MuscleGroup, ProgressionScheme, RoutineSetTarget, TrainingMax, WorkoutProgram, WorkoutRoutine,
   WorkoutRoutineItem, WorkoutSession, WorkoutSet, WorkoutSetKind,
 } from '../../src/types';
 import type { Replica } from './replica';
@@ -31,7 +32,7 @@ import type { SetInput } from '../../src/store/useWorkoutStore';
 import { catalogExercise, exerciseName, searchExercises, type CatalogExercise } from '../../src/utils/exerciseCatalog';
 import { analyzeExercise, countsForRecords, volumeUnit, type RecordSession, type RecordType } from '../../src/utils/workoutRecords';
 import { recordLabel } from '../../src/utils/workoutRecordText';
-import { currentProgram, isRunnableProgram, programProgress, type ProgramProgress } from '../../src/utils/workoutProgram';
+import { currentProgram, isRunnableProgram, nextCycleStart, programProgress, type ProgramProgress } from '../../src/utils/workoutProgram';
 import { proposalHeadline, schemeFor, trainingMaxRaises, type SetProposal } from '../../src/utils/workoutProgression';
 import { exerciseProposal, proposalRamp } from '../../src/utils/workoutProposal';
 
@@ -79,6 +80,61 @@ function exerciseRow(e: CatalogExercise): ExerciseRow {
     ...(e.archived ? { archived: true as const } : {}),
     ...(e.barKg !== null ? { barKg: e.barKg } : {}),
     ...(dumbbellsUsed(e) ? { dumbbells: dumbbellsUsed(e)! } : {}),
+  };
+}
+
+export interface CreateExerciseInput {
+  name: string;
+  kind: ExerciseKind;
+  equipment: ExerciseEquipment;
+  primaryMuscles: MuscleGroup[];
+  secondaryMuscles?: MuscleGroup[];
+  otherNames?: string[];
+  notes?: string;
+}
+
+/**
+ * A custom exercise, for a workout or routine that names one the library
+ * doesn't have. Through the store's own `addExercise`, so a name another
+ * exercise already goes by is refused, and the refusal says to search first.
+ */
+export function createExercise(replica: Replica, input: CreateExerciseInput): { exercise: ExerciseRow; note: string } {
+  const made = replica.addExercise(input);
+  const row = catalogExercise(replica.exercises(), made.id);
+  return {
+    exercise: exerciseRow(row!),
+    note: 'A custom exercise, shown on the phone with the person\'s own. Use its id in log_workout or save_routine.',
+  };
+}
+
+export interface UpdateExerciseInput {
+  name?: string;
+  kind?: ExerciseKind;
+  equipment?: ExerciseEquipment;
+  primaryMuscles?: MuscleGroup[];
+  secondaryMuscles?: MuscleGroup[];
+  otherNames?: string[];
+  notes?: string;
+  archived?: boolean;
+}
+
+/**
+ * Corrects an exercise, by the store's own rules: a custom one in full, a
+ * built-in only in the person's words for it (name, other names, notes) and
+ * whether it is archived, since what the movement is belongs to the library.
+ */
+export function updateExercise(replica: Replica, id: string, input: UpdateExerciseInput): { exercise: ExerciseRow; note: string } {
+  if (Object.values(input).every(v => v === undefined)) throw new Error('Nothing to change: name a field.');
+  const isBuiltIn = !replica.exercises().some(e => e.id === id && e.isCustom) && catalogExercise(replica.exercises(), id)?.builtIn === true;
+  const movement = input.kind !== undefined || input.equipment !== undefined || input.primaryMuscles !== undefined || input.secondaryMuscles !== undefined;
+  if (isBuiltIn && movement) {
+    throw new Error('A built-in exercise keeps the library\'s kind, equipment and muscles; only its name, otherNames, notes and archived change. Make a custom one with create_exercise for a different movement.');
+  }
+  const made = replica.updateExercise(id, input);
+  const row = catalogExercise(replica.exercises(), made.id);
+  return {
+    exercise: exerciseRow(row!),
+    note: made.archived ? 'Archived: out of the pickers and the list, with its history kept. archived: false brings it back.' : 'Changed. Logged workouts keep their sets.',
   };
 }
 
@@ -137,6 +193,8 @@ export interface WorkoutRow {
   notes?: string;
   /** Written to Apple Health by the phone; its times can't be changed, nor it deleted, from here. */
   inAppleHealth?: true;
+  /** Waiting for the phone to write it to Apple Health, which it does on its next open (as long as it ended in the last week). */
+  pendingAppleHealth?: true;
   exercises: { exerciseId: string; name: string; sets: WorkoutSetRow[] }[];
 }
 
@@ -169,6 +227,7 @@ function workoutRow(replica: Replica, s: WorkoutSession, sets: readonly WorkoutS
     ...(s.notes ? { notes: s.notes } : {}),
     // In Apple Health: the phone wrote it there, so only the phone can move or delete it.
     ...(s.healthWorkoutId ? { inAppleHealth: true as const } : {}),
+    ...(!s.healthWorkoutId && s.healthWritePending ? { pendingAppleHealth: true as const } : {}),
     exercises: [...byExercise.entries()].map(([exerciseId, list]) => ({
       exerciseId,
       name: exerciseName(names.rows, exerciseId),
@@ -306,7 +365,7 @@ export interface ProgramRow {
   next?: { routineId: string; name: string };
   /** The program next_workout and the phone's Start default to: the one picked with save_program's isCurrent, or the only one in use. */
   isCurrent?: true;
-  /** A whole cycle was just finished: the moment a percentage program's training maxes are raised. */
+  /** A whole cycle is done and this is the first week of the next, until startNextCycle: the time a percentage program's training maxes are raised. */
   cycleDone?: true;
 }
 
@@ -712,7 +771,7 @@ function unknownExercises(replica: Replica, ids: readonly string[]): string[] {
 }
 
 function unknownError(ids: string[]): Error {
-  return new Error(`No exercise with id ${ids.join(', ')}. list_exercises names them; a custom exercise is made on the phone.`);
+  return new Error(`No exercise with id ${ids.join(', ')}. list_exercises names them; create_exercise makes one the library doesn't have, once the person agrees.`);
 }
 
 /** An agent's exercises as routine items, supersets keyed the way the editor keys them. */
@@ -845,11 +904,32 @@ export interface LogWorkoutInput {
   durationMinutes?: number | null;
   notes?: string;
   effort?: number | null;
-  exercises: { exerciseId: string; sets: LoggedSetInput[] }[];
+  exercises: LoggedExerciseInput[];
+}
+
+/** One exercise as an agent logs it. */
+export interface LoggedExerciseInput {
+  exerciseId: string;
+  sets: LoggedSetInput[];
+  /** Done with the exercise before it as a superset, as `save_routine` says it. */
+  supersetWithPrevious?: boolean;
+}
+
+/** The superset key each exercise's sets carry: one per run of exercises joined to the one before. */
+function supersetKeysFor(exercises: readonly LoggedExerciseInput[]): (string | null)[] {
+  const keys: (string | null)[] = exercises.map(() => null);
+  exercises.forEach((e, i) => {
+    if (e.supersetWithPrevious && i > 0) {
+      keys[i - 1] ??= generateId();
+      keys[i] = keys[i - 1];
+    }
+  });
+  return keys;
 }
 
 function setsFrom(exercises: LogWorkoutInput['exercises']): SetInput[] {
-  return exercises.flatMap(e => e.sets.map(st => ({
+  const keys = supersetKeysFor(exercises);
+  return exercises.flatMap((e, i) => e.sets.map(st => ({
     exerciseId: e.exerciseId,
     kind: st.kind,
     weightKg: st.weightKg ?? null,
@@ -858,6 +938,7 @@ function setsFrom(exercises: LogWorkoutInput['exercises']): SetInput[] {
     distanceM: st.distanceM ?? null,
     rpe: st.rpe ?? null,
     note: st.note ?? null,
+    supersetKey: keys[i],
   })));
 }
 
@@ -870,8 +951,15 @@ const FUTURE_SLACK_MS = 5 * 60 * 1000;
  */
 function startFrom(value: string, now: Date): Date {
   const at = atFrom(value)!;
-  const bare = /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
-  return bare && at.getTime() > now.getTime() && at.toDateString() === now.toDateString() ? new Date(now.getTime()) : at;
+  return isBareDay(value) && at.getTime() > now.getTime() && at.toDateString() === now.toDateString() ? new Date(now.getTime()) : at;
+}
+
+const isBareDay = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
+
+/** A bare day moved to: the day given, at the time of day `existing` started, so "it was yesterday" keeps the hour. */
+function sameTimeOn(day: string, existing: Date): Date {
+  const [y, m, d] = day.trim().split('-').map(Number);
+  return new Date(y, m - 1, d, existing.getHours(), existing.getMinutes(), existing.getSeconds(), existing.getMilliseconds());
 }
 
 export function logWorkout(replica: Replica, input: LogWorkoutInput, now: Date = new Date()): { workout: WorkoutRow } {
@@ -883,6 +971,13 @@ export function logWorkout(replica: Replica, input: LogWorkoutInput, now: Date =
   if (unknown.length) throw unknownError(unknown);
   if (input.routineId && !replica.workoutRoutines().some(r => r.id === input.routineId)) {
     throw new Error(`No routine with id ${input.routineId}. list_workouts lists the routines.`);
+  }
+  // A retried call, or the same workout told twice, would be a second copy:
+  // the app's own import refuses a start in the same minute too (`indexHas`).
+  const minute = Math.floor(start.getTime() / 60_000);
+  const same = allSessions(replica).find(s => Math.floor(Date.parse(s.startedAt) / 60_000) === minute);
+  if (same) {
+    throw new Error(`A workout already starts at that minute: "${same.title}" (id ${same.id}). If it is this one, change it with update_workout; if it is another, give its own start time.`);
   }
   const end = input.durationMinutes != null && input.durationMinutes > 0
     ? new Date(start.getTime() + input.durationMinutes * 60000)
@@ -917,7 +1012,10 @@ export function updateWorkout(replica: Replica, id: string, input: UpdateWorkout
     const unknown = unknownExercises(replica, input.exercises.map(e => e.exerciseId));
     if (unknown.length) throw unknownError(unknown);
   }
-  const start = input.startedAt ? startFrom(input.startedAt, now) : new Date(existing.startedAt);
+  // A bare day moves the workout to that day at the time it started, rather than to noon.
+  const start = !input.startedAt ? new Date(existing.startedAt)
+    : isBareDay(input.startedAt) ? sameTimeOn(input.startedAt, new Date(existing.startedAt))
+    : startFrom(input.startedAt, now);
   if (input.startedAt && start.getTime() > now.getTime() + FUTURE_SLACK_MS) {
     throw new Error('A logged workout is one that happened: startedAt is in the future. Plan one with a task instead.');
   }
@@ -953,6 +1051,12 @@ export function updateWorkout(replica: Replica, id: string, input: UpdateWorkout
  * an exercise that was already there keeps its superset, and a set that was already
  * there (by position within its exercise) keeps its time. An exercise or set added
  * by the replacement has neither, as before.
+ *
+ * **A field left out keeps the old set's value; null clears it.** Fixing one
+ * weight by resending the sets would otherwise erase each set's note and RPE
+ * and turn a warm-up into a working set, which then counts toward records.
+ * The same rule chain steps follow. `supersetWithPrevious`, given on any
+ * exercise, sets the workout's supersets as the call says them.
  */
 function setsKeepingWhatTheInputCannotSay(
   built: SetInput[],
@@ -966,17 +1070,35 @@ function setsKeepingWhatTheInputCannotSay(
   // An exercise named in two blocks takes its old sets in order across both,
   // rather than reading the first set again for the second block.
   const taken = new Map<string, number>();
+  // Supersets said anywhere in the call are said for the whole workout, so a
+  // pair isn't left half old and half new.
+  const supersetsSaid = exercises.some(e => e.supersetWithPrevious !== undefined);
   let at = 0;
   return exercises.flatMap(e => {
     const old = before.get(e.exerciseId) ?? [];
     const from = taken.get(e.exerciseId) ?? 0;
     taken.set(e.exerciseId, from + e.sets.length);
     const mine = old.slice(from, from + e.sets.length);
-    const superset = (mine.find(st => st.supersetKey) ?? old.find(st => st.supersetKey))?.supersetKey ?? null;
-    return e.sets.map((_, i) => {
+    const kept = (mine.find(st => st.supersetKey) ?? old.find(st => st.supersetKey))?.supersetKey ?? null;
+    return e.sets.map((input, i) => {
       const next = built[at++];
+      const superset = supersetsSaid ? next.supersetKey ?? null : kept;
       const prev = mine[i];
-      return { ...next, supersetKey: superset, ...(prev?.completedAt ? { completedAt: new Date(new Date(prev.completedAt).getTime() + shiftMs).toISOString() } : {}) };
+      if (!prev) return { ...next, supersetKey: superset };
+      const keep = <K extends keyof LoggedSetInput>(key: K, value: SetInput[K & keyof SetInput]) =>
+        (input[key] === undefined ? prev[key as keyof WorkoutSet] : value) as SetInput[K & keyof SetInput];
+      return {
+        ...next,
+        kind: keep('kind', next.kind),
+        weightKg: keep('weightKg', next.weightKg),
+        reps: keep('reps', next.reps),
+        durationSeconds: keep('durationSeconds', next.durationSeconds),
+        distanceM: keep('distanceM', next.distanceM),
+        rpe: keep('rpe', next.rpe),
+        note: keep('note', next.note),
+        supersetKey: superset,
+        ...(prev.completedAt ? { completedAt: new Date(new Date(prev.completedAt).getTime() + shiftMs).toISOString() } : {}),
+      };
     });
   });
 }
@@ -1061,7 +1183,7 @@ export function scaleWorkoutWeights(replica: Replica, input: ScaleWorkoutWeights
     sets: total,
     skippedInProgress,
     note: apply
-      ? 'Done. Each workout keeps its other sets as they were. To undo, send the reciprocal factor (2 after 0.5) for the same exercises and range, which is exact for the weights the app rounds to 3 decimals.'
+      ? 'Done. Each workout keeps its other sets as they were. To undo, send the reciprocal factor (2 after 0.5) for the same exercises and range. That puts each weight back to within a gram, since the app rounds weights to 3 decimals.'
       : 'Nothing has changed yet. Show the person how many workouts and sets this touches, and send the same arguments with apply: true once they agree.',
   };
 }
@@ -1108,6 +1230,9 @@ export function saveProgram(replica: Replica, input: SaveProgramInput, now: Date
     if (unknown.length) throw unknownError(unknown);
   }
   const maxes: TrainingMax[] | undefined = input.trainingMaxes?.map(t => ({ exerciseId: t.exerciseId, kg: t.kg }));
+  // Counted from the new cycle's first workout when one is done, as the phone does.
+  const before = input.startNextCycle ? replica.workoutPrograms().find(p => p.id === input.id) : undefined;
+  const cycleFrom = before ? nextCycleStart(programProgress(before, allSessions(replica), replica.workoutRoutines()), now) : now.toISOString();
   const program = replica.saveProgram({
     id: input.id,
     ...(input.name !== undefined ? { name: input.name } : {}),
@@ -1115,7 +1240,7 @@ export function saveProgram(replica: Replica, input: SaveProgramInput, now: Date
     ...(input.scheme !== undefined ? { scheme: input.scheme } : {}),
     ...(input.weeks !== undefined ? { weeks: input.weeks } : {}),
     ...(maxes !== undefined ? { trainingMaxes: maxes } : {}),
-    ...(input.startNextCycle ? { startedAt: now.toISOString() } : {}),
+    ...(input.startNextCycle ? { startedAt: cycleFrom } : {}),
   });
   const routines = replica.workoutRoutines();
   // Not an error: the program is already saved by here, so a refusal would
@@ -1129,7 +1254,7 @@ export function saveProgram(replica: Replica, input: SaveProgramInput, now: Date
   const current = currentProgram(replica.workoutPrograms(), replica.currentProgramId());
   return {
     program: programRow(program, programProgress(program, allSessions(replica), routines), replica.exercises(), new Map(routines.map(r => [r.id, r.name])), program.id === current?.id),
-    note: `${notCurrent ? 'Saved, but not made current: a program needs routines in its rotation (routineIds), and not to be archived, to be the current one. ' : ''}A plan. Which week it is and which routine is next are worked out from the workouts finished in it, never set${input.startNextCycle ? ', and the count now starts again from this moment' : ''}. To put it on the schedule, create or update a task with workoutProgramId: its row then starts the next routine.`,
+    note: `${notCurrent ? 'Saved, but not made current: a program needs routines in its rotation (routineIds), and not to be archived, to be the current one. ' : ''}A plan. Which week it is and which routine is next are worked out from the workouts finished in it, never set${input.startNextCycle ? ', and the count now starts again with the new cycle' : ''}. To put it on the schedule, create or update a task with workoutProgramId: its row then starts the next routine.`,
   };
 }
 

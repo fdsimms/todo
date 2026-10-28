@@ -47,6 +47,8 @@ const COUNTERPARTS: Record<string, string[]> = {
   save_routine: ['save_routine', 'delete_routine'],
   save_routine_group: ['save_routine_group', 'delete_routine_group'],
   save_gym: ['save_gym', 'delete_gym'],
+  // An exercise is archived, never deleted, so its history keeps its name.
+  create_exercise: ['update_exercise'],
   save_program: ['save_program', 'delete_program'],
   log_workout: ['update_workout', 'delete_workout'],
   log_journal_entry: ['update_journal_entry', 'delete_journal_entry'],

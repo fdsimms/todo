@@ -63,3 +63,25 @@ export function linkedTaskLine(effect: WorkoutTaskEffect, title: string, memberT
   if (effect === 'locked') return `“${title}” isn’t due yet, so it stays open.`;
   return `Saving leaves “${title}” as it is. Check it off from its row.`;
 }
+
+/**
+ * What merging routine `fromId` into `intoId` changes on a task still to do:
+ * its own routine link, and each rotation member's (`RotationItem.workoutRoutineId`),
+ * so a member keeps its workout button and finishing the kept routine still
+ * logs it. Null when the task names `fromId` nowhere. A finished task keeps
+ * naming the old routine, as a session does: it is a record of what ran.
+ * The app's store and the MCP replica both write this, so the two merges agree.
+ */
+export function routineMergePatch(
+  task: Pick<Task, 'completed' | 'workoutRoutineId' | 'rotationItems'>,
+  fromId: string,
+  intoId: string,
+): Partial<Pick<Task, 'workoutRoutineId' | 'rotationItems'>> | null {
+  if (task.completed) return null;
+  const patch: Partial<Pick<Task, 'workoutRoutineId' | 'rotationItems'>> = {};
+  if (task.workoutRoutineId === fromId) patch.workoutRoutineId = intoId;
+  if (task.rotationItems.some(m => m.workoutRoutineId === fromId)) {
+    patch.rotationItems = task.rotationItems.map(m => (m.workoutRoutineId === fromId ? { ...m, workoutRoutineId: intoId } : m));
+  }
+  return Object.keys(patch).length > 0 ? patch : null;
+}

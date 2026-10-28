@@ -28,6 +28,41 @@ function scheduleSync(run: WorkoutRun | null): void {
   debounceTimer = setTimeout(() => syncNative(pendingRun), DEBOUNCE_MS);
 }
 
+/** The activity as the stores say it should read now. */
+function currentRun(): WorkoutRun | null {
+  const workouts = useWorkoutStore.getState();
+  const settings = useSettingsStore.getState();
+  const session = workouts.liveSession();
+  const rest = session
+    ? useStepTimerStore.getState().timers.find((t): t is RestTimer => t.kind === 'rest' && t.sessionId === session.id) ?? null
+    : null;
+  return buildWorkoutRun(
+    {
+      session,
+      sets: session ? workouts.setsBySession[session.id] ?? [] : [],
+      exercises: workouts.exercises,
+      unit: settings.workoutUnit,
+      rest,
+    },
+    { enabled: settings.workoutLiveActivity, workoutsEnabled: settings.workoutsEnabled },
+  );
+}
+
+/**
+ * Brings the activity up to date now, skipping the debounce. For the Apple
+ * Watch's taps applied in the background (`runWatchWork`): the snapshot write
+ * after them ends the time iOS gave the app, so a debounced update would wait
+ * for the next wake, and the Lock Screen would show an old set, or a finished
+ * workout still running, until the app was opened. Works with no React tree,
+ * which a cold background launch doesn't have.
+ */
+export function syncWorkoutLiveActivityNow(): void {
+  if (Platform.OS !== 'ios') return;
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = null;
+  syncNative(currentRun());
+}
+
 /**
  * Keeps the workout's Live Activity in step with the live session (see
  * src/utils/workoutLiveActivity.ts). Subscribed to the stores rather than
@@ -39,24 +74,7 @@ export function useWorkoutLiveActivitySync(): void {
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
 
-    const sync = () => {
-      const workouts = useWorkoutStore.getState();
-      const settings = useSettingsStore.getState();
-      const session = workouts.liveSession();
-      const rest = session
-        ? useStepTimerStore.getState().timers.find((t): t is RestTimer => t.kind === 'rest' && t.sessionId === session.id) ?? null
-        : null;
-      scheduleSync(buildWorkoutRun(
-        {
-          session,
-          sets: session ? workouts.setsBySession[session.id] ?? [] : [],
-          exercises: workouts.exercises,
-          unit: settings.workoutUnit,
-          rest,
-        },
-        { enabled: settings.workoutLiveActivity, workoutsEnabled: settings.workoutsEnabled },
-      ));
-    };
+    const sync = () => scheduleSync(currentRun());
 
     const unsubWorkouts = useWorkoutStore.subscribe((state, prev) => {
       if (
