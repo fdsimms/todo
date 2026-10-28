@@ -103,6 +103,7 @@ import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
+import { SegmentedControl } from './SegmentedControl';
 import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, travelSourceStart, travelWalkUnderFor, type TravelChoice } from '../utils/travelTasks';
 import { setTravelModeForEvent } from '../utils/travelModeWrite';
 import { TravelModeSheet } from './TravelModeSheet';
@@ -210,6 +211,13 @@ import * as Clipboard from 'expo-clipboard';
 function localTravelEventId(sourceId: string): string | null {
   return travelEventOf(sourceId, useCalendarStore.getState().events)?.id ?? travelSourceEventId(sourceId);
 }
+
+/** The glyph for each way of getting there on a "Leave for X" row's track. */
+const TRAVEL_CHOICE_ICONS: Record<TravelChoice['mode'], string> = {
+  walking: 'walk-outline',
+  driving: 'car-outline',
+  transit: 'bus-outline',
+};
 
 const CHECKBOX_SIZE = 20;
 const SUBTASK_CHECKBOX_SIZE = 16;
@@ -4046,6 +4054,18 @@ const TaskItemRow = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
+            {/* When leaving at the reminder gets you there. Beside the reminder
+                chip when on time, so the two read as one "leave, then arrive"
+                line; on its own line, with the start time, in the warning colour
+                when the arrival is after the start. */}
+            {travelArrival !== null && (
+              <View style={[styles.metaChip, travelArrival.late && styles.travelDisruptionChip]} accessibilityLabel={travelArrival.text}>
+                <Ionicons name="flag-outline" size={iconSize.xs} color={travelArrival.late ? colors.warningText : colors.textSecondary} />
+                <Text style={travelArrival.late ? styles.travelDisruptionLabel : styles.scheduledLabel} numberOfLines={2}>
+                  {travelArrival.text}
+                </Text>
+              </View>
+            )}
             {placeReminderLabel !== null && (
               <View style={styles.metaChip} accessibilityLabel={`Reminder when ${placeReminderLabel.toLowerCase()}`}>
                 <Ionicons name="location-outline" size={iconSize.xs} color={colors.textSecondary} />
@@ -4069,42 +4089,32 @@ const TaskItemRow = React.memo(function TaskItem({
                 </Text>
               </TouchableOpacity>
             )}
-            {/* Every way of getting there, side by side, so the shortest is
-                visible before leaving. The one the reminder is based on is
-                filled; the others switch the event to them. */}
+            {/* Every way of getting there as one track, so the shortest is
+                visible before leaving. The chosen one is raised; the others
+                switch the event to them, and a tap on the chosen one opens the
+                "Getting there" card. One control rather than a pill each: three
+                pills wrapped onto a line apiece in the narrow column. */}
             {travelOptions.length > 0 && (
-              <View style={styles.travelChoices}>
-                {travelOptions.map(choice => (
-                  <TouchableOpacity
-                    key={choice.mode}
-                    style={[styles.travelChoice, choice.selected && styles.travelChoiceSelected]}
-                    disabled={selectionMode}
-                    onPress={() => handleTravelChoice(choice)}
-                    hitSlop={6}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: choice.selected }}
-                    accessibilityLabel={`${choice.label}${choice.fastest ? ', fastest' : ''}${choice.selected ? ', in use' : ''}`}
-                    accessibilityHint={choice.selected ? 'Choose how you get there' : 'Use this way of getting there'}
-                  >
-                    {choice.selected && <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.accentText} />}
-                    <Text style={choice.selected ? styles.travelChoiceSelectedLabel : styles.scheduledLabel} numberOfLines={1}>
-                      {choice.label}
-                      {choice.fastest && <Text style={styles.travelChoiceFastest}>{' · fastest'}</Text>}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-            {/* When leaving at the reminder gets you there, against the start. On
-                its own line like the MTA note, and in the warning colour only
-                when the arrival is after the start. */}
-            {travelArrival !== null && (
-              <View style={[styles.metaChip, styles.travelDisruptionChip]} accessibilityLabel={travelArrival.text}>
-                <Ionicons name="flag-outline" size={iconSize.xs} color={travelArrival.late ? colors.warningText : colors.textSecondary} />
-                <Text style={travelArrival.late ? styles.travelDisruptionLabel : styles.scheduledLabel} numberOfLines={2}>
-                  {travelArrival.text}
-                </Text>
+              <View style={styles.travelChoices} pointerEvents={selectionMode ? 'none' : 'auto'}>
+                <SegmentedControl
+                  label="Way of getting there"
+                  value={travelOptions.find(c => c.selected)?.mode ?? null}
+                  options={travelOptions.map(choice => ({
+                    value: choice.mode,
+                    label: choice.duration,
+                    icon: TRAVEL_CHOICE_ICONS[choice.mode],
+                    dot: choice.fastest ? colors.greenText : undefined,
+                    accessibilityLabel: `${choice.label}${choice.fastest ? ', fastest' : ''}${choice.selected ? ', in use' : ''}`,
+                  }))}
+                  onChange={mode => {
+                    const choice = travelOptions.find(c => c.mode === mode);
+                    if (choice) handleTravelChoice(choice);
+                  }}
+                  onDeselect={() => {
+                    const choice = travelOptions.find(c => c.selected);
+                    if (choice) handleTravelChoice(choice);
+                  }}
+                />
               </View>
             )}
             {/* What the MTA says about this trip. On its own line (basis 100%)
@@ -6200,32 +6210,6 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
   },
   travelChoices: {
     flexBasis: '100%',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xsm,
-  },
-  travelChoice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.controlBorder,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.sm + 1,
-    paddingVertical: 3,
-  },
-  travelChoiceSelected: {
-    backgroundColor: colors.accentSubtle,
-    borderColor: 'transparent',
-  },
-  travelChoiceSelectedLabel: {
-    color: colors.accentText,
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-  },
-  travelChoiceFastest: {
-    color: colors.greenText,
-    fontWeight: fontWeight.semibold,
   },
   travelDisruptionLabel: {
     color: colors.warningText,
