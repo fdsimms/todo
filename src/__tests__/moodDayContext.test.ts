@@ -34,6 +34,7 @@ const base = (over: Partial<MoodDayInputs> = {}): MoodDayInputs => ({
   dayStart: new Date(2026, 6, 4),
   dayEnd: new Date(2026, 6, 5),
   isToday: true,
+  now: new Date(2026, 6, 4, 23),
   holidays: { set: 'us', custom: [] },
   events: [],
   eventPeople: indexEventPeople([], {}),
@@ -76,6 +77,19 @@ describe('moodDayOffers', () => {
     const canceled = event({ status: 'canceled' });
     expect(moodDayOffers(on(), base({ events: [canceled], eventPeople: indexEventPeople([linkFor(canceled, ['p'])], {}) })))
       .not.toContain('Social event');
+  });
+
+  it('offers an event only once it has happened', () => {
+    const e = event();
+    const linked = indexEventPeople([linkFor(e, ['p'])], {});
+    const at = (h: number, m = 0) => base({ events: [e], eventPeople: linked, now: new Date(2026, 6, 4, h, m) });
+    expect(moodDayOffers(on(), at(15))).not.toContain('Social event');
+    expect(moodDayOffers(on(), at(20))).not.toContain('Social event');
+    expect(moodDayOffers(on(), at(21))).toContain('Social event');
+    const allDay = event({ allDay: true, start: new Date(2026, 6, 4).toISOString(), end: new Date(2026, 6, 5).toISOString() });
+    expect(moodDayOffers(on(), base({
+      events: [allDay], eventPeople: indexEventPeople([linkFor(allDay, ['p'])], {}), now: new Date(2026, 6, 4, 9),
+    }))).toContain('Social event');
   });
 
   it('offers nothing about events when the calendar was not read', () => {
@@ -142,6 +156,9 @@ describe('moodDayOffers', () => {
     expect(moodDayOffers(sources, base({
       eventTags: [rule],
       events: [event({ title: 'Therapy', start: new Date(2026, 6, 5, 10).toISOString() })],
+    }))).toEqual([]);
+    expect(moodDayOffers(sources, base({
+      eventTags: [rule], events: [event({ title: 'Therapy' })], now: new Date(2026, 6, 4, 12),
     }))).toEqual([]);
     expect(moodDayOffers(sources, base({ eventTags: [rule], events: null }))).toEqual([]);
   });

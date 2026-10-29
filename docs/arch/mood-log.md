@@ -114,7 +114,8 @@ source list is a real feature decision each time, not a default to reach for.
 off** (`MoodContextSources`, Settings › Health › Mood log suggestions;
 `moodDayContext.ts` is the rule and `moodDayOffers.ts` reads the stores):
 "Holiday" or "Day off" from `holidays.ts`; "Social event" from a calendar event
-with someone linked (`eventPeople`); "Worked out" once today's Health exercise
+with someone linked (`eventPeople`), offered only once the event has ended (an
+all-day one once its day has begun), and the same for a keyword rule's tag; "Worked out" once today's Health exercise
 reaches 30 minutes, or on any day a workout was finished in the app
 (`trainingDays`), one word for both so the contrast isn't split; "Short night"
 when the sleep that ended that day is under the Short night threshold the
