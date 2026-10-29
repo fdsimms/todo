@@ -36,6 +36,8 @@ export interface MoodDayInputs {
   dayStart: Date;
   dayEnd: Date;
   isToday: boolean;
+  /** The real instant, for telling an event that has started from one still to come. */
+  now: Date;
   holidays: HolidayConfig;
   /** Null when the calendar hasn't been read, which offers nothing. */
   events: readonly BusyEvent[] | null;
@@ -90,6 +92,15 @@ export function rainForDay(
   return null;
 }
 
+/**
+ * Whether an event has started. A tag describes how the day went, so an event
+ * still ahead of the person says nothing about it yet; one in progress already
+ * does, which is also why an all-day event counts from the start of its day.
+ */
+function eventStarted(e: BusyEvent, now: Date): boolean {
+  return Date.parse(e.start) <= now.getTime();
+}
+
 /** The tags the enabled sources offer for one day, in a stable order. */
 export function moodDayOffers(sources: MoodContextSources, input: MoodDayInputs): string[] {
   const tags: string[] = [];
@@ -102,6 +113,7 @@ export function moodDayOffers(sources: MoodContextSources, input: MoodDayInputs)
   if (sources.social && input.events) {
     const social = input.events.some(e =>
       e.status !== 'canceled'
+      && eventStarted(e, input.now)
       && Date.parse(e.start) >= input.dayStart.getTime()
       && Date.parse(e.start) < input.dayEnd.getTime()
       && peopleForEvent(input.eventPeople, e).length > 0);
@@ -138,6 +150,7 @@ export function moodDayOffers(sources: MoodContextSources, input: MoodDayInputs)
   if (input.events) {
     const onDay = input.events.filter(e =>
       e.status !== 'canceled'
+      && eventStarted(e, input.now)
       && Date.parse(e.start) >= input.dayStart.getTime()
       && Date.parse(e.start) < input.dayEnd.getTime());
     for (const rule of input.eventTags) {

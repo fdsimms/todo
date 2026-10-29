@@ -33,8 +33,10 @@ export function moodDayOffersFor(day: Date, isToday: boolean): string[] {
   const sleepMinutes = health.today?.dayKey === dayKey && health.today.sleepHours !== null
     ? health.today.sleepHours * 60
     : health.sleepNights?.find(n => n.dayKey === dayKey)?.minutes ?? null;
+  const now = new Date();
   return offersFor(moodContextSources, {
     dayKey,
+    now,
     dayStart,
     dayEnd: getDayStart(addDays(dayStart, 1), dayResetTime),
     isToday,
@@ -49,6 +51,6 @@ export function moodDayOffersFor(day: Date, isToday: boolean): string[] {
       : new Set(),
     sleepMinutes,
     shortNightMinutes,
-    rain: rainForDay(dayKey, weather.snapshot, weather.snapshotDayKey, new Date().getHours()),
+    rain: rainForDay(dayKey, weather.snapshot, weather.snapshotDayKey, now.getHours()),
   });
 }
