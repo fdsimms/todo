@@ -64,8 +64,13 @@ describe('isRecordAnswered', () => {
   it('reads a mood check-in off an entry on its day', () => {
     const t = task('moodLog', '2026-08-25');
     expect(isRecordAnswered(t, none)).toBe(false);
-    expect(isRecordAnswered(t, { ...none, moodLogs: [{ dayKey: '2026-08-24', loggedAt: '2026-08-24T09:00:00.000Z' }] })).toBe(false);
-    expect(isRecordAnswered(t, { ...none, moodLogs: [{ dayKey: '2026-08-25', loggedAt: '2026-08-25T09:00:00.000Z' }] })).toBe(true);
+    expect(isRecordAnswered(t, { ...none, moodLogs: [{ dayKey: '2026-08-24', loggedAt: '2026-08-24T09:00:00.000Z', mood: 3 }] })).toBe(false);
+    expect(isRecordAnswered(t, { ...none, moodLogs: [{ dayKey: '2026-08-25', loggedAt: '2026-08-25T09:00:00.000Z', mood: 3 }] })).toBe(true);
+  });
+
+  it('does not read a symptom-only entry as the check-in answered', () => {
+    const t = task('moodLog', '2026-08-25');
+    expect(isRecordAnswered(t, { ...none, moodLogs: [{ dayKey: '2026-08-25', loggedAt: '2026-08-25T09:00:00.000Z', mood: null }] })).toBe(false);
   });
 
   it('keeps a journal entry and a dream apart', () => {

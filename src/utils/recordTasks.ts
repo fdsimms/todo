@@ -1,6 +1,6 @@
 import type { JournalEntry, MoodLog, Task } from '../types';
 import { journalLogUrl, journalMicUrl, journalTaskDayKey } from './journalTasks';
-import { hasLogOnDay, hasLoggedSince } from './moodLog';
+import { hasLogOnDay, hasLoggedSince, ratedLogs } from './moodLog';
 import { MOOD_LOG_LINK_URL, moodLogDayKey } from './moodTasks';
 import { timeSegmentThreshold } from './visibilityUtils';
 import { WEIGH_IN_LINK_URL, weighInDayKey } from './weightTasks';
@@ -64,7 +64,7 @@ export function recordMicUrl(task: Pick<Task, 'generatedKind'>): string | null {
 
 /** What `isRecordAnswered` reads, gathered by the caller so the rule needs no store. */
 export interface RecordContext {
-  moodLogs: readonly Pick<MoodLog, 'dayKey' | 'loggedAt'>[];
+  moodLogs: readonly Pick<MoodLog, 'dayKey' | 'loggedAt' | 'mood'>[];
   journalEntries: readonly Pick<JournalEntry, 'kind' | 'dayKey' | 'loggedAt'>[];
   /** The day a weigh-in request was last found answered by a reading, or null. */
   weighInAnsweredOn: string | null;
@@ -94,7 +94,8 @@ export function isRecordAnswered(task: Task, ctx: RecordContext): boolean {
       const day = moodLogDayKey(task);
       if (day === null) return false;
       const segment = segmentOfSource(task);
-      return segment ? hasLoggedSince(ctx.moodLogs, timeSegmentThreshold(segment).toISOString()) : hasLogOnDay(ctx.moodLogs, day);
+      const rated = ratedLogs(ctx.moodLogs);
+      return segment ? hasLoggedSince(rated, timeSegmentThreshold(segment).toISOString()) : hasLogOnDay(rated, day);
     }
     case 'journalLog':
     case 'dreamLog': {
