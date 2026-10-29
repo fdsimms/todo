@@ -261,6 +261,12 @@ function json(value: unknown) {
  */
 const LINKS = appLinks(process.env.PUBLIC_URL);
 
+/**
+ * Set MCP_LOG_TIMING=1 to log how long each tool call spends waiting on the sync
+ * and running its handler, to see which of the two a slow call is paying for.
+ */
+const LOG_TIMING = !!process.env.MCP_LOG_TIMING;
+
 /** `result` with a link that opens its subject in the app, when there is one. */
 function withLink<T extends object>(result: T, link: string | undefined): T | (T & { openInApp: string }) {
   return link ? { ...result, openInApp: link } : result;
@@ -296,9 +302,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   const gate = syncGateFor(replica);
 
   const withFresh = async <T>(fn: () => T): Promise<T> => {
+    const start = Date.now();
     await gate.fresh();
+    const synced = Date.now();
     replica.refresh();
-    return fn();
+    const result = fn();
+    if (LOG_TIMING) console.error(`[timing] read: sync wait ${synced - start}ms, refresh+handler ${Date.now() - synced}ms`);
+    return result;
   };
 
   /**
@@ -312,17 +322,21 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
    * who asked for it is indistinguishable from the call having failed.
    */
   const withWrite = async <T>(fn: () => T): Promise<T> => {
+    const start = Date.now();
     replica.refresh();
     // Previewing (see confirmWrites.ts): the same write, measured and rolled
     // back, and nothing pushed, since nothing changed.
     if (previewing) {
       const { result, effects } = replica.dryRun(fn);
       previewing.push(...effects);
+      if (LOG_TIMING) console.error(`[timing] preview: ${Date.now() - start}ms`);
       return result;
     }
     // One confirmed write is one batch in Activity (UnattendedEntry.batchId).
     const result = replica.withBatch(generateId(), fn);
+    const written = Date.now();
     await gate.afterWrite();
+    if (LOG_TIMING) console.error(`[timing] write: handler ${written - start}ms, push wait ${Date.now() - written}ms`);
     return result;
   };
 

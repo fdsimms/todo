@@ -30,6 +30,7 @@ two tokens, because they answer to different callers and must not share a secret
 | `TODO_DB_PATH` | The replica. Created empty if absent, then filled by the first sync. |
 | `MCP_AUTH_TOKEN` | Claude's bearer token, read-only. Unset means every MCP request is refused. |
 | `MCP_WRITE_TOKEN` | A second token that also permits writing. Unset means the server is read-only, and a read-scoped caller never even sees the write tools. |
+| `MCP_LOG_TIMING` | Set to `1` to log, per tool call, how long it waited on the sync and how long the handler ran (stderr). |
 | `SYNC_STORE_PATH` | Where payloads are kept. Unset means the store is not mounted at all. |
 | `SYNC_AUTH_TOKEN` | Your devices' bearer token, for `/sync/*`. |
 | `SYNC_URL`, `SYNC_TOKEN` | Where the *replica itself* syncs to. Usually this same server. |
