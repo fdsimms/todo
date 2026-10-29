@@ -858,8 +858,8 @@ describe('receiptOutcome', () => {
     const { lines } = receiptOutcome({ ...base, marked: 2, filed: 1, created: 2 });
     expect(lines).toEqual([
       '2 items come off your list',
-      '1 item filed under an item you already have',
-      '2 items added as new items',
+      '1 item matched to something you already have',
+      '2 items added as new',
       '1 line left out',
     ]);
   });

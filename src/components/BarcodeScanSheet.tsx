@@ -50,7 +50,6 @@ import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { ProductPicker } from './ProductPicker';
 import { EmptyState } from './EmptyState';
 import { ActionRow } from './ActionRow';
-import { SegmentedControl } from './SegmentedControl';
 import type { ReceiptAddDraft } from './ReceiptImportSheet';
 import type { ReceiptMatch } from '../utils/receiptMatch';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
@@ -66,16 +65,20 @@ import {
   matchScans,
   scanBoxChoice,
   scanLinkTarget,
-  scanOutcome,
+  scanStatement,
+  itemSourceLabel,
+  suggestionIsRecognizable,
   pluScannedItem,
   nameFromScanFor,
   newItemBox,
   scannedItemFor,
   sourceLineFor,
   unknownScannedItem,
+  type ScanEvidence,
   type ScannedGtinLink,
   type ScannedItem,
 } from '../utils/scanResolve';
+import { probablyHaveReason } from '../utils/grocerySuggest';
 import { catalogSpellingOf, itemTypeFromCategory, itemTypeMoveFor, type ItemTypeMove } from '../utils/scanItemType';
 import { generateId } from '../utils/id';
 import { haptics } from '../utils/haptics';
@@ -151,15 +154,21 @@ interface ScanRow extends ScannedItem {
    */
   confirmedMatchId: string | null;
   /**
-   * The person said this is a new item, by choosing "New item" or by typing a
-   * name of their own. While set, the matcher can only *suggest* a catalog row
-   * ("Use Milk") and never files the scan under it on its own, whatever the
-   * tier. It is also what keeps the Name field on screen while it is being typed
+   * The person said this is something new, by choosing "Add as new" or by typing
+   * a name of their own. While set, the matcher can only *suggest* a row it
+   * knows (a yes/no question) and never files the scan under it on its own,
+   * whatever the tier. It is also what keeps the Name field on screen while it is being typed
    * in: the editor shows Name only for a new item, so a name that matched
    * mid-keystroke must not turn the row into an existing one under the cursor.
-   * Cleared by choosing a row, either by a tap on a suggestion or from the list.
+   * Cleared by choosing a row, either by answering Yes to a suggestion or from the search.
    */
   forceNew?: boolean;
+  /**
+   * The row the person answered "No" to when it was suggested. Kept so the same
+   * question is not asked again every time the sheet re-renders; a different
+   * suggestion is still asked.
+   */
+  declinedMatchId?: string | null;
   /**
    * The catalog row the user chose by hand, which outranks whatever the
    * matcher read.
@@ -270,6 +279,12 @@ const CONTEXT_COPY: Record<ScanContext, {
    */
   typedNames: boolean;
   manualPlaceholder: string;
+  /** The label over the Name field, which also says where the thing is going. */
+  nameLabel: string;
+  /** The yes/no question for a guessed match, naming where the person can see it. */
+  suggestQuestion: (name: string) => string;
+  /** What the search under "Same as something you already have?" covers. */
+  searchHint: string;
   matched: (name: string) => string;
   /** A row the user filed by hand. One sentence per context, same as the rest. */
   picked: (name: string) => string;
@@ -287,6 +302,9 @@ const CONTEXT_COPY: Record<ScanContext, {
     freezer: true,
     typedNames: true,
     manualPlaceholder: 'e.g. bananas, or a barcode number',
+    nameLabel: 'NAME ON YOUR LIST',
+    suggestQuestion: name => `Is this the ${name} on your list?`,
+    searchHint: 'Searching your list, your pantry and things you have bought before.',
     matched: name => `On your list as ${name}`,
     picked: name => `Filed as ${name} on your list`,
     offList: name => `Back on the list as ${name}`,
@@ -298,6 +316,9 @@ const CONTEXT_COPY: Record<ScanContext, {
     freezer: true,
     typedNames: true,
     manualPlaceholder: 'e.g. bananas, or a barcode number',
+    nameLabel: 'NAME IN YOUR PANTRY',
+    suggestQuestion: name => `Is this the ${name} in your pantry?`,
+    searchHint: 'Searching your pantry, your list and things you have bought before.',
     matched: name => `Matches \u201C${name}\u201D in your pantry`,
     picked: name => `Filed as \u201C${name}\u201D in your pantry`,
     offList: name => `Matches \u201C${name}\u201D`,
@@ -311,6 +332,9 @@ const CONTEXT_COPY: Record<ScanContext, {
     freezer: false,
     typedNames: false,
     manualPlaceholder: 'Type a barcode number',
+    nameLabel: 'NAME',
+    suggestQuestion: name => `Is this ${name}?`,
+    searchHint: 'Searching things you have bought, your list and your pantry.',
     matched: name => `Matches \u201C${name}\u201D`,
     picked: name => `Filed as \u201C${name}\u201D`,
     offList: name => `Matches \u201C${name}\u201D`,
@@ -495,6 +519,44 @@ function FieldInput({
   );
 }
 
+/**
+ * A quiet line that opens something: a label, what it is set to, and a chevron.
+ * Used for the choices most scans never need ("Same as something you already
+ * have?", "Brand and flavor"), so the usual row is a name and a sentence and
+ * nothing else.
+ */
+function LinkRow({
+  styles, colors, label, value, onPress, open, accessibilityLabel,
+}: {
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+  label: string;
+  value: string;
+  onPress: () => void;
+  /** Set for a row that unfolds in place, which turns its chevron. */
+  open?: boolean;
+  accessibilityLabel: string;
+}) {
+  return (
+    <TouchableOpacity
+      style={styles.linkRow}
+      activeOpacity={interaction.activeOpacity}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={open === undefined ? undefined : { expanded: open }}
+    >
+      <Text style={styles.linkLabel} numberOfLines={2}>{label}</Text>
+      <Text style={styles.linkValue} numberOfLines={1}>{value}</Text>
+      {open === undefined ? (
+        <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
+      ) : (
+        <RotatingChevron open={open} size={iconSize.xs} color={colors.textTertiary} />
+      )}
+    </TouchableOpacity>
+  );
+}
+
 export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotographLabel }: Props) {
   // ==== store bindings and environment (scanner module, keyboard scroll) ====
   const colors = useColors();
@@ -539,6 +601,8 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
    * with nothing in it opens itself, since it is waiting on the person.
    */
   const [openKey, setOpenKey] = useState<string | null>(null);
+  /** Rows whose Brand and flavor fields are unfolded. Most scans never need them. */
+  const [moreOpen, setMoreOpen] = useState<Set<string>>(new Set());
   /**
    * The scanner folds to a strip while the keyboard is up. The form is what is
    * being used then, and a 200pt camera above a keyboard left a few lines of it
@@ -568,6 +632,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     setManualError(null);
     setPicking(null);
     setOpenKey(null);
+    setMoreOpen(new Set());
     scannedGtinsRef.current = new Set();
   }, []);
 
@@ -896,6 +961,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   const resolvedItemId = (row: ScanRow, match: ReceiptMatch | undefined): string | null =>
     confidentItemId(row, match) ?? confidentOffListMatchId(row, match);
 
+  /** Whether the pantry would say it has this, by the same rule the Pantry screen uses. */
+  const inPantry = (item: GroceryItem): boolean => probablyHaveReason(item, new Date(), itemProducts) !== null;
+
   /** The item a `'likely'` match is offering, while the row hasn't confirmed it yet. */
   const pendingMatchId = (row: ScanRow, match: ReceiptMatch | undefined): string | null => {
     // Nothing left to confirm: the user has already said which row this is, and
@@ -913,7 +981,11 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         : !match?.itemId && match?.offListMatchId && offered(match.offListConfidence)
           ? match.offListMatchId
           : null;
-    return candidate && candidate !== row.confirmedMatchId ? candidate : null;
+    if (!candidate || candidate === row.confirmedMatchId || candidate === row.declinedMatchId) return null;
+    // Only ask about something the person can see: on the list being shopped
+    // from, or in the pantry being stocked. See `suggestionIsRecognizable`.
+    const item = items.find(i => i.id === candidate);
+    return item && suggestionIsRecognizable(context, item, inPantry(item)) ? candidate : null;
   };
 
   /**
@@ -1193,36 +1265,34 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   };
 
   /**
-   * The line under a row's item answer saying *why* it is that item. Only read
-   * for a row filed under an item that exists; a new item says what it will be
-   * in the outcome box. Split from `captionFor` so the answer stays
-   * short and the reason is checkable: "scanned before" is a fact about the
-   * barcode in your hand, "matched by name" is a guess you may want to correct.
+   * Why a scan counts as a row the app already knows, for the sentence under it.
+   * Strongest first: something the person did (picked it, scanned the code
+   * before, said yes to a suggestion) before what the app read off the name.
    */
-  const captionNoteFor = (row: ScanRow, index: number): string | null => {
-    if (row.pending || row.error) return null;
-    if (pickedTarget(row)) return 'Chosen by you';
-    if (!row.name.trim()) return null;
-    const match = matches[index];
-    const matchedId = confidentItemId(row, match) ?? confidentOffListMatchId(row, match);
-    if (matchedId) {
-      if (row.gtin && gtinItemFor(row.gtin) === matchedId) return 'You scanned this barcode before';
-      // Looks like a different food from everything filed under that item:
-      // worth a second look before the barcode is remembered as this item.
-      const matchedItem = items.find(i => i.id === matchedId);
-      const known = matchedItem
-        ? [matchedItem.nutrition, ...productsForItem(matchedId, itemProducts).map(p => p.nutrition)].filter(
-            (n): n is FoodNutrition => !!n
-          )
-        : [];
-      if (known.length > 0 && known.every(n => panelLooksWrongFor(row.scanPanel, n))) {
-        return `Its nutrition is very different from your ${matchedItem?.name}. Check this is the same item`;
-      }
-      return match?.confidence === 'remembered'
-        ? 'Matched by name, as you matched it before'
-        : 'Matched by name';
-    }
-    return null;
+  const evidenceFor = (row: ScanRow, match: ReceiptMatch | undefined, matchedId: string): ScanEvidence => {
+    if (pickedTarget(row)) return 'picked';
+    if (row.gtin && gtinItemFor(row.gtin) === matchedId) return 'barcode';
+    if (row.confirmedMatchId === matchedId) return 'picked';
+    if (match?.confidence === 'remembered') return 'remembered';
+    return 'name';
+  };
+
+  /**
+   * A reason to doubt a match, when what the barcode says is very different from
+   * everything already filed under it: worth a second look before the code is
+   * remembered as this. Null when there is nothing to say.
+   */
+  const matchWarningFor = (row: ScanRow, matchedId: string | null): string | null => {
+    if (!matchedId) return null;
+    const matchedItem = items.find(i => i.id === matchedId);
+    const known = matchedItem
+      ? [matchedItem.nutrition, ...productsForItem(matchedId, itemProducts).map(p => p.nutrition)].filter(
+          (n): n is FoodNutrition => !!n
+        )
+      : [];
+    return known.length > 0 && known.every(n => panelLooksWrongFor(row.scanPanel, n))
+      ? `Its nutrition is very different from your ${matchedItem?.name}. Check this is the same thing.`
+      : null;
   };
 
   // ==== the camera strip and cancel ====
@@ -1356,16 +1426,12 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 const rowItemId = resolvedItemId(row, match);
                 const rowItem = rowItemId ? items.find(i => i.id === rowItemId) : null;
                 const rowBoxes = rowItemId ? productsForItem(rowItemId, itemProducts) : [];
-                const boxCount = rowBoxes.length;
-                // The row is one of two things, and the editor shows only that
-                // one's fields: a new item (Name, Brand, Flavor: all saved) or one
-                // already in the catalog (its own name, which a scan never
-                // renames). Choosing from the list counts as the second before a
-                // row is picked, so the toggle moves when it is tapped.
+                // The editor shows one of two things: a new thing (a Name that is
+                // saved, with brand and flavor behind a link) or one the app
+                // already knows (its own name, which a scan never renames). The
+                // search replaces either while it is open.
                 const choosingItem = picking?.key === row.key && picking.mode === 'item';
-                const isExisting = !!rowItemId || choosingItem;
                 const suggestedItem = pendingId ? items.find(i => i.id === pendingId) ?? null : null;
-                const showBox = nameable && !isExisting;
                 const newBox = newItemBox(row);
                 const onNameChange = (text: string) =>
                   patchRow(row.key, {
@@ -1388,7 +1454,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                   applyTypeMove(row, typeMove);
                 };
                 const resolvedName = rowItem?.name ?? null;
-                const captionNote = captionNoteFor(row, index);
                 // What Add will file this row's product as, from the same rule
                 // that writes it, so the line is a statement and not a prompt.
                 const boxChoice = rowItemId
@@ -1403,16 +1468,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                     })
                   : null;
                 const boxText = boxChoice ? describeProduct(boxChoice) : null;
-                const boxNote =
-                  boxChoice?.source === 'picked'
-                    ? 'Chosen by you'
-                    : boxChoice?.source === 'linked'
-                      ? 'Linked to this barcode'
-                      : boxChoice
-                        ? 'Read from the barcode lookup'
-                        : boxCount > 0
-                          ? 'Optional'
-                          : 'Optional. Add one if you know it';
                 // Whether figures already exist for what this row resolves to:
                 // the product's or the catalog row's own, else the barcode
                 // database's. Only then is "Add from label" a real next step.
@@ -1444,7 +1499,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                   : row.error
                     ? row.error
                     : rowItem
-                      ? boxText ?? caption ?? 'Already in your catalog'
+                      ? row.label && row.label !== rowItem.name
+                        ? row.label
+                        : boxText ?? caption ?? 'Known'
                       : needsName && caption
                         ? caption
                         : `${
@@ -1452,11 +1509,11 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                               newBox.brand,
                               newBox.variant,
                               typeMove ? `${typeMove.name}?` : null,
-                              suggestedItem ? `Might be “${suggestedItem.name}”` : null,
+                              suggestedItem ? `Same as “${suggestedItem.name}”?` : null,
                             ]
                               .filter(Boolean)
                               .join(' · ') ||
-                            (row.label ? 'New item' : row.gtin ? 'Barcode not found' : 'Typed by hand')
+                            (row.label ? 'New' : row.gtin ? 'Barcode not found' : 'Typed by hand')
                           }${needsNutrition ? ' · No nutrition yet' : ''}`;
                 const chip: { tone: ChipTone; label: string } | null = row.pending
                   ? null
@@ -1467,7 +1524,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       : needsNutrition
                         ? { tone: 'warn', label: 'Add nutrition' }
                         : rowItemId
-                          ? { tone: 'neutral', label: 'Matched' }
+                          ? { tone: 'neutral', label: 'Known' }
                           : { tone: 'new', label: 'New' };
                 const open = openKey === row.key && !row.pending;
                 const toggleOpen = () => {
@@ -1524,49 +1581,47 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           />
                         )
                       ));
-                // The two answers to "what is this?". Choosing "One I already have"
-                // takes a standing suggestion at once and otherwise opens the list;
-                // choosing "New item" lets go of any item and keeps the row from
-                // being matched again behind the person's back (see `forceNew`).
-                // No haptic of its own: the segmented control already taps.
-                const chooseKind = (kind: 'new' | 'existing') => {
-                  if (kind === 'new') {
-                    setPicking(null);
-                    patchRow(row.key, {
-                      pickedItemId: null,
-                      pickedProductId: null,
-                      confirmedMatchId: null,
-                      forceNew: true,
-                    });
-                  } else if (suggestedItem) {
-                    patchRow(row.key, { confirmedMatchId: suggestedItem.id, forceNew: false });
-                  } else if (!rowItemId) {
-                    setPicking({ key: row.key, mode: 'item' });
-                  }
+                // What the person can do about the match. Each leaves the row in a state
+                // the sentence below can describe.
+                const useSuggestion = () => {
+                  if (!suggestedItem) return;
+                  haptics.tap();
+                  patchRow(row.key, { confirmedMatchId: suggestedItem.id, forceNew: false });
                 };
+                const declineSuggestion = () => {
+                  if (!suggestedItem) return;
+                  haptics.tap();
+                  patchRow(row.key, { declinedMatchId: suggestedItem.id, forceNew: true });
+                };
+                // "It is something else" on a row the app was sure about, and the way
+                // out of a pick: back to a new thing, and not matched again by itself.
+                const addAsNew = () => {
+                  haptics.tap();
+                  setPicking(null);
+                  patchRow(row.key, {
+                    pickedItemId: null,
+                    pickedProductId: null,
+                    confirmedMatchId: null,
+                    forceNew: true,
+                  });
+                };
+                const moreShown = moreOpen.has(row.key);
+                const toggleMore = () =>
+                  setMoreOpen(current => {
+                    const next = new Set(current);
+                    if (!next.delete(row.key)) next.add(row.key);
+                    return next;
+                  });
+                const brandFlavorValue = [newBox.brand, newBox.variant].filter(Boolean).join(' · ') || 'Add';
                 // What Add will do with this row, from the same facts it reads.
-                const outcome =
-                  isExisting && !rowItem
-                    ? { held: 'Not matched yet. Choose an item above, or it is added as a new item.', lines: [] }
-                    : scanOutcome({
-                        included: row.included,
-                        needsNutrition,
-                        mode: rowItem ? 'existing' : 'new',
-                        name: rowItem?.name ?? row.name,
-                        itemOnList: rowItem?.onList ?? false,
-                        brand: newBox.brand,
-                        variant: newBox.variant,
-                        filedAs: boxText,
-                        nutrition:
-                          nutritionSource === 'catalog'
-                            ? { text: '', source: 'catalog' }
-                            : nutritionSource === 'database' && foundPanelNote
-                              ? { text: foundPanelNote, source: 'database' }
-                              : null,
-                        hasGtin: !!row.gtin,
-                        price: row.priceMinor !== null ? formatPrice(row.priceMinor, currencySymbol) : null,
-                        frozen: CONTEXT_COPY[context].freezer && row.frozen,
-                      });
+                const statement = scanStatement({
+                  context,
+                  included: row.included,
+                  needsNutrition,
+                  name: rowItem?.name ?? row.name,
+                  evidence: rowItem && rowItemId ? evidenceFor(row, match, rowItemId) : null,
+                });
+                const matchWarning = matchWarningFor(row, rowItemId);
                 return (
                   <View key={row.key} style={index > 0 ? styles.rowDivided : undefined}>
                   <View style={styles.row}>
@@ -1635,75 +1690,78 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         />
                       )}
 
-                      {/* The one question the rest of the editor answers. */}
-                      <View>
-                        <Text style={styles.fieldLabel}>WHAT IS THIS?</Text>
-                        <SegmentedControl
-                          label="What is this?"
-                          options={[
-                            { value: 'new', label: 'New item' },
-                            { value: 'existing', label: 'One I already have' },
-                          ]}
-                          value={isExisting ? 'existing' : 'new'}
-                          onChange={chooseKind}
-                        />
-                      </View>
-
-                      {isExisting ? (
+                      {choosingItem ? (
+                        <View>
+                          <Text style={styles.fieldLabel}>SAME AS SOMETHING YOU ALREADY HAVE?</Text>
+                          <CatalogLinkPicker
+                            items={items}
+                            // The source's own words when the row has no name of its
+                            // own, which is the miss this exists for.
+                            initialQuery={row.name.trim() || row.label}
+                            hint={CONTEXT_COPY[context].searchHint}
+                            describeItem={item => itemSourceLabel(item, inPantry(item))}
+                            onPick={item => pickItemFor(row, item)}
+                            cancel={{
+                              label: rowItem ? `Keep \u201C${rowItem.name}\u201D` : 'None of these, keep it new',
+                              onPress: () => setPicking(null),
+                            }}
+                          />
+                        </View>
+                      ) : rowItem ? (
                         <>
-                          {/* A scan never renames the item it is filed under, so
-                              there is no Name field here: showing one that does
-                              nothing was the confusing part. */}
-                          {choosingItem ? (
-                            <View style={styles.pickerWrap}>
-                              <CatalogLinkPicker
-                                items={items}
-                                // The source's own words when the row has no name of its
-                                // own, which is the miss this exists for.
-                                initialQuery={row.name.trim() || row.label}
-                                onPick={item => pickItemFor(row, item)}
+                          {/* A scan never renames a thing the app already knows, so
+                              there is no Name field here: a field that did nothing
+                              was the confusing part. The sentence says why it counts
+                              as this, and the way out is one line below. */}
+                          <View>
+                            <Text style={styles.fieldLabel}>COUNTS AS</Text>
+                            <View style={styles.countsAs}>
+                              <Text style={styles.countsAsName} numberOfLines={2}>{rowItem.name}</Text>
+                              <InlineAction
+                                label="Change"
+                                variant="neutral"
+                                onPress={() => setPicking({ key: row.key, mode: 'item' })}
+                                accessibilityLabel={`Change what ${subject} counts as. Now ${rowItem.name}`}
                               />
                             </View>
-                          ) : rowItem ? (
-                            <View style={styles.itemBlock}>
-                              <ActionRow
-                                icon="link-outline"
-                                title={rowItem.name}
-                                note="Your item. Its name does not change."
-                                tone="plain"
-                                accessibilityLabel={`Filed under ${rowItem.name}. Its name does not change.`}
-                                extra={
-                                  <InlineAction
-                                    label="Change"
-                                    variant="neutral"
-                                    onPress={() => setPicking({ key: row.key, mode: 'item' })}
-                                    accessibilityLabel={`Change which item ${subject} is filed under. Now ${rowItem.name}`}
-                                    style={styles.confirmPill}
-                                  />
-                                }
-                              />
-                              {!!captionNote && <Text style={styles.rowLabel}>{captionNote}</Text>}
-                            </View>
-                          ) : null}
+                          </View>
+                          <Text style={styles.statement}>{statement}</Text>
+                          {!!matchWarning && <Text style={styles.rowCaption}>{matchWarning}</Text>}
                           {needsNutrition && nutritionBlock}
+                          <LinkRow
+                            styles={styles}
+                            colors={colors}
+                            label={`Not ${rowItem.name}, it is something else`}
+                            value="Add as new"
+                            onPress={addAsNew}
+                            accessibilityLabel={`${subject} is not ${rowItem.name}. Add it as something new`}
+                          />
                         </>
                       ) : (
                         <>
                           {suggestedItem && (
                             <View style={styles.suggestion}>
-                              <Text style={styles.suggestionText}>
-                                {`You already have “${suggestedItem.name}”. Same thing?`}
+                              <Text style={styles.fieldLabel}>
+                                {CONTEXT_COPY[context].suggestQuestion(suggestedItem.name).toUpperCase()}
                               </Text>
-                              <InlineAction
-                                label={`Use “${suggestedItem.name}”`}
-                                onPress={() => { haptics.tap(); chooseKind('existing'); }}
-                                accessibilityLabel={`File ${subject} under your ${suggestedItem.name}`}
-                              />
+                              <View style={styles.yesNo}>
+                                <InlineAction
+                                  label="Yes"
+                                  onPress={useSuggestion}
+                                  accessibilityLabel={`Yes, ${subject} is ${suggestedItem.name}`}
+                                />
+                                <InlineAction
+                                  label="No, it is different"
+                                  variant="neutral"
+                                  onPress={declineSuggestion}
+                                  accessibilityLabel={`No, ${subject} is not ${suggestedItem.name}`}
+                                />
+                              </View>
                             </View>
                           )}
                           <FieldInput
                             styles={styles}
-                            label="NAME"
+                            label={CONTEXT_COPY[context].nameLabel}
                             value={row.name}
                             placeholder="What is it?"
                             placeholderTextColor={colors.textTertiary}
@@ -1725,8 +1783,30 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                               </HelpText>
                             </View>
                           )}
+                          <Text style={styles.statement}>{statement}</Text>
                           {needsNutrition && nutritionBlock}
-                          {showBox && (
+                          {nameable && (
+                            <>
+                              <LinkRow
+                                styles={styles}
+                                colors={colors}
+                                label="Same as something you already have?"
+                                value="Search"
+                                onPress={() => setPicking({ key: row.key, mode: 'item' })}
+                                accessibilityLabel={`Search for something you already have that ${subject} is the same as`}
+                              />
+                              <LinkRow
+                                styles={styles}
+                                colors={colors}
+                                label="Brand and flavor"
+                                value={brandFlavorValue}
+                                open={moreShown}
+                                onPress={toggleMore}
+                                accessibilityLabel={`Brand and flavor of ${subject}. ${brandFlavorValue}`}
+                              />
+                            </>
+                          )}
+                          {moreShown && nameable && (
                             <View style={styles.fieldPair}>
                               <FieldInput
                                 styles={styles}
@@ -1780,12 +1860,11 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         </View>
                       )}
 
-                      {/* Once the row is filed under an item: which brand and flavor of
-                          it this is. One line saying what it will be filed as, and
-                          one control; the picker (the item's boxes, and the form for
-                          a new one) opens in its place so the two never share the
-                          screen. A new item has the Brand and Flavor fields
-                          above instead, which is why this isn't shown for it. */}
+                      {/* Once the row counts as something the app knows: which brand and
+                          flavor of it this is. A line while closed; the picker (the
+                          boxes it has, and the form for a new one) opens in its
+                          place so the two never share the screen. A new thing has
+                          the same line above, with its own fields. */}
                       {!!rowItemId && !choosingItem && (
                         picking?.key === row.key && picking.mode === 'box' ? (
                           <View style={styles.pickerWrap}>
@@ -1810,31 +1889,22 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                                 if (product) patchRow(row.key, { pickedProductId: product.id });
                               }}
                               onClose={() => setPicking(null)}
-                              label={resolvedName ? `WHICH ${resolvedName.toUpperCase()}` : 'WHICH ONE'}
+                              label="BRAND AND FLAVOR"
                             />
                           </View>
                         ) : (
-                          <View style={styles.boxSummary}>
-                            <View style={styles.boxSummaryText}>
-                              <Text style={styles.fieldLabel}>WHICH ONE</Text>
-                              <Text style={styles.boxSummaryTitle} numberOfLines={2}>
-                                {boxText ?? 'No brand or flavor chosen'}
-                              </Text>
-                              <Text style={styles.rowLabel}>{boxNote}</Text>
-                            </View>
-                            <InlineAction
-                              label={boxChoice ? 'Change' : boxCount > 0 ? 'Choose' : 'Add'}
-                              variant="neutral"
-                              onPress={() => setPicking({ key: row.key, mode: 'box' })}
-                              accessibilityLabel={
-                                boxChoice
-                                  ? `Change which brand or flavor of ${resolvedName ?? 'this item'} this is. Now ${boxText ?? 'none'}`
-                                  : boxCount > 0
-                                    ? `Choose which brand or flavor of ${resolvedName ?? 'this item'} this is`
-                                    : `Add a brand or flavor to ${resolvedName ?? 'this item'}`
-                              }
-                            />
-                          </View>
+                          <LinkRow
+                            styles={styles}
+                            colors={colors}
+                            label="Brand and flavor"
+                            value={boxText ?? 'Add'}
+                            onPress={() => setPicking({ key: row.key, mode: 'box' })}
+                            accessibilityLabel={
+                              boxChoice
+                                ? `Change the brand and flavor of ${resolvedName ?? 'this'}. Now ${boxText ?? 'none'}`
+                                : `Add a brand or flavor to ${resolvedName ?? 'this'}`
+                            }
+                          />
                         )
                       )}
 
@@ -1858,28 +1928,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           }
                         />
                       )}
-
-                      {/* What the confirm button will do with this row, said back in
-                          plain lines. It is built from the same facts the apply step
-                          reads, so it cannot promise something the fields above
-                          don't do. */}
-                      <View style={styles.outcome} accessible accessibilityLabel={
-                        outcome.held
-                          ? outcome.held
-                          : `When you tap ${CONTEXT_COPY[context].confirmLabel}. ${outcome.lines.map(l => `${l.label}: ${l.text}`).join('. ')}`
-                      }>
-                        <Text style={styles.outcomeHeading}>{`WHEN YOU TAP ${CONTEXT_COPY[context].confirmLabel.toUpperCase()}`}</Text>
-                        {outcome.held ? (
-                          <Text style={styles.outcomeHeld}>{outcome.held}</Text>
-                        ) : (
-                          outcome.lines.map(line => (
-                            <View key={line.label} style={styles.outcomeLine}>
-                              <Text style={styles.outcomeKey}>{line.label}</Text>
-                              <Text style={[styles.outcomeValue, line.strong && styles.outcomeStrong]}>{line.text}</Text>
-                            </View>
-                          ))
-                        )}
-                      </View>
 
                       <View style={styles.editorFoot}>
                         <Text style={styles.rowGtin}>{row.gtin ? formatGtin(row.gtin) : ''}</Text>
@@ -2072,33 +2120,36 @@ function makeStyles(colors: Colors) {
     // grid of chips.
     confirmPill: { paddingVertical: 3, minHeight: 0 },
     editor: { paddingHorizontal: spacing.md, paddingBottom: spacing.smd, gap: spacing.smd },
-    // The item a scan is filed under, with the reason it is that one under it.
-    itemBlock: { gap: spacing.xs },
-    // A match offered while the row is still a new item: the sentence, then the
-    // one button, stacked so the item's name keeps the whole line.
-    suggestion: { alignItems: 'flex-start', gap: spacing.xs },
-    suggestionText: { color: colors.textSecondary, fontSize: font.sm },
-    // What Add will do, in a bordered box rather than a filled one so it reads
-    // as a statement about the row and not as one more control to tap.
-    outcome: {
-      borderWidth: border.hairline,
-      borderColor: colors.controlBorder,
+    // A match offered while the row is still a new thing: the question, then the
+    // two answers, so the name keeps the whole line.
+    suggestion: { gap: spacing.xs },
+    yesNo: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    // The thing a scan counts as, in the same sunken box a typed field sits in.
+    countsAs: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: spacing.sm,
+      backgroundColor: colors.bgSunken,
       borderRadius: radius.md,
-      paddingHorizontal: spacing.smd,
-      paddingVertical: spacing.smd,
-      gap: spacing.xsm,
+      paddingLeft: spacing.smd,
+      paddingRight: spacing.xsm,
+      minHeight: 44,
     },
-    outcomeHeading: {
-      color: colors.textSecondary,
-      fontSize: font.xs,
-      fontWeight: fontWeight.semibold,
-      letterSpacing: 0.8,
+    countsAsName: { flex: 1, color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+    // What Add will do, as a sentence rather than a box of lines.
+    statement: { color: colors.textSecondary, fontSize: font.sm, lineHeight: font.sm * 1.4 },
+    // A line that opens something. Hairline above, like the card's own rows.
+    linkRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: 44,
+      borderTopWidth: border.hairline,
+      borderTopColor: colors.separator,
     },
-    outcomeHeld: { color: colors.text, fontSize: font.sm },
-    outcomeLine: { flexDirection: 'row', gap: spacing.smd },
-    outcomeKey: { color: colors.textSecondary, fontSize: font.sm, minWidth: 76 },
-    outcomeValue: { color: colors.text, fontSize: font.sm, flex: 1 },
-    outcomeStrong: { fontWeight: fontWeight.semibold },
+    linkLabel: { flex: 1, color: colors.text, fontSize: font.md },
+    linkValue: { color: colors.textSecondary, fontSize: font.sm, flexShrink: 1 },
     editorFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     removeButton: { minHeight: 44, justifyContent: 'center', paddingLeft: spacing.md },
     removeText: { color: colors.redText, fontSize: font.sm, fontWeight: fontWeight.medium },

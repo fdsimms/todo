@@ -576,82 +576,94 @@ export function hasTrailingSize(name: string): boolean {
   return TRAILING_SIZE.test(name.trim());
 }
 
-/** One line of what Add will do with a scanned row. */
-export interface ScanOutcomeLine {
-  label: string;
-  text: string;
-  /** The line that names the item, drawn heavier. */
-  strong?: boolean;
-}
+/** Which screen is scanning, as far as the words about a row go. */
+export type ScanWordsContext = 'shopping' | 'pantry' | 'log';
 
-export interface ScanOutcomeInput {
-  /** Whether the row is going in. A row left unchecked is not saved at all. */
-  included: boolean;
-  /** Set while a log can't take the row yet: what it is waiting for. */
-  needsNutrition: boolean;
-  /** `'new'` mints an item; `'existing'` files the scan under one already there. */
-  mode: 'new' | 'existing';
-  /** What the item is called after Add: the typed name, or the existing item's own. */
-  name: string;
-  /** For an existing item: whether it is on the shopping list right now. */
-  itemOnList: boolean;
-  brand: string | null;
-  variant: string | null;
-  /** For an existing item: the brand and flavor the scan is filed as, already worded. */
-  filedAs: string | null;
-  /** The figures that travel with it, already worded ("433 cal per 100g, 8 nutrients"). */
-  nutrition: { text: string; source: 'catalog' | 'database' } | null;
-  hasGtin: boolean;
-  /** The shelf price already formatted, or null. */
-  price: string | null;
-  /** Goes in the freezer, in a context where that means something. */
-  frozen: boolean;
+/**
+ * Whether a guessed match is worth asking about: only something the person can
+ * recognize on sight.
+ *
+ * A match is a row in the grocery catalog, which holds everything ever added or
+ * bought, including things long gone. Asking "is this your Chicken Breast?"
+ * about a row nobody remembers is a question with no answer. So a guess is put
+ * to the person only when the thing is on the list they are shopping from, or
+ * in the pantry they are stocking; anything else is added as new without a
+ * question. A food log never asks from names at all: its matches come from a
+ * barcode the person already linked, which is not a guess.
+ */
+export function suggestionIsRecognizable(
+  context: ScanWordsContext,
+  item: Pick<GroceryItem, 'onList'>,
+  inPantry: boolean
+): boolean {
+  if (context === 'shopping') return item.onList;
+  if (context === 'pantry') return inPantry;
+  return false;
 }
 
 /**
- * What a scanned row will actually save, as plain lines for the box at the foot
- * of its editor.
- *
- * Written from the same facts the apply step reads, because the point of the box
- * is that it can't disagree with Add: an editor that shows five controls and
- * never says which of them count was the thing people couldn't follow. `held` is
- * set instead of lines when the row won't be saved at all, and says why.
+ * Where a catalog row comes from, in the words a person would use, for the line
+ * beside a search result. The search covers more than the list (history too), so
+ * a bare name would be a mystery; this says why each one is there.
  */
-export function scanOutcome(input: ScanOutcomeInput): { held: string | null; lines: ScanOutcomeLine[] } {
-  if (!input.included) return { held: 'Not included. Check the box to include it.', lines: [] };
-  if (input.needsNutrition) return { held: 'Can\u2019t be logged until it has nutrition facts.', lines: [] };
-  const name = input.name.trim();
-  if (!name) return { held: 'Needs a name before it can be included.', lines: [] };
+export function itemSourceLabel(
+  item: Pick<GroceryItem, 'onList' | 'purchaseCount' | 'aisle'>,
+  inPantry: boolean
+): string {
+  if (item.onList) return 'On your list';
+  if (inPantry) return 'In your pantry';
+  if (item.purchaseCount > 0) {
+    return `Bought ${item.purchaseCount} ${item.purchaseCount === 1 ? 'time' : 'times'}`;
+  }
+  return item.aisle;
+}
 
-  const lines: ScanOutcomeLine[] = [];
-  if (input.mode === 'new') {
-    lines.push({ label: 'Item', text: `${name}, new`, strong: true });
-    if (input.brand) lines.push({ label: 'Brand', text: input.brand });
-    if (input.variant) lines.push({ label: 'Flavor', text: input.variant });
-  } else {
-    lines.push({
-      label: 'Item',
-      text: `${name}, ${input.itemOnList ? 'on your list' : 'already in your catalog'}`,
-      strong: true,
-    });
-    if (input.filedAs) lines.push({ label: 'Filed as', text: input.filedAs });
-  }
-  if (input.nutrition) {
-    lines.push({
-      label: 'Nutrition',
-      text:
-        input.nutrition.source === 'database'
-          ? `${input.nutrition.text}, from the barcode lookup`
-          : 'Already on file for this item',
-    });
-  }
-  if (input.hasGtin) {
-    lines.push({
-      label: 'Barcode',
-      text: input.mode === 'new' ? 'Remembered for next time' : `Remembered as ${name}`,
-    });
-  }
-  if (input.price) lines.push({ label: 'Price', text: `${input.price} from the shelf label` });
-  if (input.frozen) lines.push({ label: 'Goes in', text: 'The freezer' });
-  return { held: null, lines };
+/** What made the app (or the person) say a scan is a row it already knows. */
+export type ScanEvidence = 'barcode' | 'name' | 'remembered' | 'picked';
+
+export interface ScanStatementInput {
+  context: ScanWordsContext;
+  /** Whether the row is going in. A row left unchecked is not saved at all. */
+  included: boolean;
+  /** Set while a log can't take the row yet. */
+  needsNutrition: boolean;
+  /** What it is called after Add: the typed name, or the existing row's own. */
+  name: string;
+  /** Null for a new thing, otherwise why the scan counts as one already known. */
+  evidence: ScanEvidence | null;
+}
+
+/**
+ * One sentence saying what Add will do with a scanned row, or why it won't do
+ * anything. Built from the same facts the apply step reads, so the editor cannot
+ * promise something its fields don't do. It names the thing and the reason, and
+ * uses the words of the screen (list, pantry, log) rather than the catalog's.
+ */
+export function scanStatement(input: ScanStatementInput): string {
+  const name = input.name.trim();
+  if (!input.included) return 'Not included. Check the box to include it.';
+  if (input.needsNutrition) return 'Can\u2019t be logged until it has nutrition facts.';
+  if (!name) return 'Needs a name before it can be included.';
+  const goes =
+    input.context === 'shopping'
+      ? `Adds ${name} to your list.`
+      : input.context === 'pantry'
+        ? `Adds ${name} to your pantry.`
+        : `Logs ${name}.`;
+  if (!input.evidence) return goes;
+  const why =
+    input.evidence === 'barcode'
+      ? `You scanned this barcode before and chose ${name}.`
+      : input.evidence === 'picked'
+        ? `You chose ${name}.`
+        : input.evidence === 'remembered'
+          ? 'You matched this name before.'
+          : `The name matches ${name}.`;
+  const lands =
+    input.context === 'shopping'
+      ? `It goes on your list as ${name}.`
+      : input.context === 'pantry'
+        ? `It goes in your pantry as ${name}.`
+        : `It is logged as ${name}.`;
+  return `${why} ${lands}`;
 }

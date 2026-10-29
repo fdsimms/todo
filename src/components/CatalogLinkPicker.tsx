@@ -25,6 +25,16 @@ interface Props {
    * rather than duplicating it) and then treats it like a pick.
    */
   onCreate?: (name: string) => void;
+  /**
+   * The words at the end of each result in place of its aisle. For a search that
+   * reaches past the list (history too), where a bare name would be a mystery:
+   * "On your list", "Bought 3 times". Null falls back to the aisle.
+   */
+  describeItem?: (item: GroceryItem) => string | null;
+  /** A line under the search field saying what it searches. */
+  hint?: string;
+  /** A last row that closes the search without picking, e.g. "None of these, keep it new". */
+  cancel?: { label: string; onPress: () => void };
 }
 
 /**
@@ -44,7 +54,9 @@ interface Props {
  * own add field — a second scoring function here would be a second one to
  * keep in step with it.
  */
-export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick, onCreate }: Props) {
+export function CatalogLinkPicker({
+  items, initialQuery, excludeItemId, onPick, onCreate, describeItem, hint, cancel,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { query, clear: clearQuery, props: filterField } = useFilterField(initialQuery);
@@ -78,6 +90,7 @@ export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick, 
         />
         <FieldClearButton query={query} onClear={clearQuery} />
       </View>
+      {!!hint && <Text style={styles.hint}>{hint}</Text>}
       {results.length > 0 ? (
         results.map(({ item, matchedName }) => (
           <TouchableOpacity
@@ -86,13 +99,13 @@ export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick, 
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); onPick(item); }}
             accessibilityRole="button"
-            accessibilityLabel={`Link to ${item.name}, ${matchedName ? `also called ${matchedName}, ` : ''}${item.aisle}`}
+            accessibilityLabel={`Link to ${item.name}, ${matchedName ? `also called ${matchedName}, ` : ''}${describeItem?.(item) ?? item.aisle}`}
           >
             <Text style={styles.rowName} numberOfLines={1}>
               {item.name}
               {!!matchedName && <Text style={styles.rowAisle}>{`  (${matchedName})`}</Text>}
             </Text>
-            <Text style={styles.rowAisle} numberOfLines={1}>{item.aisle}</Text>
+            <Text style={styles.rowAisle} numberOfLines={1}>{describeItem?.(item) ?? item.aisle}</Text>
           </TouchableOpacity>
         ))
       ) : (
@@ -112,6 +125,17 @@ export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick, 
         >
           <Ionicons name="add-circle-outline" size={iconSize.sm} color={colors.accent} />
           <Text style={styles.createText} numberOfLines={2}>{`Add \u201C${typed}\u201D as a new item`}</Text>
+        </TouchableOpacity>
+      )}
+      {!!cancel && (
+        <TouchableOpacity
+          style={styles.row}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); cancel.onPress(); }}
+          accessibilityRole="button"
+          accessibilityLabel={cancel.label}
+        >
+          <Text style={styles.cancelText} numberOfLines={2}>{cancel.label}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -143,6 +167,8 @@ function makeStyles(colors: Colors) {
     },
     rowName: { flex: 1, fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.text },
     createText: { flex: 1, fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.accentText },
+    hint: { fontSize: font.xs, color: colors.textSecondary, paddingTop: spacing.xs, paddingHorizontal: spacing.xs },
+    cancelText: { flex: 1, fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.textSecondary },
     rowAisle: { fontSize: font.xs, color: colors.textTertiary },
     empty: {
       fontSize: font.xs,

@@ -2,20 +2,22 @@ import {
   alreadyScanned,
   classifyTypedEntry,
   itemEndsProductName,
+  itemSourceLabel,
   matchScans,
   nameFromScanFor,
   newItemBox,
   scanBoxChoice,
   scanBoxFor,
   scanLinkTarget,
-  scanOutcome,
+  scanStatement,
   scannedItemFor,
   shopperNameFor,
   sourceLabelFor,
   sourceLineFor,
+  suggestionIsRecognizable,
   unknownScannedItem,
   variantFor,
-  type ScanOutcomeInput,
+  type ScanStatementInput,
   type ScannedItem,
 } from '../utils/scanResolve';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -564,53 +566,68 @@ describe('matchScans, modifier guesses', () => {
   });
 });
 
-describe('scanOutcome', () => {
-  const base: ScanOutcomeInput = {
+describe('suggestionIsRecognizable', () => {
+  it('asks about a thing on the list while shopping, and nothing else', () => {
+    expect(suggestionIsRecognizable('shopping', { onList: true }, false)).toBe(true);
+    expect(suggestionIsRecognizable('shopping', { onList: false }, true)).toBe(false);
+  });
+
+  it('asks about a thing in the pantry while stocking it', () => {
+    expect(suggestionIsRecognizable('pantry', { onList: false }, true)).toBe(true);
+    expect(suggestionIsRecognizable('pantry', { onList: true }, false)).toBe(false);
+  });
+
+  it('never guesses from names in a food log', () => {
+    expect(suggestionIsRecognizable('log', { onList: true }, true)).toBe(false);
+  });
+});
+
+describe('itemSourceLabel', () => {
+  const row = { onList: false, purchaseCount: 0, aisle: 'Produce' };
+
+  it('says where a result comes from, strongest first', () => {
+    expect(itemSourceLabel({ ...row, onList: true, purchaseCount: 4 }, true)).toBe('On your list');
+    expect(itemSourceLabel({ ...row, purchaseCount: 4 }, true)).toBe('In your pantry');
+    expect(itemSourceLabel({ ...row, purchaseCount: 3 }, false)).toBe('Bought 3 times');
+    expect(itemSourceLabel({ ...row, purchaseCount: 1 }, false)).toBe('Bought 1 time');
+  });
+
+  it('falls back to the aisle for something only ever added', () => {
+    expect(itemSourceLabel(row, false)).toBe('Produce');
+  });
+});
+
+describe('scanStatement', () => {
+  const base: ScanStatementInput = {
+    context: 'shopping',
     included: true,
     needsNutrition: false,
-    mode: 'new',
     name: 'Edamame Chili Lime Flavored',
-    itemOnList: false,
-    brand: 'Biena',
-    variant: null,
-    filedAs: null,
-    nutrition: { text: '433 cal per 100g, 8 nutrients', source: 'database' },
-    hasGtin: true,
-    price: null,
-    frozen: false,
+    evidence: null,
   };
 
-  it('lists what a new item will save', () => {
-    const { held, lines } = scanOutcome(base);
-    expect(held).toBeNull();
-    expect(lines.map(l => l.label)).toEqual(['Item', 'Brand', 'Nutrition', 'Barcode']);
-    expect(lines[0]).toMatchObject({ text: 'Edamame Chili Lime Flavored, new', strong: true });
-    expect(lines[2].text).toBe('433 cal per 100g, 8 nutrients, from the barcode lookup');
+  it('says what a new thing adds, in the words of the screen', () => {
+    expect(scanStatement(base)).toBe('Adds Edamame Chili Lime Flavored to your list.');
+    expect(scanStatement({ ...base, context: 'pantry' })).toBe('Adds Edamame Chili Lime Flavored to your pantry.');
+    expect(scanStatement({ ...base, context: 'log' })).toBe('Logs Edamame Chili Lime Flavored.');
   });
 
-  it('says an existing item keeps its name and what the scan is filed as', () => {
-    const { lines } = scanOutcome({
-      ...base,
-      mode: 'existing',
-      name: 'Lime',
-      itemOnList: true,
-      filedAs: 'Biena Edamame Chili Flavored',
-    });
-    expect(lines[0].text).toBe('Lime, on your list');
-    expect(lines.find(l => l.label === 'Filed as')?.text).toBe('Biena Edamame Chili Flavored');
-    expect(lines.find(l => l.label === 'Barcode')?.text).toBe('Remembered as Lime');
+  it('gives the reason a scan counts as something already known', () => {
+    expect(scanStatement({ ...base, name: 'Milk', evidence: 'barcode' })).toBe(
+      'You scanned this barcode before and chose Milk. It goes on your list as Milk.'
+    );
+    expect(scanStatement({ ...base, name: 'Milk', evidence: 'picked', context: 'pantry' })).toBe(
+      'You chose Milk. It goes in your pantry as Milk.'
+    );
+    expect(scanStatement({ ...base, name: 'Milk', evidence: 'name' })).toMatch(/^The name matches Milk\./);
+    expect(scanStatement({ ...base, name: 'Milk', evidence: 'remembered', context: 'log' })).toBe(
+      'You matched this name before. It is logged as Milk.'
+    );
   });
 
-  it('names the freezer and the shelf price only when they apply', () => {
-    const { lines } = scanOutcome({ ...base, price: '$3.49', frozen: true });
-    expect(lines.slice(-2).map(l => l.label)).toEqual(['Price', 'Goes in']);
-    expect(scanOutcome(base).lines.some(l => l.label === 'Price' || l.label === 'Goes in')).toBe(false);
-  });
-
-  it('gives a reason instead of lines when the row will not be saved', () => {
-    expect(scanOutcome({ ...base, included: false }).held).toMatch(/Not included/);
-    expect(scanOutcome({ ...base, needsNutrition: true }).held).toMatch(/nutrition/);
-    expect(scanOutcome({ ...base, name: '  ' }).held).toMatch(/name/);
-    expect(scanOutcome({ ...base, included: false }).lines).toEqual([]);
+  it('says why a row will not be saved instead', () => {
+    expect(scanStatement({ ...base, included: false })).toMatch(/^Not included/);
+    expect(scanStatement({ ...base, needsNutrition: true })).toMatch(/nutrition/);
+    expect(scanStatement({ ...base, name: '  ' })).toMatch(/name/);
   });
 });
