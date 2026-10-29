@@ -496,6 +496,12 @@ describe('logging a recalled food again (#2914)', () => {
       expect(estimateWholeGrams(food({ ...words, servingText: '2 tablespoons' }))).toBeNull();
     });
 
+    it('adds up a meal described as weighed parts', () => {
+      const parts = { ...hummus, servingGrams: null, servingText: '120 g hummus, 51 g pita' };
+      expect(estimateWholeGrams(food(parts))).toBe(171);
+      expect(describedEstimateFactor(food(parts), '85.5g hummus and pita')).toBe(0.5);
+    });
+
     it('says nothing past the largest multiple an estimate may take', () => {
       expect(describedEstimateFactor(food(), '900g homemade hummus')).toBeNull();
     });
