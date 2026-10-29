@@ -311,6 +311,16 @@ export function hasLoggedSince(logs: readonly Pick<MoodLog, 'loggedAt'>[], since
 }
 
 /**
+ * The entries that answer a "Log how you're feeling" check-in: the ones with a
+ * mood rating. A symptom-only entry (a quick "lightheaded on standing") says
+ * nothing about how you're feeling overall, and counting it marked the check-in
+ * ready, and stopped it being raised at all, with no mood ever recorded.
+ */
+export function ratedLogs<T extends Pick<MoodLog, 'mood'>>(logs: readonly T[]): T[] {
+  return logs.filter(l => l.mood !== null && l.mood !== undefined);
+}
+
+/**
  * A one-line summary of an entry, for a list row.
  *
  * Mood first because it is the thing on a fixed scale, then the symptoms by

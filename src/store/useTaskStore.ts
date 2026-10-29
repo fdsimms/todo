@@ -189,7 +189,7 @@ import {
 import { buildDayBuckets } from '../utils/calendarMonth';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { BUSY_DAY_MINUTES, assumedMinutesFor, buildDayLoads, weightFor } from '../utils/dayLoad';
-import { hasLogOnDay, hasLoggedSince } from '../utils/moodLog';
+import { hasLogOnDay, hasLoggedSince, ratedLogs } from '../utils/moodLog';
 import { useFoodLogStore } from './useFoodLogStore';
 import { useSavedMealsStore } from './useSavedMealsStore';
 import { usePendingEstimateStore } from './usePendingEstimateStore';
@@ -8845,9 +8845,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Whether this slot is already answered. Read for the write below only: a
       // live check-in whose entry arrived some other way is made ready by
       // `isRecordAnswered` on its row, not completed here.
+      const rated = ratedLogs(logs);
       const answered = sourceId !== null && (segment
-        ? hasLoggedSince(logs, timeSegmentThreshold(segment).toISOString())
-        : hasLogOnDay(logs, todayKey));
+        ? hasLoggedSince(rated, timeSegmentThreshold(segment).toISOString())
+        : hasLogOnDay(rated, todayKey));
 
       // Recorded before the "already logged" check below and unconditionally,
       // for the reason calendarReviewLastDayKey is: a slot already decided
