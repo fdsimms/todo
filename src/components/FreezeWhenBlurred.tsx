@@ -113,7 +113,10 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
     // Everything below is a no-op unless the readout is on (Settings › About):
     // every tab's wrapper renders on each tab switch, and reporting from all of
     // them cost a state write per wrapper at the moment the destination draws.
-    const diagOn = isTabDiagEnabled();
+    // Subscribed rather than read once: a wrapper that rendered before the
+    // switch went on otherwise never reports, and the readout then says
+    // NO REPORT for a tab that is fine.
+    const diagOn = useTabDiagEnabled();
     const onOuterLayout = useCallback((e: LayoutChangeEvent) => {
       if (diagOn) setOuter(sizeOf(e));
     }, [diagOn]);
