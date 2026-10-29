@@ -46,6 +46,7 @@ import {
   matchReceiptLines,
   matchReceiptShop,
   receiptCautionsFor,
+  receiptOutcome,
   unclaimedAddTarget,
   type ReceiptCaution,
   type ReceiptMatch,
@@ -344,6 +345,36 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
    * of that is that nothing downstream branches on where it came from.
    */
   const [readOffline, setReadOffline] = useState(false);
+  /**
+   * Lines the person said are not the item the reader matched them to ("Not this
+   * item"), by index into `matches`. Kept beside the reading rather than written
+   * into it, because the reading is re-decided whenever the store changes and a
+   * correction has to survive that. A dropped line reads as a left-alone one
+   * from then on, so the hand match, the new-item name and the check all use the
+   * machinery those lines already had.
+   */
+  const [notThis, setNotThis] = useState<Set<number>>(new Set());
+  const view = useMemo(
+    () =>
+      notThis.size === 0
+        ? matches
+        : matches.map((m, at) =>
+            notThis.has(at)
+              ? { ...m, itemId: null, confidence: null, duplicateOf: null, inTrolley: false, offListMatchId: null, offListConfidence: null }
+              : m
+          ),
+    [matches, notThis]
+  );
+  /**
+   * The checked items with a dropped line's item taken out. `accepted` is re-seeded
+   * from the original reading when the store changes, and would otherwise put the
+   * item back behind the correction.
+   */
+  const acceptedLive = useMemo(() => {
+    if (notThis.size === 0) return accepted;
+    const dropped = new Set(Array.from(notThis, at => matches[at]?.itemId));
+    return new Set(Array.from(accepted).filter(id => !dropped.has(id)));
+  }, [accepted, notThis, matches]);
 
   const input = useRecipeImportSource('photo', 'read a receipt');
   const { photos, reset: resetInput } = input;
@@ -367,6 +398,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     setFrozenMatched(new Set());
     setFrozenUnclaimed(new Set());
     setReadOffline(false);
+    setNotThis(new Set());
     resetInput();
   }, [resetInput]);
 
@@ -484,13 +516,13 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   // used to need its own tap. Pantry only: on the shopping side an unmatched
   // line is the exception, and checking one mints a catalog row named in the
   // receipt's shorthand, which is worth a look each.
-  const toggleAllUnclaimed = (count: number, allOn: boolean) => {
+  const toggleAllUnclaimed = (ats: number[], allOn: boolean) => {
     haptics.tap();
     if (allOn) {
-      setAddAsBought(new Set());
-      setFrozenUnclaimed(new Set());
+      setAddAsBought(prev => new Set(Array.from(prev).filter(at => !ats.includes(at))));
+      setFrozenUnclaimed(prev => new Set(Array.from(prev).filter(at => !ats.includes(at))));
     } else {
-      setAddAsBought(new Set(Array.from({ length: count }, (_, i) => i)));
+      setAddAsBought(prev => new Set([...Array.from(prev), ...ats]));
     }
   };
 
@@ -553,6 +585,34 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     setFrozenUnclaimed(prev => withoutKey(prev, index));
   };
 
+  /**
+   * "Not this item" on a guessed match. The line drops its match and is left to
+   * the person: the search opens so the right item is one tap away, and the
+   * item it was matched to stops being checked, since the check was for the
+   * guess.
+   */
+  const rejectMatch = (at: number) => {
+    haptics.tap();
+    const itemId = matches[at]?.itemId;
+    if (itemId) {
+      setAccepted(prev => withoutKey(prev, itemId));
+      setFrozenMatched(prev => withoutKey(prev, itemId));
+    }
+    setNotThis(prev => new Set(prev).add(at));
+    setPickingIndex(at);
+  };
+
+  /** Takes "Not this item" back. The line returns unchecked, with whatever was set on it as a left-alone line dropped. */
+  const restoreMatch = (at: number) => {
+    haptics.tap();
+    setNotThis(prev => withoutKey(prev, at));
+    setAddAsBought(prev => withoutKey(prev, at));
+    setFrozenUnclaimed(prev => withoutKey(prev, at));
+    setHandPicks(prev => { const next = new Map(prev); next.delete(at); return next; });
+    setNameEdits(prev => { const next = new Map(prev); next.delete(at); return next; });
+    setPickingIndex(null);
+  };
+
   const renameFor = (index: number, text: string) => {
     setNameEdits(prev => new Map(prev).set(index, text.slice(0, GROCERY_NAME_MAX_LENGTH)));
   };
@@ -565,8 +625,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const handleApply = () => {
     const priceById: Record<string, number> = {};
     const quantityById: Record<string, string> = {};
-    for (const match of matches) {
-      if (!match.itemId || !accepted.has(match.itemId)) continue;
+    for (const match of view) {
+      if (!match.itemId || !acceptedLive.has(match.itemId)) continue;
       if (match.line.priceMinor !== null) {
         priceById[match.itemId] = match.line.priceMinor;
         // What that price bought, as printed, so it isn't filed against the
@@ -574,26 +634,24 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         if (match.line.quantity.trim()) quantityById[match.itemId] = match.line.quantity.trim();
       }
     }
-    const toAdd: ReceiptAddDraft[] = matches
-      .filter(m => m.itemId === null)
-      .flatMap((m, i) => {
-        if (!addAsBought.has(i)) return [];
-        // Which row, and under what name: see `unclaimedAddTarget` for why a
-        // hand match goes in under the item's own name rather than the line's.
-        const { existingItemId, name } = unclaimedAddTarget(m, pickedItemFor(i), nameEdits.get(i));
-        return [{
-          existingItemId,
-          name,
-          label: m.line.label,
-          brand: null,
-          aisle: null,
-          quantity: m.line.quantity,
-          priceMinor: m.line.priceMinor,
-          // Pantry only, and so undefined from a shopping receipt exactly as
-          // it always was (see ReceiptAddDraft.frozen).
-          ...(pantry ? { frozen: frozenUnclaimed.has(i) } : null),
-        }];
-      });
+    const toAdd: ReceiptAddDraft[] = view.flatMap((m, at) => {
+      if (m.itemId !== null || !addAsBought.has(at)) return [];
+      // Which row, and under what name: see `unclaimedAddTarget` for why a
+      // hand match goes in under the item's own name rather than the line's.
+      const { existingItemId, name } = unclaimedAddTarget(m, pickedItemFor(at), nameEdits.get(at));
+      return [{
+        existingItemId,
+        name,
+        label: m.line.label,
+        brand: null,
+        aisle: null,
+        quantity: m.line.quantity,
+        priceMinor: m.line.priceMinor,
+        // Pantry only, and so undefined from a shopping receipt exactly as
+        // it always was (see ReceiptAddDraft.frozen).
+        ...(pantry ? { frozen: frozenUnclaimed.has(at) } : null),
+      }];
+    });
     // Everything the user is applying with a row attached, printed text and
     // all, so the same shorthand resolves without asking next time. Scoped to
     // the store, because that is whose printer wrote it. The "add as bought"
@@ -603,18 +661,18 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     // line matched by hand (#2923) names one, so it is remembered here like
     // any other: that is the "being told once" storeAliases.ts is for.
     rememberAliases([
-      ...matches
-        .filter(m => m.itemId !== null && accepted.has(m.itemId))
+      ...view
+        .filter(m => m.itemId !== null && acceptedLive.has(m.itemId))
         .map(m => ({ shopId, rawText: m.line.label, itemId: m.itemId as string })),
       ...toAdd
         .filter(d => d.existingItemId !== null)
         .map(d => ({ shopId, rawText: d.label, itemId: d.existingItemId as string })),
     ]);
     const frozenItemIds = new Set(
-      pantry ? Array.from(accepted).filter(id => frozenMatched.has(id)) : []
+      pantry ? Array.from(acceptedLive).filter(id => frozenMatched.has(id)) : []
     );
     haptics.success();
-    onApply(shopId, Array.from(accepted), priceById, purchasedDate.toISOString(), toAdd, frozenItemIds, quantityById);
+    onApply(shopId, Array.from(acceptedLive), priceById, purchasedDate.toISOString(), toAdd, frozenItemIds, quantityById);
   };
 
   /** Returning the message rejects the name and holds the field open. */
@@ -640,8 +698,12 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     { value: 'none', label: 'Nothing readable' },
   ];
 
-  const claimed = matches.filter((m): m is ReceiptMatch & { itemId: string } => m.itemId !== null);
-  const unclaimed = matches.filter(m => m.itemId === null);
+  const rows = view.map((match, at) => ({ match, at }));
+  // A line the person dropped stays where it was in the first card, drawn as a
+  // left-alone line there: moving it to the other list made it vanish from under
+  // the finger that dropped it.
+  const listed = rows.filter(r => r.match.itemId !== null || notThis.has(r.at));
+  const leftAlone = rows.filter(r => r.match.itemId === null && !notThis.has(r.at));
   /**
    * What the checked rows add up to, matched or added as bought.
    *
@@ -651,19 +713,31 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
    * sign the read went wrong. It's stated so a large gap is visible to someone
    * who knows what they bought, which is the only reader who can judge it.
    */
-  const recordedMinor =
-    matches.reduce(
-      (sum, m) =>
-        m.itemId && accepted.has(m.itemId) && m.line.priceMinor !== null
-          ? sum + m.line.priceMinor
-          : sum,
-      0
-    ) +
-    unclaimed.reduce(
-      (sum, m, i) => (addAsBought.has(i) && m.line.priceMinor !== null ? sum + m.line.priceMinor : sum),
-      0
-    );
-  const acceptedCount = accepted.size + addAsBought.size;
+  const recordedMinor = view.reduce((sum, m, at) => {
+    if (m.line.priceMinor === null) return sum;
+    const going = m.itemId !== null ? acceptedLive.has(m.itemId) : addAsBought.has(at);
+    return going ? sum + m.line.priceMinor : sum;
+  }, 0);
+  const acceptedCount = acceptedLive.size + addAsBought.size;
+  // The same sets Apply reads, counted: see `receiptOutcome`.
+  const outcome = (() => {
+    let filed = 0;
+    let created = 0;
+    view.forEach((m, at) => {
+      if (m.itemId !== null || !addAsBought.has(at)) return;
+      if (unclaimedAddTarget(m, pickedItemFor(at)).existingItemId !== null) filed++;
+      else created++;
+    });
+    return receiptOutcome({
+      pantry,
+      marked: view.filter(m => m.itemId !== null && acceptedLive.has(m.itemId)).length,
+      filed,
+      created,
+      total: view.length,
+      recorded: recordedMinor > 0 ? formatPrice(recordedMinor, currencySymbol) : null,
+      receiptTotal: receipt?.totalMinor != null ? formatPrice(receipt.totalMinor, currencySymbol) : null,
+    });
+  })();
 
   // A read receipt or an unread photo are both real work — a swipe-down
   // would otherwise drop either with no dialog.
@@ -721,8 +795,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     </TouchableOpacity>
   );
 
-  const renderMatch = (match: ReceiptMatch & { itemId: string }, index: number) => {
-    const on = accepted.has(match.itemId);
+  const renderMatch = (match: ReceiptMatch & { itemId: string }, index: number, at: number) => {
+    const on = acceptedLive.has(match.itemId);
     // Neither tier is pre-checked (`acceptedByDefault`), so both need the same
     // "you decide" caveat — a 'likely' row sitting unchecked with no
     // explanation reads as a bug, not as the app being careful.
@@ -731,8 +805,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     const cautions = receiptCautionsFor(match, items, shopId, itemShops);
     const row = (
       <TouchableOpacity
-        key={`${match.itemId}-${index}`}
-        style={pantry ? [styles.row, styles.rowBeforeFreezer] : [styles.row, index > 0 && styles.rowDivided]}
+        style={pantry ? [styles.row, styles.rowBeforeFreezer] : styles.row}
         activeOpacity={interaction.activeOpacity}
         onPress={() => toggle(match.itemId)}
         accessibilityRole="checkbox"
@@ -763,8 +836,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
                 // Ticked into the cart *and* only a guessed match by name: the
                 // row is going through either way, so the question worth
                 // asking is about the number, not about whether it came home.
-                ? 'Not sure this is the same item. Check the price is for this row.'
-                : 'Not sure this is the same item. Check before you accept it.'}
+                ? 'Not sure this is the same item. Check the price is for this row, or choose another.'
+                : 'Not sure this is the same item. Check the box to accept it, or choose another.'}
             </Text>
           )}
           {/* Says why a line nothing could have matched by name is sitting on a
@@ -787,14 +860,211 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         )}
       </TouchableOpacity>
     );
-    if (!pantry) return row;
     return (
-      <View key={`${match.itemId}-${index}`} style={[styles.rowLine, index > 0 && styles.rowDivided]}>
-        {row}
-        {freezerToggle(
-          on && frozenMatched.has(match.itemId),
-          name,
-          () => toggleFrozenMatched(match.itemId)
+      <View key={at} style={index > 0 ? styles.rowDivided : undefined}>
+        {pantry ? (
+          <View style={styles.rowLine}>
+            {row}
+            {freezerToggle(
+              on && frozenMatched.has(match.itemId),
+              name,
+              () => toggleFrozenMatched(match.itemId)
+            )}
+          </View>
+        ) : (
+          row
+        )}
+        {/* Under the row and outside its touchable, so it is its own control.
+            Only a guess gets it: a name or a barcode that matched exactly is not
+            something to second-guess on every line of a forty-line receipt. */}
+        {uncertain && (
+          <View style={[styles.rowControls, styles.rowControlsPill]}>
+            <InlineAction
+              label="Not this item"
+              variant="neutral"
+              onPress={() => rejectMatch(at)}
+              accessibilityLabel={`${match.line.label} is not ${name}. Choose another item`}
+              style={styles.actionPill}
+            />
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  /**
+   * A line nothing claimed, or one the person said is not its match. Nothing
+   * happens to it unless it is checked, and the status line says which of the
+   * two it is right now: before, it read "Adds it as a new item" on a row that
+   * added nothing.
+   */
+  const renderLeftAlone = (match: ReceiptMatch, at: number, position: number) => {
+    const on = addAsBought.has(at);
+    const picked = pickedItemFor(at);
+    const catalogName = match.offListMatchId ? nameFor(match.offListMatchId) : null;
+    const droppedName = notThis.has(at) ? nameFor(matches[at]?.itemId ?? '') : '';
+    // Only for a row that is going to mint something: a match,
+    // by hand or by the reader, is named by the item it lands on.
+    const showNameField = on && !picked && !catalogName;
+    const lineName = match.line.name || match.line.label;
+    const status = on
+      ? catalogName
+        ? `Filed under “${catalogName}”, already in your catalog.`
+        : 'Added as a new item.'
+      : catalogName
+        ? `Left out. Check the box to file it under “${catalogName}”.`
+        : 'Left out. Check the box to add it as a new item.';
+    return (
+      <View key={at} style={position > 0 ? styles.rowDivided : undefined}>
+        <View style={pantry ? styles.rowLine : undefined}>
+          <TouchableOpacity
+            style={pantry ? [styles.row, styles.rowBeforeFreezer] : styles.row}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => toggleAddAsBought(at)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: on }}
+            accessibilityLabel={
+              picked
+                ? `${picked.name}, from receipt line ${match.line.label}`
+                : pantry
+                  ? `Add ${match.line.label} to the pantry`
+                  : `Add ${match.line.label} as bought`
+            }
+          >
+            <View style={[styles.check, on && styles.checkOn]}>
+              {on && <Ionicons name="checkmark" size={14} color={colors.onAccent} />}
+            </View>
+            <View style={styles.rowBody}>
+              {picked ? (
+                <>
+                  {/* Laid out as a matched row above is, because
+                      that's what it now is: the item, then the
+                      printed line it came from. */}
+                  <Text style={styles.rowTitle} numberOfLines={1}>{picked.name}</Text>
+                  <Text style={styles.rowLabel} numberOfLines={1}>
+                    {match.line.label}
+                    {!!match.line.quantity && ` · ${match.line.quantity}`}
+                  </Text>
+                  <Text style={styles.rowRemembered}>
+                    {shopId
+                      ? 'Matched by hand. Future receipts from this store will match it the same way.'
+                      : 'Matched by hand.'}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.rowSkipped} numberOfLines={1}>{match.line.label}</Text>
+                  {match.duplicateOf !== null && (
+                    <Text style={styles.rowLabel} numberOfLines={1}>
+                      A second {nameFor(match.duplicateOf)}. The first one is above.
+                    </Text>
+                  )}
+                  {!!droppedName && (
+                    <Text style={styles.rowLabel} numberOfLines={1}>
+                      You said this isn’t “{droppedName}”.
+                    </Text>
+                  )}
+                  {/* In the pantry every catalog row was already a
+                      candidate, so an unclaimed line there matched nothing
+                      at all and `offListMatchId` is always null. */}
+                  <Text style={styles.rowLabel} numberOfLines={2}>{status}</Text>
+                </>
+              )}
+            </View>
+            {match.line.priceMinor !== null && (
+              <Text style={styles.rowPriceOff}>
+                {formatPrice(match.line.priceMinor, currencySymbol)}
+              </Text>
+            )}
+          </TouchableOpacity>
+          {pantry && freezerToggle(
+            on && frozenUnclaimed.has(at),
+            picked?.name ?? (catalogName || lineName),
+            () => toggleFrozenUnclaimed(at)
+          )}
+        </View>
+
+        {/* Under the row and outside its touchable, so typing in
+            the field or pressing a pill never also toggles the
+            check. Lined up with the row's text rather than its
+            checkbox, the way BarcodeScanSheet's row controls are. */}
+        <View style={styles.rowControls}>
+          {showNameField && (
+            <View>
+              <Text style={styles.fieldLabel}>NAME</Text>
+              <TextField
+                style={styles.nameInput}
+                value={nameEdits.get(at) ?? match.line.name}
+                onChangeText={text => renameFor(at, text)}
+                placeholder="Name for the new item"
+                placeholderTextColor={colors.textTertiary}
+                // A shelf word, not prose: same reason as the
+                // barcode sheet's own name field.
+                autoCorrect={false}
+                spellCheck={false}
+                accessibilityLabel={`Name for the new item from ${match.line.label}`}
+              />
+            </View>
+          )}
+          {/* The same block the barcode sheet asks this question with. */}
+          <ActionRow
+            icon="link-outline"
+            title={
+              picked
+                ? `Matched to ${picked.name}`
+                : catalogName
+                  ? 'Choose a different item'
+                  : 'Match to an item you already have'
+            }
+            note={picked ? 'Tap to change' : null}
+            tone={picked || catalogName ? 'plain' : 'action'}
+            onPress={() => setPickingIndex(p => (p === at ? null : at))}
+            accessibilityLabel={
+              picked
+                ? `Change which item ${match.line.label} is`
+                : `Choose which item ${match.line.label} is`
+            }
+            extra={
+              picked ? (
+                <InlineAction
+                  label="Undo"
+                  variant="neutral"
+                  onPress={() => clearPick(at)}
+                  accessibilityLabel={`Stop matching ${match.line.label} to ${picked.name}`}
+                  style={styles.actionPill}
+                />
+              ) : null
+            }
+          />
+          {!!droppedName && (
+            <View style={styles.rowControlsPill}>
+              <InlineAction
+                label={`Put back “${droppedName}”`}
+                variant="neutral"
+                onPress={() => restoreMatch(at)}
+                accessibilityLabel={`Match ${match.line.label} to ${droppedName} again`}
+                style={styles.actionPill}
+              />
+            </View>
+          )}
+        </View>
+
+        {/* Its own full-width block, for the reason the barcode
+            sheet gives: a result list sharing a line with anything
+            else takes its width from what's left over, and a
+            catalog row you can't read is one you can't pick. */}
+        {pickingIndex === at && (
+          <View style={styles.pickerWrap}>
+            <CatalogLinkPicker
+              items={items}
+              // The reader's own name for the line, which offline
+              // is the shorthand itself: a start for the search
+              // rather than an answer, and the field is right there.
+              initialQuery={lineName}
+              excludeItemId={picked?.id ?? null}
+              onPick={item => pickFor(at, item)}
+            />
+          </View>
         )}
       </View>
     );
@@ -987,7 +1257,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         {/* Shopping only. The pantry writes no purchase date — see `context`. */}
         {!pantry && datePicker()}
 
-        {claimed.length > 0 && (
+        {listed.length > 0 && (
           <>
             <Text style={styles.label}>{pantry ? 'WHAT YOU BOUGHT' : 'ON YOUR LIST'}</Text>
             <Text style={styles.hint}>
@@ -995,20 +1265,17 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
                 ? 'Checked rows go in the pantry, with the receipt’s price on each. Tap the snowflake on anything going in the freezer.'
                 : 'Checked rows come off the list when you finish, with the receipt’s price on each.'}
             </Text>
-            <View style={styles.card}>{claimed.map(renderMatch)}</View>
-            {recordedMinor > 0 && (
-              <Text style={styles.tally}>
-                Recording {formatPrice(recordedMinor, currencySymbol)}
-                {receipt.totalMinor !== null
-                  ? ` of the ${formatPrice(receipt.totalMinor, currencySymbol)} on this receipt`
-                  : ''}
-                .
-              </Text>
-            )}
+            <View style={styles.card}>
+              {listed.map(({ match, at }, index) =>
+                match.itemId !== null
+                  ? renderMatch(match as ReceiptMatch & { itemId: string }, index, at)
+                  : renderLeftAlone(match, at, index)
+              )}
+            </View>
           </>
         )}
 
-        {unclaimed.length > 0 && (
+        {leftAlone.length > 0 && (
           <>
             {/* Covers two different reasons on purpose. "Not on your list"
                 would be a lie about a duplicate, which is on the list — the
@@ -1018,181 +1285,46 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
             <Text style={styles.label}>LEFT ALONE</Text>
             <Text style={styles.hint}>
               {pantry
-                ? claimed.length > 0
+                ? listed.length > 0
                   ? 'These didn’t match anything you’ve bought before, or the receipt lists the same item twice. Check one to add it, or match it to an item you already have.'
                   : 'None of these matched anything you’ve bought before. Check one to add it, or match it to an item you already have.'
-                : claimed.length > 0
+                : listed.length > 0
                   ? 'These didn’t match anything on your list, or your list only asked for one. Check one to add it as bought, or match it to an item you already have.'
                   : 'None of these matched anything on your list. Check one to add it as bought, or match it to an item you already have.'}
             </Text>
-            {pantry && unclaimed.length > 1 && (() => {
-              const allOn = unclaimed.every((_, i) => addAsBought.has(i));
+            {pantry && leftAlone.length > 1 && (() => {
+              const ats = leftAlone.map(r => r.at);
+              const allOn = ats.every(at => addAsBought.has(at));
               return (
                 <View style={styles.checkAllRow}>
                   <InlineAction
                     label={allOn ? 'Uncheck all' : 'Check all'}
                     variant="neutral"
-                    onPress={() => toggleAllUnclaimed(unclaimed.length, allOn)}
+                    onPress={() => toggleAllUnclaimed(ats, allOn)}
                     accessibilityLabel={allOn ? 'Uncheck every line left alone' : 'Check every line left alone, to add them all'}
                   />
                 </View>
               );
             })()}
             <View style={styles.card}>
-              {unclaimed.map((match, i) => {
-                const on = addAsBought.has(i);
-                const picked = pickedItemFor(i);
-                const catalogName = match.offListMatchId ? nameFor(match.offListMatchId) : null;
-                // Only for a row that is going to mint something: a match,
-                // by hand or by the reader, is named by the item it lands on.
-                const showNameField = on && !picked && !catalogName;
-                const lineName = match.line.name || match.line.label;
-                return (
-                  <View key={`u-${i}`} style={i > 0 ? styles.rowDivided : undefined}>
-                    <View style={pantry ? styles.rowLine : undefined}>
-                      <TouchableOpacity
-                        style={pantry ? [styles.row, styles.rowBeforeFreezer] : styles.row}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => toggleAddAsBought(i)}
-                        accessibilityRole="checkbox"
-                        accessibilityState={{ checked: on }}
-                        accessibilityLabel={
-                          picked
-                            ? `${picked.name}, from receipt line ${match.line.label}`
-                            : pantry
-                              ? `Add ${match.line.label} to the pantry`
-                              : `Add ${match.line.label} as bought`
-                        }
-                      >
-                        <View style={[styles.check, on && styles.checkOn]}>
-                          {on && <Ionicons name="checkmark" size={14} color={colors.onAccent} />}
-                        </View>
-                        <View style={styles.rowBody}>
-                          {picked ? (
-                            <>
-                              {/* Laid out as a matched row above is, because
-                                  that's what it now is: the item, then the
-                                  printed line it came from. */}
-                              <Text style={styles.rowTitle} numberOfLines={1}>{picked.name}</Text>
-                              <Text style={styles.rowLabel} numberOfLines={1}>
-                                {match.line.label}
-                                {!!match.line.quantity && ` · ${match.line.quantity}`}
-                              </Text>
-                              <Text style={styles.rowRemembered}>
-                                {shopId
-                                  ? 'Matched by hand. Future receipts from this store will match it the same way.'
-                                  : 'Matched by hand.'}
-                              </Text>
-                            </>
-                          ) : (
-                            <>
-                              <Text style={styles.rowSkipped} numberOfLines={1}>{match.line.label}</Text>
-                              {match.duplicateOf !== null && (
-                                <Text style={styles.rowLabel} numberOfLines={1}>
-                                  A second {nameFor(match.duplicateOf)}. The first one is above.
-                                </Text>
-                              )}
-                              {/* In the pantry every catalog row was already a
-                                  candidate, so an unclaimed line there matched nothing
-                                  at all and `offListMatchId` is always null. */}
-                              <Text style={styles.rowLabel} numberOfLines={1}>
-                                {catalogName
-                                  ? `Matches “${catalogName}” already in your catalog.`
-                                  : 'Adds it as a new item.'}
-                              </Text>
-                            </>
-                          )}
-                        </View>
-                        {match.line.priceMinor !== null && (
-                          <Text style={styles.rowPriceOff}>
-                            {formatPrice(match.line.priceMinor, currencySymbol)}
-                          </Text>
-                        )}
-                      </TouchableOpacity>
-                      {pantry && freezerToggle(
-                        on && frozenUnclaimed.has(i),
-                        picked?.name ?? (catalogName || lineName),
-                        () => toggleFrozenUnclaimed(i)
-                      )}
-                    </View>
-
-                    {/* Under the row and outside its touchable, so typing in
-                        the field or pressing a pill never also toggles the
-                        check. Lined up with the row's text rather than its
-                        checkbox, the way BarcodeScanSheet's row controls are. */}
-                    <View style={styles.rowControls}>
-                      {showNameField && (
-                        <View>
-                          <Text style={styles.fieldLabel}>NAME</Text>
-                          <TextField
-                            style={styles.nameInput}
-                            value={nameEdits.get(i) ?? match.line.name}
-                            onChangeText={text => renameFor(i, text)}
-                            placeholder="Name for the new item"
-                            placeholderTextColor={colors.textTertiary}
-                            // A shelf word, not prose: same reason as the
-                            // barcode sheet's own name field.
-                            autoCorrect={false}
-                            spellCheck={false}
-                            accessibilityLabel={`Name for the new item from ${match.line.label}`}
-                          />
-                        </View>
-                      )}
-                      {/* The same block the barcode sheet asks this question with. */}
-                      <ActionRow
-                        icon="link-outline"
-                        title={
-                          picked
-                            ? `Matched to ${picked.name}`
-                            : catalogName
-                              ? 'Choose a different item'
-                              : 'Match to an item you already have'
-                        }
-                        note={picked ? 'Tap to change' : catalogName ? null : 'Or leave it and it is added as a new item'}
-                        tone={picked || catalogName ? 'plain' : 'action'}
-                        onPress={() => setPickingIndex(p => (p === i ? null : i))}
-                        accessibilityLabel={
-                          picked
-                            ? `Change which item ${match.line.label} is`
-                            : `Choose which item ${match.line.label} is`
-                        }
-                        extra={
-                          picked ? (
-                            <InlineAction
-                              label="Undo"
-                              variant="neutral"
-                              onPress={() => clearPick(i)}
-                              accessibilityLabel={`Stop matching ${match.line.label} to ${picked.name}`}
-                              style={styles.actionPill}
-                            />
-                          ) : null
-                        }
-                      />
-                    </View>
-
-                    {/* Its own full-width block, for the reason the barcode
-                        sheet gives: a result list sharing a line with anything
-                        else takes its width from what's left over, and a
-                        catalog row you can't read is one you can't pick. */}
-                    {pickingIndex === i && (
-                      <View style={styles.pickerWrap}>
-                        <CatalogLinkPicker
-                          items={items}
-                          // The reader's own name for the line, which offline
-                          // is the shorthand itself: a start for the search
-                          // rather than an answer, and the field is right there.
-                          initialQuery={lineName}
-                          excludeItemId={picked?.id ?? null}
-                          onPick={item => pickFor(i, item)}
-                        />
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
+              {leftAlone.map(({ match, at }, position) => renderLeftAlone(match, at, position))}
             </View>
           </>
         )}
+
+        {/* What Apply will do, from the sets it reads. Under both lists because
+            the checks above mean different things in each, and nothing said
+            which. */}
+        <View style={styles.outcome} accessible accessibilityLabel={
+          outcome.held ?? `When you tap ${pantry ? 'Add' : 'Apply'}. ${outcome.lines.join('. ')}`
+        }>
+          <Text style={styles.outcomeHeading}>{`WHEN YOU TAP ${pantry ? 'ADD' : 'APPLY'}`}</Text>
+          {outcome.held ? (
+            <Text style={styles.outcomeLine}>{outcome.held}</Text>
+          ) : (
+            outcome.lines.map(line => <Text key={line} style={styles.outcomeLine}>{line}</Text>)
+          )}
+        </View>
       </>
     );
   };
@@ -1297,15 +1429,6 @@ function makeStyles(colors: Colors) {
     },
     dateValue: { flex: 1, color: colors.text, fontSize: font.md },
     dateCaution: { color: colors.orangeText, fontSize: font.xs, marginTop: spacing.xs },
-    tally: {
-      color: colors.textTertiary,
-      fontSize: font.sm,
-      // Pulled back toward the card it sums — the card carries a full
-      // `spacing.lg` beneath it, which reads as a detached statement rather
-      // than as this list's own total.
-      marginTop: -spacing.sm,
-      marginBottom: spacing.lg,
-    },
     card: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.lg,
@@ -1366,6 +1489,24 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.smd,
       minHeight: 44,
     },
+    rowControlsPill: { alignItems: 'flex-start' },
+    // What Apply will do. Bordered rather than filled, so it reads as a
+    // statement about the review and not as another row to tap.
+    outcome: {
+      borderWidth: border.hairline,
+      borderColor: colors.controlBorder,
+      borderRadius: radius.md,
+      padding: spacing.smd,
+      gap: spacing.xsm,
+      marginBottom: spacing.lg,
+    },
+    outcomeHeading: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+    },
+    outcomeLine: { color: colors.text, fontSize: font.sm },
     // Tighter than InlineAction's default, as the barcode sheet's row pills
     // are, so they read as part of the row rather than a grid of chips.
     actionPill: { paddingVertical: 3, minHeight: 0 },
