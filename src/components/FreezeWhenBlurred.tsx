@@ -1,5 +1,5 @@
 import React, { Activity, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
+import { AppState, LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useNavigationState, useRoute } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
 import { font, radius, spacing } from '../theme';
@@ -74,6 +74,17 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
     // stale (see `isTabFocused`).
     const containerTab = useSyncExternalStore(subscribeContainerState, currentTabName);
     const focused = isTabFocused({ routeName: route.name, containerTab, navigatorFocused });
+    // A tab can come back from the background still holding the answer it had
+    // before (a 'state' event missed while suspended), which reads as blurred and
+    // freezes the tab on screen until another tab switch re-reads it. Rendering
+    // again on foreground re-reads both answers; the screen itself is memoized.
+    const [, refocus] = useState(0);
+    useEffect(() => {
+      const sub = AppState.addEventListener('change', next => {
+        if (next === 'active') refocus(n => n + 1);
+      });
+      return () => sub.remove();
+    }, []);
     const level = useContext(PresentationLevelContext);
     const sheetPresented = useSyncExternalStore(
       useCallback((onChange: () => void) => subscribePresentation(level, onChange), [level]),
@@ -113,7 +124,10 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
     // Everything below is a no-op unless the readout is on (Settings › About):
     // every tab's wrapper renders on each tab switch, and reporting from all of
     // them cost a state write per wrapper at the moment the destination draws.
-    const diagOn = isTabDiagEnabled();
+    // Subscribed rather than read once: a wrapper that rendered before the
+    // switch went on otherwise never reports, and the readout then says
+    // NO REPORT for a tab that is fine.
+    const diagOn = useTabDiagEnabled();
     const onOuterLayout = useCallback((e: LayoutChangeEvent) => {
       if (diagOn) setOuter(sizeOf(e));
     }, [diagOn]);
@@ -140,6 +154,7 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
       }
       reportTabDiag(route.name, {
         focused,
+        container: containerTab ?? '?',
         navFocused: navigation.isFocused(),
         sheet: sheetPresented,
         want: wantFrozen,
@@ -181,6 +196,8 @@ export function freezeWhenBlurred<P extends object>(Screen: React.ComponentType<
 
 type TabDiagEntry = {
   focused: boolean;
+  /** The container's focused tab, which wins over the navigator's when it has one. */
+  container: string;
   navFocused: boolean;
   sheet: boolean;
   want: boolean;
@@ -289,7 +306,7 @@ function BlankTabReadout({ currentTab }: { currentTab: () => string | undefined 
     ? 'tab=?'
     : !entry
       ? `tab=${tab} NO REPORT mounts=${tabDiagMounts.get(tab) ?? 0}`
-      : `tab=${tab} focused=${flag(entry.focused)} nav=${flag(entry.navFocused)} sheet=${flag(entry.sheet)} ` +
+      : `tab=${tab} focused=${flag(entry.focused)} container=${entry.container} nav=${flag(entry.navFocused)} sheet=${flag(entry.sheet)} ` +
         `want=${flag(entry.want)} settled=${flag(entry.settled)} mode=${entry.mode} ${ago(entry.modeAt)} ` +
         `outer=${entry.outer} inner=${entry.inner} renders=${entry.renders} ` +
         `mounts=${tabDiagMounts.get(tab) ?? 0} commit=${ago(entry.committedAt)} thaw=${entry.thawMs ?? '?'}ms` +
