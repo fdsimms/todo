@@ -1045,10 +1045,10 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
           {!!droppedName && (
             <View style={styles.rowControlsPill}>
               <InlineAction
-                label={`Put back “${droppedName}”`}
+                label="Undo"
                 variant="neutral"
                 onPress={() => restoreMatch(at)}
-                accessibilityLabel={`Match ${match.line.label} to ${droppedName} again`}
+                accessibilityLabel={`Undo. Match ${match.line.label} to ${droppedName} again`}
                 style={styles.actionPill}
               />
             </View>
