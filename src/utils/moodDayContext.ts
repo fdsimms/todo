@@ -36,7 +36,7 @@ export interface MoodDayInputs {
   dayStart: Date;
   dayEnd: Date;
   isToday: boolean;
-  /** The real instant, for telling an event that has happened from one still to come. */
+  /** The real instant, for telling an event that has started from one still to come. */
   now: Date;
   holidays: HolidayConfig;
   /** Null when the calendar hasn't been read, which offers nothing. */
@@ -93,13 +93,12 @@ export function rainForDay(
 }
 
 /**
- * Whether an event has happened: a timed one once it has ended, an all-day one
- * once its day has begun (its end is the next midnight, and waiting for that
- * would offer it only after the day was over). A tag describes how the day
- * went, so an event still ahead of the person says nothing about it yet.
+ * Whether an event has started. A tag describes how the day went, so an event
+ * still ahead of the person says nothing about it yet; one in progress already
+ * does, which is also why an all-day event counts from the start of its day.
  */
-function eventHappened(e: BusyEvent, now: Date): boolean {
-  return Date.parse(e.allDay ? e.start : e.end) <= now.getTime();
+function eventStarted(e: BusyEvent, now: Date): boolean {
+  return Date.parse(e.start) <= now.getTime();
 }
 
 /** The tags the enabled sources offer for one day, in a stable order. */
@@ -114,7 +113,7 @@ export function moodDayOffers(sources: MoodContextSources, input: MoodDayInputs)
   if (sources.social && input.events) {
     const social = input.events.some(e =>
       e.status !== 'canceled'
-      && eventHappened(e, input.now)
+      && eventStarted(e, input.now)
       && Date.parse(e.start) >= input.dayStart.getTime()
       && Date.parse(e.start) < input.dayEnd.getTime()
       && peopleForEvent(input.eventPeople, e).length > 0);
@@ -151,7 +150,7 @@ export function moodDayOffers(sources: MoodContextSources, input: MoodDayInputs)
   if (input.events) {
     const onDay = input.events.filter(e =>
       e.status !== 'canceled'
-      && eventHappened(e, input.now)
+      && eventStarted(e, input.now)
       && Date.parse(e.start) >= input.dayStart.getTime()
       && Date.parse(e.start) < input.dayEnd.getTime());
     for (const rule of input.eventTags) {

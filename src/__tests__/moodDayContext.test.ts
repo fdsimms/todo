@@ -79,13 +79,14 @@ describe('moodDayOffers', () => {
       .not.toContain('Social event');
   });
 
-  it('offers an event only once it has happened', () => {
+  it('offers an event only once it has started', () => {
     const e = event();
     const linked = indexEventPeople([linkFor(e, ['p'])], {});
     const at = (h: number, m = 0) => base({ events: [e], eventPeople: linked, now: new Date(2026, 6, 4, h, m) });
     expect(moodDayOffers(on(), at(15))).not.toContain('Social event');
-    expect(moodDayOffers(on(), at(20))).not.toContain('Social event');
-    expect(moodDayOffers(on(), at(21))).toContain('Social event');
+    expect(moodDayOffers(on(), at(18, 59))).not.toContain('Social event');
+    expect(moodDayOffers(on(), at(19))).toContain('Social event');
+    expect(moodDayOffers(on(), at(20))).toContain('Social event');
     const allDay = event({ allDay: true, start: new Date(2026, 6, 4).toISOString(), end: new Date(2026, 6, 5).toISOString() });
     expect(moodDayOffers(on(), base({
       events: [allDay], eventPeople: indexEventPeople([linkFor(allDay, ['p'])], {}), now: new Date(2026, 6, 4, 9),
