@@ -2,20 +2,17 @@ import {
   alreadyScanned,
   classifyTypedEntry,
   itemEndsProductName,
+  itemSourceLabel,
   matchScans,
   nameFromScanFor,
   newItemBox,
   scanBoxChoice,
   scanBoxFor,
-  scanLinkTarget,
-  scanOutcome,
   scannedItemFor,
   shopperNameFor,
   sourceLabelFor,
-  sourceLineFor,
   unknownScannedItem,
   variantFor,
-  type ScanOutcomeInput,
   type ScannedItem,
 } from '../utils/scanResolve';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -217,19 +214,6 @@ describe('sourceLabelFor', () => {
   });
 });
 
-describe('sourceLineFor', () => {
-  it('prints only the maker while the name is still the lookup\'s own words', () => {
-    expect(sourceLineFor('Sweet Hot Mustard With Honey', 'Sweet Hot Mustard With Honey', 'Inglehoffer'))
-      .toBe('Inglehoffer');
-    expect(sourceLineFor(' sweet hot mustard with honey ', 'Sweet Hot Mustard With Honey', null)).toBe('');
-  });
-
-  it('prints the full source line once the name has been edited or shortened', () => {
-    expect(sourceLineFor('Honey', 'Sweet Hot Mustard With Honey', 'Inglehoffer'))
-      .toBe('Inglehoffer · Sweet Hot Mustard With Honey');
-  });
-});
-
 describe('variantFor', () => {
   it('is what is left after the maker and the item are both taken out', () => {
     expect(variantFor("Dave's Killer Bread 21 Whole Grains", "Dave's Killer", 'Bread'))
@@ -340,26 +324,6 @@ describe('matchScans', () => {
     const [match] = matchScans([scan({ name: 'Milk' })], [milk], s => (s.gtin ? milk.id : null));
     expect(match.itemId).toBe(milk.id);
     expect(match.confidence).toBe('exact');
-  });
-});
-
-describe('scanLinkTarget', () => {
-  it('sends a pick on the list down the list branch', () => {
-    const milk = makeItem({ name: 'Milk', onList: true });
-    expect(scanLinkTarget(milk)).toEqual({ onList: true, itemId: milk.id });
-  });
-
-  it('sends a pick that is merely in the catalog down the off-list branch', () => {
-    // The two branches do different things — one ticks a row off the list, the
-    // other rides an add draft — so a pick has to say which, off the item's own
-    // onList rather than off how it was chosen.
-    const flour = makeItem({ name: 'Flour', onList: false });
-    expect(scanLinkTarget(flour)).toEqual({ onList: false, itemId: flour.id });
-  });
-
-  it('shrugs at a pick that no longer resolves, so the row falls back to the matcher', () => {
-    expect(scanLinkTarget(null)).toBeNull();
-    expect(scanLinkTarget(undefined)).toBeNull();
   });
 });
 
@@ -564,53 +528,39 @@ describe('matchScans, modifier guesses', () => {
   });
 });
 
-describe('scanOutcome', () => {
-  const base: ScanOutcomeInput = {
-    included: true,
-    needsNutrition: false,
-    mode: 'new',
-    name: 'Edamame Chili Lime Flavored',
-    itemOnList: false,
-    brand: 'Biena',
-    variant: null,
-    filedAs: null,
-    nutrition: { text: '433 cal per 100g, 8 nutrients', source: 'database' },
-    hasGtin: true,
-    price: null,
-    frozen: false,
-  };
+describe('itemSourceLabel', () => {
+  const row = { onList: false, purchaseCount: 0, aisle: 'Produce' };
 
-  it('lists what a new item will save', () => {
-    const { held, lines } = scanOutcome(base);
-    expect(held).toBeNull();
-    expect(lines.map(l => l.label)).toEqual(['Item', 'Brand', 'Nutrition', 'Barcode']);
-    expect(lines[0]).toMatchObject({ text: 'Edamame Chili Lime Flavored, new', strong: true });
-    expect(lines[2].text).toBe('433 cal per 100g, 8 nutrients, from the barcode lookup');
+  it('says where a result comes from, strongest first', () => {
+    expect(itemSourceLabel({ ...row, onList: true, purchaseCount: 4 }, true)).toBe('On your list');
+    expect(itemSourceLabel({ ...row, purchaseCount: 4 }, true)).toBe('In your pantry');
+    expect(itemSourceLabel({ ...row, purchaseCount: 3 }, false)).toBe('Bought 3 times');
+    expect(itemSourceLabel({ ...row, purchaseCount: 1 }, false)).toBe('Bought 1 time');
   });
 
-  it('says an existing item keeps its name and what the scan is filed as', () => {
-    const { lines } = scanOutcome({
-      ...base,
-      mode: 'existing',
-      name: 'Lime',
-      itemOnList: true,
-      filedAs: 'Biena Edamame Chili Flavored',
+  it('falls back to the aisle for something only ever added', () => {
+    expect(itemSourceLabel(row, false)).toBe('Produce');
+  });
+});
+
+describe('scanBoxChoice, typed brand and flavor', () => {
+  const linked = { itemId: 'milk', brand: 'Whole Foods', variant: 'Whole' };
+  const base = { itemId: 'milk', itemName: 'Milk', picked: null, linked, label: 'Whole Foods Whole Milk', brand: 'Whole Foods' };
+
+  it('keeps the linked product when nothing was typed', () => {
+    expect(scanBoxChoice(base)).toMatchObject({ brand: 'Whole Foods', variant: 'Whole', source: 'linked' });
+  });
+
+  it('lets a typed brand answer over the linked one, keeping the flavor', () => {
+    expect(scanBoxChoice({ ...base, brandEdit: 'Organic Valley' })).toEqual({
+      brand: 'Organic Valley',
+      variant: 'Whole',
+      source: 'typed',
     });
-    expect(lines[0].text).toBe('Lime, on your list');
-    expect(lines.find(l => l.label === 'Filed as')?.text).toBe('Biena Edamame Chili Flavored');
-    expect(lines.find(l => l.label === 'Barcode')?.text).toBe('Remembered as Lime');
   });
 
-  it('names the freezer and the shelf price only when they apply', () => {
-    const { lines } = scanOutcome({ ...base, price: '$3.49', frozen: true });
-    expect(lines.slice(-2).map(l => l.label)).toEqual(['Price', 'Goes in']);
-    expect(scanOutcome(base).lines.some(l => l.label === 'Price' || l.label === 'Goes in')).toBe(false);
-  });
-
-  it('gives a reason instead of lines when the row will not be saved', () => {
-    expect(scanOutcome({ ...base, included: false }).held).toMatch(/Not included/);
-    expect(scanOutcome({ ...base, needsNutrition: true }).held).toMatch(/nutrition/);
-    expect(scanOutcome({ ...base, name: '  ' }).held).toMatch(/name/);
-    expect(scanOutcome({ ...base, included: false }).lines).toEqual([]);
+  it('treats an emptied field as an answer, and nothing left as no product', () => {
+    expect(scanBoxChoice({ ...base, brandEdit: '', variantEdit: '' })).toBeNull();
+    expect(scanBoxChoice({ ...base, variantEdit: '' })).toMatchObject({ brand: 'Whole Foods', variant: null });
   });
 });

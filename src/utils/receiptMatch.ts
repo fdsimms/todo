@@ -731,11 +731,11 @@ export function receiptOutcome(input: ReceiptOutcomeInput): { held: string | nul
   }
   if (input.filed > 0) {
     lines.push(
-      `${items(input.filed)} filed under ${input.filed === 1 ? 'an item' : 'items'} you already have`
+      `${items(input.filed)} matched to something you already have`
     );
   }
   if (input.created > 0) {
-    lines.push(`${items(input.created)} added as ${input.created === 1 ? 'a new item' : 'new items'}`);
+    lines.push(`${items(input.created)} added as new`);
   }
   const leftOut = input.total - going;
   if (leftOut > 0) lines.push(`${leftOut} ${leftOut === 1 ? 'line' : 'lines'} left out`);

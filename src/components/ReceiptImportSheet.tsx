@@ -24,6 +24,8 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { itemsOnList } from '../utils/groceryLists';
+import { probablyHaveReason } from '../utils/grocerySuggest';
+import { itemSourceLabel } from '../utils/scanResolve';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeader } from './SheetHeader';
@@ -292,6 +294,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   }, [catalog, listEntries, activeListId]);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const addShop = useGroceryStore(s => s.addShop);
   const setShopReceiptStyle = useGroceryStore(s => s.setShopReceiptStyle);
   const rememberAliases = useGroceryStore(s => s.rememberAliases);
@@ -683,6 +686,9 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     setShopId(shop.id);
   };
 
+  /** Whether the pantry would say it has this, by the rule the Pantry screen uses. */
+  const inPantry = (item: GroceryItem) => probablyHaveReason(item, new Date(), itemProducts) !== null;
+
   const nameFor = (itemId: string) => items.find(i => i.id === itemId)?.name ?? '';
 
   const receiptStyleOf = (id: string): ReceiptStyle =>
@@ -836,8 +842,8 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
                 // Ticked into the cart *and* only a guessed match by name: the
                 // row is going through either way, so the question worth
                 // asking is about the number, not about whether it came home.
-                ? 'Not sure this is the same item. Check the price is for this row, or choose another.'
-                : 'Not sure this is the same item. Check the box to accept it, or choose another.'}
+                ? 'Not sure this is the same thing. Check the price is for this row, or choose another.'
+                : 'Not sure this is the same thing. Check the box to accept it, or choose another.'}
             </Text>
           )}
           {/* Says why a line nothing could have matched by name is sitting on a
@@ -880,10 +886,10 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         {uncertain && (
           <View style={[styles.rowControls, styles.rowControlsPill]}>
             <InlineAction
-              label="Not this item"
+              label="Not this one"
               variant="neutral"
               onPress={() => rejectMatch(at)}
-              accessibilityLabel={`${match.line.label} is not ${name}. Choose another item`}
+              accessibilityLabel={`${match.line.label} is not ${name}. Choose something else`}
               style={styles.actionPill}
             />
           </View>
@@ -909,11 +915,11 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     const lineName = match.line.name || match.line.label;
     const status = on
       ? catalogName
-        ? `Filed under “${catalogName}”, already in your catalog.`
-        : 'Added as a new item.'
+        ? `Counts as “${catalogName}”.`
+        : 'Added as new.'
       : catalogName
-        ? `Left out. Check the box to file it under “${catalogName}”.`
-        : 'Left out. Check the box to add it as a new item.';
+        ? `Left out. Check the box to count it as “${catalogName}”.`
+        : 'Left out. Check the box to add it.';
     return (
       <View key={at} style={position > 0 ? styles.rowDivided : undefined}>
         <View style={pantry ? styles.rowLine : undefined}>
@@ -991,18 +997,18 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         <View style={styles.rowControls}>
           {showNameField && (
             <View>
-              <Text style={styles.fieldLabel}>NAME</Text>
+              <Text style={styles.fieldLabel}>{pantry ? 'NAME IN YOUR PANTRY' : 'NAME ON YOUR LIST'}</Text>
               <TextField
                 style={styles.nameInput}
                 value={nameEdits.get(at) ?? match.line.name}
                 onChangeText={text => renameFor(at, text)}
-                placeholder="Name for the new item"
+                placeholder="What is it?"
                 placeholderTextColor={colors.textTertiary}
                 // A shelf word, not prose: same reason as the
                 // barcode sheet's own name field.
                 autoCorrect={false}
                 spellCheck={false}
-                accessibilityLabel={`Name for the new item from ${match.line.label}`}
+                accessibilityLabel={`Name for ${match.line.label}`}
               />
             </View>
           )}
@@ -1011,18 +1017,18 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
             icon="link-outline"
             title={
               picked
-                ? `Matched to ${picked.name}`
+                ? `Counts as ${picked.name}`
                 : catalogName
-                  ? 'Choose a different item'
-                  : 'Match to an item you already have'
+                  ? 'Choose something else'
+                  : 'Same as something you already have?'
             }
             note={picked ? 'Tap to change' : null}
             tone={picked || catalogName ? 'plain' : 'action'}
             onPress={() => setPickingIndex(p => (p === at ? null : at))}
             accessibilityLabel={
               picked
-                ? `Change which item ${match.line.label} is`
-                : `Choose which item ${match.line.label} is`
+                ? `Change what ${match.line.label} counts as`
+                : `Search for something ${match.line.label} is the same as`
             }
             extra={
               picked ? (
@@ -1039,10 +1045,10 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
           {!!droppedName && (
             <View style={styles.rowControlsPill}>
               <InlineAction
-                label={`Put back “${droppedName}”`}
+                label="Undo"
                 variant="neutral"
                 onPress={() => restoreMatch(at)}
-                accessibilityLabel={`Match ${match.line.label} to ${droppedName} again`}
+                accessibilityLabel={`Undo. Match ${match.line.label} to ${droppedName} again`}
                 style={styles.actionPill}
               />
             </View>
@@ -1063,6 +1069,12 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
               initialQuery={lineName}
               excludeItemId={picked?.id ?? null}
               onPick={item => pickFor(at, item)}
+              hint="Searching your list, your pantry and things you have bought before."
+              describeItem={item => itemSourceLabel(item, inPantry(item))}
+              cancel={{
+                label: picked ? `Keep “${picked.name}”` : 'None of these, leave it',
+                onPress: () => setPickingIndex(null),
+              }}
             />
           </View>
         )}
@@ -1286,11 +1298,11 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
             <Text style={styles.hint}>
               {pantry
                 ? listed.length > 0
-                  ? 'These didn’t match anything you’ve bought before, or the receipt lists the same item twice. Check one to add it, or match it to an item you already have.'
-                  : 'None of these matched anything you’ve bought before. Check one to add it, or match it to an item you already have.'
+                  ? 'These didn’t match anything you’ve bought before, or the receipt lists the same item twice. Check one to add it, or match it to something you already have.'
+                  : 'None of these matched anything you’ve bought before. Check one to add it, or match it to something you already have.'
                 : listed.length > 0
-                  ? 'These didn’t match anything on your list, or your list only asked for one. Check one to add it as bought, or match it to an item you already have.'
-                  : 'None of these matched anything on your list. Check one to add it as bought, or match it to an item you already have.'}
+                  ? 'These didn’t match anything on your list, or your list only asked for one. Check one to add it as bought, or match it to something you already have.'
+                  : 'None of these matched anything on your list. Check one to add it as bought, or match it to something you already have.'}
             </Text>
             {pantry && leftAlone.length > 1 && (() => {
               const ats = leftAlone.map(r => r.at);

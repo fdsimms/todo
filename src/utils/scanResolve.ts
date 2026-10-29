@@ -223,18 +223,6 @@ export function sourceLabelFor(label: string, brand: string | null): string {
 }
 
 /**
- * What the review row prints under its name field: `sourceLabelFor`, except
- * that a name still equal to the lookup's words isn't printed twice. The line
- * exists to check an edited or shortened name against the box in hand, so while
- * the name is the source's own words it carries only the maker, if there is one.
- */
-export function sourceLineFor(name: string, label: string, brand: string | null): string {
-  const full = sourceLabelFor(label, brand);
-  if (name.trim().toLowerCase() !== label.trim().toLowerCase()) return full;
-  return brand?.trim() ?? '';
-}
-
-/**
  * Which one of the item it is, from what the product name has left over.
  *
  * "Dave's Killer Bread 21 Whole Grains" scanned onto a catalog row called
@@ -268,7 +256,7 @@ export function variantFor(
 }
 
 /** Where a scanned row's product came from. See `scanBoxChoice`. */
-export type ScanBoxSource = 'picked' | 'linked' | 'barcode';
+export type ScanBoxSource = 'typed' | 'picked' | 'linked' | 'barcode';
 
 /**
  * The product a scanned row will be filed under, and which rule chose it.
@@ -299,7 +287,28 @@ export function scanBoxChoice(args: {
    * the name has been changed to a type the product's own words don't contain.
    */
   variantEdit?: string;
+  /**
+   * What was typed in the Brand field. Like `variantEdit`, `undefined` means
+   * untouched and an empty string is an answer ("no brand").
+   */
+  brandEdit?: string;
 }): { brand: string | null; variant: string | null; source: ScanBoxSource } | null {
+  // A barcode already linked to a product outranks the lookup's words, so a
+  // Brand or Flavor typed over it has to be heard first, field by field: it is
+  // the person saying which product this is. A field left alone keeps what the
+  // link said.
+  const linkedHere = !!args.linked && args.linked.itemId === args.itemId;
+  if (linkedHere && (args.brandEdit !== undefined || args.variantEdit !== undefined)) {
+    const brand =
+      args.brandEdit !== undefined
+        ? args.brandEdit.trim().slice(0, GROCERY_BRAND_MAX_LENGTH) || null
+        : args.linked!.brand;
+    const variant =
+      args.variantEdit !== undefined
+        ? args.variantEdit.trim().slice(0, GROCERY_VARIANT_MAX_LENGTH) || null
+        : args.linked!.variant;
+    return brand || variant ? { brand, variant, source: 'typed' } : null;
+  }
   const picked = scanBoxFor(args.picked, args.itemId);
   if (picked) return { ...picked, source: 'picked' };
   if (args.linked && args.linked.itemId === args.itemId) {
@@ -310,8 +319,12 @@ export function scanBoxChoice(args: {
     args.variantEdit !== undefined
       ? args.variantEdit.trim().slice(0, GROCERY_VARIANT_MAX_LENGTH) || null
       : variantFor(args.label, args.brand, args.itemName);
-  if (!args.brand && !variant) return null;
-  return { brand: args.brand, variant, source: 'barcode' };
+  const brand =
+    args.brandEdit !== undefined
+      ? args.brandEdit.trim().slice(0, GROCERY_BRAND_MAX_LENGTH) || null
+      : args.brand;
+  if (!brand && !variant) return null;
+  return { brand, variant, source: 'barcode' };
 }
 
 /** A looked-up product as a row waiting to be reviewed. */
@@ -484,33 +497,6 @@ function withoutModifierGuesses(
 }
 
 /**
- * Where a scan row goes once the user has picked its catalog row by hand.
- *
- * **The matcher's two answers are the two answers a hand-pick has to produce
- * as well**, and that is the whole reason this exists rather than the sheet
- * branching inline. `matchReceiptLines` reports a row on the list as `itemId`
- * and a row merely in the catalog as `offListMatchId`, and every caller is
- * written against that split: the first is ticked off the list, the second
- * rides an add draft's `existingItemId`. A hand-pick can land on either kind
- * of row, so it has to say which — and the answer comes off the item's own
- * `onList`, never off how it was chosen. A pick treated as always-on-list
- * ticks a row nobody was shopping for; treated as always-off-list it adds a
- * second "bought" draft for a row already on the list.
- *
- * Null for a pick that no longer resolves, which is the ordinary
- * resolve-or-shrug this app makes at every cross-row pointer: the row simply
- * falls back to whatever the matcher read.
- */
-export type ScanLinkTarget = { onList: boolean; itemId: string };
-
-export function scanLinkTarget(
-  item: Pick<GroceryItem, 'id' | 'onList'> | null | undefined
-): ScanLinkTarget | null {
-  if (!item) return null;
-  return { onList: item.onList, itemId: item.id };
-}
-
-/**
  * The box a scan row is filed against, as the words the link layer finds one by.
  *
  * **A picked box travels as its brand and variant rather than as its id, and
@@ -576,82 +562,19 @@ export function hasTrailingSize(name: string): boolean {
   return TRAILING_SIZE.test(name.trim());
 }
 
-/** One line of what Add will do with a scanned row. */
-export interface ScanOutcomeLine {
-  label: string;
-  text: string;
-  /** The line that names the item, drawn heavier. */
-  strong?: boolean;
-}
-
-export interface ScanOutcomeInput {
-  /** Whether the row is going in. A row left unchecked is not saved at all. */
-  included: boolean;
-  /** Set while a log can't take the row yet: what it is waiting for. */
-  needsNutrition: boolean;
-  /** `'new'` mints an item; `'existing'` files the scan under one already there. */
-  mode: 'new' | 'existing';
-  /** What the item is called after Add: the typed name, or the existing item's own. */
-  name: string;
-  /** For an existing item: whether it is on the shopping list right now. */
-  itemOnList: boolean;
-  brand: string | null;
-  variant: string | null;
-  /** For an existing item: the brand and flavor the scan is filed as, already worded. */
-  filedAs: string | null;
-  /** The figures that travel with it, already worded ("433 cal per 100g, 8 nutrients"). */
-  nutrition: { text: string; source: 'catalog' | 'database' } | null;
-  hasGtin: boolean;
-  /** The shelf price already formatted, or null. */
-  price: string | null;
-  /** Goes in the freezer, in a context where that means something. */
-  frozen: boolean;
-}
-
 /**
- * What a scanned row will actually save, as plain lines for the box at the foot
- * of its editor.
- *
- * Written from the same facts the apply step reads, because the point of the box
- * is that it can't disagree with Add: an editor that shows five controls and
- * never says which of them count was the thing people couldn't follow. `held` is
- * set instead of lines when the row won't be saved at all, and says why.
+ * Where a catalog row comes from, in the words a person would use, for the line
+ * beside a search result. The search covers more than the list (history too), so
+ * a bare name would be a mystery; this says why each one is there.
  */
-export function scanOutcome(input: ScanOutcomeInput): { held: string | null; lines: ScanOutcomeLine[] } {
-  if (!input.included) return { held: 'Not included. Check the box to include it.', lines: [] };
-  if (input.needsNutrition) return { held: 'Can\u2019t be logged until it has nutrition facts.', lines: [] };
-  const name = input.name.trim();
-  if (!name) return { held: 'Needs a name before it can be included.', lines: [] };
-
-  const lines: ScanOutcomeLine[] = [];
-  if (input.mode === 'new') {
-    lines.push({ label: 'Item', text: `${name}, new`, strong: true });
-    if (input.brand) lines.push({ label: 'Brand', text: input.brand });
-    if (input.variant) lines.push({ label: 'Flavor', text: input.variant });
-  } else {
-    lines.push({
-      label: 'Item',
-      text: `${name}, ${input.itemOnList ? 'on your list' : 'already in your catalog'}`,
-      strong: true,
-    });
-    if (input.filedAs) lines.push({ label: 'Filed as', text: input.filedAs });
+export function itemSourceLabel(
+  item: Pick<GroceryItem, 'onList' | 'purchaseCount' | 'aisle'>,
+  inPantry: boolean
+): string {
+  if (item.onList) return 'On your list';
+  if (inPantry) return 'In your pantry';
+  if (item.purchaseCount > 0) {
+    return `Bought ${item.purchaseCount} ${item.purchaseCount === 1 ? 'time' : 'times'}`;
   }
-  if (input.nutrition) {
-    lines.push({
-      label: 'Nutrition',
-      text:
-        input.nutrition.source === 'database'
-          ? `${input.nutrition.text}, from the barcode lookup`
-          : 'Already on file for this item',
-    });
-  }
-  if (input.hasGtin) {
-    lines.push({
-      label: 'Barcode',
-      text: input.mode === 'new' ? 'Remembered for next time' : `Remembered as ${name}`,
-    });
-  }
-  if (input.price) lines.push({ label: 'Price', text: `${input.price} from the shelf label` });
-  if (input.frozen) lines.push({ label: 'Goes in', text: 'The freezer' });
-  return { held: null, lines };
+  return item.aisle;
 }

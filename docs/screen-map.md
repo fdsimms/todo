@@ -332,7 +332,7 @@ Where each component can appear.
 - `src/components/PressableScale.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, +35 more
 - `src/components/PrintIngredientsSheet.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/ProduceContributorsSheet.tsx` — on FoodLogScreen
-- `src/components/ProductPicker.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, app shell
+- `src/components/ProductPicker.tsx` — on FoodLogScreen
 - `src/components/ProductRatingField.tsx` — on FoodLogScreen, app shell
 - `src/components/ProductRatingOffer.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/ProductSheet.tsx` — on GroceryScreen, KitchenScreen, RecipeDetailScreen, RecipesScreen
