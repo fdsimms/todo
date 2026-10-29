@@ -30,6 +30,7 @@ two tokens, because they answer to different callers and must not share a secret
 | `TODO_DB_PATH` | The replica. Created empty if absent, then filled by the first sync. |
 | `MCP_AUTH_TOKEN` | Claude's bearer token, read-only. Unset means every MCP request is refused. |
 | `MCP_WRITE_TOKEN` | A second token that also permits writing. Unset means the server is read-only, and a read-scoped caller never even sees the write tools. |
+| `MCP_LOG_TIMING` | Set to `1` to log, per tool call, how long it waited on the sync and how long the handler ran (stderr). |
 | `SYNC_STORE_PATH` | Where payloads are kept. Unset means the store is not mounted at all. |
 | `SYNC_AUTH_TOKEN` | Your devices' bearer token, for `/sync/*`. |
 | `SYNC_URL`, `SYNC_TOKEN` | Where the *replica itself* syncs to. Usually this same server. |
@@ -88,6 +89,7 @@ only the fallback until the first sync.
 | `mood_insights` | The Mood screen's findings, held to its minimum-days rules, with those rules stated. Includes mood on the days a workout was finished against the other days since the first one (absent when Workouts is off or workout history does not reach the server). |
 | `focus_history` | Finished focus sessions over a range, as the Stats screen reads them: minutes worked and rested, how stretches ran against their plan (once there are enough), breaks taken, and each session's steps. History only: a session in progress stays on the phone. |
 | `list_errors` | Unexpected failures the phone recorded (AI requests, imports, file and photo picks), newest first: where each was caught, the error name, a trimmed message and the top of its stack. For working out why a feature failed. Read-only. |
+| `recent_timings` | How long recent tool calls took, split into the wait on the sync before a read, the wait on the push after a write, and the handler itself, with the average and slowest per tool. For working out why calls feel slow. In memory since the server last started. Read-only. |
 | `storage_report` | How much task data is stored: open and completed task counts (with the oldest completion), the completed-task retention window, and the largest areas of this server's copy by size. The phone's own file size doesn't sync, so it points to Settings › Data & reset › Storage for the exact figure. Read-only. |
 | `list_copy_flags` | Lines of on-screen copy the person flagged in the app as needing a manual pass (temporary dev tooling), with the text, screen, their note and a `find` command (`npm run copy -- --grep …`) to run in the source checkout, which lists the matching strings with file and line. |
 | `list_cookware` | The pots, pans, lids and tubs the person has weighed empty, each with its empty weight in grams and the type it is listed under. |

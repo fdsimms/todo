@@ -1526,6 +1526,12 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   blanked. It is capped at 100 rows and 30 days, is excluded from backups, and demo mode writes
   nothing. A new catch site that wants to be readable here passes its `source` to
   `describeImportError`/`describeAIError`, or calls `logError` directly.
+- **Timings are measured in the server and read back through a tool, because a model cannot read
+  stderr.** `recent_timings` (`timings.ts`) returns the last 200 calls in memory: total, the sync wait
+  before a read, the push wait after a write, and the rest (the handler). Every handler is wrapped
+  where `server.tool` registers it, and `withFresh`/`withWrite` report their waits through
+  `noteWait`, so a new tool is timed with no change of its own. Per process, never persisted.
+  `MCP_LOG_TIMING=1` also prints each call's phases to stderr.
 - **Storage is counts here and the file size only on the phone.** `storage_report`
   (`storageTools.ts`) reads the replica's own `dbStorageStats` and the task counts. The phone's
   database size (free pages included) and its recipe photos never sync, so an agent gets this

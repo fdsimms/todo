@@ -38,6 +38,7 @@ import { oauthConfigProblem, openOAuthStore, OAuthRefusal, SCOPE_READ, SCOPE_WRI
 import { installExpoSqliteShim, openReplica, type Replica } from './replica';
 import { openSyncStore, DEFAULT_RETENTION_DAYS, type SyncStore } from './syncStore';
 import { createSyncGate, READ_WAIT_MS, type SyncGate } from './syncGate';
+import { createTimingLog, noteWait, MAX_TIMINGS } from './timings';
 import {
   DEFAULT_LOG_DAYS,
   MAX_LOG_DAYS,
@@ -261,6 +262,15 @@ function json(value: unknown) {
  */
 const LINKS = appLinks(process.env.PUBLIC_URL);
 
+/**
+ * Set MCP_LOG_TIMING=1 to log how long each tool call spends waiting on the sync
+ * and running its handler, to see which of the two a slow call is paying for.
+ */
+const LOG_TIMING = !!process.env.MCP_LOG_TIMING;
+
+/** Every tool call's timing, for `recent_timings`. Module scope: the server is rebuilt per request. */
+const timingLog = createTimingLog();
+
 /** `result` with a link that opens its subject in the app, when there is one. */
 function withLink<T extends object>(result: T, link: string | undefined): T | (T & { openInApp: string }) {
   return link ? { ...result, openInApp: link } : result;
@@ -275,6 +285,12 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   // up with no change here, and one missing from the table claims nothing.
   const register = server.tool.bind(server) as (...args: unknown[]) => RegisteredTool;
   (server as unknown as { tool: (...args: unknown[]) => RegisteredTool }).tool = (...args: unknown[]) => {
+    // Time the handler (the last argument) under the tool's name; recent_timings reads the result.
+    const handler = args[args.length - 1];
+    if (typeof handler === 'function' && args[0] !== 'recent_timings') {
+      const name = String(args[0]);
+      args[args.length - 1] = (...a: unknown[]) => timingLog.time(name, async () => handler(...a));
+    }
     const tool = register(...args);
     const annotations = annotationsFor(String(args[0]));
     if (Object.keys(annotations).length > 0) tool.update({ annotations, title: annotations.title });
@@ -296,9 +312,14 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
   const gate = syncGateFor(replica);
 
   const withFresh = async <T>(fn: () => T): Promise<T> => {
+    const start = Date.now();
     await gate.fresh();
+    const synced = Date.now();
+    noteWait('sync', synced - start);
     replica.refresh();
-    return fn();
+    const result = fn();
+    if (LOG_TIMING) console.error(`[timing] read: sync wait ${synced - start}ms, refresh+handler ${Date.now() - synced}ms`);
+    return result;
   };
 
   /**
@@ -312,17 +333,22 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
    * who asked for it is indistinguishable from the call having failed.
    */
   const withWrite = async <T>(fn: () => T): Promise<T> => {
+    const start = Date.now();
     replica.refresh();
     // Previewing (see confirmWrites.ts): the same write, measured and rolled
     // back, and nothing pushed, since nothing changed.
     if (previewing) {
       const { result, effects } = replica.dryRun(fn);
       previewing.push(...effects);
+      if (LOG_TIMING) console.error(`[timing] preview: ${Date.now() - start}ms`);
       return result;
     }
     // One confirmed write is one batch in Activity (UnattendedEntry.batchId).
     const result = replica.withBatch(generateId(), fn);
+    const written = Date.now();
     await gate.afterWrite();
+    noteWait('push', Date.now() - written);
+    if (LOG_TIMING) console.error(`[timing] write: handler ${written - start}ms, push wait ${Date.now() - written}ms`);
     return result;
   };
 
@@ -1018,6 +1044,16 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       limit: z.number().int().positive().max(MAX_ERRORS).optional(),
     },
     async input => json(await withFresh(() => listErrors(replica, input)))
+  );
+
+  server.tool(
+    'recent_timings',
+    'How long recent tool calls on this server took and where the time went: for each call its total, the wait on the sync before a read, the wait on the push after a write, and the handler itself, plus the average and slowest per tool. Use it when the person says tool calls feel slow, after a few real calls. Covers the time since this server last started. Read-only.',
+    {
+      tool: z.string().optional().describe('Only calls of one tool, e.g. "list_tasks".'),
+      limit: z.number().int().positive().max(MAX_TIMINGS).optional(),
+    },
+    async input => json(timingLog.recent(input))
   );
 
   server.tool(
