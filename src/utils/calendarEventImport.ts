@@ -2,7 +2,7 @@ import { addDays } from 'date-fns/addDays';
 import { addHours } from 'date-fns/addHours';
 import type { ExtractedCalendarEvent } from '../services/aiSuggestions';
 import type { BusyEvent } from './calendarBusy';
-import type { QuickEventSeed } from '../components/QuickEventSheet';
+import type { QuickEventSeed } from '../types';
 
 /** The subset of TaskEditor's TaskDraft an imported event can fill in. */
 export interface CalendarEventDraft {
