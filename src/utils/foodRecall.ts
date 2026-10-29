@@ -8,6 +8,7 @@ import {
   currentEstimateFactor,
   estimateAmountPatch,
   estimateCount,
+  estimateWholeGrams as wholeEstimateGrams,
   keptDatabasePanel,
   MAX_ESTIMATE_MULTIPLE,
   scalePanelToAmount,
@@ -147,7 +148,8 @@ export function describedGrams(description: string): string | null {
 
 /**
  * The weight of the whole an estimate describes: the one recorded for it, or
- * else the one its confirmed words open with ("27 g (about 2 tablespoons)").
+ * else the one its confirmed words give ("27 g (about 2 tablespoons)", or the
+ * sum of weighed parts, which `estimateWholeGrams` in `foodLog.ts` reads).
  *
  * An estimate's panel carries no weight on purpose (`estimateToPanel`), but a
  * quantity that starts with grams is a weight the person confirmed, so the
@@ -155,12 +157,7 @@ export function describedGrams(description: string): string | null {
  */
 export function estimateWholeGrams(food: RecalledFood): number | null {
   const whole = wholeEstimate(food);
-  if (!whole) return null;
-  if (whole.servingGrams && whole.servingGrams > 0) return whole.servingGrams;
-  const words = whole.servingText?.trim() ?? '';
-  const match = /^(\d+(?:\.\d+)?)\s*(?:g|grams?)\b/i.exec(words);
-  const grams = match ? parseFloat(match[1]) : 0;
-  return grams > 0 ? grams : null;
+  return whole ? wholeEstimateGrams(whole) : null;
 }
 
 /**

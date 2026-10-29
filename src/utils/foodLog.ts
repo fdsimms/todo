@@ -1546,6 +1546,49 @@ export function wholeEstimate(entry: EstimatedHelping): FoodNutrition | null {
 /** A weight the words open with: "56 g (15g pepitas, 27g walnuts)". */
 const LEADING_GRAMS = /^\s*(\d+(?:[.,]\d+)?)\s*(?:g|grams?)\b/i;
 
+/** One part of a described meal that is weighed: "276 g curry (microwaved)" or "82% of 276 g curry". */
+const WEIGHED_PART = /^\s*(?:(\d+(?:[.,]\d+)?)\s*%\s*of\s+)?(\d+(?:[.,]\d+)?)\s*(?:g|grams?)\b/i;
+
+/**
+ * The weight of a meal described as a list of weighed parts, or null when any
+ * part has no weight of its own.
+ *
+ * "82% of 276 g curry (microwaved), 51 g steamed white rice" is a meal of two
+ * parts, 226.3 g and 51 g, so its whole is their sum. **Every part has to
+ * state one**: a list with an unweighed part ("1 burger, 100 g fries") has no
+ * total to be read from the words, and the sum of the parts that do would
+ * claim a weight the meal doesn't have. Commas inside parentheses belong to
+ * the part ("56 g (15g pepitas, 27g walnuts)"), so that stays one part and
+ * `LEADING_GRAMS` reads it as before.
+ */
+function weighedPartsGrams(words: string): number | null {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < words.length; i++) {
+    const ch = words[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    else if (ch === ',' && depth === 0) {
+      // A comma between digits is a decimal one ("12,5 grams").
+      if (/\d/.test(words[i - 1] ?? '') && /\d/.test(words[i + 1] ?? '')) continue;
+      parts.push(words.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(words.slice(start));
+  let total = 0;
+  for (const part of parts) {
+    const match = WEIGHED_PART.exec(part);
+    if (!match) return null;
+    const share = match[1] ? parseFloat(match[1].replace(',', '.')) / 100 : 1;
+    total += share * parseFloat(match[2].replace(',', '.'));
+  }
+  // One part with no percent is the leading-weight case, which owns that read.
+  if (parts.length === 1 && !WEIGHED_PART.exec(parts[0])![1]) return null;
+  return total > 0 ? Math.round(total * 10) / 10 : null;
+}
+
 /**
  * The weight of the whole estimated meal, for asking "how many grams" about it,
  * or null when nothing states one.
@@ -1559,6 +1602,8 @@ const LEADING_GRAMS = /^\s*(\d+(?:[.,]\d+)?)\s*(?:g|grams?)\b/i;
  */
 export function estimateWholeGrams(whole: FoodNutrition): number | null {
   if (whole.servingGrams && whole.servingGrams > 0) return whole.servingGrams;
+  const summed = weighedPartsGrams(whole.servingText ?? '');
+  if (summed !== null) return summed;
   const match = LEADING_GRAMS.exec(whole.servingText ?? '');
   const grams = match ? parseFloat(match[1].replace(',', '.')) : NaN;
   return Number.isFinite(grams) && grams > 0 ? grams : null;

@@ -955,6 +955,19 @@ describe('changing an estimate\'s amount (#2914)', () => {
       expect(estimateWholeGrams(panel('12,5 grams of rice'))).toBe(12.5);
     });
 
+    it('adds up a meal described as weighed parts', () => {
+      expect(estimateWholeGrams(panel('82% of 276 g curry (microwaved), 51 g steamed white rice'))).toBe(277.3);
+      expect(estimateWholeGrams(panel('120 g tofu, 51 g rice'))).toBe(171);
+      expect(estimateWholeGrams(panel('50% of 200 g soup'))).toBe(100);
+      // A comma inside a part's parentheses doesn't start another part.
+      expect(estimateWholeGrams(panel('56 g (15g pepitas, 27g walnuts, 14g almonds)'))).toBe(56);
+    });
+
+    it('gives no total when a part has no weight of its own', () => {
+      expect(estimateWholeGrams(panel('1 burger, 100 g fries'))).toBeNull();
+      expect(estimateWholeGrams(panel('82% of 276 g curry, a side salad'))).toBeNull();
+    });
+
     it('prefers a stored weight, and gives none when no weight leads the words', () => {
       expect(estimateWholeGrams(panel('2 slices', 300))).toBe(300);
       // A weight inside the words is a part, not the whole.
