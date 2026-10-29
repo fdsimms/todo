@@ -8,6 +8,8 @@ import { InlineAction } from './InlineAction';
 import { LazySheet } from './LazySheet';
 import { FoodLogEntrySheet } from './FoodLogEntrySheet';
 import { TextField } from './TextField';
+import { SegmentedControl } from './SegmentedControl';
+import { UNIT_OPTIONS, amountRefusal, amountText, countFromTyped, countRefusal, factorFromTyped, type AmountUnit } from './EstimateAmountSheet';
 import { UnitMenuChip, OTHER_UNIT_KEY } from './UnitMenuChip';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { useAmountOperators } from '../hooks/useAmountOperators';
@@ -32,7 +34,21 @@ import {
   type ReviewLine,
 } from '../utils/savedMealReview';
 import { confirmDiscard } from '../utils/confirmDiscard';
-import { amountExample, composeFoodAmount, convertAmountNumber, foodUnitOptionsFor, largeAmountWarning, parseFoodAmount } from '../utils/foodLog';
+import {
+  amountExample,
+  composeFoodAmount,
+  convertAmountNumber,
+  currentEstimateCount,
+  currentEstimateFactor,
+  estimateCount,
+  estimateCountNoun,
+  estimateWholeGrams,
+  foodUnitOptionsFor,
+  largeAmountWarning,
+  parseFoodAmount,
+  wholeEstimate,
+} from '../utils/foodLog';
+import { formatQuantityAmount } from '../utils/quantity';
 import { confirmLargeAmount } from '../utils/confirmLargeAmount';
 import type { FoodNutrition, MealSlot, SavedMeal, SavedMealItem } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -51,6 +67,30 @@ interface Props {
 }
 
 type PickTarget = { kind: 'replace'; key: string } | { kind: 'add' };
+
+/**
+ * What an estimated item's amount field asks in: the count its own words give
+ * ("2 slices"), else grams when the meal states a weight, else a percent. The
+ * same question `EstimateAmountSheet` asks of a logged estimate.
+ */
+function estimateAsk(item: SavedMealItem) {
+  const whole = wholeEstimate(item);
+  return {
+    counted: whole ? estimateCount(whole.servingText) : null,
+    wholeGrams: whole ? estimateWholeGrams(whole) : null,
+  };
+}
+
+/** The multiple of the whole a typed estimate amount means, or why it isn't one. */
+function typedEstimateFactor(item: SavedMealItem, text: string, unit: AmountUnit): { factor: number } | { reason: string } {
+  const { counted, wholeGrams } = estimateAsk(item);
+  if (counted) {
+    const n = countFromTyped(text, counted);
+    return n === null ? { reason: countRefusal(counted) } : { factor: n / counted.count };
+  }
+  const factor = factorFromTyped(text, unit, wholeGrams);
+  return factor === null ? { reason: amountRefusal(unit, wholeGrams) } : { factor };
+}
 
 /**
  * A saved meal opened for changes before it is logged: an amount, a food
@@ -87,6 +127,9 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
    */
   const [units, setUnits] = useState<Record<string, string>>({});
   const [numbers, setNumbers] = useState<Record<string, string>>({});
+  /** What was typed for an estimated line's amount, by line key, and the unit it is in. */
+  const [estimateTyped, setEstimateTyped] = useState<Record<string, string>>({});
+  const [estimateUnits, setEstimateUnits] = useState<Record<string, AmountUnit>>({});
   const [pickTarget, setPickTarget] = useState<PickTarget | null>(null);
   const nextKey = useRef(0);
 
@@ -98,6 +141,8 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
     setErrors({});
     setUnits({});
     setNumbers({});
+    setEstimateTyped({});
+    setEstimateUnits({});
     setPickTarget(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, meal.id]);
@@ -115,6 +160,26 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
   const clearDraft = (key: string) => {
     setDrafts(prev => { const { [key]: _gone, ...rest } = prev; return rest; });
     setErrors(prev => { const { [key]: _gone, ...rest } = prev; return rest; });
+    setEstimateTyped(prev => { const { [key]: _gone, ...rest } = prev; return rest; });
+    setEstimateUnits(prev => { const { [key]: _gone, ...rest } = prev; return rest; });
+  };
+
+  /**
+   * Applies an estimated line's typed amount as it is typed. A refused one
+   * leaves the line as it was and says why under the field; `settleDrafts`
+   * then refuses to log it, so the field and the log can't disagree.
+   */
+  const changeEstimate = (line: ReviewLine, text: string, unit: AmountUnit) => {
+    setEstimateTyped(prev => ({ ...prev, [line.key]: text }));
+    const typed = typedEstimateFactor(line.item, text, unit);
+    if ('reason' in typed) {
+      if (text.trim()) setErrors(prev => ({ ...prev, [line.key]: typed.reason }));
+      return;
+    }
+    const result = itemAtEstimateFactor(line.item, typed.factor);
+    if (!result.ok) { setErrors(prev => ({ ...prev, [line.key]: result.reason })); return; }
+    setItem(line.key, result.item);
+    setErrors(prev => { const { [line.key]: _gone, ...rest } = prev; return rest; });
   };
 
   /** Applies one line's typed amount. Returns whether the line is now settled. */
@@ -143,6 +208,16 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
     let current = lines;
     let ok = true;
     for (const line of lines) {
+      const estimateText = estimateTyped[line.key];
+      if (estimateText !== undefined && !line.removed) {
+        // Applied as it was typed, so only a refused amount is left to catch.
+        const typed = typedEstimateFactor(line.item, estimateText, estimateUnits[line.key] ?? (estimateAsk(line.item).wholeGrams ? 'grams' : 'percent'));
+        if ('reason' in typed) {
+          ok = false;
+          setErrors(prev => ({ ...prev, [line.key]: typed.reason }));
+        }
+        continue;
+      }
       const text = drafts[line.key];
       if (text === undefined || line.removed) continue;
       const typed = text.trim();
@@ -347,25 +422,79 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
                 ) : edit.kind === 'estimate' ? (
                   <View>
                     <Text style={styles.meta}>{line.item.quantity}</Text>
-                    <Text style={styles.fieldLabel}>HOW MUCH OF IT</Text>
-                    <View style={styles.choices}>
-                      {ESTIMATE_CHOICES.map(choice => (
-                        <TouchableOpacity
-                          key={choice.label}
-                          style={styles.choice}
-                          activeOpacity={interaction.activeOpacity}
-                          onPress={() => {
-                            haptics.tap();
-                            const result = itemAtEstimateFactor(line.item, choice.value);
-                            if (result.ok) { setItem(line.key, result.item); clearDraft(line.key); }
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${choice.spoken} of ${line.item.label}`}
-                        >
-                          <Text style={styles.choiceText}>{choice.label}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
+                    {(() => {
+                      const { counted, wholeGrams } = estimateAsk(line.item);
+                      const unit: AmountUnit = estimateUnits[line.key] ?? (wholeGrams ? 'grams' : 'percent');
+                      const factorNow = currentEstimateFactor(line.item);
+                      const countNow = counted ? (currentEstimateCount(line.item) ?? counted.count) : null;
+                      const text = estimateTyped[line.key]
+                        ?? (counted
+                          ? formatQuantityAmount(countNow ?? counted.count, counted.decimal)
+                          : factorNow === null ? '' : amountText(factorNow, unit, wholeGrams));
+                      const typed = typedEstimateFactor(line.item, text, unit);
+                      const pickUnit = (next: AmountUnit) => {
+                        // Keeps the amount the same amount, restated in the new unit.
+                        const factor = 'factor' in typed ? typed.factor : factorNow;
+                        setEstimateUnits(prev => ({ ...prev, [line.key]: next }));
+                        setEstimateTyped(prev => {
+                          if (factor === null) { const { [line.key]: _gone, ...rest } = prev; return rest; }
+                          return { ...prev, [line.key]: amountText(factor, next, wholeGrams) };
+                        });
+                      };
+                      return (
+                        <View>
+                          <Text style={styles.fieldLabel}>{counted ? 'HOW MUCH' : wholeGrams ? 'AMOUNT' : 'HOW MUCH OF IT'}</Text>
+                          <View style={styles.inputRow}>
+                            <TextField
+                              style={styles.inputInRow}
+                              value={text}
+                              onChangeText={t => changeEstimate(line, t, unit)}
+                              keyboardType="decimal-pad"
+                              inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
+                              returnKeyType="done"
+                              selectTextOnFocus
+                              placeholder="e.g. 150"
+                              placeholderTextColor={colors.textTertiary}
+                              accessibilityLabel={`Amount of ${line.item.label}${counted ? '' : unit === 'grams' ? ', in grams' : ', in percent of the meal'}`}
+                            />
+                            {counted ? (
+                              <Text style={styles.unitText}>
+                                {`${estimateCountNoun(counted, countFromTyped(text, counted) ?? counted.count)}${counted.rest}`}
+                              </Text>
+                            ) : wholeGrams ? (
+                              <View style={styles.unitTrack}>
+                                <SegmentedControl options={UNIT_OPTIONS} value={unit} onChange={pickUnit} label="Unit" />
+                              </View>
+                            ) : (
+                              <Text style={styles.unitText}>% of the meal</Text>
+                            )}
+                          </View>
+                          {!!error && <Text style={styles.error}>{error}</Text>}
+                          {/* With a weight or a count to type against, the shares
+                              only repeat the field in fractions. */}
+                          {!counted && !wholeGrams && (
+                            <View style={[styles.choices, styles.choicesBelow]}>
+                              {ESTIMATE_CHOICES.map(choice => (
+                                <TouchableOpacity
+                                  key={choice.label}
+                                  style={styles.choice}
+                                  activeOpacity={interaction.activeOpacity}
+                                  onPress={() => {
+                                    haptics.tap();
+                                    const result = itemAtEstimateFactor(line.item, choice.value);
+                                    if (result.ok) { setItem(line.key, result.item); clearDraft(line.key); }
+                                  }}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`${choice.spoken} of ${line.item.label}`}
+                                >
+                                  <Text style={styles.choiceText}>{choice.label}</Text>
+                                </TouchableOpacity>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })()}
                   </View>
                 ) : (
                   <View>
@@ -481,6 +610,9 @@ function makeStyles(colors: Colors) {
       color: colors.text,
       fontSize: font.md,
     },
+    unitTrack: { width: 112 },
+    unitText: { color: colors.textSecondary, fontSize: font.md },
+    choicesBelow: { marginTop: spacing.sm },
     error: { color: colors.redText, fontSize: font.sm, marginTop: spacing.xs },
     choices: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xsm },
     choice: {

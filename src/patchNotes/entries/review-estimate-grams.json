@@ -1,0 +1,4 @@
+{
+  "message": "When you review a saved meal before logging it, an estimated food now takes a typed amount instead of only fraction buttons. Type grams when the meal has a weight (\"120 g tofu, 51 g rice\" counts as 171 g), or a count like 3 slices. Meals with no weight still get a percent field.",
+  "date": "2026-10-29"
+}
