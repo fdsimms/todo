@@ -223,18 +223,6 @@ export function sourceLabelFor(label: string, brand: string | null): string {
 }
 
 /**
- * What the review row prints under its name field: `sourceLabelFor`, except
- * that a name still equal to the lookup's words isn't printed twice. The line
- * exists to check an edited or shortened name against the box in hand, so while
- * the name is the source's own words it carries only the maker, if there is one.
- */
-export function sourceLineFor(name: string, label: string, brand: string | null): string {
-  const full = sourceLabelFor(label, brand);
-  if (name.trim().toLowerCase() !== label.trim().toLowerCase()) return full;
-  return brand?.trim() ?? '';
-}
-
-/**
  * Which one of the item it is, from what the product name has left over.
  *
  * "Dave's Killer Bread 21 Whole Grains" scanned onto a catalog row called
@@ -268,7 +256,7 @@ export function variantFor(
 }
 
 /** Where a scanned row's product came from. See `scanBoxChoice`. */
-export type ScanBoxSource = 'picked' | 'linked' | 'barcode';
+export type ScanBoxSource = 'typed' | 'picked' | 'linked' | 'barcode';
 
 /**
  * The product a scanned row will be filed under, and which rule chose it.
@@ -299,7 +287,28 @@ export function scanBoxChoice(args: {
    * the name has been changed to a type the product's own words don't contain.
    */
   variantEdit?: string;
+  /**
+   * What was typed in the Brand field. Like `variantEdit`, `undefined` means
+   * untouched and an empty string is an answer ("no brand").
+   */
+  brandEdit?: string;
 }): { brand: string | null; variant: string | null; source: ScanBoxSource } | null {
+  // A barcode already linked to a product outranks the lookup's words, so a
+  // Brand or Flavor typed over it has to be heard first, field by field: it is
+  // the person saying which product this is. A field left alone keeps what the
+  // link said.
+  const linkedHere = !!args.linked && args.linked.itemId === args.itemId;
+  if (linkedHere && (args.brandEdit !== undefined || args.variantEdit !== undefined)) {
+    const brand =
+      args.brandEdit !== undefined
+        ? args.brandEdit.trim().slice(0, GROCERY_BRAND_MAX_LENGTH) || null
+        : args.linked!.brand;
+    const variant =
+      args.variantEdit !== undefined
+        ? args.variantEdit.trim().slice(0, GROCERY_VARIANT_MAX_LENGTH) || null
+        : args.linked!.variant;
+    return brand || variant ? { brand, variant, source: 'typed' } : null;
+  }
   const picked = scanBoxFor(args.picked, args.itemId);
   if (picked) return { ...picked, source: 'picked' };
   if (args.linked && args.linked.itemId === args.itemId) {
@@ -310,8 +319,12 @@ export function scanBoxChoice(args: {
     args.variantEdit !== undefined
       ? args.variantEdit.trim().slice(0, GROCERY_VARIANT_MAX_LENGTH) || null
       : variantFor(args.label, args.brand, args.itemName);
-  if (!args.brand && !variant) return null;
-  return { brand: args.brand, variant, source: 'barcode' };
+  const brand =
+    args.brandEdit !== undefined
+      ? args.brandEdit.trim().slice(0, GROCERY_BRAND_MAX_LENGTH) || null
+      : args.brand;
+  if (!brand && !variant) return null;
+  return { brand, variant, source: 'barcode' };
 }
 
 /** A looked-up product as a row waiting to be reviewed. */
@@ -484,33 +497,6 @@ function withoutModifierGuesses(
 }
 
 /**
- * Where a scan row goes once the user has picked its catalog row by hand.
- *
- * **The matcher's two answers are the two answers a hand-pick has to produce
- * as well**, and that is the whole reason this exists rather than the sheet
- * branching inline. `matchReceiptLines` reports a row on the list as `itemId`
- * and a row merely in the catalog as `offListMatchId`, and every caller is
- * written against that split: the first is ticked off the list, the second
- * rides an add draft's `existingItemId`. A hand-pick can land on either kind
- * of row, so it has to say which — and the answer comes off the item's own
- * `onList`, never off how it was chosen. A pick treated as always-on-list
- * ticks a row nobody was shopping for; treated as always-off-list it adds a
- * second "bought" draft for a row already on the list.
- *
- * Null for a pick that no longer resolves, which is the ordinary
- * resolve-or-shrug this app makes at every cross-row pointer: the row simply
- * falls back to whatever the matcher read.
- */
-export type ScanLinkTarget = { onList: boolean; itemId: string };
-
-export function scanLinkTarget(
-  item: Pick<GroceryItem, 'id' | 'onList'> | null | undefined
-): ScanLinkTarget | null {
-  if (!item) return null;
-  return { onList: item.onList, itemId: item.id };
-}
-
-/**
  * The box a scan row is filed against, as the words the link layer finds one by.
  *
  * **A picked box travels as its brand and variant rather than as its id, and
@@ -576,31 +562,6 @@ export function hasTrailingSize(name: string): boolean {
   return TRAILING_SIZE.test(name.trim());
 }
 
-/** Which screen is scanning, as far as the words about a row go. */
-export type ScanWordsContext = 'shopping' | 'pantry' | 'log';
-
-/**
- * Whether a guessed match is worth asking about: only something the person can
- * recognize on sight.
- *
- * A match is a row in the grocery catalog, which holds everything ever added or
- * bought, including things long gone. Asking "is this your Chicken Breast?"
- * about a row nobody remembers is a question with no answer. So a guess is put
- * to the person only when the thing is on the list they are shopping from, or
- * in the pantry they are stocking; anything else is added as new without a
- * question. A food log never asks from names at all: its matches come from a
- * barcode the person already linked, which is not a guess.
- */
-export function suggestionIsRecognizable(
-  context: ScanWordsContext,
-  item: Pick<GroceryItem, 'onList'>,
-  inPantry: boolean
-): boolean {
-  if (context === 'shopping') return item.onList;
-  if (context === 'pantry') return inPantry;
-  return false;
-}
-
 /**
  * Where a catalog row comes from, in the words a person would use, for the line
  * beside a search result. The search covers more than the list (history too), so
@@ -616,54 +577,4 @@ export function itemSourceLabel(
     return `Bought ${item.purchaseCount} ${item.purchaseCount === 1 ? 'time' : 'times'}`;
   }
   return item.aisle;
-}
-
-/** What made the app (or the person) say a scan is a row it already knows. */
-export type ScanEvidence = 'barcode' | 'name' | 'remembered' | 'picked';
-
-export interface ScanStatementInput {
-  context: ScanWordsContext;
-  /** Whether the row is going in. A row left unchecked is not saved at all. */
-  included: boolean;
-  /** Set while a log can't take the row yet. */
-  needsNutrition: boolean;
-  /** What it is called after Add: the typed name, or the existing row's own. */
-  name: string;
-  /** Null for a new thing, otherwise why the scan counts as one already known. */
-  evidence: ScanEvidence | null;
-}
-
-/**
- * One sentence saying what Add will do with a scanned row, or why it won't do
- * anything. Built from the same facts the apply step reads, so the editor cannot
- * promise something its fields don't do. It names the thing and the reason, and
- * uses the words of the screen (list, pantry, log) rather than the catalog's.
- */
-export function scanStatement(input: ScanStatementInput): string {
-  const name = input.name.trim();
-  if (!input.included) return 'Not included. Check the box to include it.';
-  if (input.needsNutrition) return 'Can\u2019t be logged until it has nutrition facts.';
-  if (!name) return 'Needs a name before it can be included.';
-  const goes =
-    input.context === 'shopping'
-      ? `Adds ${name} to your list.`
-      : input.context === 'pantry'
-        ? `Adds ${name} to your pantry.`
-        : `Logs ${name}.`;
-  if (!input.evidence) return goes;
-  const why =
-    input.evidence === 'barcode'
-      ? `You scanned this barcode before and chose ${name}.`
-      : input.evidence === 'picked'
-        ? `You chose ${name}.`
-        : input.evidence === 'remembered'
-          ? 'You matched this name before.'
-          : `The name matches ${name}.`;
-  const lands =
-    input.context === 'shopping'
-      ? `It goes on your list as ${name}.`
-      : input.context === 'pantry'
-        ? `It goes in your pantry as ${name}.`
-        : `It is logged as ${name}.`;
-  return `${why} ${lands}`;
 }

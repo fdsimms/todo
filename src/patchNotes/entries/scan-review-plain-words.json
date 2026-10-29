@@ -1,4 +1,4 @@
 {
-  "message": "Scanning is simpler to review. A new product shows one field, \"Name on your list\", and a sentence saying what will be added. Brand and flavor are tucked behind a link. A guess is a yes or no question, and only about something that is on your list or in your pantry. A search for something you already have now says where each result comes from. The receipt screen uses the same words.",
+  "message": "Reviewing a scan is simpler. Each scan shows three fields, Item, Brand and Flavor, filled in from the barcode or from what you already have. Type over any of them. If something you already have looks similar, it shows up under Item to tap. The freezer is a snowflake on the row. The receipt screen uses the same words.",
   "date": "2026-10-29"
 }

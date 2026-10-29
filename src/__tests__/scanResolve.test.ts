@@ -8,16 +8,11 @@ import {
   newItemBox,
   scanBoxChoice,
   scanBoxFor,
-  scanLinkTarget,
-  scanStatement,
   scannedItemFor,
   shopperNameFor,
   sourceLabelFor,
-  sourceLineFor,
-  suggestionIsRecognizable,
   unknownScannedItem,
   variantFor,
-  type ScanStatementInput,
   type ScannedItem,
 } from '../utils/scanResolve';
 import { groceryNameKey } from '../utils/groceryParse';
@@ -219,19 +214,6 @@ describe('sourceLabelFor', () => {
   });
 });
 
-describe('sourceLineFor', () => {
-  it('prints only the maker while the name is still the lookup\'s own words', () => {
-    expect(sourceLineFor('Sweet Hot Mustard With Honey', 'Sweet Hot Mustard With Honey', 'Inglehoffer'))
-      .toBe('Inglehoffer');
-    expect(sourceLineFor(' sweet hot mustard with honey ', 'Sweet Hot Mustard With Honey', null)).toBe('');
-  });
-
-  it('prints the full source line once the name has been edited or shortened', () => {
-    expect(sourceLineFor('Honey', 'Sweet Hot Mustard With Honey', 'Inglehoffer'))
-      .toBe('Inglehoffer · Sweet Hot Mustard With Honey');
-  });
-});
-
 describe('variantFor', () => {
   it('is what is left after the maker and the item are both taken out', () => {
     expect(variantFor("Dave's Killer Bread 21 Whole Grains", "Dave's Killer", 'Bread'))
@@ -342,26 +324,6 @@ describe('matchScans', () => {
     const [match] = matchScans([scan({ name: 'Milk' })], [milk], s => (s.gtin ? milk.id : null));
     expect(match.itemId).toBe(milk.id);
     expect(match.confidence).toBe('exact');
-  });
-});
-
-describe('scanLinkTarget', () => {
-  it('sends a pick on the list down the list branch', () => {
-    const milk = makeItem({ name: 'Milk', onList: true });
-    expect(scanLinkTarget(milk)).toEqual({ onList: true, itemId: milk.id });
-  });
-
-  it('sends a pick that is merely in the catalog down the off-list branch', () => {
-    // The two branches do different things — one ticks a row off the list, the
-    // other rides an add draft — so a pick has to say which, off the item's own
-    // onList rather than off how it was chosen.
-    const flour = makeItem({ name: 'Flour', onList: false });
-    expect(scanLinkTarget(flour)).toEqual({ onList: false, itemId: flour.id });
-  });
-
-  it('shrugs at a pick that no longer resolves, so the row falls back to the matcher', () => {
-    expect(scanLinkTarget(null)).toBeNull();
-    expect(scanLinkTarget(undefined)).toBeNull();
   });
 });
 
@@ -566,22 +528,6 @@ describe('matchScans, modifier guesses', () => {
   });
 });
 
-describe('suggestionIsRecognizable', () => {
-  it('asks about a thing on the list while shopping, and nothing else', () => {
-    expect(suggestionIsRecognizable('shopping', { onList: true }, false)).toBe(true);
-    expect(suggestionIsRecognizable('shopping', { onList: false }, true)).toBe(false);
-  });
-
-  it('asks about a thing in the pantry while stocking it', () => {
-    expect(suggestionIsRecognizable('pantry', { onList: false }, true)).toBe(true);
-    expect(suggestionIsRecognizable('pantry', { onList: true }, false)).toBe(false);
-  });
-
-  it('never guesses from names in a food log', () => {
-    expect(suggestionIsRecognizable('log', { onList: true }, true)).toBe(false);
-  });
-});
-
 describe('itemSourceLabel', () => {
   const row = { onList: false, purchaseCount: 0, aisle: 'Produce' };
 
@@ -597,37 +543,24 @@ describe('itemSourceLabel', () => {
   });
 });
 
-describe('scanStatement', () => {
-  const base: ScanStatementInput = {
-    context: 'shopping',
-    included: true,
-    needsNutrition: false,
-    name: 'Edamame Chili Lime Flavored',
-    evidence: null,
-  };
+describe('scanBoxChoice, typed brand and flavor', () => {
+  const linked = { itemId: 'milk', brand: 'Whole Foods', variant: 'Whole' };
+  const base = { itemId: 'milk', itemName: 'Milk', picked: null, linked, label: 'Whole Foods Whole Milk', brand: 'Whole Foods' };
 
-  it('says what a new thing adds, in the words of the screen', () => {
-    expect(scanStatement(base)).toBe('Adds Edamame Chili Lime Flavored to your list.');
-    expect(scanStatement({ ...base, context: 'pantry' })).toBe('Adds Edamame Chili Lime Flavored to your pantry.');
-    expect(scanStatement({ ...base, context: 'log' })).toBe('Logs Edamame Chili Lime Flavored.');
+  it('keeps the linked product when nothing was typed', () => {
+    expect(scanBoxChoice(base)).toMatchObject({ brand: 'Whole Foods', variant: 'Whole', source: 'linked' });
   });
 
-  it('gives the reason a scan counts as something already known', () => {
-    expect(scanStatement({ ...base, name: 'Milk', evidence: 'barcode' })).toBe(
-      'You scanned this barcode before and chose Milk. It goes on your list as Milk.'
-    );
-    expect(scanStatement({ ...base, name: 'Milk', evidence: 'picked', context: 'pantry' })).toBe(
-      'You chose Milk. It goes in your pantry as Milk.'
-    );
-    expect(scanStatement({ ...base, name: 'Milk', evidence: 'name' })).toMatch(/^The name matches Milk\./);
-    expect(scanStatement({ ...base, name: 'Milk', evidence: 'remembered', context: 'log' })).toBe(
-      'You matched this name before. It is logged as Milk.'
-    );
+  it('lets a typed brand answer over the linked one, keeping the flavor', () => {
+    expect(scanBoxChoice({ ...base, brandEdit: 'Organic Valley' })).toEqual({
+      brand: 'Organic Valley',
+      variant: 'Whole',
+      source: 'typed',
+    });
   });
 
-  it('says why a row will not be saved instead', () => {
-    expect(scanStatement({ ...base, included: false })).toMatch(/^Not included/);
-    expect(scanStatement({ ...base, needsNutrition: true })).toMatch(/nutrition/);
-    expect(scanStatement({ ...base, name: '  ' })).toMatch(/name/);
+  it('treats an emptied field as an answer, and nothing left as no product', () => {
+    expect(scanBoxChoice({ ...base, brandEdit: '', variantEdit: '' })).toBeNull();
+    expect(scanBoxChoice({ ...base, variantEdit: '' })).toMatchObject({ brand: 'Whole Foods', variant: null });
   });
 });
