@@ -280,7 +280,10 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   // Capped where the old field capped it, since that is what the request accepts.
   const description = rawDescription.slice(0, ESTIMATE_DESCRIPTION_MAX_LENGTH);
   const [estimate, setEstimate] = useState<NutritionEstimate | null>(reviewing?.estimate ?? null);
+  // What the chips show, and what the figures were last asked with. They differ
+  // while someone is still choosing; the Update button is what brings them level.
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [appliedAnswers, setAppliedAnswers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /**
@@ -523,6 +526,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
     haptics.tap();
     Keyboard.dismiss();
     setAnswers({});
+    setAppliedAnswers({});
     setQuestions([]);
     setDetailsOpen(false);
     setAmount('');
@@ -546,8 +550,8 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   // about a portion and this sheet does not, and scaling a published figure by
   // a guessed multiplier would turn a real number into an invented one.
   //
-  // Asked on the tap itself rather than behind a second "estimate again"
-  // button, so an answer reads as changing the figures, which is what it does.
+  // A chip only stages its answer, and one Update button re-asks with all of
+  // them, so a person with two questions pays for one request rather than two.
   // Clearing the last answer re-asks the plain description, not the stale
   // refinement.
   /** What a re-ask sends: the description with the typed amount and answers folded in. */
@@ -561,14 +565,21 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   const handleAnswer = (prompt: string, option: string) => {
     if (estimatedFor == null || loading) return;
     haptics.tap();
-    const previous = answers;
-    const next = { ...answers, [prompt]: answers[prompt] === option ? '' : option };
-    setAnswers(next);
+    setAnswers(current => ({ ...current, [prompt]: current[prompt] === option ? '' : option }));
+  };
+
+  /** Whether any chip differs from what the current figures were asked with. */
+  const answersPending = questions.some(q => (answers[q.prompt] ?? '') !== (appliedAnswers[q.prompt] ?? ''));
+
+  const handleUpdate = () => {
+    if (estimatedFor == null || loading || !answersPending) return;
+    haptics.tap();
+    const next = answers;
     void run(refinedText(estimatedFor, next, amount), false).then(ok => {
-      // The kept estimate still answers the old choices, so the chips go back
-      // to them rather than showing an answer the figures don't reflect. Not
-      // for a dropped answer (null): that session's chips are already gone.
-      if (ok === false) setAnswers(previous);
+      // Only a request that came back moves the figures, so a failure leaves
+      // the chips staged and the button there to try again. A dropped answer
+      // (null) belongs to a session that is already gone.
+      if (ok === true) setAppliedAnswers(next);
     });
   };
 
@@ -585,7 +596,9 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
     const previous = amount;
     setAmount(next);
     setAmountDraft(null);
-    void run(refinedText(estimatedFor, answers, next), false).then(ok => {
+    // Asked with the answers the figures already reflect, so staged chips stay
+    // staged for the Update button rather than being folded in unannounced.
+    void run(refinedText(estimatedFor, appliedAnswers, next), false).then(ok => {
       if (ok === false) setAmount(previous);
     });
   };
@@ -1480,6 +1493,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                           disabled={loading}
                           // Tapping the chosen one again clears it, so an
                           // answer given by accident is one tap to take back.
+                          // Nothing is asked until Update.
                           onPress={() => handleAnswer(q.prompt, option)}
                           accessibilityRole="button"
                           accessibilityState={{ selected: on, disabled: loading }}
@@ -1492,8 +1506,19 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                   </View>
                 </View>
               ))}
+              {answersPending && !loading && (
+                <InlineAction
+                  label="Update estimate"
+                  onPress={handleUpdate}
+                  accessibilityLabel="Update the estimate with your answers"
+                />
+              )}
               <Text style={styles.hint}>
-                {loading ? 'Updating the estimate…' : 'Answering updates the figures. Skipping is fine.'}
+                {loading
+                  ? 'Updating the estimate…'
+                  : answersPending
+                    ? 'Answer as many as you like, then update.'
+                    : 'Answering updates the figures. Skipping is fine.'}
               </Text>
             </View>
           )}
