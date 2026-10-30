@@ -8,6 +8,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useRewardStore } from '../store/useRewardStore';
 import { confirmSlip } from '../utils/slipConfirm';
+import { confirmLeaveWithOpenPrep } from '../utils/leavePrepConfirm';
 import { negativeHoldNow, negativeHoldOffered } from '../utils/negativeHold';
 import type { NegativeHold } from '../utils/negativeHabits';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -297,6 +298,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
         uncompleteTask(task.id);
         return;
       case 'complete':
+        if (!(await confirmLeaveWithOpenPrep(task, useTaskStore.getState().tasks, useSettingsStore.getState().eventRules))) return;
         await runComplete();
         return;
     }

@@ -89,7 +89,7 @@ export function describeRule(type: string, rule: LooseRule): string {
     case 'blockOffer': return `each day, offer a ${rule.minutes}-minute block for ${rule.coins} coins, ${adds}${off}`;
     case 'event': {
       const words = Array.isArray(rule.matches) ? rule.matches.map(m => `"${m}"`).join(', ') : '';
-      const when = rule.afterEvent ? 'after' : `${rule.leadDays ?? 0} day(s) before`;
+      const when = rule.afterEvent ? 'after' : rule.beforeLeaving ? 'before leaving for' : `${rule.leadDays ?? 0} day(s) before`;
       return `${when} an event titled ${words}, ${adds}${off}`;
     }
     case 'title': {
