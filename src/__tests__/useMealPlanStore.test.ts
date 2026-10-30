@@ -2452,6 +2452,38 @@ describe('meal tasks', () => {
     expect(mockTaskState.addTask).not.toHaveBeenCalled();
   });
 
+  it('a second recipe in the slot gets a task of its own', () => {
+    loadWeek();
+    plantSlotTask('2026-08-05', 'dinner');
+    const store = useMealPlanStore.getState();
+    store.planMeal({ date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Frijoles de la olla' });
+    // The first dish is the slot's own task, so nothing is added for it.
+    expect(mockTaskState.addTask).toHaveBeenCalledTimes(1);
+    mockTaskState.addTask.mockClear();
+
+    store.planMeal({ date: '2026-08-05', slot: 'dinner', recipeId: 'r2', title: 'Cornbread' });
+    const second = useMealPlanStore.getState().entries
+      .find(e => e.date === '2026-08-05' && e.slot === 'dinner' && e.title === 'Cornbread')!;
+    const extra = mockTaskState.tasks.find(
+      t => t.generatedSourceId === mealSlotSourceId('2026-08-05', 'dinner', second.id) && !t.completed
+    )!;
+    expect(extra.chainItems.map(c => c.title)).toEqual(['Make Cornbread', 'Eat Cornbread']);
+    // The first dish's task is untouched.
+    expect(slotTaskFor('2026-08-05', 'dinner')!.title).toBe('Frijoles de la olla');
+
+    // Removing the second dish takes its task with it.
+    useMealPlanStore.getState().removeEntry(second.id);
+    expect(mockTaskState.tasks.some(t => t.id === extra.id)).toBe(false);
+  });
+
+  it('a second recipe gets no task when the slot has none', () => {
+    loadWeek();
+    const store = useMealPlanStore.getState();
+    store.planMeal({ date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Frijoles de la olla' });
+    store.planMeal({ date: '2026-08-05', slot: 'dinner', recipeId: 'r2', title: 'Cornbread' });
+    expect(mockTaskState.addTask).not.toHaveBeenCalled();
+  });
+
   it('a leftover or a takeaway leaves one step and no chain at all', () => {
     loadWeek();
     plantSlotTask('2026-08-05', 'dinner');

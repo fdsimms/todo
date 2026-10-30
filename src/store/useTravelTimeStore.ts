@@ -39,6 +39,13 @@ import { useSettingsStore } from './useSettingsStore';
 interface TravelTimeState {
   estimates: TravelEstimates;
   refreshing: boolean;
+  /**
+   * True once a read has answered since launch (or since the last `clear`),
+   * including one that found nothing to ask. A row with no estimate and no
+   * answer yet is still waiting; a row with no estimate after one is a trip
+   * Apple Maps couldn't route, and says nothing.
+   */
+  settled: boolean;
   /** Estimates every upcoming travel event that has none, or a stale one, a few at a time. */
   refresh: () => Promise<void>;
   /**
@@ -73,6 +80,7 @@ export function travelOriginOfEvent(eventId: string): TravelOrigin | null {
 export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
   estimates: {},
   refreshing: false,
+  settled: false,
 
   async refresh() {
     if (isDemoModeActive()) return;
@@ -104,6 +112,7 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
     for (const [key, estimate] of Object.entries(held)) if (live.has(key)) kept[key] = estimate;
     if (wanted.length === 0) {
       if (Object.keys(kept).length !== Object.keys(held).length) set({ estimates: kept });
+      if (!get().settled) set({ settled: true });
       return;
     }
 
@@ -166,7 +175,8 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
       }
       set({ estimates: { ...kept, ...fresh } });
     } finally {
-      set({ refreshing: false });
+      // A read cut off by `clear` has answered nothing, so it settles nothing.
+      set({ refreshing: false, ...(estimateGuard.isCurrent(token) ? { settled: true } : {}) });
     }
   },
 
@@ -178,6 +188,6 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
 
   clear() {
     estimateGuard.invalidate();
-    set({ estimates: {}, refreshing: false });
+    set({ estimates: {}, refreshing: false, settled: false });
   },
 }));

@@ -622,7 +622,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
             accessibilityLabel="List"
             accessibilityState={{ checked: isList }}
           >
-            <Ionicons name="checkbox-outline" size={18} color={isList ? colors.accent : colors.textSecondary} />
+            <Ionicons name="list-outline" size={18} color={isList ? colors.accent : colors.textSecondary} />
             <View style={styles.optionContent}>
               <Text style={styles.optionLabel}>List</Text>
               <HelpText style={styles.optionHint}>

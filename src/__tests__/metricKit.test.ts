@@ -241,6 +241,15 @@ describe('formatDeviceMetrics', () => {
   });
 });
 
+describe('a report holding only metrics the page does not show', () => {
+  it('says it had nothing to print rather than that it was unreadable', () => {
+    const s = parseMetricPayload(JSON.stringify({ diskSpaceUsageMetrics: {}, timeStampBegin: '2026-10-29', timeStampEnd: '2026-10-29' }))!;
+    const text = formatDeviceMetrics([s]);
+    expect(text).toContain('No launch, memory, hang or CPU figures');
+    expect(text).not.toContain('Could not read');
+  });
+});
+
 describe('collectSummaries', () => {
   it('adds a new report and says there is something to save', () => {
     const { summaries, changed } = collectSummaries([], [payload()]);

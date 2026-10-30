@@ -984,6 +984,15 @@ re-deriving:
   remaining ones are the user's; a plan change mid-cook updates the title and the link and leaves the
   steps alone. Rewriting would have to remap the index onto a different-length list, and step 1 of
   [Choose, Prepare, Eat] has no honest answer in [Make X, Eat X].
+- **A second recipe in a slot is its own task, keyed by its entry.** The slot's own task
+  (`day#slot`) reads the first dish; each later one is `day#slot#entryId` (`mealSlotSourceId`'s
+  third argument, `parseMealSlotSource`'s `entryId`), a plain Make X → Eat X chain. Like the slot's own
+  task it is created only by the daily pass and at the moment a dish is planned or copied
+  (`createExtraMealSlotTask`), never by a reconcile, so one swiped away stays away, and a slot with
+  no task of its own gets no extras. The reconcile rewrites them and drops one whose dish was removed
+  or became the first (`reconcileExtraMealSlotTasks`). Cooking a dish readies its own task
+  (`liveMealSlotTaskFor`). Logging food in the slot still covers every task in it, since that join
+  is the slot (`loggedMealSlotTasks`).
 - **The row says which meal it is, in the meta line rather than in the title** (`mealSlotOf`, read
   off the source id — no store lookup). Only an unanswered slot names its meal in its own steps
   ("Choose lunch"); the moment something is planned the title becomes the food, and a day's three
@@ -1352,7 +1361,9 @@ argued out before it was built; read them before reopening one.
     `travelLeadFor`'s lead, and turning the switch off puts every row back on it on the next sweep.
   - **It is read only while the app is open** (`useTravelTaskSync`'s triggers), and kept in memory.
     A reminder queued the evening before carries the last estimate the app saw; nothing reads the
-    position while the app is closed.
+    position while the app is closed. A launch therefore starts with none, so a row waits on
+    `useTravelTimeStore.settled` and draws a same-size "Checking travel time" placeholder until the
+    first read answers; a trip that then has no estimate shows nothing, as before.
   - **An estimate is tied to the place and mode it answered** (`estimateFor`), so an edited
     location or a changed mode is asked again rather than reused, and one older than 20 minutes
     is refreshed for traffic. The destination is the event's map pin when it has one (a place

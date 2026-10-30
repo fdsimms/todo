@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
-import type { FoodLogEntry } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodLogEntry, type MealSlot } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -34,7 +34,7 @@ interface Props {
   /** The estimated entry being corrected. Its label is the sheet's subject. */
   entry: FoodLogEntry | null;
   /** Writes the new amount. The host closes the sheet in the same handler. */
-  onSave: (patch: EstimateAmountPatch) => void;
+  onSave: (patch: EstimateAmountPatch, slot: MealSlot | null) => void;
   onClose: () => void;
   /** The confirm button's label. "Save" by default; "Log" where the amount is for a new entry. */
   saveLabel?: string;
@@ -44,6 +44,12 @@ interface Props {
    * new entry, so the same amount can be logged as it is.
    */
   allowUnchanged?: boolean;
+  /**
+   * The meal the new entry will be filed under. Passing it (null included, for
+   * "Other") shows the "Which meal" row, opened on this value, and `onSave`
+   * receives the choice. Omitted for a correction, where the entry keeps its meal.
+   */
+  slot?: MealSlot | null;
 }
 
 /**
@@ -127,7 +133,7 @@ export function amountRefusal(unit: AmountUnit, wholeGrams: number | null): stri
  * there is no unsaved-changes guard to need. The number pad opens for the
  * stepper's digits and the typed amount alike.
  */
-export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel = BUTTON_LABEL.save, allowUnchanged = false }: Props) {
+export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel = BUTTON_LABEL.save, allowUnchanged = false, slot }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -148,12 +154,15 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
   const [countTyped, setCountTyped] = useState<string | null>(null);
 
   const wholeGrams = whole ? estimateWholeGrams(whole) : null;
+  const asksMeal = slot !== undefined;
+  const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot ?? null);
 
   useEffect(() => {
     if (!visible) return;
     setFactor(entry ? currentEstimateFactor(entry) : null);
     setTyped(null);
     setCountTyped(null);
+    setChosenSlot(slot ?? null);
     setUnit(wholeGrams ? 'grams' : 'percent');
     if (counted) setCount((entry && currentEstimateCount(entry)) ?? counted.count);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -190,7 +199,7 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
   const save = () => {
     if (!patch || unchanged) return;
     haptics.success();
-    dismiss(() => { onSave(patch); onClose(); });
+    dismiss(() => { onSave(patch, chosenSlot); onClose(); });
   };
 
   const kcal = patch?.nutrition.amounts.calorieKcal;
@@ -326,6 +335,22 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
               ))}
             </View>
           )}
+          {asksMeal && (
+            <View style={styles.mealBlock}>
+              <Text style={styles.mealLabel}>Which meal</Text>
+              <SegmentedControl<MealSlot | null>
+                options={[
+                  ...MEAL_SLOTS.map(s => ({ value: s as MealSlot | null, label: MEAL_SLOT_LABELS[s] })),
+                  { value: null, label: 'Other' },
+                ]}
+                value={chosenSlot}
+                onChange={setChosenSlot}
+                columns={3}
+                label="Which meal"
+                surface="page"
+              />
+            </View>
+          )}
           <Text style={styles.hint}>
             {counted
               ? `The estimate was ${wholeKcalText ? `${wholeKcalText} ` : ''}for ${whole?.servingText ?? ''}. The figures change with the count, so nothing is re-estimated. ${stepped ? 'Setting it back to' : 'Entering'} ${formatQuantityAmount(counted.count, counted.decimal)}${stepped ? '' : ` ${estimateCountNoun(counted, counted.count)}`} puts them back.`
@@ -407,5 +432,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   amount: { color: colors.textSecondary, fontSize: font.sm },
   partRow: { flexDirection: 'row', justifyContent: 'space-between' },
   partLabel: { flex: 1, marginRight: spacing.md },
+  mealBlock: { gap: spacing.sm, marginTop: spacing.xs },
+  mealLabel: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
   hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
 });
