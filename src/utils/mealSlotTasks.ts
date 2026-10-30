@@ -142,23 +142,37 @@ export const MEAL_SLOT_TASK_DAYS = 7;
  */
 export const DEFAULT_MEAL_SLOTS_ENABLED: readonly MealSlot[] = ['breakfast', 'lunch', 'dinner'];
 
-export function mealSlotSourceId(dayKey: string, slot: MealSlot): string {
+export function mealSlotSourceId(dayKey: string, slot: MealSlot, entryId?: string | null): string {
   // `mealSlotKey` rather than the separator inline: the food log answers "which
   // meal is this" about the same pair (`loggedMealSlotKeys`), and two identical
   // formats written out twice is how a lookup across them comes to miss.
-  return mealSlotKey(dayKey, slot);
+  //
+  // `entryId` names an *additional* dish: a slot holding two recipes has its
+  // usual `day#slot` task for the first and one `day#slot#entryId` task for
+  // each one after it. The first never takes an entry id, because its task
+  // exists before any dish does and is rewritten in place as the slot fills.
+  const key = mealSlotKey(dayKey, slot);
+  return entryId ? `${key}${SOURCE_SEP}${entryId}` : key;
 }
 
-/** The (day, slot) back out of a source id, or null if it isn't one. */
-export function parseMealSlotSource(sourceId: string | null): { dayKey: string; slot: MealSlot } | null {
+/**
+ * The (day, slot) back out of a source id, or null if it isn't one, plus the
+ * entry an additional dish's task is for (null on the slot's own task).
+ */
+export function parseMealSlotSource(
+  sourceId: string | null
+): { dayKey: string; slot: MealSlot; entryId: string | null } | null {
   if (!sourceId) return null;
   const at = sourceId.indexOf(SOURCE_SEP);
   if (at <= 0) return null;
   const dayKey = sourceId.slice(0, at);
-  const slot = sourceId.slice(at + 1) as MealSlot;
+  const rest = sourceId.slice(at + 1);
+  const next = rest.indexOf(SOURCE_SEP);
+  const slot = (next < 0 ? rest : rest.slice(0, next)) as MealSlot;
+  const entryId = next < 0 ? null : rest.slice(next + 1) || null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey)) return null;
   if (!(slot in MEAL_SLOT_SEGMENTS)) return null;
-  return { dayKey, slot };
+  return { dayKey, slot, entryId };
 }
 
 /**
@@ -471,11 +485,13 @@ export function mealSlotTaskDraft(
   entry: MealPlanEntry | null,
   category: string | null = null,
   recipeMinutes: number | null = null,
-  stepEstimates: Readonly<Record<string, number>> = {}
+  stepEstimates: Readonly<Record<string, number>> = {},
+  /** Set for the second and later dish in a slot; see `mealSlotSourceId`. */
+  extraEntryId: string | null = null
 ): Partial<TaskDraft> {
   return {
     ...mealSlotTaskFields(dayKey, slot, entry, recipeMinutes, stepEstimates),
-    ...generatedBy('mealSlot', mealSlotSourceId(dayKey, slot)),
+    ...generatedBy('mealSlot', mealSlotSourceId(dayKey, slot, extraEntryId)),
     chainIndex: 0,
     category,
   };

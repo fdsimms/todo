@@ -72,7 +72,13 @@ beforeEach(() => { seq = 0; });
 describe('source ids', () => {
   it('round-trips a day and a slot', () => {
     expect(mealSlotSourceId('2026-08-22', 'lunch')).toBe('2026-08-22#lunch');
-    expect(parseMealSlotSource('2026-08-22#lunch')).toEqual({ dayKey: '2026-08-22', slot: 'lunch' });
+    expect(parseMealSlotSource('2026-08-22#lunch')).toEqual({ dayKey: '2026-08-22', slot: 'lunch', entryId: null });
+  });
+
+  it('names the dish on an additional dish\'s task', () => {
+    expect(mealSlotSourceId('2026-08-22', 'dinner', 'e2')).toBe('2026-08-22#dinner#e2');
+    expect(parseMealSlotSource('2026-08-22#dinner#e2'))
+      .toEqual({ dayKey: '2026-08-22', slot: 'dinner', entryId: 'e2' });
   });
 
   it('refuses anything that isn\'t one', () => {
