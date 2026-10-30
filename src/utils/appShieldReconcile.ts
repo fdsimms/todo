@@ -1,4 +1,4 @@
-import { gateGroupFor, nextPendingGate, outstandingGates } from './appGate';
+import { gateGroupFor, isGateTask, nextPendingGate, outstandingGates } from './appGate';
 import { shieldGroupIds, shieldReasons, syncAppShield, type AppShieldState, type ShieldReasonEntry } from './appShield';
 import { isFocusReleased, isGateReleased } from './shieldRelease';
 import { canLock } from './nfcKey';
@@ -123,7 +123,7 @@ function buildShieldState(now: Date): AppShieldState {
   // released gate is left out for the same reason: a window armed for it would
   // raise the shield at the moment it was released from.
   const pending = nextPendingGate(
-    tasks.filter(t => !isHiddenForVacation(t) && !isGateReleased(t.id, releases)),
+    tasks.filter(t => isGateTask(t) && !isHiddenForVacation(t) && !isGateReleased(t.id, releases)),
     task => getVisibleAt(task, pass),
     now,
   );

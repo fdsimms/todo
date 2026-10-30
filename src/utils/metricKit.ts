@@ -257,6 +257,11 @@ function counted(n: number, singular: string, plural: string): string {
   return `${n} ${n === 1 ? singular : plural}`;
 }
 
+/** Top-level keys of a MetricKit payload that are metadata or a metric this report doesn't print. */
+const UNSHOWN_REPORT_KEYS: ReadonlySet<string> = new Set([
+  'timeStampBegin', 'timeStampEnd', 'appVersion', 'metaData', 'diskSpaceUsageMetrics',
+]);
+
 /** The report section a person copies. Newest first. */
 export function formatDeviceMetrics(summaries: readonly DeviceMetricSummary[]): string {
   const lines = ['Device metrics from iOS (MetricKit)'];
@@ -285,7 +290,15 @@ export function formatDeviceMetrics(summaries: readonly DeviceMetricSummary[]): 
     if (s.peakMemoryMb !== null) lines.push(`  Peak memory: ${s.peakMemoryMb} MB`);
     if (s.cpuSeconds !== null) lines.push(`  CPU time: ${s.cpuSeconds} s`);
     if (lines.length === before) {
-      lines.push(`  Could not read this report. Its top-level keys: ${s.topKeys.join(', ') || 'none'}`);
+      // A report that held only metrics this page doesn't show (disk use) is
+      // readable and merely has nothing to say here; anything else is a shape
+      // this parser doesn't know.
+      const known = s.topKeys.every(k => UNSHOWN_REPORT_KEYS.has(k));
+      lines.push(
+        known && s.topKeys.length > 0
+          ? `  No launch, memory, hang or CPU figures in this report. It held: ${s.topKeys.join(', ')}`
+          : `  Could not read this report. Its top-level keys: ${s.topKeys.join(', ') || 'none'}`
+      );
     }
     if (s.launchSample) lines.push(`  Launch section, unread: ${s.launchSample}`);
   }
