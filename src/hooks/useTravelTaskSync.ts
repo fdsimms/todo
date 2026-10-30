@@ -3,6 +3,7 @@ import { AppState, Platform } from 'react-native';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { leavePrepSignature } from '../utils/leavePrep';
 import {
   TRANSIT_SNAPSHOT_STALE_MS,
   transitReadWanted,
@@ -69,7 +70,22 @@ export function useTravelTaskSync(): void {
     const unsubscribeTransit = useTransitStore.subscribe((state, prev) => {
       if (state.snapshot !== prev.snapshot) check();
     });
+    // A prep task ticked off (or written) changes its Leave row's notes and
+    // reminder. The signature is empty unless a rule is tied to leaving, so
+    // this costs nothing on a task write for anyone not using it.
+    let prepSignature = leavePrepSignature(useTaskStore.getState().tasks, useSettingsStore.getState().eventRules);
+    const unsubscribePrep = useTaskStore.subscribe((state, prev) => {
+      if (state.tasks === prev.tasks) return;
+      const next = leavePrepSignature(state.tasks, useSettingsStore.getState().eventRules);
+      if (next === prepSignature) return;
+      prepSignature = next;
+      check();
+    });
     const unsubscribeSettings = useSettingsStore.subscribe((state, prev) => {
+      if (state.eventRules !== prev.eventRules) {
+        prepSignature = leavePrepSignature(useTaskStore.getState().tasks, state.eventRules);
+        check();
+      }
       if (
         state.travelTasks !== prev.travelTasks ||
         state.travelLeadMinutes !== prev.travelLeadMinutes ||
@@ -117,6 +133,7 @@ export function useTravelTaskSync(): void {
         unsubscribeCalendar();
         unsubscribeTransit();
         unsubscribeEstimates();
+        unsubscribePrep();
         unsubscribeSettings();
       };
     }
@@ -151,6 +168,7 @@ export function useTravelTaskSync(): void {
       unsubscribeCalendar();
       unsubscribeTransit();
       unsubscribeEstimates();
+      unsubscribePrep();
       unsubscribeSettings();
       subscription.remove();
       stopInterval();

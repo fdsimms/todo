@@ -1965,6 +1965,14 @@ export function seedDemoData(): void {
       skipIfUpcoming: true,
       enabled: true,
     },
+    {
+      id: generateId(),
+      matches: ['Dentist'],
+      title: 'Bring insurance card',
+      leadDays: 0,
+      beforeLeaving: true,
+      enabled: true,
+    },
   ];
   useSettingsStore.getState().setEventRules(eventRules);
   const [packRule] = eventRules;
@@ -2021,13 +2029,23 @@ export function seedDemoData(): void {
   const demoLeaveAt = new Date(demoDentistStart.getTime() - TRAVEL_LEAD_MINUTES_DEFAULT * 60 * 1000);
   addTask({
     title: travelTaskTitle('Dentist'),
-    notes: demoAlertHeadline,
+    notes: `Still open: Bring insurance card\n${demoAlertHeadline}`,
     dueDate: today.toISOString(),
     reminderTime: demoLeaveAt.toISOString(),
     windowEnd: dateToHHMM(demoDentistStart),
     location: '123 Court St, Brooklyn',
     category: 'Leave By',
     ...generatedBy('travel', travelSourceId(demoDentist)),
+  });
+  // The prep task tied to that Leave row (the last rule above): the same
+  // occurrence key, so the row lists it while it is open. Its notes carry the
+  // line the sweep would write, since the sweep refuses in demo mode.
+  const demoPrepRule = eventRules[eventRules.length - 1];
+  addTask({
+    title: demoPrepRule.title,
+    dueDate: today.toISOString(),
+    category: 'Calendar',
+    ...generatedBy('eventTask', eventTaskSourceId(eventOccurrenceKey(demoDentist), demoPrepRule.id)),
   });
 
   // A wake-up task for an early event tomorrow, seeded directly like the

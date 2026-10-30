@@ -143,6 +143,7 @@ import { initDatabase, isUsingDemoDatabase } from '../db/database';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getDeadlineFromOffset, getLogicalToday } from '../utils/dateUtils';
 import { eventTaskRuleIdOf } from '../utils/eventTasks';
 import { TRAVEL_LEAD_MINUTES_DEFAULT, travelDisruptionNote, travelSourceOf, travelSourceStart } from '../utils/travelTasks';
+import { openLeavePrep } from '../utils/leavePrep';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
@@ -5228,6 +5229,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const note = travelDisruptionNote(
       task!, useTransitStore.getState().snapshot, settings.transitLines, Date.now(), Number.POSITIVE_INFINITY);
     expect(note).toBe('L running local');
+
+    // A prep task tied to leaving, listed on the Leave row while it is open.
+    const tiedRule = settings.eventRules.find(r => r.beforeLeaving === true);
+    expect(tiedRule).toBeDefined();
+    const open = openLeavePrep(task!, tasks, settings.eventRules);
+    expect(open.map(t => t.title)).toEqual([tiedRule!.title]);
 
     // The reminder is the event's start less the default lead, and the row
     // expires at the start: the two fields the sweep writes, reached without

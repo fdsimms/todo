@@ -763,6 +763,15 @@ export interface EventTaskRule extends RuleTaskEstimate, RuleTaskCategory, RuleT
    * Ignored on a rule that fires ahead of its event.
    */
   skipIfUpcoming?: boolean;
+  /**
+   * The task has to be done before leaving for the event: it lands on the
+   * event's own day (`leadDays` is stored as 0), and the event's "Leave for X"
+   * row names it while it is open and asks before it is ticked. Linked by the
+   * shared occurrence key, so there is no field on the task. Does nothing for
+   * an event with no location, which gets no Leave row. Ignored with
+   * `afterEvent`. See `leavePrep.ts`.
+   */
+  beforeLeaving?: boolean;
   // Off keeps the rule written down but stops it firing, same as WeatherRule.
   enabled: boolean;
 }

@@ -1508,6 +1508,29 @@ writing nothing. Both are gated now through `CALENDAR_READ_KINDS`, the one list 
 Settings' `blockedBy` read, and `generatedTasks.test.ts` fails if a pass's calendar refusal and that
 list disagree.
 
+### Tasks tied to leaving (`EventTaskRule.beforeLeaving`)
+
+An event rule can be marked "Before leaving" ("Bring glasses" on an Optometrist event). Its task
+lands on the event's own day, and the event's "Leave for X" row lists it while it is open
+(`src/utils/leavePrep.ts`): a line on the row, the same line at the top of the row's notes and so
+of its reminder, and a confirm on the tick.
+
+- **The link is the occurrence key, not a field.** An event task's source id is
+  `${occurrenceKey}#${ruleId}` and a travel task's is `${occurrenceKey}`, so `openLeavePrep` derives
+  the pairing from rows that exist. A column would be a second copy to keep in step with the event
+  moving, and would owe the `TemplateItem` parity decision for a relationship only generated rows have.
+  A row keyed under the pre-server-id local key is simply not linked.
+- **It informs and asks; it never blocks.** Nothing in the app may require an answer, and a hard stop is
+  wrong for someone already wearing the glasses. `confirmLeaveWithOpenPrep` runs from the task row and
+  the standalone checkbox. The widget, a Live Activity's Done and the bulk bar skip it: there is no row
+  on screen to ask from, and the reminder has already named what is open.
+- **The notes are how the reminder follows a tick.** `checkTravelTasks` writes the open-prep line into
+  the Leave row's `notes` (ahead of the MTA headline), and the patch reschedules the reminder through
+  `updateTask`. `useTravelTaskSync` re-runs the sweep when `leavePrepSignature` changes, which is empty
+  unless a rule is tied to leaving, so an ordinary task write costs nothing.
+- **No location, no Leave row, no link.** The task is still written on the day of the event; there is just
+  nothing to list it on.
+
 ## `wakeUp` — when to get up for an early start, and the alarm for it
 
 Tomorrow's first timed event can need you up before your usual wake-up. When it does, a task says

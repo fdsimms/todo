@@ -470,6 +470,7 @@ import {
   travelSourceOf,
   travelTaskTitle,
 } from '../utils/travelTasks';
+import { leavePrepLine, openLeavePrep } from '../utils/leavePrep';
 import { describeDisruptions, disruptionHeadlines, journeyDisruptions } from '../utils/transitAlerts';
 import { carryClockTime, dateToHHMM, onLogicalDay } from '../utils/clockTime';
 import { deadlineOnto, reminderOnto as reminderOntoDay, skipPatch } from '../utils/taskSkip';
@@ -8381,9 +8382,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         transit, settings.transitLines, leaveMs, startMs, nowMs, +addDays(getCurrentDayStart(), 1));
       const note = describeDisruptions(disruptions) ?? '';
       const title = travelTaskTitle(match.event.title);
-      // The MTA's own wording, which is where the stops are named. The notes
-      // of a "Leave for" row are this and nothing else (it is a notice).
-      const notes = disruptionHeadlines(disruptions) ?? '';
+      // What is still open before leaving (leavePrep.ts), then the MTA's own
+      // wording, which is where the stops are named. The notes of a "Leave
+      // for" row are these notices and nothing else, and the reminder's body
+      // carries them, so a prep task ticked off re-schedules it with the line gone.
+      const prepLine = leavePrepLine(openLeavePrep(
+        { generatedKind: 'travel', generatedSourceId: match.sourceId }, get().tasks, settings.eventRules));
+      const notes = [prepLine, disruptionHeadlines(disruptions)].filter(Boolean).join('\n');
 
       reconcileGeneratedTask({
         kind: 'travel',

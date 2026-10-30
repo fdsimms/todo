@@ -68,6 +68,8 @@ import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMoveP
 import { describeReschedule } from '../utils/rescheduleLabel';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { confirmSlip } from '../utils/slipConfirm';
+import { leavePrepLine, openLeavePrep } from '../utils/leavePrep';
+import { confirmLeaveWithOpenPrep } from '../utils/leavePrepConfirm';
 import { scheduleCompletionTimer } from '../utils/notifications';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import {
@@ -878,6 +880,13 @@ const TaskItemRow = React.memo(function TaskItem({
     if (task.generatedKind !== 'travel' || !transitAlertsOn) return null;
     return travelDisruptionNote(task, s.snapshot, transitLines, Date.now(), +addDays(getCurrentDayStart(), 1));
   });
+  // What is still open before leaving, on a "Leave for" row only (the rule is
+  // tied to leaving in Event rules). A string, so only a change to the line
+  // re-renders the row.
+  const eventRules = useSettingsStore(s => s.eventRules);
+  const leavePrep = useTaskStore(s => (
+    task.generatedKind === 'travel' ? leavePrepLine(openLeavePrep(task, s.tasks, eventRules)) : null
+  ));
   const travelSource = task.generatedKind === 'travel' ? task.generatedSourceId : null;
   const canOpenTravelEvent = !!travelSource && travelSourceEventId(travelSource) !== null && !isDemoModeActive();
   const handleOpenTravelEvent = async () => {
@@ -2797,6 +2806,9 @@ const TaskItemRow = React.memo(function TaskItem({
       );
       return;
     }
+    // A "Leave for" row with its prep still open asks first; Go back leaves it
+    // exactly as it was.
+    if (!(await confirmLeaveWithOpenPrep(task, useTaskStore.getState().tasks, eventRules))) return;
     await runCompletion();
   };
 
@@ -3263,7 +3275,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // Whether the meta row has anything to show besides the notes and deadline
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
-  const hasOtherMeta = morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
+  const hasOtherMeta = morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
   const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !deadlineOnMeta;
 
@@ -4115,6 +4127,17 @@ const TaskItemRow = React.memo(function TaskItem({
                     if (choice) handleTravelChoice(choice);
                   }}
                 />
+              </View>
+            )}
+            {/* The prep tasks that have to be done before walking out. Same
+                line-of-its-own treatment as the notice below, in the plain
+                meta colour: it is a to-do, not a warning. */}
+            {leavePrep !== null && (
+              <View style={styles.metaChip} accessibilityLabel={leavePrep}>
+                <Ionicons name="alert-circle-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={2}>
+                  {leavePrep}
+                </Text>
               </View>
             )}
             {/* What the MTA says about this trip. On its own line (basis 100%)
