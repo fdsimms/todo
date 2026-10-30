@@ -984,6 +984,15 @@ re-deriving:
   remaining ones are the user's; a plan change mid-cook updates the title and the link and leaves the
   steps alone. Rewriting would have to remap the index onto a different-length list, and step 1 of
   [Choose, Prepare, Eat] has no honest answer in [Make X, Eat X].
+- **A second recipe in a slot is its own task, keyed by its entry.** The slot's own task
+  (`day#slot`) reads the first dish; each later one is `day#slot#entryId` (`mealSlotSourceId`'s
+  third argument, `parseMealSlotSource`'s `entryId`), a plain Make X → Eat X chain. Like the slot's own
+  task it is created only by the daily pass and at the moment a dish is planned or copied
+  (`createExtraMealSlotTask`), never by a reconcile, so one swiped away stays away, and a slot with
+  no task of its own gets no extras. The reconcile rewrites them and drops one whose dish was removed
+  or became the first (`reconcileExtraMealSlotTasks`). Cooking a dish readies its own task
+  (`liveMealSlotTaskFor`). Logging food in the slot still covers every task in it, since that join
+  is the slot (`loggedMealSlotTasks`).
 - **The row says which meal it is, in the meta line rather than in the title** (`mealSlotOf`, read
   off the source id — no store lookup). Only an unanswered slot names its meal in its own steps
   ("Choose lunch"); the moment something is planned the title becomes the food, and a day's three

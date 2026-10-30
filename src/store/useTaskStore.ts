@@ -1173,8 +1173,11 @@ function mealLogRecord(entries: readonly FoodLogEntry[]): MealLogRecord {
 function mealSlotEntryId(task: Task): string | null {
   const source = parseMealSlotSource(generatedSourceOf(task, 'mealSlot'));
   if (!source) return null;
-  const entries = dbGetMealPlanEntries(source.dayKey, source.dayKey);
-  return entriesForSlot(entries, source.dayKey, source.slot)[0]?.id ?? null;
+  const entries = entriesForSlot(dbGetMealPlanEntries(source.dayKey, source.dayKey), source.dayKey, source.slot);
+  // An additional dish's task is for its own entry, and only while it is still
+  // in the slot; the slot's own task is for whatever comes first.
+  if (source.entryId) return entries.some(e => e.id === source.entryId) ? source.entryId : null;
+  return entries[0]?.id ?? null;
 }
 
 /**
@@ -1243,6 +1246,29 @@ function writeMealSlotTasks(
       // so the ledger entry that path records has to be made here — see the
       // note on the one in generatedTaskSync.ts.
       if (record) useUnattendedStore.getState().recordGenerated('created', created);
+      // A second recipe in the slot is its own dish to make, so it gets its own
+      // task rather than being folded into the first one's chain. Only written
+      // here, beside the slot's own task: the pass visits each day once, which
+      // is what keeps one the user deleted from coming back.
+      for (const extra of entriesForSlot(entries, dayKey, slot).slice(1)) {
+        if (extra.cookTask === false || extra.cookedAt) continue;
+        const extraSource = mealSlotSourceId(dayKey, slot, extra.id);
+        const latest = useTaskStore.getState().tasks;
+        if (hasAnyGeneratedTask(latest, 'mealSlot', extraSource)) continue;
+        const plannedExtra = slotEntryForTask(extra, library);
+        const extraRecipe = plannedExtra?.recipeId
+          ? library.recipes.find(r => r.id === plannedExtra.recipeId)
+          : undefined;
+        const createdExtra = useTaskStore.getState().addTask(
+          mealSlotTaskDraft(
+            dayKey, slot, plannedExtra, category, extraRecipe ? totalMinutes(extraRecipe) : null,
+            useSettingsStore.getState().mealSlotStepEstimates, extra.id
+          ),
+          derivedId(spawnSeed.generated('mealSlot', extraSource, generatedTaskCountOf(latest, 'mealSlot', extraSource))),
+          { skipCategoryDefault: true, skipTitleRules: true },
+        );
+        if (record) useUnattendedStore.getState().recordGenerated('created', createdExtra);
+      }
     }
   }
 }
