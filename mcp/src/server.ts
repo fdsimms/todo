@@ -3387,12 +3387,16 @@ function registerWriteTools(
 
   server.tool(
     'update_leftover',
-    "Change a container of cooked food (leftoverId of a list_pantry row): rename it, say when it was put away (its keep-for window moves with it), record what it weighs, freeze or thaw it (thawing restarts its fridge clock), finish it as eaten or tossed, reopen one that was finished (finished: null), or set how many days it keeps from the day it was stored. Eating one on the phone offers to log the meal; that offer does not happen here, so log_food separately if asked.",
+    "Change a container of cooked food (leftoverId of a list_pantry row): rename it, say when it was put away (its keep-for window moves with it), record what it weighs, record what the whole container contains (nutrition, so the food log can log it from the fridge with real figures), freeze or thaw it (thawing restarts its fridge clock), finish it as eaten or tossed, reopen one that was finished (finished: null), or set how many days it keeps from the day it was stored. Eating one on the phone offers to log the meal; that offer does not happen here, so log_food separately if asked.",
     {
       id: z.string().min(1),
       title: z.string().min(1).optional(),
       storedAt: z.string().optional().describe('When it was put away: an ISO date-time, or YYYY-MM-DD for noon that day.'),
       weightG: z.number().positive().nullable().optional().describe('What the container holds, in grams; null for unweighed.'),
+      nutrition: z.object({
+        amounts: z.record(z.number()).describe(`The whole container's figures, keyed ${NUTRIENT_KEY_LIST.join(', ')}. Leave out what is unknown: absent is not zero.`),
+        estimated: z.boolean().optional().describe('True (the default) when the figures are an estimate rather than read off a label.'),
+      }).nullable().optional().describe('What the whole container contains, so logging it from the fridge writes real figures; null clears them. Not needed for one made from a recipe. Read list_pantry first: this replaces any figures it shows.'),
       frozen: z.boolean().optional(),
       finished: z.enum(['eaten', 'tossed']).nullable().optional(),
       keepDays: z.number().int().positive().max(365).optional(),

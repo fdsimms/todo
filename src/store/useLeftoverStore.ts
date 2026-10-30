@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Leftover, LeftoverOutcome } from '../types';
+import type { FoodNutrition, Leftover, LeftoverOutcome } from '../types';
 import {
   dbGetAllLeftovers,
   dbInsertLeftover,
@@ -108,6 +108,8 @@ interface LeftoverStore extends UndoHistoryActions {
    * weighing zero would be a fraction of nothing. See `Leftover.weightG`.
    */
   setLeftoverWeight: (id: string, grams: number | null) => void;
+  /** Sets or clears the container's own nutrition panel. See `Leftover.nutrition`. */
+  setLeftoverNutrition: (id: string, nutrition: FoodNutrition | null) => void;
   /**
    * Puts this container in the freezer, or takes it back out.
    *
@@ -376,6 +378,12 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     const leftover = get().leftovers.find(l => l.id === id);
     if (!leftover) return;
     save(set, { ...leftover, weightG: clampCookedWeight(grams) });
+  },
+
+  setLeftoverNutrition(id, nutrition) {
+    const leftover = get().leftovers.find(l => l.id === id);
+    if (!leftover) return;
+    save(set, { ...leftover, nutrition });
   },
 
   finishLeftover(id, outcome) {

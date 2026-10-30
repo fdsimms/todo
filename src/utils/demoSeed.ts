@@ -122,6 +122,7 @@ import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
 import { generateId } from './id';
 import { writeAgentNotes } from './agentNotes';
+import { containerPanelFromAmounts } from './leftoverFigures';
 import { useAlarmStore } from '../store/useAlarmStore';
 
 // Seeds a whole plausible-looking task list into whatever database is
@@ -6279,6 +6280,14 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     storedAt: subDays(today, 1).toISOString(),
     keepDays: 1,
     weightG: 300,
+  });
+  // A takeaway with no recipe, carrying its own estimated figures: the fridge
+  // block in "What did you eat?" logs it with these.
+  logLeftover({
+    title: 'Massaman curry',
+    storedAt: subDays(today, 1).toISOString(),
+    keepDays: 3,
+    nutrition: containerPanelFromAmounts({ calorieKcal: 720, proteinG: 32, carbsG: 58, fatG: 38 }, { estimated: true }),
   });
   logLeftover({
     title: 'Carrot cake',

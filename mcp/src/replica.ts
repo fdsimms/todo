@@ -906,6 +906,8 @@ export interface LeftoverChange {
   storedAt?: Date;
   /** What it holds, in grams, or null for unweighed. */
   weightG?: number | null;
+  /** The whole container's figures, or null to clear them. */
+  nutrition?: import('../../src/types').FoodNutrition | null;
   frozen?: boolean;
   /** Finish it, or null to reopen one that was finished. */
   finished?: 'eaten' | 'tossed' | null;
@@ -7736,6 +7738,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           if (change.weightG !== null && !(change.weightG > 0)) throw new Error('weightG is a weight in grams above zero, or null for unweighed.');
           save({ ...row, weightG: mealLogUtils().clampCookedWeight(change.weightG) });
         }
+        if (change.nutrition !== undefined) save({ ...row, nutrition: change.nutrition });
         if (change.frozen !== undefined) save(pantryWrite.leftoverFrozenRow(row, change.frozen, nowIso));
         if (change.finished === null) save(pantryWrite.leftoverReopenedRow(row));
         else if (change.finished) {

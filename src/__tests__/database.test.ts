@@ -4448,6 +4448,7 @@ describe('leftovers', () => {
       outcome: null,
       frozenAt: null,
       weightG: null,
+      nutrition: null,
       createdAt: '2026-08-10T09:00:00.000Z',
       useUpTask: null,
       ...overrides,
@@ -4464,6 +4465,23 @@ describe('leftovers', () => {
     dbInsertLeftover(chilli);
 
     expect(dbGetAllLeftovers()).toEqual([chilli]);
+  });
+
+  it('round-trips a nutrition panel on the container, and clears it', () => {
+    const panel: FoodNutrition = {
+      basis: 'perServing', servingGrams: null, servingText: 'whole container', amounts: { calorieKcal: 720 },
+      source: 'estimated', sourceId: null, portions: [], recordedAt: '2026-08-10T09:00:00.000Z',
+    };
+    const curry = makeLeftover({ title: 'Curry', nutrition: panel });
+    dbInsertLeftover(curry);
+    expect(dbGetAllLeftovers()[0].nutrition).toEqual(panel);
+
+    dbUpdateLeftover({ ...curry, nutrition: null });
+    expect(dbGetAllLeftovers()[0].nutrition).toBeNull();
+
+    // A garbled column reads as no figures, never a half panel.
+    mockRawDb.exec(`UPDATE leftovers SET nutrition = 'not json' WHERE id = '${curry.id}'`);
+    expect(dbGetAllLeftovers()[0].nutrition).toBeNull();
   });
 
   it('round-trips a closed-out one', () => {

@@ -95,6 +95,7 @@ function makeLeftover(overrides: Partial<Leftover> & { title: string }): Leftove
     outcome: null,
     frozenAt: null,
     weightG: null,
+    nutrition: null,
     createdAt: daysAgo(2),
     useUpTask: null,
     ...overrides,

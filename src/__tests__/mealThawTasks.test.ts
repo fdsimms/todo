@@ -76,7 +76,7 @@ function leftover(overrides: Partial<Leftover> = {}): Leftover {
   return {
     id: `lo-${++seq}`, title: 'Chili', recipeId: null, sourceEntryId: null,
     storedAt: '2026-08-01T18:00:00.000Z', keepUntil: '2026-08-05', finishedAt: null, outcome: null,
-    frozenAt: '2026-08-02T09:00:00.000Z', weightG: null, createdAt: '2026-08-01T18:00:00.000Z',
+    frozenAt: '2026-08-02T09:00:00.000Z', weightG: null, nutrition: null, createdAt: '2026-08-01T18:00:00.000Z',
     useUpTask: null, ...overrides,
   };
 }

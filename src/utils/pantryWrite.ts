@@ -17,7 +17,7 @@
  * catch-up sweep (`reconcileAllUseUpTasks`) brings it into line off the rows
  * alone, the same split `update_meal` makes for a meal's cook task.
  */
-import type { GroceryItem, GroceryListEntry, ItemProduct, Leftover, LeftoverOutcome } from '../types';
+import type { FoodNutrition, GroceryItem, GroceryListEntry, ItemProduct, Leftover, LeftoverOutcome } from '../types';
 import { LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
 import { PORTION_PRODUCT_KEY, isPortionBox } from '../types';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil, isRunningLow } from './grocerySuggest';
@@ -413,6 +413,9 @@ export function leftoverSplitDraft(leftover: Leftover): LeftoverDraft | null {
     storedAt: leftover.storedAt,
     keepDays: keepDaysBetween(leftover.storedAt, leftover.keepUntil),
     frozen: !leftover.frozenAt,
+    // The same food, so the same figures. A weight is a measurement of one
+    // tub and is deliberately not copied.
+    nutrition: leftover.nutrition,
   };
 }
 
@@ -430,6 +433,8 @@ export interface LeftoverDraft {
   frozen?: boolean;
   /** What the container holds, in grams. Omitted for the containers nobody weighs. */
   weightG?: number | null;
+  /** The whole container's figures, when known. See `Leftover.nutrition`. */
+  nutrition?: FoodNutrition | null;
 }
 
 /**
@@ -454,6 +459,7 @@ export function newLeftoverRow(draft: LeftoverDraft, id: string, nowIso: string)
     outcome: null,
     frozenAt: draft.frozen ? storedAt : null,
     weightG: clampCookedWeight(draft.weightG ?? null),
+    nutrition: draft.nutrition ?? null,
     createdAt: nowIso,
     useUpTask: null,
   };

@@ -535,6 +535,7 @@ file: the two maps are indexes, not write-ups.
 | remembering which item a barcode is | `ItemProduct.gtin` + `gtinAliasText` in `src/utils/storeAliases.ts` — see `docs/arch/groceries.md` |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
 | whether a store's receipt is worth photographing at all | `Shop.receiptStyle` (`itemized` / `none`) + the refusal branch in `ReceiptImportSheet.tsx` |
+| logging a fridge container from the food log, and where its figures come from | `src/utils/leftoverFigures.ts` (`containerFigures`: the container's own panel `Leftover.nutrition`, else the recipe's rollup scaled to `weightG`, else the same name logged before; null means nothing can be logged yet, so the sheet asks) + the `IN YOUR FRIDGE` block in `FoodLogEntrySheet`. Logging a helping never finishes the container; finishing it finds that entry by name (`leftoverAlreadyLogged`) and skips the offer |
 | what's in the kitchen and what's about to be wasted | `src/utils/kitchenInventory.ts` (+ the ladder in `src/utils/freshness.ts`) — see `docs/arch/groceries.md` |
 | food in the freezer, and the clock that stops while it's there | `frozenAt` + `liveUseBy` in `src/utils/freshness.ts` — see `docs/arch/groceries.md` |
 | an opened jar, and being nearly out of something | `openedAt`/`runningLowAt` in `src/utils/grocerySuggest.ts` + `groceryShelfLife.ts` — see `docs/arch/groceries.md` |

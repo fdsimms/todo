@@ -269,7 +269,7 @@ only the fallback until the first sync.
 | `add_to_pantry` | **Write.** "I have flour": marks a known item on hand, or adds a new one that is not on the shopping list. |
 | `answer_pantry_review` | **Write.** Records the person's answers (have, low, out) to `pantry_review` cards. |
 | `log_leftover` | **Write.** Logs a container of cooked food in the fridge or freezer. |
-| `update_leftover` | **Write.** Renames, re-dates, weighs, freezes, thaws, finishes or reopens a container of cooked food, or sets how long it keeps. |
+| `update_leftover` | **Write.** Renames, re-dates, weighs, records the whole container's nutrition, freezes, thaws, finishes or reopens a container of cooked food, or sets how long it keeps. |
 | `split_leftover` / `delete_leftover` | **Write.** Splits a container across the freezer line, or deletes one logged by mistake. |
 
 `complete_task` refuses two things rather than doing them quietly, and both are

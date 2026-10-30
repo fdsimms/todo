@@ -66,6 +66,7 @@ function leftover(overrides: Partial<Leftover> = {}): Leftover {
     outcome: null,
     frozenAt: null,
     weightG: null,
+    nutrition: null,
     createdAt: '2026-08-10T18:00:00.000Z',
     useUpTask: null,
     ...overrides,

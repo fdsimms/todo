@@ -18169,7 +18169,7 @@ describe('completing a use-up task', () => {
   const leftover = {
     id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
     storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14', finishedAt: null,
-    outcome: null, frozenAt: null, weightG: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+    outcome: null, frozenAt: null, weightG: null, nutrition: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
   };
   const seedLeftover = () => {
     useLeftoverStore.setState({ leftovers: [{ ...leftover }], pendingUseUpLeftoverId: null, initialized: true });
@@ -18241,7 +18241,7 @@ describe('completing a leftover-backed meal task', () => {
     id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
     storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14',
     finishedAt: null as string | null, outcome: null as 'eaten' | 'tossed' | null,
-    frozenAt: null, weightG: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+    frozenAt: null, weightG: null, nutrition: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
   };
   const seedLeftover = (overrides: Partial<typeof leftover> = {}) => {
     // pendingUseUpLeftoverId reset too: the finish prompt is skipped while a
@@ -18543,7 +18543,7 @@ describe('completing a use-up task and its meal task for the same leftover', () 
     id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
     storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14',
     finishedAt: null as string | null, outcome: null as 'eaten' | 'tossed' | null,
-    frozenAt: null, weightG: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+    frozenAt: null, weightG: null, nutrition: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
   };
   const seedLeftover = () => {
     useLeftoverStore.setState({

@@ -8953,6 +8953,20 @@ export interface Leftover {
    * answer: two tubs off one pot are rarely halves.
    */
   weightG: number | null;
+  /**
+   * What the whole container holds, as a nutrition panel, or null when nobody
+   * has looked it up, which is most containers and every one from before this
+   * existed.
+   *
+   * **The container's own figures, so the food log can log it from the fridge
+   * with real numbers.** One panel for the whole container (`perServing`, the
+   * container being the serving), never per 100 g: a hand-logged container has
+   * no density to convert with. Usually `source: 'estimated'`. A recipe-backed
+   * container needs none (its figures come from the recipe, see
+   * `leftoverFigures.ts`) and only carries one if the person set it. Unknown is
+   * not the same as an empty panel, so this is nullable and never `{}`.
+   */
+  nutrition: FoodNutrition | null;
   createdAt: string;
   /**
    * The per-leftover answer to "does this get a use-up task" — true, false, or
