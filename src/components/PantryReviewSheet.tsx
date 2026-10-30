@@ -10,6 +10,8 @@ import {
   View,
 } from 'react-native';
 import { SheetModal } from './SheetModal';
+import { useNavigation } from '@react-navigation/native';
+import { useShallow } from 'zustand/react/shallow';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -27,6 +29,7 @@ import {
 import type { GroceryItem, GroceryListEntry, ItemProduct } from '../types';
 import { entryFor } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useRecipeStore } from '../store/useRecipeStore';
 import {
   buildPantryReviewDeck,
   describeLastPurchase,
@@ -39,6 +42,9 @@ import {
 import { haptics } from '../utils/haptics';
 import { EmptyState } from './EmptyState';
 import { PressableScale } from './PressableScale';
+import { InlineAction } from './InlineAction';
+import { GroceryItemSheet } from './GroceryItemSheet';
+import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTextScale } from '../hooks/useTextScale';
@@ -108,6 +114,15 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   const [lowAddsToList, setLowAddsToList] = useState<boolean | undefined>(undefined);
   const addToList = lowAddsToList ?? runningLowAddsToList;
   const revertPantryAnswer = useGroceryStore(s => s.revertPantryAnswer);
+  const navigation = useNavigation<any>();
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
+  // The item whose editor is open over the deck. The sheet saves as it is
+  // edited, so there is nothing to guard on close, and it renders inside this
+  // modal (below) because a sibling Modal can't present over a visible one.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // Read live, so a rename made in the editor shows on the card; the deck
+  // itself stays as it was seeded.
+  const liveItems = useGroceryStore(s => s.items);
 
   const [deck, setDeck] = useState<PantryReviewDeck>(EMPTY_DECK);
   const [index, setIndex] = useState(0);
@@ -153,6 +168,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
     setIndex(0);
     setHistory([]);
     setLowAddsToList(undefined);
+    setEditingId(null);
     pan.setValue({ x: 0, y: 0 });
   }, [visible, pan]);
 
@@ -473,12 +489,21 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
                         <Animated.View style={[styles.stamp, styles.stampNew, { opacity: stampOpacity('new') }]}>
                           <Text style={[styles.stampText, { color: colors.accentText }]}>Restocked</Text>
                         </Animated.View>
-                        <CardBody card={entry} styles={styles} />
+                        <CardBody card={entry} name={liveItems.find(i => i.id === entry.item.id)?.name ?? entry.item.name} styles={styles} />
                       </>
                     )}
                   </Animated.View>
                 ))}
             </View>
+            <InlineAction
+              label="Edit item"
+              icon="create-outline"
+              variant="neutral"
+              surface="page"
+              onPress={() => setEditingId(card.item.id)}
+              accessibilityLabel={`Edit ${card.item.name}`}
+              style={styles.editItem}
+            />
           </View>
         )}
 
@@ -542,12 +567,29 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
             </Text>
           </>
         )}
+
+        <GroceryItemSheet
+          visible={editingId !== null}
+          itemId={editingId}
+          onClose={() => setEditingId(null)}
+          onOpenRecipe={recipeId => {
+            setEditingId(null);
+            onClose();
+            navigation.navigate('RecipeDetail', { recipeId });
+          }}
+          onOpenSettings={entryId => {
+            setEditingId(null);
+            onClose();
+            navigateToFoodSearchSettings(navigation, entryId);
+          }}
+          recipeExists={recipeId => recipes.some(r => r.id === recipeId)}
+        />
       </View>
     </SheetModal>
   );
 }
 
-function CardBody({ card, styles }: { card: PantryReviewCard; styles: Styles }) {
+function CardBody({ card, name, styles }: { card: PantryReviewCard; name: string; styles: Styles }) {
   // `probablyHaveReason`'s own words while there are any. A lapsed card has
   // none by definition — the guess it would have quoted is what ran out — so it
   // falls back to the bare purchase date rather than showing a naked name.
@@ -559,7 +601,7 @@ function CardBody({ card, styles }: { card: PantryReviewCard; styles: Styles }) 
         {card.item.aisle || 'Pantry'}
       </Text>
       <Text style={styles.name} numberOfLines={3}>
-        {card.item.name}
+        {name}
       </Text>
       {!!line && <Text style={styles.reason}>{line}</Text>}
       {!!doubt && (
@@ -789,6 +831,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) =>
     },
 
     stage: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.md },
+    editItem: { alignSelf: 'center', marginTop: spacing.md },
     deck: { height: Math.round(CARD_HEIGHT * textScaleFactor) },
     card: {
       position: 'absolute',
