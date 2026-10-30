@@ -11,7 +11,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { leftoverFinishedRow, leftoverFrozenRow, leftoverKeepDaysRow, leftoverReopenedRow, leftoverSplitDraft, leftoverStoredAtRow, newLeftoverRow, type LeftoverDraft } from '../utils/pantryWrite';
-import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, getLogicalDayKey, getLogicalToday } from '../utils/dateUtils';
 import {
   cleanLeftoverTitle,
   isLiveLeftover,
@@ -21,7 +21,7 @@ import {
 import { plannedMealRowFor, useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/leftoverTasks';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
-import { clampCookedWeight } from '../utils/mealLog';
+import { clampCookedWeight, leftoverAlreadyLogged } from '../utils/mealLog';
 import { dropGeneratedTask, forfeitUseUpCoins, reconcileGeneratedTask, restoreUseUpCoins } from './generatedTaskSync';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
@@ -410,7 +410,16 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     // knows which meal it was.
     const foodLog = useFoodLogStore.getState();
     const offerWaiting = foodLog.pendingMealLog !== null || foodLog.pendingManualMealLog !== null;
-    if (outcome === 'eaten' && useSettingsStore.getState().mealLogPrompt && !offerWaiting) {
+    // A container already written down in the food log has nothing to offer: the
+    // search sheet would open on a name the person has just logged. Only the
+    // recipe-less container is checked, since a recipe's prompt measures a
+    // helping rather than asking what was eaten.
+    const alreadyLogged = !leftover.recipeId && leftoverAlreadyLogged(
+      leftover.title,
+      getLogicalDayKey(new Date(leftover.storedAt)),
+      foodLog.recentEntries(getLogicalDayKey(new Date(leftover.storedAt)), dayKeyOf(getLogicalToday())),
+    );
+    if (outcome === 'eaten' && useSettingsStore.getState().mealLogPrompt && !offerWaiting && !alreadyLogged) {
       if (leftover.recipeId) {
         const source = leftover.sourceEntryId ? dbGetMealPlanEntry(leftover.sourceEntryId) : null;
         foodLog.setPendingMealLog({
