@@ -22,11 +22,12 @@ import { RuleListSheet } from './RuleListSheet';
 import { KeywordMatchEditor } from './KeywordMatchEditor';
 import { HelpText } from './HelpText';
 
-type RuleTiming = 'before' | 'after';
+type RuleTiming = 'before' | 'leaving' | 'after';
 type FollowUpMode = 'always' | 'unlessBooked';
 
 const TIMING_OPTIONS: SegmentOption<RuleTiming>[] = [
-  { value: 'before', label: 'Before the event' },
+  { value: 'before', label: 'Before event' },
+  { value: 'leaving', label: 'Before leaving' },
   { value: 'after', label: 'After it ends' },
 ];
 
@@ -143,11 +144,13 @@ export function EventRulesSheet({ visible, onClose }: Props) {
           <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Add the task</Text>
           <SegmentedControl<RuleTiming>
             options={TIMING_OPTIONS}
-            value={rule.afterEvent ? 'after' : 'before'}
+            value={rule.afterEvent ? 'after' : rule.beforeLeaving ? 'leaving' : 'before'}
             onChange={timing => update(
               timing === 'after'
-                ? { afterEvent: true, leadDays: 0 }
-                : { afterEvent: false, skipIfUpcoming: false },
+                ? { afterEvent: true, beforeLeaving: false, leadDays: 0 }
+                : timing === 'leaving'
+                  ? { afterEvent: false, skipIfUpcoming: false, beforeLeaving: true, leadDays: 0 }
+                  : { afterEvent: false, skipIfUpcoming: false, beforeLeaving: false },
             )}
             label="When the task is added"
             surface="card"
@@ -170,6 +173,11 @@ export function EventRulesSheet({ visible, onClose }: Props) {
                 + 'calendar in the next 6 months.'}
               </HelpText>
             </>
+          ) : rule.beforeLeaving ? (
+            <HelpText style={styles.hint}>
+              {'The task is added on the day of the event. The event’s “Leave for” task lists it '
+              + 'while it’s open and asks before you check that one off. Needs a location on the event.'}
+            </HelpText>
           ) : (
             <>
               <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Days before the event</Text>

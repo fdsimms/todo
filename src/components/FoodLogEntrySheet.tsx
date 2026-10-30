@@ -671,6 +671,13 @@ export function FoodLogEntrySheet({
     if (!pendingBurstFocus.current) return;
     pendingBurstFocus.current = false;
     searchFilter.inputRef.current?.focus();
+    // The keyboard is already up while the list mounts again, so it arrives
+    // with the keyboard's bottom inset in place and iOS can settle it below
+    // its top. A fresh search always starts at the first row.
+    const toTop = () => listScroll.ref.current?.scrollToOffset({ offset: 0, animated: false });
+    toTop();
+    const frame = requestAnimationFrame(toTop);
+    return () => cancelAnimationFrame(frame);
   }, [picked]);
 
   // Clears whatever was typed into the weight field whenever the picked food
@@ -1747,14 +1754,14 @@ export function FoodLogEntrySheet({
   };
 
   /** An estimated helping logged again at the amount the card chose, as a multiple of its whole. */
-  const logHelpingAtAmount = (entry: FoodLogEntry, patch: EstimateAmountPatch) => {
+  const logHelpingAtAmount = (entry: FoodLogEntry, patch: EstimateAmountPatch, slot: MealSlot | null) => {
     const logged = logNew({
       label: entry.label,
       quantity: patch.quantity,
       grams: patch.grams,
       nutrition: patch.nutrition,
       sourcePanel: patch.sourcePanel,
-      slot: chosenSlot ?? entry.slot,
+      slot,
       recipeId: null,
       itemId: null,
       productId: null,
@@ -3041,7 +3048,8 @@ export function FoodLogEntrySheet({
         entry={amountHelping}
         saveLabel="Log"
         allowUnchanged
-        onSave={patch => { if (amountHelping) logHelpingAtAmount(amountHelping, patch); }}
+        slot={chosenSlot ?? amountHelping?.slot ?? null}
+        onSave={(patch, slot) => { if (amountHelping) logHelpingAtAmount(amountHelping, patch, slot); }}
         onClose={() => setAmountHelping(null)}
       />
       {/* Inside this Modal for the same reason: it is raised from a sheet that

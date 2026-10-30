@@ -984,6 +984,15 @@ re-deriving:
   remaining ones are the user's; a plan change mid-cook updates the title and the link and leaves the
   steps alone. Rewriting would have to remap the index onto a different-length list, and step 1 of
   [Choose, Prepare, Eat] has no honest answer in [Make X, Eat X].
+- **A second recipe in a slot is its own task, keyed by its entry.** The slot's own task
+  (`day#slot`) reads the first dish; each later one is `day#slot#entryId` (`mealSlotSourceId`'s
+  third argument, `parseMealSlotSource`'s `entryId`), a plain Make X → Eat X chain. Like the slot's own
+  task it is created only by the daily pass and at the moment a dish is planned or copied
+  (`createExtraMealSlotTask`), never by a reconcile, so one swiped away stays away, and a slot with
+  no task of its own gets no extras. The reconcile rewrites them and drops one whose dish was removed
+  or became the first (`reconcileExtraMealSlotTasks`). Cooking a dish readies its own task
+  (`liveMealSlotTaskFor`). Logging food in the slot still covers every task in it, since that join
+  is the slot (`loggedMealSlotTasks`).
 - **The row says which meal it is, in the meta line rather than in the title** (`mealSlotOf`, read
   off the source id — no store lookup). Only an unanswered slot names its meal in its own steps
   ("Choose lunch"); the moment something is planned the title becomes the food, and a day's three
@@ -1352,7 +1361,9 @@ argued out before it was built; read them before reopening one.
     `travelLeadFor`'s lead, and turning the switch off puts every row back on it on the next sweep.
   - **It is read only while the app is open** (`useTravelTaskSync`'s triggers), and kept in memory.
     A reminder queued the evening before carries the last estimate the app saw; nothing reads the
-    position while the app is closed.
+    position while the app is closed. A launch therefore starts with none, so a row waits on
+    `useTravelTimeStore.settled` and draws a same-size "Checking travel time" placeholder until the
+    first read answers; a trip that then has no estimate shows nothing, as before.
   - **An estimate is tied to the place and mode it answered** (`estimateFor`), so an edited
     location or a changed mode is asked again rather than reused, and one older than 20 minutes
     is refreshed for traffic. The destination is the event's map pin when it has one (a place
@@ -1507,6 +1518,29 @@ turned up a bug: `generatorSwitchedOn` gated `calendarReview` on the calendar re
 writing nothing. Both are gated now through `CALENDAR_READ_KINDS`, the one list both the switch and
 Settings' `blockedBy` read, and `generatedTasks.test.ts` fails if a pass's calendar refusal and that
 list disagree.
+
+### Tasks tied to leaving (`EventTaskRule.beforeLeaving`)
+
+An event rule can be marked "Before leaving" ("Bring glasses" on an Optometrist event). Its task
+lands on the event's own day, and the event's "Leave for X" row lists it while it is open
+(`src/utils/leavePrep.ts`): a line on the row, the same line at the top of the row's notes and so
+of its reminder, and a confirm on the tick.
+
+- **The link is the occurrence key, not a field.** An event task's source id is
+  `${occurrenceKey}#${ruleId}` and a travel task's is `${occurrenceKey}`, so `openLeavePrep` derives
+  the pairing from rows that exist. A column would be a second copy to keep in step with the event
+  moving, and would owe the `TemplateItem` parity decision for a relationship only generated rows have.
+  A row keyed under the pre-server-id local key is simply not linked.
+- **It informs and asks; it never blocks.** Nothing in the app may require an answer, and a hard stop is
+  wrong for someone already wearing the glasses. `confirmLeaveWithOpenPrep` runs from the task row and
+  the standalone checkbox. The widget, a Live Activity's Done and the bulk bar skip it: there is no row
+  on screen to ask from, and the reminder has already named what is open.
+- **The notes are how the reminder follows a tick.** `checkTravelTasks` writes the open-prep line into
+  the Leave row's `notes` (ahead of the MTA headline), and the patch reschedules the reminder through
+  `updateTask`. `useTravelTaskSync` re-runs the sweep when `leavePrepSignature` changes, which is empty
+  unless a rule is tied to leaving, so an ordinary task write costs nothing.
+- **No location, no Leave row, no link.** The task is still written on the day of the event; there is just
+  nothing to list it on.
 
 ## `wakeUp` — when to get up for an early start, and the alarm for it
 

@@ -22,7 +22,7 @@ import { offerMealLog, useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useGroceryStore } from './useGroceryStore';
-import { generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask } from '../utils/generatedTasks';
+import { generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { ensureGeneratedTaskCategory } from './useCategoryStore';
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, markGeneratedReady } from './generatedTaskSync';
@@ -71,7 +71,7 @@ import {
   buildMealPlanEntry,
 } from '../utils/mealPlan';
 import { countPlannedSlots } from '../utils/mealPlanNudge';
-import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft, slotEntryForTask } from '../utils/mealSlotTasks';
+import { mealSlotDrift, mealSlotSourceId, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask } from '../utils/mealSlotTasks';
 import { dayKeyOf, dayKeyToDate, getLogicalToday } from '../utils/dateUtils';
 import { upcomingRecipeMeals } from '../utils/recipePlanned';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
@@ -979,6 +979,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     dbInsertMealPlanEntry(entry);
     patchInRange(set, get, entry);
     reconcileMealSlot(get, entry);
+    createExtraMealSlotTask(get, entry);
     reconcileMealEvent(entry);
     // Planning a recipe answers its Up Next bookmark: it's on the week now, and
     // left bookmarked it sat at the top of Recipes as something still to plan.
@@ -1683,6 +1684,7 @@ function writeCopies(
   created.forEach(dbInsertMealPlanEntry);
   created.forEach(entry => patchInRange(set, get, entry));
   created.forEach(e => reconcileMealSlot(get, e));
+  created.forEach(e => createExtraMealSlotTask(get, e));
   created.forEach(e => reconcileMealEvent(e));
 
   const ids = new Set(created.map(e => e.id));
@@ -1828,6 +1830,22 @@ function liveMealSlotTask(dayKey: string, slot: MealSlot): Task | undefined {
 }
 
 /**
+ * The source id of the task a dish is covered by: its own for a second or later
+ * dish in the slot, the slot's for the first. Read from SQLite for the same
+ * reason `slotEntry` is, since a meal can be marked cooked from a week the
+ * screen has never loaded.
+ */
+function mealSlotSourceIdFor(entry: Pick<MealPlanEntry, 'id' | 'date' | 'slot'>): string {
+  const first = entriesForSlot(dbGetMealPlanEntries(entry.date, entry.date), entry.date, entry.slot)[0];
+  return mealSlotSourceId(entry.date, entry.slot, first && first.id !== entry.id ? entry.id : null);
+}
+
+/** The live meal task covering this dish, if there is one. */
+function liveMealSlotTaskFor(entry: Pick<MealPlanEntry, 'id' | 'date' | 'slot'>): Task | undefined {
+  return liveGeneratedTask(useTaskStore.getState().tasks, 'mealSlot', mealSlotSourceIdFor(entry));
+}
+
+/**
  * What is currently in a slot — `entriesForDayLive`'s read-through, narrowed
  * to one slot.
  *
@@ -1864,6 +1882,38 @@ function createMealSlotTask(get: () => MealPlanStore, entry: MealPlanEntry): voi
     mealSlotTaskDraft(
       entry.date, entry.slot, planned, useSettingsStore.getState().mealCookTaskCategory,
       recipeMinutesFor(planned?.recipeId ?? null), useSettingsStore.getState().mealSlotStepEstimates
+    ),
+    derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
+    { skipCategoryDefault: true, skipTitleRules: true },
+  );
+}
+
+/**
+ * Writes a task for a second (or later) dish planned into a slot that already
+ * has its own meal task, so two recipes for dinner are two things to make
+ * rather than one "Make X" for whichever came first.
+ *
+ * Called only where an entry is *created* (planning, copying) and by the daily
+ * pass, never from a reconcile: like the slot's own task, creating on every
+ * plan change would hand back a row the user swiped away. A slot with no task
+ * at all (its generator off, or the user deleted it) gets no extra either,
+ * since the slot has already been answered "no".
+ */
+function createExtraMealSlotTask(get: () => MealPlanStore, entry: MealPlanEntry): void {
+  if (!useSettingsStore.getState().mealCookTasks) return;
+  if (entry.cookTask === false || entry.cookedAt) return;
+  const inSlot = entriesForSlot(get().entriesForDayLive(entry.date), entry.date, entry.slot);
+  const at = inSlot.findIndex(e => e.id === entry.id);
+  if (at < 1) return;
+  const { tasks, addTask } = useTaskStore.getState();
+  if (!hasAnyGeneratedTask(tasks, 'mealSlot', mealSlotSourceId(entry.date, entry.slot))) return;
+  const sourceId = mealSlotSourceId(entry.date, entry.slot, entry.id);
+  if (hasAnyGeneratedTask(tasks, 'mealSlot', sourceId)) return;
+  const planned = slotEntryForTask(entry, useRecipeStore.getState());
+  addTask(
+    mealSlotTaskDraft(
+      entry.date, entry.slot, planned, useSettingsStore.getState().mealCookTaskCategory,
+      recipeMinutesFor(planned?.recipeId ?? null), useSettingsStore.getState().mealSlotStepEstimates, entry.id
     ),
     derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
     { skipCategoryDefault: true, skipTitleRules: true },
@@ -1936,6 +1986,39 @@ function reconcileSlotLeftovers(
 }
 
 function reconcileMealSlotTask(get: () => MealPlanStore, entry: Pick<MealPlanEntry, 'date' | 'slot'>): void {
+  reconcilePrimaryMealSlotTask(get, entry);
+  reconcileExtraMealSlotTasks(get, entry);
+}
+
+/**
+ * The tasks of a slot's second and later dishes, brought into line with the
+ * slot. One whose dish has left the extras (removed, or moved up to first,
+ * where the slot's own task now reads it) is dropped, and the rest are
+ * rewritten the way the slot's own task is. Never creates; see
+ * `createExtraMealSlotTask`.
+ */
+function reconcileExtraMealSlotTasks(get: () => MealPlanStore, entry: Pick<MealPlanEntry, 'date' | 'slot'>): void {
+  const { date: dayKey, slot } = entry;
+  const extras = entriesForSlot(get().entriesForDayLive(dayKey), dayKey, slot).slice(1);
+  for (const task of liveGeneratedTasksOfKind(useTaskStore.getState().tasks, 'mealSlot')) {
+    const source = parseMealSlotSource(task.generatedSourceId);
+    if (!source?.entryId || source.dayKey !== dayKey || source.slot !== slot) continue;
+    const dish = extras.find(e => e.id === source.entryId);
+    if (!dish || dish.cookTask === false) {
+      deleteGeneratedTaskQuietly(task.id, { skipOptOut: true });
+      continue;
+    }
+    if (dish.cookedAt) continue;
+    const planned = slotEntryForTask(dish, useRecipeStore.getState());
+    const updates = mealSlotDrift(
+      task, dayKey, slot, planned, recipeMinutesFor(planned?.recipeId ?? null),
+      useSettingsStore.getState().mealSlotStepEstimates
+    );
+    if (updates) useTaskStore.getState().updateTask(task.id, updates, { skipPostponeCount: true });
+  }
+}
+
+function reconcilePrimaryMealSlotTask(get: () => MealPlanStore, entry: Pick<MealPlanEntry, 'date' | 'slot'>): void {
   const { date: dayKey, slot } = entry;
   const live = liveMealSlotTask(dayKey, slot);
   if (!live) return;
@@ -1996,12 +2079,12 @@ function syncCookTaskCompletion(entry: MealPlanEntry, cooked: boolean): void {
     // marked (see completeTask).
     const live = liveCookTaskFor(entryId);
     if (live) markGeneratedReady(live);
-    const step = liveMealSlotTask(entry.date, entry.slot);
+    const step = liveMealSlotTaskFor(entry);
     if (step) markGeneratedReady(step);
     return;
   }
   // Marked not cooked again: whatever was ready because of it no longer is.
-  for (const t of [liveCookTaskFor(entryId), liveMealSlotTask(entry.date, entry.slot)]) {
+  for (const t of [liveCookTaskFor(entryId), liveMealSlotTaskFor(entry)]) {
     if (t?.generatedReadyAt) updateTask(t.id, { generatedReadyAt: null }, { skipPostponeCount: true });
   }
   // Un-ticking only ever reaches the step that ended the chain — the one whose
@@ -2009,7 +2092,7 @@ function syncCookTaskCompletion(entry: MealPlanEntry, cooked: boolean): void {
   // in useTaskStore). The earlier steps stay done, because they were.
   const doneSlot = tasks.find(
     t => t.generatedKind === 'mealSlot'
-      && t.generatedSourceId === mealSlotSourceId(entry.date, entry.slot)
+      && t.generatedSourceId === mealSlotSourceIdFor(entry)
       && t.completed && !t.archived
   );
   if (doneSlot) uncompleteTask(doneSlot.id);

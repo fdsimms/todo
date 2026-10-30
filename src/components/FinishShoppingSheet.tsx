@@ -1123,6 +1123,11 @@ export function FinishShoppingSheet({
                               {row.quantity}
                             </Text>
                           )}
+                          {known !== null && (
+                            <Text style={styles.rowQuantity} numberOfLines={1}>
+                              {`Last price ${currencySymbol}${priceToInput(known)}`}
+                            </Text>
+                          )}
                         </View>
                         <View style={styles.priceField}>
                           <Text style={styles.priceSymbol}>{currencySymbol}</Text>
@@ -1146,13 +1151,10 @@ export function FinishShoppingSheet({
                             // walk down it and covers the Finish button.
                             returnKeyType="done"
                             inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                            // Empty when nothing is known: a bare figure in the
-                            // placeholder's grey reads as a price already saved
-                            // (CLAUDE.md's placeholder rule), and the symbol and
-                            // row name already say what the field is, so a
-                            // repeated "Price" on every unpriced row was noise.
-                            placeholder={known !== null ? `e.g. ${priceToInput(known)}` : undefined}
-                            placeholderTextColor={colors.textTertiary}
+                            // No placeholder: a figure in the placeholder's grey
+                            // reads as a price already saved (and with "e.g."
+                            // it isn't an example either), so the last price is
+                            // a line under the name instead.
                             maxLength={PRICE_INPUT_MAX_LENGTH}
                             accessibilityLabel={`Price for ${row.name}`}
                           />

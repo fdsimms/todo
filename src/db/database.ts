@@ -4421,6 +4421,25 @@ export function dbGetAllTasks(): Task[] {
   return rows.map(rowToTask);
 }
 
+/** Every task id, one narrow column: what a delta reload diffs against to find deletions. */
+export function dbGetTaskIds(): string[] {
+  return db.getAllSync<{ id: string }>('SELECT id FROM tasks').map(r => r.id);
+}
+
+/** The named tasks only. Chunked under SQLite's bound-variable limit; ids no longer present are simply absent. */
+export function dbGetTasksByIds(ids: string[]): Task[] {
+  const out: Task[] = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const rows = db.getAllSync<Record<string, unknown>>(
+      `SELECT * FROM tasks WHERE id IN (${chunk.map(() => '?').join(',')})`,
+      chunk
+    );
+    for (const row of rows) out.push(rowToTask(row));
+  }
+  return out;
+}
+
 export function dbInsertTask(task: Task): void {
   db.runSync(
     `INSERT INTO tasks (

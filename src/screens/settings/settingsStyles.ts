@@ -42,9 +42,9 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   },
   // A row sitting directly on top of its own pill row: the pills carry the
   // bottom padding, so the label mustn't double it.
-  rowTight: { paddingBottom: spacing.xs },
+  rowTight: { paddingBottom: spacing.sm },
   /** …unless it also carries a hint — see SettingsRow. */
-  rowTightHinted: { paddingBottom: spacing.sm },
+  rowTightHinted: { paddingBottom: spacing.smd },
   rowStacked: { alignItems: 'flex-start', paddingVertical: spacing.md },
   rowContent: { flex: 1 },
   rowLabel: { color: colors.text, fontSize: font.md },

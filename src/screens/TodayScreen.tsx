@@ -5496,7 +5496,7 @@ export function TodayScreen() {
                   {savingGoal && <Text style={styles.coinPillGoal}>{`/ ${savingGoal.reward.cost}`}</Text>}
                 </View>
                 {savingGoal && (
-                  <ProgressBar progress={goalBarFill(coinTotal, savingGoal.reward.cost)} height={4} color={colors.done} decorative />
+                  <ProgressBar progress={goalBarFill(coinTotal, savingGoal.reward.cost)} height={4} color={colors.done} style={styles.coinPillBar} decorative />
                 )}
               </TouchableOpacity>
             ) : undefined
@@ -6562,6 +6562,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Column so the saving-for bar can sit under the count; with no goal it is one row, as before.
   coinPill: { paddingHorizontal: spacing.xsm, paddingVertical: spacing.xxs, borderRadius: radius.full, backgroundColor: colors.bgSecondary, gap: spacing.xxs },
   coinPillTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  // The pill's ends are fully rounded, so a bar running edge to edge meets the curve; inset it.
+  coinPillBar: { marginHorizontal: spacing.xs },
   coinPillGoal: { fontSize: font.xxs, fontWeight: fontWeight.medium, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
   coinPillText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   workloadLine: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs, fontSize: font.xs, color: colors.textTertiary },

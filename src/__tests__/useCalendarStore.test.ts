@@ -1,6 +1,8 @@
 import { useCalendarStore, vacationReturnCalendarIds } from '../store/useCalendarStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { dbGetSetting, dbSetSetting } from '../db/database';
+import { addDays } from 'date-fns';
+import { dayKeyOf } from '../utils/dateUtils';
 import { fetchEvents } from '../utils/calendarSync';
 import { isDemoModeActive } from '../utils/demoState';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -395,12 +397,14 @@ describe('refreshPast', () => {
 
 describe('markHistoryHandled', () => {
   it('hydrates from the settings table once, records the answer, and persists it', () => {
-    (dbGetSetting as jest.Mock).mockReturnValue(JSON.stringify({ 'e-old': '2026-08-01' }));
+    // Relative to today: a fixed date ages out of the past window the store prunes to.
+    const recent = dayKeyOf(addDays(new Date(), -7));
+    (dbGetSetting as jest.Mock).mockReturnValue(JSON.stringify({ 'e-old': recent }));
     useCalendarStore.getState().markHistoryHandled('e-1', '2026-08-27');
     const state = useCalendarStore.getState();
     expect(state.handledLoaded).toBe(true);
     expect(state.handledHistory['e-1']).toBe('2026-08-27');
-    expect(state.handledHistory['e-old']).toBe('2026-08-01');
+    expect(state.handledHistory['e-old']).toBe(recent);
     expect(dbSetSetting).toHaveBeenCalledWith('calendarHistoryHandled', expect.any(String));
   });
 

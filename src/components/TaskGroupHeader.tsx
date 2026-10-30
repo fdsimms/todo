@@ -343,11 +343,6 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 onAccessibilityAction={e => { if (e.nativeEvent.actionName === 'longpress') completeAll(); }}
               >
                 <View style={styles.titleRow}>
-                  {/* Says a section is a list before its rows do: its items
-                      are checked off, and Pull passes it over. */}
-                  {isList && (
-                    <Ionicons name="checkbox-outline" size={iconSize.sm} color={colors.textTertiary} />
-                  )}
                   <Text style={styles.title} numberOfLines={1}>{group.title}</Text>
                   {/* Bare type, not a filled pill: the header has no card
                       behind it any more, and a tinted capsule floating on

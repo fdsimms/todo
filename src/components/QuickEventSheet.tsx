@@ -10,7 +10,6 @@ import {
   Alert,
   Keyboard,
   Platform,
-  useWindowDimensions,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,8 +18,10 @@ import { startOfDay } from 'date-fns/startOfDay';
 import { addDays } from 'date-fns/addDays';
 import { addMinutes } from 'date-fns/addMinutes';
 import { SheetModal } from './SheetModal';
-import { SheetScrim } from './SheetScrim';
-import { SafeBlurView } from './SafeBlurView';
+import { SheetHeader } from './SheetHeader';
+import { SheetHeaderButton } from './SheetHeaderButton';
+import { EditorRow } from './EditorRow';
+import { Toggle } from './Toggle';
 import { PressableScale } from './PressableScale';
 import { HighlightedText } from './HighlightedText';
 import { TitleTokenAccessory } from './TitleTokenAccessory';
@@ -29,8 +30,7 @@ import { EventOptionSheet, type EventOption } from './EventOptionSheet';
 import { CustomMinutesPrompt } from './CustomMinutesPrompt';
 import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
-import { ScrollEdgeFade } from './ScrollEdgeFade';
-import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, animation, type Colors } from '../theme';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
@@ -125,10 +125,9 @@ import { haptics } from '../utils/haptics';
 import { alertFailedWithSettings } from '../utils/permissionAlert';
 import { RotatingChevron } from './RotatingChevron';
 import { isDemoModeActive } from '../utils/demoState';
-import { TITLE_MAX_LENGTH } from '../types';
+import { TITLE_MAX_LENGTH, type QuickEventSeed } from '../types';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
-import { overlayCard } from '../utils/frameWidth';
 
 /** How long a line left by tapping outside a new event waits to be picked up. */
 const QUICK_EVENT_KEEP_TEXT_MS = 10 * 60 * 1000;
@@ -139,26 +138,7 @@ const PLACE_SEARCH_DEBOUNCE_MS = 350;
 /** "#" and "!" name a category and a priority, which an event doesn't have. */
 const EVENT_TOKENS = ['@'] as const;
 
-/**
- * What a caller that already knows something about the event starts the card
- * with: the day the screen it was opened from is on, a title, and the people
- * it is with (a person's "Plan something"). All optional, and all editable.
- */
-export interface QuickEventSeed {
-  day?: Date;
-  /** An exact span, for a task's time block proposed in a free gap. Wins over `day`. */
-  start?: Date;
-  end?: Date;
-  title?: string;
-  personIds?: readonly string[];
-  /** An all-day event; `start` is its day. Used by an imported event with no clock time. */
-  allDay?: boolean;
-  location?: string;
-  /** Notes, or a lone link, for the "Notes or link" field. */
-  notes?: string;
-  /** Minutes before the start for the alert chip; omitted keeps the chip's default. */
-  alertMinutes?: number | null;
-}
+export type { QuickEventSeed } from '../types';
 
 /** An existing event to open the card on, instead of a new one. */
 export interface QuickEventEditTarget {
@@ -181,15 +161,15 @@ interface Props {
 
 /**
  * Quick add for a calendar event: one line ("lunch w/ @gideon sat 12pm") in
- * the same floating card as task quick add (`QuickAddModal`), with the same
- * reading aids: the schedule phrase and each "@name" highlighted as you type,
+ * at the top of a page sheet, with the same reading aids as task quick add
+ * (`QuickAddModal`): the schedule phrase and each "@name" highlighted as you type,
  * a tooltip under the phrase to set it or say "not that", the pick-one pills
  * for an "@name" that is ambiguous or still being typed, and the keyboard bar
- * cut down to the one sigil an event reads ("@"). The check saves the event
+ * cut down to the one sigil an event reads ("@"). Add saves the event
  * straight into the calendar, with no system sheet (`saveEventDirect`); the
  * people named are linked once it is (`useEventPeopleStore.saveEvent`).
  *
- * **The rows Apple's form used to ask for are chips here** (calendar, alert,
+ * **The rows Apple's form used to ask for are rows here** (calendar, alert,
  * repeat, and All day and Busy/Free as switches) and start as the last saved event left them
  * (`quickEventDefaults.ts`), so a usual event is a title and a day. A trailing
  * "at Joe's" and "alert 30m" in the line fill the place and the alert as you
@@ -218,26 +198,25 @@ interface Props {
  * is read plain until it changes, and a repeating event is changed one
  * occurrence at a time. `docs/arch/people.md` has the rules.
  *
- * **A new event is three steps** (When, Where, Details) so each screen holds
- * one question, while the title stays on top and the header's check adds from
- * any step with what is filled in. Every field is still mounted state: a step
- * only decides which rows are drawn (`onStep`), so nothing about how a value
- * resolves depends on the step. The recap chips on the later steps read back
- * the earlier answers and jump to them. Where can be skipped with no place, and
- * its trip rows show greyed out until one is set. An edit has no steps and shows
- * every field at once.
+ * **It is a page sheet, not a card, so every field is on one scroll.** The title
+ * stays fixed above it, and the fields sit in three labeled cards (When, Where,
+ * Details) of the same `EditorRow`s the task editor uses. A new event used to
+ * walk three steps through a small card because it had no room; an edit and a
+ * new event are now the same layout. The trip rows show greyed out until there
+ * is a place. Cancel and a swipe-down both keep a typed line for a few minutes
+ * (`dismissKeepingText`) instead of asking, which is this sheet's answer to the
+ * pageSheet swipe rule in CLAUDE.md. The pickers it raises render inside it.
  *
  * One component; `grep -n '// ===='` is its table of contents: sheet state,
  * the draft, editing an existing event, calendars, the reset on open, parsing the line, what the event
  * resolves to (remembered values, length, the free slot, conflicts), place
- * suggestions, applying what was read, the write, the steps, then the JSX.
+ * suggestions, applying what was read, the write, the row helpers, then the JSX.
  */
 export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDeleted }: Props) {
   const colors = useColors();
-  const { isDark, shadows } = useTheme();
-  const { height: windowHeight } = useWindowDimensions();
+  const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const scrollFade = useScrollEdgeFade();
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
   const groups = usePersonGroupStore(useShallow(s => s.groups));
   const groupTokens = useMemo(() => groupMentionTokens(), [people, groups]);
@@ -250,54 +229,14 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const placeSuggestionsEnabled = useSettingsStore(s => s.placeSuggestionsEnabled);
   const setPlaceSuggestionsEnabled = useSettingsStore(s => s.setPlaceSuggestionsEnabled);
 
-  // ==== sheet-level state (keyboard, open/close animation) ====
+  // ==== sheet-level state ====
   const inputRef = useRef<TextInput>(null);
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
-  const translateYAnim = useRef(new Animated.Value(16)).current;
-  const sheetOpacity = useRef(new Animated.Value(0)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
-  const keyboardOffsetAnim = useRef(new Animated.Value(0)).current;
   const tooltipAnim = useRef(new Animated.Value(0)).current;
   const hadMatch = useRef(false);
-  // Backs the sliver the keyboard's rounded corners expose, and sizes the
-  // sheet to the room left above it. Same as QuickAddModal.
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const updateHeight = (e: { endCoordinates?: { height: number } }) => {
-      const height = e.endCoordinates?.height ?? 0;
-      if (height <= 0) return;
-      setKeyboardHeight(height);
-      Animated.spring(keyboardOffsetAnim, { toValue: -height / 2, ...animation.spring.smooth, useNativeDriver: true }).start();
-    };
-    const showSub = Keyboard.addListener(showEvent, updateHeight);
-    // The accessory bar can attach a frame after first focus, and iOS reports
-    // the corrected height only through this event. See QuickAddModal.
-    const changeFrameSub = Platform.OS === 'ios' ? Keyboard.addListener('keyboardWillChangeFrame', updateHeight) : null;
-    const hideSub = Keyboard.addListener(hideEvent, () => {
-      setKeyboardHeight(0);
-      Animated.spring(keyboardOffsetAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }).start();
-    });
-    return () => { showSub.remove(); changeFrameSub?.remove(); hideSub.remove(); };
-  }, []);
-
-  const sheetMaxHeight = windowHeight - keyboardHeight - insets.top - insets.bottom - spacing.xl * 2;
-  const styles = useMemo(() => makeStyles(colors, sheetMaxHeight), [colors, sheetMaxHeight]);
-
-  const dismiss = () => {
-    Keyboard.dismiss();
-    Animated.parallel([
-      Animated.timing(scaleAnim, { toValue: 0.95, duration: animation.duration.dismiss, useNativeDriver: true }),
-      Animated.timing(sheetOpacity, { toValue: 0, duration: animation.duration.dismiss, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
-    ]).start(() => {
-      scaleAnim.setValue(0.95);
-      sheetOpacity.setValue(0);
-      onClose();
-    });
-  };
+  // The sheet's own presentation does the animating; this only closes it.
+  const dismiss = () => { onClose(); };
 
   // ==== the draft ====
   const [text, setText] = useState('');
@@ -393,11 +332,6 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const [pickerVisible, setPickerVisible] = useState(false);
   const [endPickerVisible, setEndPickerVisible] = useState(false);
   const [repeatPickerVisible, setRepeatPickerVisible] = useState(false);
-  // The "+ Notes" chip was tapped. Notes already in the field (a seed, an event
-  // being edited) show it without this, which is also why only a tap focuses it.
-  const [notesOpen, setNotesOpen] = useState(false);
-  // Which of the three steps a new event is on (When, Where, Details). An edit shows every field at once.
-  const [step, setStep] = useState(0);
   // The phrase the tooltip's ✕ was pressed on, by position and text, so a
   // different phrase brings the tooltip back. Same mechanism as quick add.
   const [dismissedSignature, setDismissedSignature] = useState<string | null>(null);
@@ -521,21 +455,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setPickerVisible(false);
     setEndPickerVisible(false);
     setRepeatPickerVisible(false);
-    setNotesOpen(false);
-    setStep(0);
     setDismissedSignature(null);
     setPersonOverrides({});
-    scaleAnim.setValue(0.95);
-    translateYAnim.setValue(16);
-    sheetOpacity.setValue(0);
-    backdropOpacity.setValue(0);
-    keyboardOffsetAnim.setValue(0);
-    Animated.parallel([
-      Animated.spring(scaleAnim, { toValue: 1, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start();
     // Focus waits for SheetModal's onShow, for the reason QuickAddModal gives.
   }, [visible]);
 
@@ -728,7 +649,6 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   );
   const isBusy = effectiveAvailability === 'busy';
   const alertSet = effectiveAlert !== null;
-  const showNotes = notesOpen || effectiveNotes.trim() !== '';
   const canAdd = draft.title.trim().length > 0 && startChosen && !busy && (!isEditing || original !== null);
 
   // ==== place suggestions ====
@@ -1178,46 +1098,194 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   ];
   const showOriginChip = showTravelChips && travelEstimatesOn && !effectiveTravelSkip;
 
-  // ==== steps ====
-  // A new event walks through When, Where and Details so each screen holds one
-  // question. The check in the header still adds from any step with what is
-  // filled in, and an edit shows every field at once (`onStep` is always true).
-  const stepped = !isEditing;
-  const lastStep = STEP_NAMES.length - 1;
-  const onStep = (n: number) => !stepped || step === n;
-  const goToStep = (n: number) => {
-    haptics.tap();
-    animateLayout();
-    setStep(n);
-    if (n === 0) inputRef.current?.focus();
-    // The place step focuses its own field as it mounts.
-    else if (n === lastStep) Keyboard.dismiss();
-  };
-  // Return and the footer's button: on to the next step, or add on the last.
-  const advance = () => {
-    if (!stepped || step === lastStep) { void next(); return; }
-    // A date is the one thing an event can't be added without, so ask for it here.
-    if (step === 0 && !startChosen) {
-      if (draft.title.trim().length === 0) return;
+  // ==== layout helpers ====
+  const stackRows = (rows: React.ReactNode[]) =>
+    rows.filter(Boolean).map((row, i) => (
+      <React.Fragment key={i}>
+        {i > 0 && <View style={styles.rowSep} />}
+        {row}
+      </React.Fragment>
+    ));
+  const section = (label: string, rows: React.ReactNode[]) => (
+    <>
+      <Text style={styles.groupLabel}>{label}</Text>
+      <View style={styles.group}>{stackRows(rows)}</View>
+    </>
+  );
+  const toggleRow = (icon: keyof typeof Ionicons.glyphMap, label: string, on: boolean, onPress: () => void, hint?: string) => (
+    <TouchableOpacity
+      style={styles.toggleRow}
+      onPress={() => { haptics.tap(); onPress(); }}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityHint={hint}
+      accessibilityState={{ checked: on }}
+    >
+      <Ionicons name={icon} size={18} color={on ? colors.accent : colors.textSecondary} />
+      <Text style={styles.toggleLabel}>{label}</Text>
+      <Toggle value={on} />
+    </TouchableOpacity>
+  );
+  const openPicker = (open: () => void) => () => { Keyboard.dismiss(); open(); };
+
+  // With no place yet the trip rows show but can't be used: a "Leave for" task needs one.
+  const travelRowsShown = travelTasksOn && !allDay;
+  const travelRowsLocked = !showTravelChips;
+  const closeKeyboardOrAskStart = () => {
+    // Return on a titled event with no start asks for the start rather than doing nothing.
+    if (!startChosen && !isEditing && draft.title.trim().length > 0) {
       haptics.tap();
       Keyboard.dismiss();
       setPickerVisible(true);
       return;
     }
-    if (step === 0 && draft.title.trim().length === 0) return;
-    goToStep(step + 1);
+    Keyboard.dismiss();
   };
-  // With no place yet the trip rows show but can't be used: a "Leave for" task needs one.
-  const travelRowsShown = stepped ? travelTasksOn && !allDay : showTravelChips;
-  const travelRowsLocked = stepped && !showTravelChips;
-  const stepAdvanceLabel = step === lastStep ? 'Add event' : step === 1 && !effectiveLocation ? 'Skip' : 'Next';
 
-  // The notes field, shown under the chips on the Details step and in its old place for an edit.
-  const notesField = showNotes ? (
-    <View style={styles.locationRow}>
-      <Ionicons name="document-text-outline" size={iconSize.sm} color={colors.textSecondary} />
+  const whenRows = [
+    toggleRow('sunny-outline', 'All day', allDay, () => setAllDay(v => !v)),
+    <EditorRow
+      icon="time-outline"
+      label={allDay ? 'Date' : 'Starts'}
+      value={startChosen ? describeStart(effectiveStart) : undefined}
+      hint="Choose a day and time"
+      onPress={openPicker(() => setPickerVisible(true))}
+    />,
+    !allDay && (
+      <EditorRow
+        icon="flag-outline"
+        label="Ends"
+        value={startChosen ? describeStart(effectiveEnd) : undefined}
+        // With no start yet there is nothing to measure an end from, so
+        // the row asks for the start first.
+        onPress={openPicker(() => (startChosen ? setEndPickerVisible(true) : setPickerVisible(true)))}
+      />
+    ),
+    // An edit changes one occurrence, so there is no repeat to set.
+    !isEditing && (
+      <EditorRow
+        icon="repeat-outline"
+        label="Repeat"
+        value={effectiveRepeat ? describeEventRepeatShort(effectiveRepeat) : undefined}
+        onPress={openPicker(() => setRepeatPickerVisible(true))}
+      />
+    ),
+  ];
+
+  const locationRow = (
+    <View style={styles.fieldRow}>
+      <Ionicons name="location-outline" size={18} color={colors.textSecondary} />
       <TextField
-        style={styles.locationInput}
+        style={[styles.fieldInput, draft.location !== null && styles.fieldInputRead]}
+        placeholder="Location"
+        placeholderTextColor={colors.textTertiary}
+        // Read from the line ("at Joe's") the field shows it and the line
+        // is where it is edited, so the two can't hold different places.
+        // Last time's place shows here, as an ordinary value to keep or edit.
+        value={draft.location ?? (location || memoryLocation || '')}
+        editable={draft.location === null}
+        onChangeText={text => { setLocation(text); setSavedConfirmedKey(null); }}
+        onSubmitEditing={() => Keyboard.dismiss()}
+        returnKeyType="done"
+        blurOnSubmit
+        keyboardAppearance={isDark ? 'dark' : 'light'}
+        accessibilityLabel="Location"
+      />
+      {placePicked && (
+        <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.accent} accessibilityLabel="Place from Apple Maps" />
+      )}
+    </View>
+  );
+  const placeRows = [
+    ...savedSuggestions.map(saved => (
+      <TouchableOpacity
+        key={saved.id}
+        style={styles.placeRow}
+        onPress={() => pickSavedPlace(saved)}
+        activeOpacity={interaction.activeOpacity}
+        accessibilityRole="button"
+        accessibilityLabel={`Use saved place ${saved.name}`}
+      >
+        <View style={styles.savedPlaceName}>
+          <Ionicons name="bookmark-outline" size={13} color={colors.textSecondary} />
+          <Text style={styles.placeName} numberOfLines={1}>{saved.name}</Text>
+        </View>
+        <Text style={styles.placeAddress} numberOfLines={1}>{saved.text}</Text>
+      </TouchableOpacity>
+    )),
+    ...placeResults.map((place, index) => {
+      const subtitle = placeSubtitle(place);
+      return (
+        <TouchableOpacity
+          key={`${place.latitude},${place.longitude},${index}`}
+          style={styles.placeRow}
+          onPress={() => pickPlace(place)}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`Use ${placeLocationText(place)}`}
+        >
+          <Text style={styles.placeName} numberOfLines={2}>{placeRowTitle(place)}</Text>
+          {subtitle && <Text style={styles.placeAddress} numberOfLines={2}>{subtitle}</Text>}
+        </TouchableOpacity>
+      );
+    }),
+  ];
+  const tripSet = effectiveTravelMode !== null || effectiveTravelSkip;
+  const lockable = (row: React.ReactNode) => (travelRowsLocked ? <View style={styles.locked} pointerEvents="none">{row}</View> : row);
+  const whereRows = [
+    locationRow,
+    ...placeRows,
+    travelRowsShown && lockable(
+      <EditorRow
+        icon="navigate-outline"
+        label="Getting there"
+        value={tripSet ? travelChipLabel : undefined}
+        onPress={openPicker(() => setTravelModePickerVisible(true))}
+      />
+    ),
+    travelRowsShown && !effectiveTravelSkip && lockable(
+      <EditorRow
+        icon="walk-outline"
+        label="Arrive"
+        value={effectiveArriveEarly !== null ? describeArrival(shownArriveEarly) : undefined}
+        onPress={openPicker(() => setArrivePickerVisible(true))}
+      />
+    ),
+    showOriginChip && (
+      <EditorRow
+        icon={originChipLabel === 'Where I am' ? 'locate-outline' : 'home-outline'}
+        label="Start from"
+        value={pickedOriginName !== null ? originChipLabel : undefined}
+        onPress={openPicker(() => setOriginPickerVisible(true))}
+      />
+    ),
+  ];
+
+  const detailRows = [
+    <EditorRow
+      icon="albums-outline"
+      label="Calendar"
+      value={effectiveCalendar?.title}
+      onPress={() => { void openCalendarPicker(); }}
+    />,
+    <EditorRow
+      icon="notifications-outline"
+      label="Alert"
+      value={alertSet ? describeAlert(effectiveAlert, allDay) : undefined}
+      onPress={openPicker(() => setAlertPickerVisible(true))}
+    />,
+    toggleRow(
+      isBusy ? 'eye' : 'eye-outline',
+      'Busy',
+      isBusy,
+      () => { if (draft.availabilitySpan) cutFromLine(draft.availabilitySpan); setAvailabilityPick(isBusy ? 'free' : 'busy'); },
+      'On blocks this time on your calendar. Off leaves the time free.',
+    ),
+    <View style={styles.fieldRow}>
+      <Ionicons name="document-text-outline" size={18} color={colors.textSecondary} style={styles.notesIcon} />
+      <TextField
+        style={[styles.fieldInput, styles.notesInput]}
         placeholder="Notes or link"
         placeholderTextColor={colors.textTertiary}
         value={effectiveNotes}
@@ -1225,287 +1293,183 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
           if (draft.notesSpan) cutFromLine(draft.notesSpan);
           setNotesOrLink(value);
         }}
-        onSubmitEditing={advance}
-        returnKeyType="done"
-        blurOnSubmit={false}
+        multiline
         autoCapitalize="none"
         keyboardAppearance={isDark ? 'dark' : 'light'}
-        autoFocus={notesOpen}
         accessibilityLabel="Notes or link"
       />
-    </View>
-  ) : null;
+    </View>,
+  ];
 
-  const allDayChip = (
-    <TouchableOpacity
-      style={[styles.toolChip, styles.toolChipWide]}
-      onPress={() => { haptics.tap(); setAllDay(v => !v); }}
-      activeOpacity={interaction.activeOpacity}
-      accessibilityRole="switch"
-      accessibilityLabel="All day"
-      accessibilityState={{ checked: allDay }}
-    >
-      <Ionicons name="sunny-outline" size={iconSize.sm} color={colors.textSecondary} />
-      <Text style={[styles.toolChipText, styles.switchLabel]} numberOfLines={1}>All day</Text>
-      <View style={[styles.switchTrack, allDay && styles.switchTrackOn]}>
-        <View style={[styles.switchKnob, allDay && styles.switchKnobOn]} />
-      </View>
-    </TouchableOpacity>
-  );
-  const busyChip = (
-    <TouchableOpacity
-      style={[styles.toolChip, styles.toolChipWide]}
-      onPress={() => { haptics.tap(); if (draft.availabilitySpan) cutFromLine(draft.availabilitySpan); setAvailabilityPick(isBusy ? 'free' : 'busy'); }}
-      activeOpacity={interaction.activeOpacity}
-      accessibilityRole="switch"
-      accessibilityLabel="Busy"
-      accessibilityHint="On blocks this time on your calendar. Off leaves the time free."
-      accessibilityState={{ checked: isBusy }}
-    >
-      <Ionicons name={isBusy ? 'eye' : 'eye-outline'} size={iconSize.sm} color={colors.textSecondary} />
-      <Text style={[styles.toolChipText, styles.switchLabel]} numberOfLines={1}>Busy</Text>
-      <View style={[styles.switchTrack, isBusy && styles.switchTrackOn]}>
-        <View style={[styles.switchKnob, isBusy && styles.switchKnobOn]} />
-      </View>
-    </TouchableOpacity>
-  );
-  const notesChip = !showNotes ? (
-    <TouchableOpacity
-      style={styles.toolChip}
-      onPress={() => { haptics.tap(); animateLayout(); setNotesOpen(true); }}
-      activeOpacity={interaction.activeOpacity}
-      accessibilityRole="button"
-      accessibilityLabel="Add notes or a link"
-    >
-      <Ionicons name="add" size={iconSize.sm} color={colors.textSecondary} />
-      <Text style={styles.toolChipText}>Notes</Text>
-    </TouchableOpacity>
-  ) : null;
-  // An edit changes one occurrence, so there is no repeat to set.
-  const repeatChip = !isEditing ? (
-    <TouchableOpacity
-      style={[styles.toolChip, effectiveRepeat !== null && styles.toolChipSet]}
-      onPress={() => { haptics.tap(); Keyboard.dismiss(); setRepeatPickerVisible(true); }}
-      activeOpacity={interaction.activeOpacity}
-      accessibilityRole="button"
-      accessibilityLabel={`Repeat: ${effectiveRepeat ? describeEventRepeatShort(effectiveRepeat) : 'never'}`}
-    >
-      <Ionicons name="repeat-outline" size={iconSize.sm} color={effectiveRepeat ? colors.accent : colors.textSecondary} />
-      <Text style={[styles.toolChipText, effectiveRepeat !== null && styles.toolChipTextSet]} numberOfLines={1}>
-        {effectiveRepeat ? describeEventRepeatShort(effectiveRepeat) : 'Repeat'}
-      </Text>
-    </TouchableOpacity>
-  ) : null;
+  const canSubmit = !busy && draft.title.trim().length > 0 && (!isEditing || original !== null);
 
   // ==== render. Everything below is JSX ====
   return (
     <SheetModal
       name="QuickEventSheet"
       visible={visible}
-      animationType="none"
-      transparent
+      animationType="slide"
+      presentationStyle="pageSheet"
       onRequestClose={dismissKeepingText}
       onShow={() => inputRef.current?.focus()}
     >
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
-        <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
-      </Animated.View>
-      <SheetScrim onPress={dismissKeepingText} label={isEditing ? 'Close event' : 'Close new event'} />
-      {keyboardHeight > 0 && (
-        <View pointerEvents="none" style={[styles.keyboardBacking, { height: keyboardHeight }]} />
-      )}
-      <View style={styles.centeredContainer} pointerEvents="box-none">
-        <Animated.View style={[styles.sheet, shadows.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }, { translateY: Animated.add(translateYAnim, keyboardOffsetAnim) }] }]}>
-          <View style={styles.row}>
-            <View style={styles.inputWrap}>
-              {hasOverlay && (
-                <HighlightedText
-                  text={text}
-                  ranges={highlightRanges}
-                  style={[styles.input, styles.inputOverlay]}
-                  highlightStyle={styles.inputHighlight}
-                  pointerEvents="none"
-                />
-              )}
-              <TextField
-                ref={inputRef}
-                style={[styles.input, hasOverlay && styles.inputHidden]}
-                placeholder={isEditing ? "Event title" : "New event…"}
-                placeholderTextColor={colors.textTertiary}
-                value={text}
-                onChangeText={setText}
-                onSubmitEditing={advance}
-                returnKeyType="next"
-                maxLength={TITLE_MAX_LENGTH}
-                // iOS's inline completion draws over the overlay; see QuickAddModal.
-                autoCorrect={!hasOverlay}
-                spellCheck
-                blurOnSubmit={false}
-                onLayout={e => setInputW(e.nativeEvent.layout.width)}
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                selection={titleCaret.selection}
-                onSelectionChange={titleCaret.onSelectionChange}
-                inputAccessoryViewID={Platform.OS === 'ios' ? EVENT_TOKEN_ACCESSORY_ID : undefined}
-                accessibilityLabel="Event, with an optional day, time and @people"
-              />
-              {wantsOverlay && (
-                <View style={[styles.measureWrap, styles.measureWide]} pointerEvents="none">
-                  <Text style={[styles.measureText, styles.measureNatural]} onLayout={e => setTitleW(e.nativeEvent.layout.width)}>
-                    {text}
-                  </Text>
-                </View>
-              )}
-              {activeMatch && (
-                <View style={styles.measureWrap} pointerEvents="none">
-                  <Text style={styles.measureText} onLayout={e => setPrefixW(e.nativeEvent.layout.width)}>
-                    {text.slice(0, activeMatch.matchStart)}
-                  </Text>
-                  <Text style={styles.measureText} onLayout={e => setMatchW(e.nativeEvent.layout.width)}>
-                    {text.slice(0, activeMatch.matchStart)}
-                    <Text style={styles.inputHighlight}>{text.slice(activeMatch.matchStart, activeMatch.matchEnd)}</Text>
-                  </Text>
-                </View>
-              )}
-            </View>
-            <TouchableOpacity
-              style={[styles.addBtn, !canAdd && styles.addBtnDisabled]}
+      <View style={styles.root}>
+        <SheetHeader
+          title={isEditing ? 'Edit event' : 'New event'}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={dismissKeepingText} minWidth={72} />}
+          right={
+            <SheetHeaderButton
+              label={isEditing ? BUTTON_LABEL.save : 'Add'}
               onPress={next}
-              disabled={!canAdd}
-              accessibilityRole="button"
-              accessibilityLabel={isEditing ? 'Save changes' : 'Add event'}
-            >
-              <Ionicons name="checkmark" size={18} color={canAdd ? colors.onAccent : colors.textTertiary} />
-            </TouchableOpacity>
-          </View>
-
-          {activeMatch && (
-            <Animated.View
-              style={[styles.tooltipRow, {
-                opacity: tooltipAnim,
-                transform: [
-                  { translateY: tooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) },
-                  { scale: tooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) },
-                ],
-              }]}
-              onLayout={e => setTooltipRowW(e.nativeEvent.layout.width)}
-            >
-              <View style={[styles.tooltipAnchor, { marginLeft: bubbleLeft }]}>
-                <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
-                {candidates ? (
-                  <View style={styles.tooltipCandidateRow} onLayout={e => setBubbleW(e.nativeEvent.layout.width)}>
-                    {candidates.map((candidate, i) => (
-                      <PressableScale
-                        key={candidate.id}
-                        style={styles.tooltipCandidatePill}
-                        haptic
-                        onPress={() => (ambiguousMention
-                          ? applyAmbiguousCandidate(candidate.id)
-                          : applyMentionSuggestion(candidate as MentionSuggestionCandidate))}
-                        onLayout={e => setCandidateLayoutAt(i, { x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width })}
-                      >
-                        <Text style={styles.tooltipText} numberOfLines={1}>{candidate.name}</Text>
-                      </PressableScale>
-                    ))}
-                  </View>
-                ) : (
-                  <View
-                    style={[styles.tooltipPillRow, tooltipRowW > 0 && { maxWidth: tooltipRowW }]}
-                    onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
-                  >
-                    <PressableScale style={[styles.tooltipBubble, styles.tooltipBubbleJoined]} onPress={applyPhrase}>
-                      <Ionicons name="calendar-outline" size={14} color={colors.onAccent} />
-                      <Text style={styles.tooltipText} numberOfLines={1} ellipsizeMode="tail">
-                        {describeStart(allDay ? startOfDay(draft.start) : draft.start)}
-                      </Text>
-                      <View style={styles.tooltipDot} />
-                      <Text style={styles.tooltipHint}>Tap to set</Text>
-                    </PressableScale>
-                    <View style={styles.tooltipDivider} />
-                    <PressableScale style={styles.tooltipDismiss} onPress={dismissPhrase} accessibilityLabel="Not that">
-                      <Ionicons name="close" size={14} color={colors.onAccent} />
-                    </PressableScale>
-                  </View>
-                )}
-              </View>
-            </Animated.View>
-          )}
-
-          {stepped && (
-            <View
-              style={styles.stepRow}
-              accessible
-              accessibilityRole="header"
-              accessibilityLabel={`Step ${step + 1} of ${STEP_NAMES.length}, ${STEP_NAMES[step]}`}
-            >
-              <Text style={styles.stepTitle}>{STEP_NAMES[step]}</Text>
-              <View style={styles.stepDots}>
-                {STEP_NAMES.map((name, i) => (
-                  <View key={name} style={[styles.stepDot, i === step && styles.stepDotOn]} />
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* The card's height is capped to the room above the keyboard, so what
-              sits below the title scrolls rather than spilling out of it. */}
-          <View style={styles.body}>
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-            {...scrollFade.scrollProps}
-          >
-            {onStep(0) && showSaved && (
-              <View style={styles.savedBlock}>
-                <View style={styles.savedList}>
-                  <TouchableOpacity
-                    style={styles.savedRow}
-                    onPress={() => { haptics.tap(); animateLayout(); setSavedOpen(o => !o); }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel="Saved events"
-                    accessibilityValue={{ text: `${savedList.length}` }}
-                    accessibilityState={{ expanded: savedOpen }}
-                  >
-                    <Ionicons name="bookmark" size={iconSize.sm} color={colors.accent} />
-                    <Text style={styles.savedHeaderText}>Saved events</Text>
-                    <Text style={styles.placeAddress}>{savedList.length}</Text>
-                    <RotatingChevron open={savedOpen} size={iconSize.sm} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  {savedOpen && savedList.map(event => (
-                    <TouchableOpacity
-                      key={eventMemoryKey(event.title)}
-                      style={[styles.savedRow, styles.placeRowRuled]}
-                      onPress={() => pickSaved(event)}
-                      onLongPress={() => confirmUnsave(event)}
-                      delayLongPress={interaction.delayLongPress}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${event.title}, ${describeSavedEvent(event)}`}
-                      accessibilityHint="Fills in the event. Long press to remove it from saved."
-                      accessibilityActions={[{ name: 'longpress', label: 'Remove from saved' }]}
-                      onAccessibilityAction={e => { if (e.nativeEvent.actionName === 'longpress') confirmUnsave(event); }}
-                    >
-                      <Ionicons name="bookmark" size={iconSize.sm} color={colors.accent} />
-                      <View style={styles.savedText}>
-                        <Text style={styles.placeName} numberOfLines={1}>{event.title}</Text>
-                        <Text style={styles.placeAddress} numberOfLines={1}>{describeSavedEvent(event)}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+              disabled={!canSubmit}
+              minWidth={72}
+            />
+          }
+        />
+        <View style={styles.titleCard}>
+          <View style={styles.inputWrap}>
+            {hasOverlay && (
+              <HighlightedText
+                text={text}
+                ranges={highlightRanges}
+                style={[styles.input, styles.inputOverlay]}
+                highlightStyle={styles.inputHighlight}
+                pointerEvents="none"
+              />
+            )}
+            <TextField
+              ref={inputRef}
+              style={[styles.input, hasOverlay && styles.inputHidden]}
+              placeholder={isEditing ? 'Event title' : 'New event…'}
+              placeholderTextColor={colors.textTertiary}
+              value={text}
+              onChangeText={setText}
+              onSubmitEditing={closeKeyboardOrAskStart}
+              returnKeyType="done"
+              maxLength={TITLE_MAX_LENGTH}
+              // iOS's inline completion draws over the overlay; see QuickAddModal.
+              autoCorrect={!hasOverlay}
+              spellCheck
+              blurOnSubmit={false}
+              onLayout={e => setInputW(e.nativeEvent.layout.width)}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              selection={titleCaret.selection}
+              onSelectionChange={titleCaret.onSelectionChange}
+              inputAccessoryViewID={Platform.OS === 'ios' ? EVENT_TOKEN_ACCESSORY_ID : undefined}
+              accessibilityLabel="Event, with an optional day, time and @people"
+            />
+            {wantsOverlay && (
+              <View style={[styles.measureWrap, styles.measureWide]} pointerEvents="none">
+                <Text style={[styles.measureText, styles.measureNatural]} onLayout={e => setTitleW(e.nativeEvent.layout.width)}>
+                  {text}
+                </Text>
               </View>
             )}
-            {onStep(0) && savedEventSuggestions.length > 0 && (
-              <View style={[styles.savedList, styles.savedBlock]}>
-                {savedEventSuggestions.map((event, i) => (
+            {activeMatch && (
+              <View style={styles.measureWrap} pointerEvents="none">
+                <Text style={styles.measureText} onLayout={e => setPrefixW(e.nativeEvent.layout.width)}>
+                  {text.slice(0, activeMatch.matchStart)}
+                </Text>
+                <Text style={styles.measureText} onLayout={e => setMatchW(e.nativeEvent.layout.width)}>
+                  {text.slice(0, activeMatch.matchStart)}
+                  <Text style={styles.inputHighlight}>{text.slice(activeMatch.matchStart, activeMatch.matchEnd)}</Text>
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {activeMatch && (
+          <Animated.View
+            style={[styles.tooltipRow, {
+              opacity: tooltipAnim,
+              transform: [
+                { translateY: tooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) },
+                { scale: tooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) },
+              ],
+            }]}
+            onLayout={e => setTooltipRowW(e.nativeEvent.layout.width)}
+          >
+            <View style={[styles.tooltipAnchor, { marginLeft: bubbleLeft }]}>
+              <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
+              {candidates ? (
+                <View style={styles.tooltipCandidateRow} onLayout={e => setBubbleW(e.nativeEvent.layout.width)}>
+                  {candidates.map((candidate, i) => (
+                    <PressableScale
+                      key={candidate.id}
+                      style={styles.tooltipCandidatePill}
+                      haptic
+                      onPress={() => (ambiguousMention
+                        ? applyAmbiguousCandidate(candidate.id)
+                        : applyMentionSuggestion(candidate as MentionSuggestionCandidate))}
+                      onLayout={e => setCandidateLayoutAt(i, { x: e.nativeEvent.layout.x, width: e.nativeEvent.layout.width })}
+                    >
+                      <Text style={styles.tooltipText} numberOfLines={1}>{candidate.name}</Text>
+                    </PressableScale>
+                  ))}
+                </View>
+              ) : (
+                <View
+                  style={[styles.tooltipPillRow, tooltipRowW > 0 && { maxWidth: tooltipRowW }]}
+                  onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
+                >
+                  <PressableScale style={[styles.tooltipBubble, styles.tooltipBubbleJoined]} onPress={applyPhrase}>
+                    <Ionicons name="calendar-outline" size={14} color={colors.onAccent} />
+                    <Text style={styles.tooltipText} numberOfLines={1} ellipsizeMode="tail">
+                      {describeStart(allDay ? startOfDay(draft.start) : draft.start)}
+                    </Text>
+                    <View style={styles.tooltipDot} />
+                    <Text style={styles.tooltipHint}>Tap to set</Text>
+                  </PressableScale>
+                  <View style={styles.tooltipDivider} />
+                  <PressableScale style={styles.tooltipDismiss} onPress={dismissPhrase} accessibilityLabel="Not that">
+                    <Ionicons name="close" size={14} color={colors.onAccent} />
+                  </PressableScale>
+                </View>
+              )}
+            </View>
+          </Animated.View>
+        )}
+
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + spacing.xl }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+          ref={keyboardScroll.ref}
+          {...keyboardScroll.props}
+        >
+          {showSaved && (
+            <View style={styles.savedBlock}>
+              <View style={styles.savedList}>
+                <TouchableOpacity
+                  style={styles.savedRow}
+                  onPress={() => { haptics.tap(); animateLayout(); setSavedOpen(o => !o); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel="Saved events"
+                  accessibilityValue={{ text: `${savedList.length}` }}
+                  accessibilityState={{ expanded: savedOpen }}
+                >
+                  <Ionicons name="bookmark" size={iconSize.sm} color={colors.accent} />
+                  <Text style={styles.savedHeaderText}>Saved events</Text>
+                  <Text style={styles.placeAddress}>{savedList.length}</Text>
+                  <RotatingChevron open={savedOpen} size={iconSize.sm} color={colors.textSecondary} />
+                </TouchableOpacity>
+                {savedOpen && savedList.map(event => (
                   <TouchableOpacity
                     key={eventMemoryKey(event.title)}
-                    style={[styles.savedRow, i > 0 && styles.placeRowRuled]}
+                    style={[styles.savedRow, styles.placeRowRuled]}
                     onPress={() => pickSaved(event)}
+                    onLongPress={() => confirmUnsave(event)}
+                    delayLongPress={interaction.delayLongPress}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={`Use saved event ${event.title}, ${describeSavedEvent(event)}`}
+                    accessibilityLabel={`${event.title}, ${describeSavedEvent(event)}`}
+                    accessibilityHint="Fills in the event. Long press to remove it from saved."
+                    accessibilityActions={[{ name: 'longpress', label: 'Remove from saved' }]}
+                    onAccessibilityAction={e => { if (e.nativeEvent.actionName === 'longpress') confirmUnsave(event); }}
                   >
                     <Ionicons name="bookmark" size={iconSize.sm} color={colors.accent} />
                     <View style={styles.savedText}>
@@ -1515,405 +1479,154 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                   </TouchableOpacity>
                 ))}
               </View>
-            )}
-            {stepped && step > 0 && (
-              <View style={styles.recapRow}>
-                <TouchableOpacity
-                  style={styles.recapChip}
-                  onPress={() => goToStep(0)}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={startChosen ? `Starts: ${describeStart(effectiveStart)}. Change` : 'No date yet. Change'}
-                >
-                  <Ionicons name="time-outline" size={13} color={colors.accent} />
-                  <Text style={[styles.recapText, !startChosen && styles.recapTextEmpty]} numberOfLines={1}>
-                    {startChosen ? describeStart(effectiveStart) : 'No date yet'}
-                  </Text>
-                </TouchableOpacity>
-                {effectiveRepeat !== null && (
-                  <TouchableOpacity
-                    style={styles.recapChip}
-                    onPress={() => goToStep(0)}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Repeat: ${describeEventRepeatShort(effectiveRepeat)}. Change`}
-                  >
-                    <Ionicons name="repeat-outline" size={13} color={colors.accent} />
-                    <Text style={styles.recapText} numberOfLines={1}>{describeEventRepeatShort(effectiveRepeat)}</Text>
-                  </TouchableOpacity>
-                )}
-                {step > 1 && effectiveLocation !== null && effectiveLocation.trim() !== '' && (
-                  <TouchableOpacity
-                    style={styles.recapChip}
-                    onPress={() => goToStep(1)}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Place: ${effectiveLocation}. Change`}
-                  >
-                    <Ionicons name="location-outline" size={13} color={colors.accent} />
-                    <Text style={styles.recapText} numberOfLines={1}>{effectiveLocation}</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-            {onStep(1) && (<>
-            <View style={styles.locationRow}>
-              <Ionicons name="location-outline" size={iconSize.sm} color={colors.textSecondary} />
-              <TextField
-                style={[styles.locationInput, draft.location !== null && styles.locationInputRead]}
-                placeholder="Location"
-                placeholderTextColor={colors.textTertiary}
-                // Read from the line ("at Joe's") the field shows it and the line
-                // is where it is edited, so the two can't hold different places.
-                // Last time's place shows here, as an ordinary value to keep or edit.
-                value={draft.location ?? (location || memoryLocation || '')}
-                editable={draft.location === null}
-                onChangeText={text => { setLocation(text); setSavedConfirmedKey(null); }}
-                autoFocus={stepped}
-                onSubmitEditing={advance}
-                returnKeyType="next"
-                blurOnSubmit={false}
-                keyboardAppearance={isDark ? 'dark' : 'light'}
-                accessibilityLabel="Location"
-              />
-              {placePicked && (
-                <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.accent} accessibilityLabel="Place from Apple Maps" />
-              )}
             </View>
-
-            {(savedSuggestions.length > 0 || placeResults.length > 0) && (
-              <View style={styles.placeList}>
-                {savedSuggestions.map((saved, index) => (
-                  <TouchableOpacity
-                    key={saved.id}
-                    style={[styles.placeRow, index > 0 && styles.placeRowRuled]}
-                    onPress={() => pickSavedPlace(saved)}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Use saved place ${saved.name}`}
-                  >
-                    <View style={styles.savedPlaceName}>
-                      <Ionicons name="bookmark-outline" size={13} color={colors.textSecondary} />
-                      <Text style={styles.placeName} numberOfLines={1}>{saved.name}</Text>
-                    </View>
-                    <Text style={styles.placeAddress} numberOfLines={1}>{saved.text}</Text>
-                  </TouchableOpacity>
-                ))}
-                {placeResults.map((place, index) => {
-                  const subtitle = placeSubtitle(place);
-                  return (
-                    <TouchableOpacity
-                      key={`${place.latitude},${place.longitude},${index}`}
-                      style={[styles.placeRow, (index > 0 || savedSuggestions.length > 0) && styles.placeRowRuled]}
-                      onPress={() => pickPlace(place)}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Use ${placeLocationText(place)}`}
-                    >
-                      <Text style={styles.placeName} numberOfLines={2}>{placeRowTitle(place)}</Text>
-                      {subtitle && <Text style={styles.placeAddress} numberOfLines={2}>{subtitle}</Text>}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-
-            {savedInUse && (
-              <View style={styles.captionRow}>
-                <Ionicons name="bookmark" size={13} color={colors.textSecondary} />
-                <Text style={styles.captionText} numberOfLines={1}>{savedInUse.text}</Text>
+          )}
+          {savedEventSuggestions.length > 0 && (
+            <View style={[styles.savedList, styles.savedBlock]}>
+              {savedEventSuggestions.map((event, i) => (
                 <TouchableOpacity
-                  onPress={() => { haptics.tap(); animateLayout(); setSavedConfirmedKey(null); }}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Use “${savedInUse.name}” as typed`}
-                >
-                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {canSavePlace && (
-              <View style={styles.placeOffer}>
-                <InlineAction
-                  icon="bookmark-outline"
-                  label="Save place"
-                  variant="neutral"
-                  onPress={savePlace}
-                  accessibilityLabel="Save this location as a named place"
-                />
-                <Text style={styles.placeOfferText}>Type its name instead of the address next time.</Text>
-              </View>
-            )}
-
-            {!placeSuggestionsEnabled && wantsPlaces && (
-              <View style={styles.placeOffer}>
-                <InlineAction
-                  icon="search-outline"
-                  label="Suggest places"
-                  variant="neutral"
-                  onPress={() => setPlaceSuggestionsEnabled(true)}
-                  accessibilityLabel="Turn on place suggestions from Apple Maps"
-                />
-                <Text style={styles.placeOfferText}>Looks up what you type in Apple Maps.</Text>
-              </View>
-            )}
-
-            </>
-            )}
-
-            {!stepped && notesField}
-
-            {onStep(0) && namedPeople.length > 0 && (
-              <View style={styles.captionRow}>
-                <Ionicons name="people-outline" size={13} color={colors.textSecondary} />
-                <Text style={styles.captionText} numberOfLines={1}>With {namedPeople.join(', ')}</Text>
-              </View>
-            )}
-
-            {onStep(0) && (
-            <View style={styles.whenRow}>
-              <TouchableOpacity
-                style={styles.whenBlock}
-                // Keyboard down first, or the title's token bar is lost behind the
-                // picker's window — see the category chip in QuickAddModal.
-                onPress={() => { haptics.tap(); Keyboard.dismiss(); setPickerVisible(true); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={allDay ? `Date: ${dayLabel(effectiveStart)}` : `Starts: ${describeStart(effectiveStart)}`}
-              >
-                <Text style={styles.whenLabel}>{allDay ? 'Date' : 'Starts'}</Text>
-                {startChosen ? (
-                  <>
-                    <Text style={styles.whenValue} numberOfLines={1}>{dayLabel(effectiveStart)}</Text>
-                    <Text style={styles.whenSub} numberOfLines={1}>{allDay ? 'All day' : formatTimeOfDay(effectiveStart, use24Hour)}</Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={[styles.whenValue, { color: colors.textTertiary }]} numberOfLines={1}>Add date</Text>
-                    <Text style={[styles.whenSub, { color: colors.textTertiary }]} numberOfLines={1}>{allDay ? 'All day' : 'Add time'}</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              {!allDay && (
-                <TouchableOpacity
-                  style={styles.whenBlock}
-                  // With no start yet there is nothing to measure an end from, so
-                  // the end chip asks for the start first (then goes on to the end).
-                  onPress={() => { haptics.tap(); Keyboard.dismiss(); if (startChosen) setEndPickerVisible(true); else setPickerVisible(true); }}
+                  key={eventMemoryKey(event.title)}
+                  style={[styles.savedRow, i > 0 && styles.placeRowRuled]}
+                  onPress={() => pickSaved(event)}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={startChosen ? `Ends: ${describeStart(effectiveEnd)}` : 'Ends: not set'}
+                  accessibilityLabel={`Use saved event ${event.title}, ${describeSavedEvent(event)}`}
                 >
-                  <Text style={styles.whenLabel}>Ends</Text>
-                  {startChosen ? (
-                    <>
-                      <Text style={styles.whenValue} numberOfLines={1}>{dayLabel(effectiveEnd)}</Text>
-                      <Text style={styles.whenSub} numberOfLines={1}>{formatTimeOfDay(effectiveEnd, use24Hour)}</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Text style={[styles.whenValue, { color: colors.textTertiary }]} numberOfLines={1}>Add date</Text>
-                      <Text style={[styles.whenSub, { color: colors.textTertiary }]} numberOfLines={1}>Add time</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-            )}
-
-            {onStep(2) && (
-            <View style={styles.toolbar}>
-              <TouchableOpacity
-                style={[styles.toolChip, styles.toolChipWide]}
-                onPress={() => { void openCalendarPicker(); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={`Calendar: ${effectiveCalendar?.title ?? 'default'}`}
-              >
-                {effectiveCalendar?.color ? <View style={[styles.calendarDot, { backgroundColor: effectiveCalendar.color }]} /> : (
-                  <Ionicons name="albums-outline" size={iconSize.sm} color={colors.textSecondary} />
-                )}
-                <Text style={styles.toolChipText} numberOfLines={1}>{effectiveCalendar?.title ?? 'Calendar'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.toolChip, alertSet && styles.toolChipSet]}
-                onPress={() => { haptics.tap(); Keyboard.dismiss(); setAlertPickerVisible(true); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={`Alert: ${describeAlert(effectiveAlert, allDay)}`}
-              >
-                <Ionicons name={alertSet ? 'notifications' : 'notifications-outline'} size={iconSize.sm} color={alertSet ? colors.accent : colors.textSecondary} />
-                <Text style={[styles.toolChipText, alertSet && styles.toolChipTextSet]} numberOfLines={1}>
-                  {describeAlert(effectiveAlert, allDay)}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            )}
-
-            {(stepped ? onStep(1) && travelRowsShown : showTravelChips) && (
-              <View style={styles.toolbar}>
-                <TouchableOpacity
-                  style={[styles.toolChip, styles.toolChipWide, (effectiveTravelMode !== null || effectiveTravelSkip) && styles.toolChipSet, travelRowsLocked && styles.toolChipLocked]}
-                  onPress={() => { haptics.tap(); Keyboard.dismiss(); setTravelModePickerVisible(true); }}
-                  disabled={travelRowsLocked}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Getting there: ${travelChipLabel}`}
-                >
-                  <Ionicons name="navigate-outline" size={iconSize.sm} color={effectiveTravelMode !== null || effectiveTravelSkip ? colors.accent : colors.textSecondary} />
-                  <Text style={[styles.toolChipText, (effectiveTravelMode !== null || effectiveTravelSkip) && styles.toolChipTextSet]} numberOfLines={1}>
-                    {travelChipLabel}
-                  </Text>
-                </TouchableOpacity>
-                {!effectiveTravelSkip && (
-                <TouchableOpacity
-                  style={[styles.toolChip, styles.toolChipWide, effectiveArriveEarly !== null && styles.toolChipSet, travelRowsLocked && styles.toolChipLocked]}
-                  onPress={() => { haptics.tap(); Keyboard.dismiss(); setArrivePickerVisible(true); }}
-                  disabled={travelRowsLocked}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Arrive: ${describeArrival(shownArriveEarly)}`}
-                >
-                  <Ionicons name="flag-outline" size={iconSize.sm} color={effectiveArriveEarly !== null ? colors.accent : colors.textSecondary} />
-                  <Text style={[styles.toolChipText, effectiveArriveEarly !== null && styles.toolChipTextSet]} numberOfLines={1}>
-                    {describeArrival(shownArriveEarly)}
-                  </Text>
-                </TouchableOpacity>
-                )}
-                {showOriginChip && (
-                  <TouchableOpacity
-                    style={[styles.toolChip, styles.toolChipWide, pickedOriginName !== null && styles.toolChipSet]}
-                    onPress={() => { haptics.tap(); Keyboard.dismiss(); setOriginPickerVisible(true); }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Start from: ${originChipLabel}`}
-                  >
-                    <Ionicons
-                      name={originChipLabel === 'Where I am' ? 'locate-outline' : 'home-outline'}
-                      size={iconSize.sm}
-                      color={pickedOriginName !== null ? colors.accent : colors.textSecondary}
-                    />
-                    <Text style={[styles.toolChipText, pickedOriginName !== null && styles.toolChipTextSet]} numberOfLines={1}>
-                      {originChipLabel}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-            {travelRowsShown && travelRowsLocked && onStep(1) && (
-              <HelpText style={styles.lockedHint}>Choose a place to set how you get there.</HelpText>
-            )}
-
-            {stepped ? (
-              <>
-                {onStep(0) && <View style={styles.toolbar}>{allDayChip}{repeatChip}</View>}
-                {onStep(2) && <View style={styles.toolbar}>{busyChip}{notesChip}</View>}
-                {onStep(2) && notesField}
-              </>
-            ) : (
-              <>
-                <View style={styles.toolbar}>{allDayChip}{busyChip}</View>
-                {(!showNotes || !isEditing) && <View style={styles.toolbar}>{notesChip}{repeatChip}</View>}
-              </>
-            )}
-
-            {onStep(0) && conflicts.length > 0 && (
-              <View style={styles.conflictBlock}>
-                <TouchableOpacity
-                  style={styles.captionRowTight}
-                  onPress={() => { haptics.tap(); animateLayout(); setConflictsOpen(v => !v); }}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={conflictsOpen ? 'Hide overlapping events' : 'Show overlapping events'}
-                  accessibilityState={{ expanded: conflictsOpen }}
-                >
-                  <Ionicons name="alert-circle-outline" size={13} color={colors.orangeText} />
-                  <Text style={[styles.captionText, styles.captionWarning]} numberOfLines={1}>
-                    {conflictsOpen
-                      ? `Overlaps ${conflicts.length} ${conflicts.length === 1 ? 'event' : 'events'}`
-                      : `Overlaps ${conflicts[0].title || 'an event'}, ${describeSpan(conflicts[0])}${conflicts.length > 1 ? ` and ${conflicts.length - 1} more` : ''}`}
-                  </Text>
-                  <RotatingChevron open={conflictsOpen} size={13} color={colors.textSecondary} />
-                </TouchableOpacity>
-                {conflictsOpen && conflicts.map((event, i) => (
-                  <View key={`${event.id}-${event.start}-${i}`} style={styles.conflictItem}>
-                    <Text style={styles.conflictTitle} numberOfLines={1}>{event.title || 'Untitled event'}</Text>
-                    <Text style={styles.conflictSpan}>{describeSpan(event)}</Text>
+                  <Ionicons name="bookmark" size={iconSize.sm} color={colors.accent} />
+                  <View style={styles.savedText}>
+                    <Text style={styles.placeName} numberOfLines={1}>{event.title}</Text>
+                    <Text style={styles.placeAddress} numberOfLines={1}>{describeSavedEvent(event)}</Text>
                   </View>
-                ))}
-              </View>
-            )}
-
-            {onStep(0) && freeSlot !== null && rawStart === freeSlot && (
-              <View style={styles.captionRow}>
-                <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
-                <Text style={styles.captionText} numberOfLines={1}>The first free time that day</Text>
-              </View>
-            )}
-
-            {onStep(0) && usingMemory && (
-              <View style={styles.captionRow}>
-                <Ionicons name="refresh-outline" size={13} color={colors.textSecondary} />
-                <Text style={styles.captionText} numberOfLines={1}>
-                  {savedEventMatch
-                    ? `Filled in from your saved “${draft.title.trim()}”`
-                    : `Filled in from your last “${draft.title.trim()}”`}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => { haptics.tap(); animateLayout(); setMemoryDismissedKey(memoryKey); }}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Don’t fill in from last time"
-                >
-                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
-              </View>
-            )}
+              ))}
+            </View>
+          )}
 
-            {isEditing && original && (
-              <View style={styles.deleteRow}>
-                <InlineAction
-                  icon="trash-outline"
-                  label="Delete event"
-                  variant="neutral"
-                  tint={colors.red}
-                  onPress={confirmDelete}
-                  accessibilityLabel="Delete this event"
-                />
-              </View>
-            )}
-          </ScrollView>
-          <ScrollEdgeFade edge="bottom" opacity={scrollFade.bottomOpacity} color={colors.bgSecondary} />
-          </View>
-          {stepped && (
-            <View style={styles.footer}>
-              {step > 0 && (
-                <TouchableOpacity
-                  style={[styles.footerBtn, styles.footerBack]}
-                  onPress={() => goToStep(step - 1)}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Back to ${STEP_NAMES[step - 1]}`}
-                >
-                  <Text style={styles.footerBackText}>Back</Text>
-                </TouchableOpacity>
-              )}
+          {namedPeople.length > 0 && (
+            <View style={styles.captionRow}>
+              <Ionicons name="people-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.captionText} numberOfLines={1}>With {namedPeople.join(', ')}</Text>
+            </View>
+          )}
+
+          {section('When', whenRows)}
+
+          {conflicts.length > 0 && (
+            <View style={styles.conflictBlock}>
               <TouchableOpacity
-                style={[styles.footerBtn, styles.footerNext, (busy || draft.title.trim().length === 0) && styles.footerNextDisabled]}
-                onPress={advance}
-                disabled={busy || draft.title.trim().length === 0}
+                style={styles.captionRowTight}
+                onPress={() => { haptics.tap(); animateLayout(); setConflictsOpen(v => !v); }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel={step === lastStep ? 'Add event' : step === 0 && !startChosen ? 'Next, choose a date' : stepAdvanceLabel}
+                accessibilityLabel={conflictsOpen ? 'Hide overlapping events' : 'Show overlapping events'}
+                accessibilityState={{ expanded: conflictsOpen }}
               >
-                <Text style={[styles.footerNextText, (busy || draft.title.trim().length === 0) && styles.footerNextTextDisabled]}>
-                  {stepAdvanceLabel}
+                <Ionicons name="alert-circle-outline" size={13} color={colors.orangeText} />
+                <Text style={[styles.captionText, styles.captionWarning]} numberOfLines={1}>
+                  {conflictsOpen
+                    ? `Overlaps ${conflicts.length} ${conflicts.length === 1 ? 'event' : 'events'}`
+                    : `Overlaps ${conflicts[0].title || 'an event'}, ${describeSpan(conflicts[0])}${conflicts.length > 1 ? ` and ${conflicts.length - 1} more` : ''}`}
                 </Text>
+                <RotatingChevron open={conflictsOpen} size={13} color={colors.textSecondary} />
+              </TouchableOpacity>
+              {conflictsOpen && conflicts.map((event, i) => (
+                <View key={`${event.id}-${event.start}-${i}`} style={styles.conflictItem}>
+                  <Text style={styles.conflictTitle} numberOfLines={1}>{event.title || 'Untitled event'}</Text>
+                  <Text style={styles.conflictSpan}>{describeSpan(event)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {freeSlot !== null && rawStart === freeSlot && (
+            <View style={styles.captionRow}>
+              <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.captionText} numberOfLines={1}>The first free time that day</Text>
+            </View>
+          )}
+
+          {usingMemory && (
+            <View style={styles.captionRow}>
+              <Ionicons name="refresh-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.captionText} numberOfLines={1}>
+                {savedEventMatch
+                  ? `Filled in from your saved “${draft.title.trim()}”`
+                  : `Filled in from your last “${draft.title.trim()}”`}
+              </Text>
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); animateLayout(); setMemoryDismissedKey(memoryKey); }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel="Don’t fill in from last time"
+              >
+                <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
             </View>
           )}
-        </Animated.View>
+
+          {section('Where', whereRows)}
+
+          {travelRowsShown && travelRowsLocked && (
+            <HelpText style={styles.lockedHint}>Choose a place to set how you get there.</HelpText>
+          )}
+
+          {savedInUse && (
+            <View style={styles.captionRow}>
+              <Ionicons name="bookmark" size={13} color={colors.textSecondary} />
+              <Text style={styles.captionText} numberOfLines={1}>{savedInUse.text}</Text>
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); animateLayout(); setSavedConfirmedKey(null); }}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Use “${savedInUse.name}” as typed`}
+              >
+                <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {canSavePlace && (
+            <View style={styles.placeOffer}>
+              <InlineAction
+                icon="bookmark-outline"
+                label="Save place"
+                variant="neutral"
+                onPress={savePlace}
+                accessibilityLabel="Save this location as a named place"
+              />
+              <Text style={styles.placeOfferText}>Type its name instead of the address next time.</Text>
+            </View>
+          )}
+
+          {!placeSuggestionsEnabled && wantsPlaces && (
+            <View style={styles.placeOffer}>
+              <InlineAction
+                icon="search-outline"
+                label="Suggest places"
+                variant="neutral"
+                onPress={() => setPlaceSuggestionsEnabled(true)}
+                accessibilityLabel="Turn on place suggestions from Apple Maps"
+              />
+              <Text style={styles.placeOfferText}>Looks up what you type in Apple Maps.</Text>
+            </View>
+          )}
+
+          {section('Details', detailRows)}
+
+          {isEditing && original && (
+            <View style={styles.deleteRow}>
+              <InlineAction
+                icon="trash-outline"
+                label="Delete event"
+                variant="neutral"
+                tint={colors.red}
+                onPress={confirmDelete}
+                accessibilityLabel="Delete this event"
+              />
+            </View>
+          )}
+        </ScrollView>
+
       </View>
       <TitleTokenAccessory
         nativeID={EVENT_TOKEN_ACCESSORY_ID}
@@ -2030,26 +1743,20 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 
 /** A typed alert runs from a minute to a week before the event, as in a saved event. */
 const ALERT_RANGE = { min: 1, max: 7 * 24 * 60 };
-const STEP_NAMES = ['When', 'Where', 'Details'] as const;
 
 // Mirrors QuickAddModal's card, input and tooltip styles; the notes on why
 // each value is what it is live there.
-const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create({
-  backdropDim: { backgroundColor: colors.backdrop },
-  keyboardBacking: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: colors.bgSecondary },
-  centeredContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
-  sheet: {
-    ...overlayCard,
+const makeStyles = (colors: Colors) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.bg },
+  titleCard: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
-    borderRadius: 20,
-    padding: spacing.md,
-    maxHeight: sheetMaxHeight,
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
-  body: { flexShrink: 1, position: 'relative' },
-  savedPlaceName: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  inputWrap: { flex: 1, position: 'relative' },
-  input: { fontSize: font.xl, fontWeight: fontWeight.semibold, color: colors.text, paddingVertical: spacing.sm },
+  inputWrap: { position: 'relative' },
+  input: { fontSize: font.xl, fontWeight: fontWeight.semibold, color: colors.text, paddingVertical: spacing.smd },
   inputOverlay: { position: 'absolute', top: 0, left: 0, right: 0 },
   inputHidden: { color: 'transparent' },
   inputHighlight: { color: colors.accent, fontWeight: fontWeight.semibold, backgroundColor: colors.accentSubtle },
@@ -2059,18 +1766,10 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   // text shrink-wrapped so its reported width is the line's own.
   measureWide: { width: 10000 },
   measureNatural: { alignSelf: 'flex-start' },
-  addBtn: {
-    width: interaction.pillHeight,
-    height: interaction.pillHeight,
-    borderRadius: interaction.pillHeight / 2,
-    backgroundColor: colors.accentFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addBtnDisabled: { backgroundColor: colors.bgTertiary },
   // Zero height with the bubble overflowing it: a popover over the fields, not a
-  // row that pushes them down and clips the card's last row off its capped height.
-  tooltipRow: { height: 0, marginTop: -4, zIndex: 2, overflow: 'visible' },
+  // row that pushes them down. Inset by the title card's padding so the bubble's
+  // x positions line up with the text field's own.
+  tooltipRow: { height: 0, marginHorizontal: spacing.md + spacing.md, marginTop: 2, zIndex: 2, overflow: 'visible' },
   // Absolute so the bubble sizes itself rather than being laid out inside the
   // row's zero height, which squashed its content to a sliver.
   tooltipAnchor: { position: 'absolute', top: 0, left: 0 },
@@ -2124,112 +1823,62 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   tooltipText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold, flexShrink: 1 },
   tooltipDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.onAccent, opacity: 0.6 },
   tooltipHint: { color: colors.onAccent, fontSize: font.xs, fontWeight: fontWeight.medium, opacity: 0.75 },
-  locationRow: {
+
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: spacing.md, paddingTop: spacing.xs },
+  // The section labels and cards every editor sheet uses: uppercase caption over an inset card.
+  groupLabel: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginTop: spacing.md,
+    marginBottom: spacing.xsm,
+    marginLeft: spacing.xs,
+  },
+  group: { borderRadius: radius.md, backgroundColor: colors.bgSecondary, overflow: 'hidden' },
+  rowSep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md + 18 + spacing.md },
+  toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xsm,
-    paddingHorizontal: 10,
-    minHeight: interaction.pillHeight,
-    borderRadius: radius.md,
-    backgroundColor: colors.bgTertiary,
-    marginBottom: spacing.sm,
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 13,
   },
-  locationInput: { flex: 1, fontSize: font.sm, color: colors.text, paddingVertical: spacing.xs },
-  locationInputRead: { color: colors.accent },
-  calendarDot: { width: 10, height: 10, borderRadius: 5 },
-  placeList: {
-    borderRadius: radius.md,
-    backgroundColor: colors.bgTertiary,
-    marginTop: -spacing.xs,
-    marginBottom: spacing.sm,
-    overflow: 'hidden',
-  },
-  placeRow: { paddingHorizontal: 10, paddingVertical: spacing.sm, gap: spacing.xxs },
+  toggleLabel: { flex: 1, color: colors.text, fontSize: font.md },
+  // A text field that lives in a card row, in the place of an EditorRow.
+  fieldRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, minHeight: 48 },
+  fieldInput: { flex: 1, fontSize: font.md, color: colors.text, paddingVertical: spacing.smd },
+  fieldInputRead: { color: colors.accent },
+  notesInput: { minHeight: 72, textAlignVertical: 'top' },
+  notesIcon: { alignSelf: 'flex-start', marginTop: spacing.smd },
+  // The trip rows before a place is set: shown so they can be found, not usable yet.
+  locked: { opacity: 0.4 },
+  lockedHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xsm, marginLeft: spacing.xs },
+
+  savedPlaceName: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  placeRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.xxs },
   // The saved list folds under its own header row; the block carries the gap below.
-  savedBlock: { marginBottom: spacing.sm },
+  savedBlock: { marginTop: spacing.xs },
   savedHeaderText: { flex: 1, color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-  savedList: { borderRadius: radius.md, backgroundColor: colors.bgTertiary, overflow: 'hidden' },
-  savedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: 10, paddingVertical: spacing.sm },
+  savedList: { borderRadius: radius.md, backgroundColor: colors.bgSecondary, overflow: 'hidden' },
+  savedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.smd },
   savedText: { flex: 1, gap: spacing.xxs },
   placeRowRuled: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
   placeName: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   placeAddress: { color: colors.textSecondary, fontSize: font.xs },
-  placeOffer: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  placeOffer: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
   placeOfferText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
-  captionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.sm },
+  captionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
   captionText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
   // The icon carries the orange; orange text on a light card is too faint to read.
   captionWarning: { color: colors.text },
   captionRowTight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  // The expanded list sits under its header row; the block carries the gap to the next element.
-  conflictBlock: { marginBottom: spacing.sm },
+  // The expanded list sits under its header row; the block carries the gap above it.
+  conflictBlock: { marginTop: spacing.sm, marginHorizontal: spacing.xs },
   conflictItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingLeft: spacing.md + spacing.xs, paddingTop: spacing.xs },
   conflictTitle: { flex: 1, color: colors.text, fontSize: font.xs },
   conflictSpan: { color: colors.textSecondary, fontSize: font.xs },
-  deleteRow: { flexDirection: 'row', marginBottom: spacing.sm },
-  toolbar: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
-  toolChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    minHeight: interaction.pillHeight,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-  },
-  // The date (and the calendar's name) take the room; the other chips keep their width.
-  toolChipWide: { flex: 1 },
-  // The trip rows before a place is set: shown so they can be found, not usable yet.
-  toolChipLocked: { opacity: 0.4 },
-  lockedHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: -spacing.xs, marginBottom: spacing.sm },
-  // The step's name and where it sits among the three, between the title and the fields.
-  stepRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm, paddingHorizontal: spacing.xs },
-  stepTitle: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, letterSpacing: 0.8, textTransform: 'uppercase' },
-  stepDots: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  stepDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.controlBorder },
-  stepDotOn: { width: 16, backgroundColor: colors.accentFill },
-  // What the earlier steps decided, each one a tap back to its step.
-  recapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.sm },
-  recapChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    maxWidth: '100%',
-    paddingHorizontal: spacing.smd,
-    paddingVertical: spacing.xsm,
-    borderRadius: radius.full,
-    backgroundColor: colors.accentSubtle,
-  },
-  recapText: { flexShrink: 1, color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
-  recapTextEmpty: { color: colors.textSecondary },
-  footer: { flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs },
-  footerBtn: { minHeight: interaction.pillHeight, borderRadius: radius.full, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md },
-  footerBack: { backgroundColor: colors.bgTertiary },
-  footerBackText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
-  footerNext: { flex: 1, backgroundColor: colors.accentFill },
-  footerNextDisabled: { backgroundColor: colors.bgTertiary },
-  footerNextText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold },
-  footerNextTextDisabled: { color: colors.textTertiary },
-  toolChipSet: { backgroundColor: colors.accentSubtle },
-  toolChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium, flexShrink: 1 },
-  toolChipTextSet: { color: colors.accent },
-  // Starts and Ends: two halves of one row, each a tap target for its own picker.
-  whenRow: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
-  whenBlock: {
-    flex: 1,
-    paddingHorizontal: 10,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.bgTertiary,
-  },
-  whenLabel: { color: colors.textTertiary, fontSize: font.xxs, fontWeight: fontWeight.semibold, letterSpacing: 0.6, textTransform: 'uppercase' },
-  whenValue: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold, marginTop: 1 },
-  whenSub: { color: colors.textSecondary, fontSize: font.xs },
-  // The All day and Busy chips carry a switch at their trailing edge, so the label takes the room.
-  switchLabel: { flex: 1, color: colors.text },
-  switchTrack: { width: 30, height: 18, borderRadius: 9, backgroundColor: colors.controlBorder, justifyContent: 'center', paddingHorizontal: 2 },
-  switchTrackOn: { backgroundColor: colors.accentFill },
-  switchKnob: { width: 14, height: 14, borderRadius: 7, backgroundColor: colors.onFill, alignSelf: 'flex-start' },
-  switchKnobOn: { backgroundColor: colors.onAccent, alignSelf: 'flex-end' },
+  deleteRow: { flexDirection: 'row', marginTop: spacing.lg },
 });

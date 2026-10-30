@@ -763,6 +763,15 @@ export interface EventTaskRule extends RuleTaskEstimate, RuleTaskCategory, RuleT
    * Ignored on a rule that fires ahead of its event.
    */
   skipIfUpcoming?: boolean;
+  /**
+   * The task has to be done before leaving for the event: it lands on the
+   * event's own day (`leadDays` is stored as 0), and the event's "Leave for X"
+   * row names it while it is open and asks before it is ticked. Linked by the
+   * shared occurrence key, so there is no field on the task. Does nothing for
+   * an event with no location, which gets no Leave row. Ignored with
+   * `afterEvent`. See `leavePrep.ts`.
+   */
+  beforeLeaving?: boolean;
   // Off keeps the rule written down but stops it firing, same as WeatherRule.
   enabled: boolean;
 }
@@ -9331,3 +9340,24 @@ export const PRIORITY_COLORS = [
 // Max length for any title-style input (task, subtask, chain step). Long titles
 // are truncated with an ellipsis in the list, so cap input to keep them sane.
 export const TITLE_MAX_LENGTH = 200;
+
+/**
+ * What a caller that already knows something about the event starts the card
+ * with: the day the screen it was opened from is on, a title, and the people
+ * it is with (a person's "Plan something"). All optional, and all editable.
+ */
+export interface QuickEventSeed {
+  day?: Date;
+  /** An exact span, for a task's time block proposed in a free gap. Wins over `day`. */
+  start?: Date;
+  end?: Date;
+  title?: string;
+  personIds?: readonly string[];
+  /** An all-day event; `start` is its day. Used by an imported event with no clock time. */
+  allDay?: boolean;
+  location?: string;
+  /** Notes, or a lone link, for the "Notes or link" field. */
+  notes?: string;
+  /** Minutes before the start for the alert chip; omitted keeps the chip's default. */
+  alertMinutes?: number | null;
+}

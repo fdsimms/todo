@@ -68,6 +68,8 @@ import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMoveP
 import { describeReschedule } from '../utils/rescheduleLabel';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { confirmSlip } from '../utils/slipConfirm';
+import { leavePrepLine, openLeavePrep } from '../utils/leavePrep';
+import { confirmLeaveWithOpenPrep } from '../utils/leavePrepConfirm';
 import { scheduleCompletionTimer } from '../utils/notifications';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import {
@@ -104,13 +106,14 @@ import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
 import { SegmentedControl } from './SegmentedControl';
-import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, travelSourceStart, travelWalkUnderFor, type TravelChoice } from '../utils/travelTasks';
+import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, TRAVEL_MODES, TRAVEL_MODE_LABELS, travelSourceStart, travelWalkUnderFor, type TravelChoice } from '../utils/travelTasks';
 import { setTravelModeForEvent } from '../utils/travelModeWrite';
 import { TravelModeSheet } from './TravelModeSheet';
 import { openEventInSystemCalendar } from '../utils/calendarSync';
 import { alertFailedWithSettings } from '../utils/permissionAlert';
 import { isDemoModeActive } from '../utils/demoState';
 import { useTransitStore } from '../store/useTransitStore';
+import { travelEstimatesWanted } from '../store/useTravelTimeStore';
 import { addDays } from 'date-fns/addDays';
 import { useTravelTimeStore } from '../store/useTravelTimeStore';
 import { confirmDeleteTask } from '../utils/confirmDeleteTask';
@@ -850,6 +853,13 @@ const TaskItemRow = React.memo(function TaskItem({
       travelWalkUnderFor(eventId, travelEventPrefs, travelDefaultMode, travelWalkUnder),
     );
   });
+  // Held estimates live in memory, so a launch starts with none until the first
+  // read answers. A row that will get one keeps the space for it meanwhile.
+  const travelEstimatesOn = useSettingsStore(s => travelEstimatesWanted(s));
+  const travelPending = useTravelTimeStore(s => (
+    travelEstimatesOn && !s.settled && task.generatedKind === 'travel' && !!task.generatedSourceId
+      && localTravelEventId(task.generatedSourceId) !== null && !isDemoModeActive()
+  )) && travelHeld === null;
   const travelNote = travelHeld ? describeTravelEstimate(travelHeld.minutes, travelHeld.mode) : null;
   // The other ways of getting there, when Compare ways to get there is on.
   const travelCompareModes = useSettingsStore(s => s.travelCompareModes);
@@ -878,6 +888,13 @@ const TaskItemRow = React.memo(function TaskItem({
     if (task.generatedKind !== 'travel' || !transitAlertsOn) return null;
     return travelDisruptionNote(task, s.snapshot, transitLines, Date.now(), +addDays(getCurrentDayStart(), 1));
   });
+  // What is still open before leaving, on a "Leave for" row only (the rule is
+  // tied to leaving in Event rules). A string, so only a change to the line
+  // re-renders the row.
+  const eventRules = useSettingsStore(s => s.eventRules);
+  const leavePrep = useTaskStore(s => (
+    task.generatedKind === 'travel' ? leavePrepLine(openLeavePrep(task, s.tasks, eventRules)) : null
+  ));
   const travelSource = task.generatedKind === 'travel' ? task.generatedSourceId : null;
   const canOpenTravelEvent = !!travelSource && travelSourceEventId(travelSource) !== null && !isDemoModeActive();
   const handleOpenTravelEvent = async () => {
@@ -2797,6 +2814,9 @@ const TaskItemRow = React.memo(function TaskItem({
       );
       return;
     }
+    // A "Leave for" row with its prep still open asks first; Go back leaves it
+    // exactly as it was.
+    if (!(await confirmLeaveWithOpenPrep(task, useTaskStore.getState().tasks, eventRules))) return;
     await runCompletion();
   };
 
@@ -3263,7 +3283,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // Whether the meta row has anything to show besides the notes and deadline
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
-  const hasOtherMeta = morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
+  const hasOtherMeta = morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
   const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !deadlineOnMeta;
 
@@ -4072,6 +4092,30 @@ const TaskItemRow = React.memo(function TaskItem({
                 <Text style={styles.scheduledLabel} numberOfLines={1}>{placeReminderLabel}</Text>
               </View>
             )}
+            {travelPending && !travelCompareModes && (
+              <View style={styles.metaChip} accessibilityLabel="Checking travel time">
+                <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={[styles.scheduledLabel, { color: colors.textTertiary }]} numberOfLines={1}>
+                  Checking travel time
+                </Text>
+              </View>
+            )}
+            {travelPending && travelCompareModes && (
+              <View style={styles.travelChoices} pointerEvents="none" accessibilityLabel="Checking travel time">
+                <SegmentedControl
+                  label="Way of getting there"
+                  value={null}
+                  options={TRAVEL_MODES.map(mode => ({
+                    value: mode,
+                    label: '…',
+                    icon: TRAVEL_CHOICE_ICONS[mode],
+                    accessibilityLabel: TRAVEL_MODE_LABELS[mode],
+                    disabled: true,
+                  }))}
+                  onChange={() => {}}
+                />
+              </View>
+            )}
             {travelNote !== null && travelOptions.length === 0 && (
               <TouchableOpacity
                 style={styles.metaChip}
@@ -4115,6 +4159,17 @@ const TaskItemRow = React.memo(function TaskItem({
                     if (choice) handleTravelChoice(choice);
                   }}
                 />
+              </View>
+            )}
+            {/* The prep tasks that have to be done before walking out. Same
+                line-of-its-own treatment as the notice below, in the plain
+                meta colour: it is a to-do, not a warning. */}
+            {leavePrep !== null && (
+              <View style={styles.metaChip} accessibilityLabel={leavePrep}>
+                <Ionicons name="alert-circle-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={2}>
+                  {leavePrep}
+                </Text>
               </View>
             )}
             {/* What the MTA says about this trip. On its own line (basis 100%)

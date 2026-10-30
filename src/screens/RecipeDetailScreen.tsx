@@ -1472,12 +1472,6 @@ export function RecipeDetailScreen() {
     const swapped = applyStandingSwap(ingredient, standingSwaps);
     const line = swapped.ingredient;
     const swapNote = swapped.swappedFrom ? describeStandingSwap(swapped.swappedFrom) : null;
-    // A line that reaches its catalog row through that row's other name keeps
-    // its own words, so say whose figures and price it is counted with.
-    const aliasMatch = catalogMatches.get(ingredient.id);
-    const aliasNote = !swapNote && aliasMatch?.kind === 'linked' && aliasMatch.reason === 'alias' && aliasMatch.item
-      ? `Counted as ${aliasMatch.item.name}`
-      : null;
     // Only for a line the app is reading as written: a swapped line has
     // already been answered by the swap.
     const standInNote = swapNote ? null : standInNotes.get(ingredient.id) ?? null;
@@ -1618,7 +1612,7 @@ export function RecipeDetailScreen() {
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={
-            [ingredient.section, line.name, swapNote ?? aliasNote, standInNote, scaledQuantity,
+            [ingredient.section, line.name, swapNote, standInNote, scaledQuantity,
              weightText && `about ${weightText.slice(1)}`, ingredient.prep,
              ingredient.purpose && `for ${ingredient.purpose}`,
              ingredient.optional && 'optional',
@@ -1639,9 +1633,6 @@ export function RecipeDetailScreen() {
                 rather than as what the recipe says. */}
             {!!swapNote && (
               <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
-            )}
-            {!!aliasNote && (
-              <Text style={styles.alternativeNote} numberOfLines={1}>{aliasNote}</Text>
             )}
             {!!standInNote && (
               <Text style={styles.alternativeNote} numberOfLines={1}>{standInNote}</Text>

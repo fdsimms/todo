@@ -8,6 +8,8 @@ import {
   dbGetSetting,
   dbSetSetting,
   dbGetAllTasks,
+  dbGetTaskIds,
+  dbGetTasksByIds,
   dbInsertTask,
   dbUpdateTask,
   dbUpdateTaskCalendarLinks,
@@ -177,6 +179,7 @@ import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
 import {
   WEEKEND_NUDGE_TITLE,
   isWeekendBare,
+  isWeekendNudgeLeadDay,
   staleWeekendNudgeTasks,
   upcomingWeekend,
   wantsWeekendNudge,
@@ -470,6 +473,7 @@ import {
   travelSourceOf,
   travelTaskTitle,
 } from '../utils/travelTasks';
+import { leavePrepLine, openLeavePrep } from '../utils/leavePrep';
 import { describeDisruptions, disruptionHeadlines, journeyDisruptions } from '../utils/transitAlerts';
 import { carryClockTime, dateToHHMM, onLogicalDay } from '../utils/clockTime';
 import { deadlineOnto, reminderOnto as reminderOntoDay, skipPatch } from '../utils/taskSkip';
@@ -508,6 +512,7 @@ import {
 import { isOpenEnded } from '../utils/listMode';
 import { describeReschedule } from '../utils/rescheduleLabel';
 import { timedPart } from '../utils/perfLog';
+import { mergeTaskDelta } from '../utils/taskDeltaReload';
 
 
 /**
@@ -531,6 +536,18 @@ import { timedPart } from '../utils/perfLog';
  * one by design, and a plain insert of the same id threw, which left the task
  * impossible to complete on this device.
  */
+function readTasksForInitialize(
+  inMemory: Task[],
+  initialized: boolean,
+  opts?: { reload?: boolean; changedTaskIds?: string[] }
+): Task[] {
+  if (opts?.reload && initialized && opts.changedTaskIds) {
+    const merged = mergeTaskDelta(inMemory, dbGetTaskIds(), dbGetTasksByIds(opts.changedTaskIds));
+    if (merged) return merged;
+  }
+  return dbGetAllTasks();
+}
+
 function writeSpawnedTask(row: Task, held: ReadonlySet<string>): void {
   if (held.has(row.id)) dbUpdateTask(row);
   else dbInsertTask(row);
@@ -1157,8 +1174,11 @@ function mealLogRecord(entries: readonly FoodLogEntry[]): MealLogRecord {
 function mealSlotEntryId(task: Task): string | null {
   const source = parseMealSlotSource(generatedSourceOf(task, 'mealSlot'));
   if (!source) return null;
-  const entries = dbGetMealPlanEntries(source.dayKey, source.dayKey);
-  return entriesForSlot(entries, source.dayKey, source.slot)[0]?.id ?? null;
+  const entries = entriesForSlot(dbGetMealPlanEntries(source.dayKey, source.dayKey), source.dayKey, source.slot);
+  // An additional dish's task is for its own entry, and only while it is still
+  // in the slot; the slot's own task is for whatever comes first.
+  if (source.entryId) return entries.some(e => e.id === source.entryId) ? source.entryId : null;
+  return entries[0]?.id ?? null;
 }
 
 /**
@@ -1227,6 +1247,29 @@ function writeMealSlotTasks(
       // so the ledger entry that path records has to be made here — see the
       // note on the one in generatedTaskSync.ts.
       if (record) useUnattendedStore.getState().recordGenerated('created', created);
+      // A second recipe in the slot is its own dish to make, so it gets its own
+      // task rather than being folded into the first one's chain. Only written
+      // here, beside the slot's own task: the pass visits each day once, which
+      // is what keeps one the user deleted from coming back.
+      for (const extra of entriesForSlot(entries, dayKey, slot).slice(1)) {
+        if (extra.cookTask === false || extra.cookedAt) continue;
+        const extraSource = mealSlotSourceId(dayKey, slot, extra.id);
+        const latest = useTaskStore.getState().tasks;
+        if (hasAnyGeneratedTask(latest, 'mealSlot', extraSource)) continue;
+        const plannedExtra = slotEntryForTask(extra, library);
+        const extraRecipe = plannedExtra?.recipeId
+          ? library.recipes.find(r => r.id === plannedExtra.recipeId)
+          : undefined;
+        const createdExtra = useTaskStore.getState().addTask(
+          mealSlotTaskDraft(
+            dayKey, slot, plannedExtra, category, extraRecipe ? totalMinutes(extraRecipe) : null,
+            useSettingsStore.getState().mealSlotStepEstimates, extra.id
+          ),
+          derivedId(spawnSeed.generated('mealSlot', extraSource, generatedTaskCountOf(latest, 'mealSlot', extraSource))),
+          { skipCategoryDefault: true, skipTitleRules: true },
+        );
+        if (record) useUnattendedStore.getState().recordGenerated('created', createdExtra);
+      }
     }
   }
 }
@@ -1789,9 +1832,12 @@ interface TaskStore extends UndoHistoryActions {
   /**
    * Loads every data store from the database. `reload` is for a reload after a
    * sync applied rows: the schema and migrations already ran this launch, so
-   * only the loads are repeated.
+   * only the loads are repeated. `changedTaskIds` (the ids the sync wrote) lets
+   * that reload re-read just those rows instead of the whole table: the rest
+   * of memory already matches the database, and a deletion shows as an id the
+   * table no longer has.
    */
-  initialize: (opts?: { reload?: boolean }) => void;
+  initialize: (opts?: { reload?: boolean; changedTaskIds?: string[] }) => void;
   // Marks a completion as animating so the batched collapse waits for it.
   // Called when the row's completion animation starts, i.e. a beat before the
   // completeTask that follows it.
@@ -3538,7 +3584,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // What an agent asked for and the person hasn't answered: arrives by sync,
     // which reloads through this, and names demo requests in a demo database.
     timedPart('AgentSuggestion', () => useAgentSuggestionStore.getState().initialize());
-    const tasks = timedPart('read tasks', () => dbGetAllTasks());
+    const tasks = timedPart('read tasks', () => readTasksForInitialize(get().tasks, get().initialized, opts));
     timedPart('backfill recurrence anchors', () => backfillRecurrenceAnchors(tasks));
     const tagRegistry = dbGetTagRegistry();
     // After the tasks, and given them: a stored focus session points at task
@@ -6737,6 +6783,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // The history is derived per person from the rows that name them, which is
     // the same read the person's own screen does — there is no stored "last
     // contacted" anywhere, by design.
+    // Most rows name nobody, so each person's read starts from the few that do.
+    const withPeople = tasks.filter(t => t.personIds.length > 0);
     const candidates: ReachOutCandidate[] = people
       // Opted-in people only, so an install where nobody has been opted in does
       // no work at all rather than building a history for everybody on every
@@ -6744,7 +6792,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .filter(p => p.nudgeOptIn && p.cadenceDays > 0 && !p.archived)
       .map(person => {
         const namedIds = namedIdsFor(person);
-        const theirs = tasks.filter(t => t.personIds.some(id => namedIds.includes(id)));
+        const theirs = withPeople.filter(t => t.personIds.some(id => namedIds.includes(id)));
         return { person, lastTogether: lastTogether(personHistory(theirs)) };
       });
 
@@ -8381,9 +8429,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         transit, settings.transitLines, leaveMs, startMs, nowMs, +addDays(getCurrentDayStart(), 1));
       const note = describeDisruptions(disruptions) ?? '';
       const title = travelTaskTitle(match.event.title);
-      // The MTA's own wording, which is where the stops are named. The notes
-      // of a "Leave for" row are this and nothing else (it is a notice).
-      const notes = disruptionHeadlines(disruptions) ?? '';
+      // What is still open before leaving (leavePrep.ts), then the MTA's own
+      // wording, which is where the stops are named. The notes of a "Leave
+      // for" row are these notices and nothing else, and the reminder's body
+      // carries them, so a prep task ticked off re-schedules it with the line gone.
+      const prepLine = leavePrepLine(openLeavePrep(
+        { generatedKind: 'travel', generatedSourceId: match.sourceId }, get().tasks, settings.eventRules));
+      const notes = [prepLine, disruptionHeadlines(disruptions)].filter(Boolean).join('\n');
 
       reconcileGeneratedTask({
         kind: 'travel',
@@ -9186,6 +9238,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const tasks = get().tasks;
     const today = getCurrentDayStart();
     const window = upcomingWeekend(today);
+
+    // With no row of its own to tidy, the rest of this pass can only end in
+    // wantsWeekendNudge saying no on either of these two, neither of which
+    // needs the day buckets and loads below. They are the expensive part and
+    // this runs on every foreground and background sweep.
+    if (
+      liveGeneratedTasksOfKind(tasks, 'weekendNudge').length === 0 &&
+      (!isWeekendNudgeLeadDay(today, settings.weekendNudgeLeadDays) || settings.weekendNudgeLastWeekendKey === window.saturdayKey)
+    ) return;
 
     // One walk for all three days, handed to both readings below so they cannot
     // disagree about what lands on the weekend.

@@ -163,7 +163,8 @@ export function parseEventRules(raw: string | null | undefined): EventTaskRule[]
     const afterEvent = r.afterEvent === true;
     // A follow-up has no lead: it lands the day the event ends, so a stored
     // lead would only be a number nothing reads and the editor hides.
-    const leadDays = !afterEvent && typeof r.leadDays === 'number' && Number.isFinite(r.leadDays)
+    const beforeLeaving = !afterEvent && r.beforeLeaving === true;
+    const leadDays = !afterEvent && !beforeLeaving && typeof r.leadDays === 'number' && Number.isFinite(r.leadDays)
       ? Math.min(EVENT_LEAD_DAYS_MAX, Math.max(0, Math.round(r.leadDays)))
       : 0;
     out.push({
@@ -176,6 +177,7 @@ export function parseEventRules(raw: string | null | undefined): EventTaskRule[]
       // byte for byte and sync doesn't see every rule as edited.
       ...(afterEvent ? { afterEvent: true } : {}),
       ...(afterEvent && r.skipIfUpcoming === true ? { skipIfUpcoming: true } : {}),
+      ...(beforeLeaving ? { beforeLeaving: true } : {}),
       ...parseRuleEstimate(r),
       ...parseRuleCategory(r),
       ...parseRuleLog(r),
@@ -288,6 +290,7 @@ export function describeEventRule(rule: EventTaskRule): string {
   if (rule.afterEvent) {
     return `${cue} · after it ends${rule.skipIfUpcoming ? ', unless another is booked' : ''}`;
   }
+  if (rule.beforeLeaving) return `${cue} · before leaving`;
   if (rule.leadDays === 0) return `${cue} · same day`;
   if (rule.leadDays === 1) return `${cue} · 1 day before`;
   return `${cue} · ${rule.leadDays} days before`;

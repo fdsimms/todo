@@ -680,6 +680,25 @@ describe('plurals and multiple keywords together', () => {
   });
 });
 
+describe('rules tied to leaving (beforeLeaving)', () => {
+  const tied = (over: Record<string, unknown> = {}) => parseEventRules(JSON.stringify([
+    { id: 'a', matches: ['Optometrist'], title: 'Bring glasses', leadDays: 5, enabled: true, beforeLeaving: true, ...over },
+  ]))[0];
+
+  it('round-trips beforeLeaving and drops the lead', () => {
+    const r = tied();
+    expect(r.beforeLeaving).toBe(true);
+    expect(r.leadDays).toBe(0);
+    expect(describeEventRule(r)).toBe('“Optometrist” · before leaving');
+  });
+
+  it('writes nothing for a rule that is not tied, and drops it on a follow-up', () => {
+    expect('beforeLeaving' in tied({ beforeLeaving: false })).toBe(false);
+    expect(tied({ afterEvent: true }).beforeLeaving).toBeUndefined();
+    expect(tied({ beforeLeaving: false }).leadDays).toBe(5);
+  });
+});
+
 describe('follow-up rules (afterEvent)', () => {
   const visit = (over: Partial<BusyEvent> = {}) => event({
     id: 'visit1',
