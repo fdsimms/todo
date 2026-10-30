@@ -599,6 +599,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskAgain.ts` — AgainFields, againFields, describeAgainFields, againDraft
 - `src/utils/taskCompletion.ts` — CompletionOptions, CompletionContext, CompletionRows, missionOwed, completionRefusal, buildCompletion, completionSettings
 - `src/utils/taskDates.ts` — calendarDayKey, SeriesRepeat, seriesRows, DatesAnchorStep, datesAnchorStep, DatesReconcile, datesReconcile
+- `src/utils/taskDeltaReload.ts` — mergeTaskDelta
 - `src/utils/taskDose.ts` — TaskDosePreview, describeTaskDose
 - `src/utils/taskDraft.ts` — applyTitleRulesToDraft, newTaskFromDraft, reanchorReminder, NO_RECURRENCE, buildSeriesRow
 - `src/utils/taskDuplicate.ts` — duplicateRows
