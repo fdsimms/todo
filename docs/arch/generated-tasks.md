@@ -1352,7 +1352,9 @@ argued out before it was built; read them before reopening one.
     `travelLeadFor`'s lead, and turning the switch off puts every row back on it on the next sweep.
   - **It is read only while the app is open** (`useTravelTaskSync`'s triggers), and kept in memory.
     A reminder queued the evening before carries the last estimate the app saw; nothing reads the
-    position while the app is closed.
+    position while the app is closed. A launch therefore starts with none, so a row waits on
+    `useTravelTimeStore.settled` and draws a same-size "Checking travel time" placeholder until the
+    first read answers; a trip that then has no estimate shows nothing, as before.
   - **An estimate is tied to the place and mode it answered** (`estimateFor`), so an edited
     location or a changed mode is asked again rather than reused, and one older than 20 minutes
     is refreshed for traffic. The destination is the event's map pin when it has one (a place

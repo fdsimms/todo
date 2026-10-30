@@ -61,7 +61,7 @@ beforeEach(() => {
   estimateMock.mockReset();
   estimateMock.mockResolvedValue(18);
   demoMock.mockReturnValue(false);
-  useTravelTimeStore.setState({ estimates: {}, refreshing: false });
+  useTravelTimeStore.setState({ estimates: {}, refreshing: false, settled: false });
 });
 afterEach(() => jest.useRealTimers());
 
@@ -276,5 +276,44 @@ describe('refresh with the comparison on', () => {
     await useTravelTimeStore.getState().refresh();
     useTravelTimeStore.getState().switchMode(key(e), 'walking');
     expect(useTravelTimeStore.getState().estimates[key(e)]).toMatchObject({ minutes: 22, mode: 'walking', others: { driving: 8, transit: 13 } });
+  });
+});
+
+describe('settled', () => {
+  it('stays false until a read has answered, and after a clear', async () => {
+    expect(useTravelTimeStore.getState().settled).toBe(false);
+    await useTravelTimeStore.getState().refresh();
+    expect(useTravelTimeStore.getState().settled).toBe(true);
+    useTravelTimeStore.getState().clear();
+    expect(useTravelTimeStore.getState().settled).toBe(false);
+  });
+
+  it('is true after a read that found nothing to ask, or a trip that would not route', async () => {
+    mockCalendar = { events: [], loaded: true };
+    await useTravelTimeStore.getState().refresh();
+    expect(useTravelTimeStore.getState().settled).toBe(true);
+    useTravelTimeStore.getState().clear();
+    mockCalendar = { events: [event('a', 14)], loaded: true };
+    estimateMock.mockResolvedValue(null);
+    await useTravelTimeStore.getState().refresh();
+    expect(useTravelTimeStore.getState().estimates).toEqual({});
+    expect(useTravelTimeStore.getState().settled).toBe(true);
+  });
+
+  it('is not set by a read that returns early (calendar not loaded yet)', async () => {
+    mockCalendar = { events: [], loaded: false };
+    await useTravelTimeStore.getState().refresh();
+    expect(useTravelTimeStore.getState().settled).toBe(false);
+  });
+
+  it('is not set by a read that a clear cut off', async () => {
+    let release: (m: number) => void = () => {};
+    estimateMock.mockImplementation(() => new Promise<number>(r => { release = r; }));
+    const pending = useTravelTimeStore.getState().refresh();
+    useTravelTimeStore.getState().clear();
+    release(10);
+    await pending;
+    expect(useTravelTimeStore.getState().settled).toBe(false);
+    expect(useTravelTimeStore.getState().estimates).toEqual({});
   });
 });

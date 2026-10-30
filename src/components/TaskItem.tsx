@@ -104,13 +104,14 @@ import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { eventCoordinate } from '../utils/calendarSync';
 import { SegmentedControl } from './SegmentedControl';
-import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, travelSourceStart, travelWalkUnderFor, type TravelChoice } from '../utils/travelTasks';
+import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, TRAVEL_MODES, TRAVEL_MODE_LABELS, travelSourceStart, travelWalkUnderFor, type TravelChoice } from '../utils/travelTasks';
 import { setTravelModeForEvent } from '../utils/travelModeWrite';
 import { TravelModeSheet } from './TravelModeSheet';
 import { openEventInSystemCalendar } from '../utils/calendarSync';
 import { alertFailedWithSettings } from '../utils/permissionAlert';
 import { isDemoModeActive } from '../utils/demoState';
 import { useTransitStore } from '../store/useTransitStore';
+import { travelEstimatesWanted } from '../store/useTravelTimeStore';
 import { addDays } from 'date-fns/addDays';
 import { useTravelTimeStore } from '../store/useTravelTimeStore';
 import { confirmDeleteTask } from '../utils/confirmDeleteTask';
@@ -850,6 +851,13 @@ const TaskItemRow = React.memo(function TaskItem({
       travelWalkUnderFor(eventId, travelEventPrefs, travelDefaultMode, travelWalkUnder),
     );
   });
+  // Held estimates live in memory, so a launch starts with none until the first
+  // read answers. A row that will get one keeps the space for it meanwhile.
+  const travelEstimatesOn = useSettingsStore(s => travelEstimatesWanted(s));
+  const travelPending = useTravelTimeStore(s => (
+    travelEstimatesOn && !s.settled && task.generatedKind === 'travel' && !!task.generatedSourceId
+      && localTravelEventId(task.generatedSourceId) !== null && !isDemoModeActive()
+  )) && travelHeld === null;
   const travelNote = travelHeld ? describeTravelEstimate(travelHeld.minutes, travelHeld.mode) : null;
   // The other ways of getting there, when Compare ways to get there is on.
   const travelCompareModes = useSettingsStore(s => s.travelCompareModes);
@@ -4070,6 +4078,30 @@ const TaskItemRow = React.memo(function TaskItem({
               <View style={styles.metaChip} accessibilityLabel={`Reminder when ${placeReminderLabel.toLowerCase()}`}>
                 <Ionicons name="location-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>{placeReminderLabel}</Text>
+              </View>
+            )}
+            {travelPending && !travelCompareModes && (
+              <View style={styles.metaChip} accessibilityLabel="Checking travel time">
+                <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={[styles.scheduledLabel, { color: colors.textTertiary }]} numberOfLines={1}>
+                  Checking travel time
+                </Text>
+              </View>
+            )}
+            {travelPending && travelCompareModes && (
+              <View style={styles.travelChoices} pointerEvents="none" accessibilityLabel="Checking travel time">
+                <SegmentedControl
+                  label="Way of getting there"
+                  value={null}
+                  options={TRAVEL_MODES.map(mode => ({
+                    value: mode,
+                    label: '…',
+                    icon: TRAVEL_CHOICE_ICONS[mode],
+                    accessibilityLabel: TRAVEL_MODE_LABELS[mode],
+                    disabled: true,
+                  }))}
+                  onChange={() => {}}
+                />
               </View>
             )}
             {travelNote !== null && travelOptions.length === 0 && (
