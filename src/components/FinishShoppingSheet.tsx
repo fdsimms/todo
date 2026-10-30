@@ -1151,7 +1151,9 @@ export function FinishShoppingSheet({
                             // (CLAUDE.md's placeholder rule), and the symbol and
                             // row name already say what the field is, so a
                             // repeated "Price" on every unpriced row was noise.
-                            placeholder={known !== null ? `e.g. ${priceToInput(known)}` : undefined}
+                            // "Last" rather than "e.g.": this is the item's real
+                            // previous price, not an example of the format.
+                            placeholder={known !== null ? `Last ${priceToInput(known)}` : undefined}
                             placeholderTextColor={colors.textTertiary}
                             maxLength={PRICE_INPUT_MAX_LENGTH}
                             accessibilityLabel={`Price for ${row.name}`}
@@ -1302,7 +1304,7 @@ function makeStyles(colors: Colors) {
       gap: spacing.xs,
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.xs,
-      minWidth: 104,
+      minWidth: 128,
       borderWidth: border.hairline,
       borderColor: colors.separator,
       borderRadius: radius.sm,
