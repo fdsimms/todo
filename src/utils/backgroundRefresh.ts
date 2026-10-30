@@ -280,7 +280,7 @@ registerSyncReload(applied => {
   // Timed per piece but not saved: a write here would land in the middle of a
   // sync, so these wait in memory and show up in the copied report's
   // "since the last saved run" section.
-  timed('sync reload: tasks', () => useTaskStore.getState().initialize({ reload: true }));
+  timed('sync reload: tasks', () => useTaskStore.getState().initialize({ reload: true, changedTaskIds: applied.taskIds }));
   timed('sync reload: settings', () => useSettingsStore.getState().initialize());
   timed('sync reload: task events', () => useTaskStore.getState().reconcileSyncedEvents(applied));
   timed('sync reload: meal events', () => useMealPlanStore.getState().reconcileSyncedEvents(applied));

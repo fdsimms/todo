@@ -8,6 +8,8 @@ import {
   dbGetSetting,
   dbSetSetting,
   dbGetAllTasks,
+  dbGetTaskIds,
+  dbGetTasksByIds,
   dbInsertTask,
   dbUpdateTask,
   dbUpdateTaskCalendarLinks,
@@ -177,6 +179,7 @@ import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
 import {
   WEEKEND_NUDGE_TITLE,
   isWeekendBare,
+  isWeekendNudgeLeadDay,
   staleWeekendNudgeTasks,
   upcomingWeekend,
   wantsWeekendNudge,
@@ -508,6 +511,7 @@ import {
 import { isOpenEnded } from '../utils/listMode';
 import { describeReschedule } from '../utils/rescheduleLabel';
 import { timedPart } from '../utils/perfLog';
+import { mergeTaskDelta } from '../utils/taskDeltaReload';
 
 
 /**
@@ -531,6 +535,18 @@ import { timedPart } from '../utils/perfLog';
  * one by design, and a plain insert of the same id threw, which left the task
  * impossible to complete on this device.
  */
+function readTasksForInitialize(
+  inMemory: Task[],
+  initialized: boolean,
+  opts?: { reload?: boolean; changedTaskIds?: string[] }
+): Task[] {
+  if (opts?.reload && initialized && opts.changedTaskIds) {
+    const merged = mergeTaskDelta(inMemory, dbGetTaskIds(), dbGetTasksByIds(opts.changedTaskIds));
+    if (merged) return merged;
+  }
+  return dbGetAllTasks();
+}
+
 function writeSpawnedTask(row: Task, held: ReadonlySet<string>): void {
   if (held.has(row.id)) dbUpdateTask(row);
   else dbInsertTask(row);
@@ -1789,9 +1805,12 @@ interface TaskStore extends UndoHistoryActions {
   /**
    * Loads every data store from the database. `reload` is for a reload after a
    * sync applied rows: the schema and migrations already ran this launch, so
-   * only the loads are repeated.
+   * only the loads are repeated. `changedTaskIds` (the ids the sync wrote) lets
+   * that reload re-read just those rows instead of the whole table: the rest
+   * of memory already matches the database, and a deletion shows as an id the
+   * table no longer has.
    */
-  initialize: (opts?: { reload?: boolean }) => void;
+  initialize: (opts?: { reload?: boolean; changedTaskIds?: string[] }) => void;
   // Marks a completion as animating so the batched collapse waits for it.
   // Called when the row's completion animation starts, i.e. a beat before the
   // completeTask that follows it.
@@ -3538,7 +3557,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // What an agent asked for and the person hasn't answered: arrives by sync,
     // which reloads through this, and names demo requests in a demo database.
     timedPart('AgentSuggestion', () => useAgentSuggestionStore.getState().initialize());
-    const tasks = timedPart('read tasks', () => dbGetAllTasks());
+    const tasks = timedPart('read tasks', () => readTasksForInitialize(get().tasks, get().initialized, opts));
     timedPart('backfill recurrence anchors', () => backfillRecurrenceAnchors(tasks));
     const tagRegistry = dbGetTagRegistry();
     // After the tasks, and given them: a stored focus session points at task
@@ -6737,6 +6756,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // The history is derived per person from the rows that name them, which is
     // the same read the person's own screen does — there is no stored "last
     // contacted" anywhere, by design.
+    // Most rows name nobody, so each person's read starts from the few that do.
+    const withPeople = tasks.filter(t => t.personIds.length > 0);
     const candidates: ReachOutCandidate[] = people
       // Opted-in people only, so an install where nobody has been opted in does
       // no work at all rather than building a history for everybody on every
@@ -6744,7 +6765,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .filter(p => p.nudgeOptIn && p.cadenceDays > 0 && !p.archived)
       .map(person => {
         const namedIds = namedIdsFor(person);
-        const theirs = tasks.filter(t => t.personIds.some(id => namedIds.includes(id)));
+        const theirs = withPeople.filter(t => t.personIds.some(id => namedIds.includes(id)));
         return { person, lastTogether: lastTogether(personHistory(theirs)) };
       });
 
@@ -9186,6 +9207,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const tasks = get().tasks;
     const today = getCurrentDayStart();
     const window = upcomingWeekend(today);
+
+    // With no row of its own to tidy, the rest of this pass can only end in
+    // wantsWeekendNudge saying no on either of these two, neither of which
+    // needs the day buckets and loads below. They are the expensive part and
+    // this runs on every foreground and background sweep.
+    if (
+      liveGeneratedTasksOfKind(tasks, 'weekendNudge').length === 0 &&
+      (!isWeekendNudgeLeadDay(today, settings.weekendNudgeLeadDays) || settings.weekendNudgeLastWeekendKey === window.saturdayKey)
+    ) return;
 
     // One walk for all three days, handed to both readings below so they cannot
     // disagree about what lands on the weekend.
