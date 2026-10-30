@@ -664,6 +664,13 @@ export function FoodLogEntrySheet({
     if (!pendingBurstFocus.current) return;
     pendingBurstFocus.current = false;
     searchFilter.inputRef.current?.focus();
+    // The keyboard is already up while the list mounts again, so it arrives
+    // with the keyboard's bottom inset in place and iOS can settle it below
+    // its top. A fresh search always starts at the first row.
+    const toTop = () => listScroll.ref.current?.scrollToOffset({ offset: 0, animated: false });
+    toTop();
+    const frame = requestAnimationFrame(toTop);
+    return () => cancelAnimationFrame(frame);
   }, [picked]);
 
   // Clears whatever was typed into the weight field whenever the picked food
