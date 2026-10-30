@@ -1639,14 +1639,14 @@ export function FoodLogEntrySheet({
   };
 
   /** An estimated helping logged again at the amount the card chose, as a multiple of its whole. */
-  const logHelpingAtAmount = (entry: FoodLogEntry, patch: EstimateAmountPatch) => {
+  const logHelpingAtAmount = (entry: FoodLogEntry, patch: EstimateAmountPatch, slot: MealSlot | null) => {
     const logged = logNew({
       label: entry.label,
       quantity: patch.quantity,
       grams: patch.grams,
       nutrition: patch.nutrition,
       sourcePanel: patch.sourcePanel,
-      slot: chosenSlot ?? entry.slot,
+      slot,
       recipeId: null,
       itemId: null,
       productId: null,
@@ -2870,7 +2870,8 @@ export function FoodLogEntrySheet({
         entry={amountHelping}
         saveLabel="Log"
         allowUnchanged
-        onSave={patch => { if (amountHelping) logHelpingAtAmount(amountHelping, patch); }}
+        slot={chosenSlot ?? amountHelping?.slot ?? null}
+        onSave={(patch, slot) => { if (amountHelping) logHelpingAtAmount(amountHelping, patch, slot); }}
         onClose={() => setAmountHelping(null)}
       />
       {/* Inside this Modal for the same reason: it is raised from a sheet that
