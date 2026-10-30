@@ -178,13 +178,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // sm, not xs: the chips and the servings stepper are two controls, not one
   // wrapped row, and at 4pt the stepper's own 44pt keys sat hard against the
   // chips above them.
-  wrap: { gap: spacing.sm },
-  chipsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  chips: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  wrap: { gap: spacing.smd },
+  chipsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+  chips: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.smd,
     minWidth: 44,
     alignItems: 'center',
   },
@@ -193,8 +193,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chipSelected: { backgroundColor: colors.accentFill },
   chipText: { color: colors.text, fontSize: font.sm },
   chipTextSelected: { color: colors.onAccent, fontWeight: fontWeight.medium },
-  servingsBlock: { gap: 4 },
-  servingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  servingsBlock: { gap: spacing.sm },
+  servingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd },
   servingsCaption: { color: colors.textSecondary, fontSize: font.sm },
   servingsHint: { color: colors.textTertiary, fontSize: font.xs },
 });
