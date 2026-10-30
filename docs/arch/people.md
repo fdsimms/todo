@@ -700,14 +700,14 @@ events sheet, or by starting the event from a person's page ("Plan something").
 "Event". One line ("lunch w/ @gideon sat 12pm") read by quick add's own two
 parsers (`parseTaskInput` for the day and time, `matchPersonMentions` for
 "@name"), so it reads exactly as a task line does, refusals included. It fills
-the card and saves straight into the calendar (`saveEventDirect`), with no
+the sheet (a page sheet, with the title fixed on top and When, Where and Details cards below, no steps) and saves straight into the calendar (`saveEventDirect`), with no
 system sheet, then links the people. The word "with" or "w/" in the line does what
 an "@" does for the names after it (`peopleAfterWith`: "Big walk with Tessa" links
 Tessa), through the history offer's own whole-word, ambiguity-resolves-to-nobody
 match, so only people already on the list link and a name before the word links
-nobody. An opened event's own title is read plain, so it links nothing until edited. The rows Apple's form asked for are chips
-on the card (calendar, alert, repeat, and All day and Busy/Free as switches) that start as the last saved event
-left them (`quickEventDefaults.ts`), plus a Notes or link field (behind a "+ Notes" chip until used), a Starts and an Ends block (an end picked by hand is stored as a length, so it replaces a typed "for 2h") and a trailing
+nobody. An opened event's own title is read plain, so it links nothing until edited. The rows Apple's form asked for are rows
+in those cards (calendar, alert, repeat, and All day and Busy/Free as switches) that start as the last saved event
+left them (`quickEventDefaults.ts`), plus a Notes or link field, a Starts and an Ends row (an end picked by hand is stored as a length, so it replaces a typed "for 2h") and a trailing
 `at (place)` and `alert 30m` in the line, which win over a chip's earlier pick.
 The same suffix grammar sets the rest of the chips, so a whole event can be typed:
 "Open mic fri 7pm at Joe's walking 10 min early from home in Work calendar show as free note: bring a guitar"
