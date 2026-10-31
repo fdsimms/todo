@@ -1006,7 +1006,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   dayResetTime,
                 )
                 : null;
-              const canSwap = swappableSets(viewed.sets, viewed.exerciseId).length > 0;
               // The rest comes after the round, so a superset's earlier exercises have none of their own.
               const viewedGroup = supersetGroup(exercises, viewed.exerciseId);
               const restChip = session && viewedGroup[viewedGroup.length - 1]?.exerciseId === viewed.exerciseId
@@ -1051,7 +1050,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     <Text style={styles.exName}>{viewedInfo?.name ?? 'Unknown exercise'}</Text>
                     <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
                   </TouchableOpacity>
-                  {exercises.length > 1 && (
                   <TouchableOpacity
                     style={styles.exMenuButton}
                     hitSlop={8}
@@ -1065,7 +1063,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   >
                     <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
                   </TouchableOpacity>
-                  )}
                   </View>
                   {!!viewedInfo && viewedInfo.primaryMuscles.length > 0 && (
                     <Text style={styles.exMuscles}>
@@ -1092,14 +1089,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     onToggle={() => setPhotosOpen(o => !o)}
                   />
                   <View style={styles.exActions}>
-                    {canSwap && (
-                      <InlineAction
-                        icon="swap-horizontal"
-                        label="Swap"
-                        onPress={() => { haptics.tap(); setViewedId(viewed.exerciseId); setPicking('swap'); }}
-                        accessibilityLabel={`Swap ${viewedInfo?.name ?? 'this exercise'} for another`}
-                      />
-                    )}
                     {restChip && (
                       <InlineAction
                         icon="timer-outline"
@@ -1118,13 +1107,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         accessibilityLabel={`Add a note on ${viewedInfo?.name ?? 'this exercise'}`}
                       />
                     )}
-                    <InlineAction
-                      icon="trash-outline"
-                      variant="neutral"
-                      tint={colors.redText}
-                      onPress={() => removeExercise(viewed, viewedInfo?.name ?? 'this exercise')}
-                      accessibilityLabel={`Remove ${viewedInfo?.name ?? 'this exercise'} from this workout`}
-                    />
                     {gym && gymNoteEdit !== viewed.exerciseId && (
                       <InlineAction
                         icon="location-outline"
@@ -1413,6 +1395,19 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 icon: 'unlink-outline' as const,
                 onPress: () => leaveSuperset(menuId),
               }] : []),
+              ...(swappableSets(menuExercise.sets, menuId).length > 0 ? [{
+                key: 'swap',
+                label: 'Swap',
+                icon: 'swap-horizontal' as const,
+                onPress: () => { setViewedId(menuId); setPicking('swap'); },
+              }] : []),
+              {
+                key: 'remove',
+                label: 'Remove from workout',
+                icon: 'trash-outline' as const,
+                destructive: true,
+                onPress: () => removeExercise(menuExercise, nameOf(menuId)),
+              },
             ] : []}
           />
         );
