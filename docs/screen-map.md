@@ -164,7 +164,7 @@ Where each component can appear.
 - `src/components/DropTargetChannel.tsx` — on TodayScreen
 - `src/components/EditorGroup.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
 - `src/components/EditorJumpBar.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +5 more
-- `src/components/EditorRow.tsx` — on ArchivedScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, JournalScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MoodDayScreen, MoodHistoryScreen, MoodScreen, +17 more
+- `src/components/EditorRow.tsx` — on ArchivedScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, JournalScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MoodDayScreen, MoodHistoryScreen, MoodScreen, +19 more
 - `src/components/EditorSheet.tsx` — on ArchivedScreen, BloodPressureScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, MoodDayScreen, +22 more
 - `src/components/EmbeddedRoute.tsx` — on ProjectsScreen, RecipesScreen
 - `src/components/EmergencyReleaseSheet.tsx` — on ScreenTimeScreen
