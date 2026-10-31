@@ -23,7 +23,7 @@ import { haptics } from '../utils/haptics';
  * With `onToggle` the pair sits behind a "Show form photos" row and `open` says
  * which way it is. That is workout mode's shape: its sets are the point of the
  * screen, so photos add nothing above them until asked for, and the host keeps
- * `open` for the session so it stays open from one exercise to the next. The
+ * `open` per exercise for the session. The
  * exercise's own page passes neither and shows the pair.
  *
  * Tapping a photo opens it full width on black, with the other one a swipe
