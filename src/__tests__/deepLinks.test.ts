@@ -73,6 +73,10 @@ jest.mock('../utils/cookRecipeNow', () => ({
 jest.mock('../store/useStepTimerStore', () => ({
   useStepTimerStore: { getState: () => ({ remove: mockRemoveStepTimer }) },
 }));
+const mockStopPlay = jest.fn();
+jest.mock('../store/useUnlockStore', () => ({
+  useUnlockStore: { getState: () => ({ stopPlay: mockStopPlay }) },
+}));
 jest.mock('../store/useFastStore', () => ({
   useFastStore: { getState: () => ({ fasts: mockFasts, endFast: mockEndFast }) },
 }));
@@ -845,6 +849,13 @@ describe('openInAppUrl', () => {
     openInAppUrl('dundundun://stopTimer?key=fast:other');
     expect(mockEndFast).not.toHaveBeenCalled();
     expect(mockStopCookTimer).not.toHaveBeenCalled();
+  });
+
+  it('stops an unlock\'s play timer for its play: key', () => {
+    mockStopPlay.mockClear();
+    expect(openInAppUrl('dundundun://stopTimer?key=play:u1')).toBe(true);
+    expect(mockStopPlay).toHaveBeenCalledWith('u1');
+    expect(mockEndFast).not.toHaveBeenCalled();
   });
 
   it('skips a workout rest for a rest: key, and moves nothing else on', () => {

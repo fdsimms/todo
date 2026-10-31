@@ -9,8 +9,8 @@
  * only when the person did the thing or said so. Nothing here earns or spends
  * unasked, and `get_rewards` says what a claim would leave before it is made.
  */
-import type { CoinEntry, Reward } from '../../src/types';
-import type { Replica } from './replica';
+import type { CoinEntry, Reward, RewardUnlock } from '../../src/types';
+import type { Replica, UnlockInput } from './replica';
 import { serializeTasks, type SerializedTask } from './serialize';
 
 export interface SerializedReward {
@@ -77,6 +77,8 @@ export interface SerializedUnlock {
   coinsShort?: number;
   /** Required tasks due today and not done yet. */
   stillNeeds?: string[];
+  /** The tasks it also needs done on the days they are due (ids; any repeat of one counts). */
+  alsoNeedsTaskIds?: string[];
   /** Minutes of play a day, when it has a timer. */
   playMinutes?: number;
   /** Minutes of today's play left, when it has a timer. */
@@ -84,8 +86,9 @@ export interface SerializedUnlock {
   playing: boolean;
   freeOnWeekends: boolean;
   freeOnVacation: boolean;
-  /** The "don't do this" habit it is linked to. */
+  /** The "don't do this" habit it is linked to, and its id. */
   linkedHabit?: string;
+  linkedHabitId?: string;
   /** It keeps a code (a parental controls PIN) for the person. The code itself is never shown here. */
   hasCode?: true;
 }
@@ -445,35 +448,98 @@ export function setSlip(replica: Replica, id: string, logged: boolean): {
 
 /** Each unlock as it stands today, read through the app's own rules. Never its code. */
 function unlocksOf(replica: Replica, entries: CoinEntry[]): SerializedUnlock[] {
-  const { rewardUnlocks, visibility } = replica.lib();
   const { unlocks } = replica.rewardState();
   if (unlocks.length === 0) return [];
-  const settings = replica.settings();
-  const tasks = replica.tasks();
-  const onToday = tasks.filter(t => !t.parentId && !t.completed && (visibility.isTaskVisible(t) || visibility.isUpcomingToday(t)));
-  const now = new Date();
-  const todayStart = replica.currentDayStart();
-  const todayKey = replica.lib().dates.getLogicalDayKey(now, settings.dayResetTime);
-  const world = { entries, tasks, onToday, todayStart, todayKey, vacation: settings.vacationMode };
-  return unlocks.map(u => {
-    const { status } = rewardUnlocks.statusOfUnlock(u, world);
-    const play = rewardUnlocks.playState(u, now, todayKey);
-    const habit = u.guardsTaskId ? replica.taskById(u.guardsTaskId) : null;
-    const share = status.kind === 'free' ? null : status.share;
-    return {
-      id: u.id,
-      title: u.title,
-      status: status.kind,
-      unlocksAtPct: u.sharePct,
-      donePct: Math.floor((share ?? rewardUnlocks.workShareDone(rewardUnlocks.coinsEarnedToday(entries, todayStart), rewardUnlocks.coinsStillOpenToday(onToday))) * 100),
-      ...(status.kind === 'locked' && status.coinsShort > 0 ? { coinsShort: status.coinsShort } : {}),
-      ...(status.kind === 'locked' && status.pending.length > 0 ? { stillNeeds: status.pending.map(t => replica.displayTitle(t)) } : {}),
-      ...(u.playMinutes !== null ? { playMinutes: u.playMinutes, playLeftMinutes: Math.floor((play.remainingMs ?? 0) / 60_000) } : {}),
-      playing: play.running,
-      freeOnWeekends: u.freeOnWeekends,
-      freeOnVacation: u.freeOnVacation,
-      ...(habit ? { linkedHabit: replica.displayTitle(habit) } : {}),
-      ...(u.pin ? { hasCode: true as const } : {}),
-    };
+  const world = { ...replica.unlockWorld(), entries };
+  return unlocks.map(u => serializeUnlock(replica, u, world));
+}
+
+function serializeUnlock(
+  replica: Replica,
+  u: RewardUnlock,
+  world: ReturnType<Replica['unlockWorld']>,
+): SerializedUnlock {
+  const { rewardUnlocks } = replica.lib();
+  const { status } = rewardUnlocks.statusOfUnlock(u, world);
+  const play = rewardUnlocks.playState(u, new Date(), world.todayKey);
+  const habit = u.guardsTaskId ? replica.taskById(u.guardsTaskId) : null;
+  const share = status.kind === 'free'
+    ? rewardUnlocks.workShareDone(rewardUnlocks.coinsEarnedToday(world.entries, world.todayStart), rewardUnlocks.coinsStillOpenToday(world.onToday))
+    : status.share;
+  return {
+    id: u.id,
+    title: u.title,
+    status: status.kind,
+    unlocksAtPct: u.sharePct,
+    donePct: Math.floor(share * 100),
+    ...(status.kind === 'locked' && status.coinsShort > 0 ? { coinsShort: status.coinsShort } : {}),
+    ...(status.kind === 'locked' && status.pending.length > 0 ? { stillNeeds: status.pending.map(t => replica.displayTitle(t)) } : {}),
+    ...(u.requiredTaskIds.length > 0 ? { alsoNeedsTaskIds: u.requiredTaskIds } : {}),
+    ...(u.playMinutes !== null ? { playMinutes: u.playMinutes, playLeftMinutes: Math.floor((play.remainingMs ?? 0) / 60_000) } : {}),
+    playing: play.running,
+    freeOnWeekends: u.freeOnWeekends,
+    freeOnVacation: u.freeOnVacation,
+    ...(habit ? { linkedHabit: replica.displayTitle(habit), linkedHabitId: habit.id } : {}),
+    ...(u.pin ? { hasCode: true as const } : {}),
+  };
+}
+
+/** What the unlock tools take: the form's fields under the names Claude reads back. */
+export interface UnlockToolInput {
+  title?: string;
+  glyph?: string | null;
+  unlocksAtPct?: number;
+  alsoNeedsTaskIds?: string[];
+  playMinutes?: number | null;
+  freeOnWeekends?: boolean;
+  freeOnVacation?: boolean;
+  linkedHabitId?: string | null;
+}
+
+function unlockFields(input: UnlockToolInput): Partial<UnlockInput> {
+  return {
+    ...(input.title !== undefined ? { title: input.title } : {}),
+    ...(input.glyph !== undefined ? { glyph: input.glyph } : {}),
+    ...(input.unlocksAtPct !== undefined ? { sharePct: input.unlocksAtPct } : {}),
+    ...(input.alsoNeedsTaskIds !== undefined ? { requiredTaskIds: input.alsoNeedsTaskIds } : {}),
+    ...(input.playMinutes !== undefined ? { playMinutes: input.playMinutes } : {}),
+    ...(input.freeOnWeekends !== undefined ? { freeOnWeekends: input.freeOnWeekends } : {}),
+    ...(input.freeOnVacation !== undefined ? { freeOnVacation: input.freeOnVacation } : {}),
+    ...(input.linkedHabitId !== undefined ? { guardsTaskId: input.linkedHabitId } : {}),
+  };
+}
+
+function unlockResult(replica: Replica, unlock: RewardUnlock): SerializedUnlock {
+  return serializeUnlock(replica, unlock, replica.unlockWorld());
+}
+
+/** A new unlock. Defaults are the form's: 60% of today's work, two hours of play. */
+export function createUnlock(replica: Replica, input: UnlockToolInput & { title: string }): SerializedUnlock {
+  const { rewardUnlocks } = replica.lib();
+  const fields = unlockFields(input);
+  const unlock = replica.createUnlock({
+    title: input.title,
+    glyph: fields.glyph ?? null,
+    sharePct: fields.sharePct ?? rewardUnlocks.DEFAULT_UNLOCK_SHARE,
+    requiredTaskIds: fields.requiredTaskIds ?? [],
+    playMinutes: fields.playMinutes !== undefined ? fields.playMinutes : 120,
+    freeOnWeekends: fields.freeOnWeekends ?? false,
+    freeOnVacation: fields.freeOnVacation ?? false,
+    guardsTaskId: fields.guardsTaskId ?? null,
   });
+  return unlockResult(replica, unlock);
+}
+
+export function updateUnlock(replica: Replica, id: string, input: UnlockToolInput): SerializedUnlock {
+  return unlockResult(replica, replica.updateUnlock(id, unlockFields(input)));
+}
+
+export function deleteUnlock(replica: Replica, id: string): { deleted: { id: string; title: string } } {
+  const unlock = replica.deleteUnlock(id);
+  return { deleted: { id: unlock.id, title: unlock.title } };
+}
+
+/** Start, stop or add to today's play timer. */
+export function setUnlockPlay(replica: Replica, id: string, action: 'start' | 'stop' | 'add', minutes?: number): SerializedUnlock {
+  return unlockResult(replica, replica.unlockPlay(id, action, minutes));
 }

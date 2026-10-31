@@ -12,6 +12,7 @@ jest.mock('../store/useSettingsStore', () => ({ useSettingsStore: { subscribe: j
 jest.mock('../store/useStepTimerStore', () => ({ useStepTimerStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 jest.mock('../store/useWorkoutStore', () => ({ useWorkoutStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 jest.mock('../store/useFastStore', () => ({ useFastStore: { subscribe: jest.fn(), getState: jest.fn() } }));
+jest.mock('../store/useUnlockStore', () => ({ useUnlockStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 // Pulled in transitively via visibilityUtils.ts (displayTitleFor); this
 // suite's tasks never carry a category, so a stub that resolves nothing is
 // enough — mirrors snoozeEngine.test.ts's own mock of the same store.
@@ -19,8 +20,8 @@ jest.mock('../store/useCategoryStore', () => ({
   useCategoryStore: { getState: () => ({ getCategoryByName: () => null }) },
 }));
 
-import { buildTimerRuns, fastRun } from '../utils/liveActivity';
-import type { Task, Recipe, ChainItem, RecipeStepTimer, RestTimer, Fast } from '../types';
+import { buildTimerRuns, fastRun, playRun } from '../utils/liveActivity';
+import type { Task, Recipe, ChainItem, RecipeStepTimer, RestTimer, Fast, RewardUnlock } from '../types';
 
 const NOW = new Date(2026, 7, 11, 12, 0, 0).getTime();
 
@@ -510,5 +511,35 @@ describe('a running fast', () => {
     expect(buildTimerRuns([], [], [], { enabled: true, fasts: [fast()], nowMs: now }).map(r => r.key)).toEqual(['fast:f1']);
     expect(buildTimerRuns([], [], [], { enabled: true, fasts: [fast({ endedAt: new Date(now).toISOString() })], nowMs: now })).toEqual([]);
     expect(buildTimerRuns([], [], [], { enabled: false, fasts: [fast()], nowMs: now })).toEqual([]);
+  });
+});
+
+describe('playRun', () => {
+  const KEY = '2026-08-11';
+  const unlock = (extra: Partial<RewardUnlock> = {}): RewardUnlock => ({
+    id: 'u1', title: 'Switch', glyph: null, createdAt: '', sharePct: 60, requiredTaskIds: [], playMinutes: 120,
+    freeOnWeekends: false, freeOnVacation: false, guardsTaskId: null, pin: '4817',
+    playDay: KEY, playUsedMs: 30 * 60_000, playExtraMs: 0, playStartedAt: new Date(NOW - 10 * 60_000).toISOString(), ...extra,
+  });
+
+  it('counts down to when today\'s play time runs out', () => {
+    const run = playRun(unlock(), NOW, KEY)!;
+    expect(run).toMatchObject({ key: 'play:u1', kind: 'play', title: 'Switch', symbolName: 'gamecontroller.fill' });
+    // 120 minutes a day, 30 used before this stretch: it ends 90 after the stretch began.
+    expect(run.targetEndMs).toBe(NOW - 10 * 60_000 + 90 * 60_000);
+  });
+
+  it('counts up with no limit, and is gone once nothing is running', () => {
+    expect(playRun(unlock({ playMinutes: null }), NOW, KEY)!.targetEndMs).toBeNull();
+    expect(playRun(unlock({ playStartedAt: null }), NOW, KEY)).toBeNull();
+    expect(playRun(unlock({ playUsedMs: 120 * 60_000 }), NOW, KEY)).toBeNull();
+    expect(playRun(unlock(), NOW, '2026-08-12')).toBeNull();
+  });
+
+  it('rides buildTimerRuns, and never shows the code', () => {
+    const runs = buildTimerRuns([], [], [], { enabled: true, unlocks: [unlock()], todayKey: KEY, nowMs: NOW });
+    expect(runs.map(r => r.key)).toEqual(['play:u1']);
+    expect(JSON.stringify(runs)).not.toContain('4817');
+    expect(buildTimerRuns([], [], [], { enabled: false, unlocks: [unlock()], todayKey: KEY, nowMs: NOW })).toEqual([]);
   });
 });

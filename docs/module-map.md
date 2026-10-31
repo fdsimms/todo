@@ -298,7 +298,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/lineWeight.ts` — lineWeightGrams, lineWeightText, panelForLine, WeightLookups, weightLookups, ingredientWeightText
 - `src/utils/listLineParse.ts` — LineParseContext, LineMarkerFields, lineMarkerFields, LineSuggestion, lineSuggestion, LinePending, NO_LINE_PENDING, confirmLineSuggestion, linePendingFields
 - `src/utils/listMode.ts` — sectionIsList, sectionListPatch, listItemFinder, isOpenEnded, listCountNote, LIST_ITEM_EDITOR_ROWS, listItemRowShown
-- `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, fastRun, useTimerLiveActivitySync
+- `src/utils/liveActivity.ts` — TimerRunKind, TimerRun, buildTimerRuns, playRun, fastRun, useTimerLiveActivitySync
 - `src/utils/livePickerConfirm.ts` — confirmLivePicker
 - `src/utils/lookAhead.ts` — LookAheadWindow, LookAheadDay, AwayEntry, TightDeadline, LookAheadTotals, LookAhead, BuildLookAheadOptions, buildLookAhead, carriedOverTasks, awayEntries, +8 more
 - `src/utils/looseNameMatch.ts` — LOOSE_NAME_WEIGHT, looseNameWeight
@@ -497,7 +497,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, selectPurgeableFocusSessionIds, LEDGER_MAX_DAYS, ledgerCutoff, selectPurgeableUnattendedIds, +1 more
 - `src/utils/rewardGuard.ts` — GuardedSlip, canGuard, isGuardableHabit, guardingReward, planGuardedSlip, guardChargeSeed, claimedSince, guardedSlipPrompt, describeGuard
 - `src/utils/rewardSavings.ts` — GoalPlan, MIN_SAVINGS_SHARE, MAX_SAVINGS_SHARE, DEFAULT_SAVINGS_SHARE, GOAL_DATE_PRESETS, cleanSavingsShare, parseGoalPlan, serializeGoalPlan, activeGoalPlan, splitsEntry, +11 more
-- `src/utils/rewardUnlocks.ts` — DEFAULT_UNLOCK_SHARE, MIN_UNLOCK_SHARE, MAX_UNLOCK_SHARE, UNLOCK_SHARE_STEP, MAX_PLAY_HOURS, PLAY_EXTRA_MINUTES, cleanUnlockSharePct, cleanPlayMinutes, coinsEarnedToday, coinsStillOpenToday, +19 more
+- `src/utils/rewardUnlocks.ts` — DEFAULT_UNLOCK_SHARE, MIN_UNLOCK_SHARE, MAX_UNLOCK_SHARE, UNLOCK_SHARE_STEP, MAX_PLAY_HOURS, PLAY_EXTRA_MINUTES, cleanUnlockSharePct, cleanPlayMinutes, UnlockDraft, cleanUnlockDraft, +21 more
 - `src/utils/rewards.ts` — COINS_BY_EFFORT, STREAK_BONUS_EVERY, STREAK_BONUS_CAP, MAX_REWARD_COST, DIFFICULTY_MULTIPLIER, DIFFICULTY_SEGMENTS, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_HINT, CoinSource, baseCoinsFor, +68 more
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
@@ -782,7 +782,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useTransitStore.ts` — TRANSIT_SNAPSHOT_STALE_MS, transitReadWanted, useTransitStore
 - `src/store/useTravelTimeStore.ts` — travelEstimatesWanted, travelOriginOfEvent, useTravelTimeStore
 - `src/store/useUnattendedStore.ts` — UnattendedRecord, useUnattendedStore
-- `src/store/useUnlockStore.ts` — UnlockDraft, useUnlockStore
+- `src/store/useUnlockStore.ts` — useUnlockStore
 - `src/store/useWaniKaniStore.ts` — WANIKANI_SNAPSHOT_STALE_MS, useWaniKaniStore
 - `src/store/useWatchClashStore.ts` — useWatchClashStore
 - `src/store/useWatchHealthStore.ts` — useWatchHealthStore

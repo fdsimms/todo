@@ -2,15 +2,14 @@ import { create } from 'zustand';
 import type { RewardUnlock, Task } from '../types';
 import { dbDeleteRewardUnlock, dbGetAllRewardUnlocks, dbUpsertRewardUnlock } from '../db/database';
 import { generateId } from '../utils/id';
-import { cleanRewardGlyph } from '../utils/rewards';
 import {
   addPlayTime,
-  cleanPlayMinutes,
-  cleanUnlockSharePct,
+  cleanUnlockDraft,
   playState,
   repointRequired,
   startPlay,
   stopPlay,
+  type UnlockDraft,
 } from '../utils/rewardUnlocks';
 import { cancelPlayTimeUp, schedulePlayTimeUp } from '../utils/notifications';
 import { getLogicalDayKey } from '../utils/dateUtils';
@@ -49,26 +48,12 @@ interface UnlockStore {
   unlockLinkedTo: (taskId: string) => RewardUnlock | null;
 }
 
-/** What the form edits. */
-export type UnlockDraft = Pick<RewardUnlock, 'title' | 'glyph' | 'sharePct' | 'requiredTaskIds' | 'playMinutes' | 'freeOnWeekends' | 'freeOnVacation' | 'guardsTaskId' | 'pin'>;
+export type { UnlockDraft } from '../utils/rewardUnlocks';
 
 function todayKey(now: Date): string {
   return getLogicalDayKey(now, useSettingsStore.getState().dayResetTime);
 }
 
-function cleanDraft(draft: UnlockDraft): UnlockDraft {
-  return {
-    title: draft.title.trim(),
-    glyph: cleanRewardGlyph(draft.glyph),
-    sharePct: cleanUnlockSharePct(draft.sharePct),
-    requiredTaskIds: Array.from(new Set(draft.requiredTaskIds.filter(Boolean))),
-    playMinutes: cleanPlayMinutes(draft.playMinutes),
-    freeOnWeekends: !!draft.freeOnWeekends,
-    freeOnVacation: !!draft.freeOnVacation,
-    guardsTaskId: draft.guardsTaskId || null,
-    pin: draft.pin?.trim() || null,
-  };
-}
 
 export const useUnlockStore = create<UnlockStore>((set, get) => {
   const write = (next: RewardUnlock) => {
@@ -95,11 +80,17 @@ export const useUnlockStore = create<UnlockStore>((set, get) => {
     initialized: false,
 
     initialize() {
-      set({ unlocks: dbGetAllRewardUnlocks(), initialized: true });
+      const unlocks = dbGetAllRewardUnlocks();
+      set({ unlocks, initialized: true });
+      // A timer started on another device, or by the MCP server, arrives here
+      // with no notice scheduled on this one; one stopped elsewhere leaves a
+      // notice to cancel. Both are settled from the rows as loaded.
+      const now = new Date();
+      unlocks.forEach(u => syncNotice(u, now));
     },
 
     addUnlock(draft) {
-      const clean = cleanDraft(draft);
+      const clean = cleanUnlockDraft(draft);
       if (!clean.title) return null;
       const unlock: RewardUnlock = {
         id: generateId(),
@@ -118,7 +109,7 @@ export const useUnlockStore = create<UnlockStore>((set, get) => {
     updateUnlock(id, patch) {
       const current = get().unlocks.find(u => u.id === id);
       if (!current) return;
-      const clean = cleanDraft({ ...current, ...patch });
+      const clean = cleanUnlockDraft({ ...current, ...patch });
       if (!clean.title) return;
       const next = { ...current, ...clean };
       write(next);

@@ -658,6 +658,33 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return reward;
     },
 
+    // An unlock moves no coins; the way back is the paired tool or the Rewards
+    // screen, as for a reward, and each note says what was done.
+    createUnlock(input) {
+      const unlock = replica.createUnlock(input);
+      log({ action: 'created', subject: 'reward', title: unlock.title, taskId: null, note: `Add the unlock "${unlock.title}", opening at ${unlock.sharePct}% of the day's work` });
+      return unlock;
+    },
+
+    updateUnlock(id, patch) {
+      const unlock = replica.updateUnlock(id, patch);
+      log({ action: 'edited', subject: 'reward', title: unlock.title, taskId: null, note: `Change the unlock "${unlock.title}"` });
+      return unlock;
+    },
+
+    deleteUnlock(id) {
+      const unlock = replica.deleteUnlock(id);
+      log({ action: 'cleared', subject: 'reward', title: unlock.title, taskId: null, note: `Delete the unlock "${unlock.title}"` });
+      return unlock;
+    },
+
+    unlockPlay(id, action, minutes) {
+      const unlock = replica.unlockPlay(id, action, minutes);
+      const what = action === 'start' ? 'Start' : action === 'stop' ? 'Stop' : `Add ${minutes ?? 15} minutes to`;
+      log({ action: 'edited', subject: 'reward', title: unlock.title, taskId: null, note: `${what} today's play time for "${unlock.title}"` });
+      return unlock;
+    },
+
     // A bounty is a field on the task, so it carries the revert an edit does.
     postBounty(id) {
       const before = snapshot(id);

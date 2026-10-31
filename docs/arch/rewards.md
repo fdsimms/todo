@@ -298,10 +298,15 @@ work is done"). Rules in `src/utils/rewardUnlocks.ts`, rows in `reward_unlocks`
   close it again.
 - **Play time is a daily allowance** on the row (`playDay`, `playUsedMs`, `playExtraMs`,
   `playStartedAt`), synced, with one notification per unlock (`schedulePlayTimeUp`) that every play
-  write reschedules. It enforces nothing on a console; it is a timer.
+  write reschedules. It enforces nothing on a console; it is a timer. While a stretch runs it is
+  also on the Lock Screen, as a `play` run on the generic timer Live Activity (`playRun` in
+  `liveActivity.ts`, behind the same `timerLiveActivity` setting), whose Done stops it
+  (`play:` in `deepLinks.ts`). The store re-settles its notice from the rows on every load, so a
+  timer started on another device or by the MCP server still rings here.
 - **Weekends and vacation can open it all day**, per unlock.
-- **The code is shown only while it's open** and is never returned by the MCP server, so asking
-  Claude isn't a way round the lock.
+- **The code is shown only while it's open**, and the MCP server neither returns nor writes it, so
+  asking Claude isn't a way round the lock. Everything else about an unlock it can read and change
+  (`create_unlock`, `update_unlock`, `delete_unlock`, `set_unlock_play`).
 - **A linked habit** (`guardsTaskId`) is an "Avoid this" habit for doing it while locked. A slip on
   it while the unlock is open asks first (`openUnlockLinkedTo` in `slipConfirm`). A habit has one
   link: a reward that guards it or one unlock, and each picker leaves out the others'.

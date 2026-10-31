@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -9,6 +10,9 @@ import { CountStepper } from './CountStepper';
 import { HelpText } from './HelpText';
 import { Toggle } from './Toggle';
 import { FieldLabel } from './FieldLabel';
+import { WhenPicker } from './WhenPicker';
+import { useSheetMount } from '../hooks/useSheetMount';
+import { disclosureValue } from '../theme/textStyles';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
@@ -59,31 +63,38 @@ export function GoalPlanSheet({ visible, onClose, goal, current, saved, balance,
   const dismiss = () => card.close(onClose);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const [share, setShare] = useState(DEFAULT_SAVINGS_SHARE);
-  const [presetDays, setPresetDays] = useState<number | null>(null);
+  // The date it's wanted by (`YYYY-MM-DD`), which the share is worked out
+  // from; null once the share is set directly. A preset is a shortcut to one.
+  const [byKey, setByKey] = useState<string | null>(null);
   const [deposit, setDeposit] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Mounted on first use and then kept: an unopened WhenPicker still
+  // subscribes to the whole task list.
+  const mountPicker = useSheetMount(pickerOpen);
 
   // Each opening starts from the plan in force, or from a fresh one that puts
   // the balance in and aims at the middle preset.
   useEffect(() => {
     if (!visible || !goal) return;
+    const today = getLogicalToday(dayResetTime);
     if (current) {
       setShare(current.sharePct);
-      setPresetDays(null);
+      setByKey(current.by && daysUntil(current.by, today) > 0 ? current.by : null);
       return;
     }
     setDeposit(balance > 0);
-    const days = GOAL_DATE_PRESETS[1].days;
-    setPresetDays(days);
-    setShare(shareForDate(goal.cost, Math.max(0, balance), rate, days) ?? DEFAULT_SAVINGS_SHARE);
+    const key = dayKeyOf(addDays(today, GOAL_DATE_PRESETS[1].days));
+    setByKey(key);
+    setShare(shareForDate(goal.cost, Math.max(0, balance), rate, daysUntil(key, today)) ?? DEFAULT_SAVINGS_SHARE);
   }, [visible]);
 
   if (!goal) return null;
   const today = getLogicalToday(dayResetTime);
   const startsWith = current ? saved : deposit ? Math.max(0, balance) : 0;
-  const pickPreset = (days: number) => {
-    haptics.tap();
-    setPresetDays(days);
-    const next = shareForDate(goal.cost, startsWith, rate, days);
+  // Aim at a date: the share becomes what reaches it at your rate.
+  const aimAt = (key: string, have = startsWith) => {
+    setByKey(key);
+    const next = shareForDate(goal.cost, have, rate, daysUntil(key, today));
     if (next !== null) setShare(next);
   };
   const toggleDeposit = () => {
@@ -91,10 +102,7 @@ export function GoalPlanSheet({ visible, onClose, goal, current, saved, balance,
     const next = !deposit;
     setDeposit(next);
     // A date already chosen keeps holding: the share follows what's put in.
-    if (presetDays !== null) {
-      const recalc = shareForDate(goal.cost, next ? Math.max(0, balance) : 0, rate, presetDays);
-      if (recalc !== null) setShare(recalc);
-    }
+    if (byKey !== null) aimAt(byKey, next ? Math.max(0, balance) : 0);
   };
 
   const days = daysToGoal(goal.cost, startsWith, rate, share);
@@ -102,16 +110,40 @@ export function GoalPlanSheet({ visible, onClose, goal, current, saved, balance,
   const left = spendingPerDay(rate, share);
   const save = () => {
     haptics.success();
-    const by = presetDays !== null ? dayKeyOf(addDays(today, presetDays)) : current?.by ?? null;
     const plan: GoalPlan = current
-      ? { ...current, sharePct: share, by: presetDays !== null ? by : null }
-      : { rewardId: goal.id, sharePct: share, by, since: new Date().toISOString(), deposit: startsWith };
+      ? { ...current, sharePct: share, by: byKey }
+      : { rewardId: goal.id, sharePct: share, by: byKey, since: new Date().toISOString(), deposit: startsWith };
     useSettingsStore.getState().setRewardGoal(goal.id, plan);
     dismiss();
   };
 
   return (
-    <CardSheet name="GoalPlanSheet" visible={visible} controller={card} onRequestClose={dismiss}>
+    <CardSheet
+      name="GoalPlanSheet"
+      visible={visible}
+      controller={card}
+      onRequestClose={dismiss}
+      overlays={
+        /* Inside the card's Modal, not beside it: a sibling would ask the
+           controller already presenting this card to present a second sheet. */
+        mountPicker && <WhenPicker
+          visible={pickerOpen}
+          value={byKey ? keyToDate(byKey) : addDays(today, GOAL_DATE_PRESETS[1].days)}
+          title={`Have ${goal.title} by`}
+          showTimeOfDay={false}
+          showSuggest={false}
+          // A goal can't be wanted by a day that's already gone.
+          allowPast={false}
+          onConfirm={date => {
+            setPickerOpen(false);
+            if (!date) return;
+            const key = dayKeyOf(date);
+            if (daysUntil(key, today) > 0) aimAt(key);
+          }}
+          onCancel={() => setPickerOpen(false)}
+        />
+      }
+    >
       <View style={styles.root}>
         <SheetHeader
           title={current ? 'Change savings' : 'Save for this'}
@@ -127,12 +159,13 @@ export function GoalPlanSheet({ visible, onClose, goal, current, saved, balance,
               <FieldLabel style={styles.label}>Have it in</FieldLabel>
               <View style={styles.presets}>
                 {GOAL_DATE_PRESETS.map(p => {
-                  const on = presetDays === p.days;
+                  const key = dayKeyOf(addDays(today, p.days));
+                  const on = byKey === key;
                   return (
                     <TouchableOpacity
                       key={p.days}
                       style={[styles.preset, on && styles.presetOn]}
-                      onPress={() => pickPreset(p.days)}
+                      onPress={() => { haptics.tap(); aimAt(key); }}
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
                       accessibilityState={{ selected: on }}
@@ -142,13 +175,23 @@ export function GoalPlanSheet({ visible, onClose, goal, current, saved, balance,
                   );
                 })}
               </View>
+              <TouchableOpacity
+                style={styles.dateRow}
+                onPress={() => { haptics.tap(); setPickerOpen(true); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={byKey ? `Date: ${format(keyToDate(byKey), 'EEEE, MMMM d')}. Change it` : 'Pick a date'}
+              >
+                <Text style={styles.dateLabel}>Date</Text>
+                <Text style={styles.dateValue}>{byKey ? format(keyToDate(byKey), 'EEE, MMM d') : 'Pick a date'}</Text>
+              </TouchableOpacity>
             </>
           )}
 
           <FieldLabel style={styles.label}>Set aside</FieldLabel>
           <CountStepper
             value={share}
-            onChange={n => { setShare(n ?? share); setPresetDays(null); }}
+            onChange={n => { setShare(n ?? share); setByKey(null); }}
             min={MIN_SAVINGS_SHARE}
             max={MAX_SAVINGS_SHARE}
             step={5}
@@ -193,6 +236,16 @@ export function GoalPlanSheet({ visible, onClose, goal, current, saved, balance,
   );
 }
 
+/** A stored `YYYY-MM-DD` as a local midnight, never through `new Date(key)`, which reads it as UTC. */
+function keyToDate(key: string): Date {
+  return new Date(`${key}T00:00`);
+}
+
+/** Whole days from the logical `today` to `key`. */
+function daysUntil(key: string, today: Date): number {
+  return differenceInCalendarDays(keyToDate(key), today);
+}
+
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     root: { flexShrink: 1 },
@@ -211,6 +264,18 @@ function makeStyles(colors: Colors) {
     presetOn: { backgroundColor: colors.accentFill },
     presetText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
     presetTextOn: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+    dateRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: spacing.sm,
+      paddingVertical: spacing.smd,
+      paddingHorizontal: spacing.smd,
+      borderRadius: radius.sm,
+      backgroundColor: colors.bgTertiary,
+    },
+    dateLabel: { color: colors.text, fontSize: font.md },
+    dateValue: { ...disclosureValue(colors) },
     math: {
       color: colors.text,
       fontSize: font.sm,

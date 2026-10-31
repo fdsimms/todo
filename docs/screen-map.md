@@ -327,7 +327,7 @@ Where each component can appear.
 - `src/components/PlanMealSheet.tsx` — on MealPlanScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/PlateLine.tsx` — on app shell
 - `src/components/PointerView.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +26 more
-- `src/components/PostponeCheckBanner.tsx` — on ArchivedScreen, BloodPressureScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, +19 more
+- `src/components/PostponeCheckBanner.tsx` — on ArchivedScreen, BloodPressureScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, +20 more
 - `src/components/PrepTaskSheet.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/PrepTasksReviewSheet.tsx` — on MealPlanScreen
 - `src/components/PressableScale.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, +35 more
@@ -511,7 +511,7 @@ Where each component can appear.
 - `src/components/WeekdaySelector.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +5 more
 - `src/components/WeightChart.tsx` — on WeightScreen
 - `src/components/WeightGoalSheet.tsx` — on WeightScreen
-- `src/components/WhenPicker.tsx` — on ArchivedScreen, BloodPressureScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, +19 more
+- `src/components/WhenPicker.tsx` — on ArchivedScreen, BloodPressureScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, +20 more
 - `src/components/WideScroll.tsx` — on MoodScreen, SleepScreen, StatsScreen
 - `src/components/WorkoutDetailSheet.tsx` — on WorkoutsScreen
 - `src/components/WorkoutHeartRateCard.tsx` — on WorkoutsScreen

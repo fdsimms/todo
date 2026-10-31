@@ -236,6 +236,9 @@ type SettingsSearchModule = typeof import('../../src/utils/settingsSearch');
  * the app does. Not the whole store: most of it is device configuration that
  * no answer about the person's tasks turns on.
  */
+/** What the MCP server may set on an unlock: everything the form edits except the code. */
+export type UnlockInput = Omit<import('../../src/utils/rewardUnlocks').UnlockDraft, 'pin'>;
+
 export interface ReplicaSettings {
   /** "HH:MM", when the logical day turns over. */
   dayResetTime: string;
@@ -2245,6 +2248,29 @@ export interface Replica {
    */
   setRewardGoal(id: string | null, plan?: { sharePct?: number; byDate?: string; putBalanceIn?: boolean }): Reward | null;
   /**
+   * What an unlock's status is read against right now (`statusOfUnlock`):
+   * the ledger, every task, what Today shows, and the logical day.
+   */
+  unlockWorld(): import('../../src/utils/rewardUnlocks').UnlockWorld;
+  /**
+   * A new unlock (src/utils/rewardUnlocks.ts), cleaned as the app's form
+   * cleans one. Never a code: that is set on the phone, and nothing here
+   * reads or writes it. Required tasks must be open, top-level tasks that
+   * aren't "Avoid this" habits; a linked habit must be a live avoid habit no
+   * reward or other unlock already links. Refused while rewards are off.
+   */
+  createUnlock(input: UnlockInput): RewardUnlock;
+  /** Change an unlock, with the same checks. Its code and play timer are left as they are. */
+  updateUnlock(id: string, patch: Partial<UnlockInput>): RewardUnlock;
+  /** Delete an unlock. It moved no coins, so nothing else changes. */
+  deleteUnlock(id: string): RewardUnlock;
+  /**
+   * Start, stop or add time to an unlock's play timer for today, as the card's
+   * buttons do. Start is refused while it is locked or today's time is used
+   * up. The phone schedules the time-up notice when this syncs in.
+   */
+  unlockPlay(id: string, action: 'start' | 'stop' | 'add', minutes?: number): RewardUnlock;
+  /**
    * Post a bounty on an open task, or withdraw the one posted. `useTaskStore`'s
    * `postBounty` / `withdrawBounty` rules: one bounty per occurrence, a limit on
    * how many are live at once (`bountyLimit`), withdrawing spends it.
@@ -3813,6 +3839,28 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const requireRewardsOn = (): void => {
     if (!useSettingsStore.getState().rewardsEnabled) {
       throw new Error('Rewards are switched off in the app. Turn them on with update_settings (rewardsEnabled: true) if the person wants them.');
+    }
+  };
+  const requireUnlock = (id: string): RewardUnlock => {
+    const unlock = db.dbGetAllRewardUnlocks().find(u => u.id === id);
+    if (!unlock) throw new Error(`No unlock with id ${id}. get_rewards lists them.`);
+    return unlock;
+  };
+  // The checks the app's pickers make by only offering what qualifies.
+  const checkUnlockLinks = (draft: { requiredTaskIds: string[]; guardsTaskId: string | null }, selfId: string | null): void => {
+    const all = tasks();
+    for (const taskId of draft.requiredTaskIds) {
+      const t = all.find(x => x.id === taskId);
+      if (!t || t.parentId || t.archived) throw new Error(`No open task with id ${taskId} to require.`);
+      if (t.polarity === 'negative') throw new Error(`"${t.title}" is a habit to avoid, so it can't be something the unlock needs done.`);
+    }
+    if (draft.guardsTaskId) {
+      const habit = all.find(x => x.id === draft.guardsTaskId);
+      if (!habit || !rewardGuard.isGuardableHabit(habit)) throw new Error(`No live "Avoid this" habit with id ${draft.guardsTaskId}.`);
+      const byReward = db.dbGetAllRewards().find(r => r.guardsTaskId === habit.id && rewardGuard.canGuard(r));
+      if (byReward) throw new Error(`"${habit.title}" is already linked to the reward "${byReward.title}". A habit has one link.`);
+      const byUnlock = db.dbGetAllRewardUnlocks().find(u => u.id !== selfId && u.guardsTaskId === habit.id);
+      if (byUnlock) throw new Error(`"${habit.title}" is already linked to the unlock "${byUnlock.title}". A habit has one link.`);
     }
   };
   const requireReward = (id: string): Reward => {
@@ -8571,6 +8619,94 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       useSettingsStore.getState().setRewardGoalId(id);
       refresh();
       return reward;
+    },
+
+    unlockWorld() {
+      const s = useSettingsStore.getState();
+      const all = tasks();
+      const now = new Date();
+      return {
+        entries: rewards.sortCoinEntries(db.dbGetAllCoinEntries()),
+        tasks: all,
+        onToday: all.filter(t => !t.parentId && !t.completed && (visibility.isTaskVisible(t) || visibility.isUpcomingToday(t))),
+        todayStart: dates.getCurrentDayStart(),
+        todayKey: dates.getLogicalDayKey(now, s.dayResetTime),
+        vacation: s.vacationMode,
+      };
+    },
+
+    createUnlock(input): RewardUnlock {
+      requireRewardsOn();
+      const unlockLib = require('../../src/utils/rewardUnlocks') as typeof import('../../src/utils/rewardUnlocks');
+      const clean = unlockLib.cleanUnlockDraft({ ...input, pin: null });
+      if (!clean.title) throw new Error('An unlock needs a name.');
+      checkUnlockLinks(clean, null);
+      const unlock: RewardUnlock = {
+        id: generateId(),
+        createdAt: new Date().toISOString(),
+        ...clean,
+        playDay: null,
+        playUsedMs: 0,
+        playExtraMs: 0,
+        playStartedAt: null,
+      };
+      db.dbUpsertRewardUnlock(unlock);
+      refresh();
+      return unlock;
+    },
+
+    updateUnlock(id, patch): RewardUnlock {
+      requireRewardsOn();
+      const unlockLib = require('../../src/utils/rewardUnlocks') as typeof import('../../src/utils/rewardUnlocks');
+      const current = requireUnlock(id);
+      // The code is the phone's: whatever a patch says, it stays as it was.
+      const { pin: _ignored, ...allowed } = patch as Partial<UnlockInput> & { pin?: unknown };
+      const clean = unlockLib.cleanUnlockDraft({ ...current, ...allowed, pin: current.pin });
+      if (!clean.title) throw new Error('An unlock needs a name.');
+      checkUnlockLinks(clean, id);
+      const next: RewardUnlock = { ...current, ...clean };
+      db.dbUpsertRewardUnlock(next);
+      refresh();
+      return next;
+    },
+
+    deleteUnlock(id): RewardUnlock {
+      requireRewardsOn();
+      const unlock = requireUnlock(id);
+      db.dbDeleteRewardUnlock(id);
+      refresh();
+      return unlock;
+    },
+
+    unlockPlay(id, action, minutes): RewardUnlock {
+      requireRewardsOn();
+      const unlockLib = require('../../src/utils/rewardUnlocks') as typeof import('../../src/utils/rewardUnlocks');
+      const unlock = requireUnlock(id);
+      const world = replica.unlockWorld();
+      const now = new Date();
+      let fields;
+      if (action === 'start') {
+        const { status } = unlockLib.statusOfUnlock(unlock, world);
+        if (status.kind === 'locked') {
+          const still = status.pending.length > 0 ? ` It also still needs ${status.pending.map(t => visibility.displayTitleFor(t)).join(', ')}.` : '';
+          throw new Error(`"${unlock.title}" is locked: ${Math.floor(status.share * 100)}% of today's work is done and it opens at ${unlock.sharePct}%.${still}`);
+        }
+        const play = unlockLib.playState(unlock, now, world.todayKey);
+        if (play.running) return unlock;
+        if (play.remainingMs === 0) throw new Error(`Today's play time for "${unlock.title}" is used up. action: "add" gives more, if they want it.`);
+        fields = unlockLib.startPlay(unlock, now, world.todayKey);
+      } else if (action === 'stop') {
+        fields = unlockLib.stopPlay(unlock, now, world.todayKey);
+      } else {
+        const add = Math.round(minutes ?? unlockLib.PLAY_EXTRA_MINUTES);
+        if (!(add >= 1 && add <= 240)) throw new Error('minutes must be from 1 to 240.');
+        if (unlock.playMinutes === null) throw new Error(`"${unlock.title}" has no daily play time to add to.`);
+        fields = unlockLib.addPlayTime(unlock, add, now, world.todayKey);
+      }
+      const next: RewardUnlock = { ...unlock, ...fields };
+      db.dbUpsertRewardUnlock(next);
+      refresh();
+      return next;
     },
 
     postBounty(id): Task {

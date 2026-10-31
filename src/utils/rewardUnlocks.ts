@@ -1,6 +1,6 @@
 import type { CoinEntry, RewardUnlock, Task } from '../types';
 import { addDays } from 'date-fns/addDays';
-import { baseCoinsFor, bountyCoinsFor, isBalanceReset } from './rewards';
+import { baseCoinsFor, bountyCoinsFor, cleanRewardGlyph, isBalanceReset } from './rewards';
 import { isNegativeTask } from './negativeHabits';
 import { occurrenceFamilyKey } from './searchCollapse';
 
@@ -61,6 +61,24 @@ export function cleanUnlockSharePct(value: number | null | undefined): number {
 export function cleanPlayMinutes(value: number | null | undefined): number | null {
   if (value == null || !Number.isFinite(value) || value <= 0) return null;
   return Math.min(MAX_PLAY_HOURS * 60, Math.round(value));
+}
+
+/** What the form (and the MCP server's tools) edit on an unlock. */
+export type UnlockDraft = Pick<RewardUnlock, 'title' | 'glyph' | 'sharePct' | 'requiredTaskIds' | 'playMinutes' | 'freeOnWeekends' | 'freeOnVacation' | 'guardsTaskId' | 'pin'>;
+
+/** A draft as stored: trimmed, in range, no repeated requirement, blanks as null. */
+export function cleanUnlockDraft(draft: UnlockDraft): UnlockDraft {
+  return {
+    title: draft.title.trim(),
+    glyph: cleanRewardGlyph(draft.glyph),
+    sharePct: cleanUnlockSharePct(draft.sharePct),
+    requiredTaskIds: Array.from(new Set(draft.requiredTaskIds.filter(Boolean))),
+    playMinutes: cleanPlayMinutes(draft.playMinutes),
+    freeOnWeekends: !!draft.freeOnWeekends,
+    freeOnVacation: !!draft.freeOnVacation,
+    guardsTaskId: draft.guardsTaskId || null,
+    pin: draft.pin?.trim() || null,
+  };
 }
 
 // ==== Today's work ====

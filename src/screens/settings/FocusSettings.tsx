@@ -289,7 +289,7 @@ export function FocusSettings() {
             iconColor={timerLiveActivity ? colors.accent : undefined}
             label="Live Activity while timing"
             hint={timerLiveActivity
-              ? 'A running task timer, recipe cook/prep timer, or completion timer reminder shows on the Lock Screen and Dynamic Island'
+              ? 'A running task timer, recipe cook/prep timer, completion timer reminder, or an unlock’s play time shows on the Lock Screen and Dynamic Island'
               : 'Timers stay in the app only'}
             toggle={timerLiveActivity}
             onPress={() => setTimerLiveActivity(!timerLiveActivity)}

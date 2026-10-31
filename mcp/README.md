@@ -232,6 +232,10 @@ only the fallback until the first sync.
 | `claim_reward` | **Write.** Spends a reward's cost. Returns a `claimId`. Refused when the balance is short, a one-time reward was already claimed, or it would take some of the goal's savings without `useSavings`. A wish-list reward also checks its item off, with no extra coins. |
 | `unclaim_reward` | **Write.** Takes a claim back by its `claimId`, and reopens the wish-list item the claim checked off. |
 | `set_reward_goal` | **Write.** Chooses the reward being saved for, or clears it. `sharePct` or `byDate` sets a share of every coin aside for it. |
+| `create_unlock` | **Write.** Adds an unlock: opened by a share of the day's work, no coins. Its code can only be set on the phone. |
+| `update_unlock` | **Write.** Changes an unlock's fields. Its code and today's timer are left alone. |
+| `delete_unlock` | **Write.** Deletes an unlock, with its timer and code. |
+| `set_unlock_play` | **Write.** Starts, stops or adds minutes to today's play timer. Start is refused while it's locked. |
 | `set_bounty` | **Write.** Posts extra coins on a task, or withdraws the live bounty. Same limits as the app. |
 | `mark_done_by_other` | **Write.** Closes a task as done by somebody else: completes it and creates a repeat's next occurrence, with no coins and no streak change. Works on a one-off. `reopen_task` undoes it. |
 | `mark_missed` | **Write.** Marks a task missed. A repeat's occurrence breaks the streak and gets its next occurrence; a one-off just closes. Costs coins. `reopen_task` undoes it. |

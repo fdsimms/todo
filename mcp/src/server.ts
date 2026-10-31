@@ -81,7 +81,7 @@ import {
 } from './taskFields';
 import type { DeliverableKind, ExerciseEquipment, ExerciseKind, MealSlot, MuscleGroup, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
-import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
+import { claimReward, createReward, createUnlock, deleteReward, deleteUnlock, getRewards, markMissed, setBounty, setRewardGoal, setSlip, setUnlockPlay, unclaimReward, updateReward, updateUnlock } from './rewardTools';
 import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
 import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, catalogAudit, listBrands, mergeGroceryItems, mergeGroceryItemsMany, updateGroceryItems, renameBrand, renameBrands, renameGroceryList, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
@@ -4231,6 +4231,72 @@ function registerWriteTools(
         return json(await withWrite(() => updateReward(replica, id, patch)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change the reward.' });
+      }
+    }
+  );
+
+  const unlockFieldsShape = {
+    glyph: z.string().max(16).nullable().optional().describe('One emoji drawn on the unlock\'s card, like "🎮". Null removes it.'),
+    unlocksAtPct: z.number().int().min(5).max(100).optional().describe('The share of today\'s work (counted in coins) that opens it. Default 60.'),
+    alsoNeedsTaskIds: z.array(z.string().min(1)).optional().describe('Open tasks that also have to be done first, on the days they are due (any repeat of one counts). Replaces the list; [] clears it.'),
+    playMinutes: z.number().int().min(1).max(720).nullable().optional().describe('Minutes of play a day once open, with a timer and a notice when it is used up. Null for no limit and no timer. Default 120.'),
+    freeOnWeekends: z.boolean().optional().describe('Open all day on Saturday and Sunday with no work.'),
+    freeOnVacation: z.boolean().optional().describe('Open all day while vacation mode is on.'),
+    linkedHabitId: z.string().min(1).nullable().optional().describe('An "Avoid this" habit (task id) for doing it while it is locked. A slip logged on it while the unlock is open asks first. One link per habit. Null unlinks it.'),
+  };
+
+  server.tool(
+    'create_unlock',
+    "Add an unlock: something that opens once a share of the day's work is done (counted in coins), such as an hour of a game. It costs no coins and never touches the balance or the savings. Only when the person asks. A code (like a parental controls PIN) can only be set on their phone; never ask them for one. Refused while rewards are switched off.",
+    { title: z.string().min(1), ...unlockFieldsShape },
+    async input => {
+      try {
+        return json(await withWrite(() => createUnlock(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the unlock.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_unlock',
+    "Change an unlock (ids from get_rewards' unlocks). Only the fields given change; its code and today's timer are left as they are.",
+    { id: z.string().min(1), title: z.string().min(1).optional(), ...unlockFieldsShape },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateUnlock(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the unlock.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_unlock',
+    "Delete an unlock (ids from get_rewards' unlocks), with its timer and code. No coins move. Only on the person's say-so.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteUnlock(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the unlock.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_unlock_play',
+    "Start, stop, or add minutes to an unlock's play timer for today, the same as the buttons on its card. start is refused while it is locked (the error says how much work is left) or today's time is used up; add gives more time today (default 15 minutes). The phone shows the timer and rings when it is used up once it syncs. Only when the person says they are starting or stopping.",
+    {
+      id: z.string().min(1),
+      action: z.enum(['start', 'stop', 'add']),
+      minutes: z.number().int().min(1).max(240).optional().describe('For add: how many minutes. Default 15.'),
+    },
+    async ({ id, action, minutes }) => {
+      try {
+        return json(await withWrite(() => setUnlockPlay(replica, id, action, minutes)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the play timer.' });
       }
     }
   );
