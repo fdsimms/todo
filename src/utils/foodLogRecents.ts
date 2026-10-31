@@ -1,5 +1,6 @@
 import type { FoodLogEntry, FoodNutrition, MealSlot, SavedMeal } from '../types';
-import { foodLogEntryEdit, type FoodLogEntryEdit } from './foodLog';
+import { foodLogEntryEdit, foodSearchKeys, type FoodLogEntryEdit } from './foodLog';
+import { recallWeight } from './foodRecall';
 import { groceryNameKey } from './groceryParse';
 import { isNutrientOnlyEntry } from './nutrientLog';
 import { isWaterEntry } from './waterLog';
@@ -252,6 +253,20 @@ export const RECENT_HELPING_DAYS = 14;
 export const RECENT_HELPING_MIN_LOGS = 2;
 
 /**
+ * Whether a logged label answers what was typed.
+ *
+ * **The same two rules the rest of the sheet already uses, so no row is found
+ * by one and missed by another.** `foodSearchKeys` is what the catalog list
+ * below matches on (it reads "50g cookies" as "cookies" too), and `recallWeight`
+ * is what the Estimate panel offers its earlier meals by. Matching the whole
+ * typed string alone missed every description that began with an amount, which
+ * is how a meal estimated five times only turned up after tapping Estimate.
+ */
+function matchesTyped(labelKey: string, queryKey: string, searchKeys: readonly string[]): boolean {
+  return searchKeys.some(k => labelKey.includes(k)) || recallWeight(labelKey, queryKey) > 0;
+}
+
+/**
  * Foods logged under no row, most recent first, for the picker to offer as
  * the same helping again (#2914).
  *
@@ -289,6 +304,7 @@ export function recentUnlinkedHelpings(
   now: Date = new Date(),
 ): FoodLogEntry[] {
   const queryKey = groceryNameKey(query);
+  const searchKeys = foodSearchKeys(query);
   const habitOnly = !queryKey;
   const cutoffISO = new Date(now.getTime() - RECENT_HELPING_DAYS * 86_400_000).toISOString();
   const identityOf = (entry: FoodLogEntry): string | null => {
@@ -313,7 +329,7 @@ export function recentUnlinkedHelpings(
     const identity = identityOf(entry);
     if (!identity) continue;
     const key = groceryNameKey(entry.label);
-    if (queryKey && !key.includes(queryKey)) continue;
+    if (queryKey && !matchesTyped(key, queryKey, searchKeys)) continue;
     if (habitOnly && (counts.get(identity) ?? 0) < RECENT_HELPING_MIN_LOGS) continue;
     if (seen.has(identity)) continue;
     seen.add(identity);
