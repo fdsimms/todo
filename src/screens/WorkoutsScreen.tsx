@@ -840,7 +840,6 @@ export function WorkoutsScreen() {
               renderItem={renderExercise}
               refreshControl={pullSearch.refreshControl}
               contentContainerStyle={[styles.list, listBottom]}
-              keyboardDismissMode="on-drag"
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
               {...keyboardScroll.props}

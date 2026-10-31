@@ -843,7 +843,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
 
             <View style={styles.searchWrap}>
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
-              <TextInput
+              <TextField
                 style={styles.search}
                 {...filterField}
                 placeholder="Find or add an item…"

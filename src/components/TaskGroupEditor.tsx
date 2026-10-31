@@ -809,7 +809,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
           {showExistingPicker && (
             <View style={styles.existingPicker}>
               <View style={styles.existingSearchWrap}>
-                <TextInput
+                <TextField
                   style={styles.existingSearch}
                   {...filterField}
                   onFocus={scrollIntoView}

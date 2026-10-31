@@ -592,8 +592,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
             style={styles.flex}
             contentContainerStyle={styles.body}
             keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
             {...keyboardScroll.props}
+            keyboardDismissMode="interactive"
           >
             <Text style={styles.intro}>
               Copy the numbers off the package label. Skip anything the label doesn’t

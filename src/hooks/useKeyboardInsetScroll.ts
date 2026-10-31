@@ -361,6 +361,10 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>(
      */
     noteScroll: record,
     props: {
+      // Dragging the list puts the keyboard away, so there is always a way to
+      // dismiss it without hunting for a safe place to tap. A list that wants
+      // another mode (`interactive`) sets it after spreading `props`.
+      keyboardDismissMode: 'on-drag' as const,
       automaticallyAdjustKeyboardInsets: focused && !jsInset,
       contentInset: insetProp,
       // Recording only, never clamping: a scroll event mid rubber-band carries

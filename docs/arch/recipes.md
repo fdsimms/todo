@@ -1277,7 +1277,7 @@ method somebody is following with their hands full.
   the chicken", the recipe says "1 red bell pepper" and the step says "add the pepper". Strict
   matching alone is silent on most of a real method, which is why this exists rather than being
   the refusal it started as. `CUTS` comes off the end (chicken breasts, salmon fillets, pork
-  chops) and `MODIFIERS` comes off the front (red, bell, rolled, fresh, unsalted). **Adjectives
+  chops) and `MODIFIERS` comes off the front (red, bell, rolled, fresh, unsalted, kosher). `CUTS` also holds "powder", so "the mustard" finds "mustard powder"; a plain line of the same name still outranks it. **Adjectives
   and cuts, never "the last word"** — that is the entire safety argument, since "soy", "olive" and
   "chicken" name what the thing *is*: "soy sauce" never answers to "sauce", so a step reducing a
   pan sauce cannot pick up the soy line's amount. "sweet", "hot", "smoked", "toasted" and

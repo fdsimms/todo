@@ -5,7 +5,6 @@ import {
   Keyboard,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -24,6 +23,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
+import { TextField } from './TextField';
 
 /**
  * Finding what a catalog food is made of, in a food database, by name.
@@ -184,7 +184,7 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick, onOpe
 
         <View style={styles.searchRow}>
           <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
-          <TextInput
+          <TextField
             key={searchFilter.fieldKey}
             {...searchFilter.props}
             style={styles.searchInput}

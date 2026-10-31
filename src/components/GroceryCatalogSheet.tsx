@@ -3,7 +3,6 @@ import {
   Keyboard,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   FlatList,
   StyleSheet,
@@ -50,6 +49,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
+import { TextField } from './TextField';
 
 const CHECKBOX_SIZE = 22;
 
@@ -359,7 +359,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
 
         <View style={styles.searchWrap}>
           <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
-          <TextInput
+          <TextField
             style={styles.search}
             {...filterField}
             placeholder="Search your grocery catalog"

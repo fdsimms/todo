@@ -7,6 +7,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import type { FilterField } from '../hooks/useFilterField';
+import { TextField } from './TextField';
 
 interface Props {
   /**
@@ -56,7 +57,7 @@ export function SearchField(
   return (
     <View style={[styles.bar, surface === 'sunken' && styles.barSunken, style]}>
       <Ionicons name="search" size={16} color={colors.textTertiary} style={styles.icon} />
-      <TextInput
+      <TextField
         key={field.fieldKey}
         {...field.props}
         style={styles.input}

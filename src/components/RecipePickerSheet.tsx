@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Animated,
@@ -41,6 +40,7 @@ import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
 import { POOL_DAY_KEY } from '../utils/weekPool';
+import { TextField } from './TextField';
 
 export interface MealPick {
   /**
@@ -441,7 +441,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
 
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={15} color={colors.textTertiary} />
-            <TextInput
+            <TextField
               style={styles.searchInput}
               {...filterField}
               placeholder="Search recipes, or type a meal"

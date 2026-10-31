@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Keyboard, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Keyboard, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -14,6 +14,7 @@ import { haptics } from '../utils/haptics';
 import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { BUTTON_LABEL } from '../copy/shared';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -69,7 +70,7 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
 
         <View style={styles.searchRow}>
           <Ionicons name="search-outline" size={iconSize.sm} color={colors.textTertiary} />
-          <TextInput
+          <TextField
             style={styles.searchInput}
             {...filterField}
             placeholder="Where are you going?"

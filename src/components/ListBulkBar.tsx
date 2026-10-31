@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Animated } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { NamedIcon } from './CoinIcon';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
@@ -10,6 +10,7 @@ import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useFilterField } from '../hooks/useFilterField';
+import { TextField } from './TextField';
 
 export interface ListBulkAction {
   key: string;
@@ -204,7 +205,7 @@ export function ListBulkBar({
             <Text style={styles.subTitle}>{category.title}</Text>
             <View style={{ width: 28 }} />
           </View>
-          <TextInput
+          <TextField
             style={styles.categoryInput}
             // "or add" only where typing a new name can make one: a closed
             // set (meal types, the meals of the day) has nothing to add.

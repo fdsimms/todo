@@ -44,7 +44,7 @@ import {
   type DropZone,
   type FabDropIntent,
 } from '../utils/fabDrop';
-import { GroceryRow } from '../components/GroceryRow';
+import { GroceryRow, SWAP_FLASH_MS } from '../components/GroceryRow';
 import { GroceryCatalogSheet } from '../components/GroceryCatalogSheet';
 import { SubstituteSheet } from '../components/SubstituteSheet';
 import { navigateToTab } from '../navigation/navigationRef';
@@ -1098,9 +1098,22 @@ export function GroceryScreen() {
       haptics.tap();
       animateLayout();
       swapForSubstitute(id, subId);
+      setSwapFlash({ id: subId, stamp: Date.now() });
     },
     [swapForSubstitute]
   );
+
+  // The swapped-in row can land among rows already on the list, or off screen
+  // when it was on the list for another recipe. Bring it into view (no scroll
+  // at all when it already is) and tint it while the stamp is set; the tint
+  // fades on its own and the stamp is cleared once it has.
+  const [swapFlash, setSwapFlash] = useState<{ id: string; stamp: number } | null>(null);
+  useEffect(() => {
+    if (!swapFlash) return;
+    rowScroller.current?.keepKeyInView(swapFlash.id);
+    const timer = setTimeout(() => setSwapFlash(null), SWAP_FLASH_MS + 200);
+    return () => clearTimeout(timer);
+  }, [swapFlash]);
 
   // "Check"/"Uncheck" flips direction based on the selection itself, the same
   // way SimpleBulkBar's Logbook incomplete action always means the opposite of what's
@@ -1691,6 +1704,7 @@ export function GroceryScreen() {
           storeMarker={storeMarkers.get(row.item.id)?.text}
           swapSubstituteId={storeMarkers.get(row.item.id)?.substituteId}
           onSwapForSubstitute={handleSwapForSubstitute}
+          flashStamp={swapFlash && swapFlash.id === row.item.id ? swapFlash.stamp : undefined}
           tripActionLabel={row.unavailableHere ? (row.skipped ? 'Put back' : 'Skip') : undefined}
           onTripAction={row.skipped ? unskipForTrip : skipForTrip}
           tripPriceMinor={tripPriceById.get(row.item.id)?.minor}
@@ -1699,7 +1713,7 @@ export function GroceryScreen() {
         />
       );
     },
-    [styles, colors, cartOpen, skippedOpen, skipForTrip, unskipForTrip, collapsedGroups, toggleGroupCollapsed, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, grouped.kind, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, stockedForById, storeMarkers, tripPriceById, handleSetTripPrice]
+    [styles, colors, cartOpen, skippedOpen, skipForTrip, unskipForTrip, collapsedGroups, toggleGroupCollapsed, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, swapFlash, zoneByKey, grouped.kind, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, stockedForById, storeMarkers, tripPriceById, handleSetTripPrice]
   );
 
   // The "Start shopping" card, a sibling above the grouping control. Hidden
