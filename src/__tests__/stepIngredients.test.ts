@@ -163,6 +163,24 @@ describe('annotateSteps', () => {
         .toBe('Add the pepper (1 large) and fry for two minutes.');
     });
 
+    it('drops a salt adjective, so salt finds kosher salt', () => {
+      const steps = [step('Add the salt and stir.')];
+      expect(readOne(steps, [line('kosher salt', '2 tsp')]))
+        .toBe('Add the salt (2 tsp) and stir.');
+    });
+
+    it('drops a trailing powder, so mustard finds mustard powder', () => {
+      const steps = [step('Whisk in the mustard.')];
+      expect(readOne(steps, [line('mustard powder', '2 tsp')]))
+        .toBe('Whisk in the mustard (2 tsp).');
+    });
+
+    it('keeps the plain line when a powder line offers the same short name', () => {
+      const steps = [step('Mince the garlic.')];
+      expect(readOne(steps, [line('garlic powder', '1 tsp'), line('garlic', '3 cloves')]))
+        .toBe('Mince the garlic (3 cloves).');
+    });
+
     it('drops both at once', () => {
       const steps = [step('Pat the salmon dry.')];
       expect(readOne(steps, [line('fresh salmon fillets', '2')]))
