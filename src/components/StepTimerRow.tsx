@@ -66,8 +66,8 @@ interface Props {
  * **Sized for a knuckle, not a fingertip** (#2920), and `RecipeTimerRow` has
  * since taken the same sizes, so the rows in one card still match. These rows are
  * reached for mid-cook with the hands full, often two or three at once, so:
- * every control is at least 44pt with no `hitSlop` reaching into its
- * neighbour's; Cancel sits a wider gap away from Pause and asks first while
+ * every control is 44pt wide with no `hitSlop` reaching into its
+ * neighbour's, an even gap between them; Cancel leads and Pause trails, and Cancel asks first while
  * there is time left to lose (`stepTimerCancelPrompt`); the countdown is
  * `font.lg`; and a full-width line under the controls names the step by its
  * own words (`stepExcerpt`) ahead of "Step 5 of 12", so two rows say which
@@ -146,6 +146,24 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
           </TouchableOpacity>
         )}
 
+        {/* Leading, so the primary control sits at the trailing edge of every
+            timer row (`RecipeTimerRow` does the same) and the two line up down
+            the card. Cancel is the control furthest from it. No hitSlop on
+            any of them: the gaps are even and each target is a full 44pt. */}
+        <TouchableOpacity
+          onPress={ready ? onRemove : handleRemove}
+          style={styles.secondaryBtn}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={ready ? `Dismiss the ${name} timer` : `Cancel the ${name} timer`}
+        >
+          <Ionicons
+            name={ready ? 'checkmark' : 'close'}
+            size={iconSize.sm}
+            color={ready ? colors.textSecondary : colors.textTertiary}
+          />
+        </TouchableOpacity>
+
         {!repeating && (
           <TouchableOpacity
             onPress={onAddTime}
@@ -177,27 +195,10 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
             accessibilityRole="button"
             accessibilityLabel={`${running ? 'Pause' : 'Resume'} the ${name} timer`}
           >
-            <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={running ? colors.onFill : colors.onAccent} />
+            <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={running ? colors.orangeText : colors.onAccent} />
           </TouchableOpacity>
         )}
 
-        {/* Set a wider gap apart from the button beside it (`removeBtn`),
-            and no hitSlop on either: the two used to sit 8pt apart with
-            overlapping hit areas, so a knuckle meant for Pause could land on
-            Cancel. */}
-        <TouchableOpacity
-          onPress={ready ? onRemove : handleRemove}
-          style={[styles.secondaryBtn, styles.removeBtn]}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityLabel={ready ? `Dismiss the ${name} timer` : `Cancel the ${name} timer`}
-        >
-          <Ionicons
-            name={ready ? 'checkmark' : 'close'}
-            size={iconSize.sm}
-            color={ready ? colors.textSecondary : colors.textTertiary}
-          />
-        </TouchableOpacity>
       </View>
       {/* Its own full-width line rather than squeezed under the clock beside
           three 44pt controls, where the excerpt came out as "Simmer the r…":
@@ -279,26 +280,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   primaryBtnWide: {
     paddingHorizontal: spacing.smd,
   },
+  // Running is the quiet state: a tint with an orange glyph, so a row that is
+  // simply counting down doesn't carry a solid block. Paused keeps the solid
+  // accent, since Resume is what the row is asking for.
   primaryBtnRunning: {
-    backgroundColor: colors.orangeFill,
+    backgroundColor: colors.orange + '33',
   },
   primaryBtnText: {
     color: colors.onAccent,
     fontSize: font.sm,
     fontWeight: fontWeight.semibold,
   },
+  // No disc behind it: the primary is the only filled control on the row.
+  // A fixed width (not minWidth) so every gap on the row is the same.
   secondaryBtn: {
-    minWidth: TOUCH,
+    width: TOUCH,
     height: TOUCH,
-    paddingHorizontal: spacing.xs,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  // With the row's own gap, 16pt clear of the button beside it.
-  removeBtn: {
-    marginLeft: spacing.sm,
   },
   // The count of rings, beside the clock. Accent while it is within what the
   // recipe expected and orange once it has gone past, the same two states the
