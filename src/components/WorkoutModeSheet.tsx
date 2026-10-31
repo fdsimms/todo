@@ -752,11 +752,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             ref={keyboardScroll.ref}
           >
             {plan.loggedCount > 0 && session ? (
-              <WorkoutCompleteHero subtitle={`Started ${formatTimeOfDay(new Date(session.startedAt))}`} records={sessionRecords.length} />
+              <WorkoutCompleteHero subtitle={`Started ${formatTimeOfDay(new Date(session.startedAt))} · ${summary.minutes} min`} records={sessionRecords.length} />
             ) : (
               <Text style={styles.summaryTitle}>Workout summary</Text>
             )}
             <WorkoutStatTiles
+              compact={plan.loggedCount > 0}
               minutes={summary.minutes}
               exercises={summary.exercises.length}
               sets={summary.setsDone}
