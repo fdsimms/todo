@@ -864,6 +864,25 @@ export function CookModeSheet({
                 const lineKey = `${flat.recipe.id}:${flat.ingredient.id}`;
                 const lineOut = gatheredLines.has(lineKey);
                 const fromChoice = pickedFrom(flat);
+                // A long amount would claim the row's width ahead of the name
+                // ("water" broke into "wate" / "r"), so it drops under it, as in
+                // the mid-step panel and on the recipe page.
+                const stackQty = showContainerCount(converted.text).length > STACKED_QTY_LENGTH;
+                const qtyGroup = !!converted.text && (
+                  <View style={[styles.qtyGroup, stackQty && styles.qtyGroupStacked]}>
+                    <View style={[styles.miseQtyPill, marked && styles.miseQtyPillMarked]}>
+                      <Text
+                        style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
+                        numberOfLines={1}
+                      >
+                        {showContainerCount(converted.text)}
+                      </Text>
+                    </View>
+                    {!!weight && (
+                      <Text style={styles.miseWeight} numberOfLines={1}>{weight}</Text>
+                    )}
+                  </View>
+                );
                 return (
                   <View key={lineKey}>
                     {!!heading.parentSection && <Text style={styles.miseHeading}>{heading.parentSection}</Text>}
@@ -898,22 +917,9 @@ export function CookModeSheet({
                         {!!flat.ingredient.prep && (
                           <Text style={styles.misePrep}>{flat.ingredient.prep}</Text>
                         )}
+                        {stackQty && qtyGroup}
                       </View>
-                      {!!converted.text && (
-                        <View style={styles.qtyGroup}>
-                          <View style={[styles.miseQtyPill, marked && styles.miseQtyPillMarked]}>
-                            <Text
-                              style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
-                              numberOfLines={1}
-                            >
-                              {showContainerCount(converted.text)}
-                            </Text>
-                          </View>
-                          {!!weight && (
-                            <Text style={styles.miseWeight} numberOfLines={1}>{weight}</Text>
-                          )}
-                        </View>
-                      )}
+                      {!stackQty && qtyGroup}
                     </TouchableOpacity>
                   </View>
                 );

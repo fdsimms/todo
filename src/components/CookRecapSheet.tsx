@@ -22,7 +22,7 @@ import {
 import { SafeBlurView } from './SafeBlurView';
 import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { convertQuantity, showContainerCount } from '../utils/unitConvert';
+import { convertQuantity, showContainerCount, STACKED_QTY_LENGTH } from '../utils/unitConvert';
 import { defaultOnHandUntil } from '../utils/grocerySuggest';
 import type { ClassifiedIngredient } from '../utils/mealPlanGroceries';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -599,6 +599,14 @@ export function CookRecapSheet({
                   {pantryRows.map((row, i) => {
                     const on = ticked.has(row.nameKey);
                     const shownQuantity = showContainerCount(convertQuantity(row.quantity, unitSystem).text);
+                    // A long amount drops under the name rather than being cut
+                    // short in a capped pill beside it.
+                    const stackQty = shownQuantity.length > STACKED_QTY_LENGTH;
+                    const qty = !!shownQuantity && (
+                      <View style={[styles.qtyPill, stackQty && styles.qtyPillStacked]}>
+                        <Text style={styles.qtyText} numberOfLines={stackQty ? undefined : 1}>{shownQuantity}</Text>
+                      </View>
+                    );
                     return (
                       <React.Fragment key={row.nameKey}>
                         {i > 0 && <View style={styles.sep} />}
@@ -623,12 +631,9 @@ export function CookRecapSheet({
                             {!!row.reason && (
                               <Text style={styles.reason} numberOfLines={1}>{row.reason}</Text>
                             )}
+                            {stackQty && qty}
                           </View>
-                          {!!shownQuantity && (
-                            <View style={styles.qtyPill}>
-                              <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
-                            </View>
-                          )}
+                          {!stackQty && qty}
                         </TouchableOpacity>
                       </React.Fragment>
                     );
@@ -657,9 +662,10 @@ export function CookRecapSheet({
                     const on = restockTicked.has(row.nameKey);
                     const have = haveAnswered.has(row.nameKey);
                     const shownQuantity = showContainerCount(convertQuantity(row.quantity, unitSystem).text);
+                    const stackQty = shownQuantity.length > STACKED_QTY_LENGTH;
                     const qty = !!shownQuantity && (
-                      <View style={styles.qtyPill}>
-                        <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
+                      <View style={[styles.qtyPill, stackQty && styles.qtyPillStacked]}>
+                        <Text style={styles.qtyText} numberOfLines={stackQty ? undefined : 1}>{shownQuantity}</Text>
                       </View>
                     );
                     return (
@@ -700,8 +706,9 @@ export function CookRecapSheet({
                                 accessibilityLabel={`I still have ${row.name}`}
                               />
                             )}
+                            {stackQty && qty}
                           </View>
-                          {qty}
+                          {!stackQty && qty}
                         </TouchableOpacity>
                       </React.Fragment>
                     );
@@ -831,6 +838,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingVertical: 3,
     maxWidth: 90,
   },
+  qtyPillStacked: { maxWidth: undefined, alignSelf: 'flex-start' },
   qtyText: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary },
   // Mirrors EditorRow's own row layout so the unanswered and answered states
   // of the Leftovers question line up exactly.
