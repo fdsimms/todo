@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
@@ -15,6 +15,7 @@ import {
   DEFAULT_PILL_LIMIT,
   type OverflowPill,
 } from '../utils/pillOverflow';
+import { TextField } from './TextField';
 
 export interface PillGroupOption extends OverflowPill {
   /**
@@ -186,7 +187,7 @@ export function PillGroup({
   };
 
   const field = (placeholder: string, extra: object, autoFocus = false, onBlur?: () => void) => (
-    <TextInput
+    <TextField
       {...active.props}
       style={[styles.field, extra, !!error && styles.fieldError]}
       // After the spread: this field clears its error banner before it mirrors

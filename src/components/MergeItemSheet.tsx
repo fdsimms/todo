@@ -20,6 +20,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { FieldClearButton } from './FieldClearButton';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { BUTTON_LABEL } from '../copy/shared';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -194,7 +195,7 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
 
             <View style={styles.searchWrap}>
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
-              <TextInput
+              <TextField
                 style={styles.search}
                 {...filterField}
                 placeholder="Find an item…"

@@ -486,6 +486,8 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
           onSelectionChange={caret.onSelectionChange}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          // The format and dictation bars float above the keyboard in its place.
+          dismissBar={false}
           placeholder={dictation.state === 'listening' ? 'Listening…' : canSeal && openOn ? 'e.g. What you want to tell yourself then' : soFar.length > 0 ? copy.continuePlaceholder : copy.placeholder}
           placeholderTextColor={colors.textTertiary}
           maxLength={TEXT_MAX_LENGTH}

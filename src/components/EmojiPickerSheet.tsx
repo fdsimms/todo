@@ -171,7 +171,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
 
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={15} color={colors.textTertiary} />
-            <TextInput
+            <TextField
               style={styles.searchInput}
               {...filterField}
               placeholder="Search emoji"

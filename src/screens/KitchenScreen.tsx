@@ -108,6 +108,7 @@ import { SwipeableRow } from '../components/SwipeableRow';
 import { SwipeActionButtons } from '../components/SwipeActionButtons';
 import { SelectionDot } from '../components/SelectionDot';
 import { applyPantryBulk, type PantryBulkAction } from '../utils/pantryBulk';
+import { TextField } from '../components/TextField';
 
 /**
  * Everything the app currently thinks is in your kitchen, in one place — the
@@ -1146,7 +1147,7 @@ export function KitchenScreen() {
 
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
-        <TextInput
+        <TextField
           style={styles.search}
           {...filterField}
           placeholder="Find or add an item…"

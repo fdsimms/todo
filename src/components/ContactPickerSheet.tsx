@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ActivityIndicator, ScrollView,
-  StyleSheet, Linking,
+  View,
+  Text,
+  TouchableOpacity,
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Linking,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { EditorSheet } from './EditorSheet';
@@ -34,6 +39,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useFilterField } from '../hooks/useFilterField';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
+import { TextField } from './TextField';
 
 /** How long the field sits still before a search runs. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -212,7 +218,7 @@ export function ContactPickerSheet({ visible, onPick, onClose, fillingPersonId }
         <>
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} style={styles.searchIcon} />
-            <TextInput
+            <TextField
               {...filterField}
               style={styles.field}
               placeholder={scope === 'limited' ? 'Search shared contacts' : 'Search your contacts'}
