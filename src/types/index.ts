@@ -2632,6 +2632,58 @@ export interface CoinEntry {
   rewardId: string | null;
   /** What to show in the history list: the task's or reward's title at the time. */
   label: string;
+  /**
+   * The part of `amount` that went into (an `earn`) or came out of (a `loss`
+   * or `spend`) the savings for the goal, written once when the entry is and
+   * never recomputed (see `src/utils/rewardSavings.ts`). 0 or absent: all of
+   * it was spending money. Never more than `amount`.
+   */
+  saved?: number;
+}
+
+/**
+ * A treat opened by doing a share of the day's work rather than bought with
+ * coins ("Switch, once 60% of today's work is done"). Rules in
+ * `src/utils/rewardUnlocks.ts`. It never moves the balance.
+ */
+export interface RewardUnlock {
+  id: string;
+  title: string;
+  /** One emoji, or null for the default icon. Same rule as `Reward.glyph`. */
+  glyph: string | null;
+  createdAt: string;
+  /** The share of today's work, 1..100, that opens it. */
+  sharePct: number;
+  /**
+   * Tasks that also have to be done first, on the days they are due. Any
+   * occurrence of the task counts: the id is resolved to its family
+   * (`occurrenceFamilyKey`), so a repeating task's later rows still match.
+   */
+  requiredTaskIds: string[];
+  /** Minutes of play a day once open, or null for no limit (and no timer). */
+  playMinutes: number | null;
+  /** Open all day on Saturday and Sunday without any work. */
+  freeOnWeekends: boolean;
+  /** Open all day while vacation mode is on. */
+  freeOnVacation: boolean;
+  /**
+   * An "Avoid this" habit for doing it while it's locked. A slip logged on
+   * it while the unlock is open asks first, since it isn't one.
+   */
+  guardsTaskId: string | null;
+  /**
+   * A code kept for the person (a console's parental controls PIN), shown only
+   * while the unlock is open. Never sent to the MCP server's reader.
+   */
+  pin: string | null;
+  /** The logical day (`YYYY-MM-DD`) the play fields below count, or null before any play. */
+  playDay: string | null;
+  /** Play already used on `playDay`, not counting the stretch running now. */
+  playUsedMs: number;
+  /** Time added on `playDay` past `playMinutes` ("+15 min"). */
+  playExtraMs: number;
+  /** When the running stretch began, or null when nothing is running. */
+  playStartedAt: string | null;
 }
 
 /** Something you've decided to treat yourself to, for a price in coins. */

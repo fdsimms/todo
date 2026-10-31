@@ -89,6 +89,7 @@ import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useStableCallback } from '../hooks/useStableCallback';
 import { featureHidden, visibleLenses } from '../utils/simpleMode';
 import { coinBalance, goalBarFill, savingForGoal, formatCoins } from '../utils/rewards';
+import { activeGoalPlan, savingsBalance } from '../utils/rewardSavings';
 import { useRewardStore } from '../store/useRewardStore';
 import { CoinIcon } from '../components/CoinIcon';
 import { navigateToTab } from '../navigation/navigationRef';
@@ -5419,6 +5420,12 @@ export function TodayScreen() {
     const byId = new Map(allTasks.map(t => [t.id, t]));
     return savingForGoal(allRewards, coinEntries, rewardGoalId, r => (r.taskId ? byId.get(r.taskId) ?? null : null));
   }, [showCoinPill, allTasks, allRewards, coinEntries, rewardGoalId]);
+  // While saving for the goal with a plan (rewardSavings.ts), the bar is the
+  // savings toward it rather than the whole balance, which is partly spending money.
+  const rewardGoalPlan = useSettingsStore(s => s.rewardGoalPlan);
+  const goalPlan = savingGoal ? activeGoalPlan(rewardGoalPlan, rewardGoalId, true) : null;
+  const goalSavings = useMemo(() => (goalPlan ? savingsBalance(coinEntries, goalPlan) : 0), [goalPlan, coinEntries]);
+  const goalHave = goalPlan ? goalSavings : coinTotal;
   const headerActions: ScreenHeaderAction[] = [
     // The same quick search a pull opens, on all four lenses: a pull is a
     // gesture nothing on screen points to, and this is the screen people
@@ -5518,16 +5525,16 @@ export function TodayScreen() {
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={savingGoal
-                  ? `${coinTotal} coins. Saving for ${savingGoal.title}: ${Math.max(0, Math.min(coinTotal, savingGoal.reward.cost))} of ${formatCoins(savingGoal.reward.cost)}${coinTotal >= savingGoal.reward.cost ? ', ready to claim' : ''}. Open Rewards`
+                  ? `${coinTotal} coins. Saving for ${savingGoal.title}: ${Math.max(0, Math.min(goalHave, savingGoal.reward.cost))} of ${formatCoins(savingGoal.reward.cost)}${goalHave >= savingGoal.reward.cost ? ', ready to claim' : ''}. Open Rewards`
                   : `${coinTotal} coins. Open Rewards`}
               >
                 <View style={styles.coinPillTop}>
                   <CoinIcon size={iconSize.sm} color={colors.done} filled />
                   <AnimatedNumber text={String(coinTotal)} value={coinTotal} style={styles.coinPillText} />
-                  {savingGoal && <Text style={styles.coinPillGoal}>{`/ ${savingGoal.reward.cost}`}</Text>}
+                  {savingGoal && !goalPlan && <Text style={styles.coinPillGoal}>{`/ ${savingGoal.reward.cost}`}</Text>}
                 </View>
                 {savingGoal && (
-                  <ProgressBar progress={goalBarFill(coinTotal, savingGoal.reward.cost)} height={4} color={colors.done} style={styles.coinPillBar} decorative />
+                  <ProgressBar progress={goalBarFill(goalHave, savingGoal.reward.cost)} height={4} color={colors.done} style={styles.coinPillBar} decorative />
                 )}
               </TouchableOpacity>
             ) : undefined

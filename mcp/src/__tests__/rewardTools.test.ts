@@ -54,6 +54,42 @@ describe('the rewards tools', () => {
       replica.completeTask(t.id, {});
     });
 
+    it('sets money aside for the goal, pays other rewards from the rest, and lists unlocks without their code', () => {
+      mockRaw.runSync('DELETE FROM reward_unlocks');
+      const coffee = createReward(replica, { title: 'Coffee', cost: 4 });
+      const game = createReward(replica, { title: 'Game', cost: 60 });
+      // The 5 coins already earned go in, and 60% of what comes next.
+      const set = setRewardGoal(replica, game.id, { sharePct: 60 });
+      expect(set.savings).toMatchObject({ sharePct: 60, saved: 5, spending: 0 });
+      const t = replica.createTask({ title: 'Clean the garage', estimatedMinutes: 90 });
+      replica.completeTask(t.id, {});
+      const report = getRewards(replica);
+      expect(report.savings).toMatchObject({ saved: 8, spending: 2 });
+      expect(report.goal).toMatchObject({ shortBy: 52 });
+      expect(report.rewards.find(r => r.id === coffee.id)).toMatchObject({ affordable: false, shortBy: 2 });
+      expect(report.history[0]).toMatchObject({ label: 'Clean the garage', saved: 3 });
+
+      // Coffee needs 2 of the goal's savings, which takes a yes.
+      expect(() => claimReward(replica, coffee.id)).toThrow(/useSavings/);
+      expect(claimReward(replica, coffee.id, true)).toMatchObject({ spent: 4, fromSavings: 2 });
+      expect(getRewards(replica).savings).toMatchObject({ saved: 6, spending: 0 });
+
+      // Stopping returns the savings to spending money.
+      setRewardGoal(replica, null);
+      expect(getRewards(replica).savings).toBeNull();
+
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { dbUpsertRewardUnlock } = require('../../../src/db/database');
+      dbUpsertRewardUnlock({
+        id: 'u1', title: 'Switch', glyph: null, createdAt: new Date().toISOString(), sharePct: 60, requiredTaskIds: [], playMinutes: 120,
+        freeOnWeekends: false, freeOnVacation: false, guardsTaskId: null, pin: '4817',
+        playDay: null, playUsedMs: 0, playExtraMs: 0, playStartedAt: null,
+      });
+      const [unlock] = getRewards(replica).unlocks;
+      expect(unlock).toMatchObject({ title: 'Switch', unlocksAtPct: 60, playMinutes: 120, playing: false, hasCode: true });
+      expect(JSON.stringify(getRewards(replica))).not.toContain('4817');
+    });
+
     it('reports the balance, the goal and what each reward still needs', () => {
       const cheap = createReward(replica, { title: 'Coffee', cost: 2, note: 'the good place', oneTime: true });
       const dear = createReward(replica, { title: 'Weekend away', cost: 50 });

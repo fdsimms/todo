@@ -5,6 +5,8 @@ import type { Task } from '../types';
 const DAY = new Date(2026, 9, 6);
 
 jest.mock('react-native', () => ({ Alert: { alert: jest.fn() } }));
+const linkedUnlock = { current: null as { title: string } | null };
+jest.mock('../utils/unlockWorld', () => ({ openUnlockLinkedTo: () => linkedUnlock.current }));
 
 const task = (penaltyMinutes: number | null, extra: Partial<Task> = {}): Task =>
   ({ id: 't', title: 'No phone after 9', penaltyMinutes, slipCount: 0, slipDate: null, ...extra } as Task);
@@ -17,7 +19,10 @@ const tapButton = (label: string) => {
   buttons.find(b => b.text === label)?.onPress?.();
 };
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  linkedUnlock.current = null;
+});
 
 describe('confirmSlip', () => {
   it('goes straight through when the feature is off', () => {
@@ -109,5 +114,18 @@ describe('confirmSlip', () => {
       tapButton('Cancel');
       expect(onConfirm).not.toHaveBeenCalled();
     });
+  });
+
+  // Doing the thing while its unlock is open isn't a slip, so the tap asks.
+  it('asks first on a habit whose unlock is open, and can still log it', () => {
+    linkedUnlock.current = { title: 'Switch' };
+    const onConfirm = jest.fn();
+    confirmSlip(task(null), false, DAY, onConfirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+    const [title, message] = (Alert.alert as jest.Mock).mock.calls[0];
+    expect(title).toBe('Log a slip anyway?');
+    expect(message).toContain('Switch is unlocked today');
+    tapButton('Log it');
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 });

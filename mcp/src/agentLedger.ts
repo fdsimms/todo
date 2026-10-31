@@ -635,9 +635,9 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return reward;
     },
 
-    claimReward(id) {
+    claimReward(id, useSavings) {
       const wish = replica.rewardState().rewards.find(r => r.id === id)?.taskId;
-      const entry = replica.claimReward(id);
+      const entry = replica.claimReward(id, useSavings);
       log({ action: 'created', subject: 'reward', title: entry.label, taskId: null, note: `Claim "${entry.label}", spending ${entry.amount} coins${wish ? ' and checking the item off the wish list' : ''}` });
       return entry;
     },
@@ -648,9 +648,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return entry;
     },
 
-    setRewardGoal(id) {
-      const reward = replica.setRewardGoal(id);
-      log({ action: 'edited', subject: 'reward', title: reward?.title ?? 'Saving goal', taskId: null, note: reward ? `Save for "${reward.title}"` : 'Stop saving for a reward' });
+    setRewardGoal(id, plan) {
+      const reward = replica.setRewardGoal(id, plan);
+      const share = reward ? replica.settings().rewardGoalPlan : null;
+      const setAside = share && share.rewardId === reward?.id && (plan?.sharePct !== undefined || plan?.byDate !== undefined)
+        ? `, setting aside ${share.sharePct}% of what they earn`
+        : '';
+      log({ action: 'edited', subject: 'reward', title: reward?.title ?? 'Saving goal', taskId: null, note: reward ? `Save for "${reward.title}"${setAside}` : 'Stop saving for a reward' });
       return reward;
     },
 

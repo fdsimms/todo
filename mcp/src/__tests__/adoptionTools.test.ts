@@ -37,12 +37,19 @@ function fakeReplica(opts: {
   recipeRows?: unknown[];
   categories?: { name: string; slotIn: boolean }[];
   stacks?: unknown[];
+  unlocks?: unknown[];
+  goal?: { id: string; planFor?: string };
 } = {}): Replica {
   return {
     tasks: () => opts.tasks ?? [],
     categories: () => opts.categories ?? [],
     generatorEnabled: () => false,
-    settings: () => ({ simpleMode: !!opts.simpleMode, kitchenEnabled: opts.kitchenEnabled ?? true, completedRetentionDays: null, rewardsEnabled: opts.rewards ?? false }),
+    settings: () => ({
+      simpleMode: !!opts.simpleMode, kitchenEnabled: opts.kitchenEnabled ?? true, completedRetentionDays: null, rewardsEnabled: opts.rewards ?? false,
+      rewardGoalId: opts.goal?.id ?? null,
+      rewardGoalPlan: opts.goal?.planFor ? { rewardId: opts.goal.planFor, sharePct: 50, by: null, since: '2026-10-01T00:00:00.000Z', deposit: 0 } : null,
+    }),
+    rewardState: () => ({ entries: [], rewards: [], unlocks: opts.unlocks ?? [] }),
     recipes: () => opts.recipeRows ?? Array.from({ length: opts.recipes ?? 0 }, () => ({ name: 'Recipe', blanks: [], ingredients: [] })),
     mealPlan: () => Array.from({ length: opts.planned ?? 0 }),
     todayKey: () => '2026-10-05',
@@ -223,6 +230,17 @@ describe('since: features that are new to the person', () => {
     expect(ids([...manyOpen(2, { postponeCount: 2 }), ...manyOpen(20)])).not.toContain('slot_in');
     expect(ids(pushed, [{ name: 'Chores', slotIn: true }])).not.toContain('slot_in');
     expect(ids([...pushed, ...manyOpen(1, { slotIn: true })])).not.toContain('slot_in');
+  });
+
+  it('suggests savings only for a goal with nothing set aside, and unlocks only while there are none', () => {
+    const ids = (opts: Parameters<typeof fakeReplica>[0]) =>
+      unusedFeatures(fakeReplica(opts), { since: '2026-10-31', limit: 20 }).suggestions.map(s => s.id);
+    expect(ids({ rewards: true, goal: { id: 'g' } })).toContain('goal_savings');
+    expect(ids({ rewards: true, goal: { id: 'g', planFor: 'g' } })).not.toContain('goal_savings');
+    expect(ids({ rewards: true })).not.toContain('goal_savings');
+    expect(ids({ rewards: true })).toContain('unlocks');
+    expect(ids({ rewards: true, unlocks: [{ id: 'u' }] })).not.toContain('unlocks');
+    expect(ids({ rewards: false })).not.toContain('unlocks');
   });
 
   it('suggests block for coins only with rewards on, the automation off and no rule written', () => {

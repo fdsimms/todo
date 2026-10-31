@@ -207,7 +207,8 @@ import { useFastStore } from './useFastStore';
 import { useWorkoutStore } from './useWorkoutStore';
 import { useGymStore } from './useGymStore';
 import { useMedicationStore } from './useMedicationStore';
-import { useRewardStore } from './useRewardStore';
+import { registerGoalSourceLookup, useRewardStore } from './useRewardStore';
+import { useUnlockStore } from './useUnlockStore';
 import { guardChargeSeed, guardingReward } from '../utils/rewardGuard';
 import {
   canPostBounty,
@@ -3534,6 +3535,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // The coin ledger. Same fan-out, so a demo session's invented coins never
     // sit on top of a real balance.
     timedPart('Reward', () => useRewardStore.getState().initialize());
+    // Unlocks hold no coins, but they name tasks and keep a play timer, so
+    // they swap with the database the tasks came from.
+    timedPart('Unlock', () => useUnlockStore.getState().initialize());
     // Beside the mood log and for the identical reason, with the same stakes:
     // a food log left pointed at the previous database would show a demo
     // session's invented meals as somebody's own record of what they ate.
@@ -5205,7 +5209,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     let guard = planGuard();
     if (guard?.kind === 'claim') {
       const reward = guard.reward;
-      const claim = useRewardStore.getState().claimReward(reward.id);
+      // The slip's prompt is the asking, and says what comes from savings, so
+      // a covered slip may use them like paying first would.
+      const claim = useRewardStore.getState().claimReward(reward.id, undefined, true);
       if (claim) {
         get().setLastAction({
           label: `Claimed ${reward.title}`,
@@ -11963,6 +11969,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     return withHeldCompletions(tasks, completionHoldIds).filter(t => !t.completed && !t.archived && !t.parentId && t.category === category);
   },
 }));
+
+// A wish list goal's item lives here, and the reward store needs it to know
+// whether the goal is still open (see registerGoalSourceLookup).
+registerGoalSourceLookup(taskId => useTaskStore.getState().tasks.find(t => t.id === taskId));
 
 // Lets visibilityUtils resolve Task.blockedById without importing this store —
 // it can't, since this module pulls in expo-sqlite and already imports it. See

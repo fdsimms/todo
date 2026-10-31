@@ -127,6 +127,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useStartWorkout } from '../hooks/useStartWorkout';
 import { useRewardStore } from '../store/useRewardStore';
+import { useUnlockStore } from '../store/useUnlockStore';
 import { guardingReward } from '../utils/rewardGuard';
 import { taskFieldsFromEvent } from '../utils/calendarEventImport';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -2159,8 +2160,13 @@ const TaskItemRow = React.memo(function TaskItem({
   // The reward an avoid habit's slip claims (Reward.guardsTaskId), named on the
   // row so the shield's tap isn't a surprise. A string, so the row only
   // re-renders when it changes.
-  const guardTitle = useRewardStore(s =>
+  const rewardGuardTitle = useRewardStore(s =>
     rewardsEnabled && isNegative ? guardingReward(s.rewards, task.id)?.title ?? null : null);
+  // An unlock the habit is linked to says so the same way: a slip on it asks
+  // first while the unlock is open (see slipConfirm.ts).
+  const unlockTitle = useUnlockStore(s =>
+    rewardsEnabled && isNegative ? s.unlocks.find(u => u.guardsTaskId === task.id)?.title ?? null : null);
+  const guardTitle = rewardGuardTitle ?? unlockTitle;
   // The routine "Workout" in the expanded panel opens (Task.workoutRoutineId),
   // or the program whose next routine it starts (Task.workoutProgramId), when
   // the area is on and the link still leads somewhere: a deleted routine, or a
@@ -4415,7 +4421,7 @@ const TaskItemRow = React.memo(function TaskItem({
               </View>
             )}
             {guardTitle !== null && (
-              <View style={styles.metaChip} accessibilityLabel={`Linked to the reward ${guardTitle}`}>
+              <View style={styles.metaChip} accessibilityLabel={`Linked to ${rewardGuardTitle !== null ? 'the reward' : 'the unlock'} ${guardTitle}`}>
                 <CoinIcon size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.blockingLabel} numberOfLines={1}>
                   Linked to {guardTitle}

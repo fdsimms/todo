@@ -491,6 +491,37 @@ export async function cancelFastGoal(): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(FAST_GOAL_ID).catch(() => {});
 }
 
+const playTimeUpId = (unlockId: string) => `play-time-up-${unlockId}`;
+
+/**
+ * The notice that an unlock's play time for the day is used up
+ * (src/utils/rewardUnlocks.ts). One per unlock, replaced on every start, stop
+ * or added time. Rings through quiet hours like the fast's goal above it: it
+ * answers a clock the person started. It enforces nothing; the console is
+ * out of the app's reach.
+ */
+export async function schedulePlayTimeUp(unlockId: string, title: string, at: Date): Promise<void> {
+  if (isDemoModeActive()) return;
+  await Notifications.cancelScheduledNotificationAsync(playTimeUpId(unlockId)).catch(() => {});
+  if (at.getTime() <= Date.now()) return;
+  await Notifications.scheduleNotificationAsync({
+    identifier: playTimeUpId(unlockId),
+    content: {
+      title: `${title} time is up`,
+      body: 'That is the time you set for today.',
+      data: { playTimeUp: unlockId },
+      sound: true,
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
+    },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at },
+  });
+}
+
+export async function cancelPlayTimeUp(unlockId: string): Promise<void> {
+  if (isDemoModeActive()) return;
+  await Notifications.cancelScheduledNotificationAsync(playTimeUpId(unlockId)).catch(() => {});
+}
+
 // iOS caps pending local notification requests at 64.
 export const MAX_PENDING_REMINDERS = 64;
 

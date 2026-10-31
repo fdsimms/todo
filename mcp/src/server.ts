@@ -1120,7 +1120,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_rewards',
-    "The coin economy: whether rewards are on, the balance, the reward being saved for and how far along it is, every reward on the list (cost, whether the balance covers it now, how many coins short, when it was last claimed), the tasks with a live coin bounty, and the latest coin history (what earned, what was lost, what was spent). Read it before claiming or pricing anything. A balance can be below zero. When enabled is false the person has rewards switched off, so do not bring them up.",
+    "The coin economy: whether rewards are on, the balance, the reward being saved for and how far along it is, every reward on the list (cost, whether the balance covers it now, how many coins short, when it was last claimed), the tasks with a live coin bounty, and the latest coin history (what earned, what was lost, what was spent, and how much of each went to or came from savings). While they save for a goal with a share set aside (savings), other rewards are paid from spending money and affordable/shortBy read off that. unlocks lists what today's work opens (no coins involved): locked or open, how far along, and the day's play time; an unlock's code is never shown. Read it before claiming or pricing anything. A balance can be below zero. When enabled is false the person has rewards switched off, so do not bring them up.",
     { historyLimit: z.number().int().min(0).max(100).optional().describe('How many history entries, newest first. Default 15.') },
     async input => json(await withFresh(() => getRewards(replica, input)))
   );
@@ -4250,11 +4250,14 @@ function registerWriteTools(
 
   server.tool(
     'claim_reward',
-    "Spend coins on a reward (ids from get_rewards): the same as tapping Claim in the app. Only when the person says they want it now; never claim a reward to be helpful, because it spends coins they earned over days. Refused when the balance is short or a one-time reward was already claimed. A wish-list reward also checks its list item off, with no extra coins (the result says which). The result carries a claimId; unclaim_reward takes it back, and reopens that item too.",
-    { id: z.string().min(1) },
-    async ({ id }) => {
+    "Spend coins on a reward (ids from get_rewards): the same as tapping Claim in the app. Only when the person says they want it now; never claim a reward to be helpful, because it spends coins they earned over days. Refused when the balance is short or a one-time reward was already claimed. While they are saving for a goal (get_rewards' savings), any other reward is paid from spending money; one that would need some of the goal's savings is refused unless useSavings is true, so ask them first and say how many coins it takes from the goal. A wish-list reward also checks its list item off, with no extra coins (the result says which). The result carries a claimId; unclaim_reward takes it back, and reopens that item too.",
+    {
+      id: z.string().min(1),
+      useSavings: z.boolean().optional().describe('Take what spending money cannot cover from the savings for their goal. Only after they agree to it.'),
+    },
+    async ({ id, useSavings }) => {
       try {
-        return json(await withWrite(() => claimReward(replica, id)));
+        return json(await withWrite(() => claimReward(replica, id, useSavings ?? false)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not claim the reward.' });
       }
@@ -4276,11 +4279,16 @@ function registerWriteTools(
 
   server.tool(
     'set_reward_goal',
-    "Choose the reward the person is saving for (an id from get_rewards), or null to stop saving for any. It only changes which reward the Rewards screen shows progress toward.",
-    { id: z.string().min(1).nullable() },
-    async ({ id }) => {
+    "Choose the reward the person is saving for (an id from get_rewards), or null to stop saving for any. Pass sharePct (1 to 100), or byDate (YYYY-MM-DD) to work the share out from their earning rate, to set that share of every coin earned aside for it, the way the app's goal sheet does: other rewards are then paid from what's left (spending money), so a small treat doesn't set the goal back. Calling it again for the same goal with a new share keeps what is saved. A new plan starts with their balance in it unless putBalanceIn is false. Without either, the goal just reads off the whole balance. Stopping, or choosing another goal, returns the savings to spending money; no coins move. Ask before choosing a share for them.",
+    {
+      id: z.string().min(1).nullable(),
+      sharePct: z.number().int().min(1).max(100).optional().describe('The share of every coin earned set aside for the goal.'),
+      byDate: z.string().optional().describe('YYYY-MM-DD they want it by. Works out sharePct from their earning rate when sharePct is not given.'),
+      putBalanceIn: z.boolean().optional().describe('For a new plan: start the savings with their current balance. Default true.'),
+    },
+    async ({ id, sharePct, byDate, putBalanceIn }) => {
       try {
-        return json(await withWrite(() => setRewardGoal(replica, id)));
+        return json(await withWrite(() => setRewardGoal(replica, id, { sharePct, byDate, putBalanceIn })));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not set the goal.' });
       }

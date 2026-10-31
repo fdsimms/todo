@@ -23,9 +23,22 @@ import {
   priceWithTax,
   lastClaimedAt,
   latestLossFor,
+  rewardIsOpen,
   sortCoinEntries,
+  type RewardSourceTask,
 } from '../utils/rewards';
 import { canGuard, claimedSince, planGuardedSlip, type GuardedSlip } from '../utils/rewardGuard';
+import {
+  activeGoalPlan,
+  savedForEarn,
+  savedForLoss,
+  savedForSpend,
+  savingsBalance,
+  savingsNeededFor,
+  splitsEntry,
+  spendingBalance,
+  type GoalPlan,
+} from '../utils/rewardSavings';
 import type { NegativeHabitFields } from '../utils/negativeHabits';
 import { getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
@@ -55,6 +68,22 @@ interface RewardStore {
   initialize: () => void;
   /** The balance, summed off `entries`. */
   balance: () => number;
+  /**
+   * The plan for the goal in force, or null (see `src/utils/rewardSavings.ts`):
+   * the stored plan, while it is for the goal and the goal can still be claimed.
+   */
+  goalPlan: () => GoalPlan | null;
+  /** Coins set aside for the goal. 0 with no plan in force. */
+  savings: () => number;
+  /** The balance less savings: what a reward other than the goal is paid from. */
+  spending: () => number;
+  /**
+   * How many coins claiming `rewardId` would take from savings: 0 when
+   * spending money covers it (or it is the goal, which uses savings anyway),
+   * null when the whole balance can't. A claim that needs savings is refused
+   * unless `claimReward` is told to use them.
+   */
+  savingsNeededFor: (rewardId: string) => number | null;
 
   /** A completion earned `amount`. Keyed by the completed row. */
   recordEarn: (taskId: string, amount: number, label: string, at: string) => void;
@@ -106,7 +135,7 @@ interface RewardStore {
   slipGuardFor: (
     task: NegativeHabitFields & Pick<Task, 'id'>,
     todayStart: Date,
-  ) => { plan: GuardedSlip; balance: number; claimedToday: boolean } | null;
+  ) => { plan: GuardedSlip; balance: number; claimedToday: boolean; fromSavings: number } | null;
 
   /**
    * `details` carries the optional fields. A reward made from a wish list item
@@ -128,9 +157,11 @@ interface RewardStore {
   /**
    * Spend the reward's cost. Returns the entry, or null when the balance
    * doesn't cover it (or rewards are off). `at` backdates the claim, which
-   * only the demo seed uses.
+   * only the demo seed uses. A reward other than the goal is paid from
+   * spending money, and one spending can't cover is refused unless
+   * `useSavings` says to take the rest from savings (the caller asked first).
    */
-  claimReward: (id: string, at?: Date) => CoinEntry | null;
+  claimReward: (id: string, at?: Date, useSavings?: boolean) => CoinEntry | null;
   /** Take back a claim: the undo for `claimReward`. */
   unclaim: (entryId: string) => void;
   /**
@@ -168,6 +199,24 @@ function enabled(): boolean {
   return useSettingsStore.getState().rewardsEnabled;
 }
 
+/**
+ * How the store finds a wish list goal's item, which lives in the task store
+ * (or, in the MCP server, the replica's task table). Registered by whichever
+ * owns the tasks, since the task store imports this one. With none registered
+ * a wish list goal counts as open until it is claimed.
+ */
+let goalSourceLookup: ((taskId: string) => RewardSourceTask | null | undefined) | null = null;
+
+export function registerGoalSourceLookup(lookup: (taskId: string) => RewardSourceTask | null | undefined): void {
+  goalSourceLookup = lookup;
+}
+
+/** Whether the goal can still be claimed, the store's half of `savingForGoal`. */
+function goalStillOpen(reward: Reward, entries: readonly CoinEntry[]): boolean {
+  if (reward.taskId && goalSourceLookup) return rewardIsOpen(reward, entries, goalSourceLookup(reward.taskId));
+  return rewardIsOpen({ ...reward, taskId: null }, entries, null);
+}
+
 export const useRewardStore = create<RewardStore>((set, get) => {
   const write = (entry: CoinEntry) => {
     dbUpsertCoinEntry(entry);
@@ -187,6 +236,21 @@ export const useRewardStore = create<RewardStore>((set, get) => {
     const prev = get().lastChange;
     const sameBurst = prev !== null && prev.kind === entry.kind && now - prev.at < COIN_BURST_MS;
     set({ lastChange: { amount: sameBurst ? prev.amount + entry.amount : entry.amount, kind: entry.kind, at: now } });
+  };
+  // Every new earning or loss records its share of savings as it is written
+  // (`CoinEntry.saved`); entries put back by an undo keep the share they had.
+  const plan = (): GoalPlan | null => {
+    const { rewardGoalId, rewardGoalPlan } = useSettingsStore.getState();
+    const goal = rewardGoalPlan ? get().rewards.find(r => r.id === rewardGoalPlan.rewardId) : undefined;
+    return activeGoalPlan(rewardGoalPlan, rewardGoalId, !!goal && goalStillOpen(goal, get().entries));
+  };
+  const earning = (entry: CoinEntry): CoinEntry => {
+    const p = plan();
+    return splitsEntry(entry.at, p) ? { ...entry, saved: savedForEarn(entry.amount, p, get().entries, entry.id) } : entry;
+  };
+  const losing = (entry: CoinEntry): CoinEntry => {
+    const p = plan();
+    return splitsEntry(entry.at, p) ? { ...entry, saved: savedForLoss(entry.amount, p, savingsBalance(get().entries, p)) } : entry;
   };
   const remove = (ids: string[]) => {
     if (ids.length === 0) return;
@@ -209,23 +273,45 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       return coinBalance(get().entries);
     },
 
+    goalPlan() {
+      return plan();
+    },
+
+    savings() {
+      return savingsBalance(get().entries, plan());
+    },
+
+    spending() {
+      return spendingBalance(get().balance(), get().savings());
+    },
+
+    savingsNeededFor(rewardId) {
+      const reward = get().rewards.find(r => r.id === rewardId);
+      if (!reward) return null;
+      const balance = get().balance();
+      if (!canClaimReward(balance, reward.cost)) return null;
+      const p = plan();
+      if (!p || p.rewardId === reward.id) return 0;
+      return savingsNeededFor(reward.cost, balance, savingsBalance(get().entries, p));
+    },
+
     recordEarn(taskId, amount, label, at) {
       if (!enabled() || amount <= 0) return;
-      const entry: CoinEntry = { id: derivedId(spawnSeed.coinEarn(taskId)), kind: 'earn', amount, at, taskId, rewardId: null, label };
+      const entry = earning({ id: derivedId(spawnSeed.coinEarn(taskId)), kind: 'earn', amount, at, taskId, rewardId: null, label });
       write(entry);
       announce(entry);
     },
 
     recordMiss(taskId, amount, label, at) {
       if (!enabled() || amount <= 0) return;
-      const entry: CoinEntry = { id: derivedId(spawnSeed.coinMiss(taskId)), kind: 'loss', amount, at, taskId, rewardId: null, label };
+      const entry = losing({ id: derivedId(spawnSeed.coinMiss(taskId)), kind: 'loss', amount, at, taskId, rewardId: null, label });
       write(entry);
       announce(entry);
     },
 
     recordTap(taskId, tap, amount, label) {
       if (!enabled() || amount <= 0) return;
-      const entry: CoinEntry = { id: derivedId(spawnSeed.coinTap(taskId, tap)), kind: 'earn', amount, at: new Date().toISOString(), taskId, rewardId: null, label };
+      const entry = earning({ id: derivedId(spawnSeed.coinTap(taskId, tap)), kind: 'earn', amount, at: new Date().toISOString(), taskId, rewardId: null, label });
       write(entry);
       announce(entry);
     },
@@ -247,14 +333,14 @@ export const useRewardStore = create<RewardStore>((set, get) => {
 
     recordSlip(taskId, amount, label) {
       if (!enabled() || amount <= 0) return;
-      const entry: CoinEntry = { id: generateId(), kind: 'loss', amount, at: new Date().toISOString(), taskId, rewardId: null, label };
+      const entry = losing({ id: generateId(), kind: 'loss', amount, at: new Date().toISOString(), taskId, rewardId: null, label });
       write(entry);
       announce(entry);
     },
 
     recordCleanDay(taskId, dayKey, amount, label, at) {
       if (!enabled() || amount <= 0) return;
-      const entry: CoinEntry = { id: derivedId(spawnSeed.coinClean(taskId, dayKey)), kind: 'earn', amount, at, taskId, rewardId: null, label };
+      const entry = earning({ id: derivedId(spawnSeed.coinClean(taskId, dayKey)), kind: 'earn', amount, at, taskId, rewardId: null, label });
       write(entry);
       announce(entry);
     },
@@ -287,7 +373,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
 
     recordGuardCharge(taskId, amount, label, seed) {
       if (!enabled() || amount <= 0) return;
-      const entry: CoinEntry = { id: derivedId(seed), kind: 'loss', amount, at: new Date().toISOString(), taskId, rewardId: null, label };
+      const entry = losing({ id: derivedId(seed), kind: 'loss', amount, at: new Date().toISOString(), taskId, rewardId: null, label });
       write(entry);
       announce(entry);
     },
@@ -304,7 +390,12 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       const balance = get().balance();
       const plan = planGuardedSlip({ task, rewards: get().rewards, entries: get().entries, balance, todayStart, rewardsEnabled: enabled() });
       if (!plan) return null;
-      return { plan, balance, claimedToday: claimedSince(get().entries, plan.reward.id, todayStart) };
+      return {
+        plan,
+        balance,
+        claimedToday: claimedSince(get().entries, plan.reward.id, todayStart),
+        fromSavings: plan.kind === 'claim' ? get().savingsNeededFor(plan.reward.id) ?? 0 : 0,
+      };
     },
 
     addReward(title, cost, details) {
@@ -384,10 +475,17 @@ export const useRewardStore = create<RewardStore>((set, get) => {
       set(s => ({ rewards: s.rewards.filter(r => r.id !== id) }));
     },
 
-    claimReward(id, at) {
+    claimReward(id, at, useSavings = false) {
       if (!enabled()) return null;
       const reward = get().rewards.find(r => r.id === id);
-      if (!reward || !canClaimReward(get().balance(), reward.cost)) return null;
+      const balance = get().balance();
+      if (!reward || !canClaimReward(balance, reward.cost)) return null;
+      // Spending money pays for anything but the goal, and savings only make
+      // up the rest when the person said to (see rewardSavings.ts).
+      const p = plan();
+      const savings = savingsBalance(get().entries, p);
+      const isGoal = p?.rewardId === reward.id;
+      if (p && !isGoal && !useSavings && savingsNeededFor(reward.cost, balance, savings) > 0) return null;
       // A one-time reward is claimed once. The list hides it after, so this is
       // the guard for a second device that claimed it before the first synced.
       if (reward.oneTime && lastClaimedAt(get().entries, reward.id) !== null) return null;
@@ -404,6 +502,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
         rewardId: reward.id,
         label: reward.title,
       };
+      if (splitsEntry(entry.at, p)) entry.saved = savedForSpend(reward.cost, balance, savings, isGoal);
       write(entry);
       return entry;
     },

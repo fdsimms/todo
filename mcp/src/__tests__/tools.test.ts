@@ -263,7 +263,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     stacks: () => [],
     createStack: () => { throw new Error('not stubbed'); },
     setTaskStack: () => { throw new Error('not stubbed'); },
-    rewardState: () => ({ entries: [], rewards: [] }),
+    rewardState: () => ({ entries: [], rewards: [], unlocks: [] }),
     currentDayStart: () => new Date(2026, 0, 1),
     addReward: () => { throw new Error('not stubbed'); },
     updateReward: () => { throw new Error('not stubbed'); },
@@ -291,7 +291,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     settings: () => ({
       dayResetTime: '00:00', weekStartsOn: 0, vacationMode: false, vacationStart: null, vacationEnd: null, vacationDrivenBy: null, waterUnit: 'ml', standardDrinkGrams: 14,
       morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00', activeHoursStart: '08:00', activeHoursEnd: '22:00',
-      kitchenEnabled: true, simpleMode: false, rewardsEnabled: false, workoutsEnabled: false, rewardGoalId: null, rewardWeeklyBudgetMinor: null, rewardSalesTaxPercent: null, bountyLimit: 1, completedRetentionDays: null,
+      kitchenEnabled: true, simpleMode: false, rewardsEnabled: false, workoutsEnabled: false, rewardGoalId: null, rewardGoalPlan: null, rewardWeeklyBudgetMinor: null, rewardSalesTaxPercent: null, bountyLimit: 1, completedRetentionDays: null,
       calendarRequestsOn: false, unitSystem: 'metric', weatherTasks: true,
     }),
     lookAhead: () => { throw new Error('not stubbed'); },

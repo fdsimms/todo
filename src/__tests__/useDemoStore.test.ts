@@ -111,6 +111,7 @@ import { frequencyTrend, medicationFor, milestoneOffers } from '../utils/medicat
 import { limitStatus, prefsFor, supplyRemaining } from '../utils/medicationSettings';
 import { canClaimReward, isBountyLive } from '../utils/rewards';
 import { useRewardStore } from '../store/useRewardStore';
+import { useUnlockStore } from '../store/useUnlockStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useGymStore } from '../store/useGymStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
@@ -2335,6 +2336,17 @@ describe('demo seed — people', () => {
     expect(rows.length).toBeGreaterThan(0);
     const titles = taskContrastTitles(tasks);
     expect(rows.map(r => titles.get(r.label))).toContain('Take the vitamin D');
+  });
+
+  it('seeds savings for the goal and an unlock', () => {
+    const settings = useSettingsStore.getState();
+    // The goal is saved for with a share set aside, and the earnings split.
+    expect(settings.rewardGoalPlan?.rewardId).toBe(settings.rewardGoalId);
+    expect(useRewardStore.getState().savings()).toBeGreaterThan(0);
+    expect(useRewardStore.getState().entries.some(e => (e.saved ?? 0) > 0)).toBe(true);
+    const [unlock] = useUnlockStore.getState().unlocks;
+    expect(unlock).toMatchObject({ title: 'Switch', sharePct: 60, playMinutes: 120, pin: '4817' });
+    expect(unlock.guardsTaskId).not.toBeNull();
   });
 
   it('seeds coins and rewards switched on, with every kind of entry', () => {

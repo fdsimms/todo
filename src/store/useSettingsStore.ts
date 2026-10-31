@@ -126,6 +126,7 @@ import {
 import { DEFAULT_POSTPONE_THRESHOLD, parsePostponeThreshold } from '../utils/postpone';
 import { DEFAULT_SLOT_IN_MAX_WAIT_DAYS, parseSlotInMaxWaitDays } from '../utils/slotIn';
 import { DEFAULT_BOUNTY_LIMIT, parseBountyLimit, parseSalesTaxPercent, parseWeeklyBudget } from '../utils/rewards';
+import { parseGoalPlan, serializeGoalPlan, type GoalPlan } from '../utils/rewardSavings';
 import {
   FOCUS_DEFAULTS,
   parseFocusDefaultWorkMinutes,
@@ -603,6 +604,10 @@ interface SettingsStore {
   // balance card. A reward id, or null. One goal rather than a flag per reward
   // because "saving for" means picking one thing over the others.
   rewardGoalId: string | null;
+  // How the goal is saved for: the share of every coin earned set aside for it,
+  // and since when (see src/utils/rewardSavings.ts). Null, or a plan for some
+  // other reward, means no savings: the whole balance counts toward the goal.
+  rewardGoalPlan: GoalPlan | null;
   // The list project whose items can be priced as rewards (your wish list).
   // A project id, or null for none. One list, chosen on the Rewards screen.
   rewardListProjectId: string | null;
@@ -2270,6 +2275,12 @@ interface SettingsStore {
   setBlockAppRemoval: (on: boolean) => void;
   setRewardsEnabled: (on: boolean) => void;
   setRewardGoalId: (id: string | null) => void;
+  /**
+   * Save for `id` with `plan` (the share set aside, from now), or stop saving
+   * when `id` is null. One write for both, so the goal and its plan can't
+   * disagree.
+   */
+  setRewardGoal: (id: string | null, plan: GoalPlan | null) => void;
   setRewardListProjectId: (id: string | null) => void;
   setBountyLimit: (count: number) => void;
   setRewardWeeklyBudgetMinor: (minor: number | null) => void;
@@ -2645,6 +2656,7 @@ const DEFAULT_SETTINGS = {
   blockAppRemoval: false,
   rewardsEnabled: false,
   rewardGoalId: null,
+  rewardGoalPlan: null,
   rewardListProjectId: null,
   bountyLimit: DEFAULT_BOUNTY_LIMIT,
   rewardWeeklyBudgetMinor: null,
@@ -3099,6 +3111,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   blockAppRemoval: false,
   rewardsEnabled: false,
   rewardGoalId: null,
+  rewardGoalPlan: null,
   rewardListProjectId: null,
   bountyLimit: DEFAULT_BOUNTY_LIMIT,
   rewardWeeklyBudgetMinor: null,
@@ -3484,6 +3497,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const blockAppRemoval = dbGetSetting('blockAppRemoval') === 'true';
     const rewardsEnabled = dbGetSetting('rewardsEnabled') === 'true';
     const rewardGoalId = dbGetSetting('rewardGoalId') || null;
+    const rewardGoalPlan = parseGoalPlan(dbGetSetting('rewardGoalPlan'));
     const rewardListProjectId = dbGetSetting('rewardListProjectId') || null;
     const bountyLimit = parseBountyLimit(dbGetSetting('bountyLimit'));
     const rewardWeeklyBudgetMinor = parseWeeklyBudget(dbGetSetting('rewardWeeklyBudgetMinor'));
@@ -4320,6 +4334,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       remindersImportReview,
       restockOfferEnabled,
       rewardGoalId,
+      rewardGoalPlan,
       rewardListProjectId,
       rewardSalesTaxPercent,
       rewardsEnabled,
@@ -5669,7 +5684,23 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   setRewardGoalId(id: string | null) {
     dbSetSetting('rewardGoalId', id ?? '');
+    // A plan belongs to its goal. Kept for another reward it would come back
+    // with its old savings if that reward were chosen again later, after those
+    // coins had been spent as spending money.
+    const plan = get().rewardGoalPlan;
+    if (plan && plan.rewardId !== id) {
+      dbSetSetting('rewardGoalPlan', '');
+      set({ rewardGoalId: id, rewardGoalPlan: null });
+      return;
+    }
     set({ rewardGoalId: id });
+  },
+
+  setRewardGoal(id: string | null, plan: GoalPlan | null) {
+    const kept = id && plan && plan.rewardId === id ? plan : null;
+    dbSetSetting('rewardGoalId', id ?? '');
+    dbSetSetting('rewardGoalPlan', serializeGoalPlan(kept));
+    set({ rewardGoalId: id, rewardGoalPlan: kept });
   },
 
   setRewardListProjectId(id: string | null) {

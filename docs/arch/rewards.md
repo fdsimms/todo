@@ -228,6 +228,7 @@ Exchange rate). The coins are then the price plus tax at the exchange rate (`pri
   refuses a second claim for a device that hadn't synced the first.
 - **"Saving for" is one setting** (`rewardGoalId`), not a flag per reward, because saving for
   something means choosing it over the rest. A goal pointing at a claimed or deleted reward is ignored.
+  How much of what you earn goes to it is "Savings for the goal" below.
 - **A wish list item can be a reward** (`Reward.taskId`), from the one list chosen on the screen
   (`rewardListProjectId`). The item stays the source: `rewardDisplay` shows its title, notes and
   link, so editing it edits the reward. Claiming checks the item off with `{ neutral: true }`, or
@@ -249,6 +250,61 @@ stored in days, a month being 30 as in the nudge cadence). "A dessert, once a we
 - **A one-time or wish list reward takes none** (`cleanClaimLimit`); turning one one-time drops it.
 - **A slip on a guarded habit inside the limit is a real slip**, charged like one the balance can't
   cover (`planGuardedSlip`): the claim it would have made is refused, so it can't be the way out.
+
+## Savings for the goal
+
+Saving for something big made every small claim a visible setback: one pool, one bar. Choosing a
+goal now sets a share of every coin earned aside for it (`GoalPlanSheet`, rules in
+`src/utils/rewardSavings.ts`), and every other reward is paid from what's left.
+
+- **Still one currency and one ledger.** Each entry records, when it is written, how much of it went
+  into or came out of savings (`CoinEntry.saved`). Savings are the sum of those since the plan's
+  `since`; spending money is the balance less savings. Nothing is a stored running total, so the
+  ledger still merges by union. Don't add a second coin kind: an older build reads an unknown kind
+  as a spend.
+- **The split is written once.** Changing the share changes what future entries put aside and
+  rewrites nothing, or moving the date would make savings jump. An entry put back by an undo keeps
+  the split it had.
+- **The share is the person's answer.** The sheet works it out from a date and the earning rate
+  (`shareForDate`), or they set it directly. Falling behind moves the date shown
+  (`describeGoalPace`); the share never rises on its own.
+- **Small rewards never take savings unasked.** `claimReward` refuses one spending money can't cover
+  unless `useSavings` is passed, and the screen's "Use savings?" alert says how far it sets the goal
+  back. The goal itself uses savings first. A guarded slip may use savings, because its own prompt
+  already asks and says so (`fromSavings`).
+- **Losses come from both, by the share**, never more than is saved (`savedForLoss`).
+- **The plan is one synced setting** (`rewardGoalPlan`, JSON), so its share and start can't arrive
+  apart, and it applies only while it names `rewardGoalId` and the goal is still open. Choosing
+  another goal, or stopping, drops it and returns savings to spending money; no coins move.
+- **A reset zeroes savings too**, deposit included, as it zeroes the balance.
+- **A goal with no plan reads off the whole balance**, as before, so a goal set by an older build or
+  a bare `set_reward_goal` still works.
+
+## Unlocks
+
+A treat opened by doing a share of the day's work rather than bought ("Switch, once 60% of today's
+work is done"). Rules in `src/utils/rewardUnlocks.ts`, rows in `reward_unlocks`
+(`useUnlockStore`), drawn by `UnlocksSection` on the Rewards screen.
+
+- **It never moves coins.** No ledger entry, no price, so it can't touch savings. Don't add a cost.
+- **Today's work is counted in coins**: earned today over earned plus what today's open tasks would
+  still pay. Coins already weigh hard against easy and pay nothing for trivial tasks. A share, so a
+  light day asks for less; a day with nothing on it is open. Deferring tasks lowers the bar, which
+  is accepted: someone gaming it would play anyway.
+- **Required tasks count on the days they're due**, matched by family (`occurrenceFamilyKey`) so a
+  repeating task's later rows match. The Rewards screen moves each requirement to its family's newest
+  row (`repointRequirements`), so the retention window purging the row it was set on doesn't lose it.
+- **Once play starts it stays open for the day**; before then it follows the work, so unticking can
+  close it again.
+- **Play time is a daily allowance** on the row (`playDay`, `playUsedMs`, `playExtraMs`,
+  `playStartedAt`), synced, with one notification per unlock (`schedulePlayTimeUp`) that every play
+  write reschedules. It enforces nothing on a console; it is a timer.
+- **Weekends and vacation can open it all day**, per unlock.
+- **The code is shown only while it's open** and is never returned by the MCP server, so asking
+  Claude isn't a way round the lock.
+- **A linked habit** (`guardsTaskId`) is an "Avoid this" habit for doing it while locked. A slip on
+  it while the unlock is open asks first (`openUnlockLinkedTo` in `slipConfirm`). A habit has one
+  link: a reward that guards it or one unlock, and each picker leaves out the others'.
 
 ## The grid and a tile's glyph
 

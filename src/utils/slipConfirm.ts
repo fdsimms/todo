@@ -4,12 +4,15 @@ import { formatDuration } from './effort';
 import { nextSlipIsFree } from './negativeHabits';
 import { guardedSlipPrompt, type GuardedSlip } from './rewardGuard';
 import { BUTTON_LABEL } from '../copy/shared';
+import { openUnlockLinkedTo } from './unlockWorld';
 
 /** A guarded habit's slip, as `useRewardStore.slipGuardFor` reads it. */
 export interface SlipGuard {
   plan: GuardedSlip;
   balance: number;
   claimedToday: boolean;
+  /** Coins the claim would take from savings for the goal (`savingsNeededFor`). */
+  fromSavings?: number;
 }
 
 /**
@@ -42,11 +45,26 @@ export function confirmSlip(
   const penalty = penaltyEnabled && task.penaltyMinutes !== null && !nextSlipIsFree(task, todayStart)
     ? `This blocks the apps you picked for ${formatDuration(task.penaltyMinutes!)}. It can’t be undone.`
     : null;
+  // A habit an unlock is linked to ("playing Switch while it's locked"):
+  // while the unlock is open, doing the thing isn't a slip, so say so first.
+  // It can still be logged, for a slip that happened earlier while it was locked.
+  const unlock = guard ? null : openUnlockLinkedTo(task.id);
+  if (unlock) {
+    Alert.alert(
+      'Log a slip anyway?',
+      [`${unlock.title} is unlocked today, so doing it now isn’t a slip.`, penalty].filter(Boolean).join(' '),
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Log it', style: 'destructive', onPress: onConfirm },
+      ],
+    );
+    return;
+  }
   // A habit a reward guards always asks: the tap either spends the reward's
   // price or takes the balance, and both are worth a second look. A claim
   // records no slip, so it blocks nothing either.
   if (guard) {
-    const prompt = guardedSlipPrompt(guard.plan, guard.balance, guard.claimedToday);
+    const prompt = guardedSlipPrompt(guard.plan, guard.balance, guard.claimedToday, guard.fromSavings ?? 0);
     const blocks = guard.plan.kind === 'charge' ? penalty : null;
     Alert.alert(
       prompt.title,

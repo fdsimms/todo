@@ -442,3 +442,71 @@ describe('claim limit', () => {
     expect(state().rewards.find(x => x.id === c.id)!.claimEveryDays).toBeNull();
   });
 });
+
+describe('savings for the goal', () => {
+  const SINCE = '2026-10-01T00:00:00.000Z';
+  const goal = { id: 'game', title: 'Game', cost: 600, createdAt: AT, linkUrl: null, note: null, oneTime: true, taskId: null, priceMinor: null, taxable: false, guardsTaskId: null, claimEveryDays: null, glyph: null };
+  const coffee = { ...goal, id: 'coffee', title: 'Coffee', cost: 15, oneTime: false };
+  const s = settings as typeof settings & { rewardGoalId?: string | null; rewardGoalPlan?: unknown };
+
+  beforeEach(() => {
+    s.rewardGoalId = 'game';
+    s.rewardGoalPlan = { rewardId: 'game', sharePct: 70, by: null, since: SINCE, deposit: 0 };
+    useRewardStore.setState({ rewards: [goal, coffee] });
+  });
+  afterEach(() => {
+    s.rewardGoalId = null;
+    s.rewardGoalPlan = null;
+  });
+
+  it('puts the share of every earning aside and leaves the rest to spend', () => {
+    state().recordEarn('t1', 10, 'Run', AT);
+    expect(state().entries[0].saved).toBe(7);
+    expect(state().savings()).toBe(7);
+    expect(state().spending()).toBe(3);
+  });
+
+  it('takes a miss from both by the same share', () => {
+    state().recordEarn('t1', 10, 'Run', AT);
+    state().recordMiss('t2', 4, 'Gym', AT);
+    expect(state().savings()).toBe(7 - 3);
+    expect(state().balance()).toBe(6);
+  });
+
+  it('pays a small reward from spending money, and refuses one that needs savings unless told', () => {
+    state().recordEarn('t1', 20, 'Run', AT);
+    state().recordEarn('t2', 20, 'Run', AT);
+    // 40 earned: 28 saved, 12 to spend.
+    expect(state().savingsNeededFor('coffee')).toBe(3);
+    expect(state().claimReward('coffee')).toBeNull();
+    const claim = state().claimReward('coffee', undefined, true);
+    expect(claim?.saved).toBe(3);
+    expect(state().savings()).toBe(25);
+    expect(state().spending()).toBe(0);
+  });
+
+  it('pays the goal from savings first', () => {
+    // 600 earned before the plan, 590 of it put in when it started.
+    state().recordEarn('t0', 600, 'Run', '2026-09-30T09:00:00.000Z');
+    s.rewardGoalPlan = { rewardId: 'game', sharePct: 70, by: null, since: SINCE, deposit: 590 };
+    state().recordEarn('t1', 20, 'Run', AT);
+    expect(state().savings()).toBe(604);
+    const claim = state().claimReward('game');
+    expect(claim?.saved).toBe(600);
+  });
+
+  it('splits nothing for a plan that is not for the goal', () => {
+    s.rewardGoalId = 'coffee';
+    state().recordEarn('t1', 10, 'Run', AT);
+    expect(state().entries[0].saved ?? 0).toBe(0);
+    expect(state().savings()).toBe(0);
+  });
+
+  it('stops once the one-time goal has been claimed', () => {
+    state().recordEarn('t0', 600, 'Run', '2026-09-30T09:00:00.000Z');
+    s.rewardGoalPlan = { rewardId: 'game', sharePct: 70, by: null, since: SINCE, deposit: 600 };
+    expect(state().claimReward('game')).not.toBeNull();
+    state().recordEarn('t1', 10, 'Run', AT);
+    expect(state().entries.find(e => e.taskId === 't1')?.saved ?? 0).toBe(0);
+  });
+});

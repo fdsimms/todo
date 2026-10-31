@@ -384,6 +384,29 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'goal_savings',
+    title: 'Savings for the reward you are saving for',
+    benefit: 'Choosing a goal can set a share of every coin aside for it, so smaller rewards come out of what is left and never set the goal back. It is set from the goal button on a reward.',
+    since: '2026-10-31',
+    advanced: true,
+    evidence: ({ replica }) => {
+      const s = replica.settings();
+      if (!s.rewardsEnabled || !s.rewardGoalId) return null;
+      return s.rewardGoalPlan?.rewardId === s.rewardGoalId ? null : 'A goal is set, and nothing is set aside for it.';
+    },
+  },
+  {
+    id: 'unlocks',
+    title: 'Unlocks',
+    benefit: 'An unlock opens a treat (an hour of a game, an episode) once a share of the day\'s work is done, with no coins spent. It can keep a timer and a code such as a console PIN.',
+    since: '2026-10-31',
+    advanced: true,
+    evidence: ({ replica }) => {
+      if (!replica.settings().rewardsEnabled) return null;
+      return replica.rewardState().unlocks.length === 0 ? 'Coins are on and no unlock is set up.' : null;
+    },
+  },
+  {
     id: 'block_for_coins',
     title: 'Coins for blocking apps',
     benefit: 'A rule offers a task each day to block a group of apps for a set time. Checking it off after the block ends pays a fixed number of coins, and ending the block early forfeits them.',

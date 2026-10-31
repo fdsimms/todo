@@ -105,6 +105,7 @@ export function guardedSlipPrompt(
   plan: GuardedSlip,
   balance: number,
   claimedToday: boolean,
+  fromSavings = 0,
 ): { title: string; message: string; confirm: string } {
   const { reward } = plan;
   if (plan.kind === 'claim') {
@@ -112,6 +113,8 @@ export function guardedSlipPrompt(
       title: `Claim ${reward.title}?`,
       message: [
         `This spends ${formatCoins(reward.cost)} on ${reward.title} instead of counting a slip, so your streak stays.`,
+        // The one claim that may take savings without its own prompt, so it says so here.
+        fromSavings > 0 ? `${formatCoins(fromSavings)} of it comes from your savings for your goal.` : null,
         claimedToday ? 'You already claimed it once today.' : null,
       ].filter(Boolean).join(' '),
       confirm: 'Claim it',

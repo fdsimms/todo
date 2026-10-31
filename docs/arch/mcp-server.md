@@ -1038,6 +1038,17 @@ A dollar-priced reward can be `taxable`: `create_reward`/`update_reward` add the
   `reopen_task` takes back a miss and its coins, `undo_slip` a slip. `withdraw` of a bounty is not
   reversible for that occurrence, as in the app.
 - **Difficulty is `update_task`'s `difficulty`**, not a reward tool: it is an ordinary task field.
+- **Savings for the goal follow the app's split** (`src/utils/rewardSavings.ts`). The store writes
+  each entry's `saved` share, so a completion here splits exactly as one on the phone; the replica
+  registers its task table with `registerGoalSourceLookup` so a wish-list goal is judged open the
+  same way. `set_reward_goal` takes `sharePct` or `byDate` (and `putBalanceIn`) to set the plan the
+  app's goal sheet sets. `claim_reward` refuses a claim that would take some of the goal's savings
+  until `useSavings: true`, which the description says needs the person's yes, the app's own
+  "Use savings?" prompt. A guarded slip may use savings without it, as in the app, because the
+  slip's prompt is the asking.
+- **Unlocks are read, not written** (`get_rewards`' `unlocks`, through `statusOfUnlock`): they move
+  no coins and are set up on the phone. The code an unlock keeps (a console PIN) is left out of
+  everything the server returns, so asking Claude is not a way round a lock the person set.
 - **Logged as `subject: 'reward'`**, a record only like a stack's. A reward, claim or goal has no
   task to revert; a bounty edit carries the task revert; a miss has its own `missed` action ("Marked
   missed") that is reverted like a completion, since "Reopen" is its real inverse.

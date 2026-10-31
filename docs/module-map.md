@@ -355,7 +355,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nicknames.ts` — nicknamesOf, primaryNickname
 - `src/utils/notificationTapRoute.ts` — NotificationTapData, NotificationTapRoute, routeNotificationTap
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
-- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, isRedundantInForeground, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, +40 more
+- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, isRedundantInForeground, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, +42 more
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — NudgeMode, NUDGE_MODES, nudgeModeOf, nudgeFieldsFor, FALLBACK_CADENCE_DAYS, NUDGE_MODE_LABEL, describeNudge, CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, +7 more
 - `src/utils/nutrientLog.ts` — isNutrientOnlyEntry, nutrientOnlyKey, nutrientOnlyEntryOf, NutrientHelping, nutrientHelping
@@ -496,6 +496,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/resumePrompt.ts` — confirmResume, resumeTasks
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, selectPurgeableFocusSessionIds, LEDGER_MAX_DAYS, ledgerCutoff, selectPurgeableUnattendedIds, +1 more
 - `src/utils/rewardGuard.ts` — GuardedSlip, canGuard, isGuardableHabit, guardingReward, planGuardedSlip, guardChargeSeed, claimedSince, guardedSlipPrompt, describeGuard
+- `src/utils/rewardSavings.ts` — GoalPlan, MIN_SAVINGS_SHARE, MAX_SAVINGS_SHARE, DEFAULT_SAVINGS_SHARE, GOAL_DATE_PRESETS, cleanSavingsShare, parseGoalPlan, serializeGoalPlan, activeGoalPlan, splitsEntry, +11 more
+- `src/utils/rewardUnlocks.ts` — DEFAULT_UNLOCK_SHARE, MIN_UNLOCK_SHARE, MAX_UNLOCK_SHARE, UNLOCK_SHARE_STEP, MAX_PLAY_HOURS, PLAY_EXTRA_MINUTES, cleanUnlockSharePct, cleanPlayMinutes, coinsEarnedToday, coinsStillOpenToday, +19 more
 - `src/utils/rewards.ts` — COINS_BY_EFFORT, STREAK_BONUS_EVERY, STREAK_BONUS_CAP, MAX_REWARD_COST, DIFFICULTY_MULTIPLIER, DIFFICULTY_SEGMENTS, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_HINT, CoinSource, baseCoinsFor, +68 more
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
@@ -655,6 +657,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, AGENT_SOURCE, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, +5 more
 - `src/utils/undoHistory.ts` — UndoableAction, UndoHistory, UNDO_STACK_LIMIT, topOf, pushEntry, popEntry, freshest, redoIsCurrent, offersOnUndoBar, latestUndoHistory, +9 more
 - `src/utils/unitConvert.ts` — UnitSystem, UNIT_SYSTEMS, Dimension, ML_PER_TBSP, ConvertedQuantity, MeasuredQuantity, measureQuantity, measureParsedQuantity, shelfUnit, unitBase, +7 more
+- `src/utils/unlockWorld.ts` — unlockWorldNow, openUnlockLinkedTo
 - `src/utils/useReduceMotion.ts` — reduceMotionEnabled, useReduceMotion
 - `src/utils/useShakeToUndo.ts` — useShakeToUndo
 - `src/utils/useSyncOnForeground.ts` — FOREGROUND_SYNC_INTERVAL_MS, LOCAL_CHANGE_PROBE_MS, useSyncOnForeground
@@ -761,7 +764,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useProjectStore.ts` — projectProgress, projectDecisions, AnswerTally, projectAnswerTallies, answerTallyParts, describeAnswerTally, projectCompletedRows, isProjectPastWindow, CreateProjectOptions, useProjectStore
 - `src/store/useRecipeStore.ts` — CookStats, CookTimerSnapshot, useRecipeStore
 - `src/store/useReminderRemovalStore.ts` — useReminderRemovalStore
-- `src/store/useRewardStore.ts` — COIN_BURST_MS, RewardDetails, useRewardStore
+- `src/store/useRewardStore.ts` — COIN_BURST_MS, RewardDetails, registerGoalSourceLookup, useRewardStore
 - `src/store/useRowCursorStore.ts` — useRowCursorStore
 - `src/store/useSavedMealsStore.ts` — useSavedMealsStore
 - `src/store/useScreenTimeStore.ts` — useScreenTimeStore, useScreenTimeSync
@@ -779,6 +782,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useTransitStore.ts` — TRANSIT_SNAPSHOT_STALE_MS, transitReadWanted, useTransitStore
 - `src/store/useTravelTimeStore.ts` — travelEstimatesWanted, travelOriginOfEvent, useTravelTimeStore
 - `src/store/useUnattendedStore.ts` — UnattendedRecord, useUnattendedStore
+- `src/store/useUnlockStore.ts` — UnlockDraft, useUnlockStore
 - `src/store/useWaniKaniStore.ts` — WANIKANI_SNAPSHOT_STALE_MS, useWaniKaniStore
 - `src/store/useWatchClashStore.ts` — useWatchClashStore
 - `src/store/useWatchHealthStore.ts` — useWatchHealthStore
@@ -890,7 +894,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +310 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +313 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SERVER_SHARING_KEY_PREFIX, +19 more
 
 ## `src/services`

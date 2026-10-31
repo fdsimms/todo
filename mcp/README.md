@@ -225,13 +225,13 @@ only the fallback until the first sync.
 | `save_project_category` | **Write.** The Projects screen's sections: add, rename or delete one. |
 | `start_fresh_project` | **Write.** A new copy of a project with every task open and every date cleared. |
 | `save_project_as_template` | **Write.** A template that recreates a project, dated from its own date. |
-| `get_rewards` | The coin balance, the reward being saved for, every reward with what it still needs, live bounties and the latest coin history. |
+| `get_rewards` | The coin balance, the reward being saved for and the savings set aside for it, every reward with what it still needs, live bounties, unlocks (opened by the day's work, never their code) and the latest coin history. |
 | `create_reward` | **Write.** Adds a reward at a cost in coins, or at a dollar `price` converted at the person's own rate (refused until they set a weekly reward budget); `taxable` adds the sales tax rate they set in Rewards. `guardsHabitId` links an avoid habit it guards, `glyph` is the emoji on its tile. Refused while rewards are off. |
 | `update_reward` | **Write.** Changes a reward's title, cost, note, link, one-time flag, tile glyph or the avoid habit it guards. A wish-list reward is refused. |
 | `delete_reward` | **Write.** Deletes a reward. Coins already spent on it stay spent. |
-| `claim_reward` | **Write.** Spends a reward's cost. Returns a `claimId`. Refused when the balance is short or a one-time reward was already claimed. A wish-list reward also checks its item off, with no extra coins. |
+| `claim_reward` | **Write.** Spends a reward's cost. Returns a `claimId`. Refused when the balance is short, a one-time reward was already claimed, or it would take some of the goal's savings without `useSavings`. A wish-list reward also checks its item off, with no extra coins. |
 | `unclaim_reward` | **Write.** Takes a claim back by its `claimId`, and reopens the wish-list item the claim checked off. |
-| `set_reward_goal` | **Write.** Chooses the reward being saved for, or clears it. |
+| `set_reward_goal` | **Write.** Chooses the reward being saved for, or clears it. `sharePct` or `byDate` sets a share of every coin aside for it. |
 | `set_bounty` | **Write.** Posts extra coins on a task, or withdraws the live bounty. Same limits as the app. |
 | `mark_done_by_other` | **Write.** Closes a task as done by somebody else: completes it and creates a repeat's next occurrence, with no coins and no streak change. Works on a one-off. `reopen_task` undoes it. |
 | `mark_missed` | **Write.** Marks a task missed. A repeat's occurrence breaks the streak and gets its next occurrence; a one-off just closes. Costs coins. `reopen_task` undoes it. |
