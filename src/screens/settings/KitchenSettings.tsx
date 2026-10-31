@@ -68,6 +68,8 @@ export function KitchenSettings() {
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
   const runningLowAddsToList = useSettingsStore(s => s.runningLowAddsToList);
   const setRunningLowAddsToList = useSettingsStore(s => s.setRunningLowAddsToList);
+  const hideGroceryRecipeNames = useSettingsStore(s => s.hideGroceryRecipeNames);
+  const setHideGroceryRecipeNames = useSettingsStore(s => s.setHideGroceryRecipeNames);
   const setRestockOfferEnabled = useSettingsStore(s => s.setRestockOfferEnabled);
   const leftoverOptOutCount = useSettingsStore(s => s.leftoverPromptOptOuts.length);
   const setLeftoverPromptOptOuts = useSettingsStore(s => s.setLeftoverPromptOptOuts);
@@ -283,6 +285,21 @@ export function KitchenSettings() {
           />
         </SettingsSection>
       )}
+
+      <SettingsSection label="Grocery list">
+        <SettingsRow
+          entryId="hideGroceryRecipeNames"
+          icon="eye-off-outline"
+          iconColor={hideGroceryRecipeNames ? colors.accent : undefined}
+          label="Hide recipe names on the list"
+          hint={hideGroceryRecipeNames
+            ? 'Rows don’t show which recipe an item is for. Open a row to see it.'
+            : 'Rows show which recipe an item is for'}
+          toggle={hideGroceryRecipeNames}
+          onPress={() => setHideGroceryRecipeNames(!hideGroceryRecipeNames)}
+          accessibilityLabel="Hide recipe names on the list"
+        />
+      </SettingsSection>
 
       <SettingsSection
         label="Pantry"
