@@ -436,10 +436,11 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
           </>
         ) : null}
 
-        {/* A date is a fact about when, not a decision with a reason behind it,
-            so it isn't offered. A date answer that already holds some keeps
-            its fields (reasoningOpen above), so nothing stored is hidden. */}
-        {!reasoningOpen && kind !== 'date' && (
+        {/* A date is a fact about when, and a catch-up answer is a note of what
+            happened, not a decision with a reason behind it, so neither is
+            offered. One that already holds some keeps its fields
+            (reasoningOpen above), so nothing stored is hidden. */}
+        {!reasoningOpen && kind !== 'date' && !catchUp && (
           <View style={styles.extras}>
             {!reasoningOpen && (
               <InlineAction
