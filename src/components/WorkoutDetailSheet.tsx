@@ -403,7 +403,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose, onOpenRoutine 
                   <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
                 </Text>
               </TouchableOpacity>
-              {!!startedAt && <Text style={styles.subtitle}>{gymName ? `${dayLabel(startedAt)} · ${gymName}` : dayLabel(startedAt)}</Text>}
+              {!!startedAt && <Text style={styles.subtitle}>{[dayLabel(startedAt), `${minutes} min`, gymName].filter(Boolean).join(' · ')}</Text>}
             </View>
             <SheetHeaderButton label={BUTTON_LABEL.done} onPress={close} minWidth={64} />
           </View>
@@ -424,6 +424,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose, onOpenRoutine 
             ref={keyboardScroll.ref}
           >
             <WorkoutStatTiles
+              compact
               minutes={minutes}
               exercises={exercises.length}
               sets={setCount}
