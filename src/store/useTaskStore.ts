@@ -278,7 +278,7 @@ import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { logSlotToMealSlot, slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
-import { isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
+import { inheritedOccurrence, isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { countsUnits } from '../utils/streakUnits';
@@ -5835,7 +5835,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const heldDay = getTaskDayStart(new Date(getEffectiveTaskDate(task, dayResetTime)!), dayResetTime);
       const nextDue = new Date(heldDay > todayStart ? heldDay : todayStart);
       nextDue.setHours(12, 0, 0, 0);
-      const effective: Task = { ...task, ...(task.seriesDefaults ?? {}) };
+      const effective: Task = inheritedOccurrence(task);
       spawned.push({
         ...effective,
         // The same seed completeTask's successor uses, because it is the same
