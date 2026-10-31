@@ -1290,10 +1290,12 @@ export function FoodLogEntrySheet({
       + (per !== null ? `, so a serving is about ${per} g.` : '.');
   }, [picked, dishMeasure]);
 
-  // The label at the right edge of a dish's servings field, so the field says
-  // both what it counts and how many the recipe makes ("of 4 servings").
-  const dishServingsSuffix = useMemo(() => {
-    if (!picked || picked.kind !== 'dish' || dishMeasure !== 'servings') return null;
+  // The label at the right edge of a dish's amount field, so the field says
+  // what it counts: "g" for a weighed plate, and for servings also how many
+  // the recipe makes ("of 4 servings").
+  const dishAmountSuffix = useMemo(() => {
+    if (!picked || picked.kind !== 'dish') return null;
+    if (dishMeasure === 'weight') return 'g';
     const makes = picked.dishServings;
     return makes !== null && makes > 0 ? `of ${makes} ${makes === 1 ? 'serving' : 'servings'}` : 'servings';
   }, [picked, dishMeasure]);
@@ -2435,9 +2437,9 @@ export function FoodLogEntrySheet({
             {(() => {
               const selectedFoodUnit = usingFoodUnitPills ? foodUnitOptions.find(o => o.key === amountUnit) : undefined;
               return (
-                <View style={(picked.kind === 'food' && foodUnitOptions.length > 0) || dishServingsSuffix ? styles.inputRow : undefined}>
+                <View style={(picked.kind === 'food' && foodUnitOptions.length > 0) || dishAmountSuffix ? styles.inputRow : undefined}>
                   <TextField
-                    style={(picked.kind === 'food' && foodUnitOptions.length > 0) || dishServingsSuffix ? styles.inputWithSuffix : styles.input}
+                    style={(picked.kind === 'food' && foodUnitOptions.length > 0) || dishAmountSuffix ? styles.inputWithSuffix : styles.input}
                     value={usingFoodUnitPills ? amountNumber : amount}
                     onChangeText={text => {
                       if (usingFoodUnitPills) {
@@ -2493,8 +2495,8 @@ export function FoodLogEntrySheet({
                       (volumes, nutrient amounts, "Something else") are one tap
                       away in its menu. It stays beside the number once one is
                       typed, which is when a "servings" vs. "g" mix-up matters. */}
-                  {!!dishServingsSuffix && (
-                    <Text style={styles.servingsSuffix}>{dishServingsSuffix}</Text>
+                  {!!dishAmountSuffix && (
+                    <Text style={styles.servingsSuffix}>{dishAmountSuffix}</Text>
                   )}
                   {picked.kind === 'food' && foodUnitOptions.length > 0 && (
                     <UnitMenuChip
