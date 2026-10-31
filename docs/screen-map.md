@@ -397,6 +397,7 @@ Where each component can appear.
 - `src/components/RoutineSetTable.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +5 more
 - `src/components/RoutineSwipeRow.tsx` — on WorkoutsScreen
 - `src/components/RoutineVersionSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +5 more
+- `src/components/RowAmountSheet.tsx` — on GroceryScreen, MealPlanScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/RuleListSheet.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
 - `src/components/RuleLogFields.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
 - `src/components/SafeBlurView.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +31 more

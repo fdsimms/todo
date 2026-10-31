@@ -41,6 +41,8 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { SubstituteSheet } from './SubstituteSheet';
+import { RowAmountSheet } from './RowAmountSheet';
+import { adjustedQuantity, canAdjustAmount, describeRowFactor } from '../utils/rowAmount';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { SheetUndoBar } from './SheetUndoBar';
@@ -274,6 +276,27 @@ export function RecipeToListSheet({
   // SubstituteSheet's own note says fills the table.
   const [subsItemId, setSubsItemId] = useState<string | null>(null);
 
+  // How much of each line to add, by row key (absent = all of it), and which
+  // row's amount card is open. Applied on top of the batch scale and only to
+  // what is written to the list; cleared on open like `choices` and `scale`.
+  const [rowFactors, setRowFactors] = useState<Record<string, number>>({});
+  const [amountKey, setAmountKey] = useState<string | null>(null);
+  const setRowFactor = (key: string, factor: number) =>
+    setRowFactors(prev => {
+      const next = { ...prev };
+      if (factor === 1) delete next[key];
+      else next[key] = factor;
+      return next;
+    });
+
+  // The factor a row is actually added at: one the line can no longer take
+  // (the batch scale changed its shape) reads and adds as the full amount, so
+  // what the row shows is what is written.
+  const factorFor = (key: string, quantity: string | null | undefined): number => {
+    const f = rowFactors[key];
+    return f && quantity && adjustedQuantity(quantity, f) !== null ? f : 1;
+  };
+
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(defaultExpandedSections);
   // What `ticked` gets reset to on open and on every choice/scale-driven
@@ -297,6 +320,8 @@ export function RecipeToListSheet({
     setChoices(initialChoices ? [...initialChoices] : []);
     setUndecided([]);
     setScale(normalizeScale(initialScale));
+    setRowFactors({});
+    setAmountKey(null);
     openedChoicesRef.current = JSON.stringify(initialChoices ?? []);
     openedScaleRef.current = normalizeScale(initialScale);
     knownRowKeysRef.current = null;
@@ -451,6 +476,7 @@ export function RecipeToListSheet({
     const dirty = JSON.stringify(choices) !== openedChoicesRef.current
       || undecided.length > 0
       || scale !== openedScaleRef.current
+      || Object.keys(rowFactors).length > 0
       || JSON.stringify([...ticked].sort()) !== tickedBaselineRef.current;
     if (!dirty) { onClose(); return; }
     confirmDiscard(onClose);
@@ -462,7 +488,7 @@ export function RecipeToListSheet({
       .filter(r => r.category !== 'inCart' && ticked.has(r.nameKey))
       .map(r => ({
         name: r.name,
-        quantity: r.quantity || null,
+        quantity: (r.quantity && adjustedQuantity(r.quantity, factorFor(r.nameKey, r.quantity))) || r.quantity || null,
         aisle: r.aisle,
         // The component the line is written on gets the credit — that's where
         // the user will go to change it. classifyPlanned leaves this null once
@@ -666,7 +692,14 @@ export function RecipeToListSheet({
                               // Shown in the reader's units; what gets written
                               // to the list is still row.quantity, as the
                               // recipe wrote it.
-                              const shownQuantity = showContainerCount(convertQuantity(row.quantity, unitSystem).text);
+                              const showAmount = (q: string) => showContainerCount(convertQuantity(q, unitSystem).text);
+                              const rowFactor = factorFor(row.nameKey, row.quantity);
+                              const shownQuantity = showAmount(
+                                (rowFactor !== 1 && adjustedQuantity(row.quantity, rowFactor)) || row.quantity
+                              );
+                              // Only a line that is going on the list has an amount
+                              // to reduce, and only one that can be scaled.
+                              const adjustable = interactive && on && canAdjustAmount(row.quantity);
                               return (
                                 <React.Fragment key={row.nameKey}>
                                   {i > 0 && <View style={styles.sep} />}
@@ -711,13 +744,38 @@ export function RecipeToListSheet({
                                             {row.name}
                                           </Text>
                                           {!!shownQuantity && (
-                                            <View style={[styles.qtyPill, styles.qtyPillInline]}>
-                                              <Text style={[styles.qtyText, styles.qtyTextUnder]} numberOfLines={2}>
-                                                {shownQuantity}
-                                              </Text>
-                                            </View>
+                                            adjustable ? (
+                                              <TouchableOpacity
+                                                style={[styles.qtyPill, styles.qtyPillInline, styles.qtyPillRow, rowFactor !== 1 && styles.qtyPillAdjusted]}
+                                                activeOpacity={interaction.activeOpacity}
+                                                onPress={() => { haptics.tap(); setAmountKey(row.nameKey); }}
+                                                accessibilityRole="button"
+                                                accessibilityLabel={`Amount to add for ${row.name}: ${shownQuantity}`}
+                                              >
+                                                <Text
+                                                  style={[styles.qtyText, styles.qtyTextUnder, styles.qtyTextFlex, rowFactor !== 1 && styles.qtyTextAdjusted]}
+                                                  numberOfLines={2}
+                                                >
+                                                  {shownQuantity}
+                                                </Text>
+                                                <Ionicons
+                                                  name="pencil"
+                                                  size={iconSize.xs}
+                                                  color={rowFactor !== 1 ? colors.accentText : colors.textTertiary}
+                                                />
+                                              </TouchableOpacity>
+                                            ) : (
+                                              <View style={[styles.qtyPill, styles.qtyPillInline]}>
+                                                <Text style={[styles.qtyText, styles.qtyTextUnder]} numberOfLines={2}>
+                                                  {shownQuantity}
+                                                </Text>
+                                              </View>
+                                            )
                                           )}
                                         </View>
+                                        {rowFactor !== 1 && (
+                                          <Text style={styles.swapNote} numberOfLines={1}>{describeRowFactor(rowFactor)}</Text>
+                                        )}
                                         {!!swapNote && (
                                           <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
                                         )}
@@ -804,6 +862,20 @@ export function RecipeToListSheet({
           GroceryItemSheet uses for its own: a Modal presents from the view
           controller its React parent belongs to, so a sibling would ask the
           screen's controller to present a second sheet while this one is up. */}
+      {(() => {
+        const open = classified.find(r => r.nameKey === amountKey);
+        return (
+          <RowAmountSheet
+            visible={open !== undefined}
+            name={open?.name ?? ''}
+            quantity={open?.quantity ?? ''}
+            factor={open ? factorFor(open.nameKey, open.quantity) : 1}
+            show={q => showContainerCount(convertQuantity(q, unitSystem).text)}
+            onChange={f => { if (open) setRowFactor(open.nameKey, f); }}
+            onClose={() => setAmountKey(null)}
+          />
+        );
+      })()}
       <SubstituteSheet
         visible={subsItemId !== null}
         itemId={subsItemId}
@@ -931,6 +1003,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The pill on the name's line: the text column's full width to grow into,
   // since the wrap moves it under the name before it would need to shrink.
   qtyPillInline: { maxWidth: '100%' },
+  // A tappable amount: the text and its pencil on one line, in the pill.
+  qtyPillRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm },
+  qtyPillAdjusted: { backgroundColor: colors.accentSubtle },
+  qtyTextFlex: { flexShrink: 1 },
+  qtyTextAdjusted: { color: colors.accentText },
   qtyTextUnder: { textAlign: 'left' },
   // Centred for the two-line case: the pill takes the width of its longest
   // line, so this only moves the shorter one ("1 large" / "piece") and is a
