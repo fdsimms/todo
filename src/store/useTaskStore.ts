@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { startOfWeek } from 'date-fns/startOfWeek';
 import type { Task, TaskDraft, FollowUpTaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry, MedicationLog } from '../types';
 import {
@@ -370,6 +371,7 @@ import {
   reachOutTitle,
   reachOutsHandledRecently,
   staleReachOutTasks,
+  staggerReachOutDays,
   wantedReachOuts,
   collapseGroupedReachOuts,
   reachOutHistoryIds,
@@ -6855,10 +6857,26 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     ensureGeneratedTaskCategory('reachOut');
     const category = useSettingsStore.getState().reachOutTaskCategory;
-    const dueDate = getCurrentDayStart();
-    dueDate.setHours(12, 0, 0, 0);
+    // Several people coming due at once land on different days rather than
+    // all on Today (staggerReachOutDays). Only rows that don't exist yet are
+    // placed: an existing row's date is the user's by now, so it only counts
+    // toward how full a day is.
+    const liveRows = liveGeneratedTasksOfKind(tasks, 'reachOut').filter(
+      row => !staleReachOuts.includes(row) || answeredReachOuts.includes(row)
+    );
+    const haveRow = new Set(liveRows.map(row => reachOutPersonId(row)));
+    const takenOffsets = liveRows.map(row => {
+      const when = getEffectiveTaskDate(row);
+      return when ? differenceInCalendarDays(getTaskDayStart(new Date(when)), today) : 0;
+    });
+    const dayFor = staggerReachOutDays(
+      wanted.filter(w => !haveRow.has(w.sourceId)).map(w => w.sourceId),
+      takenOffsets
+    );
 
     wanted.forEach(want => {
+      const dueDate = addDays(getCurrentDayStart(), dayFor.get(want.sourceId) ?? 0);
+      dueDate.setHours(12, 0, 0, 0);
       reconcileGeneratedTask({
         kind: 'reachOut',
         sourceId: want.sourceId,
