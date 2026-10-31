@@ -506,6 +506,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/routineProgress.ts` — RoutineWorkoutPoint, RoutineExerciseProgress, RoutineProgress, routineSessions, RoutineProgressInput, routineProgress, volumeForChart
 - `src/utils/routineUpdate.ts` — RoutineChange, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
 - `src/utils/routineVersions.ts` — initialRoutineVersionId, initialProgramVersionId, implicitRoutineVersion, routineVersionsOf, sessionPlan, currentRoutineVersion, versionNumber, versionAt, sessionVersionId, routineSessionsByVersion, +35 more
+- `src/utils/rowAmount.ts` — ROW_AMOUNT_PRESETS, MAX_ROW_FACTOR, adjustedQuantity, canAdjustAmount, parseRowFactor, describeRowFactor
 - `src/utils/rowCursor.ts` — stepCursor, settleCursor
 - `src/utils/rowOrder.ts` — RowOrder, NO_ROWS, OrderableRow, todayRowOrder, flatRowOrder, unscheduledRowOrder, laterRowOrder
 - `src/utils/rsvp.ts` — parseGuestNames
