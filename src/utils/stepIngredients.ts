@@ -166,6 +166,7 @@ const MODIFIERS = new Set([
   'boneless', 'skinless', 'unsalted', 'salted', 'plain', 'ripe', 'raw',
   'organic', 'free-range', 'extra', 'extra-virgin', 'virgin', 'all-purpose',
   'low-fat', 'reduced-fat', 'fat-free', 'nonfat', 'skim',
+  'kosher', 'sea', 'table', 'coarse', 'fine', 'flaky',
 ]);
 
 /**
@@ -180,7 +181,7 @@ const CUTS = new Set([
   'breast', 'breasts', 'thigh', 'thighs', 'fillet', 'fillets', 'filet',
   'filets', 'steak', 'steaks', 'chop', 'chops', 'cutlet', 'cutlets',
   'tender', 'tenders', 'leg', 'legs', 'wing', 'wings', 'loin', 'shank',
-  'shanks', 'drumstick', 'drumsticks',
+  'shanks', 'drumstick', 'drumsticks', 'powder',
 ]);
 
 interface Candidate {

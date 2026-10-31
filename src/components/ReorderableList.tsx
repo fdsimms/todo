@@ -1370,7 +1370,6 @@ export function ReorderableList<T>({
         // drops between the drag's end and the movement it left behind.
         onMomentumScrollBegin={() => { userScrollingRef.current = true; }}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
         {...keyboardScroll.props}
         // Composed on top of the keyboard hook's handlers, not spread before
         // them: it claims all three of these itself to keep its recorded

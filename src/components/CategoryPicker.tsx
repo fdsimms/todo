@@ -11,7 +11,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Animated,
@@ -42,6 +41,7 @@ import { useSheetMotion } from '../hooks/useSheetMotion';
 import { useFilterField } from '../hooks/useFilterField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
+import { TextField } from './TextField';
 
 interface ListProps {
   /**
@@ -206,7 +206,7 @@ export function CategoryPickerList({
     <View>
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
-        <TextInput
+        <TextField
           style={styles.searchInput}
           {...filterField}
           placeholder={searchPlaceholder ?? (allowCreate ? 'Find or add a category…' : 'Find a category…')}

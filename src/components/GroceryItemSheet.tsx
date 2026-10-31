@@ -47,6 +47,7 @@ import { recipesUsingIngredient } from '../utils/recipeComponents';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { SheetHeader } from './SheetHeader';
+import { deletedItemSnapshot, type DeletedItemSnapshot } from '../utils/groceryItemWrite';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { ItemDisposalOffer } from './ItemDisposalOffer';
@@ -115,6 +116,7 @@ import {
   GROCERY_VARIANT_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
+  RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH,
   isPortionBox,
 } from '../types';
 import { TextField } from './TextField';
@@ -347,6 +349,7 @@ function GroceryItemSheetBody({
   // null, not 0: a child's onLayout isn't guaranteed to fire after its
   // parent's, so 0 would read as "the card starts at the top" and scroll to
   // the wrong offset if the field's own callback lands first.
+  const openingSnapshotRef = useRef<DeletedItemSnapshot | null>(null);
   const cardYRef = useRef<number | null>(null);
   const fieldYRefs = useRef<Partial<Record<CollapsibleFieldKey, number>>>({});
   const pendingScrollField = useRef<CollapsibleFieldKey | null>(null);
@@ -363,6 +366,14 @@ function GroceryItemSheetBody({
 
   useEffect(() => {
     if (visible && item) {
+      // What Cancel puts back. Every field here saves as it is edited, so the
+      // way to undo a visit is to remember how the row looked on arrival.
+      const st = useGroceryStore.getState();
+      openingSnapshotRef.current = deletedItemSnapshot(item.id, {
+        items: st.items, entries: st.listEntries, boxes: st.itemProducts,
+        shopLinks: st.itemShops, subLinks: st.itemSubs, aliases: st.storeAliases,
+        aisleOverrides: st.aisleOverrides,
+      });
       setName(item.name);
       setQuantityText(item.quantity ?? '');
       setNoteText(item.note);
@@ -583,6 +594,14 @@ function GroceryItemSheetBody({
       commitQuantity();
       commitNote();
       commitPrice(priceKey);
+    }
+    Keyboard.dismiss();
+    onClose();
+  };
+
+  const handleCancel = () => {
+    if (liveItem && openingSnapshotRef.current) {
+      useGroceryStore.getState().restoreItemEdits(openingSnapshotRef.current);
     }
     Keyboard.dismiss();
     onClose();
@@ -1870,7 +1889,9 @@ function GroceryItemSheetBody({
       <View style={styles.root}>
         <SheetHeader
           title="Item"
-          left={
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
+          right={
+            <View style={styles.headerRight}>
             <TouchableOpacity
               onPress={toggleSearch}
               hitSlop={8}
@@ -1886,8 +1907,9 @@ function GroceryItemSheetBody({
                 color={searchOpen ? colors.accent : colors.textSecondary}
               />
             </TouchableOpacity>
+              <SheetHeaderButton label={BUTTON_LABEL.done} onPress={handleDone} minWidth={64} />
+            </View>
           }
-          right={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={handleDone} minWidth={64} />}
         />
 
         {/* Scoped to the row on screen: the pantry list mounts the same
@@ -2059,7 +2081,9 @@ function GroceryItemSheetBody({
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
             spellCheck={false}
-            maxLength={GROCERY_QUANTITY_MAX_LENGTH}
+            // A quantity a recipe wrote ("1, cut into ½-inch cubes") can already
+            // sit at the grocery cap, which left the field full and untypeable.
+            maxLength={item.quantityFromRecipe ? RECIPE_INGREDIENT_QUANTITY_MAX_LENGTH : GROCERY_QUANTITY_MAX_LENGTH}
             accessibilityLabel="Quantity"
           />
           </>
@@ -2448,7 +2472,8 @@ function makeStyles(colors: Colors) {
     // Same 64 width the plain spacer held, now the field-search toggle — still
     // matches Done's own minWidth, so the title stays centered the way
     // GroceryAislesSheet's single-button header does.
-    headerSearchButton: { width: 64, alignItems: 'center', justifyContent: 'center' },
+    headerRight: { flexDirection: 'row', alignItems: 'center' },
+    headerSearchButton: { width: 40, alignItems: 'center', justifyContent: 'center' },
     subRow: {
       flexDirection: 'row',
       alignItems: 'center',

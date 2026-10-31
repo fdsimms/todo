@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { FoodKind, FoodNutrition, GroceryGroupBy, GroceryItem, GroceryRecipeSource, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, PriceObservation, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import { isPortionBox } from '../types';
-import { incomingSourcesOf, sourcesAfterMerge } from '../utils/recipeSources';
+import { currentSourcesOf, incomingSourcesOf, sourcesAfterMerge } from '../utils/recipeSources';
 import {
   type DeletedItemSnapshot,
   listNameProblem,
@@ -1191,6 +1191,13 @@ interface GroceryStore extends UndoHistoryActions {
    */
   restoreDeletedItem: (snapshot: DeletedItemSnapshot) => boolean;
   /**
+   * Puts a row that still exists back to how `snapshot` found it: the item,
+   * its products, store and substitute links, list entries and remembered
+   * aisle. Rows made since are dropped. The item sheet's Cancel. False when
+   * the row is gone (a merge or forget), since there is nothing to put back.
+   */
+  restoreItemEdits: (snapshot: DeletedItemSnapshot) => boolean;
+  /**
    * Put an item's pantry state back exactly as an earlier snapshot had it (the
    * Activity screen's undo of an agent's pantry write, `agentPantryRevert.ts`).
    * `patch` is the item's pantry fields, `boxes` the item's boxes as they were
@@ -1844,6 +1851,19 @@ function mergeOnListRecipeNeed(existing: GroceryItem, row: PlannedRow): GroceryI
   }
 
   return changed ? patch : null;
+}
+
+/**
+ * What the undo bar says after a swap: both names, and the recipes the
+ * substitute's row is now for, since the row can land among rows already there
+ * and the swap would otherwise be easy to lose track of.
+ */
+export function swapLabel(fromName: string, toName: string, sub: GroceryItem): string {
+  const titles = sub.quantityFromRecipe || sub.sourceRecipeTitle
+    ? currentSourcesOf(sub).map(s => s.title).filter(Boolean)
+    : [];
+  const base = `Swapped ${fromName} for ${toName}`;
+  return titles.length > 0 ? `${base}, for ${titles.join(' and ')}` : base;
 }
 
 /**
@@ -3777,6 +3797,44 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     return true;
   },
 
+  restoreItemEdits(snapshot) {
+    const { item } = snapshot;
+    const st = get();
+    if (!st.items.some(i => i.id === item.id)) return false;
+    const keptBoxes = new Set(snapshot.boxes.map(b => b.id));
+    const keptShops = new Set(snapshot.shopLinks.map(l => l.shopId));
+    const keptSubs = new Set(snapshot.subLinks.map(l => l.subItemId));
+    const keptLists = new Set(snapshot.entries.map(e => e.listId ?? ''));
+    const overrides = { ...st.aisleOverrides };
+    if (snapshot.aisleOverride) overrides[item.nameKey] = snapshot.aisleOverride;
+    else delete overrides[item.nameKey];
+    dbTransaction(() => {
+      dbUpdateGroceryItem(item);
+      for (const b of st.itemProducts) if (b.itemId === item.id && !keptBoxes.has(b.id)) dbDeleteItemProduct(b.id);
+      for (const box of snapshot.boxes) {
+        dbSetItemProduct(box);
+        if (box.gtin) dbSetProductGtin(box.id, box.gtin);
+      }
+      for (const l of st.itemShops) if (l.itemId === item.id && !keptShops.has(l.shopId)) dbDeleteItemShopLink(l.itemId, l.shopId);
+      for (const link of snapshot.shopLinks) dbSetItemShopLink(link);
+      for (const l of st.itemSubs) if (l.itemId === item.id && !keptSubs.has(l.subItemId)) dbDeleteItemSubLink(l.itemId, l.subItemId);
+      for (const link of snapshot.subLinks) dbSetItemSubLink(link);
+      for (const e of st.listEntries) if (e.itemId === item.id && !keptLists.has(e.listId ?? '')) dbDeleteGroceryListEntry(e.itemId, e.listId);
+      for (const entry of snapshot.entries) dbSetGroceryListEntry(entry);
+      dbSetGroceryAisleOverrides(overrides);
+    });
+    const restored = dbGetAllGroceryItems().find(i => i.id === item.id) ?? item;
+    set(s => ({
+      items: s.items.map(i => (i.id === item.id ? restored : i)),
+      itemProducts: [...s.itemProducts.filter(b => b.itemId !== item.id), ...snapshot.boxes],
+      itemShops: [...s.itemShops.filter(l => l.itemId !== item.id), ...snapshot.shopLinks],
+      itemSubs: [...s.itemSubs.filter(l => l.itemId !== item.id), ...snapshot.subLinks],
+      listEntries: [...s.listEntries.filter(e => e.itemId !== item.id), ...snapshot.entries],
+      aisleOverrides: overrides,
+    }));
+    return true;
+  },
+
   restorePantry(itemId, patch, boxes, removeBoxIds, removeFromList) {
     const item = get().items.find(i => i.id === itemId);
     if (!item) return;
@@ -5494,15 +5552,45 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       if (converted.converted) quantity = converted.text;
     }
 
+    // The recipe the original was on the list for travels with it. Amounts in
+    // a per-recipe ledger are converted the same way the row's own is.
+    const convertAmount = (q: string | null): string | null => {
+      if (q && link?.ratioFrom && link?.ratioTo) {
+        const c = substituteQuantity(q, link.ratioFrom, link.ratioTo);
+        if (c.converted) return c.text;
+      }
+      return q;
+    };
+    const originalSources = item.quantityFromRecipe
+      ? currentSourcesOf(item).map(s => ({ ...s, quantity: convertAmount(s.quantity) }))
+      : [];
+
+    // Already on this list: the substitute is wanted by its own recipe and now
+    // by the original's too, which is exactly a second recipe wanting a row,
+    // so it merges the same way (quantity added, single credit becomes a
+    // ledger). Not on this list: it takes over the original's credit outright,
+    // and a stale one left from an earlier shop must not survive, or the row
+    // reads as being for a recipe it was never added for.
+    const originalHasRecipe = !!item.sourceRecipeTitle || originalSources.length > 0;
     const updatedSub: GroceryItem = subEntry
-      ? sub
+      ? (!originalHasRecipe ? null : mergeOnListRecipeNeed(sub, {
+          name: sub.name,
+          quantity,
+          aisle: null,
+          sourceRecipeId: item.sourceRecipeId,
+          sourceRecipeTitle: item.sourceRecipeTitle,
+          recipeSources: originalSources.length >= 2 ? originalSources : undefined,
+        })) ?? sub
       : {
           ...sub,
           quantity: quantity ?? sub.quantity,
           quantityFromRecipe: quantity ? item.quantityFromRecipe : sub.quantityFromRecipe,
+          sourceRecipeId: item.sourceRecipeId,
+          sourceRecipeTitle: item.sourceRecipeTitle,
+          recipeSources: originalSources.length >= 2 ? originalSources : undefined,
           lastAddedAt: new Date().toISOString(),
         };
-    if (!subEntry) dbUpdateGroceryItem(updatedSub);
+    if (updatedSub !== sub) dbUpdateGroceryItem(updatedSub);
 
     // The row being swapped out just comes off the list — it used to be deleted
     // when provisional, which is the case this refactor is most obviously about:
@@ -5538,7 +5626,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     });
 
     get().setLastAction({
-      label: `Swapped for ${sub.name}`,
+      label: swapLabel(item.name, sub.name, updatedSub),
       undo: () => {
         writeMembership({
           upsert: beforeEntries,

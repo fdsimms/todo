@@ -89,27 +89,102 @@ interface Props {
    */
   topRight?: React.ReactNode;
   /**
-   * Holds the header at least this tall, with the title block kept at the top
-   * and the actions at the bottom, as they sit in a header that grew on its
-   * own. For a screen that swaps titles in one header (Today's four lenses):
-   * the lens with the longest subtitle sets the height for the rest, so the
-   * buttons and everything under the header stay put on a switch.
+   * Two fixed rows instead of a title block with the actions stacked beside it:
+   * the overline and `topRight` share the top row, the title (with its
+   * adornment) and the actions share the second. Both sides of the header then
+   * sit on the same lines, with no reserved empty subtitle line, so every
+   * screen using it has the same height and the title never moves. Takes a
+   * plain title plus `titleAdornment` only (no `onTitlePress`, no subtitle),
+   * which is all Today's four lenses need. Without an overline or `topRight`
+   * the top row stays empty, so the lenses without one match Today's height.
    */
-  minHeight?: number;
+  gridLayout?: boolean;
 }
 
 /**
  * The standard large-title header used at the top of every screen, so
  * titles, counts and 34pt icon buttons render identically app-wide.
  */
-export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, subtitleRolls = false, titleAdornment, topRight, minHeight }: Props) {
+export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, subtitleRolls = false, titleAdornment, topRight, gridLayout = false }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const brandFace = useBrandFace('heavy');
 
+  const actionButtons = (
+      <View style={[styles.actions, gridLayout && styles.actionsGrid]}>
+        {actions?.map((action, i) => {
+          const tintColor = action.tint === 'orange' ? colors.orangeFill : colors.accentFill;
+          const iconColor = action.disabled
+            ? colors.textTertiary
+            : !action.active ? colors.textSecondary
+            : action.tint === 'orange' ? colors.onFill : colors.onAccent;
+          const label = action.accessibilityLabel ?? labelFromIcon(action.icon);
+          return (
+            // A tooltip on a Mac, where an icon with no words is otherwise a
+            // guess: the same words VoiceOver reads. A plain View elsewhere.
+            <PointerView key={`${action.icon}-${i}`} toolTip={label}>
+            <PressableScale
+              style={[styles.iconBtn, action.active && { backgroundColor: tintColor }]}
+              onPress={action.onPress}
+              disabled={action.disabled}
+              haptic
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityState={{ selected: action.active, disabled: action.disabled, busy: action.loading }}
+              accessibilityLabel={label}
+            >
+              {action.loading ? (
+                <ActivityIndicator size="small" color={iconColor} />
+              ) : (
+                action.icon === TARGET_ICON
+                  ? <TargetIcon size={18} color={iconColor} />
+                  : <Ionicons name={action.icon} size={18} color={iconColor} />
+              )}
+              {action.badgeDot ? (
+                (action.badge ?? 0) > 0 && <View style={styles.badgeDot} />
+              ) : (
+                action.badge != null && action.badge > 0 && (
+                  <View style={[styles.badge, action.badgeColor && { backgroundColor: action.badgeColor }]}>
+                    <AnimatedNumber
+                      text={String(action.badge)}
+                      value={action.badge}
+                      style={styles.badgeText}
+                      maxFontSizeMultiplier={textScale.badge}
+                    />
+                  </View>
+                )
+              )}
+            </PressableScale>
+            </PointerView>
+          );
+        })}
+        {right}
+      </View>
+  );
+
+  if (gridLayout) {
+    return (
+      <View style={styles.gridHeader}>
+        <View style={styles.gridTop}>
+          {overline != null ? (
+            <Text style={styles.gridOverline} numberOfLines={1}>{overline}</Text>
+          ) : <View />}
+          {topRight}
+        </View>
+        <View style={styles.gridMain}>
+          <View style={styles.gridTitleRow}>
+            <Text style={[styles.title, brandFace, styles.titleHolds]}>{title}</Text>
+            {titleAdornment != null && <View style={styles.adornment}>{titleAdornment}</View>}
+          </View>
+          {actionButtons}
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.header, minHeight != null && { minHeight }]}>
-      <View style={[styles.titleBlock, minHeight != null && styles.titleBlockTop]}>
+    <View style={styles.header}>
+      <View style={styles.titleBlock}>
         {overline != null ? (
           <Text style={styles.overline} numberOfLines={1}>{overline}</Text>
         ) : (
@@ -165,55 +240,7 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
           <Text style={styles.subtitle} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"> </Text>
         )}
       </View>
-      <View style={styles.actions}>
-        {actions?.map((action, i) => {
-          const tintColor = action.tint === 'orange' ? colors.orangeFill : colors.accentFill;
-          const iconColor = action.disabled
-            ? colors.textTertiary
-            : !action.active ? colors.textSecondary
-            : action.tint === 'orange' ? colors.onFill : colors.onAccent;
-          const label = action.accessibilityLabel ?? labelFromIcon(action.icon);
-          return (
-            // A tooltip on a Mac, where an icon with no words is otherwise a
-            // guess: the same words VoiceOver reads. A plain View elsewhere.
-            <PointerView key={`${action.icon}-${i}`} toolTip={label}>
-            <PressableScale
-              style={[styles.iconBtn, action.active && { backgroundColor: tintColor }]}
-              onPress={action.onPress}
-              disabled={action.disabled}
-              haptic
-              hitSlop={4}
-              accessibilityRole="button"
-              accessibilityState={{ selected: action.active, disabled: action.disabled, busy: action.loading }}
-              accessibilityLabel={label}
-            >
-              {action.loading ? (
-                <ActivityIndicator size="small" color={iconColor} />
-              ) : (
-                action.icon === TARGET_ICON
-                  ? <TargetIcon size={18} color={iconColor} />
-                  : <Ionicons name={action.icon} size={18} color={iconColor} />
-              )}
-              {action.badgeDot ? (
-                (action.badge ?? 0) > 0 && <View style={styles.badgeDot} />
-              ) : (
-                action.badge != null && action.badge > 0 && (
-                  <View style={[styles.badge, action.badgeColor && { backgroundColor: action.badgeColor }]}>
-                    <AnimatedNumber
-                      text={String(action.badge)}
-                      value={action.badge}
-                      style={styles.badgeText}
-                      maxFontSizeMultiplier={textScale.badge}
-                    />
-                  </View>
-                )
-              )}
-            </PressableScale>
-            </PointerView>
-          );
-        })}
-        {right}
-      </View>
+      {actionButtons}
       {topRight != null && <View style={styles.topRight}>{topRight}</View>}
     </View>
   );
@@ -227,10 +254,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // The right margin is what keeps a wrapping subtitle (Today's workload line)
   // from running up against the action buttons: the block shrinks to the
   // space left, so without it the text ends flush with the first button.
+  // gridLayout: the top row is as tall as the coin pill so the date centers on
+  // it; the main row is as tall as the title's line and the 34pt buttons.
+  gridHeader: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm },
+  gridTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 30 },
+  gridOverline: { flexShrink: 1, color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium, marginRight: spacing.md },
+  gridMain: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.xsm },
+  gridTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm, flexShrink: 1, marginRight: spacing.md },
   titleBlock: { flexShrink: 1, marginRight: spacing.md },
-  // The row aligns to the bottom, which in a header held taller than its title
-  // block would push the title down instead of leaving the space under it.
-  titleBlockTop: { alignSelf: 'flex-start' },
   topRight: { position: 'absolute', top: spacing.xs, right: spacing.md },
   overline: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium,
@@ -264,6 +295,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   subtitleShrinks: { flexShrink: 1 },
   subtitleChevron: { marginTop: spacing.xxs },
   actions: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', paddingBottom: spacing.xxs },
+  actionsGrid: { paddingBottom: 0 },
   iconBtn: {
     width: 34, height: 34, borderRadius: 17,
     backgroundColor: colors.bgSecondary,

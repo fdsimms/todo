@@ -2,7 +2,6 @@ import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Animated,
@@ -36,6 +35,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
+import { TextField } from './TextField';
 
 /**
  * Which end of the relationship is being filled in: the task being edited is
@@ -296,7 +296,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
 
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={15} color={colors.textTertiary} />
-            <TextInput
+            <TextField
               style={styles.searchInput}
               {...filterField}
               placeholder="Search tasks"

@@ -77,7 +77,7 @@ export function CookingBar() {
   // Just above the tab bar, stopping short of the add button's corner when the
   // screen has one (it rests in the same band, see `FAB_BOTTOM_OFFSET`). With a button, the bar is
   // centered on it vertically instead: the wrap is the button's own height, at its bottom.
-  const bottom = insets.bottom + barHeight + spacing.sm;
+  const bottom = insets.bottom + barHeight + spacing.smd;
   const clearance = spacing.lg + FAB_SIZE + spacing.sm;
   const sideInset = fabShown ? { [fabHand === 'left' ? 'left' : 'right']: clearance } : null;
 

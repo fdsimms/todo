@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Keyboard, Modal } from 'react-native';
 import { AppFrame } from './AppFrame';
+import { KeyboardDoneAccessory } from './KeyboardDoneAccessory';
 import {
   beginDismissal,
   canHideSheet,
@@ -385,6 +386,7 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
   const body = (
     <PresentationLevelContext.Provider value={ownLevel}>
       {children}
+      <KeyboardDoneAccessory />
     </PresentationLevelContext.Provider>
   );
   return (

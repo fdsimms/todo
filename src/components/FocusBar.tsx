@@ -99,7 +99,7 @@ export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
   const fabHand = useSettingsStore(s => s.fabHand);
   // CookingBar centers on the add button when there is one, which sits higher.
   const liftStep = FLOATING_BAR_STEP + (fabShown ? FAB_CENTERED_RISE : 0);
-  const bottom = insets.bottom + barHeight + spacing.sm + (lifted ? liftStep : 0);
+  const bottom = insets.bottom + barHeight + spacing.smd + (lifted ? liftStep : 0);
   const clearance = spacing.lg + FAB_SIZE + spacing.sm - spacing.md;
   const sideInset = fabShown ? { [fabHand === 'left' ? 'marginLeft' : 'marginRight']: clearance } : null;
 

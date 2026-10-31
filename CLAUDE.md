@@ -96,6 +96,22 @@ looks improvable — a different concern living near the one you were asked abou
 concern, in a component that shares the original's code shape closely enough that the fix is the
 same mechanical change applied again, not a fresh design judgment call.
 
+## Cleaning up what your own change orphaned
+
+When your change leaves something unused, remove it in the same PR without asking: a prop with no
+callers left, a style, a piece of state, a helper, an export, a parameter, or a comment that
+describes behavior you just took out. Finishing the change includes this. Dead code left behind
+reads as live code to the next person (a prop nobody passes, with a doc comment explaining a
+behavior that no longer exists), and "I'll leave it, it's harmless" is how it accumulates.
+
+Confirm it is really unused first (grep every caller, including `mcp/`, tests and the generated
+docs), and list what you removed in the PR description so a reviewer isn't surprised by it.
+
+The permission covers only what *your* change orphaned. Code that was already dead before you
+arrived is a different case: it follows "Follow-up and out-of-scope work" below, so ask before
+removing it. If removing something would change a shared component's public surface in a way
+other screens could notice, or you can't tell whether it is unused, ask instead.
+
 ## Follow-up and out-of-scope work
 
 A PR description is not read again after it's opened. Don't rely on a "What's left" section, a

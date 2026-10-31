@@ -519,8 +519,11 @@ describe('rotation', () => {
       rotationEnabled: true,
       rotationItems: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }],
       rotationLastDone: { a: '2026-10-01T09:00:00.000Z' },
+      targetCount: 2,
+      progressCount: 1,
     } as Partial<Task>);
     expect(describeRotation(t, new Set(['a']))).toEqual({
+      target: { count: 2, done: 1 },
       members: [{ title: 'A', doneThisWeek: true, lastDone: '2026-10-01T09:00:00.000Z' }, { title: 'B', doneThisWeek: false }],
     });
     expect(describeRotation(existing(), new Set())).toBeNull();

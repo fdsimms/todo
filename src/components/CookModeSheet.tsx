@@ -864,6 +864,25 @@ export function CookModeSheet({
                 const lineKey = `${flat.recipe.id}:${flat.ingredient.id}`;
                 const lineOut = gatheredLines.has(lineKey);
                 const fromChoice = pickedFrom(flat);
+                // A long amount would claim the row's width ahead of the name
+                // ("water" broke into "wate" / "r"), so it drops under it, as in
+                // the mid-step panel and on the recipe page.
+                const stackQty = showContainerCount(converted.text).length > STACKED_QTY_LENGTH;
+                const qtyGroup = !!converted.text && (
+                  <View style={[styles.qtyGroup, stackQty && styles.qtyGroupStacked]}>
+                    <View style={[styles.miseQtyPill, marked && styles.miseQtyPillMarked]}>
+                      <Text
+                        style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
+                        numberOfLines={1}
+                      >
+                        {showContainerCount(converted.text)}
+                      </Text>
+                    </View>
+                    {!!weight && (
+                      <Text style={styles.miseWeight} numberOfLines={1}>{weight}</Text>
+                    )}
+                  </View>
+                );
                 return (
                   <View key={lineKey}>
                     {!!heading.parentSection && <Text style={styles.miseHeading}>{heading.parentSection}</Text>}
@@ -898,22 +917,9 @@ export function CookModeSheet({
                         {!!flat.ingredient.prep && (
                           <Text style={styles.misePrep}>{flat.ingredient.prep}</Text>
                         )}
+                        {stackQty && qtyGroup}
                       </View>
-                      {!!converted.text && (
-                        <View style={styles.qtyGroup}>
-                          <View style={[styles.miseQtyPill, marked && styles.miseQtyPillMarked]}>
-                            <Text
-                              style={[styles.miseQtyText, marked && styles.miseQtyTextMarked]}
-                              numberOfLines={1}
-                            >
-                              {showContainerCount(converted.text)}
-                            </Text>
-                          </View>
-                          {!!weight && (
-                            <Text style={styles.miseWeight} numberOfLines={1}>{weight}</Text>
-                          )}
-                        </View>
-                      )}
+                      {!stackQty && qtyGroup}
                     </TouchableOpacity>
                   </View>
                 );
@@ -1276,20 +1282,23 @@ export function CookModeSheet({
             </View>
           )}
 
-          {/* Every countdown started from a step, whichever step it was started
-              from. They live here rather than under the step text because the
-              whole point of setting one is walking away from the step: pressing
-              Next must not take a running timer off screen with it, and Pause
-              has to be reachable without navigating back to the sentence that
-              started it. */}
-          {stepTimers.timers.length > 0 && (
-            // Capped rather than left to grow: the step text is what this
-            // screen is for, and four pans on the go would otherwise push it
-            // off the top. Three rows fit under the cap and a fourth scrolls,
-            // the same answer the ingredient panel gives to a long list. The
-            // card is the wrapper and the scroll is inside it, so the padding
-            // stays on the card rather than on a scrolling frame.
-            <View style={styles.timerCard}>
+          {/* One card for every timer, the way the recipe screen draws them:
+              the step countdowns, then the recipe's own cook timer, which is
+              not a second one (see useRecipeTimer). It sits under the step
+              controls and never scrolls away, which is the "already there"
+              half of this feature: starting, pausing and logging a cook
+              shouldn't cost a trip back to the recipe. A step timer's own
+              progress bar closes its row, so no divider follows it. */}
+          <View style={styles.timerCard}>
+            {stepTimers.timers.length > 0 && (
+              // Capped rather than left to grow: the step text is what this
+              // screen is for, and four pans on the go would otherwise push it
+              // off the top. Three rows fit under the cap and a fourth scrolls,
+              // the same answer the ingredient panel gives to a long list.
+              // Every countdown started from a step is here, whichever step
+              // it was started from, because the point of setting one is
+              // walking away from the step: pressing Next must not take a
+              // running timer off screen with it.
               <ScrollView style={styles.stepTimerStack} nestedScrollEnabled>
                 {stepTimers.timers.map(timer => (
                   <StepTimerRow
@@ -1305,14 +1314,7 @@ export function CookModeSheet({
                   />
                 ))}
               </ScrollView>
-            </View>
-          )}
-
-          {/* The recipe's own cook timer, not a second one — see useRecipeTimer.
-              It sits above the step controls and never scrolls away, which is
-              the "already there" half of this feature: starting, pausing and
-              logging a cook shouldn't cost a trip back to the recipe. */}
-          <View style={styles.timerCard}>
+            )}
             {/* Prep shares the card on mise en place, where prep happens, and
                 on a step only while one is running or paused: most cooks never
                 time it, so it costs them no footer space. */}

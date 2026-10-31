@@ -43,6 +43,11 @@ export const ACCESSORY_EQUIPMENT: readonly ExerciseEquipment[] = [
   'pull_up_bar', 'dip_bars', 'medicine_ball', 'sled', 'battle_ropes', 'jump_rope', 'ab_wheel', 'heavy_bag', 'neck_harness',
 ];
 
+/** The kinds of bench a gym can have. An adjustable bench can stand in for a flat or an incline one. */
+export const BENCH_EQUIPMENT: readonly ExerciseEquipment[] = [
+  'flat_bench', 'incline_bench', 'decline_bench', 'adjustable_bench', 'preacher_bench', 'back_extension_bench',
+];
+
 /** The strength machines with a value of their own. `machine` stands in for any other. */
 export const STRENGTH_MACHINES: readonly ExerciseEquipment[] = [
   'leg_press', 'hack_squat', 'leg_extension', 'leg_curl', 'calf_raise_machine',
@@ -58,6 +63,7 @@ export const CARDIO_MACHINES: readonly ExerciseEquipment[] = [
 export const EXERCISE_EQUIPMENT: readonly ExerciseEquipment[] = [
   ...FREE_EQUIPMENT,
   ...ACCESSORY_EQUIPMENT,
+  ...BENCH_EQUIPMENT,
   ...STRENGTH_MACHINES, 'machine',
   ...CARDIO_MACHINES, 'cardio_machine',
   'bodyweight', 'other',
@@ -125,6 +131,12 @@ export const EQUIPMENT_LABELS: Record<ExerciseEquipment, string> = {
   ab_wheel: 'Ab wheel',
   heavy_bag: 'Heavy bag',
   neck_harness: 'Neck harness',
+  flat_bench: 'Flat bench',
+  incline_bench: 'Incline bench',
+  decline_bench: 'Decline bench',
+  adjustable_bench: 'Adjustable bench',
+  preacher_bench: 'Preacher bench',
+  back_extension_bench: 'Back extension bench',
   machine: 'Other machine',
   leg_press: 'Leg press',
   hack_squat: 'Hack squat',

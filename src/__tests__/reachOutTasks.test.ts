@@ -14,6 +14,7 @@ import {
   reachOutTitle,
   reachOutsHandledRecently,
   staleReachOutTasks,
+  staggerReachOutDays,
   wantedReachOuts,
   collapseGroupedReachOuts,
   reachOutHistoryIds,
@@ -453,5 +454,20 @@ describe('who a catch-up answer is logged against', () => {
   });
   it('names nobody once the source is gone', () => {
     expect(reachOutNamedPeopleIds('deleted', people, groups)).toEqual([]);
+  });
+});
+
+describe('staggering new catch-ups', () => {
+  it('puts a few on each day, in the order given', () => {
+    const days = staggerReachOutDays(['a', 'b', 'c', 'd', 'e'], [], 2);
+    expect([...days.entries()]).toEqual([['a', 0], ['b', 0], ['c', 1], ['d', 1], ['e', 2]]);
+  });
+  it('counts rows already on the list, and treats an overdue one as today', () => {
+    const days = staggerReachOutDays(['a', 'b'], [-3, 1, 1], 2);
+    expect(days.get('a')).toBe(0);
+    expect(days.get('b')).toBe(2);
+  });
+  it('never places fewer than one a day', () => {
+    expect(staggerReachOutDays(['a', 'b'], [], 0).get('b')).toBe(1);
   });
 });

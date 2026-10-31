@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Platform, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { Animated, Platform, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ThumbIcon } from './ThumbIcon';
 import { useColors } from '../theme/ThemeContext';
@@ -127,6 +127,13 @@ interface Props {
   /** Tap the "· or margarine" clause: swap this item for that substitute. */
   onSwapForSubstitute?: (itemId: string, subItemId: string) => void;
   /**
+   * Set only on the row a swap just landed on, and cleared by the screen a
+   * moment later. A new value tints the row and fades the tint out, so the
+   * swapped-in row can be found when it lands among rows already on the list.
+   * Undefined on every other row, which is what keeps their memo intact.
+   */
+  flashStamp?: number;
+  /**
    * The pill on a row in the trip's "Not at <store>" group ("Skip") or in its
    * "Skipped" group ("Put back"). Both are handed down as a label and one
    * stable handler rather than a closure per row, because this row is memoised.
@@ -197,6 +204,9 @@ interface Props {
 //                  beside the name, the price icon); the trailing icons; then
 //                  the card and its OR seam
 // Below the component: styles.
+/** How long the swapped-in row's tint takes to fade. The screen clears the stamp after this. */
+export const SWAP_FLASH_MS = 1600;
+
 export const GroceryRow = React.memo(function GroceryRow({
   item,
   product: preferredProduct,
@@ -216,6 +226,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   storeMarker,
   swapSubstituteId,
   onSwapForSubstitute,
+  flashStamp,
   tripActionLabel,
   onTripAction,
   tripPriceMinor,
@@ -231,8 +242,22 @@ export const GroceryRow = React.memo(function GroceryRow({
   // floating drag copy, which would claim this row's id and evict it on
   // unmount. A no-op on a screen with no provider.
   const paintRowRef = usePaintSelectionRow(isActive ? null : item.id);
+  // The landing tint after a swap. A native-driven opacity over a solid
+  // colour, behind the content, so the row's own opaque card shows through
+  // as it fades and nothing bleeds through a swipe panel.
+  const flash = useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    if (flashStamp === undefined) return;
+    flash.setValue(1);
+    Animated.timing(flash, {
+      toValue: 0,
+      duration: SWAP_FLASH_MS,
+      useNativeDriver: true,
+    }).start();
+  }, [flashStamp, flash]);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const hideRecipeNames = useSettingsStore(s => s.hideGroceryRecipeNames);
 
   // The row is read-only text, so it shows the amount in the reader's units.
   // The item sheet's field deliberately doesn't — that one is editable, and an
@@ -455,6 +480,12 @@ export const GroceryRow = React.memo(function GroceryRow({
       menuItems={contextMenuItems}
       onMenuSelect={handleContextMenu}
     >
+      {flashStamp !== undefined && (
+        <Animated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, styles.swapFlash, { opacity: flash }]}
+        />
+      )}
       <TouchableOpacity
         onPress={() => (selectionMode ? onSelect?.(item.id) : onToggle(item.id))}
         onLongPress={selectionMode ? undefined : drag ?? (() => onEdit(item.id))}
@@ -608,7 +639,7 @@ export const GroceryRow = React.memo(function GroceryRow({
               shelf, while "not at Safeway" is the one line that can send you
               somewhere else. A note is never suppressed — "the blue cap one"
               is shelf information, which is exactly what you're here for. */}
-          {!item.note && !storeMarker && !!item.sourceRecipeTitle && (
+          {!hideRecipeNames && !item.note && !storeMarker && !!item.sourceRecipeTitle && (
             <Text style={styles.note} numberOfLines={2}>
               For “{item.sourceRecipeTitle}”
             </Text>
@@ -616,7 +647,7 @@ export const GroceryRow = React.memo(function GroceryRow({
           {/* Amounts that already add up to one quantity leave only how many
               recipes asked. Same slot and suppressions as the single recipe's
               line: the names are in the item sheet. */}
-          {recipeLedger?.kind === 'count' && !item.note && !storeMarker && (
+          {!hideRecipeNames && recipeLedger?.kind === 'count' && !item.note && !storeMarker && (
             <Text style={styles.note} numberOfLines={1}>
               For {recipeLedger.count} recipes
             </Text>
@@ -940,6 +971,11 @@ function makeStyles(colors: Colors) {
     rowSelected: {
       backgroundColor: flattenOverlay(colors.accent + '1A', colors.bgSecondary),
     },
+    // 20%, where the selected tint is 10%: this one fades away, so it starts
+    // stronger to be seen at all in Light.
+    swapFlash: {
+      backgroundColor: flattenOverlay(colors.accent + '33', colors.bgSecondary),
+    },
     checkbox: {
       width: CHECKBOX_SIZE,
       height: CHECKBOX_SIZE,
@@ -1110,8 +1146,8 @@ function makeStyles(colors: Colors) {
     // single-line pills, which size to their own text.
     qtyText: {
       fontSize: font.sm,
-      fontWeight: fontWeight.semibold,
-      color: colors.textSecondary,
+      fontWeight: fontWeight.bold,
+      color: colors.text,
       textAlign: 'center',
     },
     qtyTextChecked: {

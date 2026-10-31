@@ -189,6 +189,23 @@ export function rotationTargetTotal(items: readonly RotationItem[]): number {
 }
 
 /**
+ * A task as its next occurrence inherits it: the row with its pending "this
+ * task only" reverts applied.
+ *
+ * A rotation's `targetCount` is the set's total and nothing else, so it is
+ * recomputed from the merged members rather than read out of the merge. A
+ * stale `targetCount` left in `seriesDefaults` (by a part-week scaling saved
+ * before a member was added) otherwise overrode the total, and the next
+ * occurrence read 0/6 against a set that asks for 7.
+ */
+export function inheritedOccurrence(task: Task): Task {
+  const merged: Task = { ...task, ...(task.seriesDefaults ?? {}) };
+  return isRotationTask(merged)
+    ? { ...merged, targetCount: rotationTargetTotal(merged.rotationItems!) }
+    : merged;
+}
+
+/**
  * A set of one is not a rotation — the same floor `activeChainStep` puts under
  * a chain, and for the same reason: with one member there is nothing to ask,
  * so the picker would be a sheet with a single button and the row would be

@@ -11,6 +11,7 @@ import { PillGroup } from './PillGroup';
 import { HelpText } from './HelpText';
 import { TextField } from './TextField';
 import { EmptyNote } from './EmptyNote';
+import { EditorRow } from './EditorRow';
 import { ExerciseFilterBar, useExerciseFilters } from './ExerciseFilterBar';
 import type { ExerciseEquipment, ExerciseKind, MuscleGroup } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
@@ -20,7 +21,7 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
-import { describeExercise, searchExercises, type ExerciseSearchResult } from '../utils/exerciseCatalog';
+import { catalogExercise, describeExercise, exerciseName, searchExercises, type ExerciseSearchResult } from '../utils/exerciseCatalog';
 import {
   EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, MUSCLE_LABELS, WORKOUT_NAME_MAX_LENGTH, cleanWorkoutName
 } from '../utils/workoutData';
@@ -95,6 +96,12 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
   const [kind, setKind] = useState<ExerciseKind>('weight_reps');
   const [equipment, setEquipment] = useState<ExerciseEquipment>('barbell');
   const [muscles, setMuscles] = useState<MuscleGroup[]>([]);
+  const [helpingMuscles, setHelpingMuscles] = useState<MuscleGroup[]>([]);
+  // The exercise the new one was copied from, and whether the list is open to pick one.
+  // A third view of this sheet rather than a sheet over it (two can't present at once),
+  // and the form's staged state stays put underneath it.
+  const [likeId, setLikeId] = useState<string | null>(null);
+  const [choosingLike, setChoosingLike] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
@@ -104,6 +111,9 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
     setKind('weight_reps');
     setEquipment('barbell');
     setMuscles([]);
+    setHelpingMuscles([]);
+    setLikeId(null);
+    setChoosingLike(false);
     setRefusal(null);
   };
 
@@ -114,8 +124,9 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
     onClose();
   };
 
-  const formDirty = creating && (cleanWorkoutName(name) !== '' || muscles.length > 0);
+  const formDirty = creating && (cleanWorkoutName(name) !== '' || muscles.length > 0 || helpingMuscles.length > 0 || likeId !== null);
   const handleCancel = () => {
+    if (choosingLike) { closeLike(); return; }
     if (!formDirty) { close(); return; }
     confirmDiscard(close, { title: 'Discard this exercise?', message: 'It hasn’t been saved yet. If you leave now, it will be lost.' });
   };
@@ -126,6 +137,33 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
     close();
   };
 
+  const openLike = () => {
+    haptics.tap();
+    search.clear();
+    filter.clear();
+    setChoosingLike(true);
+  };
+
+  const closeLike = () => {
+    search.clear();
+    filter.clear();
+    setChoosingLike(false);
+  };
+
+  /** Copies what the exercise is: what a set records, the equipment and both muscle lists. Each stays editable. */
+  const pickLike = (id: string) => {
+    const like = catalogExercise(exercises, id);
+    if (!like) return;
+    haptics.tap();
+    setKind(like.kind);
+    setEquipment(like.equipment);
+    setMuscles([...like.primaryMuscles]);
+    setHelpingMuscles(like.secondaryMuscles.filter(m => !like.primaryMuscles.includes(m)));
+    setLikeId(id);
+    setRefusal(null);
+    closeLike();
+  };
+
   const openCreate = () => {
     haptics.tap();
     setName(search.query.trim());
@@ -133,7 +171,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
   };
 
   const save = () => {
-    const result = addExercise({ name, kind, equipment, primaryMuscles: muscles });
+    const result = addExercise({ name, kind, equipment, primaryMuscles: muscles, secondaryMuscles: helpingMuscles.filter(m => !muscles.includes(m)) });
     if (typeof result === 'string') {
       haptics.warning();
       setRefusal(NAME_REFUSED[result] ?? 'This exercise could not be saved.');
@@ -146,11 +184,11 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
 
   const renderRow = useCallback(({ item }: { item: ExerciseSearchResult }) => {
     const e = item.exercise;
-    const isAdded = added.has(e.id);
+    const isAdded = !choosingLike && added.has(e.id);
     return (
       <TouchableOpacity
         style={[styles.row, isAdded && styles.rowAdded]}
-        onPress={() => pick(e.id)}
+        onPress={() => (choosingLike ? pickLike(e.id) : pick(e.id))}
         disabled={isAdded}
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="button"
@@ -166,14 +204,14 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
     );
     // `pick` closes over onPick and the field, which are stable for a render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [styles, added, addedLabel, onPick]);
+  }, [styles, added, addedLabel, onPick, choosingLike, exercises]);
 
   const typed = search.query.trim();
 
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel} name="ExercisePickerSheet">
       <View style={styles.root}>
-        {creating ? (
+        {creating && !choosingLike ? (
           <>
             <SheetHeader
               title="New exercise"
@@ -199,6 +237,17 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
                 accessibilityLabel="Exercise name"
               />
               {refusal && <Text style={styles.refusal}>{refusal}</Text>}
+              <Text style={styles.label}>Most like</Text>
+              <View style={styles.card}>
+                <EditorRow
+                  icon="copy-outline"
+                  label={likeId ? 'Copied from' : 'Copy from an exercise'}
+                  hint="Fills in what a set records, the equipment and the muscles from one you already have."
+                  value={likeId ? exerciseName(exercises, likeId) : undefined}
+                  caption="You can still change any of it below."
+                  onPress={openLike}
+                />
+              </View>
               <Text style={styles.label}>What a set records</Text>
               <SegmentedControl options={KIND_OPTIONS} value={kind} onChange={setKind} columns={3} label="What a set records" surface="page" />
               <Text style={styles.label}>Equipment</Text>
@@ -214,7 +263,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
                   onPress: () => { haptics.tap(); setEquipment(q); },
                 }))}
               />
-              <Text style={styles.label}>Muscles it works</Text>
+              <Text style={styles.label}>Main muscles</Text>
               <PillGroup
                 noun="muscle"
                 surface="page"
@@ -228,14 +277,28 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
                   },
                 }))}
               />
-              <HelpText style={styles.hint}>Pick the muscles that do most of the work. Search finds the exercise by them.</HelpText>
+              <Text style={styles.label}>Helping muscles</Text>
+              <PillGroup
+                noun="muscle"
+                surface="page"
+                options={MUSCLE_GROUPS.map(m => ({
+                  key: m,
+                  label: MUSCLE_LABELS[m],
+                  selected: helpingMuscles.includes(m),
+                  onPress: () => {
+                    haptics.tap();
+                    setHelpingMuscles(prev => (prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m]));
+                  },
+                }))}
+              />
+              <HelpText style={styles.hint}>A main muscle counts a whole set toward its weekly sets on Stats, a helping one half.</HelpText>
             </ScrollView>
           </>
         ) : (
           <>
             <SheetHeader
-              title="Add exercise"
-              left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
+              title={choosingLike ? 'Most like' : 'Add exercise'}
+              left={<SheetHeaderButton label={choosingLike ? 'Back' : BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
               right={<View style={styles.headerSpacer} />}
             />
             <SearchField
@@ -247,7 +310,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
             <ExerciseFilterBar
               state={filter}
               exercises={exercises}
-              leading={
+              leading={choosingLike ? undefined : (
                 <InlineAction
                   icon="add"
                   label={typed ? `Create “${typed.length > 28 ? `${typed.slice(0, 27)}…` : typed}”` : 'Create an exercise'}
@@ -255,7 +318,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
                   surface="page"
                   onPress={openCreate}
                 />
-              }
+              )}
             />
             <FlatList
               data={results}
@@ -270,7 +333,9 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
                 <EmptyNote icon="search-outline">
                   {narrowed
                     ? 'No exercise matches these filters. Remove one to see more.'
-                    : `No exercise matches “${typed}”. Create it with the button above.`}
+                    : choosingLike
+                      ? `No exercise matches “${typed}”.`
+                      : `No exercise matches “${typed}”. Create it with the button above.`}
                 </EmptyNote>
               }
             />
@@ -310,4 +375,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.8, marginTop: spacing.lg, marginBottom: spacing.sm, marginHorizontal: spacing.xs,
   },
   hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm, marginHorizontal: spacing.xs },
+  card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
 });

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Keyboard, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Keyboard, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { ThumbIcon } from './ThumbIcon';
@@ -18,6 +18,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -100,7 +101,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
         {recipes.length > 0 && (
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={15} color={colors.textTertiary} />
-            <TextInput
+            <TextField
               style={styles.searchInput}
               {...filterField}
               placeholder="Search your recipes"

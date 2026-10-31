@@ -1755,6 +1755,7 @@ export function TodayScreen() {
         const dayKey = getLogicalDayKey(new Date(), useSettingsStore.getState().dayResetTime);
         if (dayKey !== foodTaskDayKey) {
           foodTaskDayKey = dayKey;
+          judgeMorningCheckInRef.current();
           useTaskStore.getState().syncSnackNudgeTasks();
           useTaskStore.getState().syncLimitWarningTasks();
           useTaskStore.getState().syncGoalTargetTasks();
@@ -1792,6 +1793,9 @@ export function TodayScreen() {
       // (e.g. reopened the next morning), instead of waiting on the tick.
       const subscription = AppState.addEventListener('change', state => {
         if (state === 'active') {
+          // A phone left running overnight comes back to this screen already
+          // mounted, so the morning check-in has to be asked for here.
+          judgeMorningCheckInRef.current();
           useTaskStore.getState().checkVacationExpiry();
           // Straight after the expiry, the order maintenancePasses uses and for
           // its reason: opening the app on the morning you fly is the moment
@@ -2083,33 +2087,45 @@ export function TodayScreen() {
     () => morningCheckInTasks(openTasksOf(allTasks), dayResetTime, vacationEndedAt),
     [allTasks, dayResetTime, vacationEndedAt]
   );
-  // Judged exactly once per mount, and only after tasks have loaded. Leaving
+  // Judged once per logical day, and only after tasks have loaded. Leaving
   // the tab hides it in an Activity (FreezeWhenBlurred), which tears effects
   // down and re-runs them on every return, so an effect with no guard re-asked
   // the question on each tab switch: a visit with nothing to ask about, then a
-  // return after a mood log, opened the sheet "at random". Refs survive the
-  // hide, so this one keeps the later returns from judging again.
+  // return after a mood log, opened the sheet "at random". The ref holds the
+  // day last judged and survives the hide, so a return the same day never
+  // judges again. It is a day rather than a boolean because a phone left
+  // running overnight never remounts this screen: a once-per-mount judgment
+  // meant the check-in waited for a cold launch (it opened at 12:57). The
+  // foreground and the day-rollover tick call it too, and the day key is
+  // what keeps those from asking twice.
   const checkInTasksLoaded = useTaskStore(s => s.initialized);
-  const morningCheckInJudged = useRef(false);
-  useEffect(() => {
-    if (!checkInTasksLoaded || morningCheckInJudged.current) return;
-    morningCheckInJudged.current = true;
-    const todayKey = getLogicalDayKey(new Date(), dayResetTime);
-    const opens = morningCheckInLastDayKey !== todayKey && morningCheckInCandidates.length > 0;
+  const morningCheckInJudgedDay = useRef<string | null>(null);
+  const judgeMorningCheckInRef = useRef<() => void>(() => {});
+  judgeMorningCheckInRef.current = () => {
+    if (!useTaskStore.getState().initialized) return;
+    const reset = useSettingsStore.getState().dayResetTime;
+    const todayKey = getLogicalDayKey(new Date(), reset);
+    if (morningCheckInJudgedDay.current === todayKey) return;
+    morningCheckInJudgedDay.current = todayKey;
+    const settings = useSettingsStore.getState();
+    const candidates = morningCheckInTasks(
+      openTasksOf(useTaskStore.getState().tasks),
+      reset,
+      settings.vacationEndedAt,
+    );
+    const opens = settings.morningCheckInLastDayKey !== todayKey && candidates.length > 0;
     reportMorningCheckIn({
       opened: opens,
-      storedKey: morningCheckInLastDayKey,
+      storedKey: settings.morningCheckInLastDayKey,
       todayKey,
-      titles: morningCheckInCandidates.map(t => t.title),
+      titles: candidates.map(t => t.title),
     });
     if (!opens) return;
     setMorningCheckInVisible(true);
     setMorningCheckInLastDayKey(todayKey);
-    // Only the day-key gate belongs here — re-running this effect as tasks
-    // change (e.g. while the sheet is open answering rows) must not reopen
-    // it, so the candidate list and the visible flag are deliberately left
-    // out of the dependency array.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  };
+  useEffect(() => {
+    if (checkInTasksLoaded) judgeMorningCheckInRef.current();
   }, [checkInTasksLoaded]);
 
   // The one place the mood log reaches back into Today — one line under
@@ -4374,6 +4390,9 @@ export function TodayScreen() {
       if (list) list.push(t);
       else childrenByGroup.set(t.groupId, [t]);
     }
+    // A stack's pinned members read in the stack's own order, so a drag
+    // inside the block (reorderGroupChildren) is what moves them.
+    for (const list of childrenByGroup.values()) list.sort((a, b) => a.sortOrder - b.sortOrder);
     const seenGroups = new Set<string>();
     const items: PinnedListItem[] = [];
     for (const t of pinnedTasks) {
@@ -4415,10 +4434,9 @@ export function TodayScreen() {
     return () => clearTimeout(timer);
   }, [pinnedOpen]);
 
-  // A dragged group item moves as one block (long-press its header); the
-  // pinned order within it is left exactly as it was (see pinnedItems above)
-  // since there's no drag surface here for reordering a stack's own pinned
-  // members.
+  // A dragged group item moves as one block (long-press its header). Its
+  // members are reordered by their own nested list (renderPinnedGroup), which
+  // writes the stack's order rather than this one.
   const reorderPinnedItems = (next: PinnedListItem[]) => {
     const ids = next.flatMap(item => (item.type === 'group' ? item.children.map(c => c.id) : [item.task.id]));
     reorderPinnedTasks(ids);
@@ -4450,17 +4468,30 @@ export function TodayScreen() {
         onDrag={!selectionMode ? drag : undefined}
       />
       <TaskGroupBody expanded={open} hasChildren={children.length > 0}>
-        {children.map(child => (
-          <React.Fragment key={child.id}>
-            {renderTaskRow(child, {
-              indented: true,
-              showCategory: true,
-              rowKey: `pin-${child.id}`,
-              duplicateRow: true,
-              hidesWhenOnPace: false,
-            })}
-          </React.Fragment>
-        ))}
+        {/* The stack's own order, not pinnedOrder: a stack has one order, so
+            a drag here reorders it on the main list too. No onDragOut, so a
+            pin can't be dragged out of its stack from this block. Its drag
+            state shares draggingPin, which switches Today's scroll off. */}
+        <SortableList
+          data={children}
+          onReorder={reordered => reorderGroupChildren(group.id, reordered.map(t => t.id))}
+          onDragStateChange={setDraggingPin}
+          placeholderStyle={styles.stackDropSlot}
+          autoscroll={pinnedAndStackAutoscroll}
+          renderItem={(child, _displayIndex, childDrag, childIsActive) => (
+            <React.Fragment key={child.id}>
+              {renderTaskRow(child, {
+                indented: true,
+                isActive: childIsActive,
+                drag: selectionMode ? undefined : childDrag,
+                showCategory: true,
+                rowKey: `pin-${child.id}`,
+                duplicateRow: true,
+                hidesWhenOnPace: false,
+              })}
+            </React.Fragment>
+          )}
+        />
       </TaskGroupBody>
     </TaskGroupTray>
     </CompletionCollapse>
@@ -5455,20 +5486,16 @@ export function TodayScreen() {
       }] : []),
   ];
 
-  // Today's header is the tallest of the four: it carries the date overline and
-  // the weather, which the others don't. The other lenses are held to its
-  // measured height, or the pills and the list under them jump up on every
-  // switch away from Today.
-  const [todayHeaderHeight, setTodayHeaderHeight] = useState<number | undefined>(undefined);
-
   // ==== render. Everything below is JSX ====
   const screenBody = (
     <SpotlightProvider progress={spotlightProgress}>
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View onLayout={viewMode === 'today' ? e => setTodayHeaderHeight(e.nativeEvent.layout.height) : undefined}>
+        {/* gridLayout gives all four lenses the same two rows (date and coin
+            pill, then title and buttons), so the header is one height and the
+            title and buttons stay put when the lens switches. */}
         <ScreenHeader
           title={VIEW_TITLES[viewMode]}
-          minHeight={viewMode === 'today' ? undefined : todayHeaderHeight}
+          gridLayout
           overline={viewMode === 'today' ? today : undefined}
           actions={headerActions}
           titleAdornment={
@@ -5502,7 +5529,6 @@ export function TodayScreen() {
             ) : undefined
           }
         />
-        </View>
 
         <ViewModePills
           modes={viewModes}
@@ -6566,7 +6592,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   coinPillBar: { marginHorizontal: spacing.xs },
   coinPillGoal: { fontSize: font.xxs, fontWeight: fontWeight.medium, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
   coinPillText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
-  workloadLine: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs, fontSize: font.xs, color: colors.textTertiary },
+  workloadLine: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs, fontSize: font.xs, color: colors.textSecondary },
   headerWeatherText: { flexShrink: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 7,

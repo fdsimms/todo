@@ -493,6 +493,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'simpleMode',
   'sortOption',
   'hideCategories',
+  'hideGroceryRecipeNames',
   'collapsedCategories',
   // The Projects screen's and the recipe box's orders, and the recipe box's
   // and grocery list's folded groups: the same kind of preference about the

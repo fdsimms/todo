@@ -560,7 +560,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     <View style={styles.wrap}>
       <View style={[styles.field, focused && styles.fieldFocused]}>
         <Ionicons name="add" size={iconSize.md} color={colors.textTertiary} />
-        <TextInput
+        <TextField
           {...addFilter.props}
           style={styles.input}
           // After the spread on purpose: this field parses a paste before it

@@ -899,13 +899,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   choiceChip: {
-    // bgSecondary, not bgTertiary: this row sits directly on the sheet's own
-    // `colors.bg` (see `root` below), and bgTertiary is only one step off it —
-    // #EFEFF4 against a light theme's #F2F2F7 background reads as barely-there
-    // until a chip is selected. Same fix RecipeScaleChips needed for the same
-    // reason (see its `surface` prop) once the batch chips landed on this
-    // screen right above this row and made the contrast mismatch obvious.
-    backgroundColor: colors.bgSecondary,
+    // These sit in the same row as RecipeChoiceChips' option chips, inside its
+    // `bgSecondary` group card, so they take the option chips' `colors.bg`.
+    // `bgSecondary` here matched the card and the chip vanished until it was
+    // selected.
+    backgroundColor: colors.bg,
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,

@@ -28,6 +28,7 @@ export type ScreenSettingState = GeneratedEnabledFlags & {
   postponeCheckEnabled: boolean;
   tipsEnabled: boolean;
   hideCategories: boolean;
+  hideGroceryRecipeNames: boolean;
   backgroundRefreshEnabled: boolean;
   vacationMode: boolean;
   quietHoursStart: string | null;
@@ -44,7 +45,7 @@ export type ScreenSettingState = GeneratedEnabledFlags & {
 /** The plain on/off rows, by entry id. */
 export const SCREEN_SETTING_TOGGLE_IDS: readonly string[] = [
   'mealsOnToday', 'mealLogPrompt', 'tripLiveActivity', 'autoCompleteProjects', 'postponeCheck', 'tipsEnabled',
-  'hideCategories', 'backgroundRefreshEnabled',
+  'hideCategories', 'hideGroceryRecipeNames', 'backgroundRefreshEnabled',
 ];
 
 const GENERATED_KINDS = new Set<string>(GENERATED_KIND_LIST.map(spec => spec.kind));
@@ -83,6 +84,7 @@ export function screenSettingRead(id: string, s: ScreenSettingState): ScreenSett
     case 'postponeCheck': return { kind: 'toggle', on: s.postponeCheckEnabled };
     case 'tipsEnabled': return { kind: 'toggle', on: s.tipsEnabled };
     case 'hideCategories': return { kind: 'toggle', on: s.hideCategories };
+    case 'hideGroceryRecipeNames': return { kind: 'toggle', on: s.hideGroceryRecipeNames };
     case 'backgroundRefreshEnabled': return { kind: 'toggle', on: s.backgroundRefreshEnabled };
     // On/off rows whose Settings handler asks for a permission, confirms or
     // does more than set: read out, and the tap opens them in Settings.

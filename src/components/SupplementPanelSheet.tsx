@@ -251,8 +251,8 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
             style={styles.flex}
             contentContainerStyle={styles.body}
             keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="interactive"
             {...keyboardScroll.props}
+            keyboardDismissMode="interactive"
           >
             <Text style={styles.intro}>
               Copy the figures from the supplement facts on the label. Skip anything the label

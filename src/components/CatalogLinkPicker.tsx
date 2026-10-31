@@ -9,6 +9,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { useFilterField } from '../hooks/useFilterField';
 import { FieldClearButton } from './FieldClearButton';
+import { TextField } from './TextField';
 
 interface Props {
   items: readonly GroceryItem[];
@@ -78,7 +79,7 @@ export function CatalogLinkPicker({
     <View style={styles.wrap}>
       <View style={styles.searchRow}>
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
-        <TextInput
+        <TextField
           style={styles.search}
           {...filterField}
           placeholder="Find an item in your grocery catalog…"
