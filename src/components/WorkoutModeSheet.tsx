@@ -257,9 +257,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // The routine changes ticked on the summary. Nothing starts ticked.
   const [accepted, setAccepted] = useState<ReadonlySet<string>>(new Set());
   const [detailOpen, setDetailOpen] = useState(false);
-  // Form photos shown under the exercise's name. Session-only, and shared across
-  // exercises so one tap keeps them open while moving through the workout.
-  const [photosOpen, setPhotosOpen] = useState(false);
+  // Exercises whose form photos are open. Session-only and per exercise: every
+  // exercise is a card on the page, so one flag for all of them opened the photos
+  // on the cards above too and pushed the tapped card off screen.
+  const [photosOpenIds, setPhotosOpenIds] = useState<ReadonlySet<string>>(new Set());
   // The exercise the detail sheet is on, kept through its close so it doesn't retitle while it slides away.
   const [detailId, setDetailId] = useState<string | null>(null);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
@@ -1088,8 +1089,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   <ExercisePhotos
                     exerciseId={viewed.exerciseId}
                     name={viewedInfo?.name ?? 'this exercise'}
-                    open={photosOpen}
-                    onToggle={() => setPhotosOpen(o => !o)}
+                    open={photosOpenIds.has(viewed.exerciseId)}
+                    onToggle={() => setPhotosOpenIds(prev => {
+                      const next = new Set(prev);
+                      if (!next.delete(viewed.exerciseId)) next.add(viewed.exerciseId);
+                      return next;
+                    })}
                   />
                   <View style={styles.exActions}>
                     {canSwap && (
