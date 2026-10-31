@@ -371,6 +371,23 @@ function baseAmountHint(panel: FoodNutrition): string {
 }
 
 /**
+ * What one "serving" is for this food, in the words its source printed
+ * ("3 bars (40 g)"), or null when the panel has no serving unit or no text.
+ * The unit chip only says "serving", so without this the number typed beside
+ * it can't be checked against what the package calls one. The gram weight is
+ * added only when the text doesn't already carry one.
+ */
+export function servingMeaning(panel: FoodNutrition): string | null {
+  if (panel.basis !== 'perServing' && panel.servingGrams === null) return null;
+  const text = panel.servingText?.trim().replace(/^per\s+/i, '') ?? '';
+  if (!text) return null;
+  const hasWeight = /\d\s*(g|grams?|oz|ml)\b/i.test(text);
+  const grams = panel.servingGrams;
+  const full = !hasWeight && grams !== null ? `${text} (${Math.round(grams * 10) / 10} g)` : text;
+  return `1 serving = ${full}.`;
+}
+
+/**
  * What a typed amount can be for this food: `baseAmountHint`'s sentence about
  * the food itself, then a second naming the nutrient amounts the panel's own
  * figures allow (the same list `foodUnitOptionsFor` offers as pills, so the two

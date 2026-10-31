@@ -48,6 +48,7 @@ import { addCustomPortion, catalogPanelWrite, nutritionFor } from '../utils/food
 import {
   amountExample,
   amountHint,
+  servingMeaning,
   combineFoodNutrition,
   composeFoodAmount,
   describeFoodLogEntry,
@@ -2535,7 +2536,9 @@ export function FoodLogEntrySheet({
               {picked.kind === 'dish'
                 ? dishWeightHint
                 : foodUnitOptions.length > 0 && amountUnit !== 'other'
-                  ? 'Type the amount and pick its unit beside it.'
+                  ? `Type the amount and pick its unit beside it.${
+                  picked.panel && servingMeaning(picked.panel) ? ` ${servingMeaning(picked.panel)}` : ''
+                }`
                   : picked.panel
                     ? `${amountHint(picked.panel)}${
                       picked.panel.basis === 'per100ml'

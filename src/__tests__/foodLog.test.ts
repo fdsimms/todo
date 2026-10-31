@@ -1,6 +1,7 @@
 import {
   amountExample,
   amountHint,
+  servingMeaning,
   combineFoodNutrition,
   composeFoodAmount,
   convertAmountNumber,
@@ -158,6 +159,25 @@ describe('amountHint nutrient amounts', () => {
 
   it('says nothing about them when the panel states none', () => {
     expect(amountHint(panel({ amounts: {} }))).not.toContain('You can also enter');
+  });
+});
+
+describe('servingMeaning', () => {
+  it('says what one serving is in the label\u2019s words', () => {
+    expect(servingMeaning(panel({ basis: 'perServing', servingText: '3 bars (40 g)', servingGrams: 40 }))).toBe('1 serving = 3 bars (40 g).');
+  });
+
+  it('adds the weight when the text has none', () => {
+    expect(servingMeaning(panel({ basis: 'perServing', servingText: '3 bars', servingGrams: 40 }))).toBe('1 serving = 3 bars (40 g).');
+  });
+
+  it('drops a leading "per"', () => {
+    expect(servingMeaning(panel({ basis: 'perServing', servingText: 'Per 2 cookies (30 g)', servingGrams: 30 }))).toBe('1 serving = 2 cookies (30 g).');
+  });
+
+  it('is null with no text, or on a panel with no serving unit', () => {
+    expect(servingMeaning(panel({ basis: 'perServing', servingText: null, servingGrams: 40 }))).toBeNull();
+    expect(servingMeaning(panel({ basis: 'per100g', servingText: '3 bars', servingGrams: null }))).toBeNull();
   });
 });
 
