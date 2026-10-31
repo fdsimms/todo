@@ -114,6 +114,20 @@ export const QUOTA_SPAN_FIELDS = ['windowStart', 'windowEnd', 'windowStartSun', 
 export const ROTATION_TARGET_FIELDS = ['rotationItems'] as const;
 
 /**
+ * A rotation's target is its members' total, so a `targetCount` pending in
+ * `seriesDefaults` (a part-week scaling saved before a member was added) can
+ * only be stale. Dropped on write; `inheritedOccurrence` ignores it on read.
+ */
+function withoutRotationTarget(
+  defaults: Task['seriesDefaults'],
+  rotation: boolean,
+): Task['seriesDefaults'] {
+  if (!rotation || !defaults || !('targetCount' in defaults)) return defaults;
+  const { targetCount: _stale, ...rest } = defaults;
+  return Object.keys(rest).length > 0 ? rest : null;
+}
+
+/**
  * `targetCount` for a task whose cadence is stored as an interval, or the
  * count it already had when it isn't.
  *
@@ -344,7 +358,10 @@ export function mergeTaskUpdate(t: Task, patch: Partial<Task>, ctx: TaskUpdateCo
     // derived fields below: a whole-snapshot undo puts back what was there, and
     // a weekly target's part-week scaling (quotaProrationPatch) writes the full
     // count it reverts to.
-    seriesDefaults: 'seriesDefaults' in updates ? (updates.seriesDefaults ?? null) : seriesDefaults,
+    seriesDefaults: withoutRotationTarget(
+      'seriesDefaults' in updates ? (updates.seriesDefaults ?? null) : seriesDefaults,
+      isRotationTask({ ...t, ...updates }),
+    ),
     ...(derivedPostpone ?? {}),
     ...(waitingOnPersonChange ?? {}),
     ...(takenOver ? { autoScheduledAt: null } : {}),

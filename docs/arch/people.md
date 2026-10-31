@@ -466,8 +466,13 @@ person cannot.
   `cadenceDays` are both off on every new person, and the editor ties them
   together: setting a cadence *is* the opt-in, and clearing it is how somebody
   stops being nudged. The global setting only decides whether the pass runs.
-- **There is no cap.** Everybody whose cadence has run out gets a row, so
-  nothing arrives because somebody else's row was finished and freed a slot.
+- **There is no cap, but new rows are staggered.** Everybody whose cadence has
+  run out gets a row, so nothing arrives because somebody else's row was
+  finished and freed a slot. Rows that don't exist yet start on different days,
+  `REACH_OUTS_PER_DAY` (2) at a time, in `sortOrder` (`staggerReachOutDays`), so
+  several coming due at once don't all land on Today and ask for a ranking. A
+  later one waits on Later with its date set; an existing row is never moved,
+  it only counts toward how full a day is.
   Where an order is still needed (the queue "batch the reach-outs" builds), it
   is `sortOrder`, the hand drag on the People screen, never longest-since,
   which is ranking by neglect and is exactly what the "never" list rules out.

@@ -27,6 +27,7 @@ function screenSettingWrite(id: string, on: boolean): void {
     case 'postponeCheck': s.setPostponeCheckEnabled(on); return;
     case 'tipsEnabled': s.setTipsEnabled(on); return;
     case 'hideCategories': s.setHideCategories(on); return;
+    case 'hideGroceryRecipeNames': s.setHideGroceryRecipeNames(on); return;
     case 'backgroundRefreshEnabled': s.setBackgroundRefreshEnabled(on); return;
   }
 }

@@ -18,6 +18,7 @@ function state(over: Partial<ScreenSettingState> = {}): ScreenSettingState {
     postponeCheckEnabled: false,
     tipsEnabled: true,
     hideCategories: false,
+    hideGroceryRecipeNames: false,
     backgroundRefreshEnabled: true,
     vacationMode: false,
     quietHoursStart: null,

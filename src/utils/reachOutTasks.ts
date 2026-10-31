@@ -230,6 +230,48 @@ export function wantedReachOuts(
 }
 
 /**
+ * How many new catch-ups may land on one day. Several people coming due at once
+ * (a cadence turned on for a whole address book, or a trip away) would otherwise
+ * put all of them on Today together, which asks for a ranking nobody wants to
+ * make and is easy to answer by doing none of them.
+ */
+export const REACH_OUTS_PER_DAY = 2;
+
+/**
+ * Which day each new catch-up lands on, as a whole number of days from today.
+ *
+ * **Staggers, never caps.** Everybody who is due still gets a row; the later
+ * ones simply start on a later day (Later, until then), so no row is withheld
+ * and nothing arrives because somebody else's row freed a slot. That keeps the
+ * "no cap" rule in `docs/arch/people.md` while stopping a pile-up.
+ *
+ * `newIds` must already be in the user's own `sortOrder`, since that is the
+ * only order the feature may use. `takenOffsets` is where the live catch-ups
+ * already sit (a negative one counts as today), so a day that is full of
+ * earlier rows is skipped rather than overfilled.
+ */
+export function staggerReachOutDays(
+  newIds: readonly string[],
+  takenOffsets: readonly number[],
+  perDay: number = REACH_OUTS_PER_DAY
+): Map<string, number> {
+  const load = new Map<number, number>();
+  for (const offset of takenOffsets) {
+    const day = Math.max(0, offset);
+    load.set(day, (load.get(day) ?? 0) + 1);
+  }
+  const limit = Math.max(1, perDay);
+  const placed = new Map<string, number>();
+  let day = 0;
+  for (const id of newIds) {
+    while ((load.get(day) ?? 0) >= limit) day += 1;
+    placed.set(id, day);
+    load.set(day, (load.get(day) ?? 0) + 1);
+  }
+  return placed;
+}
+
+/**
  * The rows whose reason has gone.
  *
  * A nudge stops being wanted the moment anything lands in that person's history

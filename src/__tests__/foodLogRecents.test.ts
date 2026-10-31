@@ -221,6 +221,15 @@ describe('recentUnlinkedHelpings (#2914)', () => {
     expect(recentUnlinkedHelpings([water, water2, ...twice('Pad thai', 2)], '', RECENT_HELPING_LIMIT, now).map(e => e.label)).toEqual(['Pad thai']);
   });
 
+  it('finds an earlier estimate when the search starts with an amount', () => {
+    const log = [estimated('Chocolate chip cookies', 3)];
+    expect(recentUnlinkedHelpings(log, '50g chocolate chip cookies', RECENT_HELPING_LIMIT, now).map(e => e.label))
+      .toEqual(['Chocolate chip cookies']);
+    expect(recentUnlinkedHelpings(log, '2 chocolate chip cookies with milk', RECENT_HELPING_LIMIT, now).map(e => e.label))
+      .toEqual(['Chocolate chip cookies']);
+    expect(recentUnlinkedHelpings(log, '50g banana', RECENT_HELPING_LIMIT, now)).toEqual([]);
+  });
+
   it('keeps one per description and source, the most recent', () => {
     const helpings = recentUnlinkedHelpings([
       estimated('Pad thai', 1, 800),

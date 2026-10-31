@@ -651,6 +651,7 @@ interface SettingsStore {
   // time, and "30 minutes before the day reset" is not a useful reminder.
   defaultReminderLeadMinutes: number | null;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
+  hideGroceryRecipeNames: boolean; // the "For “recipe”" line under a grocery row
   /**
    * Trims quick add's chip toolbar and the task editor's open-by-default rows
    * down to Date / Time of day / Repeat. Rendering only — see
@@ -2278,6 +2279,7 @@ interface SettingsStore {
   setCompletedRetentionDays: (days: RetentionDays) => void;
   setDefaultReminderLeadMinutes: (minutes: number | null) => void;
   setHideCategories: (on: boolean) => void;
+  setHideGroceryRecipeNames: (on: boolean) => void;
   setSimpleTaskForm: (on: boolean) => void;
   setSimpleMode: (on: boolean) => void;
   setHideHelpText: (on: boolean) => void;
@@ -2651,6 +2653,7 @@ const DEFAULT_SETTINGS = {
   penaltyShieldUntil: null,
   penaltyShieldReason: null,
   hideCategories: false,
+  hideGroceryRecipeNames: false,
   simpleTaskForm: false,
   simpleMode: false,
   hideHelpText: false,
@@ -3106,6 +3109,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   completedRetentionDays: null,
   defaultReminderLeadMinutes: null,
   hideCategories: false,
+  hideGroceryRecipeNames: false,
   simpleTaskForm: false,
   simpleMode: false,
   hideHelpText: false,
@@ -3490,6 +3494,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
+    const hideGroceryRecipeNames = dbGetSetting('hideGroceryRecipeNames') === 'true';
     const collapsedCategories = parseCategoryNames(dbGetSetting('collapsedCategories'));
     const collapsedRecipeSections = parseCollapsedRecipeSections(dbGetSetting('collapsedRecipeSections'));
     const collapsedGroceryGroups = parseCollapsedGroceryGroups(dbGetSetting('collapsedGroceryGroups'));
@@ -4198,6 +4203,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       healthWriteEnabled,
       healthWriteNutrients,
       hideCategories,
+      hideGroceryRecipeNames,
       hideHelpText,
       holidaySet,
       householdServings,
@@ -5725,6 +5731,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setHideCategories(on: boolean) {
     dbSetSetting('hideCategories', on ? 'true' : 'false');
     set({ hideCategories: on });
+  },
+
+  setHideGroceryRecipeNames(on: boolean) {
+    dbSetSetting('hideGroceryRecipeNames', on ? 'true' : 'false');
+    set({ hideGroceryRecipeNames: on });
   },
 
   setSimpleTaskForm(on: boolean) {

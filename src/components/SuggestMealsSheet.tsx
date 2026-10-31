@@ -24,7 +24,7 @@ import { ingredientHeadings } from '../utils/recipeSections';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { onHandNameKeys } from '../utils/grocerySuggest';
 import { describeLeftover, isPlannedPastKeepUntil, liveFreshnessOf } from '../utils/leftovers';
-import { convertQuantity, showContainerCount } from '../utils/unitConvert';
+import { convertQuantity, showContainerCount, STACKED_QTY_LENGTH } from '../utils/unitConvert';
 import {
   assignPickDays, mergeMealSuggestions, mealIdeaRecipeDraft,
   type MealIdea, type MealSuggestion,
@@ -1103,6 +1103,7 @@ export function SuggestMealsSheet({
                     )}
                     {group.items.map(({ flat: { ingredient, swappedFrom }, section }) => {
                       const quantity = showContainerCount(convertQuantity(ingredient.quantity, unitSystem).text);
+                      const stackQty = quantity.length > STACKED_QTY_LENGTH;
                       return (
                         <View key={ingredient.id}>
                           {!!section && (
@@ -1111,6 +1112,7 @@ export function SuggestMealsSheet({
                             </Text>
                           )}
                           <View style={styles.previewIngredientRow}>
+                            <View style={styles.previewIngredientText}>
                             <Text style={styles.previewIngredientName}>
                               {ingredient.name}{ingredient.prep ? `, ${ingredient.prep}` : ''}
                               {/* A swapped line always says what the recipe
@@ -1121,7 +1123,13 @@ export function SuggestMealsSheet({
                                 <Text style={styles.previewSwap}> · {describeStandingSwap(swappedFrom)}</Text>
                               )}
                             </Text>
-                            {!!quantity && (
+                            {/* A long amount would claim the row's width ahead of
+                                the name, so it drops under it, as on the recipe page. */}
+                            {stackQty && (
+                              <Text style={[styles.previewIngredientQty, styles.previewIngredientQtyStacked]}>{quantity}</Text>
+                            )}
+                            </View>
+                            {!!quantity && !stackQty && (
                               <Text style={styles.previewIngredientQty} numberOfLines={1}>{quantity}</Text>
                             )}
                           </View>
@@ -1279,6 +1287,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: border.hairline,
     borderBottomColor: colors.separator,
   },
-  previewIngredientName: { flex: 1, fontSize: font.md, color: colors.text },
+  previewIngredientText: { flex: 1 },
+  previewIngredientName: { fontSize: font.md, color: colors.text },
   previewIngredientQty: { fontSize: font.sm, color: colors.textTertiary },
+  previewIngredientQtyStacked: { marginTop: spacing.xxs },
 });

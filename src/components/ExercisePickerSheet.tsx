@@ -291,7 +291,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
                   },
                 }))}
               />
-              <HelpText style={styles.hint}>A main muscle counts a whole set toward its weekly sets on Stats, a helping one half. Search finds the exercise by its main muscles.</HelpText>
+              <HelpText style={styles.hint}>A main muscle counts a whole set toward its weekly sets on Stats, a helping one half.</HelpText>
             </ScrollView>
           </>
         ) : (
