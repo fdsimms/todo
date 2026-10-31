@@ -71,6 +71,13 @@ interface Props {
    * "already presenting" case RecipePickerSheet's `pick` documents.
    */
   onPlanned?: (entry: MealPlanEntry) => void;
+  /**
+   * The days to offer, in place of the rolling week from today. For a meal that
+   * belongs to a week on screen (one waiting in a week's pool), where a rolling
+   * week would offer days outside it. The sheet opens on today when it is one
+   * of them, else the first.
+   */
+  days?: readonly Date[];
   onClose: () => void;
 }
 
@@ -100,7 +107,7 @@ interface Props {
  * is also how the same dish gets planned onto two nights without reopening
  * anything.
  */
-export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, onClose }: Props) {
+export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, days: daysProp, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -133,9 +140,12 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
 
   useEffect(() => {
     if (!visible) return;
-    const fresh = upcomingDays(getLogicalToday(), DAYS_OFFERED);
+    const fresh = daysProp && daysProp.length > 0
+      ? [...daysProp]
+      : upcomingDays(getLogicalToday(), DAYS_OFFERED);
     setDays(fresh);
-    setDayKey(dayKeyOf(fresh[0]));
+    const todayKey = dayKeyOf(getLogicalToday());
+    setDayKey(fresh.some(d => dayKeyOf(d) === todayKey) ? todayKey : dayKeyOf(fresh[0]));
     setSlot(defaultSlotRef.current);
     setPlanned(null);
     sheet.show();

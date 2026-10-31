@@ -282,6 +282,7 @@ const SUMMARY_LABELS: { table: string; one: string; many: string }[] = [
   { table: 'grocery_items', one: 'grocery item', many: 'grocery items' },
   { table: 'recipes', one: 'recipe', many: 'recipes' },
   { table: 'meal_plan_entries', one: 'planned meal', many: 'planned meals' },
+  { table: 'week_pool_entries', one: 'meal waiting for a day', many: 'meals waiting for a day' },
   // The logs and people are replaced by a restore as surely as tasks are, so a
   // backup holding only them read as "no tasks or projects" over a restore
   // that was about to replace a year of food log.

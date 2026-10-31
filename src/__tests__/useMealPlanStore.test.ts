@@ -10,6 +10,10 @@ import {
   dbSetMealPlanAddedToList,
   dbGetMealPlanEntry,
   dbGetMealPlanEntriesForRecipe,
+  dbGetAllWeekPoolEntries,
+  dbInsertWeekPoolEntry,
+  dbDeleteWeekPoolEntry,
+  dbUpdateWeekPoolEntry,
 } from '../db/database';
 import type { GroceryItem, MealPlanEntry, MealSlot, Recipe, Task } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -30,6 +34,12 @@ jest.mock('../db/database', () => ({
   dbUpdateMealCalendarLink: jest.fn(),
   dbDeleteMealPlanEntry: jest.fn(),
   dbPurgeOldMealPlanEntries: jest.fn().mockReturnValue(0),
+  // The weekly pool (WeekPoolEntry): rows the store holds in memory.
+  dbGetAllWeekPoolEntries: jest.fn().mockReturnValue([]),
+  dbInsertWeekPoolEntry: jest.fn(),
+  dbUpdateWeekPoolEntry: jest.fn(),
+  dbDeleteWeekPoolEntry: jest.fn(),
+  dbPurgeOldWeekPoolEntries: jest.fn().mockReturnValue(0),
   dbGetMealPlanAddedToList: jest.fn().mockReturnValue({}),
   dbSetMealPlanAddedToList: jest.fn(),
   // The real grocery store is driven below, and a cooking now writes to it —
@@ -250,8 +260,9 @@ beforeEach(() => {
   mockRecipeState.initialized = false;
   (dbGetMealPlanEntriesForRecipe as jest.Mock).mockReturnValue([]);
   useGroceryStore.setState({ items: [], listEntries: [] });
+  (dbGetAllWeekPoolEntries as jest.Mock).mockReturnValue([]);
   useMealPlanStore.setState({
-    entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
+    entries: [], pool: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
     lastAction: null, undoStack: [], redoStack: [],
     cookRecap: null, plannedSlotCounts: {}, cookingCounts: null, cookHistory: null,
   });
@@ -3379,5 +3390,120 @@ describe('fillCalendarExternalIds (#2950)', () => {
     const byId = Object.fromEntries(useMealPlanStore.getState().entries.map(e => [e.id, e]));
     expect(byId['m-a'].calendarEventExternalId).toBe('ext-a');
     expect(byId['m-b'].calendarEventExternalId ?? null).toBeNull();
+  });
+});
+
+describe('the weekly pool', () => {
+  const WEEK = '2026-08-03';
+  const store = () => useMealPlanStore.getState();
+
+  it('adds a meal to a week with no day, ordered after what is already there', () => {
+    const a = store().addToPool(WEEK, { recipeId: 'r1', title: '  Tacos ' })!;
+    const b = store().addToPool(WEEK, { title: 'Soup' })!;
+
+    expect(a.title).toBe('Tacos');
+    expect(b.sortOrder).toBeGreaterThan(a.sortOrder);
+    expect(dbInsertWeekPoolEntry).toHaveBeenCalledWith(a);
+    expect(store().pool.map(e => e.id)).toEqual([a.id, b.id]);
+    // Not a planned meal: nothing reaches the plan or its side effects.
+    expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('refuses a title that cleans to nothing', () => {
+    expect(store().addToPool(WEEK, { title: '   ' })).toBeNull();
+    expect(store().pool).toEqual([]);
+  });
+
+  it('takes a recipe off Up Next, and the undo puts it back and drops the row', () => {
+    mockRecipeState.recipes = [{ id: 'r1', name: 'Tacos', upNext: true, upNextOrder: 2 } as unknown as Recipe];
+    const row = store().addToPool(WEEK, { recipeId: 'r1', title: 'Tacos' })!;
+    expect(mockRecipeState.setUpNext).toHaveBeenCalledWith('r1', false);
+
+    store().undoLastAction();
+
+    expect(mockRecipeState.setUpNext).toHaveBeenLastCalledWith('r1', true, 2);
+    expect(dbDeleteWeekPoolEntry).toHaveBeenCalledWith(row.id);
+    expect(store().pool).toEqual([]);
+  });
+
+  it('removes a meal, and the undo restores the same row', () => {
+    const row = store().addToPool(WEEK, { title: 'Soup' })!;
+    store().removeFromPool(row.id);
+    expect(store().pool).toEqual([]);
+
+    store().undoLastAction();
+
+    expect(dbInsertWeekPoolEntry).toHaveBeenLastCalledWith(row);
+    expect(store().pool).toEqual([row]);
+  });
+
+  it('places a meal on a day: the pool row goes and a planned meal takes its place', () => {
+    loadWeek();
+    const row = store().addToPool(WEEK, { recipeId: 'r1', title: 'Tacos' })!;
+
+    const planned = store().placePoolEntry(row.id, { date: '2026-08-05', slot: 'dinner' })!;
+
+    expect(planned).toMatchObject({ date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Tacos' });
+    expect(store().pool).toEqual([]);
+    expect(dbDeleteWeekPoolEntry).toHaveBeenCalledWith(row.id);
+    expect(getEntries()).toEqual([planned]);
+  });
+
+  it('undoes a placement in one step, back to the pool', () => {
+    loadWeek();
+    const row = store().addToPool(WEEK, { title: 'Tacos' })!;
+    const planned = store().placePoolEntry(row.id, { date: '2026-08-05', slot: 'dinner' })!;
+
+    store().undoLastAction();
+
+    expect(dbDeleteMealPlanEntry).toHaveBeenCalledWith(planned.id);
+    expect(getEntries()).toEqual([]);
+    expect(store().pool).toEqual([row]);
+    // The add itself is the next step back: placing registered one entry, not two.
+    store().undoLastAction();
+    expect(store().pool).toEqual([]);
+  });
+
+  it('returns null for a row that is already gone', () => {
+    expect(store().placePoolEntry('missing', { date: '2026-08-05', slot: 'dinner' })).toBeNull();
+  });
+
+  it('takes a planned meal back into the pool, and refuses one with answers or cooked', () => {
+    loadWeek();
+    const plain = store().planMeal({ date: '2026-08-05', slot: 'dinner', title: 'Soup' })!;
+    expect(store().sendToPool(plain.id, WEEK)).toBe(true);
+    expect(getEntries()).toEqual([]);
+    expect(store().pool).toHaveLength(1);
+    expect(store().pool[0]).toMatchObject({ weekStart: WEEK, title: 'Soup' });
+
+    const cooked = store().planMeal({ date: '2026-08-06', slot: 'dinner', title: 'Pasta' })!;
+    useMealPlanStore.setState({ entries: getEntries().map(e => (e.id === cooked.id ? { ...e, cookedAt: '2026-08-06T18:00:00.000Z' } : e)) });
+    expect(store().sendToPool(cooked.id, WEEK)).toBe(false);
+
+    const picked = store().planMeal({ date: '2026-08-07', slot: 'dinner', title: 'Bowl' })!;
+    useMealPlanStore.setState({ entries: getEntries().map(e => (e.id === picked.id ? { ...e, recipeChoices: ['x'] } : e)) });
+    expect(store().sendToPool(picked.id, WEEK)).toBe(false);
+  });
+
+  it('carries what is left to next week, and the undo moves it back', () => {
+    const a = store().addToPool(WEEK, { title: 'Tacos' })!;
+    const b = store().addToPool('2026-08-10', { title: 'Soup' })!;
+
+    expect(store().carryPoolOver(WEEK, '2026-08-10')).toBe(1);
+
+    const next = store().pool.filter(e => e.weekStart === '2026-08-10');
+    expect(next.map(e => e.id)).toEqual(expect.arrayContaining([a.id, b.id]));
+    expect(next.find(e => e.id === a.id)!.sortOrder).toBeGreaterThan(b.sortOrder);
+    expect(dbUpdateWeekPoolEntry).toHaveBeenCalled();
+
+    store().undoLastAction();
+    expect(store().pool.find(e => e.id === a.id)!.weekStart).toBe(WEEK);
+  });
+
+  it('retitles a pooled recipe when the recipe is renamed', () => {
+    const row = store().addToPool(WEEK, { recipeId: 'r1', title: 'Tacos' })!;
+    store().retitleRecipeEntries('r1', 'Street tacos');
+    expect(dbUpdateWeekPoolEntry).toHaveBeenCalledWith(row.id, { title: 'Street tacos' });
+    expect(store().pool[0].title).toBe('Street tacos');
   });
 });

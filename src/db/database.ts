@@ -53,6 +53,7 @@ import type {
   ItemSubLink,
   Leftover,
   MealPlanEntry,
+  WeekPoolEntry,
   LogMealSlot,
   MealSlot,
   Recipe,
@@ -1113,6 +1114,17 @@ function runInitDatabase(): void {
       sort_order REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
+
+    -- A meal chosen for a week with no day or slot — see WeekPoolEntry in
+    -- types. week_start is the YYYY-MM-DD key of the week's first day.
+    CREATE TABLE IF NOT EXISTS week_pool_entries (
+      id TEXT PRIMARY KEY NOT NULL,
+      week_start TEXT NOT NULL,
+      recipe_id TEXT,
+      title TEXT NOT NULL,
+      sort_order REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
   `);
 
   // Migrations for existing installs (safe to run multiple times — a column
@@ -1280,6 +1292,8 @@ function runInitDatabase(): void {
     // the week on screen, and the purge horizon. Nothing ever asks for an entry
     // by recipe, so there's no second index here.
     'CREATE INDEX IF NOT EXISTS idx_meal_plan_entries_date ON meal_plan_entries(date)',
+    // Every read of the pool is one week's meals.
+    'CREATE INDEX IF NOT EXISTS idx_week_pool_entries_week ON week_pool_entries(week_start)',
     // Every read is "this person's notes" — the detail screen, the birthday
     // task's gift ideas, a meal's guests — so the person is the index.
     'CREATE INDEX IF NOT EXISTS idx_person_notes_person ON person_notes(person_id)',
@@ -2977,6 +2991,7 @@ export const BACKUP_TABLES = [
   // Before meal_plan_entries: an entry can point at a leftover.
   'leftovers',
   'meal_plan_entries',
+  'week_pool_entries',
   'templates',
   'tasks',
   // After tasks, though nothing enforces it: a record's `completedTaskIds` and
@@ -9358,6 +9373,78 @@ export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
 
 export function dbDeleteMealPlanEntry(id: string): void {
   db.runSync('DELETE FROM meal_plan_entries WHERE id = ?', [id]);
+}
+
+function rowToWeekPoolEntry(row: Record<string, unknown>): WeekPoolEntry {
+  return {
+    id: row.id as string,
+    weekStart: row.week_start as string,
+    recipeId: (row.recipe_id as string) ?? null,
+    title: (row.title as string) ?? '',
+    sortOrder: (row.sort_order as number) ?? 0,
+    createdAt: row.created_at as string,
+  };
+}
+
+/** Every week's pool (the store holds all of them; see `useMealPlanStore.pool`). */
+export function dbGetAllWeekPoolEntries(): WeekPoolEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM week_pool_entries ORDER BY week_start ASC, sort_order ASC, created_at ASC'
+  );
+  return rows.map(rowToWeekPoolEntry);
+}
+
+/** One week's pool, in the order the person arranged it. */
+export function dbGetWeekPoolEntries(weekStart: string): WeekPoolEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM week_pool_entries WHERE week_start = ? ORDER BY sort_order ASC, created_at ASC',
+    [weekStart]
+  );
+  return rows.map(rowToWeekPoolEntry);
+}
+
+/** Every pool meal naming a recipe, whatever its week (a rename or delete has to reach them all). */
+export function dbGetWeekPoolEntriesForRecipe(recipeId: string): WeekPoolEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM week_pool_entries WHERE recipe_id = ? ORDER BY week_start ASC, sort_order ASC',
+    [recipeId]
+  );
+  return rows.map(rowToWeekPoolEntry);
+}
+
+export function dbGetWeekPoolEntry(id: string): WeekPoolEntry | null {
+  const row = db.getFirstSync<Record<string, unknown>>(
+    'SELECT * FROM week_pool_entries WHERE id = ?',
+    [id]
+  );
+  return row ? rowToWeekPoolEntry(row) : null;
+}
+
+export function dbInsertWeekPoolEntry(entry: WeekPoolEntry): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO week_pool_entries (id, week_start, recipe_id, title, sort_order, created_at)
+     VALUES (?,?,?,?,?,?)`,
+    [entry.id, entry.weekStart, entry.recipeId, entry.title, entry.sortOrder, entry.createdAt]
+  );
+}
+
+export function dbUpdateWeekPoolEntry(id: string, patch: Partial<Pick<WeekPoolEntry, 'weekStart' | 'title' | 'sortOrder'>>): void {
+  const sets: string[] = [];
+  const vals: (string | number)[] = [];
+  if (patch.weekStart !== undefined) { sets.push('week_start = ?'); vals.push(patch.weekStart); }
+  if (patch.title !== undefined) { sets.push('title = ?'); vals.push(patch.title); }
+  if (patch.sortOrder !== undefined) { sets.push('sort_order = ?'); vals.push(patch.sortOrder); }
+  if (sets.length === 0) return;
+  db.runSync(`UPDATE week_pool_entries SET ${sets.join(', ')} WHERE id = ?`, [...vals, id]);
+}
+
+export function dbDeleteWeekPoolEntry(id: string): void {
+  db.runSync('DELETE FROM week_pool_entries WHERE id = ?', [id]);
+}
+
+/** Drops the pool of every week that starts before `beforeKey`, returning how many went. */
+export function dbPurgeOldWeekPoolEntries(beforeKey: string): number {
+  return db.runSync('DELETE FROM week_pool_entries WHERE week_start < ?', [beforeKey]).changes ?? 0;
 }
 
 /**

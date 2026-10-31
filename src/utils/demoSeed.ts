@@ -6461,6 +6461,15 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // a stamp on the week header, never a lock on adding again.
   stampAddedToList(dayKeyOf(buildWeekDays(today, weekStartsOn)[0]));
 
+  // Two meals chosen for this week with no night yet: the "Not on a day yet"
+  // card, which is the only way to see that the plan can hold a meal before it
+  // has a day.
+  const poolWeek = dayKeyOf(buildWeekDays(today, weekStartsOn)[0]);
+  for (const id of [recipes.steak, recipes.salad]) {
+    const recipe = useRecipeStore.getState().recipeById(id);
+    if (recipe) useMealPlanStore.getState().addToPool(poolWeek, { recipeId: recipe.id, title: recipe.name });
+  }
+
   // --- A meal the kitchen can't currently make ------------------------------
   // The generator that says so before the night arrives, which is the whole
   // point of it: planning a week has never required owning any of it, and until

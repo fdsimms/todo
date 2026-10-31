@@ -2,7 +2,7 @@
  * Recipes and the meal plan. Read both; the one write is putting a meal on the
  * plan. Same contract as tools.ts.
  */
-import type { MealPlanEntry, MealSlot, Recipe } from '../../src/types';
+import type { MealPlanEntry, MealSlot, Recipe, WeekPoolEntry } from '../../src/types';
 import { fatCooking } from '../../src/utils/panOil';
 import type { MealChoice, MealFill, MealPatch, Replica } from './replica';
 
@@ -277,7 +277,29 @@ export interface MealPlanInput {
 }
 
 /** Planned meals over a range of days, defaulting to the coming week from today. */
-export function listMealPlan(replica: Replica, input: MealPlanInput = {}): { from: string; to: string; meals: SerializedMeal[] } {
+export interface SerializedPoolMeal {
+  id: string;
+  /** The first day of the week this meal is chosen for. */
+  week: string;
+  title: string;
+  recipeId?: string;
+}
+
+function serializePoolMeal(e: WeekPoolEntry, recipes: Map<string, string>): SerializedPoolMeal {
+  return {
+    id: e.id,
+    week: e.weekStart,
+    title: (e.recipeId && recipes.get(e.recipeId)) || e.title,
+    ...(e.recipeId ? { recipeId: e.recipeId } : {}),
+  };
+}
+
+/**
+ * Planned meals over a range of days, plus the meals chosen for those weeks
+ * with no day yet (`pool`, from the app's "Not on a day yet" card). A pool meal
+ * is not on the plan: it has no date, and place_pool_meal puts it on one.
+ */
+export function listMealPlan(replica: Replica, input: MealPlanInput = {}): { from: string; to: string; meals: SerializedMeal[]; pool?: SerializedPoolMeal[] } {
   const from = input.from ?? replica.todayKey();
   const days = Math.min(Math.max(input.days ?? DEFAULT_PLAN_DAYS, 1), MAX_PLAN_DAYS);
   const to = input.to ?? replica.shiftDayKey(from, days - 1);
@@ -285,14 +307,40 @@ export function listMealPlan(replica: Replica, input: MealPlanInput = {}): { fro
   if (replica.shiftDayKey(from, MAX_PLAN_DAYS) < to) throw new Error(`At most ${MAX_PLAN_DAYS} days at a time.`);
   const names = new Map(replica.recipes().map(r => [r.id, r.name]));
   const order = (s: MealSlot) => MEAL_SLOTS.indexOf(s);
+  const pool = replica.weekPool(replica.weekStartOf(from), replica.weekStartOf(to));
   return {
     from,
     to,
+    ...(pool.length > 0 ? { pool: pool.map(e => serializePoolMeal(e, names)) } : {}),
     meals: replica
       .mealPlan(from, to)
       .sort((a, b) => a.date.localeCompare(b.date) || order(a.slot) - order(b.slot) || a.sortOrder - b.sortOrder)
       .map(e => serializeMeal(e, names, replica)),
   };
+}
+
+/** Chooses a meal for a week with no day yet. `week` is any day in it. */
+export function addToWeekPool(
+  replica: Replica,
+  input: { week: string; recipeId?: string | null; title?: string },
+): SerializedPoolMeal {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.week)) throw new Error('week must be YYYY-MM-DD (any day in the week).');
+  if (!input.recipeId && !input.title?.trim()) throw new Error('Give a recipeId, or a title for a meal with no recipe.');
+  return serializePoolMeal(replica.addToWeekPool(input.week, input), names(replica));
+}
+
+/** Puts a pool meal on a day and slot: it leaves the pool and is planned. */
+export function placePoolMeal(
+  replica: Replica,
+  input: { id: string; date: string; slot: MealSlot },
+): SerializedMeal {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new Error('date must be YYYY-MM-DD.');
+  if (!MEAL_SLOTS.includes(input.slot)) throw new Error(`slot must be one of ${MEAL_SLOTS.join(', ')}.`);
+  return serializeMeal(replica.placeFromWeekPool(input.id, input.date, input.slot), names(replica), replica);
+}
+
+export function removePoolMeal(replica: Replica, id: string): { removed: SerializedPoolMeal } {
+  return { removed: serializePoolMeal(replica.removeFromWeekPool(id), names(replica)) };
 }
 
 export function planMeal(
