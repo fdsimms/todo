@@ -38,7 +38,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type ItemProduct, type ItemSubLink, type MealSlot, type Recipe, type SavedMeal, type SavedMealItem } from '../types';
+import { MEAL_SLOTS, NUTRIENT_KEYS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type ItemProduct, type ItemSubLink, type Leftover, type NutrientKey, type MealSlot, type Recipe, type SavedMeal, type SavedMealItem } from '../types';
 import { itemFromPick } from '../utils/savedMealReview';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -84,6 +84,10 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
+import { describeLeftover, liveLeftovers } from '../utils/leftovers';
+import { containerFigures, fridgeMatches, type ContainerFigures } from '../utils/leftoverFigures';
+import { featureShown } from '../utils/simpleMode';
 import {
   foodLastAmounts,
   foodLogRecency,
@@ -485,6 +489,9 @@ const NO_PRODUCTS: ItemProduct[] = [];
 const NO_AISLES: string[] = [];
 const NO_RECIPES: Recipe[] = [];
 const NO_SUBS: ItemSubLink[] = [];
+const NO_LEFTOVERS: Leftover[] = [];
+/** How many containers the fridge block lists before the rest of the search. */
+const FRIDGE_ROWS_SHOWN = 5;
 
 export function FoodLogEntrySheet({
   visible, slot, at, initialQuery, mealPlanEntryId, editing, reviewing, allowBurst, onClose, canEstimate, onScan, onPhotographLabel, onSavedMeal, savedMeals, onPickSavedMeal, onLogSavedMeal, onPickFood, onDeclineMeal,
@@ -1014,6 +1021,45 @@ export function FoodLogEntrySheet({
     [editing, onPickFood, onPickSavedMeal, onLogSavedMeal, savedMeals, query, recentLog, chosenSlot],
   );
 
+  // ==== the fridge ====
+  // The containers in the fridge and freezer, logged from here with their own
+  // figures. The kitchen's switch and simplified mode decide whether they show
+  // at all, but a person who already has a live container is never shown less
+  // than what they put there (`featureShown`'s own rule).
+  const leftovers = useStoreWhileOpen(useLeftoverStore, visible, s => s.leftovers, NO_LEFTOVERS);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  const liveContainers = useMemo(() => liveLeftovers(leftovers), [leftovers]);
+  const fridge = useMemo(
+    () => (editing || onPickFood || !kitchenEnabled || !featureShown('pantryTracking', simpleMode, liveContainers.length > 0)
+      ? []
+      : fridgeMatches(liveContainers, query).slice(0, FRIDGE_ROWS_SHOWN)),
+    [editing, onPickFood, kitchenEnabled, simpleMode, liveContainers, query],
+  );
+  // Each row's figures: its own panel, the recipe scaled to what it weighs, or
+  // the same name logged before. Null is a container nothing can log yet.
+  const fridgeFigures = useMemo(() => {
+    const out = new Map<string, ContainerFigures | null>();
+    if (fridge.length === 0) return out;
+    const now = new Date();
+    const entries = fridge.some(l => !l.nutrition) ? recentLog : [];
+    for (const l of fridge) {
+      let dish = null;
+      const recipe = l.recipeId && !l.nutrition && l.weightG ? recipesById.get(l.recipeId) : undefined;
+      if (recipe) {
+        const rollup = recipeNutrition(recipe, items, itemProducts, recipesById, UNANSWERED, 1, swaps);
+        if (rollup) {
+          dish = { total: rollup.total, perServing: perServing(rollup), servings: rollup.servings, cookedGrams: cookedDishGrams(recipe.cookedWeightG, 1) };
+        }
+      }
+      out.set(l.id, containerFigures({ leftover: l, dish, entries, now }));
+    }
+    return out;
+  }, [fridge, recentLog, recipesById, items, itemProducts, swaps]);
+  // The container an estimate is being made for, so that what it comes to is
+  // kept on the container and the next log needs no estimate.
+  const fridgeEstimateRef = useRef<{ id: string; title: string } | null>(null);
+
   // What this meal was yesterday, to log again in one tap. Only before
   // anything is typed, and never while correcting an entry or picking a food.
   const yesterday = useMemo(
@@ -1520,6 +1566,68 @@ export function FoodLogEntrySheet({
    * half (an earlier helping logged again) the field is already there, and
    * `seed` carries its focus across on its own.
    */
+  /**
+   * Logs a container, or a share of it, under its own name with the figures it
+   * carries. Logging a helping is not finishing the container: that is its own
+   * action, which now finds this entry and has nothing left to ask.
+   */
+  const logContainer = (l: Leftover, figures: ContainerFigures, factor = 1, share = '') => {
+    haptics.success();
+    Keyboard.dismiss();
+    let nutrition = figures.nutrition;
+    let grams = figures.grams;
+    let quantity = figures.quantity;
+    if (factor !== 1) {
+      const amounts: Partial<Record<NutrientKey, number>> = {};
+      for (const k of NUTRIENT_KEYS) {
+        const v = nutrition.amounts[k];
+        if (v !== undefined) amounts[k] = Math.round(v * factor * 10) / 10;
+      }
+      grams = grams === null ? null : Math.round(grams * factor);
+      quantity = `${share} of the container`;
+      const scaled = helpingNutrition(amounts, quantity, grams, nutrition.source);
+      if (!scaled) return;
+      nutrition = scaled;
+    }
+    const ok = logNew({
+      label: l.title,
+      quantity,
+      grams,
+      nutrition,
+      slot: chosenSlot,
+      recipeId: figures.source === 'recipe' ? l.recipeId : null,
+    });
+    if (ok) afterSave(l.title);
+  };
+
+  /** "How much?" for a container, since few people eat the whole thing. */
+  const askContainerShare = (l: Leftover, figures: ContainerFigures) => {
+    haptics.tap();
+    Keyboard.dismiss();
+    Alert.alert(`How much of the ${l.title} did you eat?`, undefined, [
+      { text: 'All of it', onPress: () => logContainer(l, figures) },
+      { text: 'Half', onPress: () => logContainer(l, figures, 0.5, 'Half') },
+      { text: 'A quarter', onPress: () => logContainer(l, figures, 0.25, 'A quarter') },
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
+    ]);
+  };
+
+  /**
+   * A container with no figures yet. A recipe's goes to the recipe's own
+   * servings step in this sheet; anything else gets the Estimate panel, already
+   * describing it, and what it comes to is kept on the container afterwards.
+   */
+  const startContainerFigures = (l: Leftover) => {
+    haptics.tap();
+    Keyboard.dismiss();
+    const dish = l.recipeId ? candidates.find(c => c.recipeId === l.recipeId) : undefined;
+    if (dish) { choose(dish); return; }
+    fridgeEstimateRef.current = { id: l.id, title: l.title };
+    searchFilter.seed(l.title);
+    setEstimateKey(k => k + 1);
+    setEstimateOpen(true);
+  };
+
   const afterSave = (label: string) => {
     haptics.success();
     if (burstMode) {
@@ -1983,7 +2091,54 @@ export function FoodLogEntrySheet({
         );
       })}
       {/* The helpings and usual blocks label the list when they are in the header; with neither, this does. */}
-      {results.length > 0 && usual.length === 0 && helpings.length === 0 && (
+      {results.length > 0 && usual.length === 0 && helpings.length === 0 && fridge.length === 0 && (
+        <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
+      )}
+    </View>
+  ) : null;
+
+  // What is in the fridge, above this meal's usual foods: a container is
+  // something the person put there to be eaten. Rows laid out like a saved
+  // meal's. The body asks how much of it; the plus logs all of it at once. A
+  // container with no figures shows a sparkle instead, which starts the
+  // estimate rather than logging a food nobody can count.
+  const fridgeBlock = fridge.length > 0 ? (
+    <View style={usual.length > 0 || (helpings.length > 0 && !helpingsAfterResults) || savedMatches.length > 0 ? styles.usualGap : undefined}>
+      <Text style={[styles.label, styles.helpingsLabel]}>IN YOUR FRIDGE</Text>
+      {fridge.map(l => {
+        const figures = fridgeFigures.get(l.id) ?? null;
+        const calories = figures?.nutrition.amounts.calorieKcal;
+        const age = describeLeftover(l);
+        const meta = figures
+          ? `${age}${calories !== undefined ? ` · ${Math.round(calories)} cal${figures.nutrition.source === 'estimated' ? ' (estimate)' : ''}` : ''}`
+          : age;
+        return (
+          <View key={l.id} style={[styles.row, styles.helpingRow]}>
+            <TouchableOpacity
+              style={styles.helpingBody}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => (figures ? askContainerShare(l, figures) : startContainerFigures(l))}
+              accessibilityRole="button"
+              accessibilityLabel={figures ? `Choose how much of ${l.title} to log, ${meta}` : `Find the nutrition of ${l.title}, ${meta}`}
+            >
+              <View style={styles.rowText}>
+                <Text style={styles.rowTitle}>{l.title}</Text>
+                <Text style={styles.rowMeta}>{figures ? meta : `${meta} · no nutrition yet`}</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.helpingAdd}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => (figures ? logContainer(l, figures) : startContainerFigures(l))}
+              accessibilityRole="button"
+              accessibilityLabel={figures ? `Log all of ${l.title}, ${meta}` : `Estimate the nutrition of ${l.title}`}
+            >
+              <Ionicons name={figures ? 'add-circle-outline' : 'sparkles-outline'} size={iconSize.md} color={colors.accent} />
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+      {usual.length === 0 && helpings.length === 0 && results.length > 0 && (
         <Text style={[styles.label, styles.listLabel]}>FOODS AND RECIPES</Text>
       )}
     </View>
@@ -2117,7 +2272,22 @@ export function FoodLogEntrySheet({
             setEstimateOpen(false);
             if (dish) choose(dish);
           }}
-          onLogged={label => { setEstimateOpen(false); afterSave(label); }}
+          onLogged={label => {
+            setEstimateOpen(false);
+            // The estimate was made for a container: keep it there, but only
+            // when the description is still the container's own name, so a
+            // "half of the curry" typed over it is not stored as the whole.
+            const forContainer = fridgeEstimateRef.current;
+            fridgeEstimateRef.current = null;
+            if (forContainer && query.trim().toLowerCase() === forContainer.title.toLowerCase()) {
+              const today = dayKeyOf(getCurrentDayStart());
+              const written = recentEntries(today, today)
+                .filter(e => e.nutrition.source === 'estimated')
+                .sort((a, b) => b.atISO.localeCompare(a.atISO))[0];
+              if (written) useLeftoverStore.getState().setLeftoverNutrition(forContainer.id, { ...written.nutrition, servingText: 'whole container' });
+            }
+            afterSave(label);
+          }}
           onQueued={afterQueue}
           reviewing={reviewing && reviewId === reviewing.id ? reviewing : null}
           onDismiss={() => { setEstimateOpen(false); setReviewId(null); }}
@@ -2831,6 +3001,7 @@ export function FoodLogEntrySheet({
                   {lookupBlock}
                   {yesterdayBlock}
                   {savedBlock}
+                  {fridgeBlock}
                   {usualBlock}
                   {helpingsAfterResults ? null : helpingsBlock}
                 </>
@@ -2840,7 +3011,7 @@ export function FoodLogEntrySheet({
               // usual foods: those are the
               // answer to "no matching food", and a full-height empty state
               // under them would say there was nothing while showing something.
-              ListEmptyComponent={lookupBlock || usualBlock || savedBlock || yesterdayBlock ? null : (
+              ListEmptyComponent={lookupBlock || usualBlock || savedBlock || fridgeBlock || yesterdayBlock ? null : (
                 // A note at the top of the list rather than a centered empty
                 // state: the keyboard is up nearly every time this shows, and
                 // a state centered in what is left of the list was cut off by

@@ -5,6 +5,7 @@ import {
   cookedDishGrams,
   defaultHelpings,
   describeHelping,
+  leftoverAlreadyLogged,
   mealHelping,
   servingGrams,
   slotForHour,
@@ -270,5 +271,25 @@ describe('slotForHour', () => {
     for (let hour = 0; hour < 24; hour += 1) {
       expect(['breakfast', 'lunch', 'dinner', 'snack']).toContain(slotForHour(hour));
     }
+  });
+});
+
+describe('leftoverAlreadyLogged', () => {
+  const entries = [
+    { label: 'Massaman curry', dayKey: '2026-10-28' },
+    { label: 'Toast', dayKey: '2026-10-29' },
+  ];
+  it('finds an entry with the same name on or after the day it was stored', () => {
+    expect(leftoverAlreadyLogged('massaman Curry', '2026-10-28', entries)).toBe(true);
+  });
+  it('matches a longer label that contains the name', () => {
+    expect(leftoverAlreadyLogged('Massaman curry', '2026-10-28', [{ label: 'Massaman curry with rice', dayKey: '2026-10-29' }])).toBe(true);
+  });
+  it('ignores an entry from before it was stored', () => {
+    expect(leftoverAlreadyLogged('Massaman curry', '2026-10-29', entries)).toBe(false);
+  });
+  it('is false for a different food or an empty name', () => {
+    expect(leftoverAlreadyLogged('Pad thai', '2026-10-28', entries)).toBe(false);
+    expect(leftoverAlreadyLogged('', '2026-10-28', entries)).toBe(false);
   });
 });

@@ -110,6 +110,7 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
     outcome: null,
     frozenAt: null,
     weightG: null,
+    nutrition: null,
     createdAt: localIso('2026-08-10T09:00'),
     useUpTask: null,
     ...overrides,

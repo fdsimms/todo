@@ -1174,7 +1174,7 @@ has the rules; two decisions are specific to the server.
   offers an undo only while the item still matches the "after" snapshot, the rule every other undo
   follows. The store side is `useGroceryStore.restorePantry` and `useLeftoverStore.restoreLeftover`.
   A leftover the agent logged or split off is removable while it is open, like a log entry, and a
-  rename or weight is in the leftover snapshot (`LEFTOVER_REVERT_FIELDS`); a new catalog row
+  rename, weight or nutrition panel is in the leftover snapshot (`LEFTOVER_REVERT_FIELDS`); a new catalog row
   from `add_to_pantry` stays in the catalog and loses only its "Got it", as removing an item from the
   list does.
 

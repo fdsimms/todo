@@ -1,5 +1,6 @@
-import type { LogMealSlot, MealPlanEntry, MealSlot, NutrientKey } from '../types';
+import type { FoodLogEntry, LogMealSlot, MealPlanEntry, MealSlot, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
+import { groceryNameKey } from './groceryParse';
 
 /**
  * Turning a meal that just happened into an offer to log it.
@@ -260,6 +261,26 @@ export const COOKED_WEIGHT_MAX_G = 50000;
 export function clampCookedWeight(grams: number | null): number | null {
   if (grams === null || !Number.isFinite(grams) || grams <= 0) return null;
   return Math.min(COOKED_WEIGHT_MAX_G, Math.max(COOKED_WEIGHT_MIN_G, Math.round(grams)));
+}
+
+/**
+ * Whether a container was already written down in the food log, so finishing
+ * it as eaten has nothing left to offer.
+ *
+ * A hand-logged container has no recipe and no link to the entries that
+ * mention it, so the only evidence is the name: an entry on or after the day it
+ * went in the fridge whose label is the container's title (or contains it, for
+ * "Massaman curry with rice"). Same name key as every other name match.
+ * Wrong in the safe direction: a miss just asks, which is what it did before.
+ */
+export function leftoverAlreadyLogged(
+  title: string,
+  storedDayKey: string,
+  entries: readonly Pick<FoodLogEntry, 'label' | 'dayKey'>[],
+): boolean {
+  const key = groceryNameKey(title);
+  if (!key) return false;
+  return entries.some(e => e.dayKey >= storedDayKey && groceryNameKey(e.label).includes(key));
 }
 
 /**

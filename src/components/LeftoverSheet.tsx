@@ -15,7 +15,12 @@ import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { subDays } from 'date-fns/subDays';
 import { getLogicalToday } from '../utils/dateUtils';
-import type { Leftover } from '../types';
+import type { FoodNutrition, Leftover } from '../types';
+import { describeAIError, estimateMealNutrition } from '../services/aiSuggestions';
+import { estimateToPanel } from '../utils/nutritionEstimate';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
+import { InlineAction } from './InlineAction';
+import { HelpText } from './HelpText';
 import {
   LEFTOVER_KEEP_DAYS_DEFAULT,
   LEFTOVER_KEEP_DAYS_MAX,
@@ -141,6 +146,8 @@ interface Props {
     storedAt: string,
     keepDays: number,
     weightG: number | null,
+    /** The container's own figures, when an estimate was accepted for it. */
+    nutrition: FoodNutrition | null,
   ) => void;
   onRename: (title: string) => void;
   onSetStoredAt: (storedAt: string) => void;
@@ -151,6 +158,8 @@ interface Props {
    * through `onLog` instead, the same split every other field here makes.
    */
   onSetWeight: (grams: number | null) => void;
+  /** Sets or clears what the whole container contains. Only called for a container already in the fridge. */
+  onSetNutrition?: (nutrition: FoodNutrition | null) => void;
   onFinish: (outcome: 'eaten' | 'tossed') => void;
   /**
    * Into the freezer, or back out. Not an outcome — a frozen container is
@@ -207,7 +216,7 @@ interface Props {
  * the row in the fridge is for).
  */
 export function LeftoverSheet({
-  visible, leftover, seed, onLog, onRename, onSetStoredAt, onSetKeepDays, onSetWeight,
+  visible, leftover, seed, onLog, onRename, onSetStoredAt, onSetKeepDays, onSetWeight, onSetNutrition,
   onFinish, onSetFrozen, onSplit, onReopen, onDelete, onClose, onOpenRecipe,
   actionsOnly = false,
 }: Props) {
@@ -262,6 +271,15 @@ export function LeftoverSheet({
   const [draftKeepDays, setDraftKeepDays] = useState<number | null>(LEFTOVER_KEEP_DAYS_DEFAULT);
   const [pickedKeys, setPickedKeys] = useState<string[]>([]);
   const [weightText, setWeightText] = useState('');
+  // The container's figures while logging one, staged like everything else
+  // until "Log it". An existing row's are read off the row and written at once.
+  const [draftNutrition, setDraftNutrition] = useState<FoodNutrition | null>(null);
+  // An estimate waiting to be accepted: the model proposes, the person decides.
+  const [proposal, setProposal] = useState<FoodNutrition | null>(null);
+  const [estimating, setEstimating] = useState(false);
+  const [estimateError, setEstimateError] = useState<string | null>(null);
+  const estimateToken = useRef(0);
+  const estimateRoute = useAiRoute('nutritionEstimate');
   // Opens on the fridge, which is where most of a week's leftovers go, so the
   // ordinary log still costs the taps it always did.
   const [destination, setDestination] = useState<LeftoverDestination>('fridge');
@@ -293,6 +311,11 @@ export function LeftoverSheet({
       ? ''
       : String(leftover.weightG));
     weighIn.clear();
+    estimateToken.current += 1;
+    setDraftNutrition(null);
+    setProposal(null);
+    setEstimating(false);
+    setEstimateError(null);
   }, [visible, leftover?.id]);
 
   const dismiss = (after?: () => void) => {
@@ -317,6 +340,7 @@ export function LeftoverSheet({
     || draftDaysAgo !== 0
     || (draftKeepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT) !== (seed?.keepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT)
     || destination !== 'fridge'
+    || draftNutrition !== null
   );
   const requestDismiss = () => {
     if (!draftDirty) { dismiss(); return; }
@@ -381,8 +405,43 @@ export function LeftoverSheet({
       instantDaysAgo(draftDaysAgo),
       draftKeepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT,
       typedWeight,
+      draftNutrition,
     );
     dismiss();
+  };
+
+  // ==== nutrition ====
+  // Only a container with no recipe needs asking: a recipe's own figures, scaled
+  // to what the container weighs, are what logging it uses (`containerFigures`).
+  const nutrition = leftover ? leftover.nutrition : draftNutrition;
+  const showNutrition = !actionsOnly && !choosing && (!editing || !!onSetNutrition)
+    && !(editing ? leftover?.recipeId : seed?.recipeId)
+    && (!!nutrition || estimateRoute !== 'unavailable');
+
+  const runEstimate = async () => {
+    const text = cleanTitle;
+    if (!text || estimating) return;
+    haptics.tap();
+    Keyboard.dismiss();
+    const token = ++estimateToken.current;
+    setEstimating(true);
+    setEstimateError(null);
+    try {
+      const result = await estimateMealNutrition(text);
+      if (token !== estimateToken.current) return;
+      const panel = estimateToPanel(result);
+      if (!panel) setEstimateError('The estimate came back with no figures. Try again.');
+      else setProposal({ ...panel, servingText: 'whole container' });
+    } catch (e) {
+      if (token === estimateToken.current) setEstimateError(describeAIError(e));
+    } finally {
+      if (token === estimateToken.current) setEstimating(false);
+    }
+  };
+
+  const setNutrition = (next: FoodNutrition | null) => {
+    if (leftover) onSetNutrition?.(next);
+    else setDraftNutrition(next);
   };
 
   /**
@@ -676,6 +735,62 @@ export function LeftoverSheet({
             </View>
           )}
 
+          {showNutrition && (
+            <View style={styles.nutritionBlock}>
+              <View style={styles.keepText}>
+                <Text style={styles.keepLabel}>Nutrition</Text>
+                <HelpText style={styles.hintInline}>
+                  Lets the food log add this from the fridge with its figures
+                </HelpText>
+              </View>
+              {proposal ? (
+                <>
+                  <Text style={styles.nutritionValue}>
+                    {`About ${Math.round(proposal.amounts.calorieKcal ?? 0)} cal for the whole container (estimate)`}
+                  </Text>
+                  <View style={styles.nutritionActions}>
+                    <InlineAction
+                      label="Use this"
+                      onPress={() => { haptics.tap(); setNutrition(proposal); setProposal(null); }}
+                      accessibilityLabel="Save this estimate on the container"
+                    />
+                    <InlineAction
+                      label="Discard"
+                      variant="neutral"
+                      onPress={() => { haptics.tap(); setProposal(null); }}
+                      accessibilityLabel="Discard this estimate"
+                    />
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.nutritionValue}>
+                    {nutrition
+                      ? `About ${Math.round(nutrition.amounts.calorieKcal ?? 0)} cal for the whole container${nutrition.source === 'estimated' ? ' (estimate)' : ''}`
+                      : 'Not set'}
+                  </Text>
+                  <View style={styles.nutritionActions}>
+                    <InlineAction
+                      icon="sparkles-outline"
+                      label={estimating ? 'Estimating…' : nutrition ? 'Estimate again' : 'Estimate'}
+                      onPress={runEstimate}
+                      accessibilityLabel={`Estimate the nutrition of ${cleanTitle || 'this container'}`}
+                    />
+                    {!!nutrition && (
+                      <InlineAction
+                        label="Remove"
+                        variant="neutral"
+                        onPress={() => { haptics.tap(); setNutrition(null); }}
+                        accessibilityLabel="Remove the nutrition from this container"
+                      />
+                    )}
+                  </View>
+                </>
+              )}
+              {!!estimateError && <Text style={styles.nutritionError}>{estimateError}</Text>}
+            </View>
+          )}
+
           {editing && !!onOpenRecipe && (
             <>
               <View style={styles.sep} />
@@ -951,6 +1066,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     marginBottom: spacing.md,
   },
+  nutritionBlock: { paddingHorizontal: spacing.md, marginBottom: spacing.md, gap: spacing.sm },
+  nutritionValue: { color: colors.text, fontSize: font.sm },
+  nutritionActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  nutritionError: { color: colors.redText, fontSize: font.sm },
   weighInWrap: { paddingHorizontal: spacing.md, marginBottom: spacing.md },
   keepText: { flex: 1, gap: spacing.xxs },
   weightField: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

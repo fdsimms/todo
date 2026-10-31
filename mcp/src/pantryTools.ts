@@ -16,6 +16,7 @@
  *   offered here.
  */
 import type { GroceryItem, ItemProduct, Leftover, Recipe } from '../../src/types';
+import { containerPanelFromAmounts } from '../../src/utils/leftoverFigures';
 import type {
   LeftoverChange,
   PantryBoxChange,
@@ -286,6 +287,8 @@ export interface SerializedLeftover {
   finished?: 'eaten' | 'tossed';
   /** What it holds, in grams, when weighed. */
   weightG?: number;
+  /** The container's own figures, when it has them: what logging it from the fridge writes. */
+  nutrition?: { amounts: Record<string, number>; source: string };
 }
 
 export function serializeLeftover(l: Leftover): SerializedLeftover {
@@ -297,6 +300,7 @@ export function serializeLeftover(l: Leftover): SerializedLeftover {
     ...(l.frozenAt ? { frozen: true } : {}),
     ...(l.finishedAt && l.outcome ? { finished: l.outcome } : {}),
     ...(l.weightG ? { weightG: l.weightG } : {}),
+    ...(l.nutrition ? { nutrition: { amounts: l.nutrition.amounts as Record<string, number>, source: l.nutrition.source } } : {}),
   };
 }
 
@@ -346,8 +350,14 @@ export function answerPantryReview(replica: Replica, answers: { id: string; answ
   return { answered };
 }
 
-export function updateLeftover(replica: Replica, id: string, change: LeftoverChange): SerializedLeftover {
-  return serializeLeftover(replica.updateLeftover(id, change));
+/** What the tool takes for a container's figures: amounts keyed by nutrient, for the whole container. */
+export type LeftoverNutritionInput = { amounts: Record<string, number>; estimated?: boolean } | null;
+
+export function updateLeftover(replica: Replica, id: string, change: Omit<LeftoverChange, 'nutrition'> & { nutrition?: LeftoverNutritionInput }): SerializedLeftover {
+  const { nutrition, ...rest } = change;
+  const panel = nutrition === undefined ? undefined : nutrition === null ? null : containerPanelFromAmounts(nutrition.amounts, { estimated: nutrition.estimated !== false });
+  if (panel === null && nutrition) throw new Error('nutrition needs at least one figure. Absent is unknown, not zero; send null to clear it.');
+  return serializeLeftover(replica.updateLeftover(id, { ...rest, ...(panel !== undefined ? { nutrition: panel } : {}) }));
 }
 
 export function splitLeftover(replica: Replica, id: string) {

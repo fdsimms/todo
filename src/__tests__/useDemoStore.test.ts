@@ -5626,6 +5626,14 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(rows.find(r => r.section === FREEZER_SECTION)!.productName).toBe('Portion');
   });
 
+  it('seeds a hand-logged container that carries its own figures', () => {
+    // What the fridge block in "What did you eat?" logs with. A container with
+    // no figures there reads as a feature that can't log one.
+    const curry = useLeftoverStore.getState().leftovers.find(l => l.title === 'Massaman curry');
+    expect(curry?.recipeId).toBeNull();
+    expect(curry?.nutrition?.amounts.calorieKcal).toBe(720);
+  });
+
   it('seeds one cooking split between the fridge and the freezer', () => {
     const { leftovers } = useLeftoverStore.getState();
 

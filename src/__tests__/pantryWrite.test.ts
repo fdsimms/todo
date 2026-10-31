@@ -236,6 +236,8 @@ describe('leftovers', () => {
     const local: Leftover = { ...left, storedAt: new Date(2026, 7, 20, 12).toISOString(), keepUntil: '2026-08-23' };
     expect(leftoverSplitDraft(local)).toMatchObject({ title: 'Chili', storedAt: local.storedAt, keepDays: 3, frozen: true });
     expect(leftoverSplitDraft({ ...local, frozenAt: local.storedAt })?.frozen).toBe(false);
+    // The half is the same food, so it keeps the figures.
+    expect(leftoverSplitDraft({ ...local, nutrition: { amounts: { calorieKcal: 1 } } as never })?.nutrition).toEqual({ amounts: { calorieKcal: 1 } });
     expect(leftoverSplitDraft({ ...local, finishedAt: local.storedAt, outcome: 'eaten' })).toBeNull();
   });
 });

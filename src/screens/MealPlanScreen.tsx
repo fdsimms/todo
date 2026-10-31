@@ -468,6 +468,7 @@ export function MealPlanScreen() {
   const setLeftoverStoredAt = useLeftoverStore(s => s.setStoredAt);
   const setLeftoverKeepDays = useLeftoverStore(s => s.setKeepDays);
   const setLeftoverWeight = useLeftoverStore(s => s.setLeftoverWeight);
+  const setLeftoverNutrition = useLeftoverStore(s => s.setLeftoverNutrition);
   const finishLeftover = useLeftoverStore(s => s.finishLeftover);
   const setLeftoverFrozen = useLeftoverStore(s => s.setFrozen);
   const splitLeftover = useLeftoverStore(s => s.splitLeftover);
@@ -2837,7 +2838,7 @@ export function MealPlanScreen() {
           // instead of the meal. `sourceEntryId` is the one thing the sheet
           // can't have changed: every container here came out of that cooking,
           // whichever part of it it is.
-          onLog={(picks, storedAt, keepDays, weightG) => picks.forEach(pick => logLeftover({
+          onLog={(picks, storedAt, keepDays, weightG, nutrition) => picks.forEach(pick => logLeftover({
             title: pick.title,
             storedAt,
             keepDays,
@@ -2847,11 +2848,14 @@ export function MealPlanScreen() {
             // Only ever set when the sheet wrote exactly one container, which is
             // the only case it offers the field in.
             weightG,
+            // Only ever set for one hand-named container: a recipe's come from the recipe.
+            nutrition: picks.length === 1 ? nutrition : null,
           }))}
           onRename={title => editingLeftover && renameLeftover(editingLeftover.id, title)}
           onSetStoredAt={storedAt => editingLeftover && setLeftoverStoredAt(editingLeftover.id, storedAt)}
           onSetKeepDays={days => editingLeftover && setLeftoverKeepDays(editingLeftover.id, days)}
           onSetWeight={grams => editingLeftover && setLeftoverWeight(editingLeftover.id, grams)}
+          onSetNutrition={nutrition => editingLeftover && setLeftoverNutrition(editingLeftover.id, nutrition)}
           // Each of these adds or takes a card from the fridge row behind the
           // sheet, so it animates rather than jumping as the sheet closes.
           onFinish={outcome => { if (!editingLeftover) return; animateLayout(); finishLeftover(editingLeftover.id, outcome); }}

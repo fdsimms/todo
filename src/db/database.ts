@@ -2108,6 +2108,9 @@ function runInitDatabase(): void {
     // for the same reason: nothing before this weighed one, and there is no
     // figure to derive one from. See Leftover.weightG.
     'ALTER TABLE leftovers ADD COLUMN weight_g REAL',
+    // NULL until someone looks the container up: unknown is not an empty panel,
+    // the reason grocery_items.nutrition is nullable too. See Leftover.nutrition.
+    'ALTER TABLE leftovers ADD COLUMN nutrition TEXT',
     // Generalizes log_water_ml (still on the schema below, read as a fallback
     // in rowToTask for rows written before this) from "water only" to any
     // NutrientKey. NULL on every existing row; a row that already had
@@ -9423,6 +9426,7 @@ function rowToLeftover(row: Record<string, unknown>): Leftover {
     createdAt: row.created_at as string,
     frozenAt: (row.frozen_at as string) ?? null,
     weightG: (row.weight_g as number) ?? null,
+    nutrition: parseFoodNutrition(row.nutrition as string | null),
     useUpTask: row.use_up_task === null || row.use_up_task === undefined
       ? null
       : Boolean(row.use_up_task),
@@ -9446,27 +9450,29 @@ export function dbGetAllLeftovers(): Leftover[] {
 
 export function dbInsertLeftover(leftover: Leftover): void {
   db.runSync(
-    `INSERT INTO leftovers (id, title, recipe_id, source_entry_id, stored_at, keep_until, finished_at, outcome, created_at, frozen_at, use_up_task, weight_g)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO leftovers (id, title, recipe_id, source_entry_id, stored_at, keep_until, finished_at, outcome, created_at, frozen_at, use_up_task, weight_g, nutrition)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       leftover.id, leftover.title, leftover.recipeId ?? null, leftover.sourceEntryId ?? null,
       leftover.storedAt, leftover.keepUntil, leftover.finishedAt ?? null,
       leftover.outcome ?? null, leftover.createdAt, leftover.frozenAt ?? null,
       leftover.useUpTask === null || leftover.useUpTask === undefined ? null : (leftover.useUpTask ? 1 : 0),
       leftover.weightG ?? null,
+      serializeFoodNutrition(leftover.nutrition ?? null),
     ]
   );
 }
 
 export function dbUpdateLeftover(leftover: Leftover): void {
   db.runSync(
-    `UPDATE leftovers SET title=?, recipe_id=?, source_entry_id=?, stored_at=?, keep_until=?, finished_at=?, outcome=?, frozen_at=?, use_up_task=?, weight_g=? WHERE id=?`,
+    `UPDATE leftovers SET title=?, recipe_id=?, source_entry_id=?, stored_at=?, keep_until=?, finished_at=?, outcome=?, frozen_at=?, use_up_task=?, weight_g=?, nutrition=? WHERE id=?`,
     [
       leftover.title, leftover.recipeId ?? null, leftover.sourceEntryId ?? null,
       leftover.storedAt, leftover.keepUntil, leftover.finishedAt ?? null,
       leftover.outcome ?? null, leftover.frozenAt ?? null,
       leftover.useUpTask === null || leftover.useUpTask === undefined ? null : (leftover.useUpTask ? 1 : 0),
       leftover.weightG ?? null,
+      serializeFoodNutrition(leftover.nutrition ?? null),
       leftover.id,
     ]
   );
