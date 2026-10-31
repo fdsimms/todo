@@ -56,7 +56,7 @@ interface Props {
  * `hitSlop` reaching into a neighbour's; the countdown is `font.lg` with its
  * state after it ("12:30 elapsed", `recipeTimerClock`); Pause and Resume are
  * glyphs, as there. Reset is the one that loses something, a time about to be
- * logged, so it sits furthest from the primary button behind a wider gap and
+ * logged, so it sits furthest from the primary button and
  * asks first (`recipeTimerResetPrompt`). The primary stays at the trailing
  * edge in every state, so Start becomes Pause under the same finger; the step
  * row's own order would put it a slot in once a cook is running, moving it out
@@ -132,14 +132,13 @@ export function RecipeTimerRow({
             <RotatingChevron open={showDetails} size={iconSize.xs} color={colors.textTertiary} />
           )}
         </TouchableOpacity>
-        {/* Furthest from the primary button and a wider gap from its
-            neighbour (`resetBtn`), with no hitSlop anywhere on the row: the
-            three used to sit 8pt apart with overlapping hit areas, Reset right
-            beside Pause. */}
+        {/* Furthest from the primary button, with no hitSlop anywhere on the
+            row: the three used to sit 8pt apart with overlapping hit areas,
+            Reset right beside Pause. */}
         {inProgress && (
           <TouchableOpacity
             onPress={handleReset}
-            style={[styles.secondaryBtn, styles.resetBtn]}
+            style={styles.secondaryBtn}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
             accessibilityLabel={`Reset ${noun} timer`}
@@ -167,7 +166,7 @@ export function RecipeTimerRow({
             running ? `Pause ${noun} timer` : paused ? `Resume ${noun} timer` : `Start ${noun} timer`
           }
         >
-          <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={running ? colors.onFill : colors.onAccent} />
+          <Ionicons name={running ? 'pause' : 'play'} size={iconSize.sm} color={running ? colors.orangeText : colors.onAccent} />
         </TouchableOpacity>
       </View>
       {showDetails && (
@@ -261,20 +260,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: TOUCH,
     height: TOUCH,
   },
+  // Running is the quiet state (see StepTimerRow): a tint, not a solid block.
   primaryBtnRunning: {
-    backgroundColor: colors.orangeFill,
+    backgroundColor: colors.orange + '33',
   },
+  // No disc: the primary is the only filled control. The row's own gap is the
+  // only space between controls, so it is the same everywhere.
   secondaryBtn: {
     width: TOUCH,
     height: TOUCH,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  // With the row's own gap, 16pt clear of the button beside it.
-  resetBtn: {
-    marginRight: spacing.sm,
   },
   details: {
     gap: spacing.xs,
