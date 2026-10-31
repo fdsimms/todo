@@ -1755,6 +1755,7 @@ export function TodayScreen() {
         const dayKey = getLogicalDayKey(new Date(), useSettingsStore.getState().dayResetTime);
         if (dayKey !== foodTaskDayKey) {
           foodTaskDayKey = dayKey;
+          judgeMorningCheckInRef.current();
           useTaskStore.getState().syncSnackNudgeTasks();
           useTaskStore.getState().syncLimitWarningTasks();
           useTaskStore.getState().syncGoalTargetTasks();
@@ -1792,6 +1793,9 @@ export function TodayScreen() {
       // (e.g. reopened the next morning), instead of waiting on the tick.
       const subscription = AppState.addEventListener('change', state => {
         if (state === 'active') {
+          // A phone left running overnight comes back to this screen already
+          // mounted, so the morning check-in has to be asked for here.
+          judgeMorningCheckInRef.current();
           useTaskStore.getState().checkVacationExpiry();
           // Straight after the expiry, the order maintenancePasses uses and for
           // its reason: opening the app on the morning you fly is the moment
@@ -2083,33 +2087,45 @@ export function TodayScreen() {
     () => morningCheckInTasks(openTasksOf(allTasks), dayResetTime, vacationEndedAt),
     [allTasks, dayResetTime, vacationEndedAt]
   );
-  // Judged exactly once per mount, and only after tasks have loaded. Leaving
+  // Judged once per logical day, and only after tasks have loaded. Leaving
   // the tab hides it in an Activity (FreezeWhenBlurred), which tears effects
   // down and re-runs them on every return, so an effect with no guard re-asked
   // the question on each tab switch: a visit with nothing to ask about, then a
-  // return after a mood log, opened the sheet "at random". Refs survive the
-  // hide, so this one keeps the later returns from judging again.
+  // return after a mood log, opened the sheet "at random". The ref holds the
+  // day last judged and survives the hide, so a return the same day never
+  // judges again. It is a day rather than a boolean because a phone left
+  // running overnight never remounts this screen: a once-per-mount judgment
+  // meant the check-in waited for a cold launch (it opened at 12:57). The
+  // foreground and the day-rollover tick call it too, and the day key is
+  // what keeps those from asking twice.
   const checkInTasksLoaded = useTaskStore(s => s.initialized);
-  const morningCheckInJudged = useRef(false);
-  useEffect(() => {
-    if (!checkInTasksLoaded || morningCheckInJudged.current) return;
-    morningCheckInJudged.current = true;
-    const todayKey = getLogicalDayKey(new Date(), dayResetTime);
-    const opens = morningCheckInLastDayKey !== todayKey && morningCheckInCandidates.length > 0;
+  const morningCheckInJudgedDay = useRef<string | null>(null);
+  const judgeMorningCheckInRef = useRef<() => void>(() => {});
+  judgeMorningCheckInRef.current = () => {
+    if (!useTaskStore.getState().initialized) return;
+    const reset = useSettingsStore.getState().dayResetTime;
+    const todayKey = getLogicalDayKey(new Date(), reset);
+    if (morningCheckInJudgedDay.current === todayKey) return;
+    morningCheckInJudgedDay.current = todayKey;
+    const settings = useSettingsStore.getState();
+    const candidates = morningCheckInTasks(
+      openTasksOf(useTaskStore.getState().tasks),
+      reset,
+      settings.vacationEndedAt,
+    );
+    const opens = settings.morningCheckInLastDayKey !== todayKey && candidates.length > 0;
     reportMorningCheckIn({
       opened: opens,
-      storedKey: morningCheckInLastDayKey,
+      storedKey: settings.morningCheckInLastDayKey,
       todayKey,
-      titles: morningCheckInCandidates.map(t => t.title),
+      titles: candidates.map(t => t.title),
     });
     if (!opens) return;
     setMorningCheckInVisible(true);
     setMorningCheckInLastDayKey(todayKey);
-    // Only the day-key gate belongs here — re-running this effect as tasks
-    // change (e.g. while the sheet is open answering rows) must not reopen
-    // it, so the candidate list and the visible flag are deliberately left
-    // out of the dependency array.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  };
+  useEffect(() => {
+    if (checkInTasksLoaded) judgeMorningCheckInRef.current();
   }, [checkInTasksLoaded]);
 
   // The one place the mood log reaches back into Today — one line under
