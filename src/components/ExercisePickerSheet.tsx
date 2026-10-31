@@ -228,7 +228,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
                   },
                 }))}
               />
-              <HelpText style={styles.hint}>Pick the muscles that do most of the work. Search finds the exercise by them.</HelpText>
+              <HelpText style={styles.hint}>Pick the muscles that do most of the work.</HelpText>
             </ScrollView>
           </>
         ) : (
