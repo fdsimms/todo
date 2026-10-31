@@ -102,8 +102,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
+    // Same height as the shared Done bar and the set tables' bar.
+    minHeight: 44,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xsm,
   },
   barWithNext: { justifyContent: 'space-between' },
   operators: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginRight: 'auto' },

@@ -4650,6 +4650,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     useMealPlanStore.getState().removeEntry(planned.id);
   });
 
+  it('leaves two meals waiting in this week\'s pool, with no day or meal', () => {
+    const pool = useMealPlanStore.getState().pool;
+    expect(pool).toHaveLength(2);
+    expect(new Set(pool.map(e => e.weekStart)).size).toBe(1);
+    expect(pool.every(e => e.recipeId !== null)).toBe(true);
+  });
+
   describe('taking a removed meal\'s shopping off the list', () => {
     afterEach(freshDemo);
 

@@ -41,6 +41,7 @@ import { SelectionDot } from './SelectionDot';
 import { SortableList } from './SortableList';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
+import { WorkoutCompleteHero } from './WorkoutCompleteHero';
 import type { ExerciseKind, WorkoutSet, WorkoutSetKind } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -698,7 +699,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     } else if (current && !oldVersion && picked.length > 0) {
       store.updateRoutine(current.id, { items: applyRoutineChanges(current.items, picked) }, { version: 'new', source: 'workout' });
     }
-    haptics.chainFinish();
+    haptics.success();
     close();
     onSaved(askFirst && linkedTask ? linkedTask.id : null);
   };
@@ -728,7 +729,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             {session && <SessionClock startedAt={session.startedAt} style={styles.subtitle} />}
           </View>
           {!finishing && session ? (
-            <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
+            <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
           ) : <View style={styles.headerSpacer} />}
         </View>
 
@@ -741,15 +742,23 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             <EmptyNote icon="barbell-outline">No workout is in progress. Start one from a routine on the Workouts screen, or from a task.</EmptyNote>
           </View>
         ) : finishing && summary ? (
+          // Keyed: both branches are a ScrollView in this spot, so without it
+          // the summary opens at the scroll offset the live list was left at.
           <ScrollView
+            key="summary"
             style={styles.flex}
             contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xl }]}
             keyboardShouldPersistTaps="handled"
             {...keyboardScroll.props}
             ref={keyboardScroll.ref}
           >
-            <Text style={styles.summaryTitle}>Workout summary</Text>
+            {plan.loggedCount > 0 && session ? (
+              <WorkoutCompleteHero subtitle={`Started ${formatTimeOfDay(new Date(session.startedAt))} · ${summary.minutes} min`} records={sessionRecords.length} />
+            ) : (
+              <Text style={styles.summaryTitle}>Workout summary</Text>
+            )}
             <WorkoutStatTiles
+              compact={plan.loggedCount > 0}
               minutes={summary.minutes}
               exercises={summary.exercises.length}
               sets={summary.setsDone}
@@ -903,6 +912,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           </ScrollView>
         ) : (
           <ScrollView
+            key="live"
             style={styles.flex}
             contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
@@ -1667,45 +1677,59 @@ function RestStrip({ sessionId, styles }: {
   const store = useStepTimerStore.getState();
   const over = isStepTimerReady(rest, now);
   const label = rest.label ? `Rest ${rest.label.charAt(0).toLowerCase()}${rest.label.slice(1)}` : 'Rest';
+  const overText = over ? `+${formatStopwatch(stepTimerOverSeconds(rest, now))}` : '';
   return (
-    <View style={styles.restStrip}>
+    <View style={[styles.restStrip, over && styles.restStripOver]}>
       <View style={styles.restBody}>
         <View style={styles.restText}>
-          <Text
-            style={[styles.restTime, over && styles.restTimeOver]}
-            accessibilityLabel={over ? `Rest over ${stepTimerOverSeconds(rest, now)} seconds ago` : `${Math.ceil(stepTimerRemaining(rest, now))} seconds of rest left`}
-          >
-            {over ? `+${formatStopwatch(stepTimerOverSeconds(rest, now))}` : formatStopwatch(Math.ceil(stepTimerRemaining(rest, now)))}
-          </Text>
-          <Text style={styles.restLabel} numberOfLines={1}>
-            {`${over ? 'Rest is over' : label} · of ${formatRestSeconds(rest.durationSeconds)}`}
-          </Text>
+          {over ? (
+            <>
+              <Text style={[styles.restTime, styles.restOnDone]} accessibilityLabel={`Rest over ${stepTimerOverSeconds(rest, now)} seconds ago`}>
+                Rest over
+              </Text>
+              <Text style={[styles.restLabel, styles.restOnDone]} numberOfLines={1}>
+                {rest.label ? `${overText} · ${rest.label}` : overText}
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.restTime} accessibilityLabel={`${Math.ceil(stepTimerRemaining(rest, now))} seconds of rest left`}>
+                {formatStopwatch(Math.ceil(stepTimerRemaining(rest, now)))}
+              </Text>
+              <Text style={styles.restLabel} numberOfLines={1}>
+                {`${label} · of ${formatRestSeconds(rest.durationSeconds)}`}
+              </Text>
+            </>
+          )}
         </View>
         <View style={styles.restButtons}>
-          <InlineAction
-            label={`−${REST_NUDGE_BACK_SECONDS}`}
-            variant="neutral"
-            disabled={over}
-            style={styles.restButton}
-            accessibilityLabel={`${REST_NUDGE_BACK_SECONDS} seconds less rest`}
-            onPress={() => { haptics.impactLight(); store.addTime(rest.id, -REST_NUDGE_BACK_SECONDS); }}
-          />
+          {!over && (
+            <InlineAction
+              label={`−${REST_NUDGE_BACK_SECONDS}`}
+              variant="neutral"
+              style={styles.restButton}
+              accessibilityLabel={`${REST_NUDGE_BACK_SECONDS} seconds less rest`}
+              onPress={() => { haptics.impactLight(); store.addTime(rest.id, -REST_NUDGE_BACK_SECONDS); }}
+            />
+          )}
           <InlineAction
             label={`+${REST_NUDGE_FORWARD_SECONDS}`}
-            variant="neutral"
+            variant={over ? 'accent' : 'neutral'}
+            tint={over ? colors.onDone : undefined}
             style={styles.restButton}
             accessibilityLabel={`${REST_NUDGE_FORWARD_SECONDS} seconds more rest`}
             onPress={() => { haptics.impactLight(); store.addTime(rest.id, REST_NUDGE_FORWARD_SECONDS); }}
           />
           <InlineAction
             label={over ? 'Dismiss' : 'Skip'}
+            tint={over ? colors.onDone : undefined}
             style={styles.restButton}
             accessibilityLabel={over ? 'Dismiss rest' : 'Skip rest'}
             onPress={() => { haptics.tap(); store.remove(rest.id); }}
           />
         </View>
       </View>
-      <ProgressBar progress={stepTimerProgress(rest, now)} height={3} decorative style={styles.restBar} color={over ? colors.done : undefined} />
+      {!over && <ProgressBar progress={stepTimerProgress(rest, now)} height={3} decorative style={styles.restBar} />}
     </View>
   );
 }
@@ -1834,7 +1858,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // A hero number, read from a bench at arm's length: a literal size, which
   // the scale isn't for (see the font scale note in CLAUDE.md).
   restTime: { color: colors.text, fontSize: 28, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
-  restTimeOver: { color: colors.accentText },
+  // Once the rest ends the whole strip fills with the finished gold, so it
+  // reads as a different state from across a bench, not a recolored number.
+  restStripOver: { backgroundColor: colors.done },
+  restOnDone: { color: colors.onDone },
   restBar: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   restButtons: { flexDirection: 'row', gap: spacing.xsm },
   restButton: { minWidth: 48, justifyContent: 'center', minHeight: 44 },

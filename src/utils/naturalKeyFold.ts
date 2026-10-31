@@ -338,6 +338,7 @@ export const REFERENCES: Reference[] = [
   // A recipe. Recipes no longer fold (see NATURAL_KEYS), but an alias
   // recorded by a fold before that still resolves through these.
   idColumn('recipes', 'meal_plan_entries', 'recipe_id'),
+  idColumn('recipes', 'week_pool_entries', 'recipe_id'),
   idColumn('recipes', 'leftovers', 'recipe_id'),
   idColumn('recipes', 'food_logs', 'recipe_id'),
   idColumn('recipes', 'grocery_items', 'source_recipe_id'),

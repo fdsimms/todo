@@ -6,7 +6,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { copyMeals, listMealPlan, planMeal, saveMealAsRecipe, setMealCooked, updateMeal } from '../kitchenTools';
+import { addToWeekPool, copyMeals, listMealPlan, placePoolMeal, planMeal, removePoolMeal, saveMealAsRecipe, setMealCooked, updateMeal } from '../kitchenTools';
 import { saveRecipe, updateRecipe } from '../logTools';
 import { addToPantry, logLeftover } from '../pantryTools';
 import { getGroceryItem, updateGroceryItem } from '../groceryTools';
@@ -37,7 +37,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  for (const table of ['meal_plan_entries', 'recipes', 'grocery_items', 'leftovers', 'tasks', 'unattended_log']) {
+  for (const table of ['meal_plan_entries', 'week_pool_entries', 'recipes', 'grocery_items', 'leftovers', 'tasks', 'unattended_log']) {
     mockRaw.runSync(`DELETE FROM ${table}`);
   }
   replica.refresh();
@@ -330,5 +330,44 @@ describe('copy_meals', () => {
     const each = copyMeals(replica, { mealId: soup.id, dates: ['2030-03-28', '2030-03-29', '2030-03-28'] });
     expect(each.copied.map(m => m.date)).toEqual(['2030-03-28', '2030-03-29']);
     expect(copyMeals(replica, { mealId: soup.id, dates: ['2030-03-28'] })).toMatchObject({ copied: [], skipped: ['2030-03-28'] });
+  });
+});
+
+describe('the weekly pool', () => {
+  it('holds a meal for a week with no day, lists it, and places it on a day', () => {
+    const added = addToWeekPool(replica, { week: DAY, title: 'Tacos' });
+    expect(added).toMatchObject({ title: 'Tacos' });
+    // Filed under the week's first day, whichever day was named.
+    expect(added.week).toBe(replica.weekStartOf(DAY));
+
+    const listed = listMealPlan(replica, { from: DAY, days: 3 });
+    expect(listed.meals).toEqual([]);
+    expect(listed.pool).toEqual([added]);
+
+    const placed = placePoolMeal(replica, { id: added.id, date: DAY, slot: 'dinner' });
+    expect(placed).toMatchObject({ date: DAY, slot: 'dinner', title: 'Tacos' });
+    expect(listMealPlan(replica, { from: DAY, days: 3 }).pool).toBeUndefined();
+    expect(replica.mealPlan(DAY, DAY)).toHaveLength(1);
+  });
+
+  it('takes a recipe off Up next when it is chosen for a week', () => {
+    const recipe = saveRecipe(replica, { name: 'Soup' });
+    mockRaw.runSync('UPDATE recipes SET up_next = 1 WHERE id = ?', [recipe.id]);
+    replica.refresh();
+    expect(replica.recipes().find(r => r.id === recipe.id)?.upNext).toBe(true);
+    addToWeekPool(replica, { week: DAY, recipeId: recipe.id });
+    expect(replica.recipes().find(r => r.id === recipe.id)?.upNext).toBe(false);
+  });
+
+  it('removes a pool meal without planning it, and refuses one that is gone', () => {
+    const added = addToWeekPool(replica, { week: DAY, title: 'Salad' });
+    expect(removePoolMeal(replica, added.id).removed.title).toBe('Salad');
+    expect(replica.weekPool(added.week, added.week)).toEqual([]);
+    expect(() => removePoolMeal(replica, added.id)).toThrow(/No meal waiting/);
+    expect(() => placePoolMeal(replica, { id: added.id, date: DAY, slot: 'dinner' })).toThrow(/No meal waiting/);
+  });
+
+  it('needs a recipe or a title', () => {
+    expect(() => addToWeekPool(replica, { week: DAY })).toThrow(/recipeId, or a title/);
   });
 });

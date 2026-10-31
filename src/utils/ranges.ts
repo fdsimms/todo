@@ -70,6 +70,9 @@ function foldForSearch(text: string): { folded: string; starts: number[]; ends: 
   return { folded, starts, ends };
 }
 
+/** The least dense a run of in-order letters can be and still count as a hit. */
+const MIN_SCATTER_DENSITY = 0.4;
+
 export function scoreSubstring(haystack: string, needle: string): { score: number; ranges: [number, number][] } {
   if (!needle) return { score: 0, ranges: [] };
   const { folded: h, starts, ends } = foldForSearch(haystack);
@@ -118,6 +121,10 @@ export function scoreSubstring(haystack: string, needle: string): { score: numbe
 
   const span = lastMatch - firstMatch + 1;
   const density = n.length / span; // 1.0 = all chars consecutive
+  // Letters spread across most of a sentence aren't a match, they're a coincidence
+  // ("water" in "Walk the cat, then eat, rest"); without a floor every long
+  // title and note matched every query and inflated the result count.
+  if (density < MIN_SCATTER_DENSITY) return { score: 0, ranges: [] };
   const score = Math.round(density * 60);
   return { score, ranges: firstMatch !== -1 ? [toRange(firstMatch, lastMatch)] : [] };
 }

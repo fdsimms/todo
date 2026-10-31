@@ -7,6 +7,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import AppNavigator from './src/navigation/AppNavigator';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { AppLockGate } from './src/components/AppLockGate';
+import { KeyboardDoneAccessory } from './src/components/KeyboardDoneAccessory';
 import { FirstRunHost } from './src/components/FirstRunSheet';
 import { FlagCopyHost } from './src/components/FlagCopyHost';
 import { useTaskStore } from './src/store/useTaskStore';
@@ -127,6 +128,8 @@ function AppContent() {
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <DesktopChrome />
       <AppNavigator />
+      {/* The Done above every text keyboard on a screen. Each sheet mounts its own. */}
+      <KeyboardDoneAccessory />
       {/* The one-time setup questions on a new install. A sheet, so it presents
           above the navigator whatever screen it opened on. */}
       <FirstRunHost />

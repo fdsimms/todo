@@ -10,6 +10,7 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors }
 import { haptics } from '../utils/haptics';
 import { useFilterField } from '../hooks/useFilterField';
 import { stackRows, type StackOption } from '../utils/stackPicker';
+import { TextField } from './TextField';
 
 interface Props {
   stacks: StackOption[];
@@ -61,7 +62,7 @@ export function StackPickerList({ stacks, value, onSelect }: Props) {
     <View>
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
-        <TextInput
+        <TextField
           style={styles.searchInput}
           {...filterField}
           placeholder="Find a stack…"

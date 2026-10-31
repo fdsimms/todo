@@ -1,0 +1,1 @@
+{ "message": "Search no longer counts a word as a match when its letters are scattered across a long title or note, so \"water\" shows far fewer results.", "date": "2026-10-31" }

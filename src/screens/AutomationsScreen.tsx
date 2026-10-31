@@ -136,7 +136,6 @@ export function AutomationsScreen() {
         refreshControl={pullSearch.refreshControl}
         ref={setScrollRefs}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
         contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
         {...keyboardScroll.props}
         {...scrollProps}

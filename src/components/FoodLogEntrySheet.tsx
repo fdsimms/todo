@@ -20,7 +20,6 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -48,6 +47,7 @@ import { addCustomPortion, catalogPanelWrite, nutritionFor } from '../utils/food
 import {
   amountExample,
   amountHint,
+  servingMeaning,
   combineFoodNutrition,
   composeFoodAmount,
   describeFoodLogEntry,
@@ -2535,7 +2535,9 @@ export function FoodLogEntrySheet({
               {picked.kind === 'dish'
                 ? dishWeightHint
                 : foodUnitOptions.length > 0 && amountUnit !== 'other'
-                  ? 'Type the amount and pick its unit beside it.'
+                  ? `Type the amount and pick its unit beside it.${
+                  picked.panel && servingMeaning(picked.panel) ? ` ${servingMeaning(picked.panel)}` : ''
+                }`
                   : picked.panel
                     ? `${amountHint(picked.panel)}${
                       picked.panel.basis === 'per100ml'
@@ -2890,7 +2892,7 @@ export function FoodLogEntrySheet({
             <Pressable onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.searchRow}>
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} style={{ marginTop: spacing.xsm }} />
-              <TextInput
+              <TextField
                 key={searchFilter.fieldKey}
                 {...searchFilter.props}
                 style={styles.searchInput}
@@ -2990,10 +2992,9 @@ export function FoodLogEntrySheet({
               keyExtractor={c => c.key}
               renderItem={renderRow}
               keyboardShouldPersistTaps="handled"
-              // The only way to put the keyboard away from here: nothing else
-              // on this half is tappable-to-dismiss, and a pageSheet has no
-              // outside to tap.
-              keyboardDismissMode="on-drag"
+              // Dragging the list (`listScroll.props`) is a way to put the
+              // keyboard away from here: nothing else on this half is
+              // tappable-to-dismiss, and a pageSheet has no outside to tap.
               {...listScroll.props}
               ListHeaderComponent={
                 <>

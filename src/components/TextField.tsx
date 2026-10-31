@@ -1,4 +1,4 @@
-import React, { useCallback, useLayoutEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useRef } from 'react';
 import {
   StyleSheet,
   TextInput,
@@ -8,6 +8,7 @@ import {
   type TextInputChangeEventData,
   type TextInputProps,
 } from 'react-native';
+import { DONE_ACCESSORY_ID, doneBarKind, setFloatingDoneFocus } from '../utils/keyboardDone';
 import { fieldChanged, initialFieldSync, nextFieldSync, styleKeyOf, type FieldSync } from '../utils/textFieldSync';
 
 /**
@@ -61,9 +62,53 @@ const Commands = codegenNativeCommands<SetTextAndSelectionCommands>({
   supportedCommands: ['setTextAndSelection'],
 });
 
-export type TextFieldProps = TextInputProps & { ref?: React.Ref<TextInput> };
+export type TextFieldProps = TextInputProps & {
+  ref?: React.Ref<TextInput>;
+  /**
+   * `false` for a field that draws a Done of its own above the keyboard (a
+   * floating bar the host renders), so it isn't given a second one.
+   */
+  dismissBar?: boolean;
+};
 
-export function TextField({ ref, value, defaultValue, selection, onChange, style, ...rest }: TextFieldProps) {
+export function TextField({
+  ref,
+  value,
+  defaultValue,
+  selection,
+  onChange,
+  onFocus,
+  onBlur,
+  style,
+  dismissBar,
+  inputAccessoryViewID,
+  ...rest
+}: TextFieldProps) {
+  // **Every text field has a Done above its keyboard** (`src/utils/keyboardDone.ts`):
+  // the shared accessory for a single-line one, a floating button for a multiline
+  // one, and nothing extra where the field names a bar of its own.
+  const fieldId = useId();
+  const barKind = doneBarKind({ multiline: rest.multiline, ownAccessoryId: inputAccessoryViewID, dismissBar });
+  const floats = barKind === 'floating';
+  useEffect(() => {
+    if (!floats) return;
+    return () => setFloatingDoneFocus(fieldId, false);
+  }, [floats, fieldId]);
+  const handleFocus = useCallback(
+    (e: Parameters<NonNullable<TextInputProps['onFocus']>>[0]) => {
+      if (floats) setFloatingDoneFocus(fieldId, true);
+      onFocus?.(e);
+    },
+    [floats, fieldId, onFocus],
+  );
+  const handleBlur = useCallback(
+    (e: Parameters<NonNullable<TextInputProps['onBlur']>>[0]) => {
+      if (floats) setFloatingDoneFocus(fieldId, false);
+      onBlur?.(e);
+    },
+    [floats, fieldId, onBlur],
+  );
+
   const inputRef = useRef<TextInput | null>(null);
   const setRef = useCallback(
     (instance: TextInput | null) => {
@@ -129,6 +174,9 @@ export function TextField({ ref, value, defaultValue, selection, onChange, style
   return (
     <TextInput
       {...rest}
+      inputAccessoryViewID={barKind === 'accessory' ? DONE_ACCESSORY_ID : inputAccessoryViewID}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
       ref={setRef}
       style={style}
       defaultValue={sync.current.tree}

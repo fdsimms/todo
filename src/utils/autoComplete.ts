@@ -11,6 +11,11 @@ import type { GeneratedKind, Task } from '../types';
  * `blockOffer` is left out on purpose. It reads ready because a block *ran for
  * its time*, which is the clock rather than an action, and its coins are held
  * back until the person takes them (`docs/arch/generated-tasks.md`).
+ *
+ * `mealSlot` is left out too. Logging food into a slot is easy to get wrong (a
+ * snack logged to dinner), and completing a slot's whole chain on that one
+ * entry can't be taken back by deleting the entry. It still reads ready, and
+ * the tick stays the person's.
  */
 const AUTO_COMPLETE_REASONS: Partial<Record<GeneratedKind, string>> = {
   moodLog: 'Logged your mood',
@@ -23,7 +28,6 @@ const AUTO_COMPLETE_REASONS: Partial<Record<GeneratedKind, string>> = {
   produceNudge: 'Logged your produce',
   produceFloor: 'Logged your produce',
   goalTarget: 'Reached your goal',
-  mealSlot: 'Meal done',
   mealCook: 'Meal cooked',
   mealLogNudge: 'Logged your meal',
   mealShortfall: 'Bought everything',

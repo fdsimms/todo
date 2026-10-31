@@ -13,7 +13,6 @@ import {
   Text,
   FlatList,
   ScrollView,
-  TextInput,
   TouchableOpacity,
   Platform,
   StyleSheet,
@@ -105,6 +104,7 @@ import { LazySheet } from '../components/LazySheet';
 import { FadeInImage } from '../components/FadeInImage';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from '../components/RotatingChevron';
+import { TextField } from '../components/TextField';
 
 /**
  * The recipe box.
@@ -835,7 +835,7 @@ function RecipesList() {
         <>
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
-            <TextInput
+            <TextField
               style={styles.searchInput}
               {...filterField}
               placeholder="Search recipes and ingredients"

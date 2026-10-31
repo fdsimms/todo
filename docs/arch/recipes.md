@@ -1277,7 +1277,7 @@ method somebody is following with their hands full.
   the chicken", the recipe says "1 red bell pepper" and the step says "add the pepper". Strict
   matching alone is silent on most of a real method, which is why this exists rather than being
   the refusal it started as. `CUTS` comes off the end (chicken breasts, salmon fillets, pork
-  chops) and `MODIFIERS` comes off the front (red, bell, rolled, fresh, unsalted). **Adjectives
+  chops) and `MODIFIERS` comes off the front (red, bell, rolled, fresh, unsalted, kosher). `CUTS` also holds "powder", so "the mustard" finds "mustard powder"; a plain line of the same name still outranks it. **Adjectives
   and cuts, never "the last word"** — that is the entire safety argument, since "soy", "olive" and
   "chicken" name what the thing *is*: "soy sauce" never answers to "sauce", so a step reducing a
   pan sauce cannot pick up the soy line's amount. "sweet", "hot", "smoked", "toasted" and
@@ -1500,3 +1500,28 @@ through a locked phone, and outlives the sheet.
   dinner burn. A workout's rest goes through the same `scheduleStepAlarm` and is turned off to the opposite
   policy (`scheduleRestAlarm`), so the divergence is per kind, written once.
 
+
+## The weekly pool (`WeekPoolEntry`, `weekPool.ts`) — meals chosen for a week with no day
+
+"Not on a day yet": a card on the meal plan, between the week's navigation and its first day. A meal
+chosen for the week and not yet given a night or a meal.
+
+- **A separate table, never a `MealPlanEntry` with a null `date`.** Every reader of an entry takes
+  `date` to be a day key: the slot's Today task, the calendar event, the nudges, the shortfall and thaw
+  tasks, cooking stats, the purge and the MCP replica. A null would crash some and silently skip the
+  rest. A pool meal has none of the things those hang off, so none of them read it.
+- **The pool is the week's shopping, cost and nutrition, and nothing else.** The screen totals a week
+  through `poolAsEntries`, which dates each stand-in the week's first day so the week's range holds it
+  and no day does. It is never written. A day scope passes the plan's entries alone, or the first day's
+  cart would count the pool.
+- **Placing is one undo step.** `placePoolEntry` runs `planMeal` under `withReplay` (so its own undo
+  entry is suppressed), deletes the pool row, and registers one entry that undoes both. Prep tasks are
+  offered at placement, not when the meal is chosen, since they need a date.
+- **Going the other way refuses what the pool row can't carry.** `sendToPool` returns false for a meal
+  already cooked, a leftover night, or one with choices, replacements or picks, rather than dropping an
+  answer the person gave.
+- **`weekStart` is a day key, not a week number.** Changing the week-start setting leaves old rows on
+  the week they were filed under; the purge clears them with the rest.
+- **Choosing a recipe for the week answers its Up Next bookmark**, as planning it on a day does.
+- Not built: dragging a pool meal onto a day. A row is tapped and `PlanMealSheet` offers the week's
+  days and meals.

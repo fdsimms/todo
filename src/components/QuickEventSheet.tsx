@@ -1435,7 +1435,6 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
           style={styles.scroll}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + spacing.xl }]}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
           ref={keyboardScroll.ref}
           {...keyboardScroll.props}

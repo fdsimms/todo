@@ -3,7 +3,6 @@ import {
   Keyboard,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
@@ -25,6 +24,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
+import { TextField } from './TextField';
 
 interface Props {
   visible: boolean;
@@ -119,7 +119,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
           <>
             <View style={styles.searchWrap}>
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
-              <TextInput
+              <TextField
                 style={styles.searchInput}
                 {...filterField}
                 placeholder="Search recipes"

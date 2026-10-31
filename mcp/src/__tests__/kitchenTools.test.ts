@@ -17,6 +17,8 @@ function stub(over: Partial<Replica> = {}): Replica {
     ],
     cookbooks: () => [{ id: 'c1', title: 'Salt Fat' }],
     mealPlan: () => [],
+    weekPool: () => [],
+    weekStartOf: (day: string) => day,
     mealChoices: () => [],
     mealReplacements: () => [],
     mealItems: () => [],

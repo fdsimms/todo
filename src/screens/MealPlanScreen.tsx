@@ -19,7 +19,7 @@ import { format } from 'date-fns/format';
 import { isToday } from 'date-fns/isToday';
 import { isSameWeek } from 'date-fns/isSameWeek';
 import { isBefore } from 'date-fns/isBefore';
-import { MEAL_SLOTS, type FoodLogEntry, type Leftover, type MealPlanEntry, type MealSlot, type Recipe, type RecipeOverride } from '../types';
+import { MEAL_SLOTS, type FoodLogEntry, type Leftover, type MealPlanEntry, type MealSlot, type Recipe, type RecipeOverride, type WeekPoolEntry } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
@@ -69,6 +69,8 @@ import {
 } from '../components/LeftoversCard';
 import { LeftoverSheet, type LeftoverSeed } from '../components/LeftoverSheet';
 import { PlanMealSheet } from '../components/PlanMealSheet';
+import { WeekPoolCard } from '../components/WeekPoolCard';
+import { POOL_DAY_KEY, isPoolEntryId, poolAsEntries, poolForWeek, poolPickEntry } from '../utils/weekPool';
 import { FridgeHistorySheet } from '../components/FridgeHistorySheet';
 import {
   isLiveLeftover,
@@ -133,6 +135,7 @@ import {
   isKeyInRange,
   recipeIndex,
   recipeNamedLike,
+  shiftDayKey,
   slotLabel,
   slotPlural,
   titleForEntry,
@@ -393,7 +396,11 @@ export function MealPlanScreen() {
 
   const days = useMemo(() => buildWeekDays(anchor, weekStartsOn), [anchor, weekStartsOn]);
   const pickerWeekDays = useMemo(
-    () => days.map(d => ({ key: dayKeyOf(d), label: format(d, 'EEEE'), short: format(d, 'EEE') })),
+    () => [
+      ...days.map(d => ({ key: dayKeyOf(d), label: format(d, 'EEEE'), short: format(d, 'EEE') })),
+      // The week's pool: this week, no day yet. Last, so the days keep their places.
+      { key: POOL_DAY_KEY, label: 'this week', short: 'Any' },
+    ],
     [days],
   );
   const range = useMemo(() => dayKeyRange(days), [days]);
@@ -434,6 +441,12 @@ export function MealPlanScreen() {
   const planMeal = useMealPlanStore(s => s.planMeal);
   const moveEntry = useMealPlanStore(s => s.moveEntry);
   const removeEntry = useMealPlanStore(s => s.removeEntry);
+  const pool = useMealPlanStore(useShallow(s => s.pool));
+  const addToPool = useMealPlanStore(s => s.addToPool);
+  const removeFromPool = useMealPlanStore(s => s.removeFromPool);
+  const placePoolEntry = useMealPlanStore(s => s.placePoolEntry);
+  const carryPoolOver = useMealPlanStore(s => s.carryPoolOver);
+  const householdServings = useSettingsStore(s => s.householdServings);
   const renameEntry = useMealPlanStore(s => s.renameEntry);
   const setEntryCooked = useMealPlanStore(s => s.setCooked);
   const setCookTask = useMealPlanStore(s => s.setCookTask);
@@ -458,6 +471,15 @@ export function MealPlanScreen() {
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
+  // The week's pool, and the plan with the pool's meals counted in for the
+  // readers that total a week (shopping, cost, nutrition). Day readers keep
+  // using `entries`: a pool meal has no day.
+  const weekPool = useMemo(() => (range ? poolForWeek(pool, range.startKey) : []), [pool, range]);
+  const entriesWithPool = useMemo(
+    () => (weekPool.length > 0 ? [...entries, ...poolAsEntries(weekPool, recipesById, householdServings)] : entries),
+    [entries, weekPool, recipesById, householdServings],
+  );
+  const [placingPool, setPlacingPool] = useState<WeekPoolEntry | null>(null);
   const markRecipeCooked = useRecipeStore(s => s.markCooked);
   const stopCookTimer = useRecipeStore(s => s.stopCookTimer);
   const restoreCookStats = useRecipeStore(s => s.restoreCookStats);
@@ -1157,6 +1179,14 @@ export function MealPlanScreen() {
   // has actually closed.
   const planFromPicker = (pickResult: MealPick) => {
     if (!pickResult.date) return null;
+    if (pickResult.date === POOL_DAY_KEY) {
+      if (!range) return null;
+      animateLayout();
+      const row = addToPool(range.startKey, { recipeId: pickResult.recipeId, title: pickResult.title });
+      return row
+        ? poolPickEntry(row, pickResult.slot, row.recipeId ? recipesById.get(row.recipeId) : undefined, householdServings)
+        : null;
+    }
     animateLayout();
     return planMeal({
       date: pickResult.date,
@@ -1766,7 +1796,7 @@ export function MealPlanScreen() {
   // whose meals were all ticked off still offered the pill, and the sheet it
   // opened said "Nothing to add".
   const hasPlannableEntries = range
-    ? hasShoppableMeals(entries, recipesById, range)
+    ? hasShoppableMeals(entriesWithPool, recipesById, range)
     : false;
 
   // Counted over the whole component tree, so a dish whose only prep steps
@@ -2194,8 +2224,8 @@ export function MealPlanScreen() {
   // coverage floor) — the common case for a library that's only lightly
   // priced, same as a fresh install answering nothing at all.
   const weekCost = useMemo(
-    () => (range ? estimateWeekCost(entries, recipesById, groceryItems, range, itemProducts, standingSwaps) : null),
-    [entries, recipesById, groceryItems, range, itemProducts, standingSwaps]
+    () => (range ? estimateWeekCost(entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps) : null),
+    [entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps]
   );
   // Null while too little of the week resolves to a panel to say anything, the
   // per-nutrient coverage floor in recipeNutrition.ts — the common case for a
@@ -2209,9 +2239,9 @@ export function MealPlanScreen() {
   const showsWeekNutrition = hasNutritionTargets || foodLogCount > 0;
   const weekNutritionEstimate = useMemo(
     () => (range && showsWeekNutrition
-      ? weekNutrition(entries, recipesById, groceryItems, range, itemProducts, standingSwaps)
+      ? weekNutrition(entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps)
       : null),
-    [entries, recipesById, groceryItems, range, itemProducts, standingSwaps, showsWeekNutrition]
+    [entriesWithPool, recipesById, groceryItems, range, itemProducts, standingSwaps, showsWeekNutrition]
   );
   // The plan summary keeps the subtitle line; cost, nutrition and the added
   // stamp share the overline. Joined into one subtitle they wrapped beside the
@@ -2333,12 +2363,21 @@ export function MealPlanScreen() {
                     moreAccessibilityLabel="Week actions"
                   />
                 </View>
+                <WeekPoolCard
+                  entries={weekPool}
+                  onAdd={() => setPlanningDay(POOL_DAY_KEY)}
+                  onPress={setPlacingPool}
+                  onRemove={row => { haptics.tap(); animateLayout(); removeFromPool(row.id); }}
+                  onCarryOver={weekPool.length > 0 && range
+                    ? () => { haptics.tap(); carryPoolOver(range.startKey, shiftDayKey(range.startKey, 7)); }
+                    : undefined}
+                />
                 {/*
                   Said once for the week rather than once per day. A brand-new
                   user's first sight of this screen is otherwise seven bare day
                   headers.
                 */}
-                {entries.length === 0 && (
+                {entries.length === 0 && weekPool.length === 0 && (
                   <Text style={styles.emptyWeekHint}>
                     {copySourceKey
                       ? 'Nothing planned this week. Copy a week from the … button above, or tap + on any day.'
@@ -2520,15 +2559,17 @@ export function MealPlanScreen() {
         <RecipePickerSheet
           visible={planningDay !== null}
           dayKey={planningDay ?? ''}
-          dayLabel={planningDay ? format(dayKeyToDate(planningDay), 'EEEE') : ''}
+          dayLabel={planningDay && planningDay !== POOL_DAY_KEY ? format(dayKeyToDate(planningDay), 'EEEE') : 'this week'}
           // The earliest of the day's meals with nothing planned yet — the chips
           // are right there to say otherwise, and a meal task's link *has* said,
           // which is what planningSlot carries.
-          defaultSlot={planningDay ? earliestUnplannedSlot(entries, planningDay, mealSlotsEnabled) : 'dinner'}
+          defaultSlot={planningDay && planningDay !== POOL_DAY_KEY ? earliestUnplannedSlot(entries, planningDay, mealSlotsEnabled) : 'dinner'}
           forceSlot={planningSlot}
           onPlan={planFromPicker}
-          onPlanned={offerPrepTasksForEach}
-          onUnplan={removeEntry}
+          // A pool pick has no day to dress with prep tasks yet; they are offered
+          // when it is placed.
+          onPlanned={picked => offerPrepTasksForEach(picked.filter(e => !isPoolEntryId(e.id)))}
+          onUnplan={id => (isPoolEntryId(id) ? removeFromPool(id.slice('pool:'.length)) : removeEntry(id))}
           // The week on screen, so the next night is a chip away (not for a
           // meal task's own slot, which is about one day).
           weekDays={planningSlot ? undefined : pickerWeekDays}
@@ -2724,7 +2765,13 @@ export function MealPlanScreen() {
       {addToListScope && (
         <AddMealsToListSheet
           visible={addToListVisible}
-          entries={entries}
+          // Pool meals are dated the week's first day, so only the week's own
+          // scope may see them; a day scope on that day must not.
+          entries={range
+            && addToListScope.range.startKey === range.startKey
+            && addToListScope.range.endKey === range.endKey
+            ? entriesWithPool
+            : entries}
           recipesById={recipesById}
           range={addToListScope.range}
           title={addToListScope.title}
@@ -2814,6 +2861,23 @@ export function MealPlanScreen() {
             });
           }}
           onClose={() => setPlanningLeftover(null)}
+        />
+      </LazySheet>
+
+      {/* A meal waiting in the week's pool, being given its day and meal. */}
+      <LazySheet open={placingPool !== null}>
+        <PlanMealSheet
+          visible={placingPool !== null}
+          title={placingPool?.title ?? null}
+          defaultSlot="dinner"
+          days={days}
+          onPlan={(dateKey, slot) => {
+            if (!placingPool) return null;
+            animateLayout();
+            return placePoolEntry(placingPool.id, { date: dateKey, slot });
+          }}
+          onPlanned={offerPrepTasks}
+          onClose={() => setPlacingPool(null)}
         />
       </LazySheet>
 
