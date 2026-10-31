@@ -175,6 +175,7 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'recipes', key: ['id'] },
   { name: 'leftovers', key: ['id'] },
   { name: 'meal_plan_entries', key: ['id'] },
+  { name: 'week_pool_entries', key: ['id'] },
   // Finished focus sessions, and the one place this feature parts company with
   // `focus_sessions` in the exclusion list below. That row is excluded because
   // it is a cursor two devices could fight over; these are closed accounts,

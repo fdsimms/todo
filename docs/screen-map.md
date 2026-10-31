@@ -36,7 +36,7 @@ components below.
 - `src/screens/JournalScreen.tsx` — EmptyState, HubPills, JournalDaySheet, JournalEntrySheet, JournalMonthSheet, JournalPhotoStrip, JournalText, JournalWordGoalSheet, LazySheet, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, +1 more
 - `src/screens/KitchenScreen.tsx` — ActionMenu, ActiveTripBanner, BarcodeScanSheet, EmptyState, FieldClearButton, GroceryItemSheet, HubPills, InlineAction, ItemDisposalOffer, LazySheet, LeftoverSheet, ListBulkBar, +12 more
 - `src/screens/LogbookScreen.tsx` — ActiveFilterPill, CardSheet, DeliverablePromptSheet, EmptyState, HighlightedText, HubPills, LazySheet, LogbookEntryMenu, LogbookFilterSheet, PaintSelection, RotationWeekSheet, ScreenHeader, +9 more
-- `src/screens/MealPlanScreen.tsx` — ActionMenu, ActiveTripBanner, AddMealsToListSheet, BlankPickerSheet, CardSheet, FabDropZones, FridgeHistorySheet, HubPills, LazySheet, LeftoverSheet, LeftoversCard, ListBulkBar, +16 more
+- `src/screens/MealPlanScreen.tsx` — ActionMenu, ActiveTripBanner, AddMealsToListSheet, BlankPickerSheet, CardSheet, FabDropZones, FridgeHistorySheet, HubPills, LazySheet, LeftoverSheet, LeftoversCard, ListBulkBar, +17 more
 - `src/screens/MedicationDetailScreen.tsx` — ChartGuides, CountStepper, DetailHeader, DoseAmountField, EmptyState, HelpText, InlineAction, MedicationLogSheet, MedicationRenameSheet, ScrollToTopButton, SegmentedControl, SheetUndoBar, +2 more
 - `src/screens/MedicationScreen.tsx` — DeliverablePromptQueue, EmptyState, HubPills, InlineAction, LazySheet, MedicationAddSheet, MedicationLogSheet, MedicationSummarySheet, PressableScale, ScreenHeader, ScrollToTopButton, SheetUndoBar, +2 more
 - `src/screens/MoodDayScreen.tsx` — DetailHeader, EmptyState, JournalEntrySheet, JournalText, MoodFace, MoodLogSheet
@@ -506,6 +506,7 @@ Where each component can appear.
 - `src/components/UseUpResolveSheet.tsx` — on app shell
 - `src/components/VersionLabelSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +5 more
 - `src/components/WeatherRulesSheet.tsx` — on AutomationsScreen
+- `src/components/WeekPoolCard.tsx` — on MealPlanScreen
 - `src/components/WeekdaySelector.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +5 more
 - `src/components/WeightChart.tsx` — on WeightScreen
 - `src/components/WeightGoalSheet.tsx` — on WeightScreen

@@ -264,6 +264,7 @@ jest.mock('../db/database', () => ({
   dbGetMealPlanAddedToList: jest.fn().mockReturnValue({}),
   // Read directly by checkMealPlanNudge, not through useMealPlanStore.
   dbGetMealPlanEntries: jest.fn().mockReturnValue([]),
+  dbGetAllWeekPoolEntries: jest.fn().mockReturnValue([]),
   // Read directly by the leftover-finish ask below, same reason.
   dbGetMealPlanEntry: jest.fn().mockReturnValue(null),
   // Written by useMealPlanStore.setCooked, reached via setCookedPaired when a

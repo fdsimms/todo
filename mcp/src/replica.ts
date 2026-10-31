@@ -72,6 +72,7 @@ import type {
   Shop,
   StoreAlias,
   MealPlanEntry,
+  WeekPoolEntry,
   RecipeOverride,
   MealSlot,
   MedicationLog,
@@ -2292,6 +2293,19 @@ export interface Replica {
   updateMeal(id: string, patch: MealPatch): MealPlanEntry;
   /** Remove a planned meal. A cooked meal is refused: it is history and feeds the cooking stats. */
   removeMeal(id: string): MealPlanEntry;
+  /**
+   * Meals chosen for a week with no day yet (the app's weekly pool), for the
+   * weeks starting from `fromWeekStart` through `toWeekStart` (both week-start
+   * day keys, inclusive).
+   */
+  weekPool(fromWeekStart: string, toWeekStart: string): WeekPoolEntry[];
+  /** The first day of the week holding `day`, by the person's week-start setting. */
+  weekStartOf(day: string): string;
+  /** Chooses a meal for the week holding `day`, with no day or slot. Takes a recipe off Up next, as the app does. */
+  addToWeekPool(day: string, draft: { title?: string; recipeId?: string | null }): WeekPoolEntry;
+  /** Puts a pool meal on a day and slot: the pool row goes and a planned meal is written. */
+  placeFromWeekPool(id: string, date: string, slot: MealSlot): MealPlanEntry;
+  removeFromWeekPool(id: string): WeekPoolEntry;
   /**
    * Mark a planned meal cooked, or not, as the plan's checkbox does: see
    * `cookMeal` and `uncookMeal`. Refused when it is already that way.
@@ -8819,6 +8833,47 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       }
       db.dbUpdateMealPlanEntry(next);
       return next;
+    },
+
+    weekStartOf(day: string): string {
+      const d = dates.dayKeyToDate(day);
+      const back = (d.getDay() - useSettingsStore.getState().weekStartsOn + 7) % 7;
+      return dates.dayKeyOf(addDays(d, -back));
+    },
+
+    weekPool(fromWeekStart: string, toWeekStart: string): WeekPoolEntry[] {
+      return db.dbGetAllWeekPoolEntries().filter(e => e.weekStart >= fromWeekStart && e.weekStart <= toWeekStart);
+    },
+
+    addToWeekPool(day: string, draft: { title?: string; recipeId?: string | null }): WeekPoolEntry {
+      const recipe = draft.recipeId ? db.dbGetAllRecipes().find(r => r.id === draft.recipeId) : undefined;
+      if (draft.recipeId && !recipe) throw new Error(`No recipe with id ${draft.recipeId}.`);
+      const title = mealPlanUtils.cleanMealTitle(draft.title ?? recipe?.name ?? '');
+      if (!title) throw new Error('A meal needs a title or a recipe.');
+      const weekStart = this.weekStartOf(day);
+      const top = db.dbGetAllWeekPoolEntries().filter(e => e.weekStart === weekStart).reduce((m, e) => Math.max(m, e.sortOrder), 0);
+      const entry: WeekPoolEntry = {
+        id: generateId(), weekStart, recipeId: recipe?.id ?? null, title, sortOrder: top + 1, createdAt: new Date().toISOString(),
+      };
+      db.dbInsertWeekPoolEntry(entry);
+      // As the app does: choosing a recipe for the week answers its Up next bookmark.
+      if (recipe?.upNext) db.dbUpdateRecipe({ ...recipe, upNext: false });
+      return entry;
+    },
+
+    placeFromWeekPool(id: string, date: string, slot: MealSlot): MealPlanEntry {
+      const row = db.dbGetWeekPoolEntry(id);
+      if (!row) throw new Error(`No meal waiting in a week with id ${id}.`);
+      const planned = this.planMeal({ date, slot, recipeId: row.recipeId, title: row.title });
+      db.dbDeleteWeekPoolEntry(id);
+      return planned;
+    },
+
+    removeFromWeekPool(id: string): WeekPoolEntry {
+      const row = db.dbGetWeekPoolEntry(id);
+      if (!row) throw new Error(`No meal waiting in a week with id ${id}.`);
+      db.dbDeleteWeekPoolEntry(id);
+      return row;
     },
 
     removeMeal(id: string): MealPlanEntry {

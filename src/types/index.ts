@@ -8877,6 +8877,36 @@ export interface MealPlanEntry {
 }
 
 /**
+ * A meal chosen for a week with no day or slot yet: "tacos, soup and salmon
+ * this week, whichever nights suit". A separate row type rather than a
+ * `MealPlanEntry` with a null `date`, because every reader of an entry (the
+ * slot's Today task, the calendar event, nudges, shortfall and thaw tasks,
+ * cooking stats, the purge) takes `date` to be a day key, and a pool meal has
+ * none of the things those hang off.
+ *
+ * A pool meal is not a planned meal until it is placed: placing deletes this
+ * row and plans a real entry (`placePoolEntry` in `useWeekPoolStore`). What it
+ * does share with the plan is the week's shopping, cost and nutrition, which
+ * read it through `poolAsEntries` (`utils/weekPool.ts`).
+ */
+export interface WeekPoolEntry {
+  id: string;
+  /**
+   * The `YYYY-MM-DD` day key of the first day of the week it belongs to, as the
+   * meal plan screen showed that week when it was added (its `weekStartsOn`).
+   * Changing the week-start setting leaves old rows on the week they were
+   * filed under, which `purgeOldPoolEntries` clears with the rest.
+   */
+  weekStart: string;
+  /** Null for a typed title with no recipe, like `MealPlanEntry.recipeId`. */
+  recipeId: string | null;
+  /** Captured at add time so the row still reads right if the recipe goes. */
+  title: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+/**
  * Something cooked that's now sitting in the fridge, with a clock on it.
  *
  * Its own row rather than a GroceryItem or a Recipe, because it is neither: a

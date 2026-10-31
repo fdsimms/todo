@@ -183,6 +183,7 @@ only the fallback until the first sync.
 | `assign_to_stack` | **Write.** Files open tasks in a stack, or takes them out with a null `stackId`. Reports each category it changed. |
 | `plan_meal` | **Write.** Puts a recipe, a leftover, or just a title, on the meal plan. |
 | `set_meal_cooked` | **Write.** Marks a planned meal cooked (counting it, opening what it used and completing its task), or not. |
+| `add_to_week_pool` / `place_pool_meal` / `remove_pool_meal` | **Write.** The "Not on a day yet" card: chooses a meal for a week with no day or meal, gives one a day and meal later, or drops it. `list_meal_plan` shows each week's `pool`. |
 | `save_meal_as_recipe` / `copy_meals` | **Write.** Saves a typed meal as a recipe; copies a week, a slot of a week, or one meal onto other days. |
 | `add_person_history` | **Write.** Records something done with someone, as the app's "Add to history" does: a completed task naming them. The only write to the people section. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |

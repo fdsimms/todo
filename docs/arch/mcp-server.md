@@ -1329,7 +1329,7 @@ step of a meal's task here marks the meal cooked, as `completeTask` does on the 
 `reopen_task` on that step points at `set_meal_cooked`.
 
 `save_meal_as_recipe` is the meal sheet's "Save as recipe" (the recipe already called that, else a
-new empty one). `copy_meals` is the plan's three copies (`weekCopyDrafts`, `slotCopyDrafts`,
+new empty one). `add_to_week_pool`, `place_pool_meal` and `remove_pool_meal` are the weekly pool (`WeekPoolEntry`, a meal chosen for a week with no day), which `list_meal_plan` returns as `pool`; placing one writes the planned meal through `planMeal` and deletes the pool row, as the app does in one undo step. `copy_meals` is the plan's three copies (`weekCopyDrafts`, `slotCopyDrafts`,
 `mealCopyDraft`): a whole week only into a week with nothing planned, one slot only into a week
 without it (`slotsToCopy`), one meal onto other days skipping a day that already has it. Weeks are
 named by any day in them and start on the person's `weekStartsOn`. Each copied meal is its own

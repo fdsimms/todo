@@ -40,6 +40,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
+import { POOL_DAY_KEY } from '../utils/weekPool';
 
 export interface MealPick {
   /**
@@ -104,7 +105,8 @@ interface Props {
   /**
    * The week around `dayKey`, offered as chips so the next night can be
    * planned without closing: Wednesday's dinner, then Thursday's. Omit for a
-   * picker about one day only (a meal task's "Choose dinner").
+   * picker about one day only (a meal task's "Choose dinner"). A chip keyed
+   * `POOL_DAY_KEY` means "this week, no day yet" and hides the slot chips.
    */
   weekDays?: { key: string; label: string; short: string }[];
 }
@@ -426,6 +428,8 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
               />
             </View>
           )}
+          {/* A meal with no day has no slot either. */}
+          {day !== POOL_DAY_KEY && (
           <View style={styles.segment}>
             <SegmentedControl
               options={MEAL_SLOTS.map(s => ({ value: s, label: slotLabel(s) }))}
@@ -433,6 +437,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
               onChange={setSlot}
             />
           </View>
+          )}
 
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={15} color={colors.textTertiary} />

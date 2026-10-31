@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ItemPick, MealPlanEntry, MealSlot, Recipe, RecipeOverride, Task } from '../types';
+import type { ItemPick, MealPlanEntry, MealSlot, Recipe, RecipeOverride, Task, WeekPoolEntry } from '../types';
 import {
   dbGetMealPlanEntries,
   dbGetMealPlanEntriesForRecipe,
@@ -10,6 +10,11 @@ import {
   dbFillMealCalendarExternalIds,
   dbDeleteMealPlanEntry,
   dbPurgeOldMealPlanEntries,
+  dbGetAllWeekPoolEntries,
+  dbInsertWeekPoolEntry,
+  dbUpdateWeekPoolEntry,
+  dbDeleteWeekPoolEntry,
+  dbPurgeOldWeekPoolEntries,
   dbGetMealPlanAddedToList,
   dbSetMealPlanAddedToList,
 } from '../db/database';
@@ -80,6 +85,7 @@ import {
   UndoableAction,
   UndoHistoryActions,
   undoHistoryActions,
+  withReplay,
 } from '../utils/undoHistory';
 
 export interface MealPlanDraft {
@@ -174,6 +180,12 @@ interface MealPlanStore extends UndoHistoryActions {
    * reads as "nothing planned".
    */
   entries: MealPlanEntry[];
+  /**
+   * Meals chosen for a week with no day yet (`WeekPoolEntry`), every week at
+   * once. Wholesale rather than range-scoped like `entries`: a pool is a
+   * handful of rows a week and the purge horizon bounds it.
+   */
+  pool: WeekPoolEntry[];
   /** The inclusive day-key window `entries` covers; null before the first load. */
   rangeStart: string | null;
   rangeEnd: string | null;
@@ -773,6 +785,26 @@ interface MealPlanStore extends UndoHistoryActions {
   /** Enforces the 180-day horizon. Returns how many rows went. */
   purgeOldEntries: () => number;
 
+  /** Re-reads the pool from SQLite (after a sync or a restore). */
+  refreshPool: () => void;
+  /** Chooses a meal for the week starting `weekStart`, with no day or slot yet. */
+  addToPool: (weekStart: string, meal: { recipeId?: string | null; title: string }) => WeekPoolEntry | null;
+  removeFromPool: (id: string) => void;
+  /**
+   * Puts a pool meal on a day and slot: the pool row goes and a planned meal
+   * takes its place, as one undo step. Null when the row is gone.
+   */
+  placePoolEntry: (id: string, to: { date: string; slot: MealSlot }) => MealPlanEntry | null;
+  /**
+   * The other direction: takes a planned meal off its day and back into the
+   * pool of the week starting `weekStart`. Refuses a meal already cooked, a
+   * leftover, and one with picks or a scale the pool row can't carry, so
+   * nothing the person answered is dropped quietly. Returns whether it moved.
+   */
+  sendToPool: (entryId: string, weekStart: string) => boolean;
+  /** Moves what is left in one week's pool to another's. Returns how many moved. */
+  carryPoolOver: (fromWeekStart: string, toWeekStart: string) => number;
+
   /**
    * Brings this device's meal calendar events in line with what a sync just
    * applied (#2950): the event of each changed meal that holds one is
@@ -809,6 +841,7 @@ export function sameMealPlanEntries(held: readonly MealPlanEntry[], read: readon
 
 export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   entries: [],
+  pool: [],
   rangeStart: null,
   rangeEnd: null,
   addedToListAt: {},
@@ -840,6 +873,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         addedToListAt,
         cookingCounts: null,
         cookHistory: null,
+        pool: dbGetAllWeekPoolEntries(),
         initialized: true,
       });
       return;
@@ -851,6 +885,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       addedToListAt,
       cookingCounts: null,
       cookHistory: null,
+      pool: dbGetAllWeekPoolEntries(),
       initialized: true,
     });
   },
@@ -862,8 +897,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // fresh rows each time, so handing those over unchecked re-rendered the
     // whole week and recomputed everything keyed on it (coverage, cost,
     // suggestions) when nothing had changed.
-    if (s.rangeStart === startKey && s.rangeEnd === endKey && sameMealPlanEntries(s.entries, entries)) return;
-    set({ entries, rangeStart: startKey, rangeEnd: endKey });
+    const pool = dbGetAllWeekPoolEntries();
+    const poolSame = JSON.stringify(pool) === JSON.stringify(s.pool);
+    if (s.rangeStart === startKey && s.rangeEnd === endKey && sameMealPlanEntries(s.entries, entries) && poolSame) return;
+    set({ entries, pool: poolSame ? s.pool : pool, rangeStart: startKey, rangeEnd: endKey });
   },
 
   entriesForDayLive(dayKey) {
@@ -1436,6 +1473,13 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   retitleRecipeEntries(recipeId, name) {
     const title = cleanMealTitle(name);
     if (!title) return;
+    // The pool names recipes too, and reads the same title the plan does.
+    const stalePool = get().pool.filter(e => e.recipeId === recipeId && e.title !== title);
+    if (stalePool.length > 0) {
+      stalePool.forEach(e => dbUpdateWeekPoolEntry(e.id, { title }));
+      const ids = new Set(stalePool.map(e => e.id));
+      set(s => ({ pool: s.pool.map(e => (ids.has(e.id) ? { ...e, title } : e)) }));
+    }
     // A leftover carrying a recipe id would be a row that somehow holds both
     // backings (see MealPlanEntry.leftoverId); its title is the container's,
     // captured with its age, and isn't the recipe's to rewrite.
@@ -1585,9 +1629,155 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     return null;
   },
 
+  refreshPool() {
+    set({ pool: dbGetAllWeekPoolEntries() });
+  },
+
+  addToPool(weekStart, meal) {
+    const title = cleanMealTitle(meal.title);
+    if (!title) return null;
+    const recipeId = meal.recipeId ?? null;
+    const sameWeek = get().pool.filter(e => e.weekStart === weekStart);
+    const entry: WeekPoolEntry = {
+      id: generateId(),
+      weekStart,
+      recipeId,
+      title,
+      sortOrder: sameWeek.reduce((m, e) => Math.max(m, e.sortOrder), 0) + 1,
+      createdAt: new Date().toISOString(),
+    };
+    dbInsertWeekPoolEntry(entry);
+    set(s => ({ pool: [...s.pool, entry] }));
+    // Choosing a recipe for the week answers its Up Next bookmark, as planning
+    // it on a day does (see planMeal).
+    const recipe = recipeId ? useRecipeStore.getState().recipes.find(r => r.id === recipeId) : undefined;
+    const unbookmarked = recipe?.upNext ? recipe : null;
+    if (unbookmarked) useRecipeStore.getState().setUpNext(unbookmarked.id, false);
+    get().setLastAction({
+      label: `Added “${entry.title}” to the week`,
+      redo: () => { get().addToPool(weekStart, meal); },
+      undo: () => {
+        if (unbookmarked) useRecipeStore.getState().setUpNext(unbookmarked.id, true, unbookmarked.upNextOrder);
+        dbDeleteWeekPoolEntry(entry.id);
+        set(s => ({ pool: s.pool.filter(e => e.id !== entry.id) }));
+      },
+    });
+    return entry;
+  },
+
+  removeFromPool(id) {
+    const entry = get().pool.find(e => e.id === id);
+    if (!entry) return;
+    dbDeleteWeekPoolEntry(id);
+    set(s => ({ pool: s.pool.filter(e => e.id !== id) }));
+    get().setLastAction({
+      label: `Removed “${entry.title}”`,
+      destructive: true,
+      redo: () => get().removeFromPool(id),
+      undo: () => {
+        dbInsertWeekPoolEntry(entry);
+        set(s => ({ pool: [...s.pool, entry] }));
+      },
+    });
+  },
+
+  placePoolEntry(id, to) {
+    const row = get().pool.find(e => e.id === id);
+    if (!row) return null;
+    // planMeal's own undo entry is suppressed so the placement is one step:
+    // taking it back must also put the pool row back.
+    let planned: MealPlanEntry | null = null;
+    withReplay(() => {
+      planned = get().planMeal({
+        date: to.date,
+        slot: to.slot,
+        recipeId: row.recipeId,
+        title: row.title,
+      });
+    });
+    if (!planned) return null;
+    const placed: MealPlanEntry = planned;
+    dbDeleteWeekPoolEntry(id);
+    set(s => ({ pool: s.pool.filter(e => e.id !== id) }));
+    get().setLastAction({
+      label: `Planned “${row.title}”`,
+      redo: () => { get().placePoolEntry(id, to); },
+      undo: () => {
+        dropCookTask(placed.id);
+        dropMealEvent(placed.id);
+        dbDeleteMealPlanEntry(placed.id);
+        set(s => ({ entries: s.entries.filter(e => e.id !== placed.id) }));
+        reconcileMealSlot(get, placed);
+        dbInsertWeekPoolEntry(row);
+        set(s => ({ pool: [...s.pool, row] }));
+      },
+    });
+    return placed;
+  },
+
+  sendToPool(entryId, weekStart) {
+    const entry = get().entries.find(e => e.id === entryId) ?? dbGetMealPlanEntry(entryId);
+    if (!entry || entry.cookedAt || entry.leftoverId) return false;
+    const answered = (entry.recipeChoices?.length ?? 0) > 0
+      || (entry.recipeOverrides?.length ?? 0) > 0
+      || (entry.itemPicks?.length ?? 0) > 0;
+    if (answered) return false;
+    dropCookTask(entry.id);
+    dropMealEvent(entry.id);
+    dbDeleteMealPlanEntry(entry.id);
+    set(s => ({ entries: s.entries.filter(e => e.id !== entry.id) }));
+    reconcileMealSlot(get, entry);
+    const sameWeek = get().pool.filter(e => e.weekStart === weekStart);
+    const row: WeekPoolEntry = {
+      id: generateId(),
+      weekStart,
+      recipeId: entry.recipeId,
+      title: entry.title,
+      sortOrder: sameWeek.reduce((m, e) => Math.max(m, e.sortOrder), 0) + 1,
+      createdAt: new Date().toISOString(),
+    };
+    dbInsertWeekPoolEntry(row);
+    set(s => ({ pool: [...s.pool, row] }));
+    get().setLastAction({
+      label: `Took “${entry.title}” off its day`,
+      undo: () => {
+        dbDeleteWeekPoolEntry(row.id);
+        set(s => ({ pool: s.pool.filter(e => e.id !== row.id) }));
+        dbInsertMealPlanEntry(entry);
+        patchInRange(set, get, entry);
+        reconcileMealSlot(get, entry);
+        reconcileMealEvent(entry);
+      },
+    });
+    return true;
+  },
+
+  carryPoolOver(fromWeekStart, toWeekStart) {
+    if (fromWeekStart === toWeekStart) return 0;
+    const moving = get().pool.filter(e => e.weekStart === fromWeekStart);
+    if (moving.length === 0) return 0;
+    const base = get().pool
+      .filter(e => e.weekStart === toWeekStart)
+      .reduce((m, e) => Math.max(m, e.sortOrder), 0);
+    const moved = moving.map((e, i) => ({ ...e, weekStart: toWeekStart, sortOrder: base + i + 1 }));
+    moved.forEach(e => dbUpdateWeekPoolEntry(e.id, { weekStart: e.weekStart, sortOrder: e.sortOrder }));
+    const ids = new Set(moving.map(e => e.id));
+    set(s => ({ pool: [...s.pool.filter(e => !ids.has(e.id)), ...moved] }));
+    get().setLastAction({
+      label: `${moved.length} meal${moved.length === 1 ? '' : 's'} moved to next week`,
+      redo: () => { get().carryPoolOver(fromWeekStart, toWeekStart); },
+      undo: () => {
+        moving.forEach(e => dbUpdateWeekPoolEntry(e.id, { weekStart: e.weekStart, sortOrder: e.sortOrder }));
+        set(s => ({ pool: [...s.pool.filter(e => !ids.has(e.id)), ...moving] }));
+      },
+    });
+    return moved.length;
+  },
+
   purgeOldEntries() {
     const cutoff = mealPlanPurgeCutoffKey();
     const removed = dbPurgeOldMealPlanEntries(cutoff);
+    if (dbPurgeOldWeekPoolEntries(cutoff) > 0) set({ pool: dbGetAllWeekPoolEntries() });
     if (removed > 0) {
       // The loaded window can overlap the horizon (someone paging back through
       // spring), so memory has to follow the delete rather than wait for the
