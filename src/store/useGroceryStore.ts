@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { FoodKind, FoodNutrition, GroceryGroupBy, GroceryItem, GroceryRecipeSource, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, PriceObservation, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import { isPortionBox } from '../types';
-import { incomingSourcesOf, sourcesAfterMerge } from '../utils/recipeSources';
+import { currentSourcesOf, incomingSourcesOf, sourcesAfterMerge } from '../utils/recipeSources';
 import {
   type DeletedItemSnapshot,
   listNameProblem,
@@ -1851,6 +1851,19 @@ function mergeOnListRecipeNeed(existing: GroceryItem, row: PlannedRow): GroceryI
   }
 
   return changed ? patch : null;
+}
+
+/**
+ * What the undo bar says after a swap: both names, and the recipes the
+ * substitute's row is now for, since the row can land among rows already there
+ * and the swap would otherwise be easy to lose track of.
+ */
+export function swapLabel(fromName: string, toName: string, sub: GroceryItem): string {
+  const titles = sub.quantityFromRecipe || sub.sourceRecipeTitle
+    ? currentSourcesOf(sub).map(s => s.title).filter(Boolean)
+    : [];
+  const base = `Swapped ${fromName} for ${toName}`;
+  return titles.length > 0 ? `${base}, for ${titles.join(' and ')}` : base;
 }
 
 /**
@@ -5539,15 +5552,45 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       if (converted.converted) quantity = converted.text;
     }
 
+    // The recipe the original was on the list for travels with it. Amounts in
+    // a per-recipe ledger are converted the same way the row's own is.
+    const convertAmount = (q: string | null): string | null => {
+      if (q && link?.ratioFrom && link?.ratioTo) {
+        const c = substituteQuantity(q, link.ratioFrom, link.ratioTo);
+        if (c.converted) return c.text;
+      }
+      return q;
+    };
+    const originalSources = item.quantityFromRecipe
+      ? currentSourcesOf(item).map(s => ({ ...s, quantity: convertAmount(s.quantity) }))
+      : [];
+
+    // Already on this list: the substitute is wanted by its own recipe and now
+    // by the original's too, which is exactly a second recipe wanting a row,
+    // so it merges the same way (quantity added, single credit becomes a
+    // ledger). Not on this list: it takes over the original's credit outright,
+    // and a stale one left from an earlier shop must not survive, or the row
+    // reads as being for a recipe it was never added for.
+    const originalHasRecipe = !!item.sourceRecipeTitle || originalSources.length > 0;
     const updatedSub: GroceryItem = subEntry
-      ? sub
+      ? (!originalHasRecipe ? null : mergeOnListRecipeNeed(sub, {
+          name: sub.name,
+          quantity,
+          aisle: null,
+          sourceRecipeId: item.sourceRecipeId,
+          sourceRecipeTitle: item.sourceRecipeTitle,
+          recipeSources: originalSources.length >= 2 ? originalSources : undefined,
+        })) ?? sub
       : {
           ...sub,
           quantity: quantity ?? sub.quantity,
           quantityFromRecipe: quantity ? item.quantityFromRecipe : sub.quantityFromRecipe,
+          sourceRecipeId: item.sourceRecipeId,
+          sourceRecipeTitle: item.sourceRecipeTitle,
+          recipeSources: originalSources.length >= 2 ? originalSources : undefined,
           lastAddedAt: new Date().toISOString(),
         };
-    if (!subEntry) dbUpdateGroceryItem(updatedSub);
+    if (updatedSub !== sub) dbUpdateGroceryItem(updatedSub);
 
     // The row being swapped out just comes off the list — it used to be deleted
     // when provisional, which is the case this refactor is most obviously about:
@@ -5583,7 +5626,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     });
 
     get().setLastAction({
-      label: `Swapped for ${sub.name}`,
+      label: swapLabel(item.name, sub.name, updatedSub),
       undo: () => {
         writeMembership({
           upsert: beforeEntries,

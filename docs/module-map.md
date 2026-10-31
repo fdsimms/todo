@@ -738,7 +738,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useFocusStore.ts` — useFocusStore
 - `src/store/useFocusedRouteStore.ts` — useFocusedRouteStore
 - `src/store/useFoodLogStore.ts` — FOOD_INSIGHT_DAYS, FoodLogDraft, PendingMealLog, PendingManualMealLog, FoodLogPatch, FoodLogPlacement, sameEntries, useFoodLogStore
-- `src/store/useGroceryStore.ts` — subscribeCartHoldRelease, PlannedRow, PlanAddResult, describePlanAdd, useGroceryStore
+- `src/store/useGroceryStore.ts` — subscribeCartHoldRelease, PlannedRow, PlanAddResult, describePlanAdd, swapLabel, useGroceryStore
 - `src/store/useGymStore.ts` — GymRefusal, GymInput, GymPatch, GymExercisePatch, useGymStore
 - `src/store/useHealthStore.ts` — HealthDay, EXERCISE_LIVE_WINDOW_DAYS, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, BLOOD_PRESSURE_HISTORY_DAYS, SLEEP_HISTORY_DAYS, sameHealthHistory, useHealthStore, useHealthSync
 - `src/store/useHiddenEventsStore.ts` — useHiddenEventsStore

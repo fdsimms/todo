@@ -7584,6 +7584,78 @@ describe('swapForSubstitute', () => {
     expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
   });
 
+  it("credits the swapped-in row to the original's recipe, replacing a stale credit", () => {
+    const serrano = makeItem({
+      name: 'Serrano peppers', onList: true, quantity: '2', quantityFromRecipe: true,
+      sourceRecipeId: 'r-salsa', sourceRecipeTitle: 'Salsa',
+    });
+    const jalapeno = makeItem({
+      name: 'Jalapeño peppers', onList: false,
+      sourceRecipeId: 'r-pickles', sourceRecipeTitle: 'Escabeche',
+    });
+    seed([serrano, jalapeno], {
+      itemSubs: [
+        { itemId: serrano.id, subItemId: jalapeno.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false },
+      ],
+    });
+
+    useGroceryStore.getState().swapForSubstitute(serrano.id, jalapeno.id);
+
+    expect(useGroceryStore.getState().items.find(i => i.id === jalapeno.id)).toMatchObject({
+      sourceRecipeId: 'r-salsa',
+      sourceRecipeTitle: 'Salsa',
+      quantity: '2',
+    });
+  });
+
+  it("folds the original's recipe into a substitute already on the list for another one", () => {
+    const serrano = makeItem({
+      name: 'Serrano peppers', onList: true, quantity: '2', quantityFromRecipe: true,
+      sourceRecipeId: 'r-salsa', sourceRecipeTitle: 'Salsa',
+    });
+    const jalapeno = makeItem({
+      name: 'Jalapeño peppers', onList: true, quantity: '1, stemmed', quantityFromRecipe: true,
+      sourceRecipeId: 'r-pickles', sourceRecipeTitle: 'Escabeche',
+    });
+    seed([serrano, jalapeno], {
+      itemSubs: [
+        { itemId: serrano.id, subItemId: jalapeno.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false },
+      ],
+    });
+
+    useGroceryStore.getState().swapForSubstitute(serrano.id, jalapeno.id);
+
+    expect(useGroceryStore.getState().lastAction!.label).toBe(
+      'Swapped Serrano peppers for Jalapeño peppers, for Escabeche and Salsa'
+    );
+    const row = useGroceryStore.getState().items.find(i => i.id === jalapeno.id)!;
+    expect(row.sourceRecipeId).toBeNull();
+    expect(row.recipeSources?.map(s => s.title).sort()).toEqual(['Escabeche', 'Salsa']);
+
+    useGroceryStore.getState().lastAction!.undo();
+    expect(useGroceryStore.getState().items.find(i => i.id === jalapeno.id)).toEqual(jalapeno);
+  });
+
+  it("leaves an on-list substitute's own recipe credit alone when the original had none", () => {
+    const serrano = makeItem({ name: 'Serrano peppers', onList: true, quantity: '2' });
+    const jalapeno = makeItem({
+      name: 'Jalapeño peppers', onList: true, quantity: '1', quantityFromRecipe: true,
+      sourceRecipeId: 'r-pickles', sourceRecipeTitle: 'Escabeche',
+    });
+    seed([serrano, jalapeno], {
+      itemSubs: [
+        { itemId: serrano.id, subItemId: jalapeno.id, note: null, createdAt: '2020-01-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false },
+      ],
+    });
+
+    useGroceryStore.getState().swapForSubstitute(serrano.id, jalapeno.id);
+
+    expect(useGroceryStore.getState().items.find(i => i.id === jalapeno.id)).toMatchObject({
+      sourceRecipeId: 'r-pickles',
+      sourceRecipeTitle: 'Escabeche',
+    });
+  });
+
   it('undo restores both rows exactly, including the un-swap', () => {
     const butter = makeItem({ name: 'Butter', onList: true, quantity: '2 sticks' });
     const margarine = makeItem({ name: 'Margarine', onList: false });
