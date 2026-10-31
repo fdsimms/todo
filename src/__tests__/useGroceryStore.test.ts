@@ -1672,6 +1672,25 @@ describe('list membership', () => {
     })).toBe(false);
   });
 
+  it('restoreItemEdits puts the row back as it opened and drops links made since', () => {
+    const milk = makeItem({ name: 'Milk', note: 'before' });
+    const added = { itemId: milk.id, shopId: 's9' } as unknown as ItemShopLink;
+    seed([{ ...milk, note: 'after' }]);
+    useGroceryStore.setState({ itemShops: [added] });
+
+    const ok = useGroceryStore.getState().restoreItemEdits({
+      item: milk, entries: [], boxes: [], shopLinks: [], subLinks: [], aliases: [], aisleOverride: null,
+    });
+
+    expect(ok).toBe(true);
+    expect(dbDeleteItemShopLink).toHaveBeenCalledWith(milk.id, 's9');
+    expect(useGroceryStore.getState().itemShops).toEqual([]);
+    expect(useGroceryStore.getState().itemById(milk.id)).toMatchObject({ note: 'before' });
+    expect(useGroceryStore.getState().restoreItemEdits({
+      item: { ...milk, id: 'gone' }, entries: [], boxes: [], shopLinks: [], subLinks: [], aliases: [], aisleOverride: null,
+    })).toBe(false);
+  });
+
   it('restoreCatalogItem writes the fields back and forgets a first filing with a null override', () => {
     const milk = makeItem({ name: 'Milk', aisle: 'Dairy' });
     seed([milk]);

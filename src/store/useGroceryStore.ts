@@ -1191,6 +1191,13 @@ interface GroceryStore extends UndoHistoryActions {
    */
   restoreDeletedItem: (snapshot: DeletedItemSnapshot) => boolean;
   /**
+   * Puts a row that still exists back to how `snapshot` found it: the item,
+   * its products, store and substitute links, list entries and remembered
+   * aisle. Rows made since are dropped. The item sheet's Cancel. False when
+   * the row is gone (a merge or forget), since there is nothing to put back.
+   */
+  restoreItemEdits: (snapshot: DeletedItemSnapshot) => boolean;
+  /**
    * Put an item's pantry state back exactly as an earlier snapshot had it (the
    * Activity screen's undo of an agent's pantry write, `agentPantryRevert.ts`).
    * `patch` is the item's pantry fields, `boxes` the item's boxes as they were
@@ -3773,6 +3780,44 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       storeAliases: [...s.storeAliases, ...snapshot.aliases],
       listEntries: [...s.listEntries, ...snapshot.entries],
       aisleOverrides: snapshot.aisleOverride ? { ...s.aisleOverrides, [item.nameKey]: snapshot.aisleOverride } : s.aisleOverrides,
+    }));
+    return true;
+  },
+
+  restoreItemEdits(snapshot) {
+    const { item } = snapshot;
+    const st = get();
+    if (!st.items.some(i => i.id === item.id)) return false;
+    const keptBoxes = new Set(snapshot.boxes.map(b => b.id));
+    const keptShops = new Set(snapshot.shopLinks.map(l => l.shopId));
+    const keptSubs = new Set(snapshot.subLinks.map(l => l.subItemId));
+    const keptLists = new Set(snapshot.entries.map(e => e.listId ?? ''));
+    const overrides = { ...st.aisleOverrides };
+    if (snapshot.aisleOverride) overrides[item.nameKey] = snapshot.aisleOverride;
+    else delete overrides[item.nameKey];
+    dbTransaction(() => {
+      dbUpdateGroceryItem(item);
+      for (const b of st.itemProducts) if (b.itemId === item.id && !keptBoxes.has(b.id)) dbDeleteItemProduct(b.id);
+      for (const box of snapshot.boxes) {
+        dbSetItemProduct(box);
+        if (box.gtin) dbSetProductGtin(box.id, box.gtin);
+      }
+      for (const l of st.itemShops) if (l.itemId === item.id && !keptShops.has(l.shopId)) dbDeleteItemShopLink(l.itemId, l.shopId);
+      for (const link of snapshot.shopLinks) dbSetItemShopLink(link);
+      for (const l of st.itemSubs) if (l.itemId === item.id && !keptSubs.has(l.subItemId)) dbDeleteItemSubLink(l.itemId, l.subItemId);
+      for (const link of snapshot.subLinks) dbSetItemSubLink(link);
+      for (const e of st.listEntries) if (e.itemId === item.id && !keptLists.has(e.listId ?? '')) dbDeleteGroceryListEntry(e.itemId, e.listId);
+      for (const entry of snapshot.entries) dbSetGroceryListEntry(entry);
+      dbSetGroceryAisleOverrides(overrides);
+    });
+    const restored = dbGetAllGroceryItems().find(i => i.id === item.id) ?? item;
+    set(s => ({
+      items: s.items.map(i => (i.id === item.id ? restored : i)),
+      itemProducts: [...s.itemProducts.filter(b => b.itemId !== item.id), ...snapshot.boxes],
+      itemShops: [...s.itemShops.filter(l => l.itemId !== item.id), ...snapshot.shopLinks],
+      itemSubs: [...s.itemSubs.filter(l => l.itemId !== item.id), ...snapshot.subLinks],
+      listEntries: [...s.listEntries.filter(e => e.itemId !== item.id), ...snapshot.entries],
+      aisleOverrides: overrides,
     }));
     return true;
   },
