@@ -1847,6 +1847,19 @@ function mergeOnListRecipeNeed(existing: GroceryItem, row: PlannedRow): GroceryI
 }
 
 /**
+ * What the undo bar says after a swap: both names, and the recipes the
+ * substitute's row is now for, since the row can land among rows already there
+ * and the swap would otherwise be easy to lose track of.
+ */
+export function swapLabel(fromName: string, toName: string, sub: GroceryItem): string {
+  const titles = sub.quantityFromRecipe || sub.sourceRecipeTitle
+    ? currentSourcesOf(sub).map(s => s.title).filter(Boolean)
+    : [];
+  const base = `Swapped ${fromName} for ${toName}`;
+  return titles.length > 0 ? `${base}, for ${titles.join(' and ')}` : base;
+}
+
+/**
  * Saves a walk order and the tombstones that go with it.
  *
  * The hidden set is *derived from the order being saved* — whatever the caller
@@ -5568,7 +5581,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     });
 
     get().setLastAction({
-      label: `Swapped for ${sub.name}`,
+      label: swapLabel(item.name, sub.name, updatedSub),
       undo: () => {
         writeMembership({
           upsert: beforeEntries,

@@ -7606,6 +7606,9 @@ describe('swapForSubstitute', () => {
 
     useGroceryStore.getState().swapForSubstitute(serrano.id, jalapeno.id);
 
+    expect(useGroceryStore.getState().lastAction!.label).toBe(
+      'Swapped Serrano peppers for Jalapeño peppers, for Escabeche and Salsa'
+    );
     const row = useGroceryStore.getState().items.find(i => i.id === jalapeno.id)!;
     expect(row.sourceRecipeId).toBeNull();
     expect(row.recipeSources?.map(s => s.title).sort()).toEqual(['Escabeche', 'Salsa']);
