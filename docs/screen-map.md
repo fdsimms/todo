@@ -511,6 +511,7 @@ Where each component can appear.
 - `src/components/WeightGoalSheet.tsx` — on WeightScreen
 - `src/components/WhenPicker.tsx` — on ArchivedScreen, BloodPressureScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, +19 more
 - `src/components/WideScroll.tsx` — on MoodScreen, SleepScreen, StatsScreen
+- `src/components/WorkoutCompleteHero.tsx` — on app shell
 - `src/components/WorkoutDetailSheet.tsx` — on WorkoutsScreen
 - `src/components/WorkoutHeartRateCard.tsx` — on WorkoutsScreen
 - `src/components/WorkoutImportSheet.tsx` — on WorkoutsScreen

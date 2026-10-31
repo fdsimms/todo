@@ -41,6 +41,7 @@ import { SelectionDot } from './SelectionDot';
 import { SortableList } from './SortableList';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
+import { WorkoutCompleteHero } from './WorkoutCompleteHero';
 import type { ExerciseKind, WorkoutSet, WorkoutSetKind } from '../types';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -697,7 +698,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     } else if (current && !oldVersion && picked.length > 0) {
       store.updateRoutine(current.id, { items: applyRoutineChanges(current.items, picked) }, { version: 'new', source: 'workout' });
     }
-    haptics.chainFinish();
+    haptics.success();
     close();
     onSaved(askFirst && linkedTask ? linkedTask.id : null);
   };
@@ -727,7 +728,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             {session && <SessionClock startedAt={session.startedAt} style={styles.subtitle} />}
           </View>
           {!finishing && session ? (
-            <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
+            <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
           ) : <View style={styles.headerSpacer} />}
         </View>
 
@@ -740,14 +741,21 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             <EmptyNote icon="barbell-outline">No workout is in progress. Start one from a routine on the Workouts screen, or from a task.</EmptyNote>
           </View>
         ) : finishing && summary ? (
+          // Keyed: both branches are a ScrollView in this spot, so without it
+          // the summary opens at the scroll offset the live list was left at.
           <ScrollView
+            key="summary"
             style={styles.flex}
             contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xl }]}
             keyboardShouldPersistTaps="handled"
             {...keyboardScroll.props}
             ref={keyboardScroll.ref}
           >
-            <Text style={styles.summaryTitle}>Workout summary</Text>
+            {plan.loggedCount > 0 && session ? (
+              <WorkoutCompleteHero subtitle={`Started ${formatTimeOfDay(new Date(session.startedAt))}`} records={sessionRecords.length} />
+            ) : (
+              <Text style={styles.summaryTitle}>Workout summary</Text>
+            )}
             <WorkoutStatTiles
               minutes={summary.minutes}
               exercises={summary.exercises.length}
@@ -902,6 +910,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           </ScrollView>
         ) : (
           <ScrollView
+            key="live"
             style={styles.flex}
             contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
