@@ -1070,6 +1070,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'tripLiveActivity', iosOnly: true, groupId: 'kitchen', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'],
     simple: true },
+  { id: 'hideGroceryRecipeNames', screen: 'Groceries', groupId: 'kitchen', label: 'Hide recipe names on the list', section: 'Grocery list',
+    keywords: ['caption', 'for', 'dish', 'meal', 'compact', 'space', 'shorter', 'rows', 'source', 'grocery'] },
   { id: 'runningLowAddsToList', groupId: 'kitchen', label: 'Running low adds to the list', section: 'Pantry',
     keywords: ['nearly out', 'almost out', 'shopping list', 'pantry', 'buy', 'automatic', 'grocery'] },
   { id: 'unitSystem', groupId: 'kitchen', label: 'Units', section: 'Recipe & grocery amounts',

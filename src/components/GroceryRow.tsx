@@ -233,6 +233,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   const paintRowRef = usePaintSelectionRow(isActive ? null : item.id);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const hideRecipeNames = useSettingsStore(s => s.hideGroceryRecipeNames);
 
   // The row is read-only text, so it shows the amount in the reader's units.
   // The item sheet's field deliberately doesn't — that one is editable, and an
@@ -608,7 +609,7 @@ export const GroceryRow = React.memo(function GroceryRow({
               shelf, while "not at Safeway" is the one line that can send you
               somewhere else. A note is never suppressed — "the blue cap one"
               is shelf information, which is exactly what you're here for. */}
-          {!item.note && !storeMarker && !!item.sourceRecipeTitle && (
+          {!hideRecipeNames && !item.note && !storeMarker && !!item.sourceRecipeTitle && (
             <Text style={styles.note} numberOfLines={2}>
               For “{item.sourceRecipeTitle}”
             </Text>
@@ -616,7 +617,7 @@ export const GroceryRow = React.memo(function GroceryRow({
           {/* Amounts that already add up to one quantity leave only how many
               recipes asked. Same slot and suppressions as the single recipe's
               line: the names are in the item sheet. */}
-          {recipeLedger?.kind === 'count' && !item.note && !storeMarker && (
+          {!hideRecipeNames && recipeLedger?.kind === 'count' && !item.note && !storeMarker && (
             <Text style={styles.note} numberOfLines={1}>
               For {recipeLedger.count} recipes
             </Text>

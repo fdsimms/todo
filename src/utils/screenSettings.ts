@@ -23,7 +23,7 @@ export const SCREEN_SETTINGS: Readonly<Record<string, readonly string[]>> = {
   Calendar: ['calendarRead', 'deadlineCalendar', 'completionCalendar', 'claudeCalendar'],
   Reminders: ['defaultReminderLead', 'quietHours', 'notifPermission'],
   Stuck: ['postponeCheck', 'gen:waitingFollowUp'],
-  Groceries: ['groceryImport', 'tripLiveActivity', 'ai:groceryAisles'],
+  Groceries: ['hideGroceryRecipeNames', 'groceryImport', 'tripLiveActivity', 'ai:groceryAisles'],
   Recipes: ['unitSystem', 'householdServings', 'ai:recipeExtraction'],
   MealPlan: ['gen:mealPlanNudge', 'mealCalendar', 'householdServings'],
   Kitchen: ['gen:pantryCheck', 'gen:pantryReview', 'gen:groceryUseUp'],
