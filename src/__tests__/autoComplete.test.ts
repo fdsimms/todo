@@ -17,6 +17,12 @@ describe('autoCompleteReason', () => {
   it('is null for a kind that is ready by the clock rather than by an action', () => {
     expect(autoCompleteReason({ generatedKind: 'blockOffer' })).toBeNull();
   });
+
+  // A meal logged to the wrong slot would otherwise tick through the slot's
+  // whole chain, and deleting the entry doesn't un-tick it.
+  it('is null for a meal slot, which reads ready and waits for the tick', () => {
+    expect(autoCompleteReason({ generatedKind: 'mealSlot' })).toBeNull();
+  });
 });
 
 describe('canAutoComplete', () => {
