@@ -1111,8 +1111,8 @@ function makeStyles(colors: Colors) {
     // single-line pills, which size to their own text.
     qtyText: {
       fontSize: font.sm,
-      fontWeight: fontWeight.semibold,
-      color: colors.textSecondary,
+      fontWeight: fontWeight.bold,
+      color: colors.text,
       textAlign: 'center',
     },
     qtyTextChecked: {
