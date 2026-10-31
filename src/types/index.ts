@@ -2102,6 +2102,7 @@ export type ExerciseEquipment =
   | 'barbell' | 'dumbbell' | 'kettlebell' | 'cable' | 'smith_machine'
   | 'ez_bar' | 'trap_bar' | 'band' | 'bodyweight' | 'other'
   | 'pull_up_bar' | 'dip_bars' | 'medicine_ball' | 'sled' | 'battle_ropes' | 'jump_rope' | 'ab_wheel' | 'heavy_bag' | 'neck_harness'
+  | 'flat_bench' | 'incline_bench' | 'decline_bench' | 'adjustable_bench' | 'preacher_bench' | 'back_extension_bench'
   | 'machine'
   | 'leg_press' | 'hack_squat' | 'leg_extension' | 'leg_curl' | 'calf_raise_machine'
   | 'hip_abduction_machine' | 'hip_adduction_machine'
