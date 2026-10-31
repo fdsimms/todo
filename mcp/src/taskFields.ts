@@ -1099,11 +1099,16 @@ export function describeRepeat(t: Task): RepeatInput | null {
   return out;
 }
 
-/** A rotation as `get_task` shows it: the members, and which this week's picks cover. */
-export function describeRotation(t: Task, doneIds: ReadonlySet<string>): { members: { title: string; doneThisWeek: boolean; timesPerWeek?: number; lastDone?: string; workoutRoutineId?: string; workoutProgramId?: string }[] } | null {
+/**
+ * A rotation as `get_task` shows it: the count its row shows (`target`, which
+ * should equal the members' total, so a disagreement is visible), and the
+ * members with which of them this week's picks cover.
+ */
+export function describeRotation(t: Task, doneIds: ReadonlySet<string>): { target?: { count: number; done: number }; members: { title: string; doneThisWeek: boolean; timesPerWeek?: number; lastDone?: string; workoutRoutineId?: string; workoutProgramId?: string }[] } | null {
   if (!isRotationTask(t)) return null;
   const last = t.rotationLastDone ?? {};
   return {
+    ...(t.targetCount != null ? { target: { count: t.targetCount, done: t.progressCount ?? 0 } } : {}),
     members: (t.rotationItems ?? []).map(m => ({
       title: m.title,
       doneThisWeek: doneIds.has(m.id),

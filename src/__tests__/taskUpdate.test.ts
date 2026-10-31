@@ -50,6 +50,22 @@ describe('a deadline written as a bare day', () => {
 });
 
 describe('mergeTaskUpdate', () => {
+  it('drops a targetCount pending in seriesDefaults from a rotation', () => {
+    const rotation = make({
+      recurrenceType: 'daily',
+      quotaPeriod: 'week',
+      rotationEnabled: true,
+      rotationItems: [
+        { id: 'a', title: 'Cardio', perWeek: 3 },
+        { id: 'b', title: 'Rest day', perWeek: 1 },
+      ],
+    });
+    const stale = { ...rotation, seriesDefaults: { targetCount: 3, priority: 2 as Task["priority"] } };
+    const next = mergeTaskUpdate(stale, { notes: 'x' }, ctx);
+    expect(next.seriesDefaults).toEqual({ priority: 2 });
+    expect(mergeTaskUpdate({ ...rotation, seriesDefaults: { targetCount: 3 } }, { notes: 'x' }, ctx).seriesDefaults).toBeNull();
+  });
+
   it('applies the patch and leaves the rest of the row alone', () => {
     const t = make({ notes: 'keep' });
     const next = mergeTaskUpdate(t, { title: 'Renamed' }, ctx);

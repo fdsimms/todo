@@ -228,6 +228,25 @@ describe('buildCompletion', () => {
     expect(completed.missedAt).toBe(localIso('2026-03-10T09:00'));
   });
 
+  it('gives a rotation successor the set\'s total, not a stale count pending in seriesDefaults', () => {
+    const items = [
+      { id: 'a', title: 'Cardio', perWeek: 3 },
+      { id: 'b', title: 'Weight lifting', perWeek: 3 },
+      { id: 'c', title: 'Rest day', perWeek: 1 },
+    ];
+    const task = makeTask({
+      recurrenceType: 'daily',
+      dueDate: localIso('2026-03-10T12:00'),
+      quotaPeriod: 'week',
+      rotationEnabled: true,
+      rotationItems: items,
+      targetCount: 7,
+      seriesDefaults: { targetCount: 6 },
+    });
+    const { nextTask } = build(task, { missed: true });
+    expect(nextTask!.targetCount).toBe(7);
+  });
+
   it('writes nothing, so a caller decides whether the rows land', () => {
     // The whole contract: it returns rows. A test that had to stand a database
     // up to check a completion would be testing the store instead.

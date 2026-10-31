@@ -47,6 +47,7 @@ import {
   getReminderOffsetDate,
 } from './dateUtils';
 import { carryClockTime } from './clockTime';
+import { inheritedOccurrence } from './rotation';
 import { isRecurrenceNotYetDue, isQuotaTask, quotaRidesOutTheDay, isCompletionOnTime, hasNoDateSignal, getVisibleAt } from './visibilityUtils';
 import { isNegativeTask } from './negativeHabits';
 import { isAnsweredByRecord } from './recordTasks';
@@ -469,7 +470,7 @@ export function buildCompletion(
       // should revert to for the next occurrence in seriesDefaults — apply
       // it before spreading so the clone below reflects the series' real
       // values, not a one-off edit made on this occurrence.
-      const effective: Task = { ...task, ...(task.seriesDefaults ?? {}) };
+      const effective: Task = inheritedOccurrence(task);
       // A mid-chain step carries no schedule of its own, so it only gets a
       // date when the step it's replacing had one — preserving placement
       // rather than always dating (which would drop a fully undated chain's
@@ -965,7 +966,7 @@ export function buildCompletion(
         order += 1;
         rolledOver.push({
           ...buildSeriesRow(
-            { ...task, ...(task.seriesDefaults ?? {}) },
+            inheritedOccurrence(task),
             date,
             task.seriesId,
             { monthDays: task.seriesMonthDays, repeatMonths: task.seriesRepeatMonths },
