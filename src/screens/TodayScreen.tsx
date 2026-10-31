@@ -5455,20 +5455,16 @@ export function TodayScreen() {
       }] : []),
   ];
 
-  // Today's header is the tallest of the four: it carries the date overline and
-  // the weather, which the others don't. The other lenses are held to its
-  // measured height, or the pills and the list under them jump up on every
-  // switch away from Today.
-  const [todayHeaderHeight, setTodayHeaderHeight] = useState<number | undefined>(undefined);
-
   // ==== render. Everything below is JSX ====
   const screenBody = (
     <SpotlightProvider progress={spotlightProgress}>
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View onLayout={viewMode === 'today' ? e => setTodayHeaderHeight(e.nativeEvent.layout.height) : undefined}>
+        {/* gridLayout gives all four lenses the same two rows (date and coin
+            pill, then title and buttons), so the header is one height and the
+            title and buttons stay put when the lens switches. */}
         <ScreenHeader
           title={VIEW_TITLES[viewMode]}
-          minHeight={viewMode === 'today' ? undefined : todayHeaderHeight}
+          gridLayout
           overline={viewMode === 'today' ? today : undefined}
           actions={headerActions}
           titleAdornment={
@@ -5502,7 +5498,6 @@ export function TodayScreen() {
             ) : undefined
           }
         />
-        </View>
 
         <ViewModePills
           modes={viewModes}
@@ -6566,7 +6561,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   coinPillBar: { marginHorizontal: spacing.xs },
   coinPillGoal: { fontSize: font.xxs, fontWeight: fontWeight.medium, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
   coinPillText: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.textSecondary },
-  workloadLine: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs, fontSize: font.xs, color: colors.textTertiary },
+  workloadLine: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs, fontSize: font.xs, color: colors.textSecondary },
   headerWeatherText: { flexShrink: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.textSecondary },
   clearBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 7,
