@@ -932,7 +932,7 @@ export function FinishShoppingSheet({
                           way to answer. */}
                       {ticked && (
                         <View style={styles.substituteWrap}>
-                          <Text style={styles.substituteLabel}>What did you get instead?</Text>
+                          <Text style={styles.substituteLabel}>Did you get something instead? (optional)</Text>
                           {renderNewItemField(
                             substituteText[row.id] ?? '',
                             text => setSubstituteText(prev => ({ ...prev, [row.id]: text })),
