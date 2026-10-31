@@ -89,14 +89,6 @@ interface Props {
    */
   topRight?: React.ReactNode;
   /**
-   * Holds the header at least this tall, with the title block kept at the top
-   * and the actions at the bottom, as they sit in a header that grew on its
-   * own. For a screen that swaps titles in one header (Today's four lenses):
-   * the lens with the longest subtitle sets the height for the rest, so the
-   * buttons and everything under the header stay put on a switch.
-   */
-  minHeight?: number;
-  /**
    * Two fixed rows instead of a title block with the actions stacked beside it:
    * the overline and `topRight` share the top row, the title (with its
    * adornment) and the actions share the second. Both sides of the header then
@@ -113,7 +105,7 @@ interface Props {
  * The standard large-title header used at the top of every screen, so
  * titles, counts and 34pt icon buttons render identically app-wide.
  */
-export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, subtitleRolls = false, titleAdornment, topRight, minHeight, gridLayout = false }: Props) {
+export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel, onSubtitlePress, subtitleAccessibilityLabel, subtitleRolls = false, titleAdornment, topRight, gridLayout = false }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const brandFace = useBrandFace('heavy');
@@ -191,8 +183,8 @@ export function ScreenHeader({ title, subtitle, overline, actions, right, onTitl
   }
 
   return (
-    <View style={[styles.header, minHeight != null && { minHeight }]}>
-      <View style={[styles.titleBlock, minHeight != null && styles.titleBlockTop]}>
+    <View style={styles.header}>
+      <View style={styles.titleBlock}>
         {overline != null ? (
           <Text style={styles.overline} numberOfLines={1}>{overline}</Text>
         ) : (
@@ -270,9 +262,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   gridMain: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.xsm },
   gridTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm, flexShrink: 1, marginRight: spacing.md },
   titleBlock: { flexShrink: 1, marginRight: spacing.md },
-  // The row aligns to the bottom, which in a header held taller than its title
-  // block would push the title down instead of leaving the space under it.
-  titleBlockTop: { alignSelf: 'flex-start' },
   topRight: { position: 'absolute', top: spacing.xs, right: spacing.md },
   overline: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium,
