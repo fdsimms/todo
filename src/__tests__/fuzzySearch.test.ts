@@ -643,7 +643,7 @@ describe('notesExcerpt', () => {
   it('is null for a task with no notes, or notes that only match by scattered letters', () => {
     const none = makeTask({ title: 'Call dentist', notes: '', tags: ['local'] });
     expect(fuzzySearch([none], 'local')[0].notesExcerpt).toBeNull();
-    const scattered = makeTask({ title: 'Call dentist', notes: 'lemon on grill' });
+    const scattered = makeTask({ title: 'Call dentist', notes: 'lxoxg' });
     expect(fuzzySearch([scattered], 'log')[0].notesExcerpt).toBeNull();
   });
 });
