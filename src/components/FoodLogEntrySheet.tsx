@@ -20,7 +20,6 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -2890,7 +2889,7 @@ export function FoodLogEntrySheet({
             <Pressable onPress={Keyboard.dismiss} accessible={false}>
             <View style={styles.searchRow}>
               <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} style={{ marginTop: spacing.xsm }} />
-              <TextInput
+              <TextField
                 key={searchFilter.fieldKey}
                 {...searchFilter.props}
                 style={styles.searchInput}
@@ -2990,10 +2989,9 @@ export function FoodLogEntrySheet({
               keyExtractor={c => c.key}
               renderItem={renderRow}
               keyboardShouldPersistTaps="handled"
-              // The only way to put the keyboard away from here: nothing else
-              // on this half is tappable-to-dismiss, and a pageSheet has no
-              // outside to tap.
-              keyboardDismissMode="on-drag"
+              // Dragging the list (`listScroll.props`) is a way to put the
+              // keyboard away from here: nothing else on this half is
+              // tappable-to-dismiss, and a pageSheet has no outside to tap.
               {...listScroll.props}
               ListHeaderComponent={
                 <>

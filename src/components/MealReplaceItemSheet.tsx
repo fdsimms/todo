@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Animated,
@@ -30,6 +29,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
+import { TextField } from './TextField';
 
 export interface MealReplacement {
   recipeId: string | null;
@@ -182,7 +182,7 @@ export function MealReplaceItemSheet({ visible, count, title, hint, onReplace, o
 
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={15} color={colors.textTertiary} />
-            <TextInput
+            <TextField
               style={styles.searchInput}
               {...filterField}
               placeholder="Search recipes, or type a name"

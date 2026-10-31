@@ -4455,6 +4455,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           onSelectionChange={titleCaret.onSelectionChange}
           onFocus={() => setTitleFocused(true)}
           onBlur={() => setTitleFocused(false)}
+          // The floating token bar above the keyboard is this field's own bar.
+          dismissBar={false}
         />
       </View>
       </View>

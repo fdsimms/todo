@@ -15,6 +15,7 @@ import { useWorkoutStore } from '../store/useWorkoutStore';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { describeRoutine } from '../utils/workoutRoutine';
 import { filterRoutines, resolveRoutineSubmit } from '../utils/routinePicker';
+import { TextField } from './TextField';
 
 interface Props {
   /** The routines on offer. The host decides what is left out (archived ones). */
@@ -50,7 +51,7 @@ export function RoutinePickerList({ routines, selectedId, onSelect, none }: Prop
     <View>
       <View style={styles.searchWrap}>
         <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
-        <TextInput
+        <TextField
           style={styles.searchInput}
           {...filterField}
           placeholder="Find a routine…"
