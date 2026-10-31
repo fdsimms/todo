@@ -4390,6 +4390,9 @@ export function TodayScreen() {
       if (list) list.push(t);
       else childrenByGroup.set(t.groupId, [t]);
     }
+    // A stack's pinned members read in the stack's own order, so a drag
+    // inside the block (reorderGroupChildren) is what moves them.
+    for (const list of childrenByGroup.values()) list.sort((a, b) => a.sortOrder - b.sortOrder);
     const seenGroups = new Set<string>();
     const items: PinnedListItem[] = [];
     for (const t of pinnedTasks) {
@@ -4431,10 +4434,9 @@ export function TodayScreen() {
     return () => clearTimeout(timer);
   }, [pinnedOpen]);
 
-  // A dragged group item moves as one block (long-press its header); the
-  // pinned order within it is left exactly as it was (see pinnedItems above)
-  // since there's no drag surface here for reordering a stack's own pinned
-  // members.
+  // A dragged group item moves as one block (long-press its header). Its
+  // members are reordered by their own nested list (renderPinnedGroup), which
+  // writes the stack's order rather than this one.
   const reorderPinnedItems = (next: PinnedListItem[]) => {
     const ids = next.flatMap(item => (item.type === 'group' ? item.children.map(c => c.id) : [item.task.id]));
     reorderPinnedTasks(ids);
@@ -4466,17 +4468,30 @@ export function TodayScreen() {
         onDrag={!selectionMode ? drag : undefined}
       />
       <TaskGroupBody expanded={open} hasChildren={children.length > 0}>
-        {children.map(child => (
-          <React.Fragment key={child.id}>
-            {renderTaskRow(child, {
-              indented: true,
-              showCategory: true,
-              rowKey: `pin-${child.id}`,
-              duplicateRow: true,
-              hidesWhenOnPace: false,
-            })}
-          </React.Fragment>
-        ))}
+        {/* The stack's own order, not pinnedOrder: a stack has one order, so
+            a drag here reorders it on the main list too. No onDragOut, so a
+            pin can't be dragged out of its stack from this block. Its drag
+            state shares draggingPin, which switches Today's scroll off. */}
+        <SortableList
+          data={children}
+          onReorder={reordered => reorderGroupChildren(group.id, reordered.map(t => t.id))}
+          onDragStateChange={setDraggingPin}
+          placeholderStyle={styles.stackDropSlot}
+          autoscroll={pinnedAndStackAutoscroll}
+          renderItem={(child, _displayIndex, childDrag, childIsActive) => (
+            <React.Fragment key={child.id}>
+              {renderTaskRow(child, {
+                indented: true,
+                isActive: childIsActive,
+                drag: selectionMode ? undefined : childDrag,
+                showCategory: true,
+                rowKey: `pin-${child.id}`,
+                duplicateRow: true,
+                hidesWhenOnPace: false,
+              })}
+            </React.Fragment>
+          )}
+        />
       </TaskGroupBody>
     </TaskGroupTray>
     </CompletionCollapse>
