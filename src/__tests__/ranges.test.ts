@@ -155,3 +155,12 @@ describe('scoreSubstring folding', () => {
     expect(scoreSubstring('Tax', 'tax').score).toBeGreaterThan(scoreSubstring('Taxi to airport', 'tax').score);
   });
 });
+
+describe('scoreSubstring scattered letters', () => {
+  it('does not match a word whose letters are spread across a long phrase', () => {
+    expect(scoreSubstring('Walk the cat, then eat, rest', 'water').score).toBe(0);
+  });
+  it('still matches an abbreviation with its letters close together', () => {
+    expect(scoreSubstring('tomorrow', 'tmrw').score).toBeGreaterThan(0);
+  });
+});
