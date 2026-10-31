@@ -758,7 +758,10 @@ kinds below are the one gated family).
   `completeTask`'s `autoCompleted` option requests it too.
 - **`autoComplete.ts` is both the captions and the allow-list.** A kind with no
   entry never completes itself. `blockOffer` is left out because it reads ready
-  from the clock (a block ran its time), not from an action.
+  from the clock (a block ran its time), not from an action. `mealSlot` is left
+  out because a meal logged to the wrong slot would tick the slot's whole chain,
+  and deleting the entry afterward doesn't un-tick it; it reads ready and the
+  tick is the person's.
 
 - **Only satisfaction marks; withdrawal still deletes.** A source that went away,
   was declined, is out of its window or has its setting off is not "done", so those
