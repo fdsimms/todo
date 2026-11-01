@@ -28,6 +28,11 @@ import { fieldChanged, fieldText, initialFieldSync, nextFieldSync, styleKeyOf, t
  * person typed again first) is dropped rather than overwriting them.
  * `src/utils/textFieldSync.ts` has the rules and the full mechanism.
  *
+ * **`defaultValue` is mount-only, as on `TextInput`** (`fieldText`). The
+ * `useFilterField` search bars hold theirs frozen at the text the field
+ * mounted with; re-reading it each render sent that back after the first
+ * keystroke and cleared the bar. Only `value` is compared every render.
+ *
  * `selection` works as it does on `TextInput`, and is applied the same way: by
  * the command, never by re-render. That matters because `TextInput` pushes its
  * `selection` alongside its own idea of the text, which here is deliberately
