@@ -101,6 +101,11 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from '../components/FieldLabel';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
+import { GoalPlanSheet } from '../components/GoalPlanSheet';
+import { UnlocksSection } from '../components/UnlocksSection';
+import { useUnlockStore } from '../store/useUnlockStore';
+import { activeGoalPlan, describeGoalPace, describeSetback, savingsBalance, savingsNeededFor, spendingBalance, spendingPerDay } from '../utils/rewardSavings';
+import { getLogicalToday } from '../utils/dateUtils';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
@@ -137,6 +142,12 @@ const KIND_LABELS: Record<CoinEntry['kind'], string> = {
 
 function kindLabel(entry: CoinEntry): string {
   return isBalanceReset(entry) ? 'Reset' : KIND_LABELS[entry.kind];
+}
+
+/** "7 to savings" / "3 from savings": an entry's share of the goal's savings, for its history line. */
+function savedNote(entry: CoinEntry): string | null {
+  if (!entry.saved) return null;
+  return entry.kind === 'earn' ? `${entry.saved} to savings` : `${entry.saved} from savings`;
 }
 
 /**
@@ -192,7 +203,6 @@ export function RewardsScreen() {
   const enabled = useSettingsStore(s => s.rewardsEnabled);
   const setEnabled = useSettingsStore(s => s.setRewardsEnabled);
   const goalId = useSettingsStore(s => s.rewardGoalId);
-  const setGoalId = useSettingsStore(s => s.setRewardGoalId);
   const listId = useSettingsStore(s => s.rewardListProjectId);
   const setListId = useSettingsStore(s => s.setRewardListProjectId);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
@@ -242,6 +252,24 @@ export function RewardsScreen() {
     [rewards, entries, goalId, sourceOf],
   );
   const goal = savingGoal?.reward ?? null;
+  // Savings for the goal (rewardSavings.ts): a share of every coin earned is
+  // set aside, and the rest is spending money that other rewards draw on. No
+  // plan in force means no savings, and the goal reads off the whole balance.
+  const storedPlan = useSettingsStore(s => s.rewardGoalPlan);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const plan = useMemo(() => activeGoalPlan(storedPlan, goalId, !!goal), [storedPlan, goalId, goal]);
+  const savings = useMemo(() => savingsBalance(entries, plan), [entries, plan]);
+  const spending = spendingBalance(balance, savings);
+  // What a reward other than the goal is paid from, and what the goal is.
+  const fundsFor = (reward: Reward) => (plan && reward.id !== plan.rewardId ? spending : balance);
+  const [planFor, setPlanFor] = useState<{ id: string; title: string; cost: number } | null>(null);
+  const shownPlanFor = useSheetSubject(planFor);
+  const unlocks = useUnlockStore(s => s.unlocks);
+  // A required task's row can be purged by the retention window; the unlock
+  // follows its newest row, run here like the dollar repricing above.
+  useEffect(() => {
+    if (enabled && unlocks.some(u => u.requiredTaskIds.length > 0)) useUnlockStore.getState().repointRequirements(tasks);
+  }, [enabled, tasks]);
 
   // The hero coin hops when coins arrive while the screen is open, so a claim
   // undone or a completion drained in the background doesn't go unseen. Only a
@@ -347,9 +375,18 @@ export function RewardsScreen() {
   const [habitPickerOpen, setHabitPickerOpen] = useState(false);
   // Habits another reward already guards, kept out of the picker for the one being edited.
   const editingId = draft?.mode === 'edit' ? draft.id : null;
+  // A habit has one link: a reward that guards it, or an unlock it's for.
   const guardedElsewhere = useMemo(
-    () => new Set(rewards.filter(r => r.id !== editingId && r.guardsTaskId && canGuard(r)).map(r => r.guardsTaskId!)),
-    [rewards, editingId],
+    () => new Set([
+      ...rewards.filter(r => r.id !== editingId && r.guardsTaskId && canGuard(r)).map(r => r.guardsTaskId!),
+      ...unlocks.map(u => u.guardsTaskId).filter((id): id is string => !!id),
+    ]),
+    [rewards, editingId, unlocks],
+  );
+  // The habits rewards guard, which an unlock's habit picker leaves out.
+  const guardedByRewards = useMemo(
+    () => new Set(rewards.filter(r => r.guardsTaskId && canGuard(r)).map(r => r.guardsTaskId!)),
+    [rewards],
   );
   // The "every N days/weeks/months" stepper beside the presets. It only fills
   // the cost field, the same as a preset does, so nothing about it is stored.
@@ -445,8 +482,25 @@ export function RewardsScreen() {
     useRewardStore.getState().addReward(idea.title, idea.cost);
   }, []);
 
-  const claim = useCallback((reward: Reward, title: string) => {
-    const entry = useRewardStore.getState().claimReward(reward.id);
+  const claim = useCallback((reward: Reward, title: string, useSavings = false) => {
+    // A reward spending money can't cover asks before it takes savings, and
+    // says what that does to the goal (rewardSavings.ts).
+    const fromSavings = useRewardStore.getState().savingsNeededFor(reward.id) ?? 0;
+    const p = useRewardStore.getState().goalPlan();
+    if (fromSavings > 0 && !useSavings && p) {
+      const setback = describeSetback(fromSavings, rate, p.sharePct);
+      const goalTitle = savingGoal?.title ?? 'your goal';
+      Alert.alert(
+        'Use savings?',
+        `${title} costs ${formatCoins(reward.cost)} and you have ${formatCoins(Math.max(0, reward.cost - fromSavings))} to spend. The other ${fromSavings} would come from your savings for ${goalTitle}${setback ? `, which moves it back ${setback}` : ''}.`,
+        [
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
+          { text: 'Use Savings', onPress: () => claim(reward, title, true) },
+        ],
+      );
+      return;
+    }
+    const entry = useRewardStore.getState().claimReward(reward.id, undefined, useSavings);
     if (!entry) return;
     haptics.success();
     setBurst(b => ({ key: b.key + 1, big: false }));
@@ -466,7 +520,7 @@ export function RewardsScreen() {
         if (completesItem) useTaskStore.getState().uncompleteTask(item!.id);
       },
     });
-  }, [taskById]);
+  }, [taskById, rate, savingGoal]);
 
   // Same shape as a task row's link button: in-app routes are handled here,
   // anything else goes to the system, and there's deliberately no canOpenURL
@@ -481,12 +535,18 @@ export function RewardsScreen() {
     }
   }, []);
 
+  // Choosing a goal opens the sheet that sets how much goes to it; stopping is
+  // one tap, and the savings go back to spending money.
   const toggleGoal = useCallback((reward: Reward) => {
     haptics.tap();
-    // The goal card under the balance comes and goes with this.
-    animateLayout();
-    setGoalId(goalId === reward.id ? null : reward.id);
-  }, [goalId, setGoalId]);
+    if (goalId === reward.id) {
+      // The goal card under the balance comes and goes with this.
+      animateLayout();
+      useSettingsStore.getState().setRewardGoal(null, null);
+      return;
+    }
+    setPlanFor({ id: reward.id, title: rewardDisplay(reward, sourceOf(reward)).title, cost: reward.cost });
+  }, [goalId, sourceOf]);
 
   const remove = useCallback((reward: Reward, title: string) => {
     confirmDelete({
@@ -498,10 +558,10 @@ export function RewardsScreen() {
         closeDraft();
         animateLayout();
         useRewardStore.getState().deleteReward(reward.id);
-        if (useSettingsStore.getState().rewardGoalId === reward.id) setGoalId(null);
+        if (useSettingsStore.getState().rewardGoalId === reward.id) useSettingsStore.getState().setRewardGoal(null, null);
       },
     });
-  }, [setGoalId, closeDraft]);
+  }, [closeDraft]);
 
   const confirmReset = useCallback(() => {
     Alert.alert(
@@ -1009,13 +1069,16 @@ export function RewardsScreen() {
   // and, for one that can't be claimed, why.
   const renderTile = (reward: Reward, resting: boolean) => {
     const shown = rewardDisplay(reward, sourceOf(reward));
-    const affordable = canClaimReward(balance, reward.cost);
+    // While saving for a goal, anything else is paid from spending money: the
+    // tile reads off that, and its sheet offers savings for the rest.
+    const funds = fundsFor(reward);
+    const affordable = canClaimReward(funds, reward.cost);
     const waitDays = claimWaitDays(reward, entries, getCurrentDayStart());
     const isGoal = goal?.id === reward.id;
     const status = resting
       ? sentence(describeClaimWait(waitDays)).replace('Available again', 'Back')
       : !affordable
-      ? `${Math.max(0, balance)} / ${reward.cost}`
+      ? `${Math.max(0, funds)} / ${reward.cost}`
       : null;
     return (
       <PressableScale
@@ -1025,7 +1088,7 @@ export function RewardsScreen() {
         accessibilityLabel={[
           shown.title,
           formatCoins(reward.cost),
-          resting || affordable ? status : `${Math.max(0, balance)} of ${formatCoins(reward.cost)} saved`,
+          resting || affordable ? status : `${Math.max(0, funds)} of ${formatCoins(reward.cost)} saved`,
           isGoal ? 'Saving for this' : null,
         ].filter(Boolean).join('. ')}
         accessibilityHint="Opens the reward"
@@ -1043,7 +1106,7 @@ export function RewardsScreen() {
         </View>
         {status && <Text style={styles.hint}>{status}</Text>}
         {!resting && !affordable && (
-          <ProgressBar progress={goalBarFill(balance, reward.cost)} height={6} color={colors.done} decorative style={styles.tileBar} />
+          <ProgressBar progress={goalBarFill(funds, reward.cost)} height={6} color={colors.done} decorative style={styles.tileBar} />
         )}
         {/* Claimable from the tile itself. One that can't be claimed yet gets
             the same pill, faded (the tile is not), and tapping it opens the
@@ -1057,7 +1120,7 @@ export function RewardsScreen() {
             ? `${shown.title}. ${status}`
             : affordable
             ? `Claim ${shown.title} for ${formatCoins(reward.cost)}`
-            : `${shown.title} needs ${formatCoins(reward.cost - balance)} more`}
+            : `${shown.title} needs ${formatCoins(reward.cost - funds)} more`}
         />
       </PressableScale>
     );
@@ -1092,7 +1155,42 @@ export function RewardsScreen() {
               style={[styles.balance, balance < 0 && { color: colors.redText }]}
             />
           </View>
-          {goal && goalShown && (
+          {goal && goalShown && plan && (
+            <View style={styles.goal}>
+              <Text style={styles.goalLabel}>{`Saving for: ${goalShown.title}`}</Text>
+              <View style={styles.split}>
+                <View
+                  style={styles.pot}
+                  accessible
+                  accessibilityLabel={`Spending money: ${formatCoins(spending)}`}
+                >
+                  <Text style={styles.potLabel}>Spending</Text>
+                  <AnimatedNumber text={String(spending)} value={spending} style={[styles.potValue, spending < 0 && { color: colors.redText }]} />
+                  {(() => {
+                    const perDay = spendingPerDay(rate, plan.sharePct);
+                    return perDay !== null ? <Text style={styles.potMeta}>{`About ${perDay} a day`}</Text> : null;
+                  })()}
+                </View>
+                <PressableScale
+                  style={styles.pot}
+                  onPress={() => setPlanFor({ id: goal.id, title: goalShown.title, cost: goal.cost })}
+                  accessibilityLabel={`Savings for ${goalShown.title}: ${Math.max(0, savings)} of ${formatCoins(goal.cost)}. ${plan.sharePct}% of what you earn goes to it`}
+                  accessibilityHint="Changes how much goes to it"
+                >
+                  <Text style={styles.potLabel}>Savings</Text>
+                  <View style={styles.potValueRow}>
+                    <AnimatedNumber text={String(Math.max(0, savings))} value={savings} style={styles.potValue} />
+                    <Text style={styles.potOf}>{` / ${goal.cost}`}</Text>
+                  </View>
+                  <ProgressBar progress={goalBarFill(savings, goal.cost)} height={6} color={colors.done} decorative style={styles.potBar} />
+                  <Text style={styles.potMeta}>
+                    {describeGoalPace(goal.cost, savings, rate, plan, getLogicalToday(dayResetTime)) ?? `${plan.sharePct}% of what you earn`}
+                  </Text>
+                </PressableScale>
+              </View>
+            </View>
+          )}
+          {goal && goalShown && !plan && (
             <View
               style={styles.goal}
               accessible
@@ -1110,6 +1208,26 @@ export function RewardsScreen() {
             </View>
           )}
         </View>
+
+        {shownPlanFor && (
+          <GoalPlanSheet
+            visible={planFor !== null}
+            onClose={() => setPlanFor(null)}
+            goal={shownPlanFor}
+            current={plan && plan.rewardId === shownPlanFor.id ? plan : null}
+            saved={savings}
+            balance={balance}
+            rate={rate}
+          />
+        )}
+
+        {enabled && (
+          <UnlocksSection
+            tasks={tasks}
+            entries={entries}
+            guardedByRewards={guardedByRewards}
+          />
+        )}
 
         {shownDetail && (
           <CardSheet visible={detailReward !== null} onClose={() => setDetailId(null)} name="RewardDetail">
@@ -1386,7 +1504,7 @@ export function RewardsScreen() {
                 <View style={styles.historyText}>
                   <Text style={styles.historyLabel}>{entry.label || kindLabel(entry)}</Text>
                   <Text style={styles.historyMeta}>
-                    {`${kindLabel(entry)} · ${format(parseISO(entry.at), 'MMM d, h:mm a')}`}
+                    {[kindLabel(entry), format(parseISO(entry.at), 'MMM d, h:mm a'), savedNote(entry)].filter(Boolean).join(' · ')}
                   </Text>
                 </View>
                 <View style={styles.amountRow}>
@@ -1463,6 +1581,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   goal: { alignSelf: 'stretch', gap: spacing.sm },
   goalLabel: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, textAlign: 'center' },
   goalMeta: { color: colors.textSecondary, fontSize: font.xs, textAlign: 'center' },
+  // The two halves of the balance while saving for a goal: cards on the warm
+  // balance card, side by side, so the coffee and the game read as two pots.
+  split: { flexDirection: 'row', gap: spacing.sm },
+  pot: { flex: 1, padding: spacing.smd, borderRadius: radius.md, backgroundColor: colors.bgSecondary, gap: spacing.xxs },
+  potLabel: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, letterSpacing: 0.8, textTransform: 'uppercase' },
+  potValueRow: { flexDirection: 'row', alignItems: 'baseline' },
+  potValue: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
+  potOf: { color: colors.textSecondary, fontSize: font.sm },
+  potBar: { marginTop: spacing.xs },
+  potMeta: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   rulesCard: { padding: spacing.md },
   rulesTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold, marginBottom: spacing.sm },
   rulesBody: { color: colors.textSecondary, fontSize: font.sm },

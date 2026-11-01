@@ -13,6 +13,7 @@ import type {
   MedicationLog,
   CoinEntry,
   Reward,
+  RewardUnlock,
   Milestone,
   Cookware,
   CopyFlag,
@@ -817,6 +818,28 @@ function runInitDatabase(): void {
       note TEXT,
       one_time INTEGER NOT NULL DEFAULT 0,
       task_id TEXT
+    );
+    -- A treat opened by doing the day's work rather than bought with coins
+    -- (see RewardUnlock in types/index.ts and src/utils/rewardUnlocks.ts).
+    -- It moves no coins, so nothing in coin_entries points at it. The play_*
+    -- columns are the day's timer: which day it counts, the time used before
+    -- the running stretch, minutes added, and when the running stretch began.
+    CREATE TABLE IF NOT EXISTS reward_unlocks (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      glyph TEXT,
+      created_at TEXT NOT NULL,
+      share_pct INTEGER NOT NULL DEFAULT 60,
+      required_task_ids TEXT NOT NULL DEFAULT '[]',
+      play_minutes INTEGER,
+      free_on_weekends INTEGER NOT NULL DEFAULT 0,
+      free_on_vacation INTEGER NOT NULL DEFAULT 0,
+      guards_task_id TEXT,
+      pin TEXT,
+      play_day TEXT,
+      play_used_ms INTEGER NOT NULL DEFAULT 0,
+      play_extra_ms INTEGER NOT NULL DEFAULT 0,
+      play_started_at TEXT
     );
 
     -- One thing eaten, at one moment — see FoodLogEntry in types/index.ts and
@@ -2513,6 +2536,9 @@ function runInitDatabase(): void {
     // which is no linked alarm.
     'ALTER TABLE tasks ADD COLUMN alarm_link TEXT',
     'ALTER TABLE tasks ADD COLUMN alarm_link_leaves_open INTEGER NOT NULL DEFAULT 0',
+    // CoinEntry.saved: 0 on every existing entry, which put nothing into and
+    // took nothing out of the savings for a goal.
+    'ALTER TABLE coin_entries ADD COLUMN saved INTEGER NOT NULL DEFAULT 0',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -2966,6 +2992,7 @@ export const BACKUP_TABLES = [
   // carries is provenance and may dangle, so no ordering requirement.
   'coin_entries',
   'rewards',
+  'reward_unlocks',
   // The food log, for the same reason: standalone rows nothing else points at.
   // Its pointers all run the other way and all dangle freely, so it has no
   // ordering requirement against the tables above it.
@@ -8740,6 +8767,7 @@ function rowToCoinEntry(row: Record<string, unknown>): CoinEntry {
     taskId: (row.task_id as string | null) || null,
     rewardId: (row.reward_id as string | null) || null,
     label: (row.label as string) || '',
+    saved: Math.max(0, Math.round(Number(row.saved) || 0)),
   };
 }
 
@@ -8755,9 +8783,9 @@ export function dbGetAllCoinEntries(): CoinEntry[] {
  */
 export function dbUpsertCoinEntry(entry: CoinEntry): void {
   db.runSync(
-    `INSERT OR REPLACE INTO coin_entries (id, kind, amount, at, task_id, reward_id, label)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [entry.id, entry.kind, entry.amount, entry.at, entry.taskId, entry.rewardId, entry.label]
+    `INSERT OR REPLACE INTO coin_entries (id, kind, amount, at, task_id, reward_id, label, saved)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [entry.id, entry.kind, entry.amount, entry.at, entry.taskId, entry.rewardId, entry.label, entry.saved ?? 0]
   );
 }
 
@@ -8805,6 +8833,57 @@ export function dbUpdateReward(reward: Reward): void {
 
 export function dbDeleteReward(id: string): void {
   db.runSync('DELETE FROM rewards WHERE id = ?', [id]);
+}
+
+function rowToRewardUnlock(row: Record<string, unknown>): RewardUnlock {
+  let required: string[] = [];
+  try {
+    const parsed = JSON.parse((row.required_task_ids as string) || '[]');
+    if (Array.isArray(parsed)) required = parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+  } catch {
+    // A blob that won't parse requires nothing, rather than locking the unlock for good.
+  }
+  return {
+    id: row.id as string,
+    title: row.title as string,
+    glyph: (row.glyph as string | null) || null,
+    createdAt: row.created_at as string,
+    // 5..100, the stepper's range (MIN_UNLOCK_SHARE in rewardUnlocks.ts, not imported:
+    // that module reaches dateUtils, and the db layer stays below it).
+    sharePct: Number.isFinite(Number(row.share_pct)) ? Math.min(100, Math.max(5, Math.round(Number(row.share_pct)))) : 60,
+    requiredTaskIds: required,
+    playMinutes: row.play_minutes == null ? null : Math.max(1, Math.round(Number(row.play_minutes)) || 1),
+    freeOnWeekends: row.free_on_weekends === 1,
+    freeOnVacation: row.free_on_vacation === 1,
+    guardsTaskId: (row.guards_task_id as string | null) || null,
+    pin: (row.pin as string | null) || null,
+    playDay: (row.play_day as string | null) || null,
+    playUsedMs: Math.max(0, Math.round(Number(row.play_used_ms) || 0)),
+    playExtraMs: Math.max(0, Math.round(Number(row.play_extra_ms) || 0)),
+    playStartedAt: (row.play_started_at as string | null) || null,
+  };
+}
+
+export function dbGetAllRewardUnlocks(): RewardUnlock[] {
+  return db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM reward_unlocks ORDER BY created_at ASC'
+  ).map(rowToRewardUnlock);
+}
+
+/** Insert or rewrite the whole row: an unlock is small and every edit is a whole-row write. */
+export function dbUpsertRewardUnlock(unlock: RewardUnlock): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO reward_unlocks (id, title, glyph, created_at, share_pct, required_task_ids, play_minutes,
+       free_on_weekends, free_on_vacation, guards_task_id, pin, play_day, play_used_ms, play_extra_ms, play_started_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [unlock.id, unlock.title, unlock.glyph, unlock.createdAt, unlock.sharePct, JSON.stringify(unlock.requiredTaskIds),
+      unlock.playMinutes, unlock.freeOnWeekends ? 1 : 0, unlock.freeOnVacation ? 1 : 0, unlock.guardsTaskId, unlock.pin,
+      unlock.playDay, unlock.playUsedMs, unlock.playExtraMs, unlock.playStartedAt]
+  );
+}
+
+export function dbDeleteRewardUnlock(id: string): void {
+  db.runSync('DELETE FROM reward_unlocks WHERE id = ?', [id]);
 }
 
 /**

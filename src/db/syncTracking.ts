@@ -127,6 +127,9 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // same occurrence completed on two phones is one row.
   { name: 'coin_entries', key: ['id'] },
   { name: 'rewards', key: ['id'] },
+  // Unlocks (src/utils/rewardUnlocks.ts) move no coins, but the day's play
+  // timer on the row is shared, so starting on one device shows on the other.
+  { name: 'reward_unlocks', key: ['id'] },
   // The food log. It has to travel for the reason mood entries do, and the
   // reading it prevents is starker: a day's totals computed off whichever half
   // of the record happens to be on the phone in your hand. An entry is written
@@ -478,6 +481,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // The goal and the wish list feeding Rewards: ids of synced rows, so they
   // mean the same thing on every device.
   'rewardGoalId',
+  // The plan for that goal (src/utils/rewardSavings.ts): one key, so the share
+  // and the date it was set from always arrive together.
+  'rewardGoalPlan',
   'rewardListProjectId',
   // The weekly spend that sets the coin-to-dollar rate. Synced because
   // dollar-priced rewards rewrite their synced `cost` from it.

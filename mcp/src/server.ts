@@ -81,7 +81,7 @@ import {
 } from './taskFields';
 import type { DeliverableKind, ExerciseEquipment, ExerciseKind, MealSlot, MuscleGroup, TimeOfDay } from '../../src/types';
 import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
-import { claimReward, createReward, deleteReward, getRewards, markMissed, setBounty, setRewardGoal, setSlip, unclaimReward, updateReward } from './rewardTools';
+import { claimReward, createReward, createUnlock, deleteReward, deleteUnlock, getRewards, markMissed, setBounty, setRewardGoal, setSlip, setUnlockPlay, unclaimReward, updateReward, updateUnlock } from './rewardTools';
 import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
 import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, catalogAudit, listBrands, mergeGroceryItems, mergeGroceryItemsMany, updateGroceryItems, renameBrand, renameBrands, renameGroceryList, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
@@ -1120,7 +1120,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_rewards',
-    "The coin economy: whether rewards are on, the balance, the reward being saved for and how far along it is, every reward on the list (cost, whether the balance covers it now, how many coins short, when it was last claimed), the tasks with a live coin bounty, and the latest coin history (what earned, what was lost, what was spent). Read it before claiming or pricing anything. A balance can be below zero. When enabled is false the person has rewards switched off, so do not bring them up.",
+    "The coin economy: whether rewards are on, the balance, the reward being saved for and how far along it is, every reward on the list (cost, whether the balance covers it now, how many coins short, when it was last claimed), the tasks with a live coin bounty, and the latest coin history (what earned, what was lost, what was spent, and how much of each went to or came from savings). While they save for a goal with a share set aside (savings), other rewards are paid from spending money and affordable/shortBy read off that. unlocks lists what today's work opens (no coins involved): locked or open, how far along, and the day's play time; an unlock's code is never shown. Read it before claiming or pricing anything. A balance can be below zero. When enabled is false the person has rewards switched off, so do not bring them up.",
     { historyLimit: z.number().int().min(0).max(100).optional().describe('How many history entries, newest first. Default 15.') },
     async input => json(await withFresh(() => getRewards(replica, input)))
   );
@@ -4235,6 +4235,72 @@ function registerWriteTools(
     }
   );
 
+  const unlockFieldsShape = {
+    glyph: z.string().max(16).nullable().optional().describe('One emoji drawn on the unlock\'s card, like "🎮". Null removes it.'),
+    unlocksAtPct: z.number().int().min(5).max(100).optional().describe('The share of today\'s work (counted in coins) that opens it. Default 60.'),
+    alsoNeedsTaskIds: z.array(z.string().min(1)).optional().describe('Open tasks that also have to be done first, on the days they are due (any repeat of one counts). Replaces the list; [] clears it.'),
+    playMinutes: z.number().int().min(1).max(720).nullable().optional().describe('Minutes of play a day once open, with a timer and a notice when it is used up. Null for no limit and no timer. Default 120.'),
+    freeOnWeekends: z.boolean().optional().describe('Open all day on Saturday and Sunday with no work.'),
+    freeOnVacation: z.boolean().optional().describe('Open all day while vacation mode is on.'),
+    linkedHabitId: z.string().min(1).nullable().optional().describe('An "Avoid this" habit (task id) for doing it while it is locked. A slip logged on it while the unlock is open asks first. One link per habit. Null unlinks it.'),
+  };
+
+  server.tool(
+    'create_unlock',
+    "Add an unlock: something that opens once a share of the day's work is done (counted in coins), such as an hour of a game. It costs no coins and never touches the balance or the savings. Only when the person asks. A code (like a parental controls PIN) can only be set on their phone; never ask them for one. Refused while rewards are switched off.",
+    { title: z.string().min(1), ...unlockFieldsShape },
+    async input => {
+      try {
+        return json(await withWrite(() => createUnlock(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not add the unlock.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_unlock',
+    "Change an unlock (ids from get_rewards' unlocks). Only the fields given change; its code and today's timer are left as they are.",
+    { id: z.string().min(1), title: z.string().min(1).optional(), ...unlockFieldsShape },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateUnlock(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the unlock.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_unlock',
+    "Delete an unlock (ids from get_rewards' unlocks), with its timer and code. No coins move. Only on the person's say-so.",
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteUnlock(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the unlock.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_unlock_play',
+    "Start, stop, or add minutes to an unlock's play timer for today, the same as the buttons on its card. start is refused while it is locked (the error says how much work is left) or today's time is used up; add gives more time today (default 15 minutes). The phone shows the timer and rings when it is used up once it syncs. Only when the person says they are starting or stopping.",
+    {
+      id: z.string().min(1),
+      action: z.enum(['start', 'stop', 'add']),
+      minutes: z.number().int().min(1).max(240).optional().describe('For add: how many minutes. Default 15.'),
+    },
+    async ({ id, action, minutes }) => {
+      try {
+        return json(await withWrite(() => setUnlockPlay(replica, id, action, minutes)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the play timer.' });
+      }
+    }
+  );
+
   server.tool(
     'delete_reward',
     "Delete a reward from the list (ids from get_rewards). Coins already spent on it stay spent. Only on the person's say-so.",
@@ -4250,11 +4316,14 @@ function registerWriteTools(
 
   server.tool(
     'claim_reward',
-    "Spend coins on a reward (ids from get_rewards): the same as tapping Claim in the app. Only when the person says they want it now; never claim a reward to be helpful, because it spends coins they earned over days. Refused when the balance is short or a one-time reward was already claimed. A wish-list reward also checks its list item off, with no extra coins (the result says which). The result carries a claimId; unclaim_reward takes it back, and reopens that item too.",
-    { id: z.string().min(1) },
-    async ({ id }) => {
+    "Spend coins on a reward (ids from get_rewards): the same as tapping Claim in the app. Only when the person says they want it now; never claim a reward to be helpful, because it spends coins they earned over days. Refused when the balance is short or a one-time reward was already claimed. While they are saving for a goal (get_rewards' savings), any other reward is paid from spending money; one that would need some of the goal's savings is refused unless useSavings is true, so ask them first and say how many coins it takes from the goal. A wish-list reward also checks its list item off, with no extra coins (the result says which). The result carries a claimId; unclaim_reward takes it back, and reopens that item too.",
+    {
+      id: z.string().min(1),
+      useSavings: z.boolean().optional().describe('Take what spending money cannot cover from the savings for their goal. Only after they agree to it.'),
+    },
+    async ({ id, useSavings }) => {
       try {
-        return json(await withWrite(() => claimReward(replica, id)));
+        return json(await withWrite(() => claimReward(replica, id, useSavings ?? false)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not claim the reward.' });
       }
@@ -4276,11 +4345,16 @@ function registerWriteTools(
 
   server.tool(
     'set_reward_goal',
-    "Choose the reward the person is saving for (an id from get_rewards), or null to stop saving for any. It only changes which reward the Rewards screen shows progress toward.",
-    { id: z.string().min(1).nullable() },
-    async ({ id }) => {
+    "Choose the reward the person is saving for (an id from get_rewards), or null to stop saving for any. Pass sharePct (1 to 100), or byDate (YYYY-MM-DD) to work the share out from their earning rate, to set that share of every coin earned aside for it, the way the app's goal sheet does: other rewards are then paid from what's left (spending money), so a small treat doesn't set the goal back. Calling it again for the same goal with a new share keeps what is saved. A new plan starts with their balance in it unless putBalanceIn is false. Without either, the goal just reads off the whole balance. Stopping, or choosing another goal, returns the savings to spending money; no coins move. Ask before choosing a share for them.",
+    {
+      id: z.string().min(1).nullable(),
+      sharePct: z.number().int().min(1).max(100).optional().describe('The share of every coin earned set aside for the goal.'),
+      byDate: z.string().optional().describe('YYYY-MM-DD they want it by. Works out sharePct from their earning rate when sharePct is not given.'),
+      putBalanceIn: z.boolean().optional().describe('For a new plan: start the savings with their current balance. Default true.'),
+    },
+    async ({ id, sharePct, byDate, putBalanceIn }) => {
       try {
-        return json(await withWrite(() => setRewardGoal(replica, id)));
+        return json(await withWrite(() => setRewardGoal(replica, id, { sharePct, byDate, putBalanceIn })));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not set the goal.' });
       }

@@ -27,6 +27,7 @@ import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { installSupplementDoseEffects } from './supplementDoseSync';
 import { useRewardStore } from '../store/useRewardStore';
+import { useUnlockStore } from '../store/useUnlockStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useReminderRemovalStore } from '../store/useReminderRemovalStore';
@@ -3885,7 +3886,18 @@ function seedRewards(today: Date): void {
   useSettingsStore.getState().setRewardWeeklyBudgetMinor(2500);
   useSettingsStore.getState().setRewardSalesTaxPercent(8.875);
   rewards.addReward('Coffee and a pastry', 400, { priceMinor: 650, taxable: true, glyph: '☕' });
-  if (takeout) useSettingsStore.getState().setRewardGoalId(takeout.id);
+  // Takeout is saved for with half of every coin set aside, so the balance
+  // card shows savings beside spending money and the episode below is paid
+  // from spending. Started a week back, before the earnings below, so they split.
+  if (takeout) {
+    useSettingsStore.getState().setRewardGoal(takeout.id, {
+      rewardId: takeout.id,
+      sharePct: 50,
+      by: dayKeyOf(addDays(today, 21)),
+      since: subDays(today, 7).toISOString(),
+      deposit: 0,
+    });
+  }
 
   // A wish list feeding the screen: one item already priced as a reward, the
   // others waiting to be. Through the stores, like everything else here.
@@ -3922,6 +3934,28 @@ function seedRewards(today: Date): void {
   // slot limit, rather than a stamped count.
   const gutters = useTaskStore.getState().tasks.find(t => t.title === 'Clear the gutters' && !t.completed);
   if (gutters) useTaskStore.getState().postBounty(gutters.id);
+
+  // An unlock: opened by the day's work rather than bought, with the walk
+  // required on the days it's due, a timer, a code and a linked habit, so
+  // every part of the card has something to show.
+  const noGames = useTaskStore.getState().addTask({
+    title: 'No games while it’s locked',
+    category: 'Health',
+    polarity: 'negative',
+    effort: 1,
+  });
+  const walk = useTaskStore.getState().tasks.find(t => t.title === 'Morning walk' && !t.completed && !t.parentId);
+  useUnlockStore.getState().addUnlock({
+    title: 'Switch',
+    glyph: '🎮',
+    sharePct: 60,
+    requiredTaskIds: walk ? [walk.id] : [],
+    playMinutes: 120,
+    freeOnWeekends: true,
+    freeOnVacation: false,
+    guardsTaskId: noGames.id,
+    pin: '4817',
+  });
 }
 
 function seedAsNeededDoses(today: Date): void {

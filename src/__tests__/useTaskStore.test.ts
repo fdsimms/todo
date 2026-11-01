@@ -164,6 +164,7 @@ jest.mock('../db/database', () => ({
   dbUpsertCoinEntry: jest.fn(),
   dbDeleteCoinEntry: jest.fn(),
   dbGetAllRewards: jest.fn().mockReturnValue([]),
+  dbGetAllRewardUnlocks: jest.fn().mockReturnValue([]),
   dbInsertReward: jest.fn(),
   dbUpdateReward: jest.fn(),
   dbDeleteReward: jest.fn(),

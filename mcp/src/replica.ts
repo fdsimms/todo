@@ -97,6 +97,7 @@ import type {
   RecipeVote,
   SavedMeal,
   Reward,
+  RewardUnlock,
   TaskTemplate,
   TemplateItem,
   Task,
@@ -236,6 +237,9 @@ type SettingsSearchModule = typeof import('../../src/utils/settingsSearch');
  * the app does. Not the whole store: most of it is device configuration that
  * no answer about the person's tasks turns on.
  */
+/** What the MCP server may set on an unlock: everything the form edits except the code. */
+export type UnlockInput = Omit<import('../../src/utils/rewardUnlocks').UnlockDraft, 'pin'>;
+
 export interface ReplicaSettings {
   /** "HH:MM", when the logical day turns over. */
   dayResetTime: string;
@@ -268,6 +272,8 @@ export interface ReplicaSettings {
   workoutsEnabled: boolean;
   /** The reward being saved for, or null. */
   rewardGoalId: string | null;
+  /** How the goal is saved for (src/utils/rewardSavings.ts), or null. In force only while it names `rewardGoalId`. */
+  rewardGoalPlan: import('../../src/utils/rewardSavings').GoalPlan | null;
   /** Weekly reward spend in minor units, which with the earning rate sets the coin-to-dollar rate. Null when unset. */
   rewardWeeklyBudgetMinor: number | null;
   /** Sales tax in percent, added to the price of a taxable dollar-priced reward. Null when unset. */
@@ -345,6 +351,8 @@ export interface ReplicaLib {
   screenTimeRules: typeof import('../../src/utils/screenTimeRules');
   blockOfferTasks: typeof import('../../src/utils/blockOfferTasks');
   rewards: typeof import('../../src/utils/rewards');
+  rewardSavings: typeof import('../../src/utils/rewardSavings');
+  rewardUnlocks: typeof import('../../src/utils/rewardUnlocks');
   grocerySuggest: typeof import('../../src/utils/grocerySuggest');
   kitchenInventory: typeof import('../../src/utils/kitchenInventory');
   pantryReview: typeof import('../../src/utils/pantryReview');
@@ -2198,7 +2206,7 @@ export interface Replica {
    * reward (cheapest first), read from the database each call. The balance is
    * never stored, so a reader sums `entries` (`rewards.coinBalance`).
    */
-  rewardState(): { entries: CoinEntry[]; rewards: Reward[] };
+  rewardState(): { entries: CoinEntry[]; rewards: Reward[]; unlocks: RewardUnlock[] };
   /** The start of the person's current logical day, for a claim limit's day count. */
   currentDayStart(): Date;
   /**
@@ -2224,11 +2232,45 @@ export interface Replica {
    * (no coins on top of the spend), as the Rewards screen does. Returns the
    * spend entry, which `unclaimReward` takes back.
    */
-  claimReward(id: string): CoinEntry;
+  /**
+   * `useSavings`: take what spending money can't cover from the savings for
+   * the goal (src/utils/rewardSavings.ts). Without it such a claim is refused.
+   */
+  claimReward(id: string, useSavings?: boolean): CoinEntry;
   /** Take back a claim by its spend entry: the undo for `claimReward`, which also reopens a wish-list item the claim checked off. */
   unclaimReward(entryId: string): CoinEntry;
-  /** The reward being saved for (`rewardGoalId`), or null to clear it. A claimed or deleted reward is refused. */
-  setRewardGoal(id: string | null): Reward | null;
+  /**
+   * The reward being saved for (`rewardGoalId`), or null to clear it. A claimed
+   * or deleted reward is refused. `plan` sets aside a share of every coin
+   * earned for it (src/utils/rewardSavings.ts), the Rewards screen's goal
+   * sheet: `sharePct`, or `byDate` to work the share out from the earning
+   * rate, and `putBalanceIn` to start with the balance (default true). Without
+   * a plan the goal reads off the whole balance, as it did before savings.
+   */
+  setRewardGoal(id: string | null, plan?: { sharePct?: number; byDate?: string; putBalanceIn?: boolean }): Reward | null;
+  /**
+   * What an unlock's status is read against right now (`statusOfUnlock`):
+   * the ledger, every task, what Today shows, and the logical day.
+   */
+  unlockWorld(): import('../../src/utils/rewardUnlocks').UnlockWorld;
+  /**
+   * A new unlock (src/utils/rewardUnlocks.ts), cleaned as the app's form
+   * cleans one. Never a code: that is set on the phone, and nothing here
+   * reads or writes it. Required tasks must be open, top-level tasks that
+   * aren't "Avoid this" habits; a linked habit must be a live avoid habit no
+   * reward or other unlock already links. Refused while rewards are off.
+   */
+  createUnlock(input: UnlockInput): RewardUnlock;
+  /** Change an unlock, with the same checks. Its code and play timer are left as they are. */
+  updateUnlock(id: string, patch: Partial<UnlockInput>): RewardUnlock;
+  /** Delete an unlock. It moved no coins, so nothing else changes. */
+  deleteUnlock(id: string): RewardUnlock;
+  /**
+   * Start, stop or add time to an unlock's play timer for today, as the card's
+   * buttons do. Start is refused while it is locked or today's time is used
+   * up. The phone schedules the time-up notice when this syncs in.
+   */
+  unlockPlay(id: string, action: 'start' | 'stop' | 'add', minutes?: number): RewardUnlock;
   /**
    * Post a bounty on an open task, or withdraw the one posted. `useTaskStore`'s
    * `postBounty` / `withdrawBounty` rules: one bounty per occurrence, a limit on
@@ -3487,6 +3529,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const notesModule = () => require('../../src/utils/agentNotes') as typeof import('../../src/utils/agentNotes');
 
   const tasks = (): Task[] => (taskCache ??= db.dbGetAllTasks());
+  // The reward store reads a wish list goal's item through this, as the app's task store does.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  (require('../../src/store/useRewardStore') as typeof import('../../src/store/useRewardStore')).registerGoalSourceLookup(id => tasks().find(t => t.id === id));
   /** Whether the person asked to approve calendar requests first (`calendarRequestAsksFirst`, synced). */
   const asksFirst = (): boolean => db.dbGetSetting('calendarRequestAsksFirst') === 'true';
   const people = (): Person[] => (personCache ??= db.dbGetAllPeople());
@@ -3808,6 +3853,28 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const requireRewardsOn = (): void => {
     if (!useSettingsStore.getState().rewardsEnabled) {
       throw new Error('Rewards are switched off in the app. Turn them on with update_settings (rewardsEnabled: true) if the person wants them.');
+    }
+  };
+  const requireUnlock = (id: string): RewardUnlock => {
+    const unlock = db.dbGetAllRewardUnlocks().find(u => u.id === id);
+    if (!unlock) throw new Error(`No unlock with id ${id}. get_rewards lists them.`);
+    return unlock;
+  };
+  // The checks the app's pickers make by only offering what qualifies.
+  const checkUnlockLinks = (draft: { requiredTaskIds: string[]; guardsTaskId: string | null }, selfId: string | null): void => {
+    const all = tasks();
+    for (const taskId of draft.requiredTaskIds) {
+      const t = all.find(x => x.id === taskId);
+      if (!t || t.parentId || t.archived) throw new Error(`No open task with id ${taskId} to require.`);
+      if (t.polarity === 'negative') throw new Error(`"${t.title}" is a habit to avoid, so it can't be something the unlock needs done.`);
+    }
+    if (draft.guardsTaskId) {
+      const habit = all.find(x => x.id === draft.guardsTaskId);
+      if (!habit || !rewardGuard.isGuardableHabit(habit)) throw new Error(`No live "Avoid this" habit with id ${draft.guardsTaskId}.`);
+      const byReward = db.dbGetAllRewards().find(r => r.guardsTaskId === habit.id && rewardGuard.canGuard(r));
+      if (byReward) throw new Error(`"${habit.title}" is already linked to the reward "${byReward.title}". A habit has one link.`);
+      const byUnlock = db.dbGetAllRewardUnlocks().find(u => u.id !== selfId && u.guardsTaskId === habit.id);
+      if (byUnlock) throw new Error(`"${habit.title}" is already linked to the unlock "${byUnlock.title}". A habit has one link.`);
     }
   };
   const requireReward = (id: string): Reward => {
@@ -4411,6 +4478,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         rewardsEnabled: s.rewardsEnabled,
         workoutsEnabled: s.workoutsEnabled,
         rewardGoalId: s.rewardGoalId,
+        rewardGoalPlan: s.rewardGoalPlan,
         rewardWeeklyBudgetMinor: s.rewardWeeklyBudgetMinor,
         rewardSalesTaxPercent: s.rewardSalesTaxPercent,
         bountyLimit: s.bountyLimit,
@@ -4495,6 +4563,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         screenTimeRules: require('../../src/utils/screenTimeRules'),
         blockOfferTasks: require('../../src/utils/blockOfferTasks'),
         rewards: require('../../src/utils/rewards'),
+        rewardSavings: require('../../src/utils/rewardSavings'),
+        rewardUnlocks: require('../../src/utils/rewardUnlocks'),
         grocerySuggest,
         kitchenInventory: require('../../src/utils/kitchenInventory'),
         pantryReview: require('../../src/utils/pantryReview'),
@@ -8429,10 +8499,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return dates.getCurrentDayStart();
     },
 
-    rewardState(): { entries: CoinEntry[]; rewards: Reward[] } {
+    rewardState(): { entries: CoinEntry[]; rewards: Reward[]; unlocks: RewardUnlock[] } {
       return {
         entries: rewards.sortCoinEntries(db.dbGetAllCoinEntries()),
         rewards: [...db.dbGetAllRewards()].sort((a, b) => a.cost - b.cost || (a.createdAt < b.createdAt ? -1 : 1)),
+        unlocks: db.dbGetAllRewardUnlocks(),
       };
     },
 
@@ -8468,7 +8539,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return reward;
     },
 
-    claimReward(id): CoinEntry {
+    claimReward(id, useSavings = false): CoinEntry {
       requireRewardsOn();
       const reward = requireReward(id);
       const { entries } = useRewardStore.getState();
@@ -8488,9 +8559,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!rewards.canClaimReward(balance, reward.cost)) {
         throw new Error(`"${reward.title}" costs ${reward.cost} coins and the balance is ${balance}.`);
       }
+      const fromSavings = useRewardStore.getState().savingsNeededFor(id) ?? 0;
+      if (fromSavings > 0 && !useSavings) {
+        throw new Error(`"${reward.title}" costs ${reward.cost} coins and spending money covers only ${reward.cost - fromSavings}. The other ${fromSavings} would come from the savings for their goal: ask them, then pass useSavings: true.`);
+      }
       let entry: CoinEntry | null = null;
       db.dbTransaction(() => {
-        entry = useRewardStore.getState().claimReward(id);
+        entry = useRewardStore.getState().claimReward(id, undefined, useSavings);
         if (!entry) throw new Error('Could not claim the reward.');
         // Neutral, so checking the item off earns nothing on top of what was spent.
         if (item) finishCompletion(item, undefined, 'neutral');
@@ -8514,7 +8589,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return entry;
     },
 
-    setRewardGoal(id): Reward | null {
+    setRewardGoal(id, planInput): Reward | null {
       requireRewardsOn();
       let reward: Reward | null = null;
       if (id !== null) {
@@ -8524,9 +8599,128 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           throw new Error(`"${reward.title}" has already been claimed or is gone, so it cannot be the goal.`);
         }
       }
+      if (id !== null && reward && planInput && (planInput.sharePct !== undefined || planInput.byDate !== undefined)) {
+        const savingsLib = require('../../src/utils/rewardSavings') as typeof import('../../src/utils/rewardSavings');
+        const settings = useSettingsStore.getState();
+        // Changing the share of the plan in force keeps what is saved; a new
+        // plan starts now, with the balance in unless told otherwise.
+        const current = savingsLib.activeGoalPlan(settings.rewardGoalPlan, settings.rewardGoalId, true);
+        const keep = current && current.rewardId === id ? current : null;
+        const balance = rewards.coinBalance(useRewardStore.getState().entries);
+        const deposit = keep ? keep.deposit : planInput.putBalanceIn === false ? 0 : Math.max(0, balance);
+        const have = keep ? savingsLib.savingsBalance(useRewardStore.getState().entries, keep) : deposit;
+        let sharePct = planInput.sharePct;
+        let by: string | null = null;
+        if (planInput.byDate !== undefined) {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(planInput.byDate)) throw new Error('byDate must be YYYY-MM-DD.');
+          const days = Math.round((new Date(`${planInput.byDate}T00:00`).getTime() - dates.getLogicalToday(settings.dayResetTime).getTime()) / 86_400_000);
+          if (days <= 0) throw new Error('byDate must be after today.');
+          by = planInput.byDate;
+          if (sharePct === undefined) {
+            const rate = rewards.earnRatePerDay(tasks(), new Date());
+            const worked = savingsLib.shareForDate(reward.cost, have, rate, days);
+            if (worked === null) throw new Error('There is under a week of history, so no share can be worked out from a date yet. Pass sharePct instead.');
+            sharePct = worked;
+          }
+        }
+        const plan = keep
+          ? { ...keep, sharePct: savingsLib.cleanSavingsShare(sharePct), by }
+          : { rewardId: id, sharePct: savingsLib.cleanSavingsShare(sharePct), by, since: new Date().toISOString(), deposit };
+        settings.setRewardGoal(id, plan);
+        refresh();
+        return reward;
+      }
       useSettingsStore.getState().setRewardGoalId(id);
       refresh();
       return reward;
+    },
+
+    unlockWorld() {
+      const s = useSettingsStore.getState();
+      const all = tasks();
+      const now = new Date();
+      return {
+        entries: rewards.sortCoinEntries(db.dbGetAllCoinEntries()),
+        tasks: all,
+        onToday: all.filter(t => !t.parentId && !t.completed && (visibility.isTaskVisible(t) || visibility.isUpcomingToday(t))),
+        todayStart: dates.getCurrentDayStart(),
+        todayKey: dates.getLogicalDayKey(now, s.dayResetTime),
+        vacation: s.vacationMode,
+      };
+    },
+
+    createUnlock(input): RewardUnlock {
+      requireRewardsOn();
+      const unlockLib = require('../../src/utils/rewardUnlocks') as typeof import('../../src/utils/rewardUnlocks');
+      const clean = unlockLib.cleanUnlockDraft({ ...input, pin: null });
+      if (!clean.title) throw new Error('An unlock needs a name.');
+      checkUnlockLinks(clean, null);
+      const unlock: RewardUnlock = {
+        id: generateId(),
+        createdAt: new Date().toISOString(),
+        ...clean,
+        playDay: null,
+        playUsedMs: 0,
+        playExtraMs: 0,
+        playStartedAt: null,
+      };
+      db.dbUpsertRewardUnlock(unlock);
+      refresh();
+      return unlock;
+    },
+
+    updateUnlock(id, patch): RewardUnlock {
+      requireRewardsOn();
+      const unlockLib = require('../../src/utils/rewardUnlocks') as typeof import('../../src/utils/rewardUnlocks');
+      const current = requireUnlock(id);
+      // The code is the phone's: whatever a patch says, it stays as it was.
+      const { pin: _ignored, ...allowed } = patch as Partial<UnlockInput> & { pin?: unknown };
+      const clean = unlockLib.cleanUnlockDraft({ ...current, ...allowed, pin: current.pin });
+      if (!clean.title) throw new Error('An unlock needs a name.');
+      checkUnlockLinks(clean, id);
+      const next: RewardUnlock = { ...current, ...clean };
+      db.dbUpsertRewardUnlock(next);
+      refresh();
+      return next;
+    },
+
+    deleteUnlock(id): RewardUnlock {
+      requireRewardsOn();
+      const unlock = requireUnlock(id);
+      db.dbDeleteRewardUnlock(id);
+      refresh();
+      return unlock;
+    },
+
+    unlockPlay(id, action, minutes): RewardUnlock {
+      requireRewardsOn();
+      const unlockLib = require('../../src/utils/rewardUnlocks') as typeof import('../../src/utils/rewardUnlocks');
+      const unlock = requireUnlock(id);
+      const world = replica.unlockWorld();
+      const now = new Date();
+      let fields;
+      if (action === 'start') {
+        const { status } = unlockLib.statusOfUnlock(unlock, world);
+        if (status.kind === 'locked') {
+          const still = status.pending.length > 0 ? ` It also still needs ${status.pending.map(t => visibility.displayTitleFor(t)).join(', ')}.` : '';
+          throw new Error(`"${unlock.title}" is locked: ${Math.floor(status.share * 100)}% of today's work is done and it opens at ${unlock.sharePct}%.${still}`);
+        }
+        const play = unlockLib.playState(unlock, now, world.todayKey);
+        if (play.running) return unlock;
+        if (play.remainingMs === 0) throw new Error(`Today's play time for "${unlock.title}" is used up. action: "add" gives more, if they want it.`);
+        fields = unlockLib.startPlay(unlock, now, world.todayKey);
+      } else if (action === 'stop') {
+        fields = unlockLib.stopPlay(unlock, now, world.todayKey);
+      } else {
+        const add = Math.round(minutes ?? unlockLib.PLAY_EXTRA_MINUTES);
+        if (!(add >= 1 && add <= 240)) throw new Error('minutes must be from 1 to 240.');
+        if (unlock.playMinutes === null) throw new Error(`"${unlock.title}" has no daily play time to add to.`);
+        fields = unlockLib.addPlayTime(unlock, add, now, world.todayKey);
+      }
+      const next: RewardUnlock = { ...unlock, ...fields };
+      db.dbUpsertRewardUnlock(next);
+      refresh();
+      return next;
     },
 
     postBounty(id): Task {
@@ -8560,7 +8754,8 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // the claim instead, and leaves the habit as it was.
       let guard = useRewardStore.getState().slipGuardFor(task, dayStart)?.plan ?? null;
       if (guard?.kind === 'claim') {
-        const claim = useRewardStore.getState().claimReward(guard.reward.id);
+        // Savings may make up the price, as in the app's logSlip.
+        const claim = useRewardStore.getState().claimReward(guard.reward.id, undefined, true);
         if (claim) {
           refresh();
           return { task, claim };

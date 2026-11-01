@@ -35,13 +35,14 @@ import { useFilterField } from '../hooks/useFilterField';
 import { FieldClearButton } from './FieldClearButton';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
+import { isNegativeTask } from '../utils/negativeHabits';
 import { TextField } from './TextField';
 
 /**
  * Which end of the relationship is being filled in: the task being edited is
  * either the one waiting, or the one everything else is waiting on.
  */
-export type TaskRelation = 'waitingOn' | 'blocks' | 'answer' | 'medication';
+export type TaskRelation = 'waitingOn' | 'blocks' | 'answer' | 'medication' | 'unlockNeeds';
 
 interface Props {
   visible: boolean;
@@ -115,6 +116,14 @@ const COPY: Record<TaskRelation, {
     emptySub: 'Only repeating tasks that do not already record a medication are listed.',
     action: title => `Record doses when ${title} is checked off`,
   },
+  // Also borrowed: an unlock's required tasks (src/utils/rewardUnlocks.ts).
+  unlockNeeds: {
+    title: 'Also needs',
+    hint: 'It stays locked until the tasks you pick are done, on the days they are due.',
+    emptyTitle: 'No tasks to pick',
+    emptySub: 'Open tasks are listed here. Habits you avoid are left out.',
+    action: title => `Also needs ${title}`,
+  },
 };
 
 /**
@@ -158,7 +167,9 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
           ? canBeGateOf(t, taskId, resolve)
           : relation === 'medication'
             ? canCarryMedication(t)
-            : canBeBlockedBy(t, taskId, resolve))
+            : relation === 'unlockNeeds'
+              ? !t.completed && !t.archived && !t.parentId && !isNegativeTask(t)
+              : canBeBlockedBy(t, taskId, resolve))
     );
     // Rank before truncating, so a neighbour buried deep in the list still
     // reaches the visible rows.

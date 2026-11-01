@@ -8,8 +8,8 @@ CI fails if it is out of date. Run it after adding or growing a file.
 **Read narrowly.** 124 files are over 1,000 lines, 89 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (12.0k), `db/database.ts` (10.1k),
-`components/TaskEditor.tsx` (9.6k), `types/index.ts` (9.4k), `mcp/src/replica.ts` (9.3k),
+`store/useTaskStore.ts` (12.0k), `db/database.ts` (10.2k),
+`components/TaskEditor.tsx` (9.6k), `mcp/src/replica.ts` (9.4k), `types/index.ts` (9.4k),
 `components/TaskItem.tsx` (6.8k), `screens/TodayScreen.tsx` (6.8k),
 `store/useSettingsStore.ts` (6.7k), `utils/demoSeed.ts` (6.6k),
 `store/useGroceryStore.ts` (5.9k).
@@ -23,5 +23,5 @@ one component holding most of the file is owed a header map and banners (CLAUDE.
 
 `components/RecipeToListSheet.tsx`.
 
-The suite is **798 test files**, and `npm test` runs all of them in about a minute.
+The suite is **801 test files**, and `npm test` runs all of them in about a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists.

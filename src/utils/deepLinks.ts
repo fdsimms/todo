@@ -761,7 +761,7 @@ export function cookSessionRecipeId(
   return null;
 }
 
-// `dundundun://stopTimer?key=cook:<id>|prep:<id>|step:<id>|rest:<id>|fast:<id>` — the peer of
+// `dundundun://stopTimer?key=cook:<id>|prep:<id>|step:<id>|rest:<id>|fast:<id>|play:<id>` — the peer of
 // completeTask above for the Done button on a recipe's cook/prep Live Activity
 // and on a cooking step timer's. The host is still named for stopping because
 // that is what the *timer* does in all three cases, but what Done means differs
@@ -1116,6 +1116,13 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     else if (key?.startsWith('fast:')) {
       const fast = useFastStore.getState().fasts.find(f => f.id === key.slice('fast:'.length));
       if (fast && fast.endedAt === null) useFastStore.getState().endFast();
+    }
+    // An unlock's play timer: Done stops it, as the card's Stop does, keeping
+    // the time used. Required for the reason cookRecipeNow is: the MCP package
+    // loads this file in Node, and the unlock store reaches notifications.
+    else if (key?.startsWith('play:')) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      (require('../store/useUnlockStore') as typeof import('../store/useUnlockStore')).useUnlockStore.getState().stopPlay(key.slice('play:'.length));
     }
     // A completion timer's Done ends its countdown early without touching
     // the task (already completed, long before this fired) or the pending

@@ -854,7 +854,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'nfcKeyLock', iosOnly: true, groupId: 'screenTime', label: 'Lock apps now', section: 'Key tags', simple: true,
     keywords: ['locked', 'nfc', 'tap', 'screen time', 'unlock', 'block', 'physical', 'key tag'] },
   { id: 'timerLiveActivity', iosOnly: true, groupId: 'focus', label: 'Live Activity while timing', section: 'Timers',
-    keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown', 'completion timer', 'reminder'] },
+    keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown', 'completion timer', 'reminder', 'play time', 'unlock', 'game'] },
   { id: 'autoRemoveExpired', groupId: 'tasksProjects', label: 'Auto-remove expired tasks', section: 'Time-limited tasks',
     keywords: ['window', 'delete'], simple: true },
   { id: 'vacationMode', groupId: 'dayTime', label: 'Vacation mode', section: 'Vacation',

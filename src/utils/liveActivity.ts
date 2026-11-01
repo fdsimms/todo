@@ -1,12 +1,15 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
-import type { Task, Recipe, RestTimer, StepTimer, Fast } from '../types';
+import type { Task, Recipe, RestTimer, StepTimer, Fast, RewardUnlock } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useFastStore } from '../store/useFastStore';
+import { useUnlockStore } from '../store/useUnlockStore';
+import { playState } from './rewardUnlocks';
+import { getLogicalDayKey } from './dateUtils';
 import { activeFast, fastGoalAt } from './fasting';
 import { widgetBridge } from './widgetBridge';
 import { workoutActivitySessionId } from './workoutLiveActivity';
@@ -43,10 +46,10 @@ function truncate(title: string): string {
   return title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX - 1)}…` : title;
 }
 
-export type TimerRunKind = 'task' | 'cook' | 'prep' | 'step' | 'rest' | 'completionTimer' | 'fast';
+export type TimerRunKind = 'task' | 'cook' | 'prep' | 'step' | 'rest' | 'completionTimer' | 'fast' | 'play';
 
 export interface TimerRun {
-  /** How the native side tells which activities are still wanted — 'task:<id>' | 'cook:<id>' | 'prep:<id>' | 'step:<id>' | 'rest:<id>' | 'completionTimer:<id>' | 'fast:<id>'. */
+  /** How the native side tells which activities are still wanted — 'task:<id>' | 'cook:<id>' | 'prep:<id>' | 'step:<id>' | 'rest:<id>' | 'completionTimer:<id>' | 'fast:<id>' | 'play:<id>'. */
   key: string;
   kind: TimerRunKind;
   itemId: string; // task id, recipe id for cook/prep, or step or rest timer id
@@ -78,6 +81,9 @@ export function buildTimerRuns(
     /** The fast log, for a running fast's activity, and the moment to judge its goal against. */
     fasts?: readonly Fast[];
     nowMs?: number;
+    /** Unlocks, for a play timer that is running (`playRun`), and the logical day it counts. */
+    unlocks?: readonly RewardUnlock[];
+    todayKey?: string;
   },
 ): TimerRun[] {
   if (!opts.enabled) return [];
@@ -201,7 +207,38 @@ export function buildTimerRuns(
   const fast = activeFast(opts.fasts ?? []);
   if (fast) runs.push(fastRun(fast, opts.nowMs ?? Date.now()));
 
+  if (opts.todayKey) {
+    for (const unlock of opts.unlocks ?? []) {
+      const run = playRun(unlock, opts.nowMs ?? Date.now(), opts.todayKey);
+      if (run) runs.push(run);
+    }
+  }
+
   return runs;
+}
+
+/**
+ * An unlock's play timer (`src/utils/rewardUnlocks.ts`), while a stretch is
+ * running: a countdown to when today's play time runs out, or a count up for
+ * an unlock with no limit. Null when nothing is running, which ends the
+ * activity. Done stops it (`play:` in deepLinks.ts), as the card's Stop does.
+ * It rides the generic timer activity, so no native code knows it is play.
+ */
+export function playRun(unlock: RewardUnlock, nowMs: number, todayKey: string): TimerRun | null {
+  const state = playState(unlock, new Date(nowMs), todayKey);
+  if (!state.running || !unlock.playStartedAt) return null;
+  const startedAtMs = Date.parse(unlock.playStartedAt);
+  return {
+    key: `play:${unlock.id}`,
+    kind: 'play',
+    itemId: unlock.id,
+    title: truncate(unlock.title),
+    subtitle: unlock.playMinutes !== null ? 'Play time left today' : 'Playing',
+    symbolName: 'gamecontroller.fill',
+    startedAtMs,
+    // Clamped like every countdown here: an inverted range crashes the extension.
+    targetEndMs: state.endsAt ? Math.max(startedAtMs, state.endsAt.getTime()) : null,
+  };
 }
 
 /**
@@ -286,17 +323,23 @@ export function useTimerLiveActivitySync(): void {
     if (Platform.OS !== 'ios') return;
 
     // Fires at a running fast's goal, when its countdown turns into a count
-    // up (fastRun). Nothing else changes at that moment for a store to report.
+    // up (fastRun), and when a play timer runs out (playRun), which ends its
+    // activity. Nothing else changes at those moments for a store to report.
     let goalTimer: ReturnType<typeof setTimeout> | null = null;
 
     const sync = () => {
       const settings = useSettingsStore.getState();
       const fasts = useFastStore.getState().fasts;
       const nowMs = Date.now();
+      const todayKey = getLogicalDayKey(new Date(nowMs), settings.dayResetTime);
+      const unlocks = settings.rewardsEnabled ? useUnlockStore.getState().unlocks : [];
       if (goalTimer) { clearTimeout(goalTimer); goalTimer = null; }
       const running = activeFast(fasts);
-      const goalMs = running ? fastGoalAt(running).getTime() : null;
-      if (goalMs !== null && goalMs > nowMs) goalTimer = setTimeout(sync, goalMs - nowMs + 1000);
+      const changes = [
+        running ? fastGoalAt(running).getTime() : null,
+        ...unlocks.map(u => playState(u, new Date(nowMs), todayKey).endsAt?.getTime() ?? null),
+      ].filter((ms): ms is number => ms !== null && ms > nowMs);
+      if (changes.length > 0) goalTimer = setTimeout(sync, Math.min(...changes) - nowMs + 1000);
       const runs = buildTimerRuns(
         useTaskStore.getState().tasks,
         useRecipeStore.getState().recipes,
@@ -310,6 +353,8 @@ export function useTimerLiveActivitySync(): void {
           }),
           fasts,
           nowMs,
+          unlocks,
+          todayKey,
         },
       );
       scheduleSync(runs);
@@ -328,7 +373,8 @@ export function useTimerLiveActivitySync(): void {
       if (
         state.timerLiveActivity !== prevState.timerLiveActivity ||
         state.workoutLiveActivity !== prevState.workoutLiveActivity ||
-        state.workoutsEnabled !== prevState.workoutsEnabled
+        state.workoutsEnabled !== prevState.workoutsEnabled ||
+        state.rewardsEnabled !== prevState.rewardsEnabled
       ) {
         sync();
       }
@@ -340,6 +386,10 @@ export function useTimerLiveActivitySync(): void {
     const unsubFasts = useFastStore.subscribe((state, prevState) => {
       if (state.fasts !== prevState.fasts) sync();
     });
+    // A play timer started, stopped or given more time, here or synced in.
+    const unsubUnlocks = useUnlockStore.subscribe((state, prevState) => {
+      if (state.unlocks !== prevState.unlocks) sync();
+    });
 
     sync();
 
@@ -350,6 +400,7 @@ export function useTimerLiveActivitySync(): void {
       unsubSettings();
       unsubWorkouts();
       unsubFasts();
+      unsubUnlocks();
       if (goalTimer) clearTimeout(goalTimer);
     };
   }, []);

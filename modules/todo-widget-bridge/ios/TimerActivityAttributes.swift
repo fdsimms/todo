@@ -42,8 +42,8 @@ import Foundation
 struct TimerActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {}
 
-    let key: String        // 'task:<id>' | 'cook:<id>' | 'prep:<id>' | 'step:<id>' | 'rest:<id>' | 'completionTimer:<id>' | 'fast:<id>' — see src/utils/liveActivity.ts
-    let kind: String       // "task" | "cook" | "prep" | "step" | "rest" | "completionTimer" | "fast" — which Done-button behavior to use
+    let key: String        // 'task:<id>' | 'cook:<id>' | 'prep:<id>' | 'step:<id>' | 'rest:<id>' | 'completionTimer:<id>' | 'fast:<id>' | 'play:<id>' — see src/utils/liveActivity.ts
+    let kind: String       // "task" | "cook" | "prep" | "step" | "rest" | "completionTimer" | "fast" | "play" — which Done-button behavior to use
     let itemId: String     // task id, recipe id for cook/prep, or the step or rest timer's id
     let title: String      // pre-truncated JS-side
     let subtitle: String   // "" / "Cooking" / "Prep" — never nil
