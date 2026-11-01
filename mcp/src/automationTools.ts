@@ -108,7 +108,7 @@ function taskSettingsView(defaults: TaskFieldDefaults | null, extras: GeneratedT
 }
 
 const SEGMENTS: readonly TimeOfDay[] = ['morning', 'afternoon', 'evening', 'night'];
-const ASK_KINDS: readonly DeliverableKind[] = ['text', 'date', 'dateRange', 'number', 'yesno', 'choice'];
+const ASK_KINDS: readonly DeliverableKind[] = ['text', 'date', 'dateRange', 'people', 'number', 'yesno', 'choice'];
 
 /** Check a patch and fold it over what is stored, refusing a value the Settings sheet couldn't set. */
 function applyTaskSettingsPatch(

@@ -45,6 +45,7 @@ const WANTED: Record<DeliverableKind, string> = {
   text: 'some text',
   date: 'a date (ISO, e.g. 2026-03-14)',
   dateRange: 'two dates joined by a slash, start first (ISO, e.g. 2026-03-14/2026-03-21)',
+  people: 'a JSON list of the people, each {"id", "name"} from list_people, e.g. [{"id":"abc","name":"Maya"}]',
   number: 'a number',
   yesno: 'Yes or No',
   choice: 'one of the options the task offers',

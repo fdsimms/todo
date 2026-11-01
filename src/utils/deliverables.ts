@@ -86,6 +86,7 @@ export const DELIVERABLE_META: {
   { key: 'text', label: 'Text', icon: 'text-outline' },
   { key: 'date', label: 'Date', icon: 'calendar-outline' },
   { key: 'dateRange', label: 'Date range', icon: 'calendar-number-outline' },
+  { key: 'people', label: 'People', icon: 'people-outline' },
   { key: 'number', label: 'Number', icon: 'calculator-outline' },
   { key: 'yesno', label: 'Yes/No', icon: 'checkmark-done-outline' },
   { key: 'choice', label: 'Pick one', icon: 'list-circle-outline' },
@@ -232,6 +233,48 @@ export function deliverableDate(value: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** Most people one answer keeps. Past this it wants to be a text answer. */
+export const DELIVERABLE_PEOPLE_MAX = 20;
+
+export interface AnsweredPerson {
+  id: string;
+  name: string;
+}
+
+/**
+ * The people in a stored 'people' answer, or an empty list when it isn't one.
+ * Each keeps the name it had when the answer was given: a decision records
+ * what was decided, and a person since renamed or deleted still reads as they
+ * did then. The id is for the sheet, which re-ticks whoever is still around.
+ */
+export function deliverablePeople(value: string | null | undefined): AnsweredPerson[] {
+  if (!value) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const seen = new Set<string>();
+  const out: AnsweredPerson[] = [];
+  for (const entry of parsed) {
+    const id = typeof entry?.id === 'string' ? entry.id : '';
+    const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
+    if (!id || !name || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name });
+    if (out.length >= DELIVERABLE_PEOPLE_MAX) break;
+  }
+  return out;
+}
+
+/** The stored form of a pick of people, or null for nobody. */
+export function peopleValue(people: readonly AnsweredPerson[]): string | null {
+  const clean = deliverablePeople(JSON.stringify(people));
+  return clean.length > 0 ? JSON.stringify(clean) : null;
+}
+
 /** What joins a range's two ISO instants. Neither half contains one. */
 const DATE_RANGE_SEPARATOR = '/';
 
@@ -281,6 +324,8 @@ export function normalizeDeliverableValue(kind: DeliverableKind, raw: string | n
       const range = deliverableDateRange(trimmed);
       return range ? dateRangeValue(range.start, range.end) : null;
     }
+    case 'people':
+      return peopleValue(deliverablePeople(trimmed));
     // The option's own text, so a count can group on it. Which options exist
     // is the prompt's business; the store is reachable without it.
     case 'yesno':
@@ -309,6 +354,10 @@ export function formatDeliverableValue(kind: DeliverableKind, value: string | nu
       const d = new Date(value);
       if (Number.isNaN(d.getTime())) return null;
       return format(d, d.getFullYear() === new Date().getFullYear() ? 'EEE, MMM d' : 'EEE, MMM d, yyyy');
+    }
+    case 'people': {
+      const people = deliverablePeople(value);
+      return people.length > 0 ? people.map(p => p.name).join(', ') : null;
     }
     case 'dateRange': {
       const range = deliverableDateRange(value);

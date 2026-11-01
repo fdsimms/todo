@@ -34,7 +34,10 @@ export type ReminderKind = 'notification' | 'alarm' | 'persistent';
 // option's text, so a project can count them ("12 yes, 3 no").
 // 'dateRange' answers with two days, stored as "start/end" (ISO instants, see
 // `deliverableDateRange`): the dates of a trip rather than one day.
-export type DeliverableKind = 'text' | 'date' | 'dateRange' | 'number' | 'yesno' | 'choice';
+// 'people' answers with people from the people list, stored as a JSON list of
+// `{ id, name }` (see `deliverablePeople`): the name rides along so every
+// reader can show the answer without the people store.
+export type DeliverableKind = 'text' | 'date' | 'dateRange' | 'people' | 'number' | 'yesno' | 'choice';
 
 /**
  * How hard a task is to make yourself do, apart from how long it takes — see

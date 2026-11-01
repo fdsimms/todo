@@ -3,6 +3,8 @@ import {
   asksOnCompletion,
   chainStepDatedByAnswer,
   decisionLabel,
+  deliverablePeople,
+  peopleValue,
   deliverableDate,
   deliverableDateRange,
   dateRangeValue,
@@ -329,5 +331,31 @@ describe('decisionLabel', () => {
     expect(decisionLabel('Decide')).toBe('Decide');
     expect(decisionLabel('Pick dates for Lisbon')).toBe('Pick dates for Lisbon');
     expect(decisionLabel('Decide how many')).toBe('Decide how many');
+  });
+});
+
+describe('the people kind', () => {
+  const maya = { id: 'p1', name: 'Maya' };
+  const sam = { id: 'p2', name: 'Sam' };
+
+  it('stores each person with the name they had, and reads them back', () => {
+    const stored = peopleValue([maya, sam])!;
+    expect(deliverablePeople(stored)).toEqual([maya, sam]);
+  });
+
+  it('is no answer for nobody, and drops repeats and unreadable entries', () => {
+    expect(peopleValue([])).toBeNull();
+    expect(deliverablePeople(JSON.stringify([maya, maya, { id: '', name: 'x' }, { id: 'p3' }, 7]))).toEqual([maya]);
+    expect(deliverablePeople('not json')).toEqual([]);
+    expect(deliverablePeople('{"id":"p1"}')).toEqual([]);
+    expect(deliverablePeople(null)).toEqual([]);
+  });
+
+  it('normalizes a typed list and shows names joined', () => {
+    const stored = JSON.stringify([maya, sam]);
+    expect(normalizeDeliverableValue('people', stored)).toBe(stored);
+    expect(normalizeDeliverableValue('people', '[]')).toBeNull();
+    expect(formatDeliverableValue('people', stored)).toBe('Maya, Sam');
+    expect(formatDeliverableValue('people', 'garbage')).toBeNull();
   });
 });

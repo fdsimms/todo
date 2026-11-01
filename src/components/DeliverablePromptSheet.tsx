@@ -14,6 +14,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { usePersonStore } from '../store/usePersonStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { supplyReorderPackSeed } from '../utils/supply';
 import { getLogicalToday, getLogicalTomorrow, formatTaskDate } from '../utils/dateUtils';
@@ -29,6 +30,9 @@ import {
   chainStepDatedByAnswer,
   deliverableDate,
   deliverableDateRange,
+  deliverablePeople,
+  peopleValue,
+  type AnsweredPerson,
   dateRangeValue,
   deliverableKindFor,
   deliverableOptionsFor,
@@ -134,6 +138,11 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const [rangeStart, setRangeStart] = useState<Date | null>(null);
   const [rangeEnd, setRangeEnd] = useState<Date | null>(null);
   const [rangeSide, setRangeSide] = useState<'start' | 'end'>('start');
+  // A people answer is a tick list over the people list. `found` narrows it
+  // once the list is long enough to need finding in.
+  const people = usePersonStore(s => s.people);
+  const [picked, setPicked] = useState<AnsweredPerson[]>([]);
+  const [found, setFound] = useState('');
   // The day a catch-up really happened, for one logged late. Null is now, which
   // leaves the completion alone. Only offered while completing: correcting an
   // answer in the Logbook has no completion to date.
@@ -175,6 +184,8 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     // thing that happens.
     const packSeed = !stored ? supplyReorderPackSeed(task, useTaskStore.getState().tasks) : null;
     setDraft(staleForScheduling ? '' : (stored || packSeed || ''));
+    setPicked(deliverablePeople(stored));
+    setFound('');
     const heldRange = deliverableDateRange(stored);
     setRangeStart(heldRange ? heldRange.start : null);
     setRangeEnd(heldRange ? heldRange.end : null);
@@ -191,12 +202,27 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   // rather than the open effect, which can run before the card is presented
   // (see QuickAddModal's own note on this).
   const focusField = () => {
-    if (kind !== 'date' && kind !== 'dateRange' && options.length === 0) inputRef.current?.focus();
+    if (kind !== 'date' && kind !== 'dateRange' && kind !== 'people' && options.length === 0) inputRef.current?.focus();
   };
 
   const normalized = kind === 'dateRange'
     ? (rangeStart && rangeEnd ? dateRangeValue(rangeStart, rangeEnd) : null)
-    : normalizeDeliverableValue(kind, draft);
+    : kind === 'people'
+      ? peopleValue(picked)
+      : normalizeDeliverableValue(kind, draft);
+  const pickable = useMemo(() => {
+    const live = people.filter(p => !p.archived);
+    // Someone already in the answer who has since been archived or deleted
+    // stays on the list, ticked, so saving doesn't drop them unseen.
+    const gone = picked.filter(a => !live.some(p => p.id === a.id)).map(a => ({ id: a.id, name: a.name }));
+    const all = [...live.map(p => ({ id: p.id, name: p.name })), ...gone];
+    const needle = found.trim().toLowerCase();
+    return needle ? all.filter(p => p.name.toLowerCase().includes(needle)) : all;
+  }, [people, picked, found]);
+  const togglePerson = (person: AnsweredPerson) => {
+    haptics.tap();
+    setPicked(prev => prev.some(p => p.id === person.id) ? prev.filter(p => p.id !== person.id) : [...prev, person]);
+  };
 
   const dismiss = (after: () => void) => card.close(after);
 
@@ -353,6 +379,48 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
               );
             })}
           </View>
+        ) : kind === 'people' ? (
+          <>
+            {people.length > 8 && (
+              <View style={[styles.field, styles.findField]}>
+                <Ionicons name="search" size={iconSize.sm} color={colors.textSecondary} />
+                <TextField
+                  style={styles.input}
+                  value={found}
+                  onChangeText={setFound}
+                  placeholder="Find a person"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="search"
+                  accessibilityLabel="Find a person"
+                />
+              </View>
+            )}
+            {pickable.length === 0 ? (
+              <Text style={styles.catchUpHelp}>
+                {people.length === 0 ? 'No people yet. Add them from the People screen.' : 'No one matches.'}
+              </Text>
+            ) : (
+              <View style={styles.options}>
+                {pickable.map(person => {
+                  const chosen = picked.some(p => p.id === person.id);
+                  return (
+                    <TouchableOpacity
+                      key={person.id}
+                      style={[styles.option, chosen && styles.optionChosen]}
+                      onPress={() => togglePerson(person)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: chosen }}
+                      accessibilityLabel={person.name}
+                    >
+                      <Text style={[styles.optionText, chosen && styles.optionTextChosen]}>{person.name}</Text>
+                      {chosen && <Ionicons name="checkmark" size={iconSize.sm} color={colors.accent} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </>
         ) : kind === 'dateRange' ? (
           <View style={styles.rangeField}>
             {([
@@ -599,6 +667,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.lg,
   },
+  findField: { marginBottom: spacing.sm },
   rangeField: {
     marginHorizontal: spacing.md,
     backgroundColor: colors.bgTertiary,
