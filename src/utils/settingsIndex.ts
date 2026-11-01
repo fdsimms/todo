@@ -974,7 +974,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'wanikaniReviewThreshold', requires: 'gen:wanikani', groupId: 'generated', label: 'Add the task at', section: 'WaniKani reviews',
     keywords: ['reviews waiting', 'queue', 'how many', 'number', 'forecast', 'japanese'] },
   { id: 'wanikaniLessonsPerDay', requires: 'gen:wanikani', groupId: 'generated', label: 'Lessons', section: 'WaniKani reviews',
-    keywords: ['new items', 'daily', 'per day', 'how many', 'japanese', 'kanji'] },
+    keywords: ['new items', 'daily', 'per day', 'how many', 'all lessons', 'every', 'japanese', 'kanji'] },
   { id: 'wanikaniApprenticeCap', requires: 'gen:wanikani', groupId: 'generated', label: 'Skip lessons at', section: 'WaniKani reviews',
     keywords: ['apprentice', 'limit', 'cap', 'workload', 'too many', 'japanese'] },
   { id: 'wanikaniClientLink', requires: 'gen:wanikani', groupId: 'generated', label: 'Open in', section: 'WaniKani reviews',
