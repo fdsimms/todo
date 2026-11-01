@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import type { Task } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, interaction, type Colors } from '../theme';
-import { formatTaskDeliverable, reasoningOf } from '../utils/deliverables';
+import { decisionLabel, formatTaskDeliverable, reasoningOf } from '../utils/deliverables';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor } from '../utils/visibilityUtils';
 
@@ -56,7 +56,7 @@ export function ProjectDecisions({ decisions, onPress, label = 'Decisions' }: Pr
       <Text style={styles.label}>{label}</Text>
       {shown.map(task => {
         const answer = formatTaskDeliverable(task);
-        const title = displayTitleFor(task);
+        const title = decisionLabel(displayTitleFor(task));
         const { why, revisitIf } = reasoningOf(task);
         return (
           <TouchableOpacity

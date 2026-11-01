@@ -302,6 +302,7 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
             >
               <DeliverableKindPicker
                 value={extras.deliverableKind}
+                exclude={['dateRange', 'people']}
                 onChange={deliverableKind => { setExtras(prev => ({ ...prev, deliverableKind })); setOpen(null); }}
               />
             </CollapsibleField>

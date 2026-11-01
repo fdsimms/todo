@@ -2485,7 +2485,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       // Only the kind that reads each: options belong to a Pick-one, and a
       // departure can only come from a date answered inside a project.
       deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(deliverableOptionsText) : [],
-      deliverableSetsAway: deliverableKind === 'date' && project !== null && deliverableSetsAway,
+      deliverableSetsAway: (deliverableKind === 'date' || deliverableKind === 'dateRange') && project !== null && deliverableSetsAway,
       followUpTaskEveryN: followUpTaskLive && !followUpTaskAtEndLive ? followUpTaskEveryN : null,
       followUpTaskAtEnd: followUpTaskAtEndLive,
       followUpTaskTitle: followUpTaskLive ? resolvedFollowUpTaskTitle : null,
@@ -8380,7 +8380,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   Add at least two options, separated by commas. With fewer, completing the task asks nothing.
                 </Text>
               )}
-              {deliverableKind === 'date' && project !== null && (
+              {(deliverableKind === 'date' || deliverableKind === 'dateRange') && project !== null && (
                 <TouchableOpacity
                   style={styles.optionRow}
                   onPress={() => { haptics.tap(); setDeliverableSetsAway(v => !v); }}
@@ -8395,9 +8395,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     color={deliverableSetsAway ? colors.accent : colors.textSecondary}
                   />
                   <View style={styles.optionContent}>
-                    <Text style={styles.optionLabel}>Sets the leaving date</Text>
+                    <Text style={styles.optionLabel}>{deliverableKind === 'dateRange' ? 'Sets the trip dates' : 'Sets the leaving date'}</Text>
                     <Text style={styles.optionHint}>
-                      The date you answer becomes the project’s Leaving date, if it doesn’t have one yet
+                      {deliverableKind === 'dateRange'
+                        ? 'The start becomes the project’s Leaving date and the end its Coming back date, if it doesn’t have them yet'
+                        : 'The date you answer becomes the project’s Leaving date, if it doesn’t have one yet'}
                     </Text>
                   </View>
                   <Toggle value={deliverableSetsAway} onColor={colors.orange} />

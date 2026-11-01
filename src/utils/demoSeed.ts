@@ -1058,6 +1058,15 @@ export function seedDemoData(): void {
     deliverableKind: 'date',
     effort: 1,
   });
+  // The people kind of answer: checking it off lists the people to tick.
+  addTask({
+    title: "Decide who's coming",
+    notes: 'Checking this off asks who, from your people list, and keeps the names with the task.',
+    category: 'Errands',
+    dueDate: today.toISOString(),
+    deliverableKind: 'people',
+    effort: 1,
+  });
 
   // --- Waiting on / Blocks (one task held back by another) -----------------
   // Blocking is invisible until two tasks use it: the blocker's row carries a
@@ -4192,7 +4201,7 @@ function seedTemplates(): void {
     // The decision item: applying the template produces a task that asks for
     // the dates when it's ticked, rather than one someone has to convert to a
     // decision by hand every trip.
-    { id: pickDatesId, title: 'Pick dates for {destination}', dueOffsetDays: -28, deliverableKind: 'date', deliverableSetsAway: true },
+    { id: pickDatesId, title: 'Pick dates for {destination}', dueOffsetDays: -28, deliverableKind: 'dateRange', deliverableSetsAway: true },
     { title: 'Put in for PTO for {run}', category: 'Work', dueOffsetDays: -21, priority: 3 },
     // The one item that waits on another, so "Waits on" isn't empty on every
     // item in the demo: no flights before there are dates.

@@ -117,6 +117,8 @@ function joinOr(words: string[]): string {
 const ASKS: Record<DeliverableKind, string> = {
   text: 'an answer',
   date: 'a date',
+  dateRange: 'two dates',
+  people: 'who',
   number: 'a number',
   yesno: 'yes or no',
   choice: 'a choice',

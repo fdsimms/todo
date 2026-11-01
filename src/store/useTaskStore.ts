@@ -225,7 +225,7 @@ import { installSupplementDoseEffects } from '../utils/supplementDoseSync';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { Category, GeneratedKind, JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule, NutrientKey } from '../types';
-import { awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow, liveAwaySpans } from '../utils/awayDates';
+import { awayNoonIso, awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow, liveAwaySpans } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
   applyTitleRulesToDraft,
@@ -244,7 +244,7 @@ import {
   ruleEstimateDraft, withRuleEstimate, withGeneratorEstimate, holdsKindEstimate,
 } from '../utils/ruleEstimate';
 import { ruleLogDraft, ruleLogOfTask, taskLogChanged, withRuleLog } from '../utils/ruleLog';
-import { chainStepDatedByAnswer, cleanDeliverableReasoning, deliverableDate, deliverableKindFor, isTentativeAnswer, reasoningOf, type DeliverableReasoning } from '../utils/deliverables';
+import { chainStepDatedByAnswer, cleanDeliverableReasoning, deliverableDate, deliverableDateRange, deliverableKindFor, isTentativeAnswer, reasoningOf, type DeliverableReasoning } from '../utils/deliverables';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -4857,20 +4857,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A date answer that opted into being the trip's departure fills the
     // project's empty Leaving date. See departureFromAnswer. Remembered for
     // this completion's undo, which empties it again.
-    let departureSet: { projectId: string; awayStart: string } | null = null;
-    if (!missed && task.deliverableSetsAway && task.projectId && deliverableKindFor(task) === 'date') {
+    let departureSet: { projectId: string; awayStart: string; awayEnd: string | null } | null = null;
+    const answerKind = deliverableKindFor(task);
+    if (!missed && task.deliverableSetsAway && task.projectId && (answerKind === 'date' || answerKind === 'dateRange')) {
       const project = useProjectStore.getState().projects.find(p => p.id === task.projectId);
-      const awayStart = project ? departureFromAnswer(project, deliverableDate(completed.deliverableValue)) : null;
+      // A range names both ends; a single date is the start alone.
+      const range = answerKind === 'dateRange' ? deliverableDateRange(completed.deliverableValue) : null;
+      const answerStart = range ? range.start : deliverableDate(completed.deliverableValue);
+      const awayStart = project ? departureFromAnswer(project, answerStart) : null;
       if (project && awayStart) {
-        useProjectStore.getState().updateProject(project.id, { awayStart });
-        departureSet = { projectId: project.id, awayStart };
-        // "Pick dates" is both ends: with the leaving day in, ask for the
+        // Coming back is filled in only when the range really spans days: an
+        // end on the leaving day is not a shorter trip (awaySpanOf drops it).
+        const awayEnd = range && !project.awayEnd && differenceInCalendarDays(range.end, range.start) > 0
+          ? awayNoonIso(range.end)
+          : null;
+        useProjectStore.getState().updateProject(project.id, awayEnd ? { awayStart, awayEnd } : { awayStart });
+        departureSet = { projectId: project.id, awayStart, awayEnd };
+        // "Pick dates" is both ends: with only the leaving day in, ask for the
         // coming-back day while the dates are in mind (TripDatePrompt).
-        if (!project.awayEnd) set({ tripDatePrompt: { kind: 'return', projectId: project.id, at: Date.now() } });
+        if (!project.awayEnd && !awayEnd) set({ tripDatePrompt: { kind: 'return', projectId: project.id, at: Date.now() } });
       } else if (project) {
         // A trip that already has a Leaving date isn't moved by an answer on
         // its own; a different day is offered instead.
-        const moveTo = departureMoveFromAnswer(project, deliverableDate(completed.deliverableValue));
+        const moveTo = departureMoveFromAnswer(project, answerStart);
         if (moveTo) set({ tripDatePrompt: { kind: 'moveLeaving', projectId: project.id, awayStart: moveTo, at: Date.now() } });
       }
     }
@@ -4997,7 +5006,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         if (departureSet) {
           const project = useProjectStore.getState().projects.find(p => p.id === departureSet!.projectId);
           if (project?.awayStart === departureSet.awayStart) {
-            useProjectStore.getState().updateProject(project.id, { awayStart: null });
+            useProjectStore.getState().updateProject(
+              project.id,
+              departureSet.awayEnd && project.awayEnd === departureSet.awayEnd
+                ? { awayStart: null, awayEnd: null }
+                : { awayStart: null },
+            );
           }
         }
       },
@@ -5191,9 +5205,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     // An answered "Pick dates" edited later still speaks for the trip, the
     // same way completing it did: offered as a move, never written unasked.
-    if (task.completed && task.deliverableSetsAway && task.projectId && deliverableKindFor(task) === 'date') {
+    const editedKind = deliverableKindFor(task);
+    if (task.completed && task.deliverableSetsAway && task.projectId && (editedKind === 'date' || editedKind === 'dateRange')) {
       const project = useProjectStore.getState().projects.find(p => p.id === task.projectId);
-      const moveTo = project ? departureMoveFromAnswer(project, deliverableDate(value)) : null;
+      const editedStart = editedKind === 'dateRange' ? deliverableDateRange(value)?.start ?? null : deliverableDate(value);
+      const moveTo = project ? departureMoveFromAnswer(project, editedStart) : null;
       if (project && moveTo) set({ tripDatePrompt: { kind: 'moveLeaving', projectId: project.id, awayStart: moveTo, at: Date.now() } });
     }
   },
