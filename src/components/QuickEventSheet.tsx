@@ -10,6 +10,7 @@ import {
   Alert,
   Keyboard,
   Platform,
+  type FocusEvent,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -216,7 +217,15 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const colors = useColors();
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  // `fieldAbove`: the title field sits outside the ScrollView, and with its
+  // Done-bar accessory RN reads it as a chat composer and shifts the list by the
+  // keyboard's whole travel, scrolling the rows under the title out of reach.
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true, fieldAbove: true });
+  // The native handler is off in that mode, so the two fields inside the list
+  // ask to be scrolled clear of the keyboard themselves.
+  const scrollFieldIntoView = (e: FocusEvent) => {
+    if (typeof e.nativeEvent.target === 'number') keyboardScroll.focusInput(e.nativeEvent.target);
+  };
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
   const groups = usePersonGroupStore(useShallow(s => s.groups));
   const groupTokens = useMemo(() => groupMentionTokens(), [people, groups]);
@@ -1191,6 +1200,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         blurOnSubmit
         keyboardAppearance={isDark ? 'dark' : 'light'}
         accessibilityLabel="Location"
+        onFocus={scrollFieldIntoView}
       />
       {placePicked && (
         <Ionicons name="checkmark-circle" size={iconSize.sm} color={colors.accent} accessibilityLabel="Place from Apple Maps" />
@@ -1297,6 +1307,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         autoCapitalize="none"
         keyboardAppearance={isDark ? 'dark' : 'light'}
         accessibilityLabel="Notes or link"
+        onFocus={scrollFieldIntoView}
       />
     </View>,
   ];
