@@ -810,6 +810,13 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return meal;
     },
 
+    logRecipe(input) {
+      const entry = replica.logRecipe(input);
+      const kcal = entry.nutrition.amounts.calorieKcal;
+      log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id, note: `Log "${entry.label}" (${entry.quantity}${kcal !== undefined ? `, ${kcal} kcal` : ''}) from its recipe${entry.slot ? ` for ${entry.slot}` : ''} on ${entry.dayKey}, marked as estimated` });
+      return entry;
+    },
+
     logSavedMeal(id, slot, at) {
       const entries = replica.logSavedMeal(id, slot, at);
       for (const entry of entries) log({ action: 'created', subject: 'food', title: entry.label, taskId: null, recordId: entry.id, note: `Log "${entry.label}"${entry.quantity ? ` (${entry.quantity})` : ''} from a saved meal${entry.slot ? ` for ${entry.slot}` : ''} on ${entry.dayKey}` });

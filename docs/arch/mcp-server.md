@@ -1282,6 +1282,16 @@ opened the app. Three rules:
 A mood check-in cannot be edited down to nothing (delete it), and a dose recorded by completing a
 task does not reopen the task: `reopen_task` takes both back.
 
+`log_recipe` is the app's own dish logging: `dishFiguresFor` (shared with `refresh_dish_entry`, so
+the two cannot read a recipe differently) builds the `DishFigures`, `weighedHelping` scales them
+to the grams on the plate against the recipe's cooked weight, `mealHelping` to servings, and the
+entry keeps its `recipeId` and is `source: 'estimated'`. It exists because `duplicate_food_entry`
+refuses a dish (`remeasureEntry`: a dish is rebuilt from its recipe), so "another helping of the
+beans at a new weight" had no tool. It refuses rather than guesses: no cooked weight, more than the
+dish weighs, an either/or pair with no answer, too few known ingredients. `list_food_log`'s `query`
+filters by name only so an entry can be found without reading a range; the totals then cover just
+the matches, and `filteredBy` says so.
+
 `duplicate_food_entry` is the app's `duplicateEntry` (a new meal, not tied to the planned one the
 original was), and saved meals (`list_saved_meals`, `save_meal_from_entries`, `log_saved_meal`,
 `delete_saved_meal`) write the rows `useSavedMealsStore` writes, a logged one being each food built

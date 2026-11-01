@@ -109,6 +109,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   move_food_entry: { title: 'Move a food entry', destructive: true, idempotent: false },
   duplicate_food_entry: { title: 'Log a food again', destructive: false, idempotent: false },
   save_meal_from_entries: { title: 'Save foods as a meal', destructive: false, idempotent: false },
+  log_recipe: { title: 'Log a recipe', destructive: false, idempotent: false },
   log_saved_meal: { title: 'Log a saved meal', destructive: false, idempotent: false },
   delete_saved_meal: { title: 'Delete a saved meal', destructive: true, idempotent: true },
   set_nutrition_targets: { title: 'Set food log targets', destructive: true, idempotent: true },

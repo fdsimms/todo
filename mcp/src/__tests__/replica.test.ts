@@ -300,6 +300,54 @@ describe('the replica', () => {
       expect(() => replica.refreshDishEntry(dish.id)).toThrow(/Apple Health/);
     });
 
+    describe('logging a recipe by weight or servings', () => {
+      const panel = (kcal: number) => ({
+        basis: 'per100g' as const, servingGrams: null, servingText: null, amounts: { calorieKcal: kcal },
+        portions: [], source: 'estimated' as const, sourceId: null, recordedAt: '2026-09-01T00:00:00.000Z',
+      });
+      const at = new Date(2026, 8, 25, 18);
+
+      // 400 g of an ingredient at 100 kcal / 100 g: the dish is 400 kcal, makes 2 servings.
+      const makeRecipe = (name: string, extra: Record<string, unknown> = {}) => {
+        const [item] = replica.addToPantry([`${name} beans`]).map(x => x.item);
+        replica.setNutritionPanel(item.id, null, panel(100));
+        return replica.createRecipe({ name, servings: 2, ingredients: [{ text: `400 g ${name} beans` }], ...extra });
+      };
+
+      it('scales the dish to the weight on the plate against its cooked weight, and keeps the link to the recipe', () => {
+        const recipe = makeRecipe('Weighed stew', { cookedWeightG: 800 });
+        const entry = replica.logRecipe({ recipeId: recipe.id, grams: 200, slot: 'dinner', at });
+        expect(entry).toMatchObject({ label: 'Weighed stew', quantity: '200 g', grams: 200, slot: 'dinner', recipeId: recipe.id });
+        // A quarter of an 800 g dish that is 400 kcal in all.
+        expect(entry.nutrition.amounts.calorieKcal).toBe(100);
+        expect(entry.nutrition.source).toBe('estimated');
+        // Re-measuring it later reads the same amount back out of the entry.
+        expect(replica.refreshDishEntry(entry.id).after.nutrition.amounts.calorieKcal).toBe(100);
+      });
+
+      it('logs servings, and refuses the two ways of asking for neither or both', () => {
+        const recipe = makeRecipe('Counted stew');
+        const entry = replica.logRecipe({ recipeId: recipe.id, servings: 1.5, slot: null, at });
+        expect(entry.nutrition.amounts.calorieKcal).toBe(300);
+        expect(() => replica.logRecipe({ recipeId: recipe.id, slot: null, at })).toThrow(/grams .* or servings/);
+        expect(() => replica.logRecipe({ recipeId: recipe.id, grams: 100, servings: 1, slot: null, at })).toThrow(/grams .* or servings/);
+      });
+
+      it('says what is missing rather than guessing: no cooked weight, more than the dish, an unknown recipe', () => {
+        const unweighed = makeRecipe('Unweighed stew');
+        expect(() => replica.logRecipe({ recipeId: unweighed.id, grams: 200, slot: null, at })).toThrow(/no cooked weight/);
+        const weighed = makeRecipe('Compact stew', { cookedWeightG: 500 });
+        expect(() => replica.logRecipe({ recipeId: weighed.id, grams: 600, slot: null, at })).toThrow(/more than the whole dish weighs \(500 g/);
+        expect(() => replica.logRecipe({ recipeId: 'nope', servings: 1, slot: null, at })).toThrow(/No recipe/);
+        expect(() => replica.logRecipe({ recipeId: weighed.id, grams: -5, slot: null, at })).toThrow(/positive/);
+      });
+
+      it('refuses a recipe whose ingredients have no known nutrition', () => {
+        const bare = replica.createRecipe({ name: 'Mystery stew', servings: 2, ingredients: [{ text: '400 g unknownium' }] });
+        expect(() => replica.logRecipe({ recipeId: bare.id, servings: 1, slot: null, at })).toThrow(/enough ingredients with known nutrition/);
+      });
+    });
+
     it('deletes a food entry', () => {
       const entry = replica.logFood({ label: 'Toast', amounts: { calorieKcal: 100 } });
       expect(replica.deleteFoodEntry(entry.id).label).toBe('Toast');
