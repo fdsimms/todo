@@ -12,6 +12,7 @@ import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import type { Task } from '../types';
 import { hasMission } from '../utils/missions';
+import { isAnsweredByRecord } from '../utils/recordTasks';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -36,8 +37,11 @@ interface SheetGroup {
  * Yes backdates the completion to the day the task was actually due — see
  * completeTask's `completedAt` option — so it reads as done last night, not
  * done the moment this sheet was answered, and streaks land the same way
- * completing it on time would have. No hands it to markMissed, same as the
- * row's own "I didn't get to this" action.
+ * completing it on time would have. Someone else did it backdates the same way
+ * and closes the occurrence with no coins and the streak untouched. Skip moves
+ * to the next date with nothing recorded, and Missed hands it to markMissed.
+ * These are the same four ways the row's checkbox hold menu closes a repeating
+ * task (CompletionOptionsMenu), so a task is never offered fewer here.
  *
  * Every tap commits straight through to the store, the same reasoning
  * RuleListSheet gives for skipping an unsaved-changes guard: there's nothing
@@ -48,6 +52,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const completeTask = useTaskStore(s => s.completeTask);
   const markMissed = useTaskStore(s => s.markMissed);
+  const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const groups = useTaskGroupStore(s => s.groups);
 
   const sheetGroups = useMemo(() => {
@@ -72,11 +77,43 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
     completeTask(task.id, { completedAt: task.dueDate ?? undefined });
   };
 
-  const answerNo = (task: Task) => {
+  const answerSomeoneElse = (task: Task) => {
     haptics.tap();
+    animateLayout();
+    completeTask(task.id, { byOther: true, completedAt: task.dueDate ?? undefined });
+  };
+
+  const answerSkip = (task: Task) => {
+    haptics.tap();
+    animateLayout();
+    skipNextRecurrence(task.id);
+  };
+
+  const answerMissed = (task: Task) => {
+    haptics.impactMedium();
     animateLayout();
     markMissed(task.id);
   };
+
+  const renderChoice = (
+    label: string,
+    icon: React.ComponentProps<typeof Ionicons>['name'],
+    tint: string,
+    onPress: () => void,
+    accessibilityLabel: string,
+  ) => (
+    <TouchableOpacity
+      key={label}
+      style={[styles.choiceBtn, { borderColor: tint }]}
+      activeOpacity={interaction.activeOpacity}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+    >
+      <Ionicons name={icon} size={iconSize.sm} color={tint} />
+      <Text style={styles.choiceLabel}>{label}</Text>
+    </TouchableOpacity>
+  );
 
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -108,31 +145,18 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
                   {group.tasks.map((task, i) => (
                     <View key={task.id}>
                       <View style={styles.row}>
-                        <Text style={styles.rowTitle} numberOfLines={1}>{task.title}</Text>
+                        <Text style={styles.rowTitle}>{task.title}</Text>
                         <View style={styles.choice}>
-                          <TouchableOpacity hitSlop={8}
-                            style={[styles.choiceBtn, styles.choiceBtnNo]}
-                            activeOpacity={interaction.activeOpacity}
-                            onPress={() => answerNo(task)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Didn’t do ${task.title}`}
-                          >
-                            <Ionicons name="close" size={iconSize.sm} color={colors.red} />
-                          </TouchableOpacity>
                           {/* Yesterday's mission can't be done now, and
                               completeTask refuses a tick the mission didn't
-                              make, so a task with one offers only the miss. */}
-                          {!hasMission(task) && (
-                            <TouchableOpacity hitSlop={8}
-                              style={[styles.choiceBtn, styles.choiceBtnYes]}
-                              activeOpacity={interaction.activeOpacity}
-                              onPress={() => answerYes(task)}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Did ${task.title}`}
-                            >
-                              <Ionicons name="checkmark" size={iconSize.sm} color={colors.done} />
-                            </TouchableOpacity>
-                          )}
+                              make, so a task with one has no Did it. Someone
+                              else and a miss are the exceptions it allows. */}
+                          {!hasMission(task) && renderChoice('Did it', 'checkmark', colors.done, () => answerYes(task), `Did ${task.title}`)}
+                          {/* A task only its own record can complete has no
+                              someone-else answer, as in the hold menu. */}
+                          {!isAnsweredByRecord(task) && renderChoice('Someone else', 'people-outline', colors.accent, () => answerSomeoneElse(task), `Someone else did ${task.title}. No coins, and your streak is unchanged.`)}
+                          {renderChoice('Skip', 'play-skip-forward-outline', colors.accent, () => answerSkip(task), `Skip ${task.title}. Moves to the next date and nothing is recorded.`)}
+                          {renderChoice('Missed', 'close', colors.red, () => answerMissed(task), `Didn’t do ${task.title}`)}
                         </View>
                       </View>
                       {i < group.tasks.length - 1 && <View style={styles.sep} />}
@@ -176,24 +200,30 @@ function makeStyles(colors: Colors) {
     },
     card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md },
     sep: { height: border.hairline, backgroundColor: colors.separator, marginLeft: spacing.md },
+    // The title takes the whole line and the answers sit under it, so a long
+    // task name is never squeezed by the buttons beside it.
     row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
+      gap: spacing.smd,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.md,
     },
-    rowTitle: { flex: 1, color: colors.text, fontSize: font.md },
+    rowTitle: { color: colors.text, fontSize: font.md },
     choice: { flexDirection: 'row', gap: spacing.sm },
     choiceBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+      flex: 1,
+      minHeight: 52,
+      borderRadius: radius.md,
       alignItems: 'center',
       justifyContent: 'center',
+      gap: spacing.xxs,
+      paddingHorizontal: spacing.xs,
       borderWidth: border.hairline,
     },
-    choiceBtnNo: { borderColor: colors.red },
-    choiceBtnYes: { borderColor: colors.done },
+    choiceLabel: {
+      color: colors.text,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      textAlign: 'center',
+    },
   });
 }
