@@ -125,6 +125,13 @@ describe('recallWeight', () => {
     expect(recallWeight('tea', 'tea')).toBeGreaterThan(0);
   });
 
+  it('does not find a label inside a longer word of the description', () => {
+    // "salt" is the front of "salted", which is a different food.
+    expect(recallWeight('salt', '4g salted butter')).toBe(0);
+    expect(recallWeight('salt', '4g salt')).toBeGreaterThan(0);
+    expect(recallWeight('toast', 'two eggs on toast')).toBeGreaterThan(0);
+  });
+
   it('scores nothing for an empty side', () => {
     expect(recallWeight('', 'oats')).toBe(0);
     expect(recallWeight('oats', '')).toBe(0);

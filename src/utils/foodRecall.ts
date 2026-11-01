@@ -198,6 +198,26 @@ export function descriptionClauses(description: string): string[] {
 }
 
 /**
+ * Whether every word of a stored label is a whole word of the description
+ * (a plural of it counts).
+ *
+ * **The containment direction needs whole words, because `matchWeight` is a
+ * substring test.** It was written for a few typed characters of a name, where
+ * "ch" finding "cheese" is the point. Turned around, a logged "Salt" sat
+ * inside "4g salted butter" at a word start and was offered as something
+ * eaten before, and "Oil" would be offered for "oilve tapenade". A label
+ * named in a description is named as a word.
+ */
+function labelWordsInQuery(labelKey: string, queryKey: string): boolean {
+  const queryWords = new Set(queryKey.split(' '));
+  return labelKey.split(' ').every(word => {
+    if (queryWords.has(word)) return true;
+    if (queryWords.has(`${word}s`) || queryWords.has(`${word}es`)) return true;
+    return word.endsWith('s') && queryWords.has(word.slice(0, -1));
+  });
+}
+
+/**
  * How well a stored label answers a typed description, in `matchWeight`'s own
  * 3/2/1 ladder.
  *
@@ -220,7 +240,9 @@ export function recallWeight(labelKey: string, queryKey: string): number {
   if (!labelKey || !queryKey) return 0;
   const direct = matchWeight(labelKey, queryKey);
   if (direct > 0) return direct;
-  const contained = labelKey.length < MIN_CONTAINED_LABEL ? 0 : matchWeight(queryKey, labelKey) / CONTAINED_SCALE;
+  const contained = labelKey.length < MIN_CONTAINED_LABEL || !labelWordsInQuery(labelKey, queryKey)
+    ? 0
+    : matchWeight(queryKey, labelKey) / CONTAINED_SCALE;
   // Last, under both: an amount, a filler word or a one-letter typo in the
   // description that the character comparison above cannot see past.
   return contained > 0 ? contained : looseNameWeight(labelKey, queryKey);
