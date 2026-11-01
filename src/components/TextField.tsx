@@ -9,7 +9,7 @@ import {
   type TextInputProps,
 } from 'react-native';
 import { DONE_ACCESSORY_ID, doneBarKind, setFloatingDoneFocus } from '../utils/keyboardDone';
-import { fieldChanged, initialFieldSync, nextFieldSync, styleKeyOf, type FieldSync } from '../utils/textFieldSync';
+import { fieldChanged, fieldText, initialFieldSync, nextFieldSync, styleKeyOf, type FieldSync } from '../utils/textFieldSync';
 
 /**
  * **Every text field that takes a `value` is this, never a bare `TextInput`.**
@@ -119,10 +119,10 @@ export function TextField({
     [ref],
   );
 
-  const text = value ?? defaultValue ?? '';
+  const sync = useRef<FieldSync | null>(null);
+  const text = fieldText(sync.current, value, defaultValue);
   const styleKey = styleKeyOf(StyleSheet.flatten(style), rest.allowFontScaling, rest.maxFontSizeMultiplier);
 
-  const sync = useRef<FieldSync | null>(null);
   // The event count of the field's last change, which the command must match.
   const eventCount = useRef(0);
   // Survives a render that's thrown away before it commits, so the commit
