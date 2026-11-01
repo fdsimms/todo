@@ -129,9 +129,7 @@ import { isDemoModeActive } from '../utils/demoState';
 import { TITLE_MAX_LENGTH, type QuickEventSeed } from '../types';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
-
-/** How long a line left by tapping outside a new event waits to be picked up. */
-const QUICK_EVENT_KEEP_TEXT_MS = 10 * 60 * 1000;
+import { confirmDiscard } from '../utils/confirmDiscard';
 
 const EVENT_TOKEN_ACCESSORY_ID = 'quickEventTitleTokenAccessory';
 /** Long enough that a word being typed is one request, not one per letter. */
@@ -204,9 +202,8 @@ interface Props {
  * Details) of the same `EditorRow`s the task editor uses. A new event used to
  * walk three steps through a small card because it had no room; an edit and a
  * new event are now the same layout. The trip rows show greyed out until there
- * is a place. Cancel and a swipe-down both keep a typed line for a few minutes
- * (`dismissKeepingText`) instead of asking, which is this sheet's answer to the
- * pageSheet swipe rule in CLAUDE.md. The pickers it raises render inside it.
+ * is a place. Cancel and a swipe-down both ask before dropping anything staged
+ * (`handleCancel`, the pageSheet swipe rule in CLAUDE.md). The pickers it raises render inside it.
  *
  * One component; `grep -n '// ===='` is its table of contents: sheet state,
  * the draft, editing an existing event, calendars, the reset on open, parsing the line, what the event
@@ -239,6 +236,10 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const setPlaceSuggestionsEnabled = useSettingsStore(s => s.setPlaceSuggestionsEnabled);
 
   // ==== sheet-level state ====
+  // What the sheet held once it finished resetting (and, for an edit, loading),
+  // to tell whether Cancel or a swipe-down would throw anything away.
+  const baseline = useRef<string | null>(null);
+  const baselineStage = useRef<'settling' | 'ready' | 'done'>('done');
   const inputRef = useRef<TextInput>(null);
   const tooltipAnim = useRef(new Animated.Value(0)).current;
   const hadMatch = useRef(false);
@@ -249,14 +250,6 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 
   // ==== the draft ====
   const [text, setText] = useState('');
-  // What was typed when the sheet was last left by the backdrop or a swipe
-  // rather than saved. A plain new-event open within QUICK_EVENT_KEEP_TEXT_MS
-  // puts it back, so brushing the backdrop doesn't cost the whole line.
-  const keptText = useRef<{ at: number; text: string } | null>(null);
-  const dismissKeepingText = () => {
-    keptText.current = !isEditing && text.trim() ? { at: Date.now(), text } : null;
-    dismiss();
-  };
   // Passed to the system sheet as typed. Nothing reads or geocodes it here;
   // it only saves retyping an address into Apple's form.
   const [location, setLocation] = useState('');
@@ -443,12 +436,8 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setArrivePickerVisible(false);
     void loadCalendars(defaults.calendarId, false);
     titleCaret.resetCaret(seededText);
-    const kept = keptText.current;
-    keptText.current = null;
-    if (kept && !seed && !editing && Date.now() - kept.at <= QUICK_EVENT_KEEP_TEXT_MS) {
-      setText(kept.text);
-      titleCaret.resetCaret(kept.text);
-    }
+    baselineStage.current = 'settling';
+    baseline.current = null;
     setBusy(false);
     setStartOverride(
       seed?.start ?? (seed?.day ? defaultNewEventSpan(seed.day, getCurrentDayStart(), new Date()).start : null)
@@ -1312,6 +1301,28 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     </View>,
   ];
 
+  // Everything this sheet stages before Add. The line, the two text fields and
+  // each chip's pick all count, so a swipe can't quietly drop any of them.
+  const stagedSignature = JSON.stringify([
+    text, location, notesOrLink, calendarPick, alertPick, availabilityPick, durationPick,
+    repeatPick, startOverride?.getTime() ?? null, allDay, travelModePick, arriveEarlyPick,
+    travelOriginPick, travelSkipPick, pickedPlace?.text ?? null, personOverrides,
+  ]);
+  // The first pass after a reset still sees the previous state, so the baseline
+  // is taken one render later, and for an edit once the event has loaded.
+  useEffect(() => {
+    if (!visible) return;
+    if (baselineStage.current === 'settling') { baselineStage.current = 'ready'; return; }
+    if (baselineStage.current === 'ready' && (!isEditing || original !== null)) {
+      baseline.current = stagedSignature;
+      baselineStage.current = 'done';
+    }
+  });
+  const handleCancel = () => {
+    if (baseline.current === null || baseline.current === stagedSignature) { dismiss(); return; }
+    confirmDiscard(dismiss);
+  };
+
   const canSubmit = !busy && draft.title.trim().length > 0 && (!isEditing || original !== null);
 
   // ==== render. Everything below is JSX ====
@@ -1321,13 +1332,13 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={dismissKeepingText}
+      onRequestClose={handleCancel}
       onShow={() => inputRef.current?.focus()}
     >
       <View style={styles.root}>
         <SheetHeader
           title={isEditing ? 'Edit event' : 'New event'}
-          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={dismissKeepingText} minWidth={72} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={72} />}
           right={
             <SheetHeaderButton
               label={isEditing ? BUTTON_LABEL.save : 'Add'}
