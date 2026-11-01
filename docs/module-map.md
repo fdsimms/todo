@@ -127,6 +127,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/confirmLargeAmount.ts` — confirmLargeAmount
 - `src/utils/contactsAccess.ts` — ContactsPermission, getContactsPermission, ContactsAccessScope, getContactsAccessScope, requestContactsPermission, toCandidate, searchContacts, fetchLimitedContacts
 - `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactAddress, contactBirthday, contactDates, normalizePhone, alreadyAdded, canSearchContacts, +6 more
+- `src/utils/containerShare.ts` — ContainerShare, CONTAINER_SHARES, shareFromGrams
 - `src/utils/contextCards.ts` — CardPosition, isCardRow, contextCardPositions, contextSectionSummaries
 - `src/utils/cookMode.ts` — CookStep, stepsFromNotes, cookNotesPanel, cookSteps, clampStepIndex, describeStepPosition, CookTextSize, COOK_TEXT_SIZES, DEFAULT_COOK_TEXT_SIZE, cookTextMetrics, +1 more
 - `src/utils/cookPosition.ts` — CookPosition, CookSetup, COOK_POSITION_MAX_AGE_MS, saveCookPosition, savedCookPosition, clearCookPosition, saveCookSetup, savedCookSetup, restingCookPosition

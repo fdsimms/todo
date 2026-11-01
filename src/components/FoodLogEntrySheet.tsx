@@ -120,6 +120,8 @@ import type { RankedFood } from '../utils/foodSearchMatch';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { confirmLargeAmount } from '../utils/confirmLargeAmount';
 import { EstimateAmountSheet } from './EstimateAmountSheet';
+import { ContainerShareSheet } from './ContainerShareSheet';
+import { useSheetSubject } from '../hooks/useSheetSubject';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { CountStepper } from './CountStepper';
@@ -557,6 +559,9 @@ export function FoodLogEntrySheet({
   const searchFilter = useFilterField();
   const query = searchFilter.query;
   const [picked, setPicked] = useState<Candidate | null>(null);
+  /** The fridge container whose share is being asked, with the figures it would log. */
+  const [shareAsk, setShareAsk] = useState<{ leftover: Leftover; figures: ContainerFigures } | null>(null);
+  const shownShareAsk = useSheetSubject(shareAsk);
   const [amount, setAmount] = useState('');
   // The split view of `amount` a food with a matched unit renders as: a unit
   // pill plus a number-only field, kept in step with `amount` at every write
@@ -1606,12 +1611,7 @@ export function FoodLogEntrySheet({
   const askContainerShare = (l: Leftover, figures: ContainerFigures) => {
     haptics.tap();
     Keyboard.dismiss();
-    Alert.alert(`How much of the ${l.title} did you eat?`, undefined, [
-      { text: 'All of it', onPress: () => logContainer(l, figures) },
-      { text: 'Half', onPress: () => logContainer(l, figures, 0.5, 'Half') },
-      { text: 'A quarter', onPress: () => logContainer(l, figures, 0.25, 'A quarter') },
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-    ]);
+    setShareAsk({ leftover: l, figures });
   };
 
   /**
@@ -3072,6 +3072,20 @@ export function FoodLogEntrySheet({
         nutrition={null}
         onClose={() => setFiguresLineId(null)}
         onSave={next => { if (figuresLine) writeLinePanel(figuresLine, next); }}
+      />
+      {/* Inside this Modal, not beside it: it is raised from a sheet that is
+          already presenting. */}
+      <ContainerShareSheet
+        visible={shareAsk !== null}
+        title={shownShareAsk?.leftover.title ?? ''}
+        totalGrams={shownShareAsk?.figures.grams ?? null}
+        onPick={share => {
+          if (!shownShareAsk) return;
+          const { leftover, figures } = shownShareAsk;
+          if (share.factor === 1) logContainer(leftover, figures);
+          else logContainer(leftover, figures, share.factor, share.share);
+        }}
+        onClose={() => setShareAsk(null)}
       />
       {overlays}
       {actionMenu.element}
