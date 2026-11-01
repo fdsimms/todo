@@ -135,6 +135,7 @@ Where each component can appear.
 - `src/components/CompletionOptionsMenu.tsx` — on CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/ComponentChoiceSheet.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/ContactPickerSheet.tsx` — on PeopleScreen, PersonDetailScreen
+- `src/components/ContainerShareSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +6 more
 - `src/components/ContrastBars.tsx` — on MoodScreen, SymptomDetailScreen
 - `src/components/CookModeSheet.tsx` — on RecipeDetailScreen, RecipesScreen
 - `src/components/CookRecap.tsx` — on app shell
