@@ -1424,6 +1424,12 @@ describe('demo mode', () => {
     expect(formatTaskDeliverable(answered)).toBeTruthy();
   });
 
+  it('seeds a task that asks which of your people', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.some(t => !t.completed && t.deliverableKind === 'people')).toBe(true);
+  });
+
   // The one thing only a chain can do with an answer. Invisible from the rows
   // above: a decision task shows the question, not that the answer is about to
   // schedule something.

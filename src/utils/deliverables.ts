@@ -28,7 +28,9 @@ import { activeChainStep, nextChainStep, type ChainCarrier } from './chain';
  * 3. A date answer on a task that opted in (`Task.deliverableSetsAway`) fills
  *    its project's empty Leaving date: "Pick dates for Lisbon" answered with
  *    the 14th. It never moves a Leaving date already set. See
- *    `departureFromAnswer` in `src/utils/awayDates.ts`.
+ *    `departureFromAnswer` in `src/utils/awayDates.ts`. A `'dateRange'` answer
+ *    on the same opt-in fills Coming back as well, so the trip's two ends are
+ *    one question rather than a second prompt.
  *
  * The second and third were added on the terms the first set, and they're worth stating
  * because they're what stops this becoming a scripting field: one kind, one
@@ -83,6 +85,8 @@ export const DELIVERABLE_META: {
 }[] = [
   { key: 'text', label: 'Text', icon: 'text-outline' },
   { key: 'date', label: 'Date', icon: 'calendar-outline' },
+  { key: 'dateRange', label: 'Date range', icon: 'calendar-number-outline' },
+  { key: 'people', label: 'People', icon: 'people-outline' },
   { key: 'number', label: 'Number', icon: 'calculator-outline' },
   { key: 'yesno', label: 'Yes/No', icon: 'checkmark-done-outline' },
   { key: 'choice', label: 'Pick one', icon: 'list-circle-outline' },
@@ -150,6 +154,20 @@ export function deliverableMeta(kind: DeliverableKind) {
   return DELIVERABLE_META.find(m => m.key === kind)!;
 }
 
+/**
+ * A decision's title as the project's Decisions block labels it. The block is
+ * already headed "Decisions", so "Decide dates" reads as "Dates" there and
+ * "Decide on the venue" as "The venue". Only a leading "Decide" followed by a
+ * plain noun phrase is dropped: a question ("Decide whether to rent") or a
+ * bare "Decide" keeps its words, and the task's own title is never changed.
+ */
+export function decisionLabel(title: string): string {
+  const match = /^decide\s+(?:on\s+|about\s+)?(?!whether\b|if\b|how\b|what\b|which\b|when\b|where\b|who\b|to\b)(\S.*)$/i.exec(title.trim());
+  if (!match) return title;
+  const rest = match[1];
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+}
+
 /** What the deliverable reads need: the task's own question, plus its chain position. */
 export type DeliverableSource = ChainCarrier & Pick<Task, 'deliverableKind'>;
 
@@ -215,6 +233,68 @@ export function deliverableDate(value: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** Most people one answer keeps. Past this it wants to be a text answer. */
+export const DELIVERABLE_PEOPLE_MAX = 20;
+
+export interface AnsweredPerson {
+  id: string;
+  name: string;
+}
+
+/**
+ * The people in a stored 'people' answer, or an empty list when it isn't one.
+ * Each keeps the name it had when the answer was given: a decision records
+ * what was decided, and a person since renamed or deleted still reads as they
+ * did then. The id is for the sheet, which re-ticks whoever is still around.
+ */
+export function deliverablePeople(value: string | null | undefined): AnsweredPerson[] {
+  if (!value) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const seen = new Set<string>();
+  const out: AnsweredPerson[] = [];
+  for (const entry of parsed) {
+    const id = typeof entry?.id === 'string' ? entry.id : '';
+    const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
+    if (!id || !name || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name });
+    if (out.length >= DELIVERABLE_PEOPLE_MAX) break;
+  }
+  return out;
+}
+
+/** The stored form of a pick of people, or null for nobody. */
+export function peopleValue(people: readonly AnsweredPerson[]): string | null {
+  const clean = deliverablePeople(JSON.stringify(people));
+  return clean.length > 0 ? JSON.stringify(clean) : null;
+}
+
+/** What joins a range's two ISO instants. Neither half contains one. */
+const DATE_RANGE_SEPARATOR = '/';
+
+/** The two ends of a stored 'dateRange' answer, or null if it isn't one. */
+export function deliverableDateRange(value: string | null | undefined): { start: Date; end: Date } | null {
+  if (!value) return null;
+  const [a, b, ...rest] = value.split(DATE_RANGE_SEPARATOR);
+  if (!a || !b || rest.length > 0) return null;
+  const start = new Date(a);
+  const end = new Date(b);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  return { start, end };
+}
+
+/** The stored form of a range. Given backwards, the earlier day is the start. */
+export function dateRangeValue(a: Date, b: Date): string {
+  const [start, end] = a.getTime() <= b.getTime() ? [a, b] : [b, a];
+  return `${start.toISOString()}${DATE_RANGE_SEPARATOR}${end.toISOString()}`;
+}
+
 /**
  * The stored form of a typed answer, or null if there isn't one.
  *
@@ -240,6 +320,12 @@ export function normalizeDeliverableValue(kind: DeliverableKind, raw: string | n
       const d = new Date(trimmed);
       return Number.isNaN(d.getTime()) ? null : d.toISOString();
     }
+    case 'dateRange': {
+      const range = deliverableDateRange(trimmed);
+      return range ? dateRangeValue(range.start, range.end) : null;
+    }
+    case 'people':
+      return peopleValue(deliverablePeople(trimmed));
     // The option's own text, so a count can group on it. Which options exist
     // is the prompt's business; the store is reachable without it.
     case 'yesno':
@@ -268,6 +354,21 @@ export function formatDeliverableValue(kind: DeliverableKind, value: string | nu
       const d = new Date(value);
       if (Number.isNaN(d.getTime())) return null;
       return format(d, d.getFullYear() === new Date().getFullYear() ? 'EEE, MMM d' : 'EEE, MMM d, yyyy');
+    }
+    case 'people': {
+      const people = deliverablePeople(value);
+      return people.length > 0 ? people.map(p => p.name).join(', ') : null;
+    }
+    case 'dateRange': {
+      const range = deliverableDateRange(value);
+      if (!range) return null;
+      // Absolute for the same reason a single date is. Years appear on both
+      // ends once either is outside this year, so "Dec 28, 2026 to Jan 4, 2027"
+      // never reads as one year.
+      const thisYear = new Date().getFullYear();
+      const plain = range.start.getFullYear() === thisYear && range.end.getFullYear() === thisYear;
+      const pattern = plain ? 'MMM d' : 'MMM d, yyyy';
+      return `${format(range.start, pattern)} to ${format(range.end, pattern)}`;
     }
   }
 }

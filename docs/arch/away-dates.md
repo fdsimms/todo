@@ -523,7 +523,7 @@ with no Leaving date had nothing anchored to it to move.
 Both directions above assume you know the dates when you apply the template. Often
 you do not — the trip is real, the prep is real, and the dates are the *first*
 thing on the list to find out. The Trip prep template already opens with exactly
-that task: "Pick dates for {destination}", a `deliverableKind: 'date'` task
+that task: "Pick dates for {destination}", a `deliverableKind: 'dateRange'` task
 28 days out.
 
 So the third direction is: **applying the template with no anchors gives a project
@@ -548,13 +548,21 @@ looser terms than these is a different feature and should say so."* Saying so:
   never moves a member task. A user-aimable writer that can only set a date and
   then ask is a much smaller thing than one that can move nine tasks.
 
-**It fills in the start only.** A `'date'` answer records one date and a trip has
-two, and the obvious fix — a range deliverable kind — is a new kind for one caller
-and should be refused. Nor can the duration come from the template run's own
-`{nights}` answer: answers are never persisted (`ApplyTemplateSheet` zeroes on
-open, nothing writes back), so 28 days later it is gone.
+**A `'date'` answer fills in the start only, and a `'dateRange'` answer fills both.** A
+single date records one day and a trip has two, so the answer writes `awayStart` and the
+"Coming back" prompt below asks for the rest. A task that wants both ends in one question
+uses the `'dateRange'` kind (stored as `start/end`, `deliverableDateRange`), and with the
+same opt-in it writes `awayStart` and `awayEnd` together and raises no second prompt. This
+reverses an earlier refusal of a range kind as "a new kind for one caller": a person
+logging trip dates through a decision task needs it whatever the project does with it, and
+`date` stays untouched, so chain step dating never has to read a range. A range that
+starts and ends the same day is not a trip (`awaySpanOf` drops it), so it writes the start
+and still asks for Coming back. Undoing the completion clears both ends if the project
+still holds the ones it wrote. Nor can the duration come from the template run's own
+`{nights}` answer: answers are never persisted (`ApplyTemplateSheet` zeroes on open,
+nothing writes back), so 28 days later it is gone.
 
-So the answer writes `awayStart` and leaves `awayEnd` null. That is not a
+Where only a start is answered, the answer writes `awayStart` and leaves `awayEnd` null. That is not a
 degraded state, it is the one the field design already declares legal and
 meaningful: a boundary but not yet a trip, exactly `LookAheadWindow`'s own
 `awayEnd: null` case. The return date arrives later: the "Coming back" prompt

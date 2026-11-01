@@ -14,6 +14,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { usePersonStore } from '../store/usePersonStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { supplyReorderPackSeed } from '../utils/supply';
 import { getLogicalToday, getLogicalTomorrow, formatTaskDate } from '../utils/dateUtils';
@@ -28,6 +29,11 @@ import {
   normalizeDeliverableValue,
   chainStepDatedByAnswer,
   deliverableDate,
+  deliverableDateRange,
+  deliverablePeople,
+  peopleValue,
+  type AnsweredPerson,
+  dateRangeValue,
   deliverableKindFor,
   deliverableOptionsFor,
   reasoningOf,
@@ -126,6 +132,17 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const inputRef = useRef<TextInput>(null);
   const [draft, setDraft] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  // A date range is two picks, so it keeps its ends apart until both exist;
+  // `draft` holds the joined answer only for the kinds with one field.
+  // `rangeSide` is which end the open picker is choosing.
+  const [rangeStart, setRangeStart] = useState<Date | null>(null);
+  const [rangeEnd, setRangeEnd] = useState<Date | null>(null);
+  const [rangeSide, setRangeSide] = useState<'start' | 'end'>('start');
+  // A people answer is a tick list over the people list. `found` narrows it
+  // once the list is long enough to need finding in.
+  const people = usePersonStore(s => s.people);
+  const [picked, setPicked] = useState<AnsweredPerson[]>([]);
+  const [found, setFound] = useState('');
   // The day a catch-up really happened, for one logged late. Null is now, which
   // leaves the completion alone. Only offered while completing: correcting an
   // answer in the Logbook has no completion to date.
@@ -167,6 +184,11 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     // thing that happens.
     const packSeed = !stored ? supplyReorderPackSeed(task, useTaskStore.getState().tasks) : null;
     setDraft(staleForScheduling ? '' : (stored || packSeed || ''));
+    setPicked(deliverablePeople(stored));
+    setFound('');
+    const heldRange = deliverableDateRange(stored);
+    setRangeStart(heldRange ? heldRange.start : null);
+    setRangeEnd(heldRange ? heldRange.end : null);
     setPickerOpen(false);
     setDoneOn(null);
     const held = reasoningOf(task);
@@ -180,10 +202,27 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   // rather than the open effect, which can run before the card is presented
   // (see QuickAddModal's own note on this).
   const focusField = () => {
-    if (kind !== 'date' && options.length === 0) inputRef.current?.focus();
+    if (kind !== 'date' && kind !== 'dateRange' && kind !== 'people' && options.length === 0) inputRef.current?.focus();
   };
 
-  const normalized = normalizeDeliverableValue(kind, draft);
+  const normalized = kind === 'dateRange'
+    ? (rangeStart && rangeEnd ? dateRangeValue(rangeStart, rangeEnd) : null)
+    : kind === 'people'
+      ? peopleValue(picked)
+      : normalizeDeliverableValue(kind, draft);
+  const pickable = useMemo(() => {
+    const live = people.filter(p => !p.archived);
+    // Someone already in the answer who has since been archived or deleted
+    // stays on the list, ticked, so saving doesn't drop them unseen.
+    const gone = picked.filter(a => !live.some(p => p.id === a.id)).map(a => ({ id: a.id, name: a.name }));
+    const all = [...live.map(p => ({ id: p.id, name: p.name })), ...gone];
+    const needle = found.trim().toLowerCase();
+    return needle ? all.filter(p => p.name.toLowerCase().includes(needle)) : all;
+  }, [people, picked, found]);
+  const togglePerson = (person: AnsweredPerson) => {
+    haptics.tap();
+    setPicked(prev => prev.some(p => p.id === person.id) ? prev.filter(p => p.id !== person.id) : [...prev, person]);
+  };
 
   const dismiss = (after: () => void) => card.close(after);
 
@@ -199,6 +238,29 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const pickDate = (d: Date) => {
     haptics.tap();
     setDraft(d.toISOString());
+    setPickerOpen(false);
+  };
+
+  const openRangePicker = (side: 'start' | 'end') => {
+    haptics.tap();
+    setRangeSide(side);
+    setPickerOpen(true);
+  };
+
+  // An end picked before the start swaps the two rather than refusing it, the
+  // same way the stored form orders them (dateRangeValue).
+  const pickRangeEnd = (d: Date) => {
+    haptics.tap();
+    const picked = noonOf(d);
+    if (rangeSide === 'start') {
+      setRangeStart(picked);
+      if (rangeEnd && rangeEnd.getTime() < picked.getTime()) setRangeEnd(picked);
+    } else if (rangeStart && picked.getTime() < rangeStart.getTime()) {
+      setRangeEnd(rangeStart);
+      setRangeStart(picked);
+    } else {
+      setRangeEnd(picked);
+    }
     setPickerOpen(false);
   };
 
@@ -230,7 +292,11 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
         mountPicker && (
           <WhenPicker
             visible={pickerOpen}
-            value={catchUp ? doneOn : normalized ? new Date(normalized) : null}
+            value={
+              catchUp ? doneOn
+                : kind === 'dateRange' ? (rangeSide === 'start' ? rangeStart : rangeEnd ?? rangeStart)
+                : normalized ? new Date(normalized) : null
+            }
             title={displayTitleFor(task)}
             showTimeOfDay={false}
             showSuggest={false}
@@ -241,7 +307,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
             allowPast={datesStep === null}
             // A catch-up already happened, so tomorrow is not a day it can be dated.
             allowFuture={!catchUp}
-            onConfirm={date => { if (date) (catchUp ? pickDoneOn : pickDate)(date); else setPickerOpen(false); }}
+            onConfirm={date => { if (date) (catchUp ? pickDoneOn : kind === 'dateRange' ? pickRangeEnd : pickDate)(date); else setPickerOpen(false); }}
             onCancel={() => setPickerOpen(false)}
           />
         )
@@ -309,6 +375,70 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
                 >
                   <Text style={[styles.optionText, chosen && styles.optionTextChosen]}>{option}</Text>
                   {chosen && <Ionicons name="checkmark" size={iconSize.sm} color={colors.accent} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : kind === 'people' ? (
+          <>
+            {people.length > 8 && (
+              <View style={[styles.field, styles.findField]}>
+                <Ionicons name="search" size={iconSize.sm} color={colors.textSecondary} />
+                <TextField
+                  style={styles.input}
+                  value={found}
+                  onChangeText={setFound}
+                  placeholder="Find a person"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="search"
+                  accessibilityLabel="Find a person"
+                />
+              </View>
+            )}
+            {pickable.length === 0 ? (
+              <Text style={styles.catchUpHelp}>
+                {people.length === 0 ? 'No people yet. Add them from the People screen.' : 'No one matches.'}
+              </Text>
+            ) : (
+              <View style={styles.options}>
+                {pickable.map(person => {
+                  const chosen = picked.some(p => p.id === person.id);
+                  return (
+                    <TouchableOpacity
+                      key={person.id}
+                      style={[styles.option, chosen && styles.optionChosen]}
+                      onPress={() => togglePerson(person)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: chosen }}
+                      accessibilityLabel={person.name}
+                    >
+                      <Text style={[styles.optionText, chosen && styles.optionTextChosen]}>{person.name}</Text>
+                      {chosen && <Ionicons name="checkmark" size={iconSize.sm} color={colors.accent} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </>
+        ) : kind === 'dateRange' ? (
+          <View style={styles.rangeField}>
+            {([
+              { side: 'start' as const, label: 'Start', value: rangeStart },
+              { side: 'end' as const, label: 'End', value: rangeEnd },
+            ]).map(({ side, label, value }, i) => {
+              const text = value ? formatDeliverableValue('date', value.toISOString()) : null;
+              return (
+                <TouchableOpacity
+                  key={side}
+                  style={[styles.rangeRow, i > 0 && styles.rangeRowDivider]}
+                  onPress={() => openRangePicker(side)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={text ? `${label}, ${text}` : `Pick a ${label.toLowerCase()} date`}
+                >
+                  <Text style={styles.rangeLabel}>{label}</Text>
+                  <Text style={text ? styles.fieldValue : styles.fieldPlaceholder}>{text ?? 'Pick a date'}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -440,7 +570,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
             happened, not a decision with a reason behind it, so neither is
             offered. One that already holds some keeps its fields
             (reasoningOpen above), so nothing stored is hidden. */}
-        {!reasoningOpen && kind !== 'date' && !catchUp && (
+        {!reasoningOpen && kind !== 'date' && kind !== 'dateRange' && !catchUp && (
           <View style={styles.extras}>
             {!reasoningOpen && (
               <InlineAction
@@ -537,6 +667,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.lg,
   },
+  findField: { marginBottom: spacing.sm },
+  rangeField: {
+    marginHorizontal: spacing.md,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+  },
+  rangeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    minHeight: 48,
+  },
+  rangeRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  rangeLabel: { width: 56, color: colors.textSecondary, fontSize: font.md },
   fieldValue: { color: colors.text, fontSize: font.lg },
   fieldPlaceholder: { color: colors.textTertiary, fontSize: font.lg },
   pills: {
