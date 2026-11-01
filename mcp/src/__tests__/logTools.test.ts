@@ -6,8 +6,9 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
+import { listFoodLog } from '../tools';
 import { useMedicationStore } from '../../../src/store/useMedicationStore';
-import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, patchRecipe, updateRecipe, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
+import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logRecipe, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, patchRecipe, updateRecipe, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -694,5 +695,31 @@ describe('set_medication_limit and set_medication_supply', () => {
     expect(() => setMedicationSupply(replica, { name: 'Iron', count: 5, unit: 'mg' })).toThrow(/one of/);
     expect(() => setMedicationSupply(replica, { name: 'Iron', clear: true, count: 5 })).toThrow(/on its own/);
     expect(() => setMedicationSupply(replica, { name: 'Nothing', count: 5 })).toThrow(/No medicine called/);
+  });
+});
+
+describe('finding and logging food by name', () => {
+  it('narrows the food log to entries whose name holds every word, and says the totals then cover only those', () => {
+    logFood(replica, { label: "Homesteader's New England Baked Beans", amounts: { calorieKcal: 440 }, apply: true });
+    logFood(replica, { label: 'Corn bread with salted butter', amounts: { calorieKcal: 290 }, apply: true });
+    const found = listFoodLog(replica, { days: 7, query: 'baked BEANS' });
+    expect(found.entries.map(e => e.label)).toEqual(["Homesteader's New England Baked Beans"]);
+    expect(found.filteredBy).toEqual({ query: 'baked BEANS', matched: 1, inRange: 2 });
+    expect(found.totals.total.calorieKcal).toBe(440);
+    expect(listFoodLog(replica, { days: 7 }).filteredBy).toBeUndefined();
+    expect(listFoodLog(replica, { days: 7, query: 'baked pizza' }).entries).toEqual([]);
+  });
+
+  it('logs a recipe by the weight on the plate and reports the figures it came to', () => {
+    const [item] = replica.addToPantry(['Pinto beans']).map(x => x.item);
+    replica.setNutritionPanel(item.id, null, {
+      basis: 'per100g', servingGrams: null, servingText: null, amounts: { calorieKcal: 100 },
+      portions: [], source: 'estimated', sourceId: null, recordedAt: '2030-01-01T00:00:00.000Z',
+    });
+    const recipe = replica.createRecipe({ name: 'Bean pot', servings: 2, cookedWeightG: 800, ingredients: [{ text: '400 g Pinto beans' }] });
+    const out = logRecipe(replica, { recipeId: recipe.id, grams: 400, slot: 'dinner', at: '2030-03-12' });
+    expect(out.logged).toMatchObject({ label: 'Bean pot', quantity: '400 g', grams: 400, slot: 'dinner', day: '2030-03-12' });
+    expect(out.logged.amounts.calorieKcal).toBe(200);
+    expect(out.note).toMatch(/not in Apple Health yet/i);
   });
 });

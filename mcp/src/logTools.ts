@@ -301,6 +301,17 @@ export function saveMealFromEntries(replica: Replica, name: string, entryIds: st
   return { saved: { id: meal.id, name: meal.name, foods: meal.items.map(i => i.label) } };
 }
 
+export function logRecipe(
+  replica: Replica,
+  input: { recipeId: string; grams?: number; servings?: number; slot?: MealSlot | null; at?: string },
+) {
+  const entry = replica.logRecipe({ recipeId: input.recipeId, grams: input.grams, servings: input.servings, slot: input.slot ?? null, at: atFrom(input.at) ?? new Date() });
+  return {
+    logged: { ...foodRow(entry), grams: entry.grams ?? undefined, amounts: entry.nutrition.amounts },
+    note: `Marked as estimated, with the figures worked out from the recipe. ${NOT_IN_HEALTH_YET}`,
+  };
+}
+
 export function logSavedMeal(replica: Replica, id: string, slot: MealSlot | null | undefined, at: string | undefined) {
   const entries = replica.logSavedMeal(id, slot ?? null, atFrom(at) ?? new Date());
   return { logged: entries.map(foodRow), note: NOT_IN_HEALTH_YET };

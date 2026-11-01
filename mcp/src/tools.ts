@@ -812,6 +812,12 @@ export interface SerializedFoodEntry {
 
 export interface FoodLogResult {
   range: DayRange;
+  /**
+   * Present only when a query narrowed the entries. `totals`, `produce` and
+   * `processing` below then cover just the matches, not the days, so they are
+   * not a day's intake: use the query to find an entry, not to read a total.
+   */
+  filteredBy?: { query: string; matched: number; inRange: number };
   entries: SerializedFoodEntry[];
   /**
    * Summed nutrients over the range, and how many entries stated each one.
@@ -850,9 +856,24 @@ export interface FoodLogResult {
   limits: string[];
 }
 
-export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLogResult {
+export interface FoodLogInput extends LogRangeInput {
+  /** Only entries whose name (or saved meal's) contains every word of this. */
+  query?: string;
+}
+
+/** Whether `text` holds every word of `query`, ignoring case: the match `list_food_log`'s query uses. */
+function matchesEveryWord(text: string, query: string): boolean {
+  const hay = text.toLowerCase();
+  return query.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));
+}
+
+export function listFoodLog(replica: Replica, input: FoodLogInput = {}): FoodLogResult {
   const range = resolveRange(replica, input);
-  const entries = replica.foodLogEntries(range.from, range.to);
+  const inRange = replica.foodLogEntries(range.from, range.to);
+  const query = input.query?.trim();
+  const entries = query
+    ? inRange.filter((e: FoodLogEntry) => matchesEveryWord(`${e.label} ${e.savedMealName ?? ''}`, query))
+    : inRange;
   const totals = replica.foodTotals(entries);
 
   const produce = replica.foodProduce(entries).map(day => ({
@@ -867,6 +888,7 @@ export function listFoodLog(replica: Replica, input: LogRangeInput = {}): FoodLo
 
   return {
     range,
+    ...(query ? { filteredBy: { query, matched: entries.length, inRange: inRange.length } } : {}),
     entries: entries.map((e: FoodLogEntry) => ({
       id: e.id,
       dayKey: e.dayKey,

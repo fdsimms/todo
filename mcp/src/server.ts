@@ -104,7 +104,7 @@ import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from
 import { createCategory, deleteCategory, updateCategory } from './categoryTools';
 import { REORDER_KINDS, reorder } from './reorderTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, proposeTaskDeviceAction, requestCalendarEvent } from './calendarTools';
-import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, refreshDishEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logRecipe, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, refreshDishEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { listErrors, MAX_ERRORS } from './errorTools';
 import { storageReport } from './storageTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
@@ -538,8 +538,11 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_food_log',
-    'Logged food over a range of days, with summed nutrients and, in produce, an estimate of vegetable and fruit servings per day: 80 g servings, beans count once a day, rounded to the nearest half. It is read from food names and weights, so a food not named as produce counts as none, and unmeasured is how many entries that day could not be weighed and are not counted. Say it is an estimate, and say when unmeasured is above zero. A nutrient nobody logged is absent rather than zero. Each entry carries its own figures as amounts (a nutrient it did not state is absent), so a surprising total can be traced to the entry behind it, and inAppleHealth: true when it was written to Apple Health, which refresh_dish_entry, update_food_entry and delete_food_entry refuse and only the phone can change. An entry the person described and the app estimated may carry a breakdown, the same estimate split across what it named (for example the beer and the pretzel); it adds up to the entry\'s own figures, so do not add it to the totals again. Defaults to the last 7 days. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
-    logRange,
+    'Logged food over a range of days, with summed nutrients and, in produce, an estimate of vegetable and fruit servings per day: 80 g servings, beans count once a day, rounded to the nearest half. It is read from food names and weights, so a food not named as produce counts as none, and unmeasured is how many entries that day could not be weighed and are not counted. Say it is an estimate, and say when unmeasured is above zero. A nutrient nobody logged is absent rather than zero. Each entry carries its own figures as amounts (a nutrient it did not state is absent), so a surprising total can be traced to the entry behind it, and inAppleHealth: true when it was written to Apple Health, which refresh_dish_entry, update_food_entry and delete_food_entry refuse and only the phone can change. An entry the person described and the app estimated may carry a breakdown, the same estimate split across what it named (for example the beer and the pretzel); it adds up to the entry\'s own figures, so do not add it to the totals again. Defaults to the last 7 days; a long range is large, so pass query to look for one food instead of reading it all. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
+    {
+      ...logRange,
+      query: z.string().min(1).optional().describe('Only entries whose name contains every word of this ("baked beans"). Use it to find an entry to copy or correct without reading the whole range; the totals then cover only the matches.'),
+    },
     async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listFoodLog(replica, input))))
   );
 
@@ -2075,6 +2078,25 @@ function registerWriteTools(
         return json(await withWrite(() => logFood(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not log that.' });
+      }
+    }
+  );
+
+  server.tool(
+    'log_recipe',
+    'Log a helping of one of the person\'s saved recipes, with the figures worked out from the recipe as it is now, as logging a dish in the app does. Give grams for what is on the plate (their weighed portion minus the bowl, from list_cookware), measured against the dish\'s cooked weight, or servings for how many helpings. Use this rather than log_food whenever the food is a recipe they have saved (list_recipes has the id; list_food_log with a query shows whether they have logged it before): its nutrition is the recipe\'s own, not your estimate. The entry is marked as estimated and keeps its link to the recipe, so refresh_dish_entry can work it out again later. Refused, with the reason, when the recipe has no cooked weight (for grams), an either/or pair nobody has answered, or too few ingredients with known nutrition; log_food with an estimate is the fallback. For a recipe they have saved, use log_recipe instead: its figures come from the recipe, not from an estimate. For a food already in the log at another amount, duplicate_food_entry. Preview with preview_change first (see the server instructions).',
+    {
+      recipeId: z.string().min(1),
+      grams: z.number().positive().optional().describe('The weight of the helping on the plate, bowl already subtracted. Give this or servings.'),
+      servings: z.number().positive().optional().describe('How many helpings of the recipe, e.g. 1 or 0.5. Give this or grams.'),
+      slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]).nullable().optional(),
+      at: z.string().optional().describe('When it was eaten: an ISO date-time, or YYYY-MM-DD for noon that day. Default now.'),
+    },
+    async ({ recipeId, grams, servings, slot, at }) => {
+      try {
+        return json(await withWrite(() => logRecipe(replica, { recipeId, grams, servings, slot, at })));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not log that recipe.' });
       }
     }
   );

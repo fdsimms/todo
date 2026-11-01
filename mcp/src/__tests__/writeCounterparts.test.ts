@@ -41,6 +41,7 @@ const COUNTERPARTS: Record<string, string[]> = {
   // update_food_entry will not restate it; the row is deleted and relogged.
   log_water: ['delete_food_entry'],
   save_meal_from_entries: ['delete_saved_meal'],
+  log_recipe: ['update_food_entry', 'delete_food_entry', 'refresh_dish_entry'],
   log_saved_meal: ['update_food_entry', 'delete_food_entry'],
   log_mood: ['update_mood_log', 'delete_mood_log'],
   add_milestone: ['update_milestone', 'delete_milestone'],

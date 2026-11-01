@@ -1544,6 +1544,14 @@ export interface Replica {
    */
   refreshDishEntry(id: string): { before: FoodLogEntry; after: FoodLogEntry };
   /**
+   * Log a helping of a saved recipe by its weight on the plate (`grams`, against
+   * the dish's cooked weight) or by servings, with the figures worked out from
+   * the recipe as it is now, as logging a dish in the app does. Refused when the
+   * recipe has an either/or pair still undecided, no cooked weight for a weight,
+   * or too few known ingredients to give figures.
+   */
+  logRecipe(input: { recipeId: string; grams?: number; servings?: number; slot: MealSlot | null; at: Date }): FoodLogEntry;
+  /**
    * Move a food entry to another moment, as the app's `moveEntry`: the old row
    * goes and a new one is written at the new instant (the day it counts on is
    * stamped from the instant, so it is never patched in place). Refused once
@@ -2674,6 +2682,35 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     const result = foodLog.remeasureEntry(entry, linkedPanel, amount);
     if (!result.ok) throw new Error(result.reason);
     return result.fields;
+  }
+
+  /**
+   * A recipe's figures as the food log reads them (`DishFigures`), or null when
+   * too few of its ingredients have known nutrition. `itemPicks` are the answers
+   * to its either/or pairs; a pair with no answer is refused with `unanswered`
+   * appended, since guessing which was used would put a wrong figure in the log.
+   */
+  function dishFiguresFor(
+    recipe: import('../../src/types').Recipe,
+    itemPicks: NonNullable<FoodLogEntry['itemPicks']>,
+    unanswered: string,
+  ): import('../../src/utils/mealLog').DishFigures | null {
+    const recipeNutrition = require('../../src/utils/recipeNutrition') as typeof import('../../src/utils/recipeNutrition'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const mealLog = require('../../src/utils/mealLog') as typeof import('../../src/utils/mealLog'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const recipes = db.dbGetAllRecipes();
+    const items = db.dbGetAllGroceryItems();
+    const swaps = standingSwaps.standingSwapMap(db.dbGetAllItemSubLinks(), items);
+    const byId = new Map(recipes.map(r => [r.id, r]));
+    const resolution = { itemPicks };
+    const open = itemEither.eitherPairsInUse(components().flattenRecipeIngredients(recipe, byId, resolution, swaps))
+      .filter(p => p.use === null);
+    if (open.length > 0) {
+      throw new Error(`"${recipe.name}" asks for ${open.map(p => itemEither.describeEitherPair(p.items)).join(' and ')}. ${unanswered}`);
+    }
+    const dish = recipeNutrition.recipeNutrition(recipe, items, db.dbGetAllItemProducts(), byId, resolution, 1, swaps);
+    return dish
+      ? { total: dish.total, perServing: recipeNutrition.perServing(dish), servings: dish.servings, cookedGrams: mealLog.cookedDishGrams(recipe.cookedWeightG, 1) }
+      : null;
   }
 
   /** An entry that can be moved or copied: not water, which is one entry a day stepped up a glass at a time. */
@@ -5585,34 +5622,48 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (entry.healthSampleIds.length > 0) {
         throw new Error('That entry was written to Apple Health, which only the phone can correct. Delete it and log it again in the app.');
       }
-      const recipes = db.dbGetAllRecipes();
-      const recipe = recipes.find(r => r.id === entry.recipeId);
+      const recipe = db.dbGetAllRecipes().find(r => r.id === entry.recipeId);
       if (!recipe) throw new Error('The recipe this entry was logged from is gone, so there is nothing to work it out from.');
-      const recipeNutrition = require('../../src/utils/recipeNutrition') as typeof import('../../src/utils/recipeNutrition'); // eslint-disable-line @typescript-eslint/no-require-imports
-      const mealLog = require('../../src/utils/mealLog') as typeof import('../../src/utils/mealLog'); // eslint-disable-line @typescript-eslint/no-require-imports
-      const items = db.dbGetAllGroceryItems();
-      const swaps = standingSwaps.standingSwapMap(db.dbGetAllItemSubLinks(), items);
-      const byId = new Map(recipes.map(r => [r.id, r]));
       // Read under the answers the log kept, so a dish made with vegan butter is
       // measured with it. An entry that never recorded one for a pair it asks
       // about cannot be re-measured: that would guess.
-      const resolution = { itemPicks: entry.itemPicks ?? [] };
-      const open = itemEither.eitherPairsInUse(components().flattenRecipeIngredients(recipe, byId, resolution, swaps))
-        .filter(p => p.use === null);
-      if (open.length > 0) {
-        throw new Error(`"${recipe.name}" asks for ${open.map(p => itemEither.describeEitherPair(p.items)).join(' and ')}, and this entry never recorded which was used, so it is not re-measured. Correct the figures with update_food_entry.`);
-      }
-      const dish = recipeNutrition.recipeNutrition(
-        recipe, items, db.dbGetAllItemProducts(), byId, resolution, 1, swaps,
-      );
-      const figures = dish
-        ? { total: dish.total, perServing: recipeNutrition.perServing(dish), servings: dish.servings, cookedGrams: mealLog.cookedDishGrams(recipe.cookedWeightG, 1) }
-        : null;
+      const figures = dishFiguresFor(recipe, entry.itemPicks ?? [], 'This entry never recorded which was used, so it is not re-measured. Correct the figures with update_food_entry.');
       const result = foodLog.remeasureDishEntry(entry, figures);
       if (!result.ok) throw new Error(result.reason);
       const after: FoodLogEntry = { ...entry, ...result.fields };
       db.dbUpdateFoodLogEntry(after);
       return { before: entry, after };
+    },
+
+    logRecipe(input: { recipeId: string; grams?: number; servings?: number; slot: MealSlot | null; at: Date }): FoodLogEntry {
+      const recipe = db.dbGetAllRecipes().find(r => r.id === input.recipeId);
+      if (!recipe) throw new Error(`No recipe with id ${input.recipeId}. list_recipes has the ids.`);
+      const mealLog = require('../../src/utils/mealLog') as typeof import('../../src/utils/mealLog'); // eslint-disable-line @typescript-eslint/no-require-imports
+      const { grams, servings } = input;
+      if ((grams === undefined) === (servings === undefined)) throw new Error('Give either grams (what is on the plate) or servings (how many helpings), one of the two.');
+      const figures = dishFiguresFor(recipe, [], 'The log never recorded which was used. Log it with log_food and the figures you can state, or ask the person which they used.');
+      if (!figures) throw new Error(`"${recipe.name}" does not have enough ingredients with known nutrition to give figures. Log it with log_food and an estimate instead.`);
+      let helping: ReturnType<typeof mealLog.mealHelping>;
+      if (grams !== undefined) {
+        if (!Number.isFinite(grams) || grams <= 0) throw new Error('grams is a positive number.');
+        if (figures.cookedGrams === null) {
+          throw new Error(`"${recipe.name}" has no cooked weight saved, so a weight on the plate cannot be turned into a share of it. Give servings instead, or save its cooked weight in the app first.`);
+        }
+        if (grams > figures.cookedGrams) {
+          throw new Error(`${grams} g is more than the whole dish weighs (${Math.round(figures.cookedGrams)} g cooked). Subtract the bowl, or check the weight.`);
+        }
+        helping = mealLog.weighedHelping(figures, grams);
+      } else {
+        if (!Number.isFinite(servings) || (servings as number) <= 0) throw new Error('servings is a positive number.');
+        helping = mealLog.mealHelping(figures, servings as number);
+      }
+      const nutrition = helping ? foodLog.helpingNutrition(helping.amounts, helping.servingText, helping.grams, 'estimated') : null;
+      if (!helping || !nutrition) throw new Error(`"${recipe.name}" cannot give figures for that amount. Log it with log_food and an estimate instead.`);
+      const entry = buildFood({
+        label: recipe.name, quantity: helping.servingText, grams: helping.grams, nutrition, slot: input.slot, recipeId: recipe.id, at: input.at,
+      });
+      if (!entry) throw new Error('That entry could not be logged.');
+      return entry;
     },
 
     deleteFoodEntry(id: string): FoodLogEntry {

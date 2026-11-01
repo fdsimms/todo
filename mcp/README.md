@@ -159,9 +159,10 @@ only the fallback until the first sync.
 | `get_pantry_item` | One item's whole pantry state (on hand and why, use-by, opened, frozen, running low, staple, shelf life, waste history, boxes). `unknown` means the app has no opinion, not that it is out. |
 | `pantry_review` | The app's review deck: items whose "probably have it" has lapsed or gone stale. |
 | `use_up_recipes` | What is at or past its use-by day, and the recipes that would use it. |
-| `list_food_log` | Logged food over a day range, with summed nutrients and the person's daily targets. Each entry shows its own `amounts`, and `inAppleHealth` when it was written to Apple Health (only the phone can change or delete those). An estimated meal shows its `breakdown` (the same estimate split across what it named). |
+| `list_food_log` | Logged food over a day range (`query` narrows it to entries whose name holds every word, and the totals then cover only those), with summed nutrients and the person's daily targets. Each entry shows its own `amounts`, and `inAppleHealth` when it was written to Apple Health (only the phone can change or delete those). An estimated meal shows its `breakdown` (the same estimate split across what it named). |
 | `list_saved_meals` | Foods the person logs together under one name. |
 | `move_food_entry` / `duplicate_food_entry` | **Write.** Moves an entry to another day (not once it is in Apple Health), or logs it again; the copy can take `grams` or `quantity` and is re-measured from the food's record. |
+| `log_recipe` | **Write.** Logs a helping of a saved recipe by `grams` on the plate (against the dish's cooked weight) or by `servings`, with the recipe's own figures rather than an estimate; keeps the link to the recipe, so `refresh_dish_entry` can recalculate it. Refused, with the reason, for a recipe with no cooked weight (grams), an unanswered either/or pair, or too few ingredients with known nutrition. |
 | `save_meal_from_entries` / `log_saved_meal` / `delete_saved_meal` | **Write.** Saves entries as a meal, logs a saved meal in one go, or deletes one. |
 | `set_nutrition_targets` | **Write.** The daily figures the food log reads totals against, only as the person gives them. |
 | `list_mood_logs` | Mood check-ins: rating, symptoms, context tags, notes. |
