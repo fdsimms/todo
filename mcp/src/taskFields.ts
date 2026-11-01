@@ -52,7 +52,7 @@ export const REPEAT_EVERY = ['never', 'hours', 'day', 'week', 'month', 'year'] a
 export type RepeatEvery = (typeof REPEAT_EVERY)[number];
 export const TIME_SEGMENTS: readonly TimeOfDay[] = ['morning', 'afternoon', 'evening', 'night'];
 export const STEP_QUESTION_KINDS = ['text', 'date', 'number', 'yesno'] as const;
-export const DELIVERABLE_KINDS: readonly DeliverableKind[] = ['text', 'date', 'number', 'yesno', 'choice'];
+export const DELIVERABLE_KINDS: readonly DeliverableKind[] = ['text', 'date', 'dateRange', 'number', 'yesno', 'choice'];
 
 /** The app's own limits, from the editor's pickers. */
 export const LIMITS = {

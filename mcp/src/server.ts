@@ -2581,7 +2581,7 @@ function registerWriteTools(
         tags: z.array(z.string()).nullable().optional().describe('Added to every new task of this kind. Replaces the list; null or [] clears it.'),
         timeOfDay: z.enum(['morning', 'afternoon', 'evening', 'night']).nullable().optional().describe('Keeps these tasks off Today until that part of the day.'),
         askOnCompletion: z.object({
-          kind: z.enum(['text', 'date', 'number', 'yesno', 'choice']),
+          kind: z.enum(['text', 'date', 'dateRange', 'number', 'yesno', 'choice']),
           options: z.array(z.string()).optional().describe('For choice: at least two.'),
         }).nullable().optional().describe('A question to answer when one of these tasks is completed; null for none.'),
       }).optional().describe('Fields left out stay as they are; null clears one.'),

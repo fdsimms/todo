@@ -763,7 +763,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       deliverableKind,
       deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(deliverableOptionsText) : [],
-      deliverableSetsAway: deliverableKind === 'date' && tripTemplate && deliverableSetsAway,
+      deliverableSetsAway: (deliverableKind === 'date' || deliverableKind === 'dateRange') && tripTemplate && deliverableSetsAway,
       // A chain needs at least 2 steps — activeChainStep() (src/utils/chain.ts)
       // already treats a single-item chain as equivalent to a plain task, so
       // saving with fewer than 2 items quietly turns Chain back off rather
@@ -2860,7 +2860,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           {/* Only on a trip template: "Pick dates" answered with the 14th is
               the trip leaving on the 14th, so the project it lands in can
               learn its Leaving date from the answer. */}
-          {deliverableKind === 'date' && tripTemplate && (
+          {(deliverableKind === 'date' || deliverableKind === 'dateRange') && tripTemplate && (
             <TouchableOpacity
               style={styles.optionRow}
               onPress={() => { haptics.tap(); setDeliverableSetsAway(!deliverableSetsAway); }}
@@ -2871,8 +2871,12 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             >
               <Ionicons name="airplane-outline" size={18} color={deliverableSetsAway ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Sets the leaving date</Text>
-                <Text style={styles.optionHint}>The date you answer becomes the trip’s Leaving date, if it doesn’t have one yet</Text>
+                <Text style={styles.optionLabel}>{deliverableKind === 'dateRange' ? 'Sets the trip dates' : 'Sets the leaving date'}</Text>
+                <Text style={styles.optionHint}>
+                  {deliverableKind === 'dateRange'
+                    ? 'The start becomes the trip’s Leaving date and the end its Coming back date, if it doesn’t have them yet'
+                    : 'The date you answer becomes the trip’s Leaving date, if it doesn’t have one yet'}
+                </Text>
               </View>
               <Toggle value={deliverableSetsAway} />
             </TouchableOpacity>

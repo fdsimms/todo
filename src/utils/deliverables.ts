@@ -28,7 +28,9 @@ import { activeChainStep, nextChainStep, type ChainCarrier } from './chain';
  * 3. A date answer on a task that opted in (`Task.deliverableSetsAway`) fills
  *    its project's empty Leaving date: "Pick dates for Lisbon" answered with
  *    the 14th. It never moves a Leaving date already set. See
- *    `departureFromAnswer` in `src/utils/awayDates.ts`.
+ *    `departureFromAnswer` in `src/utils/awayDates.ts`. A `'dateRange'` answer
+ *    on the same opt-in fills Coming back as well, so the trip's two ends are
+ *    one question rather than a second prompt.
  *
  * The second and third were added on the terms the first set, and they're worth stating
  * because they're what stops this becoming a scripting field: one kind, one
@@ -83,6 +85,7 @@ export const DELIVERABLE_META: {
 }[] = [
   { key: 'text', label: 'Text', icon: 'text-outline' },
   { key: 'date', label: 'Date', icon: 'calendar-outline' },
+  { key: 'dateRange', label: 'Date range', icon: 'calendar-number-outline' },
   { key: 'number', label: 'Number', icon: 'calculator-outline' },
   { key: 'yesno', label: 'Yes/No', icon: 'checkmark-done-outline' },
   { key: 'choice', label: 'Pick one', icon: 'list-circle-outline' },
@@ -215,6 +218,26 @@ export function deliverableDate(value: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** What joins a range's two ISO instants. Neither half contains one. */
+const DATE_RANGE_SEPARATOR = '/';
+
+/** The two ends of a stored 'dateRange' answer, or null if it isn't one. */
+export function deliverableDateRange(value: string | null | undefined): { start: Date; end: Date } | null {
+  if (!value) return null;
+  const [a, b, ...rest] = value.split(DATE_RANGE_SEPARATOR);
+  if (!a || !b || rest.length > 0) return null;
+  const start = new Date(a);
+  const end = new Date(b);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  return { start, end };
+}
+
+/** The stored form of a range. Given backwards, the earlier day is the start. */
+export function dateRangeValue(a: Date, b: Date): string {
+  const [start, end] = a.getTime() <= b.getTime() ? [a, b] : [b, a];
+  return `${start.toISOString()}${DATE_RANGE_SEPARATOR}${end.toISOString()}`;
+}
+
 /**
  * The stored form of a typed answer, or null if there isn't one.
  *
@@ -239,6 +262,10 @@ export function normalizeDeliverableValue(kind: DeliverableKind, raw: string | n
     case 'date': {
       const d = new Date(trimmed);
       return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+    case 'dateRange': {
+      const range = deliverableDateRange(trimmed);
+      return range ? dateRangeValue(range.start, range.end) : null;
     }
     // The option's own text, so a count can group on it. Which options exist
     // is the prompt's business; the store is reachable without it.
@@ -268,6 +295,17 @@ export function formatDeliverableValue(kind: DeliverableKind, value: string | nu
       const d = new Date(value);
       if (Number.isNaN(d.getTime())) return null;
       return format(d, d.getFullYear() === new Date().getFullYear() ? 'EEE, MMM d' : 'EEE, MMM d, yyyy');
+    }
+    case 'dateRange': {
+      const range = deliverableDateRange(value);
+      if (!range) return null;
+      // Absolute for the same reason a single date is. Years appear on both
+      // ends once either is outside this year, so "Dec 28, 2026 to Jan 4, 2027"
+      // never reads as one year.
+      const thisYear = new Date().getFullYear();
+      const plain = range.start.getFullYear() === thisYear && range.end.getFullYear() === thisYear;
+      const pattern = plain ? 'MMM d' : 'MMM d, yyyy';
+      return `${format(range.start, pattern)} to ${format(range.end, pattern)}`;
     }
   }
 }

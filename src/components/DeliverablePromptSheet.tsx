@@ -28,6 +28,8 @@ import {
   normalizeDeliverableValue,
   chainStepDatedByAnswer,
   deliverableDate,
+  deliverableDateRange,
+  dateRangeValue,
   deliverableKindFor,
   deliverableOptionsFor,
   reasoningOf,
@@ -126,6 +128,12 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const inputRef = useRef<TextInput>(null);
   const [draft, setDraft] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
+  // A date range is two picks, so it keeps its ends apart until both exist;
+  // `draft` holds the joined answer only for the kinds with one field.
+  // `rangeSide` is which end the open picker is choosing.
+  const [rangeStart, setRangeStart] = useState<Date | null>(null);
+  const [rangeEnd, setRangeEnd] = useState<Date | null>(null);
+  const [rangeSide, setRangeSide] = useState<'start' | 'end'>('start');
   // The day a catch-up really happened, for one logged late. Null is now, which
   // leaves the completion alone. Only offered while completing: correcting an
   // answer in the Logbook has no completion to date.
@@ -167,6 +175,9 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     // thing that happens.
     const packSeed = !stored ? supplyReorderPackSeed(task, useTaskStore.getState().tasks) : null;
     setDraft(staleForScheduling ? '' : (stored || packSeed || ''));
+    const heldRange = deliverableDateRange(stored);
+    setRangeStart(heldRange ? heldRange.start : null);
+    setRangeEnd(heldRange ? heldRange.end : null);
     setPickerOpen(false);
     setDoneOn(null);
     const held = reasoningOf(task);
@@ -180,10 +191,12 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   // rather than the open effect, which can run before the card is presented
   // (see QuickAddModal's own note on this).
   const focusField = () => {
-    if (kind !== 'date' && options.length === 0) inputRef.current?.focus();
+    if (kind !== 'date' && kind !== 'dateRange' && options.length === 0) inputRef.current?.focus();
   };
 
-  const normalized = normalizeDeliverableValue(kind, draft);
+  const normalized = kind === 'dateRange'
+    ? (rangeStart && rangeEnd ? dateRangeValue(rangeStart, rangeEnd) : null)
+    : normalizeDeliverableValue(kind, draft);
 
   const dismiss = (after: () => void) => card.close(after);
 
@@ -199,6 +212,29 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const pickDate = (d: Date) => {
     haptics.tap();
     setDraft(d.toISOString());
+    setPickerOpen(false);
+  };
+
+  const openRangePicker = (side: 'start' | 'end') => {
+    haptics.tap();
+    setRangeSide(side);
+    setPickerOpen(true);
+  };
+
+  // An end picked before the start swaps the two rather than refusing it, the
+  // same way the stored form orders them (dateRangeValue).
+  const pickRangeEnd = (d: Date) => {
+    haptics.tap();
+    const picked = noonOf(d);
+    if (rangeSide === 'start') {
+      setRangeStart(picked);
+      if (rangeEnd && rangeEnd.getTime() < picked.getTime()) setRangeEnd(picked);
+    } else if (rangeStart && picked.getTime() < rangeStart.getTime()) {
+      setRangeEnd(rangeStart);
+      setRangeStart(picked);
+    } else {
+      setRangeEnd(picked);
+    }
     setPickerOpen(false);
   };
 
@@ -230,7 +266,11 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
         mountPicker && (
           <WhenPicker
             visible={pickerOpen}
-            value={catchUp ? doneOn : normalized ? new Date(normalized) : null}
+            value={
+              catchUp ? doneOn
+                : kind === 'dateRange' ? (rangeSide === 'start' ? rangeStart : rangeEnd ?? rangeStart)
+                : normalized ? new Date(normalized) : null
+            }
             title={displayTitleFor(task)}
             showTimeOfDay={false}
             showSuggest={false}
@@ -241,7 +281,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
             allowPast={datesStep === null}
             // A catch-up already happened, so tomorrow is not a day it can be dated.
             allowFuture={!catchUp}
-            onConfirm={date => { if (date) (catchUp ? pickDoneOn : pickDate)(date); else setPickerOpen(false); }}
+            onConfirm={date => { if (date) (catchUp ? pickDoneOn : kind === 'dateRange' ? pickRangeEnd : pickDate)(date); else setPickerOpen(false); }}
             onCancel={() => setPickerOpen(false)}
           />
         )
@@ -309,6 +349,28 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
                 >
                   <Text style={[styles.optionText, chosen && styles.optionTextChosen]}>{option}</Text>
                   {chosen && <Ionicons name="checkmark" size={iconSize.sm} color={colors.accent} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ) : kind === 'dateRange' ? (
+          <View style={styles.rangeField}>
+            {([
+              { side: 'start' as const, label: 'Start', value: rangeStart },
+              { side: 'end' as const, label: 'End', value: rangeEnd },
+            ]).map(({ side, label, value }, i) => {
+              const text = value ? formatDeliverableValue('date', value.toISOString()) : null;
+              return (
+                <TouchableOpacity
+                  key={side}
+                  style={[styles.rangeRow, i > 0 && styles.rangeRowDivider]}
+                  onPress={() => openRangePicker(side)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={text ? `${label}, ${text}` : `Pick a ${label.toLowerCase()} date`}
+                >
+                  <Text style={styles.rangeLabel}>{label}</Text>
+                  <Text style={text ? styles.fieldValue : styles.fieldPlaceholder}>{text ?? 'Pick a date'}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -440,7 +502,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
             happened, not a decision with a reason behind it, so neither is
             offered. One that already holds some keeps its fields
             (reasoningOpen above), so nothing stored is hidden. */}
-        {!reasoningOpen && kind !== 'date' && !catchUp && (
+        {!reasoningOpen && kind !== 'date' && kind !== 'dateRange' && !catchUp && (
           <View style={styles.extras}>
             {!reasoningOpen && (
               <InlineAction
@@ -537,6 +599,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.lg,
   },
+  rangeField: {
+    marginHorizontal: spacing.md,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+  },
+  rangeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    minHeight: 48,
+  },
+  rangeRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator },
+  rangeLabel: { width: 56, color: colors.textSecondary, fontSize: font.md },
   fieldValue: { color: colors.text, fontSize: font.lg },
   fieldPlaceholder: { color: colors.textTertiary, fontSize: font.lg },
   pills: {

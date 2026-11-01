@@ -302,7 +302,7 @@ export interface WatchQuestion {
  * The question the watch can ask in place of sending the person to the
  * phone, or null when the tap still needs the app. Only a plain "asks on
  * completion" qualifies: nothing else in the way (a reminder offer, the meal
- * question), not a date (which can schedule the next chain step and wants
+ * question), not a date or date range (which can schedule the next chain step and wants
  * the calendar), and not a catch-up, whose prompt also asks which day it
  * happened. A pick-one with fewer than two options is a text answer, as in
  * the app's own prompt.
@@ -312,7 +312,7 @@ export function watchQuestionFor(task: Task, mealLogPrompt: boolean): WatchQuest
   if (task.completionTimerMinutes || offersMealLogOnCompletion(task, mealLogPrompt)) return null;
   if (task.generatedKind === 'reachOut') return null;
   const kind = deliverableKindFor(task);
-  if (kind === null || kind === 'date') return null;
+  if (kind === null || kind === 'date' || kind === 'dateRange') return null;
   const options = deliverableOptionsFor(task);
   if (kind === 'choice' && options.length === 0) return { kind: 'text', options: [] };
   return { kind, options };

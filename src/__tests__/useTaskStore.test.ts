@@ -2043,6 +2043,45 @@ describe('completeTask', () => {
     }
   });
 
+  it('fills Leaving and Coming back from a date range answer, with no second prompt, and undoes both', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'trip', awayStart: null, awayEnd: null })] });
+    useTaskStore.setState({
+      tripDatePrompt: null,
+      tasks: [makeTask({ id: 'pick', projectId: 'trip', deliverableKind: 'dateRange', deliverableSetsAway: true } as Partial<Task>)],
+    });
+    try {
+      useTaskStore.getState().completeTask('pick', {
+        deliverableValue: `${new Date(2025, 5, 20, 12).toISOString()}/${new Date(2025, 5, 27, 12).toISOString()}`,
+      });
+      const trip = useProjectStore.getState().projects.find(p => p.id === 'trip')!;
+      expect(dayKeyOf(new Date(trip.awayStart!))).toBe('2025-06-20');
+      expect(dayKeyOf(new Date(trip.awayEnd!))).toBe('2025-06-27');
+      expect(useTaskStore.getState().tripDatePrompt).toBeNull();
+      useTaskStore.getState().lastAction?.undo();
+      const undone = useProjectStore.getState().projects.find(p => p.id === 'trip')!;
+      expect(undone.awayStart).toBeNull();
+      expect(undone.awayEnd).toBeNull();
+    } finally {
+      useProjectStore.setState({ projects: [] });
+    }
+  });
+
+  it('asks for Coming back when a date range starts and ends on the same day', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'trip', awayStart: null, awayEnd: null })] });
+    useTaskStore.setState({
+      tripDatePrompt: null,
+      tasks: [makeTask({ id: 'pick', projectId: 'trip', deliverableKind: 'dateRange', deliverableSetsAway: true } as Partial<Task>)],
+    });
+    try {
+      const day = new Date(2025, 5, 20, 12).toISOString();
+      useTaskStore.getState().completeTask('pick', { deliverableValue: `${day}/${day}` });
+      expect(useProjectStore.getState().projects.find(p => p.id === 'trip')!.awayEnd).toBeNull();
+      expect(useTaskStore.getState().tripDatePrompt).toEqual(expect.objectContaining({ kind: 'return', projectId: 'trip' }));
+    } finally {
+      useProjectStore.setState({ projects: [] });
+    }
+  });
+
   it("keeps a repeating task's wait on its successor but drops the follow-up day", () => {
     useTaskStore.setState({
       tasks: [makeTask({

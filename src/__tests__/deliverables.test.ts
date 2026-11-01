@@ -3,6 +3,8 @@ import {
   asksOnCompletion,
   chainStepDatedByAnswer,
   deliverableDate,
+  deliverableDateRange,
+  dateRangeValue,
   deliverableKindFor,
   deliverableMeta,
   formatDeliverableValue,
@@ -274,5 +276,42 @@ describe('the pick-from-a-set kinds', () => {
     expect(normalizeDeliverableValue('choice', '  Maybe ')).toBe('Maybe');
     expect(normalizeDeliverableValue('yesno', 'Yes')).toBe('Yes');
     expect(formatDeliverableValue('choice', 'Maybe')).toBe('Maybe');
+  });
+});
+
+describe('the date range kind', () => {
+  const start = new Date(2026, 8, 12, 12);
+  const end = new Date(2026, 8, 19, 12);
+  const stored = `${start.toISOString()}/${end.toISOString()}`;
+
+  it('stores two instants, earlier first, whichever way round they come', () => {
+    expect(dateRangeValue(start, end)).toBe(stored);
+    expect(dateRangeValue(end, start)).toBe(stored);
+  });
+
+  it('reads the ends back, and nothing from a value that is not a range', () => {
+    const range = deliverableDateRange(stored)!;
+    expect(range.start.getTime()).toBe(start.getTime());
+    expect(range.end.getTime()).toBe(end.getTime());
+    expect(deliverableDateRange(null)).toBeNull();
+    expect(deliverableDateRange(start.toISOString())).toBeNull();
+    expect(deliverableDateRange(`${start.toISOString()}/nonsense`)).toBeNull();
+    expect(deliverableDateRange(`${stored}/${stored}`)).toBeNull();
+  });
+
+  it('normalizes a typed range and refuses a half answer', () => {
+    expect(normalizeDeliverableValue('dateRange', ` ${stored} `)).toBe(stored);
+    expect(normalizeDeliverableValue('dateRange', `${end.toISOString()}/${start.toISOString()}`)).toBe(stored);
+    expect(normalizeDeliverableValue('dateRange', start.toISOString())).toBeNull();
+    expect(normalizeDeliverableValue('dateRange', '')).toBeNull();
+  });
+
+  it('reads as two absolute days, with the year on both once either is outside this one', () => {
+    const thisYear = new Date().getFullYear();
+    const near = dateRangeValue(new Date(thisYear, 8, 12, 12), new Date(thisYear, 8, 19, 12));
+    expect(formatDeliverableValue('dateRange', near)).toBe('Sep 12 to Sep 19');
+    const across = dateRangeValue(new Date(thisYear + 1, 11, 28, 12), new Date(thisYear + 2, 0, 4, 12));
+    expect(formatDeliverableValue('dateRange', across)).toBe(`Dec 28, ${thisYear + 1} to Jan 4, ${thisYear + 2}`);
+    expect(formatDeliverableValue('dateRange', 'garbage')).toBeNull();
   });
 });

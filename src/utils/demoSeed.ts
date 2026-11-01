@@ -4192,7 +4192,7 @@ function seedTemplates(): void {
     // The decision item: applying the template produces a task that asks for
     // the dates when it's ticked, rather than one someone has to convert to a
     // decision by hand every trip.
-    { id: pickDatesId, title: 'Pick dates for {destination}', dueOffsetDays: -28, deliverableKind: 'date', deliverableSetsAway: true },
+    { id: pickDatesId, title: 'Pick dates for {destination}', dueOffsetDays: -28, deliverableKind: 'dateRange', deliverableSetsAway: true },
     { title: 'Put in for PTO for {run}', category: 'Work', dueOffsetDays: -21, priority: 3 },
     // The one item that waits on another, so "Waits on" isn't empty on every
     // item in the demo: no flights before there are dates.
