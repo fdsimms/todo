@@ -523,7 +523,7 @@ with no Leaving date had nothing anchored to it to move.
 Both directions above assume you know the dates when you apply the template. Often
 you do not — the trip is real, the prep is real, and the dates are the *first*
 thing on the list to find out. The Trip prep template already opens with exactly
-that task: "Pick dates for {destination}", a `deliverableKind: 'date'` task
+that task: "Pick dates for {destination}", a `deliverableKind: 'dateRange'` task
 28 days out.
 
 So the third direction is: **applying the template with no anchors gives a project
