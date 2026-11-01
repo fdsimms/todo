@@ -2115,8 +2115,9 @@ charger would read "no token".
   source's own date, so moving it keeps the #1953 rule.
 - **Nothing completes it.** An empty queue drops the count from the title and gives the row the
   green ready ring (`isWaniKaniTaskReady`, read in `TaskItem`), the `healthTarget.ts` rule.
-- **Lessons are once a day and optional** (`wanikaniLessonsPerDay`, null for none). The task asks
-  for that many, fewer if fewer are available, and its count follows the lessons done today (the
+- **Lessons are once a day and optional** (`wanikaniLessonsPerDay`, null for none, and
+  `WANIKANI_LESSONS_ALL` (0) for every lesson available, which `wanikaniLessonsLeft` alone
+  interprets). The task asks for that many, fewer if fewer are available, and its count follows the lessons done today (the
   assignments started since the logical day began). It is written only while Apprentice is under
   `wanikaniApprenticeCap`, and the day is spent by writing it, never by declining to, so a level-up
   or a review session later in the day can still bring it. Yesterday's goes at the day's first read.

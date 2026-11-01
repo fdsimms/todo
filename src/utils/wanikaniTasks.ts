@@ -70,6 +70,13 @@ export const WANIKANI_REVIEW_THRESHOLD_MAX = 500;
 
 export const WANIKANI_LESSONS_PER_DAY_MIN = 1;
 export const WANIKANI_LESSONS_PER_DAY_MAX = 100;
+/**
+ * `wanikaniLessonsPerDay` holding this means "every lesson that's available",
+ * with no daily number. A stored number rather than a second setting so the
+ * sync, the backup and the MCP carry it as they already carry the count, and
+ * `wanikaniLessonsLeft` is the only reader that has to know what it means.
+ */
+export const WANIKANI_LESSONS_ALL = 0;
 
 export const WANIKANI_APPRENTICE_CAP_DEFAULT = 100;
 export const WANIKANI_APPRENTICE_CAP_MIN = 10;
@@ -113,10 +120,14 @@ export function clampWaniKaniReviewThreshold(value: unknown): number {
     WANIKANI_REVIEW_THRESHOLD_DEFAULT);
 }
 
-/** `wanikaniLessonsPerDay` clamped, with null (no lessons task) kept as null. */
+/**
+ * `wanikaniLessonsPerDay` clamped, with null (no lessons task) kept as null and
+ * `WANIKANI_LESSONS_ALL` kept as it is (a negative number is not "all").
+ */
 export function clampWaniKaniLessonsPerDay(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  if (value === WANIKANI_LESSONS_ALL) return WANIKANI_LESSONS_ALL;
   return clampInt(value, WANIKANI_LESSONS_PER_DAY_MIN, WANIKANI_LESSONS_PER_DAY_MAX, WANIKANI_LESSONS_PER_DAY_MIN);
 }
 
@@ -331,9 +342,14 @@ export function decideWaniKaniReviews(input: {
   };
 }
 
-/** How many of today's lessons are left: the day's number less those done, never more than are available. */
+/**
+ * How many of today's lessons are left: the day's number less those done, never
+ * more than are available. With `WANIKANI_LESSONS_ALL` there is no day's number,
+ * so it is every lesson available. Null when lessons weren't read at all.
+ */
 export function wanikaniLessonsLeft(snapshot: WaniKaniSnapshot, perDay: number): number | null {
   if (snapshot.lessonsDone === null) return null;
+  if (perDay === WANIKANI_LESSONS_ALL) return Math.max(0, snapshot.lessonsNow);
   return Math.max(0, Math.min(perDay - snapshot.lessonsDone, snapshot.lessonsNow));
 }
 

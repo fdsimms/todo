@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { CountStepper } from '../../components/CountStepper';
+import type { SegmentOption } from '../../components/SegmentedControl';
 import { TextField } from '../../components/TextField';
 import { useColors } from '../../theme/ThemeContext';
 import {
@@ -10,6 +11,7 @@ import {
   WANIKANI_APPRENTICE_CAP_MAX,
   WANIKANI_APPRENTICE_CAP_MIN,
   WANIKANI_APPRENTICE_CAP_STEP,
+  WANIKANI_LESSONS_ALL,
   WANIKANI_LESSONS_PER_DAY_MAX,
   WANIKANI_LESSONS_PER_DAY_MIN,
   WANIKANI_REVIEW_THRESHOLD_DEFAULT,
@@ -17,6 +19,7 @@ import {
   WANIKANI_REVIEW_THRESHOLD_MIN,
 } from '../../utils/wanikaniTasks';
 import { SettingsRow } from './SettingsRow';
+import { SettingsSegments } from './SettingsSegments';
 import { WaniKaniTokenRows } from './WaniKaniTokenRows';
 import { makeSettingsStyles } from './settingsStyles';
 
@@ -30,6 +33,12 @@ import { makeSettingsStyles } from './settingsStyles';
 
 /** What the Lessons switch starts at when turned on. */
 const LESSONS_PER_DAY_START = 5;
+
+type LessonsMode = 'number' | 'all';
+const LESSONS_MODE_OPTIONS: SegmentOption<LessonsMode>[] = [
+  { value: 'number', label: 'A number' },
+  { value: 'all', label: 'All' },
+];
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -81,12 +90,23 @@ export function WaniKaniSettingsRows(): React.ReactElement {
         icon="sparkles-outline"
         iconColor={s.lessonsPerDay !== null ? colors.accent : undefined}
         label="Lessons"
-        hint="A task each day to do this many lessons, on a day there are lessons to do."
+        hint={s.lessonsPerDay === WANIKANI_LESSONS_ALL
+          ? 'A task each day to do all the lessons available.'
+          : 'A task each day to do this many lessons, on a day there are lessons to do.'}
         toggle={s.lessonsPerDay !== null}
         onPress={() => s.setLessonsPerDay(s.lessonsPerDay === null ? LESSONS_PER_DAY_START : null)}
         tight={s.lessonsPerDay !== null}
       />
       {s.lessonsPerDay !== null && (
+        <SettingsSegments
+          attached
+          options={LESSONS_MODE_OPTIONS}
+          selected={s.lessonsPerDay === WANIKANI_LESSONS_ALL ? 'all' : 'number'}
+          onSelect={mode => s.setLessonsPerDay(mode === 'all' ? WANIKANI_LESSONS_ALL : LESSONS_PER_DAY_START)}
+          accessibilityLabelFor={o => `Lessons: ${o.label}`}
+        />
+      )}
+      {s.lessonsPerDay !== null && s.lessonsPerDay !== WANIKANI_LESSONS_ALL && (
         <View style={styles.cadenceRow}>
           <CountStepper
             value={s.lessonsPerDay}

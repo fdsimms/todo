@@ -1,6 +1,7 @@
 import {
   WANIKANI_APPRENTICE_CAP_DEFAULT,
   WANIKANI_INITIAL_REVIEW_STATE,
+  WANIKANI_LESSONS_ALL,
   WANIKANI_REVIEW_THRESHOLD_DEFAULT,
   clampWaniKaniApprenticeCap,
   clampWaniKaniLessonsPerDay,
@@ -56,8 +57,13 @@ describe('the settings', () => {
   it('keeps no lessons task as null and clamps a number', () => {
     expect(clampWaniKaniLessonsPerDay(null)).toBeNull();
     expect(clampWaniKaniLessonsPerDay(undefined)).toBeNull();
-    expect(clampWaniKaniLessonsPerDay(0)).toBe(1);
     expect(clampWaniKaniLessonsPerDay(7)).toBe(7);
+    expect(clampWaniKaniLessonsPerDay(-3)).toBe(1);
+    expect(clampWaniKaniLessonsPerDay(500)).toBe(100);
+  });
+
+  it('keeps "all lessons" as its own value rather than clamping it to one', () => {
+    expect(clampWaniKaniLessonsPerDay(WANIKANI_LESSONS_ALL)).toBe(WANIKANI_LESSONS_ALL);
   });
 
   it('keeps no cap as null and steps the cap by ten', () => {
@@ -287,5 +293,29 @@ describe('isWaniKaniTaskReady', () => {
 
   it('is never ready without a read', () => {
     expect(isWaniKaniTaskReady(row('reviews:2026-10-18T09'), null, null, NOW)).toBe(false);
+  });
+});
+
+describe('all lessons', () => {
+  it('asks for every lesson available, whatever was done today', () => {
+    expect(wanikaniLessonsLeft(snapshot({ lessonsNow: 12, lessonsDone: 0 }), WANIKANI_LESSONS_ALL)).toBe(12);
+    expect(wanikaniLessonsLeft(snapshot({ lessonsNow: 7, lessonsDone: 30 }), WANIKANI_LESSONS_ALL)).toBe(7);
+  });
+
+  it('has nothing left when none are available, and is unanswered when lessons were not read', () => {
+    expect(wanikaniLessonsLeft(snapshot({ lessonsNow: 0 }), WANIKANI_LESSONS_ALL)).toBe(0);
+    expect(wanikaniLessonsLeft(snapshot({ lessonsDone: null }), WANIKANI_LESSONS_ALL)).toBeNull();
+  });
+
+  it('wants the task only while some are available', () => {
+    const input = { todayKey: '2026-10-18', perDay: WANIKANI_LESSONS_ALL, apprenticeCap: null, lastDayKey: null };
+    expect(wantsWaniKaniLessonsTask({ ...input, snapshot: snapshot({ lessonsNow: 12 }) })).toBe(true);
+    expect(wantsWaniKaniLessonsTask({ ...input, snapshot: snapshot({ lessonsNow: 0 }) })).toBe(false);
+  });
+
+  it('reads as ready once no lesson is left to do', () => {
+    const task = row(wanikaniLessonsSourceId('2026-10-18'));
+    expect(isWaniKaniTaskReady(task, snapshot({ lessonsNow: 3 }), WANIKANI_LESSONS_ALL, NOW)).toBe(false);
+    expect(isWaniKaniTaskReady(task, snapshot({ lessonsNow: 0 }), WANIKANI_LESSONS_ALL, NOW)).toBe(true);
   });
 });
