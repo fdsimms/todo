@@ -2101,7 +2101,7 @@ export function FoodLogEntrySheet({
 
   // What is in the fridge, above this meal's usual foods: a container is
   // something the person put there to be eaten. Rows laid out like a saved
-  // meal's. The body asks how much of it; the plus logs all of it at once. A
+  // meal's. The body and the plus both ask how much of it. A
   // container with no figures shows a sparkle instead, which starts the
   // estimate rather than logging a food nobody can count.
   const fridgeBlock = fridge.length > 0 ? (
@@ -2131,9 +2131,9 @@ export function FoodLogEntrySheet({
             <TouchableOpacity
               style={styles.helpingAdd}
               activeOpacity={interaction.activeOpacity}
-              onPress={() => (figures ? logContainer(l, figures) : startContainerFigures(l))}
+              onPress={() => (figures ? askContainerShare(l, figures) : startContainerFigures(l))}
               accessibilityRole="button"
-              accessibilityLabel={figures ? `Log all of ${l.title}, ${meta}` : `Estimate the nutrition of ${l.title}`}
+              accessibilityLabel={figures ? `Choose how much of ${l.title} to log, ${meta}` : `Estimate the nutrition of ${l.title}`}
             >
               <Ionicons name={figures ? 'add-circle-outline' : 'sparkles-outline'} size={iconSize.md} color={colors.accent} />
             </TouchableOpacity>
