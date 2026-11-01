@@ -9,7 +9,7 @@ import {
   type TextInputProps,
 } from 'react-native';
 import { DONE_ACCESSORY_ID, doneBarKind, setFloatingDoneFocus } from '../utils/keyboardDone';
-import { fieldChanged, initialFieldSync, nextFieldSync, styleKeyOf, type FieldSync } from '../utils/textFieldSync';
+import { fieldChanged, fieldText, initialFieldSync, nextFieldSync, styleKeyOf, type FieldSync } from '../utils/textFieldSync';
 
 /**
  * **Every text field that takes a `value` is this, never a bare `TextInput`.**
@@ -27,6 +27,11 @@ import { fieldChanged, initialFieldSync, nextFieldSync, styleKeyOf, type FieldSy
  * uses, guarded by the same event count so a write that's already stale (the
  * person typed again first) is dropped rather than overwriting them.
  * `src/utils/textFieldSync.ts` has the rules and the full mechanism.
+ *
+ * **`defaultValue` is mount-only, as on `TextInput`** (`fieldText`). The
+ * `useFilterField` search bars hold theirs frozen at the text the field
+ * mounted with; re-reading it each render sent that back after the first
+ * keystroke and cleared the bar. Only `value` is compared every render.
  *
  * `selection` works as it does on `TextInput`, and is applied the same way: by
  * the command, never by re-render. That matters because `TextInput` pushes its
@@ -119,10 +124,10 @@ export function TextField({
     [ref],
   );
 
-  const text = value ?? defaultValue ?? '';
+  const sync = useRef<FieldSync | null>(null);
+  const text = fieldText(sync.current, value, defaultValue);
   const styleKey = styleKeyOf(StyleSheet.flatten(style), rest.allowFontScaling, rest.maxFontSizeMultiplier);
 
-  const sync = useRef<FieldSync | null>(null);
   // The event count of the field's last change, which the command must match.
   const eventCount = useRef(0);
   // Survives a render that's thrown away before it commits, so the commit

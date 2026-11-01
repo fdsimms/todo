@@ -1,4 +1,26 @@
-import { fieldChanged, initialFieldSync, nextFieldSync, styleKeyOf } from '../utils/textFieldSync';
+import { fieldChanged, fieldText, initialFieldSync, nextFieldSync, styleKeyOf } from '../utils/textFieldSync';
+
+describe('fieldText', () => {
+  it('reads defaultValue only at mount, so a frozen one never clears a typed field', () => {
+    // The search bars: defaultValue is held at '' while the field is up.
+    let sync = initialFieldSync(fieldText(null, undefined, ''), 'a');
+    sync = fieldChanged(sync, 'a');
+    const next = nextFieldSync(sync, fieldText(sync, undefined, ''), 'a');
+    expect(next.write).toBeNull();
+    expect(next.sync.known).toBe('a');
+  });
+
+  it('still compares a controlled value every render', () => {
+    const sync = fieldChanged(initialFieldSync('', 'a'), 'milk');
+    expect(fieldText(sync, '', '')).toBe('');
+    expect(nextFieldSync(sync, fieldText(sync, '', ''), 'a').write).toBe('');
+  });
+
+  it('starts from defaultValue, or empty', () => {
+    expect(fieldText(null, undefined, 'note')).toBe('note');
+    expect(fieldText(null, undefined, undefined)).toBe('');
+  });
+});
 
 describe('nextFieldSync', () => {
   it('writes nothing when React re-renders with what the field just reported', () => {

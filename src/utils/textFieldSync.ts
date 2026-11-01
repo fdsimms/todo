@@ -48,6 +48,27 @@ export function initialFieldSync(value: string, styleKey: string): FieldSync {
 }
 
 /**
+ * The text a render says the field should hold.
+ *
+ * `value` is the controlled text and is compared against the field every
+ * render. `defaultValue` is **mount-only, as on `TextInput`**: once the field
+ * exists it is ignored, and the field's own text stands. Reading it every
+ * render made a caller whose `defaultValue` is deliberately frozen (the
+ * `useFilterField` search bars, which hold it at what the field mounted with)
+ * look like a caller asking for that text back, so the first keystroke was
+ * followed by a write of the empty mount text: the bar cleared itself while the
+ * list stayed filtered by the character just typed.
+ */
+export function fieldText(
+  prev: FieldSync | null,
+  value: string | undefined,
+  defaultValue: string | undefined,
+): string {
+  if (value !== undefined) return value;
+  return prev ? prev.known : (defaultValue ?? '');
+}
+
+/**
  * Fold one render's props into the sync state.
  *
  * `write` is the text to push into the field with a command, or `null` when
