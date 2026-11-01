@@ -153,6 +153,20 @@ export function deliverableMeta(kind: DeliverableKind) {
   return DELIVERABLE_META.find(m => m.key === kind)!;
 }
 
+/**
+ * A decision's title as the project's Decisions block labels it. The block is
+ * already headed "Decisions", so "Decide dates" reads as "Dates" there and
+ * "Decide on the venue" as "The venue". Only a leading "Decide" followed by a
+ * plain noun phrase is dropped: a question ("Decide whether to rent") or a
+ * bare "Decide" keeps its words, and the task's own title is never changed.
+ */
+export function decisionLabel(title: string): string {
+  const match = /^decide\s+(?:on\s+|about\s+)?(?!whether\b|if\b|how\b|what\b|which\b|when\b|where\b|who\b|to\b)(\S.*)$/i.exec(title.trim());
+  if (!match) return title;
+  const rest = match[1];
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+}
+
 /** What the deliverable reads need: the task's own question, plus its chain position. */
 export type DeliverableSource = ChainCarrier & Pick<Task, 'deliverableKind'>;
 

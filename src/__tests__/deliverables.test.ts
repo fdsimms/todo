@@ -2,6 +2,7 @@ import {
   DELIVERABLE_TEXT_MAX_LENGTH,
   asksOnCompletion,
   chainStepDatedByAnswer,
+  decisionLabel,
   deliverableDate,
   deliverableDateRange,
   dateRangeValue,
@@ -313,5 +314,20 @@ describe('the date range kind', () => {
     const across = dateRangeValue(new Date(thisYear + 1, 11, 28, 12), new Date(thisYear + 2, 0, 4, 12));
     expect(formatDeliverableValue('dateRange', across)).toBe(`Dec 28, ${thisYear + 1} to Jan 4, ${thisYear + 2}`);
     expect(formatDeliverableValue('dateRange', 'garbage')).toBeNull();
+  });
+});
+
+describe('decisionLabel', () => {
+  it('drops a leading Decide and capitalizes what is left', () => {
+    expect(decisionLabel('Decide dates')).toBe('Dates');
+    expect(decisionLabel('Decide location')).toBe('Location');
+    expect(decisionLabel('decide on the venue')).toBe('The venue');
+  });
+
+  it('keeps a question, a bare Decide and any other title as written', () => {
+    expect(decisionLabel('Decide whether to rent')).toBe('Decide whether to rent');
+    expect(decisionLabel('Decide')).toBe('Decide');
+    expect(decisionLabel('Pick dates for Lisbon')).toBe('Pick dates for Lisbon');
+    expect(decisionLabel('Decide how many')).toBe('Decide how many');
   });
 });
