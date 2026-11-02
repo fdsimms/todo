@@ -1429,8 +1429,8 @@ export function FoodLogScreen() {
       meal={shownReviewMeal}
       slot={slot}
       at={loggingAt}
-      onLog={items => {
-        logSavedMeal({ ...shownReviewMeal, items }, slot, loggingAt);
+      onLog={(items, chosenSlot) => {
+        logSavedMeal({ ...shownReviewMeal, items }, chosenSlot, loggingAt);
         setReviewMealId(null);
         onLogged(shownReviewMeal.name);
       }}

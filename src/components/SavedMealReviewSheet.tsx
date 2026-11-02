@@ -50,7 +50,7 @@ import {
 } from '../utils/foodLog';
 import { formatQuantityAmount } from '../utils/quantity';
 import { confirmLargeAmount } from '../utils/confirmLargeAmount';
-import type { FoodNutrition, MealSlot, SavedMeal, SavedMealItem } from '../types';
+import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot, type SavedMeal, type SavedMealItem } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -60,7 +60,8 @@ interface Props {
   slot: MealSlot | null;
   at: Date;
   /** Logs the reviewed items. The caller writes them and closes what it opened. */
-  onLog: (items: SavedMealItem[]) => void;
+  /** The foods as reviewed, and the meal slot picked in this sheet (starts as `slot`). */
+  onLog: (items: SavedMealItem[], slot: MealSlot | null) => void;
   /** Makes the reviewed items the saved meal's items. Returns whether it was saved. */
   onSaveChanges: (items: SavedMealItem[]) => boolean;
   onClose: () => void;
@@ -132,6 +133,8 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
   const [estimateUnits, setEstimateUnits] = useState<Record<string, AmountUnit>>({});
   const [pickTarget, setPickTarget] = useState<PickTarget | null>(null);
   const nextKey = useRef(0);
+  /** Which meal this log lands in. Starts as the host's slot; picking one here never counts as an edit to the meal. */
+  const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
 
   // Seeded each time the sheet opens, or when it is opened on another meal.
   useEffect(() => {
@@ -144,6 +147,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
     setEstimateTyped({});
     setEstimateUnits({});
     setPickTarget(null);
+    setChosenSlot(slot);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, meal.id]);
 
@@ -265,7 +269,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
     if (!settled) return;
     const items = reviewedItems(settled);
     if (items.length === 0) return;
-    const log = () => { haptics.success(); onLog(items); };
+    const log = () => { haptics.success(); onLog(items, chosenSlot); };
     const large = firstLargeAmount(settled);
     if (large) confirmLargeAmount(large, log); else log();
   };
@@ -531,6 +535,21 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
             />
           </View>
 
+          <Text style={styles.mealLabel}>WHICH MEAL</Text>
+          <View style={styles.mealPicker}>
+            <SegmentedControl<MealSlot | null>
+              options={[
+                ...MEAL_SLOTS.map(s => ({ value: s as MealSlot | null, label: MEAL_SLOT_LABELS[s] })),
+                { value: null, label: 'Other' },
+              ]}
+              value={chosenSlot}
+              onChange={setChosenSlot}
+              columns={3}
+              label="Which meal"
+              surface="page"
+            />
+          </View>
+
           <View style={styles.summary}>
             <Ionicons name="flame-outline" size={iconSize.sm} color={colors.textSecondary} />
             <Text style={styles.summaryText}>
@@ -559,7 +578,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
         <LazySheet open={pickTarget !== null}>
           <FoodLogEntrySheet
             visible={pickTarget !== null}
-            slot={slot}
+            slot={chosenSlot}
             at={at}
             onPickFood={handlePicked}
             onClose={() => setPickTarget(null)}
@@ -625,7 +644,15 @@ function makeStyles(colors: Colors) {
     },
     choiceText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
     actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.smd },
-    addRow: { flexDirection: 'row', marginTop: spacing.xs, marginBottom: spacing.md },
+    addRow: { flexDirection: 'row', marginTop: spacing.smd, marginBottom: spacing.lg },
+    mealLabel: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+      marginBottom: spacing.xs,
+    },
+    mealPicker: { marginBottom: spacing.lg },
     summary: {
       flexDirection: 'row',
       alignItems: 'center',
