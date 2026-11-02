@@ -138,6 +138,9 @@ import {
   NUDGE_EXTENSION_HEADROOM,
   planNudgeExtension,
   scheduleCompletionTimer,
+  scheduleCheckIn,
+  cancelCheckIn,
+  CHECK_IN_CATEGORY,
 } from '../utils/notifications';
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { setDemoModeActive } from '../utils/demoState';
@@ -535,6 +538,55 @@ describe('scheduleCompletionTimer', () => {
     );
     const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
     expect(arg.content.body).toBe('“Take iron pill” timer is up.');
+  });
+});
+
+// ─── scheduleCheckIn ──────────────────────────────────────────────────────────
+
+describe('scheduleCheckIn', () => {
+  const checkIn = {
+    id: 'c1',
+    sourceKind: 'medication' as const,
+    sourceId: 'd1',
+    subject: 'Aleve',
+    about: 'headache',
+    dueAt: FUTURE,
+    dayKey: '2026-11-02',
+    answer: null,
+    answeredAt: null,
+  };
+
+  it('schedules the question with the answer buttons at the due time', async () => {
+    await scheduleCheckIn(checkIn);
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.identifier).toBe('check-in-c1');
+    expect(arg.content.title).toBe('Aleve check-in');
+    expect(arg.content.body).toBe('Is your headache better, the same, or worse?');
+    expect(arg.content.data).toEqual({ checkInId: 'c1' });
+    expect(arg.content.categoryIdentifier).toBe(CHECK_IN_CATEGORY);
+    expect(arg.trigger.date).toEqual(new Date(FUTURE));
+  });
+
+  it('schedules nothing for a time already past', async () => {
+    await scheduleCheckIn({ ...checkIn, dueAt: new Date(Date.now() - 60000).toISOString() });
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('cancels by its own id', async () => {
+    await cancelCheckIn('c1');
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('check-in-c1');
+  });
+
+  it('does nothing in demo mode', async () => {
+    setDemoModeActive(true);
+    try {
+      await scheduleCheckIn(checkIn);
+      await cancelCheckIn('c1');
+      expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+      expect(Notifications.cancelScheduledNotificationAsync).not.toHaveBeenCalled();
+    } finally {
+      setDemoModeActive(false);
+    }
   });
 });
 
