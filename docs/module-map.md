@@ -862,6 +862,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useReminderMeetingResync.ts` — useReminderMeetingResync
 - `src/hooks/useRestKey.ts` — useRestKey
 - `src/hooks/useRestTimer.ts` — useRestTimer, useRestChime
+- `src/hooks/useRouteArrival.ts` — useRouteArrival
 - `src/hooks/useRowSelection.ts` — useRowSelection
 - `src/hooks/useSavedLinks.ts` — useSavedLinks, SavedLinks
 - `src/hooks/useScreenSettingControls.ts` — ScreenSettingControl, useScreenSettingControls
