@@ -74,6 +74,13 @@ interface Props<T> {
    * chosen segment does nothing, as before.
    */
   onDeselect?: () => void;
+  /**
+   * Size each segment to its own label instead of giving all of them the same
+   * width. For a narrow track whose labels differ in length ("4m" beside
+   * "1h 10m"), where equal slots truncate the long one while the short ones
+   * have room to spare. Segments still share any leftover width equally.
+   */
+  fit?: boolean;
 }
 
 /**
@@ -157,7 +164,7 @@ interface Props<T> {
  * nothing chosen. Reduce Motion moves it without the slide.
  */
 export function SegmentedControl<T extends string | number | boolean | null>({
-  options, value, onChange, columns, label, surface = 'card', onDeselect,
+  options, value, onChange, columns, label, surface = 'card', onDeselect, fit,
 }: Props<T>) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
@@ -244,6 +251,7 @@ export function SegmentedControl<T extends string | number | boolean | null>({
         onLayout={onSegmentLayout(key, row)}
         style={[
           styles.segment,
+          fit && styles.segmentFit,
           // Raised by the thumb once it's placed; by itself until then.
           selected && !thumbReady && [styles.segmentSelected, shadows.card],
           opt.disabled && styles.segmentDisabled,
@@ -348,6 +356,7 @@ const makeStyles = (colors: Colors, isDark: boolean, surface: 'page' | 'card') =
    * the track; in dark that's the *page* colour and would read as a hole, so
    * it takes the one surface above `bgTertiary` instead.
    */
+  segmentFit: { flexBasis: 'auto' },
   segmentSelected: {
     backgroundColor: isDark ? colors.bgQuaternary : colors.bgSecondary,
   },

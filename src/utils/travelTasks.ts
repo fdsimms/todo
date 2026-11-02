@@ -346,6 +346,14 @@ function describeMinutes(minutes: number): string {
   return hours === 0 ? `${rest} min` : rest === 0 ? `${hours} hr` : `${hours} hr ${rest} min`;
 }
 
+/** "13m", "1h", "1h 10m": the same minutes, short enough for a segment of a three-way track. */
+function describeMinutesCompact(minutes: number): string {
+  const rounded = Math.max(1, Math.round(minutes));
+  const hours = Math.floor(rounded / 60);
+  const rest = rounded % 60;
+  return hours === 0 ? `${rest}m` : rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}
+
 /** "25 min by transit", "1 hr 10 min by car": the estimate as the row says it. */
 export function describeTravelEstimate(minutes: number, mode: TravelMode): string {
   return `${describeMinutes(minutes)} ${MODE_WORDS[mode]}`;
@@ -387,7 +395,7 @@ export interface TravelChoice {
   fastest: boolean;
   /** "Transit 13 min". */
   label: string;
-  /** "13 min", for a control that shows the mode as an icon. */
+  /** "13m" or "1h 10m", for a control that shows the mode as an icon and has little width. */
   duration: string;
 }
 
@@ -415,7 +423,7 @@ export function travelChoices(held: TravelEstimate | null): TravelChoice[] {
     selected: c.mode === held.mode,
     fastest: c.mode === fastestMode,
     label: `${CHOICE_LABELS[c.mode]} ${describeMinutes(c.minutes)}`,
-    duration: describeMinutes(c.minutes),
+    duration: describeMinutesCompact(c.minutes),
   }));
 }
 
