@@ -6,6 +6,7 @@ import {
   dbPruneUnattendedLog,
 } from '../db/database';
 import type { Task, UnattendedEntry } from '../types';
+import { isDerivedId } from '../utils/syncIds';
 
 jest.mock('../db/database', () => ({
   dbGetUnattendedLog: jest.fn(() => []),
@@ -66,6 +67,51 @@ describe('record', () => {
     state().record({ action: 'created', kind: 'weather', title: 'First', taskId: 'a' });
     state().record({ action: 'created', kind: 'weather', title: 'Second', taskId: 'b' });
     expect(state().entries.map(e => e.title)).toEqual(['Second', 'First']);
+  });
+});
+
+// The ledger syncs and every device runs the same passes, so a random id gave
+// each device its own copy of "Added 'Use up Spinach'" and Activity showed it
+// twice. The id is derived from what was done, to which row, on which day.
+describe('the entry id', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('is the same for the same act on the same day, wherever it was recorded', () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 10, 2, 9));
+    state().recordGenerated('created', generated());
+    const first = state().entries[0].id;
+    // A second device: nothing held, same act, later the same day.
+    useUnattendedStore.setState({ entries: [] });
+    jest.setSystemTime(new Date(2026, 10, 2, 15));
+    state().recordGenerated('created', generated());
+    expect(state().entries[0].id).toBe(first);
+    expect(isDerivedId(first)).toBe(true);
+  });
+
+  it('differs by act, by row and by day', () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 10, 2, 9));
+    state().recordGenerated('created', generated());
+    state().recordGenerated('cleared', generated());
+    state().recordGenerated('created', generated({ id: 't2' }));
+    jest.setSystemTime(new Date(2026, 10, 3, 9));
+    state().recordGenerated('created', generated());
+    expect(new Set(state().entries.map(e => e.id)).size).toBe(4);
+  });
+
+  it('keys a purge by its cutoff, so a second window the same day is its own line', () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 10, 2, 9));
+    state().record({ action: 'purged', kind: null, title: '', taskId: null, count: 40, key: '2026-08-04' });
+    state().record({ action: 'purged', kind: null, title: '', taskId: null, count: 3, key: '2026-10-03' });
+    expect(state().entries.map(e => e.count)).toEqual([3, 40]);
+  });
+
+  it('holds one entry when the same act is recorded again, as the database does', () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 10, 2, 9));
+    state().recordGenerated('created', generated());
+    jest.setSystemTime(new Date(2026, 10, 2, 10));
+    state().recordGenerated('created', generated());
+    expect(state().entries).toHaveLength(1);
+    expect(state().entries[0].at).toBe(new Date(2026, 10, 2, 10).toISOString());
   });
 });
 

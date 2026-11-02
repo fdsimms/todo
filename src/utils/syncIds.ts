@@ -137,6 +137,14 @@ export const spawnSeed = {
    */
   coinClean: (taskId: string, dayKey: string) => `coin-clean:${taskId}:${dayKey}`,
   /**
+   * One line in the ledger of what the app did unattended. Every device runs
+   * the same generators and sweeps, so two devices recording "Added 'Use up
+   * spinach'" before they sync showed it twice. Keyed by what was done, to
+   * which row (or, for a purge, which cutoff), on which logical day: the same
+   * act on the same day is one line wherever it was recorded.
+   */
+  unattended: (action: string, key: string, dayKey: string) => `unattended:${action}:${key}:${dayKey}`,
+  /**
    * The first version of a routine saved before versions were kept, written
    * the first time anything needs it. Every device derives the same id, so a
    * workout stamped with it on one device names the row another device wrote.

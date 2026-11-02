@@ -1,6 +1,5 @@
 import {
   DEFAULT_REPEAT_ROUNDS,
-  MAX_REPEAT_ALARMS,
   MAX_STEP_TIMER_SECONDS,
   defaultRepeatRounds,
   describeRepeatCount,
@@ -25,8 +24,8 @@ import {
   stepTimerOverSeconds,
   stepTimerProgress,
   stepTimerRemaining,
-  stepTimerRingTimes,
   stepTimerRings,
+  stepTimerRound,
 } from '../utils/stepTimers';
 import type { RecipeStepTimer, RestTimer } from '../types';
 
@@ -492,6 +491,7 @@ describe('repeatTimerExcerpt', () => {
 describe('a repeating timer', () => {
   // 30 minutes, expecting 5, started at 12:00.
   const REPEATING: RecipeStepTimer = { ...TIMER, durationSeconds: 1800, repeatTarget: 5 };
+  const ROUND_3: RecipeStepTimer = { ...REPEATING, round: 3 };
 
   it('knows it repeats only when it has a target', () => {
     expect(isRepeatingTimer(REPEATING)).toBe(true);
@@ -500,76 +500,55 @@ describe('a repeating timer', () => {
     expect(isRepeatingTimer({ ...TIMER, repeatTarget: 0 })).toBe(false);
   });
 
-  it('counts the rings from the clock', () => {
+  it('is on round 1 until told otherwise', () => {
+    expect(stepTimerRound(REPEATING)).toBe(1);
+    expect(stepTimerRound(ROUND_3)).toBe(3);
+    expect(stepTimerRound({ ...REPEATING, round: 0 })).toBe(1);
+  });
+
+  it('counts a round as rung once its time is up, and not before', () => {
     expect(stepTimerRings(REPEATING, at(0))).toBe(0);
     expect(stepTimerRings(REPEATING, at(29))).toBe(0);
     expect(stepTimerRings(REPEATING, at(30))).toBe(1);
-    expect(stepTimerRings(REPEATING, at(95))).toBe(3);
+    expect(stepTimerRings(ROUND_3, at(10))).toBe(2);
+    expect(stepTimerRings(ROUND_3, at(30))).toBe(3);
+  });
+
+  it('does not count a second ring while it waits for the cook', () => {
+    expect(stepTimerRings(REPEATING, at(95))).toBe(1);
   });
 
   it('keeps counting past the target, which is the point of a soft target', () => {
-    expect(stepTimerRings(REPEATING, at(30 * 6 + 5))).toBe(6);
+    expect(stepTimerRings({ ...REPEATING, round: 6 }, at(30))).toBe(6);
     expect(isRepeatOver(6, 5)).toBe(true);
     expect(isRepeatOver(5, 5)).toBe(false);
     expect(describeRepeatCount(6, 5)).toBe('6 of 5');
   });
 
-  it('counts a locked phone the same as an open one, and stops with a pause', () => {
-    const paused = { ...REPEATING, startedAt: null, elapsedSeconds: 70 * 60 };
-    expect(stepTimerRings(paused, at(500))).toBe(2);
-    const resumed = { ...REPEATING, elapsedSeconds: 50 * 60 };
-    expect(stepTimerRings(resumed, at(15))).toBe(2);
+  it('stops with a pause', () => {
+    const paused = { ...REPEATING, startedAt: null, elapsedSeconds: 20 * 60 };
+    expect(stepTimerRings(paused, at(500))).toBe(0);
   });
 
-  it('rolls into the next interval instead of finishing', () => {
+  it('finishes the round and waits at zero instead of rolling on', () => {
     expect(stepTimerRemaining(REPEATING, at(10))).toBe(20 * 60);
-    expect(stepTimerRemaining(REPEATING, at(31))).toBe(29 * 60);
-    expect(stepTimerRemaining(REPEATING, at(30))).toBe(30 * 60);
-    expect(isStepTimerReady(REPEATING, at(31))).toBe(false);
-    expect(isStepTimerReady(REPEATING, at(300))).toBe(false);
+    expect(stepTimerRemaining(REPEATING, at(31))).toBe(-60);
+    expect(isStepTimerReady(REPEATING, at(30))).toBe(true);
+    expect(isStepTimerReady(REPEATING, at(300))).toBe(true);
   });
 
-  it('draws progress through the interval it is in', () => {
+  it('draws progress through the round it is in', () => {
     expect(stepTimerProgress(REPEATING, at(15))).toBeCloseTo(0.5);
-    expect(stepTimerProgress(REPEATING, at(45))).toBeCloseTo(0.5);
+    expect(stepTimerProgress(REPEATING, at(45))).toBe(1);
   });
 
-  it('ends at the next ring, not the last one', () => {
-    expect(stepTimerEndsAt(REPEATING, at(40))?.toISOString()).toBe('2026-08-25T13:00:00.000Z');
+  it('ends at the end of this round', () => {
+    expect(stepTimerEndsAt(REPEATING, at(10))?.toISOString()).toBe('2026-08-25T12:30:00.000Z');
   });
 
   it('is not a timer that rings once, so a plain one reads as it always did', () => {
     expect(stepTimerRings(TIMER, at(60))).toBe(0);
     expect(isStepTimerReady(TIMER, at(60))).toBe(true);
-  });
-});
-
-describe('stepTimerRingTimes', () => {
-  const REPEATING: RecipeStepTimer = { ...TIMER, durationSeconds: 1800, repeatTarget: 5 };
-
-  it('is the one ring for a timer that rings once', () => {
-    expect(stepTimerRingTimes(TIMER, at(2)).map(d => d.toISOString())).toEqual(['2026-08-25T12:07:00.000Z']);
-  });
-
-  it('is nothing for a paused timer', () => {
-    expect(stepTimerRingTimes({ ...REPEATING, startedAt: null }, at(2))).toEqual([]);
-  });
-
-  it('arms the target and three rings past it, half an hour apart', () => {
-    const times = stepTimerRingTimes(REPEATING, at(2));
-    expect(times).toHaveLength(8);
-    expect(times[0].toISOString()).toBe('2026-08-25T12:30:00.000Z');
-    expect(times[7].toISOString()).toBe('2026-08-25T16:00:00.000Z');
-  });
-
-  it('arms fewer as the count catches up, and never fewer than three ahead', () => {
-    expect(stepTimerRingTimes(REPEATING, at(30 * 3 + 1))).toHaveLength(5);
-    expect(stepTimerRingTimes(REPEATING, at(30 * 9 + 1))).toHaveLength(3);
-  });
-
-  it('never arms more than the cap', () => {
-    const long = { ...REPEATING, repeatTarget: 99 };
-    expect(stepTimerRingTimes(long, at(1))).toHaveLength(MAX_REPEAT_ALARMS);
   });
 });
 
@@ -582,17 +561,25 @@ describe('a repeating timer in storage', () => {
     expect(plain.kind === 'recipe' && plain.repeatTarget).toBeUndefined();
   });
 
-  it('drops a target that is not a whole number of rings and keeps the timer', () => {
+  it('drops a target that is not a whole number of rounds and keeps the timer', () => {
     for (const bad of [0, -2, 2.5, 100, '5', null]) {
       const [read] = parseStepTimerQueue(JSON.stringify([{ ...REPEATING, repeatTarget: bad }]));
       expect(read.kind === 'recipe' && read.repeatTarget).toBeUndefined();
     }
   });
 
-  it('keeps a running one well after its first ring, and drops it four hours after its last armed ring', () => {
-    // Armed through 8 rings: 4 hours from 12:00. Stale 4 hours after that.
-    expect(pruneStaleStepTimers([REPEATING], at(60 * 7))).toHaveLength(1);
-    expect(pruneStaleStepTimers([REPEATING], at(60 * 8 + 1))).toHaveLength(0);
+  it('reads the round back, and drops one that is not a whole number past the first', () => {
+    const [kept] = parseStepTimerQueue(JSON.stringify([{ ...REPEATING, round: 3 }]));
+    expect(kept.kind === 'recipe' && kept.round).toBe(3);
+    for (const bad of [0, 1, -2, 2.5, '3', null]) {
+      const [read] = parseStepTimerQueue(JSON.stringify([{ ...REPEATING, round: bad }]));
+      expect(read.kind === 'recipe' && read.round).toBeUndefined();
+    }
+  });
+
+  it('drops a running one four hours after it rang, like any other timer', () => {
+    expect(pruneStaleStepTimers([REPEATING], at(30 + 60 * 3))).toHaveLength(1);
+    expect(pruneStaleStepTimers([REPEATING], at(30 + 60 * 4 + 1))).toHaveLength(0);
   });
 
   it('keeps a paused one however long it has been', () => {
@@ -600,7 +587,7 @@ describe('a repeating timer in storage', () => {
   });
 
   it('tells the cook how many it has rung when asking before a cancel', () => {
-    const prompt = stepTimerCancelPrompt(REPEATING, at(65));
+    const prompt = stepTimerCancelPrompt({ ...REPEATING, round: 3 }, at(5));
     expect(prompt?.message).toContain('2 of 5 so far');
   });
 });

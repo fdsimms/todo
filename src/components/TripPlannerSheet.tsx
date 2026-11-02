@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Keyboard, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { SheetModal } from './SheetModal';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Person } from '../types';
 import { displayNameOf } from '../store/usePersonStore';
@@ -39,7 +38,6 @@ interface Props {
 export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const insets = useSafeAreaInsets();
   const { query, clear: clearQuery, props: filterField, inputRef } = useFilterField();
   // The results sit under a search field, so without this the keyboard covers
   // the last of them with no room to scroll them clear (see the hook's
@@ -62,7 +60,8 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
 
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
-      <View style={[styles.root, { paddingTop: insets.top }]}>
+      {/* No `insets.top`: a page sheet sits below the status bar on its own. */}
+      <View style={styles.root}>
         <View style={styles.header}>
           <Text style={styles.title}>Plan a trip</Text>
           <SheetHeaderButton label={BUTTON_LABEL.done} role="confirm" onPress={handleClose} />

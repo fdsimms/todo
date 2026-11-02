@@ -105,9 +105,13 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
       const result = await suggestSubtasks(current.title, current.notes, existing, contextRef.current);
       if (request !== requestRef.current) return;
       const drafted = result.map(r => ({ key: stepKey(), title: r.title, own: false }));
+      // The typed steps as they stand now, not as they stood when this was
+      // asked for: the field stays usable while loading, and a step added in
+      // between kept its row but lost its tick, so Add skipped it.
+      const ownNow = stepsRef.current.filter(s => s.own);
       setSteps(prev => [...drafted, ...prev.filter(s => s.own)]);
       setAccepted(prev => {
-        const next = new Set(own.filter(s => prev.has(s.key)).map(s => s.key));
+        const next = new Set(ownNow.filter(s => prev.has(s.key)).map(s => s.key));
         drafted.forEach(d => next.add(d.key));
         return next;
       });

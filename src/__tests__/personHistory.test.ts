@@ -1,4 +1,4 @@
-import type { Task } from '../types';
+import type { ChainItem, Task } from '../types';
 import {
   daysSinceTogether,
   describeDaysSince,
@@ -46,6 +46,19 @@ describe('what counts as history', () => {
       make({ id: 'c', completed: true, completedAt: iso(2026, 3, 12) }),
     ]);
     expect(entries.map(e => e.note)).toEqual(['Called', null, null]);
+  });
+
+  // A chain step asks its own question, and the answer was given to that step.
+  it("reads a chain step's own question, not the task's", () => {
+    const chain: ChainItem[] = [
+      { id: 's1', title: 'Book the table', estimatedMinutes: null, deliverableKind: 'date' },
+      { id: 's2', title: 'Dinner', estimatedMinutes: null, deliverableKind: 'text' },
+    ];
+    const entries = personHistory([
+      make({ id: 'a', completed: true, completedAt: iso(2026, 3, 14), chainEnabled: true, chainItems: chain, chainIndex: 1, deliverableValue: 'Tried the tasting menu' }),
+      make({ id: 'b', completed: true, completedAt: iso(2026, 3, 13), chainEnabled: true, chainItems: chain, chainIndex: 0, deliverableKind: 'text', deliverableValue: '2026-03-14' }),
+    ]);
+    expect(entries.map(e => e.note)).toEqual(['Tried the tasting menu', null]);
   });
 
   it('leaves out anything still to do', () => {

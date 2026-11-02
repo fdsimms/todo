@@ -127,6 +127,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     minHeight: 48,
   },
-  names: { minHeight: 160, textAlignVertical: 'top' },
+  // Capped, so a long paste scrolls inside the field rather than pushing
+  // "Ask each one" down under the keyboard (the sheet has no scroll of its own).
+  names: { minHeight: 160, maxHeight: 220, textAlignVertical: 'top' },
   hint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xs },
 });

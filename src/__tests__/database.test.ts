@@ -1939,6 +1939,19 @@ describe('Category Registry', () => {
   it('dbGetCategoryRegistry returns [] when not set', () => {
     expect(dbGetCategoryRegistry()).toEqual([]);
   });
+
+  // Nothing removes the legacy registry, so a migration keyed on an empty
+  // table brought every legacy category back after the person deleted them all.
+  it('moves the legacy registry into the categories table once, not again after they are deleted', () => {
+    dbSetSetting('category_registry', JSON.stringify(['Work', 'Home']));
+    dbSetSetting('category_registry_migration_done', '');
+    initDatabase();
+    expect(dbGetAllCategories().map(c => c.name).sort()).toEqual(['Home', 'Work']);
+
+    for (const c of dbGetAllCategories()) dbDeleteCategory(c.name);
+    initDatabase();
+    expect(dbGetAllCategories()).toEqual([]);
+  });
 });
 
 describe('Templates', () => {

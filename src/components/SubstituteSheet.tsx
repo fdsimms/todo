@@ -123,6 +123,10 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
   // keyboard with no way to scroll to it. `ownsSheet` because this component
   // renders its own SheetModal (see the hook's doc comment).
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  // The picker's results sit under its find field, so without this the
+  // keyboard covers the last of them with no room to scroll them clear (the
+  // hook's `fieldAbove` note, and the same list in MergeItemSheet).
+  const pickerScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true, fieldAbove: true });
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -869,6 +873,8 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
             )}
 
             <FlatList
+              {...pickerScroll.props}
+              ref={pickerScroll.ref}
               data={results}
               keyExtractor={row => row.id}
               renderItem={renderRow}

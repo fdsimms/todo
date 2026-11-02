@@ -6,7 +6,8 @@ import {
   dbInsertUnattendedEntries,
   dbPruneUnattendedLog,
 } from '../db/database';
-import { generateId } from '../utils/id';
+import { derivedId, spawnSeed } from '../utils/syncIds';
+import { getLogicalDayKey } from '../utils/dateUtils';
 import { ledgerCutoff, selectPurgeableUnattendedIds } from '../utils/retention';
 import { useSettingsStore } from './useSettingsStore';
 
@@ -37,6 +38,11 @@ export interface UnattendedRecord {
   taskId: string | null;
   /** Rows accounted for. Omitted means one. */
   count?: number;
+  /**
+   * What makes this entry the same one on another device when it names no
+   * task (a purge names its cutoff). Defaults to the task id.
+   */
+  key?: string;
 }
 
 interface UnattendedStore {
@@ -56,9 +62,13 @@ interface UnattendedStore {
 }
 
 function toEntries(records: readonly UnattendedRecord[]): UnattendedEntry[] {
-  const at = new Date().toISOString();
+  const now = new Date();
+  const at = now.toISOString();
+  // Derived, never random: every device runs the same passes, and the ledger
+  // syncs, so a random id gave each device its own copy of the same line.
+  const dayKey = getLogicalDayKey(now, useSettingsStore.getState().dayResetTime);
   return records.map(r => ({
-    id: generateId(),
+    id: derivedId(spawnSeed.unattended(r.action, r.key ?? r.taskId ?? '', dayKey)),
     at,
     action: r.action,
     kind: r.kind,
@@ -98,8 +108,10 @@ export const useUnattendedStore = create<UnattendedStore>((set, get) => ({
     }
     // Newest first, matching what dbGetUnattendedLog hands back next launch —
     // a list that reorders itself on relaunch is the usual way one of these
-    // drifts out of step with its own store.
-    set({ entries: [...entries].reverse().concat(get().entries) });
+    // drifts out of step with its own store. An entry already held under one
+    // of these ids is replaced, as the db's INSERT OR REPLACE replaces it.
+    const fresh = new Set(entries.map(e => e.id));
+    set({ entries: [...entries].reverse().concat(get().entries.filter(e => !fresh.has(e.id))) });
   },
 
   // A row's own `generatedKind` rather than the caller's, so an entry can never

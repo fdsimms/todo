@@ -12,8 +12,6 @@ import {
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import { isToday } from 'date-fns/isToday';
-import { isTomorrow } from 'date-fns/isTomorrow';
 import type { MealPlanEntry, MealSlot } from '../types';
 import { MEAL_SLOTS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -25,7 +23,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
-import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { slotLabel, upcomingDays } from '../utils/mealPlan';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetMotion } from '../hooks/useSheetMotion';
@@ -201,8 +199,10 @@ export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, 
   const describeDay = (key: string): string => {
     const day = days.find(d => dayKeyOf(d) === key);
     if (!day) return 'that day';
-    if (isToday(day)) return 'today';
-    if (isTomorrow(day)) return 'tomorrow';
+    // The logical day the list itself starts from: at 1:30 AM under a 2 AM
+    // reset, the calendar's "today" is the night after the one being planned.
+    if (key === dayKeyOf(getLogicalToday())) return 'today';
+    if (key === dayKeyOf(getLogicalTomorrow())) return 'tomorrow';
     return format(day, 'EEEE');
   };
 

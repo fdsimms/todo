@@ -151,6 +151,10 @@ describe('the replica', () => {
     // Bare: no date, no category, no tags, no priority. That is what makes it
     // an inbox task rather than an unscheduled one.
     insert({ id: 'inbox', title: 'Untriaged' });
+    // Waiting on another task: on none of the four lenses, Later included,
+    // which is what the phone shows.
+    insert({ id: 'waiting', title: 'After that', dueDate: new Date().toISOString() });
+    mockRaw.runSync("UPDATE tasks SET blocked_by_id = 'later' WHERE id = 'waiting'");
     replica.refresh();
 
     const idsWhere = (p: (t: Parameters<typeof replica.isVisible>[0]) => boolean) =>
@@ -159,9 +163,10 @@ describe('the replica', () => {
     expect(idsWhere(t => replica.isVisible(t))).toEqual(['today']);
     expect(idsWhere(t => replica.isUnscheduled(t))).toEqual(['unscheduled']);
     expect(idsWhere(t => replica.isInbox(t))).toEqual(['inbox']);
+    expect(idsWhere(t => replica.isDeferred(t))).toEqual(['later']);
     // The lenses are disjoint, which is the property `matchesView` leans on.
-    expect(idsWhere(t => replica.isVisible(t) || replica.isUnscheduled(t) || replica.isInbox(t)))
-      .toEqual(['today', 'unscheduled', 'inbox']);
+    expect(idsWhere(t => replica.isVisible(t) || replica.isUnscheduled(t) || replica.isInbox(t) || replica.isDeferred(t)))
+      .toEqual(['today', 'later', 'unscheduled', 'inbox']);
 
     expect(replica.visibleAt(replica.taskById('later')!).getFullYear()).toBe(2099);
   });

@@ -4,11 +4,9 @@ import type { RecipeStepTimer } from '../types';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { haptics } from '../utils/haptics';
 import {
-  isRepeatingTimer,
   isStepTimerReady,
   isStepTimerRunning,
   sortStepTimers,
-  stepTimerRings,
 } from '../utils/stepTimers';
 
 /** Everything a surface showing step timers draws and calls. */
@@ -24,13 +22,14 @@ export interface StepTimersBinding {
     stepLabel: string;
     stepExcerpt?: string;
     durationSeconds: number;
-    /** Starts a repeating timer expecting this many rings; see the store's `start`. */
+    /** Starts a repeating timer expecting this many rounds; see the store's `start`. */
     repeatTarget?: number;
   }) => void;
   toggle: (timer: RecipeStepTimer) => void;
   addTime: (id: string) => void;
   setRepeatTarget: (id: string, target: number) => void;
   restart: (id: string) => void;
+  startNextRound: (id: string) => void;
   remove: (id: string) => void;
 }
 
@@ -88,27 +87,6 @@ export function useStepTimers(recipeId: string | undefined): StepTimersBinding {
     }
   }, [mine, now]);
 
-  // A repeating timer never reads as finished, so its ring is the count going
-  // up. Buzzed the same way, and the alarms behind it are topped up here: the
-  // ones armed up front only reach so far past the target, and this is the one
-  // place that sees every ring while someone is looking. The first reading of a
-  // timer is only remembered, so opening the sheet on a pot that has rung three
-  // times doesn't buzz three times' worth.
-  const ringsSeen = useRef<Map<string, number>>(new Map());
-  useEffect(() => {
-    const live = new Set(mine.map(t => t.id));
-    for (const id of ringsSeen.current.keys()) if (!live.has(id)) ringsSeen.current.delete(id);
-    for (const timer of mine) {
-      if (!isRepeatingTimer(timer)) continue;
-      const rings = stepTimerRings(timer, now);
-      const before = ringsSeen.current.get(timer.id);
-      ringsSeen.current.set(timer.id, rings);
-      if (before === undefined || rings <= before || !isStepTimerRunning(timer)) continue;
-      haptics.timerDone();
-      store.rearm(timer.id);
-    }
-  }, [mine, now, store]);
-
   const timers = useMemo(() => sortStepTimers(mine, now), [mine, now]);
 
   return {
@@ -137,6 +115,10 @@ export function useStepTimers(recipeId: string | undefined): StepTimersBinding {
     restart: id => {
       haptics.impactMedium();
       store.restart(id);
+    },
+    startNextRound: id => {
+      haptics.impactMedium();
+      store.startNextRound(id);
     },
     remove: id => {
       haptics.tap();
