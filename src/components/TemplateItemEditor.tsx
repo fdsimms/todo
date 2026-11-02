@@ -2231,12 +2231,12 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onPress={() => { haptics.tap(); setVacationPause(!vacationPause); }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="switch"
-            accessibilityLabel="Pause on vacation"
+            accessibilityLabel="Vacation pause"
             accessibilityState={{ checked: vacationPause }}
           >
             <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
             <View style={styles.optionContent}>
-              <Text style={styles.optionLabel}>Pause on vacation</Text>
+              <Text style={styles.optionLabel}>Vacation pause</Text>
               <Text style={styles.optionHint}>Hidden while vacation mode is on</Text>
             </View>
             <Toggle value={vacationPause} />

@@ -147,7 +147,7 @@
           "iosActions": [
             {
               "id": "add",
-              "title": "Add Task",
+              "title": "New Task",
               "icon": "symbol:square.and.pencil"
             }
           ]
