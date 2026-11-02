@@ -124,16 +124,18 @@ export function listTasks(replica: Replica, input: ListTasksInput = {}): ListTas
 
 /**
  * Today / Later / Unscheduled / Inbox are disjoint lenses over one set, exactly
- * as `TodayScreen` treats them — `isUnscheduledTask` already excludes inbox
- * tasks and `isTaskVisible` already excludes both, so these read as three
- * one-liners rather than as a partition that has to be maintained here.
+ * as `TodayScreen` treats them, each the app's own selector. They are not a
+ * partition: a task held back, hidden by vacation or a paused project, an
+ * undated project step, or an expired one is on none of them (the overview
+ * counts those as `hidden`). Later used to be "everything else", which listed
+ * all of those as scheduled for later.
  */
 function matchesView(replica: Replica, task: Task, view: TaskView): boolean {
   switch (view) {
     case 'today':
       return replica.isVisible(task);
     case 'later':
-      return !replica.isVisible(task) && !replica.isUnscheduled(task) && !replica.isInbox(task);
+      return replica.isDeferred(task);
     case 'unscheduled':
       return replica.isUnscheduled(task);
     case 'inbox':

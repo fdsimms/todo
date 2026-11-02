@@ -37,6 +37,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     isVisible: (t: Task) => t.id.startsWith('today'),
     isUnscheduled: (t: Task) => t.id.startsWith('someday'),
     isInbox: (t: Task) => t.id.startsWith('inbox'),
+    isDeferred: (t: Task) => t.id.startsWith('later'),
     isBlocked: () => false,
     isNotNeeded: () => false,
     displayTitle: (t: Task) => t.title,
@@ -91,6 +92,8 @@ describe('getOverview', () => {
       task({ id: 'later-1', title: 'C' }),
       task({ id: 'someday-1', title: 'D', category: 'Home' }),
       task({ id: 'inbox-1', title: 'E' }),
+      // On no lens (held back, say): counted as hidden, not as later.
+      task({ id: 'waiting-1', title: 'H' }),
       task({ id: 'today-done', title: 'F', completed: true }),
       task({ id: 'today-sub', title: 'G', parentId: 'today-1' }),
     ];
@@ -103,7 +106,7 @@ describe('getOverview', () => {
       lookAhead: () => emptyLookAhead({ carriedOver: [tasks[0]] }),
     }), 'write');
 
-    expect(overview.counts).toEqual({ today: 2, later: 1, unscheduled: 1, inbox: 1, overdue: 1, pinned: 1, blocked: 0 });
+    expect(overview.counts).toEqual({ today: 2, later: 1, unscheduled: 1, inbox: 1, hidden: 1, overdue: 1, pinned: 1, blocked: 0 });
     expect(overview.today).toEqual({ date: '2026-10-04', weekday: 'Sunday', dayStartsAt: '04:00', weekStartsOn: 'Monday' });
     expect(overview.categories).toEqual([
       { name: 'Work', open: 2, schedule: 'Mon, Tue, Wed, Thu, Fri 09:00–17:00', hiddenOnVacation: true },
