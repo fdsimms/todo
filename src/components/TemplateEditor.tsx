@@ -488,7 +488,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
             <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
           </TouchableOpacity>
         ))}
-        <View style={styles.pillRow}>
+        <View style={[styles.pillRow, styles.newQuestionRow]}>
           <InlineAction
             icon="add"
             label="New question"
@@ -655,6 +655,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   questionsCard: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
+  },
+  // The hint (or the last question row) above has no bottom margin of its own.
+  newQuestionRow: {
+    marginTop: spacing.md,
   },
   questionsLabel: {
     color: colors.textSecondary,
