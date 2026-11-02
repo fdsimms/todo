@@ -690,7 +690,9 @@ describe('travelChoices', () => {
   it('lists the modes in a fixed order whichever is in use, and marks the fastest', () => {
     const choices = travelChoices({ ...held, others: { walking: 22, driving: 8 } });
     expect(choices.map(c => c.label)).toEqual(['Car 8 min', 'Transit 13 min', 'Walk 22 min']);
-    expect(choices.map(c => c.duration)).toEqual(['8 min', '13 min', '22 min']);
+    expect(choices.map(c => c.duration)).toEqual(['8m', '13m', '22m']);
+    expect(travelChoices({ ...held, others: { driving: 70 } })[0].duration).toBe('1h 10m');
+    expect(travelChoices({ ...held, others: { driving: 60 } })[0].duration).toBe('1h');
     expect(choices.map(c => c.selected)).toEqual([false, true, false]);
     expect(choices.map(c => c.fastest)).toEqual([true, false, false]);
   });

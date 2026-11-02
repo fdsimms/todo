@@ -4148,12 +4148,12 @@ const TaskItemRow = React.memo(function TaskItem({
               <View style={styles.travelChoices} pointerEvents={selectionMode ? 'none' : 'auto'}>
                 <SegmentedControl
                   label="Way of getting there"
+                  fit
                   value={travelOptions.find(c => c.selected)?.mode ?? null}
                   options={travelOptions.map(choice => ({
                     value: choice.mode,
                     label: choice.duration,
                     icon: TRAVEL_CHOICE_ICONS[choice.mode],
-                    dot: choice.fastest ? colors.greenText : undefined,
                     accessibilityLabel: `${choice.label}${choice.fastest ? ', fastest' : ''}${choice.selected ? ', in use' : ''}`,
                   }))}
                   onChange={mode => {
