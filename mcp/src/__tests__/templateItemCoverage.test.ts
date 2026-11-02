@@ -15,6 +15,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { typesSource } from '../../../src/testSupport/typesSource';
 
 const ROOT = join(__dirname, '..', '..', '..');
 
@@ -48,7 +49,7 @@ function between(src: string, startMarker: string, endMarker: string): string {
 }
 
 function templateItemFields(): string[] {
-  const src = readFileSync(join(ROOT, 'src', 'types', 'index.ts'), 'utf8');
+  const src = typesSource();
   const body = between(src, 'export interface TemplateItem {', '\n}\n');
   return body.split('\n').flatMap(line => {
     const m = line.match(/^ {2}([A-Za-z_]\w*)\??:/);

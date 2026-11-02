@@ -474,7 +474,7 @@ one. Those three rules and the reasoning behind them are in
   sunny day, put on sunscreen" becomes a task the same way "tomorrow has events" does: no source
   row, a settings-level idempotency mark instead of a per-row stamp, and creation through the
   shared `reconcileGeneratedTask`. What's new is that there can be several such rules at once
-  (`src/utils/weatherTasks.ts`, `WeatherRule` in `types/index.ts`), each independently askable —
+  (`src/utils/weatherTasks.ts`, `WeatherRule` in `src/types/rules.ts`), each independently askable —
   which is what pushes its source id one level deeper than a plain day key.
   - **The source id is `${dayKey}#${ruleId}`, and the rule id is what keeps two rules from
     colliding on the same day.** `calendarReview` gets away with a bare day key because it asks

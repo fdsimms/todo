@@ -40,7 +40,7 @@ This feature is a gym logger with the depth of a dedicated app. It includes an e
 
 ### Data model
 
-The new types go in `src/types/index.ts`, and the tables go in `initDatabase` with indexes in the migrations array.
+The new types go in `src/types/workouts.ts`, and the tables go in `initDatabase` with indexes in the migrations array.
 
 - **`exercises`** (custom exercises and overrides of built-in ones): `id`, `name`, `kind` (`weight_reps | bodyweight_reps | assisted_reps | duration | distance | weight_distance`), `primaryMuscles` and `secondaryMuscles` (JSON), `equipment`, `barKg` (nullable), `dumbbells` (1 or 2, null for the library's own answer) and `loadEntry` (`each | pair`, null for the setting; see "Dumbbell weights, as built"), `notes`, `otherNames` (JSON, other names the person knows it by), `archived`, `isCustom`. An override row reuses the built-in's id, so renaming "Bench press" to "Flat bench" is one row.
 - **`workout_routines`**: `id`, `name`, `notes`, `programId` (nullable), `sortOrder`, `groupName` and `archived` ("Routine groups and archive, as built"), `currentVersionId` ("Routine and program history, as built"), and `items` (JSON). Each item holds `{ exerciseId, supersetKey?, restSeconds, progression, targets: [{ kind: warmup|working|drop|amrap, repsMin, repsMax, weightKg?, pctOfTm?, rpe? }] }`.
