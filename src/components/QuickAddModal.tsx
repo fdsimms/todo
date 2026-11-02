@@ -1210,21 +1210,27 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const effectiveEmail = emailAddress ?? mentionedContact.email;
   // Every mention's span, plus the tooltip's own match (if any) — merged so
   // the input overlay below can render both kinds of token with one pass.
+  // A resolved mention is settled: it keeps its color but loses the fill, which
+  // is left for what is still being typed or picked (the tooltip's own match).
+  const settledMentionRanges = useMemo(
+    () => mergeRanges(personMentions.map((m): [number, number] => [m.start, m.end])),
+    [personMentions]
+  );
   const highlightRanges = useMemo(() => {
-    const ranges: [number, number][] = personMentions.map((m): [number, number] => [m.start, m.end]);
+    const ranges: [number, number][] = [];
     // A match that is the whole line (a chain) gets no highlight: the overlay
     // is a wrapping Text drawn over a single-line input that scrolls sideways,
     // so on a long line the two disagree about where the text is and the caret
     // ends up off the visible text. The tooltip still points at it.
     if (activeMatch && !activeMatch.wholeLine) ranges.push([activeMatch.matchStart, matchEnd]);
     return mergeRanges(ranges);
-  }, [personMentions, activeMatch, matchEnd]);
+  }, [activeMatch, matchEnd]);
   // The overlay is a wrapping Text laid over a single-line input that scrolls
   // sideways, so it can only stand in for the input while the whole line fits.
   // Past that the two disagree about where the text is, and the caret lands off
   // the visible text. A line that has outgrown the field shows the plain input
   // (highlights are lost, but what's typed stays where the caret is).
-  const wantsOverlay = highlightRanges.length > 0;
+  const wantsOverlay = highlightRanges.length > 0 || settledMentionRanges.length > 0;
   const titleFits = inputW === 0 || titleW <= inputW;
   const hasOverlay = wantsOverlay && titleFits;
 
@@ -2640,8 +2646,10 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 <HighlightedText
                   text={title}
                   ranges={highlightRanges}
+                  quietRanges={settledMentionRanges}
                   style={[styles.input, styles.inputOverlay]}
                   highlightStyle={styles.inputHighlight}
+                  quietStyle={styles.inputMention}
                   pointerEvents="none"
                 />
               )}
@@ -3981,6 +3989,10 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   inputHighlight: {
     color: colors.accent,
     backgroundColor: colors.accentSubtle,
+  },
+  // A settled @mention: the same ink and weight, without the fill.
+  inputMention: {
+    color: colors.accent,
   },
   suggestionsBox: {
     backgroundColor: colors.bgTertiary,
