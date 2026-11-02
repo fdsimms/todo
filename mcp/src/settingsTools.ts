@@ -14,6 +14,8 @@ export function getSettings(replica: Replica) {
   }
   return {
     settings: groups,
+    // Read-only here: saved in the app's Link picker, where a task's link can be one of them.
+    savedLinks: replica.savedLinks(),
     note: 'Change one with update_settings. Automations are switched on and filed with set_automation. Settings that belong to one device (calendars, the app lock, notifications, the theme) are changed on that device.',
   };
 }

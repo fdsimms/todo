@@ -162,7 +162,7 @@ export function writeSavedLinks(links: readonly SavedLink[]): void {
 
 /**
  * The one-time launch step behind `adoptRetiredLinks`: reads which retired
- * schemes a task, chain step or reward carries and saves those. Behind a flag
+ * schemes a task, chain step, reward, template item or title rule carries and saves those. Behind a flag
  * so it costs one setting read after the first launch. The flag is device-local
  * on purpose: the result is idempotent and keyed by scheme, so a second device
  * running it too lands on the same ids.

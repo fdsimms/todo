@@ -904,7 +904,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       stillSet,
       stillSet.category ? categoryLabel(stillSet.category, categories) : null,
       projects.find(p => p.id === stillSet.projectId)?.title ?? null,
-      stillSet.linkUrl ? linkLabel(stillSet.linkUrl) : null,
+      stillSet.linkUrl ? linkLabel(stillSet.linkUrl, savedLinks.saved) : null,
     );
     if (!targets) return null;
     const word = ruleFill.matched[0].match.keyword;
@@ -1047,7 +1047,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, type, recurrenceType, recurrenceInterval, recurrenceDays, titleSeries, chainItems, intoProjectId, liveProjects, waitCandidates, weatherTasksOn, weatherWait, polarity, titleWindowEnd, titleRainSkipMm, rainUnit, sunDayStart.getTime(), sunLocationSetting]
   );
   const titleSuggestionDescription = titleSuggestion
-    ? describeTitleSuggestion(titleSuggestion, rainUnit, hhmm => formatHHMM(hhmm))
+    ? describeTitleSuggestion(titleSuggestion, rainUnit, hhmm => formatHHMM(hhmm), savedLinks.saved)
     : null;
   const priorityParsed = titleSuggestion?.kind === 'priority' ? titleSuggestion.hit : null;
   const difficultyParsed = titleSuggestion?.kind === 'difficulty' ? titleSuggestion.hit : null;
@@ -2505,7 +2505,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     },
     {
       key: 'link', icon: 'link-outline', panel: 'link',
-      value: linkUrl !== null ? linkLabel(linkUrl) : null, truncate: true,
+      value: linkUrl !== null ? linkLabel(linkUrl, savedLinks.saved) : null, truncate: true,
     },
     {
       key: 'phone', icon: 'call-outline', panel: 'phone',

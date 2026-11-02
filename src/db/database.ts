@@ -4165,10 +4165,10 @@ export function dbGetSetting(key: string): string | null {
 }
 
 /**
- * Which of these link schemes a task, a chain step or a reward already carries.
- * For the one-time pass that saves a retired built-in app as a chip for
- * whoever was using it (`adoptRetiredLinkApps`); a chain step's link is inside
- * the task's `cycle_items` JSON, hence the LIKE.
+ * Which of these link schemes a task, a chain step, a reward, a template item
+ * or a title rule already carries. For the one-time pass that saves a retired
+ * built-in app as a chip for whoever was using it (`adoptRetiredLinkApps`); a
+ * chain step's link is inside the task's `cycle_items` JSON, hence the LIKE.
  */
 export function dbLinkSchemesInUse(schemes: readonly string[]): string[] {
   return schemes.filter(scheme => {
@@ -4177,7 +4177,16 @@ export function dbLinkSchemesInUse(schemes: readonly string[]): string[] {
       [scheme, `%"${scheme}"%`]
     );
     if (task) return true;
-    return !!db.getFirstSync<{ one: number }>('SELECT 1 AS one FROM rewards WHERE link_url = ? LIMIT 1', [scheme]);
+    if (db.getFirstSync<{ one: number }>('SELECT 1 AS one FROM rewards WHERE link_url = ? LIMIT 1', [scheme])) return true;
+    // A template item's link is inside its `items` JSON, and a title rule's is
+    // inside a settings value.
+    return !!(
+      db.getFirstSync<{ one: number }>('SELECT 1 AS one FROM templates WHERE items LIKE ? LIMIT 1', [`%"${scheme}"%`])
+      ?? db.getFirstSync<{ one: number }>(
+        "SELECT 1 AS one FROM settings WHERE key != 'savedLinks' AND value LIKE ? LIMIT 1",
+        [`%"${scheme}"%`]
+      )
+    );
   });
 }
 

@@ -180,8 +180,9 @@ export function suggestionMatch(
   }
 }
 
-export function linkLabel(url: string): string {
-  return linkAppLabel(url);
+/** A link's name: a built-in or saved link's, else the URL. Pass `saved` (`readSavedLinks`) so a saved link reads by name. */
+export function linkLabel(url: string, saved: readonly { url: string; name: string }[] = []): string {
+  return linkAppLabel(url, saved);
 }
 
 const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
@@ -196,13 +197,15 @@ export function describeTitleSuggestion(
   rainUnit: RainUnit,
   /** How a clock time reads, which follows the 12/24-hour setting. */
   formatClock: (hhmm: string) => string,
+  /** The person's saved links, so a link suggestion reads "Payroll" rather than its URL. */
+  savedLinks: readonly { url: string; name: string }[] = [],
 ): { icon: string; label: string } {
   switch (s.kind) {
     case 'priority': return { icon: 'alert-circle-outline', label: `Priority · ${PRIORITY_LABELS_SHORT[s.hit.priority as Priority]}` };
     case 'difficulty': return { icon: 'speedometer-outline', label: `Difficulty · ${DIFFICULTY_LABELS_SHORT[s.hit.difficulty]}` };
     case 'project': return { icon: 'briefcase-outline', label: `Project · ${s.hit.title}` };
     case 'chain': return { icon: 'git-commit-outline', label: `Chain · ${s.hit.steps.length} steps` };
-    case 'link': return { icon: 'link-outline', label: linkLabel(s.hit.url) };
+    case 'link': return { icon: 'link-outline', label: linkLabel(s.hit.url, savedLinks) };
     case 'phone': return { icon: 'call-outline', label: `Call ${s.hit.number}` };
     case 'email': return { icon: 'mail-outline', label: `Email ${s.hit.address}` };
     case 'duration': return { icon: 'timer-outline', label: `Timer · ${formatDuration(s.hit.minutes)}` };

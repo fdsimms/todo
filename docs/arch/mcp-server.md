@@ -1497,6 +1497,9 @@ device. `cancel_calendar_request` takes a proposal back, and the Activity entry'
 
 ### Settings: an allowlist, through the store's own setters
 
+`get_settings` also lists `savedLinks`, the links saved as chips in the Link picker (`src/utils/savedLinks.ts`),
+read-only, and `get_task` names a task's link by it (`contact.linkName`).
+
 `get_settings` and `update_settings` (`mcp/src/settingsTools.ts`) read and change the preferences
 in `mcp/src/settingsSpec.ts`, and nothing else. `SETTINGS_SPEC` is an allowlist for the reason
 `SYNCED_SETTING_KEYS` is one: a change only reaches the phone if the key syncs, and only a choice

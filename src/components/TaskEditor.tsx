@@ -1783,7 +1783,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     ? null
     : titleSuggestion;
   const activeSuggestionMatch = activeTitleSuggestion ? titleSuggestionMatch : null;
-  const titleSuggestionDescription = activeTitleSuggestion ? describeTitleSuggestion(activeTitleSuggestion, rainUnit, hhmm => formatHHMM(hhmm, use24HourTime)) : null;
+  const titleSuggestionDescription = activeTitleSuggestion ? describeTitleSuggestion(activeTitleSuggestion, rainUnit, hhmm => formatHHMM(hhmm, use24HourTime), savedLinks.saved) : null;
 
   const titleHighlightRanges = useMemo(() => {
     const ranges = [...titleMentionRanges];

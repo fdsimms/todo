@@ -19,6 +19,11 @@ let replica: ReturnType<typeof openReplica>;
 beforeAll(() => { replica = openReplica(':memory:'); });
 
 describe('settings', () => {
+  it('lists the links saved in the Link picker, read-only', () => {
+    expect(getSettings(replica).savedLinks).toEqual([]);
+  });
+
+
   it('reads every allowed setting with what it means', () => {
     const read = getSettings(replica);
     expect(read.settings.day.dayResetTime).toMatchObject({ value: expect.any(String), means: expect.stringMatching(/day turns over/) });
