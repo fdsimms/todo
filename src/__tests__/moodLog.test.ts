@@ -4,6 +4,7 @@ import {
   CHANGE_ANCHOR_WINDOW_MS,
   LOW_MOOD_AT_OR_BELOW,
   changeAnchorFor,
+  changeTally,
   describeChangeAnchor,
   moodChangeLabel,
   contextTagKey,
@@ -334,5 +335,16 @@ describe('since your last entry', () => {
   it('is never part of the mood: the day average ignores it', () => {
     const logs = [log({ mood: 2, change: 'better' }), log({ id: 'l2', mood: 4, change: 'worse' })];
     expect(dayMoodAverage(logs, '2026-08-17')).toBe(3);
+  });
+
+  it('tallies what was said since a day, and an unanswered entry is not a "same"', () => {
+    const logs = [
+      log({ id: 'a', dayKey: '2026-08-16', change: 'better' }),
+      log({ id: 'b', dayKey: '2026-08-17', change: 'better' }),
+      log({ id: 'c', dayKey: '2026-08-17', change: 'worse' }),
+      log({ id: 'd', dayKey: '2026-08-17', change: null }),
+      log({ id: 'e', dayKey: '2026-08-01', change: 'same' }),
+    ];
+    expect(changeTally(logs, '2026-08-10')).toEqual({ worse: 1, same: 0, better: 2 });
   });
 });

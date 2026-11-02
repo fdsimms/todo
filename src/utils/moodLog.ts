@@ -101,6 +101,20 @@ export function changeAnchorFor(logs: readonly MoodLog[], at: Date, excludeId?: 
   return best;
 }
 
+/**
+ * How many entries since `fromDayKey` carry each answer. A tally of one thing,
+ * so it has no minimum (see mood-log.md, "counting one thing has no minimum,
+ * comparing two does"), and it counts only what was said: an entry with no
+ * answer is not a "same".
+ */
+export function changeTally(logs: readonly MoodLog[], fromDayKey: string): Record<MoodChange, number> {
+  const tally: Record<MoodChange, number> = { worse: 0, same: 0, better: 0 };
+  for (const log of logs) {
+    if (log.change !== null && log.dayKey >= fromDayKey) tally[log.change] += 1;
+  }
+  return tally;
+}
+
 /** "Low, 3 hours ago": what the answer is measured against, said where it is asked. */
 export function describeChangeAnchor(anchor: MoodLog, at: Date): string {
   const minutes = Math.max(0, Math.round((at.getTime() - new Date(anchor.loggedAt).getTime()) / 60000));

@@ -36,7 +36,9 @@ import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { openEntries } from '../utils/journal';
 import { segmentOf } from '../utils/rhythms';
 import {
+  MOOD_CHANGES,
   MOOD_LEVELS,
+  changeTally,
   contextTagKey,
   contextTagVocabulary,
   symptomKey,
@@ -466,6 +468,14 @@ export function MoodScreen() {
     return out;
   }, [days, todayKey]);
 
+  // The answers to "since your last entry" over the same fortnight as the chart.
+  // A tally of what was said, so it needs no minimum; null when there are none,
+  // and then the card is not drawn at all.
+  const changeCounts = useMemo(() => {
+    const counts = changeTally(logs, chart[0].key);
+    return counts.worse + counts.same + counts.better > 0 ? counts : null;
+  }, [logs, chart]);
+
   // ==== today and recent entries ====
   // Today's entries sit in their own card at the top, so the history below
   // starts where they stop rather than listing them twice.
@@ -667,6 +677,28 @@ export function MoodScreen() {
               </Text>
             </View>
           </>
+
+          {changeCounts && (
+            <>
+              <Text style={styles.sectionTitle}>SINCE YOUR LAST ENTRY</Text>
+              <View style={styles.card}>
+                <View style={styles.tallyRow}>
+                  {MOOD_CHANGES.map(c => (
+                    <View
+                      key={c.value}
+                      style={styles.splitCell}
+                      accessible
+                      accessibilityLabel={`${changeCounts[c.value]} ${changeCounts[c.value] === 1 ? 'entry' : 'entries'} you said felt ${c.value === 'same' ? 'the same as' : `${c.label.toLowerCase()} than`} the one before`}
+                    >
+                      <Text style={styles.splitValue}>{changeCounts[c.value]}</Text>
+                      <Text style={styles.splitLabel}>{c.label.toLowerCase()}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.chartCaption}>Your own answers over the last {CHART_DAYS} days.</Text>
+              </View>
+            </>
+          )}
 
           <>
             <Text style={styles.sectionTitle}>MOOD AND WHAT YOU FINISH</Text>
@@ -1232,6 +1264,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   finding: { fontSize: font.md, color: colors.text, lineHeight: 22 },
   findings: { gap: spacing.sm },
   splitRow: { flexDirection: 'row', marginTop: spacing.md },
+  // The same cells with nothing above the row to clear.
+  tallyRow: { flexDirection: 'row' },
   splitCell: { flex: 1, alignItems: 'center' },
   splitValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
   splitLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },

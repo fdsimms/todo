@@ -989,9 +989,11 @@ rules hold it:
 - **It counts as content.** A change with no mood is a complete entry, the same as a bare note
   or a symptom alone; an absent mood is still absent, never a 3.
 
-It is optional, nothing starts selected, and tapping the chosen answer clears it. No insight
-reads it yet; a read of it would be a claim about trends, which the rules above under "What the
-insights are allowed to claim" apply to in full.
+It is optional, nothing starts selected, and tapping the chosen answer clears it. The Mood
+screen shows one read of it: a tally of the last fourteen days (`changeTally`), a count of one
+thing with no minimum, hidden when there are no answers. Nothing compares it with anything else;
+a comparison (what tends to come before a "better") would be a claim about trends, which the
+rules above under "What the insights are allowed to claim" apply to in full.
 
 ## Dreams and longer writing live in the journal
 
