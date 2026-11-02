@@ -45,6 +45,7 @@
     "collectCoverageFrom": [
       "src/**/*.{ts,tsx}",
       "!src/**/__tests__/**",
+      "!src/testSupport/**",
       "!src/**/*.test.{ts,tsx}"
     ],
     "coverageThreshold": {

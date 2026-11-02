@@ -16,6 +16,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { buildDraftsFromTemplate, normalizeTemplateItem } from '../utils/templateUtils';
+import { typesSource } from '../testSupport/typesSource';
 
 const ROOT = join(__dirname, '..', '..');
 
@@ -135,7 +136,7 @@ const NOT_IN_ITEM_EDITOR = ['id', 'groupId', 'refTemplateId', 'refTemplateName']
 const ALL_NOT_SEEDED = Object.values(NOT_SEEDED).flat();
 
 function interfaceFields(name: string): string[] {
-  const src = readFileSync(join(ROOT, 'src', 'types', 'index.ts'), 'utf8');
+  const src = typesSource();
   const start = src.indexOf(`export interface ${name} {`);
   const body = src.slice(start, src.indexOf('\n}\n', start));
   return body.split('\n').flatMap(line => {
