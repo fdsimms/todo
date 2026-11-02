@@ -1771,7 +1771,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   titleCard: {
     marginHorizontal: spacing.md,
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
