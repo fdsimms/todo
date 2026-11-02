@@ -30,6 +30,8 @@ interface Props {
   onToggle: () => void;
   onAddTime: () => void;
   onRestart: () => void;
+  /** Starts the next round of a repeating timer that has rung. */
+  onNextRound: () => void;
   onRemove: () => void;
   /**
    * Changes how many rings a repeating timer expects, from tapping its count.
@@ -56,7 +58,7 @@ interface Props {
  * - **Pause**, because a pan comes off the heat.
  * - **+1 min**, the single most-used button on any kitchen timer, and the one
  *   that also un-rings a timer that just went off (see `addTime`).
- * - **Again**, once it has rung, for the second side and the second batch —
+ * - **Again**, once it has rung, for the second side and the second batch (**Next** on a repeating one, which starts its next round) —
  *   which is also why a length a step names twice is only offered once.
  * - **Dismiss**, which is the only way one leaves before it goes stale.
  *
@@ -75,15 +77,15 @@ interface Props {
  * Pause and Resume are glyphs rather than words to make that room, with the
  * state spelled out after the clock ("12:30 paused").
  */
-export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, onRestart, onRemove, onSetRepeatTarget }: Props) {
+export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, onRestart, onNextRound, onRemove, onSetRepeatTarget }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [editingTarget, setEditingTarget] = useState(false);
 
-  // A repeating timer rolls into its next interval instead of finishing, so it
-  // is never "ready": the row says how many times it has gone off and how long
-  // until the next, and has no +1m or Again (either would change the length the
-  // count is measured in). Only dismissing it ends it.
+  // A repeating timer waits at zero like any other, and its button then starts
+  // the next round instead of running the same one again: the cook has to do
+  // the flip before the next countdown means anything. It has no +1m, which
+  // would change the length of every round after this one.
   const repeating = isRepeatingTimer(timer);
   const rings = repeating ? stepTimerRings(timer, now) : 0;
   const over = repeating && isRepeatOver(rings, timer.repeatTarget);
@@ -96,7 +98,7 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
   // The number big, the state small after it: "12:30 left", "12:30 paused",
   // "0:45 over" (the last in orange, with "Time's up" leading the line below).
   const clock = formatStepTimerClock(ready ? -remaining : remaining);
-  const state = ready ? 'over' : running ? (repeating ? 'until next' : 'left') : 'paused';
+  const state = ready ? 'over' : running ? 'left' : 'paused';
 
   const context = [hideRecipeName ? '' : timer.recipeName, timer.stepExcerpt, timer.stepLabel]
     .filter(Boolean)
@@ -137,7 +139,7 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
             style={styles.countTap}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole={onSetRepeatTarget ? 'button' : 'text'}
-            accessibilityLabel={`Rang ${countText} times`}
+            accessibilityLabel={`Round ${countText}`}
             accessibilityHint={onSetRepeatTarget ? 'Changes how many times it repeats' : undefined}
           >
             <View style={[styles.countPill, over && styles.countPillOver]}>
@@ -180,12 +182,12 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
           <TouchableOpacity
             style={[styles.primaryBtn, styles.primaryBtnWide]}
             activeOpacity={interaction.activeOpacity}
-            onPress={onRestart}
+            onPress={repeating ? onNextRound : onRestart}
             accessibilityRole="button"
-            accessibilityLabel={`Start the ${name} timer again`}
+            accessibilityLabel={repeating ? `Start the next round of the ${name} timer` : `Start the ${name} timer again`}
           >
-            <Ionicons name="refresh" size={14} color={colors.onAccent} />
-            <Text style={styles.primaryBtnText}>Again</Text>
+            <Ionicons name={repeating ? 'play' : 'refresh'} size={14} color={colors.onAccent} />
+            <Text style={styles.primaryBtnText}>{repeating ? 'Next' : 'Again'}</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -216,7 +218,7 @@ export function StepTimerRow({ timer, now, hideRecipeName, onToggle, onAddTime, 
           onClose={() => setEditingTarget(false)}
           name="StepTimerRepeatTarget"
           heading={`Every ${formatStepDuration(timer.durationSeconds)}`}
-          hint="Changes the number the count is read against. It doesn’t change how many times it has rung."
+          hint="Changes how many rounds the recipe expects. It doesn’t change the round you are on."
           value={timer.repeatTarget}
           confirmLabel={BUTTON_LABEL.done}
           onConfirm={onSetRepeatTarget}

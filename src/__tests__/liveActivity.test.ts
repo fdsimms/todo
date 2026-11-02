@@ -430,10 +430,9 @@ describe('buildTimerRuns', () => {
     expect(buildTimerRuns([], [], [paused], { enabled: true })).toEqual([]);
   });
 
-  it('leaves a repeating step timer to its alarms: a countdown to one end time would sit at zero after the first ring', () => {
+  it('gives a repeating step timer an activity for the round that is running', () => {
     const repeating = makeStepTimer({ id: 'st1', durationSeconds: 1800, repeatTarget: 5, startedAt: startedAgo(10) });
-    const plain = makeStepTimer({ id: 'st2', startedAt: startedAgo(10) });
-    expect(buildTimerRuns([], [], [repeating, plain], { enabled: true }).map(r => r.key)).toEqual(['step:st2']);
+    expect(buildTimerRuns([], [], [repeating], { enabled: true }).map(r => r.key)).toEqual(['step:st1']);
   });
 
   it('gives every running step timer its own activity', () => {

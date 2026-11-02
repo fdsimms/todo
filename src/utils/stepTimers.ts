@@ -351,57 +351,53 @@ export const MAX_REPEAT_ROUNDS = 99;
 export const DEFAULT_REPEAT_ROUNDS = 3;
 
 /**
- * How many rings past the target are armed up front. A pot that needs one more
- * cycle is the ordinary case ("6 of 5"), and the phone can't be relied on to
- * be opened between two rings, so the alarms for the overshoot are already
- * waiting. Past that the count keeps going and the alarms are topped up
- * whenever the app next sees the timer (`useStepTimers`).
- */
-export const REPEAT_RINGS_PAST_TARGET = 3;
-
-/**
- * The most alarms one repeating timer holds at once. The alarm backends name
- * them by slot (`stepTimerAlarmUuid`), so this is also how many a cancel has to
- * name.
+ * How many alarm slots a step timer's id can have been armed under. A repeating
+ * timer used to arm one alarm per ring ahead, one slot each, and a timer armed
+ * by that build can still be pending, so a cancel names every slot.
  */
 export const MAX_REPEAT_ALARMS = 12;
 
-/** A step timer that rings every `durationSeconds` until dismissed, with how many rings the recipe expects. */
+/**
+ * A step timer that is run again each time it rings, with how many rounds the
+ * recipe expects. Each round is a plain countdown of `durationSeconds` that
+ * waits at zero until the cook starts the next one (`startNextRound`): "flip it,
+ * then back in the oven" is something the cook does, not something that happens
+ * on a clock.
+ */
 export function isRepeatingTimer(timer: StepTimer): timer is RecipeStepTimer & { repeatTarget: number } {
   return timer.kind === 'recipe' && typeof timer.repeatTarget === 'number' && timer.repeatTarget >= 1;
 }
 
 /**
- * How many times a repeating timer has gone off. **Derived from the clock**,
- * like every other number a step timer shows: whole intervals elapsed, so a
- * phone locked through three of them reads three when it comes back, and a
- * pause stops the count with the clock. 0 for a timer that rings once.
+ * The round a repeating timer is on: 1 until the cook starts the next one.
+ * Stored (`RecipeStepTimer.round`), since a wait for the cook is not something
+ * the clock can count.
  */
-export function stepTimerRings(timer: StepTimer, now: number = Date.now()): number {
-  if (!isRepeatingTimer(timer) || timer.durationSeconds <= 0) return 0;
-  return Math.floor(stepTimerElapsed(timer, now) / timer.durationSeconds);
+export function stepTimerRound(timer: StepTimer): number {
+  return timer.kind === 'recipe' && timer.round && timer.round >= 1 ? timer.round : 1;
 }
 
 /**
- * Seconds left until the next ring. For a timer that rings once, goes negative
- * once time is up (`isStepTimerReady` needs the sign). A repeating one rolls
- * straight into the next interval instead, so it is always positive: it never
- * reads as finished, because only dismissing it ends it.
+ * How many times a repeating timer has gone off: the rounds before this one,
+ * plus this one once its time is up. 0 for a timer that rings once.
  */
-export function stepTimerRemaining(timer: StepTimer, now: number = Date.now()): number {
-  const elapsed = stepTimerElapsed(timer, now);
-  if (isRepeatingTimer(timer) && timer.durationSeconds > 0) {
-    return timer.durationSeconds - (elapsed % timer.durationSeconds);
-  }
-  return timer.durationSeconds - elapsed;
+export function stepTimerRings(timer: StepTimer, now: number = Date.now()): number {
+  if (!isRepeatingTimer(timer)) return 0;
+  return stepTimerRound(timer) - (isStepTimerReady(timer, now) ? 0 : 1);
 }
 
-/** How far through, 0–1. A repeating timer's is through the interval it is in. */
+/**
+ * Seconds left in the round, going negative once time is up (`isStepTimerReady`
+ * needs the sign). A repeating timer waits there for the cook, like any other.
+ */
+export function stepTimerRemaining(timer: StepTimer, now: number = Date.now()): number {
+  return timer.durationSeconds - stepTimerElapsed(timer, now);
+}
+
+/** How far through, 0–1. A repeating timer's is through the round it is in. */
 export function stepTimerProgress(timer: StepTimer, now: number = Date.now()): number {
   if (timer.durationSeconds <= 0) return 1;
-  const elapsed = stepTimerElapsed(timer, now);
-  const within = isRepeatingTimer(timer) ? elapsed % timer.durationSeconds : elapsed;
-  return Math.min(1, Math.max(0, within / timer.durationSeconds));
+  return Math.min(1, Math.max(0, stepTimerElapsed(timer, now) / timer.durationSeconds));
 }
 
 /**
@@ -492,26 +488,6 @@ export function isStepTimerReady(timer: StepTimer, now: number = Date.now()): bo
 export function stepTimerEndsAt(timer: StepTimer, now: number = Date.now()): Date | null {
   if (!isStepTimerRunning(timer)) return null;
   return new Date(now + Math.max(0, stepTimerRemaining(timer, now)) * 1000);
-}
-
-/**
- * Every moment the alarm backends should be holding for a running timer: the
- * one ring for a timer that rings once, and for a repeating one the next ring
- * and the ones after it, up to the target and `REPEAT_RINGS_PAST_TARGET` beyond
- * it (never fewer than that many ahead, and never more than
- * `MAX_REPEAT_ALARMS`). Empty for a paused timer.
- *
- * Measured from what is left right now, so it is right whether the timer just
- * started, came back from a pause, or has been going for hours and is being
- * topped up.
- */
-export function stepTimerRingTimes(timer: StepTimer, now: number = Date.now()): Date[] {
-  const first = stepTimerEndsAt(timer, now);
-  if (!first) return [];
-  if (!isRepeatingTimer(timer)) return [first];
-  const wanted = timer.repeatTarget + REPEAT_RINGS_PAST_TARGET - stepTimerRings(timer, now);
-  const ahead = Math.min(MAX_REPEAT_ALARMS, Math.max(REPEAT_RINGS_PAST_TARGET, wanted));
-  return Array.from({ length: ahead }, (_, at) => new Date(first.getTime() + at * timer.durationSeconds * 1000));
 }
 
 /** What "+1 min" adds. A minute is the unit every stove clock and oven mitt agrees on. */
@@ -703,7 +679,7 @@ export function stepTimerCancelPrompt(
 ): { title: string; message: string } | null {
   if (isStepTimerReady(timer, now)) return null;
   const left = isRepeatingTimer(timer)
-    ? `${describeRepeatCount(stepTimerRings(timer, now), timer.repeatTarget)} so far, ${formatStopwatch(stepTimerRemaining(timer, now))} to the next`
+    ? `${describeRepeatCount(stepTimerRings(timer, now), timer.repeatTarget)} so far, ${formatStopwatch(stepTimerRemaining(timer, now))} left in this one`
     : `${formatStopwatch(stepTimerRemaining(timer, now))} left`;
   const where = (timer.kind === 'rest' ? [timer.label] : [timer.stepExcerpt, timer.stepLabel]).filter(Boolean).join('\n');
   return {
@@ -735,13 +711,6 @@ export function pruneStaleStepTimers(timers: StepTimer[], now: number = Date.now
     // A paused timer is a decision someone made and hasn't come back to; it
     // has no end time to be stale relative to, so it waits.
     if (!isStepTimerRunning(timer)) return true;
-    // A repeating timer never reads as finished, so "four hours after it rang"
-    // is measured from the last ring it was armed for: the target and the
-    // rings of overshoot it holds alarms for.
-    if (isRepeatingTimer(timer)) {
-      const lastArmed = timer.durationSeconds * (timer.repeatTarget + REPEAT_RINGS_PAST_TARGET);
-      return (stepTimerElapsed(timer, now) - lastArmed) * 1000 < STEP_TIMER_KEEP_AFTER_READY_MS;
-    }
     const remaining = stepTimerRemaining(timer, now);
     return remaining * -1000 < STEP_TIMER_KEEP_AFTER_READY_MS;
   });
@@ -807,6 +776,7 @@ export function parseStepTimerQueue(raw: string | null): StepTimer[] {
         && t.repeatTarget >= 1 && t.repeatTarget <= MAX_REPEAT_ROUNDS
         ? { repeatTarget: t.repeatTarget }
         : {}),
+      ...(typeof t.round === 'number' && Number.isInteger(t.round) && t.round >= 2 ? { round: t.round } : {}),
     };
     out.push(recipe);
   }
