@@ -887,7 +887,7 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     case 'mealSlot':
       return;
     // A settings stamp rather than a row one, since a day key names no row,
-    // and one that expires: deleting "Record your weight" means "not this
+    // and one that expires: deleting "Record weight" means "not this
     // time", so it holds for weighInEveryDays from today (weighInDeclineHolds)
     // and no longer. Without it the request came back the next morning, since
     // the window still had no reading in it. The pass's own clearing of a

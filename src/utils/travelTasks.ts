@@ -738,7 +738,7 @@ export function travelTaskTitle(eventTitle: string): string {
   const name = trimmed.length > TRAVEL_EVENT_TITLE_MAX_LENGTH
     ? `${trimmed.slice(0, TRAVEL_EVENT_TITLE_MAX_LENGTH - 1).trimEnd()}…`
     : trimmed;
-  return name ? `Leave for ${name}` : 'Leave for your next event';
+  return name ? `Leave for ${name}` : 'Leave for next event';
 }
 
 /**

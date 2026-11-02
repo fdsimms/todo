@@ -48,7 +48,7 @@ import { weightReadings, type WeightPoint } from './weightLog';
  * Literal about the action, per the copy rule: it does not say "time to weigh
  * in", does not congratulate, and carries no target.
  */
-export const WEIGH_IN_TITLE = 'Record your weight';
+export const WEIGH_IN_TITLE = 'Record weight';
 
 /** How often to ask, when the user hasn't said. */
 export const DEFAULT_WEIGH_IN_EVERY_DAYS = 7;
@@ -152,7 +152,7 @@ export function isCurrentRequest(
 /**
  * Whether a deleted request still holds, so the pass should not ask today.
  *
- * Deleting "Record your weight" used to mean nothing past the day it was
+ * Deleting "Record weight" used to mean nothing past the day it was
  * deleted on: the next morning the window still had no reading in it, so the
  * request came straight back, and a person asked every seven days was asked
  * every day from the first ask onward. A decline now holds for the window the

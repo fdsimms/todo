@@ -153,7 +153,7 @@ describe('weighInNotes', () => {
 
 describe('constants', () => {
   it('titles the task literally, with no target or encouragement', () => {
-    expect(WEIGH_IN_TITLE).toBe('Record your weight');
+    expect(WEIGH_IN_TITLE).toBe('Record weight');
   });
 
   it('links to the Weight screen with the sheet up', () => {

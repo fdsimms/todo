@@ -288,7 +288,7 @@ describe('travelTaskTitle', () => {
   });
 
   it('still says something for an untitled event', () => {
-    expect(travelTaskTitle('   ')).toBe('Leave for your next event');
+    expect(travelTaskTitle('   ')).toBe('Leave for next event');
   });
 });
 
