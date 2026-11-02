@@ -110,7 +110,7 @@ interface Props {
 }
 
 /** Sub-label for a checklist row: live dates when its anchor is set, offset labels otherwise. */
-function itemSublabel(item: TemplateItem, anchors: TemplateAnchors, away = false): string | null {
+function itemSublabel(item: TemplateItem, anchors: TemplateAnchors, away = false, onlyDate = false): string | null {
   const parts: string[] = [];
   const anchor = item.anchor === 'end' ? anchors.end : anchors.start;
   const due = resolveOffsetDate(anchor, item.dueOffsetDays);
@@ -128,7 +128,8 @@ function itemSublabel(item: TemplateItem, anchors: TemplateAnchors, away = false
   if (item.timeSegments.length > 0) {
     parts.push(item.timeSegments.join(', '));
   }
-  if ((item.dueOffsetDays !== null || item.deferOffsetDays !== null) && !anchor) {
+  // With a single date on the sheet there is nothing to tell it apart from.
+  if ((item.dueOffsetDays !== null || item.deferOffsetDays !== null) && !anchor && !onlyDate) {
     parts.push(`from ${anchorLabel(item.anchor, away).toLowerCase()}`);
   }
   return parts.length > 0 ? parts.join(' · ') : null;
@@ -404,6 +405,20 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   const anchorless = missingAnchors.length > 0;
   const canApply = selectedCount > 0 && !anchorless;
 
+  // A date row is asked for only when something reads it: an item counting days
+  // from that anchor, a number question worked out from the two dates, or the
+  // forecast line (which spans both). Judged over the whole tree rather than
+  // the selection, so rows don't appear and vanish as items are ticked.
+  const datesAreRead = visibleQuestions.some(q => q.kind === 'number' && q.fromDates !== 'none') || wantsForecast;
+  const anchorUsedByItems = (which: 'start' | 'end') => flatLeaves.some(({ item: i }) =>
+    i.anchor === which && (i.dueOffsetDays !== null || i.deferOffsetDays !== null));
+  const showStartRow = datesAreRead || anchorUsedByItems('start');
+  const showEndRow = datesAreRead || anchorUsedByItems('end');
+  // One date alone isn't a "start" or an "end" of anything, so a trip-less
+  // template calls it just "Date". A trip's Leaving / Coming back stay named.
+  const onlyDate = !away && showStartRow !== showEndRow;
+  const anchorName = (which: 'start' | 'end') => (onlyDate ? 'date' : anchorLabel(which, away).toLowerCase());
+
   // Derived off the whole tree rather than the current selection, so the field
   // and its hint don't appear and disappear as items are ticked.
   const selectedLeafItems = flatLeaves.map(l => l.item);
@@ -520,7 +535,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     }
 
     const checked = selectedIds.has(node.item.id);
-    const sublabel = itemSublabel(node.item, anchors, template?.anchorsAreAway ?? false);
+    const sublabel = itemSublabel(node.item, anchors, template?.anchorsAreAway ?? false, onlyDate);
     // Shown substituted so the checklist is a live preview of the titles that
     // will actually be created, blanks and all.
     const title = substitutePlaceholders(applyItemVariant(node.item, answers).title, values);
@@ -689,25 +704,29 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
               days away, rather than for the anchor they feed. Two rows either
               way, so the relabel costs nothing and "Leaving" answers the
               question "start of what?" that "Start date" leaves open. */}
-          <AnchorRow
-            icon={away ? 'airplane-outline' : 'play-outline'}
-            label={away ? 'Leaving' : 'Start date'}
-            hint='Items that count days from the start are dated from this day.'
-            value={startAnchor}
-            onPress={() => openCalendar('start')}
-            onClear={() => setStartAnchor(null)}
-          />
-          <View style={styles.inlineSep} />
-          <AnchorRow
-            icon={away ? 'home-outline' : 'flag-outline'}
-            label={away ? 'Coming back' : 'End date'}
-            hint='Items that count days from the end are dated from this day.'
-            value={endAnchor}
-            onPress={() => openCalendar('end')}
-            onClear={() => setEndAnchor(null)}
-          />
+          {showStartRow && (
+            <AnchorRow
+              icon={away ? 'airplane-outline' : 'play-outline'}
+              label={away ? 'Leaving' : onlyDate ? 'Date' : 'Start date'}
+              hint={onlyDate ? 'Tasks are dated from this day.' : 'Items that count days from the start are dated from this day.'}
+              value={startAnchor}
+              onPress={() => openCalendar('start')}
+              onClear={() => setStartAnchor(null)}
+            />
+          )}
+          {showStartRow && showEndRow && <View style={styles.inlineSep} />}
+          {showEndRow && (
+            <AnchorRow
+              icon={away ? 'home-outline' : 'flag-outline'}
+              label={away ? 'Coming back' : onlyDate ? 'Date' : 'End date'}
+              hint={onlyDate ? 'Tasks are dated from this day.' : 'Items that count days from the end are dated from this day.'}
+              value={endAnchor}
+              onPress={() => openCalendar('end')}
+              onClear={() => setEndAnchor(null)}
+            />
+          )}
 
-          <View style={styles.inlineSep} />
+          {(showStartRow || showEndRow) && <View style={styles.inlineSep} />}
 
           {/* Item checklist, including any nested templates' items indented beneath their ref row */}
           <View>
@@ -716,7 +735,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
 
           {anchorless && (
             <Text style={styles.anchorlessHint}>
-              Some tasks count days from {missingAnchors.map(a => anchorLabel(a, away).toLowerCase()).join(' and ')}, which isn’t set yet.
+              Some tasks count days from {missingAnchors.map(anchorName).join(' and ')}, which isn’t set yet.
             </Text>
           )}
           </ScrollView>
@@ -733,7 +752,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
               {selectedCount === 0
                 ? 'No tasks selected'
                 : anchorless
-                  ? `Set ${missingAnchors.map(a => anchorLabel(a, away).toLowerCase()).join(' and ')} first`
+                  ? `Set ${missingAnchors.map(anchorName).join(' and ')} first`
                   : `Add ${selectedCount} task${selectedCount === 1 ? '' : 's'}`}
             </Text>
           </TouchableOpacity>
