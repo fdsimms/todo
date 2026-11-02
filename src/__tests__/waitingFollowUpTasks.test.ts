@@ -1,5 +1,6 @@
 import type { Person, Task } from '../types';
 import { dayKeyOf } from '../utils/dateUtils';
+import { registerPausedProjectSource } from '../utils/projectPause';
 
 // waitingFollowUpTitle reaches displayTitleFor in visibilityUtils.ts, which
 // reaches dateUtils.ts's settings-store read — same stub fuzzySearch.test.ts
@@ -130,6 +131,19 @@ describe('wantedWaitingFollowUps', () => {
 
   it("files the follow-up under the waiting task's project", () => {
     expect(wantedWaitingFollowUps([waitingTask({ projectId: 'kitchen' })], [person()], TODAY)[0].projectId).toBe('kitchen');
+  });
+
+  // Nobody can see a paused project's wait, so its follow-up would be hidden
+  // too, and it took a capped slot from a wait the person can act on.
+  it('skips a wait in a paused project, leaving its slot to one that shows', () => {
+    registerPausedProjectSource(() => [{ id: 'kitchen', pausedUntil: '2999-01-01', archived: false, completed: false }]);
+    try {
+      const paused = waitingTask({ id: 'paused', projectId: 'kitchen' });
+      const loose = waitingTask({ id: 'loose' });
+      expect(wantedWaitingFollowUps([paused, loose], [person()], TODAY, new Set(), 1).map(w => w.taskId)).toEqual(['loose']);
+    } finally {
+      registerPausedProjectSource(null);
+    }
   });
 
   it('wants one on the wait\'s own follow-up day, however young the wait', () => {

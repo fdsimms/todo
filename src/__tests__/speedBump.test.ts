@@ -10,7 +10,9 @@ import {
   describeSpeedBump,
   liveSpeedBump,
   newSpeedBumpRule,
+  normalizeBumpDays,
   parseSpeedBumpRules,
+  speedBumpRunsOn,
   serializeSpeedBumpRules,
   speedBumpRungs,
 } from '../utils/speedBump';
@@ -127,6 +129,49 @@ describe('armableSpeedBumps', () => {
 
   it('leaves out a rule that resolves to nothing to block', () => {
     expect(armableSpeedBumps([rule()], id => id ?? 'default', () => [])).toEqual([]);
+  });
+
+  describe('by weekday', () => {
+    const weekday = rule({ id: 'wk', days: [1, 2, 3, 4, 5], thresholdMinutes: 45 });
+    const weekend = rule({ id: 'we', days: [0, 6], thresholdMinutes: 90 });
+    const everyDay = rule({ id: 'all' });
+    const ids = (day: number | undefined) =>
+      armableSpeedBumps([weekday, weekend, everyDay], undefined, undefined, undefined, day).map(b => b.id);
+
+    it('arms only the rules that run on the day', () => {
+      expect(ids(3)).toEqual(['wk', 'all']);
+      expect(ids(6)).toEqual(['we', 'all']);
+      expect(ids(0)).toEqual(['we', 'all']);
+    });
+
+    it('arms every enabled rule when no day is given', () => {
+      expect(ids(undefined)).toEqual(['wk', 'we', 'all']);
+    });
+  });
+});
+
+describe('days', () => {
+  it('reads a missing or empty set, and a full week, as every day', () => {
+    expect(normalizeBumpDays(undefined)).toBeUndefined();
+    expect(normalizeBumpDays([])).toBeUndefined();
+    expect(normalizeBumpDays([0, 1, 2, 3, 4, 5, 6])).toBeUndefined();
+  });
+
+  it('sorts, dedupes and drops what is not a weekday', () => {
+    expect(normalizeBumpDays([6, 0, 6, 9, -1, 1.5, 'x'])).toEqual([0, 6]);
+  });
+
+  it('round-trips through storage, and a rule saved before days existed still runs every day', () => {
+    const rules = [rule({ days: [0, 6] })];
+    expect(parseSpeedBumpRules(serializeSpeedBumpRules(rules))).toEqual(rules);
+    const [old] = parseSpeedBumpRules(JSON.stringify([{ id: 'a', title: 't', thresholdMinutes: 30, blockMinutes: 15 }]));
+    expect(old.days).toBeUndefined();
+    expect(speedBumpRunsOn(old, 3)).toBe(true);
+  });
+
+  it('says which days in the description', () => {
+    expect(describeSpeedBump(rule({ days: [0, 6] }), 'Social', 'Social')).toBe('Weekends: After 45 min on Social, Social blocked for 15 minutes.');
+    expect(describeSpeedBump(rule(), 'Social', 'Social').startsWith('After')).toBe(true);
   });
 });
 

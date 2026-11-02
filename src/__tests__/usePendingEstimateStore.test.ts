@@ -160,6 +160,34 @@ describe('drain', () => {
     expect(mockRows).toEqual([]);
   });
 
+  it('does not file the old words\' figures under a meal reworded while its request was out', async () => {
+    enqueue('chicken burrito');
+    const id = queue()[0].id;
+    mockEstimate.mockImplementationOnce(async () => {
+      usePendingEstimateStore.getState().rename(id, 'half a chicken burrito bowl, no tortilla');
+      return result('Chicken burrito', 1000);
+    });
+    await usePendingEstimateStore.getState().drain();
+    expect(queue()[0]).toMatchObject({ description: 'half a chicken burrito bowl, no tortilla', status: 'waiting', estimate: null });
+
+    mockEstimate.mockResolvedValueOnce(result('Half a chicken burrito bowl', 450));
+    await usePendingEstimateStore.getState().drain();
+    expect(mockEstimate).toHaveBeenLastCalledWith('half a chicken burrito bowl, no tortilla', []);
+    expect(queue()[0]).toMatchObject({ status: 'ready' });
+    expect(queue()[0].estimate?.label).toBe('Half a chicken burrito bowl');
+  });
+
+  it('does not mark a meal reworded while its request was out as failed for the old words', async () => {
+    enqueue('doweast cider');
+    const id = queue()[0].id;
+    mockEstimate.mockImplementationOnce(async () => {
+      usePendingEstimateStore.getState().rename(id, 'Downeast cider');
+      throw new Error('API error 400');
+    });
+    await usePendingEstimateStore.getState().drain();
+    expect(queue()[0]).toMatchObject({ description: 'Downeast cider', status: 'waiting', error: null });
+  });
+
   it('does nothing in demo mode, leaving the queue as it was', async () => {
     enqueue('lunch');
     mockDemo = true;

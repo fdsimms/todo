@@ -1490,7 +1490,7 @@ function makeStyles(colors: Colors) {
       fontSize: font.xs,
       fontWeight: fontWeight.semibold,
       letterSpacing: 0.8,
-      marginBottom: spacing.xs,
+      marginBottom: spacing.sm,
     },
     // No lineHeight on a TextInput (see CLAUDE.md); the padding sets the box.
     nameInput: {

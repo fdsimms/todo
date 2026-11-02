@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSheetOpening } from '../hooks/useSheetOpening';
 import { Alert, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -60,11 +61,10 @@ export function FoodCameraSheet({ visible, modes, onClose, onBarcode, onPhoto }:
   const handledRef = useRef(false);
   // Which opening a photo belongs to. Encoding takes a moment, and the sheet can
   // be closed (or reopened) while it runs; the result must not land in the next
-  // opening. Bumped on every open and close, read back after each await.
-  const openingRef = useRef(0);
+  // opening.
+  const openings = useSheetOpening(visible);
 
   useEffect(() => {
-    openingRef.current += 1;
     handledRef.current = false;
     setBusy(false);
     if (visible) setChosen(modes[0] ?? 'package');
@@ -102,36 +102,36 @@ export function FoodCameraSheet({ visible, modes, onClose, onBarcode, onPhoto }:
   const shoot = async () => {
     const camera = cameraRef.current;
     if (busy || !camera) return;
-    const opening = openingRef.current;
+    const opening = openings.begin();
     const takenIn = mode;
     haptics.tap();
     setBusy(true);
     try {
       const shot = await camera.takePictureAsync({ quality: 1, exif: false });
-      if (openingRef.current !== opening) return;
+      if (!openings.isCurrent(opening)) return;
       const result = await recipePhotoFromFile(shot.uri, shot.width, shot.height);
-      if (openingRef.current !== opening) return;
+      if (!openings.isCurrent(opening)) return;
       deliver(result, takenIn, 'camera');
     } catch (e) {
-      if (openingRef.current !== opening) return;
+      if (!openings.isCurrent(opening)) return;
       Alert.alert('Couldn’t take the photo', e instanceof Error && e.message ? e.message : 'Try again.');
     } finally {
-      if (openingRef.current === opening) setBusy(false);
+      if (openings.isCurrent(opening)) setBusy(false);
     }
   };
 
   const chooseFromLibrary = async () => {
     if (busy) return;
-    const opening = openingRef.current;
+    const opening = openings.begin();
     const takenIn = mode;
     haptics.tap();
     setBusy(true);
     try {
       const result = await pickRecipePhoto('library');
-      if (openingRef.current !== opening) return;
+      if (!openings.isCurrent(opening)) return;
       deliver(result, takenIn, 'library');
     } finally {
-      if (openingRef.current === opening) setBusy(false);
+      if (openings.isCurrent(opening)) setBusy(false);
     }
   };
 

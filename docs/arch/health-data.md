@@ -23,13 +23,33 @@ Read this before touching `modules/todo-health-bridge/`,
 `src/utils/dayContextRows.ts` or the health half of
 `src/utils/moodInsights.ts` — and before adding any reader *or writer* of a
 health figure anywhere else. Most of what follows is about what a reader is
-allowed to claim rather than about how to get the number; the "Writing exactly
-one thing", "The second write" and "The third write" sections are where the
+allowed to claim rather than about how to get the number; the "Writing what a
+task names", "The second write" and "The third write" sections are where the
 concerns are about a writer instead.
 
 The rules here are strong defaults with the reasoning
 attached: read the reason before deviating from one. Where this note and the
 code disagree, the code is what ships, so fix the note.
+
+## Rules first
+
+The invariants a change in this area most often breaks, one line each, with the code that owns it and
+the section below that argues it (§). Read that section before deviating from one. The rest of the
+file is reference to read narrowly: `grep -n '^## ' docs/arch/health-data.md` is its table of contents.
+
+- **A Health reading is never stored**: no table, column or backup copy, and a history window is queried when it is needed. `src/store/useHealthStore.ts`. (§ It is a reading, not the app's data)
+- **A missing reading is `null`, never 0, and a real 0 stays 0.** No rule, task or line of copy fires on or claims anything from an absent reading. `HealthDay`, tested in `src/__tests__/healthReadings.test.ts`. (§ Read authorization is not observable)
+- **Read permission is never reported as granted or refused.** The bridge answers `'requested'`, and the access row says only "Not asked yet" or "Already asked". (§ Read authorization is not observable)
+- **Only a person's tap in Settings raises the permission sheet, and every request asks for read and write together**, while `healthReadEnabled` and `healthWriteEnabled` stay two separate switches. (§ Nothing asks, except a person; § Writing what a task names)
+- **Demo mode never reaches Health**: `healthBridge()` (`src/utils/healthBridge.ts`) refuses, and every writer checks `isDemoModeActive()` again. (§ The rules it inherits unchanged)
+- **A write happens only because a person acted on one item**, never from a sweep, reconciler, sync or backfill. The one delayed path is an agent's row flagged `healthWritePending`, written in the foreground or dropped after `PENDING_WRITE_MAX_AGE_DAYS` (`writePendingHealthEntries`). (§ The rules it inherits unchanged)
+- **A nutrient the entry doesn't state is never written; a stated zero is** (alcohol excepted). `writableFoodAmounts` (`src/utils/healthFoodSync.ts`). (§ Absent stays absent)
+- **Taking back what the app wrote is never gated on `healthWriteEnabled`**, and the delete reads its row from the database, not from what is loaded on screen. (§ Two asymmetries worth not smoothing out)
+- **A correction to an entry's `nutrition` or `label` goes through `reviseEntry`** (retract, then rewrite), never `updateEntry`, and `atISO` and `dayKey` are never patched. `src/store/useFoodLogStore.ts`. (§ Correcting an entry)
+- **Copy about a reading credits its source and never states it as fact, names a state back at the person, or diagnoses.** `describeHealthInsight`, `nutrientReadingNote`. (§ A reading is a claim)
+- **Nothing interprets a body.** Weight, blood pressure and heart rate get no band, colour, BMI or trend, and none is a `HealthRuleMetric` (`src/types/rules.ts`); a task may fire on a missing reading, never on its value. (§ What is deliberately not built yet)
+- **No type joins `readTypes` until something reads it, and a new `writeTypes` entry gets its own review.** Any new read or write updates both Health usage strings in `app.json`, and the watch's pair in `plugins/withWatchApp.js`. (§ What is deliberately not built yet; § Writing what a task names)
+- **When several sources record a cumulative figure, the read takes the largest single source, never the sum.** It may under-count; it never over-counts. `bestSum` in `modules/todo-health-bridge/ios/TodoHealthBridgeModule.swift`. (§ A reading is a claim)
 
 ---
 

@@ -18,23 +18,13 @@
  * host whose zone is whatever the deploy gave it, and answers in the person's
  * zone (`timeZone.ts`), so a UTC slice there is the same bug one step removed.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
 const ROOT = join(SRC, '..');
 const MCP_SRC = join(ROOT, 'mcp', 'src');
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    // The suite is skipped: this file quotes the pattern, and a test building
-    // a UTC timestamp fixture is not keying a day.
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx?$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 /** `.toISOString().slice(0, 10)` and its `substring`/`substr`/`split('T')` spellings. */
 const UTC_DAY_KEY = /toISOString\(\)\s*\.(?:(?:slice|substring|substr)\(\s*0\s*,\s*10\s*\)|split\(\s*['"]T['"]\s*\))/;

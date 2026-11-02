@@ -68,7 +68,10 @@ re-dates mid-day is one they are looking at.
 person's own run of pushes (`driftingSince`), and the date. A push by hand counts as waiting.
 
 The load is the busy cue's own reading (`buildDayLoads`, `weightFor`), with the candidates left
-out of it, so slot-in agrees with the cue the month grid and the date picker show.
+out of it, and so is everything that can't be done today: a task withheld (vacation, a paused
+project) or held back (waiting on a task or a person) is dated today but isn't on Today, and
+counting it held back tasks there was room for. That is where it parts from the month grid's and
+the date picker's cue, which still count those; the Today header and the daily agenda don't.
 
 ## What can't wait (`canSlotIn`)
 

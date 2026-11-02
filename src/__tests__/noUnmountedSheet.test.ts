@@ -25,21 +25,11 @@
  * component tests here (Jest runs in `node` with no renderer), so a JSX tag is
  * only ever text as far as the suite is concerned.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles, TSX } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    // The suite itself is skipped: it renders nothing, and this file quotes
-    // the patterns as literals, so scanning it would only ever match itself.
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 /** `visible` alone on its own line, which is how every one of the fourteen read. */
 const BARE_LINE = /^[ \t]*visible[ \t]*$/m;
@@ -75,7 +65,7 @@ const SUBJECT_GUARD_ALLOWED: Record<string, string> = {
   'components/AwayShiftSheet.tsx': 'plan is a snapshot set at open and never cleared, so the null return is only the never-opened state',
 };
 
-const files = sourceFiles(SRC).map(f => ({
+const files = sourceFiles(SRC, { match: TSX }).map(f => ({
   rel: f.slice(SRC.length + 1),
   src: readFileSync(f, 'utf8'),
 }));

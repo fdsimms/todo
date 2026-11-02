@@ -42,6 +42,7 @@ import {
 import { writeExportFile, shareCsvFile, shareMarkdownFile, discardBackupFile, canShare } from '../utils/backupFile';
 import { navigateToTab } from '../navigation/navigationRef';
 import { useFilterField } from '../hooks/useFilterField';
+import { useRouteArrival } from '../hooks/useRouteArrival';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useJournalAccess } from '../hooks/useJournalAccess';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -186,19 +187,17 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
   // Stamped and tracked against what was handled, as MoodScreen's openLog is,
   // with the same `returnTo` hand-back once the sheet closes.
   const routeInfo = useRoute<{ key: string; name: string; params?: { openLog?: number; openEntry?: string; dictate?: number; returnTo?: string } }>();
-  const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
   // `mic=1`, the row's microphone: the sheet opens already listening. Cleared
   // when it closes, so reopening it any other way starts silent.
   const [dictateOnOpen, setDictateOnOpen] = useState(false);
   const [returnTo, setReturnTo] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    if (routeInfo.params?.openLog === undefined || routeInfo.params.openLog === handledOpenLog) return;
-    setHandledOpenLog(routeInfo.params.openLog);
-    setReturnTo(routeInfo.params.returnTo);
+  useRouteArrival(routeInfo.params?.openLog, () => {
+    const params = routeInfo.params;
+    setReturnTo(params?.returnTo);
     // `entry=<id>`, a sealed note's reminder: that note, once it's open.
     // One still sealed (the task tapped from Later) or since deleted opens
     // nothing, rather than a blank page in its place.
-    const wanted = routeInfo.params.openEntry;
+    const wanted = params?.openEntry;
     if (wanted) {
       const entry = entries.find(e => e.id === wanted);
       if (!entry) return;
@@ -207,11 +206,9 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
       return;
     }
     setEditing(null);
-    setDictateOnOpen(routeInfo.params.dictate !== undefined);
+    setDictateOnOpen(params?.dictate !== undefined);
     setSheetOpen(true);
-    // `entries` is read when the link lands, not tracked: a later edit must not reopen it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routeInfo.params?.openLog, routeInfo.params?.returnTo, handledOpenLog]);
+  });
 
   /** Offers to open the soonest sealed note now rather than on its day. */
   const openSealedEarly = () => {

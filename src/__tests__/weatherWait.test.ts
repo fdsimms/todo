@@ -95,6 +95,31 @@ describe('decideWeatherWait', () => {
     expect(decideWeatherWait(makeTask(), [], '2026-10-04')).toEqual({ kind: 'none' });
   });
 
+  // Hidden by vacation or a paused project, nobody can use a matching day, so
+  // it is not spent: released anyway, the task came back after the pause
+  // whatever the weather.
+  describe('while the task is withheld', () => {
+    const withheld = { withheld: true };
+
+    it('never releases on a matching today, and holds to the next match after it', () => {
+      const sunnyToday = [day('2026-10-04', CLEAR), day('2026-10-05', RAIN), day('2026-10-06', CLEAR)];
+      expect(decideWeatherWait(makeTask(), sunnyToday, '2026-10-04', withheld))
+        .toEqual({ kind: 'defer', dayKey: '2026-10-06', matched: true });
+    });
+
+    it('moves a hold that has arrived on to the next match rather than releasing it', () => {
+      const held = makeTask({ deferUntil: iso('2026-10-06') });
+      const fromThe6th = [day('2026-10-06', CLEAR), day('2026-10-07', RAIN), day('2026-10-08', CLEAR)];
+      expect(decideWeatherWait(held, fromThe6th, '2026-10-06', withheld))
+        .toEqual({ kind: 'defer', dayKey: '2026-10-08', matched: true });
+    });
+
+    it('leaves the hold alone without a forecast', () => {
+      const held = makeTask({ deferUntil: iso('2026-10-04') });
+      expect(decideWeatherWait(held, [], '2026-10-06', withheld)).toEqual({ kind: 'none' });
+    });
+  });
+
   it('ignores a task that is not waiting, finished, or not a one-off', () => {
     expect(decideWeatherWait(makeTask({ weatherWait: null }), forecast, '2026-10-04')).toEqual({ kind: 'none' });
     expect(decideWeatherWait(makeTask({ completed: true }), forecast, '2026-10-04')).toEqual({ kind: 'none' });

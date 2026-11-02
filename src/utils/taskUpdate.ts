@@ -30,7 +30,7 @@ import {
   DEFAULT_SUPPLY_REORDER_AT,
 } from './supply';
 import { canHoldFollowUpTask } from './followUpTask';
-import { isTaskNew } from './visibilityUtils';
+import { isTaskNew, windowBoundsFor } from './visibilityUtils';
 import { postponeOutcome, nextPostponeCount, nextDriftingSince } from './postpone';
 import { nextBountyPushes } from './rewards';
 import { reanchorReminder } from './taskDraft';
@@ -44,7 +44,7 @@ import { blockerFields, blockerIdsOf } from './blocking';
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort', 'difficulty',
-  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'healthFollowGoal', 'windowStart', 'windowEnd', 'windowStartSun', 'windowEndSun', 'timeSegments', 'reminderTime', 'reminderKind', 'alarmSound', 'alarmSoundPool', 'alarmLink', 'alarmLinkLeavesOpen', 'reminderOffsetDays', 'reminderTracksVisibility', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
+  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'healthFollowGoal', 'windowStart', 'windowEnd', 'windowStartSun', 'windowEndSun', 'timeSegments', 'reminderTime', 'reminderKind', 'alarmSound', 'alarmSoundPool', 'alarmLink', 'alarmLinkLeavesOpen', 'templateId', 'reminderOffsetDays', 'reminderTracksVisibility', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes', 'completionTimerNote',
   // What "Start workout" opens, the way linkUrl is what the row's link opens: a
   // scope:'occurrence' change to one date's routine must not become the default
   // for every date after it.
@@ -135,10 +135,17 @@ function withoutRotationTarget(
  * disagree about how many units a day holds. Exported so TaskEditor can keep
  * its own on-screen count in step with the cadence as the user edits it,
  * rather than saving whatever was last typed into the stepper.
+ *
+ * A bound that follows the sun is read for `dayStart` (`windowBoundsFor`), as
+ * the pace ramp reads it. The stored clock time is only what the anchor came
+ * to on the day it was set, so a sunrise-to-sunset run saved in June kept
+ * June's count into December's shorter day and paced faster than asked.
  */
-export function derivedTargetCount(task: Pick<Task,
-  'windowStart' | 'windowEnd' | 'quotaStartedAt' | 'quotaIntervalMinutes' | 'targetCount'
-> & Partial<Pick<Task, 'rotationItems'>>): number | null {
+export function derivedTargetCount(
+  task: Pick<Task, 'windowStart' | 'windowEnd' | 'quotaStartedAt' | 'quotaIntervalMinutes' | 'targetCount'>
+    & Partial<Pick<Task, 'rotationItems' | 'windowStartSun' | 'windowEndSun'>>,
+  dayStart: Date = getCurrentDayStart(),
+): number | null {
   // A rotation's target is how many named things are in it, full stop — there
   // is nothing to type and nothing that could disagree with the set. It is
   // checked ahead of the interval because the two are not a combination the
@@ -146,13 +153,14 @@ export function derivedTargetCount(task: Pick<Task,
   if (isRotationTask(task)) return rotationTargetTotal(task.rotationItems!);
   if (task.quotaIntervalMinutes == null) return task.targetCount;
   const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
+  const bounds = windowBoundsFor(task, dayStart);
   const span = quotaRunSpan({
-    windowStart: task.windowStart,
-    windowEnd: task.windowEnd,
+    windowStart: bounds.start,
+    windowEnd: bounds.end,
     quotaStartedAt: task.quotaStartedAt,
     activeHoursStart,
     activeHoursEnd,
-    dayStart: getCurrentDayStart(),
+    dayStart,
   });
   return quotaTargetForInterval(span, task.quotaIntervalMinutes, {
     min: MIN_TARGET_COUNT,

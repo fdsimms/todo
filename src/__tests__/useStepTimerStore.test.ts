@@ -336,7 +336,7 @@ describe('repeating timers', () => {
     }
   });
 
-  it('changes the target and re-arms the alarms, since how many are held depends on it', () => {
+  it('changes the target and re-arms the alarm', () => {
     const timer = useStepTimerStore.getState().start(EVERY)!;
     mockSchedule.mockClear();
     useStepTimerStore.getState().setRepeatTarget(timer.id, 6);
@@ -355,27 +355,54 @@ describe('repeating timers', () => {
     expect(second.kind === 'recipe' && second.repeatTarget).toBeUndefined();
   });
 
-  it('will not add a minute, which would rewrite how many times it has rung', () => {
+  it('will not add a minute, which would change the length of every later round', () => {
     const timer = useStepTimerStore.getState().start(EVERY)!;
     useStepTimerStore.getState().addTime(timer.id);
     expect(useStepTimerStore.getState().timers[0].durationSeconds).toBe(30 * 60);
   });
 
-  it('re-arms a running timer without changing it', () => {
-    const timer = useStepTimerStore.getState().start(EVERY)!;
-    mockSchedule.mockClear();
-    mockSet.mockClear();
-    useStepTimerStore.getState().rearm(timer.id);
-    expect(mockSchedule).toHaveBeenCalledTimes(1);
-    expect(mockSet).not.toHaveBeenCalled();
-  });
+  describe('starting the next round', () => {
+    afterEach(() => jest.useRealTimers());
 
-  it('does not re-arm a paused one', () => {
-    const timer = useStepTimerStore.getState().start(EVERY)!;
-    useStepTimerStore.getState().pause(timer.id);
-    mockSchedule.mockClear();
-    useStepTimerStore.getState().rearm(timer.id);
-    expect(mockSchedule).not.toHaveBeenCalled();
+    it('waits for the cook: nothing starts on its own once the round is up', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-08-25T12:00:00Z'));
+      const timer = useStepTimerStore.getState().start(EVERY)!;
+      jest.setSystemTime(new Date('2026-08-25T12:31:00Z'));
+      const [waiting] = useStepTimerStore.getState().timers;
+      expect(waiting.id).toBe(timer.id);
+      expect(waiting.kind === 'recipe' && waiting.round).toBeUndefined();
+    });
+
+    it('moves a rung timer to the next round with a fresh clock, and arms its alarm', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-08-25T12:00:00Z'));
+      const timer = useStepTimerStore.getState().start(EVERY)!;
+      jest.setSystemTime(new Date('2026-08-25T12:31:00Z'));
+      mockSchedule.mockClear();
+      useStepTimerStore.getState().startNextRound(timer.id);
+      const [next] = useStepTimerStore.getState().timers;
+      expect(next.kind === 'recipe' && next.round).toBe(2);
+      expect(next.startedAt).toBe('2026-08-25T12:31:00.000Z');
+      expect(next.elapsedSeconds).toBe(0);
+      expect(mockSchedule).toHaveBeenCalledWith(expect.objectContaining({ id: timer.id, round: 2 }));
+    });
+
+    it('does nothing while the round is still counting', () => {
+      const timer = useStepTimerStore.getState().start(EVERY)!;
+      mockSchedule.mockClear();
+      useStepTimerStore.getState().startNextRound(timer.id);
+      const [same] = useStepTimerStore.getState().timers;
+      expect(same.kind === 'recipe' && same.round).toBeUndefined();
+      expect(mockSchedule).not.toHaveBeenCalled();
+    });
+
+    it('does nothing for a timer that rings once', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-08-25T12:00:00Z'));
+      const timer = useStepTimerStore.getState().start(START)!;
+      jest.setSystemTime(new Date('2026-08-25T14:00:00Z'));
+      useStepTimerStore.getState().startNextRound(timer.id);
+      const [same] = useStepTimerStore.getState().timers;
+      expect(same.kind === 'recipe' && same.round).toBeUndefined();
+    });
   });
 });
 

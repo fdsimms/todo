@@ -5,7 +5,8 @@
 //
 //   ==== <name> ====        the section banners through the logic half
 //   makeStyles              styles, at the bottom
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSheetOpening } from '../hooks/useSheetOpening';
 import {
   View,
   Text,
@@ -252,11 +253,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     resetComponents();
   }, [resetInput, resetComponents]);
 
-  // Which opening of the sheet a request belongs to (see `stillOpenFor`).
-  const openingRef = useRef(0);
   useEffect(() => {
     if (!visible) {
-      openingRef.current += 1;
       reset();
     }
   }, [visible, reset]);
@@ -266,14 +264,12 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // sheet stays mounted (only its Modal hides), so nothing stops that promise
   // once the user discards. Read inside the promise continuation, never as a
   // dependency, so a cancel mid-request is seen without re-running `run`.
-  const visibleRef = useRef(visible);
-  useEffect(() => { visibleRef.current = visible; }, [visible]);
   // Open is not enough: after a Cancel and a reopen the sheet is open again,
   // and a reply to the cancelled run filled the review on top of the new one.
-  const stillOpenFor = (opening: number) => visibleRef.current && openingRef.current === opening;
+  const openings = useSheetOpening(visible);
 
   const run = useCallback(async () => {
-    const opening = openingRef.current;
+    const opening = openings.begin();
     setLoading(true);
     setError(null);
     try {
@@ -281,12 +277,12 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       const resolved = await resolveSource();
       if (!resolved) return;
       // Cancelled while the page was fetched: no paid extraction for it.
-      if (!stillOpenFor(opening)) return;
+      if (!openings.isCurrent(opening)) return;
       const result = await extractRecipe(resolved.source, [...aisleOrder]);
       // Canceled while the request was in flight: don't repopulate a sheet
       // the user already discarded — it would silently reappear filled in
       // the next time this sheet opens.
-      if (!stillOpenFor(opening)) return;
+      if (!openings.isCurrent(opening)) return;
       setExtracted(result);
       // "x or y" lines arrive as one row per option, filed as alternatives.
       const rows = splitImportedAlternatives(result.ingredients);
@@ -323,12 +319,12 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setSourcePageText(source.page);
       setImportedSourceType(source.sourceType);
     } catch (e) {
-      if (stillOpenFor(opening)) {
+      if (openings.isCurrent(opening)) {
         setError(describeImportError(e));
         setCanRetry(isRetryableImportError(e));
       }
     } finally {
-      if (openingRef.current === opening) setLoading(false);
+      if (openings.isCurrent(opening)) setLoading(false);
     }
   }, [resolveSource, aisleOrder, recipe]);
 

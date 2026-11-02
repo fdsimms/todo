@@ -12,6 +12,7 @@ import {
   dbDeleteSetting,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { slotUpdates } from '../utils/projectOrder';
 import {
   isReachOutPromptLive,
   parsePendingReachOut,
@@ -193,8 +194,14 @@ export const usePersonStore = create<PersonStore>((set, get) => ({
   // it has been, or by anything else the app worked out for itself. This list
   // is the only ranking the feature contains and it is one a person made on
   // purpose — see rule 3 in docs/arch/people.md.
+  //
+  // Laid into the slots the reordered people already hold rather than numbered
+  // 1..n: the list on screen is the active half or the archived half, and the
+  // other half kept its numbers, so a renumber collided with them and someone
+  // unarchived came back wherever the tie broke.
   reorderPeople(orderedIds) {
-    const updates = orderedIds.map((id, i) => ({ id, sortOrder: i + 1 }));
+    const updates = slotUpdates(get().people, orderedIds);
+    if (updates.length === 0) return;
     dbBatchUpdatePersonSortOrders(updates);
     const bySort = new Map(updates.map(u => [u.id, u.sortOrder]));
     set({

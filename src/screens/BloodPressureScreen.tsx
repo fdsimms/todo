@@ -27,6 +27,7 @@ import {
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { useRouteArrival } from '../hooks/useRouteArrival';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
@@ -133,14 +134,11 @@ export function BloodPressureScreen() {
     name: string;
     params?: { openLog?: number; returnTo?: string };
   }>();
-  const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
   const [returnTo, setReturnTo] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    if (route.params?.openLog === undefined || route.params.openLog === handledOpenLog) return;
-    setHandledOpenLog(route.params.openLog);
-    setReturnTo(route.params.returnTo);
+  useRouteArrival(route.params?.openLog, () => {
+    setReturnTo(route.params?.returnTo);
     setLogOpen(true);
-  }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
+  });
 
   const openLog = () => { haptics.tap(); setReturnTo(undefined); setLogOpen(true); };
   const closeLog = () => {

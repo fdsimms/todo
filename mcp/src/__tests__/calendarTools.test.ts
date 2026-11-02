@@ -69,6 +69,14 @@ describe('parseCalendarRequest', () => {
   it('accepts an all-day event for today, which is not over until midnight', () => {
     expect(parseCalendarRequest({ title: 'x', start: '2026-10-05' }, NOW).allDay).toBe(true);
   });
+
+  // The person's today, which get_overview reports, is still yesterday's date
+  // between midnight and their reset; read on the clock it was refused.
+  it('accepts an all-day event for the logical today before the day resets', () => {
+    const at130 = new Date(2026, 9, 6, 1, 30);
+    expect(parseCalendarRequest({ title: 'x', start: '2026-10-05' }, at130, '04:00').allDay).toBe(true);
+    expect(() => parseCalendarRequest({ title: 'x', start: '2026-10-05' }, at130)).toThrow(/already over/);
+  });
 });
 
 describe('request_calendar_event', () => {

@@ -37,6 +37,18 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     isVisible: (t: Task) => t.id.startsWith('today'),
     isUnscheduled: (t: Task) => t.id.startsWith('someday'),
     isInbox: (t: Task) => t.id.startsWith('inbox'),
+    isDeferred: (t: Task) => t.id.startsWith('later'),
+    lib: () => ({
+    // Only what getTask and getOverview read, by the same id convention as
+    // the lenses above.
+    visibility: {
+      isInPausedProject: (t: Task) => t.id.startsWith('paused'),
+      isTaskExpired: (t: Task) => t.id.startsWith('expired'),
+      isHeldBack: (t: Task) => t.id.startsWith('waiting'),
+      isWithheld: (t: Task) => t.id.startsWith('paused'),
+      isPinnedOnToday: (t: Task) => t.pinned,
+    },
+    }) as unknown as ReturnType<Replica['lib']>,
     isBlocked: () => false,
     isNotNeeded: () => false,
     displayTitle: (t: Task) => t.title,
@@ -50,6 +62,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     },
     logicalDayKeyOf: (iso: string) => iso.slice(0, 10),
+    dayKeyOf: (iso: string) => iso.slice(0, 10),
     isRealCompletion: (t: Task) => t.completed && !t.missedAt,
     describeBounty: () => null,
     onTimeSummary: (list: readonly Task[]) => {
@@ -90,6 +103,8 @@ describe('getOverview', () => {
       task({ id: 'later-1', title: 'C' }),
       task({ id: 'someday-1', title: 'D', category: 'Home' }),
       task({ id: 'inbox-1', title: 'E' }),
+      // On no lens (held back, say): counted as hidden, not as later.
+      task({ id: 'waiting-1', title: 'H' }),
       task({ id: 'today-done', title: 'F', completed: true }),
       task({ id: 'today-sub', title: 'G', parentId: 'today-1' }),
     ];
@@ -102,7 +117,7 @@ describe('getOverview', () => {
       lookAhead: () => emptyLookAhead({ carriedOver: [tasks[0]] }),
     }), 'write');
 
-    expect(overview.counts).toEqual({ today: 2, later: 1, unscheduled: 1, inbox: 1, overdue: 1, pinned: 1, blocked: 0 });
+    expect(overview.counts).toEqual({ today: 2, later: 1, unscheduled: 1, inbox: 1, hidden: 1, overdue: 1, pinned: 1, blocked: 0 });
     expect(overview.today).toEqual({ date: '2026-10-04', weekday: 'Sunday', dayStartsAt: '04:00', weekStartsOn: 'Monday' });
     expect(overview.categories).toEqual([
       { name: 'Work', open: 2, schedule: 'Mon, Tue, Wed, Thu, Fri 09:00–17:00', hiddenOnVacation: true },
