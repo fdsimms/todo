@@ -16,6 +16,7 @@ import type { Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -67,6 +68,9 @@ export function InboxSortSheet({ visible, inbox, onClose }: Props) {
   const [category, setCategory] = useState<string | null | undefined>(undefined);
   const [projectId, setProjectId] = useState<string | null | undefined>(undefined);
   const [open, setOpen] = useState<'category' | 'project' | null>(null);
+  // The category and project pickers grow find fields inside the scroll, and
+  // without this the keyboard covered their matches and the footer's button.
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const queue = useMemo(() => inboxSortQueue(inbox, handled), [inbox, handled]);
   const current = queue[0] ?? null;
@@ -141,7 +145,12 @@ export function InboxSortSheet({ visible, inbox, onClose }: Props) {
         />
         {current ? (
           <>
-            <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              ref={keyboardScroll.ref}
+              contentContainerStyle={styles.content}
+              keyboardShouldPersistTaps="handled"
+              {...keyboardScroll.props}
+            >
               <Text style={styles.progress}>{position} of {total}</Text>
               <View style={styles.card}>
                 <Text style={styles.title}>{current.title}</Text>

@@ -128,6 +128,7 @@ import { DetailHeader } from '../components/DetailHeader';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useFilterField } from '../hooks/useFilterField';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useLogicalDayKey } from '../hooks/useLogicalDayKey';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { TextField } from '../components/TextField';
@@ -526,6 +527,10 @@ function ProjectDetailContent() {
   }, [editorStore]);
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const searchFilter = useFilterField();
+  // The add-existing picker's results sit under its search field, so without
+  // this the keyboard covers the last of them with no room to scroll them
+  // clear (the hook's `fieldAbove` note, and the same list in MergeItemSheet).
+  const pickerScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true, fieldAbove: true });
   const existingSearch = searchFilter.query;
   // The picker's Modal stays mounted across opens, and SearchField's own
   // `autoFocus` only remounts the field on a `seed()` call — so it would
@@ -2459,8 +2464,11 @@ function ProjectDetailContent() {
               accessibilityLabel="Search tasks to add"
             />
             <FlatList
+              ref={pickerScroll.ref}
+              {...pickerScroll.props}
               data={shownForAdd}
               keyExtractor={t => t.id}
+              keyboardShouldPersistTaps="handled"
               contentContainerStyle={shownForAdd.length === 0 ? styles.emptyContainer : undefined}
               ListFooterComponent={
                 eligibleForAdd.length > shownForAdd.length ? (

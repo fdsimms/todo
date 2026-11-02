@@ -22,6 +22,7 @@ import {
 } from '../utils/cookbookRecipes';
 import type { Recipe } from '../types';
 import { useFilterField } from '../hooks/useFilterField';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
@@ -52,6 +53,10 @@ export function CookbookDetailScreen() {
   const recipes = useMemo(() => recipesInCookbook(allRecipes, cookbookId), [allRecipes, cookbookId]);
   const [linkPickerVisible, setLinkPickerVisible] = useState(false);
   const searchFilter = useFilterField();
+  // The link picker's results sit under its search field, so without this the
+  // keyboard covers the last of them with no room to scroll them clear (the
+  // hook's `fieldAbove` note, and the same list in MergeItemSheet).
+  const pickerScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true, fieldAbove: true });
   const linkSearch = searchFilter.query;
   // The picker's Modal stays mounted across opens, and SearchField's own
   // `autoFocus` only remounts the field on a `seed()` call — so it would
@@ -202,6 +207,8 @@ export function CookbookDetailScreen() {
             accessibilityLabel="Search recipes to link"
           />
           <FlatList
+            {...pickerScroll.props}
+            ref={pickerScroll.ref}
             data={linkable}
             keyExtractor={c => c.recipe.id}
             keyboardShouldPersistTaps="handled"
