@@ -3,6 +3,8 @@ import { format } from 'date-fns/format';
 import type { MedicationLog } from '../types';
 import { useMedicationStore, type DoseInput } from '../store/useMedicationStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { clockTimeToken } from './clockTime';
 import { dayKeyOf, getCurrentDayStart } from './dateUtils';
 import { isCountedUnit, medicationKey, taskSupplyFor } from './medicationLog';
 import {
@@ -107,7 +109,7 @@ export function confirmWithinLimit(
   if (!status.nextOkAt && !over) return Promise.resolve(true);
   const lines: string[] = [];
   if (over) lines.push(`That is ${formatCapAmount({ amount: over.amount, unit: over.max.unit })} in one dose.`);
-  if (status.nextOkAt) lines.push(`The next dose is within it at ${format(status.nextOkAt, 'h:mm a')}.`);
+  if (status.nextOkAt) lines.push(`The next dose is within it at ${format(status.nextOkAt, clockTimeToken(useSettingsStore.getState().use24HourTime))}.`);
   const message = `The limit you set is ${describeLimit(limit)!.toLowerCase()}. ${lines.join(' ')}`;
   return new Promise(resolve => {
     Alert.alert(`${name.trim()}: ${over && status.nextOkAt ? 'past your limit' : over ? 'more than your limit' : 'too soon'}`, message, [

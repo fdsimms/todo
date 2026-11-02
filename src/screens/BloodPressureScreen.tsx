@@ -13,6 +13,7 @@ import { useDemoStore } from '../store/useDemoStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { clockTimeToken } from '../utils/clockTime';
 import { dayKeyOf, getCurrentDayStart, getCurrentLogicalDayKey, getLogicalDayKey } from '../utils/dateUtils';
 import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { openHealthApp } from '../utils/healthBridge';
@@ -121,7 +122,7 @@ export function BloodPressureScreen() {
     if (key === yesterdayKey) return 'Yesterday';
     return format(at, at.getFullYear() === new Date().getFullYear() ? 'EEE, MMM d' : 'MMM d, yyyy');
   };
-  const timeLabel = (at: Date) => format(at, use24Hour ? 'HH:mm' : 'h:mm a');
+  const timeLabel = (at: Date) => format(at, clockTimeToken(use24Hour));
 
   // `dundundun://bloodpressure?log=1` — the blood pressure request's link
   // button. WeightScreen's handshake: stamped with the arrival time and tracked
