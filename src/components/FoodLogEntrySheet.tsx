@@ -685,6 +685,15 @@ export function FoodLogEntrySheet({
     return () => cancelAnimationFrame(frame);
   }, [picked]);
 
+  // A new search is a new list: its first row, and the Food database / Estimate
+  // buttons above it, belong at the top. Without this the list keeps the offset
+  // the previous results left it at (after "Log several" the field is typed
+  // into again with the keyboard up), and the buttons sit scrolled out of view.
+  useEffect(() => {
+    listScroll.ref.current?.scrollToOffset({ offset: 0, animated: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
   // Clears whatever was typed into the weight field whenever the picked food
   // or its panel changes out from under it — including right after a
   // weighed portion is saved, which is also when it should clear.
