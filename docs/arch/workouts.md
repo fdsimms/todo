@@ -1,8 +1,29 @@
 # Workouts: a full strength-training tracker
 
-**Status: phases 1 to 9 built (the data foundation, logging, analysis, programs and progression, Apple Health, the Live Activity and Siri, CSV import and export, logging on the Apple Watch, and the watch's HealthKit session with heart rate).** Phase 1 is the five tables, their sync and backup registration, the exercise library and catalog, `useWorkoutStore` and the settings. Phase 2 is the routine editor, workout mode with its rest timer, the task link (`Task.workoutRoutineId`), the Workouts switch in Settings › Feature areas, the unit and default rest under Settings › Workouts, and the MCP writes; "Phase 2, as built" below records what it decided. Phase 3 is the records, the plate math, the exercise page, the Stats section and the mood contrast; "Phase 3, as built" records what it decided. Phase 4 is programs, the four progression schemes, the warm-up ramp, the exercise editor and the program library; "Phase 4, as built" records what it decided. Phase 5 is the Health bridge's workout write, retraction and read ("Phase 5, native half") and the wiring that calls them: the write on Save, retraction, the pending write for an agent's workout, and other apps' workouts in the history ("Phase 5, as built"). Phase 6 is the workout's Live Activity and the two Siri intents ("Phase 6, as built"). Phase 8 is logging on the Apple Watch, into the workout going on the phone or on the watch alone ("Phase 8, as built"). Phase 9 is the watch's HealthKit session: heart rate and energy measured on the watch, the workout saved to Health from there, and the heart-rate card on the workout page ("Phase 9, as built"). This file records the plan and the decisions already made. The three main surfaces are mocked in `workouts-mocks/`: HTML at 390pt using the real theme tokens, in light and dark. They are a proxy for layout and hierarchy, not a render of the app.
+**Status: built, phases 1 to 9.** How it was planned and shipped, phase by phase, is in `docs/arch/history/workouts.md`; this file is the decisions. The three main surfaces are mocked in `workouts-mocks/`: HTML at 390pt using the real theme tokens, in light and dark. They are a proxy for layout and hierarchy, not a render of the app.
 
 This feature is a gym logger with the depth of a dedicated app. It includes an exercise library, routines and multi-week programs with progression, set-by-set logging, a rest timer, PRs and charts, Apple Health, Live Activity, Siri and Apple Watch logging. Cloning Strong or Hevy is not the goal. The goal is to be good enough at the gym that the integration (the schedule, the food log, mood, rewards, Claude over MCP) is reason enough to keep it all in one app.
+
+## Rules first
+
+The invariants a change in this area most often breaks, one line each, with the code that owns it and
+the section below that argues it (§). Read that section before deviating from one. The rest of the
+file is reference to read narrowly: `grep -n '^## ' docs/arch/workouts.md` is its table of contents.
+
+- **Sessions and sets are health-record data and never go to iCloud; routines, programs and custom exercises are plans and sync normally.** `HEALTH_SYNC_TABLES` (`src/db/syncTracking.ts`). (§ Decided for this feature)
+- **A new workout table goes on `SYNC_TRACKED_TABLES`, `BACKUP_TABLES` and the `useTaskStore.initialize` reload list.** Tests catch the first two; nothing catches the third. (§ Data model)
+- **Anything computable is derived, never stored**: records, estimated 1RMs, a program's week and next routine, and other apps' workouts (read on demand). `analyzeExercise` (`src/utils/workoutRecords.ts`), `programProgress` (`src/utils/workoutProgram.ts`). (§ What the repo already decides)
+- **A record counts only a done set that isn't a warm-up, and a first time is no record.** The 1RM is Epley from sets of 10 reps or fewer, labelled estimated, never relative to a body weight. `countsForRecords`, `E1RM_MAX_REPS`. (§ Phase 3, as built)
+- **A progression is a proposal.** A load is written only on a tap of Use, a raised training max only when the next cycle starts, and nothing about the proposal is stored. `proposeNext` (`src/utils/workoutProgression.ts`). (§ Phase 4, as built)
+- **Finishing a session completes its linked task, never the other way round.** Ticking the task never invents a session, and finishing with no set done completes and writes nothing. `finishSession`, `workoutTaskEffect` (`src/utils/workoutTask.ts`). (§ Store)
+- **A task names a routine or a program, never both, and a template carries neither**, since it would name a row of this person's own. `normalizeTemplateItem` (`src/utils/templateUtils.ts`). (§ Data model)
+- **Only completing the linked task earns coins; a set or a record never does.** (§ What the repo already decides)
+- **A rest is the `rest` kind of step timer, respects quiet hours, and when it runs out it chimes and counts up without moving the workout on.** `useStepTimerStore`, `scheduleRestAlarm`. (§ Rest timer)
+- **A weight is stored in kilograms as one dumbbell's weight**, and scaling happens at the edges, so a new surface takes its scale from `weightScale` (`src/utils/dumbbellLoad.ts`) rather than reading `weightKg` bare. (§ Dumbbell weights, as built)
+- **A Health write can always be taken back, and Health holds one copy.** `deleteSession` retracts whatever the switches say, an imported workout is never written, and the phone holds back its own write for a session the watch measured (`measuredOnWatch`), asking the watch to delete its copy. `src/utils/healthWorkoutSync.ts`. (§ Phase 5, as built; § Phase 9, as built)
+- **Heart rate is shown, never interpreted**: never stored, judged against a norm, made a rule metric or used to fire a task. The zones' maximum is typed or 220 minus age, labelled an estimate. `src/utils/heartRateZones.ts`. (§ Decided for this feature)
+- **Every watch tap names its session and acts only on the workout in progress**, and a set id already in use is refused, so a stale or repeated tap never logs a second set. `planQuietTaps` (`src/utils/widgetQuietTaps.ts`). (§ Phase 8, as built)
+- **Restoring a version never rewrites history.** The restore is saved as the newest version, and a workout keeps naming the version it was done on (`routineVersionId`). `src/utils/routineVersions.ts`. (§ Routine and program history, as built)
 
 ## What the repo already decides
 
@@ -131,16 +152,6 @@ New files in `src/utils/`, each with its test in `src/__tests__/`. All of them a
 
 - **Live Activity.** A new `Workout` kind shows the current exercise, "set 3 of 4" and the rest countdown. Its buttons are deep links (`dundundun://workout?do=set-done|rest-add|skip-rest`), the way Focus does it. Every other kind has an empty `ContentState` and is restarted on each change; this one is the first to update its `ContentState` in place (built in phase 6, see "Phase 6, as built").
 - **Siri.** "Start my workout" and "Start Push A" use a routine `AppEntity` resolved against an App Group index (the `pantryIndex.ts` pattern). Logging sets by voice is out of scope.
-
-### Apple Watch (native, the largest piece)
-
-**Phase W1, logging without HealthKit:**
-- a Workout page in the existing watch app with the current exercise, the target set, and weight and reps on the Digital Crown with Done Set;
-- the live session reaches the watch in the existing `WATCH_CAPS` snapshot;
-- sets come back as a new tap kind `set` on the quiet-tap queue, deduped by a set id generated on the watch;
-- a watch-first session (phone in the locker) needs the routine on the watch, and that is the hard part.
-
-**Phase W2, `HKWorkoutSession` on the watch (built in phase 9):** heart rate, measured energy, the app staying in front on the wrist, and the workout ring. It needed the HealthKit entitlement on the watch target, new share and read types, and its own review under `health-data.md` ("Heart rate during a workout"), which keeps HRV ruled out (resting heart rate was let in later for a display-only list on the Blood pressure screen).
 
 ### MCP
 
@@ -435,27 +446,9 @@ What the routine editor's set table settled. Files: `RoutineSetTable.tsx` and `R
 - **Add set** copies the last working set and places it after the last working set, so it takes the next number and a drop set or set to failure stays at the end. **Warm-up** adds one after the warm-ups (and turns a ramp off).
 - **Each exercise is a card of its own**, with 12pt between, and a superset's cards close up into one block with squared inner corners. The gap is padding inside the row, so `SortableList` measures it as part of the row. Labels sit beside or above their one control; the steppers that used to share a row moved into the per-set cards.
 
-## Phases
-
-Each phase ships its own demo seed, patch note, MCP slice and regenerated docs.
-
-| Phase | What | Suggested model, effort | Issue |
-|---|---|---|---|
-| 0 | This doc, plus HTML mocks of workout mode, exercise detail and the routine editor in both themes | sonnet, low | the PR that added this file |
-| 1 | Data foundation: types, 5 tables, sync, backup, natural keys, store, exercise library, units and plate settings, Feature-areas switch, nav entry, demo seed. A bare Workouts screen | opus, high | #3851 |
-| 2 | Logging: routine editor, workout mode, rest timer (step-timer generalisation), finish → completes the linked task, `Task.workoutRoutineId` with template parity. Built | opus, xhigh | #3852 |
-| 3 | Analysis: PRs, estimated 1RM, plate math, exercise detail charts, Stats section, mood contrast. Built | sonnet, high | #3853 |
-| 4 | Programs: multi-week programs, rotation, the four progression schemes, deload proposals, built-in program library. Built | opus, high | #3854 |
-| 5 | Health: HKWorkout write with retraction, read workouts from other apps (native; expect build cycles). Built | opus, high | #3855 |
-| 6 | Live Activity kind and Siri intents (native). Built | sonnet, high | #3856 |
-| 7 | Strong/Hevy CSV import and CSV export. Built | sonnet, medium | #3857 |
-| 8 | Watch W1: logging over WatchConnectivity, into the phone's workout or on the watch alone (native). Built | opus, xhigh | #3858 |
-| 9 | Watch W2: `HKWorkoutSession`, heart rate, energy, heart-rate zones on the workout page (native, after a Health review). Built | opus, xhigh | #3859 |
-
-Phases 1 to 4 and 7 are JS-only and verifiable in the sandbox with tests. Phases 5, 6, 8 and 9 compile only on EAS, so each signature should be checked against Apple's JSON docs before it is written, and each phase should be expected to cost more than one build.
-
 ## Risks and open questions
 
+- **The native half compiles only on EAS.** The Health bridge, the Live Activity and Siri, and the watch can't be built in the sandbox, so check each signature against Apple's JSON docs before writing it, and expect a change there to cost more than one build. The JS-only parts are verifiable with tests.
 - **A rest that ends in quiet hours makes no sound with the app closed.** That is the decision above. If it bites at a 6 AM session, the fix is to make the setting per subject, not to flip the default.
 - **Heart rate is a new kind of read.** Answered in phase 9 by `health-data.md`'s "Heart rate during a workout", written before the code: shown and never interpreted, read only for a workout the watch measured, and the zones' maximum a written carve-out. HRV stays ruled out (resting heart rate has its own display-only carve-out, see `health-data.md`).
 - **Which device may retract the watch's workout.** Not documented. The phone asks the watch and never tries itself, so a watch that never runs the app again leaves its workout in Health. A delete made on an iPad reaches the phone by sync, which asks its watch, so it waits for the phone to sync and the watch to hear ("Phase 9, as built").
