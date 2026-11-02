@@ -237,3 +237,42 @@ if (deadGlobs.length) {
   for (const d of deadGlobs) console.error(`  ${d}`);
   process.exit(1);
 }
+
+// A comment that cites a write-up by section ("docs/arch/workouts.md, \"Gyms\"") must name a
+// heading or a bold rule lead-in that is really there. Six files once cited a "Gyms" section that
+// had never been written, and a renamed heading leaves its citations pointing at nothing, with no
+// way to tell from the comment. A citation matches when it is the start of one (a heading is cited
+// by its opening words, often up to its dash). A bold span that is only a code name (`**`gyms`**`,
+// a table in a schema list) is not a lead-in, or "Gyms" would have passed against the table name.
+const normalize = s => s.replace(/[`*_]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+const citable = new Map();
+for (const file of docFiles(path.join(root, 'docs'))) {
+  const text = fs.readFileSync(file, 'utf8');
+  const targets = [
+    ...[...text.matchAll(/^#{1,6}\s+(.+)$/gm)].map(m => m[1]),
+    ...[...text.matchAll(/\*\*([^*]+?)\*\*/g)].map(m => m[1]).filter(b => !/^`[^`]+`$/.test(b.trim())),
+  ].map(normalize);
+  citable.set(path.basename(file), targets);
+}
+const CITATION = /([a-z0-9-]+\.md)[`'"]?[,:]?\s*\(?\s*["“]([^"”]{3,100})["”]/g;
+const staleCitations = [];
+for (const rel of repoFiles) {
+  if (!/\.(ts|tsx|js|swift|md)$/.test(rel) || /(^|\/)node_modules\//.test(rel)) continue;
+  const abs = path.join(root, rel);
+  if (!fs.existsSync(abs)) continue;
+  // Join wrapped comment lines, so a citation broken across two lines still reads as one.
+  const text = fs.readFileSync(abs, 'utf8').replace(/\n\s*(?:\*|\/\/+|--|#)?\s*/g, ' ');
+  for (const m of text.matchAll(CITATION)) {
+    const targets = citable.get(m[1]);
+    if (!targets) continue;
+    const cited = normalize(m[2]);
+    if (!targets.some(t => t.startsWith(cited))) {
+      staleCitations.push(`${rel} -> ${m[1]}, "${m[2].replace(/\s+/g, ' ').trim()}"`);
+    }
+  }
+}
+if (staleCitations.length) {
+  console.error('check-doc-stats: a citation names a section that is not in the doc (fix the citation, or the heading it meant):');
+  for (const c of [...new Set(staleCitations)]) console.error(`  ${c}`);
+  process.exit(1);
+}

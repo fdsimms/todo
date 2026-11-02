@@ -356,7 +356,9 @@ A row that names a `docs/arch/` file means the reasoning behind that feature liv
 it is not optional before changing that area**. The biggest of them open with a "Rules first" block: read
 that and the sections it cites rather than the whole file. Those notes are strong defaults with the
 arguments attached, and the "don't do X" ones exist because X was tried. Where a note and the code
-disagree, the code is what ships: fix the note in the same PR. For anything the routing table doesn't
+disagree, the code is what ships: fix the note in the same PR. A comment that cites one by section
+(`docs/arch/workouts.md, "Gyms"`) names the start of a real heading or bold lead-in, and
+`check-doc-stats.js` fails the build on one that doesn't. For anything the routing table doesn't
 cover, `docs/module-map.md` lists every module in `src/utils`, `src/store`, `src/hooks`, `src/db` and
 `src/services` with the symbols it exports, and `docs/screen-map.md` answers the other half: what a
 screen puts on the page, and which screens a given component can appear on. Both are generated and
