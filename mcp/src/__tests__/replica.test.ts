@@ -22,6 +22,7 @@ import {
   completeTask as completeTaskTool,
   createTask as createTaskTool,
   createTemplate as createTemplateTool,
+  deleteTemplate as deleteTemplateTool,
   getTask as getTaskTool,
   getTemplate as getTemplateTool,
   updateTask as updateTaskTool,
@@ -905,6 +906,17 @@ describe('the replica', () => {
       const built = trip();
       replica.updateTemplate(built.id, { category: 'Travel' });
       expect(db().dbGetAllTemplateCategories().map((c: { name: string }) => c.name)).toContain('Travel');
+    });
+
+    it('links a task to a template, reads it back, and names the open tasks when it is deleted', () => {
+      const packing = replica.createTemplate({ name: 'Packing', items: [{ title: 'Socks' }] });
+      const linked = replica.createTask({ title: 'Pack', category: 'Travel', templateId: packing.id });
+      replica.createTask({ title: 'Unrelated', category: 'Travel' });
+      expect(getTaskTool(replica, linked.id).template).toEqual({ id: packing.id, name: 'Packing' });
+
+      const result = deleteTemplateTool(replica, 'Packing');
+      expect(result.linkedTasks).toEqual([{ id: linked.id, title: 'Pack' }]);
+      expect(getTaskTool(replica, linked.id).template).toEqual({ id: packing.id, deleted: true });
     });
 
     it('deletes a template and names the ones that nested it', () => {

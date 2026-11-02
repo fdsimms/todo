@@ -207,6 +207,8 @@ import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 import { TaskCheckbox } from './TaskCheckbox';
 import { LazySheet } from './LazySheet';
+import { TemplatePickerSheet } from './TemplatePickerSheet';
+import { useTemplateStore } from '../store/useTemplateStore';
 import { RingtonePickerSheet } from './RingtonePickerSheet';
 import { NewSavedMealSheet } from './NewSavedMealSheet';
 import { ProgressBar } from './ProgressBar';
@@ -979,6 +981,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     return t ? displayTitleFor(t) : '';
   })));
   const [showLinkPicker, setShowLinkPicker] = useState(false);
+  // A template this task runs later (Task.templateId). A deleted template stays
+  // named as deleted here, so the person can see why the row's button is grey.
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const linkedTemplateName = useTemplateStore(s => templateId ? s.templates.find(t => t.id === templateId)?.name ?? null : null);
   // Task.workoutRoutineId / workoutProgramId: the routine "Workout" on the
   // row opens, or the program whose next routine it starts. One or the other,
   // never both: picking either clears the other (`pickWorkout`).
@@ -1365,6 +1372,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setStreakCountsUnits(task.streakCountsUnits ?? false);
       setLinkUrl(task.linkUrl ?? null);
+      setTemplateId(task.templateId ?? null);
       setAlarmLink(task.alarmLink ?? null);
       setAlarmLinkLeavesOpen(task.alarmLinkLeavesOpen ?? false);
       setShowAlarmLinkPicker(false);
@@ -1443,6 +1451,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setShowStreak(initialDraft?.polarity === 'negative');
       setStreakRequiresWindow(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
+      setTemplateId(null);
       setAlarmLink(null);
       setAlarmLinkLeavesOpen(false);
       setShowAlarmLinkPicker(false);
@@ -1609,6 +1618,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       alarmLink: task?.alarmLink ?? null,
       alarmLinkLeavesOpen: task?.alarmLinkLeavesOpen ?? false,
+      templateId: task?.templateId ?? null,
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
       completionTimerNote: task ? (task.completionTimerNote ?? null) : (initialDraft?.completionTimerNote ?? null),
       mission: task ? normalizeMission(task.mission) : null,
@@ -2456,6 +2466,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       streakRequiresWindow: recurrenceType !== 'none' && streakRequiresWindow,
       streakCountsUnits: recurrenceType !== 'none' && quotaPeriod === 'week' && targetCount !== null && streakCountsUnits,
       linkUrl: resolveLinkUrl(),
+      templateId,
       alarmLink,
       alarmLinkLeavesOpen: alarmLink !== null && alarmLinkLeavesOpen,
       completionTimerMinutes,
@@ -3365,6 +3376,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       streakRequiresWindow,
       streakCountsUnits,
       linkUrl,
+      templateId,
       alarmLink,
       alarmLinkLeavesOpen: alarmLink !== null && alarmLinkLeavesOpen,
       completionTimerMinutes,
@@ -4203,6 +4215,13 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
               onClear={() => { setDeadline(null); setDeadlineTime(null); setShowDeadlinePicker(false); }}
               onCancel={() => setShowDeadlinePicker(false)}
+            />
+          </LazySheet>
+          <LazySheet open={showTemplatePicker}>
+            <TemplatePickerSheet
+              visible={showTemplatePicker}
+              onClose={() => setShowTemplatePicker(false)}
+              onSelect={template => setTemplateId(template.id)}
             />
           </LazySheet>
           <LazySheet open={showBlockerPicker}>
@@ -8230,6 +8249,20 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               </>
             )}
               </>
+            ),
+          },
+          {
+            key: 'template', label: 'Template', set: templateId !== null,
+            keywords: ['run', 'packing list', 'checklist', 'later', 'questions'],
+            node: (
+              <EditorRow
+                icon="documents-outline"
+                label="Template"
+                hint="Adds a button to run a template from this task, so you answer its questions when you’re ready."
+                value={templateId ? (linkedTemplateName ?? 'Template deleted') : undefined}
+                onPress={() => setShowTemplatePicker(true)}
+                onClear={templateId ? () => setTemplateId(null) : undefined}
+              />
             ),
           },
           {

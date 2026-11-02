@@ -106,6 +106,10 @@ const NOT_SEEDED: Record<string, string[]> = {
   // Alarms are device-only, so a template can't name one, and "tomorrow's
   // alarm" is set on the task it's needed on.
   'an alarm on one phone': ['alarmLink', 'alarmLinkLeavesOpen'],
+  // A template item that ran another template is a nested template already
+  // (`TemplateItem.templateRef`); this is the task-side pointer to a run that
+  // hasn't happened, so a seeded copy would have a template running itself.
+  'a template to run from the task': ['templateId'],
   'not offered on a template yet': [
     'showStreak', 'streakRequiresWindow', 'streakCountsUnits', 'deadlineMonthDay', 'deadlineOnCalendar', 'logCompletionToCalendar',
     'reminderKind', 'reminderTracksVisibility', 'reminderTimeAnchor', 'quotaIntervalMinutes', 'quotaAlwaysVisible', 'quotaRestAfterLog', 'quotaLoggedDayKey', 'quotaTapTimes',

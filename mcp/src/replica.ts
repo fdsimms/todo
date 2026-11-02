@@ -3790,6 +3790,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (gate) patch.answerGate = { taskId: question.id, answers: gate };
       }
     }
+    if (patch.templateId) {
+      const templateId = patch.templateId;
+      if (!db.dbGetAllTemplates().some(t => t.id === templateId)) {
+        errors.push(`templateId: no template with id ${templateId}. list_templates lists them.`);
+      }
+    }
     if (patch.workoutRoutineId) {
       const routineId = patch.workoutRoutineId;
       if (!db.dbGetAllWorkoutRoutines().some(r => r.id === routineId)) {

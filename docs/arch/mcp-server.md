@@ -1627,7 +1627,11 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   time of day. Each
   write is recorded in Activity, a routine under its name and a workout titled by kind
   ("Workout"), never by what was lifted, the mood entry's reason. Weights are kilograms on the wire.
-  A task names its routine with `workoutRoutineId`, or a program with `workoutProgramId` (never
+  A task can name a template to run later with `templateId` (`create_task`, `update_task`; `get_task`
+  reads it back as `template`, or `deleted: true` when it is gone). Use it when a template's questions
+  can't be answered yet (a packing list before the trip is decided): the person answers them on the
+  phone from the row's "Run <name>" button, and running it checks the task off. The replica refuses
+  an id that isn't a template. A task names its routine with `workoutRoutineId`, or a program with `workoutProgramId` (never
   both: naming one clears the other, naming both is refused), which `create_task` and `update_task`
   write and `get_task` reads back as `workout` (a program's with the routine it would start now),
   and the replica refuses a routine or program that isn't there. With Include health logs off the

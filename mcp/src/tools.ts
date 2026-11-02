@@ -288,6 +288,8 @@ export interface GetTaskResult {
    * Start workout would open now (derived from the program's sessions).
    */
   workout?: { routineId?: string; programId?: string; name?: string; next?: string };
+  /** The template the row offers to run (`templateId`); `deleted` when it no longer exists, which the row shows as "Template deleted". */
+  template?: { id: string; name?: string; deleted?: true };
   /** A countdown (`minutes`) or an Apple Health reading (`healthTarget`) the task reads as ready at; `measuredMinutes` is how long it actually took. */
   timer?: { minutes: number };
   measuredMinutes?: number;
@@ -386,6 +388,10 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
   } else if (task.workoutRoutineId) {
     const routine = replica.workoutRoutines().find(r => r.id === task.workoutRoutineId);
     out.workout = { routineId: task.workoutRoutineId, ...(routine ? { name: routine.name } : {}) };
+  }
+  if (task.templateId) {
+    const template = replica.templates().find(t => t.id === task.templateId);
+    out.template = template ? { id: template.id, name: template.name } : { id: task.templateId, deleted: true };
   }
   if (task.timedMinutes != null) out.timer = { minutes: task.timedMinutes };
   if (task.actualMinutes != null) out.measuredMinutes = task.actualMinutes;
@@ -1390,12 +1396,20 @@ export interface DeleteTemplateResult {
   deleted: { id: string; name: string; items: number };
   /** Templates that nested it. Each now has an item whose reference is broken. */
   nestedIn: string[];
+  /** Open tasks that run it from their row (`templateId`). Each now shows "Template deleted" until the link is removed or points at another template. */
+  linkedTasks: { id: string; title: string }[];
 }
 
 /** Delete a template. Not undoable from here, so the write tool previews it first. */
 export function deleteTemplate(replica: Replica, ref: string): DeleteTemplateResult {
+  const found = replica.templates().find(t => t.id === ref || t.name === ref);
+  const linkedTasks = found
+    ? replica.tasks()
+        .filter(t => t.templateId === found.id && !t.completed && !t.archived)
+        .map(t => ({ id: t.id, title: t.title }))
+    : [];
   const { template, nestedIn } = replica.deleteTemplate(ref);
-  return { deleted: { id: template.id, name: template.name, items: template.items.length }, nestedIn };
+  return { deleted: { id: template.id, name: template.name, items: template.items.length }, nestedIn, linkedTasks };
 }
 
 /** The templates in their new order, as the template list shows them. */
