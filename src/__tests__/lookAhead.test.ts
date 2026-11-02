@@ -12,11 +12,18 @@ import {
   describeLookAheadLead,
   describeLookAheadLoad,
 } from '../utils/lookAhead';
+import { registerPausedProjectSource } from '../utils/projectPause';
+import { registerTaskSource } from '../utils/blockerRegistry';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({ dayResetTime: '00:00' }),
+    getState: () => ({ dayResetTime: '00:00', vacationMode: false }),
   },
+}));
+// carriedOverTasks asks visibilityUtils whether a task is withheld or held
+// back, which reaches the category store; the same stub its own tests use.
+jest.mock('../store/useCategoryStore', () => ({
+  useCategoryStore: { getState: () => ({ categories: [], getCategoryByName: () => null }) },
 }));
 
 const BASE: Task = {
@@ -307,6 +314,25 @@ describe('carriedOverTasks', () => {
       makeTask({ title: 'Plain', dueDate: iso(2026, 8, 15) }),
     ];
     expect(carriedOverTasks(tasks, NOW, '00:00').map(t => t.title)).toEqual(['Plain', 'Moved']);
+  });
+
+  // Behind on something that can be done now, as the daily agenda counts it:
+  // a paused project's task, or one waiting on another, isn't overdue.
+  it('leaves out a task withheld or waiting on another', () => {
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: '2999-01-01', archived: false, completed: false }]);
+    const blocker = makeTask({ id: 'blocker', title: 'Blocker', dueDate: iso(2026, 9, 20) });
+    registerTaskSource(() => [blocker]);
+    try {
+      const tasks = [
+        makeTask({ id: 'p', title: 'Paused', projectId: 'garden', dueDate: iso(2026, 8, 15) }),
+        makeTask({ id: 'w', title: 'Waiting', dueDate: iso(2026, 8, 15), blockedById: 'blocker' }),
+        makeTask({ id: 'o', title: 'Overdue', dueDate: iso(2026, 8, 15) }),
+      ];
+      expect(carriedOverTasks(tasks, NOW, '00:00').map(t => t.title)).toEqual(['Overdue']);
+    } finally {
+      registerPausedProjectSource(null);
+      registerTaskSource(null);
+    }
   });
 });
 

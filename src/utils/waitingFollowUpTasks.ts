@@ -4,7 +4,7 @@ import type { Person, Task } from '../types';
 import { dayKeyToDate, getDayStart } from './dateUtils';
 import { canWaitOn } from './blocking';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
-import { displayTitleFor } from './visibilityUtils';
+import { displayTitleFor, isWithheld } from './visibilityUtils';
 
 /**
  * "Follow up with Gideon about 'Get the quote back'" — a task waiting on
@@ -159,6 +159,10 @@ export function wantedWaitingFollowUps(
   for (const task of tasks) {
     if (task.completed || task.archived || task.parentId) continue;
     if (!task.waitingOnPersonId) continue;
+    // A wait nobody can see (vacation, a paused project) isn't nudged about:
+    // its follow-up would be hidden with it, and it took a capped slot from a
+    // wait the person can act on.
+    if (isWithheld(task)) continue;
     const person = peopleById.get(task.waitingOnPersonId);
     if (!canWaitOn(person)) continue;
     if (handledRecently.has(task.id)) continue;

@@ -86,6 +86,10 @@ export function useRecipeComponentImports(
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const statesRef = useRef<Record<string, ComponentImportState>>({});
   const photosRef = useRef<Record<string, RecipePhoto[]>>({});
+  // Which session a read belongs to, bumped by `reset`. A read outlives the
+  // sheet's Cancel, and keys are the references' own names, so one landing
+  // after a reopen on the same reference filled the new session's row.
+  const sessionRef = useRef(0);
 
   // Which candidates exist is decided by the run that produced them, so the
   // ticks are seeded from the run rather than from a tap. A reference the user
@@ -189,10 +193,13 @@ export function useRecipeComponentImports(
     // What the row showed when the photo was taken is what decides that, so
     // it's read before the row goes to 'picking'.
     const prior = statesRef.current[key];
+    const session = sessionRef.current;
+    const stale = () => sessionRef.current !== session;
     setState(key, { status: 'picking' });
     let photo;
     try {
       const picked = await pickRecipePhoto(source);
+      if (stale()) return;
       if (picked.status === 'canceled') { setState(key, IDLE); return; }
       if (picked.status === 'denied') {
         alertPhotoAccessDenied(source, picked.canAskAgain, 'read the page it points at');
@@ -205,7 +212,7 @@ export function useRecipeComponentImports(
       }
       photo = picked.photo;
     } catch (e) {
-      setState(key, { status: 'failed', message: describeImportError(e) });
+      if (!stale()) setState(key, { status: 'failed', message: describeImportError(e) });
       return;
     }
 
@@ -223,6 +230,7 @@ export function useRecipeComponentImports(
         // recipe, but that one's own page is not asked about again.
         includeReferences: !isNestedComponentKey(key),
       });
+      if (stale()) return;
       const nested = nestedCandidatesOf(key, extracted);
       // Whatever an earlier read of this row had nested under it described a
       // different set of photos.
@@ -236,7 +244,7 @@ export function useRecipeComponentImports(
         return next;
       });
     } catch (e) {
-      setState(key, { status: 'failed', message: describeImportError(e, 'recipe-component-import') });
+      if (!stale()) setState(key, { status: 'failed', message: describeImportError(e, 'recipe-component-import') });
     }
   }, [availableAisles, setState, nestedCandidatesOf, dropNested]);
 
@@ -394,6 +402,7 @@ export function useRecipeComponentImports(
   }, [candidates, accepted, states, dismissed, nestedCandidatesOf]);
 
   const reset = useCallback(() => {
+    sessionRef.current += 1;
     statesRef.current = {};
     photosRef.current = {};
     setStates({});

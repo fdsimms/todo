@@ -6,6 +6,7 @@
 //   ==== <name> ====        the section banners through the logic half
 //   makeStyles              styles, at the bottom
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSheetOpening } from '../hooks/useSheetOpening';
 import {
   ActivityIndicator,
   FlatList,
@@ -237,10 +238,10 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
   // after the clear, so butter's substitutes were offered under margarine, or
   // under a sheet that had been closed. Read after the await and compared
   // with the item the request was for.
-  const visibleRef = useRef(visible);
-  useEffect(() => { visibleRef.current = visible; }, [visible]);
-  const itemIdRef = useRef(itemId);
-  useEffect(() => { itemIdRef.current = itemId; }, [itemId]);
+  // Which opening (and item) a suggestion request belongs to. Open on the same
+  // item was the old check, which a close and reopen passed: a proposal nobody
+  // asked for this time appeared.
+  const openings = useSheetOpening(visible, itemId);
 
   // Asked for, never fired on open. This sheet is now the grocery row's swap
   // glyph as well as the authoring funnel, so opening it stopped meaning "I
@@ -255,8 +256,8 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
     setSuggestAsked(true);
     setSuggestLoading(true);
     const excluded = [item.name, ...existing.map(s => s.item.name)];
-    const askedFor = item.id;
-    const stillHere = () => visibleRef.current && itemIdRef.current === askedFor;
+    const opening = openings.begin();
+    const stillHere = () => openings.isCurrent(opening);
     suggestSubstitutes(item.name, excluded)
       .then(result => { if (stillHere()) setSuggested(result); })
       .catch(e => { if (stillHere()) setSuggestError(describeAIError(e)); })
