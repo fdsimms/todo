@@ -17,6 +17,7 @@ import { nextPersonDate } from '../../src/utils/personDateTasks';
 import type { Person } from '../../src/types';
 import type { PersonFields, Replica } from './replica';
 import { localDateInput } from './timeZone';
+import { atFrom } from './logTools';
 
 export const HISTORY_LIMIT = 20;
 export const DEFAULT_BIRTHDAY_DAYS = 30;
@@ -178,8 +179,10 @@ export function addPersonHistory(
   replica: Replica,
   input: { personIds: string[]; title: string; date?: string },
 ): { added: { title: string; date: string; people: string[] } } {
-  const at = input.date ? new Date(localDateInput(input.date)) : new Date();
-  if (Number.isNaN(at.getTime())) throw new Error('date must be an ISO date or date-time.');
+  // A bare date is noon on it, as `set_completion_date` and the log tools read
+  // one. Local midnight was the moment stored, and under a day that starts
+  // later than midnight the Logbook and Stats keyed it to the day before.
+  const at = input.date ? atFrom(input.date)! : new Date();
   const task = replica.addPersonHistory(input.personIds, input.title, at);
   const names = new Map(replica.people().map(p => [p.id, primaryNickname(p.nickname) || p.name]));
   return {

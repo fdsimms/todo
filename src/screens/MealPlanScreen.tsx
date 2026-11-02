@@ -16,7 +16,6 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { useShallow } from 'zustand/react/shallow';
 import { addWeeks } from 'date-fns/addWeeks';
 import { format } from 'date-fns/format';
-import { isToday } from 'date-fns/isToday';
 import { isSameWeek } from 'date-fns/isSameWeek';
 import { isBefore } from 'date-fns/isBefore';
 import { MEAL_SLOTS, type FoodLogEntry, type Leftover, type MealPlanEntry, type MealSlot, type Recipe, type RecipeOverride, type WeekPoolEntry } from '../types';
@@ -1511,7 +1510,9 @@ export function MealPlanScreen() {
   const renderDay = useCallback(({ item: day }: { item: Date }) => {
     const key = dayKeyOf(day);
     const dayEntries = entriesForDay(entries, key);
-    const today = isToday(day);
+    // The logical day, as `todayKey` is: at 1:30 AM under a 2 AM reset, last
+    // night's dinner is still today's, and it was the next day that read "Today".
+    const today = key === todayKey;
     const collapsed = collapsedDays.has(key);
     const weekdayName = format(day, 'EEEE');
     const dayLabel = format(day, 'EEEE, MMMM d');

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSheetOpening } from '../hooks/useSheetOpening';
 import { Alert, Keyboard, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
@@ -83,10 +84,8 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
   const [photoNote, setPhotoNote] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   // Which opening a photo read belongs to, so a read that lands after the sheet
-  // closed or reopened on another medication is dropped (see
-  // `NutritionPanelSheet`'s `openingRef`).
-  const openingRef = useRef(0);
-  useEffect(() => { openingRef.current += 1; }, [visible, name]);
+  // closed or reopened on another medication is dropped.
+  const openings = useSheetOpening(visible, name);
   const formRef = useRef(form);
   useEffect(() => { formRef.current = form; }, [form]);
 
@@ -103,8 +102,8 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
   }, [visible]);
 
   const handlePhoto = useCallback(async (source: 'camera' | 'library') => {
-    const opening = openingRef.current;
-    const stillHere = () => openingRef.current === opening;
+    const opening = openings.begin();
+    const stillHere = () => openings.isCurrent(opening);
     // Started from the action menu, which is still leaving; the system
     // picker can't present until it has.
     await afterMenuDismissed();

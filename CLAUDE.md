@@ -574,8 +574,8 @@ behind each rule below, is `.claude/rules/dates-and-visibility.md`, which loads 
   row (it re-reads the row), and `RecipeNutritionSheet` showing one recipe's estimate on another
   (`estimateKey`). Capture what the request was about before the `await` and compare after it;
   `refreshGuard.ts` is the store-level form of the same check. For a sheet, "is it still open" is
-  not that check, since Cancel and a reopen pass it: compare a counter bumped on every close
-  (`openingRef` in `InventRecipeSheet`).
+  not that check, since Cancel and a reopen pass it: use `useSheetOpening` (`src/hooks/`), whose
+  `begin()`/`isCurrent()` count openings.
 - **An "already exists" check calls the same key function as the refusal it predicts.** The AI
   recipe sheets pre-checked names with a bare `toLowerCase()` while `addRecipe` refuses on
   `groceryNameKey`, so "Chicken Tacos" and "Chicken taco" were two names to the sheet and one to

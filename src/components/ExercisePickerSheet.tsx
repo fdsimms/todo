@@ -104,6 +104,10 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
   const [choosingLike, setChoosingLike] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
+  // The results sit under the search field, so without this the keyboard
+  // covers the last of them with no room to scroll them clear (the hook's
+  // `fieldAbove` note, and the same list in MergeItemSheet).
+  const pickerScroll = useKeyboardInsetScroll<FlatList>({ ownsSheet: true, fieldAbove: true });
 
   const resetForm = () => {
     setCreating(false);
@@ -321,6 +325,8 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
               )}
             />
             <FlatList
+              {...pickerScroll.props}
+              ref={pickerScroll.ref}
               data={results}
               keyExtractor={r => r.exercise.id}
               renderItem={renderRow}

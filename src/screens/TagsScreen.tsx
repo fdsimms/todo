@@ -392,11 +392,14 @@ export function TagsScreen() {
         {/* Tag detail modal. Rows are TaskItem, whose own inline title/subtask
             fields can still hold focus when the sheet closes. SheetModal holds
             the close until the keyboard is gone; the dismiss here only starts
-            it moving sooner. */}
+            it moving sooner. Full screen rather than a page sheet because an
+            expanded row's subtasks are a SortableList, and a page sheet's
+            dismissal pan cancels every drag inside it (CLAUDE.md, drag and
+            drop). The root already pads for the top inset itself. */}
         <SheetModal
           visible={selectedTag !== null}
           animationType="slide"
-          presentationStyle="pageSheet"
+          presentationStyle="fullScreen"
           onRequestClose={() => { Keyboard.dismiss(); closeTagDetail(); }}
         >
           <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>

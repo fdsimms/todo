@@ -126,6 +126,24 @@ describe('the order', () => {
   });
 });
 
+describe('the order, with someone archived', () => {
+  // The list on screen is one half. Renumbered 1..n, the active half took the
+  // numbers the archived half still held, and someone unarchived came back
+  // wherever the tie broke instead of where they had been.
+  it('keeps an archived person\'s place while the active list is reordered', () => {
+    const a = usePersonStore.getState().createPerson('A');
+    const b = usePersonStore.getState().createPerson('B');
+    const c = usePersonStore.getState().createPerson('C');
+    usePersonStore.getState().applyPersonArchived(b.id, true);
+
+    usePersonStore.getState().reorderPeople([c.id, a.id]);
+    usePersonStore.getState().applyPersonArchived(b.id, false);
+
+    expect(usePersonStore.getState().people.map(p => p.name)).toEqual(['C', 'B', 'A']);
+    expect(new Set(usePersonStore.getState().people.map(p => p.sortOrder)).size).toBe(3);
+  });
+});
+
 describe('archiving', () => {
   it('stamps the day it happened', () => {
     const person = usePersonStore.getState().createPerson('Gideon');

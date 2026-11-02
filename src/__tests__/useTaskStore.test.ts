@@ -7031,6 +7031,31 @@ describe('applyWeatherWaits', () => {
     useTaskStore.getState().applyWeatherWaits();
     expect(read(id).deferUntil).toBeNull();
   });
+
+  // Nobody can see a paused project's task, so a sunny day can't be spent on
+  // it: released anyway, it came back after the pause whatever the weather.
+  it('holds a paused project\'s task to the next sunny day rather than releasing it', () => {
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: '2999-01-01', archived: false, completed: false }]);
+    try {
+      withForecast([0, 61, 0]);
+      const id = addWaiting({ projectId: 'garden', dueDate: new Date(2026, 9, 4).toISOString() });
+      useTaskStore.getState().applyWeatherWaits();
+      expect(read(id).weatherWait).toBe('sunny');
+      expect(dayKeyOf(new Date(read(id).deferUntil!))).toBe('2026-10-06');
+    } finally {
+      registerPausedProjectSource(() => useProjectStore.getState().projects);
+    }
+  });
+
+  // The forecast moving the hold is the app's doing, not the person putting
+  // the task off, so it never reaches the Stuck screen.
+  it('does not count its holds as the person postponing', () => {
+    withForecast([61, 61, 0]);
+    const id = addWaiting({ dueDate: new Date(2026, 9, 4).toISOString() });
+    useTaskStore.getState().applyWeatherWaits();
+    expect(dayKeyOf(new Date(read(id).deferUntil!))).toBe('2026-10-06');
+    expect(read(id).postponeCount).toBe(0);
+  });
 });
 
 // ─── applyRainSkips ─────────────────────────────────────────────────────────
@@ -7197,6 +7222,20 @@ describe('a task that waits for a lighter day', () => {
     const ids = [add('A', { slotIn: true }), add('B', { slotIn: true })];
     useTaskStore.getState().applySlotIns();
     expect(ids.filter(held)).toHaveLength(1);
+  });
+
+  // Dated today but not on Today: a paused project's task can't be done, so it
+  // doesn't make the day full. It did, and held back tasks there was room for.
+  it('does not count a task nobody can do today toward the load', () => {
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: '2999-01-01', archived: false, completed: false }]);
+    try {
+      add('Big', { estimatedMinutes: 400, projectId: 'garden' });
+      const ids = [add('A', { slotIn: true }), add('B', { slotIn: true })];
+      useTaskStore.getState().applySlotIns();
+      expect(ids.filter(held)).toHaveLength(0);
+    } finally {
+      registerPausedProjectSource(() => useProjectStore.getState().projects);
+    }
   });
 
   it('follows the category when the task has no answer of its own', () => {
@@ -10738,6 +10777,24 @@ describe('reorderPinnedTasks', () => {
       { id: 'b', pinnedOrder: 1 },
       { id: 'a', pinnedOrder: 2 },
     ]);
+  });
+
+  // A pin the section isn't showing keeps its slot. Numbered 1..n over only
+  // the rows on screen, it tied with one of them and came back wherever
+  // sortOrder broke the tie.
+  it('keeps the slot of a pin the section is not showing', () => {
+    const future = new Date(Date.now() + 5 * 86_400_000).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', pinned: true, pinnedOrder: 1, sortOrder: 1 }),
+        makeTask({ id: 'b', pinned: true, pinnedOrder: 2, sortOrder: 2, pinEachOccurrence: true, dueDate: future }),
+        makeTask({ id: 'c', pinned: true, pinnedOrder: 3, sortOrder: 3 }),
+      ],
+    });
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['a', 'c']);
+    useTaskStore.getState().reorderPinnedTasks(['c', 'a']);
+    const order = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)?.pinnedOrder;
+    expect([order('c'), order('b'), order('a')]).toEqual([1, 2, 3]);
   });
 
   it('is a no-op on an empty list', () => {
@@ -16879,6 +16936,21 @@ describe('quota tasks', () => {
 
         const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
         expect(closed.streakCount).toBe(7);
+      });
+
+      // Each day's run is counted afresh. The count used to ride to the next
+      // occurrence, so a run started late shrank every day after it too.
+      it('gives the next day the whole window\'s count back after a late start', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({
+          tasks: [run({ quotaStartedAt: new Date(2025, 5, 10, 10, 30, 0).toISOString(), targetCount: 19, progressCount: 19 })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+        expect(next.id).not.toBe('eyes');
+        expect(next.quotaStartedAt).toBeNull();
+        expect(next.targetCount).toBe(24);
       });
 
       it('leaves a run still under way alone', () => {

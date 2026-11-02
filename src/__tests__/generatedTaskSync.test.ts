@@ -426,12 +426,15 @@ describe('dropGeneratedTask', () => {
 });
 
 describe('deleteGeneratedTaskQuietly', () => {
-  it('deletes and then clears the undo slot, in that order', () => {
+  // Every caller is the app, and only a person's delete may write "never": a
+  // bare call used to stamp the source's opt-out unless the caller remembered
+  // to ask it not to.
+  it('deletes without the opt-out, then clears the undo slot, in that order', () => {
     seedTask();
 
     deleteGeneratedTaskQuietly('existing');
 
-    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: undefined });
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: true });
     // Clearing first would leave whatever deleteTask armed sitting there.
     expect(mockTaskState.setLastAction.mock.invocationCallOrder[0])
       .toBeGreaterThan(mockTaskState.deleteTask.mock.invocationCallOrder[0]);

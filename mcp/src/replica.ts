@@ -1156,6 +1156,8 @@ export interface Replica {
   rotationDoneIds(task: Task): string[];
   isUnscheduled(task: Task): boolean;
   isInbox(task: Task): boolean;
+  /** On the app's Later list (`isTaskDeferred`): scheduled for later or snoozed, and not hidden for any other reason. */
+  isDeferred(task: Task): boolean;
   isBlocked(task: Task): boolean;
   /**
    * The tasks this one still waits on: the blockers that can still hold it
@@ -4362,6 +4364,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         .map(m => m.item.id),
     isUnscheduled: (task: Task) => visibility.isUnscheduledTask(task),
     isInbox: (task: Task) => visibility.isInboxTask(task),
+    isDeferred: (task: Task) => visibility.isTaskDeferred(task),
     isBlocked: (task: Task) => visibility.isTaskBlocked(task),
     liveBlockers: (task: Task) => {
       const own = new Set(blocking.blockerIdsOf(task));

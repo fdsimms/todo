@@ -875,6 +875,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useSheetHiddenOffset.ts` — useSheetHiddenOffset
 - `src/hooks/useSheetMotion.ts` — useSheetMotion
 - `src/hooks/useSheetMount.ts` — useSheetMount
+- `src/hooks/useSheetOpening.ts` — useSheetOpening
 - `src/hooks/useSheetSubject.ts` — useSheetSubject
 - `src/hooks/useShieldReasons.ts` — useShieldReasons
 - `src/hooks/useSlotInSync.ts` — useSlotInSync

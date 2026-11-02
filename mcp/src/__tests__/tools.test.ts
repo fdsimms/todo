@@ -104,6 +104,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     isHiddenForVacation: (t: Task) => t.id.startsWith('vacation'),
     isUnscheduled: (t: Task) => t.id.startsWith('unscheduled'),
     isInbox: (t: Task) => t.id.startsWith('inbox'),
+    isDeferred: (t: Task) => t.id.startsWith('later'),
     isBlocked: (t: Task) => t.id.startsWith('blocked'),
     liveBlockers: () => [],
     isNotNeeded: () => false,

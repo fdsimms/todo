@@ -1335,8 +1335,9 @@ interface GroceryStore extends UndoHistoryActions {
    * "These aren't alternatives after all" — unlinks the whole group, from the
    * item sheet. Takes the label off every member rather than just this row: one
    * remaining option is not a choice, so a partial unlink can't be a state.
+   * `listId` as resolveChoice takes it: omitted is the list on screen.
    */
-  clearChoice: (id: string) => void;
+  clearChoice: (id: string, opts?: { listId?: string | null }) => void;
 
   removeFromList: (id: string) => void;
   /**
@@ -4015,7 +4016,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (!item) return;
     const losers = plan.remove;
     if (losers.length === 0) {
-      get().clearChoice(id);
+      // The list this was asked about, not the one on screen: a tick from the
+      // Watch on the home list ended the choice on whichever list was open.
+      get().clearChoice(id, { listId });
       return;
     }
 
@@ -4058,9 +4061,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     });
   },
 
-  clearChoice(id) {
+  clearChoice(id, opts) {
     // Scoped to this trolley, like resolveChoice above and for the same reason.
-    const listId = get().activeListId;
+    const listId = opts && 'listId' in opts ? opts.listId ?? null : get().activeListId;
     const entry = entryFor(get().listEntries, id, listId);
     if (!entry?.choiceGroup) return;
     const group = entry.choiceGroup;
