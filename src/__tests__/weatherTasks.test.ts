@@ -84,6 +84,16 @@ describe('defaultWeatherRules', () => {
 });
 
 describe('parseWeatherRules', () => {
+  // A random fallback changed on every parse and every device, and a rule's
+  // generated tasks are keyed by its id, so they were cleared and rewritten.
+  it('gives a rule stored without an id the same id every time', () => {
+    const raw = JSON.stringify([{ condition: 'rainy', title: 'Bring an umbrella' }]);
+    const first = parseWeatherRules(raw)[0].id;
+    expect(first).toBeTruthy();
+    expect(parseWeatherRules(raw)[0].id).toBe(first);
+    expect(parseWeatherRules(JSON.stringify([{ condition: 'sunny', title: 'Bring an umbrella' }]))[0].id).not.toBe(first);
+  });
+
   it('round-trips a serialized rule list', () => {
     const rules = [makeRule(), makeRule({ id: 'rule-2', condition: 'rainy', title: 'Bring an umbrella' })];
     expect(parseWeatherRules(JSON.stringify(rules))).toEqual(rules);

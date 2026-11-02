@@ -34,6 +34,7 @@ describe('the three maintenance groups', () => {
     expect(names(catchUpPasses())).toEqual([
       'record time zone',
       'check vacation expiry',
+      'forgive paused project streaks',
       'check away vacation',
       'check away grocery list',
       'roll over quotas',
@@ -127,6 +128,7 @@ describe('the launch split of the catch-up passes', () => {
     expect(names(first)).toEqual([
       'record time zone',
       'check vacation expiry',
+      'forgive paused project streaks',
       'check away vacation',
       'check away grocery list',
       'roll over quotas',

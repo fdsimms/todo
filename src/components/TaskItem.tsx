@@ -183,6 +183,9 @@ import { TaskBreakdownSheet } from './TaskBreakdownSheet';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
 import { MissionSheet, taskMissionProps } from './MissionSheet';
 import { TomorrowAlarmSheet } from './TomorrowAlarmSheet';
+import { ApplyTemplateSheet } from './ApplyTemplateSheet';
+import { useTemplateStore } from '../store/useTemplateStore';
+import { anchorsForRun, runTemplateLabel, templateLinkState } from '../utils/templateLink';
 import { useAlarmStore } from '../store/useAlarmStore';
 import { morningAlarmFor, morningChipLabel } from '../utils/morningAlarm';
 import { useSheetSubject } from '../hooks/useSheetSubject';
@@ -820,6 +823,12 @@ const TaskItemRow = React.memo(function TaskItem({
   // the alarm) is what the tick asks for, so the ref lets that one completion
   // through, the way missionDoneRef does for a mission.
   const [showAlarmCard, setShowAlarmCard] = useState(false);
+  // The template this task runs (Task.templateId): a deleted one stays on the
+  // row as "Template deleted" rather than hiding the button.
+  const linkedTemplate = useTemplateStore(s => task.templateId ? s.templates.find(t => t.id === task.templateId) ?? null : null);
+  const templateLink = templateLinkState(task, linkedTemplate ? [linkedTemplate] : []);
+  const templateRunProject = useProjectStore(s => task.templateId && task.projectId ? s.getProjectById(task.projectId) : null);
+  const [showTemplateRun, setShowTemplateRun] = useState(false);
   const alarmSettledRef = useRef(false);
   useEffect(() => {
     alarmSettledRef.current = false;
@@ -1526,6 +1535,7 @@ const TaskItemRow = React.memo(function TaskItem({
   const mountDeliverablePrompt = useSheetMount(showDeliverablePrompt);
   const mountMission = useSheetMount(showMission);
   const mountAlarmCard = useSheetMount(showAlarmCard);
+  const mountTemplateRun = useSheetMount(showTemplateRun);
   // Held, so a mission removed from the task while its sheet is up closes the
   // sheet through `visible` rather than taking it out of the tree.
   const missionSheet = useSheetSubject(mountMission ? taskMissionProps(task) : null);
@@ -2338,8 +2348,8 @@ const TaskItemRow = React.memo(function TaskItem({
   // clears the moment the suggestion is taken or dropped — so nothing else has
   // to decide whether this row is the kind that shows one.
   const importSuggestion = useMemo(
-    () => describePendingImport(task.pendingImport),
-    [task.pendingImport]
+    () => describePendingImport(task.pendingImport, getLogicalNow(alarmDayReset)),
+    [task.pendingImport, alarmDayReset]
   );
 
   const handleApplyImport = () => {
@@ -2701,6 +2711,23 @@ const TaskItemRow = React.memo(function TaskItem({
 
   const handleSomeoneElse = () => {
     void runCompletion(undefined, undefined, { byOther: true });
+  };
+
+  const handleTemplateLink = () => {
+    haptics.tap();
+    if (templateLink.kind === 'ready') {
+      setShowTemplateRun(true);
+      return;
+    }
+    Alert.alert(
+      'Template deleted',
+      'The template this task runs was deleted, so there is nothing to run. Remove the link, or open the task to pick another template.',
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Open task', onPress: () => onEdit?.(task.id) },
+        { text: 'Remove link', style: 'destructive', onPress: () => updateTask(task.id, { templateId: null }) },
+      ],
+    );
   };
 
   const handleComplete = async () => {
@@ -3398,6 +3425,9 @@ const TaskItemRow = React.memo(function TaskItem({
           completing && !quotaCompleting && !quotaPartial && !sendOffKind && styles.circleCompleting,
           sendOffKind === 'byOther' && styles.circleHandedOff,
           completionLocked && !hoursLoggable && styles.circleLocked,
+          // Waiting on another task: a faded, dashed ring, so the row reads as
+          // not ready before its chips are read. Display only; the tap is unchanged.
+          !!blockerTitle && !task.completed && !completing && styles.circleWaiting,
           // Ready is a nudge, not a lock — the checkbox stays tappable either way.
           // The meal-plan nudge's full day borrows the same treatment on purpose:
           // green already means done-or-ready on this row, and a second colour
@@ -3723,6 +3753,28 @@ const TaskItemRow = React.memo(function TaskItem({
         )}
         {weatherNote !== null && !nutrientRow && !isEditingTitle && (
           <Text style={[styles.scheduledLabel, styles.weatherNote]} numberOfLines={1}>{weatherNote}</Text>
+        )}
+        {templateLink.kind !== 'none' && !selectionMode && showActions && !nutrientRow && !isEditingTitle && (
+          <TouchableOpacity
+            onPress={handleTemplateLink}
+            activeOpacity={interaction.activeOpacity}
+            hitSlop={8}
+            style={[styles.templateRun, templateLink.kind === 'missing' && styles.templateRunMissing]}
+            accessibilityRole="button"
+            accessibilityLabel={templateLink.kind === 'ready' ? `${runTemplateLabel(templateLink.template)} for ${task.title}` : `Template deleted for ${task.title}`}
+          >
+            <Ionicons
+              name={templateLink.kind === 'ready' ? 'documents-outline' : 'alert-circle-outline'}
+              size={iconSize.xs}
+              color={templateLink.kind === 'ready' ? colors.accent : colors.redText}
+            />
+            <Text
+              style={[styles.templateRunText, { color: templateLink.kind === 'ready' ? colors.accent : colors.redText }]}
+              numberOfLines={1}
+            >
+              {templateLink.kind === 'ready' ? runTemplateLabel(templateLink.template) : 'Template deleted'}
+            </Text>
+          </TouchableOpacity>
         )}
         {autoNote !== null && completing && !nutrientRow && (
           <Animated.View style={[styles.autoNote, { opacity: checkScale }]} accessibilityLiveRegion="polite">
@@ -4255,9 +4307,9 @@ const TaskItemRow = React.memo(function TaskItem({
               </View>
             )}
             {!!blockerTitle && (
-              <View style={styles.metaChip} accessibilityLabel={`Waiting on ${blockerTitle}`}>
-                <Ionicons name="hourglass" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.blockingLabel} numberOfLines={1}>
+              <View style={[styles.metaChip, styles.waitingChip]} accessibilityLabel={`Waiting on ${blockerTitle}`}>
+                <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
+                <Text style={styles.waitingLabel} numberOfLines={1}>
                   After {blockerTitle}
                 </Text>
               </View>
@@ -4269,7 +4321,7 @@ const TaskItemRow = React.memo(function TaskItem({
                 only in the editor. */}
             {!!waitingPersonName && (
               <TouchableOpacity
-                style={styles.metaChip}
+                style={[styles.metaChip, styles.waitingChip]}
                 onPress={() => {
                   haptics.tap();
                   animateLayout();
@@ -4287,8 +4339,8 @@ const TaskItemRow = React.memo(function TaskItem({
                 accessibilityRole="button"
                 accessibilityLabel={`Waiting on ${waitingPersonName}. Double tap to stop waiting.`}
               >
-                <Ionicons name="hourglass" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.blockingLabel} numberOfLines={1}>
+                <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
+                <Text style={styles.waitingLabel} numberOfLines={1}>
                   Waiting on {waitingPersonName}
                 </Text>
                 {/* The same glyph the Waiting screen releases a row with,
@@ -4296,7 +4348,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     is pixel-identical to the blocker chip beside it, which is
                     not a button, and the one way out of a wait nothing else
                     ends would be undiscoverable. */}
-                <Ionicons name="close" size={iconSize.xs} color={colors.textSecondary} />
+                <Ionicons name="close" size={iconSize.xs} color={colors.warningText} />
               </TouchableOpacity>
             )}
             {/* How long this project has been silent — the one thing the
@@ -5848,6 +5900,17 @@ const TaskItemRow = React.memo(function TaskItem({
           onClose={() => setShowAlarmCard(false)}
         />
       )}
+      {mountTemplateRun && linkedTemplate && (
+        <ApplyTemplateSheet
+          visible={showTemplateRun}
+          template={linkedTemplate}
+          projectId={task.projectId ?? undefined}
+          initialAnchors={anchorsForRun(templateRunProject)}
+          onClose={() => setShowTemplateRun(false)}
+          // Running it is the work the task was a reminder for.
+          onApplied={(created) => { if (created.length > 0) handleComplete(); }}
+        />
+      )}
       {missionSheet && (
         <MissionSheet
           {...missionSheet}
@@ -6024,6 +6087,10 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
   },
   circleLocked: {
     borderWidth: 0,
+  },
+  circleWaiting: {
+    borderStyle: 'dashed',
+    opacity: 0.55,
   },
   // A timed task whose countdown has run out. Tinted to pull the eye to the tap
   // that completes it, without filling the circle — it isn't done yet.
@@ -6289,6 +6356,20 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
     color: colors.textSecondary,
     fontSize: font.xs,
   },
+  // A row held back by a task or a person. Filled like quietChip, since the
+  // plain grey chip was indistinguishable from the category and date beside it.
+  waitingChip: {
+    backgroundColor: colors.warning + '29',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    borderRadius: radius.full,
+  },
+  waitingLabel: {
+    color: colors.warningText,
+    fontSize: font.xxs,
+    fontWeight: fontWeight.semibold,
+    flexShrink: 1,
+  },
   weatherNote: {
     marginTop: spacing.xxs,
   },
@@ -6298,6 +6379,27 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
     alignItems: 'center',
     gap: spacing.xs,
     marginTop: spacing.xxs,
+  },
+  templateRun: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xsm,
+    marginTop: spacing.xsm,
+    marginBottom: spacing.xxs,
+    paddingVertical: spacing.xsm,
+    paddingHorizontal: spacing.smd,
+    borderRadius: radius.lg,
+    backgroundColor: colors.accentSubtle,
+    maxWidth: '100%',
+  },
+  templateRunMissing: {
+    backgroundColor: colors.bgTertiary,
+  },
+  templateRunText: {
+    flexShrink: 1,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
   },
   autoNoteText: {
     flexShrink: 1,

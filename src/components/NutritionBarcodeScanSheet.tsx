@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSheetOpening } from '../hooks/useSheetOpening';
 import { ActivityIndicator, Linking, StyleSheet, Text, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -75,16 +76,14 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
   // a person can cancel the sheet while it's out; the result then called
   // `onFound` on a sheet that had been closed, filling the form behind it with
   // a product nobody had agreed to (and, reopened on another food, with the
-  // previous food's barcode). Bumped on every open and close and read back
-  // after the await.
-  const openingRef = useRef(0);
-  useEffect(() => { openingRef.current += 1; }, [visible]);
+  // previous food's barcode).
+  const openings = useSheetOpening(visible);
 
   const resolveGtin = useCallback(async (gtin: string) => {
     setLooking(true);
     setError(null);
-    const opening = openingRef.current;
-    const stillHere = () => openingRef.current === opening;
+    const opening = openings.begin();
+    const stillHere = () => openings.isCurrent(opening);
     try {
       const record = await lookupGtin(gtin);
       if (!stillHere()) return;

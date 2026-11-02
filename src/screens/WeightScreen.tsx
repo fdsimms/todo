@@ -38,6 +38,7 @@ import {
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
+import { useRouteArrival } from '../hooks/useRouteArrival';
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
@@ -157,28 +158,20 @@ export function WeightScreen() {
     name: string;
     params?: { openLog?: number; returnTo?: string; openGoal?: number };
   }>();
-  const [handledOpenLog, setHandledOpenLog] = useState<number | undefined>(undefined);
-  const [handledOpenGoal, setHandledOpenGoal] = useState<number | undefined>(undefined);
   // Where to hand the user back once the sheet this opens closes — the tab
   // they tapped the weigh-in request from, carried by `resetToWeight`'s
   // `returnTo` param. Cleared whenever the sheet is opened by hand (the "+"
   // button, the empty state) so a manual visit never inherits a stale value
   // left over from an earlier link tap.
   const [returnTo, setReturnTo] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    if (route.params?.openLog === undefined || route.params.openLog === handledOpenLog) return;
-    setHandledOpenLog(route.params.openLog);
-    setReturnTo(route.params.returnTo);
+  useRouteArrival(route.params?.openLog, () => {
+    setReturnTo(route.params?.returnTo);
     setLogOpen(true);
-  }, [route.params?.openLog, route.params?.returnTo, handledOpenLog]);
+  });
 
   // The same stamped-param handshake for the goal sheet, which the Settings row
   // for a weight goal lands on. No `returnTo`: see `resetToWeightGoal`.
-  useEffect(() => {
-    if (route.params?.openGoal === undefined || route.params.openGoal === handledOpenGoal) return;
-    setHandledOpenGoal(route.params.openGoal);
-    setGoalOpen(true);
-  }, [route.params?.openGoal, handledOpenGoal]);
+  useRouteArrival(route.params?.openGoal, () => setGoalOpen(true));
 
   // On every visit, not only the first: the screen stays mounted for the
   // session, so a weigh-in the scale sent to Health, or a day rolling over,

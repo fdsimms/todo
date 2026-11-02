@@ -79,12 +79,18 @@ export interface Overview {
   today: { date: string; weekday: string; dayStartsAt: string; weekStartsOn: string };
   /** Present while vacation mode is on: since when, until when, the trip that switched it on if one did, and what it hides (`vacationTools.ts`). */
   vacation?: VacationState & { on: true };
-  /** Open top-level tasks in each of the app's lenses. The four lenses are disjoint. */
+  /**
+   * Open top-level tasks in each of the app's lenses. The four lenses are
+   * disjoint; `hidden` is the open tasks none of them shows (held back, hidden
+   * by vacation or a paused project, an undated project step, or expired), so
+   * the five add up to every open task.
+   */
   counts: {
     today: number;
     later: number;
     unscheduled: number;
     inbox: number;
+    hidden: number;
     /** Dated before today and still open. A subset of `today`, not a fifth lens. */
     overdue: number;
     pinned: number;
@@ -137,13 +143,15 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
   const settings = replica.settings();
   const today = replica.todayKey();
   const open = replica.tasks().filter(isOpenTopLevel);
+  const vis = replica.lib().visibility;
 
-  let visible = 0, later = 0, unscheduled = 0, inbox = 0;
+  let visible = 0, later = 0, unscheduled = 0, inbox = 0, hidden = 0;
   for (const t of open) {
     if (replica.isVisible(t)) visible++;
     else if (replica.isUnscheduled(t)) unscheduled++;
     else if (replica.isInbox(t)) inbox++;
-    else later++;
+    else if (replica.isDeferred(t)) later++;
+    else hidden++;
   }
 
   const openByCategory = countBy(open, t => t.category);
@@ -177,8 +185,11 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
       later,
       unscheduled,
       inbox,
+      hidden,
       overdue: replica.lookAhead(1).carriedOver.length,
-      pinned: open.filter(t => t.pinned).length,
+      // The phone's Pinned block (`pinnedTasks()`): not a pin waiting on
+      // something, withheld, or a pin-each-occurrence task not due yet.
+      pinned: open.filter(t => !vis.isHeldBack(t) && !vis.isWithheld(t) && vis.isPinnedOnToday(t)).length,
       blocked: open.filter(t => replica.isBlocked(t)).length,
     },
     categories: replica.categories().map(c => ({
@@ -277,7 +288,9 @@ export function getAgenda(replica: Replica, input: { days?: number } = {}): Agen
     days,
     carriedOver: la.carriedOver.map(t => ({
       ...serializeTask(replica, t),
-      daysAgo: t.dueDate ? Math.max(daysBetweenKeys(replica.logicalDayKeyOf(t.dueDate), today), 1) : 1,
+      // A stored day, keyed as one (`getTaskDayStart`'s reading): the logical key
+      // is for a real moment, and rolled a midnight dueDate back to the day before.
+      daysAgo: t.dueDate ? Math.max(daysBetweenKeys(replica.dayKeyOf(t.dueDate), today), 1) : 1,
     })),
     tightDeadlines: la.tight.map(t => ({
       id: t.task.id,
@@ -451,7 +464,7 @@ export function reviewTasks(replica: Replica, input: { staleDays?: number; minPu
 
   const overdue = replica.lookAhead(1).carriedOver.map(t => ({
     ...serializeTask(replica, t),
-    daysAgo: t.dueDate ? Math.max(daysBetweenKeys(replica.logicalDayKeyOf(t.dueDate), today), 1) : 1,
+    daysAgo: t.dueDate ? Math.max(daysBetweenKeys(replica.dayKeyOf(t.dueDate), today), 1) : 1,
   }));
 
   const aged = (pick: (t: Task) => boolean, minDays: number) =>

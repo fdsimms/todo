@@ -16,6 +16,7 @@ import type { Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -67,6 +68,9 @@ export function InboxSortSheet({ visible, inbox, onClose }: Props) {
   const [category, setCategory] = useState<string | null | undefined>(undefined);
   const [projectId, setProjectId] = useState<string | null | undefined>(undefined);
   const [open, setOpen] = useState<'category' | 'project' | null>(null);
+  // The category and project pickers grow find fields inside the scroll, and
+  // without this the keyboard covered their matches and the footer's button.
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const queue = useMemo(() => inboxSortQueue(inbox, handled), [inbox, handled]);
   const current = queue[0] ?? null;
@@ -118,6 +122,14 @@ export function InboxSortSheet({ visible, inbox, onClose }: Props) {
     markHandled(current.id);
   };
 
+  // Done in the header (and a swipe down) keeps what is picked on the card
+  // showing, as the footer's Done on the last card does: every card before it
+  // was saved by Next. Closing used to drop those picks with nothing said.
+  const close = () => {
+    if (current && (when !== 'none' || category !== undefined || projectId !== undefined)) next();
+    onClose();
+  };
+
   const remove = () => {
     if (!current) return;
     haptics.tap();
@@ -130,18 +142,23 @@ export function InboxSortSheet({ visible, inbox, onClose }: Props) {
   const projectSummary = projectId === undefined ? undefined : projectName ?? 'None';
 
   return (
-    <SheetModal name="InboxSortSheet" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <SheetModal name="InboxSortSheet" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
       <View style={styles.root}>
         <SheetHeader
           title="Sort the Inbox"
-          left={<SheetHeaderButton label={BUTTON_LABEL.done} role="cancel" onPress={onClose} minWidth={56} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} role="cancel" onPress={close} minWidth={56} />}
           right={current
             ? <SheetHeaderButton label="Skip" onPress={skip} minWidth={56} />
             : <View style={styles.headerSpacer} />}
         />
         {current ? (
           <>
-            <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            <ScrollView
+              ref={keyboardScroll.ref}
+              contentContainerStyle={styles.content}
+              keyboardShouldPersistTaps="handled"
+              {...keyboardScroll.props}
+            >
               <Text style={styles.progress}>{position} of {total}</Text>
               <View style={styles.card}>
                 <Text style={styles.title}>{current.title}</Text>

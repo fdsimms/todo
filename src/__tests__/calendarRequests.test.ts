@@ -1,4 +1,5 @@
 import {
+  requestEventIsOver,
   changeRequestProblem,
   eventFieldsForChange,
   CALENDAR_REQUEST_RETENTION_DAYS,
@@ -128,5 +129,33 @@ describe('a change to an event an earlier request wrote', () => {
     expect(fields).toMatchObject({ title: 'Dentist (moved)', calendarId: 'cal' });
     expect(fields).not.toHaveProperty('location');
     expect(fields.start).toEqual(new Date(written.startAt));
+  });
+});
+
+// Read on the clock, an all-day event for the person's today ended at calendar
+// midnight, so between midnight and their reset it was over before it started.
+describe('requestEventIsOver', () => {
+  const allDay = (day: Date) => ({
+    allDay: true,
+    endAt: new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).toISOString(),
+  });
+  const nov1 = new Date(2026, 10, 1);
+  const at130 = new Date(2026, 10, 2, 1, 30);
+
+  it('keeps an all-day event for the logical today alive until the day resets', () => {
+    expect(requestEventIsOver(allDay(nov1), at130, '04:00')).toBe(false);
+    expect(requestEventIsOver(allDay(nov1), new Date(2026, 10, 2, 4, 30), '04:00')).toBe(true);
+    // With the reset at midnight it ends with the day, as it always did.
+    expect(requestEventIsOver(allDay(nov1), at130)).toBe(true);
+  });
+
+  it('judges a timed event on the clock, whatever the reset', () => {
+    const timed = { allDay: false, endAt: new Date(2026, 10, 2, 1, 0).toISOString() };
+    expect(requestEventIsOver(timed, at130, '04:00')).toBe(true);
+  });
+
+  it('writes a pending all-day request for the logical today rather than expiring it', () => {
+    const r = request({ status: 'pending', allDay: true, startAt: nov1.toISOString(), endAt: allDay(nov1).endAt });
+    expect(planCalendarRequestDrain([r], at130, '04:00').write).toHaveLength(1);
   });
 });

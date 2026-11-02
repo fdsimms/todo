@@ -122,10 +122,13 @@ describe('the rewards tools', () => {
       const tv = createUnlock(replica, { title: 'TV', unlocksAtPct: 100 });
       expect(tv.status).toBe('locked');
       expect(() => setUnlockPlay(replica, tv.id, 'start')).toThrow(/is locked/);
-      deleteUnlock(replica, tv.id);
+      // A locked one can't be made easier to open or deleted; making it harder is fine.
+      expect(() => updateUnlock(replica, tv.id, { unlocksAtPct: 50 })).toThrow(/can't lower the percentage/);
+      expect(() => deleteUnlock(replica, tv.id)).toThrow(/can't be deleted yet/);
+      expect(updateUnlock(replica, tv.id, { title: 'TV room' }).title).toBe('TV room');
 
       expect(deleteUnlock(replica, made.id)).toEqual({ deleted: { id: made.id, title: 'Switch' } });
-      expect(getRewards(replica).unlocks).toEqual([]);
+      expect(getRewards(replica).unlocks.map(u => u.title)).toEqual(['TV room']);
     });
 
     it('reports the balance, the goal and what each reward still needs', () => {

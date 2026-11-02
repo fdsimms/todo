@@ -173,7 +173,19 @@ export const useTravelTimeStore = create<TravelTimeState>((set, get) => ({
           at: Date.now(),
         };
       }
-      set({ estimates: { ...kept, ...fresh } });
+      // Merged into the estimates as they stand now, not as they stood before
+      // the requests (`kept`): a refresh can be several Apple Maps calls long,
+      // and a mode the person switched while it was out was put back.
+      set(state => {
+        const next: Record<string, TravelEstimate> = {};
+        for (const [key, estimate] of Object.entries(state.estimates)) if (live.has(key)) next[key] = estimate;
+        for (const [key, estimate] of Object.entries(fresh)) {
+          // Written by someone else while this one was out: theirs is newer.
+          if (state.estimates[key] !== held[key]) continue;
+          next[key] = estimate;
+        }
+        return { estimates: next };
+      });
     } finally {
       // A read cut off by `clear` has answered nothing, so it settles nothing.
       set({ refreshing: false, ...(estimateGuard.isCurrent(token) ? { settled: true } : {}) });

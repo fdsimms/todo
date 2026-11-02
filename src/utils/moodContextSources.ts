@@ -1,5 +1,5 @@
 import { EVENT_MATCH_MAX_LENGTH, EVENT_RULE_MAX_MATCHES } from './eventTasks';
-import { generateId } from './id';
+import { derivedId, spawnSeed } from './syncIds';
 
 /**
  * Which day facts the mood sheet may offer as pre-picked context tags
@@ -119,7 +119,7 @@ export function parseMoodEventTags(raw: string | null | undefined): MoodEventTag
     }
     if (!title || matches.length === 0) continue;
     out.push({
-      id: typeof r.id === 'string' && r.id ? r.id : generateId(),
+      id: typeof r.id === 'string' && r.id ? r.id : derivedId(spawnSeed.ruleWithoutId('mood-context', `${title}|${matches.join('|')}`)),
       title,
       enabled: r.enabled !== false,
       matches,

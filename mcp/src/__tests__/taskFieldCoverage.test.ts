@@ -26,6 +26,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { typesSource } from '../../../src/testSupport/typesSource';
 
 const ROOT = join(__dirname, '..', '..', '..');
 /** Where a per-task read or write has to live to count. */
@@ -68,7 +69,7 @@ const NOT_EXPOSED: Record<string, string[]> = {
 const ALL_NOT_EXPOSED = Object.values(NOT_EXPOSED).flat();
 
 function taskFields(): string[] {
-  const src = readFileSync(join(ROOT, 'src', 'types', 'index.ts'), 'utf8');
+  const src = typesSource();
   const open = src.indexOf('{', src.indexOf('export interface Task {'));
   let depth = 0;
   let close = open;

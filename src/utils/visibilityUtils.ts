@@ -492,11 +492,14 @@ export function isCompletionOnTime(task: Task): boolean {
 
 // True while a task with a time window is currently inside that window
 // (windowStart has passed, windowEnd hasn't) — used to surface the
-// "time-limited, act now" indicator.
+// "time-limited, act now" indicator. Not for a task nobody can act on now:
+// hidden by vacation or a paused project, or waiting on something, where the
+// chip showed on its project page and the Waiting screen.
 export function isTaskWindowActive(task: Task): boolean {
   if (task.completed || task.archived || !task.windowStart) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
+  if (isInPausedProject(task) || isHeldBack(task)) return false;
   if (!hasDayArrived(task)) return false;
   const now = new Date();
   if (now < getWindowThreshold(windowBoundsFor(task).start ?? task.windowStart)) return false;
@@ -1113,6 +1116,13 @@ export function isUpcomingToday(task: Task): boolean {
   if (task.completed || task.archived || task.timeSegments.length === 0) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
+  // The gates that aren't a clock, as isVisibleApartFromVacation runs them: a
+  // task one of these hides is not coming back at its segment, so listing it
+  // under Later Today showed a paused project's task, or one waiting on
+  // another, all morning and then dropped it when the evening came.
+  if (isInPausedProject(task) || isNegativeTask(task) || isHeldBack(task)) return false;
+  if (task.projectId && !task.dueDate) return false;
+  if (isTaskExpired(task)) return false;
 
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();

@@ -381,6 +381,16 @@ describe('eventTaskContextLabel', () => {
 });
 
 describe('parseEventRules', () => {
+  // A random fallback changed on every parse and every device, and a rule's
+  // generated tasks are keyed by its id, so they were cleared and rewritten.
+  it('gives a rule stored without an id the same id every time', () => {
+    const raw = JSON.stringify([{ matches: ['flight'], title: 'Pack', leadDays: 2 }]);
+    const first = parseEventRules(raw)[0].id;
+    expect(first).toBeTruthy();
+    expect(parseEventRules(raw)[0].id).toBe(first);
+    expect(parseEventRules(JSON.stringify([{ matches: ['dentist'], title: 'Pack' }]))[0].id).not.toBe(first);
+  });
+
   it('reads a stored list back', () => {
     const rules = parseEventRules(JSON.stringify([
       { id: 'r1', matches: ['flight'], title: 'Pack', leadDays: 2, enabled: true },

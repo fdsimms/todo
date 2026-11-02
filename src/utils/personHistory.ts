@@ -3,6 +3,7 @@ import { format } from 'date-fns/format';
 import { isSameYear } from 'date-fns/isSameYear';
 import type { Task } from '../types';
 import { isRealCompletion } from './missed';
+import { deliverableKindFor } from './deliverables';
 
 /**
  * What you and somebody have actually done together — see `docs/arch/people.md`.
@@ -70,7 +71,8 @@ export function personHistory(tasks: readonly Task[]): HistoryEntry[] {
       title: t.title,
       at: t.completedAt!,
       alsoPersonIds: t.personIds,
-      note: t.deliverableKind === 'text' ? t.deliverableValue?.trim() || null : null,
+      // The step's own question on a chain, which is what the answer was given to.
+      note: deliverableKindFor(t) === 'text' ? t.deliverableValue?.trim() || null : null,
     }))
     .sort((a, b) => b.at.localeCompare(a.at));
 }

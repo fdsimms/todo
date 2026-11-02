@@ -3,13 +3,30 @@
 An MCP server that lets Claude read this app's data (#100). The code is `mcp/`; the parts of it
 that are ordinary TypeScript are tested by the repo's own jest run, alongside everything else.
 
-**Status: phase 2.** The replica is a real sync peer, and it writes: templates, tasks, completions,
-reschedules and the grocery list, behind their own token. Nothing is deployed behind real auth. The
-phases are at the bottom of this file.
+**Status: built and hosted.** The replica is a sync peer, it writes behind its own token and the
+confirm guard, and it runs behind OAuth on Fly (`mcp/DEPLOY.md`). How it got there, phase by phase,
+is in `docs/arch/history/mcp-server.md`.
 
-It runs. The server has been exercised end to end against a file database, and a change made on one
-side reaches the other through the store. What has *not* been exercised is a public deployment,
-because that is phase 3 and needs infrastructure this repo cannot produce.
+## Rules first
+
+The invariants a change in this area most often breaks, one line each, with the code that owns it and
+the section below that argues it (§). Read that section before deviating from one. The rest of the
+file is reference to read narrowly: `grep -n '^## ' docs/arch/mcp-server.md` is its table of contents.
+
+- **Nothing in `mcp/src` imports the db layer at module scope.** `openReplica()` requires it lazily, after `mcp/src/expoSqliteShim.ts` is primed; a hoisted import runs `database.ts` against the real `expo-sqlite` and throws. (§ The replica)
+- **Never hand-write SQL against the replica.** Reads go through `rowToTask` and its siblings and writes through the `db*` functions, so rows have the shape every reader expects and the sync triggers stamp them. (§ The replica)
+- **The server loads only stores with no native import chain, and hydrates `useSettingsStore` and `useCategoryStore` before anything calls `isTaskVisible`.** `useTaskStore`, `useTemplateStore` and `useGroceryStore` can never load here. `openReplica` in `mcp/src/replica.ts`. (§ The replica)
+- **A write never reimplements an app rule.** It calls the core the store calls (`newTaskFromDraft`, `buildCompletion`, `planGroceryAdd`, `src/utils/pantryWrite.ts`), and a rule still fused to a store is lifted into `src/utils` unchanged, not copied. (§ Completing a task, and the core that had to move with it)
+- **The server does no device work**: no reminders, calendar events or Health writes. A food row it logs is flagged `healthWritePending` for the phone to write. (§ Creating a task, and the builder that had to move)
+- **No write tool is registered outside the confirm guard.** A call without `apply` runs the write in a rolled-back transaction and returns `willDo`; only a second call carrying the single-use token for those exact arguments writes. `mcp/src/confirmWrites.ts`. (§ Every write is previewed, and confirmed by the person, before it happens)
+- **Every write goes through the ledger and lands in Activity as `actor: 'agent'`**, and an undo is offered only while the record still matches the agent's "after". `withAgentLedger` (`mcp/src/agentLedger.ts`), `agentRevertPlan` (`src/utils/agentRevert.ts`). (§ Every agent write is in Activity, and a task write can be undone there)
+- **Every tool is classified in `mcp/src/toolAnnotations.ts`**; `toolAnnotations.test.ts` fails on one that isn't, because an unclassified tool reads as "may write". (§ Working as an agent's surface, not only a data API)
+- **The read credential never buys writing.** With `MCP_WRITE_TOKEN` unset the server is read-only, and a read-scoped request doesn't see write tools in `tools/list`. `scopeFor` (`mcp/src/auth.ts`). (§ Writes have their own token)
+- **Sync transports run one after another, each with its own cursors**, and relaying between them goes by arrival, never by stamp. `runSyncAll` (`src/utils/syncEngine.ts`). (§ Phase 1: the payload store)
+- **The payload store never parses a payload, its cursor never skips, and it prunes no sooner than 90 days.** Its token lives in the keychain and `syncServerUrl` stays off `SYNCED_SETTING_KEYS`. `mcp/src/syncStore.ts`. (§ Phase 1: the payload store)
+- **Health and journal tables are withheld on push** (from iCloud always, from the sync server unless that device's switch is on), while incoming rows are still applied. `withholdChanges` (`src/utils/syncEngine.ts`). (§ The health logs have their own switch, and iCloud never gets them)
+- **A setting reaches the phone only if its key is on `SYNCED_SETTING_KEYS`, and the server writes only its allowlist, through the store's own setters.** `SETTINGS_SPEC` (`mcp/src/settingsSpec.ts`). (§ Settings: an allowlist, through the store's own setters)
+- **Every logical-day computation runs in the phone's time zone.** `adoptTimeZone` copies `deviceTimeZone` into `process.env.TZ`, and every bare `YYYY-MM-DD` a tool writes goes through `localDateInput` (`mcp/src/timeZone.ts`). (§ The server answers in the phone's time zone)
 
 ## The problem this has to solve first
 
@@ -131,7 +148,9 @@ which is why a write does not have to go through a *store* to be seen (see phase
 and `useCategoryStore` in particular have to be initialized before anything calls `isTaskVisible`,
 which reads `dayResetTime` from the first and schedules from the second. `openReplica()` does that
 and registers the blocker/person sources, because a half-hydrated visibility check is worse than a
-refused one: it answers, and it answers wrong.
+refused one: it answers, and it answers wrong. `useProjectStore` is another, loaded on every refresh because
+`create_project` writes through it: with it left empty, `newTaskFromDraft` never saw a project's
+default task category.
 
 ## What it exposes today
 
@@ -1627,7 +1646,11 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   time of day. Each
   write is recorded in Activity, a routine under its name and a workout titled by kind
   ("Workout"), never by what was lifted, the mood entry's reason. Weights are kilograms on the wire.
-  A task names its routine with `workoutRoutineId`, or a program with `workoutProgramId` (never
+  A task can name a template to run later with `templateId` (`create_task`, `update_task`; `get_task`
+  reads it back as `template`, or `deleted: true` when it is gone). Use it when a template's questions
+  can't be answered yet (a packing list before the trip is decided): the person answers them on the
+  phone from the row's "Run <name>" button, and running it checks the task off. The replica refuses
+  an id that isn't a template. A task names its routine with `workoutRoutineId`, or a program with `workoutProgramId` (never
   both: naming one clears the other, naming both is refused), which `create_task` and `update_task`
   write and `get_task` reads back as `workout` (a program's with the routine it would start now),
   and the replica refuses a routine or program that isn't there. With Include health logs off the
@@ -1743,8 +1766,8 @@ Taking each destination in turn:
 | Recipe page fetch | **No** | A request for a page the user pasted, served in real time. |
 | Anthropic, on the user's own key | **Unclear** | Anthropic keeps requests past real time and is arguably an external vendor, but no code of theirs is bundled and the developer has no account there and no access. |
 
-**Decided: declare the Anthropic row, and nothing else.** The earlier rule in this file holds for
-it: where this is ambiguous, the honest declaration beats the narrow one. So the label is one entry,
+**Decided: declare the Anthropic row, and nothing else.** Where a row is ambiguous, the honest
+declaration beats the narrow one. So the label is one entry,
 **Other User Content** (task titles and notes, tag and category names, and the other text an AI
 feature sends), purpose **App Functionality**, **linked to the user** (it travels on their own
 Anthropic account) and **not used for tracking**. A privacy manifest should carry the matching
@@ -1765,26 +1788,6 @@ Two obligations apply whatever the label says:
 - **5.1.1(i):** the privacy policy must "Identify what data, if any, the app/service collects… and
   all uses of that data". It should describe all five destinations in the table, including the ones
   the label leaves out.
-
-## Phases
-
-- **Phase 0 (done).** The replica, the read-only tools, the serializer, the auth seam, and this
-  file. Ran locally, against a database file the user supplied.
-- **Phase 1 (done).** The payload store, `httpSyncTransport`, `runSyncAll`, and the Settings rows
-  to configure it. The replica is current instead of a snapshot.
-- **Phase 2 (done).** The writes, the write token, and the per-request scoping. Templates went
-  first because a template is a *definition* — creating one fires no notification, spawns no
-  successor and completes nothing, so it is the write with the least machinery behind it. Then
-  `create_task`, which moved `newTaskFromDraft` out of the store, then `complete_task` and
-  `defer_task`, which moved the completion core out after it, and then the grocery list, which
-  moved `addByName`'s core out. Then `update_task`, which moved `updateTask`'s merge and its
-  series fan-out out (`src/utils/taskUpdate.ts`), and `plan_meal`, which moved the meal row out
-  (`buildMealPlanEntry`). `create_project` writes through `useProjectStore` itself, which is
-  reachable here because its imports are clean, and is now loaded on every refresh: with it left
-  empty, `newTaskFromDraft` never saw a project's default task category.
-- **Phase 3 (done). Hosting.** OAuth for the chat connector and a Fly deployment
-  (`mcp/DEPLOY.md`). The Settings surface that admits to the copy,
-  the health logs' own switch and the privacy-label draft are done (see above).
 
 ## Locked projects are not hidden from Claude
 

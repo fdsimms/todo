@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task } from '../types';
-import { getCurrentDayStart } from '../utils/dateUtils';
+import { getCurrentDayStart, getCurrentLogicalDayKey } from '../utils/dateUtils';
 import { isResolvedAsDone } from '../utils/missed';
 import { useSettingsStore } from './useSettingsStore';
 import { nudgeFieldsFor } from '../utils/nudgeCadence';
@@ -13,7 +13,7 @@ import {
   dbBatchUpdateProjectSortOrders,
 } from '../db/database';
 import { generateId } from '../utils/id';
-import { PLANNING_PAUSE_KEY, registerPausedProjectSource } from '../utils/projectPause';
+import { PLANNING_PAUSE_KEY, notifyPauseEnded, pauseEndedByChange, registerPausedProjectSource } from '../utils/projectPause';
 import { destinationPinFields, registerAwayProjectSource } from '../utils/awayDates';
 import { deliverableKindFor, deliverableOptionsFor } from '../utils/deliverables';
 import { blockerIdsOf, isNotNeeded, resolverFor, type TaskResolver } from '../utils/blocking';
@@ -508,8 +508,15 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const project = get().projects.find(p => p.id === id);
     if (!project) return;
     const updated = { ...project, ...destinationPinFields(project, patch), ...patch };
+    // A pause ending here (End pause, the editor, Mark ready, an agent) is told
+    // to whoever forgives the streaks it held, before the day it lifted is gone
+    // from `pausedUntil`. See `notifyPauseEnded`.
+    const endedOn = 'pausedUntil' in patch
+      ? pauseEndedByChange(project.pausedUntil, updated.pausedUntil, getCurrentLogicalDayKey())
+      : null;
     dbUpdateProject(updated);
     set(s => ({ projects: s.projects.map(p => (p.id === id ? updated : p)) }));
+    if (endedOn) notifyPauseEnded(id, endedOn);
   },
 
   // One pass over the list rather than a loop of updateProject, so a bulk move

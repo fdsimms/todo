@@ -15,6 +15,7 @@ import {
   dbUpdateTask,
   dbUpdateTaskCalendarLinks,
   dbFillTaskCalendarExternalIds,
+  dbBackfillRecurrenceAnchorDays,
   dbDeleteTask,
   dbDeleteSubtasks,
   dbClearAllPins,
@@ -131,7 +132,8 @@ import { deleteGeneratedTaskQuietly, dropGeneratedTask, markGeneratedReady, reco
 import { readSavedEvents, updateSavedEvent, writeSavedEvents, type SavedEvent } from '../utils/savedEvents';
 import { bookDueDay, bookSourceId, bookTaskNotes, bookTaskTitle, wantsBookTask } from '../utils/savedEventTasks';
 import { reopenedTask } from '../utils/taskReopen';
-import { forgiveVacationStreaks } from '../utils/vacationStreaks';
+import { forgiveVacationStreaks, forgivePausedProjectStreaks as pausedStreaksForgiven } from '../utils/vacationStreaks';
+import { pauseEndsOn, registerPauseEndListener } from '../utils/projectPause';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind, stoppableGenerator } from '../utils/generatedTasks';
 import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
@@ -677,15 +679,22 @@ const SLOT_IN_DAY_KEY = 'slotInDecidedDay';
  * February since it was created) is anchored to the drifted day. That's all
  * that can be recovered — the day it was originally set to isn't stored
  * anywhere — and it at least stops the drift where it is.
+ *
+ * Open rows only, since a completed one never steps again, and written with
+ * the sync stamp put back (`dbBackfillRecurrenceAnchorDays`): each device
+ * derives the same anchor, and restamped, every such row beat a peer's newer
+ * edit at the next sync.
  */
 function backfillRecurrenceAnchors(tasks: Task[]): void {
+  const filled: { id: string; day: number }[] = [];
   for (const task of tasks) {
-    if (task.recurrenceAnchorDay !== null) continue;
+    if (task.completed || task.recurrenceAnchorDay !== null) continue;
     const anchor = recurrenceAnchorDayFor(task);
     if (anchor === null) continue;
     task.recurrenceAnchorDay = anchor;
-    dbUpdateTask(task);
+    filled.push({ id: task.id, day: anchor });
   }
+  dbBackfillRecurrenceAnchorDays(filled);
 }
 
 /**
@@ -774,6 +783,14 @@ function logCompletionEvent(task: Task, completedAt: Date): void {
       const completionCalendarEventExternalId = await readExternalEventId(completionCalendarEventId);
       const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
       if (!current) return;
+      // Reopened (an undo, straight after the tick) or completed again while
+      // the write was out: the event records a completion that no longer
+      // stands, and the reopen found no id to delete it by. Stamped anyway, it
+      // sat in the calendar, and a later completion orphaned it for good.
+      if (!current.completed || current.completedAt !== task.completedAt) {
+        void deleteCompletionEvent({ eventId: completionCalendarEventId, externalId: completionCalendarEventExternalId });
+        return;
+      }
       const updated = { ...current, completionCalendarEventId, completionCalendarEventExternalId };
       dbUpdateTask(updated);
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
@@ -2497,7 +2514,6 @@ interface TaskStore extends UndoHistoryActions {
    * than leaving the estimate and the effort bucket disagreeing with it.
    */
   setMeasuredTime: (id: string, minutes: number) => void;
-  reorderTasks: (orderedIds: string[]) => void;
   // Explicit sortOrders rather than ids-in-order: the Today list's ranks are
   // shared with the stacks sitting in it (see resolveDrop), so the gaps a
   // stack leaves in the task numbering are load-bearing.
@@ -2507,8 +2523,7 @@ interface TaskStore extends UndoHistoryActions {
     options?: { scope?: 'occurrence' | 'series' },
   ) => void;
   /**
-   * Reorder a project's live members. Unlike reorderTasks this renumbers
-   * nothing — the members swap the sortOrder slots they already hold, so a
+   * Reorder a project's live members. This renumbers nothing: the members swap the sortOrder slots they already hold, so a
    * dated project task keeps its place among the loose tasks on Today. See
    * utils/projectOrder.slotUpdates.
    *
@@ -2597,6 +2612,12 @@ interface TaskStore extends UndoHistoryActions {
   bulkDeleteTemplates: (ids: string[]) => void;
 
   forgivVacationStreaks: () => void;
+  /**
+   * Forgive the streaks a project's pause held, for the projects in `endedOn`
+   * (id to the day its pause ended), or for every project whose pause has run
+   * out when it's omitted. See `forgivePausedProjectStreaks` in vacationStreaks.ts.
+   */
+  forgivePausedProjectStreaks: (endedOn?: ReadonlyMap<string, string>) => void;
   checkVacationExpiry: () => void;
   /**
    * Arm vacation mode for a nominated trip that has started, and keep its end
@@ -3724,6 +3745,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // asked to be rid of.
     useUnattendedStore.getState().record({
       action: 'purged', kind: null, title: '', taskId: null, count: ids.length,
+      // The cutoff is what two devices purging agree on (the window syncs).
+      key: dayKeyOf(cutoff),
     });
     return ids.length;
   },
@@ -6529,8 +6552,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // list still holding it. Judged against every stall rather than against
     // the capped `wanted` — see staleProjectReviewTasks.
     const stale = staleProjectReviewTasks(tasks, stalls);
-    // dropGeneratedTask, not deleteGeneratedTaskQuietly: that one routes
-    // through deleteTask, which writes the source's opt-out — here it would
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly) — here one would
     // stamp reviewDeclinedAt on a project the user never touched, and so
     // suppress tomorrow's task on the strength of the app's own tidying up.
     // Only a delete the *user* performs is an instruction to the source.
@@ -6622,8 +6645,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // corrected all leave a row naming a day that is nobody's birthday, and
     // none of those mutations knows the row is sitting there.
     const stale = staleBirthdayTasks(tasks, wanted);
-    // dropGeneratedTask, not deleteGeneratedTaskQuietly: the latter routes
-    // through deleteTask, which stamps the source's opt-out. Here that would
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly). Here one would
     // set birthdayTaskOptOut on somebody the user never touched, silencing
     // their birthday for good on the strength of the app's own tidying up.
     stale.forEach(task => {
@@ -6857,8 +6880,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // not stale, and deleting one the user deferred to Saturday would be the
     // app taking back an offer it already made.
     const stillDue = new Set(collapsedWanted.map(w => w.sourceId));
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly: the latter
-    // routes through deleteTask, which stamps the source's opt-out. Here that
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly). Here one
     // would record a decline the user never made and silence the person for a
     // week on the strength of the app's own tidying up.
     // Nobody due and the person still opted in means something landed in their
@@ -6967,8 +6990,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // this very task, and a create pass running first would be deciding
     // against a list that still held it.
     //
-    // dropGeneratedTask, not deleteGeneratedTaskQuietly: that one routes
-    // through deleteTask, which writes the source's opt-out — here it would
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly) — here one would
     // stamp waitingFollowUpDeclinedAt on a task the user never swiped away,
     // silencing a future wait on the strength of the app's own tidying up.
     staleWaitingFollowUpTasks(tasks, tasks, people).forEach(task =>
@@ -7184,8 +7207,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // task, and a create pass running first would be deciding against a list
     // that still held it.
     //
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly: that routes
-    // through deleteTask, which writes the source's opt-out — here it would
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly) — here one would
     // stamp pantryCheckDeclinedAt on an item the user never turned down, and so
     // suppress the question after the *next* purchase on the strength of the
     // app's own tidying up.
@@ -7328,11 +7351,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const deck = buildPantryReviewDeck(grocery.items, new Date(), grocery.itemProducts);
 
     // Clear first, create second, the ordering every generator here runs on.
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly for the reason
-    // checkPantryCheckTasks gives — except that here there is nothing to stamp
-    // at all (no source row), so the two would agree; it stays the honest call
-    // for what this is, which is the app tidying up rather than the user
-    // declining.
+    // dropGeneratedTask, for the reason checkPantryCheckTasks gives: this is
+    // the app tidying up rather than the user declining (and here there is no
+    // source row to stamp anyway).
     // An emptied deck is what the row asked for, so it stays, ready; there is
     // no source to go missing, so nothing here is ever deleted.
     settleReadyMarks(
@@ -7458,8 +7479,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // shopped for from this very task, and a create pass running first would be
     // deciding against a list that still held it.
     //
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly: that routes
-    // through deleteTask, which writes the source's opt-out — here it would
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly) — here one would
     // stamp shopTask: false on a meal the user never turned down, and so
     // suppress the offer for ever on the strength of the app's own tidying up.
     const answered = answeredMealShortfallTasks(
@@ -7719,8 +7740,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // restocked from this very task, and a create pass running first would be
     // deciding against a list that still held it.
     //
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly: that routes
-    // through deleteTask, which writes the source's opt-out — here it would
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly) — here one would
     // stamp supplyDeclinedAtCount on a task the user never turned down, and so
     // silence the offer until the *next* restock on the strength of the app's
     // own tidying up.
@@ -7956,7 +7977,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (candidates.length === 0) return;
 
     const candidateIds = new Set(candidates.map(t => t.id));
-    const others = get().tasks.filter(t => !candidateIds.has(t.id));
+    // Only what can actually be done today fills it: a task hidden by vacation
+    // or a paused project, or one waiting on another, is dated today but isn't
+    // on Today, and counting it held back tasks the person had room for.
+    const others = get().tasks.filter(t => !candidateIds.has(t.id) && !isWithheld(t) && !isHeldBack(t));
     const today = dayKeyToDate(todayKey);
     const buckets = buildDayBuckets(others, { from: today, to: today, dayResetTime: settings.dayResetTime });
     const calendar = useCalendarStore.getState();
@@ -8020,15 +8044,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const forecast = weather.snapshotDayKey === todayKey ? weather.snapshot?.forecast ?? [] : [];
 
     for (const task of waiting) {
-      const decision = decideWeatherWait(task, forecast, todayKey);
+      // A task nobody can see (vacation, a paused project) is held to the next
+      // matching day rather than released on one: see decideWeatherWait.
+      const decision = decideWeatherWait(task, forecast, todayKey, { withheld: isWithheld(task) });
+      // SKIP_POSTPONE on both: the forecast moving the hold is the app's doing,
+      // not the person putting the task off, and counted as one it filled the
+      // Stuck screen with tasks waiting for the sun.
       if (decision.kind === 'release') {
-        get().updateTask(task.id, { weatherWait: null, deferUntil: null });
+        get().updateTask(task.id, { weatherWait: null, deferUntil: null }, SKIP_POSTPONE);
       } else if (decision.kind === 'defer') {
         // Idempotent: a pass that finds the hold already on this day writes
         // nothing, which is what keeps the task-store subscription that
         // triggers this from re-running it forever.
         if (task.deferUntil && dayKeyOf(new Date(task.deferUntil)) === decision.dayKey) continue;
-        get().updateTask(task.id, { deferUntil: dayKeyToDate(decision.dayKey).toISOString() });
+        get().updateTask(task.id, { deferUntil: dayKeyToDate(decision.dayKey).toISOString() }, SKIP_POSTPONE);
       }
     }
   },
@@ -9319,8 +9348,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const planTitles = weekendPlanTitles(window, buckets, taskById);
     const bare = isWeekendBare(window, loads, planTitles.length, settings.weekendNudgePlanThreshold);
 
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly, like
-    // projectReview's clear: this is the app tidying up after itself, and
+    // dropGeneratedTask, like projectReview's clear: this is the app tidying
+    // up after itself, and
     // stamping an opt-out for it would be reading the app's own housekeeping as
     // the user declining something.
     // Plans got made for this weekend (the row's own link is how): it stays,
@@ -9694,15 +9723,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   /**
    * Hand-order the Pinned section. `orderedIds` is the section exactly as the
-   * user just dragged it, which is the whole of it — unlike a stack's
-   * children, a pinned row is never hidden from the section it's being
-   * reordered in, so there's no reorderSubset fold to do here.
+   * user just dragged it, which is rarely every pin: `pinnedTasks()` leaves out
+   * one that is held back, withheld, or a pin-each-occurrence task not due yet,
+   * and each keeps its pinnedOrder. Numbering only the rows on screen 1..n
+   * collided with theirs, so a pin coming back landed wherever sortOrder broke
+   * the tie. The new order is folded into every live pin (see reorderSubset)
+   * and the renumber runs across all of them, as reorderGroupChildren does.
    *
    * Renumbers from 1 so no row is left on the 0 that means "never ranked".
    */
   reorderPinnedTasks(orderedIds) {
     if (orderedIds.length === 0) return;
-    const updates = orderedIds.map((id, index) => ({ id, pinnedOrder: index + 1 }));
+    const pins = get().tasks
+      .filter(t => t.pinned && !t.parentId && !t.completed && !t.archived)
+      .sort(comparePinned)
+      .map(t => t.id);
+    const updates = reorderSubset(pins, orderedIds).map((id, index) => ({ id, pinnedOrder: index + 1 }));
     dbBatchUpdatePinnedOrders(updates);
     const byId = new Map(updates.map(u => [u.id, { pinnedOrder: u.pinnedOrder }]));
     set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
@@ -9895,13 +9931,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
     get().updateTask(id, applyMeasuredTime(minutes, task), { scope: 'series' });
-  },
-
-  reorderTasks(orderedIds) {
-    const updates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
-    dbBatchUpdateSortOrders(updates);
-    const byId = new Map(updates.map(u => [u.id, { sortOrder: u.sortOrder }]));
-    set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
   },
 
   reorderWithCategoryUpdates(orders, categoryUpdates, options) {
@@ -11003,11 +11032,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Not part of `members`: a review task carries no `projectId` (see
     // projectReviewTasks.ts), so the loop above never touches it and a
     // deleted project's "Review <title>" row was otherwise left sitting on
-    // Today until the next foreground sweep. dropGeneratedTask, not
-    // deleteGeneratedTaskQuietly: the project row is already gone, so an
-    // opt-out write would have nothing to land on anyway, same reasoning
-    // checkProjectReviewTasks itself follows. Called before setLastAction
-    // below, since dropGeneratedTask clears any pending lastAction.
+    // Today until the next foreground sweep. dropGeneratedTask, the same call
+    // checkProjectReviewTasks makes. Called before setLastAction below, since
+    // dropGeneratedTask clears any pending lastAction.
     dropGeneratedTask('projectReview', projectId);
     if (!project) return;
     get().setLastAction({
@@ -11112,6 +11139,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // lost its streak at the end of every vacation. Both callers run this
     // before switching vacation mode off, which is what the check reads.
     const forgiven = forgiveVacationStreaks(get().tasks, getCurrentDayStart().toISOString(), isHiddenForVacation);
+    if (forgiven.length === 0) return;
+    forgiven.forEach(t => dbUpdateTask(t));
+    const byId = new Map(forgiven.map(t => [t.id, t]));
+    set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
+  },
+
+  forgivePausedProjectStreaks(endedOn) {
+    const ends = endedOn ?? pauseEndsOn(useProjectStore.getState().projects, getCurrentLogicalDayKey());
+    if (ends.size === 0) return;
+    const forgiven = pausedStreaksForgiven(get().tasks, ends);
     if (forgiven.length === 0) return;
     forgiven.forEach(t => dbUpdateTask(t));
     const byId = new Map(forgiven.map(t => [t.id, t]));
@@ -12028,6 +12065,10 @@ registerGoalSourceLookup(taskId => useTaskStore.getState().tasks.find(t => t.id 
 // it can't, since this module pulls in expo-sqlite and already imports it. See
 // src/utils/blockerRegistry.ts for why this is a getter rather than a snapshot.
 registerTaskSource(() => useTaskStore.getState().tasks);
+// A pause ended by hand (useProjectStore.updateProject) is forgiven at once,
+// before the day it lifted is gone from `pausedUntil`.
+registerPauseEndListener((projectId, endedOn) =>
+  useTaskStore.getState().forgivePausedProjectStreaks(new Map([[projectId, endedOn]])));
 registerPersonTaskSource(() => useTaskStore.getState().tasks);
 
 // The list selectors above read the project lock at call time, and a selector

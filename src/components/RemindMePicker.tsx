@@ -17,7 +17,6 @@ import { addMonths } from 'date-fns/addMonths';
 import { subMonths } from 'date-fns/subMonths';
 import { isSameMonth } from 'date-fns/isSameMonth';
 import { isSameDay } from 'date-fns/isSameDay';
-import { isToday } from 'date-fns/isToday';
 import { format } from 'date-fns/format';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -26,7 +25,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors, textScale 
 import { useSettingsStore } from '../store/useSettingsStore';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
-import { getLogicalNow, getReminderOffsetDate, describeReminderOffset, describeReminderTracksVisibility } from '../utils/dateUtils';
+import { getLogicalNow, getLogicalToday, getReminderOffsetDate, describeReminderOffset, describeReminderTracksVisibility } from '../utils/dateUtils';
 import { isAlarmKitAvailable } from 'todo-alarmkit-bridge';
 import { SegmentedControl } from './SegmentedControl';
 import { CountStepper } from './CountStepper';
@@ -92,7 +91,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
   const fade = useScrollEdgeFade();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
-  const [displayMonth, setDisplayMonth] = useState(() => value ?? new Date());
+  const [displayMonth, setDisplayMonth] = useState(() => value ?? getLogicalToday());
   const [selectedDate, setSelectedDate] = useState<Date | null>(value);
   const [timeDate, setTimeDate] = useState<Date>(() => {
     const d = value ?? new Date();
@@ -118,7 +117,9 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
       return;
     }
     const base = value ?? new Date();
-    setDisplayMonth(startOfMonth(base));
+    // The month holding the logical today, as the typed "today" reads it: on
+    // the 1st, before dayResetTime, the calendar's month is the next one.
+    setDisplayMonth(startOfMonth(value ?? getLogicalToday()));
     setSelectedDate(value);
     const t = new Date(base);
     if (!value) t.setHours(9, 0, 0, 0);
@@ -132,6 +133,8 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
 
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  // The ring's today, the same day the typed "today at 9" means (below).
+  const logicalToday = useMemo(() => getLogicalToday(dayResetTime), [dayResetTime, visible]);
   const calendarDays = useMemo(
     () => buildCalendarGrid(displayMonth, weekStartsOn),
     [displayMonth, weekStartsOn]
@@ -310,7 +313,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                 {calendarDays.map((day, idx) => {
                   const inMonth = isSameMonth(day, displayMonth);
                   const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
-                  const todayDay = isToday(day);
+                  const todayDay = isSameDay(day, logicalToday);
 
                   return (
                     <TouchableOpacity
