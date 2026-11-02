@@ -106,9 +106,9 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { GoalPlanSheet } from '../components/GoalPlanSheet';
 import { UnlocksSection } from '../components/UnlocksSection';
 import { useUnlockStore } from '../store/useUnlockStore';
+import { openExternalUrl } from '../utils/openExternalUrl';
 import { activeGoalPlan, describeGoalPace, describeSetback, savingsBalance, savingsNeededFor, spendingBalance, spendingPerDay } from '../utils/rewardSavings';
 import { getLogicalToday } from '../utils/dateUtils';
-import { openExternalUrl } from '../utils/openExternalUrl';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
