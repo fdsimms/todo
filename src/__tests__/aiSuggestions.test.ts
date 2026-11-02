@@ -917,6 +917,25 @@ describe('suggestRecipeGroceries', () => {
     expect(result[0].name).toBe('Garlic');
   });
 
+  it('keeps the same ingredient listed under two headings, and still dedupes within one', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_groceries', {
+        items: [
+          { name: 'vegetable broth', quantity: '2 cups', aisle: 'Pantry', component: 'Hibiscus Flowers' },
+          { name: 'water', quantity: '5 cups', aisle: 'Pantry', component: 'Hibiscus Flowers', excludeFromShoppingList: true },
+          { name: 'Vegetable broth', quantity: '1/2 cup', aisle: 'Pantry', component: 'Sauce' },
+          { name: 'vegetable broth', quantity: '1 cup', aisle: 'Pantry', component: 'Sauce' },
+        ],
+      })
+    );
+    const result = await suggestRecipeGroceries('some recipe', AISLES);
+    expect(result.map(r => `${r.section}: ${r.name} ${r.quantity}`)).toEqual([
+      'Hibiscus Flowers: vegetable broth 2 cups',
+      'Hibiscus Flowers: water 5 cups',
+      'Sauce: Vegetable broth 1/2 cup',
+    ]);
+  });
+
   it('drops blank and non-string names', async () => {
     mockFetchOnce(
       toolUseResponse('extract_groceries', {
