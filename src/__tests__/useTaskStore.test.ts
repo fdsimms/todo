@@ -84,6 +84,7 @@ jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
   // #2950's launch backfill: the ids of the rows the write filled.
   dbFillTaskCalendarExternalIds: jest.fn().mockReturnValue([]),
+  dbBackfillRecurrenceAnchorDays: jest.fn(),
   dbGetSetting: jest.fn().mockReturnValue(null),
   dbSetSetting: jest.fn(),
   dbGetAllTasks: jest.fn().mockReturnValue([]),
@@ -1052,6 +1053,12 @@ describe('the monthly/yearly day-of-month anchor', () => {
     const tasks = useTaskStore.getState().tasks;
     expect(tasks.find(t => t.id === 'rent')!.recurrenceAnchorDay).toBe(31);
     expect(tasks.find(t => t.id === 'plain')!.recurrenceAnchorDay).toBeNull();
+    // Through the write that keeps each row's sync stamp, never a whole-row
+    // update: every device derives the same anchor, and restamped, the row
+    // beat a peer's newer edit.
+    const { dbBackfillRecurrenceAnchorDays } = jest.requireMock('../db/database') as { dbBackfillRecurrenceAnchorDays: jest.Mock };
+    expect(dbBackfillRecurrenceAnchorDays).toHaveBeenLastCalledWith([{ id: 'rent', day: 31 }]);
+    expect(dbUpdateTask).not.toHaveBeenCalledWith(expect.objectContaining({ id: 'rent' }));
   });
 });
 
@@ -2192,6 +2199,20 @@ describe('completeTask', () => {
     expect(dbUpdateTask).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: 't1', completionCalendarEventId: 'log-evt', completionCalendarEventExternalId: 'server-log' })
     );
+  });
+
+  // Undo straight after the tick, before the write resolved: the reopen found
+  // no id to delete, and stamping it afterwards left the event in the calendar.
+  it('takes the event back when the task was reopened while it was being written', async () => {
+    (logTaskCompletionToCalendar as jest.Mock).mockResolvedValue('log-evt');
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', logCompletionToCalendar: true })] });
+    useTaskStore.getState().completeTask('t1');
+    useTaskStore.getState().uncompleteTask('t1');
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    const task = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(task?.completed).toBe(false);
+    expect(task?.completionCalendarEventId).toBeNull();
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('log-evt');
   });
 
   it('does not call logTaskCompletionToCalendar when the flag is off', () => {
@@ -11228,31 +11249,6 @@ describe('renameCategory', () => {
     expect(s.setReminderCaptures).toHaveBeenCalledWith([{ id: 'c', filing: { kind: 'category', category: 'Job' } }]);
     const { renameGeneratedCategorySettings } = jest.requireMock('../store/useCategoryStore') as { renameGeneratedCategorySettings: jest.Mock };
     expect(renameGeneratedCategorySettings).toHaveBeenCalledWith('Work', 'Job');
-  });
-});
-
-// ─── reorderTasks ────────────────────────────────────────────────────────────
-
-describe('reorderTasks', () => {
-  it('assigns sortOrder based on position in the new id sequence', () => {
-    useTaskStore.setState({
-      tasks: [makeTask({ id: 'a', sortOrder: 1 }), makeTask({ id: 'b', sortOrder: 2 })],
-    });
-    useTaskStore.getState().reorderTasks(['b', 'a']);
-    const { tasks } = useTaskStore.getState();
-    expect(tasks.find(t => t.id === 'b')?.sortOrder).toBe(1);
-    expect(tasks.find(t => t.id === 'a')?.sortOrder).toBe(2);
-  });
-
-  it('persists new sort orders to the db', () => {
-    useTaskStore.setState({
-      tasks: [makeTask({ id: 'a' }), makeTask({ id: 'b' })],
-    });
-    useTaskStore.getState().reorderTasks(['b', 'a']);
-    expect(dbBatchUpdateSortOrders).toHaveBeenCalledWith([
-      { id: 'b', sortOrder: 1 },
-      { id: 'a', sortOrder: 2 },
-    ]);
   });
 });
 

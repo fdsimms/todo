@@ -95,7 +95,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarMonth.ts` — DayMarkKind, MARK_KINDS, DayMark, DotState, DayDot, DayBucket, MAX_PROJECTION_STEPS, canProject, projectOccurrences, nthOccurrence, +7 more
 - `src/utils/calendarReadSummary.ts` — CalendarLineInput, calendarStatusLine, failedCalendarsLabel, todayFallback
 - `src/utils/calendarRequestDrain.ts` — drainCalendarRequests
-- `src/utils/calendarRequests.ts` — CALENDAR_REQUEST_RETENTION_DAYS, CALENDAR_REQUEST_PAST_REASON, CALENDAR_SUGGESTION_STALE_REASON, CALENDAR_REQUEST_REFUSED_REASON, isCalendarRequestWriter, CalendarRequestDrainPlan, planCalendarRequestDrain, suggestionIsStale, eventFieldsForRequest, CALENDAR_CHANGE_NO_EVENT_REASON, +2 more
+- `src/utils/calendarRequests.ts` — CALENDAR_REQUEST_RETENTION_DAYS, CALENDAR_REQUEST_PAST_REASON, CALENDAR_SUGGESTION_STALE_REASON, CALENDAR_REQUEST_REFUSED_REASON, isCalendarRequestWriter, CalendarRequestDrainPlan, planCalendarRequestDrain, requestEventIsOver, suggestionIsStale, eventFieldsForRequest, +3 more
 - `src/utils/calendarReviewTasks.ts` — CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview, calendarReviewEventsFor
 - `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +25 more
 - `src/utils/capitalize.ts` — capitalize
@@ -904,7 +904,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +322 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +323 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SERVER_SHARING_KEY_PREFIX, +19 more
 
 ## `src/services`

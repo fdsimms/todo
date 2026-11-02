@@ -15,6 +15,7 @@ import {
   dbUpdateTask,
   dbUpdateTaskCalendarLinks,
   dbFillTaskCalendarExternalIds,
+  dbBackfillRecurrenceAnchorDays,
   dbDeleteTask,
   dbDeleteSubtasks,
   dbClearAllPins,
@@ -677,15 +678,22 @@ const SLOT_IN_DAY_KEY = 'slotInDecidedDay';
  * February since it was created) is anchored to the drifted day. That's all
  * that can be recovered — the day it was originally set to isn't stored
  * anywhere — and it at least stops the drift where it is.
+ *
+ * Open rows only, since a completed one never steps again, and written with
+ * the sync stamp put back (`dbBackfillRecurrenceAnchorDays`): each device
+ * derives the same anchor, and restamped, every such row beat a peer's newer
+ * edit at the next sync.
  */
 function backfillRecurrenceAnchors(tasks: Task[]): void {
+  const filled: { id: string; day: number }[] = [];
   for (const task of tasks) {
-    if (task.recurrenceAnchorDay !== null) continue;
+    if (task.completed || task.recurrenceAnchorDay !== null) continue;
     const anchor = recurrenceAnchorDayFor(task);
     if (anchor === null) continue;
     task.recurrenceAnchorDay = anchor;
-    dbUpdateTask(task);
+    filled.push({ id: task.id, day: anchor });
   }
+  dbBackfillRecurrenceAnchorDays(filled);
 }
 
 /**
@@ -774,6 +782,14 @@ function logCompletionEvent(task: Task, completedAt: Date): void {
       const completionCalendarEventExternalId = await readExternalEventId(completionCalendarEventId);
       const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
       if (!current) return;
+      // Reopened (an undo, straight after the tick) or completed again while
+      // the write was out: the event records a completion that no longer
+      // stands, and the reopen found no id to delete it by. Stamped anyway, it
+      // sat in the calendar, and a later completion orphaned it for good.
+      if (!current.completed || current.completedAt !== task.completedAt) {
+        void deleteCompletionEvent({ eventId: completionCalendarEventId, externalId: completionCalendarEventExternalId });
+        return;
+      }
       const updated = { ...current, completionCalendarEventId, completionCalendarEventExternalId };
       dbUpdateTask(updated);
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
@@ -2497,7 +2513,6 @@ interface TaskStore extends UndoHistoryActions {
    * than leaving the estimate and the effort bucket disagreeing with it.
    */
   setMeasuredTime: (id: string, minutes: number) => void;
-  reorderTasks: (orderedIds: string[]) => void;
   // Explicit sortOrders rather than ids-in-order: the Today list's ranks are
   // shared with the stacks sitting in it (see resolveDrop), so the gaps a
   // stack leaves in the task numbering are load-bearing.
@@ -2507,8 +2522,7 @@ interface TaskStore extends UndoHistoryActions {
     options?: { scope?: 'occurrence' | 'series' },
   ) => void;
   /**
-   * Reorder a project's live members. Unlike reorderTasks this renumbers
-   * nothing — the members swap the sortOrder slots they already hold, so a
+   * Reorder a project's live members. This renumbers nothing: the members swap the sortOrder slots they already hold, so a
    * dated project task keeps its place among the loose tasks on Today. See
    * utils/projectOrder.slotUpdates.
    *
@@ -9905,13 +9919,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
     get().updateTask(id, applyMeasuredTime(minutes, task), { scope: 'series' });
-  },
-
-  reorderTasks(orderedIds) {
-    const updates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
-    dbBatchUpdateSortOrders(updates);
-    const byId = new Map(updates.map(u => [u.id, { sortOrder: u.sortOrder }]));
-    set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
   },
 
   reorderWithCategoryUpdates(orders, categoryUpdates, options) {
