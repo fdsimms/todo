@@ -2093,6 +2093,8 @@ function runInitDatabase(): void {
     "ALTER TABLE mood_logs ADD COLUMN context_tags TEXT NOT NULL DEFAULT '[]'",
     // MoodLog.dream. Null on every existing row: no entry has a dream until one is written.
     'ALTER TABLE mood_logs ADD COLUMN dream TEXT',
+    // MoodLog.change: worse / same / better than the previous entry. Null on every existing row (never asked).
+    'ALTER TABLE mood_logs ADD COLUMN mood_change TEXT',
     // Null on every existing row, and null is the honest reading: a food nobody
     // has looked up has unknown nutrition, which is a different thing from a
     // food with none. Nullable rather than defaulting to '{}' for that reason —
@@ -7799,6 +7801,7 @@ function rowToMoodLog(row: Record<string, unknown>): MoodLog {
     mood,
     symptoms,
     contextTags,
+    change: row.mood_change === 'worse' || row.mood_change === 'same' || row.mood_change === 'better' ? row.mood_change : null,
     note: (row.note as string) || null,
   };
 }
@@ -7822,21 +7825,21 @@ export function dbGetAllMoodLogs(): MoodLog[] {
 
 export function dbInsertMoodLog(log: MoodLog): void {
   db.runSync(
-    `INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags, note)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags, mood_change, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       log.id, log.loggedAt, log.dayKey, log.mood,
-      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note,
+      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.change, log.note,
     ]
   );
 }
 
 export function dbUpdateMoodLog(log: MoodLog): void {
   db.runSync(
-    `UPDATE mood_logs SET logged_at=?, day_key=?, mood=?, symptoms=?, context_tags=?, note=? WHERE id=?`,
+    `UPDATE mood_logs SET logged_at=?, day_key=?, mood=?, symptoms=?, context_tags=?, mood_change=?, note=? WHERE id=?`,
     [
       log.loggedAt, log.dayKey, log.mood,
-      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note, log.id,
+      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.change, log.note, log.id,
     ]
   );
 }

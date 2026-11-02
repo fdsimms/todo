@@ -2210,9 +2210,10 @@ function registerWriteTools(
 
   server.tool(
     'log_mood',
-    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep"), and a short note. Dreams and longer writing go in the journal (log_journal_entry). Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
+    'Record a mood check-in: a rating from 1 (low) to 5 (great), and/or change (worse, same or better than their previous check-in, only when they say so; it is not the rating and never worked out from two ratings), and/or symptoms with a severity of 1 (mild) to 3 (severe), context tags ("work", "poor sleep"), and a short note. Dreams and longer writing go in the journal (log_journal_entry). Leave the rating out when the person gave none; an unrated check-in is not a 3. Symptoms and tags are matched to the spellings already in their log. Log only what they told you, never an inference about how they seem.',
     {
       mood: z.number().int().min(1).max(5).nullable().optional(),
+      change: z.enum(['worse', 'same', 'better']).nullable().optional(),
       symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
       note: z.string().nullable().optional(),
@@ -2349,10 +2350,11 @@ function registerWriteTools(
 
   server.tool(
     'update_mood_log',
-    'Correct a mood check-in. Only what you name changes; symptoms and contextTags replace the whole list, and null clears the rating or the note. A check-in cannot be left empty: delete it instead.' + dayNote,
+    'Correct a mood check-in. Only what you name changes; symptoms and contextTags replace the whole list, and null clears the rating, the change or the note. A check-in cannot be left empty: delete it instead.' + dayNote,
     {
       id: entryId,
       mood: z.number().int().min(1).max(5).nullable().optional(),
+      change: z.enum(['worse', 'same', 'better']).nullable().optional(),
       symptoms: z.array(z.object({ name: z.string().min(1), severity: z.number().int().min(1).max(3).optional() })).optional(),
       contextTags: z.array(z.string().min(1)).optional(),
       note: z.string().nullable().optional(),

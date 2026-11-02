@@ -21,6 +21,7 @@ function log(over: Partial<MoodLog> = {}): MoodLog {
     symptoms: over.symptoms ?? [],
     contextTags: over.contextTags ?? [],
     note: over.note ?? null,
+    change: over.change ?? null,
   };
 }
 
@@ -47,6 +48,14 @@ describe('csvCell', () => {
 describe('the file', () => {
   it('leads with the header row', () => {
     expect(rows(moodExportCsv([]))[0]).toBe(MOOD_EXPORT_COLUMNS.join(','));
+  });
+
+  it('writes the answer to "since your last entry" as its word, and blank when none', () => {
+    const header = rows(moodExportCsv([]))[0].split(',');
+    const col = header.indexOf('Since last entry');
+    expect(col).toBeGreaterThan(-1);
+    expect(rows(moodExportCsv([log({ change: 'better' })]))[1].split(',')[col]).toBe('Better');
+    expect(rows(moodExportCsv([log()]))[1].split(',')[col]).toBe('');
   });
 
   it('ends with a newline, so a last row cannot go missing on import', () => {

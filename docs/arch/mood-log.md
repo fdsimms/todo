@@ -967,6 +967,34 @@ deliberately not all four. A clean sweep ("4 of 4 against 0 of 11") would read a
 a proof, and a demo of an association has no business looking like one, least of
 all for the read somebody might act on medically.
 
+## Since your last entry
+
+`MoodLog.change` (`worse` / `same` / `better`, column `mood_change`) is a second answer beside
+the mood, for the day a 3 is the honest number but it is a different 3 from an hour ago. Four
+rules hold it:
+
+- **It is never a mood and never derived.** It is what the person said, stored as said. Nothing
+  computes it from two moods, nothing converts it to a number, and `dayMoodAverage`, the
+  contrasts and every `moodInsights.ts` read leave it out, so the fixed 1..5 scale keeps its
+  comparability. It is shown on history rows and written to the export (`Since last entry`) as
+  the person's own word, the same "what leaves is what was typed" rule the export already has.
+- **It is only asked where it means something.** `changeAnchorFor` picks the most recent
+  earlier entry *with a mood* inside `CHANGE_ANCHOR_WINDOW_MS` (24 hours, wall clock). With none,
+  the sheet does not show the row, because "better than last time" after three days is not a
+  claim about last time. A new entry for a backdated day has no anchor and the row is hidden.
+  An entry that already holds an answer keeps showing the row when edited, so it can be seen
+  and cleared.
+- **The sheet says what it is measured against** ("Last entry: Low, 3 hours ago") and the
+  answer is dropped on save if the row stopped showing, so an answer is never saved unseen.
+- **It counts as content.** A change with no mood is a complete entry, the same as a bare note
+  or a symptom alone; an absent mood is still absent, never a 3.
+
+It is optional, nothing starts selected, and tapping the chosen answer clears it. The Mood
+screen shows one read of it: a tally of the last fourteen days (`changeTally`), a count of one
+thing with no minimum, hidden when there are no answers. Nothing compares it with anything else;
+a comparison (what tends to come before a "better") would be a claim about trends, which the
+rules above under "What the insights are allowed to claim" apply to in full.
+
 ## Dreams and longer writing live in the journal
 
 They used to be fields on the entry (a large note the sheet opened on, and a

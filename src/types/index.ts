@@ -1926,6 +1926,13 @@ export interface PersonNote {
  */
 export type MoodLevel = 1 | 2 | 3 | 4 | 5;
 
+/**
+ * How an entry felt against the person's previous one, as they said it: a
+ * second answer beside `MoodLog.mood`, never a part of it. See
+ * `docs/arch/mood-log.md`, "Since your last entry".
+ */
+export type MoodChange = 'worse' | 'same' | 'better';
+
 /** How bad a symptom was. Fixed for the reason `MoodLevel` is, at a coarser grain. */
 export type SymptomSeverity = 1 | 2 | 3;
 
@@ -2002,6 +2009,14 @@ export interface MoodLog {
    * severity }` pairs.
    */
   contextTags: string[];
+  /**
+   * How this felt against the previous entry, or null when not asked or not
+   * answered. Its own field rather than something derived from two moods,
+   * because the point is the felt change on a day the 1..5 number barely moves
+   * (a run of 3s), and nothing may read it as a mood: the averages and
+   * contrasts never touch it.
+   */
+  change: MoodChange | null;
   /**
    * A short line on why, if you want one. Null rather than empty string.
    *

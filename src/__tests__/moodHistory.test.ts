@@ -27,6 +27,7 @@ function log(over: Partial<MoodLog> = {}): MoodLog {
     symptoms: over.symptoms ?? [],
     contextTags: over.contextTags ?? [],
     note: over.note ?? null,
+    change: over.change ?? null,
   };
 }
 

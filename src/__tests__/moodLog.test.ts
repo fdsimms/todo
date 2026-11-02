@@ -1,6 +1,12 @@
 import {
   MOOD_LEVELS,
+  MOOD_CHANGES,
+  CHANGE_ANCHOR_WINDOW_MS,
   LOW_MOOD_AT_OR_BELOW,
+  changeAnchorFor,
+  changeTally,
+  describeChangeAnchor,
+  moodChangeLabel,
   contextTagKey,
   contextTagVocabulary,
   dayContextTags,
@@ -32,6 +38,7 @@ function log(over: Partial<MoodLog> = {}): MoodLog {
     symptoms: over.symptoms ?? [],
     contextTags: over.contextTags ?? [],
     note: over.note ?? null,
+    change: over.change ?? null,
   };
 }
 
@@ -277,5 +284,67 @@ describe('an entry summary', () => {
 
   it('falls back to the note for an entry that is only a note', () => {
     expect(moodLogSummary(log({ mood: null, note: 'Slept badly' }))).toBe('Slept badly');
+  });
+});
+
+describe('since your last entry', () => {
+  const at = new Date('2026-08-17T15:00:00.000Z');
+  const hoursBefore = (h: number) => new Date(at.getTime() - h * 3600 * 1000).toISOString();
+
+  it('offers worse, same and better, in that order', () => {
+    expect(MOOD_CHANGES.map(c => c.value)).toEqual(['worse', 'same', 'better']);
+    expect(moodChangeLabel('better')).toBe('Better');
+  });
+
+  it('measures against the most recent entry with a mood inside the window', () => {
+    const logs = [
+      log({ id: 'old', loggedAt: hoursBefore(10), mood: 2 }),
+      log({ id: 'recent', loggedAt: hoursBefore(3), mood: 4 }),
+    ];
+    expect(changeAnchorFor(logs, at)?.id).toBe('recent');
+  });
+
+  it('asks nothing when the last entry is older than the window', () => {
+    const logs = [log({ loggedAt: new Date(at.getTime() - CHANGE_ANCHOR_WINDOW_MS - 1000).toISOString() })];
+    expect(changeAnchorFor(logs, at)).toBeNull();
+  });
+
+  it('skips an entry with no mood, since there is no level to be better or worse than', () => {
+    const logs = [
+      log({ id: 'note', loggedAt: hoursBefore(1), mood: null }),
+      log({ id: 'rated', loggedAt: hoursBefore(5), mood: 3 }),
+    ];
+    expect(changeAnchorFor(logs, at)?.id).toBe('rated');
+  });
+
+  it('never anchors an entry against itself or a later one', () => {
+    const logs = [
+      log({ id: 'self', loggedAt: hoursBefore(0), mood: 3 }),
+      log({ id: 'later', loggedAt: new Date(at.getTime() + 3600 * 1000).toISOString(), mood: 3 }),
+    ];
+    expect(changeAnchorFor(logs, at, 'self')).toBeNull();
+  });
+
+  it('says what it is measured against, in plain words', () => {
+    expect(describeChangeAnchor(log({ loggedAt: hoursBefore(3), mood: 2 }), at)).toBe('Low, 3 hours ago');
+    expect(describeChangeAnchor(log({ loggedAt: hoursBefore(1), mood: 4 }), at)).toBe('Good, 1 hour ago');
+    expect(describeChangeAnchor(log({ loggedAt: new Date(at.getTime() - 20 * 60000).toISOString(), mood: 3 }), at))
+      .toBe('OK, less than an hour ago');
+  });
+
+  it('is never part of the mood: the day average ignores it', () => {
+    const logs = [log({ mood: 2, change: 'better' }), log({ id: 'l2', mood: 4, change: 'worse' })];
+    expect(dayMoodAverage(logs, '2026-08-17')).toBe(3);
+  });
+
+  it('tallies what was said since a day, and an unanswered entry is not a "same"', () => {
+    const logs = [
+      log({ id: 'a', dayKey: '2026-08-16', change: 'better' }),
+      log({ id: 'b', dayKey: '2026-08-17', change: 'better' }),
+      log({ id: 'c', dayKey: '2026-08-17', change: 'worse' }),
+      log({ id: 'd', dayKey: '2026-08-17', change: null }),
+      log({ id: 'e', dayKey: '2026-08-01', change: 'same' }),
+    ];
+    expect(changeTally(logs, '2026-08-10')).toEqual({ worse: 1, same: 0, better: 2 });
   });
 });

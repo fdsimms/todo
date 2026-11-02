@@ -204,13 +204,14 @@ export function logWater(replica: Replica, input: LogWaterInput): LogWaterResult
 
 export function logMood(
   replica: Replica,
-  input: { mood?: number | null; symptoms?: { name: string; severity?: number }[]; contextTags?: string[]; note?: string | null; at?: string },
+  input: { mood?: number | null; change?: 'worse' | 'same' | 'better' | null; symptoms?: { name: string; severity?: number }[]; contextTags?: string[]; note?: string | null; at?: string },
 ) {
   const log = replica.logMood({ ...input, at: atFrom(input.at) });
   return {
     id: log.id,
     day: log.dayKey,
     ...(log.mood != null ? { mood: log.mood } : {}),
+    ...(log.change ? { change: log.change } : {}),
     ...(log.symptoms.length > 0 ? { symptoms: log.symptoms } : {}),
     ...(log.contextTags.length > 0 ? { contextTags: log.contextTags } : {}),
     ...(log.note ? { note: log.note } : {}),
@@ -329,13 +330,14 @@ export function setNutritionTargets(replica: Replica, targets: Record<string, nu
 export function updateMoodLog(
   replica: Replica,
   id: string,
-  patch: { mood?: number | null; symptoms?: { name: string; severity?: number }[]; contextTags?: string[]; note?: string | null },
+  patch: { mood?: number | null; change?: 'worse' | 'same' | 'better' | null; symptoms?: { name: string; severity?: number }[]; contextTags?: string[]; note?: string | null },
 ) {
   const log = replica.updateMoodLog(id, patch);
   return {
     id: log.id,
     day: log.dayKey,
     ...(log.mood != null ? { mood: log.mood } : {}),
+    ...(log.change ? { change: log.change } : {}),
     ...(log.symptoms.length > 0 ? { symptoms: log.symptoms } : {}),
     ...(log.contextTags.length > 0 ? { contextTags: log.contextTags } : {}),
     ...(log.note ? { note: log.note } : {}),

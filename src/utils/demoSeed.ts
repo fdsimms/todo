@@ -46,7 +46,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { useUnattendedStore } from '../store/useUnattendedStore';
-import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, NovaGroup, Recipe, RecipeOverride, Shop, SymptomSeverity, TemplateItem, WorkoutRoutineItem } from '../types';
+import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodChange, MoodLevel, NovaGroup, Recipe, RecipeOverride, Shop, SymptomSeverity, TemplateItem, WorkoutRoutineItem } from '../types';
 import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
@@ -3327,20 +3327,22 @@ function seedMoodLog(today: Date): void {
     mood: MoodLevel;
     symptoms?: [string, SymptomSeverity][];
     contextTags?: string[];
+    // The answer to "since your last entry", where the person said one.
+    change?: MoodChange;
     note?: string;
   }[] = [
     { back: 17, mood: 4 },
     { back: 16, mood: 4, note: 'Good week so far' },
     { back: 15, mood: 5, contextTags: ['Vacation'] },
     { back: 14, mood: 3, symptoms: [['Poor sleep', 2]] },
-    { back: 13, mood: 4 },
+    { back: 13, mood: 4, change: 'better' },
     { back: 12, mood: 3 },
-    { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'] },
+    { back: 11, mood: 2, change: 'worse', symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'] },
     { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch', contextTags: ['Big deadline'] },
     { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'] },
-    { back: 8, mood: 2, symptoms: [['Headache', 1]] },
+    { back: 8, mood: 2, change: 'better', symptoms: [['Headache', 1]] },
     { back: 7, mood: 3 },
-    { back: 6, mood: 3, symptoms: [['Poor sleep', 1]] },
+    { back: 6, mood: 3, change: 'same', symptoms: [['Poor sleep', 1]] },
     { back: 5, mood: 4, note: 'Back to it' },
     { back: 4, mood: 4 },
     { back: 3, mood: 5 },
@@ -3359,6 +3361,7 @@ function seedMoodLog(today: Date): void {
       day.note ?? null,
       at,
       day.contextTags ?? [],
+      day.change ?? null,
     );
   }
 
