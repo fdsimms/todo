@@ -9915,6 +9915,15 @@ describe('skipNextRecurrence', () => {
     jest.useRealTimers();
   });
 
+  it('announces itself on the undo bar, since the row leaves the list', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', recurrenceType: 'daily', recurrenceInterval: 1, dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString() })],
+      lastAction: null,
+    });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    expect(useTaskStore.getState().lastAction).toMatchObject({ label: 'Task skipped', announce: true });
+  });
+
   it('advances dueDate to the next occurrence', () => {
     const task = makeTask({
       id: 't1',
@@ -10252,6 +10261,12 @@ describe('markMissed', () => {
     recurrenceInterval: 1,
     dueDate: new Date(2025, 5, 10, 9, 0, 0).toISOString(),
     ...overrides,
+  });
+
+  it('announces itself on the undo bar, as a skip does', () => {
+    useTaskStore.setState({ tasks: [recurring()], lastAction: null });
+    useTaskStore.getState().markMissed('t1');
+    expect(useTaskStore.getState().lastAction).toMatchObject({ label: 'Task marked missed', announce: true });
   });
 
   it('closes the occurrence out as history and spawns the next one', () => {
@@ -12367,6 +12382,19 @@ describe('bulkCompleteTasks', () => {
     lastAction?.undo();
 
     expect(useTaskStore.getState().tasks.every(t => !t.completed)).toBe(true);
+  });
+
+  it('announces itself on the undo bar, where a single tick stays shake-only', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', recurrenceType: 'none' }), makeTask({ id: 'b', recurrenceType: 'none' })],
+      lastAction: null,
+    });
+    useTaskStore.getState().bulkCompleteTasks(['a', 'b']);
+    expect(useTaskStore.getState().lastAction?.announce).toBe(true);
+
+    useTaskStore.setState({ tasks: [makeTask({ id: 'c', recurrenceType: 'none' })], lastAction: null });
+    useTaskStore.getState().completeTask('c');
+    expect(useTaskStore.getState().lastAction?.announce).toBeFalsy();
   });
 
   it('does nothing for an empty id list', () => {

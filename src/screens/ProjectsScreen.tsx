@@ -75,6 +75,7 @@ import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useScreenSettings } from '../hooks/useScreenSettings';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
+  PROJECT_SORT_LABEL,
   projectCardCaption,
   projectMatchesQuery,
   projectNextStepTitle,
@@ -645,6 +646,13 @@ function ProjectsList() {
           accessibilityLabel="Search projects"
         />
       )}
+      {/* A drag is only offered on Your order (see canReorder), and a long-press
+          that does nothing says nothing, so the sorted lists say why. */}
+      {projectSort !== 'manual' && visibleProjects.length > 1 && (
+        <Text style={styles.reorderNote}>
+          {`Dragging is off while sorted by ${PROJECT_SORT_LABEL[projectSort].toLowerCase()}. Choose Your order in the … menu to rearrange.`}
+        </Text>
+      )}
       {visibleProjects.length === 0 ? (
         query ? (
           <EmptyState
@@ -1190,5 +1198,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
     marginBottom: spacing.sm,
+  },
+  reorderNote: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    color: colors.textSecondary,
+    fontSize: font.sm,
   },
 });

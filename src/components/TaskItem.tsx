@@ -5377,6 +5377,19 @@ const TaskItemRow = React.memo(function TaskItem({
                       <Ionicons name="close-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                   )}
+                  {/* Opens that same menu from a button, since a long-press
+                      nothing on screen mentions was the only other way to
+                      reach Skip, Mark missed and Someone else did it. */}
+                  {showActions && completionMenuOffered && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={openCompletionMenu}
+                      hitSlop={8}
+                      accessibilityLabel={`More options for ${task.title}`}
+                    >
+                      <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
                 </View>
                 <View style={styles.editSectionRight}>
                   {listRow ? (

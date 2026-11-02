@@ -331,6 +331,13 @@ export function PeopleScreen() {
             onIntentChange={fabIntentChannel.publish}
             scroller={scrollControl}
           >
+          {/* A long-press drags only once hand order is on (see canDrag), and
+              before that it does nothing, so say where the switch is. */}
+          {!handOrder && !showArchived && people.length > 1 && (
+            <Text style={styles.reorderNote}>
+              Sorted A to Z. Tap the reorder button at the top to arrange people by hand.
+            </Text>
+          )}
           <ReorderableList
             refreshControl={pullSearch.refreshControl}
             data={listRows}
@@ -633,6 +640,10 @@ const PersonRow = React.memo(function PersonRow({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   list: { paddingHorizontal: spacing.md, paddingTop: spacing.xs },
+  reorderNote: {
+    marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.xs,
+    color: colors.textSecondary, fontSize: font.sm,
+  },
   dropSlot: {
     marginHorizontal: spacing.md,
     borderRadius: radius.md,

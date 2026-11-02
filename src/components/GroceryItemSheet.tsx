@@ -2065,6 +2065,39 @@ function GroceryItemSheetBody({
           </>
           )}
 
+          {/* First, under the name and what the row says about itself: a row added
+              by mistake is the commonest reason to open this sheet, and Remove was
+              the last thing in a sheet of a dozen fields, so the quick way to be
+              rid of it was checking it off, which records it as bought. It stays
+              after the captions above it, since the supply one is the warning
+              that comes before it. */}
+          {removeFromListVisible && (
+            <TouchableOpacity
+              style={styles.actionRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => {
+                // Through the bulk action for its undo: one row off the list is
+                // the same step as twenty, and the bulk bar's has always had one.
+                animateLayout();
+                removeFromListMany([item.id], { registerUndo: true });
+                haptics.tap();
+                Keyboard.dismiss();
+                onClose();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Remove from list"
+            >
+              <Ionicons name="remove-circle-outline" size={iconSize.md} color={colors.textSecondary} />
+              <View style={styles.actionBody}>
+                <Text style={styles.actionLabel}>Remove from list</Text>
+                {/* One outcome now, so one sentence: this never deletes. The
+                    hint used to have to say which of two things it would do,
+                    because a never-bought row was removed outright. */}
+                <Text style={styles.actionHint}>Keeps it in your catalog.</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
           {quantityVisible && (
           <>
           <Text style={styles.label}>QUANTITY</Text>
@@ -2253,33 +2286,6 @@ function GroceryItemSheetBody({
                       ? 'No task for this item, whatever the setting says.'
                       : 'Use-up tasks are off in Automations. Tap to get one for this item anyway.'}
                 </Text>
-              </View>
-            </TouchableOpacity>
-          )}
-
-          {removeFromListVisible && (
-            <TouchableOpacity
-              style={styles.actionRow}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => {
-                // Through the bulk action for its undo: one row off the list is
-                // the same step as twenty, and the bulk bar's has always had one.
-                animateLayout();
-                removeFromListMany([item.id], { registerUndo: true });
-                haptics.tap();
-                Keyboard.dismiss();
-                onClose();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Remove from list"
-            >
-              <Ionicons name="remove-circle-outline" size={iconSize.md} color={colors.textSecondary} />
-              <View style={styles.actionBody}>
-                <Text style={styles.actionLabel}>Remove from list</Text>
-                {/* One outcome now, so one sentence: this never deletes. The
-                    hint used to have to say which of two things it would do,
-                    because a never-bought row was removed outright. */}
-                <Text style={styles.actionHint}>Keeps it in your catalog.</Text>
               </View>
             </TouchableOpacity>
           )}

@@ -6345,6 +6345,11 @@ export function TodayScreen() {
               setOptionsMenuVisible(false);
               setSuggestedPinsVisible(true);
             } : undefined}
+            onSelectTasks={() => {
+              setOptionsMenuVisible(false);
+              setExpandedTaskId(null);
+              enterSelectionMode();
+            }}
             plannedLabel={plannedLabel}
             lightenNote={deloadNotes[0] ?? null}
             onLookAhead={featureHidden('lookAhead', simpleMode) ? undefined : () => {

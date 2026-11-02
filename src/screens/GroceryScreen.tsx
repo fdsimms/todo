@@ -1926,7 +1926,7 @@ export function GroceryScreen() {
             subtitle={
               catalogCount > 0
                 ? 'Browse your catalog, or start typing to find an item.'
-                : 'Tap + to add an item. Paste a list to add one item per line.'
+                : 'Tap + to add an item, or hold it for more ways to add. Paste a list to add one item per line.'
             }
             actionLabel={catalogCount > 0 ? 'Browse catalog' : 'Add an item'}
             onAction={catalogCount > 0 ? () => setCatalogOpen(true) : () => setAddOpen(true)}

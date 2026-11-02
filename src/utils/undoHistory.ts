@@ -68,8 +68,9 @@ export interface UndoableAction {
    * Raises the UndoBar without the warning haptic `destructive` carries: for a
    * routine action that wrote something into a log the person didn't type
    * (a task's tick recording a dose or a meal), or that moved a task out of
-   * sight (a reschedule), where the bar is how they see it happened and take
-   * it back.
+   * sight (a reschedule, a skip, a missed mark), or took several rows away at
+   * once (a bulk completion), where the bar is how they see it happened and
+   * take it back.
    */
   announce?: boolean;
 }
