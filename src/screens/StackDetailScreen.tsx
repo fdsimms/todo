@@ -71,6 +71,8 @@ export function StackDetailScreen() {
   const { groupId } = route.params;
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const allTasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
+  const applyPendingImport = useTaskStore(s => s.applyPendingImport);
+  const dismissPendingImport = useTaskStore(s => s.dismissPendingImport);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
@@ -290,6 +292,8 @@ export function StackDetailScreen() {
               return (
                 <TaskItem
                   task={item}
+                  onApplyImport={applyPendingImport}
+                  onDismissImport={dismissPendingImport}
                   onPress={handleRowPress}
                   expanded={expandedTaskId === item.id}
                   onEdit={handleRowEdit}

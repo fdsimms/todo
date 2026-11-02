@@ -402,6 +402,8 @@ function ProjectDetailContent() {
   const projects = useProjectStore(useShallow(s => s.projects));
   const updateProject = useProjectStore(s => s.updateProject);
   const allTasks = useTaskStore(s => s.tasks);
+  const applyPendingImport = useTaskStore(s => s.applyPendingImport);
+  const dismissPendingImport = useTaskStore(s => s.dismissPendingImport);
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
   const addTask = useTaskStore(s => s.addTask);
   const bulkRemoveFromProject = useTaskStore(s => s.bulkRemoveFromProject);
@@ -1446,6 +1448,8 @@ function ProjectDetailContent() {
     const row = (
       <TaskItem
         task={task}
+        onApplyImport={applyPendingImport}
+        onDismissImport={dismissPendingImport}
         drag={selectionMode ? undefined : opts.drag}
         isActive={opts.isActive}
         onPress={handleRowPress}

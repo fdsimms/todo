@@ -4083,6 +4083,8 @@ export function TodayScreen() {
         // or not the task is due, and a row that isn't going anywhere
         // shouldn't play itself out.
         hidesWhenOnPace={opts?.hidesWhenOnPace ?? true}
+        onApplyImport={handleApplyImport}
+        onDismissImport={handleDismissImport}
       />
     );
   };
@@ -4268,6 +4270,8 @@ export function TodayScreen() {
         selected={selectedIds.has(task.id)}
         onSelect={toggleSelection}
         onSwipeSelect={handleRowSwipeSelect}
+        onApplyImport={handleApplyImport}
+        onDismissImport={handleDismissImport}
       />
     );
   };
@@ -5691,6 +5695,8 @@ export function TodayScreen() {
                     showGroup
                     showActions={false}
                     highlighted={item.task.id === flashTaskId}
+                    onApplyImport={handleApplyImport}
+                    onDismissImport={handleDismissImport}
                   />
                 );
               }
@@ -6018,6 +6024,8 @@ export function TodayScreen() {
                     showProject
                     onOpenProject={handleOpenProject}
                     highlighted={item.id === flashTaskId}
+                    onApplyImport={handleApplyImport}
+                    onDismissImport={handleDismissImport}
                   />
                 </FabDropZone>
               );

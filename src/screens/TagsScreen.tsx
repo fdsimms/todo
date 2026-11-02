@@ -72,6 +72,8 @@ export function TagsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const applyPendingImport = useTaskStore(s => s.applyPendingImport);
+  const dismissPendingImport = useTaskStore(s => s.dismissPendingImport);
   const tasksByTag = useTaskStore(s => s.tasksByTag);
   const addTag = useTaskStore(s => s.addTag);
   const deleteTag = useTaskStore(s => s.deleteTag);
@@ -456,6 +458,8 @@ export function TagsScreen() {
                   return (
                     <TaskItem
                       task={item}
+                      onApplyImport={applyPendingImport}
+                      onDismissImport={dismissPendingImport}
                       onPress={handleRowPress}
                       expanded={expandedTaskId === item.id}
                       spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}

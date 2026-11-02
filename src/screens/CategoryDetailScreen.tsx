@@ -63,6 +63,8 @@ export function CategoryDetailScreen() {
   const { category } = route.params;
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const tasksByCategory = useTaskStore(s => s.tasksByCategory);
+  const applyPendingImport = useTaskStore(s => s.applyPendingImport);
+  const dismissPendingImport = useTaskStore(s => s.dismissPendingImport);
   const allTasks = useWithoutLockedTasks(useTaskStore(s => s.tasks));
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
@@ -290,6 +292,8 @@ export function CategoryDetailScreen() {
               return (
                 <TaskItem
                   task={item}
+                  onApplyImport={applyPendingImport}
+                  onDismissImport={dismissPendingImport}
                   onPress={handleRowPress}
                   expanded={expandedTaskId === item.id}
                   onEdit={handleRowEdit}
