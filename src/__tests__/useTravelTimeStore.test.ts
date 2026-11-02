@@ -277,6 +277,29 @@ describe('refresh with the comparison on', () => {
     useTravelTimeStore.getState().switchMode(key(e), 'walking');
     expect(useTravelTimeStore.getState().estimates[key(e)]).toMatchObject({ minutes: 22, mode: 'walking', others: { driving: 8, transit: 13 } });
   });
+
+  it('keeps a mode switched while a refresh for another event was out', async () => {
+    mockSettings.travelCompareModes = true;
+    estimateMock.mockImplementation(async (_e, _d, mode) => ({ driving: 8, transit: 13, walking: 22 })[mode]);
+    await useTravelTimeStore.getState().refresh();
+
+    const later = event('b', 16);
+    mockCalendar = { events: [e, later], loaded: true };
+    let release: () => void = () => {};
+    const gate = new Promise<void>(r => { release = r; });
+    estimateMock.mockImplementation(async (_e, _d, mode) => {
+      await gate;
+      return ({ driving: 9, transit: 14, walking: 25 })[mode];
+    });
+    const pending = useTravelTimeStore.getState().refresh();
+    useTravelTimeStore.getState().switchMode(key(e), 'walking');
+    release();
+    await pending;
+
+    const estimates = useTravelTimeStore.getState().estimates;
+    expect(estimates[key(e)]).toMatchObject({ minutes: 22, mode: 'walking' });
+    expect(estimates[key(later)]).toMatchObject({ minutes: 9, mode: 'driving' });
+  });
 });
 
 describe('settled', () => {

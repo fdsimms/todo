@@ -113,10 +113,22 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
     setDateFor(null);
   }, []);
 
+  // The request outlives a cancel (only the Modal hides), so a late answer
+  // checks this before writing any state, the same guard EventImportSheet uses.
+  const visibleRef = useRef(visible);
+  useEffect(() => { visibleRef.current = visible; }, [visible]);
+  // Which opening of the sheet a request belongs to. Open alone let a read
+  // cancelled before a reopen land in the next opening: screenshot A's tasks
+  // became the review list for screenshot B, shared in after it.
+  const openingRef = useRef(0);
+  const stillOpenFor = (opening: number) => visibleRef.current && openingRef.current === opening;
+
   // Reset on close rather than on open, so a sheet left mounted doesn't hand
   // the next open a stale photo or list.
   useEffect(() => {
-    if (!visible) reset();
+    if (visible) return;
+    openingRef.current += 1;
+    reset();
   }, [visible, reset]);
 
   // A photo handed in from outside seeds the capture step on open.
@@ -127,11 +139,6 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
       setMode('photo');
     }
   }, [visible, initialPhotos]);
-
-  // The request outlives a cancel (only the Modal hides), so a late answer
-  // checks this before writing any state, the same guard EventImportSheet uses.
-  const visibleRef = useRef(visible);
-  useEffect(() => { visibleRef.current = visible; }, [visible]);
 
   const pick = useCallback(async (source: RecipePhotoSource) => {
     setPicking(true);
@@ -160,13 +167,14 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
 
   const run = useCallback(async () => {
     if (!ready || !aiAvailable) return;
+    const opening = openingRef.current;
     setLoading(true);
     setError(null);
     setTriedEmpty(false);
     try {
       const source = mode === 'photo' ? (extraPhotos.length > 0 ? [photo!, ...extraPhotos] : photo!) : text;
       const tasks = await extractTasks(source);
-      if (!visibleRef.current) return;
+      if (!stillOpenFor(opening)) return;
       if (tasks.length === 0) {
         setTriedEmpty(true);
         return;
@@ -175,9 +183,9 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
       Keyboard.dismiss();
       setCandidates(candidatesFromExtracted(tasks));
     } catch (e) {
-      if (visibleRef.current) setError(describeAIError(e));
+      if (stillOpenFor(opening)) setError(describeAIError(e));
     } finally {
-      setLoading(false);
+      if (openingRef.current === opening) setLoading(false);
     }
   }, [ready, aiAvailable, mode, photo, extraPhotos, text]);
 

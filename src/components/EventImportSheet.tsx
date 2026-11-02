@@ -124,18 +124,27 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
     setPendingOffline(null);
   }, []);
 
-  // Reset on close rather than on open, so a sheet left mounted doesn't hand
-  // the next open a stale photo — same rule ReceiptImportSheet's reset follows.
-  useEffect(() => {
-    if (!visible) reset();
-  }, [visible, reset]);
-
   // `run` below awaits a network call that easily outlives a cancel — the
   // sheet stays mounted (only its Modal hides), so nothing stops that promise
   // once `onClose` fires. Read inside the promise continuation, never as a
   // dependency, so a cancel mid-request is seen without re-running `run`.
   const visibleRef = useRef(visible);
   useEffect(() => { visibleRef.current = visible; }, [visible]);
+  // Which opening of the sheet a request belongs to. Open alone can't tell a
+  // reply to a request made before a Cancel and a reopen from one made in this
+  // opening, so a cancelled read landed in the next one: it opened the event
+  // card with the old paste's events and closed the sheet holding the new one.
+  // Same guard InventRecipeSheet keeps.
+  const openingRef = useRef(0);
+  const stillOpenFor = (opening: number) => visibleRef.current && openingRef.current === opening;
+
+  // Reset on close rather than on open, so a sheet left mounted doesn't hand
+  // the next open a stale photo — same rule ReceiptImportSheet's reset follows.
+  useEffect(() => {
+    if (visible) return;
+    openingRef.current += 1;
+    reset();
+  }, [visible, reset]);
 
   const pick = useCallback(async (source: RecipePhotoSource) => {
     setPicking(true);
@@ -201,6 +210,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
       runOffline();
       return;
     }
+    const opening = openingRef.current;
     setLoading(true);
     setError(null);
     setTriedEmpty(false);
@@ -208,17 +218,19 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
       const events = await extractCalendarEvents(mode === 'photo' ? photo! : text);
       // Canceled while the request was in flight: the sheet already told the
       // user its work was discarded, so a late success must not turn around
-      // and pop the task editor open behind its back — see `visibleRef`.
-      if (!visibleRef.current) return;
+      // and pop the task editor open behind its back — see `openingRef`.
+      if (!stillOpenFor(opening)) return;
       if (events.length === 0) {
         setTriedEmpty(true);
         return;
       }
       await finish(events);
     } catch (e) {
-      if (visibleRef.current) setError(describeAIError(e));
+      if (stillOpenFor(opening)) setError(describeAIError(e));
     } finally {
-      setLoading(false);
+      // The close already cleared it, and a later opening's own read may be
+      // the one loading now.
+      if (openingRef.current === opening) setLoading(false);
     }
   }, [ready, aiAvailable, runOffline, mode, photo, text, finish]);
 

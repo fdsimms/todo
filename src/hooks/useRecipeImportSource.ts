@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Alert, Linking } from 'react-native';
 import type { RecipeSource } from '../services/aiSuggestions';
 import { fetchRecipePage, type FetchedRecipePage } from '../services/recipePage';
@@ -89,8 +89,14 @@ export function useRecipeImportSource(
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [fetching, setFetching] = useState(false);
   const [page, setPage] = useState<FetchedRecipePage | null>(null);
+  // Which run a page fetch belongs to, bumped by every run and every reset. A
+  // fetch outlives a Cancel (the sheet only hides), and one landing after a
+  // reopen wrote its page over the new run's: the next recipe was saved with
+  // the cancelled link as its source.
+  const runRef = useRef(0);
 
   const reset = useCallback(() => {
+    runRef.current += 1;
     setMode(initialMode);
     setText('');
     setUrl('');
@@ -143,6 +149,7 @@ export function useRecipeImportSource(
   const resolveSource = useCallback(async (): Promise<ResolvedRecipeSource | null> => {
     // Cleared up front so a second run can never attribute its recipe to the
     // page the *previous* run fetched.
+    const run = ++runRef.current;
     setPage(null);
     // extractRecipe treats a one-entry array exactly like a bare image, so
     // there's no need to unwrap it back to a single object here.
@@ -154,10 +161,10 @@ export function useRecipeImportSource(
     setFetching(true);
     try {
       const fetched = await fetchRecipePage(typed);
-      setPage(fetched);
+      if (run === runRef.current) setPage(fetched);
       return { source: fetched.text, page: fetched };
     } finally {
-      setFetching(false);
+      if (run === runRef.current) setFetching(false);
     }
   }, [mode, photos, text, url]);
 
