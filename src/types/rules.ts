@@ -160,6 +160,11 @@ export interface SpeedBumpRule {
   repeatEveryMinutes: number | null;
   /** The most times it fires in a day. 1 when it does not repeat. */
   maxTimes: number;
+  /**
+   * The weekdays it runs on, 0 = Sunday. Absent means every day. Two rules on
+   * the same groups with different days are how a weekend gets a looser limit.
+   */
+  days?: number[];
   enabled: boolean;
 }
 

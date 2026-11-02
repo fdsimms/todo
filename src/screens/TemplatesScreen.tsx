@@ -10,6 +10,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { linkedTaskCounts, linkedTasksNote } from '../utils/templateLink';
 import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
@@ -274,10 +275,11 @@ export function TemplatesScreen() {
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
     const plural = ids.length === 1 ? 'template' : 'templates';
+    const totalLinked = Array.from(linkedTaskCounts(useTaskStore.getState().tasks, ids).values()).reduce((a, b) => a + b, 0);
     haptics.warning();
     confirmDelete({
       title: `Delete ${ids.length} ${plural}?`,
-      message: `This deletes ${ids.length} ${plural}. You can undo it right after.`,
+      message: [`This deletes ${ids.length} ${plural}. You can undo it right after.`, linkedTasksNote(totalLinked, ids.length)].filter(Boolean).join(' '),
       undoable: true,
       onConfirm: () => {
         animateLayout();

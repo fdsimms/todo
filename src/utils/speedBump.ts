@@ -2,6 +2,7 @@ import type { SpeedBumpRule } from '../types';
 import { generateId } from './id';
 import { DEFAULT_GROUP_ID } from './appGroups';
 import { describeDuration, MIN_MANUAL_MINUTES } from './manualBlock';
+import { describeDays } from './blockSchedule';
 import { SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_MIN } from './screenTimeRules';
 
 /**
@@ -101,6 +102,23 @@ export function speedBumpWarnText(blockedName: string, leadMinutes: number): str
   return `${blockedName} will be blocked in about ${leadMinutes} minutes.`;
 }
 
+/**
+ * A stored day set, or undefined for "every day". Out-of-range and repeated
+ * days are dropped, and a full week or an empty list reads as every day: an
+ * empty set would be a rule that never runs, which is what the enabled switch
+ * is for.
+ */
+export function normalizeBumpDays(days: unknown): number[] | undefined {
+  if (!Array.isArray(days)) return undefined;
+  const clean = [...new Set(days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6))].sort((a, b) => a - b);
+  return clean.length === 0 || clean.length === 7 ? undefined : clean;
+}
+
+/** Whether the rule runs on a weekday (0 = Sunday). A rule with no day set runs every day. */
+export function speedBumpRunsOn(rule: Pick<SpeedBumpRule, 'days'>, weekday: number): boolean {
+  return !rule.days || rule.days.length === 0 || rule.days.includes(weekday);
+}
+
 /** A rule as the sheet adds it: on, once a day, a quarter hour. */
 export function newSpeedBumpRule(title: string, groupId?: string): SpeedBumpRule {
   return {
@@ -137,6 +155,7 @@ export function parseSpeedBumpRules(raw: string | null | undefined): SpeedBumpRu
     if (typeof rule.title !== 'string' || rule.title.trim() === '') return [];
     if (typeof rule.thresholdMinutes !== 'number' || typeof rule.blockMinutes !== 'number') return [];
     const repeats = typeof rule.repeatEveryMinutes === 'number' && rule.repeatEveryMinutes > 0;
+    const days = normalizeBumpDays(rule.days);
     return [{
       id: rule.id,
       title: rule.title.slice(0, SPEED_BUMP_TITLE_MAX_LENGTH),
@@ -146,6 +165,7 @@ export function parseSpeedBumpRules(raw: string | null | undefined): SpeedBumpRu
       blockMinutes: clampBumpBlockMinutes(rule.blockMinutes),
       repeatEveryMinutes: repeats ? clampBumpRepeat(rule.repeatEveryMinutes as number) : null,
       maxTimes: repeats ? clampBumpTimes(typeof rule.maxTimes === 'number' ? rule.maxTimes : SPEED_BUMP_TIMES_MIN) : SPEED_BUMP_TIMES_MIN,
+      ...(days ? { days } : {}),
       enabled: rule.enabled !== false,
     }];
   });
@@ -202,9 +222,15 @@ export function armableSpeedBumps(
   resolveBlocked: (groupId: string | undefined) => string[] = id => [id ?? DEFAULT_GROUP_ID],
   /** The heads-up lead in minutes (0 is off) and the name of what a rule blocks. */
   warn: { leadMinutes: number; blockedName: (rule: SpeedBumpRule) => string } = { leadMinutes: 0, blockedName: () => '' },
+  /**
+   * The weekday of the app's logical day (0 = Sunday), taken from
+   * `getCurrentDayStart()` so the small hours before `dayResetTime` still count
+   * as the day before. Left out, every rule runs.
+   */
+  weekday?: number,
 ): NativeSpeedBump[] {
   return rules
-    .filter(rule => rule.enabled)
+    .filter(rule => rule.enabled && (weekday === undefined || speedBumpRunsOn(rule, weekday)))
     .map(rule => {
       const timed = resolveTimed(rule.groupId);
       const rungs = speedBumpRungs(rule);
@@ -254,6 +280,7 @@ export function describeSpeedBump(rule: SpeedBumpRule, timedName: string, blocke
   const rungs = speedBumpRungs(rule);
   const first = `After ${rule.thresholdMinutes} min on ${timedName}`;
   const block = `${blockedName} blocked for ${describeDuration(rule.blockMinutes)}`;
-  if (rungs.length <= 1) return `${first}, ${block}.`;
-  return `${first}, then every ${rule.repeatEveryMinutes} min, up to ${rungs.length} times a day: ${block}.`;
+  const days = rule.days && rule.days.length > 0 ? `${describeDays(rule.days)}: ` : '';
+  if (rungs.length <= 1) return `${days}${first}, ${block}.`;
+  return `${days}${first}, then every ${rule.repeatEveryMinutes} min, up to ${rungs.length} times a day: ${block}.`;
 }

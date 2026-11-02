@@ -500,7 +500,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, selectPurgeableFocusSessionIds, LEDGER_MAX_DAYS, ledgerCutoff, selectPurgeableUnattendedIds, +1 more
 - `src/utils/rewardGuard.ts` — GuardedSlip, canGuard, isGuardableHabit, guardingReward, planGuardedSlip, guardChargeSeed, claimedSince, guardedSlipPrompt, describeGuard
 - `src/utils/rewardSavings.ts` — GoalPlan, MIN_SAVINGS_SHARE, MAX_SAVINGS_SHARE, DEFAULT_SAVINGS_SHARE, GOAL_DATE_PRESETS, cleanSavingsShare, parseGoalPlan, serializeGoalPlan, activeGoalPlan, splitsEntry, +11 more
-- `src/utils/rewardUnlocks.ts` — DEFAULT_UNLOCK_SHARE, MIN_UNLOCK_SHARE, MAX_UNLOCK_SHARE, UNLOCK_SHARE_STEP, MAX_PLAY_HOURS, PLAY_EXTRA_MINUTES, cleanUnlockSharePct, cleanPlayMinutes, UnlockDraft, cleanUnlockDraft, +21 more
+- `src/utils/rewardUnlocks.ts` — DEFAULT_UNLOCK_SHARE, MIN_UNLOCK_SHARE, MAX_UNLOCK_SHARE, UNLOCK_SHARE_STEP, MAX_PLAY_HOURS, PLAY_EXTRA_MINUTES, cleanUnlockSharePct, cleanPlayMinutes, UnlockDraft, cleanUnlockDraft, +23 more
 - `src/utils/rewards.ts` — COINS_BY_EFFORT, STREAK_BONUS_EVERY, STREAK_BONUS_CAP, MAX_REWARD_COST, DIFFICULTY_MULTIPLIER, DIFFICULTY_SEGMENTS, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_HINT, CoinSource, baseCoinsFor, +68 more
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
@@ -570,10 +570,11 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/snackNudgeTasks.ts` — DEFAULT_SNACK_NUDGE_FROM_HOUR, SNACK_NUDGE_FROM_HOUR_MIN, SNACK_NUDGE_FROM_HOUR_MAX, DEFAULT_SNACK_NUDGE_SHARE_PERCENT, SNACK_NUDGE_SHARE_PERCENT_MIN, SNACK_NUDGE_SHARE_PERCENT_MAX, SNACK_NUDGE_SHARE_PERCENT_STEP, clampSnackNudgeFromHour, clampSnackNudgeSharePercent, describeSnackNudgeHour, +4 more
 - `src/utils/snoozeEngine.ts` — SnoozeSuggestion, AWAY_PENALTY, computeSnoozeSuggestion
 - `src/utils/speechSupport.ts` — dictationSupported
-- `src/utils/speedBump.ts` — SPEED_BUMP_TITLE_MAX_LENGTH, SPEED_BUMP_BLOCK_MIN, SPEED_BUMP_BLOCK_MAX, SPEED_BUMP_BLOCK_DEFAULT, SPEED_BUMP_BLOCK_CHOICES, SPEED_BUMP_THRESHOLD_DEFAULT, SPEED_BUMP_WARN_CHOICES, SPEED_BUMP_TIMES_MIN, SPEED_BUMP_TIMES_MAX, SPEED_BUMP_REPEAT_MIN, +19 more
+- `src/utils/speedBump.ts` — SPEED_BUMP_TITLE_MAX_LENGTH, SPEED_BUMP_BLOCK_MIN, SPEED_BUMP_BLOCK_MAX, SPEED_BUMP_BLOCK_DEFAULT, SPEED_BUMP_BLOCK_CHOICES, SPEED_BUMP_THRESHOLD_DEFAULT, SPEED_BUMP_WARN_CHOICES, SPEED_BUMP_TIMES_MIN, SPEED_BUMP_TIMES_MAX, SPEED_BUMP_REPEAT_MIN, +21 more
 - `src/utils/stableLists.ts` — reuseUnchangedLists
 - `src/utils/stackPicker.ts` — StackOption, STACK_PICKER_COLLAPSED_ROWS, filterStacks, StackRows, stackRows
 - `src/utils/stackSort.ts` — stackMemberIdsAToZ
+- `src/utils/standaloneStores.ts` — STANDALONE_STORE_LOADS
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, eitherSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap
 - `src/utils/startWorkout.ts` — StartWorkoutInput, StartWorkoutResult, startWorkout
 - `src/utils/startup.ts` — runStartupStep, runStartupSequence
@@ -630,6 +631,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskUpdate.ts` — CONTENT_FIELDS, hasLaterRows, SCHEDULE_FIELDS, QUOTA_SPAN_FIELDS, ROTATION_TARGET_FIELDS, derivedTargetCount, nextPinnedOrder, comparePinned, captureField, TaskUpdateContext, +2 more
 - `src/utils/templateApply.ts` — TemplateRunOptions, RunDraft, TemplateRunSink, applyTemplateRun
 - `src/utils/templateGrouping.ts` — TemplateListItem, groupTemplatesByCategory, TemplateDropResolution, resolveTemplateDrop, templateMatchesQuery
+- `src/utils/templateLink.ts` — TemplateLinkState, templateLinkState, runTemplateLabel, linkedTaskCounts, linkedTasksNote, anchorsForRun
 - `src/utils/templateMatch.ts` — matchTemplate
 - `src/utils/templateQuestions.ts` — questionsForTree, answerFromDates, defaultAnswer, resolveAnswers, placeholderValuesFor, toggleAnswer, displayOptions, liveConditions, numberInRange, applyItemVariant, +15 more
 - `src/utils/templateRunDestination.ts` — TemplateRunView, TemplateRunDestination, templateRunDestination, templateRunDestinationLabel

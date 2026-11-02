@@ -1,0 +1,1 @@
+{ "message": "Fixed app blocking schedules switching themselves off while the app was closed, which let blocked apps open partway through a scheduled block and kept the next block from starting until you opened dundundun.", "date": "2026-11-02" }

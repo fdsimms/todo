@@ -953,6 +953,13 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(dbGetAllTasks()[0].alarmSound).toBeNull();
   });
 
+  it('round-trips a task’s template link, and clears it', () => {
+    dbInsertTask(makeTask({ id: 'tl1', templateId: 'tpl-packing' }));
+    expect(dbGetAllTasks().find((t) => t.id === 'tl1')?.templateId).toBe('tpl-packing');
+    dbUpdateTask(makeTask({ id: 'tl1', templateId: null }));
+    expect(dbGetAllTasks().find((t) => t.id === 'tl1')?.templateId).toBeNull();
+  });
+
   it('round-trips a task alarm’s sound pool, and reads fewer than two as none', () => {
     dbInsertTask(makeTask({ id: 'pool1', alarmSoundPool: ['chime', 'rise'] }));
     expect(dbGetAllTasks()[0].alarmSoundPool).toEqual(['chime', 'rise']);

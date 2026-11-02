@@ -283,7 +283,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     color: colors.textSecondary,
     letterSpacing: 0.8,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
   },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   // No lineHeight here, deliberately: RN maps it onto the iOS paragraph style

@@ -1734,6 +1734,8 @@ const taskFieldsShape = {
     .describe('Hide this task, and keep its streak, while vacation mode is on (get_overview says whether it is).'),
   slotIn: z.boolean().nullable().optional()
     .describe('If the day is full: true lets the phone hold this task until a day that is not busy (at least one waiting task still shows every day, longest wait first, never more than the slotInMaxWaitDays setting (3 days by default), and never past its deadline); false keeps its date even when its category says wait; null follows the category. Only for a dated task that is not a daily repeat, a daily target, an every-N-hours task, a meter or weather wait, or one with a reminder at a set time.'),
+  templateId: z.string().nullable().optional()
+    .describe('A template id (list_templates) the task row offers to run, as "Run <name>". Use it for a template whose questions cannot be answered yet (a packing list before the trip is decided): the person answers them on the phone when they tap it, and running it checks the task off. Nothing is created until then. null removes the link. A deleted template leaves the row showing "Template deleted".'),
   workoutRoutineId: z.string().nullable().optional()
     .describe('A workout routine id (list_workouts lists routines; save_routine makes one). The task row then offers Start workout, and finishing that workout on the phone completes the task. Completing the task never logs a workout. null removes the link. Setting it clears workoutProgramId.'),
   workoutProgramId: z.string().nullable().optional()
@@ -2818,7 +2820,7 @@ function registerWriteTools(
 
   server.tool(
     'apply_template',
-    "Run a template: create the tasks it describes, with dates counted from startDate and endDate. Does what the app's apply sheet does with its defaults plus what you give: which items are on follows the answers (a conditioned item is on or off by the answer, an optional one starts off), questions you do not answer take their default, and runName is what puts the tasks in the template's stack, project or parent task. Read the template with get_template first for its question names, item ids and container. include / leaveOut take item ids to switch on or off. projectId runs it into an existing project instead. People questions are not answered here. The preview lists each task with its dates and subtasks, the items left out and why (leftOut, with itemIds for include), blanks left empty (unfilledBlanks), and nested templates that no longer exist (brokenRefs): check those before confirming. Reminders and calendar events for the new tasks are set up by the phone.",
+    "Run a template: create the tasks it describes, with dates counted from startDate and endDate. Does what the app's apply sheet does with its defaults plus what you give: which items are on follows the answers (a conditioned item is on or off by the answer, an optional one starts off), questions you do not answer take their default, and runName is what puts the tasks in the template's stack, project or parent task. Read the template with get_template first for its question names, item ids and container. include / leaveOut take item ids to switch on or off. projectId runs it into an existing project instead. People questions are not answered here. The preview lists each task with its dates and subtasks, the items left out and why (leftOut, with itemIds for include), blanks left empty (unfilledBlanks), and nested templates that no longer exist (brokenRefs): check those before confirming. Reminders and calendar events for the new tasks are set up by the phone. If the person cannot answer its questions yet (a packing list before the trip is decided), do not guess the answers: link the template to a task with templateId instead (create_task or update_task), and they run it from that task's row when they are ready.",
     {
       template: z.string().describe('A template id, or its exact name when that names only one (list_templates).'),
       runName: z.string().optional().describe('Names the run, e.g. "Lisbon trip". Needed for the template to create its stack, project or parent task; without it the tasks are loose.'),
@@ -2841,7 +2843,7 @@ function registerWriteTools(
 
   server.tool(
     'delete_template',
-    'Delete a template. Templates have no archive, so this cannot be undone from here. Templates that nest it keep an item whose reference is now broken; the result names them. Prefer update_template when the person only wants it changed.',
+    'Delete a template. Templates have no archive, so this cannot be undone from here. Templates that nest it keep an item whose reference is now broken; the result names them. Open tasks that run it from their row (templateId) keep the link and show "Template deleted"; the result lists them as linkedTasks, so tell the person and offer to point them at another template or clear the link with update_task. Prefer update_template when the person only wants it changed.',
     { template: z.string().describe('A template id, or its exact name when that names only one (list_templates).') },
     async ({ template }) => {
       try {
@@ -4284,7 +4286,7 @@ function registerWriteTools(
 
   server.tool(
     'update_unlock',
-    "Change an unlock (ids from get_rewards' unlocks). Only the fields given change; its code and today's timer are left as they are.",
+    "Change an unlock (ids from get_rewards' unlocks). Only the fields given change; its code and today's timer are left as they are. While an unlock is locked (status 'locked') a change that makes it easier to open is refused: a lower unlocksAtPct, a dropped alsoNeedsTaskIds task, weekend/vacation opening switched on, or its linked habit removed. Those work once it is open. Don't suggest a way round it.",
     { id: z.string().min(1), title: z.string().min(1).optional(), ...unlockFieldsShape },
     async ({ id, ...patch }) => {
       try {
@@ -4297,7 +4299,7 @@ function registerWriteTools(
 
   server.tool(
     'delete_unlock',
-    "Delete an unlock (ids from get_rewards' unlocks), with its timer and code. No coins move. Only on the person's say-so.",
+    "Delete an unlock (ids from get_rewards' unlocks), with its timer and code. No coins move. Only on the person's say-so, and refused while it is locked.",
     { id: z.string().min(1) },
     async ({ id }) => {
       try {

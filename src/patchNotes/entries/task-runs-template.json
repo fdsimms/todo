@@ -1,0 +1,1 @@
+{ "message": "A task can now link to a template. The row shows a Run button that opens the template's questions when you're ready, and running it checks the task off. Set it with the new Template row in the task editor. If the template is deleted, the row says so, and deleting a template warns you about the tasks that use it.", "date": "2026-11-02" }

@@ -1947,9 +1947,10 @@ function ProjectDetailContent() {
         )}
 
         {!!project?.notes && (
-          // Collapsed to one line by default — the notes are a reference, not
+          // Collapsed to three lines by default — the notes are a reference, not
           // the point of this screen, and a multi-paragraph note shouldn't push
-          // the task list below the fold. Tap to unfold in place.
+          // the task list below the fold, but one line cut most notes off after
+          // a dozen words. Tap to unfold in place.
           <TouchableOpacity
             style={styles.notesPreview}
             onPress={() => { animateLayout(); setNotesExpanded(v => !v); }}
@@ -1960,7 +1961,7 @@ function ProjectDetailContent() {
             <Ionicons name="document-text-outline" size={13} color={colors.textTertiary} style={styles.notesPreviewIcon} />
             <LinkedText
               style={styles.notesPreviewText}
-              numberOfLines={notesExpanded ? undefined : 1}
+              numberOfLines={notesExpanded ? undefined : 3}
               text={project.notes}
             />
           </TouchableOpacity>
