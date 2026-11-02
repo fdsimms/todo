@@ -186,7 +186,8 @@ export function CookbookDetailScreen() {
         presentationStyle="pageSheet"
         onRequestClose={closeLinkPicker}
       >
-        <View style={[styles.pickerRoot, { paddingTop: insets.top + spacing.md }]}>
+        {/* No `insets.top`: a page sheet sits below the status bar on its own, so `insets.top` here doubled the gap. */}
+        <View style={[styles.pickerRoot, { paddingTop: spacing.md }]}>
           <SheetHeader
             title="Link a recipe"
             size="lg"

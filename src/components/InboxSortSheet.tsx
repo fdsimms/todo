@@ -122,6 +122,14 @@ export function InboxSortSheet({ visible, inbox, onClose }: Props) {
     markHandled(current.id);
   };
 
+  // Done in the header (and a swipe down) keeps what is picked on the card
+  // showing, as the footer's Done on the last card does: every card before it
+  // was saved by Next. Closing used to drop those picks with nothing said.
+  const close = () => {
+    if (current && (when !== 'none' || category !== undefined || projectId !== undefined)) next();
+    onClose();
+  };
+
   const remove = () => {
     if (!current) return;
     haptics.tap();
@@ -134,11 +142,11 @@ export function InboxSortSheet({ visible, inbox, onClose }: Props) {
   const projectSummary = projectId === undefined ? undefined : projectName ?? 'None';
 
   return (
-    <SheetModal name="InboxSortSheet" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <SheetModal name="InboxSortSheet" visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={close}>
       <View style={styles.root}>
         <SheetHeader
           title="Sort the Inbox"
-          left={<SheetHeaderButton label={BUTTON_LABEL.done} role="cancel" onPress={onClose} minWidth={56} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} role="cancel" onPress={close} minWidth={56} />}
           right={current
             ? <SheetHeaderButton label="Skip" onPress={skip} minWidth={56} />
             : <View style={styles.headerSpacer} />}

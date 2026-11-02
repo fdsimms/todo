@@ -2436,7 +2436,8 @@ function ProjectDetailContent() {
           presentationStyle="pageSheet"
           onRequestClose={() => { Keyboard.dismiss(); setShowExistingPicker(false); }}
         >
-          <View style={[styles.pickerRoot, { paddingTop: insets.top + spacing.md }]}>
+          {/* No `insets.top`: a page sheet sits below the status bar on its own, so `insets.top` here doubled the gap. */}
+          <View style={[styles.pickerRoot, { paddingTop: spacing.md }]}>
             {/* Deliberately not `DetailHeader`: that's the back-chevron bar a
                 pushed screen gets, and this is the Cancel/title/confirm bar
                 every sheet in the app gets (fourteen of them, all built the
