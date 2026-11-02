@@ -574,6 +574,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/stableLists.ts` — reuseUnchangedLists
 - `src/utils/stackPicker.ts` — StackOption, STACK_PICKER_COLLAPSED_ROWS, filterStacks, StackRows, stackRows
 - `src/utils/stackSort.ts` — stackMemberIdsAToZ
+- `src/utils/standaloneStores.ts` — STANDALONE_STORE_LOADS
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, eitherSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap
 - `src/utils/startWorkout.ts` — StartWorkoutInput, StartWorkoutResult, startWorkout
 - `src/utils/startup.ts` — runStartupStep, runStartupSequence

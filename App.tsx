@@ -11,12 +11,6 @@ import { KeyboardDoneAccessory } from './src/components/KeyboardDoneAccessory';
 import { FirstRunHost } from './src/components/FirstRunSheet';
 import { FlagCopyHost } from './src/components/FlagCopyHost';
 import { useTaskStore } from './src/store/useTaskStore';
-import { useProjectLockStore } from './src/store/useProjectLockStore';
-import { useNfcKeyStore } from './src/store/useNfcKeyStore';
-import { useAppGroupStore } from './src/store/useAppGroupStore';
-import { useShieldReleaseStore } from './src/store/useShieldReleaseStore';
-import { useBlockTimerStore } from './src/store/useBlockTimerStore';
-import { useManualBlockStore } from './src/store/useManualBlockStore';
 import { useAlarmStore } from './src/store/useAlarmStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
@@ -63,6 +57,7 @@ import { useAppShieldSync } from './src/hooks/useAppShieldSync';
 import { useSyncStore } from './src/store/useSyncStore';
 import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
 import { runStartupSequence, runStartupStep } from './src/utils/startup';
+import { STANDALONE_STORE_LOADS } from './src/utils/standaloneStores';
 import { setAutoCompleteAttended } from './src/utils/autoCompleteScope';
 import { markMilestone } from './src/utils/perfLog';
 import { collectDeviceMetrics, savePerfRun } from './src/utils/perfReport';
@@ -177,12 +172,8 @@ function AppGate() {
     (async () => {
       runStartupStep('initialize tasks', () => useTaskStore.getState().initialize());
       runStartupStep('load settings', () => useSettingsStore.getState().initialize());
-      runStartupStep('load project locks', () => useProjectLockStore.getState().initialize());
-      runStartupStep('load key tags', () => useNfcKeyStore.getState().initialize());
-      runStartupStep('load app groups and schedules', () => useAppGroupStore.getState().initialize());
-      runStartupStep('load released blocks', () => useShieldReleaseStore.getState().initialize());
-      runStartupStep('load timed block', () => useManualBlockStore.getState().initialize());
-      runStartupStep('load block timer', () => useBlockTimerStore.getState().initialize());
+      // Shared with a cold background launch, which needs the same stores.
+      for (const [name, load] of STANDALONE_STORE_LOADS) runStartupStep(name, load);
       // Puts every alarm back on the device as well: AlarmKit keeps what was
       // scheduled, but a one-off switched back on, or a reinstall, needs it.
       runStartupStep('load alarms', () => {

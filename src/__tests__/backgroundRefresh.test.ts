@@ -214,6 +214,14 @@ jest.mock('../utils/widgetSync', () => ({
 jest.mock('../hooks/useWorkoutLiveActivitySync', () => ({
   syncWorkoutLiveActivityNow: () => { mockCalls.push('syncWorkoutLiveActivity'); },
 }));
+// The stores App.tsx loads as their own steps. Recorded by name, inside the
+// arrows, because the factory runs at import, ahead of this file's `const`s.
+jest.mock('../utils/standaloneStores', () => ({
+  STANDALONE_STORE_LOADS: [
+    ['load project locks', () => { mockCalls.push('loadProjectLocks'); }],
+    ['load app groups and schedules', () => { mockCalls.push('loadAppGroups'); }],
+  ],
+}));
 jest.mock('../utils/appShieldReconcile', () => ({
   reconcileAppShield: () => { mockCalls.push('reconcileAppShield'); return null; },
   gateTitlesNow: () => [],
@@ -326,6 +334,16 @@ describe('runBackgroundRefresh', () => {
     expect(mockCalls[2]).toBe('initializeSync');
   });
 
+  it('loads the stores App.tsx loads on its own before reconciling the shield', () => {
+    mockSettingsState.initialized = false;
+    runBackgroundRefresh();
+    // Unloaded, the app groups store has no schedules, so the reconcile read
+    // every schedule as closed: it lifted a block mid-window and disarmed the
+    // schedules until the app was next opened.
+    expect(mockCalls.slice(3, 5)).toEqual(['loadProjectLocks', 'loadAppGroups']);
+    expect(mockCalls.indexOf('reconcileAppShield')).toBeGreaterThan(mockCalls.indexOf('loadAppGroups'));
+  });
+
   it('does not re-initialize a process that is merely backgrounded', () => {
     mockSettingsState.initialized = true;
     runBackgroundRefresh();
@@ -334,6 +352,7 @@ describe('runBackgroundRefresh', () => {
     expect(mockCalls).not.toContain('initialize');
     expect(mockCalls).not.toContain('initializeSettings');
     expect(mockCalls).not.toContain('initializeSync');
+    expect(mockCalls).not.toContain('loadAppGroups');
   });
 
   it('leaves the sync itself out, because it is the one thing that awaits', () => {
@@ -513,7 +532,7 @@ describe('runWatchWork', () => {
     mockAppState = 'background';
     expect(await runWatchWork()).toBe(true);
     expect(mockCalls).toEqual([
-      'initialize', 'initializeSettings', 'initializeSync',
+      'initialize', 'initializeSettings', 'initializeSync', 'loadProjectLocks', 'loadAppGroups',
       'drainWatchQueues:requeue',
       // Before the snapshot, whose write ends the background time.
       'syncWorkoutLiveActivity',
