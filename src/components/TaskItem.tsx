@@ -3396,6 +3396,9 @@ const TaskItemRow = React.memo(function TaskItem({
           completing && !quotaCompleting && !quotaPartial && !sendOffKind && styles.circleCompleting,
           sendOffKind === 'byOther' && styles.circleHandedOff,
           completionLocked && !hoursLoggable && styles.circleLocked,
+          // Waiting on another task: a faded, dashed ring, so the row reads as
+          // not ready before its chips are read. Display only; the tap is unchanged.
+          !!blockerTitle && !task.completed && !completing && styles.circleWaiting,
           // Ready is a nudge, not a lock — the checkbox stays tappable either way.
           // The meal-plan nudge's full day borrows the same treatment on purpose:
           // green already means done-or-ready on this row, and a second colour
@@ -4247,9 +4250,9 @@ const TaskItemRow = React.memo(function TaskItem({
               </View>
             )}
             {!!blockerTitle && (
-              <View style={styles.metaChip} accessibilityLabel={`Waiting on ${blockerTitle}`}>
-                <Ionicons name="hourglass" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.blockingLabel} numberOfLines={1}>
+              <View style={[styles.metaChip, styles.waitingChip]} accessibilityLabel={`Waiting on ${blockerTitle}`}>
+                <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
+                <Text style={styles.waitingLabel} numberOfLines={1}>
                   After {blockerTitle}
                 </Text>
               </View>
@@ -4261,7 +4264,7 @@ const TaskItemRow = React.memo(function TaskItem({
                 only in the editor. */}
             {!!waitingPersonName && (
               <TouchableOpacity
-                style={styles.metaChip}
+                style={[styles.metaChip, styles.waitingChip]}
                 onPress={() => {
                   haptics.tap();
                   animateLayout();
@@ -4279,8 +4282,8 @@ const TaskItemRow = React.memo(function TaskItem({
                 accessibilityRole="button"
                 accessibilityLabel={`Waiting on ${waitingPersonName}. Double tap to stop waiting.`}
               >
-                <Ionicons name="hourglass" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.blockingLabel} numberOfLines={1}>
+                <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
+                <Text style={styles.waitingLabel} numberOfLines={1}>
                   Waiting on {waitingPersonName}
                 </Text>
                 {/* The same glyph the Waiting screen releases a row with,
@@ -4288,7 +4291,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     is pixel-identical to the blocker chip beside it, which is
                     not a button, and the one way out of a wait nothing else
                     ends would be undiscoverable. */}
-                <Ionicons name="close" size={iconSize.xs} color={colors.textSecondary} />
+                <Ionicons name="close" size={iconSize.xs} color={colors.warningText} />
               </TouchableOpacity>
             )}
             {/* How long this project has been silent — the one thing the
@@ -6017,6 +6020,10 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
   circleLocked: {
     borderWidth: 0,
   },
+  circleWaiting: {
+    borderStyle: 'dashed',
+    opacity: 0.55,
+  },
   // A timed task whose countdown has run out. Tinted to pull the eye to the tap
   // that completes it, without filling the circle — it isn't done yet.
   circleReady: {
@@ -6280,6 +6287,20 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
   blockingLabel: {
     color: colors.textSecondary,
     fontSize: font.xs,
+  },
+  // A row held back by a task or a person. Filled like quietChip, since the
+  // plain grey chip was indistinguishable from the category and date beside it.
+  waitingChip: {
+    backgroundColor: colors.warning + '29',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xxs,
+    borderRadius: radius.full,
+  },
+  waitingLabel: {
+    color: colors.warningText,
+    fontSize: font.xxs,
+    fontWeight: fontWeight.semibold,
+    flexShrink: 1,
   },
   weatherNote: {
     marginTop: spacing.xxs,
