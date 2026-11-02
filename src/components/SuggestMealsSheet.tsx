@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSheetOpening } from '../hooks/useSheetOpening';
 import {
   Keyboard,
   View,
@@ -267,7 +268,6 @@ export function SuggestMealsSheet({
 
   useEffect(() => {
     if (visible) return;
-    openingRef.current += 1;
     setFilter('all');
     setPreviewRecipe(null);
     setSelected(new Set());
@@ -281,17 +281,11 @@ export function SuggestMealsSheet({
     setGenerateError(null);
     setHints('');
   }, [visible]);
-  // Read after an await, so a reply that comes back once the sheet has closed
-  // is dropped rather than written into the next opening (see `generate`).
-  const visibleRef = useRef(visible);
-  useEffect(() => { visibleRef.current = visible; }, [visible]);
-  // Which opening a request belongs to, bumped by the reset on close. Open
-  // alone let a batch asked for before a Cancel land in the next opening (often
-  // another week's, sized and deduped for the week it was asked about), and
-  // its `finally` lowered that opening's own spinner. Same guard
-  // InventRecipeSheet keeps.
-  const openingRef = useRef(0);
-  const stillOpenFor = (opening: number) => visibleRef.current && openingRef.current === opening;
+  // Which opening a request belongs to, read after an await (see `generate`).
+  // Open alone let a batch asked for before a Cancel land in the next opening
+  // (often another week's, sized and deduped for the week it was asked about),
+  // and its `finally` lowered that opening's own spinner.
+  const openings = useSheetOpening(visible);
   // The picks as they stand when a batch lands, not as they stood when it was
   // asked for: idea rows stay tappable while one is being written, and a pick
   // made in between was dropped from the list while `selected` still named it.
@@ -432,7 +426,7 @@ export function SuggestMealsSheet({
   // ==== the AI half: generating, dismissing, drafting a real recipe ====
 
   const generate = useCallback(async () => {
-    const opening = openingRef.current;
+    const opening = openings.begin();
     setGenerating(true);
     setGenerateError(null);
     // Ideas already picked stay, whatever the new batch holds. A pick names
@@ -457,7 +451,7 @@ export function SuggestMealsSheet({
       // Closed while the ideas were being written (Cancel, or a swipe down):
       // the reset on close already cleared the list, and a batch landing
       // after it was the next opening's first screen.
-      if (!stillOpenFor(opening)) return;
+      if (!openings.isCurrent(opening)) return;
       const owned = new Set(allRecipes.map(r => r.nameKey));
       const fresh = result.filter(i => !owned.has(recipeNameKey(i.title)));
       setIdeas(prev => {
@@ -466,13 +460,13 @@ export function SuggestMealsSheet({
         return [...kept, ...fresh.filter(i => !keptKeys.has(recipeNameKey(i.title)))];
       });
     } catch (e) {
-      if (!stillOpenFor(opening)) return;
+      if (!openings.isCurrent(opening)) return;
       setIdeas(keepPicked);
       setGenerateError(describeAIError(e));
     } finally {
       // The reset on close already lowered it, and the next opening may have
       // a request of its own under way.
-      if (openingRef.current === opening) setGenerating(false);
+      if (openings.isCurrent(opening)) setGenerating(false);
     }
   }, [plannedTitles, recentTitles, expiringItemHints, allRecipes, slotsToFill, openDays.length, hints]);
 

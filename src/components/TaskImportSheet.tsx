@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSheetOpening } from '../hooks/useSheetOpening';
 import {
   Keyboard,
   View,
@@ -114,21 +115,15 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
   }, []);
 
   // The request outlives a cancel (only the Modal hides), so a late answer
-  // checks this before writing any state, the same guard EventImportSheet uses.
-  const visibleRef = useRef(visible);
-  useEffect(() => { visibleRef.current = visible; }, [visible]);
-  // Which opening of the sheet a request belongs to. Open alone let a read
-  // cancelled before a reopen land in the next opening: screenshot A's tasks
-  // became the review list for screenshot B, shared in after it.
-  const openingRef = useRef(0);
-  const stillOpenFor = (opening: number) => visibleRef.current && openingRef.current === opening;
+  // checks it still belongs to this opening before writing any state: one
+  // cancelled before a reopen made screenshot A's tasks the review list for
+  // screenshot B, shared in after it.
+  const openings = useSheetOpening(visible);
 
   // Reset on close rather than on open, so a sheet left mounted doesn't hand
   // the next open a stale photo or list.
   useEffect(() => {
-    if (visible) return;
-    openingRef.current += 1;
-    reset();
+    if (!visible) reset();
   }, [visible, reset]);
 
   // A photo handed in from outside seeds the capture step on open.
@@ -167,14 +162,14 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
 
   const run = useCallback(async () => {
     if (!ready || !aiAvailable) return;
-    const opening = openingRef.current;
+    const opening = openings.begin();
     setLoading(true);
     setError(null);
     setTriedEmpty(false);
     try {
       const source = mode === 'photo' ? (extraPhotos.length > 0 ? [photo!, ...extraPhotos] : photo!) : text;
       const tasks = await extractTasks(source);
-      if (!stillOpenFor(opening)) return;
+      if (!openings.isCurrent(opening)) return;
       if (tasks.length === 0) {
         setTriedEmpty(true);
         return;
@@ -183,9 +178,9 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
       Keyboard.dismiss();
       setCandidates(candidatesFromExtracted(tasks));
     } catch (e) {
-      if (stillOpenFor(opening)) setError(describeAIError(e));
+      if (openings.isCurrent(opening)) setError(describeAIError(e));
     } finally {
-      if (openingRef.current === opening) setLoading(false);
+      if (openings.isCurrent(opening)) setLoading(false);
     }
   }, [ready, aiAvailable, mode, photo, extraPhotos, text]);
 
