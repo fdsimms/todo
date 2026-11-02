@@ -4286,7 +4286,7 @@ function registerWriteTools(
 
   server.tool(
     'update_unlock',
-    "Change an unlock (ids from get_rewards' unlocks). Only the fields given change; its code and today's timer are left as they are.",
+    "Change an unlock (ids from get_rewards' unlocks). Only the fields given change; its code and today's timer are left as they are. While an unlock is locked (status 'locked') a change that makes it easier to open is refused: a lower unlocksAtPct, a dropped alsoNeedsTaskIds task, weekend/vacation opening switched on, or its linked habit removed. Those work once it is open. Don't suggest a way round it.",
     { id: z.string().min(1), title: z.string().min(1).optional(), ...unlockFieldsShape },
     async ({ id, ...patch }) => {
       try {
@@ -4299,7 +4299,7 @@ function registerWriteTools(
 
   server.tool(
     'delete_unlock',
-    "Delete an unlock (ids from get_rewards' unlocks), with its timer and code. No coins move. Only on the person's say-so.",
+    "Delete an unlock (ids from get_rewards' unlocks), with its timer and code. No coins move. Only on the person's say-so, and refused while it is locked.",
     { id: z.string().min(1) },
     async ({ id }) => {
       try {
