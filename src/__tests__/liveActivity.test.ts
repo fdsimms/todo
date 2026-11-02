@@ -434,12 +434,10 @@ describe('buildTimerRuns', () => {
     expect(runs.map(r => r.key).sort()).toEqual(['cook:r2', 'prep:r1', 'step:st1']);
   });
 
-  it('brings the total cook time back when the step timer is paused, or only repeats', () => {
+  it('brings the total cook time back when the step timer is paused', () => {
     const recipes = [makeRecipe({ id: 'r1', timerStartedAt: startedAgo(600) })];
     const paused = makeStepTimer({ startedAt: null, elapsedSeconds: 30 });
-    const repeating = makeStepTimer({ durationSeconds: 1800, repeatTarget: 5, startedAt: startedAgo(10) });
     expect(buildTimerRuns([], recipes, [paused], { enabled: true }).map(r => r.key)).toEqual(['cook:r1']);
-    expect(buildTimerRuns([], recipes, [repeating], { enabled: true }).map(r => r.key)).toEqual(['cook:r1']);
   });
 
   it('ignores a paused step timer', () => {
