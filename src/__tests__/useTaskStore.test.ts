@@ -7031,6 +7031,31 @@ describe('applyWeatherWaits', () => {
     useTaskStore.getState().applyWeatherWaits();
     expect(read(id).deferUntil).toBeNull();
   });
+
+  // Nobody can see a paused project's task, so a sunny day can't be spent on
+  // it: released anyway, it came back after the pause whatever the weather.
+  it('holds a paused project\'s task to the next sunny day rather than releasing it', () => {
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: '2999-01-01', archived: false, completed: false }]);
+    try {
+      withForecast([0, 61, 0]);
+      const id = addWaiting({ projectId: 'garden', dueDate: new Date(2026, 9, 4).toISOString() });
+      useTaskStore.getState().applyWeatherWaits();
+      expect(read(id).weatherWait).toBe('sunny');
+      expect(dayKeyOf(new Date(read(id).deferUntil!))).toBe('2026-10-06');
+    } finally {
+      registerPausedProjectSource(() => useProjectStore.getState().projects);
+    }
+  });
+
+  // The forecast moving the hold is the app's doing, not the person putting
+  // the task off, so it never reaches the Stuck screen.
+  it('does not count its holds as the person postponing', () => {
+    withForecast([61, 61, 0]);
+    const id = addWaiting({ dueDate: new Date(2026, 9, 4).toISOString() });
+    useTaskStore.getState().applyWeatherWaits();
+    expect(dayKeyOf(new Date(read(id).deferUntil!))).toBe('2026-10-06');
+    expect(read(id).postponeCount).toBe(0);
+  });
 });
 
 // ─── applyRainSkips ─────────────────────────────────────────────────────────
@@ -7197,6 +7222,20 @@ describe('a task that waits for a lighter day', () => {
     const ids = [add('A', { slotIn: true }), add('B', { slotIn: true })];
     useTaskStore.getState().applySlotIns();
     expect(ids.filter(held)).toHaveLength(1);
+  });
+
+  // Dated today but not on Today: a paused project's task can't be done, so it
+  // doesn't make the day full. It did, and held back tasks there was room for.
+  it('does not count a task nobody can do today toward the load', () => {
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: '2999-01-01', archived: false, completed: false }]);
+    try {
+      add('Big', { estimatedMinutes: 400, projectId: 'garden' });
+      const ids = [add('A', { slotIn: true }), add('B', { slotIn: true })];
+      useTaskStore.getState().applySlotIns();
+      expect(ids.filter(held)).toHaveLength(0);
+    } finally {
+      registerPausedProjectSource(() => useProjectStore.getState().projects);
+    }
   });
 
   it('follows the category when the task has no answer of its own', () => {

@@ -432,11 +432,12 @@ export function planDay(replica: Replica, input: { startAt?: string; endAt?: str
   // task with no moment at all, which is a fallback rather than a time, so the
   // gates that aren't a clock are checked first: without them the plan filled
   // the day from the Inbox, the Unscheduled list, every undated project step,
-  // and whatever vacation mode or a paused project was hiding.
+  // and whatever vacation mode or a paused project was hiding. An expired task
+  // (its window closed) is off Today too, and waiting to be swept.
   const undated = (t: Task) => (t.projectId ? !t.dueDate : v.hasNoDateSignal(t));
   const candidates = all.filter(t =>
     !t.parentId && !t.completed && !t.archived && t.polarity !== 'negative'
-    && !v.isWithheld(t) && !v.isTaskNotNeeded(t) && !undated(t)
+    && !v.isWithheld(t) && !v.isTaskNotNeeded(t) && !undated(t) && !v.isTaskExpired(t)
     && (replica.isVisible(t) || replica.visibleAt(t) < endOfDay));
 
   const waiting = candidates.filter(t => replica.isBlocked(t)).map(t => ({ id: t.id, title: replica.displayTitle(t) }));

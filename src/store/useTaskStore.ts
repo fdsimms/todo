@@ -3724,6 +3724,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // asked to be rid of.
     useUnattendedStore.getState().record({
       action: 'purged', kind: null, title: '', taskId: null, count: ids.length,
+      // The cutoff is what two devices purging agree on (the window syncs).
+      key: dayKeyOf(cutoff),
     });
     return ids.length;
   },
@@ -6524,8 +6526,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // list still holding it. Judged against every stall rather than against
     // the capped `wanted` — see staleProjectReviewTasks.
     const stale = staleProjectReviewTasks(tasks, stalls);
-    // dropGeneratedTask, not deleteGeneratedTaskQuietly: that one routes
-    // through deleteTask, which writes the source's opt-out — here it would
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly) — here one would
     // stamp reviewDeclinedAt on a project the user never touched, and so
     // suppress tomorrow's task on the strength of the app's own tidying up.
     // Only a delete the *user* performs is an instruction to the source.
@@ -6617,8 +6619,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // corrected all leave a row naming a day that is nobody's birthday, and
     // none of those mutations knows the row is sitting there.
     const stale = staleBirthdayTasks(tasks, wanted);
-    // dropGeneratedTask, not deleteGeneratedTaskQuietly: the latter routes
-    // through deleteTask, which stamps the source's opt-out. Here that would
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly). Here one would
     // set birthdayTaskOptOut on somebody the user never touched, silencing
     // their birthday for good on the strength of the app's own tidying up.
     stale.forEach(task => {
@@ -6852,8 +6854,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // not stale, and deleting one the user deferred to Saturday would be the
     // app taking back an offer it already made.
     const stillDue = new Set(collapsedWanted.map(w => w.sourceId));
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly: the latter
-    // routes through deleteTask, which stamps the source's opt-out. Here that
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly). Here one
     // would record a decline the user never made and silence the person for a
     // week on the strength of the app's own tidying up.
     // Nobody due and the person still opted in means something landed in their
@@ -6962,8 +6964,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // this very task, and a create pass running first would be deciding
     // against a list that still held it.
     //
-    // dropGeneratedTask, not deleteGeneratedTaskQuietly: that one routes
-    // through deleteTask, which writes the source's opt-out — here it would
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly) — here one would
     // stamp waitingFollowUpDeclinedAt on a task the user never swiped away,
     // silencing a future wait on the strength of the app's own tidying up.
     staleWaitingFollowUpTasks(tasks, tasks, people).forEach(task =>
@@ -7179,8 +7181,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // task, and a create pass running first would be deciding against a list
     // that still held it.
     //
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly: that routes
-    // through deleteTask, which writes the source's opt-out — here it would
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly) — here one would
     // stamp pantryCheckDeclinedAt on an item the user never turned down, and so
     // suppress the question after the *next* purchase on the strength of the
     // app's own tidying up.
@@ -7323,11 +7325,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const deck = buildPantryReviewDeck(grocery.items, new Date(), grocery.itemProducts);
 
     // Clear first, create second, the ordering every generator here runs on.
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly for the reason
-    // checkPantryCheckTasks gives — except that here there is nothing to stamp
-    // at all (no source row), so the two would agree; it stays the honest call
-    // for what this is, which is the app tidying up rather than the user
-    // declining.
+    // dropGeneratedTask, for the reason checkPantryCheckTasks gives: this is
+    // the app tidying up rather than the user declining (and here there is no
+    // source row to stamp anyway).
     // An emptied deck is what the row asked for, so it stays, ready; there is
     // no source to go missing, so nothing here is ever deleted.
     settleReadyMarks(
@@ -7453,8 +7453,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // shopped for from this very task, and a create pass running first would be
     // deciding against a list that still held it.
     //
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly: that routes
-    // through deleteTask, which writes the source's opt-out — here it would
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly) — here one would
     // stamp shopTask: false on a meal the user never turned down, and so
     // suppress the offer for ever on the strength of the app's own tidying up.
     const answered = answeredMealShortfallTasks(
@@ -7714,8 +7714,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // restocked from this very task, and a create pass running first would be
     // deciding against a list that still held it.
     //
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly: that routes
-    // through deleteTask, which writes the source's opt-out — here it would
+    // dropGeneratedTask, which never writes the source's opt-out (an app-side
+    // delete doesn't; see deleteGeneratedTaskQuietly) — here one would
     // stamp supplyDeclinedAtCount on a task the user never turned down, and so
     // silence the offer until the *next* restock on the strength of the app's
     // own tidying up.
@@ -7951,7 +7951,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (candidates.length === 0) return;
 
     const candidateIds = new Set(candidates.map(t => t.id));
-    const others = get().tasks.filter(t => !candidateIds.has(t.id));
+    // Only what can actually be done today fills it: a task hidden by vacation
+    // or a paused project, or one waiting on another, is dated today but isn't
+    // on Today, and counting it held back tasks the person had room for.
+    const others = get().tasks.filter(t => !candidateIds.has(t.id) && !isWithheld(t) && !isHeldBack(t));
     const today = dayKeyToDate(todayKey);
     const buckets = buildDayBuckets(others, { from: today, to: today, dayResetTime: settings.dayResetTime });
     const calendar = useCalendarStore.getState();
@@ -8015,15 +8018,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const forecast = weather.snapshotDayKey === todayKey ? weather.snapshot?.forecast ?? [] : [];
 
     for (const task of waiting) {
-      const decision = decideWeatherWait(task, forecast, todayKey);
+      // A task nobody can see (vacation, a paused project) is held to the next
+      // matching day rather than released on one: see decideWeatherWait.
+      const decision = decideWeatherWait(task, forecast, todayKey, { withheld: isWithheld(task) });
+      // SKIP_POSTPONE on both: the forecast moving the hold is the app's doing,
+      // not the person putting the task off, and counted as one it filled the
+      // Stuck screen with tasks waiting for the sun.
       if (decision.kind === 'release') {
-        get().updateTask(task.id, { weatherWait: null, deferUntil: null });
+        get().updateTask(task.id, { weatherWait: null, deferUntil: null }, SKIP_POSTPONE);
       } else if (decision.kind === 'defer') {
         // Idempotent: a pass that finds the hold already on this day writes
         // nothing, which is what keeps the task-store subscription that
         // triggers this from re-running it forever.
         if (task.deferUntil && dayKeyOf(new Date(task.deferUntil)) === decision.dayKey) continue;
-        get().updateTask(task.id, { deferUntil: dayKeyToDate(decision.dayKey).toISOString() });
+        get().updateTask(task.id, { deferUntil: dayKeyToDate(decision.dayKey).toISOString() }, SKIP_POSTPONE);
       }
     }
   },
@@ -9314,8 +9322,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const planTitles = weekendPlanTitles(window, buckets, taskById);
     const bare = isWeekendBare(window, loads, planTitles.length, settings.weekendNudgePlanThreshold);
 
-    // dropGeneratedTask rather than deleteGeneratedTaskQuietly, like
-    // projectReview's clear: this is the app tidying up after itself, and
+    // dropGeneratedTask, like projectReview's clear: this is the app tidying
+    // up after itself, and
     // stamping an opt-out for it would be reading the app's own housekeeping as
     // the user declining something.
     // Plans got made for this weekend (the row's own link is how): it stays,
@@ -10976,11 +10984,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Not part of `members`: a review task carries no `projectId` (see
     // projectReviewTasks.ts), so the loop above never touches it and a
     // deleted project's "Review <title>" row was otherwise left sitting on
-    // Today until the next foreground sweep. dropGeneratedTask, not
-    // deleteGeneratedTaskQuietly: the project row is already gone, so an
-    // opt-out write would have nothing to land on anyway, same reasoning
-    // checkProjectReviewTasks itself follows. Called before setLastAction
-    // below, since dropGeneratedTask clears any pending lastAction.
+    // Today until the next foreground sweep. dropGeneratedTask, the same call
+    // checkProjectReviewTasks makes. Called before setLastAction below, since
+    // dropGeneratedTask clears any pending lastAction.
     dropGeneratedTask('projectReview', projectId);
     if (!project) return;
     get().setLastAction({
