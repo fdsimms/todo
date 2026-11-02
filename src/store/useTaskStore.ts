@@ -275,6 +275,7 @@ import {
   wantedSupplyReorders,
 } from '../utils/supply';
 import { formatTimeOfDay, getNextDueDate, getNextOccurrence, getCurrentDayStart, getCurrentLogicalDayKey, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
+import { describeRescheduled } from '../utils/createdTaskPlacement';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { logSlotToMealSlot, slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
@@ -6147,7 +6148,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const snapshot = { ...task };
     get().updateTask(id, { deferUntil: until.toISOString() });
     get().setLastAction({
-      label: 'Task rescheduled',
+      label: describeRescheduled(1, until, useSettingsStore.getState().dayResetTime),
       // On the bar as well as the shake: a reschedule moves the task out of
       // sight, and the bar is how a mis-tapped day gets taken back.
       announce: true,
@@ -9646,7 +9647,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const pinned = task.pinned;
     get().updateTask(id, { archived: true, archivedAt: new Date().toISOString(), pinned: false });
     get().setLastAction({
-      label: 'Task archived',
+      // Names where it went: archiving takes the task out of every list, and
+      // the Archived screen sits under History, which nothing else points at.
+      label: 'Task archived. Find it in History › Archived.',
       // On the bar: archiving takes the task out of every list, and the bar
       // is what lets the places that archive without asking first do so.
       announce: true,
@@ -11438,7 +11441,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().markTasksSeen(staleNew);
     if (snapshots.length > 0) {
       get().setLastAction({
-        label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
+        label: describeRescheduled(snapshots.length, until, dayResetTime),
         announce: true,
         redo: () => get().bulkDefer(ids, until),
         undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),

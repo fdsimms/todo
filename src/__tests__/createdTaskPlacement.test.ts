@@ -1,4 +1,4 @@
-import { describeCreatedTaskPlacement, describeMovedTaskPlacement } from '../utils/createdTaskPlacement';
+import { describeCreatedTaskPlacement, describeMovedTaskPlacement, describeRescheduled } from '../utils/createdTaskPlacement';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
@@ -65,5 +65,24 @@ describe('describeMovedTaskPlacement', () => {
   it('names Inbox', () => {
     const task = { title: 'Sort this out', dueDate: null, deferUntil: null };
     expect(describeMovedTaskPlacement(task, 'inbox')).toBe('Moved “Sort this out” to Inbox');
+  });
+});
+
+describe('describeRescheduled', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 9, 0, 0)); // Tue June 10, 2025
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('names the day for one task', () => {
+    expect(describeRescheduled(1, new Date(2025, 5, 12, 9, 0, 0))).toBe('Task rescheduled to Thursday');
+  });
+
+  it('counts several and still names the day', () => {
+    expect(describeRescheduled(3, new Date(2025, 5, 11, 9, 0, 0))).toBe('3 tasks rescheduled to Tomorrow');
   });
 });

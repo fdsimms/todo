@@ -869,6 +869,20 @@ export function combineFoodNutrition(
   };
 }
 
+/**
+ * What a nutrient's total leaves out, as the line under it: "From 4 of 5
+ * entries" when some food entries never stated it, else null. A total is a sum
+ * over the entries that reported the nutrient (`foodLogTotals`' `reported`), so
+ * a day with one entry missing its sodium reads as a lower sodium rather than as
+ * an unknown one, and nothing on the card said so. Water is not a food entry
+ * here: it states no nutrient and would make every day look incomplete.
+ */
+export function describeNutrientCoverage(entries: readonly FoodLogEntry[], key: NutrientKey): string | null {
+  const food = entries.filter(e => !isWaterEntry(e));
+  const reported = food.filter(e => e.nutrition.amounts[key] !== undefined).length;
+  return reported > 0 && reported < food.length ? `From ${reported} of ${food.length} entries` : null;
+}
+
 /** What a run of entries came to, absent figures staying absent. */
 export function foodLogTotals(entries: readonly FoodLogEntry[]): FoodLogTotals {
   const total: Partial<Record<NutrientKey, number>> = {};

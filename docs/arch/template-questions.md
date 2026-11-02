@@ -156,6 +156,13 @@ beside it.
   means and where it goes is `docs/arch/people.md`, "Templates that ask who" — this file stays about
   the question mechanism, that one's about the person it names.
 
+**A scheduled run says so in Activity.** `checkScheduledTemplates` writes tasks at launch with
+nobody there, so each top-level task it adds is recorded as an app-written `created` entry with no
+generator (`kind: null`), which Activity names "Scheduled template" (`unattendedSource`). It records
+only rows that did not exist before the apply, because a derived id the other device's run already
+wrote comes back from `applyTemplate` too and is that device's entry. Subtasks are not listed, so a
+template that writes dozens of them does not bury the one line that says it ran.
+
 ## An item that becomes your medicines
 
 `TemplateItem.medicationChecklist` makes a run add one subtask per medicine you currently take, after

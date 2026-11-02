@@ -919,7 +919,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // nothing.
   // Sits above every generator rather than inside one: it decides when the
   // whole list gets a chance to run, not what any of them do.
-  { id: 'backgroundRefreshEnabled', groupId: 'generated', label: 'Add tasks while the app is closed',
+  { id: 'backgroundRefreshEnabled', groupId: 'generated', label: 'Run while the app is closed',
     section: 'Automations',
     keywords: ['background', 'background refresh', 'overnight', 'away', 'wake',
       'catch up', 'top up', 'widget', 'stale', 'battery'] },

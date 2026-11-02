@@ -77,6 +77,8 @@ describe('unattendedSource', () => {
     // whole feature exists to end.
     expect(unattendedSource(entry({ kind: null, action: 'expired' }))).toBe('Expired task sweep');
     expect(unattendedSource(entry({ kind: null, action: 'purged' }))).toBe('Completed task cleanup');
+    // The one add with no generator: a scheduled template run.
+    expect(unattendedSource(entry({ kind: null, action: 'created' }))).toBe('Scheduled template');
   });
 
   it('names an agent\'s write as Claude\'s, whatever generator kind the task carries', () => {

@@ -1,5 +1,5 @@
 import type { Task } from '../types';
-import { formatTaskDate } from './dateUtils';
+import { formatScheduledDate, formatTaskDate } from './dateUtils';
 
 /**
  * Where a newly created task landed, for the toast TodayScreen shows instead
@@ -28,6 +28,17 @@ export function describeCreatedTaskPlacement(
     case 'inbox':
       return `Created “${task.title}” in Inbox`;
   }
+}
+
+/**
+ * The undo bar's label for tasks pushed to a later day by a defer. The rows
+ * leave the list they were on, so the label has to say where they went: with
+ * only "Task rescheduled", the one place the new day was written down was the
+ * Later list, which nothing pointed at.
+ */
+export function describeRescheduled(count: number, until: Date, dayResetTime?: string): string {
+  const what = count === 1 ? 'Task' : `${count} tasks`;
+  return `${what} rescheduled to ${formatScheduledDate(until.toISOString(), dayResetTime)}`;
 }
 
 /**
