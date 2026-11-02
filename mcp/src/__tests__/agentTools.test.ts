@@ -173,6 +173,26 @@ describe('planDay', () => {
     expect(plan.note).not.toMatch(/No busy times/);
   });
 
+  it("plans only what is on today's list, and names what is waiting", () => {
+    replica.createTask({ title: 'Report', dueDate: day(0), estimatedMinutes: 30 });
+    replica.createTask({ title: 'Untriaged thought' });
+    replica.createTask({ title: 'Someday', priority: 1 });
+    replica.createTask({ title: 'Water plants', dueDate: day(0), estimatedMinutes: 10, vacationPause: true });
+    const blocker = replica.createTask({ title: 'Get the quote', dueDate: day(3) });
+    replica.createTask({ title: 'Book the work', dueDate: day(0), blockedById: blocker.id });
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useSettingsStore } = require('../../../src/store/useSettingsStore') as typeof import('../../../src/store/useSettingsStore');
+    useSettingsStore.getState().setVacationMode(true);
+    try {
+      const plan = planDay(replica, { startAt: '09:00', endAt: '17:00' });
+      expect(plan.plan.map(s => s.title)).toEqual(['Report']);
+      expect(plan.doesNotFit).toEqual([]);
+      expect(plan.waiting.map(w => w.title)).toEqual(['Book the work']);
+    } finally {
+      useSettingsStore.getState().setVacationMode(false);
+    }
+  });
+
   it('never places a task past its time window', () => {
     replica.createTask({ title: 'Morning pages', dueDate: day(0), estimatedMinutes: 30, windowEnd: '09:15' });
     replica.createTask({ title: 'First', dueDate: day(0), estimatedMinutes: 60, pinned: true });

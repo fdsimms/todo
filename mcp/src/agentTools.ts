@@ -426,8 +426,17 @@ export function planDay(replica: Replica, input: { startAt?: string; endAt?: str
 
   const all = replica.tasks();
   const assumed = lib.dayLoad.assumedMinutesFor(all);
+  const v = lib.visibility;
+  // On today's list: visible now, or due to surface before the day ends, held
+  // back included so `waiting` can name it. `visibleAt` answers "now" for a
+  // task with no moment at all, which is a fallback rather than a time, so the
+  // gates that aren't a clock are checked first: without them the plan filled
+  // the day from the Inbox, the Unscheduled list, every undated project step,
+  // and whatever vacation mode or a paused project was hiding.
+  const undated = (t: Task) => (t.projectId ? !t.dueDate : v.hasNoDateSignal(t));
   const candidates = all.filter(t =>
     !t.parentId && !t.completed && !t.archived && t.polarity !== 'negative'
+    && !v.isWithheld(t) && !v.isTaskNotNeeded(t) && !undated(t)
     && (replica.isVisible(t) || replica.visibleAt(t) < endOfDay));
 
   const waiting = candidates.filter(t => replica.isBlocked(t)).map(t => ({ id: t.id, title: replica.displayTitle(t) }));
