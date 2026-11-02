@@ -132,7 +132,8 @@ import { deleteGeneratedTaskQuietly, dropGeneratedTask, markGeneratedReady, reco
 import { readSavedEvents, updateSavedEvent, writeSavedEvents, type SavedEvent } from '../utils/savedEvents';
 import { bookDueDay, bookSourceId, bookTaskNotes, bookTaskTitle, wantsBookTask } from '../utils/savedEventTasks';
 import { reopenedTask } from '../utils/taskReopen';
-import { forgiveVacationStreaks } from '../utils/vacationStreaks';
+import { forgiveVacationStreaks, forgivePausedProjectStreaks as pausedStreaksForgiven } from '../utils/vacationStreaks';
+import { pauseEndsOn, registerPauseEndListener } from '../utils/projectPause';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind, stoppableGenerator } from '../utils/generatedTasks';
 import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
@@ -2611,6 +2612,12 @@ interface TaskStore extends UndoHistoryActions {
   bulkDeleteTemplates: (ids: string[]) => void;
 
   forgivVacationStreaks: () => void;
+  /**
+   * Forgive the streaks a project's pause held, for the projects in `endedOn`
+   * (id to the day its pause ended), or for every project whose pause has run
+   * out when it's omitted. See `forgivePausedProjectStreaks` in vacationStreaks.ts.
+   */
+  forgivePausedProjectStreaks: (endedOn?: ReadonlyMap<string, string>) => void;
   checkVacationExpiry: () => void;
   /**
    * Arm vacation mode for a nominated trip that has started, and keep its end
@@ -11104,6 +11111,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
   },
 
+  forgivePausedProjectStreaks(endedOn) {
+    const ends = endedOn ?? pauseEndsOn(useProjectStore.getState().projects, getCurrentLogicalDayKey());
+    if (ends.size === 0) return;
+    const forgiven = pausedStreaksForgiven(get().tasks, ends);
+    if (forgiven.length === 0) return;
+    forgiven.forEach(t => dbUpdateTask(t));
+    const byId = new Map(forgiven.map(t => [t.id, t]));
+    set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
+  },
+
   // Auto-turns-off vacation mode once its optional end date has passed —
   // call on app start and whenever the app returns to the foreground, since
   // there's no timer running while the app is backgrounded/closed.
@@ -12014,6 +12031,10 @@ registerGoalSourceLookup(taskId => useTaskStore.getState().tasks.find(t => t.id 
 // it can't, since this module pulls in expo-sqlite and already imports it. See
 // src/utils/blockerRegistry.ts for why this is a getter rather than a snapshot.
 registerTaskSource(() => useTaskStore.getState().tasks);
+// A pause ended by hand (useProjectStore.updateProject) is forgiven at once,
+// before the day it lifted is gone from `pausedUntil`.
+registerPauseEndListener((projectId, endedOn) =>
+  useTaskStore.getState().forgivePausedProjectStreaks(new Map([[projectId, endedOn]])));
 registerPersonTaskSource(() => useTaskStore.getState().tasks);
 
 // The list selectors above read the project lock at call time, and a selector

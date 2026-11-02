@@ -3604,6 +3604,47 @@ describe('checkAwayVacation', () => {
   });
 });
 
+// ─── forgivePausedProjectStreaks ────────────────────────────────────────────
+
+// A paused project's daily habit read as broken the morning the pause lifted,
+// where vacation forgave the same gap.
+describe('forgivePausedProjectStreaks', () => {
+  const dayOf = (iso: string | null) => (iso ? dayKeyOf(new Date(iso)) : null);
+  const habit = () => makeTask({
+    id: 'water', projectId: 'garden', recurrenceType: 'daily', streakCount: 12,
+    streakDate: new Date(2025, 5, 1, 4).toISOString(),
+  });
+  afterEach(() => { useProjectStore.setState({ projects: [] }); });
+
+  it('forgives a pause that ran out, dating the streak to the day before it lifted', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'garden', pausedUntil: '2025-06-08' })] });
+    useTaskStore.setState({ tasks: [habit()] });
+    useTaskStore.getState().forgivePausedProjectStreaks();
+    const task = useTaskStore.getState().tasks[0];
+    expect(dayOf(task.streakDate)).toBe('2025-06-07');
+    expect(task.streakCount).toBe(12);
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'water' }));
+  });
+
+  it('leaves a project still paused alone', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'garden', pausedUntil: '2999-01-01' })] });
+    useTaskStore.setState({ tasks: [habit()] });
+    useTaskStore.getState().forgivePausedProjectStreaks();
+    expect(dayOf(useTaskStore.getState().tasks[0].streakDate)).toBe('2025-06-01');
+  });
+
+  // Ended by hand, the day it lifted is gone from pausedUntil at once, so the
+  // project store tells this one first.
+  it('forgives a pause ended by hand, through the project store', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'garden', pausedUntil: '2999-01-01' })] });
+    useTaskStore.setState({ tasks: [habit()] });
+    useProjectStore.getState().updateProject('garden', { pausedUntil: null });
+    const today = getCurrentDayStart();
+    const yesterday = dayKeyOf(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1));
+    expect(dayOf(useTaskStore.getState().tasks[0].streakDate)).toBe(yesterday);
+  });
+});
+
 // ─── checkVacationExpiry ────────────────────────────────────────────────────
 
 describe('checkVacationExpiry', () => {

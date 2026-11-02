@@ -1797,6 +1797,8 @@ export function TodayScreen() {
           // mounted, so the morning check-in has to be asked for here.
           judgeMorningCheckInRef.current();
           useTaskStore.getState().checkVacationExpiry();
+          // A project's pause that ran out overnight, the same way.
+          useTaskStore.getState().forgivePausedProjectStreaks();
           // Straight after the expiry, the order maintenancePasses uses and for
           // its reason: opening the app on the morning you fly is the moment
           // this is for, and a trip ending as another starts must resolve in

@@ -80,3 +80,47 @@ export function isProjectPaused(projectId: string, todayKey: string): boolean {
 export function projectPausedUntil(projectId: string, todayKey: string): string | null {
   return pausedOn(todayKey).get(projectId) ?? null;
 }
+
+/**
+ * The day a pause ended, for each project whose pause has run out by
+ * `todayKey`: a dated `pausedUntil` on or before today. Planning never runs
+ * out by date, so it's left out. A pause stays stored once it has lifted, which
+ * is what lets the streak pass find it at the next launch.
+ */
+export function pauseEndsOn(projects: readonly Pick<Project, 'id' | 'pausedUntil'>[], todayKey: string): Map<string, string> {
+  const ends = new Map<string, string>();
+  for (const p of projects) {
+    if (p.pausedUntil === null || isPlanning(p) || isPausedOn(p, todayKey)) continue;
+    ends.set(p.id, p.pausedUntil);
+  }
+  return ends;
+}
+
+/**
+ * The day a pause ends when a project's `pausedUntil` changes from `before` to
+ * `after`, or null when no pause ends: there was none, or the project is still
+ * paused today. A pause that had already lifted ended on its own day; one cut
+ * short (End pause, the editor, Mark ready, an agent) ends today.
+ */
+export function pauseEndedByChange(before: string | null, after: string | null, todayKey: string): string | null {
+  if (before === null || after === before) return null;
+  if (after !== null && todayKey < after) return null;
+  return before < todayKey ? before : todayKey;
+}
+
+/**
+ * Who hears that a pause ended, so streaks it held can be forgiven before the
+ * day it lifted is lost from `pausedUntil`. Registered rather than imported for
+ * this module's reason: the task store can't be reached from the project store
+ * without a cycle, and the MCP server can't load the task store at all, so each
+ * registers its own. With nobody registered nothing happens.
+ */
+let pauseEndListener: ((projectId: string, endedOn: string) => void) | null = null;
+
+export function registerPauseEndListener(fn: ((projectId: string, endedOn: string) => void) | null): void {
+  pauseEndListener = fn;
+}
+
+export function notifyPauseEnded(projectId: string, endedOn: string): void {
+  pauseEndListener?.(projectId, endedOn);
+}
