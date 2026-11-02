@@ -527,15 +527,18 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         : null;
 
   const highlightRanges = useMemo(() => {
-    const ranges = [...draft.mentionSpans, ...draft.clauseSpans];
+    const ranges = [...draft.clauseSpans];
     if (activeMatch) ranges.push([activeMatch.matchStart, activeMatch.matchEnd]);
     return mergeRanges(ranges);
-  }, [draft.mentionSpans, draft.clauseSpans, activeMatch?.matchStart, activeMatch?.matchEnd]);
+  }, [draft.clauseSpans, activeMatch?.matchStart, activeMatch?.matchEnd]);
+  // A mention that has resolved to a person is settled: it keeps its color but
+  // loses the fill, which is left for what is still being typed or picked.
+  const settledMentionRanges = useMemo(() => mergeRanges([...draft.mentionSpans]), [draft.mentionSpans]);
   // The input is one line and the overlay is a wrapping Text, so past the field's
   // width the overlay grows a second line the input never has, and it spills over
   // what sits below. A title that has outgrown the field shows the plain input
   // instead (highlights are lost, but what's typed stays where the caret is).
-  const wantsOverlay = highlightRanges.length > 0;
+  const wantsOverlay = highlightRanges.length > 0 || settledMentionRanges.length > 0;
   const titleFits = inputW === 0 || titleW <= inputW;
   const hasOverlay = wantsOverlay && titleFits;
 
@@ -1354,8 +1357,10 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               <HighlightedText
                 text={text}
                 ranges={highlightRanges}
+                quietRanges={settledMentionRanges}
                 style={[styles.input, styles.inputOverlay]}
                 highlightStyle={styles.inputHighlight}
+                quietStyle={styles.inputMention}
                 pointerEvents="none"
               />
             )}
@@ -1781,6 +1786,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   inputOverlay: { position: 'absolute', top: 0, left: 0, right: 0 },
   inputHidden: { color: 'transparent' },
   inputHighlight: { color: colors.accent, fontWeight: fontWeight.semibold, backgroundColor: colors.accentSubtle },
+  inputMention: { color: colors.accent, fontWeight: fontWeight.semibold },
   measureWrap: { position: 'absolute', top: 0, left: 0, opacity: 0 },
   measureText: { fontSize: font.xl, fontWeight: fontWeight.semibold },
   // Wide enough that the title never wraps while it's being measured, with the

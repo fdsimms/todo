@@ -1783,7 +1783,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const titleSuggestionDescription = activeTitleSuggestion ? describeTitleSuggestion(activeTitleSuggestion, rainUnit, hhmm => formatHHMM(hhmm, use24HourTime)) : null;
 
   const titleHighlightRanges = useMemo(() => {
-    const ranges = [...titleMentionRanges];
+    const ranges: [number, number][] = [];
     if (activeParsedSchedule) ranges.push([activeParsedSchedule.matchStart, scheduleMatchEnd]);
     if (activeCategoryTags) ranges.push([activeCategoryTags.matchStart, activeCategoryTags.matchEnd]);
     // A match that is the whole line (a chain) gets no highlight: see quick
@@ -1792,8 +1792,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       ranges.push([activeSuggestionMatch.matchStart, activeSuggestionMatch.matchStart + activeSuggestionMatch.matchedText.length]);
     }
     return mergeRanges(ranges);
-  }, [titleMentionRanges, activeParsedSchedule, scheduleMatchEnd, activeCategoryTags, activeSuggestionMatch]);
-  const hasTitleOverlay = titleHighlightRanges.length > 0;
+  }, [activeParsedSchedule, scheduleMatchEnd, activeCategoryTags, activeSuggestionMatch]);
+  // Mentions here are already linked people, so they are settled: color, no fill.
+  const hasTitleOverlay = titleHighlightRanges.length > 0 || titleMentionRanges.length > 0;
 
   // "Call Kristen", "Text the plumber", "Email the landlord" — a title that
   // implies a contact action with no data to power it. Purely a discoverability
@@ -4425,8 +4426,10 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           <HighlightedText
             text={title}
             ranges={titleHighlightRanges}
+            quietRanges={titleMentionRanges}
             style={[styles.titleInput, styles.titleOverlay]}
             highlightStyle={styles.titleHighlight}
+            quietStyle={styles.titleMention}
             pointerEvents="none"
           />
         )}
@@ -9075,6 +9078,9 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   titleHighlight: {
     color: colors.accent,
     backgroundColor: colors.accentSubtle,
+  },
+  titleMention: {
+    color: colors.accent,
   },
   scheduleBanner: {
     marginHorizontal: spacing.md,
