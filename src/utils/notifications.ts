@@ -3,7 +3,8 @@ import { isProjectLockedAtAll } from './projectLock';
 import { placeGateAllows, placeTrustedUntil, readPlaceFix } from './placeGate';
 import type { PermissionResponse } from 'expo-modules-core';
 import { AppState, Platform } from 'react-native';
-import type { RestTimer, StepTimer, Task } from '../types';
+import type { CheckIn, RestTimer, StepTimer, Task } from '../types';
+import { CHECK_IN_ACTIONS, CHECK_IN_ANSWERS, answerLabel, checkInQuestion, checkInTitle } from './checkIns';
 import type { FocusSession } from '../types';
 import { isTimedTask, isTimerRunning, timerRemaining } from './timer';
 import {
@@ -208,6 +209,19 @@ Notifications.setNotificationCategoryAsync(TASK_REMINDER_CATEGORY, [
     options: { opensAppToForeground: true },
   },
 ]).catch(() => {});
+
+// The Better / Same / Worse buttons on a check-in. Registered at module scope
+// for the same reason as the task-reminder category above.
+export const CHECK_IN_CATEGORY = 'check-in';
+
+Notifications.setNotificationCategoryAsync(
+  CHECK_IN_CATEGORY,
+  CHECK_IN_ANSWERS.map(a => ({
+    identifier: CHECK_IN_ACTIONS[a],
+    buttonTitle: answerLabel(a),
+    options: { opensAppToForeground: true },
+  })),
+).catch(() => {});
 
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (Platform.OS === 'web') return false;
@@ -452,6 +466,42 @@ export async function scheduleMedicationOkAgain(key: string, name: string, at: D
       date: at,
     },
   });
+}
+
+function checkInNotificationId(id: string): string {
+  return `check-in-${id}`;
+}
+
+/**
+ * The question a check-in asks, delivered when its wait is up. Like the "OK
+ * again" notification it ignores quiet hours: it was asked for at a specific
+ * moment after a dose or a food. One per check-in, with answer buttons.
+ */
+export async function scheduleCheckIn(checkIn: CheckIn): Promise<void> {
+  if (isDemoModeActive()) return;
+  const at = new Date(checkIn.dueAt);
+  await Notifications.cancelScheduledNotificationAsync(checkInNotificationId(checkIn.id)).catch(() => {});
+  if (at.getTime() <= Date.now()) return;
+  await Notifications.scheduleNotificationAsync({
+    identifier: checkInNotificationId(checkIn.id),
+    content: {
+      title: checkInTitle(checkIn),
+      body: checkInQuestion(checkIn),
+      data: { checkInId: checkIn.id },
+      categoryIdentifier: CHECK_IN_CATEGORY,
+      sound: true,
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: at,
+    },
+  });
+}
+
+export async function cancelCheckIn(id: string): Promise<void> {
+  if (isDemoModeActive()) return;
+  await Notifications.cancelScheduledNotificationAsync(checkInNotificationId(id)).catch(() => {});
 }
 
 export async function cancelMedicationOkAgain(key: string): Promise<void> {

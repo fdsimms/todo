@@ -26,6 +26,7 @@ import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useGymStore } from '../store/useGymStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
+import { useCheckInStore } from '../store/useCheckInStore';
 import { installSupplementDoseEffects } from './supplementDoseSync';
 import { useRewardStore } from '../store/useRewardStore';
 import { useUnlockStore } from '../store/useUnlockStore';
@@ -4011,13 +4012,26 @@ function seedAsNeededDoses(today: Date): void {
   // comparison's earlier fortnight; 11/9/8 are the headache days.
   const takenOn = [30, 25, 22, 11, 9, 8, 3];
   for (const back of takenOn) {
-    addLog({
+    const dose = addLog({
       name: 'Ibuprofen',
       amount: 400,
       unit: 'mg',
       asNeeded: true,
       at: setHours(subDays(today, back), 15),
     });
+    // The most recent dose has its check-in answered, so a dose row shows one.
+    if (dose && back === 3) {
+      const checkIns = useCheckInStore.getState();
+      const asked = checkIns.add({
+        sourceKind: 'medication',
+        sourceId: dose.id,
+        subject: 'Ibuprofen',
+        about: 'headache',
+        dueAt: setHours(subDays(today, back), 16).toISOString(),
+        dayKey: dose.dayKey,
+      });
+      checkIns.answer(asked.id, 'better', setHours(subDays(today, back), 16));
+    }
   }
   // A finished course, archived, so the Archived section on the Medications
   // screen has a row and "What you take" shows only what is still current.

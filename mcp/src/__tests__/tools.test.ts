@@ -132,6 +132,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     medicationLogs: () => [],
     medicationSummary: (log: MedicationLog) => log.name,
     medicationIngredients: () => null,
+    medicationCheckIn: () => null,
     medicationSettings: () => [],
     // No store configured is the ordinary state for a replica pointed at a
     // file somebody copied, and the tool layer never calls this anyway.
@@ -995,6 +996,17 @@ describe('listMedicationLogs', () => {
     );
     expect(result.logs[0].otherIngredients).toBe('L-theanine 200 mg');
     expect(result.logs[1].otherIngredients).toBeUndefined();
+  });
+
+  it('carries a dose\'s check-in, and leaves it out when none was started', () => {
+    const result = listMedicationLogs(
+      stubReplica({
+        medicationLogs: () => [dose({ id: 'd1', name: 'Aleve' }), dose({ id: 'd2', name: 'Zinc' })],
+        medicationCheckIn: (log: MedicationLog) => (log.id === 'd1' ? { dueAt: '2026-11-02T15:00:00.000Z', answer: 'better' as const } : null),
+      })
+    );
+    expect(result.logs[0].checkIn).toEqual({ dueAt: '2026-11-02T15:00:00.000Z', answer: 'better' });
+    expect(result.logs[1].checkIn).toBeUndefined();
   });
 
   it('omits asNeeded when a dose was scheduled', () => {

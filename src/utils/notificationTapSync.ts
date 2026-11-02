@@ -8,6 +8,8 @@ import { routeNotificationTap, type NotificationTapData } from './notificationTa
 import { useSettingsStore } from '../store/useSettingsStore';
 import { speakAgenda } from './agendaSpeech';
 import { runOrHoldForDemo } from './demoHold';
+import { answerCheckIn, askCheckIn } from './checkInRecording';
+import { resetToMedications } from '../navigation/navigationRef';
 
 // Tapping a reminder (or a fired AlarmKit alarm, which launches the app the
 // same way a notification tap does) used to do nothing app-specific — the
@@ -79,6 +81,13 @@ export function useNotificationTapSync(): void {
             reminderUtcOffsetMinutes: new Date().getTimezoneOffset(),
           });
           resetToToday();
+          return;
+        case 'checkIn':
+          // A button answers it; a plain tap asks in the app. Either way the
+          // person lands on the medication log the answer is shown in.
+          if (route.answer) answerCheckIn(route.checkInId, route.answer);
+          else askCheckIn(route.checkInId);
+          resetToMedications();
           return;
         case 'open':
           resetToToday();

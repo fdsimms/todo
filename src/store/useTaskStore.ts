@@ -207,6 +207,7 @@ import { useFastStore } from './useFastStore';
 import { useWorkoutStore } from './useWorkoutStore';
 import { useGymStore } from './useGymStore';
 import { useMedicationStore } from './useMedicationStore';
+import { useCheckInStore } from './useCheckInStore';
 import { registerGoalSourceLookup, useRewardStore } from './useRewardStore';
 import { useUnlockStore } from './useUnlockStore';
 import { guardChargeSeed, guardingReward } from '../utils/rewardGuard';
@@ -3528,6 +3529,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // report a demo session's invented doses as a real person's record of what
     // they have taken.
     timedPart('Medication', () => useMedicationStore.getState().initialize());
+    // Follow-ups on doses and foods; same swap-the-database fan-out.
+    timedPart('CheckIn', () => useCheckInStore.getState().initialize());
     // What a supplement dose adds to the food log. Here because this is where
     // the app's stores come up together, and the medication store can't import
     // the food log's itself (see `DoseEffects`).
