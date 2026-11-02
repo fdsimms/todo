@@ -4222,7 +4222,7 @@ function seedTemplates(): void {
     },
     // One subtask per medicine in the medication log, read on the day the
     // template runs rather than typed in, so it can't go stale.
-    { title: 'Bring your medicines', dueOffsetDays: -1, category: 'Home', medicationChecklist: true },
+    { title: 'Bring medicines', dueOffsetDays: -1, category: 'Home', medicationChecklist: true },
     // A count off the dates, and the same count halved — one shirt a day, one
     // pair of jeans per two.
     { title: 'Pack {nights} shirts', dueOffsetDays: -1, category: 'Home' },
