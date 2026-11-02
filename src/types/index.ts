@@ -4774,6 +4774,13 @@ export interface Task {
   // Keeping or changing the linked alarm from the row's card checks the task
   // off, unless this is set.
   alarmLinkLeavesOpen?: boolean;
+  // A template to run from this task: the row shows "Run <template>" and opens
+  // the template's apply sheet, so its questions are answered when they can be
+  // (a packing list before the trip is decided, say) rather than when the task
+  // is made. Running it checks the task off. The id is a template's, which
+  // syncs; a deleted template leaves the id in place and the row says so
+  // instead of hiding the button. Null = none. See src/utils/templateLink.ts.
+  templateId?: string | null;
 
   // Optional freeform text explaining what the completion timer reminder is
   // for — "Don't eat for 2 hours" — shown as the notification body instead of

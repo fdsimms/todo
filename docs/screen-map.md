@@ -485,7 +485,7 @@ Where each component can appear.
 - `src/components/TemplateItemBulkBar.tsx` — on TemplateDetailScreen
 - `src/components/TemplateItemEditor.tsx` — on TemplateDetailScreen
 - `src/components/TemplateItemQuickAdd.tsx` — on TemplateDetailScreen
-- `src/components/TemplatePickerSheet.tsx` — on CalendarScreen, ProjectDetailScreen, ProjectsScreen, TodayScreen
+- `src/components/TemplatePickerSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
 - `src/components/TemplateQuestionItemsSheet.tsx` — on TemplateDetailScreen, TemplatesScreen
 - `src/components/TemplateQuestionSheet.tsx` — on TemplateDetailScreen, TemplatesScreen
 - `src/components/TemplateSuggestionsSheet.tsx` — on TemplateDetailScreen

@@ -9,6 +9,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { TaskTemplate, TemplateContainer, TemplateQuestion, TemplateSchedule, TemplateScheduleFrequency } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { linkedTaskCounts, linkedTasksNote } from '../utils/templateLink';
 import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -135,6 +136,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
     haptics.warning();
     const referencing = findTemplatesReferencing(templates, template.id);
     const base = `Delete “${template.name}”? Tasks already created from it are unaffected. You can undo it right after.`;
+    const linkedNote = linkedTasksNote(linkedTaskCounts(useTaskStore.getState().tasks, [template.id]).get(template.id) ?? 0);
     const message = referencing.length === 0
       ? base
       : referencing.length === 1
@@ -142,7 +144,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
         : `${base} It’s used inside ${referencing.length} other templates (${referencing.map(t => t.name).join(', ')}), which will show a warning until you remove or replace the reference.`;
     confirmDelete({
       title: 'Delete template',
-      message,
+      message: linkedNote ? `${message} ${linkedNote}` : message,
       onConfirm: () => {
         animateLayout();
         deleteTemplate(template.id);

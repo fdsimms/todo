@@ -1326,6 +1326,13 @@ describe('demo mode', () => {
 
   // A blank is invisible until a template declares one, so a demo with no
   // `{name}` in it says the app can't do this at all.
+  it('seeds a task that runs a template later', () => {
+    useDemoStore.getState().enterDemoMode();
+    const task = useTaskStore.getState().tasks.find(t => t.title === 'Run the trip prep for Lisbon');
+    expect(task?.templateId).toBeTruthy();
+    expect(useTemplateStore.getState().templates.some(t => t.id === task?.templateId)).toBe(true);
+  });
+
   it('seeds a template whose items declare blanks, including the run one', () => {
     useDemoStore.getState().enterDemoMode();
     const templates = useTemplateStore.getState().templates;

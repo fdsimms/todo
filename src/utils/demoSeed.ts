@@ -2479,6 +2479,13 @@ export function seedDemoData(): void {
 
   // --- A template, and the blanks it fills in at apply time ----------------
   seedTemplates();
+  // A task that runs a template when its questions can be answered: the row
+  // reads "Run Trip prep" instead of the trip details being asked now.
+  const tripPrep = useTemplateStore.getState().templates.find(t => t.name === 'Trip prep');
+  if (tripPrep) {
+    const runPrep = addTask({ title: 'Run the trip prep for Lisbon', dueDate: addDays(today, 30).toISOString(), templateId: tripPrep.id });
+    addExistingToProject(runPrep.id, lisbon.id);
+  }
 
   // --- Groceries, recipes, the week's meals and the fridge -----------------
   // Ordered by what points at what: recipes first (grocery rows can be
