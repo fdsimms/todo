@@ -279,6 +279,34 @@ async function pickClipboardPhoto(): Promise<RecipePhotoResult> {
   };
 }
 
+/**
+ * A photo already on disk (one an in-app camera just took), sized and encoded
+ * the same way a picked one is. `pickRecipePhoto` is the picker's door into the
+ * same step; this is the door for a caller that owns the camera itself.
+ */
+export async function recipePhotoFromFile(uri: string, width: number, height: number): Promise<RecipePhotoResult> {
+  try {
+    const encoded = await encodePickedPhoto(uri, width, height);
+    if (!encoded.ok) return { status: 'failed', message: encoded.message };
+    return {
+      status: 'ok',
+      photo: {
+        base64: encoded.base64,
+        mediaType: encoded.mediaType,
+        width: encoded.width,
+        height: encoded.height,
+        sourceUri: uri,
+      },
+    };
+  } catch (e) {
+    logPickFailure('recipe-photo-file', e);
+    return {
+      status: 'failed',
+      message: e instanceof Error && e.message ? e.message : 'Couldn’t read that photo. Try again.',
+    };
+  }
+}
+
 /** Takes, picks, or pastes a photo and returns it sized and encoded for the Messages API. */
 export async function pickRecipePhoto(source: RecipePhotoSource): Promise<RecipePhotoResult> {
   try {

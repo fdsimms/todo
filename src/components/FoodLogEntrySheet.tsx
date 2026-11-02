@@ -23,10 +23,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { pickRecipePhoto, type RecipePhoto } from '../utils/recipePhoto';
-import { alertPermissionOff } from '../utils/permissionAlert';
-import { afterMenuDismissed } from '../utils/sheetModal';
-import { useActionMenu } from '../hooks/useActionMenu';
+import type { RecipePhoto } from '../utils/recipePhoto';
+import { captureModes, type CaptureMode } from '../utils/foodCapture';
 import { SheetModal } from './SheetModal';
 import { LimitImpactLines } from './LimitImpactLines';
 import { useLimitImpact } from '../hooks/useLimitImpact';
@@ -111,6 +109,7 @@ import { EmptyNote } from './EmptyNote';
 import { InlineAction } from './InlineAction';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { LabelSubjectSheet, type LabelSubject } from './LabelSubjectSheet';
+import { FoodCameraSheet } from './FoodCameraSheet';
 import { PressableScale } from './PressableScale';
 import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { EstimatePanel, type EstimateLogAction } from './EstimatePanel';
@@ -303,8 +302,11 @@ interface Props {
    * is most often reached for *after* the search has come up empty: the sheet
    * is open, the packet is in hand, and cancelling out to find a header button
    * is the step this removes.
+   *
+   * Called with the barcode when the food log's own camera read one, so the
+   * scanner opens on its lookup; with nothing, it opens empty and scans live.
    */
-  onScan?: () => void;
+  onScan?: (code?: string) => void;
   /**
    * Photographs the nutrition panel of a packaged food that has no barcode
    * entry, handing off to `ScanToLogFlow`'s label panel with the name to file
@@ -1896,56 +1898,45 @@ export function FoodLogEntrySheet({
   };
 
   /**
-   * "Photograph your meal": a new photo or one already in the library, then
-   * the estimate panel asking about the photo, with whatever is typed in the
-   * field beside it. The model proposes and nothing is logged until the
-   * panel's Log, the same as a typed estimate.
+   * The one camera ("Scan or photograph"). What it hands back is routed by the
+   * mode it was in: a meal photo goes straight to the estimate panel, with
+   * whatever is typed in the field beside it (the model proposes and nothing is
+   * logged until the panel's Log); a package photo asks which food it is first;
+   * a barcode goes to the scanner as its first row.
    */
-  const actionMenu = useActionMenu();
-  const takeMealPhoto = async (source: 'camera' | 'library') => {
-    // Started from the action menu, which is still leaving; the system
-    // picker can't present until it has.
-    await afterMenuDismissed();
-    const picked = await pickRecipePhoto(source);
-    if (picked.status === 'canceled') return;
-    if (picked.status === 'denied') {
-      alertPermissionOff(
-        source === 'camera' ? 'Camera access is off' : 'Photo access is off',
-        source === 'camera'
-          ? 'Turn it on in Settings to photograph a meal, or type what you ate.'
-          : 'Turn it on in Settings to choose a photo of a meal, or type what you ate.',
-      );
-      return;
-    }
-    if (picked.status === 'failed') {
-      Alert.alert(source === 'camera' ? 'Couldn’t open the camera' : 'Couldn’t open that photo', picked.message);
-      return;
-    }
-    setEstimatePhoto(picked.photo);
-    setEstimateKey(k => k + 1);
-    setEstimateOpen(true);
-  };
-  const startMealPhoto = () => {
-    haptics.tap();
-    Keyboard.dismiss();
-    actionMenu.open({
-      title: 'Photograph your meal',
-      message: 'Take a photo or choose one you already have to estimate what you ate.',
-      actions: [
-        { key: 'camera', label: 'Take a photo', icon: 'camera-outline', onPress: () => { void takeMealPhoto('camera'); } },
-        { key: 'library', label: 'Choose a photo', icon: 'images-outline', onPress: () => { void takeMealPhoto('library'); } },
-      ],
-    });
-  };
-
+  const [cameraOpen, setCameraOpen] = useState(false);
   // Asked every time, with the search field's text as Food: a typed name may
   // already have the brand in it, and only this sheet can say which part is which.
   const [labelAsk, setLabelAsk] = useState(false);
-  const startLabelPhoto = () => {
-    if (!onPhotographLabel) return;
+  // The photographed label the name is being asked for.
+  const [labelPhoto, setLabelPhoto] = useState<RecipePhoto | null>(null);
+  // Whatever the camera was left open on does not outlive this sheet.
+  useEffect(() => {
+    if (visible) return;
+    setCameraOpen(false);
+    setLabelAsk(false);
+    setLabelPhoto(null);
+  }, [visible]);
+  const cameraModes = captureModes({ package: !!onScan && !!onPhotographLabel, meal: !!canEstimate });
+  const openCamera = () => {
     haptics.tap();
     Keyboard.dismiss();
+    setCameraOpen(true);
+  };
+  const handleCameraPhoto = (mode: CaptureMode, photo: RecipePhoto) => {
+    setCameraOpen(false);
+    if (mode === 'meal') {
+      setEstimatePhoto(photo);
+      setEstimateKey(k => k + 1);
+      setEstimateOpen(true);
+      return;
+    }
+    setLabelPhoto(photo);
     setLabelAsk(true);
+  };
+  const handleCameraCode = (gtin: string) => {
+    setCameraOpen(false);
+    onScan?.(gtin);
   };
 
   /**
@@ -2233,14 +2224,15 @@ export function FoodLogEntrySheet({
   // figures, and these are the way to one that doesn't. Each leaves while its
   // own results are open, which have their own way to search again.
   const offerDatabase = hasQuery && !dbOpen;
+  // One tile for the camera, named for what it can be pointed at: a package
+  // (barcode or label) when that is offered, else only the meal.
   const startTiles: { label: string; icon: React.ComponentProps<typeof Ionicons>['name']; onPress: () => void }[] = [];
-  if (onScan) startTiles.push({ label: 'Scan a barcode', icon: 'barcode-outline', onPress: () => { haptics.tap(); Keyboard.dismiss(); onScan(); } });
-  if (onPhotographLabel) startTiles.push({ label: 'Photograph a label', icon: 'camera-outline', onPress: startLabelPhoto });
-  if (canEstimate) startTiles.push({ label: 'Photograph your meal', icon: 'restaurant-outline', onPress: startMealPhoto });
+  if (cameraModes.length > 0) {
+    startTiles.push(cameraModes.includes('package')
+      ? { label: 'Scan or photograph', icon: 'camera-outline', onPress: openCamera }
+      : { label: 'Photograph your meal', icon: 'restaurant-outline', onPress: openCamera });
+  }
   if (onSavedMeal) startTiles.push({ label: 'Log a saved meal', icon: 'bookmark-outline', onPress: () => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); } });
-  const startTileRows = startTiles.length >= 4
-    ? [startTiles.slice(0, 2), startTiles.slice(2)]
-    : [startTiles];
   const offerEstimate = hasQuery && !!canEstimate && !estimateOpen;
   const lookupOffers = offerDatabase || offerEstimate ? (
     <View style={styles.lookupOffers}>
@@ -2932,13 +2924,13 @@ export function FoodLogEntrySheet({
                   is most often reached for after a search has come up empty,
                   and this is where the eye already is. With nothing typed it
                   is the first tile below instead, so it is never offered twice. */}
-              {!!onScan && hasQuery && (
+              {cameraModes.length > 0 && hasQuery && (
                 <PressableScale
                   style={styles.scanButton}
-                  onPress={() => { haptics.tap(); Keyboard.dismiss(); onScan(); }}
-                  accessibilityLabel="Scan a barcode"
+                  onPress={openCamera}
+                  accessibilityLabel="Scan or photograph"
                 >
-                  <Ionicons name="barcode-outline" size={iconSize.sm} color={colors.accentText} />
+                  <Ionicons name="camera-outline" size={iconSize.sm} color={colors.accentText} />
                 </PressableScale>
               )}
             </View>
@@ -2967,20 +2959,14 @@ export function FoodLogEntrySheet({
                 the list. The two ways past what this app has figures for are
                 what the typed text can be sent to, and they appear then, as
                 the first rows of the list (`lookupOffers`). */}
-            {!hasQuery && (!!onScan || !!onPhotographLabel || !!canEstimate || !!onSavedMeal) && (
+            {!hasQuery && startTiles.length > 0 && (
               <>
                 <Text style={styles.startLabel}>OR START FROM</Text>
-                {/* Two to a row once there are four: four across left each
-                    label a word or two wide at a larger text size. The pairs
-                    are rows of their own rather than one wrapping row, since
-                    a wrapped row sized the tiles by their labels. */}
-                {startTileRows.map((row, i) => (
-                  <View key={i} style={[styles.startRow, i < startTileRows.length - 1 && styles.startRowGap]}>
-                    {row.map(t => (
-                      <StartTile key={t.label} styles={styles} colors={colors} icon={t.icon} label={t.label} onPress={t.onPress} />
-                    ))}
-                  </View>
-                ))}
+                <View style={styles.startRow}>
+                  {startTiles.map(t => (
+                    <StartTile key={t.label} styles={styles} colors={colors} icon={t.icon} label={t.label} onPress={t.onPress} />
+                  ))}
+                </View>
               </>
             )}
             {!!onDeclineMeal && (
@@ -3097,11 +3083,17 @@ export function FoodLogEntrySheet({
         onClose={() => setShareAsk(null)}
       />
       {overlays}
-      {actionMenu.element}
+      <FoodCameraSheet
+        visible={visible && cameraOpen}
+        modes={cameraModes}
+        onClose={() => setCameraOpen(false)}
+        onBarcode={onScan ? handleCameraCode : undefined}
+        onPhoto={handleCameraPhoto}
+      />
       <LabelSubjectSheet
         visible={labelAsk}
         initialName={query.trim()}
-        onNext={subject => onPhotographLabel?.(subject)}
+        onNext={subject => { onPhotographLabel?.({ ...subject, photo: labelPhoto }); setLabelPhoto(null); }}
         onClose={() => setLabelAsk(false)}
       />
       <NumberPadAccessory onOperator={amountOperators.onOperator} />
@@ -3354,7 +3346,6 @@ function makeStyles(colors: Colors) {
       marginHorizontal: spacing.md,
       marginBottom: spacing.md,
     },
-    startRowGap: { marginBottom: spacing.sm },
     // minHeight, not height: a larger system text size wraps the label onto a
     // third line and the tile has to grow with it.
     startTile: {

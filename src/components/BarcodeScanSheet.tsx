@@ -330,6 +330,13 @@ interface Props {
    * its own `panelFor`.
    */
   onPhotographLabel?: (subject: LabelSubject) => void;
+  /**
+   * A barcode the food log's camera already read, added as the first row the
+   * moment the sheet opens, so the person lands on the lookup of what they just
+   * scanned and not on an empty list. Already checked and normalized. The
+   * scanner stays live for more, as it always did.
+   */
+  initialCode?: string | null;
 }
 
 /**
@@ -424,7 +431,7 @@ function FieldInput({
   );
 }
 
-export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotographLabel }: Props) {
+export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotographLabel, initialCode }: Props) {
   // ==== store bindings and environment (scanner module, keyboard scroll) ====
   const colors = useColors();
   /**
@@ -650,6 +657,16 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
     },
     [addScan]
   );
+
+  // The code the food log's camera read: its first row, once per opening. After
+  // the close-time reset, which clears the dedupe set this adds to.
+  useEffect(() => {
+    if (!visible || !initialCode) return;
+    if (scannedGtinsRef.current.has(initialCode)) return;
+    scannedGtinsRef.current.add(initialCode);
+    void addScan(initialCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   // ==== typed entry ====
   /**

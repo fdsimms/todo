@@ -111,7 +111,7 @@ export function LogMealEntrySheet() {
    * isn't today, which a stamped `new Date()` never could.
    */
   const [scan, setScan] = useState<
-    { slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null } | null
+    { slot: MealSlot | null; dayKey: string; mealPlanEntryId: string | null; code: string | null } | null
   >(null);
   // The food whose nutrition label is being photographed, with what `scan`
   // captures because `pending` is gone once the panel is saved.
@@ -127,8 +127,8 @@ export function LogMealEntrySheet() {
         initialQuery={pending?.label ?? ''}
         mealPlanEntryId={mealPlanEntryId}
         onClose={() => setPending(null)}
-        onScan={featureHidden('barcodeScanning', simpleMode) ? undefined : () => {
-          setScan({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
+        onScan={featureHidden('barcodeScanning', simpleMode) ? undefined : code => {
+          setScan({ slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId, code: code ?? null });
         }}
         onPhotographLabel={featureHidden('barcodeScanning', simpleMode) ? undefined : subject => {
           setLabel({ subject, slot: pending?.slot ?? null, dayKey: pending?.dayKey ?? dayKeyOf(getLogicalToday()), mealPlanEntryId });
@@ -147,6 +147,7 @@ export function LogMealEntrySheet() {
               mealPlanEntryId={(scan ?? label)?.mealPlanEntryId ?? null}
               onClose={() => setScan(null)}
               onLogged={() => setPending(null)}
+              initialCode={scan?.code ?? null}
               label={label?.subject ?? null}
               onLabelClose={() => setLabel(null)}
             />

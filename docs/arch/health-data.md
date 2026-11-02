@@ -1116,7 +1116,7 @@ never a silent no-op. Deleting the task leaves its entries, since the food was e
 
 ### A photo of the plate is a description in another form
 
-"Photograph your meal" on the add sheet sends a photo to the same
+The Meal mode of the add sheet's camera ("Scan or photograph", `FoodCameraSheet`) sends a photo to the same
 `estimateMealNutrition` call as a typed description, on the same switch
 (`nutritionEstimate`), into the same panel. Everything above holds unchanged:
 the model proposes, the panel's Log is the confirmation, and the result is
