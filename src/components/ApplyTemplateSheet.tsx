@@ -404,6 +404,16 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   const anchorless = missingAnchors.length > 0;
   const canApply = selectedCount > 0 && !anchorless;
 
+  // A date row is asked for only when something reads it: an item counting days
+  // from that anchor, a number question worked out from the two dates, or the
+  // forecast line (which spans both). Judged over the whole tree rather than
+  // the selection, so rows don't appear and vanish as items are ticked.
+  const datesAreRead = visibleQuestions.some(q => q.kind === 'number' && q.fromDates !== 'none') || wantsForecast;
+  const anchorUsedByItems = (which: 'start' | 'end') => flatLeaves.some(({ item: i }) =>
+    i.anchor === which && (i.dueOffsetDays !== null || i.deferOffsetDays !== null));
+  const showStartRow = datesAreRead || anchorUsedByItems('start');
+  const showEndRow = datesAreRead || anchorUsedByItems('end');
+
   // Derived off the whole tree rather than the current selection, so the field
   // and its hint don't appear and disappear as items are ticked.
   const selectedLeafItems = flatLeaves.map(l => l.item);
@@ -689,25 +699,29 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
               days away, rather than for the anchor they feed. Two rows either
               way, so the relabel costs nothing and "Leaving" answers the
               question "start of what?" that "Start date" leaves open. */}
-          <AnchorRow
-            icon={away ? 'airplane-outline' : 'play-outline'}
-            label={away ? 'Leaving' : 'Start date'}
-            hint='Items that count days from the start are dated from this day.'
-            value={startAnchor}
-            onPress={() => openCalendar('start')}
-            onClear={() => setStartAnchor(null)}
-          />
-          <View style={styles.inlineSep} />
-          <AnchorRow
-            icon={away ? 'home-outline' : 'flag-outline'}
-            label={away ? 'Coming back' : 'End date'}
-            hint='Items that count days from the end are dated from this day.'
-            value={endAnchor}
-            onPress={() => openCalendar('end')}
-            onClear={() => setEndAnchor(null)}
-          />
+          {showStartRow && (
+            <AnchorRow
+              icon={away ? 'airplane-outline' : 'play-outline'}
+              label={away ? 'Leaving' : 'Start date'}
+              hint='Items that count days from the start are dated from this day.'
+              value={startAnchor}
+              onPress={() => openCalendar('start')}
+              onClear={() => setStartAnchor(null)}
+            />
+          )}
+          {showStartRow && showEndRow && <View style={styles.inlineSep} />}
+          {showEndRow && (
+            <AnchorRow
+              icon={away ? 'home-outline' : 'flag-outline'}
+              label={away ? 'Coming back' : 'End date'}
+              hint='Items that count days from the end are dated from this day.'
+              value={endAnchor}
+              onPress={() => openCalendar('end')}
+              onClear={() => setEndAnchor(null)}
+            />
+          )}
 
-          <View style={styles.inlineSep} />
+          {(showStartRow || showEndRow) && <View style={styles.inlineSep} />}
 
           {/* Item checklist, including any nested templates' items indented beneath their ref row */}
           <View>
