@@ -21,8 +21,8 @@ import {
  * **Placement, not visibility.** A task shows on its day whether or not it's
  * actionable there: vacation-paused, blocked, deferred past it, hidden behind a
  * time segment. The question a grid answers is "what date is this on", and the
- * answer doesn't change because the task can't be started yet — the same call
- * `pinnedTasks()` makes for the pinned block. `isTaskVisible` is for Today.
+ * answer doesn't change because the task can't be started yet.
+ * `isTaskVisible` is for Today.
  *
  * **The reset time doesn't reach this module, on purpose.** A stored date's
  * logical day is `getTaskDayStart`, which only moves the *clock time* within

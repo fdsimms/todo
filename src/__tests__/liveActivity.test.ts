@@ -425,6 +425,21 @@ describe('buildTimerRuns', () => {
     });
   });
 
+  it("shows a dish's step timer in place of its total cook time, and leaves prep and other dishes alone", () => {
+    const recipes = [
+      makeRecipe({ id: 'r1', timerStartedAt: startedAgo(600), prepMinutes: 10, prepTimerStartedAt: startedAgo(30) }),
+      makeRecipe({ id: 'r2', timerStartedAt: startedAgo(60) }),
+    ];
+    const runs = buildTimerRuns([], recipes, [makeStepTimer({ recipeId: 'r1' })], { enabled: true });
+    expect(runs.map(r => r.key).sort()).toEqual(['cook:r2', 'prep:r1', 'step:st1']);
+  });
+
+  it('brings the total cook time back when the step timer is paused', () => {
+    const recipes = [makeRecipe({ id: 'r1', timerStartedAt: startedAgo(600) })];
+    const paused = makeStepTimer({ startedAt: null, elapsedSeconds: 30 });
+    expect(buildTimerRuns([], recipes, [paused], { enabled: true }).map(r => r.key)).toEqual(['cook:r1']);
+  });
+
   it('ignores a paused step timer', () => {
     const paused = makeStepTimer({ startedAt: null, elapsedSeconds: 120 });
     expect(buildTimerRuns([], [], [paused], { enabled: true })).toEqual([]);

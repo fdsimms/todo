@@ -244,6 +244,24 @@ describe('the project writes, against a real database', () => {
     expect(() => tools.updateProject(real, id, { pausedUntil: '2001-01-01' })).toThrow(/after today/);
   });
 
+  // The phone forgives through its own task store's listener, which this
+  // server can't load: ending a pause here forgave nothing and the habit read
+  // as broken.
+  it('forgives the streaks a pause held when it is ended here', () => {
+    const id = plan();
+    tools.updateProject(real, id, { pausedUntil: '2099-01-01' });
+    const habit = real.createTask({ title: 'Water the beds', projectId: id, recurrenceType: 'daily' });
+    const longAgo = new Date(2026, 0, 2, 4).toISOString();
+    raw().runSync('UPDATE tasks SET streak_count = 12, streak_date = ? WHERE id = ?', [longAgo, habit.id]);
+    real.refresh();
+
+    tools.updateProject(real, id, { pausedUntil: null });
+
+    const after = real.taskById(habit.id)!;
+    expect(after.streakCount).toBe(12);
+    expect(new Date(after.streakDate!).getTime()).toBeGreaterThan(new Date(longAgo).getTime());
+  });
+
   it('switches a project to group on Today and back, showing the flag only while it is on', () => {
     const id = plan();
     expect(tools.updateProject(real, id, { groupOnToday: true }).project).toMatchObject({ groupOnToday: true });
