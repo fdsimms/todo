@@ -6,6 +6,7 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { format } from 'date-fns/format';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { EmergencyReleaseSheet } from '../components/EmergencyReleaseSheet';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -218,6 +219,10 @@ export function ScreenTimeScreen() {
   const [nfcSupported] = useState(isNfcSupported);
   const canScanInApp = nfcSupported && keys.some(k => k.kind === 'tag');
   const showTagCta = blocked && keys.length > 0;
+  // The way out for a phone with no key tag, or one that cannot scan it now:
+  // the emergency sheet, which the settings below also open from their own row.
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+  const openEmergency = useCallback(() => { haptics.tap(); setEmergencyOpen(true); }, []);
   const scanToEnd = async () => {
     haptics.tap();
     const result = await scanKeyTag('Hold your phone to your key tag to end the block.');
@@ -313,6 +318,20 @@ export function ScreenTimeScreen() {
                 </View>
               )
             )}
+            {blocked && (
+              <>
+                <TouchableOpacity
+                  style={[styles.endAll, showTagCta && styles.endAllBelowCta]}
+                  onPress={openEmergency}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel="End all blocks. Emergency, saved in the record."
+                >
+                  <Text style={styles.endAllText}>End all blocks…</Text>
+                </TouchableOpacity>
+                <Text style={styles.endAllNote}>Emergency. Saved in the record.</Text>
+              </>
+            )}
           </View>
         </View>
 
@@ -323,10 +342,17 @@ export function ScreenTimeScreen() {
               counts={counts}
               pending={pending}
               onChooseApps={chooseApps}
+              onEndAllBlocks={openEmergency}
             />
           </SettingsFocusProvider>
         </View>
       </ScrollView>
+      <EmergencyReleaseSheet
+        visible={emergencyOpen}
+        reasons={reasons}
+        formatTime={formatTime}
+        onClose={() => setEmergencyOpen(false)}
+      />
       {pullSearch.sheet}
     </View>
   );
@@ -344,6 +370,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.md, minHeight: 48, borderRadius: radius.md, backgroundColor: colors.accentFill,
   },
   ctaText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+  // Quiet beside the key tag button: it is the way out when there is no tag,
+  // and a recorded exception when there is one.
+  endAll: {
+    alignItems: 'center', justifyContent: 'center', marginTop: spacing.md,
+    minHeight: 44, borderRadius: radius.md, backgroundColor: colors.bgTertiary,
+  },
+  endAllBelowCta: { marginTop: spacing.sm },
+  endAllText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  endAllNote: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, textAlign: 'center', marginTop: spacing.xsm, marginHorizontal: spacing.xs },
   ctaHint: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     marginTop: spacing.md, padding: spacing.smd, borderRadius: radius.md, backgroundColor: colors.bgTertiary,

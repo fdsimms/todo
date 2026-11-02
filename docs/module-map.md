@@ -354,7 +354,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, slipAllowanceOf, nextSlipIsFree, lastSlipWasFree, isCleanToday, isFailedToday, slipPatch, undoSlipPatch, +9 more
 - `src/utils/negativeHold.ts` — negativeHoldNow, negativeHoldOffered
 - `src/utils/nfcBridge.ts` — NfcBridge, nfcBridge, isNfcSupported, NfcScanResult, parseScanAnswer, scanKeyTag
-- `src/utils/nfcKey.ts` — NFC_KEYS_SETTING, NFC_KEY_LOCK_SETTING, NfcKeyKind, NfcKey, MAX_NFC_KEYS, MAX_KEY_NAME_LENGTH, normalizeTagUid, newLinkToken, normalizeLinkToken, keyLinkUrl, +10 more
+- `src/utils/nfcKey.ts` — NFC_KEYS_SETTING, NFC_KEY_LOCK_SETTING, NfcKeyKind, NfcKey, MAX_NFC_KEYS, MAX_KEY_NAME_LENGTH, normalizeTagUid, newLinkToken, normalizeLinkToken, keyLinkUrl, +12 more
 - `src/utils/nicknames.ts` — nicknamesOf, primaryNickname
 - `src/utils/notificationTapRoute.ts` — NotificationTapData, NotificationTapRoute, routeNotificationTap
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
@@ -387,7 +387,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pastWorkout.ts` — PastSetText, PastExerciseDraft, PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MIN_MINUTES, PAST_WORKOUT_MAX_MINUTES, PastWorkoutProblem, nextSetText, newSupersetKey, withoutPastExercise, joinPastSuperset, +4 more
 - `src/utils/pastedLines.ts` — cleanPastedLines
 - `src/utils/patchNotes.ts` — PatchNote
-- `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipUndoLabel, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, penaltyShieldWanted
+- `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipUndoLabel, penaltyChipLabel, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, +1 more
 - `src/utils/pendingCompletionDate.ts` — PENDING_COMPLETION_DATE_WINDOW_MS, setPendingCompletionDate, claimPendingCompletionDate
 - `src/utils/pendingHealthFoodWrites.ts` — runPendingHealthFoodWrites
 - `src/utils/pendingHealthWorkoutWrites.ts` — runPendingHealthWorkoutWrites

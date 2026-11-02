@@ -95,6 +95,8 @@ export function applyKeyScan(kind: NfcKeyKind, secret: string | null): KeyScanRe
   const store = useNfcKeyStore.getState();
   const key = matchKey(store.keys, kind, secret);
   if (!key) return { outcome: 'unknown' };
+  // First, so a link tag's first tap is what proves it, whatever the scan does next.
+  store.markScanned(key.id);
 
   const ended = releaseAllBlocks('tag');
   if (ended.length > 0) return { outcome: 'released', key, ended };

@@ -8,7 +8,6 @@ import { BlockScheduleSheet } from '../../components/BlockScheduleSheet';
 import { SpeedBumpRulesSheet } from '../../components/SpeedBumpRulesSheet';
 import { ManualBlockSheet } from '../../components/ManualBlockSheet';
 import { SupergroupMembersSheet } from '../../components/SupergroupMembersSheet';
-import { EmergencyReleaseSheet } from '../../components/EmergencyReleaseSheet';
 import { useShieldReleaseStore } from '../../store/useShieldReleaseStore';
 import { describeEnded, releasesThisMonth, timesWord } from '../../utils/shieldRelease';
 import { useManualBlockStore } from '../../store/useManualBlockStore';
@@ -32,7 +31,7 @@ import { haptics } from '../../utils/haptics';
 import { isDemoModeActive } from '../../utils/demoState';
 import { screenTimeBridge } from '../../utils/screenTimeBridge';
 import { isNfcSupported, scanKeyTag } from '../../utils/nfcBridge';
-import { keyLinkUrl, type NfcKey } from '../../utils/nfcKey';
+import { hasProvenKey, isKeyProven, keyLinkUrl, type NfcKey } from '../../utils/nfcKey';
 import { applyKeyScan } from '../../utils/releaseBlocks';
 import { UNIVERSAL_LINK_HOSTS } from '../../utils/deepLinks';
 import { alertPermissionOff } from '../../utils/permissionAlert';
@@ -53,6 +52,8 @@ interface Props {
   pending: Record<string, boolean>;
   /** Opens the system picker for one group. Owned by the screen, which also shows the counts. */
   onChooseApps: (groupId: string) => Promise<void>;
+  /** Opens the emergency sheet. Owned by the screen, whose status card has the same button. */
+  onEndAllBlocks: () => void;
 }
 
 /**
@@ -71,7 +72,7 @@ interface Props {
  * lifting a block from this screen would bypass that record, so a new one goes
  * through `releaseAllBlocks` rather than writing a store.
  */
-export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: Props) {
+export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onEndAllBlocks }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const navigation = useNavigation();
@@ -534,7 +535,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       haptics.success();
       Alert.alert(
         'Write the link to a tag',
-        'Next, share the link and write it to an NFC tag with an NFC writer app. After that, tapping the tag with the app closed locks or unlocks your apps.',
+        'Next, share the link and write it to an NFC tag with an NFC writer app. After that, tapping the tag with the app closed locks or unlocks your apps. Tap it once to check that it works: the first tap locks your apps and the next one unlocks them.',
         [{ text: 'Share link', onPress: () => { void shareKeyLink(enrolled.key); } }, { text: 'Later', style: 'cancel' }],
       );
     });
@@ -603,6 +604,19 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
     }
     if (!(await ensureAuthorized('Locking apps with a tag needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
     if (totalOf(resolved.key) === 0) await onChooseApps(resolved.key);
+    // A link key nobody has tapped yet may not be written to a tag at all, and
+    // then only the emergency button could end this lock.
+    if (!hasProvenKey(nfcKeys)) {
+      Alert.alert(
+        'No key tag has been scanned yet',
+        'Your link tag hasn’t been tapped, so nothing is known to unlock this except the emergency button, which is saved in the record. Lock anyway?',
+        [
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
+          { text: 'Lock anyway', onPress: () => { useNfcKeyStore.getState().lock(); } },
+        ],
+      );
+      return;
+    }
     useNfcKeyStore.getState().lock();
   };
 
@@ -632,7 +646,6 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
 
   // ==== ending blocks early ====
 
-  const [emergencyOpen, setEmergencyOpen] = useState(false);
   const releaseLog = useShieldReleaseStore(s => s.log);
   const recentReleases = useMemo(() => releaseLog.slice(-5).reverse(), [releaseLog]);
   const monthReleases = releasesThisMonth(releaseLog, new Date()).length;
@@ -926,7 +939,9 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
             ? 'Hold your phone to a key tag to unlock them.'
             : nfcKeys.length === 0
               ? 'Add a key tag below first.'
-              : 'Blocks your apps until you hold your phone to a key tag.'}
+              : !hasProvenKey(nfcKeys)
+                ? 'Your link tag hasn’t been tapped yet. Tap it once to check that it works.'
+                : 'Blocks your apps until you hold your phone to a key tag.'}
           value={keyLocked ? 'Scan tag' : undefined}
           onPress={handleKeyLock}
         />
@@ -937,6 +952,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
               icon={key.kind === 'link' ? 'link-outline' : 'radio-outline'}
               label={key.name}
               value={key.kind === 'link' ? 'Link tag' : 'Scanned tag'}
+              hint={isKeyProven(key) ? undefined : 'Not tapped yet. Write its link to a tag, then tap it once.'}
               onPress={() => handleKeyRow(key)}
             />
           </React.Fragment>
@@ -975,17 +991,11 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
             iconColor={colors.red}
             label="End all blocks now"
             hint="Ends every block that is on, and is saved in the record."
-            onPress={() => { haptics.tap(); setEmergencyOpen(true); }}
+            onPress={() => { haptics.tap(); onEndAllBlocks(); }}
           />
         </SettingsSection>
       )}
 
-      <EmergencyReleaseSheet
-        visible={emergencyOpen}
-        reasons={reasons}
-        formatTime={formatReasonTime}
-        onClose={() => setEmergencyOpen(false)}
-      />
       <ManualBlockSheet
         visible={manualSheetOpen}
         groups={allGroups(customGroups, groupsMeta)}

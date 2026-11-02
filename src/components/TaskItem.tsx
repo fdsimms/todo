@@ -68,6 +68,7 @@ import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMoveP
 import { describeReschedule } from '../utils/rescheduleLabel';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { confirmSlip } from '../utils/slipConfirm';
+import { penaltyChipLabel } from '../utils/penaltyShield';
 import { leavePrepLine, openLeavePrep } from '../utils/leavePrep';
 import { confirmLeaveWithOpenPrep } from '../utils/leavePrepConfirm';
 import { scheduleCompletionTimer } from '../utils/notifications';
@@ -3289,7 +3290,8 @@ const TaskItemRow = React.memo(function TaskItem({
   // Whether the meta row has anything to show besides the notes and deadline
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
-  const hasOtherMeta = morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
+  const penaltyLabel = penaltyChipLabel(task, penaltyShieldEnabled);
+  const hasOtherMeta = penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
   const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !deadlineOnMeta;
 
@@ -3914,6 +3916,12 @@ const TaskItemRow = React.memo(function TaskItem({
                 >
                   {supplyLabel}
                 </Text>
+              </View>
+            )}
+            {penaltyLabel !== null && (
+              <View style={styles.metaChip} accessibilityLabel={penaltyLabel}>
+                <Ionicons name="lock-closed-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.subtaskBadgeText} numberOfLines={1}>{penaltyLabel}</Text>
               </View>
             )}
             {timed && (

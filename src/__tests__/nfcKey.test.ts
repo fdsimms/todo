@@ -1,5 +1,5 @@
 import {
-  MAX_NFC_KEYS, canLock, cleanKeyName, keyLinkUrl, lockAfterRemoval, matchKey, newLinkToken,
+  MAX_NFC_KEYS, canLock, cleanKeyName, hasProvenKey, isKeyProven, keyLinkUrl, lockAfterRemoval, matchKey, newLinkToken,
   nextKeyLock, normalizeLinkToken, normalizeTagUid, parseNfcKeys, withKeyAdded, withKeyRemoved,
   type NfcKey,
 } from '../utils/nfcKey';
@@ -71,6 +71,11 @@ describe('parseNfcKeys', () => {
     ]);
     expect(parseNfcKeys(raw).map(k => k.id)).toEqual(['k1']);
   });
+  it('keeps when a key was last scanned, and adds nothing for one never scanned', () => {
+    const scanned = key({ lastScannedAt: '2026-10-15T08:00:00.000Z' });
+    expect(parseNfcKeys(JSON.stringify([scanned]))).toEqual([scanned]);
+    expect('lastScannedAt' in parseNfcKeys(JSON.stringify([key()]))[0]).toBe(false);
+  });
   it('reads garbage and nothing as no keys', () => {
     expect(parseNfcKeys('{not json')).toEqual([]);
     expect(parseNfcKeys('{"a":1}')).toEqual([]);
@@ -133,5 +138,25 @@ describe('the lock', () => {
     expect(lockAfterRemoval([], true)).toBe(false);
     expect(lockAfterRemoval([key()], true)).toBe(true);
     expect(lockAfterRemoval([key()], false)).toBe(false);
+  });
+});
+
+describe('isKeyProven / hasProvenKey', () => {
+  const link = (over: Partial<NfcKey> = {}) => key({ kind: 'link', secret: 'a'.repeat(22), ...over });
+
+  it('counts a scanned tag as proven, since enrolling it read it', () => {
+    expect(isKeyProven(key())).toBe(true);
+  });
+
+  it('counts a link key as proven only once a scan has matched it', () => {
+    expect(isKeyProven(link())).toBe(false);
+    expect(isKeyProven(link({ lastScannedAt: '2026-10-15T08:00:00.000Z' }))).toBe(true);
+  });
+
+  it('needs one proven key among the enrolled ones', () => {
+    expect(hasProvenKey([])).toBe(false);
+    expect(hasProvenKey([link()])).toBe(false);
+    expect(hasProvenKey([link(), key({ id: 'k2' })])).toBe(true);
+    expect(hasProvenKey([link({ lastScannedAt: '2026-10-15T08:00:00.000Z' })])).toBe(true);
   });
 });

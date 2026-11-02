@@ -14475,6 +14475,45 @@ describe('archiveProject', () => {
     useTaskStore.getState().archiveProject('p1');
     expect(useTaskStore.getState().lastAction).toBeNull();
   });
+
+  it('leaves the open tasks live when asked to leave them', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1', completed: false })], lastAction: null });
+    useTaskStore.getState().archiveProject('p1', { archiveRemaining: false });
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(true);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.archived).toBe(false);
+    expect(useTaskStore.getState().lastAction?.label).toBe('Project archived');
+  });
+
+  it('archives the open tasks with it when asked, and one undo puts everything back', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', completed: false }),
+        makeTask({ id: 'b', projectId: 'p1', completed: true }),
+        makeTask({ id: 'c', projectId: 'other', completed: false }),
+      ],
+      lastAction: null,
+    });
+    useTaskStore.getState().archiveProject('p1', { archiveRemaining: true });
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(true);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.archived).toBe(true);
+    // Done work and another project's tasks are not touched.
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'b')?.archived).toBe(false);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'c')?.archived).toBe(false);
+    expect(useTaskStore.getState().lastAction?.label).toBe('Project archived, remaining tasks archived');
+
+    useTaskStore.getState().undoLastAction();
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(false);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.archived).toBe(false);
+  });
+
+  it('is the plain archive when the project has nothing open to archive', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'b', projectId: 'p1', completed: true })], lastAction: null });
+    useTaskStore.getState().archiveProject('p1', { archiveRemaining: true });
+    expect(useTaskStore.getState().lastAction?.label).toBe('Project archived');
+  });
 });
 
 describe('unarchiveProject', () => {

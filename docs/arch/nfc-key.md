@@ -36,6 +36,8 @@ Two consequences are easy to break:
 
 `canLock` refuses a lock with no key enrolled, and `lockAfterRemoval` takes the lock down with the last key. `keyLockedNow` (`appShieldReconcile.ts`) checks both the flag and an enrolled key, so a lock whose key list failed to parse cannot strand the apps. Unlocking from the app takes a scan: a button there would be the way out of a lock whose purpose is to need the tag. Removing the last key while locked is the one escape, and the confirmation says so.
 
+**A link key is enrolled before its tag exists, so enrolling proves nothing about it.** The app makes the token; the person writes it to a tag in another app, or never does. `NfcKey.lastScannedAt` is set by `applyKeyScan` (the one place a scan resolves to a key) and `isKeyProven` reads it: a `tag` key is proven by enrolling it, since it was read, and a `link` key only once a tap has matched it. The settings row says "Not tapped yet" until then, and "Lock apps now" confirms when no key at all is proven, because the emergency button would be the only way out. It confirms rather than refuses, since the emergency button is a real way out and a hard refusal would make a phone with no NFC writer unable to use the lock. The first tap of a fresh link tag locks, as any scan with nothing blocking does, so the enrolment alert says that a second tap unlocks.
+
 ## Where it lives
 
 - `useNfcKeyStore`: the keys and the flag, in the `settings` table and **off the wire** (the sync allowlist names settings that travel, and these are not on it). Held in memory, so demo mode calls `reload()` when the database swaps.
