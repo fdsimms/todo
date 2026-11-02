@@ -1576,19 +1576,18 @@ export function seedDemoData(): void {
   // one-off, both held off Today until the pause lifts in three weeks. Without
   // it, pausing is a feature the demo says the app doesn't have.
   const garden = createProject('Garden', { category: 'Around the house' });
-  const gardenBack = addDays(new Date(), 21);
   updateProject(garden.id, {
     ongoing: true,
-    pausedUntil: `${gardenBack.getFullYear()}-${String(gardenBack.getMonth() + 1).padStart(2, '0')}-${String(gardenBack.getDate()).padStart(2, '0')}`,
+    pausedUntil: dayKeyOf(addDays(today, 21)),
   });
-  addTask({ title: 'Water the beds', projectId: garden.id, recurrenceType: 'weekly', dueDate: new Date().toISOString() });
+  addTask({ title: 'Water the beds', projectId: garden.id, recurrenceType: 'weekly', dueDate: today.toISOString() });
   addTask({ title: 'Build a raised bed', projectId: garden.id });
 
   // A project still being planned (Planning, an open-ended pause): steps
   // already dated, all held off every list until it's marked ready.
   const housewarming = createProject('Housewarming party', { planning: true });
-  addTask({ title: 'Send invitations', projectId: housewarming.id, dueDate: addDays(new Date(), 3).toISOString() });
-  addTask({ title: 'Order drinks', projectId: housewarming.id, dueDate: addDays(new Date(), 10).toISOString() });
+  addTask({ title: 'Send invitations', projectId: housewarming.id, dueDate: addDays(today, 3).toISOString() });
+  addTask({ title: 'Order drinks', projectId: housewarming.id, dueDate: addDays(today, 10).toISOString() });
   addTask({ title: 'Make a playlist', projectId: housewarming.id });
 
   // The collection that shows an answer being recorded. Exactly one task

@@ -1,5 +1,6 @@
 import type { CalendarRequest, CalendarRequestChanges } from '../types';
 import type { EventSaveFields } from './calendarSync';
+import { logicalDayStart } from './clockTime';
 
 /**
  * The rules for an agent's calendar requests (`CalendarRequest`), kept apart
@@ -47,7 +48,11 @@ export interface CalendarRequestDrainPlan {
  * week with events nobody can attend, and saying so on the row is what lets
  * the requester tell that apart from a request still waiting.
  */
-export function planCalendarRequestDrain(requests: readonly CalendarRequest[], now: Date): CalendarRequestDrainPlan {
+export function planCalendarRequestDrain(
+  requests: readonly CalendarRequest[],
+  now: Date,
+  dayResetTime?: string,
+): CalendarRequestDrainPlan {
   const plan: CalendarRequestDrainPlan = { write: [], change: [], expire: [], purge: [] };
   const purgeBefore = now.getTime() - CALENDAR_REQUEST_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   const pushIfOld = (r: CalendarRequest) => {
@@ -59,7 +64,7 @@ export function planCalendarRequestDrain(requests: readonly CalendarRequest[], n
     // `agentSuggestions.ts`), never by this pass, so it is neither written nor
     // changed here even if one were pending.
     if ((r.kind ?? 'event') !== 'event') {
-      if (r.status === 'proposed' && suggestionIsStale(r, now)) plan.expire.push(r);
+      if (r.status === 'proposed' && suggestionIsStale(r, now, dayResetTime)) plan.expire.push(r);
       else if (r.status !== 'pending' && r.status !== 'proposed') pushIfOld(r);
       continue;
     }
@@ -72,12 +77,11 @@ export function planCalendarRequestDrain(requests: readonly CalendarRequest[], n
     }
     // Waiting for a tap: left alone, unless the moment it was for has gone.
     if (r.status === 'proposed') {
-      if (suggestionIsStale(r, now)) plan.expire.push(r);
+      if (suggestionIsStale(r, now, dayResetTime)) plan.expire.push(r);
       continue;
     }
     if (r.status === 'pending') {
-      const end = new Date(r.endAt).getTime();
-      if (Number.isNaN(end) || end <= now.getTime()) plan.expire.push(r);
+      if (requestEventIsOver(r, now, dayResetTime)) plan.expire.push(r);
       else plan.write.push(r);
       continue;
     }
@@ -87,12 +91,34 @@ export function planCalendarRequestDrain(requests: readonly CalendarRequest[], n
 }
 
 /**
+ * Whether the event a request is for is over. A timed one is over at its end,
+ * on the clock. An all-day one is over once its last day is behind the
+ * person's own day: read on the clock, one asked for "today" between midnight
+ * and `dayResetTime` ended at calendar midnight and was refused as already
+ * over. Omitted, `dayResetTime` is midnight.
+ */
+export function requestEventIsOver(
+  r: Pick<CalendarRequest, 'allDay' | 'endAt'>,
+  now: Date,
+  dayResetTime = '00:00',
+): boolean {
+  const end = new Date(r.endAt);
+  if (Number.isNaN(end.getTime())) return true;
+  if (!r.allDay) return end.getTime() <= now.getTime();
+  // An all-day end is midnight after the last day, so the last day starts a
+  // day before it; over once today's logical day starts after that.
+  const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1);
+  const today = logicalDayStart(now, dayResetTime);
+  return lastDay.getTime() < new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+}
+
+/**
  * Whether a proposal waiting for a tap is for a moment that has gone: an event
  * that is already over, an alarm time in the past, or one left unanswered for
  * a month. A change to an event
  * carries epoch times on purpose and is never stale by them.
  */
-export function suggestionIsStale(r: CalendarRequest, now: Date): boolean {
+export function suggestionIsStale(r: CalendarRequest, now: Date, dayResetTime?: string): boolean {
   // Nobody answered it for as long as an answered request is kept.
   const created = new Date(r.createdAt).getTime();
   if (!Number.isNaN(created) && created < now.getTime() - CALENDAR_REQUEST_RETENTION_DAYS * 24 * 60 * 60 * 1000) return true;
@@ -102,8 +128,7 @@ export function suggestionIsStale(r: CalendarRequest, now: Date): boolean {
   }
   if (r.kind === 'task_deadline') return false;
   if (r.action === 'update' || r.action === 'delete') return false;
-  const end = new Date(r.endAt).getTime();
-  return Number.isNaN(end) || end <= now.getTime();
+  return requestEventIsOver(r, now, dayResetTime);
 }
 
 /** The fields `saveEventDirect` writes for a request. Busy, with no alert: only what was asked for. */

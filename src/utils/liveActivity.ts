@@ -139,8 +139,19 @@ export function buildTimerRuns(
     });
   }
 
+  // A recipe's total cook time gives way to a step timer of the same dish: the
+  // countdown for the pan on the heat is what the cook is watching, and two
+  // activities for one dish would put the running total beside it. The total keeps
+  // running and returns when the last step timer is paused or ends.
+  const recipesWithStepTimer = new Set<string>();
+  for (const timer of stepTimers) {
+    if (timer.kind === 'recipe' && isStepTimerRunning(timer)) {
+      recipesWithStepTimer.add(timer.recipeId);
+    }
+  }
+
   for (const recipe of recipes) {
-    if (recipe.timerStartedAt !== null) {
+    if (recipe.timerStartedAt !== null && !recipesWithStepTimer.has(recipe.id)) {
       const startedAtMs = new Date(recipe.timerStartedAt).getTime();
       runs.push({
         key: `cook:${recipe.id}`,

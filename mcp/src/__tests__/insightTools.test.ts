@@ -38,6 +38,17 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     isUnscheduled: (t: Task) => t.id.startsWith('someday'),
     isInbox: (t: Task) => t.id.startsWith('inbox'),
     isDeferred: (t: Task) => t.id.startsWith('later'),
+    lib: () => ({
+    // Only what getTask and getOverview read, by the same id convention as
+    // the lenses above.
+    visibility: {
+      isInPausedProject: (t: Task) => t.id.startsWith('paused'),
+      isTaskExpired: (t: Task) => t.id.startsWith('expired'),
+      isHeldBack: (t: Task) => t.id.startsWith('waiting'),
+      isWithheld: (t: Task) => t.id.startsWith('paused'),
+      isPinnedOnToday: (t: Task) => t.pinned,
+    },
+    }) as unknown as ReturnType<Replica['lib']>,
     isBlocked: () => false,
     isNotNeeded: () => false,
     displayTitle: (t: Task) => t.title,

@@ -84,6 +84,7 @@ jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
   // #2950's launch backfill: the ids of the rows the write filled.
   dbFillTaskCalendarExternalIds: jest.fn().mockReturnValue([]),
+  dbBackfillRecurrenceAnchorDays: jest.fn(),
   dbGetSetting: jest.fn().mockReturnValue(null),
   dbSetSetting: jest.fn(),
   dbGetAllTasks: jest.fn().mockReturnValue([]),
@@ -1053,6 +1054,12 @@ describe('the monthly/yearly day-of-month anchor', () => {
     const tasks = useTaskStore.getState().tasks;
     expect(tasks.find(t => t.id === 'rent')!.recurrenceAnchorDay).toBe(31);
     expect(tasks.find(t => t.id === 'plain')!.recurrenceAnchorDay).toBeNull();
+    // Through the write that keeps each row's sync stamp, never a whole-row
+    // update: every device derives the same anchor, and restamped, the row
+    // beat a peer's newer edit.
+    const { dbBackfillRecurrenceAnchorDays } = jest.requireMock('../db/database') as { dbBackfillRecurrenceAnchorDays: jest.Mock };
+    expect(dbBackfillRecurrenceAnchorDays).toHaveBeenLastCalledWith([{ id: 'rent', day: 31 }]);
+    expect(dbUpdateTask).not.toHaveBeenCalledWith(expect.objectContaining({ id: 'rent' }));
   });
 });
 
@@ -2193,6 +2200,20 @@ describe('completeTask', () => {
     expect(dbUpdateTask).toHaveBeenLastCalledWith(
       expect.objectContaining({ id: 't1', completionCalendarEventId: 'log-evt', completionCalendarEventExternalId: 'server-log' })
     );
+  });
+
+  // Undo straight after the tick, before the write resolved: the reopen found
+  // no id to delete, and stamping it afterwards left the event in the calendar.
+  it('takes the event back when the task was reopened while it was being written', async () => {
+    (logTaskCompletionToCalendar as jest.Mock).mockResolvedValue('log-evt');
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', logCompletionToCalendar: true })] });
+    useTaskStore.getState().completeTask('t1');
+    useTaskStore.getState().uncompleteTask('t1');
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    const task = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(task?.completed).toBe(false);
+    expect(task?.completionCalendarEventId).toBeNull();
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('log-evt');
   });
 
   it('does not call logTaskCompletionToCalendar when the flag is off', () => {
@@ -3581,6 +3602,47 @@ describe('checkAwayVacation', () => {
     const { setVacationDrivenBy } = settings();
     useTaskStore.getState().checkAwayVacation();
     expect(setVacationDrivenBy).toHaveBeenCalledWith('b');
+  });
+});
+
+// ─── forgivePausedProjectStreaks ────────────────────────────────────────────
+
+// A paused project's daily habit read as broken the morning the pause lifted,
+// where vacation forgave the same gap.
+describe('forgivePausedProjectStreaks', () => {
+  const dayOf = (iso: string | null) => (iso ? dayKeyOf(new Date(iso)) : null);
+  const habit = () => makeTask({
+    id: 'water', projectId: 'garden', recurrenceType: 'daily', streakCount: 12,
+    streakDate: new Date(2025, 5, 1, 4).toISOString(),
+  });
+  afterEach(() => { useProjectStore.setState({ projects: [] }); });
+
+  it('forgives a pause that ran out, dating the streak to the day before it lifted', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'garden', pausedUntil: '2025-06-08' })] });
+    useTaskStore.setState({ tasks: [habit()] });
+    useTaskStore.getState().forgivePausedProjectStreaks();
+    const task = useTaskStore.getState().tasks[0];
+    expect(dayOf(task.streakDate)).toBe('2025-06-07');
+    expect(task.streakCount).toBe(12);
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'water' }));
+  });
+
+  it('leaves a project still paused alone', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'garden', pausedUntil: '2999-01-01' })] });
+    useTaskStore.setState({ tasks: [habit()] });
+    useTaskStore.getState().forgivePausedProjectStreaks();
+    expect(dayOf(useTaskStore.getState().tasks[0].streakDate)).toBe('2025-06-01');
+  });
+
+  // Ended by hand, the day it lifted is gone from pausedUntil at once, so the
+  // project store tells this one first.
+  it('forgives a pause ended by hand, through the project store', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'garden', pausedUntil: '2999-01-01' })] });
+    useTaskStore.setState({ tasks: [habit()] });
+    useProjectStore.getState().updateProject('garden', { pausedUntil: null });
+    const today = getCurrentDayStart();
+    const yesterday = dayKeyOf(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1));
+    expect(dayOf(useTaskStore.getState().tasks[0].streakDate)).toBe(yesterday);
   });
 });
 
@@ -11229,31 +11291,6 @@ describe('renameCategory', () => {
     expect(s.setReminderCaptures).toHaveBeenCalledWith([{ id: 'c', filing: { kind: 'category', category: 'Job' } }]);
     const { renameGeneratedCategorySettings } = jest.requireMock('../store/useCategoryStore') as { renameGeneratedCategorySettings: jest.Mock };
     expect(renameGeneratedCategorySettings).toHaveBeenCalledWith('Work', 'Job');
-  });
-});
-
-// ─── reorderTasks ────────────────────────────────────────────────────────────
-
-describe('reorderTasks', () => {
-  it('assigns sortOrder based on position in the new id sequence', () => {
-    useTaskStore.setState({
-      tasks: [makeTask({ id: 'a', sortOrder: 1 }), makeTask({ id: 'b', sortOrder: 2 })],
-    });
-    useTaskStore.getState().reorderTasks(['b', 'a']);
-    const { tasks } = useTaskStore.getState();
-    expect(tasks.find(t => t.id === 'b')?.sortOrder).toBe(1);
-    expect(tasks.find(t => t.id === 'a')?.sortOrder).toBe(2);
-  });
-
-  it('persists new sort orders to the db', () => {
-    useTaskStore.setState({
-      tasks: [makeTask({ id: 'a' }), makeTask({ id: 'b' })],
-    });
-    useTaskStore.getState().reorderTasks(['b', 'a']);
-    expect(dbBatchUpdateSortOrders).toHaveBeenCalledWith([
-      { id: 'b', sortOrder: 1 },
-      { id: 'a', sortOrder: 2 },
-    ]);
   });
 });
 

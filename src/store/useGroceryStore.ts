@@ -322,7 +322,8 @@ async function runAutoAisleClassification(batch: { id: string; name: string }[])
     const aisle = assigned[name];
     if (!aisle || aisle === OTHER_AISLE) continue;
     const item = current.find(i => i.id === id);
-    if (!item || item.aisle !== OTHER_AISLE) continue;
+    // Renamed while the request was out: the aisle came back for the old name.
+    if (!item || item.aisle !== OTHER_AISLE || item.name !== name) continue;
     updates.push({ ...item, aisle });
   }
   if (updates.length === 0) return;

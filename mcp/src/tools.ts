@@ -316,9 +316,9 @@ export interface GetTaskResult {
   hiddenUntil?: string;
   /**
    * Why a task that is not on Today is hidden, when the reason is not a moment
-   * `hiddenUntil` can name: a task held while vacation mode is on (its own
-   * `vacationPause`, or a category set to hide on vacation) has no date it
-   * surfaces at, and reads as lost without this.
+   * `hiddenUntil` can name: vacation mode (its own `vacationPause`, or a
+   * category set to hide on vacation), a paused project, a closed time window,
+   * or an undated project step. Each reads as lost without this.
    */
   hiddenReason?: string;
 }
@@ -578,8 +578,24 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
     project: project ? { id: project.id, title: project.title } : undefined,
     ...taskExtras(replica, task),
     hiddenUntil: surfacesAt && surfacesAt.getTime() > Date.now() ? surfacesAt.toISOString() : undefined,
-    hiddenReason: !visible && replica.isHiddenForVacation(task) ? 'hidden while vacation mode is on' : undefined,
+    hiddenReason: visible ? undefined : hiddenReasonOf(replica, task),
   };
+}
+
+/**
+ * Why a task is off Today when no moment explains it, in the order
+ * `isVisibleApartFromVacation` checks: vacation, a paused project (whose end
+ * `hiddenUntil` gives, but not why), a closed window, an undated project step.
+ * Waiting on a task or a person and a branch not taken have their own fields
+ * (`blocked`, `waitsOn`, `notNeeded`), so they are left to those.
+ */
+function hiddenReasonOf(replica: Replica, task: Task): string | undefined {
+  const v = replica.lib().visibility;
+  if (replica.isHiddenForVacation(task)) return 'hidden while vacation mode is on';
+  if (v.isInPausedProject(task)) return 'its project is paused';
+  if (v.isTaskExpired(task)) return 'its time window has closed';
+  if (task.projectId && !task.dueDate) return 'an undated project step, which lives on its project rather than Today';
+  return undefined;
 }
 
 export interface SerializedProject {

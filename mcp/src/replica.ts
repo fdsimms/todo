@@ -3599,6 +3599,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   let lastChangeToken: string | null = null;
 
   /** What the server runs before each request: `refresh`, unless nothing changed. */
+  // A pause an agent ends (update_project, through useProjectStore.updateProject)
+  // forgives the streaks it held, as the phone's own listener does; this server
+  // can't load the task store that registers that one.
+  projectPause.registerPauseEndListener((projectId, endedOn) => {
+    const streakRules = require('../../src/utils/vacationStreaks') as typeof import('../../src/utils/vacationStreaks'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const forgiven = streakRules.forgivePausedProjectStreaks(tasks(), new Map([[projectId, endedOn]]));
+    forgiven.forEach(t => db.dbUpdateTask(t));
+    if (forgiven.length > 0) taskCache = null;
+  });
+
   const refreshIfChanged = (): void => {
     const token = changeToken();
     if (token === lastChangeToken && taskCache !== null) return;

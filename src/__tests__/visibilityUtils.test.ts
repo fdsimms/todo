@@ -541,6 +541,25 @@ describe('isTaskWindowActive', () => {
   it('is false for a completed task', () => {
     expect(isTaskWindowActive({ ...baseTask, completed: true, windowStart: '08:00', windowEnd: '13:00' })).toBe(false);
   });
+
+  // "Act now" on a task nobody can act on: a paused project's, or one waiting
+  // on another task.
+  it('is false for a task in a paused project or waiting on another', () => {
+    const open = { ...baseTask, windowStart: '08:00', windowEnd: '13:00' };
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: '2999-01-01', archived: false, completed: false }]);
+    try {
+      expect(isTaskWindowActive({ ...open, projectId: 'garden' })).toBe(false);
+    } finally {
+      registerPausedProjectSource(null);
+    }
+    registerTaskSource(() => [{ ...baseTask, id: 'blocker' }]);
+    try {
+      expect(isTaskWindowActive({ ...open, id: 'waiter', blockedById: 'blocker' })).toBe(false);
+    } finally {
+      registerTaskSource(null);
+    }
+    expect(isTaskWindowActive(open)).toBe(true);
+  });
 });
 
 // ─── isTaskExpired ─────────────────────────────────────────────────────────────

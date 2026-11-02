@@ -5085,6 +5085,29 @@ function fillCalendarExternalIds(
   return written;
 }
 
+/**
+ * Fills in `recurrence_anchor_day` on rows that predate the column, and puts
+ * each row's sync stamp back (`fillCalendarExternalIds`' shape). Every device
+ * derives the same anchor from the dates it already syncs, so this is not an
+ * edit to send; written through `dbUpdateTask`, every such row became this
+ * device's newest copy at launch, and a peer's edit made while it was closed
+ * lost to it. Only a row still without an anchor is touched.
+ */
+export function dbBackfillRecurrenceAnchorDays(anchors: ReadonlyArray<{ id: string; day: number }>): void {
+  if (anchors.length === 0) return;
+  withTransaction(() => {
+    for (const { id, day } of anchors) {
+      const row = db.getFirstSync<{ updated_at: string | null }>(
+        'SELECT updated_at FROM tasks WHERE id = ? AND recurrence_anchor_day IS NULL',
+        [id],
+      );
+      if (!row) continue;
+      db.runSync('UPDATE tasks SET recurrence_anchor_day = ? WHERE id = ?', [day, id]);
+      db.runSync('UPDATE tasks SET updated_at = ? WHERE id = ?', [row.updated_at ?? null, id]);
+    }
+  });
+}
+
 /** `fillCalendarExternalIds` over tasks: deadline events, time blocks and completion events. */
 export function dbFillTaskCalendarExternalIds(found: Readonly<Record<string, string>>): string[] {
   return fillCalendarExternalIds('tasks', found);

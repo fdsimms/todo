@@ -15,6 +15,7 @@ import {
   dbUpdateTask,
   dbUpdateTaskCalendarLinks,
   dbFillTaskCalendarExternalIds,
+  dbBackfillRecurrenceAnchorDays,
   dbDeleteTask,
   dbDeleteSubtasks,
   dbClearAllPins,
@@ -131,7 +132,8 @@ import { deleteGeneratedTaskQuietly, dropGeneratedTask, markGeneratedReady, reco
 import { readSavedEvents, updateSavedEvent, writeSavedEvents, type SavedEvent } from '../utils/savedEvents';
 import { bookDueDay, bookSourceId, bookTaskNotes, bookTaskTitle, wantsBookTask } from '../utils/savedEventTasks';
 import { reopenedTask } from '../utils/taskReopen';
-import { forgiveVacationStreaks } from '../utils/vacationStreaks';
+import { forgiveVacationStreaks, forgivePausedProjectStreaks as pausedStreaksForgiven } from '../utils/vacationStreaks';
+import { pauseEndsOn, registerPauseEndListener } from '../utils/projectPause';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind, stoppableGenerator } from '../utils/generatedTasks';
 import { setGeneratorEnabled } from './generatorSwitch';
 import { featureHidden } from '../utils/simpleMode';
@@ -678,15 +680,22 @@ const SLOT_IN_DAY_KEY = 'slotInDecidedDay';
  * February since it was created) is anchored to the drifted day. That's all
  * that can be recovered — the day it was originally set to isn't stored
  * anywhere — and it at least stops the drift where it is.
+ *
+ * Open rows only, since a completed one never steps again, and written with
+ * the sync stamp put back (`dbBackfillRecurrenceAnchorDays`): each device
+ * derives the same anchor, and restamped, every such row beat a peer's newer
+ * edit at the next sync.
  */
 function backfillRecurrenceAnchors(tasks: Task[]): void {
+  const filled: { id: string; day: number }[] = [];
   for (const task of tasks) {
-    if (task.recurrenceAnchorDay !== null) continue;
+    if (task.completed || task.recurrenceAnchorDay !== null) continue;
     const anchor = recurrenceAnchorDayFor(task);
     if (anchor === null) continue;
     task.recurrenceAnchorDay = anchor;
-    dbUpdateTask(task);
+    filled.push({ id: task.id, day: anchor });
   }
+  dbBackfillRecurrenceAnchorDays(filled);
 }
 
 /**
@@ -775,6 +784,14 @@ function logCompletionEvent(task: Task, completedAt: Date): void {
       const completionCalendarEventExternalId = await readExternalEventId(completionCalendarEventId);
       const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
       if (!current) return;
+      // Reopened (an undo, straight after the tick) or completed again while
+      // the write was out: the event records a completion that no longer
+      // stands, and the reopen found no id to delete it by. Stamped anyway, it
+      // sat in the calendar, and a later completion orphaned it for good.
+      if (!current.completed || current.completedAt !== task.completedAt) {
+        void deleteCompletionEvent({ eventId: completionCalendarEventId, externalId: completionCalendarEventExternalId });
+        return;
+      }
       const updated = { ...current, completionCalendarEventId, completionCalendarEventExternalId };
       dbUpdateTask(updated);
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
@@ -2498,7 +2515,6 @@ interface TaskStore extends UndoHistoryActions {
    * than leaving the estimate and the effort bucket disagreeing with it.
    */
   setMeasuredTime: (id: string, minutes: number) => void;
-  reorderTasks: (orderedIds: string[]) => void;
   // Explicit sortOrders rather than ids-in-order: the Today list's ranks are
   // shared with the stacks sitting in it (see resolveDrop), so the gaps a
   // stack leaves in the task numbering are load-bearing.
@@ -2508,8 +2524,7 @@ interface TaskStore extends UndoHistoryActions {
     options?: { scope?: 'occurrence' | 'series' },
   ) => void;
   /**
-   * Reorder a project's live members. Unlike reorderTasks this renumbers
-   * nothing — the members swap the sortOrder slots they already hold, so a
+   * Reorder a project's live members. This renumbers nothing: the members swap the sortOrder slots they already hold, so a
    * dated project task keeps its place among the loose tasks on Today. See
    * utils/projectOrder.slotUpdates.
    *
@@ -2598,6 +2613,12 @@ interface TaskStore extends UndoHistoryActions {
   bulkDeleteTemplates: (ids: string[]) => void;
 
   forgivVacationStreaks: () => void;
+  /**
+   * Forgive the streaks a project's pause held, for the projects in `endedOn`
+   * (id to the day its pause ended), or for every project whose pause has run
+   * out when it's omitted. See `forgivePausedProjectStreaks` in vacationStreaks.ts.
+   */
+  forgivePausedProjectStreaks: (endedOn?: ReadonlyMap<string, string>) => void;
   checkVacationExpiry: () => void;
   /**
    * Arm vacation mode for a nominated trip that has started, and keep its end
@@ -9910,13 +9931,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(id, applyMeasuredTime(minutes, task), { scope: 'series' });
   },
 
-  reorderTasks(orderedIds) {
-    const updates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
-    dbBatchUpdateSortOrders(updates);
-    const byId = new Map(updates.map(u => [u.id, { sortOrder: u.sortOrder }]));
-    set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
-  },
-
   reorderWithCategoryUpdates(orders, categoryUpdates, options) {
     dbBatchUpdateSortOrders(orders);
     const byId = new Map(orders.map(u => [u.id, { sortOrder: u.sortOrder }]));
@@ -11100,6 +11114,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
   },
 
+  forgivePausedProjectStreaks(endedOn) {
+    const ends = endedOn ?? pauseEndsOn(useProjectStore.getState().projects, getCurrentLogicalDayKey());
+    if (ends.size === 0) return;
+    const forgiven = pausedStreaksForgiven(get().tasks, ends);
+    if (forgiven.length === 0) return;
+    forgiven.forEach(t => dbUpdateTask(t));
+    const byId = new Map(forgiven.map(t => [t.id, t]));
+    set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
+  },
+
   // Auto-turns-off vacation mode once its optional end date has passed —
   // call on app start and whenever the app returns to the foreground, since
   // there's no timer running while the app is backgrounded/closed.
@@ -12010,6 +12034,10 @@ registerGoalSourceLookup(taskId => useTaskStore.getState().tasks.find(t => t.id 
 // it can't, since this module pulls in expo-sqlite and already imports it. See
 // src/utils/blockerRegistry.ts for why this is a getter rather than a snapshot.
 registerTaskSource(() => useTaskStore.getState().tasks);
+// A pause ended by hand (useProjectStore.updateProject) is forgiven at once,
+// before the day it lifted is gone from `pausedUntil`.
+registerPauseEndListener((projectId, endedOn) =>
+  useTaskStore.getState().forgivePausedProjectStreaks(new Map([[projectId, endedOn]])));
 registerPersonTaskSource(() => useTaskStore.getState().tasks);
 
 // The list selectors above read the project lock at call time, and a selector
