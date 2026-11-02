@@ -1,5 +1,5 @@
 import {
-  MAX_MANUAL_MINUTES, MIN_MANUAL_MINUTES, describeDuration, describeManualBlock, endsSooner, isTimedBlock, manualBlockWanted, manualMinutesProblem,
+  MAX_MANUAL_MINUTES, MIN_MANUAL_MINUTES, describeDuration, describeManualBlock, describeManualBlockEnding, endsSooner, isTimedBlock, manualBlockWanted, manualMinutesProblem,
   newManualBlock, parseManualBlock, serializeManualBlock,
 } from '../utils/manualBlock';
 
@@ -124,5 +124,17 @@ describe('describeManualBlock', () => {
 
   it('falls back to the length when the end time cannot be read', () => {
     expect(describeManualBlock(90, ['Default'], null)).toBe('Blocks Default for 1 hour 30 minutes.');
+  });
+});
+
+describe('describeManualBlockEnding', () => {
+  it('says there is no end button for an open-ended block', () => {
+    const line = describeManualBlockEnding(null);
+    expect(line).toContain('no end button');
+    expect(line).toContain('key tag or the emergency button');
+  });
+
+  it('says what ending a timed block early takes', () => {
+    expect(describeManualBlockEnding(60)).toBe('Ending a block early takes a key tag or the emergency button, and is saved in the record.');
   });
 });

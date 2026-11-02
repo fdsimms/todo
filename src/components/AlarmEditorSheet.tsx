@@ -6,7 +6,6 @@ import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
-import { HelpText } from './HelpText';
 import { MissionPicker } from './MissionPicker';
 import { AlarmSoundRows } from './AlarmSoundRows';
 import { RingtonePickerSheet } from './RingtonePickerSheet';
@@ -17,6 +16,7 @@ import { useAlarmStore } from '../store/useAlarmStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { describeRepeat } from '../utils/alarms';
 import { soundChoiceFrom } from '../utils/alarmSounds';
+import { MISSION_GIVE_UP_HOLD_MS, MISSION_REARM_SECONDS } from '../utils/missions';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { confirmDelete } from '../utils/confirmDelete';
 import { haptics } from '../utils/haptics';
@@ -182,9 +182,9 @@ export function AlarmEditorSheet({ visible, alarm, onClose }: Props) {
 
           <Text style={styles.label}>Mission</Text>
           <View style={styles.card}>
-            <HelpText style={styles.hint}>
-              With a mission, the alarm rings again every 15 seconds after you stop it, until the mission is done.
-            </HelpText>
+            <Text style={styles.hint}>
+              With a mission, the alarm rings again every {MISSION_REARM_SECONDS} seconds after you stop it, until the mission is done. If you can’t do it, holding Give up for {Math.round(MISSION_GIVE_UP_HOLD_MS / 1000)} seconds stops it, and Activity records that you gave up.
+            </Text>
             <MissionPicker value={draft.mission} onChange={mission => patch({ mission })} />
           </View>
 

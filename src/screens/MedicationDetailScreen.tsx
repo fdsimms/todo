@@ -656,7 +656,7 @@ export function MedicationDetailScreen() {
                 : `${describeLimit(limit)}. ${status.inLast24h} in the last 24 hours.`}
           </Text>
           <Text style={styles.fieldNote}>
-            Warns you before a dose goes past this limit. Copy it from the label or what your doctor told you.
+            Warns you before a dose you record in the app goes past this limit. A dose logged from Siri or a widget isn’t checked. Copy the limit from the label or what your doctor told you.
           </Text>
         </View>
 

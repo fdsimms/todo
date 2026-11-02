@@ -168,6 +168,15 @@ export function clockTimeToken(use24Hour = false): string {
   return use24Hour ? 'HH:mm' : 'h:mm a';
 }
 
+/**
+ * When something ends, for a sentence that says "until …": the time alone for
+ * an end later today, with the weekday in front for any other day.
+ */
+export function formatUntil(end: Date, now: Date, use24Hour: boolean): string {
+  const clock = format(end, clockTimeToken(use24Hour));
+  return differenceInCalendarDays(end, now) === 0 ? clock : `${format(end, 'EEE')} ${clock}`;
+}
+
 /** Inverse of hhmmToDate — extracts "HH:MM" from a Date's clock time. */
 export function dateToHHMM(d: Date): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;

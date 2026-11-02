@@ -1,5 +1,6 @@
 import type { ShieldReasonEntry } from './appShield';
-import { isScheduleActive, type BlockSchedule } from './blockSchedule';
+import { currentWindowEnd, isScheduleActive, type BlockSchedule } from './blockSchedule';
+import { formatUntil } from './clockTime';
 import type { GroupedReason } from './appGroups';
 
 /**
@@ -73,7 +74,7 @@ export function reasonSwitchLocked(reason: GroupedReason, reasons: readonly Shie
 }
 
 /**
- * Whether turning off "Prevent deleting apps" would lift part of a live block.
+ * Whether turning off "Prevent deleting any app" would lift part of a live block.
  * Any live reason counts, since the setting covers every block. Turning it on is
  * never refused: that only strengthens the block.
  */
@@ -122,6 +123,22 @@ export const BLOCK_PICKER_NOTE_MESSAGE =
 
 export const ALLOW_PICKER_NOTE_MESSAGE =
   'This group blocks everything except the apps you picked. Any change to them waits until this block ends, then applies.';
+
+export const BLOCK_STARTS_NOW_TITLE = 'Start blocking now?';
+
+/**
+ * What saving this schedule would do, when it would be blocking at `now`, else
+ * null. A new schedule defaults to weekdays 9 to 5, so saving one in the middle
+ * of the afternoon blocks at once, and `scheduleEditLocked` then refuses every
+ * change to it until the window ends. Said before the save rather than by the
+ * "Blocked right now" alert after it.
+ */
+export function startsBlockingNowMessage(schedule: BlockSchedule, now: Date, use24Hour: boolean): string | null {
+  if (!isScheduleActive(schedule, now)) return null;
+  const end = currentWindowEnd(schedule, now);
+  const until = end ? ` until ${formatUntil(end, now, use24Hour)}` : '';
+  return `This schedule covers the current time, so it starts blocking now${until}. It can’t be changed or switched off until then. The emergency button on the Screen Time screen ends it and is saved in the record.`;
+}
 
 export const BLOCK_EDIT_LOCKED_TITLE = 'Blocked right now';
 

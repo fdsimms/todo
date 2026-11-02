@@ -284,7 +284,7 @@ import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKin
 import { nextStreakRecord } from '../utils/streakRecord';
 import { countsUnits } from '../utils/streakUnits';
 import { isNegativeTask, slipsToday, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch, cleanDaysCredited, isClosedToday, oneDayEndPatch } from '../utils/negativeHabits';
-import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, uncreditShieldUntil } from '../utils/penaltyShield';
+import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, slipUndoLabel, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: this is a list every new
 // visibility helper is added to, so one line is a guaranteed conflict.
@@ -5274,8 +5274,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A tap here costs a run that may be weeks long, so the undo is offered
     // rather than buried — the same affordance a logged quota unit gets, for a
     // mis-tap that is considerably more expensive.
+    // Read after the charge, since a longer block already running keeps its own
+    // end: what Undo can't lift is the block as it stands now.
+    const { penaltyShieldEnabled, penaltyShieldUntil, use24HourTime } = useSettingsStore.getState();
+    const blockedUntil = slipUntil && penaltyShieldEnabled && penaltyShieldUntil ? new Date(penaltyShieldUntil) : null;
+    const slipLabel = task.streakCount > 0 && updated.streakCount === 0 ? `Streak reset (was ${task.streakCount})` : 'Logged';
     get().setLastAction({
-      label: task.streakCount > 0 && updated.streakCount === 0 ? `Streak reset (was ${task.streakCount})` : 'Logged',
+      label: slipUndoLabel(slipLabel, blockedUntil, new Date(), use24HourTime),
       undo: () => get().undoSlip(id),
       redo: () => get().logSlip(id),
     });

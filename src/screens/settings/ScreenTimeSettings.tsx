@@ -832,7 +832,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           entryId="blockAppRemoval"
           icon="trash-outline"
           iconColor={blockAppRemoval ? colors.accent : undefined}
-          label="Prevent deleting apps"
+          label="Prevent deleting any app"
           toggle={blockAppRemoval}
           onPress={() => {
             if (blockAppRemoval && refuseWhileBlocked(appRemovalSwitchLocked(reasons))) return;
@@ -974,7 +974,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
             icon="warning-outline"
             iconColor={colors.red}
             label="End all blocks now"
-            hint="Ends focus, task, failed-task, schedule, timed and key tag blocks."
+            hint="Ends every block that is on, and is saved in the record."
             onPress={() => { haptics.tap(); setEmergencyOpen(true); }}
           />
         </SettingsSection>
