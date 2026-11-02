@@ -16899,6 +16899,21 @@ describe('quota tasks', () => {
         expect(closed.streakCount).toBe(7);
       });
 
+      // Each day's run is counted afresh. The count used to ride to the next
+      // occurrence, so a run started late shrank every day after it too.
+      it('gives the next day the whole window\'s count back after a late start', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({
+          tasks: [run({ quotaStartedAt: new Date(2025, 5, 10, 10, 30, 0).toISOString(), targetCount: 19, progressCount: 19 })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+        expect(next.id).not.toBe('eyes');
+        expect(next.quotaStartedAt).toBeNull();
+        expect(next.targetCount).toBe(24);
+      });
+
       it('leaves a run still under way alone', () => {
         jest.setSystemTime(new Date(2025, 5, 10, 14, 0, 0));
         useTaskStore.setState({ tasks: [run({ progressCount: 9 })] });
