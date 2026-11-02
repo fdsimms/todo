@@ -12,8 +12,9 @@
  * Source text rather than the module graph, as `noRawModal.test.ts` does: there
  * are no component tests, so a file is only ever text to this suite.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
 
@@ -25,15 +26,6 @@ const ALLOWED: Record<string, string> = {
   [join('components', 'PantryReviewSheet.tsx')]:
     'a swipe distance for a responder built once; a stale quarter-of-the-screen threshold only moves where a flick counts as an answer',
 };
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx?$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 /** A top-level `const … = Dimensions.get(…)`: column 0, so never inside a function. */
 const MODULE_LEVEL_READ = /^const\s[^\n]*Dimensions\.get\(/m;

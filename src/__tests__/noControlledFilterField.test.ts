@@ -17,19 +17,11 @@
  * with no renderer, so a JSX prop is only ever text as far as the suite is
  * concerned.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles, TSX } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 /**
  * The names this app gives a field that narrows a list. It is the naming
@@ -44,7 +36,7 @@ const FILTER_NAMES = [
 
 const CONTROLLED = new RegExp(`value=\\{(${FILTER_NAMES.join('|')})\\}`);
 
-const files = sourceFiles(SRC).map(f => ({
+const files = sourceFiles(SRC, { match: TSX }).map(f => ({
   rel: f.slice(SRC.length + 1),
   src: readFileSync(f, 'utf8'),
 }));

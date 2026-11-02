@@ -9,24 +9,16 @@
  *
  * Reads the Swift as text, like `noRawModal.test.ts`; nothing here compiles it.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles } from '../testSupport/sourceFiles';
 
 const MODULES = join(__dirname, '..', '..', 'modules');
-
-function swiftFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name !== 'node_modules' && entry.name !== 'Pods') swiftFiles(full, found);
-    } else if (entry.name.endsWith('.swift')) found.push(full);
-  }
-  return found;
-}
+const SWIFT = { match: /\.swift$/, skipDirs: ['node_modules', 'Pods'] };
 
 describe('native modules reject through promise.fail', () => {
   it('has no promise.reject with a code and a description', () => {
-    const offenders = swiftFiles(MODULES).filter(file =>
+    const offenders = sourceFiles(MODULES, SWIFT).filter(file =>
       /promise\.reject\(\s*"/.test(readFileSync(file, 'utf8'))
     );
     expect(offenders.map(f => f.slice(MODULES.length + 1))).toEqual([]);

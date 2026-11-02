@@ -19,22 +19,14 @@
  * card renders can't be found from here; those take the rule from the
  * helper's doc comment.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { MENU_ROUTES } from '../utils/navHubs';
+import { sourceFiles } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
 const NAVIGATOR = readFileSync(join(SRC, 'navigation', 'AppNavigator.tsx'), 'utf8');
 const NAV_REF = 'navigation/navigationRef.ts';
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx?$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 const files = sourceFiles(SRC).map(f => ({ rel: f.slice(SRC.length + 1), src: readFileSync(f, 'utf8') }));
 

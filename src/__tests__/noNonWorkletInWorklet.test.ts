@@ -17,11 +17,12 @@
  * A callback passed by name rather than written inline is skipped, so write it
  * inline or mark the function and keep its callees worklets too.
  */
-import { readFileSync, readdirSync, existsSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { parse } from '@babel/parser';
 import traverse, { type NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
+import { sourceFiles } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
 
@@ -32,15 +33,6 @@ const WORKLET_HOOKS = new Set([
 ]);
 /** Packages whose exports are already worklet-safe. */
 const SAFE_PACKAGES = new Set(['react-native-reanimated', 'react-native-worklets']);
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx?$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 function parseFile(file: string): t.File {
   return parse(readFileSync(file, 'utf8'), { sourceType: 'module', plugins: ['typescript', 'jsx'] });

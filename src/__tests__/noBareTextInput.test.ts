@@ -7,20 +7,12 @@
  * is a keyboard with no way to put it away short of finding a safe place to tap.
  * A field that doesn't want one passes `dismissBar={false}`.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { parse } from '@babel/parser';
+import { sourceFiles, TSX } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 type Node = { type?: string; [key: string]: unknown };
 
@@ -46,7 +38,7 @@ function bareTextInputs(src: string): number[] {
   return hits;
 }
 
-const files = sourceFiles(SRC)
+const files = sourceFiles(SRC, { match: TSX })
   .filter(f => !f.endsWith(join('components', 'TextField.tsx')))
   .map(f => ({ rel: f.slice(SRC.length + 1), src: readFileSync(f, 'utf8') }));
 

@@ -13,23 +13,13 @@
  * component tests here (Jest runs in `node` with no renderer), so a JSX tag is
  * only ever text as far as the suite is concerned.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
 /** The one file allowed to reach for the real thing. */
 const WRAPPER = join('components', 'SheetModal.tsx');
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    // The suite itself is skipped: it renders nothing, and this file quotes
-    // both patterns as literals, so scanning it would only ever match itself.
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx?$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 /** `<Modal` / `</Modal>` as a tag, never `<SheetModal` or a `QuickAddModal`. */
 const RAW_TAG = /<\/?Modal[\s/>]/;
