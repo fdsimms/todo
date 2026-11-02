@@ -627,6 +627,7 @@ export interface MoodInput {
   mood?: number | null;
   symptoms?: { name: string; severity?: number }[];
   contextTags?: string[];
+  change?: 'worse' | 'same' | 'better' | null;
   note?: string | null;
   at?: Date;
 }
@@ -722,7 +723,7 @@ export interface FoodAmount {
   quantity?: string;
 }
 
-export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
+export type MoodPatch = Partial<Pick<MoodInput, 'mood' | 'change' | 'symptoms' | 'contextTags' | 'note'>>;
 
 export type DosePatch = Partial<Omit<DoseInput, 'at'>>;
 
@@ -5421,8 +5422,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         input.note ?? null,
         input.at,
         (input.contextTags ?? []).map(tag),
+        input.change ?? null,
       );
-      if (!log) throw new Error('A check-in needs a mood, a symptom, a tag or a note.');
+      if (!log) throw new Error('A check-in needs a mood, a change, a symptom, a tag or a note.');
       return log;
     },
 
@@ -5688,11 +5690,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (patch.mood !== undefined) next.mood = patch.mood as MoodLog['mood'];
       if (patch.symptoms !== undefined) next.symptoms = patch.symptoms.map(s => ({ name: spelling.symptom(s.name), severity: (s.severity === 1 || s.severity === 3 ? s.severity : 2) as 1 | 2 | 3 }));
       if (patch.contextTags !== undefined) next.contextTags = patch.contextTags.map(spelling.tag);
+      if (patch.change !== undefined) next.change = patch.change;
       if (patch.note !== undefined) next.note = patch.note;
       // An edit may not empty the entry: a check-in recording nothing is a day
       // marked as logged with nothing on it. Delete it instead.
       const after = { ...existing, ...next };
-      if (after.mood == null && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim()) {
+      if (after.mood == null && after.change == null && after.symptoms.length === 0 && after.contextTags.length === 0 && !after.note?.trim()) {
         throw new Error('That would leave the check-in empty. Delete it instead.');
       }
       useMoodStore.getState().updateLog(id, next);

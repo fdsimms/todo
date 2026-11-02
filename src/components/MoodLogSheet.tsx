@@ -3,7 +3,7 @@ import { View, Text, Alert, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
-import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
+import type { LoggedSymptom, MoodChange, MoodLevel, MoodLog, SymptomSeverity } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -11,7 +11,10 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
   DEFAULT_CONTEXT_TAGS,
+  MOOD_CHANGES,
   MOOD_LEVELS,
+  changeAnchorFor,
+  describeChangeAnchor,
   SYMPTOM_SEVERITIES,
   contextTagVocabulary,
   contextTagKey,
@@ -118,6 +121,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
 
   const [mood, setMood] = useState<MoodLevel | null>(null);
+  const [change, setChange] = useState<MoodChange | null>(null);
   const [symptoms, setSymptoms] = useState<LoggedSymptom[]>([]);
   const [contextTags, setContextTags] = useState<string[]>([]);
   const [note, setNote] = useState('');
@@ -161,6 +165,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     if (!visible) return;
     const offered = editing ? null : prefill;
     setMood(editing?.mood ?? offered?.mood ?? null);
+    setChange(editing?.change ?? null);
     const openingSymptoms = editing?.symptoms ?? (offered?.symptom ? withSymptom([], offered.symptom, 1) : []);
     setSymptoms(openingSymptoms);
     setOpenedSymptoms(openingSymptoms.map(s => s.name));
@@ -357,14 +362,33 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     setSymptoms(current => withSymptom(current, trimmed, 1));
   };
 
-  const canSave = mood !== null || symptoms.length > 0 || contextTags.length > 0
+  // What "since your last entry" is measured against. A new entry is measured
+  // from now and only for today (a backdated day has no "last entry" to speak
+  // of); an edit is measured from its own moment, never against itself. No
+  // anchor, no question, except that an entry already holding an answer keeps
+  // showing it so it can be seen and cleared. See `changeAnchorFor`.
+  const changeAt = useMemo(
+    () => (editing ? new Date(editing.loggedAt) : new Date()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editing, visible],
+  );
+  const changeAnchor = useMemo(
+    () => (!editing && !isSameDay(day, getLogicalToday()) ? null : changeAnchorFor(logs, changeAt, editing?.id)),
+    [logs, changeAt, editing, day],
+  );
+  const showChange = changeAnchor !== null || !!editing?.change;
+  // A pick made while the row was showing is dropped if it stops showing (the
+  // Day row moved to a past day), so an answer is never saved unseen.
+  const savedChange = showChange ? change : null;
+
+  const canSave = mood !== null || savedChange !== null || symptoms.length > 0 || contextTags.length > 0
     || note.trim().length > 0;
 
   const save = () => {
     if (!canSave) return;
     haptics.success();
     if (editing) {
-      updateLog(editing.id, { mood, symptoms, contextTags, note });
+      updateLog(editing.id, { mood, change: savedChange, symptoms, contextTags, note });
     } else {
       // Today records the actual moment; a backdated day records noon on it.
       // Noon rather than midnight for the reason StuckScreen parks its dates
@@ -375,7 +399,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       const at = isToday ? undefined : noonOn(day);
       // The history behind the sheet gains a row; let it ease in as the sheet goes.
       animateLayout();
-      addLog(mood, symptoms, note, at, contextTags);
+      addLog(mood, symptoms, note, at, contextTags, savedChange);
       // The saved entry answers the check-in task (recordTasks.ts), so its row
       // plays the tick and leaves. A backdated entry answers nothing, and the
       // request skips any task the entry doesn't answer.
@@ -453,6 +477,22 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
         <Text style={styles.moodCaption}>
           {mood === null ? 'Optional. Leave blank to skip.' : moodLabel(mood)}
         </Text>
+        {showChange && (
+          <>
+            <View style={styles.divider} />
+            <Text style={styles.groupLabel}>SINCE YOUR LAST ENTRY</Text>
+            <SegmentedControl
+              options={MOOD_CHANGES.map(c => ({ value: c.value, label: c.label }))}
+              value={change as MoodChange}
+              onChange={value => setChange(value)}
+              onDeselect={() => { haptics.tap(); setChange(null); }}
+              label="Compared with your last entry"
+            />
+            {changeAnchor && (
+              <Text style={styles.moodCaption}>Last entry: {describeChangeAnchor(changeAnchor, changeAt)}</Text>
+            )}
+          </>
+        )}
       </View>
 
       <View style={styles.card}>
@@ -604,6 +644,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     letterSpacing: 0.8,
     marginBottom: spacing.sm,
+  },
+  // Between the faces and the change row inside the one Mood card: margin on
+  // both sides, so neither neighbor is jammed against the line.
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.controlBorder,
+    marginVertical: spacing.md,
   },
   hint: {
     fontSize: font.sm,

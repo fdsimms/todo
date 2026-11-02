@@ -135,6 +135,30 @@ describe('addLog', () => {
 
 });
 
+describe('change since the last entry', () => {
+  it('stores the answer beside the mood, not inside it', () => {
+    state().addLog(3, [], null, undefined, [], 'better');
+    expect(dbInsertMoodLog).toHaveBeenCalledWith(expect.objectContaining({ mood: 3, change: 'better' }));
+  });
+
+  it('defaults to no answer', () => {
+    const log = state().addLog(3, []);
+    expect(log?.change).toBeNull();
+  });
+
+  it('is enough on its own to make an entry', () => {
+    expect(state().addLog(null, [], null, undefined, [], 'worse')).not.toBeNull();
+  });
+
+  it('can be corrected and cleared on an existing entry', () => {
+    const log = state().addLog(3, [], null, undefined, [], 'same')!;
+    state().updateLog(log.id, { change: 'worse' });
+    expect(state().logs[0].change).toBe('worse');
+    state().updateLog(log.id, { change: null });
+    expect(state().logs[0].change).toBeNull();
+  });
+});
+
 describe('updateLog', () => {
   it('rewrites what was said', () => {
     const log = state().addLog(2, [])!;

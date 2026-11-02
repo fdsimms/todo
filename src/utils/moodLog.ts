@@ -1,4 +1,4 @@
-import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
+import type { LoggedSymptom, MoodChange, MoodLevel, MoodLog, SymptomSeverity } from '../types';
 
 /**
  * The mood/symptom log: the scale, the vocabulary, and the day reads.
@@ -62,6 +62,53 @@ export const SYMPTOM_SEVERITIES: readonly { value: SymptomSeverity; label: strin
   { value: 2, label: 'Moderate' },
   { value: 3, label: 'Severe' },
 ];
+
+/** The three answers to "since your last entry", worst to best. Storage values: reword the labels, never rename. */
+export const MOOD_CHANGES: readonly { value: MoodChange; label: string }[] = [
+  { value: 'worse', label: 'Worse' },
+  { value: 'same', label: 'Same' },
+  { value: 'better', label: 'Better' },
+];
+
+export function moodChangeLabel(change: MoodChange): string {
+  return MOOD_CHANGES.find(c => c.value === change)?.label ?? 'Same';
+}
+
+/**
+ * How far back "since your last entry" reaches. "Better than last time" means
+ * something after three hours and nothing after three days, so an older entry
+ * is no anchor and the question is not asked.
+ */
+export const CHANGE_ANCHOR_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The entry a new answer is measured against: the most recent one *with a mood*
+ * before `at`, inside `CHANGE_ANCHOR_WINDOW_MS`, or null (and then the question
+ * is not asked at all). An entry with no mood is not an anchor, since there is
+ * no level to be better or worse than. `excludeId` is the entry being edited,
+ * so it never anchors itself.
+ */
+export function changeAnchorFor(logs: readonly MoodLog[], at: Date, excludeId?: string): MoodLog | null {
+  const atMs = at.getTime();
+  let best: MoodLog | null = null;
+  let bestMs = -Infinity;
+  for (const log of logs) {
+    if (log.id === excludeId || log.mood === null) continue;
+    const ms = new Date(log.loggedAt).getTime();
+    if (ms >= atMs || atMs - ms > CHANGE_ANCHOR_WINDOW_MS) continue;
+    if (ms > bestMs) { best = log; bestMs = ms; }
+  }
+  return best;
+}
+
+/** "Low, 3 hours ago": what the answer is measured against, said where it is asked. */
+export function describeChangeAnchor(anchor: MoodLog, at: Date): string {
+  const minutes = Math.max(0, Math.round((at.getTime() - new Date(anchor.loggedAt).getTime()) / 60000));
+  const ago = minutes < 60
+    ? 'less than an hour ago'
+    : `${Math.round(minutes / 60)} ${Math.round(minutes / 60) === 1 ? 'hour' : 'hours'} ago`;
+  return `${anchor.mood === null ? 'Logged' : moodLabel(anchor.mood)}, ${ago}`;
+}
 
 export function moodLabel(mood: MoodLevel): string {
   return MOOD_LEVELS.find(m => m.value === mood)?.label ?? 'OK';

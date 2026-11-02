@@ -2283,6 +2283,11 @@ describe('demo seed — people', () => {
     expect(insight.dayCount).toBeGreaterThanOrEqual(MIN_PAIRED_DAYS);
   });
 
+  it('seeds some answers to "since your last entry", in more than one direction', () => {
+    const answers = new Set(useMoodStore.getState().logs.map(l => l.change).filter(Boolean));
+    expect(answers.size).toBeGreaterThan(1);
+  });
+
   it('seeds symptoms, at more than one severity and on more than one day', () => {
     const logs = useMoodStore.getState().logs;
     expect(symptomVocabulary(logs).length).toBeGreaterThan(1);

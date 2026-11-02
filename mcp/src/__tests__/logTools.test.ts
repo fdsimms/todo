@@ -247,6 +247,14 @@ describe('logMood', () => {
     expect(second.contextTags).toEqual(['Poor sleep']);
   });
 
+  it('records the change since the last check-in beside the rating, and lets it be corrected', () => {
+    const made = logMood(replica, { mood: 3, change: 'better' });
+    expect(made.mood).toBe(3);
+    expect(made.change).toBe('better');
+    expect(updateMoodLog(replica, made.id, { change: 'worse' }).change).toBe('worse');
+    expect(updateMoodLog(replica, made.id, { change: null }).change).toBeUndefined();
+  });
+
   it('refuses to clear the only thing on a check-in', () => {
     const made = logMood(replica, { note: 'Long day' });
     expect(() => updateMoodLog(replica, made.id, { note: null })).toThrow(/empty/);

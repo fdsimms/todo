@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LoggedSymptom, MoodLevel, MoodLog } from '../types';
+import type { LoggedSymptom, MoodChange, MoodLevel, MoodLog } from '../types';
 import {
   dbGetAllMoodLogs,
   dbInsertMoodLog,
@@ -25,7 +25,7 @@ import { contextTagKey, renamedContextTags, symptomKey } from '../utils/moodLog'
  * wants several cuts of the whole history at once.
  */
 
-export type MoodLogPatch = Partial<Pick<MoodLog, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
+export type MoodLogPatch = Partial<Pick<MoodLog, 'mood' | 'symptoms' | 'contextTags' | 'change' | 'note'>>;
 
 interface MoodStore {
   logs: MoodLog[];
@@ -58,6 +58,8 @@ interface MoodStore {
      */
     at?: Date,
     contextTags?: string[],
+    /** How it felt against the previous entry, when the person said. */
+    change?: MoodChange | null,
   ) => MoodLog | null;
   updateLog: (id: string, patch: MoodLogPatch) => void;
   removeLog: (id: string) => void;
@@ -78,7 +80,7 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
     set({ logs: dbGetAllMoodLogs(), initialized: true });
   },
 
-  addLog(mood, symptoms, note = null, at, contextTags = []) {
+  addLog(mood, symptoms, note = null, at, contextTags = [], change = null) {
     const cleaned = cleanSymptoms(symptoms);
     const cleanedTags = cleanContextTags(contextTags);
     const trimmedNote = note?.trim() || null;
@@ -86,7 +88,7 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
     // the sheet's Save is the only way in, and an empty row would be a day
     // marked as logged with nothing on it — which every read here would then
     // have to distinguish from a real one.
-    if (mood === null && cleaned.length === 0 && cleanedTags.length === 0 && !trimmedNote) return null;
+    if (mood === null && cleaned.length === 0 && cleanedTags.length === 0 && !trimmedNote && change === null) return null;
 
     const when = at ?? new Date();
     const log: MoodLog = {
@@ -99,6 +101,7 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
       mood,
       symptoms: cleaned,
       contextTags: cleanedTags,
+      change,
       note: trimmedNote,
     };
     dbInsertMoodLog(log);

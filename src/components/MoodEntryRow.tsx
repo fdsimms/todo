@@ -7,8 +7,13 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { MoodFace } from './MoodFace';
-import { moodLabel, severityLabel } from '../utils/moodLog';
+import { moodChangeLabel, moodLabel, severityLabel } from '../utils/moodLog';
 import { symptomOnLog } from '../utils/moodHistory';
+
+/** "Better than your last entry"; "Same" reads as "Same as". */
+function changeText(change: NonNullable<MoodLog['change']>): string {
+  return change === 'same' ? 'Same as your last entry' : `${moodChangeLabel(change)} than your last entry`;
+}
 
 /** Enough for a few sentences; the sheet still holds the whole note. */
 const NOTE_LINES = 6;
@@ -53,6 +58,7 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
     showDate ? format(new Date(log.loggedAt), 'EEEE, MMMM d') : null,
     format(new Date(log.loggedAt), 'h:mm a'),
     log.mood === null ? 'no mood recorded' : moodLabel(log.mood),
+    log.change ? changeText(log.change) : null,
     highlighted ? `${highlighted.name}, ${severityLabel(highlighted.severity)}` : null,
     log.symptoms.length > 0 ? log.symptoms.map(s => s.name).join(', ') : null,
     log.contextTags.length > 0 ? log.contextTags.join(', ') : null,
@@ -83,6 +89,9 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
           {log.mood === null ? 'Logged' : moodLabel(log.mood)}
         </Text>
         <Text style={styles.meta} numberOfLines={1}>{when}</Text>
+        {log.change && (
+          <Text style={styles.change} numberOfLines={1}>{changeText(log.change)}</Text>
+        )}
         {!!log.note && <Text style={styles.note} numberOfLines={NOTE_LINES}>{log.note}</Text>}
         {highlighted && (
           <Text style={styles.highlight} numberOfLines={1}>
@@ -118,6 +127,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   body: { flex: 1 },
   title: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   meta: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xxs },
+  change: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xs },
   highlight: { fontSize: font.sm, color: colors.accent, fontWeight: fontWeight.medium, marginTop: spacing.xs },
   symptoms: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xs },
   contextTags: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },

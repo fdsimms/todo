@@ -30,10 +30,10 @@
 
 import { format } from 'date-fns/format';
 import type { MoodLog } from '../types';
-import { moodLabel, severityLabel } from './moodLog';
+import { moodChangeLabel, moodLabel, severityLabel } from './moodLog';
 
 export const MOOD_EXPORT_COLUMNS = [
-  'Day', 'Logged at', 'Mood', 'Mood label', 'Symptoms', 'Context', 'Note',
+  'Day', 'Logged at', 'Mood', 'Mood label', 'Since last entry', 'Symptoms', 'Context', 'Note',
 ] as const;
 
 /**
@@ -77,6 +77,8 @@ export function moodExportCsv(logs: readonly MoodLog[]): string {
     log.loggedAt,
     log.mood === null ? '' : String(log.mood),
     log.mood === null ? '' : moodLabel(log.mood),
+    // The person's own answer, in its word. Never worked out from two moods.
+    log.change === null ? '' : moodChangeLabel(log.change),
     symptomCell(log),
     log.contextTags.join('; '),
     log.note ?? '',
