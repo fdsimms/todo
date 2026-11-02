@@ -57,10 +57,10 @@ export const PROTEIN_PER_WEIGHT_RANGE: Record<
 /** The ratio clamped into its unit's range, or null when it is not a number. */
 function clampRatio(unit: WeightUnit, grams: unknown): number | null {
   if (typeof grams !== 'number' || !Number.isFinite(grams)) return null;
-  const { min, max, step } = PROTEIN_PER_WEIGHT_RANGE[unit];
-  const snapped = Math.round(grams / step) * step;
-  // Rounded to the step's own precision, or 0.05 * 7 reads back as 0.35000000000000003.
-  return Math.min(max, Math.max(min, Number(snapped.toFixed(2))));
+  const { min, max } = PROTEIN_PER_WEIGHT_RANGE[unit];
+  // Two places keeps a typed 1.25 and clears float dust (0.05 * 7 is 0.35000000000000003).
+  // Not snapped to the step: a value typed into the stepper's field has to stay as typed.
+  return Math.min(max, Math.max(min, Number(grams.toFixed(2))));
 }
 
 /** A stored ratio, or null if there isn't a readable one. */
@@ -91,7 +91,10 @@ export function switchProteinUnit(setting: ProteinPerWeight, unit: WeightUnit): 
   if (setting.unit === unit) return setting;
   const perKg = setting.gramsPerUnit / unitToKg(1, setting.unit);
   const converted = perKg * unitToKg(1, unit);
-  return { unit, gramsPerUnit: clampRatio(unit, converted) ?? PROTEIN_PER_WEIGHT_RANGE[unit].default };
+  // A converted figure is the one place a ratio is moved onto the new unit's step, since nobody typed it.
+  const { step } = PROTEIN_PER_WEIGHT_RANGE[unit];
+  const snapped = Number((Math.round(converted / step) * step).toFixed(2));
+  return { unit, gramsPerUnit: clampRatio(unit, snapped) ?? PROTEIN_PER_WEIGHT_RANGE[unit].default };
 }
 
 /**

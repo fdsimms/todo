@@ -369,11 +369,10 @@ export const LIMIT_WARN_PERCENT_MIN = 50;
 export const LIMIT_WARN_PERCENT_MAX = 100;
 export const LIMIT_WARN_PERCENT_STEP = 5;
 
-/** Snaps to the step and clamps to the range; anything unreadable is the default. */
+/** Rounds to a whole percent and clamps to the range; anything unreadable is the default. A typed value off the step is kept. */
 export function clampLimitWarnPercent(percent: number): number {
   if (!Number.isFinite(percent)) return DEFAULT_LIMIT_WARN_PERCENT;
-  const snapped = Math.round(percent / LIMIT_WARN_PERCENT_STEP) * LIMIT_WARN_PERCENT_STEP;
-  return Math.min(LIMIT_WARN_PERCENT_MAX, Math.max(LIMIT_WARN_PERCENT_MIN, snapped));
+  return Math.min(LIMIT_WARN_PERCENT_MAX, Math.max(LIMIT_WARN_PERCENT_MIN, Math.round(percent)));
 }
 
 /**

@@ -77,8 +77,8 @@ describe('the setting clamps', () => {
     expect(clampSnackNudgeFromHour(NaN)).toBe(DEFAULT_SNACK_NUDGE_FROM_HOUR);
   });
 
-  it('snaps the share to its step and keeps it in range', () => {
-    expect(clampSnackNudgeSharePercent(47)).toBe(50);
+  it('keeps a typed share off the step and keeps it in range', () => {
+    expect(clampSnackNudgeSharePercent(47)).toBe(47);
     expect(clampSnackNudgeSharePercent(0)).toBe(10);
     expect(clampSnackNudgeSharePercent(100)).toBe(90);
     expect(clampSnackNudgeSharePercent(NaN)).toBe(DEFAULT_SNACK_NUDGE_SHARE_PERCENT);

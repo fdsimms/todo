@@ -66,10 +66,13 @@ describe('the settings', () => {
     expect(clampWaniKaniLessonsPerDay(WANIKANI_LESSONS_ALL)).toBe(WANIKANI_LESSONS_ALL);
   });
 
-  it('keeps no cap as null and steps the cap by ten', () => {
+  it('keeps no cap as null, and a typed cap off the step of ten as typed', () => {
     expect(clampWaniKaniApprenticeCap(null)).toBeNull();
     expect(clampWaniKaniApprenticeCap(undefined)).toBe(WANIKANI_APPRENTICE_CAP_DEFAULT);
-    expect(clampWaniKaniApprenticeCap(104)).toBe(100);
+    expect(clampWaniKaniApprenticeCap(104)).toBe(104);
+    expect(clampWaniKaniApprenticeCap(37)).toBe(37);
+    expect(clampWaniKaniApprenticeCap(37.4)).toBe(37);
+    expect(clampWaniKaniApprenticeCap(900)).toBe(500);
     expect(clampWaniKaniApprenticeCap(1)).toBe(10);
   });
 

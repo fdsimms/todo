@@ -3,9 +3,9 @@ import {
 } from '../utils/stepGoal';
 
 describe('clampStepGoal', () => {
-  it('snaps to the step and clamps to the range', () => {
-    expect(clampStepGoal(8240)).toBe(8000);
-    expect(clampStepGoal(8260)).toBe(8500);
+  it('keeps a typed value off the step and clamps to the range', () => {
+    expect(clampStepGoal(8240)).toBe(8240);
+    expect(clampStepGoal(8260.4)).toBe(8260);
     expect(clampStepGoal(10)).toBe(STEP_GOAL_MIN);
     expect(clampStepGoal(900000)).toBe(STEP_GOAL_MAX);
   });

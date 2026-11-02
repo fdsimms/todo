@@ -7,9 +7,9 @@ import {
 } from '@/utils/shortNight';
 
 describe('clampShortNightMinutes', () => {
-  it('snaps to the step and clamps to the range', () => {
-    expect(clampShortNightMinutes(371)).toBe(360);
-    expect(clampShortNightMinutes(380)).toBe(390);
+  it('keeps a typed value off the step and clamps to the range', () => {
+    expect(clampShortNightMinutes(371)).toBe(371);
+    expect(clampShortNightMinutes(380)).toBe(380);
     expect(clampShortNightMinutes(10)).toBe(SHORT_NIGHT_MINUTES_MIN);
     expect(clampShortNightMinutes(9999)).toBe(SHORT_NIGHT_MINUTES_MAX);
   });

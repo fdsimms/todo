@@ -63,8 +63,7 @@ export function describeLeaveWindow(minutes: number): string {
 
 export function clampLeaveWindowMinutes(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return LEAVE_WINDOW_MINUTES_DEFAULT;
-  const stepped = Math.round(value / LEAVE_WINDOW_MINUTES_STEP) * LEAVE_WINDOW_MINUTES_STEP;
-  return Math.min(LEAVE_WINDOW_MINUTES_MAX, Math.max(LEAVE_WINDOW_MINUTES_MIN, stepped));
+  return Math.min(LEAVE_WINDOW_MINUTES_MAX, Math.max(LEAVE_WINDOW_MINUTES_MIN, Math.round(value)));
 }
 
 /**
@@ -160,11 +159,10 @@ export function travelModeFor(eventId: string, prefs: TravelEventPrefs, defaultM
   return prefs[eventId]?.mode ?? defaultMode;
 }
 
-/** `travelWalkUnderMinutes` clamped to its steps, 0 for anything unusable. */
+/** `travelWalkUnderMinutes` clamped to its range, 0 for anything unusable. A typed value off the step is kept. */
 export function clampTravelWalkUnder(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
-  const stepped = Math.round(value / TRAVEL_WALK_UNDER_STEP) * TRAVEL_WALK_UNDER_STEP;
-  return Math.min(TRAVEL_WALK_UNDER_MAX, Math.max(0, stepped));
+  return Math.min(TRAVEL_WALK_UNDER_MAX, Math.max(0, Math.round(value)));
 }
 
 /**
@@ -461,8 +459,7 @@ export const TRAVEL_EVENT_TITLE_MAX_LENGTH = 60;
 /** `travelLeadMinutes` clamped to what the stepper offers, defaulting anything unusable. */
 export function clampTravelLeadMinutes(value: unknown): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return TRAVEL_LEAD_MINUTES_DEFAULT;
-  const stepped = Math.round(value / TRAVEL_LEAD_MINUTES_STEP) * TRAVEL_LEAD_MINUTES_STEP;
-  return Math.min(TRAVEL_LEAD_MINUTES_MAX, Math.max(TRAVEL_LEAD_MINUTES_MIN, stepped));
+  return Math.min(TRAVEL_LEAD_MINUTES_MAX, Math.max(TRAVEL_LEAD_MINUTES_MIN, Math.round(value)));
 }
 
 /**

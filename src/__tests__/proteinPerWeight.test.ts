@@ -49,6 +49,11 @@ describe('parseProteinPerWeight', () => {
     expect(parseProteinPerWeight('{"unit":"kg","gramsPerUnit":"2"}')).toBeNull();
   });
 
+  it('keeps a ratio typed between steps', () => {
+    expect(parseProteinPerWeight('{"unit":"lb","gramsPerUnit":0.82}')?.gramsPerUnit).toBe(0.82);
+    expect(parseProteinPerWeight('{"unit":"kg","gramsPerUnit":1.75}')?.gramsPerUnit).toBe(1.75);
+  });
+
   it('clamps a stored ratio into its unit range', () => {
     expect(parseProteinPerWeight('{"unit":"lb","gramsPerUnit":50}')?.gramsPerUnit)
       .toBe(PROTEIN_PER_WEIGHT_RANGE.lb.max);

@@ -16,11 +16,10 @@ export const STEP_GOAL_STEP = 500;
 /** Where the stepper starts when somebody first turns a goal on. */
 export const STEP_GOAL_DEFAULT = 10000;
 
-/** Snaps to the step and clamps to the range. */
+/** Rounds to a whole step count and clamps to the range. A typed value off the step is kept. */
 export function clampStepGoal(goal: number): number {
   if (!Number.isFinite(goal)) return STEP_GOAL_DEFAULT;
-  const snapped = Math.round(goal / STEP_GOAL_STEP) * STEP_GOAL_STEP;
-  return Math.min(STEP_GOAL_MAX, Math.max(STEP_GOAL_MIN, snapped));
+  return Math.min(STEP_GOAL_MAX, Math.max(STEP_GOAL_MIN, Math.round(goal)));
 }
 
 /** Reads the stored value: empty or unreadable is no goal, not the default. */
