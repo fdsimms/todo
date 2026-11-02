@@ -8739,6 +8739,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const clean = unlockLib.cleanUnlockDraft({ ...current, ...allowed, pin: current.pin });
       if (!clean.title) throw new Error('An unlock needs a name.');
       checkUnlockLinks(clean, id);
+      // Same rule as the app's form: a locked unlock can't be made easier to open.
+      if (unlockLib.statusOfUnlock(current, replica.unlockWorld()).status.kind === 'locked') {
+        const loosenings = unlockLib.unlockLooseningsOf(current, clean);
+        if (loosenings.length > 0) throw new Error(`"${current.title}" is locked until today's work is done, so you can't ${unlockLib.joinPhrases(loosenings)} yet. Make the other changes now and this one once it's unlocked.`);
+      }
       const next: RewardUnlock = { ...current, ...clean };
       db.dbUpsertRewardUnlock(next);
       refresh();
@@ -8747,7 +8752,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     deleteUnlock(id): RewardUnlock {
       requireRewardsOn();
+      const unlockLib = require('../../src/utils/rewardUnlocks') as typeof import('../../src/utils/rewardUnlocks');
       const unlock = requireUnlock(id);
+      if (unlockLib.statusOfUnlock(unlock, replica.unlockWorld()).status.kind === 'locked') {
+        throw new Error(`"${unlock.title}" is locked until today's work is done, so it can't be deleted yet. Delete it once it's unlocked.`);
+      }
       db.dbDeleteRewardUnlock(id);
       refresh();
       return unlock;

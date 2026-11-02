@@ -15,6 +15,8 @@ import {
   startPlay,
   statusOfUnlock,
   stopPlay,
+  joinPhrases,
+  unlockLooseningsOf,
   unlockStatus,
   workShareDone,
 } from '../utils/rewardUnlocks';
@@ -202,5 +204,28 @@ describe('play time', () => {
     expect(describePlayMinutes(120)).toBe('2 hours');
     expect(describePlayMinutes(60)).toBe('1 hour');
     expect(describePlayMinutes(90)).toBe('90 minutes');
+  });
+});
+
+describe('unlockLooseningsOf', () => {
+  const base = { title: 'Switch', glyph: null, sharePct: 60, requiredTaskIds: ['a', 'b'], playMinutes: 120, freeOnWeekends: false, freeOnVacation: false, guardsTaskId: 'h', pin: null };
+
+  it('lists what would make it easier to open', () => {
+    expect(unlockLooseningsOf(base, { ...base, sharePct: 40 })).toEqual(['lower the percentage']);
+    expect(unlockLooseningsOf(base, { ...base, requiredTaskIds: ['a'] })).toEqual(['remove a task from Also needs']);
+    expect(unlockLooseningsOf(base, { ...base, requiredTaskIds: ['a', 'c'] })).toEqual(['remove a task from Also needs']);
+    expect(unlockLooseningsOf(base, { ...base, freeOnWeekends: true, freeOnVacation: true })).toEqual(['open it all weekend', 'open it all vacation']);
+    expect(unlockLooseningsOf(base, { ...base, guardsTaskId: null })).toEqual(['unlink its habit']);
+  });
+
+  it('allows anything that is the same or harder, and changes that do not decide opening', () => {
+    expect(unlockLooseningsOf(base, { ...base, sharePct: 80, requiredTaskIds: ['a', 'b', 'c'], title: 'Switch 2', glyph: '🎮', playMinutes: 30, pin: '1' })).toEqual([]);
+    expect(unlockLooseningsOf({ ...base, guardsTaskId: null }, { ...base, guardsTaskId: 'h' })).toEqual([]);
+  });
+
+  it('joins phrases', () => {
+    expect(joinPhrases(['a'])).toBe('a');
+    expect(joinPhrases(['a', 'b'])).toBe('a or b');
+    expect(joinPhrases(['a', 'b', 'c'])).toBe('a, b or c');
   });
 });

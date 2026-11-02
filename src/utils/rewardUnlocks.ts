@@ -81,6 +81,32 @@ export function cleanUnlockDraft(draft: UnlockDraft): UnlockDraft {
   };
 }
 
+// ==== Editing a locked unlock ====
+
+/**
+ * What a change to a locked unlock would do to make it easier to open, as
+ * phrases for "you can't ___ while it's locked". Anything that only makes it
+ * harder (a higher share, another required task) is not listed, nor is a name,
+ * glyph, play time or code, which don't decide whether it opens. The app's form
+ * and the MCP server both call this, so asking Claude isn't a way round it.
+ */
+export function unlockLooseningsOf(before: UnlockDraft, after: UnlockDraft): string[] {
+  const out: string[] = [];
+  if (cleanUnlockSharePct(after.sharePct) < cleanUnlockSharePct(before.sharePct)) out.push('lower the percentage');
+  const kept = new Set(after.requiredTaskIds);
+  if (before.requiredTaskIds.some(id => !kept.has(id))) out.push('remove a task from Also needs');
+  if (!before.freeOnWeekends && after.freeOnWeekends) out.push('open it all weekend');
+  if (!before.freeOnVacation && after.freeOnVacation) out.push('open it all vacation');
+  if (before.guardsTaskId && before.guardsTaskId !== (after.guardsTaskId || null)) out.push('unlink its habit');
+  return out;
+}
+
+/** "a", "a or b", "a, b or c". */
+export function joinPhrases(phrases: readonly string[]): string {
+  if (phrases.length <= 1) return phrases.join('');
+  return `${phrases.slice(0, -1).join(', ')} or ${phrases[phrases.length - 1]}`;
+}
+
 // ==== Today's work ====
 
 /** Coins earned in the logical day starting at `todayStart`. A reset is no earning. */
