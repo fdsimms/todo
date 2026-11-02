@@ -10740,6 +10740,24 @@ describe('reorderPinnedTasks', () => {
     ]);
   });
 
+  // A pin the section isn't showing keeps its slot. Numbered 1..n over only
+  // the rows on screen, it tied with one of them and came back wherever
+  // sortOrder broke the tie.
+  it('keeps the slot of a pin the section is not showing', () => {
+    const future = new Date(Date.now() + 5 * 86_400_000).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', pinned: true, pinnedOrder: 1, sortOrder: 1 }),
+        makeTask({ id: 'b', pinned: true, pinnedOrder: 2, sortOrder: 2, pinEachOccurrence: true, dueDate: future }),
+        makeTask({ id: 'c', pinned: true, pinnedOrder: 3, sortOrder: 3 }),
+      ],
+    });
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['a', 'c']);
+    useTaskStore.getState().reorderPinnedTasks(['c', 'a']);
+    const order = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)?.pinnedOrder;
+    expect([order('c'), order('b'), order('a')]).toEqual([1, 2, 3]);
+  });
+
   it('is a no-op on an empty list', () => {
     (dbBatchUpdatePinnedOrders as jest.Mock).mockClear();
     useTaskStore.getState().reorderPinnedTasks([]);

@@ -9689,15 +9689,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   /**
    * Hand-order the Pinned section. `orderedIds` is the section exactly as the
-   * user just dragged it, which is the whole of it — unlike a stack's
-   * children, a pinned row is never hidden from the section it's being
-   * reordered in, so there's no reorderSubset fold to do here.
+   * user just dragged it, which is rarely every pin: `pinnedTasks()` leaves out
+   * one that is held back, withheld, or a pin-each-occurrence task not due yet,
+   * and each keeps its pinnedOrder. Numbering only the rows on screen 1..n
+   * collided with theirs, so a pin coming back landed wherever sortOrder broke
+   * the tie. The new order is folded into every live pin (see reorderSubset)
+   * and the renumber runs across all of them, as reorderGroupChildren does.
    *
    * Renumbers from 1 so no row is left on the 0 that means "never ranked".
    */
   reorderPinnedTasks(orderedIds) {
     if (orderedIds.length === 0) return;
-    const updates = orderedIds.map((id, index) => ({ id, pinnedOrder: index + 1 }));
+    const pins = get().tasks
+      .filter(t => t.pinned && !t.parentId && !t.completed && !t.archived)
+      .sort(comparePinned)
+      .map(t => t.id);
+    const updates = reorderSubset(pins, orderedIds).map((id, index) => ({ id, pinnedOrder: index + 1 }));
     dbBatchUpdatePinnedOrders(updates);
     const byId = new Map(updates.map(u => [u.id, { pinnedOrder: u.pinnedOrder }]));
     set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
