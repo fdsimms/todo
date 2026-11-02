@@ -8,6 +8,7 @@ import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { describeProduct } from '../utils/groceryProduct';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
+import type { RecipePhoto } from '../utils/recipePhoto';
 
 /**
  * What a label photo is about: the food, and the product of it the label is
@@ -18,6 +19,12 @@ export interface LabelSubject {
   name: string;
   brand: string | null;
   variant: string | null;
+  /**
+   * The label photo, when the camera has already taken it. Set by the food
+   * log's add sheet once the name is answered, so the panel reads it on open
+   * instead of opening a camera of its own. Never asked for here.
+   */
+  photo?: RecipePhoto | null;
 }
 
 /** A subject with only a name, for a caller that has no brand or variant to offer. */
@@ -35,15 +42,15 @@ interface Props {
 }
 
 /**
- * "About this label": asked before the camera opens, so the nutrition facts
- * land on the right product instead of a food whose name has the brand mashed
- * into it ("Red Plate Foods Whoopie Cookies").
+ * "About this label": asked once the label is photographed, so the nutrition
+ * facts land on the right product instead of a food whose name has the brand
+ * mashed into it ("Red Plate Foods Whoopie Cookies").
  *
  * A small card rather than a page sheet: three fields and one decision, and a
  * scrim tap costs only retyping them, so there is no unsaved-changes guard.
  * Nothing is written here; the catalog row and its product are made by
- * `ScanToLogFlow` only once the photographed panel is saved, so backing out of
- * the camera leaves nothing behind.
+ * `ScanToLogFlow` only once the photographed panel is saved, so backing out
+ * here leaves nothing behind.
  */
 export function LabelSubjectSheet({ visible, initialName, onNext, onClose }: Props) {
   const colors = useColors();
@@ -90,18 +97,18 @@ export function LabelSubjectSheet({ visible, initialName, onNext, onClose }: Pro
       <ScrollView keyboardShouldPersistTaps="handled" bounces={false} showsVerticalScrollIndicator={false}>
       <View style={styles.card}>
         <View style={styles.headerRow}>
-          <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onClose)} minWidth={56} />
+          <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onClose)} minWidth={88} />
           <Text style={styles.heading}>About this label</Text>
           <SheetHeaderButton
-            label="Next"
+            label="Read label"
             onPress={next}
+            minWidth={88}
             disabled={!trimmedName}
-            minWidth={56}
             style={styles.headerRight}
           />
         </View>
         <Text style={styles.hint}>
-          The label photo comes next. Its nutrition facts are saved for this exact product.
+          The nutrition facts in the photo are saved for this exact product.
         </Text>
 
         <View style={styles.body}>

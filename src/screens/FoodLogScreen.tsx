@@ -301,6 +301,8 @@ export function FoodLogScreen() {
   const [reviewing, setReviewing] = useState<PendingEstimate | null>(null);
   const reviewingAt = useMemo(() => (reviewing ? new Date(reviewing.atISO) : null), [reviewing]);
   const [scanOpen, setScanOpen] = useState(false);
+  // A barcode the add sheet's camera already read, handed to the scanner as its first row.
+  const [scanCode, setScanCode] = useState<string | null>(null);
   // The food whose nutrition label is being photographed from the picker.
   const [label, setLabel] = useState<LabelSubject | null>(null);
   // The add sheet, so a log made from a sheet raised over it (scan, saved
@@ -1729,7 +1731,7 @@ export function FoodLogScreen() {
           allowBurst={reviewing === null}
           onClose={() => { setAddOpen(false); setReviewing(null); }}
           canEstimate={estimateRoute !== 'unavailable'}
-          onScan={scanShown ? () => setScanOpen(true) : undefined}
+          onScan={scanShown ? code => { setScanCode(code ?? null); setScanOpen(true); } : undefined}
           onPhotographLabel={scanShown ? setLabel : undefined}
           onSavedMeal={() => setSavedMealsOpen(true)}
           savedMeals={savedMeals}
@@ -1752,8 +1754,9 @@ export function FoodLogScreen() {
                 slot={addingSlot}
                 at={loggingAt}
                 label={label}
+                initialCode={scanCode}
                 onLabelClose={() => setLabel(null)}
-                onClose={() => setScanOpen(false)}
+                onClose={() => { setScanOpen(false); setScanCode(null); }}
                 // Closes the "What did you eat?" sheet underneath too, only once
                 // a scan actually logs something — cancelling leaves it open,
                 // same as backing out of its own database search does.

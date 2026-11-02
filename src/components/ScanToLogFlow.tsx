@@ -59,6 +59,11 @@ interface Props {
    * unchanged.
    */
   label?: LabelSubject | null;
+  /**
+   * A barcode the caller's camera already read, handed to the scanner as its
+   * first row. Only meaningful while `visible`.
+   */
+  initialCode?: string | null;
   /** The label panel opened by `label` closed, saved or not. */
   onLabelClose?: () => void;
 }
@@ -67,7 +72,7 @@ interface Props {
 const EMPTY_FOODS: ScannedFood[] = [];
 
 export function ScanToLogFlow({
-  visible, slot, at, mealPlanEntryId, onClose, onLogged, label, onLabelClose,
+  visible, slot, at, mealPlanEntryId, onClose, onLogged, label, initialCode, onLabelClose,
 }: Props) {
   const items = useGroceryStore(useShallow(s => s.items));
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
@@ -278,6 +283,7 @@ export function ScanToLogFlow({
         // `LogMealEntrySheet`.
         visible={visible && session === null && panelSubject === null}
         context="log"
+        initialCode={initialCode}
         onClose={onClose}
         onApply={handleScanApply}
         onPhotographLabel={subject => setPanelFor({
@@ -296,7 +302,10 @@ export function ScanToLogFlow({
       <NutritionPanelSheet
         visible={panelSubject !== null}
         foodName={panelSubject?.name ?? ''}
-        openCamera={panelFor === null && !!label}
+        // A label with its photo already taken is read on open; one without it
+        // (a caller that still asks for the name first) opens the camera.
+        openCamera={panelFor === null && !!label && !label.photo}
+        initialPhoto={panelFor === null ? label?.photo ?? null : null}
         nutrition={null}
         onClose={() => { setPanelFor(null); onLabelClose?.(); }}
         onSave={panel => {

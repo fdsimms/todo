@@ -34,7 +34,7 @@ import { packSizeGrams, servingsIn } from '../utils/scanPortion';
 import { ratioFromBatch } from '../utils/cookedState';
 import { canReadTextOnDevice } from '../utils/receiptOcr';
 import { readLabelPhoto, type LabelReading } from '../utils/labelOcr';
-import { pickRecipePhoto } from '../utils/recipePhoto';
+import { pickRecipePhoto, type RecipePhoto } from '../utils/recipePhoto';
 import { afterMenuDismissed } from '../utils/sheetModal';
 import {
   describeAIError, nutritionLabelPhotoAiAvailable, readLabelPhotoWithAi,
@@ -174,6 +174,13 @@ interface Props {
    * where Vision can't run, since there is nothing to read the photo with.
    */
   openCamera?: boolean;
+  /**
+   * A label photo already taken (by the food log's camera), read as soon as the
+   * sheet has presented. Takes the place of `openCamera`: the picture exists, so
+   * there is nothing to open. Read once per opening, and ignored where Vision
+   * can't run and no key is set, the same as a photo picked here.
+   */
+  initialPhoto?: RecipePhoto | null;
 }
 
 const BASIS_OPTIONS = (['per100g', 'per100ml', 'perServing'] as const).map(value => ({
@@ -194,7 +201,7 @@ const COOKED_STATE_OPTIONS: { value: PanelForm['cookedState']; label: string }[]
 /** What an unlabelled column is called, by position. A panel never prints more. */
 const COLUMN_ORDINAL = ['First column', 'Second column', 'Third column'];
 
-export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onSave, openCamera }: Props) {
+export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onSave, openCamera, initialPhoto }: Props) {
   const actionMenu = useActionMenu();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -302,7 +309,16 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       setPhotoError(picked.message);
       return;
     }
+    await readPhoto(picked.photo, stillHere);
+  }, []);
 
+  /**
+   * Reads a photo already in hand into the form: on-device first, then Claude
+   * where a key is set. Shared by a photo picked here and one handed in as
+   * `initialPhoto`, so both read the same way and report the same failures.
+   * `stillHere` is the caller's own check that the sheet hasn't moved on.
+   */
+  const readPhoto = useCallback(async (photo: RecipePhoto, stillHere: () => boolean) => {
     setReading(true);
     setPhotoError(null);
     try {
@@ -310,7 +326,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       // file for free and a nutrition panel is set in small type, so the long
       // edge cut lands hardest on exactly the rows worth reading. Same call
       // `receiptOcr`'s path makes, for the same reason.
-      let read = await readLabelPhoto(picked.photo.sourceUri);
+      let read = await readLabelPhoto(photo.sourceUri);
       if (!stillHere()) return;
       let aiFailure: string | null = null;
       // Vision transcribes for free and gets most panels; a curved tub, a
@@ -320,7 +336,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       // on `nutritionLabelPhotoAiAvailable`.
       if (!read && nutritionLabelPhotoAiAvailable()) {
         try {
-          read = await readLabelPhotoWithAi(picked.photo);
+          read = await readLabelPhotoWithAi(photo);
         } catch (e) {
           aiFailure = describeAIError(e);
         }
@@ -363,6 +379,16 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     if (!visible || !openCamera || !canPhotograph) return;
     const timer = setTimeout(() => { void handlePhoto('camera'); }, 600);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  // A photo the food log's camera already took: nothing to present, so it is
+  // read at once. After the reset and `openingRef` effects above, which run
+  // first in the same commit.
+  useEffect(() => {
+    if (!visible || !initialPhoto) return;
+    const opening = openingRef.current;
+    void readPhoto(initialPhoto, () => openingRef.current === opening);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 

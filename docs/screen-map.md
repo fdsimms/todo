@@ -205,6 +205,7 @@ Where each component can appear.
 - `src/components/FocusSessionSheet.tsx` — on TodayScreen
 - `src/components/FocusSetupSheet.tsx` — on TodayScreen
 - `src/components/FollowUpTaskSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +4 more
+- `src/components/FoodCameraSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +6 more
 - `src/components/FoodLogEntrySheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +6 more
 - `src/components/FreezeWhenBlurred.tsx` — on app shell
 - `src/components/FridgeHistorySheet.tsx` — on MealPlanScreen
