@@ -707,6 +707,7 @@ function MedicationRow({
       {onRecord && (
         <PressableScale
           style={styles.recordButton}
+          hitSlop={5}
           onPress={onRecord}
           accessibilityLabel={`Record a dose of ${stat.name}`}
         >

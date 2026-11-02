@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,6 +45,7 @@ import {
 } from '../utils/birthdayTasks';
 import { getCurrentDayStart } from '../utils/dateUtils';
 import { anyoneHasLocation } from '../utils/peopleLocations';
+import { openExternalUrl } from '../utils/openExternalUrl';
 import {
   peopleSections,
   personContactActions,
@@ -170,8 +171,8 @@ export function PeopleScreen() {
   const reachPerson = useCallback((personId: string, kind: PersonContactKind, url: string) => {
     haptics.tap();
     if (kind === 'call' || kind === 'text' || kind === 'email') notePendingReachOut(personId, kind);
-    // No canOpenURL check, the same call PersonDetailScreen makes.
-    Linking.openURL(url).catch(() => {});
+    // No canOpenURL check (see openExternalUrl); a failed open says so.
+    void openExternalUrl(url, kind === 'text' ? 'message' : kind);
   }, [notePendingReachOut]);
 
   // Archiving and unarchiving are both reversible, so — like ArchivedScreen's
@@ -615,6 +616,8 @@ const PersonRow = React.memo(function PersonRow({
               <TouchableOpacity
                 key={action.kind}
                 style={styles.contactButton}
+                // 36pt drawn, 44pt touched. The row's 8pt gap is exactly the two slops.
+                hitSlop={4}
                 onPress={() => onReach(person.id, action.kind, action.url)}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"

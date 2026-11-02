@@ -124,7 +124,7 @@ export function FirstRunSheet({ visible, onClose, rerun = false }: Props) {
 
           <View style={styles.question}>
             <Text style={styles.label}>Groceries & meals</Text>
-            <Text style={styles.help}>A shopping list, recipes and a meal plan.</Text>
+            <Text style={styles.help}>Groceries, recipes, a meal plan, a pantry and a food log.</Text>
             <SegmentedControl
               label="Groceries & meals"
               options={YES_NO}

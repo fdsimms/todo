@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Linking, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -57,6 +57,7 @@ import { InlineAction } from './InlineAction';
 import type { Effort, FocusSession, FocusStep, Task } from '../types';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { BUTTON_LABEL } from '../copy/shared';
+import { openExternalUrl } from '../utils/openExternalUrl';
 
 /** How much time "+5 min" adds to a step that needs a little longer. */
 const EXTEND_MINUTES = 5;
@@ -210,31 +211,19 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
       onClose();
       return;
     }
-    try {
-      await Linking.openURL(stepLink);
-    } catch {
-      // silently ignore — no toast infra for this action
-    }
+    await openExternalUrl(stepLink, 'link');
   };
   const callUrl = telUrl(contact.phoneNumber);
   const textUrl = smsUrl(contact.phoneNumber);
   const handleCall = async () => {
     if (!callUrl) return;
     haptics.tap();
-    try {
-      await Linking.openURL(callUrl);
-    } catch {
-      // silently ignore — no toast infra for this action
-    }
+    await openExternalUrl(callUrl, 'call');
   };
   const handleText = async () => {
     if (!textUrl) return;
     haptics.tap();
-    try {
-      await Linking.openURL(textUrl);
-    } catch {
-      // silently ignore — no toast infra for this action
-    }
+    await openExternalUrl(textUrl, 'message');
   };
   const handleContact = () => {
     if (!callUrl) return;
@@ -251,11 +240,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const handleEmail = async () => {
     if (!emailUrl) return;
     haptics.tap();
-    try {
-      await Linking.openURL(emailUrl);
-    } catch {
-      // silently ignore — no toast infra for this action
-    }
+    await openExternalUrl(emailUrl, 'email');
   };
 
   const upcoming = session.steps.slice(session.stepIndex + 1);

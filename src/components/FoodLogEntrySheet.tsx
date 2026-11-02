@@ -2927,6 +2927,7 @@ export function FoodLogEntrySheet({
               {cameraModes.length > 0 && hasQuery && (
                 <PressableScale
                   style={styles.scanButton}
+                  hitSlop={5}
                   onPress={openCamera}
                   accessibilityLabel="Scan or photograph"
                 >

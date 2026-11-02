@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Animated, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { Task } from '../types';
@@ -38,6 +38,7 @@ import { DeliverablePromptSheet } from './DeliverablePromptSheet';
 import { RecipePickerSheet } from './RecipePickerSheet';
 import { NegativeHoldMenu } from './NegativeHoldMenu';
 import type { CardAnchor } from './CardSheet';
+import { openExternalUrl } from '../utils/openExternalUrl';
 
 export const TASK_CHECKBOX_SIZE = 20;
 
@@ -249,13 +250,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
         // own linkUrl, same as its row's link button) rather than completing
         // a quiet project's review task unanswered.
         haptics.tap();
-        if (task.linkUrl && !openInAppUrl(task.linkUrl)) {
-          try {
-            await Linking.openURL(task.linkUrl);
-          } catch {
-            // silently ignore — no toast infra for this row-level action
-          }
-        }
+        if (task.linkUrl && !openInAppUrl(task.linkUrl)) await openExternalUrl(task.linkUrl, 'link');
         return;
       case 'start-block':
         // A block offer: the tap offers to start the block instead of ticking,
@@ -268,13 +263,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
         // plain 'complete'.
         haptics.tap();
         const url = recordLogUrl(task);
-        if (url && !openInAppUrl(url)) {
-          try {
-            await Linking.openURL(url);
-          } catch {
-            // silently ignore — no toast infra for this row-level action
-          }
-        }
+        if (url && !openInAppUrl(url)) await openExternalUrl(url, 'link');
         return;
       }
       case 'log-unit':

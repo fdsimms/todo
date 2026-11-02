@@ -21,7 +21,6 @@ import {
   Alert,
   Keyboard,
   LayoutChangeEvent,
-  Linking,
   type NativeSyntheticEvent,
   type TextLayoutEventData,
 } from 'react-native';
@@ -104,6 +103,7 @@ import { telUrl, smsUrl } from '../utils/phone';
 import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
+import { openExternalUrl } from '../utils/openExternalUrl';
 import { eventCoordinate } from '../utils/calendarSync';
 import { SegmentedControl } from './SegmentedControl';
 import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, TRAVEL_MODES, TRAVEL_MODE_LABELS, travelSourceStart, travelWalkUnderFor, type TravelChoice } from '../utils/travelTasks';
@@ -665,16 +665,8 @@ const TaskItemRow = React.memo(function TaskItem({
     // out through Linking would come back to us anyway, but as an app-switch
     // round trip that flashes.
     if (openInAppUrl(url)) return;
-    try {
-      // Skip Linking.canOpenURL: on iOS it only returns true for schemes
-      // pre-declared in LSApplicationQueriesSchemes, which would break both
-      // the preset chips and arbitrary user-entered custom schemes. openURL
-      // itself isn't restricted — it just fails harmlessly if nothing
-      // handles the scheme.
-      await Linking.openURL(url);
-    } catch {
-      // silently ignore — no toast infra for this row-level action
-    }
+    // No canOpenURL check (see openExternalUrl); a link nothing can open says so.
+    await openExternalUrl(url, 'link');
   };
   // Sanitised here rather than at save time, so the row keeps showing the
   // number the way it was written (see utils/phone.ts). Null means the field
@@ -710,26 +702,15 @@ const TaskItemRow = React.memo(function TaskItem({
     if (!callUrl) return;
     haptics.tap();
     stampReachOut('call');
-    try {
-      // Same reasoning as the link button: no canOpenURL check. tel: needs no
-      // LSApplicationQueriesSchemes entry, and on a device with no phone (an
-      // iPad) openURL simply does nothing rather than throwing.
-      await Linking.openURL(callUrl);
-    } catch {
-      // silently ignore — no toast infra for this row-level action
-    }
+    // tel: needs no LSApplicationQueriesSchemes entry, and on a device with no
+    // phone (an iPad) openURL rejects, which the helper turns into an alert.
+    await openExternalUrl(callUrl, 'call');
   };
   const handleText = async () => {
     if (!textUrl) return;
     haptics.tap();
     stampReachOut('text');
-    try {
-      // Same reasoning as handleCall — sms: needs no
-      // LSApplicationQueriesSchemes entry either.
-      await Linking.openURL(textUrl);
-    } catch {
-      // silently ignore — no toast infra for this row-level action
-    }
+    await openExternalUrl(textUrl, 'message');
   };
   // Same sanitise-at-render, null-hides-the-button pattern as callUrl above.
   const emailUrl = mailtoUrl(contact.emailAddress);
@@ -754,12 +735,7 @@ const TaskItemRow = React.memo(function TaskItem({
     if (!emailUrl) return;
     haptics.tap();
     stampReachOut('email');
-    try {
-      // Same reasoning as call/link: no canOpenURL check needed for mailto:.
-      await Linking.openURL(emailUrl);
-    } catch {
-      // silently ignore — no toast infra for this row-level action
-    }
+    await openExternalUrl(emailUrl, 'email');
   };
   // Same sanitise-at-render, null-hides-the-button pattern as callUrl/emailUrl
   // above — see maps.ts for why an https: directions link needs no
@@ -777,11 +753,7 @@ const TaskItemRow = React.memo(function TaskItem({
     const coordinate = eventId ? await eventCoordinate(eventId) : null;
     const url = directionsUrl(task.location, useSettingsStore.getState().mapsApp, coordinate);
     if (!url) return;
-    try {
-      await Linking.openURL(url);
-    } catch {
-      // silently ignore — no toast infra for this row-level action
-    }
+    await openExternalUrl(url, 'directions');
   };
   const colors = useColors();
   const { shadows } = useTheme();

@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
-import { Linking, Text, type StyleProp, type TextStyle } from 'react-native';
+import { Text, type StyleProp, type TextStyle } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { splitLinks } from '../utils/textLinks';
+import { openExternalUrl } from '../utils/openExternalUrl';
 
 interface Props {
   text: string;
@@ -25,7 +26,7 @@ export function LinkedText({ text, style, numberOfLines }: Props) {
           <Text
             key={i}
             style={{ color: colors.accentText, textDecorationLine: 'underline' }}
-            onPress={() => { Linking.openURL(segment.url!).catch(() => {}); }}
+            onPress={() => { void openExternalUrl(segment.url!); }}
             accessibilityRole="link"
           >
             {segment.text}

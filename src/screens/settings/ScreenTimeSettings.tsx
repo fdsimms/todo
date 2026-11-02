@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Alert, Share, Switch } from 'react-native';
+import { View, Alert, Switch } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useNfcKeyStore } from '../../store/useNfcKeyStore';
@@ -42,6 +42,7 @@ import { navigateToSettingsEntry } from '../../navigation/openSettings';
 import * as Clipboard from 'expo-clipboard';
 import { format } from 'date-fns/format';
 import { clockTimeToken } from '../../utils/clockTime';
+import { shareContent } from '../../utils/shareContent';
 import { BUTTON_LABEL } from '../../copy/shared';
 
 interface Props {
@@ -503,7 +504,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   const shareKeyLink = async (key: NfcKey) => {
     const url = keyLinkUrl(key.secret, UNIVERSAL_LINK_HOSTS);
     if (!url) return;
-    await Share.share({ message: url }).catch(() => {});
+    await shareContent({ message: url });
   };
 
   // The code a Shortcuts action takes in place of the tag, which Shortcuts

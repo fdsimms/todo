@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -54,6 +54,7 @@ import {
   nextBirthday,
 } from '../utils/birthdayTasks';
 import { nextPersonDate } from '../utils/personDateTasks';
+import { openExternalUrl, type ExternalKind } from '../utils/openExternalUrl';
 import {
   daysSinceTogether,
   describeDaysSince,
@@ -290,12 +291,14 @@ export function PersonDetailScreen() {
     setPlanningEvent(true);
   };
 
-  const open = (url: string | null) => {
+  const open = (url: string | null, kind?: ExternalKind) => {
     if (!url) return;
     haptics.tap();
     // No canOpenURL check, the same call TaskItem makes: tel:/sms:/mailto: need
-    // no query and a failed open is quieter than a wrongly hidden button.
-    Linking.openURL(url).catch(() => {});
+    // no query and a wrongly hidden button is worse than a failed open, which
+    // openExternalUrl now says out loud. The kind is read off the scheme unless
+    // a caller knows better (a directions link is https like any other).
+    void openExternalUrl(url, kind);
   };
 
   /**
@@ -452,7 +455,7 @@ export function PersonDetailScreen() {
               <ReachButton icon="link-outline" label="Open" onPress={() => open(person.linkUrl)} styles={styles} colors={colors} />
             )}
             {directionsLink && (
-              <ReachButton icon="navigate-outline" label="Directions" onPress={() => open(directionsLink)} styles={styles} colors={colors} />
+              <ReachButton icon="navigate-outline" label="Directions" onPress={() => open(directionsLink, 'directions')} styles={styles} colors={colors} />
             )}
           </View>
         )}
