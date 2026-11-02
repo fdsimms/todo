@@ -143,6 +143,7 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
   const settings = replica.settings();
   const today = replica.todayKey();
   const open = replica.tasks().filter(isOpenTopLevel);
+  const vis = replica.lib().visibility;
 
   let visible = 0, later = 0, unscheduled = 0, inbox = 0, hidden = 0;
   for (const t of open) {
@@ -186,7 +187,9 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
       inbox,
       hidden,
       overdue: replica.lookAhead(1).carriedOver.length,
-      pinned: open.filter(t => t.pinned).length,
+      // The phone's Pinned block (`pinnedTasks()`): not a pin waiting on
+      // something, withheld, or a pin-each-occurrence task not due yet.
+      pinned: open.filter(t => !vis.isHeldBack(t) && !vis.isWithheld(t) && vis.isPinnedOnToday(t)).length,
       blocked: open.filter(t => replica.isBlocked(t)).length,
     },
     categories: replica.categories().map(c => ({

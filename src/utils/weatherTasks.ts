@@ -2,7 +2,7 @@ import type { Task, WeatherCondition, WeatherRule } from '../types';
 import type { WeatherHour } from '../services/weatherLookup';
 import { classifyWeather, conditionNoun } from './weatherCondition';
 import { generatedSourceOf } from './generatedTasks';
-import { generateId } from './id';
+import { derivedId, spawnSeed } from './syncIds';
 import { parseRuleEstimate } from './ruleEstimate';
 import { parseRuleCategory } from './ruleCategory';
 import { parseRuleLog } from './ruleLog';
@@ -115,9 +115,10 @@ export function parseWeatherRules(raw: string | null | undefined): WeatherRule[]
     const r = entry as Partial<WeatherRule>;
     const title = typeof r.title === 'string' ? r.title.trim().slice(0, WEATHER_RULE_TITLE_MAX_LENGTH) : '';
     if (!title) continue;
+    const condition = WEATHER_CONDITIONS.includes(r.condition as WeatherCondition) ? (r.condition as WeatherCondition) : 'sunny';
     out.push({
-      id: typeof r.id === 'string' && r.id ? r.id : generateId(),
-      condition: WEATHER_CONDITIONS.includes(r.condition as WeatherCondition) ? (r.condition as WeatherCondition) : 'sunny',
+      id: typeof r.id === 'string' && r.id ? r.id : derivedId(spawnSeed.ruleWithoutId('weather', `${condition}|${title}`)),
+      condition,
       title,
       enabled: r.enabled !== false,
       lastFiredDayKey: typeof r.lastFiredDayKey === 'string' ? r.lastFiredDayKey : null,

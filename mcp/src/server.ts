@@ -390,7 +390,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'get_task',
-    'One task in full: its subtasks, its chain steps, its project, and why it is not on Today if it is not (hiddenUntil for a moment it will surface at, hiddenReason for a task held while vacation mode is on). Also the rules behind a deadline or reminder that is recomputed each occurrence, and whether a water target follows the food log\'s goal.',
+    'One task in full: its subtasks, its chain steps, its project, and why it is not on Today if it is not (hiddenUntil for a moment it will surface at, hiddenReason for one held by vacation mode or a paused project, an expired one, or an undated project step). Also the rules behind a deadline or reminder that is recomputed each occurrence, and whether a water target follows the food log\'s goal.',
     { id: z.string().min(1) },
     async ({ id }) => {
       const result = await withFresh(() => getTask(replica, id));

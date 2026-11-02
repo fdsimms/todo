@@ -69,7 +69,7 @@ function stillWriter(): boolean {
 
 async function drainOnce(): Promise<void> {
   if (Platform.OS !== 'ios' || !stillWriter()) return;
-  const plan = planCalendarRequestDrain(dbGetAllCalendarRequests(), new Date());
+  const plan = planCalendarRequestDrain(dbGetAllCalendarRequests(), new Date(), useSettingsStore.getState().dayResetTime);
 
   for (const r of plan.expire) {
     dbResolveCalendarRequest(r.id, {

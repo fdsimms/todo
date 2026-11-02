@@ -145,6 +145,14 @@ export const spawnSeed = {
    */
   unattended: (action: string, key: string, dayKey: string) => `unattended:${action}:${key}:${dayKey}`,
   /**
+   * The id a stored rule gets when it was saved without one, which nothing the
+   * app writes does; a hand-edited or damaged setting could. A random id here
+   * changed on every parse and every device, and the tasks a rule generates are
+   * keyed by its id, so they were cleared and rewritten. Keyed by what the rule
+   * says, which every device reads the same.
+   */
+  ruleWithoutId: (kind: string, content: string) => `rule:${kind}:${content}`,
+  /**
    * The first version of a routine saved before versions were kept, written
    * the first time anything needs it. Every device derives the same id, so a
    * workout stamped with it on one device names the row another device wrote.

@@ -8,6 +8,7 @@
 //   StatusChip, FieldInput  small parts, above the component
 //   makeStyles              styles, at the bottom
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSheetOpening } from '../hooks/useSheetOpening';
 import {
   Keyboard,
   View,
@@ -503,6 +504,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
   useEffect(() => {
     if (!visible) reset();
   }, [visible, reset]);
+  // Which opening a lookup belongs to. The reset empties the rows, so a late
+  // patch finds nothing, but a late "not found" still opened its row: after a
+  // close and reopen that collapsed whichever row was being edited.
+  const openings = useSheetOpening(visible);
 
   // ==== scan intake and lookup (camera and data scanner handlers, retry) ====
   const patchRow = useCallback((key: string, patch: Partial<ScanRow>) => {
@@ -525,8 +530,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         const itemId = gtinItemFor(gtin);
         return itemId ? useGroceryStore.getState().items.find(i => i.id === itemId) ?? null : null;
       };
+      const opening = openings.begin();
       try {
         const record = await lookupGtin(gtin);
+        if (!openings.isCurrent(opening)) return;
         const known = record ? null : remembered();
         if (record) {
           const catalogNames = useGroceryStore.getState().items.map(i => i.name);
@@ -566,6 +573,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
           setOpenKey(key);
         }
       } catch (e) {
+        if (!openings.isCurrent(opening)) return;
         const known = remembered();
         if (known) patchRow(key, { pending: false, name: known.name, included: true, error: null });
         else {
@@ -574,7 +582,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         }
       }
     },
-    [patchRow, gtinItemFor]
+    [patchRow, gtinItemFor, openings]
   );
 
   /**

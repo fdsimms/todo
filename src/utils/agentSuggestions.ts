@@ -22,9 +22,9 @@ import { suggestionIsStale } from './calendarRequests';
  */
 
 /** The cards to show now, oldest first. A suggestion for a moment that has gone is not one. */
-export function liveSuggestions(requests: readonly CalendarRequest[], now: Date): CalendarRequest[] {
+export function liveSuggestions(requests: readonly CalendarRequest[], now: Date, dayResetTime?: string): CalendarRequest[] {
   return requests
-    .filter(r => r.status === 'proposed' && !suggestionIsStale(r, now))
+    .filter(r => r.status === 'proposed' && !suggestionIsStale(r, now, dayResetTime))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
