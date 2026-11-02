@@ -32,8 +32,8 @@ import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, NutrientKey, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { runAfterPaint, runAfterTransition } from '../utils/afterPaint';
-import { taskHomeFor } from '../utils/taskHome';
-import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster, isQuotaTask, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
+import { landingFor, taskHomeFor } from '../utils/taskHome';
+import { isTaskNew, isTaskVisible, isDismissedToday, isRelevantToGroupToday, groupRoster, isQuotaTask, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
 import { sameGroupsApartFromFold } from '../utils/groupFold';
 import { openTasksOf } from '../utils/openTasks';
 import { reuseUnchangedLists } from '../utils/stableLists';
@@ -1582,6 +1582,12 @@ export function TodayScreen() {
   // going there straight away (destination === 'today', in handleTaskCreated)
   // and going there later from the created-task toast's "Go to it".
   const goToCreatedTask = (task: Task, destination: CreatedTaskDestination) => {
+    if (destination === 'project') {
+      // On none of this screen's lists: an undated project task lives on its
+      // project's page, so that's where "Go to it" has to go.
+      if (task.projectId) handleOpenProject(task.projectId);
+      return;
+    }
     if (destination !== viewMode) {
       setViewMode(destination);
       // A row left spotlighted on the view being switched away from has no
@@ -1673,12 +1679,10 @@ export function TodayScreen() {
   // there does; anywhere else gets the same go-to/undo toast a creation does,
   // unless the row never actually left the view already being looked at.
   const presentMovedFromInbox = (previous: Task, updated: Task) => {
-    const destination: ViewMode = isInboxTask(updated)
-      ? 'inbox'
-      : isTaskVisible(updated) ? 'today'
-      : isUnscheduledTask(updated) ? 'unscheduled'
-      : 'later';
-    if (destination === 'inbox') return;
+    const destination = landingFor(updated);
+    // Still in the Inbox, or on none of the lists (blocked, a paused project):
+    // there is no list to point at.
+    if (destination === 'inbox' || destination === null) return;
     if (destination === 'today') {
       if (destination !== viewMode) {
         setViewMode(destination);
@@ -1718,11 +1722,7 @@ export function TodayScreen() {
     const dropped = pendingDropRef.current;
     pendingDropRef.current = null;
 
-    const destination: ViewMode = isInboxTask(task)
-      ? 'inbox'
-      : isTaskVisible(task) ? 'today'
-      : isUnscheduledTask(task) ? 'unscheduled'
-      : 'later';
+    const destination = landingFor(task);
     // Position it only if it actually landed in the list it was dropped on: the
     // sheet can push a task out of Today entirely (a defer date, no date at
     // all), and then the spot it was dropped at isn't somewhere it can go.
@@ -1730,8 +1730,12 @@ export function TodayScreen() {
       if (destination === 'today') placeCreatedTask(task, dropped);
       else if (destination === 'later') placeCreatedLaterTask(task, dropped);
       else if (destination === 'unscheduled') placeCreatedUnscheduledTask(task, dropped);
-      else placeCreatedInboxTask(task, dropped);
+      else if (destination === 'inbox') placeCreatedInboxTask(task, dropped);
     }
+
+    // On none of the lists (blocked, a paused project): nothing to point at,
+    // and naming Later for it sent "Go to it" to a list it was never in.
+    if (destination === null) return;
 
     if (destination === 'today') {
       if (destination !== viewMode) {
@@ -6290,6 +6294,7 @@ export function TodayScreen() {
             mode={createdToastShown.value.source === 'created' ? 'created' : 'moved'}
             canUndo={createdToastShown.value.source !== 'edited'}
             dayResetTime={dayResetTime}
+            projectName={projects.find(p => p.id === createdToastShown.value?.task.projectId)?.title}
             bottom={fabBottom + FAB_SIZE + spacing.md}
             onGoToTask={handleCreatedToastGoTo}
             onUndo={handleCreatedToastUndo}

@@ -1,4 +1,5 @@
 import { format } from 'date-fns/format';
+import { clockTimeToken } from './clockTime';
 
 /**
  * The tap on Call, Text or Email, held until you come back to say whether it
@@ -180,6 +181,6 @@ export function reachOutHistoryTitle(kind: ReachOutKind, name: string): string {
  * event's own title rather than a count — what has to be checked is whether it
  * really happened, and the user is the only one who can check it.
  */
-export function reachOutPromptMessage(kind: ReachOutKind, name: string, at: Date): string {
-  return `“${reachOutHistoryTitle(kind, name)}”, ${format(at, 'h:mm a')}`;
+export function reachOutPromptMessage(kind: ReachOutKind, name: string, at: Date, use24Hour = false): string {
+  return `“${reachOutHistoryTitle(kind, name)}”, ${format(at, clockTimeToken(use24Hour))}`;
 }

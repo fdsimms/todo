@@ -4,21 +4,25 @@ import { formatScheduledDate, formatTaskDate } from './dateUtils';
 /**
  * Where a newly created task landed, for the toast TodayScreen shows instead
  * of navigating there — the three sub-views other than Today itself, which
- * the screen already shows without switching anything.
+ * the screen already shows without switching anything, and 'project' for an
+ * undated project task, which is on none of them and lives on its project's
+ * page.
  */
-export type CreatedTaskDestination = 'later' | 'unscheduled' | 'inbox';
+export type CreatedTaskDestination = 'later' | 'unscheduled' | 'inbox' | 'project';
 
 /**
  * The toast's message for a task that didn't land on Today — names where it
  * went, so staying put still answers "did that work" without having to go
  * look. `formatTaskDate` can come back null for a 'later' task placed by a
  * deadline or time-of-day alone rather than a dueDate/deferUntil, hence the
- * fallback.
+ * fallback. `projectName` is for 'project'; a project that can't be found
+ * reads as "its project".
  */
 export function describeCreatedTaskPlacement(
   task: Pick<Task, 'title' | 'dueDate' | 'deferUntil'>,
   destination: CreatedTaskDestination,
   dayResetTime?: string,
+  projectName?: string,
 ): string {
   switch (destination) {
     case 'later':
@@ -27,6 +31,8 @@ export function describeCreatedTaskPlacement(
       return `Created “${task.title}” in Unscheduled`;
     case 'inbox':
       return `Created “${task.title}” in Inbox`;
+    case 'project':
+      return `Created “${task.title}” in ${projectName ?? 'its project'}`;
   }
 }
 
@@ -53,6 +59,7 @@ export function describeMovedTaskPlacement(
   task: Pick<Task, 'title' | 'dueDate' | 'deferUntil'>,
   destination: CreatedTaskDestination,
   dayResetTime?: string,
+  projectName?: string,
 ): string {
   switch (destination) {
     case 'later':
@@ -61,5 +68,7 @@ export function describeMovedTaskPlacement(
       return `Moved “${task.title}” to Unscheduled`;
     case 'inbox':
       return `Moved “${task.title}” to Inbox`;
+    case 'project':
+      return `Moved “${task.title}” to ${projectName ?? 'its project'}`;
   }
 }

@@ -71,6 +71,7 @@ import { useDictation } from '../hooks/useDictation';
 import { JOURNAL_DICTATION_BAR_HEIGHT, JournalDictationBar } from './JournalDictationBar';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 
 const TEXT_MAX_LENGTH = 5000;
 
@@ -112,6 +113,7 @@ interface Props {
  * starting a blank page. The screen draws the day's snippets as one page.
  */
 export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen = false, onClose }: Props) {
+  const timeToken = useClockTimeToken();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const copy = JOURNAL_KIND_COPY[kind];
@@ -466,9 +468,9 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
                 key={entry.id}
                 style={index > 0 && styles.soFarGap}
                 accessible
-                accessibilityLabel={`${format(new Date(entry.loggedAt), 'h:mm a')}. ${journalPlainText(entry.text)}`}
+                accessibilityLabel={`${format(new Date(entry.loggedAt), timeToken)}. ${journalPlainText(entry.text)}`}
               >
-                <Text style={styles.soFarTime}>{format(new Date(entry.loggedAt), 'h:mm a')}</Text>
+                <Text style={styles.soFarTime}>{format(new Date(entry.loggedAt), timeToken)}</Text>
                 <JournalText text={entry.text} textStyle={styles.soFarText} />
               </View>
             ))}

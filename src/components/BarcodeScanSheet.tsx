@@ -10,6 +10,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Keyboard,
+  Linking,
   View,
   Text,
   TouchableOpacity,
@@ -52,6 +53,7 @@ import type { ReceiptMatch } from '../utils/receiptMatch';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
 import { suggestItemType } from '../services/aiSuggestions';
 import { formatGtin, normalizeGtin } from '../utils/gtin';
+import { scanPermissionMessage } from '../utils/scanPermission';
 import { productsForItem } from '../utils/groceryProduct';
 import { nutritionFor, panelLooksWrongFor } from '../utils/foodNutrition';
 import { priceNearBarcode } from '../utils/shelfLabel';
@@ -440,6 +442,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
    * nor the device's capability can change while the app is running.
    */
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const productLookupEnabled = useSettingsStore(s => s.productLookupEnabled);
   const DataScanner = useMemo(
     () => (isDataScannerAvailable() ? getDataScannerView() : null),
     [],
@@ -1043,9 +1046,13 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
       return (
         <View style={styles.cameraPlaceholder}>
           <Text style={styles.permissionText}>
-            Scanning needs the camera. Everything it reads stays on this device.
+            {scanPermissionMessage(permission.canAskAgain !== false, productLookupEnabled)}
           </Text>
-          <InlineAction label="Allow camera" icon="camera-outline" onPress={requestPermission} />
+          {permission.canAskAgain === false ? (
+            <InlineAction label="Open Settings" icon="open-outline" onPress={() => { void Linking.openSettings(); }} />
+          ) : (
+            <InlineAction label="Allow camera" icon="camera-outline" onPress={requestPermission} />
+          )}
         </View>
       );
     }

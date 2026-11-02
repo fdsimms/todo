@@ -22,6 +22,7 @@ import { MoodLogSheet } from '../components/MoodLogSheet';
 import { JournalEntrySheet } from '../components/JournalEntrySheet';
 import { JournalText } from '../components/JournalText';
 import { journalPlainText } from '../utils/journalMarkdown';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 
 type RootStackParamList = {
   MoodDay: { dayKey: string };
@@ -47,6 +48,7 @@ type RootStackParamList = {
  * (`docs/arch/journal.md`), and paging walks the days that have either.
  */
 export function MoodDayScreen() {
+  const timeToken = useClockTimeToken();
   const navigation = useNavigation<{ goBack: () => void }>();
   const route = useRoute<RouteProp<RootStackParamList, 'MoodDay'>>();
   const insets = useSafeAreaInsets();
@@ -113,7 +115,7 @@ export function MoodDayScreen() {
               onPress={() => { haptics.tap(); setEditing(log); setSheetOpen(true); }}
               accessibilityRole="button"
               accessibilityLabel={[
-                format(new Date(log.loggedAt), 'h:mm a'),
+                format(new Date(log.loggedAt), timeToken),
                 log.mood === null ? null : moodLabel(log.mood),
                 log.note || null,
                 log.symptoms.length > 0
@@ -124,7 +126,7 @@ export function MoodDayScreen() {
               accessibilityHint="Opens this entry to edit"
             >
               <View style={styles.timeRow} accessible={false}>
-                <Text style={styles.time}>{format(new Date(log.loggedAt), 'h:mm a')}</Text>
+                <Text style={styles.time}>{format(new Date(log.loggedAt), timeToken)}</Text>
                 {log.mood !== null && <MoodFace level={log.mood} size={iconSize.sm} />}
               </View>
               {!!log.note && <Text style={styles.note}>{log.note}</Text>}
@@ -163,10 +165,10 @@ export function MoodDayScreen() {
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setEditingPage(entry); setPageOpen(true); }}
                   accessibilityRole="button"
-                  accessibilityLabel={`${format(new Date(entry.loggedAt), 'h:mm a')}. ${journalPlainText(entry.text)}`}
+                  accessibilityLabel={`${format(new Date(entry.loggedAt), timeToken)}. ${journalPlainText(entry.text)}`}
                   accessibilityHint="Opens this entry to edit"
                 >
-                  <Text style={styles.time}>{format(new Date(entry.loggedAt), 'h:mm a')}</Text>
+                  <Text style={styles.time}>{format(new Date(entry.loggedAt), timeToken)}</Text>
                   <JournalText text={entry.text} textStyle={styles.note} />
                 </TouchableOpacity>
               ))}

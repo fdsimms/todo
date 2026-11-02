@@ -130,6 +130,7 @@ import {
 import { TextField } from '../components/TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from '../components/FieldLabel';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -404,6 +405,7 @@ interface SessionEntry {
 }
 
 export function BackfillScreen() {
+  const timeToken = useClockTimeToken();
   // ==== store bindings and navigation ====
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -2127,7 +2129,7 @@ export function BackfillScreen() {
         reminderTimeAnchor: anchor,
         reminderUtcOffsetMinutes: date.getTimezoneOffset(),
       },
-      tracksVisibility ? describeReminderTracksVisibility() : format(date, 'MMM d, h:mm a')
+      tracksVisibility ? describeReminderTracksVisibility() : format(date, `MMM d, ${timeToken}`)
     );
     setReminderPickerOpen(false);
   };

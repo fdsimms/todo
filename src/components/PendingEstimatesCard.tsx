@@ -9,6 +9,7 @@ import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { describePending, splitEstimateSummary, type PendingEstimate } from '../utils/estimateQueue';
 import { describeEstimate } from '../utils/nutritionEstimate';
 import { haptics } from '../utils/haptics';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 import { HelpText } from './HelpText';
 import { InlineAction } from './InlineAction';
 import { PendingEstimateEditSheet } from './PendingEstimateEditSheet';
@@ -37,6 +38,7 @@ interface Props {
 }
 
 export function PendingEstimatesCard({ onRefine }: Props) {
+  const timeToken = useClockTimeToken();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -99,7 +101,7 @@ export function PendingEstimatesCard({ onRefine }: Props) {
             {row.status === 'ready' && row.estimate ? row.estimate.label : row.description}
           </Text>
           <Text style={styles.meta}>
-            {`${row.slot ? `${MEAL_SLOT_LABELS[row.slot]} · ` : ''}${format(new Date(row.atISO), 'EEE, MMM d, h:mm a')}`}
+            {`${row.slot ? `${MEAL_SLOT_LABELS[row.slot]} · ` : ''}${format(new Date(row.atISO), `EEE, MMM d, ${timeToken}`)}`}
           </Text>
 
           {row.status === 'waiting' && (

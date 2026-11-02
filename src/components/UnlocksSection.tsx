@@ -31,6 +31,7 @@ import {
   type UnlockStatus,
 } from '../utils/rewardUnlocks';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 import { CountStepper } from './CountStepper';
 import { EmptyNote } from './EmptyNote';
 import { FormField } from './FormField';
@@ -78,6 +79,7 @@ const EMPTY_DRAFT: UnlockDraft = {
 };
 
 export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
+  const timeToken = useClockTimeToken();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const unlocks = useUnlockStore(s => s.unlocks);
@@ -335,7 +337,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
           </View>
           <View style={styles.headText}>
             <Text style={styles.title} numberOfLines={2}>{unlock.title}</Text>
-            <Text style={styles.subtitle}>{subtitleFor(unlock, status, play.running)}</Text>
+            <Text style={styles.subtitle}>{subtitleFor(unlock, status, play.running, timeToken)}</Text>
           </View>
           <InlineAction icon="create-outline" variant="neutral" onPress={() => openDraft({ mode: 'edit', id: unlock.id }, unlock)} accessibilityLabel={`Edit ${unlock.title}`} />
         </View>
@@ -389,7 +391,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
               {formatPlayClock(play.remainingMs ?? 0)}
             </Text>
             <Text style={styles.timerMeta}>
-              {`left of ${describePlayMinutes(Math.round((play.allowanceMs ?? 0) / 60_000))}${play.endsAt ? ` · ends ${format(play.endsAt, 'h:mm a')}` : ''}`}
+              {`left of ${describePlayMinutes(Math.round((play.allowanceMs ?? 0) / 60_000))}${play.endsAt ? ` · ends ${format(play.endsAt, timeToken)}` : ''}`}
             </Text>
             <View style={styles.actionsCentered}>
               <InlineAction label="Stop" variant="neutral" onPress={() => { haptics.tap(); store.stopPlay(unlock.id); }} />
@@ -457,9 +459,9 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
 }
 
 /** The line under an unlock's name. */
-function subtitleFor(unlock: RewardUnlock, status: UnlockStatus, running: boolean): string {
+function subtitleFor(unlock: RewardUnlock, status: UnlockStatus, running: boolean, timeToken: string): string {
   if (status.kind === 'free') return status.reason === 'weekend' ? 'Unlocked all day: it’s the weekend' : 'Unlocked all day: you’re on vacation';
-  if (running && unlock.playStartedAt) return `Playing since ${format(new Date(unlock.playStartedAt), 'h:mm a')}`;
+  if (running && unlock.playStartedAt) return `Playing since ${format(new Date(unlock.playStartedAt), timeToken)}`;
   const cap = unlock.playMinutes !== null ? ` · ${describePlayMinutes(unlock.playMinutes)}` : '';
   if (status.kind === 'open') return `Unlocked for today${cap}`;
   return `Unlocks at ${unlock.sharePct}% of today’s work${cap}`;

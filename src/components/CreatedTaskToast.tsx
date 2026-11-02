@@ -20,6 +20,8 @@ interface Props {
    */
   mode?: 'created' | 'moved';
   dayResetTime?: string;
+  /** The project's name, for a task that landed on its project's page. */
+  projectName?: string;
   bottom: number;
   onGoToTask: () => void;
   /** False for a move the toast has no snapshot to take back (see TodayScreen's edited toast). */
@@ -40,10 +42,10 @@ interface Props {
  * due today. This names where the task went and offers a way to it and a
  * way to undo the creation, so staying put costs nothing either.
  */
-export function CreatedTaskToast({ task, destination, mode = 'created', dayResetTime, bottom, onGoToTask, canUndo = true, onUndo, onDismiss, leaving, onLeft }: Props) {
+export function CreatedTaskToast({ task, destination, mode = 'created', dayResetTime, projectName, bottom, onGoToTask, canUndo = true, onUndo, onDismiss, leaving, onLeft }: Props) {
   const message = mode === 'moved'
-    ? describeMovedTaskPlacement(task, destination, dayResetTime)
-    : describeCreatedTaskPlacement(task, destination, dayResetTime);
+    ? describeMovedTaskPlacement(task, destination, dayResetTime, projectName)
+    : describeCreatedTaskPlacement(task, destination, dayResetTime, projectName);
   const undoHint = mode === 'moved'
     ? `Undo moving “${task.title}”`
     : `Undo creating “${task.title}”`;

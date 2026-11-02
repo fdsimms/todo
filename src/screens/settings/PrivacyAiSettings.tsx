@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { dbClearGtinLookups, dbCountGtinLookups } from '../../db/database';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useAppLockStore } from '../../store/useAppLockStore';
+import { selectSyncsAnywhere, useSyncStore } from '../../store/useSyncStore';
 import { useJournalLockStore } from '../../store/useJournalLockStore';
 import { APP_LOCK_GRACE_OPTIONS, graceLabel } from '../../utils/appLock';
 import { authenticateForAppLock, getAppLockSupport, type AppLockSupport } from '../../utils/appLockAuth';
@@ -215,12 +216,14 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   };
 
   const lockLabel = lockSupport?.label ?? 'Face ID';
+  // "Stays on this device" is only true while nothing syncs.
+  const syncsAnywhere = useSyncStore(selectSyncsAnywhere);
 
   return (
     <>
       <SettingsSection
         label="App lock"
-        footer={`All app data stays on this device. Opening the app requires ${lockLabel}, with your device passcode as the fallback. Lock again after sets how long you can leave and return without unlocking.`}
+        footer={`${syncsAnywhere ? '' : 'All app data stays on this device. '}Opening the app requires ${lockLabel}, with your device passcode as the fallback. Lock again after sets how long you can leave and return without unlocking.`}
       >
         <SettingsRow
           entryId="appLock"

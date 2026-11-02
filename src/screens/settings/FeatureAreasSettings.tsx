@@ -122,7 +122,7 @@ export function FeatureAreasSettings() {
         entryId="firstRunSetup"
         icon="help-circle-outline"
         label="Run setup again"
-        hint="Asks the three first-launch questions again: groceries and meals, simplified mode and reminders."
+        hint="Asks the first-launch questions again: groceries and meals, simplified mode, reminders, workouts, and coins and rewards."
         onPress={() => { haptics.tap(); setSetupOpen(true); }}
       />
       <View style={styles.sep} />

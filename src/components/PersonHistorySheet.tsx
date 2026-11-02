@@ -13,6 +13,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 import { FieldLabel } from './FieldLabel';
 
 /** The fields of a `HistoryEntry` this sheet actually needs. */
@@ -57,6 +58,7 @@ interface Props {
  * back out, the same as any other sheet holding unsaved typed state.
  */
 export function PersonHistorySheet({ visible, personName, entry, onSave, onDelete, onClose }: Props) {
+  const timeToken = useClockTimeToken();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -131,7 +133,7 @@ export function PersonHistorySheet({ visible, personName, entry, onSave, onDelet
       <EditorRow
         icon="calendar-outline"
         label="When"
-        value={format(at, 'MMM d, h:mm a')}
+        value={format(at, `MMM d, ${timeToken}`)}
         onPress={() => setShowCalendar(true)}
       />
       {!entry && (

@@ -663,3 +663,12 @@ export function hasUnsentChanges(): boolean {
 export function isSyncSupported(): boolean {
   return isCloudKitSyncAvailable();
 }
+
+/**
+ * Whether this device syncs anywhere: iCloud switched on, or a server with
+ * both a URL and a token. Copy that says where the data lives asks this, since
+ * "only on this device" stops being true the moment either one is set up.
+ */
+export const selectSyncsAnywhere = (
+  s: Pick<SyncState, 'enabled' | 'serverUrl' | 'hasServerToken'>,
+): boolean => s.enabled || (!!s.serverUrl && s.hasServerToken);

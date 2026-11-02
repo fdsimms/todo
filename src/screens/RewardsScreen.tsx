@@ -108,6 +108,7 @@ import { UnlocksSection } from '../components/UnlocksSection';
 import { useUnlockStore } from '../store/useUnlockStore';
 import { activeGoalPlan, describeGoalPace, describeSetback, savingsBalance, savingsNeededFor, spendingBalance, spendingPerDay } from '../utils/rewardSavings';
 import { getLogicalToday } from '../utils/dateUtils';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 
 /**
  * Coins and rewards — the screen for `src/utils/rewards.ts`.
@@ -194,6 +195,7 @@ function ShowMoreRow({ label, onPress, styles }: { label: string; onPress: () =>
 }
 
 export function RewardsScreen() {
+  const timeToken = useClockTimeToken();
   const pullSearch = usePullToSearch();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -1520,7 +1522,7 @@ export function RewardsScreen() {
                 <View style={styles.historyText}>
                   <Text style={styles.historyLabel}>{entry.label || kindLabel(entry)}</Text>
                   <Text style={styles.historyMeta}>
-                    {[kindLabel(entry), format(parseISO(entry.at), 'MMM d, h:mm a'), savedNote(entry)].filter(Boolean).join(' · ')}
+                    {[kindLabel(entry), format(parseISO(entry.at), `MMM d, ${timeToken}`), savedNote(entry)].filter(Boolean).join(' · ')}
                   </Text>
                 </View>
                 <View style={styles.amountRow}>
