@@ -50,6 +50,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     },
     logicalDayKeyOf: (iso: string) => iso.slice(0, 10),
+    dayKeyOf: (iso: string) => iso.slice(0, 10),
     isRealCompletion: (t: Task) => t.completed && !t.missedAt,
     describeBounty: () => null,
     onTimeSummary: (list: readonly Task[]) => {

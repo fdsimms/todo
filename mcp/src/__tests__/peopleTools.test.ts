@@ -121,6 +121,16 @@ describe('addPersonHistory', () => {
     expect(result.added).toEqual({ title: 'Lunch', date: '2026-09-30', people: ['Al'] });
     expect(() => addPersonHistory(r, { personIds: ['a'], title: 'x', date: 'whenever' })).toThrow(/ISO/);
   });
+
+  // Midnight sits in the small hours a later "day starts at" gives to the day
+  // before, so the Logbook filed a bare date a day early.
+  it('reads a bare date as noon on it', () => {
+    const add = jest.fn((_ids: string[], title: string, at: Date) => ({ title, completedAt: at.toISOString() }) as Task);
+    const r = stub([person({ id: 'a', name: 'Al' })], { addPersonHistory: add });
+    const result = addPersonHistory(r, { personIds: ['a'], title: 'Lunch', date: '2026-09-30' });
+    expect(add).toHaveBeenCalledWith(['a'], 'Lunch', new Date(2026, 8, 30, 12));
+    expect(result.added.date).toBe('2026-09-30');
+  });
 });
 
 describe('the people writes, against a real database', () => {

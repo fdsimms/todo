@@ -277,7 +277,9 @@ export function getAgenda(replica: Replica, input: { days?: number } = {}): Agen
     days,
     carriedOver: la.carriedOver.map(t => ({
       ...serializeTask(replica, t),
-      daysAgo: t.dueDate ? Math.max(daysBetweenKeys(replica.logicalDayKeyOf(t.dueDate), today), 1) : 1,
+      // A stored day, keyed as one (`getTaskDayStart`'s reading): the logical key
+      // is for a real moment, and rolled a midnight dueDate back to the day before.
+      daysAgo: t.dueDate ? Math.max(daysBetweenKeys(replica.dayKeyOf(t.dueDate), today), 1) : 1,
     })),
     tightDeadlines: la.tight.map(t => ({
       id: t.task.id,
@@ -451,7 +453,7 @@ export function reviewTasks(replica: Replica, input: { staleDays?: number; minPu
 
   const overdue = replica.lookAhead(1).carriedOver.map(t => ({
     ...serializeTask(replica, t),
-    daysAgo: t.dueDate ? Math.max(daysBetweenKeys(replica.logicalDayKeyOf(t.dueDate), today), 1) : 1,
+    daysAgo: t.dueDate ? Math.max(daysBetweenKeys(replica.dayKeyOf(t.dueDate), today), 1) : 1,
   }));
 
   const aged = (pick: (t: Task) => boolean, minDays: number) =>

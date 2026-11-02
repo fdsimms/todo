@@ -307,7 +307,7 @@ function NewLineField({
     caret.moveCaret(applied.text);
   };
   const pendingLabels = [
-    pending.schedule ? describeSchedule(pending.schedule) : null,
+    pending.schedule ? describeSchedule(pending.schedule, getLogicalNow(dayResetTime)) : null,
     pending.priority !== null ? PRIORITY_LABELS[pending.priority] : null,
   ].filter((label): label is string => label !== null);
   return (
