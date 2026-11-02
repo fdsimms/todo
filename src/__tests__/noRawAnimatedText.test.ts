@@ -8,21 +8,13 @@
  * different typeface once someone has picked another one. Source is read as
  * text for the reason `noRawModal.test.ts` gives.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
 /** The one file that wraps the patched `Text`, and so names the pattern. */
 const WRAPPER = join('theme', 'AppFont.tsx');
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx?$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 const RAW = /Animated\.Text\b|createAnimatedComponent\(\s*Text\b/;
 

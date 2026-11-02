@@ -912,11 +912,11 @@ describe('the replica', () => {
       const packing = replica.createTemplate({ name: 'Packing', items: [{ title: 'Socks' }] });
       const linked = replica.createTask({ title: 'Pack', category: 'Travel', templateId: packing.id });
       replica.createTask({ title: 'Unrelated', category: 'Travel' });
-      expect(getTaskTool(replica, linked.id)?.template).toEqual({ id: packing.id, name: 'Packing' });
+      expect(getTaskTool(replica, linked.id)!.template).toEqual({ id: packing.id, name: 'Packing' });
 
       const result = deleteTemplateTool(replica, 'Packing');
       expect(result.linkedTasks).toEqual([{ id: linked.id, title: 'Pack' }]);
-      expect(getTaskTool(replica, linked.id)?.template).toEqual({ id: packing.id, deleted: true });
+      expect(getTaskTool(replica, linked.id)!.template).toEqual({ id: packing.id, deleted: true });
     });
 
     it('deletes a template and names the ones that nested it', () => {

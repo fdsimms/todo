@@ -19,6 +19,27 @@ task. The rules here are strong defaults with the reasoning
 attached: read the reason before deviating from one. Where this note and the
 code disagree, the code is what ships, so fix the note.
 
+## Rules first
+
+The invariants a change in this area most often breaks, one line each, with the code that owns it and
+the section below that argues it (§). Read that section before deviating from one. The rest of the
+file is reference to read narrowly: `grep -n '^## ' docs/arch/generated-tasks.md` is its table of contents.
+
+- **A new generator is a rules module, a registry entry and a firing, never a `Task` column or a reconcile of its own.** `GENERATED_KINDS` and `GENERATED_KIND_SPECS` in `src/utils/generatedTasks.ts`, fired from `src/utils/maintenancePasses.ts`. (§ The shared mechanism)
+- **Every generator's switch and rule list is on `SYNCED_SETTING_KEYS`**, so a second phone and the MCP server see the same automations. Enforced by `src/__tests__/generatedSync.test.ts`. (§ The shared mechanism)
+- **A read of `generatedSourceId` that means one kind goes through `generatedSourceOf(task, kind)`**, because two generators can hand out the same source id. (§ The shared mechanism)
+- **A reconcile re-dates a row only when its source's own date moved.** A date recomputed from anything else overwrites a defer the person set by hand. The `drift` callback given to `reconcileGeneratedTask` (`src/store/generatedTaskSync.ts`). (§ The shared mechanism)
+- **The person's delete writes its "no" onto the source row (or a settings mark for a day-keyed generator); the app's own tidying writes none**, going through `dropGeneratedTask` or `skipGeneratedOptOut`. `writeGeneratedOptOut` in `src/store/useTaskStore.ts`. (§ The shared mechanism)
+- **A stale pass deletes a live row only when its reason is gone**, never because it lost to the cap or fell under the raise threshold; those decide only who gets a new row. `staleProjectReviewTasks`, `stalePantryCheckTasks`. (§ The shared mechanism)
+- **A day-keyed generator spends its "considered today" mark before the qualifying check, whatever the outcome**, so a row swiped away can't come back on the next sweep that day. `checkCalendarReviewTasks` in `src/store/useTaskStore.ts`. (§ The shared mechanism)
+- **A pass that reads a device source (calendar, weather, Screen Time, Health) refuses in demo mode and never asks for a permission itself.** Asking is a Settings tap. `isDemoModeActive` (`src/utils/demoState.ts`). (§ The shared mechanism)
+- **A missing input is never read as zero or "nothing happened".** With no reading, a pass leaves its rows alone. `loggedKcalToday` in `src/utils/snackNudgeTasks.ts`, and `src/utils/healthRules.ts` and `src/utils/weightTasks.ts` the same way. (§ `snackNudge`)
+- **An ask already met sets `generatedReadyAt` and keeps the row; only withdrawal deletes** (source gone, declined, out of its window, setting off). `settleReadyMarks` and `markGeneratedReady` in `src/store/generatedTaskSync.ts`. (§ A satisfied task stays, and reads ready)
+- **A row completes itself only from the person's own action in the app, and only for a kind on the allow-list.** Siri, another device, MCP or a background step leave it ready to tick. `canAutoComplete` (`src/utils/autoCompleteScope.ts`). (§ A satisfied task stays, and reads ready)
+- **Every kind declares `pausedOnVacation`, and vacation stops only creation**: the gate in `reconcileGeneratedTask` sits after the remove and drift branches. A pass that returns early never spends its period mark. `generatorPausedForVacation`. (§ Vacation mode: which of them stand down)
+- **A kind's Task settings fill only fields the generator left empty, and only on tasks created afterwards.** A new kind needs its `TASK_SETTINGS_SPECS` entry (`src/utils/generatedTaskSettings.ts`, tested). (§ Task settings: a kind's task, field by field)
+- **Every kind files under its own category setting**, and deleting a category re-points every setting that names it, so a new kind needs its arm in `generatedCategorySetting` (`src/store/useCategoryStore.ts`). (§ Every generator has its own category setting)
+
 ---
 
 ## The shared mechanism
@@ -474,7 +495,7 @@ one. Those three rules and the reasoning behind them are in
   sunny day, put on sunscreen" becomes a task the same way "tomorrow has events" does: no source
   row, a settings-level idempotency mark instead of a per-row stamp, and creation through the
   shared `reconcileGeneratedTask`. What's new is that there can be several such rules at once
-  (`src/utils/weatherTasks.ts`, `WeatherRule` in `types/index.ts`), each independently askable —
+  (`src/utils/weatherTasks.ts`, `WeatherRule` in `src/types/rules.ts`), each independently askable —
   which is what pushes its source id one level deeper than a plain day key.
   - **The source id is `${dayKey}#${ruleId}`, and the rule id is what keeps two rules from
     colliding on the same day.** `calendarReview` gets away with a bare day key because it asks

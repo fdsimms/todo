@@ -8,7 +8,7 @@ import { sessionExercises, setFieldsFor } from './workoutSession';
  * What a finished workout changed from the routine it was started from, as a
  * list of changes the person accepts one at a time ("Update Push A?").
  *
- * **The app proposes and the person confirms** (docs/arch/workouts.md): a
+ * **The app proposes; the person confirms** (docs/arch/workouts.md): a
  * routine is never edited because a workout went differently, so every change
  * here starts unaccepted and the routine is written only with the ones ticked.
  * Nothing is stored: the diff is read off the routine and the session's done

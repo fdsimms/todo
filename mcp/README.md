@@ -1,7 +1,7 @@
 # todo-mcp
 
-An MCP server over a replica of the app's database. **Phase 2: the replica syncs, and it writes.
-Nothing is deployed behind real auth.** The design, the phases and the
+An MCP server over a replica of the app's database. It syncs, it writes behind its own token, and
+it is deployed behind OAuth (`DEPLOY.md`). The design and the
 reasoning are in [`docs/arch/mcp-server.md`](../docs/arch/mcp-server.md); read that first, this
 file is only how to run it.
 
