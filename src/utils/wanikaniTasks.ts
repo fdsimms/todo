@@ -106,7 +106,7 @@ export const WANIKANI_TOKEN_URL = 'https://www.wanikani.com/settings/personal_ac
  * A held reviews task's note, written with its reminder: a task's notes are
  * its notification's body, and without one it reads "You have a task coming up".
  */
-export const WANIKANI_REVIEW_NOTES = 'Your reviews are up on WaniKani.';
+export const WANIKANI_REVIEW_NOTES = 'Reviews are up on WaniKani.';
 
 function clampInt(value: unknown, min: number, max: number, fallback: number, step = 1): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;

@@ -26,7 +26,7 @@ import { dayKeyGap } from './weightTasks';
  * The task's title. Never varies, so the reconcile has nothing to chase.
  * Literal about the action, per the copy rule: no encouragement, no target.
  */
-export const BLOOD_PRESSURE_TITLE = 'Record your blood pressure';
+export const BLOOD_PRESSURE_TITLE = 'Record blood pressure';
 
 /** How often to ask, when the user hasn't said. */
 export const DEFAULT_BLOOD_PRESSURE_EVERY_DAYS = 7;

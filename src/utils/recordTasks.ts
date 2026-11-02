@@ -9,8 +9,8 @@ import { BLOOD_PRESSURE_LINK_URL, bloodPressureDayKey } from './bloodPressureTas
 /**
  * The generated tasks that ask for a record, and are answered by the record.
  *
- * "Log how you're feeling", "Write in your journal", "Write down your dream" and
- * "Record your weight" and "Record your blood pressure" each have a sheet, and saving an entry for today
+ * "Log how you're feeling", "Write in journal", "Write down a dream" and
+ * "Record weight" and "Record blood pressure" each have a sheet, and saving an entry for today
  * makes its row read ready and completes it (`autoCompleteRecordTasks`); an
  * entry that arrives any other way leaves the tick to the person. So
  * the app already knows whether the thing was done, and a checkbox that

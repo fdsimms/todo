@@ -120,7 +120,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export function defaultEventRules(): EventTaskRule[] {
   return [
     { id: 'default-event-flight', matches: ['flight'], title: 'Pack a bag', leadDays: 2, enabled: true },
-    { id: 'default-event-dentist', matches: ['dentist'], title: 'Bring your insurance card', leadDays: 0, enabled: true },
+    { id: 'default-event-dentist', matches: ['dentist'], title: 'Bring insurance card', leadDays: 0, enabled: true },
   ];
 }
 

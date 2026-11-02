@@ -6538,7 +6538,7 @@ describe('checkWaniKaniTasks', () => {
     expect(new Date(task.dueDate!)).toEqual(new Date(2026, 9, 18, 12, 0));
     expect(task.reminderTime).toBe(at(15).toISOString());
     // The note is the notification's body.
-    expect(task.notes).toBe('Your reviews are up on WaniKani.');
+    expect(task.notes).toBe('Reviews are up on WaniKani.');
   });
 
   it('opens WaniKani\'s own page unless a client link is set', () => {
@@ -7952,7 +7952,7 @@ describe('checkJournalTasks', () => {
     useTaskStore.getState().checkJournalTasks();
 
     const [task] = tasksOfKind('journalLog');
-    expect(task.title).toBe('Write in your journal');
+    expect(task.title).toBe('Write in journal');
     expect(task.generatedSourceId).toBe(TODAY);
     expect(task.category).toBe('Personal');
     expect(task.linkUrl).toBe('dundundun://journal?log=1');
@@ -8005,7 +8005,7 @@ describe('checkJournalTasks', () => {
     useSettingsStore.getState.mockReturnValue(settings({ journalLogTasks: false, dreamLogTasks: true }));
     useTaskStore.getState().checkJournalTasks();
     const [task] = tasksOfKind('dreamLog');
-    expect(task.title).toBe('Write down your dream');
+    expect(task.title).toBe('Write down a dream');
     expect(task.generatedSourceId).toBe(TODAY);
     expect(task.linkUrl).toBe('dundundun://dreams?log=1');
     expect(tasksOfKind('journalLog')).toHaveLength(0);

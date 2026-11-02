@@ -439,20 +439,20 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
     ],
   },
   weighIn: {
-    example: 'Record your weight',
+    example: 'Record weight',
     noun: 'Weigh-in task',
     owned: () => [
-      { key: 'title', label: 'Title', summary: 'Record your weight' },
+      { key: 'title', label: 'Title', summary: 'Record weight' },
       { key: 'date', label: 'Date', summary: 'Today', hint: 'Added when Apple Health has no weight for the number of days set above.' },
       { key: 'notes', label: 'Notes', summary: 'How long since a weight was recorded', hint: 'From Apple Health.' },
       { key: 'link', label: 'Link', summary: 'Opens Weight' },
     ],
   },
   bloodPressureLog: {
-    example: 'Record your blood pressure',
+    example: 'Record blood pressure',
     noun: 'Blood pressure task',
     owned: () => [
-      { key: 'title', label: 'Title', summary: 'Record your blood pressure' },
+      { key: 'title', label: 'Title', summary: 'Record blood pressure' },
       { key: 'date', label: 'Date', summary: 'Today', hint: 'Added when Apple Health has no reading for the number of days set above.' },
       { key: 'notes', label: 'Notes', summary: 'How long since a reading was recorded', hint: 'From Apple Health.' },
       { key: 'link', label: 'Link', summary: 'Opens Blood pressure' },
@@ -529,21 +529,21 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
     ],
   },
   journalLog: {
-    example: 'Write in your journal',
+    example: 'Write in journal',
     noun: 'Journal reminder',
     locks: ['time'],
     owned: () => [
-      { key: 'title', label: 'Title', summary: 'Write in your journal', hint: 'With parts of the day set above, “Add to today’s journal” instead.' },
+      { key: 'title', label: 'Title', summary: 'Write in journal', hint: 'With parts of the day set above, “Add to today’s journal” instead.' },
       { key: 'date', label: 'Date', summary: 'Today', hint: 'One a day, or one for each part of the day you picked.' },
       { key: 'time', label: 'Time of day', summary: 'The parts of the day set above', hint: 'With none picked, one task a day at any time.' },
       { key: 'link', label: 'Link', summary: 'Opens the journal' },
     ],
   },
   dreamLog: {
-    example: 'Write down your dream',
+    example: 'Write down a dream',
     noun: 'Dream reminder',
     owned: () => [
-      { key: 'title', label: 'Title', summary: 'Write down your dream' },
+      { key: 'title', label: 'Title', summary: 'Write down a dream' },
       { key: 'date', label: 'Date', summary: 'Today', hint: 'One a day.' },
       { key: 'link', label: 'Link', summary: 'Opens the dream log' },
     ],
