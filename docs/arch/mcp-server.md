@@ -1766,8 +1766,8 @@ Taking each destination in turn:
 | Recipe page fetch | **No** | A request for a page the user pasted, served in real time. |
 | Anthropic, on the user's own key | **Unclear** | Anthropic keeps requests past real time and is arguably an external vendor, but no code of theirs is bundled and the developer has no account there and no access. |
 
-**Decided: declare the Anthropic row, and nothing else.** The earlier rule in this file holds for
-it: where this is ambiguous, the honest declaration beats the narrow one. So the label is one entry,
+**Decided: declare the Anthropic row, and nothing else.** Where a row is ambiguous, the honest
+declaration beats the narrow one. So the label is one entry,
 **Other User Content** (task titles and notes, tag and category names, and the other text an AI
 feature sends), purpose **App Functionality**, **linked to the user** (it travels on their own
 Anthropic account) and **not used for tracking**. A privacy manifest should carry the matching

@@ -877,6 +877,8 @@ which rows you don't usually get here.
   while you stand in a third, and the demo has two stores anyone would shop at. The seeded trip
   is at Trader Joe's and shows the other two.
 
+**Skip is session-only and keeps the checkbox.** A row in the "Not at <store>" group can be skipped, which moves it to a "Skipped" group for the rest of the trip (`tripSkippedIds` in `useGroceryStore`, cleared when a trip starts or ends, never written to the database or synced). Both groups keep the checkbox because the app's claim is a record of an earlier visit and the shelf may disagree. Skipping hides and checks nothing, so the row is back in its aisle on the next trip. The caption in the group is `describeGroupedUnavailable`: aisle, "Try <other store>" (`TripMarker.elsewhere`, only a store on record), and "or <substitute>".
+
 ## Incidental purchases — what came home that wasn't on the list
 
 `src/utils/incidentalPurchases.ts`. The finish sheet used to ask only about what the list had: what a
@@ -1984,6 +1986,3 @@ so this is the wire between them, not a third system.
 - **Nothing about it is written back to the recipe**, the same rule the existing picks follow: an
   ad-hoc shop isn't attached to a meal, so there's nothing for "I'll decide later" to be a fact
   about. It lives in sheet state and dies with the sheet.
-
-
-**Skip is session-only and keeps the checkbox.** A row in the "Not at <store>" group can be skipped, which moves it to a "Skipped" group for the rest of the trip (`tripSkippedIds` in `useGroceryStore`, cleared when a trip starts or ends, never written to the database or synced). Both groups keep the checkbox because the app's claim is a record of an earlier visit and the shelf may disagree. Skipping hides and checks nothing, so the row is back in its aisle on the next trip. The caption in the group is `describeGroupedUnavailable`: aisle, "Try <other store>" (`TripMarker.elsewhere`, only a store on record), and "or <substitute>".
