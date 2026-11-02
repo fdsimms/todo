@@ -1074,10 +1074,15 @@ function parseExtractedItems(
     if (typeof item?.name !== 'string') continue;
     const name = item.name.trim().slice(0, GROCERY_NAME_MAX_LENGTH);
     if (!name) continue;
+    const section = typeof item.component === 'string' ? item.component.trim() : '';
     // Dedupe on the same key the catalog uses, so two spellings of the same
-    // thing don't both get offered.
-    const key = groceryNameKey(name);
-    if (!key || seen.has(key)) continue;
+    // thing don't both get offered. The recipe's own heading is part of the
+    // key: "2 cups broth" under one heading and "1/2 cup broth" under another
+    // are two lines of the recipe, and keeping only the first lost the second.
+    const nameKey = groceryNameKey(name);
+    if (!nameKey) continue;
+    const key = `${section.toLowerCase()}|${nameKey}`;
+    if (seen.has(key)) continue;
     seen.add(key);
     const amount = splitQuantityNote(typeof item.quantity === 'string' ? item.quantity : '');
     const modelPrep = typeof item.prep === 'string' ? item.prep.trim() : '';
@@ -1356,7 +1361,7 @@ export interface ExtractedRecipe {
  */
 function sharedRecipeInstructions(availableAisles: string[], includeChoices = false): string[] {
   return [
-    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, with the prep instruction moved to the "prep" field instead of "name" or "quantity" — "4 cloves" or "3 cloves", not "1 bulb", with "minced" in "prep". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method when deciding what goes on the shopping list, with one exception: if the recipe calls for a stated amount of water — in its own ingredient list, or only in the method ("combine 3/4 cup water and the vinegar") — include it as its own line with that amount, and set "excludeFromShoppingList" to true, since nobody needs to buy water. Skip water entirely when no amount is ever stated for it.',
+    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, with the prep instruction moved to the "prep" field instead of "name" or "quantity" — "4 cloves" or "3 cloves", not "1 bulb", with "minced" in "prep". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method when deciding what goes on the shopping list, with one exception: if the recipe calls for a stated amount of water — in its own ingredient list, or only in the method ("combine 3/4 cup water and the vinegar") — include it as its own line with that amount, and set "excludeFromShoppingList" to true, since nobody needs to buy water. Skip water entirely when no amount is ever stated for it. A water line in the ingredient list is always its own row with its own amount, and is never folded into another line (stock or broth) listed beside it. The same ingredient listed under two headings ("2 cups broth" under one, "1/2 cup broth" under another) is two rows, each with its own amount.',
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
     'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
     ...(includeChoices ? [
