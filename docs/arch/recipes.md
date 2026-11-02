@@ -1438,21 +1438,22 @@ through a locked phone, and outlives the sheet.
   stores, so nothing is counted down in state. `pruneStaleStepTimers` bounds the stack at four hours
   past ringing — long enough that someone who left the kitchen still finds out, short enough that
   Thursday isn't holding Tuesday's tempeh.
-- **"Every 30 minutes" is a timer that repeats, and its count is derived, never stored.** A step that
+- **"Every 30 minutes" is a timer that repeats, and each round waits for the cook to start it.** A step that
   says "add 1 cup of water every 30 minutes" is the one phrase where one ring is the wrong timer, so
   `StepDuration.every` marks it (the phrase includes the word) and a tap asks how many times
   (`RepeatTimerSheet`) instead of starting. The number defaults from the step's own other time, the
   2½ hours it is spread across (`defaultRepeatRounds`: needs a time at least twice the interval, else
-  3). `RecipeStepTimer.repeatTarget` is that number and is **a target, never a stop**: the count is
-  whole intervals elapsed (`stepTimerRings`), so it survives a locked phone like the countdown does and
-  reads "6 of 5" when a pot needs another cycle. It rolls straight into the next interval, which is why
-  it is never `isStepTimerReady`, and why it has no +1m or Again: changing the length would rewrite how
-  many times it had gone off (`addTime` refuses it). Alarms are armed ahead, one slot per ring
-  (`stepTimerRingTimes`: the target and three more, at most `MAX_REPEAT_ALARMS`), because nothing can
-  re-arm while the app is closed; `useStepTimers` tops them up as each ring is seen, and
-  `cancelStepAlarm` names every slot. **It stays out of the Live Activity**: a countdown to one end
-  time would sit at 0:00 after the first ring. `pruneStaleStepTimers` measures its four hours from the
-  last ring it was armed for.
+  3). `RecipeStepTimer.repeatTarget` is that number and is **a target, never a stop**: the count reads
+  "6 of 5" when a pot needs another cycle. **A round that rings does not roll into the next.** What
+  the interval is for is usually something the cook does ("flip it, then back in the oven"), so the
+  next countdown starting by itself would run while the flip hadn't happened. Each round is a plain
+  countdown that waits at zero, and the row's Next button (`startNextRound`) starts the following
+  one. The round is stored (`RecipeStepTimer.round`, from 2 up) because a wait for a person is not
+  something the clock can count; the rings are that round, plus itself once it is `isStepTimerReady`
+  (`stepTimerRings`). It has no +1m (`addTime` refuses it), since the length is every round's. Only
+  the running round has an alarm, laid down again when the next one starts, which also means it can
+  sit in the Live Activity like any other countdown. `cancelStepAlarm` still names every slot, for an
+  alarm an earlier build armed ahead.
 - **The offer scrolls with the step; the running timer doesn't.** Chips sit under the sentence they
   were read out of, which is what makes it obvious the app didn't invent a number. Once started, the
   timer belongs to the footer: pressing Next must not take a running countdown off screen, and Pause
