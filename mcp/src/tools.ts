@@ -1396,12 +1396,20 @@ export interface DeleteTemplateResult {
   deleted: { id: string; name: string; items: number };
   /** Templates that nested it. Each now has an item whose reference is broken. */
   nestedIn: string[];
+  /** Open tasks that run it from their row (`templateId`). Each now shows "Template deleted" until the link is removed or points at another template. */
+  linkedTasks: { id: string; title: string }[];
 }
 
 /** Delete a template. Not undoable from here, so the write tool previews it first. */
 export function deleteTemplate(replica: Replica, ref: string): DeleteTemplateResult {
+  const found = replica.templates().find(t => t.id === ref || t.name === ref);
+  const linkedTasks = found
+    ? replica.tasks()
+        .filter(t => t.templateId === found.id && !t.completed && !t.archived)
+        .map(t => ({ id: t.id, title: t.title }))
+    : [];
   const { template, nestedIn } = replica.deleteTemplate(ref);
-  return { deleted: { id: template.id, name: template.name, items: template.items.length }, nestedIn };
+  return { deleted: { id: template.id, name: template.name, items: template.items.length }, nestedIn, linkedTasks };
 }
 
 /** The templates in their new order, as the template list shows them. */

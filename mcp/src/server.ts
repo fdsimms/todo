@@ -2820,7 +2820,7 @@ function registerWriteTools(
 
   server.tool(
     'apply_template',
-    "Run a template: create the tasks it describes, with dates counted from startDate and endDate. Does what the app's apply sheet does with its defaults plus what you give: which items are on follows the answers (a conditioned item is on or off by the answer, an optional one starts off), questions you do not answer take their default, and runName is what puts the tasks in the template's stack, project or parent task. Read the template with get_template first for its question names, item ids and container. include / leaveOut take item ids to switch on or off. projectId runs it into an existing project instead. People questions are not answered here. The preview lists each task with its dates and subtasks, the items left out and why (leftOut, with itemIds for include), blanks left empty (unfilledBlanks), and nested templates that no longer exist (brokenRefs): check those before confirming. Reminders and calendar events for the new tasks are set up by the phone.",
+    "Run a template: create the tasks it describes, with dates counted from startDate and endDate. Does what the app's apply sheet does with its defaults plus what you give: which items are on follows the answers (a conditioned item is on or off by the answer, an optional one starts off), questions you do not answer take their default, and runName is what puts the tasks in the template's stack, project or parent task. Read the template with get_template first for its question names, item ids and container. include / leaveOut take item ids to switch on or off. projectId runs it into an existing project instead. People questions are not answered here. The preview lists each task with its dates and subtasks, the items left out and why (leftOut, with itemIds for include), blanks left empty (unfilledBlanks), and nested templates that no longer exist (brokenRefs): check those before confirming. Reminders and calendar events for the new tasks are set up by the phone. If the person cannot answer its questions yet (a packing list before the trip is decided), do not guess the answers: link the template to a task with templateId instead (create_task or update_task), and they run it from that task's row when they are ready.",
     {
       template: z.string().describe('A template id, or its exact name when that names only one (list_templates).'),
       runName: z.string().optional().describe('Names the run, e.g. "Lisbon trip". Needed for the template to create its stack, project or parent task; without it the tasks are loose.'),
@@ -2843,7 +2843,7 @@ function registerWriteTools(
 
   server.tool(
     'delete_template',
-    'Delete a template. Templates have no archive, so this cannot be undone from here. Templates that nest it keep an item whose reference is now broken; the result names them. Prefer update_template when the person only wants it changed.',
+    'Delete a template. Templates have no archive, so this cannot be undone from here. Templates that nest it keep an item whose reference is now broken; the result names them. Open tasks that run it from their row (templateId) keep the link and show "Template deleted"; the result lists them as linkedTasks, so tell the person and offer to point them at another template or clear the link with update_task. Prefer update_template when the person only wants it changed.',
     { template: z.string().describe('A template id, or its exact name when that names only one (list_templates).') },
     async ({ template }) => {
       try {
