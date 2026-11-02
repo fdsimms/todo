@@ -15,6 +15,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { categoryLabel } from '../utils/categoryLabel';
 import { describeTitleRuleTargets, describeTitleRuleTrigger, titleRuleBacklog } from '../utils/titleRules';
 import { linkAppLabel } from '../constants/linkApps';
+import { readSavedLinks } from '../utils/savedLinks';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -152,7 +153,7 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
     rule,
     rule.category ? categoryLabel(rule.category, categories) : null,
     projects.find(p => p.id === rule.projectId)?.title ?? null,
-    rule.linkUrl ? linkAppLabel(rule.linkUrl) : null,
+    rule.linkUrl ? linkAppLabel(rule.linkUrl, readSavedLinks()) : null,
   );
 
   return (

@@ -44,7 +44,9 @@ import { haptics } from '../utils/haptics';
 import { formatPrice, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { COIN_ICON } from '../constants/coinIcon';
-import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
+import { linkAppLabel } from '../constants/linkApps';
+import { useSavedLinks } from '../hooks/useSavedLinks';
+import { SaveLinkAction, SavedLinksHint } from '../components/SavedLinkParts';
 import { linkIconFor, openInAppUrl } from '../utils/deepLinks';
 import { liveProjectSteps } from '../utils/projectOrder';
 import { canGuard, describeGuard } from '../utils/rewardGuard';
@@ -365,6 +367,7 @@ export function RewardsScreen() {
   const [draftTaxable, setDraftTaxable] = useState(false);
   const [draftNote, setDraftNote] = useState('');
   const [draftLink, setDraftLink] = useState('');
+  const savedLinks = useSavedLinks(kitchenEnabled, draft !== null);
   const [draftOneTime, setDraftOneTime] = useState(false);
   const [draftGlyph, setDraftGlyph] = useState('');
   // "Limit claims" (Reward.claimEveryDays): a count and a unit, null count = no limit.
@@ -630,8 +633,13 @@ export function RewardsScreen() {
   const historyHidden = recentEntries.length - history.length;
   const pickableItems = listItems.filter(t => !(draft?.mode === 'item' && draft.taskId === t.id));
   const pickableShown = listExpanded ? pickableItems : pickableItems.slice(0, LIST_PREVIEW);
-  const linkApps = linkAppsFor(kitchenEnabled);
-  const customLink = knownLinkAppFor(draftLink) ? '' : draftLink;
+  const customLink = savedLinks.isChip(draftLink) ? '' : draftLink;
+  // The name of a link's chip, or null for a typed address, so the claim card's
+  // button says "Open" rather than printing a URL.
+  const linkChipName = (url: string) => {
+    const name = linkAppLabel(url, savedLinks.saved);
+    return name === url ? null : name;
+  };
 
   // Not a component: a component defined in render remounts on every
   // keystroke and drops the field's focus with it.
@@ -838,7 +846,7 @@ export function RewardsScreen() {
           />
           <Text style={styles.fieldLabel}>Link</Text>
           <View style={styles.presetRow}>
-            {linkApps.map(app => {
+            {savedLinks.chips.map(app => {
               const active = draftLink === app.scheme;
               return (
                 <TouchableOpacity
@@ -849,6 +857,8 @@ export function RewardsScreen() {
                     // Tapping the chosen app again clears the link.
                     setDraftLink(active ? '' : app.scheme);
                   }}
+                  onLongPress={app.saved ? () => savedLinks.manage(app) : undefined}
+                  delayLongPress={interaction.delayLongPress}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityState={{ selected: active }}
@@ -864,6 +874,7 @@ export function RewardsScreen() {
               );
             })}
           </View>
+          <SavedLinksHint links={savedLinks} style={styles.hint} />
           <FieldLabel>Web address</FieldLabel>
           <TextField
             style={styles.input}
@@ -876,6 +887,11 @@ export function RewardsScreen() {
             keyboardType="url"
             accessibilityLabel="Web address"
           />
+          {savedLinks.canSave(customLink) && (
+            <View style={styles.linkSaveRow}>
+              <SaveLinkAction links={savedLinks} typed={customLink} />
+            </View>
+          )}
           <View style={styles.switchRow}>
             <View style={styles.switchText}>
               <Text style={styles.switchLabel}>One time only</Text>
@@ -1040,11 +1056,11 @@ export function RewardsScreen() {
           />
           {shown.linkUrl && (
             <InlineAction
-              label={knownLinkAppFor(shown.linkUrl)?.name ?? 'Open'}
+              label={linkChipName(shown.linkUrl) ?? 'Open'}
               icon={linkIconFor(shown.linkUrl) as never}
               variant="neutral"
               onPress={() => close(() => openLink(shown.linkUrl!))}
-              accessibilityLabel={`Open ${knownLinkAppFor(shown.linkUrl)?.name ?? 'the link'} for ${shown.title}`}
+              accessibilityLabel={`Open ${linkChipName(shown.linkUrl) ?? 'the link'} for ${shown.title}`}
             />
           )}
           <InlineAction
@@ -1683,6 +1699,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   linkChip: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  linkSaveRow: { flexDirection: 'row', marginTop: spacing.xs, marginBottom: spacing.sm },
   presetChipActive: { backgroundColor: colors.accentFill },
   presetChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   presetChipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },

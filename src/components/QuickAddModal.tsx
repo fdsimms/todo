@@ -117,7 +117,8 @@ import { useEventPeopleStore } from '../store/useEventPeopleStore';
 import { isDemoModeActive } from '../utils/demoState';
 import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
 import { describeTitleRuleTargets, resolveTitleRules } from '../utils/titleRules';
-import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
+import { useSavedLinks } from '../hooks/useSavedLinks';
+import { SaveLinkAction, SavedLinksHint } from './SavedLinkParts';
 import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
@@ -573,6 +574,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const [emailText, setEmailText] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
+  const savedLinks = useSavedLinks(kitchenEnabled, activePanel === 'link');
   // Lifts the toolbar's cap for this sheet only. Deliberately not persisted:
   // the folded chips are the rarely-wanted ones, so the next task starts from
   // the short toolbar again rather than inheriting a decision made once.
@@ -2267,11 +2269,11 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const togglePanel = (panel: ActivePanel) => {
     haptics.tap();
     setActivePanel(prev => prev === panel ? null : panel);
-    if (panel === 'link' && linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === linkUrl)) {
+    if (panel === 'link' && linkUrl && !savedLinks.isChip(linkUrl)) {
       setCustomLinkText(linkUrl);
     }
     if (panel === 'link') {
-      setLinkAppsOpen(!!linkUrl && KNOWN_LINK_APPS.some(app => app.scheme === linkUrl));
+      setLinkAppsOpen(!!linkUrl && savedLinks.isChip(linkUrl));
     }
     if (panel === 'phone') {
       setPhoneText(effectivePhone ?? '');
@@ -3543,6 +3545,7 @@ parsed
                   returnKeyType="done"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
+                <SaveLinkAction links={savedLinks} typed={customLinkText} />
                 {linkUrl !== null && (
                   <TouchableOpacity
                     onPress={() => { haptics.tap(); setLinkUrl(null); setCustomLinkText(''); setActivePanel(null); }}
@@ -3565,18 +3568,22 @@ parsed
                 <Text style={styles.linkAppsToggleText}>Or open an app</Text>
                 <RotatingChevron open={linkAppsOpen} size={iconSize.sm} color={colors.textSecondary} />
               </TouchableOpacity>
-              {/* A horizontal scroll rather than a wrapping row: KNOWN_LINK_APPS is
-                  long enough that wrapping it full-width turned this panel into a
+              {/* A horizontal scroll rather than a wrapping row: the chips (the
+                  built-in apps plus however many links were saved) are long
+                  enough that wrapping them full-width turned this panel into a
                   wall of pills before the URL input was even reached. One row keeps
                   the panel's height in line with every other quick-add panel. */}
               {linkAppsOpen && (
+              <>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
                 <View style={styles.linkAppRow}>
-                  {linkAppsFor(kitchenEnabled).map(app => (
+                  {savedLinks.chips.map(app => (
                     <TouchableOpacity
                       key={app.scheme}
                       style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
                       onPress={() => { haptics.tap(); setLinkUrl(app.scheme); setActivePanel(null); }}
+                      onLongPress={app.saved ? () => savedLinks.manage(app) : undefined}
+                      delayLongPress={interaction.delayLongPress}
                       activeOpacity={interaction.activeOpacity}
                     >
                       <Ionicons
@@ -3591,6 +3598,8 @@ parsed
                   ))}
                 </View>
               </ScrollView>
+              <SavedLinksHint links={savedLinks} />
+              </>
               )}
             </View>
           )}

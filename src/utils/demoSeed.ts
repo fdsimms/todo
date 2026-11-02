@@ -21,6 +21,7 @@ import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { useFastStore } from '../store/useFastStore';
 import { addSavedPlace, readSavedPlaces, writeSavedPlaces } from './savedPlaces';
+import { addSavedLink, readSavedLinks, writeSavedLinks } from './savedLinks';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useGymStore } from '../store/useGymStore';
 import { useJournalStore } from '../store/useJournalStore';
@@ -2513,6 +2514,7 @@ export function seedDemoData(): void {
   seedCookware();
   seedFast();
   seedPlaceReminder();
+  seedSavedLink();
   seedWorkouts(today);
   seedJournal(today);
   seedAsNeededDoses(today);
@@ -3459,6 +3461,22 @@ function seedMoodTasks(today: Date): void {
  * Goes through `addMilestone` like everything else here, so a seeded row
  * cannot drift from the type.
  */
+/**
+ * A link saved as a chip in the Link picker, in the demo's own settings table,
+ * and a task that opens it, so the picker shows a saved chip beside the
+ * built-in apps and the task's link button reads "Payroll".
+ */
+function seedSavedLink(): void {
+  const links = addSavedLink(readSavedLinks(), { name: 'Payroll', url: 'https://example.com/payroll' });
+  writeSavedLinks(links);
+  useTaskStore.getState().addTask({
+    title: 'Check this week\'s timesheet',
+    category: 'Work',
+    effort: 1,
+    linkUrl: 'https://example.com/payroll',
+  });
+}
+
 /**
  * A saved place with a pin, in the demo's own settings table, and a task that
  * rings on arriving there, so its row shows "Arriving at Home". Nothing is

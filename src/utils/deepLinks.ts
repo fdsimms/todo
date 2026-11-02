@@ -44,7 +44,7 @@ import {
   openQuickAddEventFromShortcut,
 } from '../navigation/navigationRef';
 import { MEAL_SLOTS, type MealPlanEntry, type MealSlot, type RecipeOverride } from '../types';
-import { KNOWN_LINK_APPS } from '../constants/linkApps';
+import { KNOWN_LINK_APPS, RETIRED_LINK_APPS } from '../constants/linkApps';
 
 export interface AddTaskLink {
   title: string;
@@ -904,7 +904,8 @@ export function kitchenUrlWantsReview(url: string): boolean {
  */
 export function linkIconFor(url: string | null | undefined): string {
   if (!url) return 'link';
-  const knownApp = KNOWN_LINK_APPS.find(app => app.scheme === url);
+  const knownApp = KNOWN_LINK_APPS.find(app => app.scheme === url)
+    ?? RETIRED_LINK_APPS.find(app => app.scheme === url);
   if (knownApp) return knownApp.icon;
   if (isRecipeUrl(url) || isRecipesUrl(url) || isMealPlanUrl(url)) return 'restaurant-outline';
   if (isCalendarUrl(url)) return 'calendar-outline';

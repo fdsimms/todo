@@ -24,16 +24,25 @@ export const KNOWN_LINK_APPS: LinkApp[] = [
   // not necessarily the place a weather task's own reading came from. Still
   // one tap closer to the full forecast than the rule's own one-line title.
   { name: 'Weather', scheme: 'weather://', icon: 'partly-sunny-outline', sfSymbol: 'cloud.sun.fill' },
-  { name: 'Duolingo', scheme: 'duolingo://', icon: 'school-outline', sfSymbol: 'graduationcap.fill' },
   { name: 'Spotify', scheme: 'spotify://', icon: 'musical-notes-outline', sfSymbol: 'music.note' },
   { name: 'YouTube', scheme: 'youtube://', icon: 'logo-youtube', sfSymbol: 'play.rectangle.fill' },
   { name: 'Gmail', scheme: 'googlegmail://', icon: 'mail-outline', sfSymbol: 'envelope.fill' },
+];
+
+/**
+ * Built-in chips this version stopped offering, now that a person saves the
+ * links they use (`src/utils/savedLinks.ts`). Only the most common stay in
+ * `KNOWN_LINK_APPS`. These are kept so nothing already pointing at one loses
+ * its name or glyph: `adoptRetiredLinkApps` saves the ones in use as chips on
+ * the first launch, and `linkAppLabel` / `linkIconFor` read this list for any
+ * that were never adopted (a link inside a template, say). Not offered, and
+ * not to be added back to the picker.
+ */
+export const RETIRED_LINK_APPS: LinkApp[] = [
+  { name: 'Duolingo', scheme: 'duolingo://', icon: 'school-outline', sfSymbol: 'graduationcap.fill' },
   { name: 'Instagram', scheme: 'instagram://app', icon: 'logo-instagram', sfSymbol: 'camera.fill' },
   { name: 'Notion', scheme: 'notion://', icon: 'document-text-outline', sfSymbol: 'doc.text.fill' },
   { name: 'YNAB', scheme: 'ynab://', icon: 'wallet-outline', sfSymbol: 'wallet.pass.fill' },
-  // Food delivery, for a "Takeout dinner" reward (see Reward.linkUrl) as much
-  // as for a task. bag.fill rather than the takeout-bag symbol, which needs a
-  // newer iOS than the widget targets.
   { name: 'Uber Eats', scheme: 'ubereats://', icon: 'fast-food-outline', sfSymbol: 'bag.fill' },
   { name: 'DoorDash', scheme: 'doordash://', icon: 'bag-handle-outline', sfSymbol: 'bag.fill' },
 ];
@@ -72,9 +81,18 @@ export function knownLinkAppFor(url: string | null | undefined): LinkApp | null 
   );
 }
 
-/** Known app name for a link scheme, else the raw URL — what a settings row or a caption names it. */
-export function linkAppLabel(url: string): string {
-  return knownLinkAppFor(url)?.name ?? url;
+/**
+ * What a settings row or a caption calls a link: the built-in app's name, else
+ * the name of a saved link with exactly this URL (pass the list from
+ * `readSavedLinks`), else a retired built-in app's, else the raw URL.
+ */
+export function linkAppLabel(url: string, saved: readonly { url: string; name: string }[] = []): string {
+  return (
+    knownLinkAppFor(url)?.name
+    ?? saved.find(l => l.url === url)?.name
+    ?? RETIRED_LINK_APPS.find(app => app.scheme === url)?.name
+    ?? url
+  );
 }
 
 /** What the link reads need: the task's own link, plus its chain position. */

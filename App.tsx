@@ -70,6 +70,7 @@ import { startDeviceMetrics } from './src/utils/deviceMetrics';
 import { backfillCalendarExternalIds } from './src/utils/calendarIdBackfill';
 import { drainCalendarRequests } from './src/utils/calendarRequestDrain';
 import { expiryPasses, launchCatchUpPasses, retentionPasses } from './src/utils/maintenancePasses';
+import { adoptRetiredLinkApps } from './src/utils/savedLinks';
 import { useAppRefresh, useBackgroundRefresh } from './src/utils/backgroundRefresh';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { preloadAppFont, preloadBrandFonts } from './src/theme/AppFont';
@@ -270,6 +271,10 @@ function AppRoot() {
         // those events rather than writing each again (#2950). Async and not
         // awaited; after the purges, so it reads no row they are about to delete.
         ['backfill calendar server ids', () => { void backfillCalendarExternalIds(); }],
+        // Once per install: a built-in link app this version stopped offering
+        // (Duolingo, Notion, ...) becomes a saved link for whoever already
+        // linked a task or reward to it. See savedLinks.ts.
+        ['save retired link apps', adoptRetiredLinkApps],
         // Calendar events an agent asked for while the app was closed, on the
         // device chosen to write them. Async and not awaited, and idempotent: a
         // request is answered once, and a later pass skips it.

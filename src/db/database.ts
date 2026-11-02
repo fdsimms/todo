@@ -4165,6 +4165,23 @@ export function dbGetSetting(key: string): string | null {
 }
 
 /**
+ * Which of these link schemes a task, a chain step or a reward already carries.
+ * For the one-time pass that saves a retired built-in app as a chip for
+ * whoever was using it (`adoptRetiredLinkApps`); a chain step's link is inside
+ * the task's `cycle_items` JSON, hence the LIKE.
+ */
+export function dbLinkSchemesInUse(schemes: readonly string[]): string[] {
+  return schemes.filter(scheme => {
+    const task = db.getFirstSync<{ one: number }>(
+      'SELECT 1 AS one FROM tasks WHERE link_url = ? OR cycle_items LIKE ? LIMIT 1',
+      [scheme, `%"${scheme}"%`]
+    );
+    if (task) return true;
+    return !!db.getFirstSync<{ one: number }>('SELECT 1 AS one FROM rewards WHERE link_url = ? LIMIT 1', [scheme]);
+  });
+}
+
+/**
  * The whole settings table in one read. `useSettingsStore.initialize` wants
  * ~180 keys on the synchronous startup path, and asking for them one at a time
  * is ~180 round trips through the bridge for a table small enough to fit in a

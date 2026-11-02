@@ -23,6 +23,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useFastStore } from '../store/useFastStore';
+import { readSavedLinks } from '../utils/savedLinks';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { personUndated, personWaiting } from '../utils/personHistory';
@@ -983,6 +984,14 @@ describe('demo mode', () => {
     const task = useTaskStore.getState().tasks.find(t => t.title === 'Take the recycling out');
     expect(task?.reminderPlaceId).toBeTruthy();
     expect(task?.reminderPlaceOn).toBe('arrive');
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a saved link, and a task that opens it', () => {
+    useDemoStore.getState().enterDemoMode();
+    const task = useTaskStore.getState().tasks.find(t => t.title === 'Check this week\'s timesheet');
+    expect(task?.linkUrl).toBe('https://example.com/payroll');
+    expect(readSavedLinks().map(l => l.url)).toContain(task?.linkUrl);
     useDemoStore.getState().exitDemoMode();
   });
 

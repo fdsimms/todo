@@ -9,7 +9,7 @@ import { canSkipForRain, defaultRainSkipMm, formatRain, type RainUnit } from './
 import { formatDuration } from './effort';
 import { formatQuotaTarget } from './quotaUnit';
 import { formatSupplyLeft } from './supply';
-import { KNOWN_LINK_APPS } from '../constants/linkApps';
+import { linkAppLabel } from '../constants/linkApps';
 
 /**
  * The part of the title-reading chain that comes after the schedule phrase,
@@ -181,7 +181,7 @@ export function suggestionMatch(
 }
 
 export function linkLabel(url: string): string {
-  return KNOWN_LINK_APPS.find(app => app.scheme === url)?.name ?? url;
+  return linkAppLabel(url);
 }
 
 const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
