@@ -8,7 +8,8 @@ import { Alert, Share } from 'react-native';
  * presented. Six call sites used to end in `.catch(() => {})`, one of them
  * claiming a rejection meant the person backed out, so a share that never
  * opened looked identical to a button that did nothing. Returns whether it
- * opened, for a caller that has something to undo.
+ * opened, for a caller that has something to undo. A direct `Share.share`
+ * elsewhere fails `noSwallowedExternalOpen.test.ts`.
  */
 export async function shareContent(content: { message: string; url?: string }): Promise<boolean> {
   try {

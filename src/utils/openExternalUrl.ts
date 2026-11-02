@@ -45,6 +45,9 @@ export function externalFailureCopy(kind: ExternalKind): { title: string; messag
  * swallowed at every call site ("no toast infra"), so a tap on a bad link did
  * nothing at all. An alert is the app's existing way to say a thing failed.
  * Returns whether it opened, for a caller that has something to undo.
+ *
+ * Every open goes through here: `noSwallowedExternalOpen.test.ts` fails the
+ * build on a direct `Linking.openURL` anywhere else.
  */
 export async function openExternalUrl(url: string, kind: ExternalKind = externalKindFor(url)): Promise<boolean> {
   try {
