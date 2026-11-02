@@ -16,22 +16,13 @@
  * Read from the source rather than the module graph, the same as
  * `noRawModal.test.ts`.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
 /** The one file allowed to reach for the real thing. */
 const GATE = join('utils', 'haptics.ts');
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    // The suite is skipped: this file quotes both patterns as literals.
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx?$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 /** Any import or require of expo-haptics. */
 const EXPO_HAPTICS = /(?:from\s*|require\(\s*)['"]expo-haptics['"]/;
