@@ -31,7 +31,7 @@ import {
 import { BUTTON_LABEL } from '../copy/shared';
 import { CountStepper } from './CountStepper';
 import { EmptyNote } from './EmptyNote';
-import { HelpText } from './HelpText';
+import { FormField } from './FormField';
 import { HabitPickerSheet } from './HabitPickerSheet';
 import { InlineAction } from './InlineAction';
 import { ProgressBar } from './ProgressBar';
@@ -166,7 +166,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
           accessibilityLabel="Unlock"
         />
 
-        <Text style={styles.fieldLabel}>Icon</Text>
+        <FormField label="Icon">
         <View style={styles.presetRow}>
           {UNLOCK_GLYPHS.map(g => (
             <TouchableOpacity
@@ -190,8 +190,9 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
           placeholderTextColor={colors.textTertiary}
           accessibilityLabel="Icon"
         />
+        </FormField>
 
-        <Text style={styles.fieldLabel}>Unlocks after</Text>
+        <FormField label="Unlocks after" hint="Counted in coins, so hard tasks count for more. A day with nothing on it is unlocked.">
         <View style={styles.stepRow}>
           <CountStepper
             value={fields.sharePct}
@@ -204,9 +205,9 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
           />
           <Text style={styles.stepUnit}>of today’s work</Text>
         </View>
-        <HelpText style={styles.hint}>Counted in coins, so hard tasks count for more. A day with nothing on it is unlocked.</HelpText>
+        </FormField>
 
-        <Text style={styles.fieldLabel}>Also needs</Text>
+        <FormField label="Also needs" hint="Only on the days they’re due. Any repeat of the task counts.">
         <View style={styles.chipRow}>
           {fields.requiredTaskIds.map(id => {
             const task = taskById.get(id);
@@ -227,9 +228,9 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
           })}
           <InlineAction label="Add a task" icon="add" variant="neutral" onPress={() => { haptics.tap(); setTaskPickerOpen(true); }} />
         </View>
-        <HelpText style={styles.hint}>Only on the days they’re due. Any repeat of the task counts.</HelpText>
+        </FormField>
 
-        <Text style={styles.fieldLabel}>Play for</Text>
+        <FormField label="Play for" hint="A timer you start once it’s unlocked, with a notification when today’s time is up.">
         <CountStepper
           value={fields.playMinutes}
           onChange={n => set('playMinutes', n)}
@@ -243,9 +244,9 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
           label="Play time a day"
           style={styles.stepper}
         />
-        <HelpText style={styles.hint}>A timer you start once it’s unlocked, with a notification when today’s time is up.</HelpText>
+        </FormField>
 
-        <Text style={styles.fieldLabel}>Unlocked all day on</Text>
+        <FormField label="Unlocked all day on">
         {([['freeOnWeekends', 'Weekends'], ['freeOnVacation', 'Vacation']] as const).map(([key, label]) => (
           <TouchableOpacity
             key={key}
@@ -260,8 +261,9 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
             <Toggle value={fields[key]} />
           </TouchableOpacity>
         ))}
+        </FormField>
 
-        <Text style={styles.fieldLabel}>Linked habit</Text>
+        <FormField label="Linked habit" hint="An “Avoid this” habit for doing it while it’s locked. Logging a slip on it while it’s unlocked asks first.">
         <View style={styles.chipRow}>
           {habit ? (
             <>
@@ -275,9 +277,9 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
             <InlineAction label="Choose a habit" icon="shield-checkmark-outline" variant="neutral" onPress={() => { haptics.tap(); setHabitPickerOpen(true); }} />
           )}
         </View>
-        <HelpText style={styles.hint}>An “Avoid this” habit for doing it while it’s locked. Logging a slip on it while it’s unlocked asks first.</HelpText>
+        </FormField>
 
-        <Text style={styles.fieldLabel}>Code</Text>
+        <FormField label="Code" hint="Such as a console’s parental controls PIN. Shown only while it’s unlocked.">
         <TextField
           style={styles.input}
           value={fields.pin ?? ''}
@@ -288,7 +290,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
           autoCapitalize="none"
           accessibilityLabel="Code, such as a parental controls PIN"
         />
-        <HelpText style={styles.hint}>Such as a console’s parental controls PIN. Shown only while it’s unlocked.</HelpText>
+        </FormField>
 
         {draft?.mode === 'edit' && (() => {
           const editing = unlocks.find(u => u.id === draft.id);
@@ -509,15 +511,6 @@ function makeStyles(colors: Colors) {
     // The form, matching the reward form's fields.
     draftHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xs, marginBottom: spacing.sm },
     draftHeaderTitle: { flex: 1, textAlign: 'center', color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-    fieldLabel: {
-      color: colors.textSecondary,
-      fontSize: font.xs,
-      fontWeight: fontWeight.semibold,
-      letterSpacing: 0.8,
-      textTransform: 'uppercase',
-      marginTop: spacing.sm,
-    },
-    hint: { color: colors.textSecondary, fontSize: font.xs, marginTop: -spacing.xs },
     input: {
       color: colors.text,
       fontSize: font.md,

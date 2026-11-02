@@ -612,7 +612,7 @@ function makeStyles(colors: Colors) {
       fontWeight: fontWeight.semibold,
       letterSpacing: 0.8,
       marginTop: spacing.md,
-      marginBottom: spacing.xs,
+      marginBottom: spacing.sm,
     },
     inputRow: {
       flexDirection: 'row',

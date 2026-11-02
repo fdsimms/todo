@@ -231,7 +231,7 @@ function makeStyles(colors: Colors) {
       fontSize: font.xs,
       fontWeight: fontWeight.semibold,
       letterSpacing: 0.8,
-      marginBottom: spacing.xs,
+      marginBottom: spacing.sm,
     },
     refused: { fontSize: font.xs, color: colors.redText },
     rowText: { flex: 1, color: colors.text, fontSize: font.md },
