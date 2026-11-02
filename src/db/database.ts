@@ -2650,15 +2650,21 @@ function runInitDatabase(): void {
     dbSetSetting('task_backfill_seen_generated_done', '1');
   }
 
-  // One-time migration: populate categories table from legacy category_registry setting
-  const catCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM categories')?.n ?? 0;
-  if (catCount === 0) {
-    const registry = dbGetCategoryRegistry();
-    for (const name of registry) {
-      try {
-        db.runSync('INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)', [generateId(), name]);
-      } catch (_) {}
+  // One-time migration: populate categories table from legacy category_registry
+  // setting. Behind a flag rather than "the table is empty": nothing removes the
+  // registry, so deleting every category brought the legacy ones back at the
+  // next launch, under new ids that then synced out.
+  if (dbGetSetting('category_registry_migration_done') !== '1') {
+    const catCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM categories')?.n ?? 0;
+    if (catCount === 0) {
+      const registry = dbGetCategoryRegistry();
+      for (const name of registry) {
+        try {
+          db.runSync('INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)', [generateId(), name]);
+        } catch (_) {}
+      }
     }
+    dbSetSetting('category_registry_migration_done', '1');
   }
 
   // One-time migration: projects previously stored a category name drawn from
@@ -2666,14 +2672,19 @@ function runInitDatabase(): void {
   // have their own separate category pool, seed project_categories with
   // whatever names existing projects were already using so they don't lose
   // their assignment.
-  const projCatCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM project_categories')?.n ?? 0;
-  if (projCatCount === 0) {
-    const rows = db.getAllSync<{ category: string }>(
-      "SELECT DISTINCT category FROM projects WHERE category IS NOT NULL AND category != ''"
-    );
-    rows.forEach((row, i) => {
-      try { db.runSync('INSERT OR IGNORE INTO project_categories (id, name, sort_order) VALUES (?, ?, ?)', [generateId(), row.category, i + 1]); } catch (_) {}
-    });
+  // Behind a flag for the same reason, and so an install with no project
+  // categories doesn't scan every project on each launch.
+  if (dbGetSetting('project_categories_seed_done') !== '1') {
+    const projCatCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM project_categories')?.n ?? 0;
+    if (projCatCount === 0) {
+      const rows = db.getAllSync<{ category: string }>(
+        "SELECT DISTINCT category FROM projects WHERE category IS NOT NULL AND category != ''"
+      );
+      rows.forEach((row, i) => {
+        try { db.runSync('INSERT OR IGNORE INTO project_categories (id, name, sort_order) VALUES (?, ?, ?)', [generateId(), row.category, i + 1]); } catch (_) {}
+      });
+    }
+    dbSetSetting('project_categories_seed_done', '1');
   }
 
   // One-time cleanup: the cookbook index feature was removed, so its table is
@@ -5052,6 +5063,29 @@ function fillCalendarExternalIds(
     }
   });
   return written;
+}
+
+/**
+ * Fills in `recurrence_anchor_day` on rows that predate the column, and puts
+ * each row's sync stamp back (`fillCalendarExternalIds`' shape). Every device
+ * derives the same anchor from the dates it already syncs, so this is not an
+ * edit to send; written through `dbUpdateTask`, every such row became this
+ * device's newest copy at launch, and a peer's edit made while it was closed
+ * lost to it. Only a row still without an anchor is touched.
+ */
+export function dbBackfillRecurrenceAnchorDays(anchors: ReadonlyArray<{ id: string; day: number }>): void {
+  if (anchors.length === 0) return;
+  withTransaction(() => {
+    for (const { id, day } of anchors) {
+      const row = db.getFirstSync<{ updated_at: string | null }>(
+        'SELECT updated_at FROM tasks WHERE id = ? AND recurrence_anchor_day IS NULL',
+        [id],
+      );
+      if (!row) continue;
+      db.runSync('UPDATE tasks SET recurrence_anchor_day = ? WHERE id = ?', [day, id]);
+      db.runSync('UPDATE tasks SET updated_at = ? WHERE id = ?', [row.updated_at ?? null, id]);
+    }
+  });
 }
 
 /** `fillCalendarExternalIds` over tasks: deadline events, time blocks and completion events. */

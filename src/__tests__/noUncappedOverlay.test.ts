@@ -13,8 +13,9 @@
  * as `noRawModal.test.ts` does: there are no component tests, so a file is only
  * ever text to this suite.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles, TSX } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
 
@@ -32,15 +33,6 @@ const EXEMPT: Record<string, string> = {
   [join('components', 'TripBudgetPrompt.tsx')]: 'a small prompt, capped at 340 on its own card',
 };
 
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
-
 /** Whether a `<SheetModal` opening tag carries the `transparent` prop. A tag is short, so a window of lines is enough. */
 function hasTransparentSheet(src: string): boolean {
   const lines = src.split('\n');
@@ -55,7 +47,7 @@ function hasTransparentSheet(src: string): boolean {
 }
 
 describe('transparent SheetModal width', () => {
-  const files = sourceFiles(SRC).map(f => ({ rel: f.slice(SRC.length + 1), src: readFileSync(f, 'utf8') }));
+  const files = sourceFiles(SRC, { match: TSX }).map(f => ({ rel: f.slice(SRC.length + 1), src: readFileSync(f, 'utf8') }));
   const sheets = files.filter(f => hasTransparentSheet(f.src));
 
   it('finds the transparent sheets it is meant to police', () => {

@@ -977,6 +977,24 @@ describe('resolveChoice on a named list', () => {
     expect(entries.filter(e => e.listId === null)).toHaveLength(2);
     expect(entries.filter(e => e.listId === null).every(e => e.choiceGroup === 'fruit')).toBe(true);
   });
+
+  // The last option of a group ends the choice rather than settling it, and
+  // that handoff used to drop the list: the group on whichever list was open
+  // came apart instead.
+  it('ends a lone option\'s choice on that list too, not on the one open', () => {
+    const apples = makeItem({ name: 'Apples', onList: true });
+    const pears = makeItem({ name: 'Pears', onList: true });
+    seed([apples, pears], {
+      lists: [away],
+      listEntries: [row(apples.id, 'away'), row(apples.id, null), row(pears.id, null)],
+    });
+
+    useGroceryStore.getState().resolveChoice(apples.id, { listId: 'away' });
+
+    const entries = useGroceryStore.getState().listEntries;
+    expect(entries.find(e => e.listId === 'away')).toMatchObject({ itemId: apples.id, choiceGroup: null });
+    expect(entries.filter(e => e.listId === null).every(e => e.choiceGroup === 'fruit')).toBe(true);
+  });
 });
 
 // ─── toggleChecked and the cart hold ─────────────────────────────────────────

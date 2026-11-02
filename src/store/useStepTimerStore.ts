@@ -8,12 +8,14 @@ import {
   MIN_STEP_TIMER_SECONDS,
   STEP_TIMER_NUDGE_SECONDS,
   isRepeatingTimer,
+  isStepTimerReady,
   isStepTimerRunning,
   nudgedDuration,
   parseStepTimerQueue,
   pruneStaleStepTimers,
   serializeStepTimerQueue,
   stepTimerElapsed,
+  stepTimerRound,
 } from '../utils/stepTimers';
 import { cancelStepAlarm, scheduleStepAlarm } from '../utils/notifications';
 
@@ -76,8 +78,8 @@ interface StepTimerState {
     stepExcerpt?: string;
     durationSeconds: number;
     /**
-     * Makes it a repeating timer: it rings every `durationSeconds` until
-     * dismissed, expecting this many rings. Whole numbers from 1 to
+     * Makes it a repeating timer: it rings after `durationSeconds` and waits
+     * for `startNextRound`, expecting this many rounds. Whole numbers from 1 to
      * `MAX_REPEAT_ROUNDS`; anything else starts a timer that rings once.
      */
     repeatTarget?: number;
@@ -108,17 +110,16 @@ interface StepTimerState {
    */
   addTime: (id: string, seconds?: number) => void;
   /**
-   * Changes how many rings a repeating timer expects. The count itself is the
-   * clock's and doesn't move; only what it is read against does. Re-arms the
-   * alarms, since how many are held ahead depends on the target.
+   * Changes how many rounds a repeating timer expects. The count itself is the
+   * round it is on and doesn't move; only what it is read against does.
    */
   setRepeatTarget: (id: string, target: number) => void;
   /**
-   * Lays a running timer's alarms down again without changing it: a repeating
-   * timer's count has moved on since they were armed, and the ones ahead of it
-   * need topping up. `useStepTimers` calls it as each ring is seen.
+   * Starts the next round of a repeating timer that has rung: the next
+   * countdown is the cook's to start ("flip it, then back in the oven"), so
+   * nothing rolls over on its own. Does nothing for a timer still counting.
    */
-  rearm: (id: string) => void;
+  startNextRound: (id: string) => void;
   /** Puts a timer back to its full length and starts it again — the answer to "per side". */
   restart: (id: string) => void;
   /** Drops one timer: cancelled mid-run, or dismissed after it rang. */
@@ -286,8 +287,8 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
 
   addTime: (id, seconds = STEP_TIMER_NUDGE_SECONDS) => {
     const timer = live(get).find(t => t.id === id);
-    // A repeating timer's count is whole intervals of its length, so changing
-    // the length would rewrite how many times it had gone off.
+    // A repeating timer's length is the interval of every round, so nudging it
+    // would change all the rounds after this one too.
     if (!timer || isRepeatingTimer(timer)) return;
     // Measured from now, not from the original length; see nudgedDuration.
     const extended: StepTimer = { ...timer, durationSeconds: nudgedDuration(timer, seconds) };
@@ -301,9 +302,16 @@ export const useStepTimerStore = create<StepTimerState>((set, get) => ({
     commit(set, live(get).map(t => (t.id === id ? changed : t)), changed);
   },
 
-  rearm: id => {
+  startNextRound: id => {
     const timer = live(get).find(t => t.id === id);
-    if (timer && isStepTimerRunning(timer)) scheduleStepAlarm(timer);
+    if (!timer || !isRepeatingTimer(timer) || !isStepTimerReady(timer)) return;
+    const next: StepTimer = {
+      ...timer,
+      round: stepTimerRound(timer) + 1,
+      startedAt: new Date().toISOString(),
+      elapsedSeconds: 0,
+    };
+    commit(set, live(get).map(t => (t.id === id ? next : t)), next);
   },
 
   restart: id => {

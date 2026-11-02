@@ -12,23 +12,14 @@
  * Reads source text on purpose: there is no renderer here, and a hand-built
  * object literal is only ever text as far as the suite is concerned.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles } from '../testSupport/sourceFiles';
 
 const ROOT = join(__dirname, '..', '..');
 const DIRS = [join(ROOT, 'src'), join(ROOT, 'mcp', 'src')];
 /** The helper itself reads the entry's picks to build the resolution. */
 const HELPER = join('src', 'utils', 'recipeComponents.ts');
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    // Tests quote the pattern as a literal and build fixtures by hand.
-    if (entry.isDirectory() && entry.name !== '__tests__' && entry.name !== 'node_modules') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx?$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 /** `chosen: something.recipeChoices` / `chosen: something?.recipeChoices`: a resolution built from an entry's picks alone. */
 const HAND_BUILT = /\bchosen:\s*[\w.?]*recipeChoices\b/;

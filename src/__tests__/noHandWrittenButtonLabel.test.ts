@@ -14,24 +14,15 @@
  * is left alone. To share another word, add it to `BUTTON_LABEL` and every
  * hand-written use of it fails here until it is replaced.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { parseSync, traverse, types as t } from '@babel/core';
 import { BUTTON_LABEL } from '../copy/shared';
+import { sourceFiles } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
 const LABELS = new Set<string>(Object.values(BUTTON_LABEL));
 const MENTIONS_A_LABEL = new RegExp([...LABELS].join('|'));
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    // The suites are skipped: they quote a label as a literal to assert it.
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx?$/.test(entry.name) && !entry.name.endsWith('.d.ts')) found.push(full);
-  }
-  return found;
-}
 
 const files = sourceFiles(SRC)
   .map(f => ({ rel: f.slice(SRC.length + 1), path: f }))

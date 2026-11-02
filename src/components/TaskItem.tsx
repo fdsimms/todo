@@ -2347,8 +2347,8 @@ const TaskItemRow = React.memo(function TaskItem({
   // clears the moment the suggestion is taken or dropped — so nothing else has
   // to decide whether this row is the kind that shows one.
   const importSuggestion = useMemo(
-    () => describePendingImport(task.pendingImport),
-    [task.pendingImport]
+    () => describePendingImport(task.pendingImport, getLogicalNow(alarmDayReset)),
+    [task.pendingImport, alarmDayReset]
   );
 
   const handleApplyImport = () => {

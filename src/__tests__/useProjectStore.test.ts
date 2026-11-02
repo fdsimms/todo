@@ -12,6 +12,7 @@ import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { formatDeadlineDate } from '../utils/dateUtils';
 import { nudgeModeOf } from '../utils/nudgeCadence';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { registerPauseEndListener } from '../utils/projectPause';
 import {
   dbGetAllProjects,
   dbInsertProject,
@@ -615,6 +616,23 @@ describe('createProject / updateProject / getProjectById', () => {
   it('is a no-op when updating a project that does not exist', () => {
     useProjectStore.getState().updateProject('missing', { title: 'New' });
     expect(dbUpdateProject).not.toHaveBeenCalled();
+  });
+
+  // Told before the day it lifted is gone from pausedUntil, so the streaks the
+  // pause held can be forgiven (registerPauseEndListener).
+  it('says when a pause is ended by hand, and not when it is only moved', () => {
+    const heard: string[] = [];
+    registerPauseEndListener(id => heard.push(id));
+    try {
+      useProjectStore.setState({ projects: [makeProject({ id: 'p1', pausedUntil: '2999-01-01' })] });
+      useProjectStore.getState().updateProject('p1', { pausedUntil: '2999-02-01' });
+      useProjectStore.getState().updateProject('p1', { title: 'Garden' });
+      expect(heard).toEqual([]);
+      useProjectStore.getState().updateProject('p1', { pausedUntil: null });
+      expect(heard).toEqual(['p1']);
+    } finally {
+      registerPauseEndListener(null);
+    }
   });
 
   it('gives a new project the default nudge cadence, with auto-scheduling off', () => {

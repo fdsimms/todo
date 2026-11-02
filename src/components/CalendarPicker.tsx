@@ -16,7 +16,6 @@ import { addMonths } from 'date-fns/addMonths';
 import { subMonths } from 'date-fns/subMonths';
 import { isSameMonth } from 'date-fns/isSameMonth';
 import { isSameDay } from 'date-fns/isSameDay';
-import { isToday } from 'date-fns/isToday';
 import { format } from 'date-fns/format';
 import { addMinutes } from 'date-fns/addMinutes';
 import { addDays } from 'date-fns/addDays';
@@ -86,7 +85,7 @@ export function CalendarPicker({
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const styles = useMemo(() => makeStyles(colors, windowWidth, windowHeight), [colors, windowWidth, windowHeight]);
 
-  const [displayMonth, setDisplayMonth] = useState(() => value ?? new Date());
+  const [displayMonth, setDisplayMonth] = useState(() => value ?? getLogicalToday());
   const [selectedDate, setSelectedDate] = useState<Date | null>(value);
   const [timeDate, setTimeDate] = useState<Date>(() => {
     const d = value ?? new Date();
@@ -114,7 +113,9 @@ export function CalendarPicker({
     }
     const seed = multiple ? (values && values.length > 0 ? values[0] : null) : value;
     const base = seed ?? new Date();
-    setDisplayMonth(startOfMonth(base));
+    // The month holding the logical today: on the 1st, before dayResetTime, the
+    // calendar's month is one the day being lived isn't in yet.
+    setDisplayMonth(startOfMonth(seed ?? getLogicalToday()));
     setSelectedDate(value);
     setSelectedDates(values ?? []);
     const t = new Date(base);
@@ -317,7 +318,9 @@ export function CalendarPicker({
                 const isSelected = multiple
                   ? selectedDates.some(d => isSameDay(day, d))
                   : selectedDate ? isSameDay(day, selectedDate) : false;
-                const todayDay = isToday(day);
+                // The logical today, as the shortcuts above read it: in the small hours
+                // before dayResetTime the calendar's today is the next day.
+                const todayDay = isSameDay(day, shortcutToday);
 
                 return (
                   <TouchableOpacity

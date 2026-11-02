@@ -143,6 +143,7 @@ import {
   dbHasLocalChangesSince,
   dbRecipeImagePaths,
   dbFillTaskCalendarExternalIds,
+  dbBackfillRecurrenceAnchorDays,
   dbFillMealCalendarExternalIds,
   dbUpdateTaskCalendarLinks,
   dbUpdateMealCalendarLink,
@@ -1939,6 +1940,19 @@ describe('Category Registry', () => {
   it('dbGetCategoryRegistry returns [] when not set', () => {
     expect(dbGetCategoryRegistry()).toEqual([]);
   });
+
+  // Nothing removes the legacy registry, so a migration keyed on an empty
+  // table brought every legacy category back after the person deleted them all.
+  it('moves the legacy registry into the categories table once, not again after they are deleted', () => {
+    dbSetSetting('category_registry', JSON.stringify(['Work', 'Home']));
+    dbSetSetting('category_registry_migration_done', '');
+    initDatabase();
+    expect(dbGetAllCategories().map(c => c.name).sort()).toEqual(['Home', 'Work']);
+
+    for (const c of dbGetAllCategories()) dbDeleteCategory(c.name);
+    initDatabase();
+    expect(dbGetAllCategories()).toEqual([]);
+  });
 });
 
 describe('Templates', () => {
@@ -2647,6 +2661,21 @@ describe('backup and restore', () => {
       const since = dbSyncChangesSince('2026-06-01T00:00:00.000Z');
       expect(since.tables.tasks ?? []).toEqual([]);
       expect(since.tables.meal_plan_entries ?? []).toEqual([]);
+    });
+
+    // The same shape for the launch's anchor backfill: each device derives the
+    // same anchor, so filling it in is not an edit to send.
+    it('fills a missing recurrence anchor without moving the row\'s sync stamp', () => {
+      dbInsertTask(makeTask({ id: 't1', recurrenceType: 'monthly', recurrenceAnchorDay: null }));
+      dbInsertTask(makeTask({ id: 't2', recurrenceType: 'monthly', recurrenceAnchorDay: 15 }));
+      setStamp('tasks', 't1', '2026-01-01T00:00:00.000Z');
+
+      dbBackfillRecurrenceAnchorDays([{ id: 't1', day: 31 }, { id: 't2', day: 3 }]);
+
+      expect(dbGetAllTasks().find(t => t.id === 't1')?.recurrenceAnchorDay).toBe(31);
+      // Already anchored: left alone.
+      expect(dbGetAllTasks().find(t => t.id === 't2')?.recurrenceAnchorDay).toBe(15);
+      expect(stampOf('tasks', 't1')).toBe('2026-01-01T00:00:00.000Z');
     });
 
     it('leaves a row alone whose device id moved on since the ids were read', () => {

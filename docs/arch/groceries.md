@@ -11,6 +11,26 @@ task. The rules here are strong defaults with the reasoning
 attached: read the reason before deviating from one. Where this note and the
 code disagree, the code is what ships, so fix the note.
 
+## Rules first
+
+The invariants a change in this area most often breaks, one line each, with the code that owns it and
+the section below that argues it (§). Read that section before deviating from one. The rest of the
+file is reference to read narrowly: `grep -n '^## ' docs/arch/groceries.md` is its table of contents.
+
+- **A new place an aisle name lives is rewritten by `renameAisle` and dropped by `deleteAisle`.** The tombstone (`hiddenAisles`) is derived from what `commitAisleOrder` saves, and new rows file through `placeAisle`. `src/store/useGroceryStore.ts`. (§ Grocery aisles)
+- **Nothing deletes a catalog row unasked except `clearList`'s sweep, which spares any row `hasUserFacts` is true for.** A new field recording something the person said goes on `FACT_READERS` (`src/utils/groceryFacts.ts`). (§ A row leaves only when asked)
+- **Every add undoes through `undoForAdds`**, built at add time from the ids that existed before it, never through `removeFromListMany`. (§ A row leaves only when asked)
+- **`checked`, `sortOrder` and `choiceGroup` belong to the (item, list) entry.** Read them through `itemsOnList` or `entryFor`, write membership only through `writeMembership`, and never truthiness-check a list id: the home list is `null`. `src/utils/groceryLists.ts`. (§ Separate lists)
+- **Finishing an away list records nothing** (no purchase count, price, store link, use-by, use-up task or cleared claim), and `away` is derived from the `listId`, never passed as a second flag. `dbFinishGroceryShopping`, `isAwayList`. (§ An away trip records nothing)
+- **A home purchase's in-memory patch (`finishShopping`) and its write (`dbFinishGroceryShopping`) always make the same change**, clearing the on-hand, frozen, opened and running-low claims. (§ Opened, and running low)
+- **"Do I have it" has one owner, `probablyHaveReason`, and it takes the catalog's boxes.** `products` is a required argument; a reader that means to ignore boxes passes `[]` and says why. There is no inventory table, quantity or check-in gesture. `src/utils/grocerySuggest.ts`. (§ The kitchen)
+- **A frozen thing's use-by day is suspended, never cleared or re-dated**, and every countdown, check and use-up task reads it through `liveUseBy` (`src/utils/freshness.ts`), for grocery rows and leftovers alike. (§ The freezer)
+- **Every join from a name or a recipe line to a catalog row resolves through `catalogItemForKey` or `itemKeyIndex`**, never a bare `nameKey` match, so other names and plurals land on the same row. (§ Other names)
+- **The app never infers a relation.** Substitutes, standing swaps, either-one pairs, varieties, store aisle ranges, ratings and trips are written only from an explicit action, and there is no built-in substitution lexicon. (§ Substitutes)
+- **A substitute informs and never buys.** `classifyPlanned` may caption a row whose substitute is on hand but never moves it to `probablyHave`; only a standing swap or an answered either-one pick changes the trolley, resolved at read time in `applyStandingSwap`, one hop, never written onto a recipe. (§ Substitutes; § Standing swaps)
+- **A trip is `(tripShopId, tripStartedAt)`, read only through `resolveActiveTrip`, and nothing starts one implicitly.** `src/utils/activeTrip.ts`. (§ The active trip)
+- **SQLite foreign keys are off**, so deleting an item, shop or product clears its link rows by hand (substitute links in both directions), and every reader tolerates a dangling pointer. `dbDeleteGroceryItem`, `dbDeleteGroceryShop` in `src/db/database.ts`. (§ Grocery stores)
+
 ---
 
 ## Grocery aisles — a name is the identity, so deleting one needs a tombstone
@@ -20,8 +40,8 @@ column on every row, the values of `aisleOverrides` (the remembered filings), th
 (`nonFoodAisles`), and on each store a range (`Shop.aisles`) and a walk of its own
 (`Shop.aisleOrder`). **`renameAisle` and `deleteAisle` are the list**: a new place an aisle name
 lives is added to both. (A recipe line's `RecipeIngredient.aisle` is a seventh, deliberately left
-alone: it is only a hint, clamped by `placeAisle` when the line is added to the list.) and `deleteAisle` moves the rows to `Other` — every row, not just this
-week's list, since the aisle lives on the catalog row. See the store sections below for the two
+alone: it is only a hint, clamped by `placeAisle` when the line is added to the list.) Deleting one
+moves the rows to `Other`: every row, not just this week's list, since the aisle lives on the catalog row. See the store sections below for the two
 store copies.
 
 **`normalizeAisleOrder` re-appends `DEFAULT_AISLES` on every read**, which is the feature (a bigger
@@ -532,9 +552,6 @@ unscoped on purpose:
 
 ## Grocery stores (`Shop`) — which shop has which items
 
-The rest of the grocery feature isn't written up here yet; this section covers only stores, which
-is where the non-obvious decisions are.
-
 **"Store" is the user-facing word; the code says `Shop`** — `Shop`, `shopId`, `grocery_shops`,
 `FinishShoppingSheet`. Same split as Stack/`TaskGroup`, and for a blunter reason: `store` is
 already Zustand's word here, and `useGroceryShopStore` sitting next to `useGroceryStore` is a pair
@@ -859,6 +876,8 @@ which rows you don't usually get here.
 - **The `usually` case can't be seeded into demo mode.** It needs an item bought at two stores
   while you stand in a third, and the demo has two stores anyone would shop at. The seeded trip
   is at Trader Joe's and shows the other two.
+
+**Skip is session-only and keeps the checkbox.** A row in the "Not at <store>" group can be skipped, which moves it to a "Skipped" group for the rest of the trip (`tripSkippedIds` in `useGroceryStore`, cleared when a trip starts or ends, never written to the database or synced). Both groups keep the checkbox because the app's claim is a record of an earlier visit and the shelf may disagree. Skipping hides and checks nothing, so the row is back in its aisle on the next trip. The caption in the group is `describeGroupedUnavailable`: aisle, "Try <other store>" (`TripMarker.elsewhere`, only a store on record), and "or <substitute>".
 
 ## Incidental purchases — what came home that wasn't on the list
 
@@ -1967,6 +1986,3 @@ so this is the wire between them, not a third system.
 - **Nothing about it is written back to the recipe**, the same rule the existing picks follow: an
   ad-hoc shop isn't attached to a meal, so there's nothing for "I'll decide later" to be a fact
   about. It lives in sheet state and dies with the sheet.
-
-
-**Skip is session-only and keeps the checkbox.** A row in the "Not at <store>" group can be skipped, which moves it to a "Skipped" group for the rest of the trip (`tripSkippedIds` in `useGroceryStore`, cleared when a trip starts or ends, never written to the database or synced). Both groups keep the checkbox because the app's claim is a record of an earlier visit and the shelf may disagree. Skipping hides and checks nothing, so the row is back in its aisle on the next trip. The caption in the group is `describeGroupedUnavailable`: aisle, "Try <other store>" (`TripMarker.elsewhere`, only a store on record), and "or <substitute>".

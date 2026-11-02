@@ -13,6 +13,7 @@ import { MEAL_SLOTS, MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type FoodLogEntry, type 
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { sameMealPlanEntries, useMealPlanStore } from '../store/useMealPlanStore';
 import { useFocusRefreshedRead } from '../hooks/useFocusRefreshedRead';
+import { useRouteArrival } from '../hooks/useRouteArrival';
 import {
   describeDayCoverage,
   describePlannedSlot,
@@ -426,13 +427,12 @@ export function FoodLogScreen() {
   // job: a caller that wants the add sheet open on arrival (Meal plan's
   // "Log food" header action) stamps a fresh timestamp so a second tap opens
   // it again rather than reading as no change.
-  const [handledOpenAdd, setHandledOpenAdd] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    if (route.params?.openAdd === undefined || route.params.openAdd === handledOpenAdd) return;
-    setHandledOpenAdd(route.params.openAdd);
+  // Handled during render (useRouteArrival), not in an effect, so the sheet
+  // opens with the navigation instead of a beat after the screen draws.
+  useRouteArrival(route.params?.openAdd, () => {
     setAddingSlot(guessedSlot);
     setAddOpen(true);
-  }, [route.params?.openAdd, handledOpenAdd, guessedSlot]);
+  });
 
   const [handledOpenEntry, setHandledOpenEntry] = useState<number | undefined>(undefined);
   useEffect(() => {

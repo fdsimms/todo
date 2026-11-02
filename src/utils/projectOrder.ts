@@ -31,7 +31,7 @@ export function liveProjectSteps(projectId: string, tasks: readonly Task[]): Tas
  * already occupies.
  *
  * The alternative — renumbering the project's tasks 1..N, which is what
- * reorderTasks and reorderSubtasks do for their own lists — would be wrong
+ * reorderSubtasks does for a task's own subtasks — would be wrong
  * here, because Task.sortOrder is one global space and a dated project task
  * sits in it alongside every loose task on Today. Renumbering would drag the
  * whole project to the top of that list every time the user tidied its order.

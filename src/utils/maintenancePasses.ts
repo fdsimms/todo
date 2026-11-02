@@ -83,6 +83,9 @@ export function catchUpPasses(): MaintenanceStep[] {
     // Turn vacation mode back off if its end date already passed while the
     // app was closed
     ['check vacation expiry', () => tasks().checkVacationExpiry()],
+    // A project's pause that ran out while the app was closed, forgiven the
+    // same way: before anything reads a streak the pause held as broken.
+    ['forgive paused project streaks', () => tasks().forgivePausedProjectStreaks()],
     // And switch it *on* for a trip whose departure has arrived, or move the
     // end date a trip that got longer should now turn itself off on (see
     // Project.awayPauses). Immediately after the expiry above, deliberately:

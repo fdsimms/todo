@@ -2195,7 +2195,7 @@ function reconcileExtraMealSlotTasks(get: () => MealPlanStore, entry: Pick<MealP
     if (!source?.entryId || source.dayKey !== dayKey || source.slot !== slot) continue;
     const dish = extras.find(e => e.id === source.entryId);
     if (!dish || dish.cookTask === false) {
-      deleteGeneratedTaskQuietly(task.id, { skipOptOut: true });
+      deleteGeneratedTaskQuietly(task.id);
       continue;
     }
     if (dish.cookedAt) continue;
@@ -2217,11 +2217,11 @@ function reconcilePrimaryMealSlotTask(get: () => MealPlanStore, entry: Pick<Meal
   if (current?.cookedAt) return;
   // The per-meal "no" survives the fold — MealPlanEntry.cookTask is still how
   // one meal says it doesn't want a task, and it's the only thing a slot task
-  // inherits from the cook task it replaces. skipOptOut because this is the
-  // app tidying up after the answer, not the user giving one: routing through
-  // deleteTask would write `false` back onto a row that already says it.
+  // inherits from the cook task it replaces. The quiet delete writes no opt-out,
+  // because this is the app tidying up after the answer, not the user giving
+  // one: deleteTask would write `false` back onto a row that already says it.
   if (current?.cookTask === false) {
-    deleteGeneratedTaskQuietly(live.id, { skipOptOut: true });
+    deleteGeneratedTaskQuietly(live.id);
     return;
   }
 

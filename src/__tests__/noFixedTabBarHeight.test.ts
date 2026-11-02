@@ -11,8 +11,9 @@
  * Source text rather than the module graph, as `noRawModal.test.ts` does: there
  * are no component tests, so a file is only ever text to this suite.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
 
@@ -22,15 +23,6 @@ const ALLOWED = new Set([
   join('hooks', 'useBottomBarHeight.ts'),
   join('navigation', 'AppNavigator.tsx'),
 ]);
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx?$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 describe('TAB_BAR_HEIGHT', () => {
   const files = sourceFiles(SRC).map(f => ({ rel: f.slice(SRC.length + 1), src: readFileSync(f, 'utf8') }));

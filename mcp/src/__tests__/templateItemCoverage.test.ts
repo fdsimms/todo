@@ -15,6 +15,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { typesSource } from '../../../src/testSupport/typesSource';
 
 const ROOT = join(__dirname, '..', '..', '..');
 
@@ -25,14 +26,19 @@ const NOT_EXPOSED: Record<string, string[]> = {
   // an update-only handle and as conditions written by question name.
   'references a plan writes by name': ['groupId', 'answerGate', 'refTemplateId', 'refTemplateName', 'blockedByItemIds'],
 
-  // Blocking apps, charging a penalty and writing a dose are read-only over MCP
-  // on a task, and a template would be a way round that (docs/arch/mcp-server.md,
-  // "Gates, penalties and a task's medication are read-only"). The completion
-  // timer and meal slot are device-side behavior with no MCP use yet.
+  // Blocking apps and charging a penalty are read-only over MCP on a task, and a
+  // template would be a way round that (docs/arch/mcp-server.md, "The task kinds
+  // it can set, and the two it can only read about"). The completion timer and
+  // meal slot are device-side behavior with no MCP use yet.
   'withheld on purpose, as they are on a task': [
-    'gatesApps', 'penaltyMinutes', 'penaltyCutoffTime', 'medicationName', 'medicationAmount', 'medicationUnit',
+    'gatesApps', 'penaltyMinutes', 'penaltyCutoffTime',
     'completionTimerMinutes', 'completionTimerNote', 'logMealSlot', 'logMealSlotByTime',
   ],
+
+  // A dose is writable on a task (same section: it only makes a completion record
+  // one, in the app's own log). A plan takes one per chain step
+  // (`chain.steps[].medication`), but not on the item itself yet.
+  'writable on a task, only per chain step in a plan': ['medicationName', 'medicationAmount', 'medicationUnit'],
 
   // Written as `chain` and `rotation` in a plan, which the applier turns into
   // these (step and member ids are kept by position and title on an edit).
@@ -48,7 +54,7 @@ function between(src: string, startMarker: string, endMarker: string): string {
 }
 
 function templateItemFields(): string[] {
-  const src = readFileSync(join(ROOT, 'src', 'types', 'index.ts'), 'utf8');
+  const src = typesSource();
   const body = between(src, 'export interface TemplateItem {', '\n}\n');
   return body.split('\n').flatMap(line => {
     const m = line.match(/^ {2}([A-Za-z_]\w*)\??:/);
