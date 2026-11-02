@@ -77,7 +77,8 @@ export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
     // Speed bumps are their own monitor and answer to their own rules, so they
     // are armed (or disarmed) before the task rules' early return below, and
     // whether Screen Time tasks are on has no say in them.
-    const dayKey = dayKeyOf(getCurrentDayStart());
+    const dayStart = getCurrentDayStart();
+    const dayKey = dayKeyOf(dayStart);
     const bumps = armableSpeedBumps(
       settings.speedBumpRules,
       id => resolveGroupNow(id ?? DEFAULT_GROUP_ID),
@@ -89,6 +90,9 @@ export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
           return groupName(groups.groups, rule.blockGroupId ?? rule.groupId, groups.meta);
         },
       },
+      // Which rules run today: the logical day's weekday, so a rule for
+      // weekends re-arms with the day key at the day rollover.
+      dayStart.getDay(),
     );
     if (bumps.length === 0) bridge.stopSpeedBumps();
     else await bridge.armSpeedBumps(bumps, dayKey);

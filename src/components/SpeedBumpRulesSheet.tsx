@@ -20,7 +20,10 @@ import {
   SPEED_BUMP_WARN_CHOICES,
   describeSpeedBump,
   newSpeedBumpRule,
+  normalizeBumpDays,
 } from '../utils/speedBump';
+import { WEEKDAYS } from '../utils/blockSchedule';
+import { WeekdaySelector } from './WeekdaySelector';
 import { SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_MIN } from '../utils/screenTimeRules';
 import { describeDuration } from '../utils/manualBlock';
 import { useGroupSelectionCounts } from '../hooks/useGroupSelectionCounts';
@@ -37,6 +40,7 @@ interface Props {
 }
 
 type Frequency = 'once' | 'repeat';
+type DaysChoice = 'every' | 'chosen';
 
 /** "15 min", "1 hr", "2 hr": the segment labels for a block length. */
 function blockLabel(minutes: number): string {
@@ -202,6 +206,31 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
                 </View>
               </>
             )}
+            <View style={styles.field}>
+              <RuleFieldLabel>Days</RuleFieldLabel>
+              <SegmentedControl<DaysChoice>
+                label="Days"
+                options={[{ value: 'every', label: 'Every day' }, { value: 'chosen', label: 'Chosen days' }]}
+                value={rule.days ? 'chosen' : 'every'}
+                onChange={next => {
+                  haptics.tap();
+                  update({ days: next === 'chosen' ? [...WEEKDAYS] : undefined });
+                }}
+              />
+              {rule.days && (
+                <View style={styles.days}>
+                  <WeekdaySelector
+                    value={rule.days}
+                    onChange={days => {
+                      // The last day can't be switched off: a rule on no days
+                      // never runs, and the switch on its row is for that.
+                      if (days.length === 0) return;
+                      update({ days: normalizeBumpDays(days) });
+                    }}
+                  />
+                </View>
+              )}
+            </View>
           </View>
         );
       }}
@@ -262,6 +291,7 @@ const styles = StyleSheet.create({
   // adds after this, the same 24pt the sections have between them.
   sections: { gap: spacing.lg, marginBottom: spacing.smd },
   field: { gap: spacing.xs },
+  days: { marginTop: spacing.xs },
   warnCard: { borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md, gap: spacing.smd },
   warnTitle: { fontSize: font.md, fontWeight: fontWeight.medium },
   warnHint: { fontSize: font.xs, lineHeight: 16 },
