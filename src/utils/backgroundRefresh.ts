@@ -134,6 +134,7 @@ import { drainWatchQueues, writeWidgetSnapshotNow } from './widgetSync';
 import { syncWorkoutLiveActivityNow } from '../hooks/useWorkoutLiveActivitySync';
 import { widgetBridge } from './widgetBridge';
 import { reconcileAppShield } from './appShieldReconcile';
+import { STANDALONE_STORE_LOADS } from './standaloneStores';
 import { useWaniKaniStore } from '../store/useWaniKaniStore';
 
 /**
@@ -178,6 +179,10 @@ function openStoresIfClosed(): void {
   // every background sync while looking exactly like a device that had the
   // feature switched off.
   useSyncStore.getState().initialize();
+  // The rest of App.tsx's own steps. Unloaded, the shield reconcile below reads
+  // no schedules, no key lock and no timed block, lifts the shield and disarms
+  // every schedule; the widget shows locked projects' tasks.
+  for (const [, load] of STANDALONE_STORE_LOADS) load();
 }
 
 export function runBackgroundRefresh(): BackgroundRefreshOutcome {
