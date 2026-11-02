@@ -78,6 +78,7 @@ import { RecipeTabBar, type RecipeTab } from '../components/RecipeTabBar';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { CookModeSheet } from '../components/CookModeSheet';
 import { savedCookSetup, saveCookSetup } from '../utils/cookPosition';
+import { runAfterTransition } from '../utils/afterPaint';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
 import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDurationOffers } from '../utils/stepTimers';
 import { featureHidden, featureShown } from '../utils/simpleMode';
@@ -599,6 +600,18 @@ export function RecipeDetailScreen() {
    */
   const openCookModeStamp = route.params.openCookMode;
   const [handledCookModeStamp, setHandledCookModeStamp] = useState<number | undefined>(undefined);
+  // The sheet opens once the navigation that brought us here has settled. A
+  // modal presented while the stack push is still in flight is wiped away
+  // again by it, so the cook saw the sheet appear, slide off, and come back.
+  const [cookModeOpenPending, setCookModeOpenPending] = useState(false);
+  useEffect(() => {
+    if (!cookModeOpenPending) return;
+    const handle = runAfterTransition(() => {
+      setCookModeOpenPending(false);
+      setCookModeVisible(true);
+    });
+    return () => handle.cancel();
+  }, [cookModeOpenPending]);
   useEffect(() => {
     if (openCookModeStamp === undefined || openCookModeStamp === handledCookModeStamp) return;
     setHandledCookModeStamp(openCookModeStamp);
@@ -613,7 +626,7 @@ export function RecipeDetailScreen() {
       setChoices(saved.choices);
       setOverrides(saved.overrides);
     }
-    if (cookModeAvailable && !featureHidden('cookMode', simpleMode)) setCookModeVisible(true);
+    if (cookModeAvailable && !featureHidden('cookMode', simpleMode)) setCookModeOpenPending(true);
   }, [openCookModeStamp, handledCookModeStamp, cookModeAvailable, simpleMode, route.params]);
   // Remembered only while cook mode is up, so the reseed above can't overwrite
   // it with the defaults before the return reads it back.

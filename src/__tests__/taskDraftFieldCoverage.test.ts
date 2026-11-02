@@ -13,6 +13,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { typesSource } from '../testSupport/typesSource';
 
 const ROOT = join(__dirname, '..', '..');
 
@@ -32,7 +33,7 @@ const NOT_NAMED: Record<string, string[]> = {
 const ALL_NOT_NAMED = Object.values(NOT_NAMED).flat();
 
 function taskFields(): string[] {
-  const src = readFileSync(join(ROOT, 'src', 'types', 'index.ts'), 'utf8');
+  const src = typesSource();
   const start = src.indexOf('export interface Task {');
   const body = src.slice(start, src.indexOf('\n}\n', start));
   return body.split('\n').flatMap(line => {

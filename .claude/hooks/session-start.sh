@@ -8,8 +8,8 @@
 #                           bump (see CLAUDE.md)
 #   build:patchnotes      — generates src/utils/patchNotes*.ts, which are gitignored
 #                           but imported by app code, so tsc fails without them
-#   setup-git-hooks       — points core.hooksPath at .githooks/ and registers the
-#                           generated-doc merge driver
+#   setup-git-hooks       — points core.hooksPath at .githooks/, which regenerates
+#                           the generated docs after a merge
 set -euo pipefail
 
 echo '{"async": true, "asyncTimeout": 300000}'
