@@ -1925,13 +1925,23 @@ export function seedDemoData(): void {
   // A speed bump rule, so the sheet has one to show. It is only a rule: the
   // block itself is raised by the monitor extension, which demo mode never
   // reaches (screenTimeBridge refuses), so there is no running block to seed.
-  useSettingsStore.getState().setSpeedBumpRules([{
-    ...newSpeedBumpRule('Wind down after Social'),
-    thresholdMinutes: 45,
-    repeatEveryMinutes: 30,
-    maxTimes: 3,
-    blockMinutes: 15,
-  }]);
+  // Two rules for the same apps on different days: a weekend gets a looser limit.
+  useSettingsStore.getState().setSpeedBumpRules([
+    {
+      ...newSpeedBumpRule('Wind down after Social'),
+      thresholdMinutes: 45,
+      repeatEveryMinutes: 30,
+      maxTimes: 3,
+      blockMinutes: 15,
+      days: [1, 2, 3, 4, 5],
+    },
+    {
+      ...newSpeedBumpRule('Weekend wind down'),
+      thresholdMinutes: 90,
+      blockMinutes: 15,
+      days: [0, 6],
+    },
+  ]);
   useSettingsStore.getState().setSpeedBumpWarnMinutes(5);
 
   // A block offer, seeded directly for screenTime's reason: accepting one
