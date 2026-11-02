@@ -13,7 +13,9 @@ import {
   KEYWORD_MAX_LENGTH, MIN_KEYWORD_LENGTH,
   emptyTitleRule, normalizeKeywords, resolveTitleRules, titleRuleIsUseless,
 } from '../utils/titleRules';
-import { KNOWN_LINK_APPS, linkAppLabel, linkAppsFor } from '../constants/linkApps';
+import { linkAppLabel } from '../constants/linkApps';
+import { useSavedLinks } from '../hooks/useSavedLinks';
+import { SaveLinkAction, SavedLinksHint } from './SavedLinkParts';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -105,6 +107,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
   const fieldOpen = (key: FieldKey) => openFields[key] ?? false;
   // The app shortcuts stay folded unless the rule's link already is one: most links are a web address.
   const [linkAppsOpen, setLinkAppsOpen] = useState(false);
+  const savedLinks = useSavedLinks(kitchenEnabled, fieldOpen('link'));
   const toggleField = (key: FieldKey) => setOpenFields(prev => ({ ...prev, [key]: !(prev[key] ?? false) }));
   const closeField = (key: FieldKey) => setOpenFields(prev => ({ ...prev, [key]: false }));
 
@@ -394,15 +397,15 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
 
         <CollapsibleField
           label="Link"
-          summary={draft.linkUrl ? linkAppLabel(draft.linkUrl) : undefined}
+          summary={draft.linkUrl ? linkAppLabel(draft.linkUrl, savedLinks.saved) : undefined}
           emptySummary="Not set"
           expanded={fieldOpen('link')}
           onToggle={() => {
-            if (!fieldOpen('link') && draft.linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === draft.linkUrl)) {
+            if (!fieldOpen('link') && draft.linkUrl && !savedLinks.isChip(draft.linkUrl)) {
               setCustomLinkText(draft.linkUrl);
             }
             if (!fieldOpen('link')) {
-              setLinkAppsOpen(!!draft.linkUrl && KNOWN_LINK_APPS.some(app => app.scheme === draft.linkUrl));
+              setLinkAppsOpen(!!draft.linkUrl && savedLinks.isChip(draft.linkUrl));
             }
             toggleField('link');
           }}
@@ -425,6 +428,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               returnKeyType="done"
               accessibilityLabel="Custom link URL this rule sets"
             />
+            <SaveLinkAction links={savedLinks} typed={customLinkText} />
           </View>
           <TouchableOpacity
             style={styles.linkAppsToggle}
@@ -444,11 +448,13 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             >
               <Text style={[styles.pillText, !draft.linkUrl && styles.pillTextActive]}>Not set</Text>
             </TouchableOpacity>
-            {linkAppsFor(kitchenEnabled).map(app => (
+            {savedLinks.chips.map(app => (
               <TouchableOpacity
                 key={app.scheme}
                 style={[styles.linkAppChip, draft.linkUrl === app.scheme && styles.linkAppChipActive]}
                 onPress={() => { haptics.tap(); patch({ linkUrl: app.scheme }); setCustomLinkText(''); closeField('link'); }}
+                onLongPress={app.saved ? () => savedLinks.manage(app) : undefined}
+                delayLongPress={interaction.delayLongPress}
               >
                 <Ionicons
                   name={app.icon as never}
@@ -462,6 +468,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             ))}
           </View>
           )}
+          {linkAppsOpen && <SavedLinksHint links={savedLinks} />}
         </CollapsibleField>
       </View>
 

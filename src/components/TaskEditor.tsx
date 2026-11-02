@@ -198,7 +198,9 @@ import {
 import { getCurrentLocation, requestLocationPermission } from '../utils/weatherLocation';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
-import { knownLinkAppFor, linkAppsFor } from '../constants/linkApps';
+import { linkAppLabel } from '../constants/linkApps';
+import { useSavedLinks } from '../hooks/useSavedLinks';
+import { SaveLinkAction, SavedLinksHint } from './SavedLinkParts';
 import { capitalize } from '../utils/capitalize';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { useFilterField } from '../hooks/useFilterField';
@@ -1106,6 +1108,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const appGroupsMeta = useAppGroupStore(s => s.meta);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const savedLinks = useSavedLinks(kitchenEnabled, showLinkPicker);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const hiddenFieldsNote = hiddenResultsNote({ simpleMode, kitchenEnabled: true }, 'fields');
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
@@ -1780,7 +1783,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     ? null
     : titleSuggestion;
   const activeSuggestionMatch = activeTitleSuggestion ? titleSuggestionMatch : null;
-  const titleSuggestionDescription = activeTitleSuggestion ? describeTitleSuggestion(activeTitleSuggestion, rainUnit, hhmm => formatHHMM(hhmm, use24HourTime)) : null;
+  const titleSuggestionDescription = activeTitleSuggestion ? describeTitleSuggestion(activeTitleSuggestion, rainUnit, hhmm => formatHHMM(hhmm, use24HourTime), savedLinks.saved) : null;
 
   const titleHighlightRanges = useMemo(() => {
     const ranges: [number, number][] = [];
@@ -3829,7 +3832,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const peopleSummary = personIds.length > 0
     ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ')
     : undefined;
-  const linkValue = knownLinkAppFor(linkUrl)?.name ?? (linkUrl ?? undefined);
+  const linkValue = linkUrl ? linkAppLabel(linkUrl, savedLinks.saved) : undefined;
   const alarmLinkValue = alarmLink === null
     ? undefined
     : alarmLink === NEXT_ALARM_LINK
@@ -3902,7 +3905,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     location: () => { setLocationText(location ?? ''); setShowLocationField(true); },
     workout: () => setShowWorkoutPicker(true),
     link: () => {
-      if (linkUrl && !knownLinkAppFor(linkUrl)) setCustomLinkText(linkUrl);
+      if (linkUrl && !savedLinks.isChip(linkUrl)) setCustomLinkText(linkUrl);
       setShowLinkPicker(true);
     },
     phone: () => { setPhoneText(phoneNumber ?? ''); setShowPhoneField(true); },
@@ -8176,7 +8179,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               value={linkValue}
               expanded={showLinkPicker}
               onPress={() => {
-                if (linkUrl && !knownLinkAppFor(linkUrl)) {
+                if (linkUrl && !savedLinks.isChip(linkUrl)) {
                   setCustomLinkText(linkUrl);
                 }
                 setShowLinkPicker(v => !v);
@@ -8186,11 +8189,13 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             {showLinkPicker && (
               <>
                 <View style={styles.linkPickerRow}>
-                  {linkAppsFor(kitchenEnabled).map(app => (
+                  {savedLinks.chips.map(app => (
                     <TouchableOpacity
                       key={app.scheme}
                       style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
                       onPress={() => { setLinkUrl(app.scheme); setShowLinkPicker(false); }}
+                      onLongPress={app.saved ? () => savedLinks.manage(app) : undefined}
+                      delayLongPress={interaction.delayLongPress}
                     >
                       <Ionicons
                         name={app.icon as never}
@@ -8203,6 +8208,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     </TouchableOpacity>
                   ))}
                 </View>
+                <SavedLinksHint links={savedLinks} style={styles.linkSavedHint} />
                 <View style={styles.linkCustomRow}>
                   <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
                   <TextField
@@ -8219,6 +8225,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     spellCheck={false}
                     returnKeyType="done"
                   />
+                  <SaveLinkAction links={savedLinks} typed={customLinkText} />
                 </View>
               </>
             )}
@@ -9371,6 +9378,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
   linkAppChipActive: { backgroundColor: colors.accentFill },
+  linkSavedHint: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   linkAppChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   linkAppChipTextActive: { color: colors.onAccent, fontWeight: '600' },
   linkCustomRow: {

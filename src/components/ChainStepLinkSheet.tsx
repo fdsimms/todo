@@ -10,9 +10,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { CardSheet, useCardSheet } from './CardSheet';
 import type { ChainItem } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
+import { useSavedLinks } from '../hooks/useSavedLinks';
+import { SaveLinkAction, SavedLinksHint } from './SavedLinkParts';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -67,12 +68,13 @@ export function ChainStepLinkSheet({
   // Most steps get a web address, so the app pills stay folded until asked
   // for, or until the step already points at one of them.
   const [appsOpen, setAppsOpen] = useState(false);
+  const savedLinks = useSavedLinks(kitchenEnabled, visible);
 
   useEffect(() => {
     if (!visible) return;
     const initial = step?.linkUrl ?? null;
     setLinkUrl(initial);
-    const isApp = !!initial && KNOWN_LINK_APPS.some(app => app.scheme === initial);
+    const isApp = !!initial && savedLinks.isChip(initial);
     setCustomText(initial && !isApp ? initial : '');
     setAppsOpen(isApp);
   }, [visible, step?.id]);
@@ -135,6 +137,7 @@ export function ChainStepLinkSheet({
               returnKeyType="done"
               accessibilityLabel="Custom link URL for this step"
             />
+            <SaveLinkAction links={savedLinks} typed={customText} />
           </View>
           <TouchableOpacity
             style={styles.appsRow}
@@ -147,12 +150,15 @@ export function ChainStepLinkSheet({
             <RotatingChevron open={appsOpen} size={14} color={colors.textSecondary} />
           </TouchableOpacity>
           {appsOpen && (
+            <>
             <View style={styles.chipRow}>
-              {linkAppsFor(kitchenEnabled).map(app => (
+              {savedLinks.chips.map(app => (
                 <TouchableOpacity
                   key={app.scheme}
                   style={[styles.chip, linkUrl === app.scheme && styles.chipActive]}
                   onPress={() => { haptics.tap(); setLinkUrl(app.scheme); setCustomText(''); }}
+                  onLongPress={app.saved ? () => savedLinks.manage(app) : undefined}
+                  delayLongPress={interaction.delayLongPress}
                 >
                   <Ionicons
                     name={app.icon as never}
@@ -165,6 +171,8 @@ export function ChainStepLinkSheet({
                 </TouchableOpacity>
               ))}
             </View>
+            <SavedLinksHint links={savedLinks} />
+            </>
           )}
         </View>
       </View>

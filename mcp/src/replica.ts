@@ -1245,6 +1245,8 @@ export interface Replica {
   settings(): ReplicaSettings;
   /** Every setting `SETTINGS_SPEC` names, as stored now. */
   settingValues(): Record<string, unknown>;
+  /** The links saved as chips in the app's Link picker, by name. A task's `link` is one of these when its URL matches. */
+  savedLinks(): { name: string; url: string }[];
   /** Change settings through `SETTINGS_SPEC`'s checks and the store's setters. All are checked before any is written. */
   applySettings(changes: Record<string, unknown>): { key: string; before: unknown; after: unknown }[];
   /**
@@ -2621,6 +2623,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const shelfLife = require('../../src/utils/groceryShelfLife') as typeof import('../../src/utils/groceryShelfLife');
   const groceryLists = require('../../src/utils/groceryLists') as typeof import('../../src/utils/groceryLists');
   const savedPlacesUtil = require('../../src/utils/savedPlaces') as typeof import('../../src/utils/savedPlaces');
+  const savedLinksUtil = require('../../src/utils/savedLinks') as typeof import('../../src/utils/savedLinks');
   const placeGate = require('../../src/utils/placeGate') as typeof import('../../src/utils/placeGate');
   const taskSkip = require('../../src/utils/taskSkip') as typeof import('../../src/utils/taskSkip');
   const taskDates = require('../../src/utils/taskDates') as typeof import('../../src/utils/taskDates');
@@ -4468,6 +4471,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     },
 
     templates: () => db.dbGetAllTemplates(),
+
+    savedLinks() {
+      return savedLinksUtil.readSavedLinks().map(l => ({ name: l.name, url: l.url }));
+    },
 
     settingValues(): Record<string, unknown> {
       const state = useSettingsStore.getState();

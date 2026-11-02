@@ -754,6 +754,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Named places ("Home") and the address behind each. A name, text and an
   // optional map pin, so they mean the same on every device.
   'savedPlaces',
+  // Links saved as chips in the Link picker: a name and the URL it opens, so
+  // they mean the same on every device (`savedLinks.ts`).
+  'savedLinks',
   // Events kept for re-adding ("Optometrist"). The calendar is held by name,
   // not id, so an entry means the same on every device (`savedEvents.ts`).
   'savedEvents',

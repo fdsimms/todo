@@ -21,6 +21,7 @@ import { format } from 'date-fns/format';
 import type { FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task, TaskTemplate } from '../../src/types';
 import type { AnswerEdit, MedicationSettingsView, Replica } from './replica';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
+import { linkAppLabel } from '../../src/constants/linkApps';
 import { isRotationTask } from '../../src/utils/rotation';
 import { liveFollowUpSource } from '../../src/utils/followUpTask';
 import { groceryNameKey } from '../../src/utils/groceryParse';
@@ -264,7 +265,7 @@ export interface GetTaskResult {
   /** Somebody this task is waiting on. A person, as opposed to `waitsOn`, which is other tasks. */
   waitingOnPerson?: { personId: string; name?: string; since?: string; followUpOn?: string };
   /** Where to reach or find what the task is about. */
-  contact?: { link?: string; phone?: string; email?: string; location?: string };
+  contact?: { link?: string; linkName?: string; phone?: string; email?: string; location?: string };
   /** The app's own run count for a habit: days in a row, and the last day it was kept. */
   streak?: { days: number; lastDay?: string };
   /** What completing this task also writes elsewhere, so completing it is not a surprise. */
@@ -338,6 +339,10 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
 
   const contact = {
     ...(task.linkUrl ? { link: task.linkUrl } : {}),
+    // What the app calls the link ("Spotify", or a name the person saved), when it has a name for it.
+    ...(task.linkUrl && linkAppLabel(task.linkUrl, replica.savedLinks()) !== task.linkUrl
+      ? { linkName: linkAppLabel(task.linkUrl, replica.savedLinks()) }
+      : {}),
     ...(task.phoneNumber ? { phone: task.phoneNumber } : {}),
     ...(task.emailAddress ? { email: task.emailAddress } : {}),
     ...(task.location ? { location: task.location } : {}),
