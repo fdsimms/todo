@@ -63,6 +63,7 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { BUTTON_LABEL } from '../copy/shared';
 import { LazySheet } from '../components/LazySheet';
 import { animateLayout } from '../utils/layoutAnimation';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 
 /**
  * The labels and people on an entry, under its words. A tag is a button that
@@ -107,6 +108,7 @@ function EntryMeta({ entry, personName, onTag, styles }: {
  * what was written.
  */
 function JournalLogContent({ kind }: { kind: JournalKind }) {
+  const timeToken = useClockTimeToken();
   const pullSearch = usePullToSearch();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -505,13 +507,13 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => openEdit(entry)}
                   accessibilityRole="button"
-                  accessibilityLabel={`Edit ${copy.one} from ${format(new Date(entry.loggedAt), 'h:mm a')}: ${journalPlainText(entry.text)}`}
+                  accessibilityLabel={`Edit ${copy.one} from ${format(new Date(entry.loggedAt), timeToken)}: ${journalPlainText(entry.text)}`}
                 >
-                  <Text style={styles.entryTime}>{format(new Date(entry.loggedAt), 'h:mm a')}</Text>
+                  <Text style={styles.entryTime}>{format(new Date(entry.loggedAt), timeToken)}</Text>
                   <JournalText text={entry.text} textStyle={styles.entryText} />
                   {(entry.photos ?? []).length > 0 && (
                     <View style={styles.entryPhotos}>
-                      <JournalPhotoStrip photos={entry.photos ?? []} title={format(new Date(entry.loggedAt), 'MMMM d, h:mm a')} size={72} />
+                      <JournalPhotoStrip photos={entry.photos ?? []} title={format(new Date(entry.loggedAt), `MMMM d, ${timeToken}`)} size={72} />
                     </View>
                   )}
                   <EntryMeta entry={entry} personName={personName} onTag={filterByTag} styles={styles} />

@@ -36,6 +36,7 @@ import type { ReminderKind } from '../types';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { pickerCardWidthFor } from '../utils/frameWidth';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 import { FieldLabel } from './FieldLabel';
 
 type Mode = 'date' | 'before' | 'visible';
@@ -80,6 +81,7 @@ const BEFORE_DAYS_MIN = 0;
 const BEFORE_DAYS_MAX = 60;
 
 export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDays = null, canTrackVisibility = false, tracksVisibility = false, visiblePreview = null, anchor = 'wallClock', onConfirm, onClear, onCancel }: Props) {
+  const timeToken = useClockTimeToken();
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   // Reactive, unlike the width above: read once at module load, a stale
@@ -378,7 +380,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                   </Text>
                   <Text style={styles.beforeHint}>
                     {visiblePreview
-                      ? `Fires ${format(visiblePreview, 'MMM d')} at ${format(visiblePreview, 'h:mm a')}, when this task next becomes visible. The time updates if that moment changes.`
+                      ? `Fires ${format(visiblePreview, 'MMM d')} at ${format(visiblePreview, timeToken)}, when this task next becomes visible. The time updates if that moment changes.`
                       : 'Fires when this task next becomes visible. The time updates if that moment changes.'}
                   </Text>
                 </View>

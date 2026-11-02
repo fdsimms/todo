@@ -34,6 +34,7 @@ import type { Task } from '../types';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { Fab, FAB_SIZE } from '../components/Fab';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 
 /**
  * Alarms & Reminders. The alarms come first (AlarmsSection: the quick alarm,
@@ -211,9 +212,10 @@ interface RowProps {
 }
 
 const ReminderRow = React.memo(function ReminderRow({ task, categoryLabel, projectTitle, onPress, styles, colors, cardShadow }: RowProps) {
+  const timeToken = useClockTimeToken();
   const title = displayTitleFor(task);
   // reminderTime is guaranteed set by upcomingReminders' own filter.
-  const when = format(new Date(task.reminderTime!), 'EEE, MMM d · h:mm a');
+  const when = format(new Date(task.reminderTime!), `EEE, MMM d · ${timeToken}`);
 
   return (
     <TouchableOpacity

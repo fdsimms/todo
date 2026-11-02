@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -145,7 +145,9 @@ export function FoodCameraSheet({ visible, modes, onClose, onBarcode, onPhoto }:
               ? 'Camera access is off. Turn it on in Settings to scan or photograph, or choose a photo you already have.'
               : 'The camera needs your permission to scan or photograph. You can also choose a photo you already have.'}
           </Text>
-          {permission.canAskAgain !== false && (
+          {permission.canAskAgain === false ? (
+            <InlineAction label="Open Settings" icon="open-outline" onPress={() => { void Linking.openSettings(); }} />
+          ) : (
             <InlineAction label="Allow camera" icon="camera-outline" onPress={requestPermission} />
           )}
         </View>
