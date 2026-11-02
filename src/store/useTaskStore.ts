@@ -2606,7 +2606,7 @@ interface TaskStore extends UndoHistoryActions {
   // Bulk selection on the Projects screen. One undo entry covers the whole
   // batch — see the note on bulkDeleteProjects.
   bulkDeleteProjects: (projectIds: string[], opts: { cascade: boolean }) => void;
-  bulkSetProjectArchived: (projectIds: string[], archived: boolean) => void;
+  bulkSetProjectArchived: (projectIds: string[], archived: boolean, opts?: { archiveRemaining: boolean }) => void;
 
   deleteTemplate: (id: string) => void;
   bulkDeleteTemplates: (ids: string[]) => void;
@@ -11084,7 +11084,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }, { replacing: historyBefore });
   },
 
-  bulkSetProjectArchived(projectIds, archived) {
+  // `archiveRemaining` is `archiveProject`'s cascade over the whole selection:
+  // every changed project's open tasks are archived with it, under the one undo
+  // entry this already filed. Only an archive takes it (a restore never touches
+  // a task), and it is the plain archive when nothing is open.
+  bulkSetProjectArchived(projectIds, archived, opts) {
+    // The stack as it was before the tasks below register their own undos, so
+    // the one entry filed for the batch replaces them rather than sitting on top.
+    const historyBefore = get().undoStack;
     const idSet = new Set(projectIds);
     // Snapshotted before the write so undoing an unarchive can hand each
     // project back the day it was originally archived, exactly as
@@ -11093,14 +11100,36 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .getState()
       .projects.filter(p => idSet.has(p.id) && p.archived !== archived);
     if (changed.length === 0) return;
+    const changedIds = new Set(changed.map(p => p.id));
+    const members = archived && opts?.archiveRemaining
+      ? get().tasks.filter(
+          t => t.projectId !== null && changedIds.has(t.projectId) && t.parentId === null && !t.completed && !t.archived,
+        )
+      : [];
+    const undos: Array<() => void> = [];
+    if (members.length > 0) {
+      dbTransaction(() => {
+        members.forEach(member => {
+          get().archiveTask(member.id);
+          const action = get().lastAction;
+          if (action) undos.push(action.undo);
+        });
+      });
+    }
     changed.forEach(p => useProjectStore.getState().applyProjectArchived(p.id, archived));
+    const count = `${changed.length} project${changed.length === 1 ? '' : 's'}`;
     get().setLastAction({
-      label: `${changed.length} project${changed.length === 1 ? '' : 's'} ${archived ? 'archived' : 'restored'}`,
-      undo: () =>
+      label: members.length > 0
+        ? `${count} archived, remaining tasks archived`
+        : `${count} ${archived ? 'archived' : 'restored'}`,
+      ...(members.length > 0 ? { redo: () => get().bulkSetProjectArchived(projectIds, archived, opts) } : {}),
+      undo: () => {
         changed.forEach(p =>
           useProjectStore.getState().applyProjectArchived(p.id, !archived, p.archivedAt),
-        ),
-    });
+        );
+        undos.forEach(fn => fn());
+      },
+    }, members.length > 0 ? { replacing: historyBefore } : undefined);
   },
 
   deleteTemplate(id) {

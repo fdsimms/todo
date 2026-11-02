@@ -305,13 +305,39 @@ function ProjectsList() {
     exitSelection();
   };
 
-  // Archiving is the reversible half of filing a batch away, so it needs no
-  // confirmation — a shake undoes it. In the archived list the same button
-  // means the other direction.
+  // Archiving is reversible, so it asks nothing about the projects themselves —
+  // a shake undoes it. What it does ask, as one project's Archive does, is what
+  // to do with the open tasks left in them, since archived projects' tasks stay
+  // live on Today otherwise. A selection with nothing open archives straight
+  // away. In the archived list the same button means the other direction.
   const handleBulkArchive = () => {
-    animateLayout();
-    bulkSetProjectArchived(Array.from(selectedIds), projectFilter !== 'archived');
-    exitSelection();
+    const ids = Array.from(selectedIds);
+    const run = (archiveRemaining: boolean) => {
+      animateLayout();
+      bulkSetProjectArchived(ids, projectFilter !== 'archived', { archiveRemaining });
+      exitSelection();
+    };
+    if (projectFilter === 'archived') {
+      run(false);
+      return;
+    }
+    const picked = new Set(ids);
+    const open = allTasks.filter(
+      t => t.projectId !== null && picked.has(t.projectId) && t.parentId === null && !t.completed && !t.archived,
+    ).length;
+    if (open === 0) {
+      run(false);
+      return;
+    }
+    Alert.alert(
+      `Archive ${ids.length} ${ids.length === 1 ? 'project' : 'projects'}?`,
+      `${open} open ${open === 1 ? 'task is' : 'tasks are'} still in ${ids.length === 1 ? 'it' : 'them'}. ${open === 1 ? 'It stays' : 'They stay'} on your lists unless you archive ${open === 1 ? 'it' : 'them'} too.`,
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Leave remaining tasks', onPress: () => run(false) },
+        { text: 'Archive remaining tasks', onPress: () => run(true) },
+      ],
+    );
   };
 
   // The same question ProjectEditor's own delete asks, and for the same reason:
