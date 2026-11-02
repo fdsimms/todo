@@ -129,8 +129,8 @@ describe('clampTravelLeadMinutes', () => {
     expect(clampTravelLeadMinutes(45)).toBe(45);
   });
 
-  it('rounds to the step and clamps to the range', () => {
-    expect(clampTravelLeadMinutes(47)).toBe(45);
+  it('keeps a typed value off the step and clamps to the range', () => {
+    expect(clampTravelLeadMinutes(47)).toBe(47);
     expect(clampTravelLeadMinutes(0)).toBe(TRAVEL_LEAD_MINUTES_MIN);
     expect(clampTravelLeadMinutes(10_000)).toBe(TRAVEL_LEAD_MINUTES_MAX);
   });
@@ -215,7 +215,7 @@ describe('per-calendar leads', () => {
 
   it('parses stored overrides, clamping values and dropping junk', () => {
     expect(parseTravelLeadByCalendar('{"work":47,"far":9999,"bad":"x","":20}')).toEqual({
-      work: 45,
+      work: 47,
       far: TRAVEL_LEAD_MINUTES_MAX,
     });
     expect(parseTravelLeadByCalendar({ a: 15 })).toEqual({ a: 15 });
@@ -606,9 +606,9 @@ describe('walk-under threshold', () => {
     [travelSourceId(ev)]: { minutes: 12, location: '123 Main St', mode, origin: 'current', at: 0, ...(walkUnder ? { walkUnder } : {}) },
   });
 
-  it('clamps to steps of 5 up to 60, and anything unusable is off', () => {
+  it('clamps up to 60 keeping a typed value off the step, and anything unusable is off', () => {
     expect(clampTravelWalkUnder(20)).toBe(20);
-    expect(clampTravelWalkUnder(22)).toBe(20);
+    expect(clampTravelWalkUnder(22)).toBe(22);
     expect(clampTravelWalkUnder(500)).toBe(60);
     expect(clampTravelWalkUnder(-5)).toBe(0);
     expect(clampTravelWalkUnder(undefined)).toBe(0);

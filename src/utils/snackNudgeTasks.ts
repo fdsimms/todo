@@ -52,9 +52,7 @@ export function clampSnackNudgeFromHour(hour: number): number {
 
 export function clampSnackNudgeSharePercent(percent: number): number {
   if (!Number.isFinite(percent)) return DEFAULT_SNACK_NUDGE_SHARE_PERCENT;
-  const step = SNACK_NUDGE_SHARE_PERCENT_STEP;
-  const snapped = Math.round(percent / step) * step;
-  return Math.min(SNACK_NUDGE_SHARE_PERCENT_MAX, Math.max(SNACK_NUDGE_SHARE_PERCENT_MIN, snapped));
+  return Math.min(SNACK_NUDGE_SHARE_PERCENT_MAX, Math.max(SNACK_NUDGE_SHARE_PERCENT_MIN, Math.round(percent)));
 }
 
 /** An hour of the day as the clock reads it: 15 is "3 PM". */

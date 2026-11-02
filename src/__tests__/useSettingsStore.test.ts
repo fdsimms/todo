@@ -1515,15 +1515,23 @@ describe('travel estimates', () => {
     expect(useSettingsStore.getState().travelMode).toBe('driving');
   });
 
-  it('walk-under is off by default, snaps to steps of 5, and reads back clamped', () => {
+  it('walk-under is off by default, keeps a typed value off the step, and reads back clamped', () => {
     useSettingsStore.getState().initialize();
     expect(useSettingsStore.getState().travelWalkUnderMinutes).toBe(0);
     useSettingsStore.getState().setTravelWalkUnderMinutes(22);
-    expect(dbSetSetting).toHaveBeenCalledWith('travelWalkUnderMinutes', '20');
-    expect(useSettingsStore.getState().travelWalkUnderMinutes).toBe(20);
+    expect(dbSetSetting).toHaveBeenCalledWith('travelWalkUnderMinutes', '22');
+    expect(useSettingsStore.getState().travelWalkUnderMinutes).toBe(22);
     (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'travelWalkUnderMinutes' ? '999' : null));
     useSettingsStore.getState().initialize();
     expect(useSettingsStore.getState().travelWalkUnderMinutes).toBe(60);
+  });
+});
+
+describe('wanikaniApprenticeCap', () => {
+  it('saves a number typed into the stepper as typed, not snapped to its step of ten', () => {
+    useSettingsStore.getState().setWanikaniApprenticeCap(37);
+    expect(dbSetSetting).toHaveBeenCalledWith('wanikaniApprenticeCap', '37');
+    expect(useSettingsStore.getState().wanikaniApprenticeCap).toBe(37);
   });
 });
 

@@ -12,11 +12,10 @@ export const SHORT_NIGHT_MINUTES_MAX = 540;
 export const SHORT_NIGHT_MINUTES_STEP = 30;
 export const SHORT_NIGHT_MINUTES_DEFAULT = 360;
 
-/** Snaps to the step and clamps to the range. */
+/** Rounds to a whole minute and clamps to the range. A typed value off the step is kept. */
 export function clampShortNightMinutes(minutes: number): number {
   if (!Number.isFinite(minutes)) return SHORT_NIGHT_MINUTES_DEFAULT;
-  const snapped = Math.round(minutes / SHORT_NIGHT_MINUTES_STEP) * SHORT_NIGHT_MINUTES_STEP;
-  return Math.min(SHORT_NIGHT_MINUTES_MAX, Math.max(SHORT_NIGHT_MINUTES_MIN, snapped));
+  return Math.min(SHORT_NIGHT_MINUTES_MAX, Math.max(SHORT_NIGHT_MINUTES_MIN, Math.round(minutes)));
 }
 
 /** Reads the stored value: empty or unreadable is the default, not zero. */

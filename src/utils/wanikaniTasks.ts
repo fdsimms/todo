@@ -108,10 +108,9 @@ export const WANIKANI_TOKEN_URL = 'https://www.wanikani.com/settings/personal_ac
  */
 export const WANIKANI_REVIEW_NOTES = 'Reviews are up on WaniKani.';
 
-function clampInt(value: unknown, min: number, max: number, fallback: number, step = 1): number {
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
-  const stepped = Math.round(value / step) * step;
-  return Math.min(max, Math.max(min, stepped));
+  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 /** `wanikaniReviewThreshold` clamped to what the stepper offers, defaulting anything unusable. */
@@ -135,7 +134,7 @@ export function clampWaniKaniLessonsPerDay(value: unknown): number | null {
 export function clampWaniKaniApprenticeCap(value: unknown): number | null {
   if (value === null) return null;
   return clampInt(value, WANIKANI_APPRENTICE_CAP_MIN, WANIKANI_APPRENTICE_CAP_MAX,
-    WANIKANI_APPRENTICE_CAP_DEFAULT, WANIKANI_APPRENTICE_CAP_STEP);
+    WANIKANI_APPRENTICE_CAP_DEFAULT);
 }
 
 /** A stored review state back into its shape, or the initial one when it doesn't parse. */
