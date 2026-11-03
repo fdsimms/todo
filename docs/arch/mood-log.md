@@ -1217,3 +1217,28 @@ And `checkMoodTasks` refuses to run in demo mode, like every other
 time-triggered generator: demo mode swaps the database, so a demo session's
 entries are fiction and a task written off them would persist there as a claim
 about the real person.
+
+## Check-ins
+
+A check-in is a question asked some time after a dose or a food: "is your headache better, the same,
+or worse?", answered from a notification button or an alert. It is the person's own record of how it
+went, and it is shown beside the dose; **it is not a contrast.** The rule in "What it refuses to
+compute" holds: nothing here compares an answer with the medicine, and the answers are not fed to
+`moodInsights.ts`. Better/Same/Worse after an as-needed dose is the same reverse-causation trap, so
+an answer is displayed and never aggregated into an "effectiveness" figure.
+
+- **Its own table (`check_ins`), keyed on `source_kind` + `source_id`, not columns on the logs.** A
+  saved meal writes several food entries but is one check-in, and an answer must not restamp the dose
+  it follows for sync. `source_id` is provenance and may dangle; `askCheckIn` drops a question whose
+  dose or food is gone.
+- **Opt in per dose or food, in the sheet.** The quick button, the widget, Siri, task completions and
+  the other doors never start one. The wait is the person's: `suggestedWaitMinutes` is a starting
+  point for common over-the-counter names, typed by hand, never stated as advice.
+- **The row is the store's, the phone is `checkInRecording.ts`'s.** The MCP replica reads the store
+  and can't load notifications, so it only reads (`medicationCheckIn` on `list_medication_logs`).
+- **The notification asks for permission first** (`allowCheckInNotification`) and is gated on demo
+  mode like every scheduler. A tap is often a cold launch, so `answerCheckIn` and `askCheckIn` load
+  the stores themselves.
+- **Undoing a dose cancels its check-in** (`unrecordDose`). Not yet covered: a saved meal's one-tap
+  log, the Describe path and the offline estimate queue start none, and a deleted food's
+  notification still fires once before `askCheckIn` finds nothing to ask about.

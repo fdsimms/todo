@@ -111,6 +111,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/categorySchedule.ts` — DAY_LABELS, FULL_DAY_NAMES, formatScheduleTime, formatScheduleDays, formatCategorySchedule
 - `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, ChainPreview, chainPreview, chainStepAdvancesInPlace, isChainFinish
 - `src/utils/chartZoom.ts` — ZoomRange, PinchStart, MIN_ZOOM_SPAN, clampRange, isZoomed, pinchRange
+- `src/utils/checkInRecording.ts` — StartCheckInInput, allowCheckInNotification, startCheckIn, cancelCheckInFor, answerCheckIn, askCheckIn
+- `src/utils/checkIns.ts` — CHECK_IN_ACTIONS, CHECK_IN_ANSWERS, answerLabel, answerForAction, CHECK_IN_WAIT_PRESETS, DEFAULT_FOOD_WAIT_MINUTES, DEFAULT_MEDICATION_WAIT_MINUTES, suggestedWaitMinutes, defaultWaitMinutes, formatWait, +5 more
 - `src/utils/chipUses.ts` — ChipUses, ChipUseKind, chipUseKey, bumpChipUses, rankByUse, parseChipUses, suggestExistingTags
 - `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, carryClockTime, overdueDayCount, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, dateToHHMM, +1 more
 - `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, subscribeToCloudKitChanges, addCloudKitChangeListener, cloudKitChangeHandled, cloudKitTransport
@@ -358,7 +360,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nicknames.ts` — nicknamesOf, primaryNickname
 - `src/utils/notificationTapRoute.ts` — NotificationTapData, NotificationTapRoute, routeNotificationTap
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
-- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, isRedundantInForeground, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, +42 more
+- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, isRedundantInForeground, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, CHECK_IN_CATEGORY, requestNotificationPermissions, NotificationPermission, +45 more
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — NudgeMode, NUDGE_MODES, nudgeModeOf, nudgeFieldsFor, FALLBACK_CADENCE_DAYS, NUDGE_MODE_LABEL, describeNudge, CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, +7 more
 - `src/utils/nutrientLog.ts` — isNutrientOnlyEntry, nutrientOnlyKey, nutrientOnlyEntryOf, NutrientHelping, nutrientHelping
@@ -737,6 +739,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useBulkBarPresenceStore.ts` — useBulkBarPresenceStore
 - `src/store/useCalendarStore.ts` — CALENDAR_WINDOW_DAYS, CALENDAR_CHANGE_COALESCE_MS, TRIP_WINDOW_DAYS, sameBusyEvents, vacationReturnCalendarIds, useCalendarStore, useCalendarSync
 - `src/store/useCategoryStore.ts` — useCategoryStore, CALENDAR_EVENTS_CATEGORY, HEALTH_CATEGORY, ensureCalendarEventCategory, ensureHealthCategory, renameGeneratedCategorySettings, getGeneratedCategory, setGeneratedCategory, clearGeneratedCategorySettings, ensureGeneratedTaskCategory, +1 more
+- `src/store/useCheckInStore.ts` — CheckInInput, useCheckInStore
 - `src/store/useCookwareStore.ts` — CookwarePatch, useCookwareStore
 - `src/store/useCopyFlagStore.ts` — useCopyFlagStore
 - `src/store/useDemoStore.ts` — clearUndoHistories, reloadAfterDataReplaced, useDemoStore
@@ -907,7 +910,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +323 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +327 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SERVER_SHARING_KEY_PREFIX, +19 more
 
 ## `src/services`

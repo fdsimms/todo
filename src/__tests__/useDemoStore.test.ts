@@ -108,6 +108,7 @@ import { useCookwareStore } from '../store/useCookwareStore';
 import { effectiveCookwareType } from '../utils/cookware';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
+import { useCheckInStore } from '../store/useCheckInStore';
 import { frequencyTrend, medicationFor, milestoneOffers } from '../utils/medicationLog';
 import { limitStatus, prefsFor, supplyRemaining } from '../utils/medicationSettings';
 import { canClaimReward, isBountyLive } from '../utils/rewards';
@@ -2576,6 +2577,12 @@ describe('demo seed — people', () => {
     // And one added by name with no doses, so the list shows that state too.
     expect(useMedicationStore.getState().registered).toEqual(['Allergy tablets']);
     expect(logs.some(l => l.name === 'Allergy tablets')).toBe(false);
+  });
+
+  it('seeds an answered check-in on an as-needed dose, so the feature has a row', () => {
+    const checkIn = useCheckInStore.getState().checkIns.find(c => c.sourceKind === 'medication');
+    expect(checkIn).toMatchObject({ subject: 'Ibuprofen', about: 'headache', answer: 'better' });
+    expect(useMedicationStore.getState().logs.some(l => l.id === checkIn!.sourceId)).toBe(true);
   });
 
   it('seeds an hours-recurrence task, hidden behind its own deferUntil', () => {
