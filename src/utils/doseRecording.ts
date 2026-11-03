@@ -24,6 +24,7 @@ import {
 } from './notifications';
 import { BUTTON_LABEL } from '../copy/shared';
 import { alertPermissionOff } from './permissionAlert';
+import { cancelCheckInFor } from './checkInRecording';
 
 /**
  * How long the refill offer waits after the dose that set it off. Most doses
@@ -179,6 +180,8 @@ export function recordDose(input: DoseInput, opts: { quiet?: boolean } = {}): Me
 export function unrecordDose(log: MedicationLog): void {
   useMedicationStore.getState().removeLog(log.id);
   syncOkAgainNotification(log.name);
+  // A dose taken back has nothing left to follow up on.
+  cancelCheckInFor('medication', log.id);
   if (log.taskId !== null || log.dayKey !== dayKeyOf(getCurrentDayStart())) return;
   const supplyTask = taskSupplyFor(useTaskStore.getState().tasks, log.name);
   if (supplyTask && supplyTask.supplyCount !== null) {

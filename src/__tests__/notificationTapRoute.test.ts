@@ -51,4 +51,13 @@ describe('routeNotificationTap', () => {
     expect(routeNotificationTap({ activeTripReminder: true, dailyAgenda: true, taskId: 't1' }, 'snooze'))
       .toEqual({ kind: 'activeTrip' });
   });
+
+  it('answers a check-in from its button, and asks in the app for a plain tap', () => {
+    expect(routeNotificationTap({ checkInId: 'c1' }, 'check-in-better'))
+      .toEqual({ kind: 'checkIn', checkInId: 'c1', answer: 'better' });
+    expect(routeNotificationTap({ checkInId: 'c1' }, 'check-in-worse'))
+      .toEqual({ kind: 'checkIn', checkInId: 'c1', answer: 'worse' });
+    expect(routeNotificationTap({ checkInId: 'c1' }, TAP))
+      .toEqual({ kind: 'checkIn', checkInId: 'c1', answer: null });
+  });
 });

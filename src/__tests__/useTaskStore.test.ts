@@ -155,6 +155,7 @@ jest.mock('../db/database', () => ({
   // The medication log rides the same fan-out, and completing a task carrying
   // a medication writes through it.
   dbGetAllMedicationLogs: jest.fn().mockReturnValue([]),
+  dbGetAllCheckIns: jest.fn().mockReturnValue([]),
   dbInsertMedicationLog: jest.fn(),
   dbUpdateMedicationLog: jest.fn(),
   dbDeleteMedicationLog: jest.fn(),

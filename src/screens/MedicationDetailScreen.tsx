@@ -5,6 +5,8 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import { format } from 'date-fns/format';
 import type { MedicationLog } from '../types';
 import { useMedicationStore } from '../store/useMedicationStore';
+import { useCheckInStore } from '../store/useCheckInStore';
+import { describeCheckIn } from '../utils/checkIns';
 import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
@@ -122,6 +124,11 @@ export function MedicationDetailScreen() {
 
   const stat = useMemo(() => medicationStats(logs, registered, settings).find(s => s.key === key) ?? null, [logs, registered, settings, key]);
   const entries = useMemo(() => logs.filter(l => medicationKey(l.name) === key), [logs, key]);
+  const checkIns = useCheckInStore(st => st.checkIns);
+  const checkInByDose = useMemo(
+    () => new Map(checkIns.filter(c => c.sourceKind === 'medication').map(c => [c.sourceId, c] as const)),
+    [checkIns],
+  );
 
   const strip = useMemo(() => {
     const out: { key: string; label: string; a11y: string; count: number }[] = [];
@@ -781,7 +788,12 @@ export function MedicationDetailScreen() {
                 {format(new Date(log.takenAt), `EEE, MMM d · ${timeToken}`)}
               </Text>
               <Text style={styles.doseMeta} numberOfLines={1}>
-                {[formatDose(log), log.asNeeded ? 'as needed' : 'on schedule', log.note].filter(Boolean).join(' · ')}
+                {[
+                  formatDose(log),
+                  log.asNeeded ? 'as needed' : 'on schedule',
+                  checkInByDose.get(log.id) ? describeCheckIn(checkInByDose.get(log.id)!) : null,
+                  log.note,
+                ].filter(Boolean).join(' · ')}
               </Text>
               {doseIngredients(supplementPanel, log).length > 0 && (
                 <Text style={styles.doseMeta}>{describeIngredients(doseIngredients(supplementPanel, log))}</Text>
