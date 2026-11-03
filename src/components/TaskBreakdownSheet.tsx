@@ -29,6 +29,12 @@ interface Props {
   visible: boolean;
   /** The task being broken up. Null closes the sheet without a request. */
   taskId: string | null;
+  /**
+   * No key to draft steps with: skip the request and show only the field for
+   * typing them. Without this, "Break it up" had to send an install with no key
+   * to the whole task editor.
+   */
+  manual?: boolean;
   onClose: () => void;
 }
 
@@ -62,7 +68,7 @@ interface Step {
 
 let stepSeq = 0;
 const stepKey = () => `step-${++stepSeq}`;
-export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
+export function TaskBreakdownSheet({ visible, taskId, manual = false, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const addSubtask = useTaskStore(s => s.addSubtask);
@@ -138,7 +144,7 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
       setNewStep('');
       return;
     }
-    load();
+    if (!manual) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
@@ -207,7 +213,7 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
       <View style={styles.root}>
         <SheetHeader
           title="Break it up"
-          icon="sparkles"
+          icon={manual ? undefined : 'sparkles'}
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
           right={
             <SheetHeaderButton
@@ -225,7 +231,13 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
           keyboardShouldPersistTaps="handled"
           {...keyboardScroll.props}
         >
-          {loading ? (
+          {manual ? (
+            steps.length === 0 ? (
+              <Text style={styles.intro}>
+                Type the first small step you could do on “{task?.title ?? 'this task'}”, then any that follow.
+              </Text>
+            ) : null
+          ) : loading ? (
             <View style={styles.loading}>
               <ActivityIndicator size="large" color={colors.purple} />
               <Text style={styles.loadingText}>Working out the steps for “{task?.title ?? 'this task'}”…</Text>
@@ -300,6 +312,7 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
             />
           </View>
 
+          {manual ? null : (<>
           <Text style={styles.label}>WHAT THIS TASK MEANS</Text>
           <TextField
             style={[styles.input, styles.contextInput]}
@@ -322,6 +335,7 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
             <Ionicons name="refresh" size={16} color={colors.purple} />
             <Text style={styles.regenerateText}>{hasContext ? 'Regenerate with these details' : 'Regenerate'}</Text>
           </TouchableOpacity>
+          </>)}
         </ScrollView>
       </View>
     </SheetModal>

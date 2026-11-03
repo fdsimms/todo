@@ -814,9 +814,8 @@ const TaskItemRow = React.memo(function TaskItem({
   );
   const [showMealPicker, setShowMealPicker] = useState(false);
   const { offerPrepTasksForEach } = usePlanMeal();
-  // The postpone prompt's "Break it up" needs somewhere to send the user. With
-  // a key it's the AI sheet; without one it falls back to the editor, where the
-  // subtask field is. A row that can't do either (no onEdit) offers no pill.
+  // The postpone prompt's "Break it up" opens the breakdown sheet: it drafts
+  // the steps with a key and only takes typed ones without.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const penaltyShieldEnabled = useSettingsStore(s => s.penaltyShieldEnabled);
   // A "Leave for X" row's trip estimate ("25 min by transit"). Every other row
@@ -899,11 +898,9 @@ const TaskItemRow = React.memo(function TaskItem({
       );
     }
   };
-  const canBreakUp = !!anthropicApiKey || !!onEdit;
   const handleBreakUp = () => {
     setShowWhenPicker(false);
-    if (anthropicApiKey) setShowBreakdown(true);
-    else onEdit?.(task.id);
+    setShowBreakdown(true);
   };
   // Elsewhere in the app a TaskItem only ever mounts for a task that's still
   // incomplete — completing it live is the only way `completing` becomes
@@ -5798,7 +5795,7 @@ const TaskItemRow = React.memo(function TaskItem({
           // The row's reschedule is the main way a task gets pushed, so this is
           // the picker the postpone check most needs to be on.
           postponeTaskId={task.id}
-          onBreakUp={canBreakUp ? handleBreakUp : undefined}
+          onBreakUp={handleBreakUp}
           taskTitle={task.title}
           taskNotes={task.notes}
           taskEffort={task.effort}
@@ -5882,6 +5879,7 @@ const TaskItemRow = React.memo(function TaskItem({
         <TaskBreakdownSheet
           visible={showBreakdown}
           taskId={task.id}
+          manual={!anthropicApiKey}
           onClose={() => setShowBreakdown(false)}
         />
       )}
