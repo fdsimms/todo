@@ -309,6 +309,11 @@ work is done"). Rules in `src/utils/rewardUnlocks.ts`, rows in `reward_unlocks`
   the way past the lock. Once it is open, edits are free, which leaves loosening it while open as the
   one way round; the lock only ever bound the day it was set against.
 - **Weekends and vacation can open it all day**, per unlock.
+- **A cutoff time (`ignoreAfter`) leaves late tasks out of the count**, per unlock. A task whose window
+  starts at or after it (`isAfterCutoff`, reading `windowBoundsFor` so a sun anchor resolves) is neither
+  coins owed nor coins earned for that unlock, so a bedtime routine doesn't hold the share down all
+  day. An earning whose task has been purged still counts, since there is no window left to read. Only
+  the window's start is read, not `timeSegments`. Setting or moving it earlier is a loosening.
 - **The code is shown only while it's open**, and the MCP server neither returns nor writes it, so
   asking Claude isn't a way round the lock. Everything else about an unlock it can read and change
   (`create_unlock`, `update_unlock`, `delete_unlock`, `set_unlock_play`).

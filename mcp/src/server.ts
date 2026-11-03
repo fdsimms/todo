@@ -4268,6 +4268,7 @@ function registerWriteTools(
     playMinutes: z.number().int().min(1).max(720).nullable().optional().describe('Minutes of play a day once open, with a timer and a notice when it is used up. Null for no limit and no timer. Default 120.'),
     freeOnWeekends: z.boolean().optional().describe('Open all day on Saturday and Sunday with no work.'),
     freeOnVacation: z.boolean().optional().describe('Open all day while vacation mode is on.'),
+    ignoreTasksStartingAfter: z.string().regex(/^\d{1,2}:\d{2}$/).nullable().optional().describe('"HH:MM". Tasks whose time window starts at or after it do not count toward the share, done or not (a bedtime routine). Null counts everything. Setting or moving it earlier is refused while the unlock is locked.'),
     linkedHabitId: z.string().min(1).nullable().optional().describe('An "Avoid this" habit (task id) for doing it while it is locked. A slip logged on it while the unlock is open asks first. One link per habit. Null unlinks it.'),
   };
 

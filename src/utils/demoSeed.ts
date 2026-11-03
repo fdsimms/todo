@@ -4000,6 +4000,7 @@ function seedRewards(today: Date): void {
     playMinutes: 120,
     freeOnWeekends: true,
     freeOnVacation: false,
+    ignoreAfter: '20:30',
     guardsTaskId: noGames.id,
     pin: '4817',
   });

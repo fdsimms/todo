@@ -86,6 +86,7 @@ export interface SerializedUnlock {
   playing: boolean;
   freeOnWeekends: boolean;
   freeOnVacation: boolean;
+  ignoreTasksStartingAfter?: string;
   /** The "don't do this" habit it is linked to, and its id. */
   linkedHabit?: string;
   linkedHabitId?: string;
@@ -479,6 +480,7 @@ function serializeUnlock(
     playing: play.running,
     freeOnWeekends: u.freeOnWeekends,
     freeOnVacation: u.freeOnVacation,
+    ...(u.ignoreAfter ? { ignoreTasksStartingAfter: u.ignoreAfter } : {}),
     ...(habit ? { linkedHabit: replica.displayTitle(habit), linkedHabitId: habit.id } : {}),
     ...(u.pin ? { hasCode: true as const } : {}),
   };
@@ -493,6 +495,7 @@ export interface UnlockToolInput {
   playMinutes?: number | null;
   freeOnWeekends?: boolean;
   freeOnVacation?: boolean;
+  ignoreTasksStartingAfter?: string | null;
   linkedHabitId?: string | null;
 }
 
@@ -505,6 +508,7 @@ function unlockFields(input: UnlockToolInput): Partial<UnlockInput> {
     ...(input.playMinutes !== undefined ? { playMinutes: input.playMinutes } : {}),
     ...(input.freeOnWeekends !== undefined ? { freeOnWeekends: input.freeOnWeekends } : {}),
     ...(input.freeOnVacation !== undefined ? { freeOnVacation: input.freeOnVacation } : {}),
+    ...(input.ignoreTasksStartingAfter !== undefined ? { ignoreAfter: input.ignoreTasksStartingAfter } : {}),
     ...(input.linkedHabitId !== undefined ? { guardsTaskId: input.linkedHabitId } : {}),
   };
 }
@@ -525,6 +529,7 @@ export function createUnlock(replica: Replica, input: UnlockToolInput & { title:
     playMinutes: fields.playMinutes !== undefined ? fields.playMinutes : 120,
     freeOnWeekends: fields.freeOnWeekends ?? false,
     freeOnVacation: fields.freeOnVacation ?? false,
+    ignoreAfter: fields.ignoreAfter ?? null,
     guardsTaskId: fields.guardsTaskId ?? null,
   });
   return unlockResult(replica, unlock);

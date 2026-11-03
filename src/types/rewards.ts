@@ -69,6 +69,13 @@ export interface RewardUnlock {
   /** Open all day while vacation mode is on. */
   freeOnVacation: boolean;
   /**
+   * "HH:MM", or null to count everything. A task whose time window starts at
+   * or after this isn't part of today's work for this unlock, whether it is
+   * done or not (a bedtime routine would otherwise hold the share down all
+   * day). It doesn't hide the task or change the coins it pays.
+   */
+  ignoreAfter?: string | null;
+  /**
    * An "Avoid this" habit for doing it while it's locked. A slip logged on
    * it while the unlock is open asks first, since it isn't one.
    */

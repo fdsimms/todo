@@ -2373,7 +2373,7 @@ describe('demo seed — people', () => {
     expect(useRewardStore.getState().savings()).toBeGreaterThan(0);
     expect(useRewardStore.getState().entries.some(e => (e.saved ?? 0) > 0)).toBe(true);
     const [unlock] = useUnlockStore.getState().unlocks;
-    expect(unlock).toMatchObject({ title: 'Switch', sharePct: 60, playMinutes: 120, pin: '4817' });
+    expect(unlock).toMatchObject({ title: 'Switch', sharePct: 60, playMinutes: 120, pin: '4817', ignoreAfter: '20:30' });
     expect(unlock.guardsTaskId).not.toBeNull();
   });
 
