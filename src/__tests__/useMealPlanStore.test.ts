@@ -2669,7 +2669,7 @@ describe('meal tasks', () => {
     // Deleted as the app tidying up, not as the user deciding — so no opt-out
     // is written back onto the row that already says it.
     expect(mockTaskState.deleteTask).toHaveBeenCalledWith(
-      expect.any(String), { skipGeneratedOptOut: true }
+      expect.any(String), { skipGeneratedOptOut: true, ignoreUnlockLock: true }
     );
   });
 

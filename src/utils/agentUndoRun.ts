@@ -25,6 +25,7 @@ import { addAgentNote, readAgentNotes, removeAgentNote, writeAgentNotes } from '
 import type { RecordState, RuleListName } from './agentRecordRevert';
 import type { AgentUndoAction, AgentUndoReaders } from './agentUndo';
 import { entryFor } from './groceryLists';
+import { explainLockedDelete } from './lockedDelete';
 
 function ruleListOf(type: RuleListName): unknown {
   const s = useSettingsStore.getState();
@@ -72,7 +73,7 @@ export function agentUndoReaders(): AgentUndoReaders {
 
 export function applyAgentUndo(plan: AgentUndoAction): void {
   switch (plan.kind) {
-    case 'delete': useTaskStore.getState().deleteTask(plan.taskId); return;
+    case 'delete': if (!useTaskStore.getState().deleteTask(plan.taskId)) explainLockedDelete(); return;
     case 'uncomplete': useTaskStore.getState().uncompleteTask(plan.taskId); return;
     case 'restore': useTaskStore.getState().updateTask(plan.taskId, plan.patch); return;
     case 'restoreDeletedTask': useTaskStore.getState().restoreTasks([plan.snapshot.task, ...plan.snapshot.subtasks]); return;

@@ -31,6 +31,7 @@ import { useFilterField } from '../hooks/useFilterField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
+import { explainRefusedDeletes } from '../utils/lockedDelete';
 
 // A quiet, out-of-the-way home for recurring tasks paused indefinitely (see
 // archiveTask/unarchiveTask in useTaskStore) — reached only via the side
@@ -153,7 +154,7 @@ export function ArchivedScreen() {
     // the way, and deleting it is deleting history, not declining the
     // generator that wrote the task (see clearLogbook). No confirm:
     // bulkDeleteTasks files one undo on the bar for the batch.
-    bulkDeleteTasks(ids, { skipGeneratedOptOut: true });
+    explainRefusedDeletes(bulkDeleteTasks(ids, { skipGeneratedOptOut: true }));
     exitSelection();
   };
 

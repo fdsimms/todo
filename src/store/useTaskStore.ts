@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { startOfWeek } from 'date-fns/startOfWeek';
-import type { Task, TaskDraft, FollowUpTaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry, MedicationLog } from '../types';
+import type { RewardUnlock, Task, TaskDraft, FollowUpTaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry, MedicationLog } from '../types';
 import {
   initDatabase,
   ensureDatabaseReady,
@@ -349,6 +349,7 @@ import {
   emptyFollowUpTaskDraft, followUpTaskDraftIsEmpty, liveFollowUpSource, hasFollowUpSource, followUpDraftAfterEdit,
 } from '../utils/followUpTask';
 import type { FollowUpTaskSuppression } from '../utils/followUpTask';
+import { lockedUnlockNeeding } from '../utils/rewardUnlocks';
 import { normalizeTitle } from '../utils/taskInstances';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { registerTaskSource, resolveBlocker } from '../utils/blockerRegistry';
@@ -2020,7 +2021,12 @@ interface TaskStore extends UndoHistoryActions {
    * delete turns the generator back on. It does nothing for a task nobody
    * generated or a generator that is already off.
    */
-  deleteTask: (id: string, opts?: { skipGeneratedOptOut?: boolean; stopGenerator?: boolean }) => void;
+  /**
+   * Returns false, and deletes nothing, when a locked unlock needs the task
+   * (`lockedUnlockNeeding`). Callers say so to the person; `ignoreUnlockLock` is
+   * for the app's own tidy-up (generated-task sync), which must not wait on a lock.
+   */
+  deleteTask: (id: string, opts?: { skipGeneratedOptOut?: boolean; stopGenerator?: boolean; ignoreUnlockLock?: boolean }) => boolean;
   /**
    * Put deleted rows back exactly as they were, with their reminders and
    * deadline events: Activity's restore of a task an agent deleted
@@ -2641,7 +2647,11 @@ interface TaskStore extends UndoHistoryActions {
   bulkUncompleteTasks: (ids: string[]) => void;
   bulkMarkMissed: (ids: string[]) => void;
   /** `skipGeneratedOptOut` has the same meaning as `deleteTask`'s — see its doc comment. */
-  bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean; registerUndo?: boolean }) => void;
+  /**
+   * Returns the ids it refused to delete because a locked unlock needs them
+   * (see deleteTask); the rest are deleted.
+   */
+  bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean; registerUndo?: boolean; ignoreUnlockLock?: boolean }) => string[];
   clearLogbook: () => void;
   /** `scope` on these four bulk actions is the answer to confirmBulkScope; it only matters to repeating tasks and dated series. */
   bulkSetPriority: (ids: string[], priority: Priority, options?: { scope?: 'occurrence' | 'series' }) => void;
@@ -3371,6 +3381,25 @@ function writeScopedRows(
   return ids.filter(id => !scoped.some(t => t.id === id));
 }
 
+// The locked unlock a delete of `task` would loosen, if any. Read off the stores
+// directly with the inputs unlockWorldNow uses: unlockWorld imports this file, so
+// this file can't import it back.
+function lockedUnlockBlocking(task: Task): RewardUnlock | null {
+  const settings = useSettingsStore.getState();
+  if (!settings.rewardsEnabled) return null;
+  const unlocks = useUnlockStore.getState().unlocks;
+  if (!unlocks.some(u => u.requiredTaskIds.length > 0)) return null;
+  const ts = useTaskStore.getState();
+  return lockedUnlockNeeding(task, ts.tasks, unlocks, {
+    entries: useRewardStore.getState().entries,
+    tasks: ts.tasks,
+    onToday: [...ts.visibleTasks(), ...ts.upcomingTodayTasks()],
+    todayStart: getCurrentDayStart(),
+    todayKey: getLogicalDayKey(new Date(), settings.dayResetTime),
+    vacation: settings.vacationMode,
+  });
+}
+
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   tagRegistry: [],
@@ -3712,7 +3741,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           taskId: t.id,
         })),
       );
-      get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true, registerUndo: false });
+      // ignoreUnlockLock: an expired window is closed, and the sweep is the app's own pass, not a choice.
+      get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true, registerUndo: false, ignoreUnlockLock: true });
     }
   },
 
@@ -4303,7 +4333,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   deleteTask(id, opts = {}) {
     const task = get().tasks.find(t => t.id === id);
-    if (!task) return;
+    if (!task) return false;
+    if (!opts.ignoreUnlockLock && lockedUnlockBlocking(task)) return false;
     const subtasks = get().subtasksOf(id);
 
     dbDeleteSubtasks(id);
@@ -4372,6 +4403,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         if (stoppedKind) setGeneratorEnabled(stoppedKind, true);
       },
     });
+    return true;
   },
 
   restoreTasks(rows) {
@@ -11435,8 +11467,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }, { replacing: historyBefore });
   },
 
-  bulkDeleteTasks(ids, opts = {}) {
-    if (ids.length === 0) return;
+  bulkDeleteTasks(requested, opts = {}) {
+    if (requested.length === 0) return [];
+    // A required task of a locked unlock stays (see deleteTask); the rest go.
+    const refused = opts.ignoreUnlockLock
+      ? []
+      : requested.filter(id => { const t = get().tasks.find(x => x.id === id); return !!t && !!lockedUnlockBlocking(t); });
+    const refusedSet = new Set(refused);
+    const ids = refused.length > 0 ? requested.filter(id => !refusedSet.has(id)) : requested;
+    if (ids.length === 0) return refused;
     const idSet = new Set(ids);
     const deleted = get().tasks.filter(t => idSet.has(t.id) || (t.parentId !== null && idSet.has(t.parentId)));
     // Subtasks never carry a generatedKind of their own, but filtering to the
@@ -11467,7 +11506,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // An unattended delete (the launch-time expiry sweep) must not sit under
     // the user's first shake of the session waiting to be reversed: they
     // didn't just do it. Same reason purgeOldCompletedTasks bypasses this.
-    if (opts.registerUndo === false) return;
+    if (opts.registerUndo === false) return refused;
     get().setLastAction({
       label: `${ids.length} task${ids.length === 1 ? '' : 's'} deleted`,
       destructive: true,
@@ -11484,6 +11523,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         if (!opts.skipGeneratedOptOut) deletedTopLevel.forEach(t => writeGeneratedOptOut(t, null));
       },
     });
+    return refused;
   },
 
   // Deletes every completed top-level task (and their subtasks) via

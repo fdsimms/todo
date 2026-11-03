@@ -287,6 +287,7 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from '../components/RotatingChevron';
 import { loadEventRowMemo, saveEventRowMemo } from '../utils/eventRowMemo';
 import { syncWakeUpAlarm } from '../utils/wakeUpAlarm';
+import { explainLockedDelete } from '../utils/lockedDelete';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -1615,7 +1616,7 @@ export function TodayScreen() {
       // pendingImport included.
       useTaskStore.getState().updateTask(toast.task.id, toast.previous);
     } else {
-      useTaskStore.getState().deleteTask(toast.task.id);
+      if (!useTaskStore.getState().deleteTask(toast.task.id)) explainLockedDelete();
     }
   };
 

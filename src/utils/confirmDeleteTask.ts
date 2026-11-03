@@ -10,6 +10,7 @@ import { confirmDeleteGenerated } from './confirmDeleteGenerated';
 import { animateLayout } from './layoutAnimation';
 import { haptics } from './haptics';
 import { BUTTON_LABEL } from '../copy/shared';
+import { explainLockedDelete } from './lockedDelete';
 
 /**
  * Deleting one task by hand, with the question its kind needs asked first: a
@@ -25,10 +26,12 @@ import { BUTTON_LABEL } from '../copy/shared';
  */
 export function confirmDeleteTask(task: Task, onDone?: () => void): void {
   const store = () => useTaskStore.getState();
-  const finish = (write: () => void, success = true) => {
-    if (success) haptics.success();
+  // A write that returns false was refused (a locked unlock needs the task),
+  // so nothing went and the person is told why instead of a success tap.
+  const finish = (write: () => boolean | void, success = true) => {
     animateLayout();
-    write();
+    if (write() === false) { explainLockedDelete(); return; }
+    if (success) haptics.success();
     onDone?.();
   };
 

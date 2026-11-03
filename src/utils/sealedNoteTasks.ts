@@ -18,5 +18,7 @@ export function addSealedNoteReminder(entry: JournalEntry): void {
 export function dropSealedNoteReminder(entryId: string): void {
   const link = journalEntryLink(entryId);
   const store = useTaskStore.getState();
-  for (const task of store.tasks.filter(t => t.linkUrl === link && !t.completed)) store.deleteTask(task.id);
+  // ignoreUnlockLock: these are the note's own reminders, cleared because the note
+  // went, not tasks the person is choosing to delete.
+  for (const task of store.tasks.filter(t => t.linkUrl === link && !t.completed)) store.deleteTask(task.id, { ignoreUnlockLock: true });
 }
