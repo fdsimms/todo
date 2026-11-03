@@ -6,7 +6,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { listFoodLog } from '../tools';
+import { listFoodLog, listFoodLogByMeal } from '../tools';
 import { useMedicationStore } from '../../../src/store/useMedicationStore';
 import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logRecipe, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, patchRecipe, updateRecipe, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
 
@@ -716,6 +716,33 @@ describe('finding and logging food by name', () => {
     expect(found.totals.total.calorieKcal).toBe(440);
     expect(listFoodLog(replica, { days: 7 }).filteredBy).toBeUndefined();
     expect(listFoodLog(replica, { days: 7, query: 'baked pizza' }).entries).toEqual([]);
+  });
+
+  it('groups the log by meal: food names and calories per meal, entries outside a meal counted apart', () => {
+    logFood(replica, { label: 'Protein shake', slot: 'breakfast', amounts: { calorieKcal: 200 }, apply: true });
+    logFood(replica, { label: 'Oat milk', slot: 'breakfast', amounts: { calorieKcal: 120.4 }, apply: true });
+    logFood(replica, { label: 'Popcorn chicken', slot: 'lunch', amounts: { proteinG: 20 }, apply: true });
+    logFood(replica, { label: 'Popcorn chicken', slot: 'lunch', amounts: { calorieKcal: 300 }, apply: true });
+    logFood(replica, { label: 'Pretzel', amounts: { calorieKcal: 110 }, apply: true });
+
+    const byMeal = listFoodLogByMeal(replica, { days: 7 });
+    expect(byMeal.meals.map(m => [m.slot, m.foods, m.kcal, m.noKcal])).toEqual([
+      ['breakfast', ['Protein shake', 'Oat milk'], 320, undefined],
+      // Named once, and the entry that stated no calories is counted, not read as zero.
+      ['lunch', ['Popcorn chicken'], 300, 1],
+    ]);
+    expect(byMeal.unfiled.map(u => u.entries)).toEqual([1]);
+    expect(byMeal).not.toHaveProperty('entries');
+    // The day's totals are the full listing's own.
+    expect(byMeal.totals).toEqual(listFoodLog(replica, { days: 7 }).totals);
+  });
+
+  it('narrows the grouped log by the same query', () => {
+    logFood(replica, { label: 'Baked beans', slot: 'dinner', amounts: { calorieKcal: 440 }, apply: true });
+    logFood(replica, { label: 'Corn bread', slot: 'dinner', amounts: { calorieKcal: 290 }, apply: true });
+    const found = listFoodLogByMeal(replica, { days: 7, query: 'beans' });
+    expect(found.meals.map(m => m.foods)).toEqual([['Baked beans']]);
+    expect(found.filteredBy).toEqual({ query: 'beans', matched: 1, inRange: 2 });
   });
 
   it('logs a recipe by the weight on the plate and reports the figures it came to', () => {
