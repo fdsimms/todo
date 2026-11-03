@@ -58,8 +58,9 @@ sheet and screen as the other two (`Notes` is the third route onto
   a note; it is written when it comes to you.
 - **The mood screens never read it.** A note is not about the day it was typed
   on, so the mood day page and the Looking back card go through `diaryEntries`
-  (`journal.ts`), which drops notes. Add a new reader of the journal that is
-  about a day the same way.
+  (`journal.ts`), which drops notes. A new reader of the journal store fails
+  `journalReadersChooseKind.test.ts` until it calls `diaryEntries` or is listed
+  there with the reason it is right for every kind.
 
 It rides the journal's sync switch and the journal lock, so the MCP sees it only
 when "Include journal and dreams" is on. Photos, tags and people work as they do
