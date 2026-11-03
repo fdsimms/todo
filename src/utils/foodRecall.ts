@@ -239,7 +239,15 @@ function labelWordsInQuery(labelKey: string, queryKey: string): boolean {
 export function recallWeight(labelKey: string, queryKey: string): number {
   if (!labelKey || !queryKey) return 0;
   const direct = matchWeight(labelKey, queryKey);
-  if (direct > 0) return direct;
+  // `matchWeight`'s last rung (0.5) accepts the query's words anywhere in the
+  // name, in any order. For a keystroke that is the point; for a described food
+  // it matched a saved multi-food label ("4 miniature candy bars ... 2 Twix, 1
+  // Almond Joy, 1 3 Musketeers") for the clause "1 mini almond joy", offering a
+  // different meal's calories. A name far longer than the clause is a different
+  // thing that happens to contain its words, so that rung is refused there.
+  const wordBag = direct > 0 && direct < 1;
+  const tooLong = wordBag && labelKey.split(' ').length > queryKey.split(' ').length * 2;
+  if (direct > 0 && !tooLong) return direct;
   const contained = labelKey.length < MIN_CONTAINED_LABEL || !labelWordsInQuery(labelKey, queryKey)
     ? 0
     : matchWeight(queryKey, labelKey) / CONTAINED_SCALE;

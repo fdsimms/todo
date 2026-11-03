@@ -152,6 +152,13 @@ describe('recallFoods', () => {
       .toEqual(['Chicken burrito bowl']);
   });
 
+  it('does not offer a saved multi-food label for one food whose words it happens to contain', () => {
+    const entries = [entry({
+      label: '4 miniature candy bars (about 44 g total) Mini candy bars: 2 Twix, 1 Almond Joy, 1 3 Musketeers',
+    })];
+    expect(recallFoods(entries, '1 mini almond joy')).toEqual([]);
+  });
+
   it('groups entries sharing a label and counts them', () => {
     const found = recallFoods([
       entry({ label: 'Overnight oats', atISO: '2026-04-01T08:00:00.000Z' }),
