@@ -362,7 +362,7 @@ export function resetToFocusSession(): void {
  * `navigate` between tabs has no back stack the way a pushed screen does.
  */
 /**
- * Where `dundundun://journal` and `dundundun://dreams` land, with `log=1`
+ * Where `dundundun://journal`, `dundundun://dreams` and `dundundun://notes` land, with `log=1`
  * opening the writing sheet and `entry=<id>` opening that entry (a note to
  * your future self, from its reminder). `resetToMood`'s shape, `returnTo`
  * included. `dictate` (`mic=1`) also starts listening once the sheet is open,
@@ -374,7 +374,7 @@ export function resetToJournal(
   entryId: string | null = null,
   dictate = false,
 ): void {
-  const route = kind === 'dream' ? 'Dreams' : 'Journal';
+  const route = kind === 'dream' ? 'Dreams' : kind === 'note' ? 'Notes' : 'Journal';
   runWhenReady(() => {
     const opensSheet = openLog || entryId !== null;
     const returnTo = opensSheet ? currentTabName() : undefined;

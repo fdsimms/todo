@@ -34,7 +34,7 @@ import { useTextScale } from '../hooks/useTextScale';
 import { AnimatedBarFill } from '../components/AnimatedBarFill';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
-import { openEntries } from '../utils/journal';
+import { diaryEntries, openEntries } from '../utils/journal';
 import { segmentOf } from '../utils/rhythms';
 import {
   MOOD_CHANGES,
@@ -224,7 +224,7 @@ export function MoodScreen() {
   // Left out entirely while the journal lock is closed, so a page from a year ago isn't quoted here.
   const journalLocked = useJournalAccess().locked;
   const lookedBack = useMemo(
-    () => lookBacks(logs, todayKey, journalLocked ? [] : openEntries(journal, todayKey)),
+    () => lookBacks(logs, todayKey, journalLocked ? [] : openEntries(diaryEntries(journal), todayKey)),
     [logs, todayKey, journal, journalLocked],
   );
 

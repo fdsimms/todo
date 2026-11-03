@@ -89,6 +89,7 @@ describe('journalExportFileName', () => {
   it('names the kind and the day', () => {
     const at = new Date(2026, 9, 6, 12);
     expect(journalExportFileName('journal', at)).toBe('journal-2026-10-06.csv');
+    expect(journalExportFileName('note', at, 'markdown')).toBe('notes-2026-10-06.md');
     expect(journalExportFileName('dream', at)).toBe('dreams-2026-10-06.csv');
     expect(journalExportFileName('journal', at, 'markdown')).toBe('journal-2026-10-06.md');
   });

@@ -1220,6 +1220,7 @@ describe('journal and dreams links', () => {
   it('names the kind, and nothing for another link', () => {
     expect(journalUrlKind('dundundun://journal')).toBe('journal');
     expect(journalUrlKind('dundundun://dreams?log=1')).toBe('dream');
+    expect(journalUrlKind('dundundun://notes?log=1')).toBe('note');
     expect(journalUrlKind('dundundun://mood?log=1')).toBeNull();
   });
 

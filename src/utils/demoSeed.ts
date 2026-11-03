@@ -3836,8 +3836,8 @@ function seedMilestone(today: Date): void {
 }
 
 /**
- * A few journal entries (one day written in three snippets) and two dreams, so the Journal and Dreams screens (and
- * their pills in the Health hub, which simplified mode hides while empty) have
+ * A few journal entries (one day written in three snippets), two dreams and two notes, so the Journal, Dreams and
+ * Notes screens (and their pills in the Health and Organize hubs, which simplified mode hides while empty) have
  * something to show. Through `addEntry`, so a seeded row can't drift from the type.
  */
 function seedJournal(today: Date): void {
@@ -3869,6 +3869,9 @@ function seedJournal(today: Date): void {
   addEntry('journal', 'Quiet evening. Pasta, then an hour of the new book.', at(1, 20));
   addEntry('dream', 'Walking along a beach I did not recognize, looking for a train station.', at(15, 7));
   addEntry('dream', 'Missing a meeting I could not find the room for. Woke up twice.', at(9, 7), null, { tags: ['recurring'] });
+  // Loose notes, which belong to no day's page: a lyric line and a title idea.
+  addEntry('note', '# Highway song\nThe light turned green but I stayed right where I was\n- Title: "Second Exit"', at(3, 23), null, { tags: ['lyrics'] });
+  addEntry('note', 'Idea: a song about a house that never gets finished.', at(6, 22), null, { tags: ['lyrics'] });
   // A note to your future self, sealed for three months (JournalEntry.openOn):
   // the Journal shows it only as "1 note for later", and its reminder waits in
   // Later for the day it opens.

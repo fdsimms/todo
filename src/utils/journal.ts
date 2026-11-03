@@ -80,6 +80,15 @@ export function entriesOfKind(entries: readonly JournalEntry[], kind: JournalKin
 }
 
 /**
+ * Only the journal and the dreams: the writing that belongs to a day. The mood
+ * day page and the Looking back card read through this, because a note
+ * (lyrics, an idea) is not about the day it was typed on.
+ */
+export function diaryEntries(entries: readonly JournalEntry[]): JournalEntry[] {
+  return entries.filter(e => e.kind !== 'note');
+}
+
+/**
  * The entries containing every word of `query`, in any order, ignoring case.
  * Plain substring matching, the rule the mood note search uses.
  */
@@ -475,5 +484,14 @@ export const JOURNAL_KIND_COPY: Record<JournalKind, {
     continuePlaceholder: 'e.g. Anything else you remember',
     emptyTitle: 'No dreams written down yet',
     emptySubtitle: 'Write down what you remember when you wake up.',
+  },
+  note: {
+    title: 'Notes',
+    one: 'note',
+    placeholder: 'e.g. A line for a song, or something to remember',
+    hint: null,
+    continuePlaceholder: 'e.g. More on the same idea',
+    emptyTitle: 'No notes yet',
+    emptySubtitle: 'Keep lyrics, ideas and anything else that has no other home.',
   },
 };

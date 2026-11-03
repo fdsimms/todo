@@ -118,8 +118,11 @@ export interface MoodLog {
   note: string | null;
 }
 
-/** Which of the two writing logs an entry belongs to. */
-export type JournalKind = 'journal' | 'dream';
+/**
+ * Which writing log an entry belongs to. `note` is the loose one: not a day's
+ * writing like the other two, so the mood screens never read it (`diaryEntries`).
+ */
+export type JournalKind = 'journal' | 'dream' | 'note';
 
 /**
  * Something written down: a journal entry, or a dream you woke up with. See

@@ -84,6 +84,7 @@ const SCREEN_SYMBOLS: Record<string, string> = {
   Medications: 'pills',
   Journal: 'book.closed',
   Dreams: 'moon.stars',
+  Notes: 'note.text',
   Weight: 'scalemass',
   Sleep: 'bed.double',
   Workouts: 'dumbbell',

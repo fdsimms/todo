@@ -33,7 +33,7 @@ import { BloodPressureScreen } from '../screens/BloodPressureScreen';
 import { WorkoutsScreen } from '../screens/WorkoutsScreen';
 import { useWorkoutStore, workoutContentCount } from '../store/useWorkoutStore';
 import { SleepScreen } from '../screens/SleepScreen';
-import { JournalScreen, DreamsScreen } from '../screens/JournalScreen';
+import { JournalScreen, DreamsScreen, NotesScreen } from '../screens/JournalScreen';
 import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
 import { MoodDayScreen } from '../screens/MoodDayScreen';
 import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
@@ -164,6 +164,7 @@ const TAB_SCREENS: Record<string, React.ComponentType<any>> = {
   Sleep: freezeWhenBlurred(SleepScreen),
   Journal: freezeWhenBlurred(JournalScreen),
   Dreams: freezeWhenBlurred(DreamsScreen),
+  Notes: freezeWhenBlurred(NotesScreen),
   Workouts: freezeWhenBlurred(WorkoutsScreen),
   FoodLog: freezeWhenBlurred(FoodLogScreen),
   Stuck: freezeWhenBlurred(StuckScreen),
@@ -427,6 +428,7 @@ function initialScreenFromSettings(): string {
     medications: useMedicationStore.getState().logs.length,
     journal: useJournalStore.getState().entries.filter(e => e.kind === 'journal').length,
     dreams: useJournalStore.getState().entries.filter(e => e.kind === 'dream').length,
+    notes: useJournalStore.getState().entries.filter(e => e.kind === 'note').length,
     foodLog: useFoodLogStore.getState().totalCount,
     workouts: workoutContentCount(useWorkoutStore.getState()),
   })) return 'Today';

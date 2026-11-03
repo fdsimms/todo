@@ -275,13 +275,13 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/itemEither.ts` — UNANSWERED, eitherPairKey, parseItemPicks, pickFor, withItemPick, withoutItemPick, hasUndecidedItem, EitherPairInUse, eitherPairsInUse, describeEitherPair, +2 more
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstituteLink, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
 - `src/utils/itemVarieties.ts` — varietyIndex, NO_VARIETIES, coveringVariety, familyOnHand, varietyOfferFor, genericNameSuggestions, describeFamilyOnHand
-- `src/utils/journal.ts` — isSealed, openEntries, sealedEntries, JUST_OPENED_DAYS, justOpened, journalEntryLink, sealedNoteTaskDraft, entriesOfKind, searchJournal, JournalDay, +34 more
+- `src/utils/journal.ts` — isSealed, openEntries, sealedEntries, JUST_OPENED_DAYS, justOpened, journalEntryLink, sealedNoteTaskDraft, entriesOfKind, diaryEntries, searchJournal, +35 more
 - `src/utils/journalDraft.ts` — JOURNAL_DRAFT_DELAY_MS, journalDraftKey, readJournalDraft, writeJournalDraft, clearJournalDraft
 - `src/utils/journalExport.ts` — JOURNAL_EXPORT_COLUMNS, PersonNamer, journalExportCsv, journalExportMarkdown, JournalExportFormat, journalExportFileName, journalExportSummary
 - `src/utils/journalHistory.ts` — JournalHistoryKind, JOURNAL_HISTORY_OPTIONS, canOfferJournalHistory, journalHistoryTitle, journalHistoryAt
 - `src/utils/journalMarkdown.ts` — InlineSpan, JournalBlock, parseInline, parseJournalMarkdown, SPOILER_PLAIN_TEXT, journalPlainText, EditSelection, FormatEdit, toggleWrap, continueListOnEnter, +2 more
 - `src/utils/journalPhotos.ts` — JOURNAL_PHOTO_FOLDER, MAX_JOURNAL_PHOTOS, journalPhotoNamesInUse, droppedPhotos, unreferencedPhotos, journalPhotosOnDevice, deleteJournalPhotos, sweepJournalPhotos
-- `src/utils/journalTasks.ts` — JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalMicUrl, journalLogUrl, journalTaskSourceId, journalTaskDayKey
+- `src/utils/journalTasks.ts` — ReminderKind, JOURNAL_LOG_TITLE, JOURNAL_SNIPPET_TITLE, DREAM_LOG_TITLE, journalLogTitle, JOURNAL_TASK_KIND, journalMicUrl, journalLogUrl, journalTaskSourceId, journalTaskDayKey
 - `src/utils/journalTimer.ts` — JOURNAL_TIMER_MINUTES, JOURNAL_TIMER_RANGE, DEFAULT_JOURNAL_TIMER_MINUTES, JOURNAL_TIMER_SETTING, parseJournalTimerMinutes, readJournalTimerMinutes, writeJournalTimerMinutes, journalTimerRemainingMs, journalTimerProgress, formatJournalTimerClock
 - `src/utils/keyActions.ts` — registerEscapeHandler, runEscape, registerCommit, runCommit, ScreenKey, ScreenKeyHandlers, registerScreenKeys, runScreenKey
 - `src/utils/keyScanAlert.ts` — alertKeyScanResult

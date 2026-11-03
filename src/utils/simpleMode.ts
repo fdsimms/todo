@@ -82,6 +82,7 @@ export type SimpleFeatureId =
   | 'sleepScreen'
   | 'journalScreen'
   | 'dreamScreen'
+  | 'notesScreen'
   | 'foodLogScreen'
   | 'backfillScreen'
   | 'stuckScreen'
@@ -199,6 +200,7 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   // else, so hiding either while it holds any would strand it.
   { id: 'journalScreen', label: 'Journal', area: 'screens', screen: 'Journal', contentScreen: true },
   { id: 'dreamScreen', label: 'Dreams', area: 'screens', screen: 'Dreams', contentScreen: true },
+  { id: 'notesScreen', label: 'Notes', area: 'screens', screen: 'Notes', contentScreen: true },
   // A content screen for the same reason Mood is one: a food log's entries live
   // nowhere else in the app, so hiding the screen while it holds any would
   // strand them with no way back.
@@ -302,7 +304,7 @@ export const SIMPLE_CONTENT_SCREENS: ReadonlySet<string> = new Set(
 export function screenShown(
   routeName: string,
   simpleMode: boolean,
-  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number; journal?: number; dreams?: number; workouts?: number } = { stacks: 0, templates: 0 },
+  contentCounts: { stacks: number; templates: number; people?: number; mood?: number; medications?: number; foodLog?: number; journal?: number; dreams?: number; notes?: number; workouts?: number } = { stacks: 0, templates: 0 },
 ): boolean {
   if (!simpleMode) return true;
   if (SIMPLE_HIDDEN_SCREENS.has(routeName)) return false;
@@ -317,6 +319,7 @@ export function screenShown(
   if (routeName === 'Medications') return (contentCounts.medications ?? 0) > 0;
   if (routeName === 'Journal') return (contentCounts.journal ?? 0) > 0;
   if (routeName === 'Dreams') return (contentCounts.dreams ?? 0) > 0;
+  if (routeName === 'Notes') return (contentCounts.notes ?? 0) > 0;
   // Counted across every day rather than off the loaded window, which is one
   // day: see `useFoodLogStore.totalCount`. Answering this from today's rows
   // would take the screen away, and months of entries with it, on any day

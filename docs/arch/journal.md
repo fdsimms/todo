@@ -46,6 +46,26 @@ it holds nothing, for the reason Mood is).
   so that switch is also the decision to let Claude read and write the journal
   (`docs/arch/mcp-server.md`).
 
+## Notes, the third kind
+
+`kind` `'note'` is loose writing: lyrics, song titles, ideas. Same table, store,
+sheet and screen as the other two (`Notes` is the third route onto
+`JournalLogScreen`), with three differences:
+
+- **It lives in the Organize hub, not Health.** It is not a log of the body, and
+  its pill row is `KIND_UI[kind].hub`.
+- **It has no reminder and no word goal, and is never sealed.** Nothing asks for
+  a note; it is written when it comes to you.
+- **The mood screens never read it.** A note is not about the day it was typed
+  on, so the mood day page and the Looking back card go through `diaryEntries`
+  (`journal.ts`), which drops notes. Add a new reader of the journal that is
+  about a day the same way.
+
+It rides the journal's sync switch and the journal lock, so the MCP sees it only
+when "Include journal and dreams" is on. Photos, tags and people work as they do
+on an entry. Audio was left out: it would be an attachment on an entry, not a
+kind.
+
 ## The move off the mood entry
 
 `migrateMoodDreams` in `initDatabase` copies every non-blank `mood_logs.dream`

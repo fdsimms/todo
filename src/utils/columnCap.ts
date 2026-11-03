@@ -31,7 +31,7 @@ import { columnUncappedFor } from './twoPane';
 /** Screens that are a list of rows and nothing else, so a wider row costs them nothing. */
 export const WIDE_LIST_ROUTES: ReadonlySet<string> = new Set([
   'Search', 'Cookbooks', 'Categories', 'Tags', 'People', 'Stacks', 'Templates', 'Logbook',
-  'Journal', 'Dreams', 'Archived', 'UnattendedLog', 'Reminders', 'Stuck', 'Tips',
+  'Journal', 'Dreams', 'Notes', 'Archived', 'UnattendedLog', 'Reminders', 'Stuck', 'Tips',
 ]);
 
 /**

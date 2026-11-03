@@ -7938,7 +7938,7 @@ export function dbDeleteMoodLog(id: string): void {
 function rowToJournalEntry(row: Record<string, unknown>): JournalEntry {
   return {
     id: row.id as string,
-    kind: row.kind === 'dream' ? 'dream' : 'journal',
+    kind: row.kind === 'dream' ? 'dream' : row.kind === 'note' ? 'note' : 'journal',
     loggedAt: row.logged_at as string,
     dayKey: row.day_key as string,
     text: row.text as string,

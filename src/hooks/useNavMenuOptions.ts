@@ -35,6 +35,7 @@ const moodCountOf = (s: ReturnType<typeof useMoodStore.getState>) => s.logs.leng
 const medicationCountOf = (s: ReturnType<typeof useMedicationStore.getState>) => s.logs.length;
 const journalCountOf = (s: ReturnType<typeof useJournalStore.getState>) => s.entries.filter(e => e.kind === 'journal').length;
 const dreamCountOf = (s: ReturnType<typeof useJournalStore.getState>) => s.entries.filter(e => e.kind === 'dream').length;
+const noteCountOf = (s: ReturnType<typeof useJournalStore.getState>) => s.entries.filter(e => e.kind === 'note').length;
 // The whole history, not today's rows — see useFoodLogStore.totalCount.
 const foodLogCountOf = (s: ReturnType<typeof useFoodLogStore.getState>) => s.totalCount;
 
@@ -49,6 +50,7 @@ export function useNavMenuOptions(): NavMenuOptions {
   const medicationCount = useMedicationStore(medicationCountOf);
   const journalCount = useJournalStore(journalCountOf);
   const dreamCount = useJournalStore(dreamCountOf);
+  const noteCount = useJournalStore(noteCountOf);
   const foodLogCount = useFoodLogStore(foodLogCountOf);
   const workoutCount = useWorkoutStore(workoutContentCount);
   // Asked once: whether this build has the native half, on a phone new enough,
@@ -65,8 +67,8 @@ export function useNavMenuOptions(): NavMenuOptions {
     simpleMode,
     screenTimeSupported,
     workoutsEnabled,
-    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount, journal: journalCount, dreams: dreamCount, workouts: workoutCount },
-  }), [kitchenEnabled, simpleMode, screenTimeSupported, workoutsEnabled, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount, journalCount, dreamCount, workoutCount]);
+    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, medications: medicationCount, foodLog: foodLogCount, journal: journalCount, dreams: dreamCount, notes: noteCount, workouts: workoutCount },
+  }), [kitchenEnabled, simpleMode, screenTimeSupported, workoutsEnabled, stackCount, templateCount, peopleCount, moodCount, medicationCount, foodLogCount, journalCount, dreamCount, noteCount, workoutCount]);
 }
 
 /**
@@ -92,6 +94,7 @@ export function navMenuOptionsNow(): NavMenuOptions {
       foodLog: foodLogCountOf(useFoodLogStore.getState()),
       journal: journalCountOf(journal),
       dreams: dreamCountOf(journal),
+      notes: noteCountOf(journal),
       workouts: workoutContentCount(useWorkoutStore.getState()),
     },
   };

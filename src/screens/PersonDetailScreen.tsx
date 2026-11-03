@@ -706,9 +706,9 @@ export function PersonDetailScreen() {
                       onPress={() => { haptics.tap(); setPageDay({ dayKey: entry.dayKey, kind: entry.kind }); setPageOpen(true); }}
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
-                      accessibilityLabel={`${entry.kind === 'dream' ? 'Dream' : 'Journal'} from ${format(new Date(`${entry.dayKey}T12:00:00`), 'MMMM d, yyyy')}: ${journalSnippet(entry.text)}`}
+                      accessibilityLabel={`${entry.kind === 'dream' ? 'Dream' : entry.kind === 'note' ? 'Note' : 'Journal'} from ${format(new Date(`${entry.dayKey}T12:00:00`), 'MMMM d, yyyy')}: ${journalSnippet(entry.text)}`}
                     >
-                      <Ionicons name={entry.kind === 'dream' ? 'cloudy-night-outline' : 'book-outline'} size={14} color={colors.accent} />
+                      <Ionicons name={entry.kind === 'dream' ? 'cloudy-night-outline' : entry.kind === 'note' ? 'document-text-outline' : 'book-outline'} size={14} color={colors.accent} />
                       <Text style={styles.entryTitle} numberOfLines={2}>{journalSnippet(entry.text, 100)}</Text>
                       <Text style={styles.entryDate}>{format(new Date(`${entry.dayKey}T12:00:00`), 'MMM d, yyyy')}</Text>
                       <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
@@ -886,7 +886,7 @@ export function PersonDetailScreen() {
           visible={pageOpen}
           kind={pageDay?.kind ?? 'journal'}
           dayKey={pageDay?.dayKey ?? null}
-          onEdit={entry => { setPageOpen(false); navigateToTab(entry.kind === 'dream' ? 'Dreams' : 'Journal'); }}
+          onEdit={entry => { setPageOpen(false); navigateToTab(entry.kind === 'dream' ? 'Dreams' : entry.kind === 'note' ? 'Notes' : 'Journal'); }}
           onClose={() => setPageOpen(false)}
         />
       </LazySheet>

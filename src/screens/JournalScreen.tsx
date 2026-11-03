@@ -99,8 +99,38 @@ function EntryMeta({ entry, personName, onTag, styles }: {
   );
 }
 
+/** What each kind's screen calls itself, by kind. The copy that varies with the writing is `JOURNAL_KIND_COPY`. */
+const KIND_UI: Record<JournalKind, {
+  route: 'Journal' | 'Dreams' | 'Notes';
+  hub: 'health' | 'organize';
+  icon: 'book-outline' | 'cloudy-night-outline' | 'document-text-outline';
+  settingsTitle: string;
+  shareTitle: string;
+  randomLabel: string;
+  writeLabel: string;
+  emptyAction: string;
+  searchLabel: string;
+  lockedTitle: string;
+}> = {
+  journal: {
+    route: 'Journal', hub: 'health', icon: 'book-outline', settingsTitle: 'Journal settings', shareTitle: 'Share your journal',
+    randomLabel: 'Read a random journal page', writeLabel: 'Write in your journal', emptyAction: 'Write an entry',
+    searchLabel: 'Search your journal', lockedTitle: 'Journal is locked',
+  },
+  dream: {
+    route: 'Dreams', hub: 'health', icon: 'cloudy-night-outline', settingsTitle: 'Dream settings', shareTitle: 'Share your dreams',
+    randomLabel: 'Read a random dream page', writeLabel: 'Write down a dream', emptyAction: 'Write down a dream',
+    searchLabel: 'Search your dreams', lockedTitle: 'Dreams are locked',
+  },
+  note: {
+    route: 'Notes', hub: 'organize', icon: 'document-text-outline', settingsTitle: 'Notes settings', shareTitle: 'Share your notes',
+    randomLabel: 'Read a random notes page', writeLabel: 'Write a note', emptyAction: 'Write a note',
+    searchLabel: 'Search your notes', lockedTitle: 'Notes are locked',
+  },
+};
+
 /**
- * The journal, or the dream log: one screen over `useJournalStore`, split by
+ * The journal, the dream log, or notes: one screen over `useJournalStore`, split by
  * `kind` — see `docs/arch/journal.md`.
  *
  * Read as a diary: days newest first, each day one page, its entries (the
@@ -116,8 +146,9 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const copy = JOURNAL_KIND_COPY[kind];
-  const route = kind === 'dream' ? 'Dreams' : 'Journal';
-  const screenSettings = useScreenSettings(route, kind === 'dream' ? 'Dream settings' : 'Journal settings');
+  const ui = KIND_UI[kind];
+  const route = ui.route;
+  const screenSettings = useScreenSettings(route, ui.settingsTitle);
 
   const all = useJournalStore(s => s.entries);
   const openNow = useJournalStore(s => s.openNow);
@@ -247,7 +278,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
   };
 
   const [sharing, setSharing] = useState(false);
-  const shareTitle = kind === 'dream' ? 'Share your dreams' : 'Share your journal';
+  const shareTitle = ui.shareTitle;
 
   /**
    * Hand this kind's entries to the share sheet as Markdown or CSV, the
@@ -321,7 +352,7 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
           }, {
             icon: 'shuffle' as const,
             onPress: () => { haptics.tap(); showRandomDay(); },
-            accessibilityLabel: kind === 'dream' ? 'Read a random dream page' : 'Read a random journal page',
+            accessibilityLabel: ui.randomLabel,
           }] : []),
           ...(kind === 'journal' ? [{
             icon: 'target' as const,
@@ -332,13 +363,13 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
           {
             icon: 'add-circle-outline' as const,
             onPress: openNew,
-            accessibilityLabel: kind === 'dream' ? 'Write down a dream' : 'Write in your journal',
+            accessibilityLabel: ui.writeLabel,
           },
         ], screenSettings.action)}
       />
       <ScreenSettingsSheet {...screenSettings.sheet} />
       <JournalWordGoalSheet visible={goalOpen} onClose={() => setGoalOpen(false)} />
-      <HubPills hub="health" active={route} />
+      <HubPills hub={ui.hub} active={route} />
     </>
   );
 
@@ -375,10 +406,10 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {header}
         <EmptyState
-          icon={kind === 'dream' ? 'cloudy-night-outline' : 'book-outline'}
+          icon={ui.icon}
           title={copy.emptyTitle}
           subtitle={copy.emptySubtitle}
-          actionLabel={kind === 'dream' ? 'Write down a dream' : 'Write an entry'}
+          actionLabel={ui.emptyAction}
           onAction={openNew}
           bottomOffset={tabBarHeight}
         />
@@ -392,8 +423,8 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
       {header}
       <SearchField
         field={search}
-        placeholder={kind === 'dream' ? 'Search your dreams' : 'Search your journal'}
-        accessibilityLabel={kind === 'dream' ? 'Search your dreams' : 'Search your journal'}
+        placeholder={ui.searchLabel}
+        accessibilityLabel={ui.searchLabel}
         style={styles.search}
       />
       {tagFilter && (
@@ -544,7 +575,7 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const copy = JOURNAL_KIND_COPY[kind];
-  const route = kind === 'dream' ? 'Dreams' : 'Journal';
+  const route = KIND_UI[kind].route;
 
   // Asks as soon as the screen is shown, as the app lock does. A cancel leaves
   // the button below for another go.
@@ -556,10 +587,10 @@ function JournalLogScreen({ kind }: { kind: JournalKind }) {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title={copy.title} />
-      <HubPills hub="health" active={route} />
+      <HubPills hub={KIND_UI[kind].hub} active={route} />
       <EmptyState
         icon="lock-closed-outline"
-        title={kind === 'dream' ? 'Dreams are locked' : 'Journal is locked'}
+        title={KIND_UI[kind].lockedTitle}
         subtitle="Unlock with Face ID to read and write here."
         actionLabel="Unlock"
         onAction={() => { unlock(); }}
@@ -575,6 +606,10 @@ export function JournalScreen() {
 
 export function DreamsScreen() {
   return <JournalLogScreen kind="dream" />;
+}
+
+export function NotesScreen() {
+  return <JournalLogScreen kind="note" />;
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({

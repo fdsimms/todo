@@ -539,14 +539,15 @@ export function moodUrlWantsLog(url: string): boolean {
 
 // `dundundun://journal[?log=1]` and `dundundun://dreams[?log=1]` — what the
 // journal and dream reminders carry, the mood link's shape for each kind.
-const JOURNAL_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?(journal|dreams)\\/?(?:\\?(.*))?$`, 'i');
+const JOURNAL_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?(journal|dreams|notes)\\/?(?:\\?(.*))?$`, 'i');
 
 /** Which journal kind a link opens, or null for any other link. */
 export function journalUrlKind(url: string): JournalKind | null {
   if (typeof url !== 'string') return null;
   const match = JOURNAL_RE.exec(url.trim());
   if (!match) return null;
-  return match[1].toLowerCase() === 'dreams' ? 'dream' : 'journal';
+  const word = match[1].toLowerCase();
+  return word === 'dreams' ? 'dream' : word === 'notes' ? 'note' : 'journal';
 }
 
 /** Does a journal or dreams link ask for the writing sheet on arrival? */

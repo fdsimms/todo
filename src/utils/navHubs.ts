@@ -52,6 +52,7 @@ export interface NavContentCounts {
   foodLog?: number;
   journal?: number;
   dreams?: number;
+  notes?: number;
   /** Workouts, custom exercises, routines and programs: the Workouts screen's content. */
   workouts?: number;
 }
@@ -147,6 +148,7 @@ const ORGANIZE_HUB: NavHub = {
     { route: 'People', label: 'People', icon: 'people-outline', keywords: ['contacts', 'birthdays', 'friends', 'family'] },
     { route: 'Stacks', label: 'Stacks', icon: 'layers-outline', keywords: ['groups', 'routines', 'bundles'] },
     { route: 'Templates', label: 'Templates', icon: 'copy-outline', keywords: ['presets', 'checklists', 'reusable'] },
+    { route: 'Notes', label: 'Notes', icon: 'document-text-outline', keywords: ['lyrics', 'song', 'ideas', 'snippets', 'jot', 'write', 'writing'] },
   ],
 };
 
