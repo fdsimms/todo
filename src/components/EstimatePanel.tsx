@@ -350,6 +350,8 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
    */
   const amountWeighIn = useWeighIn('plate');
   const stagedWeighIn = useWeighIn('plate');
+  /** Cookware for a weight typed into the description itself ("White rice 744g"); see `typedWeight`. */
+  const descriptionWeighIn = useWeighIn('plate');
   /**
    * What has been eaten lately, taken once when the sheet opens.
    *
@@ -1041,6 +1043,36 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   const offersFirst = hasOffers && !estimate;
 
   /**
+   * The one gram weight typed into the description, or null when there is none
+   * or more than one. With two ("31 g baguette, 25g peach jam") there is no
+   * telling which food the pot was under, so no cookware is offered and each
+   * is read as typed.
+   *
+   * **A pick rewrites the figure in the field rather than being applied
+   * silently**: "Use 744 g" puts the net weight where the reading was, so the
+   * recall rows, the estimate and the queue all read the same words the person
+   * can see, and a reading at or under the cookware can't be logged by accident.
+   */
+  const typedWeight = useMemo(() => {
+    const found = [...description.matchAll(/(\d+(?:\.\d+)?)\s*(?:g|grams?)\b/gi)];
+    return found.length === 1 ? { text: found[0][0], grams: found[0][1], at: found[0].index ?? 0 } : null;
+  }, [description]);
+  const hasTypedWeight = typedWeight !== null;
+  useEffect(() => {
+    if (!hasTypedWeight) descriptionWeighIn.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasTypedWeight]);
+  const typedNet = typedWeight && descriptionWeighIn.picked.length > 0 ? descriptionWeighIn.convert(typedWeight.grams) : null;
+  const applyTypedNet = () => {
+    if (!typedWeight || !typedNet?.ok) return;
+    haptics.tap();
+    onDescriptionChange(
+      `${description.slice(0, typedWeight.at)}${typedNet.grams} g${description.slice(typedWeight.at + typedWeight.text.length)}`,
+    );
+    descriptionWeighIn.clear();
+  };
+
+  /**
    * The open card's amount step, in whichever question `askFor` says the row
    * is asked: a weight, a count in the estimate's own unit, a multiple of the
    * whole, or none at all.
@@ -1314,6 +1346,20 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
           <Ionicons name="close" size={iconSize.sm} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
+
+      {typedWeight && !loading && (
+        <View style={styles.descriptionWeighIn}>
+          <CookwareWeighIn weighIn={descriptionWeighIn} scaleText={typedWeight.grams} surface="page" noun="plate" />
+          {typedNet?.ok && (
+            <InlineAction
+              label={`Use ${typedNet.grams} g`}
+              onPress={applyTypedNet}
+              style={styles.descriptionWeighInApply}
+              accessibilityLabel={`Replace ${typedWeight.text} with ${typedNet.grams} g in what you typed`}
+            />
+          )}
+        </View>
+      )}
 
           {hasOffers && !estimate && (
             <>
@@ -1704,6 +1750,8 @@ function makeStyles(colors: Colors) {
     quantity: { color: colors.textSecondary, fontSize: font.sm, flexShrink: 1 },
     amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm },
     amountWeighIn: { marginTop: spacing.sm },
+    descriptionWeighIn: { marginBottom: spacing.md },
+    descriptionWeighInApply: { alignSelf: 'flex-start', marginTop: spacing.sm },
     amountInput: {
       flex: 1,
       backgroundColor: colors.bgSecondary,
