@@ -36,3 +36,39 @@ export function forgiveVacationStreaks(
 ): Task[] {
   return tasks.filter(t => isVacationProtectedStreak(t, hiddenForVacation)).map(t => ({ ...t, streakDate: todayStartIso }));
 }
+
+/** A local date's `YYYY-MM-DD`, here rather than imported so this module stays clear of the stores. */
+function localKey(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * The rows forgiving a project's pause writes: each open repeating task in a
+ * project whose pause has ended, with a streak to lose, gets its streak dated
+ * to the day before the pause lifted. `endedOn` maps a project id to the day
+ * key its pause ended on (`pausedUntil`, or today for one ended early).
+ *
+ * Vacation's rule, for a project's pause: a paused daily habit read as broken
+ * the morning the pause lifted, since nothing it held had been done. Dated to
+ * the day before the pause ended rather than to today, so the pause's gap is
+ * forgiven and nothing after it is: a habit left undone for a week after the
+ * pause still lapses, however late this runs. That also makes it safe to run on
+ * every pass: a forgiven row already sits on that day, and a row completed
+ * since sits later. Like vacation's, it can revive a streak that had already
+ * lapsed before the pause began, since nothing records when a pause started.
+ */
+export function forgivePausedProjectStreaks(tasks: readonly Task[], endedOn: ReadonlyMap<string, string>): Task[] {
+  const out: Task[] = [];
+  for (const t of tasks) {
+    if (!t.projectId || t.completed || t.recurrenceType === 'none' || t.streakCount <= 0 || !t.streakDate) continue;
+    const end = endedOn.get(t.projectId);
+    if (!end) continue;
+    const [y, m, d] = end.split('-').map(Number);
+    const dayBefore = new Date(y, m - 1, d - 1, 12);
+    if (localKey(new Date(t.streakDate)) >= localKey(dayBefore)) continue;
+    out.push({ ...t, streakDate: dayBefore.toISOString() });
+  }
+  return out;
+}
+

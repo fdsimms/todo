@@ -23,6 +23,9 @@ import { getLogicalToday } from '../utils/dateUtils';
 import { DOSE_UNITS, formatDose, medicationKey, medicationVocabulary } from '../utils/medicationLog';
 import { confirmWithinLimit, recordDose, syncOkAgainNotification, unrecordDose } from '../utils/doseRecording';
 import { TextField } from './TextField';
+import { defaultWaitMinutes } from '../utils/checkIns';
+import { CheckInFields } from './CheckInFields';
+import { allowCheckInNotification, startCheckIn } from '../utils/checkInRecording';
 import { InlineAction } from './InlineAction';
 import { TaskEditor } from './TaskEditor';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
@@ -104,6 +107,9 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
   const [note, setNote] = useState('');
   const [day, setDay] = useState<Date>(() => noonOfToday());
   const [agoMinutes, setAgoMinutes] = useState(0);
+  const [checkIn, setCheckIn] = useState(false);
+  const [checkInMinutes, setCheckInMinutes] = useState<number | null>(null);
+  const [checkInAbout, setCheckInAbout] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [drafted, setDrafted] = useState<string[]>([]);
   const [taskEditorOpen, setTaskEditorOpen] = useState(false);
@@ -127,6 +133,9 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
     setNote(log?.note ?? '');
     setDay(noonOfToday());
     setAgoMinutes(0);
+    setCheckIn(false);
+    setCheckInMinutes(null);
+    setCheckInAbout('');
     setShowDatePicker(false);
     setDrafted([]);
     setTaskEditorOpen(false);
@@ -218,7 +227,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
         ? day
         : agoMinutes > 0 ? new Date(Date.now() - agoMinutes * 60_000) : undefined;
       if (!backdated && !(await confirmWithinLimit(trimmed, at ?? new Date(), { amount: usableAmount, unit }))) return;
-      recordDose({
+      const recorded = recordDose({
         name: trimmed,
         amount: usableAmount,
         unit,
@@ -226,6 +235,21 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
         note,
         at,
       });
+      // The wait runs from when it was taken, so "30 minutes ago" counts.
+      if (recorded && checkIn && !backdated) {
+        // Refused permission still records the dose; the alert says why no check-in will arrive.
+        if (await allowCheckInNotification()) {
+          startCheckIn({
+            sourceKind: 'medication',
+            sourceId: recorded.id,
+            subject: trimmed,
+            about: checkInAbout,
+            minutes: checkInMinutes ?? defaultWaitMinutes('medication', trimmed),
+            from: at ?? new Date(),
+            dayKey: recorded.dayKey,
+          });
+        }
+      }
     }
     haptics.success();
     onClose();
@@ -430,6 +454,19 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
             </View>
           )}
         </View>
+      )}
+
+      {!log && !backdated && (
+        <CheckInFields
+          kind="medication"
+          subject={name}
+          enabled={checkIn}
+          onEnabledChange={setCheckIn}
+          minutes={checkInMinutes}
+          onMinutesChange={setCheckInMinutes}
+          about={checkInAbout}
+          onAboutChange={setCheckInAbout}
+        />
       )}
 
       <View style={styles.card}>

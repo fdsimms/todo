@@ -865,17 +865,22 @@ export interface RecipeStepTimer extends TimerClock {
    */
   stepExcerpt?: string;
   /**
-   * Set when the step said "every 30 minutes": the timer then rings every
-   * `durationSeconds` until it is dismissed, and this is how many rings the
+   * Set when the step said "every 30 minutes": the timer then rings after
+   * each `durationSeconds` and waits for the cook to start the next round, and this is how many rounds the
    * recipe expects ("add 1 cup of water every 30 minutes for 2½ hours" is 5).
    * It is a target for the count to be read against and never a stop: a pot
-   * that needs one more cycle gets a sixth ring and reads "6 of 5". The count
-   * itself is derived from the clock (`stepTimerRings`), never stored.
+   * that needs one more cycle gets a sixth ring and reads "6 of 5".
    *
    * Absent for a timer that rings once, which is every timer stored before
    * this existed.
    */
   repeatTarget?: number;
+  /**
+   * Which round of a repeating timer is running, from 2 up (absent means the
+   * first). Each round is a plain countdown that waits at zero until the cook
+   * starts the next, so this is stored rather than counted off the clock.
+   */
+  round?: number;
 }
 
 /**

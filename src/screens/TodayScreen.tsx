@@ -945,7 +945,6 @@ export function TodayScreen() {
   const updateTask = useTaskStore(s => s.updateTask);
   const clearAllPins = useTaskStore(s => s.clearAllPins);
   const reorderPinnedTasks = useTaskStore(s => s.reorderPinnedTasks);
-  const reorderTasks = useTaskStore(s => s.reorderTasks);
   const reorderWithCategoryUpdates = useTaskStore(s => s.reorderWithCategoryUpdates);
   const categories = useCategoryStore(useShallow(s => s.categories));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
@@ -1798,6 +1797,8 @@ export function TodayScreen() {
           // mounted, so the morning check-in has to be asked for here.
           judgeMorningCheckInRef.current();
           useTaskStore.getState().checkVacationExpiry();
+          // A project's pause that ran out overnight, the same way.
+          useTaskStore.getState().forgivePausedProjectStreaks();
           // Straight after the expiry, the order maintenancePasses uses and for
           // its reason: opening the app on the morning you fly is the moment
           // this is for, and a trip ending as another starts must resolve in
@@ -3612,7 +3613,7 @@ export function TodayScreen() {
   /**
    * Later's counterpart to placeCreatedTask — splice the new row into the
    * flattened day/segment list at the drop point and hand the whole thing to
-   * reorderTasks, the same commit a finished row drag runs (see the
+   * reorderListedTasks, the same commit a finished row drag runs (see the
    * ReorderableList's own onReorder just below).
    */
   const placeCreatedLaterTask = (task: Task, intent: Extract<FabDropIntent, { kind: 'insert' }>) => {
@@ -3630,24 +3631,20 @@ export function TodayScreen() {
   };
 
   /**
-   * Persists an order for the rows a list shows. With the type filter off that
-   * is the whole lens, so it is the plain renumber. With it on, the rows are a
-   * slice of the lens, and numbering them from 1 would collide with the hidden
-   * ones and shuffle them: they are laid into the slots the shown rows already
-   * hold instead (`slotUpdates`), so everything hidden keeps its place.
+   * Persists an order for the rows a list shows, laid into the slots those rows
+   * already hold (`slotUpdates`) so everything not shown keeps its place. Even
+   * the whole lens is a slice: `Task.sortOrder` is one space shared with Today
+   * and every project's page, and renumbering Later from 1 gave a deferred
+   * project step a low number, moving it to the top of its project.
    */
   const reorderListedTasks = (orderedIds: string[]) => {
-    if (filterTypes.length === 0) {
-      reorderTasks(orderedIds);
-      return;
-    }
     const listed = new Set(orderedIds);
     const updates = slotUpdates(allTasks.filter(t => listed.has(t.id)), orderedIds);
     if (updates.length > 0) reorderWithCategoryUpdates(updates, []);
   };
 
   /** Shared by Inbox and Unscheduled: splice the new task's id into a flat id
-   * order and hand it to reorderTasks — no categories, no stacks, nothing
+   * order and hand it to reorderListedTasks — no categories, no stacks, nothing
    * resolveDrop's machinery is for. */
   const placeCreatedInFlatOrder = (ids: string[], anchorId: string, taskId: string, before: boolean) => {
     const anchor = ids.indexOf(anchorId);

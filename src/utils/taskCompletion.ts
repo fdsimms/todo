@@ -45,6 +45,7 @@ import {
   getDeadlineFromOffset,
   getDeadlineFromMonthDay,
   getReminderOffsetDate,
+  getTaskDayStart,
 } from './dateUtils';
 import { carryClockTime } from './clockTime';
 import { inheritedOccurrence } from './rotation';
@@ -65,6 +66,7 @@ import { chainStepDatedByAnswer, cleanDeliverableReasoning, deliverableDate, typ
 import { parseMealSlotSource, mealSlotStepTimeSegments } from './mealSlotTasks';
 import { derivedId, spawnSeed } from './syncIds';
 import { advanceQuotaRamp } from './quotaRamp';
+import { derivedTargetCount } from './taskUpdate';
 import { newTaskFromDraft, buildSeriesRow } from './taskDraft';
 import { describeMission, hasMission, normalizeMission } from './missions';
 
@@ -681,6 +683,13 @@ export function buildCompletion(
         // 10:30 is a statement about this morning, not about the schedule
         // (see Task.quotaStartedAt), so it rides no successor.
         quotaStartedAt: null,
+        // ...and an every-N-minutes target counts its own day's run. Carried,
+        // the count kept whatever the last day held: a run started late
+        // shrank it for good, and a window that follows the sun kept June's
+        // count into December.
+        ...(effective.quotaIntervalMinutes != null && effectiveDue
+          ? { targetCount: derivedTargetCount({ ...effective, quotaStartedAt: null }, getTaskDayStart(effectiveDue, dayResetTime)) }
+          : {}),
         // The question carries via ...effective, the answer doesn't: this
         // occurrence hasn't been decided yet. Same split actualMinutes makes,
         // and it's what turns a recurring decision task's Logbook into the

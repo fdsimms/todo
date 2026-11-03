@@ -244,7 +244,7 @@ export function WhenPicker({
   const calendarWindowEnd = useCalendarStore(s => s.windowEnd);
 
   // ==== local state (month, time of day, typed date, pending pick) ====
-  const [displayMonth, setDisplayMonth] = useState(() => new Date());
+  const [displayMonth, setDisplayMonth] = useState(() => getLogicalToday(dayResetTime));
   const [segments, setSegments] = useState<TimeOfDay[]>([]);
   const [nlText, setNlText] = useState('');
   // Day currently being confirmed — drives the brief "you picked it" feedback.
@@ -304,7 +304,9 @@ export function WhenPicker({
       // on a month whose every cell is refused and whose back chevron is off.
       // Both bounds, floor first: a value outside either end must not open on a
       // month whose every cell is refused.
-      setDisplayMonth(clampMonthToLatest(clampMonthToEarliest(value ?? new Date(), earliestDay), latestDay));
+      // The logical today when there's no value: on the 1st, before
+      // dayResetTime, the calendar's month doesn't hold the day being lived.
+      setDisplayMonth(clampMonthToLatest(clampMonthToEarliest(value ?? getLogicalToday(dayResetTime), earliestDay), latestDay));
       setSegments(initialSegments ?? []);
       setNlText('');
       setPendingKey(null);

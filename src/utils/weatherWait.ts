@@ -53,22 +53,29 @@ export type WeatherWaitDecision =
  *   so it is looked at again on every refresh and never surfaces by accident.
  *   An empty forecast decides nothing, since a task held on no information
  *   would just vanish.
+ * - A `withheld` task (vacation, a paused project) is never released: nobody
+ *   can see it, so a matching day can't be spent on it. Its hold is moved to
+ *   the next match after today instead, so it comes back only on a day that
+ *   matches. Released as usual, the wait was used up while it was hidden and
+ *   the task came back whatever the weather.
  */
 export function decideWeatherWait(
   task: Pick<Task, 'weatherWait' | 'dueDate' | 'deferUntil' | 'completed' | 'archived'> &
     Parameters<typeof canWaitForWeather>[0],
   forecast: readonly ForecastDay[],
   todayKey: string,
+  opts: { withheld?: boolean } = {},
 ): WeatherWaitDecision {
   if (!task.weatherWait || task.completed || task.archived) return { kind: 'none' };
   if (!canWaitForWeather(task)) return { kind: 'none' };
 
-  if (task.deferUntil && dayKeyOf(new Date(task.deferUntil)) <= todayKey) return { kind: 'release' };
+  if (!opts.withheld && task.deferUntil && dayKeyOf(new Date(task.deferUntil)) <= todayKey) return { kind: 'release' };
 
   if (forecast.length === 0) return { kind: 'none' };
 
   const dueKey = task.dueDate ? dayKeyOf(new Date(task.dueDate)) : null;
-  const startKey = dueKey && dueKey > todayKey ? dueKey : todayKey;
+  const floorKey = opts.withheld ? dayKeyOf(addDays(dayKeyToDate(todayKey), 1)) : todayKey;
+  const startKey = dueKey && dueKey > floorKey ? dueKey : floorKey;
   const match = forecast
     .filter(day => day.dayKey >= startKey)
     .find(day => dayMatchesCondition(day, task.weatherWait!));

@@ -22,6 +22,7 @@ import {
   type DeloadBlocker,
 } from './taskMoves';
 import { estimatedMinutesFor, formatDuration } from './effort';
+import { isHeldBack, isWithheld } from './visibilityUtils';
 
 /**
  * "What lands before I go" — one read over a range instead of a day.
@@ -331,6 +332,11 @@ export function carriedOverTasks(
   return tasks
     .filter(task => {
       if (!isCountable(task) || !task.dueDate) return false;
+      // Behind means behind on something that can be done now, as the daily
+      // agenda and the widget count it: a task withheld (vacation, a paused
+      // project) or waiting on something isn't late, and listing it offered to
+      // push it and counted it as overdue.
+      if (isWithheld(task) || isHeldBack(task)) return false;
       return getTaskDayStart(new Date(placedOf(task)), dayResetTime) < start;
     })
     .sort((a, b) => new Date(placedOf(a)).getTime() - new Date(placedOf(b)).getTime());

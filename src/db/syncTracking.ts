@@ -120,6 +120,9 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // number looks wrong. A dose is written once and edited rarely, so
   // last-writer-wins is a no-op on almost every row.
   { name: 'medication_logs', key: ['id'] },
+  // A follow-up answer ("better", "same", "worse") after a dose or a food.
+  // Written once and answered once, so last-writer-wins loses nothing.
+  { name: 'check_ins', key: ['id'] },
   // The coin ledger and the rewards it buys (src/utils/rewards.ts). The
   // ledger is why the balance is derived rather than stored: a stored number
   // under last-writer-wins drops one device's coins, while one row per event
@@ -926,7 +929,7 @@ export interface ServerSharing {
  * a peer on an older build that still sends them does no harm.
  */
 export const HEALTH_SYNC_TABLES: readonly string[] = [
-  'mood_logs', 'milestones', 'medication_logs', 'food_logs', 'workout_sessions', 'workout_sets',
+  'mood_logs', 'milestones', 'medication_logs', 'check_ins', 'food_logs', 'workout_sessions', 'workout_sets',
   // A fast is a record of what a body did, beside the food log it is read with.
   'fasts',
 ];

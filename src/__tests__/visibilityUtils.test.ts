@@ -448,6 +448,29 @@ describe('isUpcomingToday', () => {
     expect(isUpcomingToday({ ...baseTask, timeSegments: ['morning'] })).toBe(false);
   });
 
+  // Later Today is for a task only the clock is holding back. One that won't
+  // come back at its segment either was listed there all morning, then dropped.
+  it('leaves out a task its segment will not bring back', () => {
+    const evening = { ...baseTask, timeSegments: ['evening'] as Task['timeSegments'] };
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: '2025-06-20', archived: false, completed: false }]);
+    try {
+      expect(isUpcomingToday({ ...evening, projectId: 'garden', dueDate: NOW.toISOString() })).toBe(false);
+    } finally {
+      registerPausedProjectSource(null);
+    }
+    const blocker = { ...baseTask, id: 'blocker' };
+    registerTaskSource(() => [blocker]);
+    try {
+      expect(isUpcomingToday({ ...evening, id: 'waiter', blockedById: 'blocker' })).toBe(false);
+    } finally {
+      registerTaskSource(null);
+    }
+    expect(isUpcomingToday({ ...evening, projectId: 'garden', dueDate: null })).toBe(false);
+    expect(isUpcomingToday({ ...evening, polarity: 'negative' })).toBe(false);
+    // An unpaused project's dated task is still upcoming.
+    expect(isUpcomingToday({ ...evening, projectId: 'garden', dueDate: NOW.toISOString() })).toBe(true);
+  });
+
   it('does not treat an already-started segment as upcoming during the early-morning grace window', () => {
     // dayResetTime and morningStart both 04:00 (setDayResetTime keeps them in
     // sync). At 1:49 AM the wall clock hasn't reached 4 AM yet, so we're
@@ -517,6 +540,25 @@ describe('isTaskWindowActive', () => {
 
   it('is false for a completed task', () => {
     expect(isTaskWindowActive({ ...baseTask, completed: true, windowStart: '08:00', windowEnd: '13:00' })).toBe(false);
+  });
+
+  // "Act now" on a task nobody can act on: a paused project's, or one waiting
+  // on another task.
+  it('is false for a task in a paused project or waiting on another', () => {
+    const open = { ...baseTask, windowStart: '08:00', windowEnd: '13:00' };
+    registerPausedProjectSource(() => [{ id: 'garden', pausedUntil: '2999-01-01', archived: false, completed: false }]);
+    try {
+      expect(isTaskWindowActive({ ...open, projectId: 'garden' })).toBe(false);
+    } finally {
+      registerPausedProjectSource(null);
+    }
+    registerTaskSource(() => [{ ...baseTask, id: 'blocker' }]);
+    try {
+      expect(isTaskWindowActive({ ...open, id: 'waiter', blockedById: 'blocker' })).toBe(false);
+    } finally {
+      registerTaskSource(null);
+    }
+    expect(isTaskWindowActive(open)).toBe(true);
   });
 });
 

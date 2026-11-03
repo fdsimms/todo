@@ -34,7 +34,8 @@ import { LazySheet } from './LazySheet';
  */
 export function useSuggestionCount(): number {
   const requests = useAgentSuggestionStore(s => s.requests);
-  return useMemo(() => liveSuggestions(requests, new Date()).length, [requests]);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  return useMemo(() => liveSuggestions(requests, new Date(), dayResetTime).length, [requests, dayResetTime]);
 }
 
 /** How long a card that was just accepted stays as a line saying so, before it leaves. */
@@ -64,7 +65,8 @@ export function AgentSuggestionCards() {
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
-  const live = useMemo(() => liveSuggestions(requests, new Date()), [requests]);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const live = useMemo(() => liveSuggestions(requests, new Date(), dayResetTime), [requests, dayResetTime]);
   const cards = useMemo(() => {
     const byId = new Map(tasks.map(t => [t.id, t]));
     const alarmKitAvailable = isAlarmKitAvailable();

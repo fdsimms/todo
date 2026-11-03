@@ -608,6 +608,11 @@ one. Those three rules and the reasoning behind them are in
       `weatherWait` rather than re-deciding, because a forecast that turns on the day itself must
       not push a task back off Today. A forecast with no match holds the task to the day after the
       forecast ends and looks again on every refresh; the row chip says so (`weatherWaitChipText`).
+    - **A withheld task's matched day isn't spent.** While vacation or a paused project hides it
+      (`isWithheld`), nobody can use the day, so the pass never releases it and moves the hold to
+      the next match after today instead. Released as usual, the wait was used up while it was
+      hidden and the task came back after the pause whatever the weather. The pass's writes skip
+      the postpone count: the forecast moving a hold is not the person putting the task off.
     - **One-offs only** (`canWaitForWeather`): a repeat, a chain step or a series member has a
       schedule of its own, and the editor does not offer the row for them. A task's own Date is a
       floor: the search starts from it.

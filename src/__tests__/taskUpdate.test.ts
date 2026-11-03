@@ -4,14 +4,16 @@
  * around it is; these pin the extracted functions on their own, since the MCP
  * server calls them with no store around them at all.
  */
-import { comparePinned, mergeTaskUpdate, nextPinnedOrder, seriesFanOutRows, type TaskUpdateContext } from '../utils/taskUpdate';
+import { comparePinned, derivedTargetCount, mergeTaskUpdate, nextPinnedOrder, seriesFanOutRows, type TaskUpdateContext } from '../utils/taskUpdate';
 import { newTaskFromDraft } from '../utils/taskDraft';
 import type { Task, TaskDraft } from '../types';
 
+const mockSettings = {
+  dayResetTime: '00:00', vacationMode: false, newTaskDefaults: {}, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+  sunLocation: null as { latitude: number; longitude: number } | null,
+};
 jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: {
-    getState: () => ({ dayResetTime: '00:00', vacationMode: false, newTaskDefaults: {}, activeHoursStart: '08:00', activeHoursEnd: '22:00' }),
-  },
+  useSettingsStore: { getState: () => mockSettings },
 }));
 jest.mock('../store/useCategoryStore', () => ({
   useCategoryStore: { getState: jest.fn(() => ({ categories: [], getCategoryByName: jest.fn().mockReturnValue(null) })) },
@@ -25,6 +27,35 @@ const make = (draft: Partial<TaskDraft>): Task =>
   newTaskFromDraft({ title: 'Task', ...draft }, '2026-03-01T09:00:00.000Z', ++n, false, `t${n}`);
 
 const ctx: TaskUpdateContext = { scope: 'series', freshPinnedOrder: 7, dayResetTime: '00:00' };
+
+// An every-N-minutes target counts the run it spans. A bound that follows the
+// sun spans a different stretch each day, and the stored clock time is only
+// what the anchor came to the day it was set: read raw, a sunrise-to-sunset
+// target saved in June kept June's count into December.
+describe('the count of an every-N-minutes target over a window that follows the sun', () => {
+  const june = new Date(2026, 5, 21);
+  const december = new Date(2026, 11, 21);
+  // Solar time matched to this process's clock, so the day's length decides
+  // the count in any zone the suite runs in.
+  const longitude = ((-june.getTimezoneOffset() / 60) * 15 + 540) % 360 - 180;
+  const hourly = {
+    windowStart: '05:00', windowEnd: '21:00', quotaStartedAt: null, quotaIntervalMinutes: 60, targetCount: 16,
+  };
+  afterEach(() => { mockSettings.sunLocation = null; });
+
+  it('counts the day it is asked about, which a June count does not fit in December', () => {
+    mockSettings.sunLocation = { latitude: 52, longitude };
+    const sun = { ...hourly, windowStartSun: 'sunrise', windowEndSun: 'sunset' };
+    const inJune = derivedTargetCount(sun, june)!;
+    const inDecember = derivedTargetCount(sun, december)!;
+    expect(inJune).toBeGreaterThanOrEqual(15);
+    expect(inDecember).toBeLessThanOrEqual(9);
+  });
+
+  it('reads plain clock times the same every day', () => {
+    expect(derivedTargetCount(hourly, june)).toBe(derivedTargetCount(hourly, december));
+  });
+});
 
 describe('a deadline written as a bare day', () => {
   // Every reader parses Task.deadline with `new Date`, which reads a bare key

@@ -2079,11 +2079,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           setWindowStartSun(s.hit.anchor);
           setWindowStart(s.hit.clock);
           applyDefaultReminderLead(s.hit.clock);
-          applyDerivedTargetCount({ windowStart: s.hit.clock });
+          applyDerivedTargetCount({ windowStart: s.hit.clock, windowStartSun: s.hit.anchor });
         } else {
           setWindowEndSun(s.hit.anchor);
           setWindowEnd(s.hit.clock);
-          applyDerivedTargetCount({ windowEnd: s.hit.clock });
+          applyDerivedTargetCount({ windowEnd: s.hit.clock, windowEndSun: s.hit.anchor });
         }
         break;
       case 'rain':
@@ -2992,20 +2992,27 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // before a cadence took over, not what "every N minutes" actually implies.
   // `next` overrides the field that just changed; state for the others hasn't
   // committed yet at the point this is called.
+  // A bound that follows the sun is read for the editor's own day, so changing
+  // only the interval later counts the window as it falls that day rather
+  // than at the time the anchor came to when it was set.
   const applyDerivedTargetCount = (next: {
     quotaIntervalMinutes?: number | null;
     windowStart?: string | null;
     windowEnd?: string | null;
+    windowStartSun?: string | null;
+    windowEndSun?: string | null;
   }) => {
     const interval = next.quotaIntervalMinutes !== undefined ? next.quotaIntervalMinutes : quotaIntervalMinutes;
     if (interval === null) return;
     setTargetCount(derivedTargetCount({
       windowStart: next.windowStart !== undefined ? next.windowStart : windowStart,
       windowEnd: next.windowEnd !== undefined ? next.windowEnd : windowEnd,
+      windowStartSun: next.windowStartSun !== undefined ? next.windowStartSun : windowStartSun,
+      windowEndSun: next.windowEndSun !== undefined ? next.windowEndSun : windowEndSun,
       quotaStartedAt: task?.quotaStartedAt ?? null,
       quotaIntervalMinutes: interval,
       targetCount,
-    }));
+    }, windowDayStart()));
   };
 
   const commitWindowValue = (which: 'start' | 'end', date: Date) => {
@@ -3014,11 +3021,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setWindowStartSun(null);
       setWindowStart(hhmm);
       applyDefaultReminderLead(hhmm);
-      applyDerivedTargetCount({ windowStart: hhmm });
+      applyDerivedTargetCount({ windowStart: hhmm, windowStartSun: null });
     } else {
       setWindowEndSun(null);
       setWindowEnd(hhmm);
-      applyDerivedTargetCount({ windowEnd: hhmm });
+      applyDerivedTargetCount({ windowEnd: hhmm, windowEndSun: null });
     }
   };
 
@@ -3048,11 +3055,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setWindowStartSun(text);
       setWindowStart(hhmm);
       applyDefaultReminderLead(hhmm);
-      applyDerivedTargetCount({ windowStart: hhmm });
+      applyDerivedTargetCount({ windowStart: hhmm, windowStartSun: text });
     } else {
       setWindowEndSun(text);
       setWindowEnd(hhmm);
-      applyDerivedTargetCount({ windowEnd: hhmm });
+      applyDerivedTargetCount({ windowEnd: hhmm, windowEndSun: text });
     }
   };
 
@@ -3081,7 +3088,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     if (which === 'start') { setWindowStart(null); setWindowStartSun(null); }
     else { setWindowEnd(null); setWindowEndSun(null); }
     setWindowPickerMode('none');
-    applyDerivedTargetCount(which === 'start' ? { windowStart: null } : { windowEnd: null });
+    applyDerivedTargetCount(which === 'start' ? { windowStart: null, windowStartSun: null } : { windowEnd: null, windowEndSun: null });
   };
 
   /** Moves the open sun bound to before / at / after its event, keeping the minutes. */
@@ -5139,7 +5146,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                             expanded={showPaceWindow}
                             onPress={() => { animateLayout(); setShowPaceWindow(v => !v); }}
                             onClear={(windowStart || windowEnd)
-                              ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
+                              ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null, windowStartSun: null, windowEndSun: null }); }
                               : undefined}
                           />
                           {showPaceWindow && renderWindowControls({
@@ -6389,7 +6396,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               expanded={showTimeWindow}
               onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
               onClear={(windowStart || windowEnd)
-                ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
+                ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null, windowStartSun: null, windowEndSun: null }); }
                 : undefined}
             />
             {showTimeWindow && renderWindowControls()}

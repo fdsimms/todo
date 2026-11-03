@@ -1,5 +1,6 @@
 import type { CalendarRequest } from '../../src/types';
 import type { CalendarRequestInput, Replica } from './replica';
+import { requestEventIsOver } from '../../src/utils/calendarRequests';
 
 /**
  * Asking the phone to put an event on the calendar. This server cannot reach a
@@ -54,9 +55,15 @@ function blankToNull(value: string | null | undefined): string | null {
  * The tool's input as the row it becomes. A bare date makes an all-day event
  * (with `end` as the last day, inclusive); a date and time makes a timed one
  * (with `end` defaulting to an hour later). Refuses anything already over,
- * since the phone would only refuse it later with less to say.
+ * since the phone would only refuse it later with less to say, by the phone's
+ * own rule (`requestEventIsOver`): an all-day event for the person's today is
+ * not over between midnight and their `dayResetTime`.
  */
-export function parseCalendarRequest(input: CalendarRequestToolInput, now = new Date()): CalendarRequestInput {
+export function parseCalendarRequest(
+  input: CalendarRequestToolInput,
+  now = new Date(),
+  dayResetTime?: string,
+): CalendarRequestInput {
   const title = input.title.trim();
   if (!title) throw new Error('An event needs a title.');
   if (title.length > MAX_TITLE) throw new Error(`Keep the title under ${MAX_TITLE} characters.`);
@@ -89,7 +96,9 @@ export function parseCalendarRequest(input: CalendarRequestToolInput, now = new 
       throw new Error('That event runs over a week. Check the end, or make it an all-day event.');
     }
   }
-  if (end <= now) throw new Error('That event is already over.');
+  if (requestEventIsOver({ allDay: !!firstDay, endAt: end.toISOString() }, now, dayResetTime)) {
+    throw new Error('That event is already over.');
+  }
 
   return {
     title,
@@ -192,7 +201,7 @@ const PENDING_NOTE =
 const noteFor = (r: CalendarRequest) => (r.status === 'proposed' ? PROPOSED_NOTE : PENDING_NOTE);
 
 export function requestCalendarEvent(replica: Replica, input: CalendarRequestToolInput) {
-  const request = replica.requestCalendarEvent(parseCalendarRequest(input));
+  const request = replica.requestCalendarEvent(parseCalendarRequest(input, new Date(), replica.settings().dayResetTime));
   return { request: serializeCalendarRequest(request), note: noteFor(request) };
 }
 
@@ -276,7 +285,11 @@ export function changeCalendarEvent(replica: Replica, input: CalendarChangeInput
     const length = new Date(target.endAt).getTime() - new Date(target.startAt).getTime();
     const start = fields.start ?? was.start;
     const end = fields.end ?? (fields.start !== undefined && !DAY.test(start) ? new Date(new Date(start).getTime() + length).toISOString() : fields.start !== undefined ? undefined : was.end);
-    const parsed = parseCalendarRequest({ title: fields.title ?? target.title, start, ...(end !== undefined ? { end } : {}) });
+    const parsed = parseCalendarRequest(
+      { title: fields.title ?? target.title, start, ...(end !== undefined ? { end } : {}) },
+      new Date(),
+      replica.settings().dayResetTime,
+    );
     startAt = parsed.startAt;
     endAt = parsed.endAt;
     allDay = parsed.allDay;

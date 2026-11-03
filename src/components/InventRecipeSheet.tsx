@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSheetOpening } from '../hooks/useSheetOpening';
 import {
   Keyboard,
   View,
@@ -80,19 +81,13 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
   const [creatingKey, setCreatingKey] = useState<string | null>(null);
   const [createErrors, setCreateErrors] = useState<Map<string, string>>(new Map());
   const hintsInputRef = useRef<TextInput>(null);
-  // Whether the sheet is still open, for a draft that comes back after it
-  // closed — see `createFromIdea`. The same guard RecipeExtractSheet keeps.
-  const visibleRef = useRef(visible);
-  useEffect(() => { visibleRef.current = visible; }, [visible]);
-  // Which opening of the sheet a request belongs to. Open alone couldn't tell
-  // a reply to a request made before a Cancel and a reopen from one made in
-  // this opening, so a cancelled draft still created its recipe and opened it.
-  const openingRef = useRef(0);
-  const stillOpenFor = (opening: number) => visibleRef.current && openingRef.current === opening;
+  // Which opening of the sheet a request belongs to, for an idea or a draft
+  // that comes back after a Cancel: a cancelled draft used to still create its
+  // recipe and open it. See `createFromIdea`.
+  const openings = useSheetOpening(visible);
 
   useEffect(() => {
     if (visible) return;
-    openingRef.current += 1;
     setHints('');
     setIdeas([]);
     setGenerating(false);
@@ -108,7 +103,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
   }, [visible]);
 
   const generate = useCallback(async () => {
-    const opening = openingRef.current;
+    const opening = openings.begin();
     setGenerating(true);
     setGenerateError(null);
     try {
@@ -118,7 +113,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
       // the reset on close already cleared the list, and a batch landing after
       // it was the next opening's first screen. Same guard createFromIdea
       // keeps for a draft.
-      if (!stillOpenFor(opening)) return;
+      if (!openings.isCurrent(opening)) return;
       // suggestMealIdeas only dedupes against the titles it was handed
       // (recently cooked); a dish already in the box under any other name
       // isn't "new" just because it wasn't cooked lately. Keyed the way the
@@ -127,13 +122,13 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
       const owned = new Set(recipes.map(r => r.nameKey));
       setIdeas(result.filter(i => !owned.has(recipeNameKey(i.title))));
     } catch (e) {
-      if (!stillOpenFor(opening)) return;
+      if (!openings.isCurrent(opening)) return;
       setIdeas([]);
       setGenerateError(describeAIError(e));
     } finally {
       // The reset on close already lowered it, and the next opening may have
       // a request of its own under way.
-      if (stillOpenFor(opening)) setGenerating(false);
+      if (openings.isCurrent(opening)) setGenerating(false);
     }
   }, [recipes, hints]);
 
@@ -157,7 +152,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
    * error, retried by tapping it again.
    */
   const createFromIdea = useCallback(async (idea: MealIdea) => {
-    const opening = openingRef.current;
+    const opening = openings.begin();
     haptics.tap();
     setCreatingKey(idea.id);
     setCreateErrors(prev => {
@@ -183,7 +178,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
       // Closed while the draft was being written (Cancel, or a swipe down):
       // nothing is saved and nothing is opened. Without this the recipe was
       // created and navigated into anyway, after the person had said no.
-      if (!stillOpenFor(opening)) return;
+      if (!openings.isCurrent(opening)) return;
       const draft = mealIdeaRecipeDraft(idea, drafted.ingredients, drafted);
       if (!draft.name) throw new Error('IDEA_NAME_EMPTY');
       // addRecipe refuses a name already filed under no book; land on the
@@ -217,7 +212,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
       onClose();
       onCreated(recipe.id);
     } catch (e) {
-      if (!stillOpenFor(opening)) return;
+      if (!openings.isCurrent(opening)) return;
       setCreatingKey(null);
       const message = e instanceof Error && e.message === 'IDEA_NAME_EMPTY'
         ? 'That idea has no usable name. Tap More ideas to try again.'

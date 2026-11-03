@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSheetOpening } from '../hooks/useSheetOpening';
 import {
   Keyboard,
   View,
@@ -124,18 +125,18 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
     setPendingOffline(null);
   }, []);
 
+  // `run` below awaits a network call that easily outlives a cancel — the
+  // sheet stays mounted (only its Modal hides), so nothing stops that promise
+  // once `onClose` fires. A late reply checks it still belongs to this opening:
+  // one landing after a Cancel and a reopen opened the event card with the old
+  // paste's events and closed the sheet holding the new one.
+  const openings = useSheetOpening(visible);
+
   // Reset on close rather than on open, so a sheet left mounted doesn't hand
   // the next open a stale photo — same rule ReceiptImportSheet's reset follows.
   useEffect(() => {
     if (!visible) reset();
   }, [visible, reset]);
-
-  // `run` below awaits a network call that easily outlives a cancel — the
-  // sheet stays mounted (only its Modal hides), so nothing stops that promise
-  // once `onClose` fires. Read inside the promise continuation, never as a
-  // dependency, so a cancel mid-request is seen without re-running `run`.
-  const visibleRef = useRef(visible);
-  useEffect(() => { visibleRef.current = visible; }, [visible]);
 
   const pick = useCallback(async (source: RecipePhotoSource) => {
     setPicking(true);
@@ -201,6 +202,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
       runOffline();
       return;
     }
+    const opening = openings.begin();
     setLoading(true);
     setError(null);
     setTriedEmpty(false);
@@ -208,17 +210,19 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
       const events = await extractCalendarEvents(mode === 'photo' ? photo! : text);
       // Canceled while the request was in flight: the sheet already told the
       // user its work was discarded, so a late success must not turn around
-      // and pop the task editor open behind its back — see `visibleRef`.
-      if (!visibleRef.current) return;
+      // and pop the task editor open behind its back — see `openings`.
+      if (!openings.isCurrent(opening)) return;
       if (events.length === 0) {
         setTriedEmpty(true);
         return;
       }
       await finish(events);
     } catch (e) {
-      if (visibleRef.current) setError(describeAIError(e));
+      if (openings.isCurrent(opening)) setError(describeAIError(e));
     } finally {
-      setLoading(false);
+      // The close already cleared it, and a later opening's own read may be
+      // the one loading now.
+      if (openings.isCurrent(opening)) setLoading(false);
     }
   }, [ready, aiAvailable, runOffline, mode, photo, text, finish]);
 

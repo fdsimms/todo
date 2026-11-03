@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useSheetOpening } from '../hooks/useSheetOpening';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { SheetHeader } from './SheetHeader';
@@ -94,6 +95,10 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
   // so these are rows on screen only until one is written.
   const [drafts, setDrafts] = useState<string[]>([]);
   const baseline = useRef('');
+  // Which opening a location read belongs to, a change of gym included. A fix
+  // outlives a Cancel, and one landing after another gym was opened put this
+  // gym's pin on that one.
+  const openings = useSheetOpening(visible, subject);
 
   useEffect(() => {
     if (!visible || !subject) return;
@@ -132,13 +137,17 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
   const useHere = async () => {
     haptics.tap();
     if (locating) return;
+    const opening = openings.begin();
     setLocating(true);
     try {
-      if (!(await requestLocationPermission())) {
+      const allowed = await requestLocationPermission();
+      if (!openings.isCurrent(opening)) return;
+      if (!allowed) {
         alertPermissionOff('Location is off', 'Allow Location for dundundun in Settings to find this gym when you start a workout.');
         return;
       }
       const fix = await getCurrentLocation({ accuracy: 'balanced' });
+      if (!openings.isCurrent(opening)) return;
       if (!fix) {
         Alert.alert('Couldn’t find your location', 'Try again in a moment, or search for the address instead.');
         return;

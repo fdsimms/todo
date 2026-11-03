@@ -95,7 +95,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/calendarMonth.ts` — DayMarkKind, MARK_KINDS, DayMark, DotState, DayDot, DayBucket, MAX_PROJECTION_STEPS, canProject, projectOccurrences, nthOccurrence, +7 more
 - `src/utils/calendarReadSummary.ts` — CalendarLineInput, calendarStatusLine, failedCalendarsLabel, todayFallback
 - `src/utils/calendarRequestDrain.ts` — drainCalendarRequests
-- `src/utils/calendarRequests.ts` — CALENDAR_REQUEST_RETENTION_DAYS, CALENDAR_REQUEST_PAST_REASON, CALENDAR_SUGGESTION_STALE_REASON, CALENDAR_REQUEST_REFUSED_REASON, isCalendarRequestWriter, CalendarRequestDrainPlan, planCalendarRequestDrain, suggestionIsStale, eventFieldsForRequest, CALENDAR_CHANGE_NO_EVENT_REASON, +2 more
+- `src/utils/calendarRequests.ts` — CALENDAR_REQUEST_RETENTION_DAYS, CALENDAR_REQUEST_PAST_REASON, CALENDAR_SUGGESTION_STALE_REASON, CALENDAR_REQUEST_REFUSED_REASON, isCalendarRequestWriter, CalendarRequestDrainPlan, planCalendarRequestDrain, requestEventIsOver, suggestionIsStale, eventFieldsForRequest, +3 more
 - `src/utils/calendarReviewTasks.ts` — CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview, calendarReviewEventsFor
 - `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, CalendarInfo, FetchEventsResult, fetchEvents, listWritableCalendars, +25 more
 - `src/utils/capitalize.ts` — capitalize
@@ -111,6 +111,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/categorySchedule.ts` — DAY_LABELS, FULL_DAY_NAMES, formatScheduleTime, formatScheduleDays, formatCategorySchedule
 - `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, ChainPreview, chainPreview, chainStepAdvancesInPlace, isChainFinish
 - `src/utils/chartZoom.ts` — ZoomRange, PinchStart, MIN_ZOOM_SPAN, clampRange, isZoomed, pinchRange
+- `src/utils/checkInRecording.ts` — StartCheckInInput, allowCheckInNotification, startCheckIn, cancelCheckInFor, answerCheckIn, askCheckIn
+- `src/utils/checkIns.ts` — CHECK_IN_ACTIONS, CHECK_IN_ANSWERS, answerLabel, answerForAction, CHECK_IN_WAIT_PRESETS, DEFAULT_FOOD_WAIT_MINUTES, DEFAULT_MEDICATION_WAIT_MINUTES, suggestedWaitMinutes, defaultWaitMinutes, formatWait, +5 more
 - `src/utils/chipUses.ts` — ChipUses, ChipUseKind, chipUseKey, bumpChipUses, rankByUse, parseChipUses, suggestExistingTags
 - `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, carryClockTime, overdueDayCount, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, dateToHHMM, +1 more
 - `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, subscribeToCloudKitChanges, addCloudKitChangeListener, cloudKitChangeHandled, cloudKitTransport
@@ -358,7 +360,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nicknames.ts` — nicknamesOf, primaryNickname
 - `src/utils/notificationTapRoute.ts` — NotificationTapData, NotificationTapRoute, routeNotificationTap
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
-- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, isRedundantInForeground, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, +42 more
+- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, isRedundantInForeground, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, CHECK_IN_CATEGORY, requestNotificationPermissions, NotificationPermission, +45 more
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — NudgeMode, NUDGE_MODES, nudgeModeOf, nudgeFieldsFor, FALLBACK_CADENCE_DAYS, NUDGE_MODE_LABEL, describeNudge, CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, +7 more
 - `src/utils/nutrientLog.ts` — isNutrientOnlyEntry, nutrientOnlyKey, nutrientOnlyEntryOf, NutrientHelping, nutrientHelping
@@ -428,7 +430,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/projectList.ts` — ProjectListFilter, ProjectProgress, ProjectCardCaption, DUE_SOON_DAYS, describeProjectDeadline, describeProjectEvent, projectCardCaption, projectProgressNote, projectNextStepTitle, overdueRoutines, +8 more
 - `src/utils/projectLock.ts` — LOCKED_PROJECTS_SETTING, parseLockedProjectIds, isProjectLockedAway, isTaskLockedAway, lockedAwayCount, withProjectLocked, registerLockedProjectSource, isProjectLockedAtAll
 - `src/utils/projectOrder.ts` — liveProjectSteps, slotUpdates
-- `src/utils/projectPause.ts` — PLANNING_PAUSE_KEY, isPlanning, isPausedOn, registerPausedProjectSource, isProjectPaused, projectPausedUntil
+- `src/utils/projectPause.ts` — PLANNING_PAUSE_KEY, isPlanning, isPausedOn, registerPausedProjectSource, isProjectPaused, projectPausedUntil, pauseEndsOn, pauseEndedByChange, registerPauseEndListener, notifyPauseEnded
 - `src/utils/projectPull.ts` — MAX_PULLED_PROJECTS, MAX_CANDIDATES_PER_PROJECT, NEAR_SCHEDULE_DAYS, StallMode, ProjectStall, PullDate, ProjectPullProposal, PullEmptyReason, PullEmptyState, ProjectPullPlan, +12 more
 - `src/utils/projectReviewTasks.ts` — MAX_PROJECT_REVIEW_TASKS, PROJECT_REVIEW_LINK_URL, projectReviewLinkUrl, projectReviewProjectId, projectReviewTitle, projectQuietDays, describeProjectQuiet, declinedToday, projectsReviewedToday, ProjectReviewWant, +2 more
 - `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems, orderWithInserted, filterProjectListItems, filterTasksByTitle, projectPageOrder, projectCopyText
@@ -581,7 +583,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/stats.ts` — OnTimeSummary, onTimeSummary
 - `src/utils/stepGoal.ts` — STEP_GOAL_MIN, STEP_GOAL_MAX, STEP_GOAL_STEP, STEP_GOAL_DEFAULT, clampStepGoal, parseStepGoal
 - `src/utils/stepIngredients.ts` — AnnotatableStep, StepIngredientLine, StepSegment, stepIngredientLines, annotateSteps, stepNamesIngredient
-- `src/utils/stepTimers.ts` — StepDuration, MIN_STEP_TIMER_SECONDS, MAX_STEP_TIMER_SECONDS, parseStepDurations, formatStepDuration, describeStepDuration, stepTimerElapsed, MAX_REPEAT_ROUNDS, DEFAULT_REPEAT_ROUNDS, REPEAT_RINGS_PAST_TARGET, +29 more
+- `src/utils/stepTimers.ts` — StepDuration, MIN_STEP_TIMER_SECONDS, MAX_STEP_TIMER_SECONDS, parseStepDurations, formatStepDuration, describeStepDuration, stepTimerElapsed, MAX_REPEAT_ROUNDS, DEFAULT_REPEAT_ROUNDS, MAX_REPEAT_ALARMS, +28 more
 - `src/utils/stepper.ts` — StepRange, clampCount, typedStepperValue, parseStepperInput, stepCount, canStep, holdRepeatDelay
 - `src/utils/storageReport.ts` — StorageTable, StorageStats, formatBytes, MIN_RECLAIMABLE_BYTES, worthOptimizing, optimizeBlockedReason, topAreas, describeAreas
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
@@ -670,7 +672,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/useSyncOnForeground.ts` — FOREGROUND_SYNC_INTERVAL_MS, LOCAL_CHANGE_PROBE_MS, useSyncOnForeground
 - `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
 - `src/utils/useUpSweep.ts` — UseUpSweepSource, useUpSweepOrder
-- `src/utils/vacationStreaks.ts` — isVacationProtectedStreak, forgiveVacationStreaks
+- `src/utils/vacationStreaks.ts` — isVacationProtectedStreak, forgiveVacationStreaks, forgivePausedProjectStreaks
 - `src/utils/visibilityUtils.ts` — isTaskBlocked, isInPausedProject, isWithheld, isTaskNotNeeded, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, isCategoryScheduledDay, sameTimeSegments, +44 more
 - `src/utils/waitingFollowUpTasks.ts` — MAX_WAITING_FOLLOW_UP_TASKS, WAITING_FOLLOW_UP_DECLINE_DAYS, WAITING_FOLLOW_UP_THRESHOLD_DAYS, waitingFollowUpTaskId, waitingFollowUpTitle, waitingFollowUpsHandledRecently, followUpDue, WaitingFollowUpWant, wantedWaitingFollowUps, staleWaitingFollowUpTasks
 - `src/utils/wakeUpAlarm.ts` — syncWakeUpAlarm
@@ -735,6 +737,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useBulkBarPresenceStore.ts` — useBulkBarPresenceStore
 - `src/store/useCalendarStore.ts` — CALENDAR_WINDOW_DAYS, CALENDAR_CHANGE_COALESCE_MS, TRIP_WINDOW_DAYS, sameBusyEvents, vacationReturnCalendarIds, useCalendarStore, useCalendarSync
 - `src/store/useCategoryStore.ts` — useCategoryStore, CALENDAR_EVENTS_CATEGORY, HEALTH_CATEGORY, ensureCalendarEventCategory, ensureHealthCategory, renameGeneratedCategorySettings, getGeneratedCategory, setGeneratedCategory, clearGeneratedCategorySettings, ensureGeneratedTaskCategory, +1 more
+- `src/store/useCheckInStore.ts` — CheckInInput, useCheckInStore
 - `src/store/useCookwareStore.ts` — CookwarePatch, useCookwareStore
 - `src/store/useCopyFlagStore.ts` — useCopyFlagStore
 - `src/store/useDemoStore.ts` — clearUndoHistories, reloadAfterDataReplaced, useDemoStore
@@ -862,6 +865,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useReminderMeetingResync.ts` — useReminderMeetingResync
 - `src/hooks/useRestKey.ts` — useRestKey
 - `src/hooks/useRestTimer.ts` — useRestTimer, useRestChime
+- `src/hooks/useRouteArrival.ts` — useRouteArrival
 - `src/hooks/useRowSelection.ts` — useRowSelection
 - `src/hooks/useSavedLinks.ts` — useSavedLinks, SavedLinks
 - `src/hooks/useScreenSettingControls.ts` — ScreenSettingControl, useScreenSettingControls
@@ -875,6 +879,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useSheetHiddenOffset.ts` — useSheetHiddenOffset
 - `src/hooks/useSheetMotion.ts` — useSheetMotion
 - `src/hooks/useSheetMount.ts` — useSheetMount
+- `src/hooks/useSheetOpening.ts` — useSheetOpening
 - `src/hooks/useSheetSubject.ts` — useSheetSubject
 - `src/hooks/useShieldReasons.ts` — useShieldReasons
 - `src/hooks/useSlotInSync.ts` — useSlotInSync
@@ -903,7 +908,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +322 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, ensureDatabaseReady, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, +327 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_DEVICE_LOCAL_COLUMNS, isDeviceLocalColumn, withoutDeviceLocalColumns, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SERVER_SHARING_KEY_PREFIX, +19 more
 
 ## `src/services`

@@ -39,7 +39,8 @@ import { useUnattendedStore } from './useUnattendedStore';
  */
 
 /**
- * Deleting a generated task without arming shake-to-undo.
+ * Deleting a generated task the app no longer wants, without arming
+ * shake-to-undo and without writing the source's opt-out.
  *
  * `deleteTask` records an undoable action, which is right when a person deletes
  * a task and wrong here: this delete is a consequence of a meal being moved or
@@ -48,20 +49,20 @@ import { useUnattendedStore } from './useUnattendedStore';
  * the same failure the completed-task purge avoids by not going through
  * `bulkDeleteTasks`.
  *
- * It also means the opt-out block in `deleteTask` still runs, which is exactly
- * what's wanted — see the note on `reconcileGeneratedTask` below.
+ * And `deleteTask` stamps the opt-out as though the person had swiped the task
+ * away. Only a person's delete may answer "never": a reason that reverses by
+ * itself (an item frozen, then thawed) must not leave one behind. Every caller
+ * here is the app, so it always skips it; that used to be an option most
+ * callers didn't pass.
  */
-export function deleteGeneratedTaskQuietly(
-  taskId: string,
-  opts: { skipOptOut?: boolean } = {}
-): void {
+export function deleteGeneratedTaskQuietly(taskId: string): void {
   const store = useTaskStore.getState();
   // Read before the delete, because after it there is nothing left to name.
   // This is the single choke point for both delete paths — the `!wanted` branch
   // of reconcileGeneratedTask and dropGeneratedTask — so recording here covers
   // every generated row the app takes back.
   const going = store.tasks.find(t => t.id === taskId);
-  store.deleteTask(taskId, { skipGeneratedOptOut: opts.skipOptOut });
+  store.deleteTask(taskId, { skipGeneratedOptOut: true });
   store.setLastAction(null);
   if (going) useUnattendedStore.getState().recordGenerated('cleared', going);
 }
@@ -181,8 +182,8 @@ export interface ReconcileGeneratedOptions {
  * reverses by itself came along: freezing an item made it unwanted until it
  * thawed, and the stamp turned that into a permanent "never", so the use-up
  * task never came back. A reconcile answers "does the source want a task right
- * now", and only a person's delete may answer "never", so this passes
- * `skipOptOut` exactly as `dropGeneratedTask` does.
+ * now", and only a person's delete may answer "never", which is why
+ * `deleteGeneratedTaskQuietly` never writes one.
  */
 export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void {
   const { kind, sourceId, wanted, drift, draft, blocksOnFinished = false, useUpCap = null, satisfied = false } = options;
@@ -194,7 +195,7 @@ export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void
     // that was done, and the source changing its mind is not a claim it wasn't.
     if (existing) {
       if (satisfied) markGeneratedReady(existing);
-      else deleteGeneratedTaskQuietly(existing.id, { skipOptOut: true });
+      else deleteGeneratedTaskQuietly(existing.id);
     }
     return;
   }
@@ -287,7 +288,7 @@ export function dropGeneratedTask(
   // Satisfied rather than withdrawn: the person did the thing, so the row is
   // theirs to tick. See markGeneratedReady.
   if (opts.satisfied) markGeneratedReady(existing);
-  else deleteGeneratedTaskQuietly(existing.id, { skipOptOut: true });
+  else deleteGeneratedTaskQuietly(existing.id);
 }
 
 /**
