@@ -4,7 +4,7 @@
 //
 //   ==== <name> ====        the section banners through the logic half
 //   SuggestionCard          the progression's proposal on the exercise's card
-//   SessionClock            the header's running time, its own tick
+//   SessionClock            the header's elapsed time and start time, its own tick
 //   RestStrip               the rest countdown and its three buttons
 //   ScreenAwake             the keep-awake helper
 //   makeStyles              styles, at the bottom
@@ -726,7 +726,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           />
           <View style={styles.headerTitle}>
             <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
-            {session && <SessionClock startedAt={session.startedAt} style={styles.subtitle} />}
+            {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} startedStyle={styles.subtitle} />}
           </View>
           {!finishing && session ? (
             <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
@@ -1643,20 +1643,28 @@ function SuggestionCard({ proposal, unit, scale, offer, onUse, styles }: {
 }
 
 /**
- * "Started 6:12 PM · 32:14", moving once a second. Its own component so the
- * tick re-renders this line and not the whole sheet.
+ * The header's running time: the elapsed time large and in the primary text
+ * color so it can be read at a glance mid-set, with "Started 6:12 PM" muted
+ * beneath it. Moves once a second. Its own component so the tick re-renders
+ * these lines and not the whole sheet.
  */
-function SessionClock({ startedAt, style }: { startedAt: string; style: object }) {
+function SessionClock({ startedAt, elapsedStyle, startedStyle }: {
+  startedAt: string;
+  elapsedStyle: object;
+  startedStyle: object;
+}) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
   const start = new Date(startedAt);
+  const elapsed = formatStopwatch((now - start.getTime()) / 1000);
   return (
-    <Text style={style} numberOfLines={1}>
-      {`Started ${formatTimeOfDay(start)} · ${formatStopwatch((now - start.getTime()) / 1000)}`}
-    </Text>
+    <>
+      <Text style={elapsedStyle} numberOfLines={1} accessibilityLabel={`Workout time ${elapsed}`}>{elapsed}</Text>
+      <Text style={startedStyle} numberOfLines={1}>{`Started ${formatTimeOfDay(start)}`}</Text>
+    </>
   );
 }
 
@@ -1751,6 +1759,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerTitle: { flex: 1, alignItems: 'center' },
   headerSpacer: { minWidth: 64 },
   title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
+  elapsed: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   subtitle: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs, fontVariant: ['tabular-nums'] },
   scroll: { paddingHorizontal: spacing.md, paddingBottom: spacing.lg },
   emptyWrap: { padding: spacing.md },
