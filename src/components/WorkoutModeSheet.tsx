@@ -57,6 +57,7 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { RotatingChevron } from './RotatingChevron';
 import { formatTimeOfDay, getCurrentDayStart } from '../utils/dateUtils';
 import { formatStopwatch } from '../utils/effort';
 import { linkedTaskLine, rotationPickFor, workoutTaskEffect } from '../utils/workoutTask';
@@ -264,6 +265,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const [photosOpenIds, setPhotosOpenIds] = useState<ReadonlySet<string>>(new Set());
   // The exercise the detail sheet is on, kept through its close so it doesn't retitle while it slides away.
   const [detailId, setDetailId] = useState<string | null>(null);
+  // Exercises folded down to their title and a one-line summary. Session-only
+  // and per exercise. A card folds itself when its last set is ticked, and the
+  // chevron opens it again.
+  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(new Set());
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   useEffect(() => {
@@ -282,6 +287,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setKeptIds(new Set());
     setAccepted(new Set());
     setDetailOpen(false);
+    setCollapsedIds(new Set());
     // On open only: a tick re-derives the view through its own handler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, session?.id]);
@@ -330,6 +336,16 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     if (session && sessionNotes.trim() !== session.notes) useWorkoutStore.getState().updateSession(session.id, { notes: sessionNotes });
   };
 
+  const toggleCollapsed = (exerciseId: string) => {
+    haptics.tap();
+    animateLayout();
+    setCollapsedIds(prev => {
+      const next = new Set(prev);
+      if (!next.delete(exerciseId)) next.add(exerciseId);
+      return next;
+    });
+  };
+
   const toggleSet = (set: WorkoutSet, exercise: SessionExercise) => {
     if (!session) return;
     if (set.completedAt !== null) {
@@ -358,6 +374,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     );
     if (records.has(set.id)) haptics.success();
     if (next.showExerciseId !== viewedId) animateLayout();
+    // Ticking the last open set finishes the exercise: fold it out of the way.
+    if (exercise.sets.every(s => s.id === set.id || s.completedAt !== null)) {
+      setCollapsedIds(prev => new Set(prev).add(exercise.exerciseId));
+    }
     setViewedId(next.showExerciseId);
     setOpenSetId(null);
   };
@@ -992,6 +1012,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const scale = weightScale(viewedInfo, dumbbellEntry);
               const noteFocus = noteEdit?.exerciseId === viewed.exerciseId ? noteEdit.focus : null;
               const todayNote = exerciseDayNote(viewed.sets);
+              const collapsed = collapsedIds.has(viewed.exerciseId);
+              const doneSets = viewed.sets.filter(s => s.completedAt !== null);
+              const collapsedSummary = `${doneSets.length} of ${viewed.sets.length} sets${doneSets.length > 0 ? ` · ${doneSets.map(s => formatSetLine(s, kind, unit, false, scale)).join(', ')}` : ''}`;
 
               // The plates for the open set's weight, for a barbell, EZ bar or trap bar: a
               // dumbbell or a machine has nothing to load. A pound lifter who never set an
@@ -1064,6 +1087,17 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   <TouchableOpacity
                     style={styles.exMenuButton}
                     hitSlop={8}
+                    onPress={() => toggleCollapsed(viewed.exerciseId)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: !collapsed }}
+                    accessibilityLabel={`${collapsed ? 'Show' : 'Hide'} the sets of ${viewedInfo?.name ?? 'this exercise'}`}
+                  >
+                    <RotatingChevron open={!collapsed} size={iconSize.md} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.exMenuButton}
+                    hitSlop={8}
                     onPress={e => {
                       haptics.tap();
                       setExerciseMenu({ exerciseId: viewed.exerciseId, anchor: { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY } });
@@ -1075,11 +1109,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
                   </TouchableOpacity>
                   </View>
-                  {!!viewedInfo && viewedInfo.primaryMuscles.length > 0 && (
+                  {collapsed && (
+                    <Text style={styles.exMuscles} numberOfLines={1}>{collapsedSummary}</Text>
+                  )}
+                  {!collapsed && !!viewedInfo && viewedInfo.primaryMuscles.length > 0 && (
                     <Text style={styles.exMuscles}>
                       {viewedInfo.primaryMuscles.map(m => MUSCLE_LABELS[m]).join(', ')}
                     </Text>
                   )}
+                  {!collapsed && (<>
                   {gym && unavailableIds.includes(viewed.exerciseId) && !keptIds.has(viewed.exerciseId) && (() => {
                     const best = candidatesFor(viewed.exerciseId)[0] ?? null;
                     return (
@@ -1218,8 +1256,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       styles={styles}
                     />
                   )}
+                  </>)}
                 </View>
 
+                {!collapsed && (<>
                 <View style={styles.setHead} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
                   <Text style={[styles.headCell, styles.colSet]}>Set</Text>
                   <Text style={[styles.headCell, styles.colPrev]}>Previous</Text>
@@ -1333,6 +1373,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 <View style={styles.adds}>
                   <InlineAction icon="add" label="Add set" onPress={() => addSet(viewed)} />
                 </View>
+                </>)}
               </View>
               );
             })}
