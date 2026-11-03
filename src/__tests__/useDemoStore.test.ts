@@ -130,7 +130,7 @@ import { followedWaterTaskDoneOn, WATER_SHORTFALL_NOTES, waterShortfallTitle } f
 import { isMissed, isRealCompletion, mostMissed } from '../utils/missed';
 import { goalDirection } from '../utils/weightGoal';
 import { lookBacks } from '../utils/moodHistory';
-import { daysReachingWordGoal, entriesOfKind, journalStats, onThisDay } from '../utils/journal';
+import { daysReachingWordGoal, diaryEntries, entriesOfKind, journalStats, onThisDay } from '../utils/journal';
 import { parseJournalMarkdown } from '../utils/journalMarkdown';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
@@ -2322,6 +2322,13 @@ describe('demo seed — people', () => {
   it('seeds notes from further back, so the Looking back card has something to show', () => {
     const logs = useMoodStore.getState().logs;
     expect(lookBacks(logs, dayKeyOf(getCurrentDayStart())).length).toBeGreaterThan(0);
+  });
+
+  it('seeds loose notes, so the Notes screen has something to show', () => {
+    const notes = entriesOfKind(useJournalStore.getState().entries, 'note');
+    expect(notes.length).toBeGreaterThanOrEqual(2);
+    // Not a day's page: the mood screens never read them.
+    expect(diaryEntries(useJournalStore.getState().entries).some(e => e.kind === 'note')).toBe(false);
   });
 
   it('seeds journal entries and a couple of dreams, so both screens have something to show', () => {

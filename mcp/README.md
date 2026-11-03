@@ -94,9 +94,9 @@ only the fallback until the first sync.
 | `list_copy_flags` | Lines of on-screen copy the person flagged in the app as needing a manual pass (temporary dev tooling), with the text, screen, their note and a `find` command (`npm run copy -- --grep …`) to run in the source checkout, which lists the matching strings with file and line. |
 | `list_cookware` | The pots, pans, lids and tubs the person has weighed empty, each with its empty weight in grams and the type it is listed under. |
 | `list_milestones` | The days something changed that the person marked on the mood log, each with its date. Empty unless health logs reach the server. |
-| `list_journal_entries` | Journal entries and dreams over a range of days, optionally one kind, a tag or a person, each with its word count, tags and people. Empty unless journal sync reaches the server. |
+| `list_journal_entries` | Journal entries, dreams and notes over a range of days, optionally one kind, a tag or a person, each with its word count, tags and people. Empty unless journal sync reaches the server. |
 | `search_journal_entries` | Journal entries and dreams containing every word of a query, across everything written unless a range is given. At most 50, newest first. |
-| `log_journal_entry` / `update_journal_entry` / `delete_journal_entry` | **Write.** A journal entry or a dream, in the person's words, with tags and people only when they named them. An entry's day is fixed once written. |
+| `log_journal_entry` / `update_journal_entry` / `delete_journal_entry` | **Write.** A journal entry, a dream or a note, in the person's words, with tags and people only when they named them. An entry's day is fixed once written. |
 | `resolve_copy_flag` | **Write.** Closes a copy flag once the copy has been changed in the source, with what it became. |
 | `add_milestone` / `update_milestone` / `delete_milestone` | **Write.** A milestone by label and day; the day is anchored at noon as the app's sheet does. |
 | `add_cookware` / `update_cookware` / `delete_cookware` | **Write.** A pot, pan, lid or tub and what it weighs empty. A recipe's `cookedWeightG` stays the food alone, so these never rewrite a recipe. |

@@ -142,7 +142,7 @@ import { isAnsweredByRecord, isRecordAnswered } from '../utils/recordTasks';
 import { autoCompleteReason } from '../utils/autoComplete';
 import { autoCompleteRowsLive, canAutoComplete } from '../utils/autoCompleteScope';
 import { MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodLogSourceId, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
-import { DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogTitle, journalLogUrl, journalTaskDayKey, journalTaskSourceId } from '../utils/journalTasks';
+import { DREAM_LOG_TITLE, JOURNAL_TASK_KIND, journalLogTitle, journalLogUrl, journalTaskDayKey, journalTaskSourceId, type ReminderKind } from '../utils/journalTasks';
 import {
   WANIKANI_LESSON_URL,
   WANIKANI_REVIEW_NOTES,
@@ -9075,7 +9075,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dueDate.setHours(12, 0, 0, 0);
 
     const run = (
-      kind: JournalKind,
+      kind: ReminderKind,
       category: string | null,
       segments: readonly TimeOfDay[],
       lastKey: string | null,

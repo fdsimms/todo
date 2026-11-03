@@ -374,7 +374,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
       if (entry?.openOn) addSealedNoteReminder(entry);
       // The page answers today's journal or dream task, so its row plays the
       // tick and leaves. The request skips a task this entry doesn't answer.
-      if (entry) useTaskStore.getState().autoCompleteRecordTasks(kind === 'dream' ? 'dreamLog' : 'journalLog');
+      if (entry && kind !== 'note') useTaskStore.getState().autoCompleteRecordTasks(kind === 'dream' ? 'dreamLog' : 'journalLog');
       // The same record the person's own "Add to history" row writes, for
       // everybody the page names, only when it was asked for here.
       if (offerHistory && historyKind) {
@@ -413,8 +413,8 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
   };
 
   const title = editing
-    ? (kind === 'dream' ? 'Edit dream' : 'Edit entry')
-    : (kind === 'dream' ? 'Write down a dream' : 'Journal');
+    ? (kind === 'dream' ? 'Edit dream' : kind === 'note' ? 'Edit note' : 'Edit entry')
+    : (kind === 'dream' ? 'Write down a dream' : kind === 'note' ? 'New note' : 'Journal');
 
   return (
     <EditorSheet
@@ -498,7 +498,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
           spellCheck
           autoFocus={!editing && !dictateOnOpen}
           editable={dictation.state === 'idle'}
-          accessibilityLabel={kind === 'dream' ? 'A dream you remember' : 'Journal entry'}
+          accessibilityLabel={kind === 'dream' ? 'A dream you remember' : kind === 'note' ? 'Note' : 'Journal entry'}
         />
         {kind === 'journal' ? (
           <JournalTimer active={visible}>
@@ -511,7 +511,7 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
         <View style={styles.photos}>
           <JournalPhotoStrip
             photos={photos}
-            title={kind === 'dream' ? 'Dream' : 'Journal'}
+            title={kind === 'dream' ? 'Dream' : kind === 'note' ? 'Note' : 'Journal'}
             onAdd={addPhoto}
             onRemove={removePhoto}
           />

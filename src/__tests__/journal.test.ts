@@ -1,6 +1,7 @@
 import type { JournalEntry } from '../types';
 import {
   JOURNAL_PROMPTS,
+  diaryEntries,
   entriesOfKind,
   entriesOnDay,
   groupJournalByDay,
@@ -58,6 +59,13 @@ describe('entriesOfKind', () => {
     const list = [entry({ id: 'a', kind: 'dream' }), entry({ id: 'b' }), entry({ id: 'c', kind: 'dream' })];
     expect(entriesOfKind(list, 'dream').map(e => e.id)).toEqual(['a', 'c']);
     expect(entriesOfKind(list, 'journal').map(e => e.id)).toEqual(['b']);
+  });
+});
+
+describe('diaryEntries', () => {
+  it('drops notes and keeps the journal and the dreams', () => {
+    const list = [entry({ id: 'a', kind: 'note' }), entry({ id: 'b' }), entry({ id: 'c', kind: 'dream' })];
+    expect(diaryEntries(list).map(e => e.id)).toEqual(['b', 'c']);
   });
 });
 

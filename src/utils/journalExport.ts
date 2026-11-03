@@ -52,7 +52,7 @@ export function journalExportMarkdown(
   const mine = entries
     .filter(e => e.kind === kind)
     .sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
-  const lines: string[] = [`# ${kind === 'dream' ? 'Dreams' : 'Journal'}`, ''];
+  const lines: string[] = [`# ${kind === 'dream' ? 'Dreams' : kind === 'note' ? 'Notes' : 'Journal'}`, ''];
   let currentDay: string | null = null;
   for (const e of mine) {
     if (e.dayKey !== currentDay) {
@@ -79,7 +79,7 @@ export type JournalExportFormat = 'csv' | 'markdown';
 
 /** `journal-2026-10-06.csv` / `dreams-2026-10-06.md`, dated so two exports never collide. */
 export function journalExportFileName(kind: JournalKind, exportedAt: Date, fileFormat: JournalExportFormat = 'csv'): string {
-  return `${kind === 'dream' ? 'dreams' : 'journal'}-${format(exportedAt, 'yyyy-MM-dd')}.${fileFormat === 'markdown' ? 'md' : 'csv'}`;
+  return `${kind === 'dream' ? 'dreams' : kind === 'note' ? 'notes' : 'journal'}-${format(exportedAt, 'yyyy-MM-dd')}.${fileFormat === 'markdown' ? 'md' : 'csv'}`;
 }
 
 /** "12 dreams from Aug 12, 2026 to Oct 6, 2026", said before the share sheet opens. */
@@ -88,7 +88,9 @@ export function journalExportSummary(entries: readonly JournalEntry[], kind: Jou
   if (mine.length === 0) return 'Nothing written yet.';
   const noun = kind === 'dream'
     ? (mine.length === 1 ? 'dream' : 'dreams')
-    : (mine.length === 1 ? 'journal entry' : 'journal entries');
+    : kind === 'note'
+      ? (mine.length === 1 ? 'note' : 'notes')
+      : (mine.length === 1 ? 'journal entry' : 'journal entries');
   const days = mine.map(e => e.dayKey).sort();
   const from = format(new Date(`${days[0]}T12:00:00`), 'MMM d, yyyy');
   if (days[0] === days[days.length - 1]) return `${mine.length} ${noun} from ${from}.`;

@@ -555,10 +555,10 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_journal_entries',
-    'Journal entries and dreams the person wrote, over a range of days, newest first. kind narrows to one ("journal" or "dream"). Defaults to the last 7 days. Empty unless the person has turned on Include journal and dreams for the sync server on their phone (its own switch, separate from health logs), so an empty result is not evidence that nothing was written; if they want you to see it, tell them where the switch is. Quote or summarize only what they ask about; never interpret a dream or read meaning into an entry.',
+    'Journal entries, dreams and notes the person wrote, over a range of days, newest first. kind narrows to one ("journal", "dream" or "note"; a note is loose writing like lyrics or ideas, not about its day). Defaults to the last 7 days. Empty unless the person has turned on Include journal and dreams for the sync server on their phone (its own switch, separate from health logs), so an empty result is not evidence that nothing was written; if they want you to see it, tell them where the switch is. Quote or summarize only what they ask about; never interpret a dream or read meaning into an entry.',
     {
       ...logRange,
-      kind: z.enum(['journal', 'dream']).optional(),
+      kind: z.enum(['journal', 'dream', 'note']).optional(),
       tag: z.string().min(1).optional().describe('Only entries carrying this tag (a label the person typed).'),
       personId: z.string().min(1).optional().describe('Only entries about this person, by id from list_people.'),
     },
@@ -567,10 +567,10 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'search_journal_entries',
-    'Find journal entries and dreams containing every word of a query, across everything written unless from/to narrow it. Use this instead of listing a long range to look for a word. Newest first, at most 50; total says how many matched. Same switch and same rules as list_journal_entries: quote only what the person asks about and never interpret an entry.',
+    'Find journal entries, dreams and notes containing every word of a query, across everything written unless from/to narrow it. Use this instead of listing a long range to look for a word. Newest first, at most 50; total says how many matched. Same switch and same rules as list_journal_entries: quote only what the person asks about and never interpret an entry.',
     {
       query: z.string().min(1),
-      kind: z.enum(['journal', 'dream']).optional(),
+      kind: z.enum(['journal', 'dream', 'note']).optional(),
       tag: z.string().min(1).optional(),
       personId: z.string().min(1).optional(),
       from: dayKey.optional(),
@@ -2418,9 +2418,9 @@ function registerWriteTools(
 
   server.tool(
     'log_journal_entry',
-    'Write down a journal entry or a dream for the person, in their words. A dream files under the day they woke. Write only what they gave you to write; never compose an entry for them.',
+    'Write down a journal entry, a dream or a note (lyrics, ideas, anything loose) for the person, in their words. A dream files under the day they woke. Write only what they gave you to write; never compose an entry for them.',
     {
-      kind: z.enum(['journal', 'dream']),
+      kind: z.enum(['journal', 'dream', 'note']),
       text: z.string().min(1).max(5000),
       at: z.string().optional().describe('An ISO date-time, or YYYY-MM-DD for a day gone by. Default now.'),
       tags: z.array(z.string().min(1)).max(8).optional().describe('Labels, only ones the person named. Never invent tags to describe what an entry means.'),

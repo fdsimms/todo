@@ -59,8 +59,8 @@ export function listJournalEntries(
     range,
     entries: open.map(row),
     ...(sealed > 0 ? { sealedNotes: sealed } : {}),
-    // A day's goal, in words, for the journal only. Never said of a dream.
-    ...(goal !== null && input.kind !== 'dream' ? { wordGoal: goal } : {}),
+    // A day's goal, in words, for the journal only. Never said of a dream or a note.
+    ...(goal !== null && input.kind !== 'dream' && input.kind !== 'note' ? { wordGoal: goal } : {}),
   };
 }
 

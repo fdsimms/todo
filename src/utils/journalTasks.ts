@@ -1,6 +1,9 @@
 import type { JournalKind, Task, TimeOfDay } from '../types';
 import { generatedSourceOf } from './generatedTasks';
 
+/** The kinds that have a reminder: a note is written when it comes to you, so it has none. */
+export type ReminderKind = Exclude<JournalKind, 'note'>;
+
 /**
  * The two generators the journal fires — see `docs/arch/journal.md`.
  *
@@ -30,12 +33,12 @@ export function journalLogTitle(segments: readonly TimeOfDay[]): string {
 export const JOURNAL_TASK_KIND = { journal: 'journalLog', dream: 'dreamLog' } as const;
 
 /** The link the row's microphone opens: the same sheet, already listening. */
-export function journalMicUrl(kind: JournalKind): string {
+export function journalMicUrl(kind: ReminderKind): string {
   return `${journalLogUrl(kind)}&mic=1`;
 }
 
 /** The deep link a task's row opens, to the sheet that answers it. */
-export function journalLogUrl(kind: JournalKind): string {
+export function journalLogUrl(kind: ReminderKind): string {
   return kind === 'dream' ? 'dundundun://dreams?log=1' : 'dundundun://journal?log=1';
 }
 
@@ -47,7 +50,7 @@ export function journalTaskSourceId(dayKey: string, segment: TimeOfDay | null): 
 /** The day key a journal or dream task is asking about, or null for any other task. */
 export function journalTaskDayKey(
   task: Pick<Task, 'generatedKind' | 'generatedSourceId'>,
-  kind: JournalKind,
+  kind: ReminderKind,
 ): string | null {
   const source = generatedSourceOf(task, JOURNAL_TASK_KIND[kind]);
   if (source === null) return null;

@@ -12,7 +12,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
-import { openEntries } from '../utils/journal';
+import { diaryEntries, openEntries } from '../utils/journal';
 import { MoodFace } from '../components/MoodFace';
 import { logsOnDay, moodLabel, severityLabel } from '../utils/moodLog';
 import { adjacentLogDays } from '../utils/moodHistory';
@@ -62,7 +62,7 @@ export function MoodDayScreen() {
   const allJournal = useJournalStore(s => s.entries);
   // A sealed note to your future self shows nowhere until its day (openEntries).
   const todayKey = dayKeyOf(getCurrentDayStart());
-  const openJournal = useMemo(() => openEntries(allJournal, todayKey), [allJournal, todayKey]);
+  const openJournal = useMemo(() => openEntries(diaryEntries(allJournal), todayKey), [allJournal, todayKey]);
   // While the journal lock is closed nothing written is read here, and paging
   // doesn't stop on a day that only has writing on it.
   const { locked: journalLocked, unlock: unlockJournal } = useJournalAccess();
