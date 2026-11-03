@@ -36,9 +36,15 @@ function state(over: Partial<ScreenSettingState> = {}): ScreenSettingState {
 
 describe('screenSettingRead', () => {
   it('reads a plain on/off row as a switch', () => {
-    expect(screenSettingRead('mealsOnToday', state({ mealsOnToday: 'inline' }))).toEqual({ kind: 'toggle', on: true });
+    expect(screenSettingRead('mealLogPrompt', state({ mealLogPrompt: true }))).toEqual({ kind: 'toggle', on: true });
     expect(screenSettingRead('autoCompleteProjects', state())).toEqual({ kind: 'toggle', on: false });
     expect(screenSettingRead('ai:groceryAisles', state())).toEqual({ kind: 'toggle', on: true });
+  });
+
+  it('reads the meals choice out, since it has three answers', () => {
+    expect(screenSettingRead('mealsOnToday', state({ mealsOnToday: 'inline' }))).toEqual({ kind: 'value', text: 'In the list' });
+    expect(screenSettingRead('mealsOnToday', state({ mealsOnToday: 'top' }))).toEqual({ kind: 'value', text: 'Strip' });
+    expect(screenSettingRead('mealsOnToday', state())).toEqual({ kind: 'value', text: 'Off' });
   });
 
   it('reads a generator as a switch, unless it needs another setting first', () => {

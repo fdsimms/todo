@@ -252,8 +252,19 @@ const MAPS_APPS: readonly MapsApp[] = ['apple', 'google', 'waze'];
  * `off` is for someone who plans meals and doesn't want them on Today at all;
  * with cook tasks on (see `mealCookTasks`) the meals that are *work* still
  * reach the list, so this isn't the same as turning the feature off.
+ *
+ * `top` is the meal strip (`MealStrip`), and it is not the retired `strip`
+ * come back: that one sat above the list *beside* the meal tasks, a second
+ * answer to the same question. This one *replaces* them. While it's on,
+ * `checkMealSlotTasks` writes no meal tasks and drops the open ones, and the
+ * strip carries everything they did: what each meal is (logged, planned or
+ * not chosen), the menu that logs, plans or marks one eaten, and the coins
+ * (`syncMealStripCoins`). It's for someone who doesn't plan ahead and was
+ * ticking Choose, Prepare and Eat in one go after eating. A new stored value
+ * rather than reusing `strip`, so an old install's leftover row can't switch
+ * its meal tasks off.
  */
-export type MealsOnToday = 'inline' | 'off';
+export type MealsOnToday = 'inline' | 'top' | 'off';
 
 const MEALS_ON_TODAY: MealsOnToday[] = ['inline', 'off'];
 
@@ -3559,11 +3570,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const kitchenEnabled = dbGetSetting('kitchenEnabled') !== 'false';
     const storedMealsOnToday = dbGetSetting('mealsOnToday');
     // 'strip' and 'block' are the retired values (see MealsOnToday). Anything
-    // that isn't 'off' means "show me the day's meals", which is now one shape
-    // — so they read forward rather than falling through to a default that
+    // that isn't 'off' or 'top' means "show me the day's meals in the list",
+    // so they read forward rather than falling through to a default that
     // happens to agree. Read-time only: nothing rewrites the stored row, the
     // same call normalizeAisleOrder makes.
-    const mealsOnToday: MealsOnToday = storedMealsOnToday === 'off' ? 'off' : 'inline';
+    const mealsOnToday: MealsOnToday =
+      storedMealsOnToday === 'off' ? 'off' : storedMealsOnToday === 'top' ? 'top' : 'inline';
     const storedUnitSystem = dbGetSetting('unitSystem') as UnitSystem | null;
     const unitSystem: UnitSystem =
       storedUnitSystem && UNIT_SYSTEMS.includes(storedUnitSystem) ? storedUnitSystem : 'asWritten';

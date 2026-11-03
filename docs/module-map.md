@@ -327,6 +327,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/mealProduceCheck.ts` — PRODUCE_CHECK_SLOTS, PRODUCE_SIDES_SHOWN, MealWithoutProduce, listsNoProduce, mealsWithoutProduce, producesOnHand, describeProduceGaps
 - `src/utils/mealShortfallTasks.ts` — MAX_MEAL_SHORTFALL_TASKS, mealShortfallTitle, mealShortfallEntryId, mealShortfallLinkUrl, isWithinShopWindow, mealShortfallRows, MealShortfallWant, wantedMealShortfalls, staleMealShortfallTasks, answeredMealShortfallTasks
 - `src/utils/mealSlotTasks.ts` — MEAL_SLOT_SEGMENTS, mealSlotStepTimeSegments, MEAL_SLOT_TASK_DAYS, DEFAULT_MEAL_SLOTS_ENABLED, mealSlotSourceId, parseMealSlotSource, mealSlotOf, RECIPE_LINK_URL, recipeLinkUrl, mealSlotLinkUrl, +10 more
+- `src/utils/mealStrip.ts` — mealStripOn, mealStripSlots, mealStripCoversMeal, MealStripState, MealStripCell, mealStripCells, isMealStripDone, mealStripDoneSlots, mealStripCoins
 - `src/utils/mealThawTasks.ts` — MEAL_THAW_LEAD_DAYS, MAX_MEAL_THAW_TASKS, mealThawTitle, mealThawEntryId, isWithinThawWindow, FrozenForMeal, frozenForMeal, mealThawLinkUrl, MealThawWant, wantedMealThaws, +2 more
 - `src/utils/measuredHeight.ts` — HEIGHT_EPSILON, nextMeasuredHeight
 - `src/utils/medicationExport.ts` — MEDICATION_EXPORT_COLUMNS, medicationExportCsv, medicationExportFileName, medicationExportSummary
@@ -538,7 +539,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, newItemBox, nameFromScanFor, sourceLabelFor, variantFor, ScanBoxSource, scanBoxChoice, scannedItemFor, +11 more
 - `src/utils/scheduleMovePrompt.ts` — confirmScheduleMove, confirmSegmentScope, confirmBulkSetWhen
 - `src/utils/screenLinks.ts` — screenKey, resolveScreen, quickActionScreens, quickActionScreenList, screenSymbol
-- `src/utils/screenSettingControls.ts` — ScreenSettingRead, ScreenSettingState, SCREEN_SETTING_TOGGLE_IDS, generatorKindOf, aiFeatureOf, screenSettingRead
+- `src/utils/screenSettingControls.ts` — ScreenSettingRead, ScreenSettingState, SCREEN_SETTING_TOGGLE_IDS, generatorKindOf, aiFeatureOf, MEALS_ON_TODAY_LABELS, screenSettingRead
 - `src/utils/screenSettings.ts` — SCREEN_SETTINGS, screenSettingsEntries
 - `src/utils/screenTimeBridge.ts` — ScreenTimeBridge, screenTimeBridge, isScreenTimeSupported
 - `src/utils/screenTimeRules.ts` — SCREEN_TIME_RULE_TITLE_MAX_LENGTH, SCREEN_TIME_THRESHOLD_MIN, SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_DEFAULT, clampThresholdMinutes, defaultScreenTimeRules, parseScreenTimeRules, serializeScreenTimeRules, screenTimeSourceId, parseScreenTimeSourceId, +3 more

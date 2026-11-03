@@ -1192,6 +1192,22 @@ describe('use24HourTime', () => {
   });
 });
 
+describe('mealsOnToday', () => {
+  it('reads the meal strip back as itself', () => {
+    useSettingsStore.getState().setMealsOnToday('top');
+    expect(dbSetSetting).toHaveBeenCalledWith('mealsOnToday', 'top');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'mealsOnToday' ? 'top' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mealsOnToday).toBe('top');
+  });
+
+  it('reads the retired strip forward to the list, so an old row cannot stop the meal tasks', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => (key === 'mealsOnToday' ? 'strip' : null));
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mealsOnToday).toBe('inline');
+  });
+});
+
 describe('unitSystem', () => {
   it('defaults to as-written, so an existing install reads exactly as it did', () => {
     useSettingsStore.getState().initialize();

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { mealStripOn } from '../utils/mealStrip';
 import type { ItemPick, MealPlanEntry, MealSlot, Recipe, RecipeOverride, Task, WeekPoolEntry } from '../types';
 import {
   dbGetMealPlanEntries,
@@ -1206,6 +1207,19 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // its own state by the time the other calls back, so the callee returns
     // early. Don't remove either guard.
     syncCookTaskCompletion(next, cooked);
+    // With the meal strip on there is no task to tick, so the meal's coins are
+    // paid (or, un-ticked, taken back) here instead. A no-op with it off.
+    useTaskStore.getState().syncMealStripCoins(next.date);
+    // Eating a leftover-backed meal is what empties the container, so ask
+    // whether that was the last of it. Here rather than only in completeTask,
+    // which used to be the one place it was asked: a meal marked cooked with no
+    // task behind it (the meal plan's toggle, Today's meal row, the meal strip)
+    // never asked. completeTask asking as well sets the same id, a no-op.
+    if (cooked && next.leftoverId) {
+      // Lazily, like reconcileLeftoverUseUp below: the leftover store imports this one.
+      const { useLeftoverStore } = require('./useLeftoverStore') as typeof import('./useLeftoverStore');
+      useLeftoverStore.getState().askFinishLeftover(next.leftoverId);
+    }
     // The task's own completion raises the log offer when there was a task to
     // complete; this covers the meal that had none. Raising it twice for one
     // that did writes the same pending offer twice, which is a no-op.
@@ -2062,6 +2076,9 @@ function slotEntry(get: () => MealPlanStore, dayKey: string, slot: MealSlot): Me
  */
 function createMealSlotTask(get: () => MealPlanStore, entry: MealPlanEntry): void {
   if (!useSettingsStore.getState().mealCookTasks) return;
+  // The meal strip writes no meal tasks, this one included: the pass would
+  // only drop it again at the next foreground (see checkMealSlotTasks).
+  if (mealStripOn(useSettingsStore.getState())) return;
   const sourceId = mealSlotSourceId(entry.date, entry.slot);
   const { tasks, addTask } = useTaskStore.getState();
   if (hasAnyGeneratedTask(tasks, 'mealSlot', sourceId)) return;

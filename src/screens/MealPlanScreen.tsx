@@ -1296,10 +1296,9 @@ export function MealPlanScreen() {
     // an alert here and two banners over the list. `setEntryCooked` above set
     // it, from whichever screen the tick happened on.
     //
-    // The "was that the last of it?" ask isn't here either: it comes from
-    // useTaskStore.completeTask, since ticking this row ticks the paired task
-    // the same way setCookedPaired does, so a leftover-backed entry already
-    // gets it via FinishLeftoverPrompt without asking twice.
+    // The "was that the last of it?" ask isn't here either: setCooked asks it
+    // for a leftover-backed entry (askFinishLeftover), task or no task, so it
+    // reaches FinishLeftoverPrompt without being asked twice.
   };
 
   /**

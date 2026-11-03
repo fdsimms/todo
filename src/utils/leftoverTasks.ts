@@ -71,8 +71,9 @@ export function wantsUseUpTask(leftover: Leftover, enabled: boolean, eatenAsPlan
  * - **No later than `keepUntil`.** A dinner planned after the container goes
  *   bad doesn't use it up in time, so the use-up task still has something to
  *   say.
- * - **A live meal task for that day and slot** (`hasMealRow`). The premise is
- *   that the meal's row already says it, so where there is no such row (the
+ * - **A live meal task for that day and slot, or the meal strip standing in
+ *   for one** (`hasMealRow`, see `mealStripCoversMeal`). The premise is that
+ *   the meal's row already says it, so where there is no such row (the
  *   meal-task generator is off, that meal isn't one the user gets a task for,
  *   or they swiped it away) the use-up task is the only reminder there is, and
  *   it stays.

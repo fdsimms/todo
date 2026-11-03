@@ -115,6 +115,7 @@ import { hasFollowUpSource } from '../utils/followUpTask';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
+import { MealStrip } from '../components/MealStrip';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from 'zustand';
 import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, editorHasUnsavedChanges, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
@@ -2964,9 +2965,9 @@ export function TodayScreen() {
    * entry already cooked), so nothing is animated and no undo is stored.
    *
    * The leftover close-out ask (was that the last of it?) used to be raised
-   * here too, but it's asked from useTaskStore.completeTask now — that same
-   * `setCookedPaired` call ticks the paired task, so this row already gets
-   * the ask via FinishLeftoverPrompt without doing it a second time.
+   * here too, but `setCooked` asks it now (askFinishLeftover), whether or not
+   * a meal task is paired with the entry, so this row gets it via
+   * FinishLeftoverPrompt without doing it a second time.
    */
   const handleMarkMealCooked = useCallback((entryId: string, title: string) => {
     const undo = setMealCookedPaired(entryId, true);
@@ -5556,6 +5557,14 @@ export function TodayScreen() {
 
         {workloadLine && <Text style={styles.workloadLine}>{workloadLine}</Text>}
 
+        {/* The meal strip, the one kitchen thing above the list, and only when
+            asked for: it replaces the meal tasks rather than sitting beside
+            them (see MealsOnToday). Its own `viewMode` gate rather than
+            hanging off workloadLine, which simplified mode hides. */}
+        {viewMode === 'today' && mealsOnToday === 'top' && (
+          <MealStrip dayKey={todayKey} refreshKey={minuteTick} />
+        )}
+
         {/* Outside the `viewMode` gate on purpose: a session runs against the
             tasks, not against a lens over them, so switching to Later must
             not make it look as though it stopped. */}
@@ -5592,9 +5601,9 @@ export function TodayScreen() {
           any more. Both were a fixed block here — which meant the top of the
           Today screen was never a task — and both are rows in the list itself
           now (see contextRows / dayContextRows.ts). Nor does the kitchen render
-          anything here any longer: what a cooking asks is a sheet raised from
-          the navigator (CookRecap), not a banner this screen has to make room
-          for above its own list.
+          anything here any longer, the opt-in meal strip above aside: what a
+          cooking asks is a sheet raised from the navigator (CookRecap), not a
+          banner this screen has to make room for above its own list.
         */}
         <SpotlightOverlay
           visible={spotlightActive}

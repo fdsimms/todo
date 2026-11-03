@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { CoinEntry, Reward, Task } from '../types';
+import type { CoinEntry, MealSlot, Reward, Task } from '../types';
 import {
   dbGetAllCoinEntries,
   dbUpsertCoinEntry,
@@ -110,6 +110,16 @@ interface RewardStore {
   recordCleanDay: (taskId: string, dayKey: string, amount: number, label: string, at: string) => void;
   /** Reopening a day, or a slip that spoils it: drop what `recordCleanDay` wrote. */
   takeBackCleanDay: (taskId: string, dayKey: string) => void;
+  /**
+   * Pays one meal eaten while Today shows the meal strip, keyed by the day and
+   * the meal (`spawnSeed.coinMeal`), so paying it again rewrites the same row.
+   * `syncMealStripCoins` is the only caller.
+   */
+  recordMealEarn: (dayKey: string, slot: MealSlot, amount: number, label: string, at: string) => void;
+  /** Takes a meal's coins back once it no longer counts as eaten (the log emptied, the cook undone). */
+  takeBackMealEarn: (dayKey: string, slot: MealSlot) => void;
+  /** Whether that meal has been paid. */
+  hasMealEarn: (dayKey: string, slot: MealSlot) => boolean;
   /** Unticking a task: drop whatever its completion or miss wrote. Returns the entries removed. */
   takeBackTask: (taskId: string) => CoinEntry[];
   /** Writes back entries `takeBackTask` returned, for the undo of an action that took them. */
@@ -349,6 +359,24 @@ export const useRewardStore = create<RewardStore>((set, get) => {
     takeBackCleanDay(taskId, dayKey) {
       const id = derivedId(spawnSeed.coinClean(taskId, dayKey));
       if (get().entries.some(e => e.id === id)) remove([id]);
+    },
+
+    recordMealEarn(dayKey, slot, amount, label, at) {
+      if (!enabled() || amount <= 0) return;
+      const entry = earning({ id: derivedId(spawnSeed.coinMeal(dayKey, slot)), kind: 'earn', amount, at, taskId: null, rewardId: null, label });
+      write(entry);
+      announce(entry);
+    },
+
+    // Not gated, for the reason takeBackTask gives.
+    takeBackMealEarn(dayKey, slot) {
+      const id = derivedId(spawnSeed.coinMeal(dayKey, slot));
+      if (get().entries.some(e => e.id === id)) remove([id]);
+    },
+
+    hasMealEarn(dayKey, slot) {
+      const id = derivedId(spawnSeed.coinMeal(dayKey, slot));
+      return get().entries.some(e => e.id === id);
     },
 
     // Not gated on `rewardsEnabled`: an entry written while the feature was on

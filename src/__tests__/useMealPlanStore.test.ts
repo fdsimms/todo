@@ -56,6 +56,7 @@ jest.mock('../db/database', () => ({
 // mealCookTasks defaults on, matching the real store — so every test here runs
 // with cook-task reconciliation live rather than only the ones that opt in.
 let mockMealCookTasks = true;
+let mockMealsOnToday = 'inline';
 // "Usually cooking for" (#2910); 0 is not set, the default.
 let mockHouseholdServings = 0;
 // mealCalendarId defaults to null, also matching the real store: the calendar
@@ -79,6 +80,8 @@ jest.mock('../store/useSettingsStore', () => ({
       dayResetTime: '00:00',
       get mealPlanNudgeSlots() { return mockMealPlanNudgeSlots; },
       get mealCookTasks() { return mockMealCookTasks; },
+      kitchenEnabled: true,
+      get mealsOnToday() { return mockMealsOnToday; },
       get householdServings() { return mockHouseholdServings; },
       get mealCalendarId() { return mockMealCalendarId; },
     }),
@@ -145,6 +148,7 @@ const mockTaskState = {
     mockTaskState.tasks = mockTaskState.tasks.filter(t => t.id !== id);
   }),
   setLastAction: jest.fn(),
+  syncMealStripCoins: jest.fn(),
   requestAutoComplete: jest.fn(),
   completeTask: jest.fn((id: string) => {
     mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, completed: true } : t));
@@ -197,8 +201,11 @@ jest.mock('../store/useRecipeStore', () => ({
 // change asks it about (#2932). Mocked too because the real one reaches the
 // Health bridge at import.
 const mockReconcileLeftoverUseUpTask = jest.fn();
+const mockAskFinishLeftover = jest.fn();
 jest.mock('../store/useLeftoverStore', () => ({
-  useLeftoverStore: { getState: () => ({ reconcileLeftoverUseUpTask: mockReconcileLeftoverUseUpTask }) },
+  useLeftoverStore: {
+    getState: () => ({ reconcileLeftoverUseUpTask: mockReconcileLeftoverUseUpTask, askFinishLeftover: mockAskFinishLeftover }),
+  },
 }));
 
 /** The live cook task for an entry, as the store's own helpers find it. */
@@ -1220,6 +1227,34 @@ describe('setCooked', () => {
     mockRecipeState.stopCookTimer.mockClear();
     useMealPlanStore.getState().setCooked(dinner.id, false);
     expect(mockRecipeState.stopCookTimer).not.toHaveBeenCalled();
+  });
+
+  // The meal plan's toggle, Today's meal row and the meal strip have no task
+  // to tick, and the task's completion used to be the only place it was asked.
+  it('asks whether a leftover-backed meal finished the leftover, and not on un-cooking', () => {
+    mockAskFinishLeftover.mockClear();
+    const lunch = entry('2026-08-05', 'lunch', { leftoverId: 'l-1', title: 'Leftover chili' });
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([lunch, dinner]);
+
+    useMealPlanStore.getState().setCooked(lunch.id, true);
+    expect(mockAskFinishLeftover).toHaveBeenCalledWith('l-1');
+
+    mockAskFinishLeftover.mockClear();
+    useMealPlanStore.getState().setCooked(lunch.id, false);
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+    expect(mockAskFinishLeftover).not.toHaveBeenCalled();
+  });
+
+  it('pays the meal strip for a cook and an un-cook alike, on the meal\'s own day', () => {
+    mockTaskState.syncMealStripCoins.mockClear();
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+    useMealPlanStore.getState().setCooked(dinner.id, false);
+    expect(mockTaskState.syncMealStripCoins).toHaveBeenCalledTimes(2);
+    expect(mockTaskState.syncMealStripCoins).toHaveBeenCalledWith('2026-08-05');
   });
 
   // A snack, or a slot whose task is switched off, has no task to complete,
@@ -2715,6 +2750,22 @@ describe('meal tasks', () => {
 
     const task = slotTaskFor('2026-08-05', 'lunch')!;
     expect(task.chainItems.map(c => c.title)).toEqual(['Make Ragu', 'Eat Ragu']);
+  });
+
+  it('writes no task while Today shows the meal strip, even when a meal asks for one', () => {
+    // The strip stands in for the meal tasks, and the daily pass would only
+    // drop a row written here at the next foreground.
+    mockMealsOnToday = 'top';
+    try {
+      loadWeek();
+      const meal = useMealPlanStore.getState().planMeal({
+        date: '2026-08-05', slot: 'lunch', recipeId: 'r1', title: 'Ragu',
+      })!;
+      useMealPlanStore.getState().setCookTask(meal.id, true);
+      expect(slotTaskFor('2026-08-05', 'lunch')).toBeUndefined();
+    } finally {
+      mockMealsOnToday = 'inline';
+    }
   });
 
   it('reads a meal whose recipe was deleted as the typed meal it now is', () => {

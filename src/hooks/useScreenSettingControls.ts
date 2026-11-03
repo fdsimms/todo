@@ -20,7 +20,6 @@ function screenSettingWrite(id: string, on: boolean): void {
   const feature = aiFeatureOf(id, s);
   if (feature) { s.setAiFeatureConfig(feature, { enabled: on }); return; }
   switch (id) {
-    case 'mealsOnToday': s.setMealsOnToday(on ? 'inline' : 'off'); return;
     case 'mealLogPrompt': s.setMealLogPrompt(on); return;
     case 'tripLiveActivity': s.setTripLiveActivity(on); return;
     case 'autoCompleteProjects': s.setAutoCompleteProjectsOnDone(on); return;

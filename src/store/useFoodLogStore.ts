@@ -518,6 +518,8 @@ function restoreEntries(rows: FoodLogEntry[], get: () => FoodLogStore, set: Food
     insertIntoWindows(restored, get, set);
     void logFoodEntryToHealth(restored).then(result => recordHealthWrite(restored, result, set));
   }
+  // The meal strip's coins, taken back by the delete, come back with the rows.
+  new Set(rows.map(r => r.dayKey)).forEach(day => useTaskStore.getState().syncMealStripCoins(day));
   const todayKey = dayKeyOf(getCurrentDayStart());
   if (rows.some(r => r.dayKey === todayKey)) {
     useTaskStore.getState().syncWaterQuotaTasks();
@@ -568,6 +570,10 @@ function priorFields(entry: FoodLogEntry, patch: FoodLogPatch): FoodLogPatch {
 }
 
 function syncWaterQuotaTasksIfToday(dayKey: string): void {
+  // Any day, unlike the passes below: food logged into last night's dinner
+  // the next morning is that meal eaten, and the strip pays for it. A no-op
+  // unless Today shows the meal strip.
+  useTaskStore.getState().syncMealStripCoins(dayKey);
   if (dayKey !== dayKeyOf(getCurrentDayStart())) return;
   useTaskStore.getState().syncWaterQuotaTasks();
   // The snack suggestion reads the same log, so a write that lands is also the
@@ -824,7 +830,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       insightEntries: s.insightEntries.map(e => (e.id === id ? updated : e)),
     }));
     // Moving a row into a meal is the other way food lands in a slot.
-    if (patch.slot !== undefined) useTaskStore.getState().syncLoggedMealSlotTasks();
+    if (patch.slot !== undefined) {
+      useTaskStore.getState().syncLoggedMealSlotTasks();
+      useTaskStore.getState().syncMealStripCoins(entry.dayKey);
+    }
     const before = priorFields(entry, patch);
     get().setLastAction({
       label: `Edited “${entry.label}”`,

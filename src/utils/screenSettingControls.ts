@@ -21,7 +21,7 @@ export type ScreenSettingRead = { kind: 'toggle'; on: boolean } | { kind: 'value
 
 /** The settings values the reads below look at. The settings store satisfies it. */
 export type ScreenSettingState = GeneratedEnabledFlags & {
-  mealsOnToday: 'inline' | 'off';
+  mealsOnToday: 'inline' | 'top' | 'off';
   mealLogPrompt: boolean;
   tripLiveActivity: boolean;
   autoCompleteProjectsOnDone: boolean;
@@ -44,7 +44,7 @@ export type ScreenSettingState = GeneratedEnabledFlags & {
 
 /** The plain on/off rows, by entry id. */
 export const SCREEN_SETTING_TOGGLE_IDS: readonly string[] = [
-  'mealsOnToday', 'mealLogPrompt', 'tripLiveActivity', 'autoCompleteProjects', 'postponeCheck', 'tipsEnabled',
+  'mealLogPrompt', 'tripLiveActivity', 'autoCompleteProjects', 'postponeCheck', 'tipsEnabled',
   'hideCategories', 'hideGroceryRecipeNames', 'backgroundRefreshEnabled',
 ];
 
@@ -66,6 +66,13 @@ export function aiFeatureOf(id: string, s: Pick<ScreenSettingState, 'aiFeatureCo
 
 const onOff = (on: boolean): string => (on ? 'On' : 'Off');
 
+/** Settings' segment labels for `mealsOnToday`, so the gear sheet reads out the same words. */
+export const MEALS_ON_TODAY_LABELS: Record<ScreenSettingState['mealsOnToday'], string> = {
+  off: 'Off',
+  inline: 'In the list',
+  top: 'Strip',
+};
+
 export function screenSettingRead(id: string, s: ScreenSettingState): ScreenSettingRead | null {
   const kind = generatorKindOf(id);
   if (kind) {
@@ -77,7 +84,6 @@ export function screenSettingRead(id: string, s: ScreenSettingState): ScreenSett
   const feature = aiFeatureOf(id, s);
   if (feature) return { kind: 'toggle', on: s.aiFeatureConfig[feature].enabled };
   switch (id) {
-    case 'mealsOnToday': return { kind: 'toggle', on: s.mealsOnToday === 'inline' };
     case 'mealLogPrompt': return { kind: 'toggle', on: s.mealLogPrompt };
     case 'tripLiveActivity': return { kind: 'toggle', on: s.tripLiveActivity };
     case 'autoCompleteProjects': return { kind: 'toggle', on: s.autoCompleteProjectsOnDone };
@@ -88,6 +94,10 @@ export function screenSettingRead(id: string, s: ScreenSettingState): ScreenSett
     case 'backgroundRefreshEnabled': return { kind: 'toggle', on: s.backgroundRefreshEnabled };
     // On/off rows whose Settings handler asks for a permission, confirms or
     // does more than set: read out, and the tap opens them in Settings.
+    // Three answers now (the meal strip is the third), and picking it does
+    // more than set: Settings runs the meal task pass so the tasks go at once.
+    case 'mealsOnToday':
+      return { kind: 'value', text: MEALS_ON_TODAY_LABELS[s.mealsOnToday] };
     case 'calendarRead': return { kind: 'value', text: onOff(s.calendarReadEnabled) };
     case 'healthRead': return { kind: 'value', text: onOff(s.healthReadEnabled) };
     case 'healthWrite': return { kind: 'value', text: onOff(s.healthWriteEnabled) };

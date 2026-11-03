@@ -21,6 +21,7 @@ import {
 import { plannedMealRowFor, useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/leftoverTasks';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
+import { mealStripCoversMeal } from '../utils/mealStrip';
 import { clampCookedWeight, leftoverAlreadyLogged } from '../utils/mealLog';
 import { dropGeneratedTask, forfeitUseUpCoins, reconcileGeneratedTask, restoreUseUpCoins } from './generatedTaskSync';
 import { useTaskStore } from './useTaskStore';
@@ -64,10 +65,10 @@ interface LeftoverStore extends UndoHistoryActions {
   setPendingUseUpLeftover: (id: string | null) => void;
 
   /**
-   * The leftover a just-completed leftover-backed meal task points at — set
-   * by useTaskStore.completeTask when the step that finished a mealSlot chain
-   * belongs to an entry with `leftoverId` set, so ticking "Eat X" off asks
-   * whether that closed the container out. The peer of pendingUseUpLeftoverId,
+   * The leftover a just-eaten leftover-backed meal points at — set through
+   * askFinishLeftover when a meal with `leftoverId` is marked cooked (by its
+   * meal task's last step or any other way), so eating it asks whether that
+   * closed the container out. The peer of pendingUseUpLeftoverId,
    * but watched by FinishLeftoverPrompt (mounted in AppNavigator) rather than
    * UseUpResolveSheet: this is a yes/no ask, not the leftover's whole editor.
    * Cleared by uncompleteTask and by the prompt's own answer. Session-only,
@@ -75,6 +76,18 @@ interface LeftoverStore extends UndoHistoryActions {
    */
   pendingFinishLeftoverId: string | null;
   setPendingFinishLeftover: (id: string | null) => void;
+  /**
+   * Asks "was that the last of it?" about the leftover a just-eaten meal was
+   * planned against, if there's a question to ask: the leftover is still
+   * live, and UseUpResolveSheet isn't already open on it (its own Finished
+   * it/Threw it out rows answer the same question, and both at once stacks
+   * a native alert on the sheet). A no-op for a meal with no leftover.
+   * Callers: useMealPlanStore.setCooked, so every way a meal is marked eaten
+   * asks (the meal plan's toggle, Today's meal row, the meal strip), and
+   * completeTask for a meal task's last step, which may find the entry
+   * already cooked.
+   */
+  askFinishLeftover: (leftoverId: string | null | undefined) => void;
 
   /** The most recent undoable action — see UndoableAction and useTaskStore's twin. */
   /** The top of `undoStack`, mirrored. See useTaskStore's own note. */
@@ -244,17 +257,22 @@ function reconcileLeftoverTask(leftover: Leftover): void {
 }
 
 /**
- * Whether a planned meal's own task already says to eat this leftover — see
+ * Whether a planned meal's own task (or the meal strip in its place) already
+ * says to eat this leftover — see
  * `plannedMealRowFor`. Read from SQLite rather than the meal plan store, whose
  * `entries` is only the week that screen has loaded.
  */
 function eatenAsPlanned(leftover: Leftover): boolean {
   const { tasks } = useTaskStore.getState();
+  const today = dayKeyOf(getLogicalToday());
   return plannedMealRowFor(
     leftover,
     dbGetMealPlanEntriesForLeftover(leftover.id),
-    dayKeyOf(getLogicalToday()),
-    (dayKey, slot) => !!liveGeneratedTask(tasks, 'mealSlot', mealSlotSourceId(dayKey, slot)),
+    today,
+    (dayKey, slot) =>
+      !!liveGeneratedTask(tasks, 'mealSlot', mealSlotSourceId(dayKey, slot))
+      // The meal strip writes no meal tasks, and stands in for them here.
+      || mealStripCoversMeal(useSettingsStore.getState(), dayKey, slot, today),
   ) !== null;
 }
 
@@ -296,6 +314,14 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
 
   setPendingFinishLeftover(id) {
     set({ pendingFinishLeftoverId: id });
+  },
+
+  askFinishLeftover(leftoverId) {
+    if (!leftoverId) return;
+    const leftover = get().leftovers.find(l => l.id === leftoverId);
+    if (!leftover || !isLiveLeftover(leftover)) return;
+    if (get().pendingUseUpLeftoverId === leftover.id) return;
+    set({ pendingFinishLeftoverId: leftover.id });
   },
 
   logLeftover(draft) {

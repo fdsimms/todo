@@ -58,6 +58,7 @@ let mockLeftoverUseUpTaskCategory: string | null = null;
 // Off by default for the same reason: finishing a container as eaten raises a
 // meal-log offer, and the block that is about that offer turns this on.
 let mockMealLogPrompt = false;
+let mockMealsOnToday = 'inline';
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: () => ({
@@ -65,6 +66,9 @@ jest.mock('../store/useSettingsStore', () => ({
       get leftoverUseUpTasks() { return mockLeftoverUseUpTasks; },
       get leftoverUseUpTaskCategory() { return mockLeftoverUseUpTaskCategory; },
       get mealLogPrompt() { return mockMealLogPrompt; },
+      kitchenEnabled: true,
+      get mealsOnToday() { return mockMealsOnToday; },
+      mealSlotsEnabled: ['breakfast', 'lunch', 'dinner'],
     }),
   },
 }));
@@ -182,6 +186,31 @@ describe('setPendingFinishLeftover', () => {
     expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBe('l-1');
 
     useLeftoverStore.getState().setPendingFinishLeftover(null);
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
+  });
+});
+
+describe('askFinishLeftover', () => {
+  beforeEach(() => {
+    useLeftoverStore.setState({ pendingFinishLeftoverId: null, pendingUseUpLeftoverId: null });
+  });
+
+  it('asks about a live leftover', () => {
+    const live = useLeftoverStore.getState().logLeftover({ title: 'Chili' })!;
+    useLeftoverStore.getState().askFinishLeftover(live.id);
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBe(live.id);
+  });
+
+  it('asks nothing for a meal with no leftover, or one that is gone', () => {
+    useLeftoverStore.getState().askFinishLeftover(null);
+    useLeftoverStore.getState().askFinishLeftover('nope');
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
+  });
+
+  it('asks nothing while the use-up sheet is open on the same container', () => {
+    const live = useLeftoverStore.getState().logLeftover({ title: 'Soup' })!;
+    useLeftoverStore.setState({ pendingUseUpLeftoverId: live.id });
+    useLeftoverStore.getState().askFinishLeftover(live.id);
     expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
   });
 });
@@ -1056,6 +1085,18 @@ describe('use-up tasks for a leftover planned into a meal', () => {
     planFor('chilli', { cookedAt: localIso('2026-08-10T19:00') });
     useLeftoverStore.getState().reconcileAllLeftoverTasks();
     expect(useUpFor('chilli')).toBeDefined();
+  });
+
+  it('drops it for a meal the strip shows, which writes no meal task to say it', () => {
+    mockMealsOnToday = 'top';
+    try {
+      seed([makeLeftover({ id: 'chilli', keepUntil: today() })]);
+      planFor('chilli');
+      useLeftoverStore.getState().reconcileAllLeftoverTasks();
+      expect(useUpFor('chilli')).toBeUndefined();
+    } finally {
+      mockMealsOnToday = 'inline';
+    }
   });
 
   it('does nothing for a finished or unknown leftover', () => {

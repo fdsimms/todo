@@ -9,6 +9,7 @@ import { useProjectLockStore } from '../store/useProjectLockStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useMedicationStore } from '../store/useMedicationStore';
 import { useRewardStore } from '../store/useRewardStore';
+import { mealStripCoins } from '../utils/mealStrip';
 import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMoodStore } from '../store/useMoodStore';
@@ -9068,6 +9069,120 @@ describe('checkMealSlotTasks', () => {
     // And the high-water mark stays put, so the days it skipped are still
     // ahead of the pass when the area comes back rather than written off.
     expect(setWrittenThrough).not.toHaveBeenCalled();
+  });
+
+  describe('while Today shows the meal strip', () => {
+    const strip = (over: Record<string, unknown> = {}) => settings({ mealsOnToday: 'top', rewardsEnabled: true, ...over });
+    const foodRow = (dayKey: string, slot: MealSlot, label: string) => ({
+      id: `f-${dayKey}-${slot}`, dayKey, atISO: `${dayKey}T12:00:00.000Z`, slot, label, recipeId: null, itemId: null,
+      productId: null, mealPlanEntryId: null, quantity: '1 serving', grams: 200,
+      nutrition: { basis: 'perServing', amounts: { calorieKcal: 400 }, source: 'manual', servingGrams: null, servingText: null, sourceId: null, portions: [], recordedAt: `${dayKey}T12:00:00.000Z` },
+      healthSampleIds: [], sortOrder: 0, createdAt: `${dayKey}T12:00:00.000Z`,
+    });
+    const coins = () => useRewardStore.getState().entries.map(e => [e.label, e.amount]);
+
+    beforeEach(() => {
+      useRewardStore.setState({ entries: [], rewards: [], initialized: true });
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]);
+    });
+    afterEach(() => { (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]); });
+
+    it('writes no meal tasks and drops the open ones, started chains included', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch', 'dinner'] }));
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+      expect(slotRows()).toHaveLength(14);
+      // Mid-chain: the strip carries this meal now too, so it goes as well.
+      const started = slotRows()[0];
+      useTaskStore.setState({ tasks: useTaskStore.getState().tasks.map(t => t.id === started.id ? { ...t, chainIndex: 1 } : t) });
+
+      useSettingsStore.getState.mockReturnValue(strip({ mealSlotsEnabled: ['lunch', 'dinner'] }));
+      useTaskStore.getState().checkMealSlotTasks();
+
+      expect(slotRows()).toEqual([]);
+      // Cleared, so leaving the strip writes the week afresh rather than
+      // reading the days dropped here as days the user deleted.
+      expect(writtenThrough).toBeNull();
+    });
+
+    it('writes the week again once the strip is turned off', () => {
+      useSettingsStore.getState.mockReturnValue(strip({ mealSlotsEnabled: ['lunch'] }));
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+      expect(slotRows()).toEqual([]);
+
+      useSettingsStore.getState.mockReturnValue(settings({ mealsOnToday: 'inline', mealSlotsEnabled: ['lunch'] }));
+      useTaskStore.getState().checkMealSlotTasks();
+      expect(sourceIds()[0]).toBe('2026-08-22#lunch');
+      expect(slotRows()).toHaveLength(7);
+    });
+
+    it('leaves the meal tasks alone when the grocery area is off, strip or not', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+      useSettingsStore.getState.mockReturnValue(strip({ kitchenEnabled: false, mealSlotsEnabled: ['lunch'] }));
+      useTaskStore.getState().checkMealSlotTasks();
+      expect(slotRows()).toHaveLength(7);
+    });
+
+    it('backfills nothing for a meal switched on while the strip shows', () => {
+      useSettingsStore.getState.mockReturnValue(strip({ mealSlotsEnabled: ['lunch', 'dinner'] }));
+      writtenThrough = '2026-08-28';
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().backfillMealSlotTasks(['dinner']);
+      expect(slotRows()).toEqual([]);
+    });
+
+    it('pays each meal once it is logged or marked eaten, and once only', () => {
+      useSettingsStore.getState.mockReturnValue(strip());
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([foodRow('2026-08-22', 'lunch', 'Sandwich')]);
+      (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+        mealEntry('2026-08-22', 'dinner', { cookedAt: '2026-08-22T19:00:00.000Z' }),
+        mealEntry('2026-08-22', 'breakfast'),
+      ]);
+
+      useTaskStore.getState().syncMealStripCoins();
+      useTaskStore.getState().syncMealStripCoins();
+
+      const paid = mealStripCoins();
+      expect(coins()).toEqual(expect.arrayContaining([['Ate lunch', paid], ['Ate dinner', paid]]));
+      // Breakfast is planned but not eaten.
+      expect(coins()).toHaveLength(2);
+    });
+
+    it('takes a meal’s coins back once it no longer counts as eaten', () => {
+      useSettingsStore.getState.mockReturnValue(strip());
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([foodRow('2026-08-22', 'lunch', 'Sandwich')]);
+      useTaskStore.getState().syncMealStripCoins();
+      expect(coins()).toHaveLength(1);
+
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([]);
+      useTaskStore.getState().syncMealStripCoins('2026-08-22');
+      expect(coins()).toEqual([]);
+    });
+
+    it('pays nothing with the strip off, or for a day still ahead', () => {
+      (dbGetFoodLogEntries as jest.Mock).mockReturnValue([foodRow('2026-08-23', 'lunch', 'Sandwich'), foodRow('2026-08-22', 'lunch', 'Soup')]);
+      useSettingsStore.getState.mockReturnValue(strip());
+      useTaskStore.getState().syncMealStripCoins('2026-08-23');
+      expect(coins()).toEqual([]);
+
+      useSettingsStore.getState.mockReturnValue(settings({ mealsOnToday: 'inline', rewardsEnabled: true }));
+      useTaskStore.getState().syncMealStripCoins('2026-08-22');
+      expect(coins()).toEqual([]);
+    });
+
+    it('settles yesterday as well as today on its daily pass', () => {
+      // A dinner logged after the day turned over lands on yesterday, where no
+      // food log write re-checked it.
+      useSettingsStore.getState.mockReturnValue(strip());
+      (dbGetFoodLogEntries as jest.Mock).mockImplementation((start: string) =>
+        start === '2026-08-21' ? [foodRow('2026-08-21', 'dinner', 'Takeout')] : []);
+      useTaskStore.setState({ tasks: [] });
+      useTaskStore.getState().checkMealSlotTasks();
+      expect(coins()).toEqual([['Ate dinner', mealStripCoins()]]);
+    });
   });
 
   it('lays a day down breakfast first, whatever order the meals were named in', () => {

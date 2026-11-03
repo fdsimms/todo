@@ -50,7 +50,7 @@ jest.mock('../store/useSettingsStore', () => ({
 // environment, and nothing here exercises the written-to-Health path that
 // would reach either.
 jest.mock('../store/useTaskStore', () => ({
-  useTaskStore: { getState: () => ({ checkHealthTasks: jest.fn() }) },
+  useTaskStore: { getState: () => ({ checkHealthTasks: jest.fn(), syncMealStripCoins: jest.fn() }) },
 }));
 
 jest.mock('../store/useHealthStore', () => ({
