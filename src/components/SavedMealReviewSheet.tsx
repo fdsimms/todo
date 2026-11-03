@@ -50,6 +50,9 @@ import {
 } from '../utils/foodLog';
 import { formatQuantityAmount } from '../utils/quantity';
 import { confirmLargeAmount } from '../utils/confirmLargeAmount';
+import { netWeight, plainGramsReading } from '../utils/cookware';
+import { useWeighIn } from '../hooks/useWeighIn';
+import { CookwareWeighIn } from './CookwareWeighIn';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot, type SavedMeal, type SavedMealItem } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -109,6 +112,24 @@ function typedEstimateFactor(item: SavedMealItem, text: string, unit: AmountUnit
  * Modal so it presents from this sheet rather than from the root, which is
  * already presenting it (the sibling Modal rule).
  */
+/**
+ * One line's cookware picker. `useWeighIn` holds a single selection, so each
+ * line needs its own copy of the hook; this reports the picked weight up and the
+ * sheet does the subtraction (`applyAmount`). It is mounted only while the
+ * line's field holds a gram weight, so leaving grams drops the pick (the cleanup
+ * reports 0), the same shape as `ScanPortionSheet`'s.
+ */
+function LinePlateWeighIn({ scaleText, onTareChange }: { scaleText: string; onTareChange: (g: number) => void }) {
+  const weighIn = useWeighIn('plate');
+  const tare = weighIn.picked.reduce((sum, c) => sum + c.weightG, 0);
+  useEffect(() => {
+    onTareChange(tare);
+    return () => onTareChange(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tare]);
+  return <CookwareWeighIn weighIn={weighIn} scaleText={scaleText} surface="card" noun="plate" />;
+}
+
 export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveChanges, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -121,6 +142,8 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
   /** Amount text typed but not yet applied, by line key. */
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  /** Cookware picked per line, in grams. A line's typed gram amount is then the scale's reading. */
+  const [tares, setTares] = useState<Record<string, number>>({});
   /**
    * The unit and number a line's amount is split into, by line key. Kept apart
    * from `drafts` (the composed text) so a unit picked before a number is typed,
@@ -186,20 +209,41 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
     setErrors(prev => { const { [line.key]: _gone, ...rest } = prev; return rest; });
   };
 
+  /**
+   * `itemAtAmount` with the line's cookware taken off a gram reading. A typed
+   * amount that isn't a plain gram weight is measured as typed (a pot comes off
+   * a weight and nothing else); a reading at or under the cookware is refused
+   * with the reason rather than logged as a tiny helping.
+   */
+  const applyAmount = (line: ReviewLine, text: string, tare: number = tares[line.key] ?? 0) => {
+    const reading = tare > 0 ? plainGramsReading(text) : null;
+    if (reading === null) return itemAtAmount(line.item, text, panelFor);
+    const net = netWeight(Number(reading.replace(',', '.')), [tare], 'plate');
+    if (!net.ok) return { ok: false as const, reason: net.reason };
+    return itemAtAmount(line.item, `${net.grams} g`, panelFor);
+  };
+
   /** Applies one line's typed amount. Returns whether the line is now settled. */
-  const applyDraft = (line: ReviewLine, text: string): boolean => {
+  const applyDraft = (line: ReviewLine, text: string, tare?: number): boolean => {
     const typed = text.trim();
     if (!typed) {
       setErrors(prev => ({ ...prev, [line.key]: 'Enter an amount, such as 170 g or 2 servings.' }));
       return false;
     }
-    const result = itemAtAmount(line.item, typed, panelFor);
+    const result = applyAmount(line, typed, tare);
     if (!result.ok) {
       setErrors(prev => ({ ...prev, [line.key]: result.reason }));
       return false;
     }
     setItem(line.key, result.item);
-    clearDraft(line.key);
+    // With cookware picked the field keeps the reading it was typed as: the line
+    // now holds the net, and reopening the field on that would take the pot off twice.
+    if ((tare ?? tares[line.key] ?? 0) > 0) {
+      setDrafts(prev => ({ ...prev, [line.key]: text }));
+      setErrors(prev => { const { [line.key]: _gone, ...rest } = prev; return rest; });
+    } else {
+      clearDraft(line.key);
+    }
     return true;
   };
 
@@ -225,7 +269,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
       const text = drafts[line.key];
       if (text === undefined || line.removed) continue;
       const typed = text.trim();
-      const result = typed ? itemAtAmount(line.item, typed, panelFor) : null;
+      const result = typed ? applyAmount(line, typed) : null;
       if (result && result.ok) {
         const item = result.item;
         current = current.map(l => (l.key === line.key ? { ...l, item } : l));
@@ -418,6 +462,25 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
                               }}
                             />
                           )}
+                        </View>
+                      );
+                    })()}
+                    {(() => {
+                      // Hidden until the field holds a plain gram weight: a pot
+                      // comes off a weight and off nothing else ("2 servings").
+                      const fieldText = draft ?? edit.amount;
+                      const reading = plainGramsReading(fieldText);
+                      if (reading === null && !(tares[line.key] > 0)) return null;
+                      return (
+                        <View style={styles.weighInWrap}>
+                          <LinePlateWeighIn
+                            scaleText={reading ?? ''}
+                            onTareChange={g => {
+                              setTares(prev => (prev[line.key] ?? 0) === g ? prev : { ...prev, [line.key]: g });
+                              // Picking or dropping a pot re-measures the number already typed.
+                              if (draft !== undefined || g > 0) applyDraft(line, fieldText, g);
+                            }}
+                          />
                         </View>
                       );
                     })()}
@@ -629,6 +692,7 @@ function makeStyles(colors: Colors) {
       color: colors.text,
       fontSize: font.md,
     },
+    weighInWrap: { marginTop: spacing.sm },
     unitTrack: { width: 112 },
     unitText: { color: colors.textSecondary, fontSize: font.md },
     choicesBelow: { marginTop: spacing.sm },

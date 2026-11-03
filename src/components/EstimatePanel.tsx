@@ -76,6 +76,9 @@ import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
 import { SegmentedControl } from './SegmentedControl';
 import { TextField } from './TextField';
+import { CookwareWeighIn } from './CookwareWeighIn';
+import { useWeighIn } from '../hooks/useWeighIn';
+import { plainGramsReading } from '../utils/cookware';
 import { BUTTON_LABEL } from '../copy/shared';
 import { RotatingChevron } from './RotatingChevron';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -340,6 +343,16 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   /** The amount field's draft while it is open, or null while it is closed. */
   const [amountDraft, setAmountDraft] = useState<string | null>(null);
   /**
+   * Cookware the typed amount was weighed in, for the "Based on" edit and for a
+   * staged row's weight field. Two instances, because the two can be open at
+   * once and a pick in one must not change the other. Each is cleared when its
+   * field closes, since a pot belongs to the weighing it was picked for.
+   */
+  const amountWeighIn = useWeighIn('plate');
+  const stagedWeighIn = useWeighIn('plate');
+  /** Cookware for a weight typed into the description itself ("White rice 744g"); see `typedWeight`. */
+  const descriptionWeighIn = useWeighIn('plate');
+  /**
    * What has been eaten lately, taken once when the sheet opens.
    *
    * A snapshot rather than a subscription, the call `FoodLogEntrySheet` makes
@@ -531,6 +544,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
     setDetailsOpen(false);
     setAmount('');
     setAmountDraft(null);
+    amountWeighIn.clear();
     setEstimatedFor(description);
     run(description, true);
   };
@@ -589,13 +603,22 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   // don't reflect.
   const handleAmountSubmit = () => {
     if (estimatedFor == null || loading || amountDraft == null) return;
-    const next = amountDraft.trim();
-    if (next === amount) { setAmountDraft(null); return; }
+    let next = amountDraft.trim();
+    // With cookware picked the field holds the scale's reading: the model is
+    // asked about the food alone. A reading at or under the cookware stays in
+    // the field and the picker says why, so nothing is sent.
+    if (amountWeighIn.picked.length > 0) {
+      const net = amountWeighIn.convert(plainGramsReading(next) ?? '');
+      if (!net?.ok) return;
+      next = `${net.grams} g`;
+    }
+    if (next === amount) { setAmountDraft(null); amountWeighIn.clear(); return; }
     haptics.tap();
     Keyboard.dismiss();
     const previous = amount;
     setAmount(next);
     setAmountDraft(null);
+    amountWeighIn.clear();
     // Asked with the answers the figures already reflect, so staged chips stay
     // staged for the Update button rather than being folded in unannounced.
     void run(refinedText(estimatedFor, appliedAnswers, next), false).then(ok => {
@@ -794,8 +817,16 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
       if (factor !== null && factor !== ask.opensAt) change = { factor };
     } else if (ask.kind === 'weight') {
       const text = amount.weight.trim();
-      const grams = parseWeightGrams(text);
-      if (grams === null && (text || amount.baseline !== null)) return { error: 'Enter a weight in grams.' };
+      const reading = parseWeightGrams(text);
+      if (reading === null && (text || amount.baseline !== null)) return { error: 'Enter a weight in grams.' };
+      // With cookware picked the field is the scale's reading, and the food is
+      // what is left once it comes off. A reading at or under the cookware is
+      // refused in words rather than logged as a tiny helping.
+      // Only the open card has a pick: every other row's figure (its +) is the
+      // recorded amount and never has cookware taken off.
+      const weighed = reading === null ? null : staged === pendingLog ? stagedWeighIn.convert(text) : { ok: true as const, grams: reading };
+      if (weighed && !weighed.ok) return { error: weighed.reason };
+      const grams = weighed ? weighed.grams : null;
       if (grams !== null && grams !== amount.baseline) change = { grams };
     }
 
@@ -838,6 +869,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   const openPending = (staged: PendingRecallLog) => {
     haptics.tap();
     setPendingLog(staged);
+    stagedWeighIn.clear();
     setPendingAmount(stagedDefaults(staged));
     setPendingError(null);
   };
@@ -848,6 +880,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
     setPendingLog(null);
     setPendingAmount(null);
     setPendingError(null);
+    stagedWeighIn.clear();
   };
 
   /** One field of the open amount step changed, which also clears a stale error. */
@@ -908,6 +941,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
     setPendingLog(null);
     setPendingAmount(null);
     setPendingError(null);
+    stagedWeighIn.clear();
 
     // Logging this row is logging its own clause, not the whole field: "31 g
     // baguette, 25g peach jam" still has a baguette in it once the jam is
@@ -1009,6 +1043,36 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
   const offersFirst = hasOffers && !estimate;
 
   /**
+   * The one gram weight typed into the description, or null when there is none
+   * or more than one. With two ("31 g baguette, 25g peach jam") there is no
+   * telling which food the pot was under, so no cookware is offered and each
+   * is read as typed.
+   *
+   * **A pick rewrites the figure in the field rather than being applied
+   * silently**: "Use 744 g" puts the net weight where the reading was, so the
+   * recall rows, the estimate and the queue all read the same words the person
+   * can see, and a reading at or under the cookware can't be logged by accident.
+   */
+  const typedWeight = useMemo(() => {
+    const found = [...description.matchAll(/(\d+(?:\.\d+)?)\s*(?:g|grams?)\b/gi)];
+    return found.length === 1 ? { text: found[0][0], grams: found[0][1], at: found[0].index ?? 0 } : null;
+  }, [description]);
+  const hasTypedWeight = typedWeight !== null;
+  useEffect(() => {
+    if (!hasTypedWeight) descriptionWeighIn.clear();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasTypedWeight]);
+  const typedNet = typedWeight && descriptionWeighIn.picked.length > 0 ? descriptionWeighIn.convert(typedWeight.grams) : null;
+  const applyTypedNet = () => {
+    if (!typedWeight || !typedNet?.ok) return;
+    haptics.tap();
+    onDescriptionChange(
+      `${description.slice(0, typedWeight.at)}${typedNet.grams} g${description.slice(typedWeight.at + typedWeight.text.length)}`,
+    );
+    descriptionWeighIn.clear();
+  };
+
+  /**
    * The open card's amount step, in whichever question `askFor` says the row
    * is asked: a weight, a count in the estimate's own unit, a multiple of the
    * whole, or none at all.
@@ -1033,6 +1097,9 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                 accessibilityLabel={`Amount to log for ${food.label}, in grams`}
               />
               <Text style={styles.confirmSuffix}>g</Text>
+            </View>
+            <View style={styles.amountWeighIn}>
+              <CookwareWeighIn weighIn={stagedWeighIn} scaleText={amount.weight} surface="card" noun="plate" />
             </View>
           </View>
         );
@@ -1281,6 +1348,20 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
         </TouchableOpacity>
       </View>
 
+      {typedWeight && !loading && (
+        <View style={styles.descriptionWeighIn}>
+          <CookwareWeighIn weighIn={descriptionWeighIn} scaleText={typedWeight.grams} surface="page" noun="plate" />
+          {typedNet?.ok && (
+            <InlineAction
+              label={`Use ${typedNet.grams} g`}
+              onPress={applyTypedNet}
+              style={styles.descriptionWeighInApply}
+              accessibilityLabel={`Replace ${typedWeight.text} with ${typedNet.grams} g in what you typed`}
+            />
+          )}
+        </View>
+      )}
+
           {hasOffers && !estimate && (
             <>
               <View style={styles.offerList}>
@@ -1383,6 +1464,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                   <Ionicons name="create-outline" size={iconSize.sm} color={colors.accent} />
                 </TouchableOpacity>
               ) : (
+                <View>
                 <View style={styles.amountRow}>
                   <TextField
                     style={styles.amountInput}
@@ -1401,6 +1483,20 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                     onPress={handleAmountSubmit}
                     accessibilityLabel={amountDraft.trim() ? 'Update the estimate for this amount' : 'Go back to the estimated amount'}
                   />
+                </View>
+                {/* Shown only for a plain gram weight: a pot comes off a
+                    weight and off nothing else ("about 4 cups"). A pick made
+                    for a weight stays picked until the field closes. */}
+                {(plainGramsReading(amountDraft) !== null || amountWeighIn.picked.length > 0) && (
+                  <View style={styles.amountWeighIn}>
+                    <CookwareWeighIn
+                      weighIn={amountWeighIn}
+                      scaleText={plainGramsReading(amountDraft) ?? ''}
+                      surface="card"
+                      noun="plate"
+                    />
+                  </View>
+                )}
                 </View>
               )}
               {kcal !== undefined && (
@@ -1654,6 +1750,9 @@ function makeStyles(colors: Colors) {
     cardTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     quantity: { color: colors.textSecondary, fontSize: font.sm, flexShrink: 1 },
     amountRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm },
+    amountWeighIn: { marginTop: spacing.sm },
+    descriptionWeighIn: { marginBottom: spacing.md },
+    descriptionWeighInApply: { alignSelf: 'flex-start', marginTop: spacing.sm },
     amountInput: {
       flex: 1,
       backgroundColor: colors.bgSecondary,
