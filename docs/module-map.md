@@ -47,7 +47,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/amountMath.ts` — resolveAmountMath, AmountOperator, AMOUNT_OPERATORS, appendOperator
 - `src/utils/amountUnit.ts` — NO_UNIT, OTHER_UNIT, AmountUnitGroup, VOLUME_UNITS, WEIGHT_UNITS, COUNT_UNITS, ingredientAmountGroups, amountUnitLabel, readAmount, writeAmount
 - `src/utils/appGate.ts` — isGateTask, gateGroupFor, outstandingGates, gateShieldWanted, GATE_WINDOW_MINUTES, GATE_ARM_HORIZON_MS, GateWindow, gateWindowFor, PendingGate, nextPendingGate, +1 more
-- `src/utils/appGroups.ts` — APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, BASE_GROUP_NAME_SETTING, FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, MAX_APP_GROUPS, MAX_SUPERGROUPS, MAX_GROUP_NAME_LENGTH, AppGroup, +31 more
+- `src/utils/appGroups.ts` — APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, BASE_GROUP_NAME_SETTING, FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, MAX_APP_GROUPS, MAX_SUPERGROUPS, MAX_GROUP_NAME_LENGTH, AppGroup, +33 more
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
 - `src/utils/appShield.ts` — AppShieldState, ShieldReasonKind, ShieldReasonEntry, shieldReasons, speedBumpWanted, shieldGroupIds, shieldAllowSets, appShieldWanted, syncAppShield
@@ -229,7 +229,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, isNonFoodAisle, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, +2 more
 - `src/utils/groceryExpiry.ts` — wantsUseUpTask, useUpTaskTitle, clampUseUpLeadDays, useUpTaskFields, useUpTaskDraft, USE_UP_RECIPES_SHOWN, useUpRecipeNotes, useUpTaskDrift, useUpDeadlineDay, finishedUseUpFor
 - `src/utils/groceryFacts.ts` — ItemRelations, linkCounts, hasUserFacts, factSignature, describeForgetLoss
-- `src/utils/groceryItemWrite.ts` — pricedRows, ProductPatch, productEditRow, preferredProductRow, renameClash, renameRows, shopLinkRow, newShopRow, renamedShopRow, SubLinkOptions, +14 more
+- `src/utils/groceryItemWrite.ts` — pricedRows, ProductPatch, productEditRow, preferredProductRow, renameClash, renameRows, shopLinkRow, SHOP_NAME_TAKEN, shopNameTaken, newShopRow, +16 more
 - `src/utils/groceryLists.ts` — HOME_LIST_NAME, isAwayList, listNameFor, entryFor, onListAnywhere, listedAnywhere, itemsOnList, withHomeMembership, trolleyStateFor, listCount, +4 more
 - `src/utils/groceryMerge.ts` — laterOf, pickPriceFields, MergeRows, MergePlan, planMergeItems
 - `src/utils/groceryParse.ts` — groceryNameKey, parseGroceryInput, LEADING_PREP_PRODUCTS, splitQuantityNote, splitPrep, splitPurpose, splitExample, suggestShorterCatalogName, splitAlternativeNames, splitImportAlternatives, +4 more
@@ -352,7 +352,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodTasks.ts` — MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MIN, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodLogSegmentOf, moodLogSourceId, +5 more
 - `src/utils/morningAlarm.ts` — NEXT_ALARM_LINK, morningDate, ringOn, MorningAlarm, morningAlarmFor, overrideFor, overrideDay, overrideAt, isOverrideSpent, AlarmDetailIcon, +2 more
 - `src/utils/morningCheckIn.ts` — isMorningCheckInCandidate, morningCheckInTasks
-- `src/utils/nameTaken.ts` — categoryRenameTaken, projectCategoryTakenBy, recipeRenameTaken, cookbookRenameTaken
+- `src/utils/nameTaken.ts` — categoryRenameTaken, projectCategoryTakenBy, recipeRenameTaken, cookbookRenameTaken, choiceGroupRenameTaken, ingredientLineClash
 - `src/utils/naturalKeyFold.ts` — NaturalKey, NATURAL_KEYS, foldRows, Reference, REFERENCES, SettingReference, SETTING_REFERENCES, foldWinner
 - `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +35 more
 - `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, slipAllowanceOf, nextSlipIsFree, lastSlipWasFree, isCleanToday, isFailedToday, slipPatch, undoSlipPatch, +9 more

@@ -36,10 +36,12 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { aisleForName } from '../utils/groceryAisles';
 import { groceryNameKey, splitAlternativeNames } from '../utils/groceryParse';
+import { choiceGroupRenameTaken, ingredientLineClash } from '../utils/nameTaken';
+import { FieldError } from './FieldError';
 import { varietyOfferFor } from '../utils/itemVarieties';
 import { matchIngredientToCatalog } from '../utils/ingredientCatalogMatch';
 import { catalogItemForKey } from '../utils/groceryPlural';
-import { cleanChoiceGroup, defaultChoiceGroupLabel, ingredientDedupeKey, splitIngredientAnd as andPartsOf, type AndSplitPart } from '../utils/recipeUtils';
+import { cleanChoiceGroup, defaultChoiceGroupLabel, splitIngredientAnd as andPartsOf, type AndSplitPart } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { allSectionsOf } from '../utils/recipeSections';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -252,6 +254,19 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   }, [recipeIngredients, ingredient, choiceGroup]);
 
   const groupLabel = cleanChoiceGroup(choiceGroup);
+  const thisRecipe = allRecipes.find(r => r.id === recipeId);
+  // Said while it is typed, from the rules the store refuses on: another line
+  // that would be this one's twin (name, heading, prep and purpose together),
+  // and a group label this recipe already uses.
+  const lineClash = ingredient && thisRecipe
+    ? ingredientLineClash(thisRecipe.ingredients, ingredient, { name, section, prep, purpose })
+    : undefined;
+  const clashMessage = lineClash
+    ? `This recipe already has a “${lineClash.name}” line${section.trim() ? ` under ${section.trim()}` : ''}. Change this one, or remove the other.`
+    : null;
+  const groupNameTaken = editingGroupName && !!thisRecipe && !!groupLabel
+    && choiceGroupRenameTaken(thisRecipe, groupLabel, groupNameDraft);
+  const groupTakenMessage = 'Another group in this recipe already has that name.';
 
   // ==== writing the choice group ====
   // Writes this ingredient's own choiceGroup immediately, rather than
@@ -271,6 +286,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
   // `choiceGroup` state won't reflect that until a re-render, and Done can
   // beat both the field's own blur and that render.
   const commitGroupRename = (): string | null => {
+    // A taken label leaves the field open on the message under it, holding what
+    // was typed, rather than closing on the old name as if nothing was asked.
+    if (groupNameTaken) { haptics.error(); return cleanChoiceGroup(choiceGroup); }
     setEditingGroupName(false);
     const clean = cleanChoiceGroup(groupNameDraft);
     if (!clean || clean === groupLabel) return cleanChoiceGroup(choiceGroup);
@@ -326,23 +344,20 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
     // purpose, and an edit into that shape made the same duplicate. Checked
     // only when this edit changes one of those, so a duplicate already on the
     // recipe doesn't block saving something else.
-    const edited = {
-      ...ingredient,
-      nameKey: name.trim() && name.trim() !== ingredient.name ? groceryNameKey(name.trim()) : ingredient.nameKey,
-      section: section.trim() || null,
-      prep: prep.trim() || null,
-      purpose: purpose.trim() || null,
-    };
-    if (ingredientDedupeKey(edited) !== ingredientDedupeKey(ingredient)) {
-      const clash = allRecipes.find(r => r.id === recipeId)?.ingredients
-        .find(i => i.id !== ingredient.id && ingredientDedupeKey(i) === ingredientDedupeKey(edited));
-      if (clash) {
-        Alert.alert(
-          'That name is taken',
-          `This recipe already has a “${clash.name}” line${edited.section ? ` under ${edited.section}` : ''}. Change this one, or remove the other.`,
-        );
-        return false;
-      }
+    // The same rule is on screen under the name while it is typed, and turns
+    // Done off. This is for the other ways out (split, merge, open a recipe,
+    // open a setting), whose buttons sit further down the sheet where that line
+    // would be out of sight, so they say it in an alert.
+    if (clashMessage) {
+      haptics.error();
+      Alert.alert('That name is taken', clashMessage);
+      return false;
+    }
+    // A group label being typed that this recipe already uses: the same.
+    if (groupNameTaken) {
+      haptics.error();
+      Alert.alert('That name is taken', groupTakenMessage);
+      return false;
     }
     // Tapping Done can beat the group name field's own blur — flush it here
     // instead of trusting stale `choiceGroup` state.
@@ -589,7 +604,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
         <SheetHeader
           bare
           title="Ingredient"
-          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} disabled={!!clashMessage || groupNameTaken} />}
           right={<View style={styles.headerSpacer} />}
         />
       }
@@ -614,6 +629,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
           spellCheck={false}
           accessibilityLabel="Ingredient name"
         />
+        <FieldError>{clashMessage}</FieldError>
         {!!alternatives && (
           <TouchableOpacity
             style={styles.suggestionRow}
@@ -1116,6 +1132,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient: liveIngre
                 onBlur={commitGroupRename}
                 accessibilityLabel="Group name"
               />
+              {groupNameTaken && <FieldError>{groupTakenMessage}</FieldError>}
             </View>
           ) : (
             <TouchableOpacity

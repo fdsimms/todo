@@ -9,8 +9,17 @@
  * accepts or let through one it refuses. The store still checks at the write,
  * since a sheet can be open while another screen changes the list.
  */
-import type { Cookbook, ProjectCategory, Recipe } from '../types';
-import { cleanRecipeName, cleanRecipeSource, cookbookKey, recipeInBook, recipeNameKey } from './recipeUtils';
+import type { Cookbook, ProjectCategory, Recipe, RecipeIngredient } from '../types';
+import { groceryNameKey } from './groceryParse';
+import {
+  cleanChoiceGroup,
+  cleanRecipeName,
+  cleanRecipeSource,
+  cookbookKey,
+  ingredientDedupeKey,
+  recipeInBook,
+  recipeNameKey,
+} from './recipeUtils';
 
 /**
  * A task category renamed to `typed`. Task categories compare exactly, with no
@@ -67,4 +76,48 @@ export function cookbookRenameTaken(
   if (!cleanTitle) return false;
   const key = cookbookKey(cleanTitle, cleanRecipeSource(author ?? '') || null);
   return key !== cookbook.titleKey && cookbooks.some(c => c.titleKey === key);
+}
+
+/**
+ * An either/or group of a recipe's lines renamed to `typed`: another group in
+ * the same recipe already has that label, which would fold the two into one
+ * choice. The label is shared by ingredients and used recipes, so both lists
+ * count. Compared exactly (`renameChoiceGroup` does), and keeping its own label
+ * or typing nothing is not a clash.
+ */
+export function choiceGroupRenameTaken(
+  recipe: Pick<Recipe, 'ingredients' | 'components'>,
+  oldLabel: string,
+  typed: string,
+): boolean {
+  const clean = cleanChoiceGroup(typed);
+  if (!clean || clean === oldLabel) return false;
+  return recipe.ingredients.some(i => i.choiceGroup === clean)
+    || recipe.components.some(c => c.choiceGroup === clean);
+}
+
+/**
+ * The other line of a recipe that an ingredient edited to `draft` would
+ * duplicate, or undefined when it would not. A recipe refuses a second line
+ * with the same name, heading, prep and purpose (`ingredientDedupeKey`), so the
+ * clash is those four together, not the name alone. Only an edit that changes
+ * one of them can clash: a duplicate already on the recipe doesn't block saving
+ * something else on the line.
+ */
+export function ingredientLineClash<I extends RecipeIngredient>(
+  lines: readonly I[],
+  ingredient: I,
+  draft: { name: string; section: string; prep: string; purpose: string },
+): I | undefined {
+  const name = draft.name.trim();
+  const edited: I = {
+    ...ingredient,
+    nameKey: name && name !== ingredient.name ? groceryNameKey(name) : ingredient.nameKey,
+    section: draft.section.trim() || null,
+    prep: draft.prep.trim() || null,
+    purpose: draft.purpose.trim() || null,
+  };
+  const key = ingredientDedupeKey(edited);
+  if (key === ingredientDedupeKey(ingredient)) return undefined;
+  return lines.find(i => i.id !== ingredient.id && ingredientDedupeKey(i) === key);
 }

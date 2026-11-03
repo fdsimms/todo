@@ -1,6 +1,8 @@
 import {
   categoryRenameTaken,
+  choiceGroupRenameTaken,
   cookbookRenameTaken,
+  ingredientLineClash,
   projectCategoryTakenBy,
   recipeRenameTaken,
 } from '../utils/nameTaken';
@@ -92,5 +94,65 @@ describe('cookbookRenameTaken', () => {
   it('is not a clash to keep its own title and author, or to type no title', () => {
     expect(cookbookRenameTaken([sweet, salt], salt, 'Salt Fat', null)).toBe(false);
     expect(cookbookRenameTaken([sweet, salt], salt, '  ', null)).toBe(false);
+  });
+});
+
+describe('choiceGroupRenameTaken', () => {
+  const recipeWith = (ingredientGroups: (string | null)[], componentGroups: (string | null)[] = []) => ({
+    ingredients: ingredientGroups.map(choiceGroup => ({ choiceGroup })),
+    components: componentGroups.map(choiceGroup => ({ choiceGroup })),
+  }) as never;
+
+  it('flags a label another group in the recipe has, by exact match', () => {
+    expect(choiceGroupRenameTaken(recipeWith(['Sweetener', 'Milk']), 'Sweetener', 'Milk')).toBe(true);
+    expect(choiceGroupRenameTaken(recipeWith(['Sweetener', 'Milk']), 'Sweetener', 'milk')).toBe(false);
+  });
+
+  it('counts a used recipe’s label too, since the two share one namespace', () => {
+    expect(choiceGroupRenameTaken(recipeWith(['Sweetener'], ['Side']), 'Sweetener', 'Side')).toBe(true);
+  });
+
+  it('cleans what was typed before comparing', () => {
+    expect(choiceGroupRenameTaken(recipeWith(['Sweetener', 'Milk']), 'Sweetener', '  Milk  ')).toBe(true);
+  });
+
+  it('is not a clash to keep its own label or to type nothing', () => {
+    expect(choiceGroupRenameTaken(recipeWith(['Sweetener', 'Milk']), 'Sweetener', 'Sweetener')).toBe(false);
+    expect(choiceGroupRenameTaken(recipeWith(['Sweetener', 'Milk']), 'Sweetener', '   ')).toBe(false);
+  });
+});
+
+describe('ingredientLineClash', () => {
+  const line = (id: string, name: string, extra: Record<string, unknown> = {}) => ({
+    id, name, nameKey: name.toLowerCase(), quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: null, ...extra,
+  }) as never as import('../types').RecipeIngredient;
+  const flour = line('a', 'flour');
+  const sugar = line('b', 'sugar');
+  const draft = (over: Partial<{ name: string; section: string; prep: string; purpose: string }> = {}) =>
+    ({ name: 'flour', section: '', prep: '', purpose: '', ...over });
+
+  it('finds the other line that this edit would make a twin of', () => {
+    expect(ingredientLineClash([flour, sugar], flour, draft({ name: 'sugar' }))).toBe(sugar);
+  });
+
+  it('needs name, heading, prep and purpose together, not the name alone', () => {
+    expect(ingredientLineClash([flour, sugar], flour, draft({ name: 'sugar', prep: 'sifted' }))).toBeUndefined();
+    const sifted = line('c', 'sugar', { prep: 'sifted' });
+    expect(ingredientLineClash([flour, sifted], flour, draft({ name: 'Sugar', prep: ' Sifted ' }))).toBe(sifted);
+  });
+
+  it('compares the heading as written and prep and purpose without case', () => {
+    const under = line('c', 'sugar', { section: 'Topping' });
+    expect(ingredientLineClash([flour, under], flour, draft({ name: 'sugar', section: 'topping' }))).toBeUndefined();
+    expect(ingredientLineClash([flour, under], flour, draft({ name: 'sugar', section: 'Topping' }))).toBe(under);
+  });
+
+  it('is not a clash when nothing that identifies the line changed, even beside an existing twin', () => {
+    const twin = line('c', 'flour');
+    expect(ingredientLineClash([flour, twin], flour, draft())).toBeUndefined();
+  });
+
+  it('never counts the line against itself', () => {
+    expect(ingredientLineClash([flour], flour, draft({ prep: 'sifted' }))).toBeUndefined();
   });
 });

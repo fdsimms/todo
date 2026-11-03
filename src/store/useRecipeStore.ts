@@ -34,7 +34,7 @@ import {
   remapIngredientKeyIn,
   splitIngredientAnd,
 } from '../utils/recipeUtils';
-import { cookbookRenameTaken, recipeRenameTaken } from '../utils/nameTaken';
+import { choiceGroupRenameTaken, cookbookRenameTaken, recipeRenameTaken } from '../utils/nameTaken';
 import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
 import { clampKeepDays } from '../utils/leftovers';
 import { clampCookedWeight } from '../utils/mealLog';
@@ -1340,8 +1340,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     // Labels are shared by ingredients and used recipes, so both lists count,
     // and both are renamed: renaming only the ingredient half split a mixed
     // group in two, and the next load dropped each half as a lone option.
-    if (recipe.ingredients.some(i => i.choiceGroup === clean)) return null;
-    if (recipe.components.some(c => c.choiceGroup === clean)) return null;
+    if (choiceGroupRenameTaken(recipe, oldLabel, clean)) return null;
     let touched = false;
     const ingredients = recipe.ingredients.map(i => {
       if (i.choiceGroup !== oldLabel) return i;
