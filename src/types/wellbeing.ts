@@ -303,3 +303,30 @@ export interface MedicationLog {
    */
   strength?: { amount: number; unit: string } | null;
 }
+
+/** What a check-in can be answered with. */
+export type CheckInAnswer = 'better' | 'same' | 'worse';
+
+/**
+ * A follow-up asked some time after a dose or a food ("is your headache any
+ * better?"). Its own row rather than columns on either log: a saved meal writes
+ * several food entries but is one check-in, and the answer has its own life
+ * (due, asked, answered) that must not restamp the dose it follows.
+ * `sourceId` is provenance and may dangle; the answer outlives a deleted dose.
+ */
+export interface CheckIn {
+  id: string;
+  sourceKind: 'medication' | 'food';
+  sourceId: string;
+  /** The medication name or food label, kept so the notification needs no lookup. */
+  subject: string;
+  /** What it was for ("headache"), or null when none was entered. */
+  about: string | null;
+  /** ISO time the question is asked. */
+  dueAt: string;
+  /** Logical day of the dose or food, so the answer sits with it. */
+  dayKey: string;
+  answer: CheckInAnswer | null;
+  /** ISO time it was answered, null while waiting. */
+  answeredAt: string | null;
+}

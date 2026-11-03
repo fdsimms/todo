@@ -1,4 +1,6 @@
+import type { CheckInAnswer } from '../types';
 import { COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER } from './notifications';
+import { answerForAction } from './checkIns';
 
 /**
  * The payload a notification carries, as far as a tap reads it. Each kind of
@@ -12,6 +14,7 @@ export interface NotificationTapData {
   agendaSpoken?: string | null;
   completionTimer?: boolean;
   activeTripReminder?: boolean;
+  checkInId?: string;
 }
 
 /** Where a tap on a notification lands, and what it does on the way. */
@@ -24,6 +27,8 @@ export type NotificationTapRoute =
   | { kind: 'agenda'; spokenLine: string | null }
   /** The completion timer's own notification: dismiss the timer, then Today. */
   | { kind: 'completionTimer'; taskId: string }
+  /** A check-in notification: a button answers it, a plain tap asks in the app. */
+  | { kind: 'checkIn'; checkInId: string; answer: CheckInAnswer | null }
   /** The Complete button on a task reminder. */
   | { kind: 'complete'; taskId: string }
   /** The Snooze button on a task reminder. */
@@ -48,6 +53,7 @@ export function routeNotificationTap(
 ): NotificationTapRoute {
   if (data?.activeTripReminder) return { kind: 'activeTrip' };
   if (data?.dailyAgenda) return { kind: 'agenda', spokenLine: data.agendaSpoken ? data.agendaSpoken : null };
+  if (data?.checkInId) return { kind: 'checkIn', checkInId: data.checkInId, answer: answerForAction(actionIdentifier) };
   const taskId = data?.taskId;
   if (!taskId) return { kind: 'none' };
   if (data?.completionTimer) return { kind: 'completionTimer', taskId };
