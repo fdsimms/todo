@@ -34,6 +34,7 @@ import {
   remapIngredientKeyIn,
   splitIngredientAnd,
 } from '../utils/recipeUtils';
+import { cookbookRenameTaken, recipeRenameTaken } from '../utils/nameTaken';
 import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
 import { clampKeepDays } from '../utils/leftovers';
 import { clampCookedWeight } from '../utils/mealLog';
@@ -695,8 +696,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     // A rename that only changes capitalisation keeps the same key, so compare
     // against *other* recipes rather than refusing to touch this one. Only
     // those in its own book: another book's recipe of that name is no clash.
-    const others = get().recipes.filter(r => r.id !== id);
-    if (key !== recipe.nameKey && recipeInBook(others, clean, recipe.cookbookId)) return false;
+    if (recipeRenameTaken(get().recipes, recipe, clean)) return false;
     save(set, { ...recipe, name: clean, nameKey: key });
     // The plan shows the live name already, but the calendar event and the
     // "Make X" task are built off each entry's captured title.
@@ -802,7 +802,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const cleanAuthor = cleanRecipeSource(author ?? '') || null;
 
     const key = cookbookKey(cleanTitle, cleanAuthor);
-    if (key !== cookbook.titleKey && get().cookbooks.some(c => c.titleKey === key)) return false;
+    if (cookbookRenameTaken(get().cookbooks, cookbook, cleanTitle, cleanAuthor)) return false;
 
     const updated: Cookbook = { ...cookbook, title: cleanTitle, titleKey: key, author: cleanAuthor };
     dbUpdateCookbook(updated);

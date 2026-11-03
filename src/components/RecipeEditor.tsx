@@ -52,6 +52,8 @@ import { cookbookEditIntent, type CookbookEditIntent } from '../utils/recipeProv
 import { EditorRow } from './EditorRow';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { FieldError } from './FieldError';
+import { recipeRenameTaken } from '../utils/nameTaken';
 import { SheetHeader } from './SheetHeader';
 import { EditorSheet } from './EditorSheet';
 import { TextField } from './TextField';
@@ -300,6 +302,12 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
   }, [recipe?.id, visible]);
 
   // ==== save and close ====
+  // Said under the name as it is typed, from the rule `renameRecipe` refuses on
+  // (a name another recipe in this recipe's own cookbook has), so the sheet and
+  // the store can't disagree. The recipe's stored cookbook, not one picked
+  // below: the rename is written before the cookbook is.
+  const nameTaken = !!recipe && recipeRenameTaken(recipes, recipe, name);
+
   const saveAndClose = () => {
     if (!recipe) { onClose(); return; }
     // A draft closed with no name and nothing on it was never a recipe. One
@@ -309,6 +317,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
       onDeleted();
       return;
     }
+    // Nothing is written while the name is refused. The sheet stays open on the
+    // message under the field.
+    if (nameTaken) { haptics.error(); return; }
     const book = cookbooks.find(c => c.id === recipe.cookbookId);
     const intent = sourceType === 'cookbook' && source.trim()
       ? cookbookEditIntent(book, source, author, recipes.filter(r => r.cookbookId === book?.id).length)
@@ -334,12 +345,14 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
   const commit = (cookbookIntent: CookbookEditIntent) => {
     if (!recipe) return;
     // renameRecipe refuses an empty name or a collision, and says so by
-    // returning false — surfacing it here rather than silently discarding the
-    // edit, which is what a plain `if (trimmed)` would do. Here rather than
-    // ahead of the cookbook question, so a Cancel there writes nothing at all
-    // instead of keeping the rename and dropping the rest.
+    // returning false, which stops the save rather than silently discarding the
+    // edit (what a plain `if (trimmed)` would do). A collision is already on
+    // screen under the field (`nameTaken`, off the same live list), so this
+    // only catches a name taken since. Here rather than ahead of the cookbook
+    // question, so a Cancel there writes nothing at all instead of keeping the
+    // rename and dropping the rest.
     if (name.trim() && name.trim() !== recipe.name && !renameRecipe(recipe.id, name)) {
-      Alert.alert('That name is taken', 'Another recipe already has that name.');
+      haptics.error();
       return;
     }
     setNotes(recipe.id, notes);
@@ -427,7 +440,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
         <SheetHeader
           bare
           title="Recipe details"
-          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} />}
+          left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} disabled={nameTaken} />}
           right={
             <TouchableOpacity
               onPress={handleDelete}
@@ -453,6 +466,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
         maxLength={RECIPE_NAME_MAX_LENGTH}
         accessibilityLabel="Recipe name"
       />
+      {nameTaken && <FieldError>Another recipe already has that name.</FieldError>}
       <Text style={styles.contentHint}>
         Ingredients, steps, and components are edited on the recipe page.
       </Text>

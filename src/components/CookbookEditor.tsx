@@ -4,13 +4,14 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { FieldError } from './FieldError';
+import { cookbookRenameTaken } from '../utils/nameTaken';
 import { InlineAction } from './InlineAction';
 import { CookbookMergeSheet } from './CookbookMergeSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -46,6 +47,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const cookbook = useRecipeStore(s => (cookbookId ? s.cookbookById(cookbookId) : undefined));
+  const cookbooks = useRecipeStore(s => s.cookbooks);
   const renameCookbook = useRecipeStore(s => s.renameCookbook);
   const deleteCookbook = useRecipeStore(s => s.deleteCookbook);
   const mergeCookbooks = useRecipeStore(s => s.mergeCookbooks);
@@ -74,6 +76,11 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cookbookId, visible]);
 
+  // Said under the fields as they are typed, from the rule `renameCookbook`
+  // refuses on. A book is its title and author together, so the same title
+  // under another author is free.
+  const nameTaken = !!cookbook && cookbookRenameTaken(cookbooks, cookbook, title, author);
+
   const saveAndClose = () => {
     if (!cookbookId || !cookbook) { finish(); return; }
     const trimmedTitle = title.trim();
@@ -84,12 +91,13 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
       finish();
       return;
     }
+    // The sheet stays open on the message under the fields, writing nothing.
+    if (nameTaken) { haptics.error(); return; }
     if (trimmedTitle !== cookbook.title || trimmedAuthor !== cookbook.author) {
+      // A refusal here is a book that took the title since the check above,
+      // which the live list shows as the same message on the next render.
       if (!renameCookbook(cookbookId, trimmedTitle, trimmedAuthor)) {
-        Alert.alert(
-          'Cookbook already exists',
-          'Another cookbook has this title and author.'
-        );
+        haptics.error();
         return;
       }
     }
@@ -142,7 +150,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
       )}
     >
       <View style={styles.header}>
-        <SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />
+        <SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} disabled={nameTaken} />
         <Text style={styles.headerTitle}>Edit cookbook</Text>
         <TouchableOpacity
           onPress={handleDelete}
@@ -179,6 +187,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
           returnKeyType="done"
           accessibilityLabel="Cookbook author"
         />
+        {nameTaken && <FieldError>Another cookbook has this title and author.</FieldError>}
         <Text style={styles.hint}>
           {recipeCount === 0 ? 'No recipes' : recipeCount === 1 ? '1 recipe' : `${recipeCount} recipes`} linked
           to this book. Changing the title or author here updates every one of them.

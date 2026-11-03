@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { ProjectCategory } from '../types';
+import { projectCategoryTakenBy } from '../utils/nameTaken';
 import {
   dbGetAllProjectCategories,
   dbInsertProjectCategory,
@@ -46,11 +47,6 @@ interface ProjectCategoryStore {
   getCategoryByName: (name: string) => ProjectCategory | null;
 }
 
-function findByName(categories: ProjectCategory[], name: string): ProjectCategory | undefined {
-  const key = name.trim().toLocaleLowerCase();
-  return categories.find(c => c.name.toLocaleLowerCase() === key);
-}
-
 export const useProjectCategoryStore = create<ProjectCategoryStore>((set, get) => ({
   categories: [],
   initialized: false,
@@ -66,7 +62,7 @@ export const useProjectCategoryStore = create<ProjectCategoryStore>((set, get) =
     // sections on the Projects page holding what anyone would call one.
     // Callers must use the returned row's name rather than what they passed.
     const name = rawName.trim();
-    const existing = findByName(get().categories, name);
+    const existing = projectCategoryTakenBy(get().categories, name);
     if (existing) return existing;
     const category = dbInsertProjectCategory(name);
     set(s => ({ categories: [...s.categories, category] }));
@@ -95,8 +91,7 @@ export const useProjectCategoryStore = create<ProjectCategoryStore>((set, get) =
     // one. Refused, and the caller keeps its field open.
     // Compared without case for the reason addCategory gives, except that
     // re-casing the category's own name ("travel" to "Travel") is a rename.
-    const taken = findByName(get().categories, trimmed);
-    if (taken && taken.id !== category.id) return false;
+    if (projectCategoryTakenBy(get().categories, trimmed, category.id)) return false;
     dbRenameProjectCategory(category.id, name, trimmed);
     set(s => ({
       categories: s.categories.map(c => (c.id === category.id ? { ...c, name: trimmed } : c)),

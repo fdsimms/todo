@@ -7,6 +7,7 @@ import {
   removeSavedPlace,
   renameSavedPlace,
   savedPlaceKey,
+  savedPlaceNameTaken,
   savedPlaceWithText,
   suggestSavedPlaces,
 } from '../utils/savedPlaces';
@@ -21,6 +22,21 @@ describe('savedPlaceKey', () => {
   it('ignores case, spacing and trailing punctuation', () => {
     expect(savedPlaceKey('  Mom’s  House! ')).toBe('mom’s house');
     expect(savedPlaceKey('HOME')).toBe(savedPlaceKey('home.'));
+  });
+});
+
+describe('savedPlaceNameTaken', () => {
+  it('flags another place’s name, loosely, as editSavedPlace refuses it', () => {
+    const places = home();
+    expect(savedPlaceNameTaken(places, null, 'home')).toBe(true);
+    expect(savedPlaceNameTaken(places, null, '  HOME! ')).toBe(true);
+  });
+
+  it('is not a clash with the place being edited, or with a free or blank name', () => {
+    const places = home();
+    expect(savedPlaceNameTaken(places, places[0].id, 'Home')).toBe(false);
+    expect(savedPlaceNameTaken(places, null, 'Work')).toBe(false);
+    expect(savedPlaceNameTaken(places, null, '   ')).toBe(false);
   });
 });
 
