@@ -24,6 +24,8 @@ interface Props {
   projectName?: string;
   bottom: number;
   onGoToTask: () => void;
+  /** False for a move the toast has no snapshot to take back (see TodayScreen's edited toast). */
+  canUndo?: boolean;
   onUndo: () => void;
   /** Swiped away by hand; the task stays where it is. */
   onDismiss: () => void;
@@ -40,7 +42,7 @@ interface Props {
  * due today. This names where the task went and offers a way to it and a
  * way to undo the creation, so staying put costs nothing either.
  */
-export function CreatedTaskToast({ task, destination, mode = 'created', dayResetTime, projectName, bottom, onGoToTask, onUndo, onDismiss, leaving, onLeft }: Props) {
+export function CreatedTaskToast({ task, destination, mode = 'created', dayResetTime, projectName, bottom, onGoToTask, canUndo = true, onUndo, onDismiss, leaving, onLeft }: Props) {
   const message = mode === 'moved'
     ? describeMovedTaskPlacement(task, destination, dayResetTime, projectName)
     : describeCreatedTaskPlacement(task, destination, dayResetTime, projectName);
@@ -58,7 +60,7 @@ export function CreatedTaskToast({ task, destination, mode = 'created', dayReset
       actions={
         <>
           <InlineAction label="Go to it" onPress={onGoToTask} accessibilityLabel={`Go to “${task.title}”`} />
-          <InlineAction label="Undo" onPress={onUndo} variant="neutral" accessibilityLabel={undoHint} />
+          {canUndo && <InlineAction label="Undo" onPress={onUndo} variant="neutral" accessibilityLabel={undoHint} />}
         </>
       }
     />

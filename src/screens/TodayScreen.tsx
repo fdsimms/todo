@@ -39,6 +39,7 @@ import { openTasksOf } from '../utils/openTasks';
 import { reuseUnchangedLists } from '../utils/stableLists';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { type CreatedTaskDestination } from '../utils/createdTaskPlacement';
+import { editedTaskMove } from '../utils/editedTaskMove';
 import { completedOnDay, describeAllClear } from '../utils/allClear';
 import {
   makeCategoryGroups,
@@ -701,6 +702,46 @@ function SlotWaitingSection({
   );
 }
 
+// Collapsible reveal for tasks held back by another task (Waits for). A blocked
+// task is hidden from every list on Today, so without this nothing said where it
+// had gone: the Stuck screen holds them, but only if you already knew to look.
+// Shaped like the two sections above it, for the same reason they are alike.
+function WaitingOnTaskSection({
+  tasks,
+  expanded,
+  onToggle,
+  renderWaitingTask,
+  styles,
+  colors,
+}: {
+  tasks: Task[];
+  expanded: boolean;
+  onToggle: () => void;
+  renderWaitingTask: (task: Task) => React.ReactNode;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  if (tasks.length === 0) return null;
+  return (
+    <View style={styles.hiddenSection}>
+      <TouchableOpacity
+        style={styles.hiddenToggle}
+        onPress={onToggle}
+        activeOpacity={interaction.activeOpacity}
+      >
+        <Ionicons name="pause-circle-outline" size={13} color={colors.textTertiary} />
+        <Text style={styles.hiddenToggleText}>
+          {expanded ? 'Hide' : 'Show'} {tasks.length} waiting on another task
+        </Text>
+        <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
+      </TouchableOpacity>
+      {expanded && tasks.map(task => (
+        <React.Fragment key={task.id}>{renderWaitingTask(task)}</React.Fragment>
+      ))}
+    </View>
+  );
+}
+
 // Id on the view switch's channel while a pill tap is waiting for its list.
 const VIEW_SWITCHING = 'switching';
 
@@ -926,6 +967,7 @@ export function TodayScreen() {
   );
   const expiredTasks = useTaskStore(useShallow(s => (showingToday ? s.expiredTasks() : NO_TASKS)));
   const slotWaitingTasks = useTaskStore(useShallow(s => (showingToday ? s.slotWaitingTasks() : NO_TASKS)));
+  const waitingOnTasks = useTaskStore(useShallow(s => (showingToday ? s.waitingTasks() : NO_TASKS)));
   const vacationHiddenTasks = useTaskStore(
     useShallow(s => (showingToday || viewMode === 'later' ? s.vacationHiddenTasks() : NO_TASKS)),
   );
@@ -1037,6 +1079,9 @@ export function TodayScreen() {
   const [createdToast, setCreatedToast] = useState<
     | { source: 'created'; task: Task; destination: CreatedTaskDestination }
     | { source: 'moved'; task: Task; destination: CreatedTaskDestination; previous: Task }
+    // Saved in the editor and left this list. No Undo: an edit can reach a whole
+    // series, and one row's snapshot would put back only part of it.
+    | { source: 'edited'; task: Task; destination: CreatedTaskDestination }
     | null
   >(null);
   const createdToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1142,14 +1187,21 @@ export function TodayScreen() {
   // back to when the editor it opened closes. Consumed by the first close, so an
   // editor opened any other way afterwards never navigates anywhere.
   const editorReturnToRef = useRef<string | null>(null);
+  // Filled in below, where the toast helpers live; closeEditor is cached with no
+  // dependencies and reaches them through this, as the import chip's does.
+  const presentEditedTaskRef = useRef<(previous: Task) => void>(() => {});
   const closeEditor = useCallback(() => {
+    // The task as the editor opened it, read before anything closes: saving may
+    // have moved it off the list it was opened from.
+    const opened = editorStore.getState().task;
     setEditorVisible(false);
     setLayoutHold(null);
     setExpandedTaskId(null);
     const returnTo = editorReturnToRef.current;
     editorReturnToRef.current = null;
     if (returnTo) navigateToTab(returnTo);
-  }, []);
+    if (opened) presentEditedTaskRef.current(opened);
+  }, [editorStore]);
   const {
     selectionMode,
     selectedIds,
@@ -1248,6 +1300,7 @@ export function TodayScreen() {
   const [showHidden, setShowHidden] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
   const [showSlotWaiting, setShowSlotWaiting] = useState(false);
+  const [showWaitingOn, setShowWaitingOn] = useState(false);
   // Persisted: folding a section shut is a statement about how you want the
   // list to look, and it used to be forgotten on every cold start. Kept as a
   // Set here (the three call sites below all ask "is this one collapsed") and
@@ -1580,6 +1633,19 @@ export function TodayScreen() {
     createdToastTimeoutRef.current = setTimeout(dismissCreatedToast, CREATED_TOAST_VISIBLE_MS);
   };
 
+  // Where a task went when saving it in the editor took it off this list: the
+  // same "it moved, and here is where" the quick-add toast gives, without Undo.
+  const presentEditedTask = (previous: Task) => {
+    const updated = useTaskStore.getState().tasks.find(t => t.id === previous.id);
+    if (!updated) return;
+    const destination = editedTaskMove(previous, updated, viewMode);
+    if (!destination) return;
+    if (createdToastTimeoutRef.current) clearTimeout(createdToastTimeoutRef.current);
+    setCreatedToast({ source: 'edited', task: updated, destination });
+    createdToastTimeoutRef.current = setTimeout(dismissCreatedToast, CREATED_TOAST_VISIBLE_MS);
+  };
+  presentEditedTaskRef.current = presentEditedTask;
+
   const handleCreatedToastGoTo = () => {
     if (!createdToast) return;
     const { task, destination } = createdToast;
@@ -1592,6 +1658,8 @@ export function TodayScreen() {
     const toast = createdToast;
     dismissCreatedToast();
     haptics.tap();
+    // An edit has no Undo to offer (see the toast's state), so none reaches here.
+    if (toast.source === 'edited') return;
     if (toast.source === 'moved') {
       // Whole-snapshot revert, same as deferTask's own undo — the row goes
       // back to exactly what it was before the suggestion was applied,
@@ -4814,6 +4882,21 @@ export function TodayScreen() {
           colors={colors}
         />
       )}
+      {viewMode === 'today' && (
+        <WaitingOnTaskSection
+          tasks={waitingOnTasks}
+          expanded={showWaitingOn}
+          onToggle={() => {
+            haptics.tap();
+            animateLayout();
+            setExpandedTaskId(null);
+            setShowWaitingOn(v => !v);
+          }}
+          renderWaitingTask={renderHiddenTask}
+          styles={styles}
+          colors={colors}
+        />
+      )}
       <VacationHiddenSection
         tasks={vacationHiddenTasks}
         expanded={showHidden}
@@ -6205,7 +6288,8 @@ export function TodayScreen() {
           <CreatedTaskToast
             task={createdToastShown.value.task}
             destination={createdToastShown.value.destination}
-            mode={createdToastShown.value.source}
+            mode={createdToastShown.value.source === 'created' ? 'created' : 'moved'}
+            canUndo={createdToastShown.value.source !== 'edited'}
             dayResetTime={dayResetTime}
             projectName={projects.find(p => p.id === createdToastShown.value?.task.projectId)?.title}
             bottom={fabBottom + FAB_SIZE + spacing.md}

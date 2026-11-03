@@ -3320,7 +3320,11 @@ const TaskItemRow = React.memo(function TaskItem({
   const penaltyLabel = penaltyChipLabel(task, penaltyShieldEnabled);
   const hasOtherMeta = penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
-  const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !deadlineOnMeta;
+  // A task the app wrote by itself says so on its row. Only a small sparkle
+  // inside the expanded panel did, so a "Review tomorrow's calendar" looked
+  // hand-made. Not on the nutrient rows, which are a different shape of row.
+  const automaticChip = task.generatedKind != null && !nutrientRow;
+  const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !automaticChip && !deadlineOnMeta;
 
   const rowBody = (
     <View style={[styles.row, isActive && styles.rowActive]}>
@@ -3803,7 +3807,7 @@ const TaskItemRow = React.memo(function TaskItem({
             dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}
           />
         )}
-        {(markersOnMeta || hasOtherMeta) && (
+        {(markersOnMeta || hasOtherMeta || automaticChip) && (
           <View style={styles.metaRow}>
             {morning && (
               <PressableScale
@@ -3929,6 +3933,12 @@ const TaskItemRow = React.memo(function TaskItem({
               >
                 <Ionicons name="list-outline" size={9} color={colors.textSecondary} />
                 <AnimatedNumber text={`${subtaskDoneCount}/${subtaskCount}`} value={subtaskDoneCount} style={styles.subtaskBadgeText} />
+              </View>
+            )}
+            {automaticChip && (
+              <View style={styles.metaChip} accessibilityLabel="Added automatically">
+                <Ionicons name="sparkles-outline" size={9} color={colors.textSecondary} />
+                <Text style={styles.subtaskBadgeText} numberOfLines={1}>Automatic</Text>
               </View>
             )}
             {task.generatedKind === 'calendarReview' && (

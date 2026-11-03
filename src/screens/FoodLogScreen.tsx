@@ -25,6 +25,7 @@ import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalDayKey, getLogica
 import { slotForHour } from '../utils/mealLog';
 import {
   describeFoodLogEntry,
+  describeNutrientCoverage,
   foodLogEntryEdit,
   foodLogSections,
   foodLogTotals,
@@ -1320,6 +1321,9 @@ export function FoodLogScreen() {
             decorative
           />
         )}
+        {describeNutrientCoverage(dayEntries, key) !== null && (
+          <Text style={styles.coverageNote}>{describeNutrientCoverage(dayEntries, key)}</Text>
+        )}
         {isActiveLimit(key, effectiveTargets, nutritionLimits) && (
           <Text
             style={[
@@ -2106,6 +2110,7 @@ function makeStyles(colors: Colors) {
     waterTarget: { color: colors.textSecondary, fontSize: font.xs },
     boostNote: { color: colors.textSecondary, fontSize: font.xs },
     limitNote: { color: colors.textSecondary, fontSize: font.xs },
+    coverageNote: { color: colors.textSecondary, fontSize: font.xs },
     limitNoteOver: { color: colors.redText, fontWeight: fontWeight.semibold },
     totalBlock: { gap: spacing.xs },
     totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

@@ -29,6 +29,11 @@ jest.mock('../store/useTaskStore', () => ({
   },
 }));
 
+const mockRecordMany = jest.fn();
+jest.mock('../store/useUnattendedStore', () => ({
+  useUnattendedStore: { getState: () => ({ recordMany: mockRecordMany }) },
+}));
+
 const mockCreateGroup = jest.fn();
 const mockUpdateGroup = jest.fn();
 jest.mock('../store/useTaskGroupStore', () => ({
@@ -1297,6 +1302,44 @@ describe('checkScheduledTemplates', () => {
     seedDue();
     useTemplateStore.getState().checkScheduledTemplates();
     expect(mockAddTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'Laundry' }), expect.any(String));
+  });
+
+  describe('Activity', () => {
+    beforeEach(() => {
+      mockRecordMany.mockClear();
+      mockAddTask.mockReset();
+      mockAddTask.mockImplementation((draft: { title: string }, id?: string) => ({ id: id ?? 'x', title: draft.title, parentId: null }));
+    });
+
+    it('records the tasks a scheduled run added, as the app\'s own doing', () => {
+      seedDue();
+      useTemplateStore.getState().checkScheduledTemplates();
+      expect(mockRecordMany).toHaveBeenCalledTimes(1);
+      expect(mockRecordMany.mock.calls[0][0]).toEqual([
+        expect.objectContaining({ action: 'created', kind: null, title: 'Laundry', taskId: expect.any(String) }),
+      ]);
+    });
+
+    it('records nothing for a row the other device already wrote', () => {
+      seedDue();
+      useTemplateStore.getState().checkScheduledTemplates();
+      const taskId = mockAddTask.mock.calls[0][1];
+      mockRecordMany.mockClear();
+      mockExistingTasks = [{ id: taskId, title: 'Laundry' }];
+      try {
+        seedDue();
+        useTemplateStore.getState().checkScheduledTemplates();
+      } finally {
+        mockExistingTasks = [];
+      }
+      expect(mockRecordMany).not.toHaveBeenCalled();
+    });
+
+    it('records nothing when the template is not due', () => {
+      seedDue({ schedule: null });
+      useTemplateStore.getState().checkScheduledTemplates();
+      expect(mockRecordMany).not.toHaveBeenCalled();
+    });
   });
 
   // Two devices that both find the week due before either has synced the

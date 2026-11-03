@@ -10,6 +10,7 @@ import {
   dbTransaction,
 } from '../db/database';
 import { useTaskStore } from './useTaskStore';
+import { useUnattendedStore } from './useUnattendedStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
 import { useProjectStore } from './useProjectStore';
 import { generateId } from '../utils/id';
@@ -640,7 +641,11 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         const selectedIds = initialLeafSelection(tree, questions, answers);
         if (selectedIds.size === 0) continue;
 
-        get().applyTemplate(template.id, selectedIds, due.anchors, {
+        // Read before the apply: a derived id the other device's run already
+        // wrote comes back from applyTemplate too, and it is that device's entry
+        // to make, not this one's.
+        const existingIds = new Set(useTaskStore.getState().tasks.map(t => t.id));
+        const created = get().applyTemplate(template.id, selectedIds, due.anchors, {
           idSeed: { templateId: template.id, periodKey: due.periodKey },
           runName: due.runName,
           placeholders: placeholderValuesFor(questions, answers),
@@ -650,6 +655,16 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
           // for that kind. Nobody was asked, so nobody gets named.
           personIds: personIdsForAnswers(questions, answers),
         });
+        // A scheduled run writes tasks with nobody there, so it says so in
+        // Activity like every other thing the app adds unasked. Only the
+        // top-level tasks it made: a template can write dozens of subtasks and
+        // a list of those would bury the one line that says it ran.
+        const added = created.filter(t => t && t.parentId === null && !existingIds.has(t.id));
+        if (added.length > 0) {
+          useUnattendedStore.getState().recordMany(
+            added.map(t => ({ action: 'created' as const, kind: null, title: t.title, taskId: t.id })),
+          );
+        }
       } catch (error) {
         console.warn(`Scheduled run of template "${template.name}" failed`, error);
       }

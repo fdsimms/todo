@@ -1679,7 +1679,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
   // that aren't generators are matched on their own label and hint.
   const shown = listed.filter(spec => matchesAutomationQuery(query, spec.label, spec.onHint, spec.offHint));
   const showBackground = matchesAutomationQuery(
-    query, 'Add tasks while the app is closed', 'background refresh reminders widget',
+    query, 'Run while the app is closed', 'background refresh reminders widget',
   );
   const showUseUpCap = (s.groceryUseUpTasks || s.leftoverUseUpTasks)
     && matchesAutomationQuery(query, 'Limit use-up tasks', 'at most use-up tasks at a time');
@@ -1703,8 +1703,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
         entryId="backgroundRefreshEnabled"
         icon="moon-outline"
         iconColor={s.backgroundRefreshEnabled ? colors.accent : undefined}
-        label="Add tasks while the app is closed"
-        hint="iOS can wake the app in the background to add the tasks below, refresh reminders and update the widget, but iOS chooses the timing and can skip it. Everything below still runs when you open the app."
+        label="Run while the app is closed"
+        hint="iOS can wake the app in the background to add the tasks below, refresh reminders and update the widget, but iOS chooses the timing and can skip it. This does not switch any automation on or off, and everything below still runs when you open the app."
         toggle={s.backgroundRefreshEnabled}
         onPress={() => s.setBackgroundRefreshEnabled(!s.backgroundRefreshEnabled)}
       />
