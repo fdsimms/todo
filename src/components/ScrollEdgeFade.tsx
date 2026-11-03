@@ -5,8 +5,12 @@ import { SCROLL_FADE_HEIGHT } from '../utils/scrollFade';
 import { generateId } from '../utils/id';
 
 interface Props {
-  /** Which edge of the scrolling region the band sits against. */
-  edge: 'top' | 'bottom';
+  /**
+   * Which edge of the scrolling region the band sits against: `top`/`bottom`
+   * for a list that scrolls up and down, `left`/`right` for one that scrolls
+   * sideways (the hub pill row).
+   */
+  edge: 'top' | 'bottom' | 'left' | 'right';
   /**
    * How opaque the band is right now — drive it with `useScrollEdgeFade`,
    * which ramps it to zero as the list reaches that end.
@@ -19,8 +23,10 @@ interface Props {
    * to be the gradient's to give.
    */
   color: string;
-  /** Height of the band. Defaults to `SCROLL_FADE_HEIGHT`. */
+  /** Height of the band, for a `top` or `bottom` edge. Defaults to `SCROLL_FADE_HEIGHT`. */
   height?: number;
+  /** Width of the band, for a `left` or `right` edge. Defaults to `SCROLL_FADE_HEIGHT`. */
+  width?: number;
   /**
    * Alpha the band reaches at the edge itself. Left under 1 where the surface
    * behind the list is itself translucent — a drawer or sheet over a blur —
@@ -56,24 +62,39 @@ interface Props {
  * stack of stepped translucent views bands visibly against the frosting, and
  * a single flat scrim reads as a shadow rather than as content running out.
  */
-export function ScrollEdgeFade({ edge, opacity, color, height = SCROLL_FADE_HEIGHT, maxOpacity = 1, style }: Props) {
+export function ScrollEdgeFade({ edge, opacity, color, height = SCROLL_FADE_HEIGHT, width = SCROLL_FADE_HEIGHT, maxOpacity = 1, style }: Props) {
   // Gradient ids are resolved per `Svg` root, but two roots sharing an id
   // have historically leaked into each other — and several of these render at
   // once on a screen. One id per instance costs nothing and can't collide.
   const gradientId = useRef(`scroll-fade-${generateId()}`).current;
   // Bottom band: transparent at its top, solid where it meets the edge. Top
-  // band: the same gradient stood on its head.
-  const [y1, y2] = edge === 'bottom' ? ['0', '1'] : ['1', '0'];
+  // band: the same gradient stood on its head. A right band is the bottom one
+  // turned on its side, and a left band the top one.
+  const sideways = edge === 'left' || edge === 'right';
+  const far = edge === 'bottom' || edge === 'right';
+  const [from, to] = far ? ['0', '1'] : ['1', '0'];
   const anchor = useMemo<ViewStyle>(
-    () => (edge === 'bottom' ? { bottom: 0 } : { top: 0 }),
-    [edge],
+    () => {
+      if (edge === 'bottom') return { left: 0, right: 0, bottom: 0, height };
+      if (edge === 'top') return { left: 0, right: 0, top: 0, height };
+      return edge === 'right'
+        ? { top: 0, bottom: 0, right: 0, width }
+        : { top: 0, bottom: 0, left: 0, width };
+    },
+    [edge, height, width],
   );
 
   return (
-    <Animated.View pointerEvents="none" style={[styles.band, anchor, { height, opacity }, style]}>
+    <Animated.View pointerEvents="none" style={[styles.band, anchor, { opacity }, style]}>
       <Svg width="100%" height="100%">
         <Defs>
-          <LinearGradient id={gradientId} x1="0" y1={y1} x2="0" y2={y2}>
+          <LinearGradient
+            id={gradientId}
+            x1={sideways ? from : '0'}
+            y1={sideways ? '0' : from}
+            x2={sideways ? to : '0'}
+            y2={sideways ? '0' : to}
+          >
             <Stop offset="0" stopColor={color} stopOpacity={0} />
             <Stop offset="1" stopColor={color} stopOpacity={maxOpacity} />
           </LinearGradient>
@@ -84,10 +105,11 @@ export function ScrollEdgeFade({ edge, opacity, color, height = SCROLL_FADE_HEIG
   );
 }
 
+// Where the band sits (`left`/`right`/`top`/`bottom`) and its size come from
+// the edge, in `anchor`: a vertical band spans the width and a sideways one
+// the height, so neither is fixed here.
 const styles = StyleSheet.create({
   band: {
     position: 'absolute',
-    left: 0,
-    right: 0,
   },
 });

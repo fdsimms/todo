@@ -31,6 +31,39 @@ export interface ScrollEdgeMetrics {
 }
 
 /**
+ * The same three numbers along either axis, for a list that scrolls sideways
+ * (the hub pill row). The vertical `ScrollEdgeMetrics` above is this with the
+ * y names, and `hiddenBelow`/`hiddenAbove` delegate to the two functions
+ * below, so there is one rule for what counts as hidden and not two.
+ */
+export interface ScrollAxisMetrics {
+  /** `contentOffset.x` or `.y`. */
+  offset: number;
+  /** `contentSize.width` or `.height`. */
+  content: number;
+  /** `layoutMeasurement.width` or `.height` — the visible window, not the content. */
+  viewport: number;
+}
+
+/** Points of content hidden past the far end (right, or bottom), clamped at zero. */
+export function hiddenAfter(m: ScrollAxisMetrics): number {
+  if (!isAxisMeasured(m)) return 0;
+  return Math.max(0, m.content - m.viewport - m.offset);
+}
+
+/** Points of content hidden past the near end (left, or top), clamped at zero. */
+export function hiddenBefore(m: ScrollAxisMetrics): number {
+  if (!isAxisMeasured(m)) return 0;
+  return Math.max(0, m.offset);
+}
+
+const downTheY = (m: ScrollEdgeMetrics): ScrollAxisMetrics => ({
+  offset: m.offsetY,
+  content: m.contentHeight,
+  viewport: m.viewportHeight,
+});
+
+/**
  * Points of content hidden below the bottom edge, clamped at zero.
  *
  * Overscroll (a rubber-band past either end) is what the clamp is for: during
@@ -38,14 +71,12 @@ export interface ScrollEdgeMetrics {
  * result there would otherwise flip the fade on at the very end of the list.
  */
 export function hiddenBelow(m: ScrollEdgeMetrics): number {
-  if (!isMeasured(m)) return 0;
-  return Math.max(0, m.contentHeight - m.viewportHeight - m.offsetY);
+  return hiddenAfter(downTheY(m));
 }
 
 /** Points of content hidden above the top edge, clamped at zero. */
 export function hiddenAbove(m: ScrollEdgeMetrics): number {
-  if (!isMeasured(m)) return 0;
-  return Math.max(0, m.offsetY);
+  return hiddenBefore(downTheY(m));
 }
 
 /**
@@ -69,12 +100,12 @@ export function edgeFadeOpacity(hidden: number, rampOver: number = SCROLL_FADE_H
  * `onLayout`/`onContentSizeChange` pair is what turns the fade on, and
  * guessing before then means a band flashing over an empty region on mount.
  */
-function isMeasured(m: ScrollEdgeMetrics): boolean {
+function isAxisMeasured(m: ScrollAxisMetrics): boolean {
   return (
-    Number.isFinite(m.offsetY) &&
-    Number.isFinite(m.contentHeight) &&
-    Number.isFinite(m.viewportHeight) &&
-    m.contentHeight > 0 &&
-    m.viewportHeight > 0
+    Number.isFinite(m.offset) &&
+    Number.isFinite(m.content) &&
+    Number.isFinite(m.viewport) &&
+    m.content > 0 &&
+    m.viewport > 0
   );
 }

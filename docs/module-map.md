@@ -536,7 +536,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/screenTimeBridge.ts` — ScreenTimeBridge, screenTimeBridge, isScreenTimeSupported
 - `src/utils/screenTimeRules.ts` — SCREEN_TIME_RULE_TITLE_MAX_LENGTH, SCREEN_TIME_THRESHOLD_MIN, SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_DEFAULT, clampThresholdMinutes, defaultScreenTimeRules, parseScreenTimeRules, serializeScreenTimeRules, screenTimeSourceId, parseScreenTimeSourceId, +3 more
 - `src/utils/scrollClamp.ts` — maxRestingOffset, strandedScrollOffset, NO_INSET, NO_INSET_ALT, pulseNoInset
-- `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, hiddenBelow, hiddenAbove, edgeFadeOpacity
+- `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, ScrollAxisMetrics, hiddenAfter, hiddenBefore, hiddenBelow, hiddenAbove, edgeFadeOpacity
 - `src/utils/sealedNoteTasks.ts` — addSealedNoteReminder, dropSealedNoteReminder
 - `src/utils/searchActionRun.ts` — SearchActionReceipt, addWaterAt, waterTodayMl, waterTargetTodayMl, openMoodLogFor, runSearchAction
 - `src/utils/searchActions.ts` — QUICK_ACTION_LIMIT, MAX_GLASSES, MAX_DOSE_STEPS, DoseAction, WaterAction, MoodAction, SymptomAction, GroceryAction, PantryAnswer, PantryAction, +12 more
