@@ -145,7 +145,7 @@ export function FeatureAreasSettings() {
         the menu reaches can be one; see normalizeTabRoutes for the rules. */}
     <SettingsSection
       label="Tab bar"
-      footer="Choose three to five screens to show beside More in the bottom bar. More opens the menu, which lists every screen. Touch and hold a tab that belongs to a group, like Groceries, then drag to another screen in that group to open it."
+      footer="Choose three to five screens to show beside More in the bottom bar. More opens the menu, which lists every screen that isn’t already in the bar. Touch and hold a tab that belongs to a group, like Groceries, then drag to another screen in that group to open it."
     >
       <SettingsRow entryId="tabRoutes" {...slotRow(0)} />
       <View style={styles.sep} />

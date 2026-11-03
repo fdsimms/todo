@@ -5006,8 +5006,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       destructive: finishedRecurrence,
       // A tick that wrote a dose or a meal says so, with the undo that takes it
-      // back. An ordinary completion stays shake-only (see UndoBar).
-      announce: loggedLabel !== null,
+      // back, and so does a missed mark, which moves the row out of sight the
+      // way a skip does. An ordinary completion stays shake-only (see UndoBar).
+      announce: loggedLabel !== null || missed,
       label: missed
         ? 'Task marked missed'
         : finishedRecurrence
@@ -9650,6 +9651,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // so the undo puts the whole row back rather than inverting each field.
     if (opts?.registerUndo === false) return;
     get().setLastAction({
+      // The row jumps to its next date and leaves the list, so there is nothing
+      // left on screen to put it back from: the bar is the way (see UndoBar).
+      announce: true,
       label: 'Task skipped',
       undo: () => get().updateTask(id, snapshot),
       redo: redoRestoringRows([id]),
@@ -10564,7 +10568,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       });
     });
     if (completedIds.length === 0) return;
+    // Several rows leave at once, and un-ticking each from the list is the
+    // slow way back, so a bulk completion announces where a single tick doesn't.
     get().setLastAction({
+      announce: true,
       label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
       redo: () => get().completeGroup(groupId, options),
       undo: () => [...undos].reverse().forEach(fn => fn()),
@@ -11326,6 +11333,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     if (completedIds.length === 0) return;
     get().setLastAction({
+      announce: true,
       label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
       redo: () => get().bulkCompleteTasks(ids),
       undo: () => completedIds.forEach(id => get().uncompleteTask(id)),
@@ -11348,6 +11356,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     if (missedIds.length === 0) return;
     get().setLastAction({
+      announce: true,
       label: `${missedIds.length} task${missedIds.length === 1 ? '' : 's'} marked missed`,
       redo: () => get().bulkMarkMissed(ids),
       undo: () => missedIds.forEach(id => get().uncompleteTask(id)),

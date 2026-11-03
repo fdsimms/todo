@@ -535,6 +535,16 @@ export const TIPS: Tip[] = [
     keywords: ['bulk add', 'parse', 'quantity', 'autocomplete', 'paste', 'list'],
   },
   {
+    id: 'grocery-fab-menu',
+    area: 'groceries',
+    screen: 'groceries',
+    icon: 'add-circle-outline',
+    title: 'Hold the add button for more ways to add',
+    body: 'Tapping + adds one item. Hold it to add from a recipe or by scanning what you bought, and to put things straight into the cart while you shop.',
+    when: s => s.groceryItemCount >= 1,
+    keywords: ['fab', 'plus', 'recipe', 'scan', 'barcode', 'cart', 'gesture', 'long press'],
+  },
+  {
     id: 'grocery-drag-to-fab',
     area: 'groceries',
     screen: 'groceries',
@@ -977,6 +987,14 @@ export const TIPS: Tip[] = [
     body: 'Settings has a search field at the top that finds a setting by name or by what it does and jumps to it.',
     link: { label: 'Open Settings', screen: 'Settings' },
     keywords: ['preferences', 'find', 'options', 'configuration'],
+  },
+  {
+    id: 'arrange-menu',
+    area: 'app',
+    icon: 'reorder-three-outline',
+    title: 'Arrange the menu',
+    body: 'Touch and hold a row in the menu to pin it to the top, hide it, or add that screen to the tab bar.',
+    keywords: ['menu', 'pin', 'hide', 'tab bar', 'long press', 'drawer', 'customize'],
   },
   {
     id: 'widget',

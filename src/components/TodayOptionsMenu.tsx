@@ -82,6 +82,11 @@ interface Props {
   onStartFocus?: () => void;
   /** Opens the suggested pins sheet. Omitted when there is nothing to suggest or it is hidden. */
   onSuggestPins?: () => void;
+  /**
+   * Starts picking tasks for a bulk edit. The only other way in is a left swipe
+   * on a row, which nothing on screen says is there, so the menu offers it too.
+   */
+  onSelectTasks?: () => void;
   /** Where the "…" was tapped, so the menu opens from it. See `CardSheet`. */
   anchor?: CardAnchor | null;
 }
@@ -112,6 +117,7 @@ export function TodayOptionsMenu({
   settingsHint,
   onStartFocus,
   onSuggestPins,
+  onSelectTasks,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -127,6 +133,29 @@ export function TodayOptionsMenu({
     >
       <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
         <View style={styles.optionsCard}>
+          {onSelectTasks && (
+            <>
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => {
+                  haptics.tap();
+                  onSelectTasks();
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Select tasks"
+              >
+                <Ionicons name="checkmark-circle-outline" size={18} color={colors.textSecondary} />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Select tasks</Text>
+                  <Text style={styles.optionHint}>
+                    Pick several to change at once
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              <View style={styles.optionSep} />
+            </>
+          )}
           {onStartFocus && (
             <>
               <TouchableOpacity
