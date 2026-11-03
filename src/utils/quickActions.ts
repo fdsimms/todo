@@ -18,7 +18,7 @@ import { screenSymbol } from './screenLinks';
  * the screens you went to last, then your tabs, then Search.
  */
 export const STATIC_ACTIONS: QuickActions.Action[] = [
-  { id: 'add', title: 'Add Task', icon: 'symbol:square.and.pencil' },
+  { id: 'add', title: 'New Task', icon: 'symbol:square.and.pencil' },
 ];
 
 const SEARCH_ACTION: QuickActions.Action = { id: 'search', title: 'Search', icon: 'symbol:magnifyingglass' };

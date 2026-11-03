@@ -198,7 +198,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
 
       <View style={styles.sectionCard}>
         <CollapsibleField
-          label="Category"
+          label="Template category"
           summary={category ?? undefined}
           hint="Groups this template with others of the same kind."
           expanded={categoryOpen}

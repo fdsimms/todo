@@ -970,7 +970,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       <Text style={styles.groupLabel}>Organize</Text>
       <View style={styles.card}>
         <CollapsibleField
-          label="Category"
+          label="Project category"
           summary={category ?? undefined}
           hint="Groups this project with others of the same kind on the Projects page."
           expanded={categoryOpen}

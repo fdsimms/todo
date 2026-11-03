@@ -334,7 +334,7 @@ function undoCopy(entry: UnattendedEntry, plan: Exclude<AgentUndo, { kind: 'none
       const what = plan.subject === 'meal' ? 'meal' : plan.subject === 'food' ? 'food log entry' : plan.subject === 'mood' ? 'mood check-in' : 'medication dose';
       return { title: `Remove this ${what}?`, message: `Claude added this ${what}. Removing it deletes it, including anything you changed on it since.`, destructive: true };
     }
-    case 'noteRemove': return { title: 'Forget this note?', message: `Removes the note ${t} from Notes for Claude.`, destructive: true };
+    case 'noteRemove': return { title: 'Remove this note?', message: `Removes the note ${t} from Notes for Claude.`, destructive: true };
     case 'noteAdd': return { title: 'Restore this note?', message: `Puts the note ${t} back in Notes for Claude.`, destructive: false };
     case 'restorePantryItem': return { title: 'Undo this change?', message: `Puts ${t} in the pantry back the way it was before Claude changed it.`, destructive: false };
     case 'restoreCatalogItem': return { title: 'Undo this change?', message: `Puts ${t} back the way it was before Claude changed it.`, destructive: false };
