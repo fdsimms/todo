@@ -11,6 +11,7 @@ import {
 } from './medicationLog';
 import { limitStatus, prefsFor, type MedicationSettingsMap } from './medicationSettings';
 import { readDoseWords } from './quickDose';
+import { clockTimeToken } from './clockTime';
 import { MOOD_LEVELS, symptomKey } from './moodLog';
 import { matchSymptoms, parseSymptomPhrase } from './symptomQuickLog';
 import { describeWater, WATER_STEP_FL_OZ, WATER_STEP_ML, waterToMl, type WaterUnit } from './waterLog';
@@ -554,10 +555,13 @@ export interface DescribeContext {
   /** Today's water target in ml, or undefined when none is set. */
   waterTargetMl: number | undefined;
   now: Date;
+  /** The person's 12/24-hour choice, for the times a row says. */
+  use24HourTime: boolean;
 }
 
-function clockOrDate(at: Date, now: Date): string {
-  return isSameDay(at, now) ? format(at, 'h:mm a') : format(at, 'MMM d, h:mm a');
+function clockOrDate(at: Date, now: Date, use24Hour: boolean): string {
+  const clock = clockTimeToken(use24Hour);
+  return isSameDay(at, now) ? format(at, clock) : format(at, `MMM d, ${clock}`);
 }
 
 /**
@@ -576,9 +580,9 @@ function describeDose(action: DoseAction, ctx: DescribeContext): ActionDescripti
   const amount = formatDose(action.dose);
   if (amount) meta.push(amount);
   if (status.nextOkAt) {
-    meta.push(`Within your limit at ${clockOrDate(status.nextOkAt, ctx.now)}`);
+    meta.push(`Within your limit at ${clockOrDate(status.nextOkAt, ctx.now, ctx.use24HourTime)}`);
   } else if (status.lastTakenAt) {
-    meta.push(`Last taken ${clockOrDate(new Date(status.lastTakenAt), ctx.now)}`);
+    meta.push(`Last taken ${clockOrDate(new Date(status.lastTakenAt), ctx.now, ctx.use24HourTime)}`);
   }
   return { title: `Record a dose of ${name}`, meta, warn: status.nextOkAt !== null, icon: 'medkit-outline' };
 }
@@ -611,7 +615,7 @@ function describeSymptom(action: SymptomAction, ctx: DescribeContext): ActionDes
   // No line under the title: the severity is the pills under the row. A time
   // the line stated goes in the title, so it isn't dropped without a word.
   return {
-    title: action.at ? `Log ${action.symptom} at ${clockOrDate(action.at, ctx.now)}` : `Log ${action.symptom}`,
+    title: action.at ? `Log ${action.symptom} at ${clockOrDate(action.at, ctx.now, ctx.use24HourTime)}` : `Log ${action.symptom}`,
     meta: [],
     warn: false,
     icon: 'pulse-outline',

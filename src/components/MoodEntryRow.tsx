@@ -9,6 +9,7 @@ import { useTextScale } from '../hooks/useTextScale';
 import { MoodFace } from './MoodFace';
 import { moodChangeLabel, moodLabel, severityLabel } from '../utils/moodLog';
 import { symptomOnLog } from '../utils/moodHistory';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 
 /** "Better than your last entry"; "Same" reads as "Same as". */
 function changeText(change: NonNullable<MoodLog['change']>): string {
@@ -45,6 +46,7 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
    */
   showDate?: boolean;
 }) {
+  const timeToken = useClockTimeToken();
   const colors = useColors();
   const textScaleFactor = useTextScale();
   const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
@@ -52,11 +54,11 @@ export function MoodEntryRow({ log, onPress, highlightSymptomKey, showDate = tru
   const highlighted = highlightSymptomKey ? symptomOnLog(log, highlightSymptomKey) : null;
   const when = format(
     new Date(log.loggedAt),
-    showDate ? 'EEE d MMM, h:mm a' : 'h:mm a',
+    showDate ? `EEE, MMM d, ${timeToken}` : timeToken,
   );
   const spoken = [
     showDate ? format(new Date(log.loggedAt), 'EEEE, MMMM d') : null,
-    format(new Date(log.loggedAt), 'h:mm a'),
+    format(new Date(log.loggedAt), timeToken),
     log.mood === null ? 'no mood recorded' : moodLabel(log.mood),
     log.change ? changeText(log.change) : null,
     highlighted ? `${highlighted.name}, ${severityLabel(highlighted.severity)}` : null,

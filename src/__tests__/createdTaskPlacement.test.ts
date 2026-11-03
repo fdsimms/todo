@@ -35,6 +35,16 @@ describe('describeCreatedTaskPlacement', () => {
     const task = { title: 'Sort this out', dueDate: null, deferUntil: null };
     expect(describeCreatedTaskPlacement(task, 'inbox')).toBe('Created “Sort this out” in Inbox');
   });
+
+  it('names the project for an undated project task', () => {
+    const task = { title: 'Book venue', dueDate: null, deferUntil: null };
+    expect(describeCreatedTaskPlacement(task, 'project', undefined, 'Wedding')).toBe('Created “Book venue” in Wedding');
+  });
+
+  it('still reads sensibly when the project cannot be found', () => {
+    const task = { title: 'Book venue', dueDate: null, deferUntil: null };
+    expect(describeCreatedTaskPlacement(task, 'project')).toBe('Created “Book venue” in its project');
+  });
 });
 
 describe('describeMovedTaskPlacement', () => {

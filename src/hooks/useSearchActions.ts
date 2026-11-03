@@ -112,6 +112,7 @@ export function useSearchActions(query: string, active: boolean, limit?: number)
       waterTodayMl: outcome.actions.some(a => a.kind === 'water') ? waterTodayMl(now) : 0,
       waterTargetMl: waterTargetTodayMl(),
       now,
+      use24HourTime: settings.use24HourTime,
     };
     return {
       ...outcome,

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Alert, AppState } from 'react-native';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { haptics } from '../utils/haptics';
 import {
   isStampFromEarlierLaunch,
@@ -73,7 +74,7 @@ export function useReachOutPrompt(): void {
       const name = displayNameOf(subject);
       Alert.alert(
         'Add to history?',
-        reachOutPromptMessage(pending.kind, name, at),
+        reachOutPromptMessage(pending.kind, name, at, useSettingsStore.getState().use24HourTime),
         [
           { text: 'Not now', style: 'cancel' },
           {

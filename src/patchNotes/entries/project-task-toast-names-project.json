@@ -1,0 +1,1 @@
+{ "message": "Adding a task to a project with no date now says it was added to that project, and Go to it opens the project. It used to say Later, where the task wasn't listed.", "date": "2026-11-02" }

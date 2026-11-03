@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSheetOpening } from '../hooks/useSheetOpening';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, StyleSheet, Text, View } from 'react-native';
 import { SheetModal } from './SheetModal';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import {
@@ -11,6 +11,8 @@ import { font, radius, spacing, type Colors } from '../theme';
 import type { FoodNutrition } from '../types';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
 import { normalizeGtin } from '../utils/gtin';
+import { scanPermissionMessage } from '../utils/scanPermission';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { haptics } from '../utils/haptics';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -55,6 +57,7 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
     [],
   );
   const [permission, requestPermission] = useCameraPermissions();
+  const productLookupEnabled = useSettingsStore(s => s.productLookupEnabled);
 
   const [looking, setLooking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,9 +138,13 @@ export function NutritionBarcodeScanSheet({ visible, onClose, onFound }: Props) 
       return (
         <View style={styles.cameraPlaceholder}>
           <Text style={styles.permissionText}>
-            Scanning needs the camera. Everything it reads stays on this device.
+            {scanPermissionMessage(permission.canAskAgain !== false, productLookupEnabled)}
           </Text>
-          <InlineAction label="Allow camera" icon="camera-outline" onPress={requestPermission} />
+          {permission.canAskAgain === false ? (
+            <InlineAction label="Open Settings" icon="open-outline" onPress={() => { void Linking.openSettings(); }} />
+          ) : (
+            <InlineAction label="Allow camera" icon="camera-outline" onPress={requestPermission} />
+          )}
         </View>
       );
     }

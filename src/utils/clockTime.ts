@@ -162,6 +162,7 @@ export function formatHHMM(hhmm: string, use24Hour = false): string {
  * Exported so the callers formatting a Date (rather than an "HH:MM" string)
  * pick the same shape instead of spelling out 'h:mm a' again — every place
  * that did was a place the setting silently didn't reach.
+ * `noHardCodedClockFormat.test.ts` fails the build on one.
  */
 export function clockTimeToken(use24Hour = false): string {
   return use24Hour ? 'HH:mm' : 'h:mm a';
