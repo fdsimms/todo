@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Platform, Alert } from 'react-native';
 import { useSettingsStore, type MealsOnToday } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
+import { useLeftoverStore } from '../../store/useLeftoverStore';
 import { MEALS_ON_TODAY_LABELS } from '../../utils/screenSettingControls';
 import type { UnitSystem } from '../../utils/unitConvert';
 import { useGroceryStore } from '../../store/useGroceryStore';
@@ -143,8 +144,11 @@ export function KitchenSettings() {
             setMealsOnToday(mode);
             // The strip takes the meal tasks away at once rather than at the
             // next launch, and leaving it writes them back the same way: the
-            // pass reads the setting just written.
+            // pass reads the setting just written. Then the use-up tasks,
+            // which stand back for a leftover planned into a meal that has a
+            // task or a strip cell (plannedMealRowFor).
             useTaskStore.getState().checkMealSlotTasks();
+            useLeftoverStore.getState().reconcileAllLeftoverTasks();
           }}
           accessibilityLabelFor={o => `Show the day’s meals: ${o.label}`}
         />

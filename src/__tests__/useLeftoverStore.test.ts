@@ -58,6 +58,7 @@ let mockLeftoverUseUpTaskCategory: string | null = null;
 // Off by default for the same reason: finishing a container as eaten raises a
 // meal-log offer, and the block that is about that offer turns this on.
 let mockMealLogPrompt = false;
+let mockMealsOnToday = 'inline';
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: () => ({
@@ -65,6 +66,9 @@ jest.mock('../store/useSettingsStore', () => ({
       get leftoverUseUpTasks() { return mockLeftoverUseUpTasks; },
       get leftoverUseUpTaskCategory() { return mockLeftoverUseUpTaskCategory; },
       get mealLogPrompt() { return mockMealLogPrompt; },
+      kitchenEnabled: true,
+      get mealsOnToday() { return mockMealsOnToday; },
+      mealSlotsEnabled: ['breakfast', 'lunch', 'dinner'],
     }),
   },
 }));
@@ -1081,6 +1085,18 @@ describe('use-up tasks for a leftover planned into a meal', () => {
     planFor('chilli', { cookedAt: localIso('2026-08-10T19:00') });
     useLeftoverStore.getState().reconcileAllLeftoverTasks();
     expect(useUpFor('chilli')).toBeDefined();
+  });
+
+  it('drops it for a meal the strip shows, which writes no meal task to say it', () => {
+    mockMealsOnToday = 'top';
+    try {
+      seed([makeLeftover({ id: 'chilli', keepUntil: today() })]);
+      planFor('chilli');
+      useLeftoverStore.getState().reconcileAllLeftoverTasks();
+      expect(useUpFor('chilli')).toBeUndefined();
+    } finally {
+      mockMealsOnToday = 'inline';
+    }
   });
 
   it('does nothing for a finished or unknown leftover', () => {

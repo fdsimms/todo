@@ -1,6 +1,7 @@
 import type { FoodLogEntry, FoodNutrition, MealPlanEntry, NutrientKey } from '../types';
 import {
   isMealStripDone,
+  mealStripCoversMeal,
   mealStripCells,
   mealStripCoins,
   mealStripDoneSlots,
@@ -159,5 +160,21 @@ describe('mealStripCoins', () => {
   it('pays what the meal task’s Eat step did: an easy half hour', () => {
     expect(mealStripCoins()).toBe(baseCoinsFor({ estimatedMinutes: 30, effort: 0, difficulty: 'easy' }));
     expect(mealStripCoins()).toBeGreaterThan(0);
+  });
+});
+
+describe('mealStripCoversMeal', () => {
+  const on = { kitchenEnabled: true, mealsOnToday: 'top', mealSlotsEnabled: ['lunch', 'dinner'] as const };
+
+  it('covers a strip meal from today to the end of the week the meal tasks were written for', () => {
+    expect(mealStripCoversMeal({ ...on, mealSlotsEnabled: [...on.mealSlotsEnabled] }, DAY, 'dinner', DAY)).toBe(true);
+    expect(mealStripCoversMeal({ ...on, mealSlotsEnabled: [...on.mealSlotsEnabled] }, '2026-11-09', 'dinner', DAY)).toBe(true);
+    expect(mealStripCoversMeal({ ...on, mealSlotsEnabled: [...on.mealSlotsEnabled] }, '2026-11-10', 'dinner', DAY)).toBe(false);
+    expect(mealStripCoversMeal({ ...on, mealSlotsEnabled: [...on.mealSlotsEnabled] }, '2026-11-02', 'dinner', DAY)).toBe(false);
+  });
+
+  it('covers nothing the strip has no cell for, or with the strip off', () => {
+    expect(mealStripCoversMeal({ ...on, mealSlotsEnabled: [...on.mealSlotsEnabled] }, DAY, 'breakfast', DAY)).toBe(false);
+    expect(mealStripCoversMeal({ ...on, mealsOnToday: 'inline', mealSlotsEnabled: [...on.mealSlotsEnabled] }, DAY, 'dinner', DAY)).toBe(false);
   });
 });

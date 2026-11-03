@@ -1162,7 +1162,7 @@ calendar event read.
 someone who doesn't plan ahead and was ticking Choose, Prepare and Eat in one go after eating, with
 the real answer already in the food log. The strip reads that answer: a meal is done once food is in
 its slot (`mealDayCoverage`, the same join as everywhere else) or its planned entry is marked
-cooked. Four things follow:
+cooked. Five things follow:
 
 - **`checkMealSlotTasks` drops every open meal task while it's on**, started chains included, and
   clears `mealSlotTasksWrittenThroughDayKey`, so leaving the strip writes the week afresh instead of
@@ -1174,6 +1174,9 @@ cooked. Four things follow:
   the daily pass settles yesterday and today for rows that synced in.
 - **The leftover ask moved into `setCooked`** (`askFinishLeftover`), since a strip's Ate it has no
   task whose completion used to be the only place it was asked.
+- **A planned leftover still gets no "Use up X"** (#2932's rule): `mealStripCoversMeal` answers for
+  the missing meal task in `plannedMealRowFor`, over the same week the tasks covered. Switching
+  modes in Settings re-runs `reconcileAllLeftoverTasks` along with the meal task pass.
 - **It isn't the retired one-line strip back.** That one showed what was left to eat *beside* the
   meal tasks, a second answer above the list. This one is the only answer while it's on.
 

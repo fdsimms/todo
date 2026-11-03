@@ -21,6 +21,7 @@ import {
 import { plannedMealRowFor, useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/leftoverTasks';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
+import { mealStripCoversMeal } from '../utils/mealStrip';
 import { clampCookedWeight, leftoverAlreadyLogged } from '../utils/mealLog';
 import { dropGeneratedTask, forfeitUseUpCoins, reconcileGeneratedTask, restoreUseUpCoins } from './generatedTaskSync';
 import { useTaskStore } from './useTaskStore';
@@ -256,17 +257,22 @@ function reconcileLeftoverTask(leftover: Leftover): void {
 }
 
 /**
- * Whether a planned meal's own task already says to eat this leftover — see
+ * Whether a planned meal's own task (or the meal strip in its place) already
+ * says to eat this leftover — see
  * `plannedMealRowFor`. Read from SQLite rather than the meal plan store, whose
  * `entries` is only the week that screen has loaded.
  */
 function eatenAsPlanned(leftover: Leftover): boolean {
   const { tasks } = useTaskStore.getState();
+  const today = dayKeyOf(getLogicalToday());
   return plannedMealRowFor(
     leftover,
     dbGetMealPlanEntriesForLeftover(leftover.id),
-    dayKeyOf(getLogicalToday()),
-    (dayKey, slot) => !!liveGeneratedTask(tasks, 'mealSlot', mealSlotSourceId(dayKey, slot)),
+    today,
+    (dayKey, slot) =>
+      !!liveGeneratedTask(tasks, 'mealSlot', mealSlotSourceId(dayKey, slot))
+      // The meal strip writes no meal tasks, and stands in for them here.
+      || mealStripCoversMeal(useSettingsStore.getState(), dayKey, slot, today),
   ) !== null;
 }
 

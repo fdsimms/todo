@@ -1,7 +1,8 @@
 import type { FoodLogEntry, MealPlanEntry, MealSlot } from '../types';
 import { MEAL_SLOTS } from '../types';
 import { mealDayCoverage } from './mealLogCoverage';
-import { DEFAULT_MEAL_SLOTS_ENABLED } from './mealSlotTasks';
+import { DEFAULT_MEAL_SLOTS_ENABLED, MEAL_SLOT_TASK_DAYS } from './mealSlotTasks';
+import { shiftDayKey } from './mealPlan';
 import { baseCoinsFor } from './rewards';
 
 /**
@@ -35,6 +36,27 @@ export function mealStripOn(s: { kitchenEnabled: boolean; mealsOnToday: string }
 export function mealStripSlots(enabled: readonly MealSlot[]): MealSlot[] {
   const slots = MEAL_SLOTS.filter(slot => enabled.includes(slot));
   return slots.length > 0 ? slots : [...DEFAULT_MEAL_SLOTS_ENABLED];
+}
+
+/**
+ * Whether the strip stands in for this meal's task, for a reader that used to
+ * ask "is there a live meal task for this day and slot" (`plannedMealRowFor`,
+ * which holds back "Use up X" for a leftover already planned into a meal).
+ *
+ * The same reach the tasks had: a meal the strip has a cell for, from today to
+ * the end of the week the meal tasks were written for (`MEAL_SLOT_TASK_DAYS`).
+ * The strip only draws today, but the tasks sat on Later for the days ahead,
+ * and a planned leftover past that week still gets its use-up task.
+ */
+export function mealStripCoversMeal(
+  s: { kitchenEnabled: boolean; mealsOnToday: string; mealSlotsEnabled: readonly MealSlot[] },
+  dayKey: string,
+  slot: MealSlot,
+  todayKey: string,
+): boolean {
+  if (!mealStripOn(s)) return false;
+  if (dayKey < todayKey || dayKey > shiftDayKey(todayKey, MEAL_SLOT_TASK_DAYS - 1)) return false;
+  return mealStripSlots(s.mealSlotsEnabled).includes(slot);
 }
 
 /**
