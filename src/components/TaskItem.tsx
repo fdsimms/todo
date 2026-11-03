@@ -723,8 +723,13 @@ const TaskItemRow = React.memo(function TaskItem({
   const handleContact = () => {
     if (!callUrl) return;
     haptics.tap();
+    // Name the person when the number is theirs: one person named and no number
+    // of the task's own overriding it, the same bar `contactDetailsFor` applies.
+    const named = peopleOn(task);
+    const who = named.length === 1 && !task.phoneNumber ? named[0].name : null;
     actionMenu.open({
       title: contact.phoneNumber ?? '',
+      message: who ?? undefined,
       actions: [
         { key: 'call', label: 'Call', icon: 'call-outline', onPress: handleCall },
         ...(textUrl ? [{ key: 'message', label: 'Message', icon: 'chatbubble-outline', onPress: handleText } as const] : []),
