@@ -302,12 +302,11 @@ export function StuckScreen() {
     completeTask(blocker.id);
   };
 
-  // Same fallback TaskItem makes: with a key, "Break it up" is the AI sheet;
-  // without one it's the editor, where the subtask field lives.
+  // With a key the sheet drafts the steps; without one it is the same sheet
+  // with only the field for typing them (`manual`).
   const breakUp = (task: Task) => {
     haptics.tap();
-    if (anthropicApiKey) setBreakdownId(task.id);
-    else openEditor(task);
+    setBreakdownId(task.id);
   };
 
   const actionsFor = (task: Task): { primary: PostponeCheckAction; secondary: PostponeCheckAction[] } => ({
@@ -599,6 +598,7 @@ export function StuckScreen() {
         <TaskBreakdownSheet
           visible={breakdownId !== null}
           taskId={shownBreakdownId}
+          manual={!anthropicApiKey}
           onClose={() => setBreakdownId(null)}
         />
       )}
