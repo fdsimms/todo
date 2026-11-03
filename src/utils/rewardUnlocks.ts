@@ -3,6 +3,8 @@ import { addDays } from 'date-fns/addDays';
 import { baseCoinsFor, bountyCoinsFor, cleanRewardGlyph, isBalanceReset } from './rewards';
 import { isNegativeTask } from './negativeHabits';
 import { occurrenceFamilyKey } from './searchCollapse';
+import { onLogicalDay } from './clockTime';
+import { windowBoundsFor } from './visibilityUtils';
 
 /**
  * Unlocks: a treat opened by doing a share of the day's work, rather than
@@ -35,6 +37,12 @@ import { occurrenceFamilyKey } from './searchCollapse';
  *
  * - **Weekends and vacation can open it all day**, per unlock.
  *
+ * - **A cutoff time leaves late tasks out of the count.** A task whose window
+ *   starts at or after `ignoreAfter` is neither work done nor work owed for
+ *   that unlock (`isAfterCutoff`), so a bedtime routine doesn't hold the share
+ *   down until bedtime. Only the window's start counts; it changes nothing
+ *   about the task or its coins.
+ *
  * - **The play time is a daily allowance, not per stretch.** Stopping and
  *   starting again carries on from what's left. "+15 min" adds to today only.
  *   Nothing enforces it on the console; it is a timer and a notification.
@@ -63,8 +71,18 @@ export function cleanPlayMinutes(value: number | null | undefined): number | nul
   return Math.min(MAX_PLAY_HOURS * 60, Math.round(value));
 }
 
+/** A cutoff as stored: a valid "HH:MM", or null. */
+export function cleanIgnoreAfter(value: string | null | undefined): string | null {
+  const m = typeof value === 'string' ? /^(\d{1,2}):(\d{2})$/.exec(value.trim()) : null;
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, '0')}:${m[2]}`;
+}
+
 /** What the form (and the MCP server's tools) edit on an unlock. */
-export type UnlockDraft = Pick<RewardUnlock, 'title' | 'glyph' | 'sharePct' | 'requiredTaskIds' | 'playMinutes' | 'freeOnWeekends' | 'freeOnVacation' | 'guardsTaskId' | 'pin'>;
+export type UnlockDraft = Pick<RewardUnlock, 'title' | 'glyph' | 'sharePct' | 'requiredTaskIds' | 'playMinutes' | 'freeOnWeekends' | 'freeOnVacation' | 'ignoreAfter' | 'guardsTaskId' | 'pin'>;
 
 /** A draft as stored: trimmed, in range, no repeated requirement, blanks as null. */
 export function cleanUnlockDraft(draft: UnlockDraft): UnlockDraft {
@@ -76,6 +94,7 @@ export function cleanUnlockDraft(draft: UnlockDraft): UnlockDraft {
     playMinutes: cleanPlayMinutes(draft.playMinutes),
     freeOnWeekends: !!draft.freeOnWeekends,
     freeOnVacation: !!draft.freeOnVacation,
+    ignoreAfter: cleanIgnoreAfter(draft.ignoreAfter),
     guardsTaskId: draft.guardsTaskId || null,
     pin: draft.pin?.trim() || null,
   };
@@ -97,6 +116,10 @@ export function unlockLooseningsOf(before: UnlockDraft, after: UnlockDraft): str
   if (before.requiredTaskIds.some(id => !kept.has(id))) out.push('remove a task from Also needs');
   if (!before.freeOnWeekends && after.freeOnWeekends) out.push('open it all weekend');
   if (!before.freeOnVacation && after.freeOnVacation) out.push('open it all vacation');
+  // A cutoff only shrinks what is owed, so setting one or moving it earlier is easier.
+  const beforeCut = cleanIgnoreAfter(before.ignoreAfter);
+  const afterCut = cleanIgnoreAfter(after.ignoreAfter);
+  if (afterCut && (!beforeCut || afterCut < beforeCut)) out.push('ignore tasks that start later in the day');
   if (before.guardsTaskId && before.guardsTaskId !== (after.guardsTaskId || null)) out.push('unlink its habit');
   return out;
 }
@@ -110,12 +133,13 @@ export function joinPhrases(phrases: readonly string[]): string {
 // ==== Today's work ====
 
 /** Coins earned in the logical day starting at `todayStart`. A reset is no earning. */
-export function coinsEarnedToday(entries: readonly CoinEntry[], todayStart: Date): number {
+export function coinsEarnedToday(entries: readonly CoinEntry[], todayStart: Date, skip?: (taskId: string) => boolean): number {
   const from = todayStart.getTime();
   const to = addDays(todayStart, 1).getTime();
   let total = 0;
   for (const e of entries) {
     if (e.kind !== 'earn' || isBalanceReset(e)) continue;
+    if (skip && e.taskId && skip(e.taskId)) continue;
     const at = Date.parse(e.at);
     if (at >= from && at < to) total += e.amount;
   }
@@ -127,13 +151,25 @@ export function coinsEarnedToday(entries: readonly CoinEntry[], todayStart: Date
  * (visible, and later today). A "don't do" habit is left out: it pays for a
  * clean day at the rollover, which is not work anyone does today.
  */
-export function coinsStillOpenToday(onToday: readonly Task[]): number {
+export function coinsStillOpenToday(onToday: readonly Task[], skip?: (task: Task) => boolean): number {
   let total = 0;
   for (const t of onToday) {
     if (t.completed || t.parentId || isNegativeTask(t)) continue;
+    if (skip && skip(t)) continue;
     total += baseCoinsFor(t) + bountyCoinsFor(t);
   }
   return total;
+}
+
+/**
+ * Whether a task's window starts at or after `cutoff` ("HH:MM") on the logical
+ * day starting at `todayStart`. A task with no start time is never after it.
+ */
+export function isAfterCutoff(task: Task, cutoff: string | null, todayStart: Date): boolean {
+  if (!cutoff) return false;
+  const { start } = windowBoundsFor(task, todayStart);
+  if (!start) return false;
+  return onLogicalDay(todayStart, start).getTime() >= onLogicalDay(todayStart, cutoff).getTime();
 }
 
 /** The share of today's work done, 0..1. A day with nothing on it counts as done. */
@@ -377,11 +413,18 @@ export interface UnlockWorld {
 
 /** Where one unlock stands now, and the required tasks behind it. */
 export function statusOfUnlock(unlock: RewardUnlock, world: UnlockWorld): { status: UnlockStatus; required: RequiredToday } {
+  const cutoff = unlock.ignoreAfter;
+  const byId = cutoff ? new Map(world.tasks.map(t => [t.id, t])) : null;
+  // A coin whose task is gone (purged) still counts: there is nothing to read its window from.
+  const skipEarned = cutoff && byId
+    ? (taskId: string) => { const t = byId.get(taskId); return !!t && isAfterCutoff(t, cutoff, world.todayStart); }
+    : undefined;
+  const skipOpen = cutoff ? (t: Task) => isAfterCutoff(t, cutoff, world.todayStart) : undefined;
   const required = requiredToday(unlock.requiredTaskIds, world.tasks, world.onToday, world.todayStart);
   const weekday = world.todayStart.getDay();
   const status = unlockStatus(unlock, {
-    earned: coinsEarnedToday(world.entries, world.todayStart),
-    open: coinsStillOpenToday(world.onToday),
+    earned: coinsEarnedToday(world.entries, world.todayStart, skipEarned),
+    open: coinsStillOpenToday(world.onToday, skipOpen),
     pending: required.pending,
     weekend: weekday === 0 || weekday === 6,
     vacation: world.vacation,

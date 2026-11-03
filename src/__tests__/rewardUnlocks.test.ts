@@ -2,11 +2,13 @@ import type { CoinEntry, RewardUnlock, Task } from '../types';
 import {
   addPlayTime,
   cleanPlayMinutes,
+  cleanIgnoreAfter,
   cleanUnlockSharePct,
   coinsEarnedToday,
   coinsShortOf,
   coinsStillOpenToday,
   describePlayMinutes,
+  isAfterCutoff,
   formatPlayClock,
   playState,
   playedToday,
@@ -227,5 +229,49 @@ describe('unlockLooseningsOf', () => {
     expect(joinPhrases(['a'])).toBe('a');
     expect(joinPhrases(['a', 'b'])).toBe('a or b');
     expect(joinPhrases(['a', 'b', 'c'])).toBe('a, b or c');
+  });
+});
+
+describe('the cutoff time', () => {
+  it('cleans to a valid HH:MM or null', () => {
+    expect(cleanIgnoreAfter('8:05')).toBe('08:05');
+    expect(cleanIgnoreAfter('20:30')).toBe('20:30');
+    expect(cleanIgnoreAfter('25:00')).toBeNull();
+    expect(cleanIgnoreAfter('nope')).toBeNull();
+    expect(cleanIgnoreAfter(null)).toBeNull();
+  });
+
+  it('is after only a task whose window starts at or after it', () => {
+    expect(isAfterCutoff(task('a', { windowStart: '20:00' }), '20:00', TODAY)).toBe(true);
+    expect(isAfterCutoff(task('a', { windowStart: '21:30' }), '20:00', TODAY)).toBe(true);
+    expect(isAfterCutoff(task('a', { windowStart: '19:59' }), '20:00', TODAY)).toBe(false);
+    expect(isAfterCutoff(task('a'), '20:00', TODAY)).toBe(false);
+    expect(isAfterCutoff(task('a', { windowStart: '21:00' }), null, TODAY)).toBe(false);
+  });
+
+  it('leaves late tasks out of both the open and the earned side', () => {
+    const day = task('day', { estimatedMinutes: 30 });
+    const bed = task('bed', { estimatedMinutes: 30, windowStart: '21:00' });
+    const doneBed = task('doneBed', { completed: true, windowStart: '21:00' });
+    const entries = [earn(5, at(9), { taskId: 'doneBed' }), earn(3, at(8), { taskId: 'gone' }), earn(2, at(7), { taskId: 'day' })];
+    const byId = new Map([day, bed, doneBed].map(t => [t.id, t]));
+    const lateTask = (t: Task) => isAfterCutoff(t, '20:00', TODAY);
+    const lateEntry = (id: string) => { const t = byId.get(id); return !!t && lateTask(t); };
+
+    expect(coinsEarnedToday(entries, TODAY)).toBe(10);
+    // The bedtime earning drops out; a purged task's earning and a daytime one stay.
+    expect(coinsEarnedToday(entries, TODAY, lateEntry)).toBe(5);
+    expect(coinsStillOpenToday([day, bed], lateTask)).toBe(coinsStillOpenToday([day]));
+    expect(coinsStillOpenToday([day, bed])).toBeGreaterThan(coinsStillOpenToday([day]));
+
+  });
+
+  it('counts setting or moving it earlier as loosening, and removing or delaying it as not', () => {
+    const base = { title: 'a', glyph: null, sharePct: 60, requiredTaskIds: [], playMinutes: 60, freeOnWeekends: false, freeOnVacation: false, guardsTaskId: null, pin: null };
+    const words = ['ignore tasks that start later in the day'];
+    expect(unlockLooseningsOf({ ...base, ignoreAfter: null }, { ...base, ignoreAfter: '20:00' })).toEqual(words);
+    expect(unlockLooseningsOf({ ...base, ignoreAfter: '20:00' }, { ...base, ignoreAfter: '18:00' })).toEqual(words);
+    expect(unlockLooseningsOf({ ...base, ignoreAfter: '20:00' }, { ...base, ignoreAfter: '21:00' })).toEqual([]);
+    expect(unlockLooseningsOf({ ...base, ignoreAfter: '20:00' }, { ...base, ignoreAfter: null })).toEqual([]);
   });
 });

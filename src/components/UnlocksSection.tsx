@@ -1,18 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { format } from 'date-fns/format';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import type { CoinEntry, RewardUnlock, Task } from '../types';
 import { useUnlockStore, type UnlockDraft } from '../store/useUnlockStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
-import { useColors } from '../theme/ThemeContext';
+import { useColors, useTheme } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { confirmDelete } from '../utils/confirmDelete';
-import { getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { formatHHMM, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { hhmmToDate } from '../utils/clockTime';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { MAX_GLYPH_CHARS } from '../utils/rewards';
 import {
@@ -73,12 +75,16 @@ const EMPTY_DRAFT: UnlockDraft = {
   playMinutes: 120,
   freeOnWeekends: false,
   freeOnVacation: false,
+  ignoreAfter: null,
   guardsTaskId: null,
   pin: null,
 };
 
 export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
   const colors = useColors();
+  const { isDark } = useTheme();
+  const use24HourTime = useSettingsStore(s => s.use24HourTime);
+  const [cutoffPickerOpen, setCutoffPickerOpen] = useState(false);
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const unlocks = useUnlockStore(s => s.unlocks);
   const vacation = useSettingsStore(s => s.vacationMode);
@@ -116,7 +122,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
     setFields(from ? {
       title: from.title, glyph: from.glyph, sharePct: from.sharePct, requiredTaskIds: from.requiredTaskIds,
       playMinutes: from.playMinutes, freeOnWeekends: from.freeOnWeekends, freeOnVacation: from.freeOnVacation,
-      guardsTaskId: from.guardsTaskId, pin: from.pin,
+      ignoreAfter: from.ignoreAfter ?? null, guardsTaskId: from.guardsTaskId, pin: from.pin,
     } : EMPTY_DRAFT);
     setDraft(next);
   };
@@ -268,6 +274,36 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
             <Toggle value={fields[key]} />
           </TouchableOpacity>
         ))}
+        </FormField>
+
+        <FormField label="Leave out later tasks" hint="Tasks that start at or after this time don’t count toward the percentage, so a bedtime routine doesn’t hold it down all day.">
+        <View style={styles.chipRow}>
+          {fields.ignoreAfter ? (
+            <>
+              <View style={styles.taskChip}>
+                <Ionicons name="moon-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.taskChipText}>From {formatHHMM(fields.ignoreAfter, use24HourTime)}</Text>
+              </View>
+              <InlineAction label="Change" variant="neutral" onPress={() => { haptics.tap(); setCutoffPickerOpen(true); }} />
+              <InlineAction label="Remove" variant="neutral" onPress={() => { haptics.tap(); setCutoffPickerOpen(false); set('ignoreAfter', null); }} />
+            </>
+          ) : (
+            <InlineAction label="Set a time" icon="moon-outline" variant="neutral" onPress={() => { haptics.tap(); set('ignoreAfter', '20:00'); setCutoffPickerOpen(true); }} />
+          )}
+        </View>
+        {fields.ignoreAfter && (cutoffPickerOpen || Platform.OS === 'ios') ? (
+          <DateTimePicker
+            value={hhmmToDate(fields.ignoreAfter)}
+            mode="time"
+            display={Platform.OS === 'ios' ? 'compact' : 'default'}
+            themeVariant={isDark ? 'dark' : 'light'}
+            onChange={(e, d) => {
+              if (Platform.OS !== 'ios') setCutoffPickerOpen(false);
+              if (e.type === 'dismissed' || !d) return;
+              set('ignoreAfter', `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+            }}
+          />
+        ) : null}
         </FormField>
 
         <FormField label="Linked habit" hint="An “Avoid this” habit for doing it while it’s locked. Logging a slip on it while it’s unlocked asks first.">
