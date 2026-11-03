@@ -73,7 +73,6 @@ import { useEventTaskLinkStore } from './useEventTaskLinkStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
-import { isLiveLeftover } from '../utils/leftovers';
 import { dripCandidate, findProjectStalls, nextPullCandidate, projectPullUpdates } from '../utils/projectPull';
 import {
   projectReviewLinkUrl,
@@ -228,6 +227,7 @@ import { installSupplementDoseEffects } from '../utils/supplementDoseSync';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { Category, GeneratedKind, JournalKind, MealSlot, Project, TaskGroup, WeatherCondition, WeatherRule, NutrientKey } from '../types';
+import { MEAL_SLOT_LABELS } from '../types';
 import { awayNoonIso, awayPauseDriver, departureFromAnswer, departureMoveFromAnswer, isProjectAwayNow, liveAwaySpans } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import {
@@ -280,6 +280,7 @@ import {
 import { formatTimeOfDay, getNextDueDate, getNextOccurrence, getCurrentDayStart, getCurrentLogicalDayKey, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { describeRescheduled } from '../utils/createdTaskPlacement';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
+import { mealStripCoins, mealStripDoneSlots, mealStripOn, mealStripSlots } from '../utils/mealStrip';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { logSlotToMealSlot, slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
@@ -2324,6 +2325,14 @@ interface TaskStore extends UndoHistoryActions {
   checkMealSlotTasks: () => void;
   /** Drop the meal tasks whose (day, slot) already has food logged in it. */
   syncLoggedMealSlotTasks: () => void;
+  /**
+   * Pays, or takes back, the coins for one day's meals while Today shows the
+   * meal strip: a meal counts as eaten once food is logged in its slot or its
+   * planned entry is marked cooked (`mealStripDoneSlots`), and it earns once
+   * (`spawnSeed.coinMeal`). Defaults to the logical today. A no-op with the
+   * strip off, and for a day still ahead.
+   */
+  syncMealStripCoins: (dayKey?: string) => void;
   /**
    * Fill the already-written days with meals just switched on in Settings —
    * see the implementation for why the mark is never rewound instead.
@@ -4717,24 +4726,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // of it. Gated on the leftover still being live so a container already
     // closed out isn't asked about twice. Never on a miss, same as the cook
     // pairing above.
+    // askFinishLeftover skips it when UseUpResolveSheet is already open (or
+    // about to open, see below) on this same container, which is exactly what
+    // happens when the use-up task and the meal task for one leftover both get
+    // ticked within moments of each other.
     if (!missed && cookedEntryId) {
-      const cookedEntryLeftoverId = dbGetMealPlanEntry(cookedEntryId)?.leftoverId;
-      const cookedLeftover = cookedEntryLeftoverId
-        ? useLeftoverStore.getState().leftovers.find(l => l.id === cookedEntryLeftoverId)
-        : null;
-      // Skipped when UseUpResolveSheet is already open (or about to open, see
-      // below) on this same container: its own Finished it/Threw it out rows
-      // already answer "was that the last of it?", so also popping this
-      // Alert stacks a native alert on top of that sheet — which is exactly
-      // what happens when the use-up task and the meal task for one leftover
-      // both get ticked within moments of each other.
-      if (
-        cookedLeftover &&
-        isLiveLeftover(cookedLeftover) &&
-        useLeftoverStore.getState().pendingUseUpLeftoverId !== cookedLeftover.id
-      ) {
-        useLeftoverStore.getState().setPendingFinishLeftover(cookedLeftover.id);
-      }
+      useLeftoverStore.getState().askFinishLeftover(dbGetMealPlanEntry(cookedEntryId)?.leftoverId);
     }
 
     // ...and the same tick is the cheapest logging moment the app will ever
@@ -7092,6 +7089,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // logged straight into the day would otherwise leave sitting on Today.
     get().syncLoggedMealSlotTasks();
 
+    // The meal strip stands in for these tasks (see MealsOnToday): while it's
+    // on, nothing is written and every open row goes, the week ahead's and
+    // started chains included, since the strip now carries each of those
+    // meals. The mark is cleared rather than left standing, so switching back
+    // writes the week afresh instead of reading the days dropped here as days
+    // the user deleted. Inside the kitchen gate by construction: mealStripOn
+    // reads kitchenEnabled.
+    if (mealStripOn(settings)) {
+      liveGeneratedTasksOfKind(get().tasks, 'mealSlot').forEach(task =>
+        dropGeneratedTask('mealSlot', task.generatedSourceId)
+      );
+      if (settings.mealSlotTasksWrittenThroughDayKey !== null) settings.setMealSlotTasksWrittenThroughDayKey(null);
+      // Yesterday too: a dinner logged after the day turned over, or a row
+      // synced in from another device, lands where no store write re-checked.
+      get().syncMealStripCoins(shiftDayKey(today, -1));
+      get().syncMealStripCoins(today);
+      return;
+    }
+
     // The same gate checkPantryCheckTasks takes, and for the same reason —
     // which that one's comment claimed was unique to it, back when it was. This
     // pass fires on time passing rather than on a purchase or an edit, so with
@@ -7149,8 +7165,32 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     settleReadyMarks(liveGeneratedTasksOfKind(tasks, 'mealSlot'), loggedMealSlotTasks(tasks, logged));
   },
 
+  syncMealStripCoins(dayKey) {
+    const settings = useSettingsStore.getState();
+    if (!mealStripOn(settings)) return;
+    const today = dayKeyOf(getLogicalToday());
+    const day = dayKey ?? today;
+    if (day > today) return;
+    // From SQLite, for the reason syncLoggedMealSlotTasks gives: the stores
+    // hold whichever window a screen has open, not necessarily this day.
+    const slots = mealStripSlots(settings.mealSlotsEnabled);
+    const done = new Set(mealStripDoneSlots(slots, dbGetMealPlanEntries(day, day), dbGetFoodLogEntries(day, day), day));
+    const rewards = useRewardStore.getState();
+    for (const slot of slots) {
+      const paid = rewards.hasMealEarn(day, slot);
+      if (done.has(slot) && !paid) {
+        rewards.recordMealEarn(day, slot, mealStripCoins(), `Ate ${MEAL_SLOT_LABELS[slot].toLowerCase()}`, new Date().toISOString());
+      } else if (!done.has(slot) && paid) {
+        rewards.takeBackMealEarn(day, slot);
+      }
+    }
+  },
+
   backfillMealSlotTasks(slots) {
     const settings = useSettingsStore.getState();
+    // The strip writes no meal tasks (see checkMealSlotTasks), so turning a
+    // meal on while it shows adds a cell to the strip and nothing else.
+    if (mealStripOn(settings)) return;
     // The same gate the pass above takes. Unreachable today — the only caller
     // is a Settings row that stops rendering with the area off — but that is a
     // fact about a component two files away, and "the UI can't call it" is

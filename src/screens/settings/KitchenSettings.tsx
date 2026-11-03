@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { View, Platform, Alert } from 'react-native';
-import { useSettingsStore } from '../../store/useSettingsStore';
+import { useSettingsStore, type MealsOnToday } from '../../store/useSettingsStore';
+import { useTaskStore } from '../../store/useTaskStore';
+import { MEALS_ON_TODAY_LABELS } from '../../utils/screenSettingControls';
 import type { UnitSystem } from '../../utils/unitConvert';
 import { useGroceryStore } from '../../store/useGroceryStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -41,6 +43,17 @@ import { STANDARD_DRINK_SIZES } from '../../utils/alcohol';
  * a setting with no way back. A group that vanishes has to be reached from
  * somewhere that doesn't.
  */
+const MEALS_ON_TODAY_OPTIONS: SegmentOption<MealsOnToday>[] = (['off', 'inline', 'top'] as const).map(value => ({
+  value,
+  label: MEALS_ON_TODAY_LABELS[value],
+}));
+
+const MEALS_ON_TODAY_HINTS: Record<MealsOnToday, string> = {
+  off: 'Meals show only on the Meal plan screen.',
+  inline: 'Planned meals without a task from Automations show as rows in the task list.',
+  top: 'A strip at the top of Today shows what you logged or planned for each meal. Meal tasks stop while this is on.',
+};
+
 const UNIT_SYSTEM_OPTIONS: SegmentOption<UnitSystem>[] = [
   { value: 'asWritten', label: 'As written' },
   { value: 'metric', label: 'Metric' },
@@ -106,23 +119,34 @@ export function KitchenSettings() {
     <>
       <SettingsSection
         label="Meals on Today"
-        footer="A planned meal without a task from Automations shows as a plain row in the same category as meal tasks. It can’t be checked off, and tapping it opens the meal plan."
+        footer={mealsOnToday === 'top'
+          ? 'Tap a meal in the strip to log it, plan it, or mark it eaten. Each meal earns coins once, whether you log it or mark it eaten.'
+          : 'A planned meal without a task from Automations shows as a plain row in the same category as meal tasks. It can’t be checked off, and tapping it opens the meal plan.'}
       >
-        {/* A toggle rather than a track of two: one bounded choice with two
-            answers is what a switch is for, and the two shapes this used to
-            pick between (a tray above the tasks, a one-line strip) are both
-            gone. */}
+        {/* Three answers, so segments rather than the switch this was: the
+            strip (`top`) replaces the meal tasks rather than sitting beside
+            them, which is why it isn't the retired one-line strip back. See
+            MealsOnToday. */}
         <SettingsRow
           entryId="mealsOnToday"
           icon="restaurant-outline"
-          iconColor={mealsOnToday === 'inline' ? colors.accent : undefined}
+          iconColor={mealsOnToday === 'off' ? undefined : colors.accent}
           label="Show the day’s meals"
-          hint={mealsOnToday === 'inline'
-            ? "Planned meals without a task from Automations show as rows in the task list."
-            : 'Meals show only on the Meal plan screen.'}
-          toggle={mealsOnToday === 'inline'}
-          onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}
-          accessibilityLabel="Show the day’s meals"
+          hint={MEALS_ON_TODAY_HINTS[mealsOnToday]}
+          tight
+        />
+        <SettingsSegments
+          attached
+          options={MEALS_ON_TODAY_OPTIONS}
+          selected={mealsOnToday}
+          onSelect={mode => {
+            setMealsOnToday(mode);
+            // The strip takes the meal tasks away at once rather than at the
+            // next launch, and leaving it writes them back the same way: the
+            // pass reads the setting just written.
+            useTaskStore.getState().checkMealSlotTasks();
+          }}
+          accessibilityLabelFor={o => `Show the day’s meals: ${o.label}`}
         />
         {/* No "needs using up" row here any more (#1689 retired): unlike a
             meal or an event, a perishable is either used up or it isn't, so an

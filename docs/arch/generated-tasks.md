@@ -1157,6 +1157,26 @@ load can't turn every meal on Today into a typed one. Renaming a recipe is the o
 `retitleRecipeEntries` rewrites the entries' captured titles, which is what "Make X" and the
 calendar event read.
 
+**The meal strip turns the whole generator off, rather than sitting beside it**
+(`mealsOnToday: 'top'`, `src/utils/mealStrip.ts`, `src/components/MealStrip.tsx`). It is for
+someone who doesn't plan ahead and was ticking Choose, Prepare and Eat in one go after eating, with
+the real answer already in the food log. The strip reads that answer: a meal is done once food is in
+its slot (`mealDayCoverage`, the same join as everywhere else) or its planned entry is marked
+cooked. Four things follow:
+
+- **`checkMealSlotTasks` drops every open meal task while it's on**, started chains included, and
+  clears `mealSlotTasksWrittenThroughDayKey`, so leaving the strip writes the week afresh instead of
+  reading the dropped days as days the user deleted. `backfillMealSlotTasks` and `setCookTask(true)`
+  write nothing either.
+- **Coins move to the meal** (`syncMealStripCoins`): one `coinMeal(day, slot)` entry when the meal
+  counts as eaten, taken back when it stops counting. A derived id, so logging lunch and marking it
+  eaten, or two devices, are one row. It runs on every food log write and every `setCooked`, and
+  the daily pass settles yesterday and today for rows that synced in.
+- **The leftover ask moved into `setCooked`** (`askFinishLeftover`), since a strip's Ate it has no
+  task whose completion used to be the only place it was asked.
+- **It isn't the retired one-line strip back.** That one showed what was left to eat *beside* the
+  meal tasks, a second answer above the list. This one is the only answer while it's on.
+
 ## `screenTime` — a rule the user wrote, about their own phone use
 
 "After 30 minutes on the apps I picked, add a task to take a walk." Structurally it is `weather`

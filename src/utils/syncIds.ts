@@ -137,6 +137,14 @@ export const spawnSeed = {
    */
   coinClean: (taskId: string, dayKey: string) => `coin-clean:${taskId}:${dayKey}`,
   /**
+   * The coins one meal earned while Today shows the meal strip (see
+   * `syncMealStripCoins`), keyed by the day and the meal rather than by
+   * anything that settled it. Logging lunch and marking it eaten, or two
+   * devices each running the pass, are one row, and the pass can tell from
+   * the id alone whether that meal has been paid.
+   */
+  coinMeal: (dayKey: string, slot: string) => `coin-meal:${dayKey}#${slot}`,
+  /**
    * One line in the ledger of what the app did unattended. Every device runs
    * the same generators and sweeps, so two devices recording "Added 'Use up
    * spinach'" before they sync showed it twice. Keyed by what was done, to

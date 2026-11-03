@@ -186,6 +186,31 @@ describe('setPendingFinishLeftover', () => {
   });
 });
 
+describe('askFinishLeftover', () => {
+  beforeEach(() => {
+    useLeftoverStore.setState({ pendingFinishLeftoverId: null, pendingUseUpLeftoverId: null });
+  });
+
+  it('asks about a live leftover', () => {
+    const live = useLeftoverStore.getState().logLeftover({ title: 'Chili' })!;
+    useLeftoverStore.getState().askFinishLeftover(live.id);
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBe(live.id);
+  });
+
+  it('asks nothing for a meal with no leftover, or one that is gone', () => {
+    useLeftoverStore.getState().askFinishLeftover(null);
+    useLeftoverStore.getState().askFinishLeftover('nope');
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
+  });
+
+  it('asks nothing while the use-up sheet is open on the same container', () => {
+    const live = useLeftoverStore.getState().logLeftover({ title: 'Soup' })!;
+    useLeftoverStore.setState({ pendingUseUpLeftoverId: live.id });
+    useLeftoverStore.getState().askFinishLeftover(live.id);
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
+  });
+});
+
 describe('logLeftover', () => {
   it('logs a container starting today, live and with the default window', () => {
     const logged = useLeftoverStore.getState().logLeftover({ title: '  Sausage   ragù ' })!;

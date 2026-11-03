@@ -146,7 +146,7 @@ export const SETTINGS_SPEC: Record<string, SettingSpec> = {
       s.setHealthCategory(v.trim());
     },
   },
-  mealsOnToday: { group: 'features', describe: 'Show the day\'s planned meals on Today (inline) or not (off).', read: s => s.mealsOnToday, write: (s, v) => s.setMealsOnToday(oneOf('mealsOnToday', v, ['inline', 'off'] as const)) },
+  mealsOnToday: { group: 'features', describe: 'How Today shows the day\'s meals: as rows in the task list beside the meal tasks (inline), as a strip at the top that replaces the meal tasks and shows what was logged or planned for each meal (top), or not at all (off). While it is top, the phone writes no meal tasks and removes the open ones.', read: s => s.mealsOnToday, write: (s, v) => s.setMealsOnToday(oneOf('mealsOnToday', v, ['inline', 'top', 'off'] as const)) },
   mealSlotsEnabled: { group: 'features', describe: 'The meals of the day the meal plan has rows for.', read: s => s.mealSlotsEnabled, write: (s, v) => s.setMealSlotsEnabled(slots('mealSlotsEnabled', v)) },
 
   // ---- focus sessions -----------------------------------------------------

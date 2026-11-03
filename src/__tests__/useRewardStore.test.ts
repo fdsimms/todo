@@ -157,6 +157,36 @@ describe('taking back', () => {
   });
 });
 
+describe('a meal eaten while Today shows the meal strip', () => {
+  it('pays one row per day and meal, which paying again rewrites', () => {
+    state().recordMealEarn('2026-11-03', 'lunch', 2, 'Ate lunch', AT);
+    state().recordMealEarn('2026-11-03', 'lunch', 2, 'Ate lunch', AT);
+    state().recordMealEarn('2026-11-03', 'dinner', 2, 'Ate dinner', AT);
+    expect(state().entries.map(e => e.id).sort()).toEqual([
+      derivedId(spawnSeed.coinMeal('2026-11-03', 'dinner')),
+      derivedId(spawnSeed.coinMeal('2026-11-03', 'lunch')),
+    ].sort());
+    expect(state().entries.every(e => e.taskId === null)).toBe(true);
+    expect(state().balance()).toBe(4);
+    expect(state().hasMealEarn('2026-11-03', 'lunch')).toBe(true);
+    expect(state().hasMealEarn('2026-11-04', 'lunch')).toBe(false);
+  });
+
+  it('takes one meal back, and nothing for a meal never paid', () => {
+    state().recordMealEarn('2026-11-03', 'lunch', 2, 'Ate lunch', AT);
+    state().takeBackMealEarn('2026-11-03', 'dinner');
+    expect(dbDeleteCoinEntry).not.toHaveBeenCalled();
+    state().takeBackMealEarn('2026-11-03', 'lunch');
+    expect(state().entries).toEqual([]);
+  });
+
+  it('pays nothing with rewards off', () => {
+    settings.rewardsEnabled = false;
+    state().recordMealEarn('2026-11-03', 'lunch', 2, 'Ate lunch', AT);
+    expect(state().entries).toEqual([]);
+  });
+});
+
 describe('rewards', () => {
   it('adds a reward and keeps the list cheapest first', () => {
     state().addReward('Takeout', 100);

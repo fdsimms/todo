@@ -1051,7 +1051,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // gate drops every one of these and flagging them again would be a second
   // copy of one answer. `simple` still applies — that's a different switch.
   { id: 'mealsOnToday', groupId: 'kitchen', label: 'Show the day’s meals', section: 'Meals on Today',
-    keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'takeaway'] },
+    keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'takeaway', 'strip', 'meal tasks', 'breakfast', 'lunch'] },
   { id: 'cookRecapEnabled', groupId: 'kitchen', label: 'Ask after cooking', section: 'Meals on Today',
     keywords: ['rate', 'rating', 'review', 'leftovers', 'used up', 'out of', 'sheet', 'prompt', 'cooked'] },
   { id: 'restockOfferEnabled', requires: 'cookRecapEnabled', groupId: 'kitchen', label: 'Restock after cooking', section: 'Meals on Today',
