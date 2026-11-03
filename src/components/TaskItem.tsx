@@ -2241,11 +2241,13 @@ const TaskItemRow = React.memo(function TaskItem({
   //    copy of the title with its markers is measured (`measuresMarkers`); when
   //    that needs a third line, the markers move to the meta row instead.
   const hasNotes = shownNotes.length > 0;
-  const hasTitleMarkers = !nutrientRow && (hasNotes || deadlineDays !== null);
+  // Photos and files kept with the task (`Task.attachments`).
+  const hasAttachments = (task.attachments ?? []).length > 0;
+  const hasTitleMarkers = !nutrientRow && (hasNotes || hasAttachments || deadlineDays !== null);
   // A list line is never clamped, so its markers always fit; an edited title
   // has none.
   const measuresMarkers = hasTitleMarkers && !listRow && !isEditingTitle;
-  const markerKey = `${displayTitle}\u0000${hasNotes ? 1 : 0}\u0000${deadlineLabel}`;
+  const markerKey = `${displayTitle}\u0000${hasNotes ? 1 : 0}\u0000${hasAttachments ? 1 : 0}\u0000${deadlineLabel}`;
   const markersFit = !measuresMarkers
     ? true
     : markerMeasure?.key === markerKey
@@ -2258,6 +2260,12 @@ const TaskItemRow = React.memo(function TaskItem({
         <>
           {NBSP}
           <Ionicons name="document-text-outline" size={14} color={colors.textSecondary} />
+        </>
+      )}
+      {hasAttachments && (
+        <>
+          {NBSP}
+          <Ionicons name="attach" size={14} color={colors.textSecondary} />
         </>
       )}
       {deadlineDays !== null && (
@@ -2282,6 +2290,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // have to be said here or a screen reader never hears them.
   const markerA11y = [
     hasNotes ? 'has notes' : null,
+    hasAttachments ? 'has attachments' : null,
     deadlineDays !== null ? (deadlineClosed ? `deadline was ${deadlineLabel}` : `deadline ${deadlineLabel}`) : null,
   ].filter(Boolean).join(', ');
 
@@ -3296,7 +3305,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // inside the expanded panel did, so a "Review tomorrow's calendar" looked
   // hand-made. Not on the nutrient rows, which are a different shape of row.
   const automaticChip = task.generatedKind != null && !nutrientRow;
-  const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !automaticChip && !deadlineOnMeta;
+  const notesStayInTitle = markersOnMeta && (hasNotes || hasAttachments) && !hasOtherMeta && !automaticChip && !deadlineOnMeta;
 
   const rowBody = (
     <View style={[styles.row, isActive && styles.rowActive]}>
@@ -3799,6 +3808,11 @@ const TaskItemRow = React.memo(function TaskItem({
             {markersOnMeta && hasNotes && !notesStayInTitle && (
               <View style={styles.metaChip} accessibilityLabel="Has notes">
                 <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textSecondary} />
+              </View>
+            )}
+            {markersOnMeta && hasAttachments && !notesStayInTitle && (
+              <View style={styles.metaChip} accessibilityLabel="Has attachments">
+                <Ionicons name="attach" size={iconSize.xs} color={colors.textSecondary} />
               </View>
             )}
             {markersOnMeta && deadlineDays !== null && (
