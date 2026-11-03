@@ -38,7 +38,7 @@ export function summarizeLogSync(reports: readonly ServerSharing[]): LogSync {
 
 const SWITCH: Record<LogKind, string> = {
   healthLogs: 'Include health logs',
-  journal: 'Include journal and dreams',
+  journal: 'Include journal, dreams and notes',
 };
 
 /**

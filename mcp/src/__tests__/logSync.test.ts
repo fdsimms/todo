@@ -25,7 +25,7 @@ describe('logSyncNote', () => {
   });
 
   it('names the switch and says what is here is partial', () => {
-    expect(logSyncNote('off', 'journal')).toMatch(/Include journal and dreams is off.*only what was sent before/);
+    expect(logSyncNote('off', 'journal')).toMatch(/Include journal, dreams and notes is off.*only what was sent before/);
     expect(logSyncNote('mixed', 'healthLogs')).toMatch(/Include health logs is off on at least one/);
   });
 });
@@ -37,7 +37,7 @@ describe('withLogSyncNote', () => {
   it('adds the note to a result from a log whose switch is off', () => {
     expect(withLogSyncNote(replica(false), 'journal', { entries: [] })).toEqual({
       entries: [],
-      syncNote: expect.stringMatching(/Include journal and dreams/),
+      syncNote: expect.stringMatching(/Include journal, dreams and notes/),
     });
   });
 

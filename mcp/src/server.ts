@@ -555,7 +555,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_journal_entries',
-    'Journal entries, dreams and notes the person wrote, over a range of days, newest first. kind narrows to one ("journal", "dream" or "note"; a note is loose writing like lyrics or ideas, not about its day). Defaults to the last 7 days. Empty unless the person has turned on Include journal and dreams for the sync server on their phone (its own switch, separate from health logs), so an empty result is not evidence that nothing was written; if they want you to see it, tell them where the switch is. Quote or summarize only what they ask about; never interpret a dream or read meaning into an entry.',
+    'Journal entries, dreams and notes the person wrote, over a range of days, newest first. kind narrows to one ("journal", "dream" or "note"; a note is loose writing like lyrics or ideas, not about its day). Defaults to the last 7 days. Empty unless the person has turned on Include journal, dreams and notes for the sync server on their phone (its own switch, separate from health logs), so an empty result is not evidence that nothing was written; if they want you to see it, tell them where the switch is. Quote or summarize only what they ask about; never interpret a dream or read meaning into an entry.',
     {
       ...logRange,
       kind: z.enum(['journal', 'dream', 'note']).optional(),
