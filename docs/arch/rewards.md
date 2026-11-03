@@ -308,6 +308,10 @@ work is done"). Rules in `src/utils/rewardUnlocks.ts`, rows in `reward_unlocks`
   on, or an unlinked habit (`unlockLooseningsOf`), and refuse a delete. Without that, "edit it" was
   the way past the lock. Once it is open, edits are free, which leaves loosening it while open as the
   one way round; the lock only ever bound the day it was set against.
+- **A required task of a locked unlock can't be deleted either.** Deleting it would drop the requirement
+  the same way, so `deleteTask` refuses while the unlock is locked (`lockedUnlockNeeding`), and the MCP
+  replica does the same. Internal tidy-up passes (generated-task sync, the expiry sweep) pass
+  `ignoreUnlockLock` and aren't held by it. The refusal is said out loud, never silent (`explainLockedDelete`).
 - **Weekends and vacation can open it all day**, per unlock.
 - **A cutoff time (`ignoreAfter`) leaves late tasks out of the count**, per unlock. A task whose window
   starts at or after it (`isAfterCutoff`, reading `windowBoundsFor` so a sun anchor resolves) is neither

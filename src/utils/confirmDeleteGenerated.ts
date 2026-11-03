@@ -5,6 +5,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { stoppableGenerator } from './generatedTasks';
 import { confirmDelete } from './confirmDelete';
 import { BUTTON_LABEL } from '../copy/shared';
+import { explainLockedDelete } from './lockedDelete';
 
 /**
  * Delete one task, offering to turn off the generator that wrote it.
@@ -21,7 +22,10 @@ import { BUTTON_LABEL } from '../copy/shared';
 export function confirmDeleteGenerated(task: Task, onDeleted?: () => void): void {
   const spec = stoppableGenerator(task, useSettingsStore.getState());
   const run = (stopGenerator: boolean) => {
-    useTaskStore.getState().deleteTask(task.id, stopGenerator ? { stopGenerator } : undefined);
+    if (!useTaskStore.getState().deleteTask(task.id, stopGenerator ? { stopGenerator } : undefined)) {
+      explainLockedDelete();
+      return;
+    }
     onDeleted?.();
   };
   if (!spec) {

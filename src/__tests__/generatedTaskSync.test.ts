@@ -344,7 +344,7 @@ describe('reconcileGeneratedTask — removing', () => {
     // skipGeneratedOptOut: the app deciding a source doesn't want a task right
     // now is not the user saying never. Freezing an item reached this branch
     // and the opt-out it wrote kept the use-up task from ever coming back.
-    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: true });
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: true, ignoreUnlockLock: true });
     expect(mockTaskState.tasks).toHaveLength(0);
   });
 
@@ -399,7 +399,7 @@ describe('dropGeneratedTask', () => {
     // It was true by accident for the original callers, whose source row is
     // already gone by this point; projectReview's outlives its task, so the
     // skip has to be explicit (see dropGeneratedTask's own note).
-    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: true });
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: true, ignoreUnlockLock: true });
     expect(mockTaskState.setLastAction).toHaveBeenCalledWith(null);
   });
 
@@ -434,7 +434,7 @@ describe('deleteGeneratedTaskQuietly', () => {
 
     deleteGeneratedTaskQuietly('existing');
 
-    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: true });
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('existing', { skipGeneratedOptOut: true, ignoreUnlockLock: true });
     // Clearing first would leave whatever deleteTask armed sitting there.
     expect(mockTaskState.setLastAction.mock.invocationCallOrder[0])
       .toBeGreaterThan(mockTaskState.deleteTask.mock.invocationCallOrder[0]);

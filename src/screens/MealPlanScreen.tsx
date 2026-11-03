@@ -166,6 +166,7 @@ import { isDemoModeActive } from '../utils/demoState';
 import { shareContent } from '../utils/shareContent';
 import { LazySheet } from '../components/LazySheet';
 import { BUTTON_LABEL } from '../copy/shared';
+import { explainRefusedDeletes } from '../utils/lockedDelete';
 
 /**
  * Tints a day section while a drag is aimed at it — the same "arm on the way
@@ -1252,7 +1253,7 @@ export function MealPlanScreen() {
       tasks.setLastAction({
         label: ids.length === 1 ? 'Added 1 prep task' : `Added ${ids.length} prep tasks`,
         announce: true,
-        undo: () => useTaskStore.getState().bulkDeleteTasks(ids, { skipGeneratedOptOut: true, registerUndo: false }),
+        undo: () => explainRefusedDeletes(useTaskStore.getState().bulkDeleteTasks(ids, { skipGeneratedOptOut: true, registerUndo: false })),
       }, { replacing: before });
     }
   };

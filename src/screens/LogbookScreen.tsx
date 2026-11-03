@@ -93,6 +93,7 @@ import { useEventTaskContext } from '../hooks/useEventTaskContext';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { usePullToSearch } from '../hooks/usePullToSearch';
+import { explainLockedDelete } from '../utils/lockedDelete';
 
 interface LogbookSection {
   title: string;
@@ -473,7 +474,7 @@ export function LogbookScreen() {
         animateLayout();
         // skipGeneratedOptOut: deleting a logbook entry is deleting history,
         // not declining the generator that wrote the task (see clearLogbook).
-        deleteTask(task.id, { skipGeneratedOptOut: true });
+        if (!deleteTask(task.id, { skipGeneratedOptOut: true })) explainLockedDelete();
       },
     });
   };

@@ -433,7 +433,7 @@ describe('setFrozen', () => {
 
     useLeftoverStore.getState().setFrozen('lo-a', true);
 
-    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('t-lo', { skipGeneratedOptOut: true });
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith('t-lo', { skipGeneratedOptOut: true, ignoreUnlockLock: true });
   });
 
   it('does not close the container out — a frozen portion is still in the kitchen', () => {

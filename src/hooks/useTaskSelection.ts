@@ -6,6 +6,7 @@ import { bulkDeletePrompt } from '../utils/bulkDelete';
 import { confirmDelete } from '../utils/confirmDelete';
 import { isMissableMealPlanTask } from '../utils/visibilityUtils';
 import { BUTTON_LABEL } from '../copy/shared';
+import { explainRefusedDeletes } from '../utils/lockedDelete';
 
 // Bulk selection for a task list: the shared row-selection machinery
 // (useRowSelection) plus the one thing that's specific to tasks — a delete
@@ -38,7 +39,7 @@ export function useTaskSelection(allTasks: Task[]) {
         message: `This deletes ${count} ${plural}. You can undo it right after.`,
         undoable: true,
         onConfirm: () => {
-          bulkDeleteTasks(ids);
+          explainRefusedDeletes(bulkDeleteTasks(ids));
           exitSelection();
         },
       });
@@ -61,7 +62,7 @@ export function useTaskSelection(allTasks: Task[]) {
               const task = allTasks.find(t => t.id === id);
               markMissed(id, { wholeChain: !!task && isMissableMealPlanTask(task) });
             });
-            bulkDeleteTasks(restIds);
+            explainRefusedDeletes(bulkDeleteTasks(restIds));
             exitSelection();
           },
         },
@@ -69,7 +70,7 @@ export function useTaskSelection(allTasks: Task[]) {
           text: deleteLabel,
           style: 'destructive',
           onPress: () => {
-            bulkDeleteTasks(ids);
+            explainRefusedDeletes(bulkDeleteTasks(ids));
             exitSelection();
           },
         },

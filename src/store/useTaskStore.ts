@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { startOfWeek } from 'date-fns/startOfWeek';
-import type { Task, TaskDraft, FollowUpTaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry, MedicationLog } from '../types';
+import type { RewardUnlock, Task, TaskDraft, FollowUpTaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity, Difficulty, MealPlanEntry, FoodLogEntry, MedicationLog } from '../types';
 import {
   initDatabase,
   ensureDatabaseReady,
@@ -349,6 +349,7 @@ import {
   emptyFollowUpTaskDraft, followUpTaskDraftIsEmpty, liveFollowUpSource, hasFollowUpSource, followUpDraftAfterEdit,
 } from '../utils/followUpTask';
 import type { FollowUpTaskSuppression } from '../utils/followUpTask';
+import { lockedUnlockNeeding } from '../utils/rewardUnlocks';
 import { normalizeTitle } from '../utils/taskInstances';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { registerTaskSource, resolveBlocker } from '../utils/blockerRegistry';
@@ -2020,7 +2021,12 @@ interface TaskStore extends UndoHistoryActions {
    * delete turns the generator back on. It does nothing for a task nobody
    * generated or a generator that is already off.
    */
-  deleteTask: (id: string, opts?: { skipGeneratedOptOut?: boolean; stopGenerator?: boolean }) => void;
+  /**
+   * Returns false, and deletes nothing, when a locked unlock needs the task
+   * (`lockedUnlockNeeding`). Callers say so to the person; `ignoreUnlockLock` is
+   * for the app's own tidy-up (generated-task sync), which must not wait on a lock.
+   */
+  deleteTask: (id: string, opts?: { skipGeneratedOptOut?: boolean; stopGenerator?: boolean; ignoreUnlockLock?: boolean }) => boolean;
   /**
    * Put deleted rows back exactly as they were, with their reminders and
    * deadline events: Activity's restore of a task an agent deleted
@@ -2575,7 +2581,8 @@ interface TaskStore extends UndoHistoryActions {
   uncompleteGroup: (groupId: string) => void;
   deferGroup: (groupId: string, until: Date) => void;
   pinGroup: (groupId: string) => void;
-  deleteGroup: (groupId: string, opts: { cascade: boolean }) => void;
+  /** Returns the cascade's tasks deleteTask refused (a locked unlock needs them); they're kept, unfiled. */
+  deleteGroup: (groupId: string, opts: { cascade: boolean }) => string[];
   // Bulk selection on the Stacks screen. Same one-entry-per-batch undo rule as
   // bulkDeleteProjects: deleteGroup already knows how to unfile or cascade a
   // stack's roster, so each id goes through it and only the undo is batched.
@@ -2595,7 +2602,8 @@ interface TaskStore extends UndoHistoryActions {
   bulkRemoveFromProject: (taskIds: string[]) => void;
   /** Files the selection under another project, as one undo entry. */
   bulkMoveToProject: (taskIds: string[], projectId: string) => void;
-  deleteProject: (projectId: string, opts: { cascade: boolean }) => void;
+  /** Returns the cascade's tasks deleteTask refused (a locked unlock needs them); they're kept, unfiled. */
+  deleteProject: (projectId: string, opts: { cascade: boolean }) => string[];
   // Archive/restore a project through here rather than through useProjectStore
   // directly — these are the ones that register an undo entry.
   archiveProject: (projectId: string, opts?: { archiveRemaining: boolean }) => void;
@@ -2616,7 +2624,8 @@ interface TaskStore extends UndoHistoryActions {
   startFreshFromProject: (projectId: string) => Project | null;
   // Bulk selection on the Projects screen. One undo entry covers the whole
   // batch — see the note on bulkDeleteProjects.
-  bulkDeleteProjects: (projectIds: string[], opts: { cascade: boolean }) => void;
+  /** Returns the tasks refused across the batch, as deleteProject does. */
+  bulkDeleteProjects: (projectIds: string[], opts: { cascade: boolean }) => string[];
   bulkSetProjectArchived: (projectIds: string[], archived: boolean, opts?: { archiveRemaining: boolean }) => void;
 
   deleteTemplate: (id: string) => void;
@@ -2641,7 +2650,11 @@ interface TaskStore extends UndoHistoryActions {
   bulkUncompleteTasks: (ids: string[]) => void;
   bulkMarkMissed: (ids: string[]) => void;
   /** `skipGeneratedOptOut` has the same meaning as `deleteTask`'s — see its doc comment. */
-  bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean; registerUndo?: boolean }) => void;
+  /**
+   * Returns the ids it refused to delete because a locked unlock needs them
+   * (see deleteTask); the rest are deleted.
+   */
+  bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean; registerUndo?: boolean; ignoreUnlockLock?: boolean }) => string[];
   clearLogbook: () => void;
   /** `scope` on these four bulk actions is the answer to confirmBulkScope; it only matters to repeating tasks and dated series. */
   bulkSetPriority: (ids: string[], priority: Priority, options?: { scope?: 'occurrence' | 'series' }) => void;
@@ -3371,6 +3384,25 @@ function writeScopedRows(
   return ids.filter(id => !scoped.some(t => t.id === id));
 }
 
+// The locked unlock a delete of `task` would loosen, if any. Read off the stores
+// directly with the inputs unlockWorldNow uses: unlockWorld imports this file, so
+// this file can't import it back.
+function lockedUnlockBlocking(task: Task): RewardUnlock | null {
+  const settings = useSettingsStore.getState();
+  if (!settings.rewardsEnabled) return null;
+  const unlocks = useUnlockStore.getState().unlocks;
+  if (!unlocks.some(u => u.requiredTaskIds.length > 0)) return null;
+  const ts = useTaskStore.getState();
+  return lockedUnlockNeeding(task, ts.tasks, unlocks, {
+    entries: useRewardStore.getState().entries,
+    tasks: ts.tasks,
+    onToday: [...ts.visibleTasks(), ...ts.upcomingTodayTasks()],
+    todayStart: getCurrentDayStart(),
+    todayKey: getLogicalDayKey(new Date(), settings.dayResetTime),
+    vacation: settings.vacationMode,
+  });
+}
+
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   tagRegistry: [],
@@ -3712,7 +3744,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           taskId: t.id,
         })),
       );
-      get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true, registerUndo: false });
+      // ignoreUnlockLock: an expired window is closed, and the sweep is the app's own pass, not a choice.
+      get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true, registerUndo: false, ignoreUnlockLock: true });
     }
   },
 
@@ -4303,8 +4336,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   deleteTask(id, opts = {}) {
     const task = get().tasks.find(t => t.id === id);
-    if (!task) return;
+    if (!task) return false;
     const subtasks = get().subtasksOf(id);
+    // A subtask goes with its parent, so a required one holds the parent too.
+    if (!opts.ignoreUnlockLock && (lockedUnlockBlocking(task) || subtasks.some(s => lockedUnlockBlocking(s)))) return false;
 
     dbDeleteSubtasks(id);
     dbDeleteTask(id);
@@ -4372,6 +4407,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         if (stoppedKind) setGeneratorEnabled(stoppedKind, true);
       },
     });
+    return true;
   },
 
   restoreTasks(rows) {
@@ -10712,19 +10748,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         }
       }
     }
+    // A doomed child that deleteTask refuses (a locked unlock needs it) stays,
+    // unfiled with the stack, and is reported back to the caller.
+    const refused: string[] = [];
+    const kept = new Set<string>();
     dbTransaction(() => {
       children.forEach(child => {
-        if (doomed.has(child.id)) {
-          get().deleteTask(child.id);
+        if (doomed.has(child.id) && get().deleteTask(child.id)) {
           const action = get().lastAction;
           if (action) undos.push(action.undo);
         } else {
+          if (doomed.has(child.id)) refused.push(child.id);
+          kept.add(child.id);
           get().removeFromGroup(child.id);
         }
       });
     });
     useTaskGroupStore.getState().removeGroupRow(groupId);
-    if (!group) return;
+    if (!group) return refused;
     get().setLastAction({
       label: opts.cascade ? 'Stack and its tasks deleted' : 'Stack deleted',
       destructive: true,
@@ -10733,10 +10774,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         useTaskGroupStore.getState().restoreGroup(group);
         undos.forEach(fn => fn());
         children.forEach(child => {
-          if (!doomed.has(child.id)) get().addExistingToGroup(child.id, groupId);
+          if (kept.has(child.id)) get().addExistingToGroup(child.id, groupId);
         });
       },
     }, { replacing: historyBefore });
+    return refused;
   },
 
   // Same one-entry-per-batch rule as bulkDeleteProjects; the ids are filtered
@@ -11067,12 +11109,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // deleted project it would instead be unreachable from every screen.
     const homedGroups = useTaskGroupStore.getState().groups.filter(g => g.projectId === projectId);
     const undos: Array<() => void> = [];
+    // Members deleteTask refuses (a locked unlock needs them) are kept and
+    // unfiled, since the project is going; the caller is told which.
+    const refused: string[] = [];
     dbTransaction(() => {
       if (opts.cascade) {
         members.forEach(member => {
-          get().deleteTask(member.id);
-          const action = get().lastAction;
-          if (action) undos.push(action.undo);
+          if (get().deleteTask(member.id)) {
+            const action = get().lastAction;
+            if (action) undos.push(action.undo);
+          } else {
+            refused.push(member.id);
+            get().removeFromProject(member.id);
+          }
         });
       } else {
         members.forEach(member => get().removeFromProject(member.id));
@@ -11089,7 +11138,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // checkProjectReviewTasks makes. Called before setLastAction below, since
     // dropGeneratedTask clears any pending lastAction.
     dropGeneratedTask('projectReview', projectId);
-    if (!project) return;
+    if (!project) return refused;
     get().setLastAction({
       label: opts.cascade ? 'Project and its tasks deleted' : 'Project deleted',
       destructive: true,
@@ -11101,11 +11150,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         }
         if (opts.cascade) {
           undos.forEach(fn => fn());
+          refused.forEach(id => get().addExistingToProject(id, projectId));
         } else {
           members.forEach(member => get().addExistingToProject(member.id, projectId));
         }
       },
     }, { replacing: historyBefore });
+    return refused;
   },
 
   // Bulk deletes go one project at a time — deleteProject already knows how to
@@ -11122,10 +11173,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Filtered to rows that exist, so a stale id can't leave the previous
     // action's undo in the batch below.
     const ids = projectIds.filter(id => store.getProjectById(id) !== null);
-    if (ids.length === 0) return;
+    if (ids.length === 0) return [];
     const undos: Array<() => void> = [];
+    const refused: string[] = [];
     ids.forEach(id => {
-      get().deleteProject(id, opts);
+      refused.push(...get().deleteProject(id, opts));
       const action = get().lastAction;
       if (action) undos.push(action.undo);
     });
@@ -11135,6 +11187,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       redo: () => get().bulkDeleteProjects(projectIds, opts),
       undo: () => undos.forEach(fn => fn()),
     }, { replacing: historyBefore });
+    return refused;
   },
 
   // `archiveRemaining` is `archiveProject`'s cascade over the whole selection:
@@ -11435,8 +11488,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }, { replacing: historyBefore });
   },
 
-  bulkDeleteTasks(ids, opts = {}) {
-    if (ids.length === 0) return;
+  bulkDeleteTasks(requested, opts = {}) {
+    if (requested.length === 0) return [];
+    // A required task of a locked unlock stays (see deleteTask); the rest go.
+    const refused = opts.ignoreUnlockLock
+      ? []
+      : requested.filter(id => { const t = get().tasks.find(x => x.id === id); return !!t && !!lockedUnlockBlocking(t); });
+    const refusedSet = new Set(refused);
+    const ids = refused.length > 0 ? requested.filter(id => !refusedSet.has(id)) : requested;
+    if (ids.length === 0) return refused;
     const idSet = new Set(ids);
     const deleted = get().tasks.filter(t => idSet.has(t.id) || (t.parentId !== null && idSet.has(t.parentId)));
     // Subtasks never carry a generatedKind of their own, but filtering to the
@@ -11467,7 +11527,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // An unattended delete (the launch-time expiry sweep) must not sit under
     // the user's first shake of the session waiting to be reversed: they
     // didn't just do it. Same reason purgeOldCompletedTasks bypasses this.
-    if (opts.registerUndo === false) return;
+    if (opts.registerUndo === false) return refused;
     get().setLastAction({
       label: `${ids.length} task${ids.length === 1 ? '' : 's'} deleted`,
       destructive: true,
@@ -11484,6 +11544,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         if (!opts.skipGeneratedOptOut) deletedTopLevel.forEach(t => writeGeneratedOptOut(t, null));
       },
     });
+    return refused;
   },
 
   // Deletes every completed top-level task (and their subtasks) via

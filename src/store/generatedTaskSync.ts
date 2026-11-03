@@ -62,7 +62,9 @@ export function deleteGeneratedTaskQuietly(taskId: string): void {
   // of reconcileGeneratedTask and dropGeneratedTask — so recording here covers
   // every generated row the app takes back.
   const going = store.tasks.find(t => t.id === taskId);
-  store.deleteTask(taskId, { skipGeneratedOptOut: true });
+  // ignoreUnlockLock: the app is tidying up a generated task whose reason has gone,
+  // which must not wait on a lock (see deleteTask).
+  store.deleteTask(taskId, { skipGeneratedOptOut: true, ignoreUnlockLock: true });
   store.setLastAction(null);
   if (going) useUnattendedStore.getState().recordGenerated('cleared', going);
 }

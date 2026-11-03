@@ -432,3 +432,24 @@ export function statusOfUnlock(unlock: RewardUnlock, world: UnlockWorld): { stat
   });
   return { status, required };
 }
+
+/**
+ * The locked unlock that needs `task` (it is one of its "Also needs" tasks, by
+ * family), or null. Deleting a required task would drop the requirement, so
+ * while the unlock is locked the delete is refused: the same rule as editing
+ * the unlock to need less. Once it is open the delete goes through.
+ */
+export function lockedUnlockNeeding(
+  task: Task,
+  tasks: readonly Task[],
+  unlocks: readonly RewardUnlock[],
+  world: UnlockWorld,
+): RewardUnlock | null {
+  const byId = new Map(tasks.map(t => [t.id, t]));
+  const key = occurrenceFamilyKey(task, byId);
+  for (const unlock of unlocks) {
+    if (!unlock.requiredTaskIds.some(id => requiredFamilyKey(id, byId, tasks) === key)) continue;
+    if (statusOfUnlock(unlock, world).status.kind === 'locked') return unlock;
+  }
+  return null;
+}

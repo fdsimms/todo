@@ -6524,6 +6524,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (task.generatedKind) {
         throw new Error(`"${task.title}" was written by the app (${task.generatedKind}). Deleting one in the app also tells its source not to make it again, which this server cannot do, so the phone would just add it back. Delete it in the app, or archive it with archive_task.`);
       }
+      // Same rule as the app's deleteTask: a required task of a locked unlock stays.
+      if (useSettingsStore.getState().rewardsEnabled) {
+        const unlockLib = require('../../src/utils/rewardUnlocks') as typeof import('../../src/utils/rewardUnlocks');
+        const lock = unlockLib.lockedUnlockNeeding(task, tasks(), db.dbGetAllRewardUnlocks(), replica.unlockWorld());
+        if (lock) throw new Error(`"${task.title}" is needed by "${lock.title}", which is locked until today's work is done, so it can't be deleted yet. Delete it once the unlock opens.`);
+      }
       const subtasks = tasks().filter(t => t.parentId === id);
       // A checklist item carrying a stretch of its parent's countdown is part
       // of that countdown's length (timerSegments.ts), so the parent is
