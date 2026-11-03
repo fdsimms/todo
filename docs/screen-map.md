@@ -278,6 +278,7 @@ Where each component can appear.
 - `src/components/LogbookFilterSheet.tsx` — on LogbookScreen
 - `src/components/LookAheadSheet.tsx` — on ProjectDetailScreen, ProjectsScreen, TodayScreen
 - `src/components/ManualBlockSheet.tsx` — on ScreenTimeScreen
+- `src/components/ManualRestSheet.tsx` — on app shell
 - `src/components/MaxHeartRateSheet.tsx` — on SettingsGroupScreen
 - `src/components/MealEntrySheet.tsx` — on MealPlanScreen
 - `src/components/MealOverrideSheet.tsx` — on MealPlanScreen
