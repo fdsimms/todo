@@ -5497,7 +5497,7 @@ describe('addManyToPantry, acquired', () => {
     useGroceryStore.getState().addManyToPantry(['Pesto'], undefined, undefined, undefined, { acquired: true });
 
     expect(useUpTaskFor(pesto.id)).toBeUndefined();
-    expect(mockTaskState.deleteTask).toHaveBeenCalledWith(task.id, { skipGeneratedOptOut: true });
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith(task.id, { skipGeneratedOptOut: true, ignoreUnlockLock: true });
   });
 
   it('lets the scan sheet’s freezer toggle land on the new packet', () => {
@@ -5770,7 +5770,7 @@ describe('setFrozen', () => {
 
     useGroceryStore.getState().setFrozen(spinach.id, true);
 
-    expect(mockTaskState.deleteTask).toHaveBeenCalledWith(task.id, { skipGeneratedOptOut: true });
+    expect(mockTaskState.deleteTask).toHaveBeenCalledWith(task.id, { skipGeneratedOptOut: true, ignoreUnlockLock: true });
   });
 
   // The whole point of the thaw: chicken that keeps two days keeps two days

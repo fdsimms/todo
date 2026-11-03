@@ -209,6 +209,7 @@ import { runningOnMac } from '../utils/runningOnMac';
 import { RotatingChevron } from './RotatingChevron';
 import { useRowCursorStore } from '../store/useRowCursorStore';
 import * as Clipboard from 'expo-clipboard';
+import { explainLockedDelete } from '../utils/lockedDelete';
 
 /**
  * This device's id for the event a "Leave for X" row was written for. The row
@@ -723,8 +724,13 @@ const TaskItemRow = React.memo(function TaskItem({
   const handleContact = () => {
     if (!callUrl) return;
     haptics.tap();
+    // Name the person when the number is theirs: one person named and no number
+    // of the task's own overriding it, the same bar `contactDetailsFor` applies.
+    const named = peopleOn(task);
+    const who = named.length === 1 && !task.phoneNumber ? named[0].name : null;
     actionMenu.open({
       title: contact.phoneNumber ?? '',
+      message: who ?? undefined,
       actions: [
         { key: 'call', label: 'Call', icon: 'call-outline', onPress: handleCall },
         ...(textUrl ? [{ key: 'message', label: 'Message', icon: 'chatbubble-outline', onPress: handleText } as const] : []),
@@ -5457,7 +5463,7 @@ const TaskItemRow = React.memo(function TaskItem({
                         // The line fades and the ones below close up, where
                         // they used to jump.
                         animateLayout();
-                        deleteTask(task.id);
+                        if (!deleteTask(task.id)) explainLockedDelete();
                       }}
                       hitSlop={8}
                       accessibilityLabel={`Delete ${task.title}`}
@@ -5635,7 +5641,7 @@ const TaskItemRow = React.memo(function TaskItem({
       case 'duplicate': completionActions.onDuplicate(); return;
       case 'copyTitle': void Clipboard.setStringAsync(displayTitle).catch(() => {}); return;
       case 'delete':
-        if (listRow) { animateLayout(); deleteTask(task.id); } else confirmDeleteTask(task);
+        if (listRow) { animateLayout(); if (!deleteTask(task.id)) explainLockedDelete(); } else confirmDeleteTask(task);
         return;
     }
   };

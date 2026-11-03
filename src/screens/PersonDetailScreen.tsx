@@ -68,6 +68,7 @@ import {
 } from '../utils/personHistory';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
+import { explainLockedDelete } from '../utils/lockedDelete';
 
 type RootStackParamList = {
   // `returnTo` is the tab a task row's people link was tapped from (see
@@ -362,7 +363,7 @@ export function PersonDetailScreen() {
   };
 
   const deleteHistoryEntry = (taskId: string) => {
-    deleteTask(taskId);
+    if (!deleteTask(taskId)) explainLockedDelete();
     setEditingHistoryEntry(null);
   };
 

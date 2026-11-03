@@ -18,6 +18,7 @@ import {
   statusOfUnlock,
   stopPlay,
   joinPhrases,
+  lockedUnlockNeeding,
   unlockLooseningsOf,
   unlockStatus,
   workShareDone,
@@ -273,5 +274,26 @@ describe('the cutoff time', () => {
     expect(unlockLooseningsOf({ ...base, ignoreAfter: '20:00' }, { ...base, ignoreAfter: '18:00' })).toEqual(words);
     expect(unlockLooseningsOf({ ...base, ignoreAfter: '20:00' }, { ...base, ignoreAfter: '21:00' })).toEqual([]);
     expect(unlockLooseningsOf({ ...base, ignoreAfter: '20:00' }, { ...base, ignoreAfter: null })).toEqual([]);
+  });
+});
+
+describe('deleting a required task', () => {
+  const w1 = task('w1');
+  const w2 = task('w2', { previousOccurrenceId: 'w1' });
+  const lockedWorld = { entries: [], tasks: [w1, w2], onToday: [w1], todayStart: TODAY, todayKey: KEY, vacation: false };
+  const openWorld = { ...lockedWorld, onToday: [] };
+
+  it('refuses a required task while its unlock is locked, and any occurrence of it', () => {
+    const u = unlock({ requiredTaskIds: ['w1'] });
+    expect(lockedUnlockNeeding(w1, [w1, w2], [u], lockedWorld)).toBe(u);
+    expect(lockedUnlockNeeding(w2, [w1, w2], [u], lockedWorld)).toBe(u);
+  });
+
+  it('allows it once the unlock is open', () => {
+    expect(lockedUnlockNeeding(w1, [w1, w2], [unlock({ requiredTaskIds: ['w1'] })], openWorld)).toBeNull();
+  });
+
+  it('allows a task no unlock needs', () => {
+    expect(lockedUnlockNeeding(task('other'), [w1, w2], [unlock({ requiredTaskIds: ['w1'] })], lockedWorld)).toBeNull();
   });
 });

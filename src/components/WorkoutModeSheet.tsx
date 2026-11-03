@@ -4,7 +4,7 @@
 //
 //   ==== <name> ====        the section banners through the logic half
 //   SuggestionCard          the progression's proposal on the exercise's card
-//   SessionClock            the header's running time, its own tick
+//   SessionClock            the header's elapsed time and start time, its own tick
 //   RestStrip               the rest countdown and its three buttons
 //   ScreenAwake             the keep-awake helper
 //   makeStyles              styles, at the bottom
@@ -746,7 +746,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           />
           <View style={styles.headerTitle}>
             <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
-            {session && <SessionClock startedAt={session.startedAt} style={styles.subtitle} />}
+            {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} startedStyle={styles.subtitle} />}
           </View>
           {!finishing && session ? (
             <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
@@ -1020,9 +1020,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               // dumbbell or a machine has nothing to load. A pound lifter who never set an
               // inventory gets the pound default (`effectivePlateInventory`).
               const inventory = effectivePlateInventory(plateInventory, unit);
-              const plate = openSet && viewedInfo && isPlateLoaded(viewedInfo.equipment) && kind === 'weight_reps' && openSet.weightKg
-                ? plateLoad(openSet.weightKg, barKgFor(withGymBar(viewedInfo, gymSetting).barKg, inventory, viewedInfo.equipment, unit), inventory, unit)
+              const plateFor = (s: WorkoutSet) => viewedInfo && isPlateLoaded(viewedInfo.equipment) && kind === 'weight_reps' && s.weightKg
+                ? plateLoad(s.weightKg, barKgFor(withGymBar(viewedInfo, gymSetting).barKg, inventory, viewedInfo.equipment, unit), inventory, unit)
                 : null;
+              const plate = openSet ? plateFor(openSet) : null;
+              // The first set not yet checked off shows its plates under its row without a tap, so
+              // the line is found by use rather than by knowing the set number opens a tray. The
+              // open set's tray carries its own copy, so it isn't drawn twice.
+              const nextSet = viewed.sets.find(s => s.completedAt === null) ?? null;
+              const nextPlate = nextSet && nextSet.id !== openSet?.id ? plateFor(nextSet) : null;
 
               // Last time, for this exercise: one read per exercise shown, not per row.
               const previous = session ? useWorkoutStore.getState().lastTimeFor(viewed.exerciseId, session.id) : [];
@@ -1042,6 +1048,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 : null;
               // The rest comes after the round, so a superset's earlier exercises have none of their own.
               const viewedGroup = supersetGroup(exercises, viewed.exerciseId);
+              // Where this card sits in its superset: partners close up into one accent-edged block.
+              const pairPos = viewedGroup.length > 1 ? viewedGroup.findIndex(e => e.exerciseId === viewed.exerciseId) : -1;
               const restChip = session && viewedGroup[viewedGroup.length - 1]?.exerciseId === viewed.exerciseId
                 ? {
                     seconds: restSecondsFor(startedPlan, viewed.exerciseId, defaultRestSeconds, session.restOverrides),
@@ -1071,8 +1079,23 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const proposal = shownProposal?.proposal ?? null;
 
               return (
-              <View key={viewed.exerciseId} style={[styles.card, cardIndex > 0 && styles.cardStacked]}>
+              <View
+                key={viewed.exerciseId}
+                style={[
+                  styles.card,
+                  cardIndex > 0 && (pairPos > 0 ? styles.cardPaired : styles.cardStacked),
+                  pairPos >= 0 && styles.cardSuperset,
+                  pairPos > 0 && styles.cardSupersetJoinedTop,
+                  pairPos >= 0 && pairPos < viewedGroup.length - 1 && styles.cardSupersetJoinedBottom,
+                ]}
+              >
                 <View style={styles.exHead}>
+                  {pairPos >= 0 && (
+                    <View style={styles.supersetTag} accessible accessibilityLabel={`Superset, exercise ${pairPos + 1} of ${viewedGroup.length}`}>
+                      <Ionicons name="repeat" size={iconSize.sm} color={colors.accent} />
+                      <Text style={styles.supersetTagText}>{`Superset · ${pairPos + 1} of ${viewedGroup.length}`}</Text>
+                    </View>
+                  )}
                   <View style={styles.exTitleRow}>
                   <TouchableOpacity
                     style={styles.exNameRow}
@@ -1355,6 +1378,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           </CheckPop>
                         </TouchableOpacity>
                       </View>
+                      {!!nextPlate && nextSet?.id === set.id && (
+                        <View style={styles.nextPlates}>
+                          <PlateLine load={nextPlate} unit={unit} />
+                        </View>
+                      )}
                       {isTray && (
                         <View style={styles.tray}>
                           <SegmentedControl
@@ -1684,20 +1712,28 @@ function SuggestionCard({ proposal, unit, scale, offer, onUse, styles }: {
 }
 
 /**
- * "Started 6:12 PM · 32:14", moving once a second. Its own component so the
- * tick re-renders this line and not the whole sheet.
+ * The header's running time: the elapsed time large and in the primary text
+ * color so it can be read at a glance mid-set, with "Started 6:12 PM" muted
+ * beneath it. Moves once a second. Its own component so the tick re-renders
+ * these lines and not the whole sheet.
  */
-function SessionClock({ startedAt, style }: { startedAt: string; style: object }) {
+function SessionClock({ startedAt, elapsedStyle, startedStyle }: {
+  startedAt: string;
+  elapsedStyle: object;
+  startedStyle: object;
+}) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
   const start = new Date(startedAt);
+  const elapsed = formatStopwatch((now - start.getTime()) / 1000);
   return (
-    <Text style={style} numberOfLines={1}>
-      {`Started ${formatTimeOfDay(start)} · ${formatStopwatch((now - start.getTime()) / 1000)}`}
-    </Text>
+    <>
+      <Text style={elapsedStyle} numberOfLines={1} accessibilityLabel={`Workout time ${elapsed}`}>{elapsed}</Text>
+      <Text style={startedStyle} numberOfLines={1}>{`Started ${formatTimeOfDay(start)}`}</Text>
+    </>
   );
 }
 
@@ -1792,6 +1828,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerTitle: { flex: 1, alignItems: 'center' },
   headerSpacer: { minWidth: 64 },
   title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
+  elapsed: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   subtitle: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs, fontVariant: ['tabular-nums'] },
   scroll: { paddingHorizontal: spacing.md, paddingBottom: spacing.lg },
   emptyWrap: { padding: spacing.md },
@@ -1799,6 +1836,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   positionText: { color: colors.textSecondary, fontSize: font.md },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   cardStacked: { marginTop: spacing.md },
+  cardPaired: { marginTop: spacing.xs },
+  cardSuperset: { borderLeftWidth: 4, borderLeftColor: colors.accent },
+  cardSupersetJoinedTop: { borderTopLeftRadius: 0, borderTopRightRadius: 0 },
+  cardSupersetJoinedBottom: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+  supersetTag: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
+  supersetTagText: {
+    color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: 0.8,
+  },
   reorderHint: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase',
     letterSpacing: 0.8, marginHorizontal: spacing.xs, marginBottom: spacing.sm,
@@ -1877,6 +1922,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   checkDone: { backgroundColor: colors.done, borderColor: colors.done },
   tray: { paddingHorizontal: spacing.md, paddingBottom: spacing.smd, gap: spacing.smd },
+  // Lines up under the "Previous" column, past the set number's column.
+  nextPlates: { paddingLeft: spacing.md + 34 + spacing.sm, paddingRight: spacing.md, paddingBottom: spacing.smd },
   deletePanel: { width: 88, alignSelf: 'stretch', backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center', gap: spacing.xxs },
   deleteText: { color: colors.onFill, fontSize: font.sm, fontWeight: fontWeight.semibold },
   adds: {
