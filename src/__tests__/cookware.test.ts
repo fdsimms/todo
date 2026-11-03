@@ -1,6 +1,6 @@
 import {
   clampCookwareWeight, parseWeightText, netWeight, COOKWARE_MAX_G, cookwareTypeOf, groupCookwareByType, effectiveCookwareType, isCookwareType,
-  filterCookware, pushRecentCookware, recentCookwareItems, parseRecentCookware, RECENT_COOKWARE_LIMIT,
+  filterCookware, pushRecentCookware, recentCookwareItems, parseRecentCookware, RECENT_COOKWARE_LIMIT, plainGramsReading,
 } from '../utils/cookware';
 
 describe('clampCookwareWeight', () => {
@@ -172,5 +172,23 @@ describe('recent cookware', () => {
     expect(parseRecentCookware('{"a":1}')).toEqual([]);
     expect(parseRecentCookware('not json')).toEqual([]);
     expect(parseRecentCookware(null)).toEqual([]);
+  });
+});
+
+describe('plainGramsReading', () => {
+  it('reads a bare number or one with a gram unit', () => {
+    expect(plainGramsReading('744')).toBe('744');
+    expect(plainGramsReading(' 744 g ')).toBe('744');
+    expect(plainGramsReading('744g')).toBe('744');
+    expect(plainGramsReading('744 Grams')).toBe('744');
+    expect(plainGramsReading('12,5 g')).toBe('12,5');
+  });
+
+  it('refuses anything a pot cannot come off', () => {
+    expect(plainGramsReading('about 4 cups')).toBeNull();
+    expect(plainGramsReading('200 g plus a handful')).toBeNull();
+    expect(plainGramsReading('2 servings')).toBeNull();
+    expect(plainGramsReading('1.5 oz')).toBeNull();
+    expect(plainGramsReading('')).toBeNull();
   });
 });

@@ -30,6 +30,7 @@ import { LimitImpactLines } from './LimitImpactLines';
 import { useLimitImpact } from '../hooks/useLimitImpact';
 import { useWeighIn } from '../hooks/useWeighIn';
 import { CookwareWeighIn } from './CookwareWeighIn';
+import { plainGramsReading } from '../utils/cookware';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
@@ -1206,10 +1207,29 @@ export function FoodLogEntrySheet({
 
   const figuresLine = figuresLineId ? varyingLines.find(l => l.id === figuresLineId) ?? null : null;
 
+  // Every unit this food's panel can resolve — its stated portions, plus
+  // grams and/or servings wherever they'd actually work (`foodUnitOptionsFor`).
+  // A unit is a pill rather than a `SegmentedControl` — see that component's
+  // own doc comment — because it pairs with the free number beside it, the
+  // shape that doc comment itself calls out ("a unit beside a stepper").
+  // Empty only for the rare panel with no portions and no resolvable grams or
+  // servings (a `per100ml` panel with nothing stated), which keeps the plain
+  // free-text amount field below instead.
+  const foodUnitOptions = useMemo(() => {
+    if (!picked || picked.kind !== 'food' || !picked.panel) return [];
+    return foodUnitOptionsFor(picked.panel);
+  }, [picked]);
+
+  const usingFoodUnitPills = picked?.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other';
+
   const built = useMemo<Built | null>(() => {
     if (!picked) return null;
     if (picked.kind === 'dish') {
-      const typed = Number(amount.trim().replace(',', '.'));
+      // A plate weighed on cookware: the field is the scale's reading and the
+      // food is what is left. A reading at or under the cookware builds
+      // nothing, and the weigh-in row says why.
+      const weighed = dishMeasure === 'weight' && weighIn.picked.length > 0 ? weighIn.convert(amount) : null;
+      const typed = weighed ? (weighed.ok ? weighed.grams : 0) : Number(amount.trim().replace(',', '.'));
       if (!Number.isFinite(typed) || typed <= 0) return null;
       // Rebuilt from the dish rather than scaled off the one-serving panel, so
       // the rounding happens once against the real per-serving figures.
@@ -1246,8 +1266,15 @@ export function FoodLogEntrySheet({
       };
     }
     if (!picked.panel) return null;
+    // Typed words with cookware picked: only a plain gram weight has a pot to
+    // take off, so anything else is measured as typed and the pick is ignored.
+    const reading = !usingFoodUnitPills && weighIn.picked.length > 0 ? plainGramsReading(amount) : null;
+    if (reading !== null) {
+      const net = weighIn.convert(reading);
+      return net?.ok ? scalePanelToAmount(picked.panel, `${net.grams}g`, null, undefined, picked.label) : null;
+    }
     return scalePanelToAmount(picked.panel, amount, null, undefined, picked.label);
-  }, [picked, amount, dishMeasure, recipes, items, itemProducts, varyingResolved, swaps]);
+  }, [usingFoodUnitPills, picked, amount, dishMeasure, recipes, items, itemProducts, varyingResolved, swaps, weighIn.convert, weighIn.picked.length]);
 
 
   // ==== alcohol: what the entry will say about it ====
@@ -1329,20 +1356,6 @@ export function FoodLogEntrySheet({
     return makes !== null && makes > 0 ? `of ${makes} ${makes === 1 ? 'serving' : 'servings'}` : 'servings';
   }, [picked, dishMeasure]);
 
-  // Every unit this food's panel can resolve — its stated portions, plus
-  // grams and/or servings wherever they'd actually work (`foodUnitOptionsFor`).
-  // A unit is a pill rather than a `SegmentedControl` — see that component's
-  // own doc comment — because it pairs with the free number beside it, the
-  // shape that doc comment itself calls out ("a unit beside a stepper").
-  // Empty only for the rare panel with no portions and no resolvable grams or
-  // servings (a `per100ml` panel with nothing stated), which keeps the plain
-  // free-text amount field below instead.
-  const foodUnitOptions = useMemo(() => {
-    if (!picked || picked.kind !== 'food' || !picked.panel) return [];
-    return foodUnitOptionsFor(picked.panel);
-  }, [picked]);
-
-  const usingFoodUnitPills = picked?.kind === 'food' && foodUnitOptions.length > 0 && amountUnit !== 'other';
   const amountOperators = useAmountOperators();
 
   // What `amount` becomes for a typed number and unit. In grams with a plate
@@ -2462,7 +2475,7 @@ export function FoodLogEntrySheet({
                 <SegmentedControl
                   options={DISH_MEASURE_OPTIONS}
                   value={dishMeasure}
-                  onChange={next => { setDishMeasure(next); setAmount(next === 'weight' ? '' : '1'); }}
+                  onChange={next => { setDishMeasure(next); setAmount(next === 'weight' ? '' : '1'); weighIn.clear(); }}
                   label="How to measure it"
                 />
               </View>
@@ -2588,7 +2601,20 @@ export function FoodLogEntrySheet({
               </View>
             )}
 
-            {!!amount.trim() && !built && (
+            {picked.kind === 'food' && !usingFoodUnitPills && (plainGramsReading(amount) !== null || weighIn.picked.length > 0) && (
+              <View style={styles.plateWeighIn}>
+                <CookwareWeighIn weighIn={weighIn} scaleText={plainGramsReading(amount) ?? ''} surface="page" noun="plate" />
+              </View>
+            )}
+
+            {picked.kind === 'dish' && dishMeasure === 'weight' && (
+              <View style={styles.plateWeighIn}>
+                <CookwareWeighIn weighIn={weighIn} scaleText={amount} surface="page" noun="plate" />
+              </View>
+            )}
+
+            {!!amount.trim() && !built && !(picked.kind === 'dish' && dishMeasure === 'weight' && weighIn.picked.length > 0 && weighIn.convert(amount)?.ok === false)
+              && !(picked.kind === 'food' && !usingFoodUnitPills && weighIn.picked.length > 0 && plainGramsReading(amount) !== null && weighIn.convert(plainGramsReading(amount) ?? '')?.ok === false) && (
               <Text style={styles.error}>
                 {picked.kind === 'dish'
                   ? (dishMeasure === 'weight'

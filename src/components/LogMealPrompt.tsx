@@ -31,6 +31,8 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { PressableScale } from './PressableScale';
 import { TextField } from './TextField';
+import { CookwarePicker } from './CookwarePicker';
+import { useWeighIn } from '../hooks/useWeighIn';
 
 // Typed against `RecipeVote | null` so the track can render with *nothing*
 // selected, which is the state the row exists to fill in: a never-rated recipe.
@@ -130,8 +132,12 @@ export function LogMealPrompt() {
   const [helpings, setHelpings] = useState<number | null>(defaultHelpings());
   const [platedText, setPlatedText] = useState('');
   const [measure, setMeasure] = useState<Measure>('servings');
+  // Cookware the plate was weighed on: the field is then the scale's reading
+  // and the plate comes off. It belongs to one meal, so a new opening clears it.
+  const weighIn = useWeighIn('plate');
 
   useEffect(() => {
+    weighIn.clear();
     if (pending) {
       setHelpings(defaultHelpings());
       // What the container weighed, when something already knows — finishing a
@@ -274,7 +280,8 @@ export function LogMealPrompt() {
     setMeasure(canWeigh ? 'weight' : 'servings');
   }, [pending, canWeigh]);
 
-  const plated = Number(platedText.trim().replace(',', '.'));
+  const weighedPlate = weighIn.picked.length > 0 && platedText.trim() ? weighIn.convert(platedText) : null;
+  const plated = weighedPlate ? (weighedPlate.ok ? weighedPlate.grams : 0) : Number(platedText.trim().replace(',', '.'));
   const helping = measure === 'weight' && canWeigh
     ? weighedHelping(shownFigures, Number.isFinite(plated) ? plated : 0)
     : mealHelping(shownFigures, helpings ?? 0);
@@ -450,6 +457,14 @@ export function LogMealPrompt() {
                 />
                 <Text style={styles.weightUnit}>g</Text>
               </View>
+              {/* The picker alone: this prompt is hosted outside the navigation
+                  container, which the cookware sheet can't mount under, so
+                  saved cookware is picked here and added in Settings. */}
+              {weighIn.hasCookware && (
+                <View style={styles.weighInWrap}>
+                  <CookwarePicker weighIn={weighIn} scaleText={platedText} surface="card" noun="plate" />
+                </View>
+              )}
               <Text style={styles.hint}>
                 {shown.grams !== null
                   ? `What the container weighed when you put it away. Change it if you didn’t finish it all. The whole dish weighs ${shownFigures?.cookedGrams} g.`
@@ -596,6 +611,7 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.sm,
     },
     weightUnit: { color: colors.textSecondary, fontSize: font.sm },
+    weighInWrap: { marginBottom: spacing.xs },
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
     vote: { marginTop: spacing.md, gap: spacing.sm },
     voteLabel: {

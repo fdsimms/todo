@@ -160,3 +160,14 @@ export function parseRecentCookware(raw: string | null | undefined): string[] {
     return [];
   }
 }
+
+/**
+ * The number in a typed amount that is nothing but a gram weight ("744",
+ * "744 g", "744 grams"), or null for anything else ("about 4 cups", "200 g
+ * plus a handful"). A field the model reads as free text only offers cookware
+ * for this shape, because a pot comes off a weight and off nothing else.
+ */
+export function plainGramsReading(text: string): string | null {
+  const match = /^\s*(\d[\d.,]*)\s*(?:g|grams?)?\s*$/i.exec(text);
+  return match ? match[1] : null;
+}
