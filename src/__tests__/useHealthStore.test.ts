@@ -503,3 +503,19 @@ describe('readRecentBloodPressure', () => {
     expect(readings?.[0]).toMatchObject({ systolic: 125, diastolic: 77 });
   });
 });
+
+describe('readRecentWeights', () => {
+  // A failed query used to come back as days with no weigh-in, so the request
+  // pass wrote "Nothing recorded in Apple Health" over a weight that was there.
+  it('answers null when the read could not be made, not a window with no weigh-in', async () => {
+    bridge.readWeightSeries.mockResolvedValue(null);
+    await expect(useHealthStore.getState().readRecentWeights(7)).resolves.toBeNull();
+  });
+
+  it('keeps a window that was read and holds no weigh-in as days with null kilograms', async () => {
+    bridge.readWeightSeries.mockResolvedValue([{ start: '2026-01-01T12:00:00.000Z', kilograms: null }]);
+    const points = await useHealthStore.getState().readRecentWeights(1);
+    expect(points).toHaveLength(1);
+    expect(points?.[0].kilograms).toBeNull();
+  });
+});

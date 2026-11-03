@@ -563,7 +563,7 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     set({ loadingWeight: true });
     const token = weightGuard.begin();
     try {
-      const readings = await bridge.readWeightSeries(anchor.toISOString(), WEIGHT_HISTORY_DAYS);
+      const readings = (await bridge.readWeightSeries(anchor.toISOString(), WEIGHT_HISTORY_DAYS)) ?? [];
       if (!weightGuard.isCurrent(token)) return;
       const weightSeries: WeightPoint[] = [];
       for (const reading of readings) {
@@ -702,6 +702,8 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     const window = Math.max(1, Math.round(days));
     const anchor = addDays(getCurrentDayStart(), -(window - 1));
     const readings = await bridge.readWeightSeries(anchor.toISOString(), window);
+    // A read that could not be made is not days with no weigh-in.
+    if (readings === null) return null;
     const points: WeightPoint[] = [];
     for (const reading of readings) {
       const at = new Date(reading.start);

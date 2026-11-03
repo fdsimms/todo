@@ -1916,7 +1916,15 @@ public class TodoHealthBridgeModule: Module {
           anchorDate: anchor,
           intervalComponents: DateComponents(day: 1)
         )
-        query.initialResultsHandler = { _, collection, _ in
+        query.initialResultsHandler = { _, collection, error in
+          // A query that failed (Health locked while the phone is) has no
+          // collection, which is not a run of days with no weigh-in. "null"
+          // says it could not be read, so the request pass does not write a
+          // task claiming nothing was recorded.
+          if collection == nil, error != nil {
+            promise.resolve("null")
+            return
+          }
           collection?.enumerateStatistics(from: anchor, to: end) { statistics, _ in
             // Same containment rule as `runDietQuery`: which bucket a result
             // falls in, not which start it equals.

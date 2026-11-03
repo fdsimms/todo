@@ -704,11 +704,15 @@ export async function readDailyHealth(
 export async function readWeightSeries(
   anchorISO: string,
   days: number,
-): Promise<HealthWeightDay[]> {
+): Promise<HealthWeightDay[] | null> {
   const json = await degradeOnReject(
     () => nativeModule!.readWeightSeries(anchorISO, days),
-    '[]',
+    'null',
   );
+  // Null is "could not be read" (the query failed, or the call rejected), which
+  // the request pass must not take for days with no weigh-in. A window that was
+  // read and holds none is a list of nulls, as it always was.
+  if (json === 'null') return null;
   try {
     const parsed = JSON.parse(json) as unknown;
     if (!Array.isArray(parsed)) return [];
