@@ -4,7 +4,7 @@
 //
 //   ==== <name> ====        the section banners through the logic half
 //   SuggestionCard          the progression's proposal on the exercise's card
-//   SessionClock            the header's running time and volume lifted, its own tick
+//   SessionClock            the header's running time, its own tick
 //   RestStrip               the rest countdown and its three buttons
 //   ScreenAwake             the keep-awake helper
 //   makeStyles              styles, at the bottom
@@ -22,6 +22,7 @@ import { useKeepAwake } from 'expo-keep-awake';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { WorkoutVolumePill } from './WorkoutVolumePill';
 import { ActionMenu } from './ActionMenu';
 import type { CardAnchor } from './CardSheet';
 import { CountStepper } from './CountStepper';
@@ -79,7 +80,7 @@ import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../u
 import { currentRoutineVersion, finishVersionText, routineVersionsOf, sessionPlan, versionNumber } from '../utils/routineVersions';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
-import { formatRecordChange, recordLabel, recordShortLabel, withThousands } from '../utils/workoutRecordText';
+import { formatRecordChange, recordLabel, recordShortLabel } from '../utils/workoutRecordText';
 import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
 import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
@@ -108,7 +109,7 @@ const SET_KIND_OPTIONS: SegmentOption<WorkoutSetKind>[] = [
   { value: 'drop', label: 'Drop' },
   { value: 'amrap', label: 'Failure' },
 ];
-import { kgToUnit, type WeightUnit } from '../utils/weightLog';
+import type { WeightUnit } from '../utils/weightLog';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -712,9 +713,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
 
   // ==== render. Everything below is JSX ====
   const headerTitle = session?.title ?? 'Workout';
-  // Lifted so far, in the header beside the clock. Left off until a weighted set is logged.
-  const liveVolumeKg = liftVolumeKg(sets, id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps');
-  const liveVolume = liveVolumeKg ? `${withThousands(kgToUnit(liveVolumeKg, unit))} ${unit}` : null;
+  // Lifted so far, in a pill under the header. Left off until a weighted set is logged.
+  const liveVolumeKg = liftVolumeKg(sets, id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps') || null;
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close} name="WorkoutModeSheet">
       <ScreenAwake />
@@ -729,7 +729,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           />
           <View style={styles.headerTitle}>
             <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
-            {session && <SessionClock startedAt={session.startedAt} volume={liveVolume} style={styles.subtitle} />}
+            {session && <SessionClock startedAt={session.startedAt} style={styles.subtitle} />}
           </View>
           {!finishing && session ? (
             <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
@@ -739,6 +739,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         {/* Under the header, not in a footer: the keyboard is up while sets are
             typed, and anything at the bottom of the sheet is behind it. */}
         {session && !finishing && <RestStrip sessionId={visible ? session.id : undefined} styles={styles} />}
+        {session && !finishing && <WorkoutVolumePill volumeKg={liveVolumeKg} unit={unit} />}
 
         {!session ? (
           <View style={styles.emptyWrap}>
@@ -1649,7 +1650,7 @@ function SuggestionCard({ proposal, unit, scale, offer, onUse, styles }: {
  * "Started 6:12 PM · 32:14", moving once a second. Its own component so the
  * tick re-renders this line and not the whole sheet.
  */
-function SessionClock({ startedAt, volume, style }: { startedAt: string; volume: string | null; style: object }) {
+function SessionClock({ startedAt, style }: { startedAt: string; style: object }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
@@ -1658,7 +1659,7 @@ function SessionClock({ startedAt, volume, style }: { startedAt: string; volume:
   const start = new Date(startedAt);
   return (
     <Text style={style} numberOfLines={1}>
-      {`Started ${formatTimeOfDay(start)} · ${formatStopwatch((now - start.getTime()) / 1000)}${volume ? ` · ${volume}` : ''}`}
+      {`Started ${formatTimeOfDay(start)} · ${formatStopwatch((now - start.getTime()) / 1000)}`}
     </Text>
   );
 }
