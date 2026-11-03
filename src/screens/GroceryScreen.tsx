@@ -12,7 +12,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Share,
   type GestureResponderEvent,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -105,6 +104,7 @@ import { groceriesLinkUrl, groceriesUrlShop, isGroceriesUrl } from '../utils/dee
 import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
 import { describeProduct, preferredProductOf } from '../utils/groceryProduct';
 import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
+import { shareContent } from '../utils/shareContent';
 import { LazySheet } from '../components/LazySheet';
 import { TwoPane } from '../components/TwoPane';
 import { useTwoPane } from '../hooks/useTwoPane';
@@ -652,7 +652,7 @@ export function GroceryScreen() {
   const handleShare = useCallback(() => {
     if (!shareText) return;
     haptics.tap();
-    Share.share({ message: shareText }).catch(() => {});
+    void shareContent({ message: shareText });
   }, [shareText]);
   // What the trip is about to leave behind, in the walk order the list is in —
   // the finish sheet asks about these, and only these. Ids and names only: the

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, View, Text, ScrollView, StyleSheet, Linking, TouchableOpacity } from 'react-native';
+import { Alert, View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -58,6 +58,7 @@ import {
 } from '../utils/eventTaskLinks';
 import type { TaskTemplate } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { openExternalUrl } from '../utils/openExternalUrl';
 
 /** `null` is the "no reminder" segment — distinct from 0, which is a real offset (at start time). */
 /** A typed reminder runs from a minute to a day before the event. */
@@ -248,11 +249,7 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById, titl
   const openJoinLink = async () => {
     if (!joinLink) return;
     haptics.tap();
-    try {
-      await Linking.openURL(joinLink);
-    } catch {
-      // Same as directions: nothing to say if the system can't open it.
-    }
+    await openExternalUrl(joinLink, 'link');
   };
 
   const togglePanel = (key: string, panel: OpenPanel['panel']) => {

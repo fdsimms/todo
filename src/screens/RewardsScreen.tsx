@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Linking, Platform, type GestureResponderEvent, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, type GestureResponderEvent, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Reanimated, { useAnimatedStyle, useSharedValue, withSequence, withSpring } from 'react-native-reanimated';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -106,6 +106,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { GoalPlanSheet } from '../components/GoalPlanSheet';
 import { UnlocksSection } from '../components/UnlocksSection';
 import { useUnlockStore } from '../store/useUnlockStore';
+import { openExternalUrl } from '../utils/openExternalUrl';
 import { activeGoalPlan, describeGoalPace, describeSetback, savingsBalance, savingsNeededFor, spendingBalance, spendingPerDay } from '../utils/rewardSavings';
 import { getLogicalToday } from '../utils/dateUtils';
 import { useClockTimeToken } from '../hooks/useClockTimeToken';
@@ -533,11 +534,8 @@ export function RewardsScreen() {
   const openLink = useCallback(async (url: string) => {
     haptics.tap();
     if (openInAppUrl(url)) return;
-    try {
-      await Linking.openURL(url);
-    } catch {
-      // An app that isn't installed: nothing to do, the same as a task's link.
-    }
+    // An app that isn't installed says so, the same as a task's link.
+    await openExternalUrl(url, 'link');
   }, []);
 
   // Choosing a goal opens the sheet that sets how much goes to it; stopping is

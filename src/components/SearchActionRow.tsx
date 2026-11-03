@@ -227,6 +227,7 @@ export function SearchActionRow({ action, description, describe, receipt, layout
             onPress={() => step(-1)}
             disabled={count <= 1}
             style={styles.stepButton}
+            hitSlop={STEP_HIT_SLOP}
             accessibilityLabel={fewer}
           >
             <Ionicons name="remove" size={iconSize.sm} color={colors.text} style={count <= 1 ? styles.stepOff : undefined} />
@@ -236,6 +237,7 @@ export function SearchActionRow({ action, description, describe, receipt, layout
             onPress={() => step(1)}
             disabled={count >= maxCount}
             style={styles.stepButton}
+            hitSlop={STEP_HIT_SLOP}
             accessibilityLabel={more}
           >
             <Ionicons name="add" size={iconSize.sm} color={colors.text} style={count >= maxCount ? styles.stepOff : undefined} />
@@ -246,6 +248,9 @@ export function SearchActionRow({ action, description, describe, receipt, layout
   }
   return button([styles.row, list && styles.listRow]);
 }
+
+// The ± buttons are 36 by 32 inside the stepper's pill; this brings each to 44.
+const STEP_HIT_SLOP = { top: 6, bottom: 6, left: 4, right: 4 } as const;
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   // The quick-search card's own row shape (QuickSearchModal's `resultRow`).

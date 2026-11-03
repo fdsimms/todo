@@ -76,7 +76,7 @@ export function FeatureAreasSettings() {
         iconColor={kitchenEnabled ? colors.accent : undefined}
         label="Groceries & meals"
         hint={!kitchenEnabled
-          ? 'Hidden from the menu and the tab bar'
+          ? 'Hides groceries, recipes, the meal plan, the pantry and the food log from the menu and the tab bar'
           : tabRoutes.includes('Groceries') ? 'Shown in the menu and the tab bar' : 'Shown in the menu'}
         toggle={kitchenEnabled}
         onPress={() => setKitchenEnabled(!kitchenEnabled)}

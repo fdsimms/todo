@@ -43,7 +43,7 @@ import { LinkedText } from '../components/LinkedText';
 import { format } from 'date-fns/format';
 import { groupRoster, isHeldBack, isTaskNotNeeded } from '../utils/visibilityUtils';
 import { reuseUnchangedLists } from '../utils/stableLists';
-import { Alert, Linking, ScrollView, Share } from 'react-native';
+import { Alert, ScrollView } from 'react-native';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { linkHost, parseLabelledLink } from '../utils/textLinks';
 import { OfferBanner } from '../components/OfferBanner';
@@ -134,6 +134,8 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { TextField } from '../components/TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { isOpenEnded, listItemFinder, sectionIsList } from '../utils/listMode';
+import { openExternalUrl } from '../utils/openExternalUrl';
+import { shareContent } from '../utils/shareContent';
 import { RotatingChevron } from '../components/RotatingChevron';
 
 type RootStackParamList = {
@@ -1836,8 +1838,8 @@ function ProjectDetailContent() {
             <TouchableOpacity
               key={link.id}
               style={styles.infoLinkRow}
-              onPress={() => { haptics.tap(); Linking.openURL(link.url).catch(() => {}); }}
-              onLongPress={() => { haptics.impactMedium(); Share.share({ url: link.url, message: link.url }); }}
+              onPress={() => { haptics.tap(); void openExternalUrl(link.url); }}
+              onLongPress={() => { haptics.impactMedium(); void shareContent({ url: link.url, message: link.url }); }}
               disabled={selectionMode}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="link"
@@ -1890,7 +1892,7 @@ function ProjectDetailContent() {
               {!!copyText && (
                 <TouchableOpacity
                   onPress={() => {
-                    Share.share({ message: `${project?.title ?? ''}\n\n${copyText}` }).catch(() => {});
+                    void shareContent({ message: `${project?.title ?? ''}\n\n${copyText}` });
                   }}
                   onLongPress={() => copy(copyText)}
                   delayLongPress={interaction.delayLongPress}

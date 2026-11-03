@@ -3845,6 +3845,7 @@ function SubjectTitle({
       <Text style={[styles.itemTitle, styles.subjectTitleText]} numberOfLines={lines}>{text}</Text>
       <PressableScale
         style={styles.subjectOpenButton}
+        hitSlop={5}
         onPress={() => { haptics.tap(); onOpen(); }}
         accessibilityRole="button"
         accessibilityLabel={openLabel}

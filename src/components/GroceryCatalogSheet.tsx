@@ -176,23 +176,23 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   // No cap under a store filter: that set is already bounded, and its chip
   // said how many rows it holds. Capping it hid everything past 40 behind a
   // search nobody was told to make.
-  const searchMatches = useMemo(
-    () => (query.trim()
+  const searched = useMemo(
+    () => query.trim()
       ? rankGrocerySuggestions(query, scoped, now, shopFilter ? Infinity : 50, inTrolley)
-      : null),
+      : null,
     [query, scoped, now, inTrolley, shopFilter],
   );
   const rows = useMemo(() => {
-    if (searchMatches) return searchMatches.filter(s => !s.onList).map(s => s.item);
+    if (searched) return searched.filter(s => !s.onList).map(s => s.item);
     // Scoped to the active list, not to "on any list": a staple already on the
     // list at home is exactly what Buy again should offer while you're
     // stocking a rental kitchen.
     return rankedCatalogItems(scoped, now, shopFilter ? Infinity : 40, inTrolley);
-  }, [searchMatches, scoped, now, inTrolley, shopFilter]);
-  // A search with no rows has two causes: nothing matched, or what matched is
-  // already on the list and so is left out. They need different words, since
-  // "everything matching is already on the list" is false for a typo.
-  const searchMatchesAllListed = searchMatches !== null && searchMatches.length > 0;
+  }, [searched, scoped, now, inTrolley, shopFilter]);
+  // Whether a search came up empty because everything it found is already on
+  // the list, or because the catalog has nothing by that name. A typo used to
+  // get the first answer too.
+  const searchHidOnList = !!searched && searched.some(s => s.onList);
 
   // Deliberately over `items` and not `scoped`: the prune offer is about the
   // whole catalog, and scoping it to a store would offer to forget a subset
@@ -437,24 +437,25 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
             ) : null
           }
           ListEmptyComponent={
-            // Three different empties, told apart by whether there is a
-            // catalog to be empty of. The list hides what's already on it, so
+            // Four different empties, told apart by whether there is a
+            // catalog to be empty of, and for a search by whether what it
+            // found is on the list. The list hides what's already on it, so
             // a catalog whose every item is on the list used to say it had
             // nothing in it yet, beside a list full of those items.
             <EmptyState
               icon="basket-outline"
               title={query.trim()
-                ? searchMatchesAllListed ? 'All on the list' : 'Nothing matches'
+                ? searchHidOnList ? 'All on the list' : 'Nothing matches'
                 : scoped.length > 0
                   ? 'All on the list'
                   : shopFilter ? 'Nothing from this store yet' : 'Nothing in your catalog yet'}
               subtitle={
                 query.trim()
-                  ? searchMatchesAllListed
+                  ? searchHidOnList
                     ? 'Everything matching is already on the list.'
                     : shopFilter
-                      ? 'Nothing from this store matches that.'
-                      : 'Nothing in your catalog matches that.'
+                      ? `Nothing you buy at this store matches “${query.trim()}”.`
+                      : `Nothing in your catalog matches “${query.trim()}”.`
                   : scoped.length > 0
                     ? shopFilter
                       ? 'Everything you buy at this store is already on the list.'

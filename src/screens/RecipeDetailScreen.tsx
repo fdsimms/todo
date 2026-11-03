@@ -18,7 +18,6 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
-  Share,
   StyleSheet,
   type GestureResponderEvent,
 } from 'react-native';
@@ -151,6 +150,8 @@ import { formatOffsetLabel } from '../utils/templateUtils';
 import { groceryNameKey, splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
 import { dayKeyOf, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { plannedMealLabel } from '../utils/recipePlanned';
+import { openExternalUrl } from '../utils/openExternalUrl';
+import { shareContent } from '../utils/shareContent';
 import { resetToMealPlan, navigateToTab } from '../navigation/navigationRef';
 import { TextField } from '../components/TextField';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
@@ -1199,17 +1200,17 @@ export function RecipeDetailScreen() {
   const handleShareIngredients = () => {
     if (!ingredientsText) return;
     haptics.tap();
-    Share.share({ message: ingredientsText }).catch(() => {});
+    void shareContent({ message: ingredientsText });
   };
 
   // Renders through the same scale and unit system the screen is showing,
   // so what gets sent matches what's on screen rather than the recipe's raw
-  // numbers — see shareText.ts. A rejection (the user backed out of the
-  // share sheet) is not an error and needs no handling.
+  // numbers — see shareText.ts. Backing out of the share sheet is not an
+  // error; `shareContent` only speaks up when the sheet couldn't open.
   const handleShare = () => {
     haptics.tap();
     const message = buildRecipeShareText(recipe, recipesById, { scale, unitSystem, weights: weightLookups });
-    Share.share({ message }).catch(() => {});
+    void shareContent({ message });
   };
 
   // Raises the same "how much did you have" prompt a finished meal-plan
@@ -1288,17 +1289,12 @@ export function RecipeDetailScreen() {
     });
   };
 
-  // Skip Linking.canOpenURL — recipe links are always http(s), and openURL
-  // fails harmlessly with nothing to catch beyond ignoring it (see the same
+  // Skip Linking.canOpenURL — recipe links are always http(s) (see the same
   // call in TaskItem's handleOpenLink).
   const handleOpenSourceUrl = async () => {
     if (!recipe.sourceUrl) return;
     haptics.tap();
-    try {
-      await Linking.openURL(recipe.sourceUrl);
-    } catch {
-      // silently ignore — no toast infra for this row-level action
-    }
+    await openExternalUrl(recipe.sourceUrl, 'link');
   };
 
   // The step being edited, resolved live so its timer control reads the store
