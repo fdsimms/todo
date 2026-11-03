@@ -1,0 +1,1 @@
+{ "message": "\"Record blood pressure\" and \"Record weight\" no longer show up, saying nothing was recorded in Apple Health, when the app couldn't read Health at that moment (for example while your phone was locked). They now wait and check again.", "date": "2026-11-03" }
