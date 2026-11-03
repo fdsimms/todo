@@ -1019,6 +1019,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 : null;
               // The rest comes after the round, so a superset's earlier exercises have none of their own.
               const viewedGroup = supersetGroup(exercises, viewed.exerciseId);
+              // Where this card sits in its superset: partners close up into one accent-edged block.
+              const pairPos = viewedGroup.length > 1 ? viewedGroup.findIndex(e => e.exerciseId === viewed.exerciseId) : -1;
               const restChip = session && viewedGroup[viewedGroup.length - 1]?.exerciseId === viewed.exerciseId
                 ? {
                     seconds: restSecondsFor(startedPlan, viewed.exerciseId, defaultRestSeconds, session.restOverrides),
@@ -1048,8 +1050,23 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const proposal = shownProposal?.proposal ?? null;
 
               return (
-              <View key={viewed.exerciseId} style={[styles.card, cardIndex > 0 && styles.cardStacked]}>
+              <View
+                key={viewed.exerciseId}
+                style={[
+                  styles.card,
+                  cardIndex > 0 && (pairPos > 0 ? styles.cardPaired : styles.cardStacked),
+                  pairPos >= 0 && styles.cardSuperset,
+                  pairPos > 0 && styles.cardSupersetJoinedTop,
+                  pairPos >= 0 && pairPos < viewedGroup.length - 1 && styles.cardSupersetJoinedBottom,
+                ]}
+              >
                 <View style={styles.exHead}>
+                  {pairPos >= 0 && (
+                    <View style={styles.supersetTag} accessible accessibilityLabel={`Superset, exercise ${pairPos + 1} of ${viewedGroup.length}`}>
+                      <Ionicons name="repeat" size={iconSize.sm} color={colors.accent} />
+                      <Text style={styles.supersetTagText}>{`Superset · ${pairPos + 1} of ${viewedGroup.length}`}</Text>
+                    </View>
+                  )}
                   <View style={styles.exTitleRow}>
                   <TouchableOpacity
                     style={styles.exNameRow}
@@ -1758,6 +1775,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   positionText: { color: colors.textSecondary, fontSize: font.md },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
   cardStacked: { marginTop: spacing.md },
+  cardPaired: { marginTop: spacing.xs },
+  cardSuperset: { borderLeftWidth: 4, borderLeftColor: colors.accent },
+  cardSupersetJoinedTop: { borderTopLeftRadius: 0, borderTopRightRadius: 0 },
+  cardSupersetJoinedBottom: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+  supersetTag: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: spacing.xs },
+  supersetTagText: {
+    color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase', letterSpacing: 0.8,
+  },
   reorderHint: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold, textTransform: 'uppercase',
     letterSpacing: 0.8, marginHorizontal: spacing.xs, marginBottom: spacing.sm,
