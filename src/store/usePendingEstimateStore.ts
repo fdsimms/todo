@@ -143,8 +143,10 @@ export const usePendingEstimateStore = create<PendingEstimateStore>((set, get) =
           try {
             const estimate = await estimateMealNutrition(current.description, current.context);
             const still = get().pending.find(p => p.id === item.id);
-            // Discarded, or taken over by a retry, while the request was out.
-            if (!still || still.status !== 'waiting') continue;
+            // Discarded, taken over by a retry, or reworded, while the request
+            // was out. A reworded row stays waiting for the next drain: the
+            // figures that came back are for the words it no longer has.
+            if (!still || still.status !== 'waiting' || still.description !== current.description) continue;
             save({
               ...still,
               status: 'ready',
@@ -157,7 +159,7 @@ export const usePendingEstimateStore = create<PendingEstimateStore>((set, get) =
             // the rest waiting for the next foreground.
             if (isQueueableFailure(e)) break;
             const still = get().pending.find(p => p.id === item.id);
-            if (!still || still.status !== 'waiting') continue;
+            if (!still || still.status !== 'waiting' || still.description !== current.description) continue;
             save({ ...still, status: 'failed', error: describeAIError(e) });
           }
         }

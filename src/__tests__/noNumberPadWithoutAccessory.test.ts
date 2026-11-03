@@ -11,20 +11,12 @@
  * Checked on the JSX like `noControlledTextInput`: the prop typechecks without
  * the id, and the gap only shows on a device.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { parse } from '@babel/parser';
+import { sourceFiles, TSX } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 type Node = { type?: string; [key: string]: unknown };
 type Attr = Node & { name?: { name?: string }; value?: Node & { value?: string } };
@@ -59,7 +51,7 @@ function padsWithoutAccessory(src: string): number[] {
   return hits;
 }
 
-const files = sourceFiles(SRC).map(f => ({ rel: f.slice(SRC.length + 1), src: readFileSync(f, 'utf8') }));
+const files = sourceFiles(SRC, { match: TSX }).map(f => ({ rel: f.slice(SRC.length + 1), src: readFileSync(f, 'utf8') }));
 
 it('scans the components and screens', () => {
   expect(files.length).toBeGreaterThan(100);

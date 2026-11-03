@@ -11,22 +11,14 @@
  * whole; a handler passed by name is checked from its declaration to the end
  * of its body, in the same file.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles, TSX } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
 const CONTROLS = ['SegmentedControl', 'SettingsSegments'];
 /** The props each control calls on a pick. */
 const HANDLER_PROPS = ['onChange', 'onSelect'];
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && entry.name.endsWith('.tsx')) found.push(full);
-  }
-  return found;
-}
 
 /** The JSX opening element starting at `start`, braces balanced. */
 function openingElement(src: string, start: number): string {
@@ -94,7 +86,7 @@ function handlersIn(file: string, src: string): Handler[] {
   return found;
 }
 
-const handlers = sourceFiles(SRC).flatMap(f => handlersIn(f.slice(SRC.length + 1), readFileSync(f, 'utf8')));
+const handlers = sourceFiles(SRC, { match: TSX }).flatMap(f => handlersIn(f.slice(SRC.length + 1), readFileSync(f, 'utf8')));
 
 describe('SegmentedControl handlers', () => {
   it('finds a realistic number of them', () => {

@@ -124,16 +124,18 @@ export function listTasks(replica: Replica, input: ListTasksInput = {}): ListTas
 
 /**
  * Today / Later / Unscheduled / Inbox are disjoint lenses over one set, exactly
- * as `TodayScreen` treats them — `isUnscheduledTask` already excludes inbox
- * tasks and `isTaskVisible` already excludes both, so these read as three
- * one-liners rather than as a partition that has to be maintained here.
+ * as `TodayScreen` treats them, each the app's own selector. They are not a
+ * partition: a task held back, hidden by vacation or a paused project, an
+ * undated project step, or an expired one is on none of them (the overview
+ * counts those as `hidden`). Later used to be "everything else", which listed
+ * all of those as scheduled for later.
  */
 function matchesView(replica: Replica, task: Task, view: TaskView): boolean {
   switch (view) {
     case 'today':
       return replica.isVisible(task);
     case 'later':
-      return !replica.isVisible(task) && !replica.isUnscheduled(task) && !replica.isInbox(task);
+      return replica.isDeferred(task);
     case 'unscheduled':
       return replica.isUnscheduled(task);
     case 'inbox':
@@ -288,6 +290,8 @@ export interface GetTaskResult {
    * Start workout would open now (derived from the program's sessions).
    */
   workout?: { routineId?: string; programId?: string; name?: string; next?: string };
+  /** The template the row offers to run (`templateId`); `deleted` when it no longer exists, which the row shows as "Template deleted". */
+  template?: { id: string; name?: string; deleted?: true };
   /** A countdown (`minutes`) or an Apple Health reading (`healthTarget`) the task reads as ready at; `measuredMinutes` is how long it actually took. */
   timer?: { minutes: number };
   measuredMinutes?: number;
@@ -312,9 +316,9 @@ export interface GetTaskResult {
   hiddenUntil?: string;
   /**
    * Why a task that is not on Today is hidden, when the reason is not a moment
-   * `hiddenUntil` can name: a task held while vacation mode is on (its own
-   * `vacationPause`, or a category set to hide on vacation) has no date it
-   * surfaces at, and reads as lost without this.
+   * `hiddenUntil` can name: vacation mode (its own `vacationPause`, or a
+   * category set to hide on vacation), a paused project, a closed time window,
+   * or an undated project step. Each reads as lost without this.
    */
   hiddenReason?: string;
 }
@@ -386,6 +390,10 @@ function taskExtras(replica: Replica, task: Task): Partial<GetTaskResult> {
   } else if (task.workoutRoutineId) {
     const routine = replica.workoutRoutines().find(r => r.id === task.workoutRoutineId);
     out.workout = { routineId: task.workoutRoutineId, ...(routine ? { name: routine.name } : {}) };
+  }
+  if (task.templateId) {
+    const template = replica.templates().find(t => t.id === task.templateId);
+    out.template = template ? { id: template.id, name: template.name } : { id: task.templateId, deleted: true };
   }
   if (task.timedMinutes != null) out.timer = { minutes: task.timedMinutes };
   if (task.actualMinutes != null) out.measuredMinutes = task.actualMinutes;
@@ -570,8 +578,24 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
     project: project ? { id: project.id, title: project.title } : undefined,
     ...taskExtras(replica, task),
     hiddenUntil: surfacesAt && surfacesAt.getTime() > Date.now() ? surfacesAt.toISOString() : undefined,
-    hiddenReason: !visible && replica.isHiddenForVacation(task) ? 'hidden while vacation mode is on' : undefined,
+    hiddenReason: visible ? undefined : hiddenReasonOf(replica, task),
   };
+}
+
+/**
+ * Why a task is off Today when no moment explains it, in the order
+ * `isVisibleApartFromVacation` checks: vacation, a paused project (whose end
+ * `hiddenUntil` gives, but not why), a closed window, an undated project step.
+ * Waiting on a task or a person and a branch not taken have their own fields
+ * (`blocked`, `waitsOn`, `notNeeded`), so they are left to those.
+ */
+function hiddenReasonOf(replica: Replica, task: Task): string | undefined {
+  const v = replica.lib().visibility;
+  if (replica.isHiddenForVacation(task)) return 'hidden while vacation mode is on';
+  if (v.isInPausedProject(task)) return 'its project is paused';
+  if (v.isTaskExpired(task)) return 'its time window has closed';
+  if (task.projectId && !task.dueDate) return 'an undated project step, which lives on its project rather than Today';
+  return undefined;
 }
 
 export interface SerializedProject {
@@ -981,6 +1005,8 @@ export interface SerializedMedicationLog {
   asNeeded?: boolean;
   /** "Ashwagandha 80 mg, L-theanine 200 mg": the ingredients outside the nutrient list this dose took, per the supplement's label. */
   otherIngredients?: string;
+  /** A follow-up the person asked the app to make after this dose: when it is due and how they answered (null until they do). */
+  checkIn?: { dueAt: string; answer: 'better' | 'same' | 'worse' | null };
 }
 
 export interface SerializedTemplate {
@@ -1358,6 +1384,7 @@ export function listMedicationLogs(
       ...(log.strength ? { eachContained: `${log.strength.amount} ${log.strength.unit}` } : {}),
       asNeeded: log.asNeeded ? true : undefined,
       otherIngredients: replica.medicationIngredients(log) ?? undefined,
+      checkIn: replica.medicationCheckIn(log) ?? undefined,
     })),
   };
 }
@@ -1390,12 +1417,20 @@ export interface DeleteTemplateResult {
   deleted: { id: string; name: string; items: number };
   /** Templates that nested it. Each now has an item whose reference is broken. */
   nestedIn: string[];
+  /** Open tasks that run it from their row (`templateId`). Each now shows "Template deleted" until the link is removed or points at another template. */
+  linkedTasks: { id: string; title: string }[];
 }
 
 /** Delete a template. Not undoable from here, so the write tool previews it first. */
 export function deleteTemplate(replica: Replica, ref: string): DeleteTemplateResult {
+  const found = replica.templates().find(t => t.id === ref || t.name === ref);
+  const linkedTasks = found
+    ? replica.tasks()
+        .filter(t => t.templateId === found.id && !t.completed && !t.archived)
+        .map(t => ({ id: t.id, title: t.title }))
+    : [];
   const { template, nestedIn } = replica.deleteTemplate(ref);
-  return { deleted: { id: template.id, name: template.name, items: template.items.length }, nestedIn };
+  return { deleted: { id: template.id, name: template.name, items: template.items.length }, nestedIn, linkedTasks };
 }
 
 /** The templates in their new order, as the template list shows them. */

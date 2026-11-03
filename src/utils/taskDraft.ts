@@ -432,6 +432,7 @@ export function newTaskFromDraft(
     alarmSoundPool: parseSoundPool(draft.alarmSoundPool),
     alarmLink: draft.alarmLink ?? null,
     alarmLinkLeavesOpen: draft.alarmLinkLeavesOpen ?? false,
+    templateId: draft.templateId ?? null,
     logHealthMetric: draft.logHealthMetric ?? null,
     logHealthAmount: draft.logHealthAmount ?? null,
     medicationName: draft.medicationName ?? null,

@@ -13,19 +13,11 @@
  * ends in an opening or closing tag is inside JSX children. Write those as
  * `{/* … *\/}`, or move the comment above the element that opens the children.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
+import { sourceFiles, TSX } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
-
-function tsxFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== '__tests__') tsxFiles(full, found);
-    else if (entry.isFile() && entry.name.endsWith('.tsx')) found.push(full);
-  }
-  return found;
-}
 
 /** A line that ends by opening or closing a tag: `<>`, `<View style={…}>`, `</View>`. */
 const ENDS_IN_TAG = /(<>|<\/>|<[A-Za-z][^<>]*[^=]>|<\/[A-Za-z.]+>)$/;
@@ -54,7 +46,7 @@ describe('no // comment as JSX text', () => {
   });
 
   it('holds across src/', () => {
-    const offenders = tsxFiles(SRC).flatMap(file =>
+    const offenders = sourceFiles(SRC, { match: TSX }).flatMap(file =>
       commentTextNodes(readFileSync(file, 'utf8')).map(line => `${file.replace(SRC, 'src')}:${line}`),
     );
     expect(offenders).toEqual([]);

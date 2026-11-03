@@ -207,6 +207,8 @@ import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 import { TaskCheckbox } from './TaskCheckbox';
 import { LazySheet } from './LazySheet';
+import { TemplatePickerSheet } from './TemplatePickerSheet';
+import { useTemplateStore } from '../store/useTemplateStore';
 import { RingtonePickerSheet } from './RingtonePickerSheet';
 import { NewSavedMealSheet } from './NewSavedMealSheet';
 import { ProgressBar } from './ProgressBar';
@@ -979,6 +981,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     return t ? displayTitleFor(t) : '';
   })));
   const [showLinkPicker, setShowLinkPicker] = useState(false);
+  // A template this task runs later (Task.templateId). A deleted template stays
+  // named as deleted here, so the person can see why the row's button is grey.
+  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const linkedTemplateName = useTemplateStore(s => templateId ? s.templates.find(t => t.id === templateId)?.name ?? null : null);
   // Task.workoutRoutineId / workoutProgramId: the routine "Workout" on the
   // row opens, or the program whose next routine it starts. One or the other,
   // never both: picking either clears the other (`pickWorkout`).
@@ -1365,6 +1372,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setStreakCountsUnits(task.streakCountsUnits ?? false);
       setLinkUrl(task.linkUrl ?? null);
+      setTemplateId(task.templateId ?? null);
       setAlarmLink(task.alarmLink ?? null);
       setAlarmLinkLeavesOpen(task.alarmLinkLeavesOpen ?? false);
       setShowAlarmLinkPicker(false);
@@ -1443,6 +1451,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setShowStreak(initialDraft?.polarity === 'negative');
       setStreakRequiresWindow(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
+      setTemplateId(null);
       setAlarmLink(null);
       setAlarmLinkLeavesOpen(false);
       setShowAlarmLinkPicker(false);
@@ -1609,6 +1618,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       alarmLink: task?.alarmLink ?? null,
       alarmLinkLeavesOpen: task?.alarmLinkLeavesOpen ?? false,
+      templateId: task?.templateId ?? null,
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
       completionTimerNote: task ? (task.completionTimerNote ?? null) : (initialDraft?.completionTimerNote ?? null),
       mission: task ? normalizeMission(task.mission) : null,
@@ -2069,11 +2079,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           setWindowStartSun(s.hit.anchor);
           setWindowStart(s.hit.clock);
           applyDefaultReminderLead(s.hit.clock);
-          applyDerivedTargetCount({ windowStart: s.hit.clock });
+          applyDerivedTargetCount({ windowStart: s.hit.clock, windowStartSun: s.hit.anchor });
         } else {
           setWindowEndSun(s.hit.anchor);
           setWindowEnd(s.hit.clock);
-          applyDerivedTargetCount({ windowEnd: s.hit.clock });
+          applyDerivedTargetCount({ windowEnd: s.hit.clock, windowEndSun: s.hit.anchor });
         }
         break;
       case 'rain':
@@ -2456,6 +2466,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       streakRequiresWindow: recurrenceType !== 'none' && streakRequiresWindow,
       streakCountsUnits: recurrenceType !== 'none' && quotaPeriod === 'week' && targetCount !== null && streakCountsUnits,
       linkUrl: resolveLinkUrl(),
+      templateId,
       alarmLink,
       alarmLinkLeavesOpen: alarmLink !== null && alarmLinkLeavesOpen,
       completionTimerMinutes,
@@ -2981,20 +2992,27 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // before a cadence took over, not what "every N minutes" actually implies.
   // `next` overrides the field that just changed; state for the others hasn't
   // committed yet at the point this is called.
+  // A bound that follows the sun is read for the editor's own day, so changing
+  // only the interval later counts the window as it falls that day rather
+  // than at the time the anchor came to when it was set.
   const applyDerivedTargetCount = (next: {
     quotaIntervalMinutes?: number | null;
     windowStart?: string | null;
     windowEnd?: string | null;
+    windowStartSun?: string | null;
+    windowEndSun?: string | null;
   }) => {
     const interval = next.quotaIntervalMinutes !== undefined ? next.quotaIntervalMinutes : quotaIntervalMinutes;
     if (interval === null) return;
     setTargetCount(derivedTargetCount({
       windowStart: next.windowStart !== undefined ? next.windowStart : windowStart,
       windowEnd: next.windowEnd !== undefined ? next.windowEnd : windowEnd,
+      windowStartSun: next.windowStartSun !== undefined ? next.windowStartSun : windowStartSun,
+      windowEndSun: next.windowEndSun !== undefined ? next.windowEndSun : windowEndSun,
       quotaStartedAt: task?.quotaStartedAt ?? null,
       quotaIntervalMinutes: interval,
       targetCount,
-    }));
+    }, windowDayStart()));
   };
 
   const commitWindowValue = (which: 'start' | 'end', date: Date) => {
@@ -3003,11 +3021,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setWindowStartSun(null);
       setWindowStart(hhmm);
       applyDefaultReminderLead(hhmm);
-      applyDerivedTargetCount({ windowStart: hhmm });
+      applyDerivedTargetCount({ windowStart: hhmm, windowStartSun: null });
     } else {
       setWindowEndSun(null);
       setWindowEnd(hhmm);
-      applyDerivedTargetCount({ windowEnd: hhmm });
+      applyDerivedTargetCount({ windowEnd: hhmm, windowEndSun: null });
     }
   };
 
@@ -3037,11 +3055,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setWindowStartSun(text);
       setWindowStart(hhmm);
       applyDefaultReminderLead(hhmm);
-      applyDerivedTargetCount({ windowStart: hhmm });
+      applyDerivedTargetCount({ windowStart: hhmm, windowStartSun: text });
     } else {
       setWindowEndSun(text);
       setWindowEnd(hhmm);
-      applyDerivedTargetCount({ windowEnd: hhmm });
+      applyDerivedTargetCount({ windowEnd: hhmm, windowEndSun: text });
     }
   };
 
@@ -3070,7 +3088,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     if (which === 'start') { setWindowStart(null); setWindowStartSun(null); }
     else { setWindowEnd(null); setWindowEndSun(null); }
     setWindowPickerMode('none');
-    applyDerivedTargetCount(which === 'start' ? { windowStart: null } : { windowEnd: null });
+    applyDerivedTargetCount(which === 'start' ? { windowStart: null, windowStartSun: null } : { windowEnd: null, windowEndSun: null });
   };
 
   /** Moves the open sun bound to before / at / after its event, keeping the minutes. */
@@ -3365,6 +3383,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       streakRequiresWindow,
       streakCountsUnits,
       linkUrl,
+      templateId,
       alarmLink,
       alarmLinkLeavesOpen: alarmLink !== null && alarmLinkLeavesOpen,
       completionTimerMinutes,
@@ -4203,6 +4222,13 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
               onClear={() => { setDeadline(null); setDeadlineTime(null); setShowDeadlinePicker(false); }}
               onCancel={() => setShowDeadlinePicker(false)}
+            />
+          </LazySheet>
+          <LazySheet open={showTemplatePicker}>
+            <TemplatePickerSheet
+              visible={showTemplatePicker}
+              onClose={() => setShowTemplatePicker(false)}
+              onSelect={template => setTemplateId(template.id)}
             />
           </LazySheet>
           <LazySheet open={showBlockerPicker}>
@@ -5120,7 +5146,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                             expanded={showPaceWindow}
                             onPress={() => { animateLayout(); setShowPaceWindow(v => !v); }}
                             onClear={(windowStart || windowEnd)
-                              ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
+                              ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null, windowStartSun: null, windowEndSun: null }); }
                               : undefined}
                           />
                           {showPaceWindow && renderWindowControls({
@@ -6370,7 +6396,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               expanded={showTimeWindow}
               onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
               onClear={(windowStart || windowEnd)
-                ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
+                ? () => { setWindowStart(null); setWindowEnd(null); setWindowStartSun(null); setWindowEndSun(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null, windowStartSun: null, windowEndSun: null }); }
                 : undefined}
             />
             {showTimeWindow && renderWindowControls()}
@@ -8230,6 +8256,20 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               </>
             )}
               </>
+            ),
+          },
+          {
+            key: 'template', label: 'Template', set: templateId !== null,
+            keywords: ['run', 'packing list', 'checklist', 'later', 'questions'],
+            node: (
+              <EditorRow
+                icon="documents-outline"
+                label="Template"
+                hint="Adds a button to run a template from this task, so you answer its questions when you’re ready."
+                value={templateId ? (linkedTemplateName ?? 'Template deleted') : undefined}
+                onPress={() => setShowTemplatePicker(true)}
+                onClear={templateId ? () => setTemplateId(null) : undefined}
+              />
             ),
           },
           {

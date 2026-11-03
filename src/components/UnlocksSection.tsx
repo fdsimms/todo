@@ -24,8 +24,10 @@ import {
   UNLOCK_SHARE_STEP,
   describePlayMinutes,
   formatPlayClock,
+  joinPhrases,
   playState,
   statusOfUnlock,
+  unlockLooseningsOf,
   type UnlockStatus,
 } from '../utils/rewardUnlocks';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -122,7 +124,12 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
     animateLayout();
     setDraft(null);
   };
-  const canSave = fields.title.trim().length > 0;
+  // A locked unlock can be made harder to open but not easier: lowering the
+  // share or dropping a requirement would be a way round it.
+  const editingUnlock = editingId ? unlocks.find(u => u.id === editingId) : undefined;
+  const editingLocked = !!editingUnlock && statusOfUnlock(editingUnlock, world).status.kind === 'locked';
+  const loosenings = editingUnlock && editingLocked ? unlockLooseningsOf(editingUnlock, fields) : [];
+  const canSave = fields.title.trim().length > 0 && loosenings.length === 0;
   const save = () => {
     if (!canSave || !draft) return;
     haptics.success();
@@ -292,13 +299,19 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
         />
         </FormField>
 
+        {loosenings.length > 0 && (
+          <Text style={styles.meta}>{`While it’s locked you can’t ${joinPhrases(loosenings)}. You can once it’s unlocked.`}</Text>
+        )}
+
         {draft?.mode === 'edit' && (() => {
           const editing = unlocks.find(u => u.id === draft.id);
-          return editing ? (
+          if (!editing) return null;
+          if (editingLocked) return <Text style={styles.meta}>It can’t be deleted while it’s locked.</Text>;
+          return (
             <View style={styles.formActions}>
               <InlineAction label={BUTTON_LABEL.delete} icon="trash-outline" variant="neutral" onPress={() => remove(editing)} accessibilityLabel={`Delete ${editing.title}`} />
             </View>
-          ) : null;
+          );
         })()}
       </View>
     );

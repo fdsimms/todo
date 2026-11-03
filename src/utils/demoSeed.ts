@@ -26,6 +26,7 @@ import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useGymStore } from '../store/useGymStore';
 import { useJournalStore } from '../store/useJournalStore';
 import { useMedicationStore } from '../store/useMedicationStore';
+import { useCheckInStore } from '../store/useCheckInStore';
 import { installSupplementDoseEffects } from './supplementDoseSync';
 import { useRewardStore } from '../store/useRewardStore';
 import { useUnlockStore } from '../store/useUnlockStore';
@@ -1575,19 +1576,18 @@ export function seedDemoData(): void {
   // one-off, both held off Today until the pause lifts in three weeks. Without
   // it, pausing is a feature the demo says the app doesn't have.
   const garden = createProject('Garden', { category: 'Around the house' });
-  const gardenBack = addDays(new Date(), 21);
   updateProject(garden.id, {
     ongoing: true,
-    pausedUntil: `${gardenBack.getFullYear()}-${String(gardenBack.getMonth() + 1).padStart(2, '0')}-${String(gardenBack.getDate()).padStart(2, '0')}`,
+    pausedUntil: dayKeyOf(addDays(today, 21)),
   });
-  addTask({ title: 'Water the beds', projectId: garden.id, recurrenceType: 'weekly', dueDate: new Date().toISOString() });
+  addTask({ title: 'Water the beds', projectId: garden.id, recurrenceType: 'weekly', dueDate: today.toISOString() });
   addTask({ title: 'Build a raised bed', projectId: garden.id });
 
   // A project still being planned (Planning, an open-ended pause): steps
   // already dated, all held off every list until it's marked ready.
   const housewarming = createProject('Housewarming party', { planning: true });
-  addTask({ title: 'Send invitations', projectId: housewarming.id, dueDate: addDays(new Date(), 3).toISOString() });
-  addTask({ title: 'Order drinks', projectId: housewarming.id, dueDate: addDays(new Date(), 10).toISOString() });
+  addTask({ title: 'Send invitations', projectId: housewarming.id, dueDate: addDays(today, 3).toISOString() });
+  addTask({ title: 'Order drinks', projectId: housewarming.id, dueDate: addDays(today, 10).toISOString() });
   addTask({ title: 'Make a playlist', projectId: housewarming.id });
 
   // The collection that shows an answer being recorded. Exactly one task
@@ -1925,13 +1925,23 @@ export function seedDemoData(): void {
   // A speed bump rule, so the sheet has one to show. It is only a rule: the
   // block itself is raised by the monitor extension, which demo mode never
   // reaches (screenTimeBridge refuses), so there is no running block to seed.
-  useSettingsStore.getState().setSpeedBumpRules([{
-    ...newSpeedBumpRule('Wind down after Social'),
-    thresholdMinutes: 45,
-    repeatEveryMinutes: 30,
-    maxTimes: 3,
-    blockMinutes: 15,
-  }]);
+  // Two rules for the same apps on different days: a weekend gets a looser limit.
+  useSettingsStore.getState().setSpeedBumpRules([
+    {
+      ...newSpeedBumpRule('Wind down after Social'),
+      thresholdMinutes: 45,
+      repeatEveryMinutes: 30,
+      maxTimes: 3,
+      blockMinutes: 15,
+      days: [1, 2, 3, 4, 5],
+    },
+    {
+      ...newSpeedBumpRule('Weekend wind down'),
+      thresholdMinutes: 90,
+      blockMinutes: 15,
+      days: [0, 6],
+    },
+  ]);
   useSettingsStore.getState().setSpeedBumpWarnMinutes(5);
 
   // A block offer, seeded directly for screenTime's reason: accepting one
@@ -2479,6 +2489,13 @@ export function seedDemoData(): void {
 
   // --- A template, and the blanks it fills in at apply time ----------------
   seedTemplates();
+  // A task that runs a template when its questions can be answered: the row
+  // reads "Run Trip prep" instead of the trip details being asked now.
+  const tripPrep = useTemplateStore.getState().templates.find(t => t.name === 'Trip prep');
+  if (tripPrep) {
+    const runPrep = addTask({ title: 'Run the trip prep for Lisbon', dueDate: addDays(today, 30).toISOString(), templateId: tripPrep.id });
+    addExistingToProject(runPrep.id, lisbon.id);
+  }
 
   // --- Groceries, recipes, the week's meals and the fridge -----------------
   // Ordered by what points at what: recipes first (grocery rows can be
@@ -3994,13 +4011,26 @@ function seedAsNeededDoses(today: Date): void {
   // comparison's earlier fortnight; 11/9/8 are the headache days.
   const takenOn = [30, 25, 22, 11, 9, 8, 3];
   for (const back of takenOn) {
-    addLog({
+    const dose = addLog({
       name: 'Ibuprofen',
       amount: 400,
       unit: 'mg',
       asNeeded: true,
       at: setHours(subDays(today, back), 15),
     });
+    // The most recent dose has its check-in answered, so a dose row shows one.
+    if (dose && back === 3) {
+      const checkIns = useCheckInStore.getState();
+      const asked = checkIns.add({
+        sourceKind: 'medication',
+        sourceId: dose.id,
+        subject: 'Ibuprofen',
+        about: 'headache',
+        dueAt: setHours(subDays(today, back), 16).toISOString(),
+        dayKey: dose.dayKey,
+      });
+      checkIns.answer(asked.id, 'better', setHours(subDays(today, back), 16));
+    }
   }
   // A finished course, archived, so the Archived section on the Medications
   // screen has a row and "What you take" shows only what is still current.

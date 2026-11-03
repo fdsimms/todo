@@ -13,20 +13,12 @@
  * device, intermittently. This parses the JSX rather than pattern-matching it,
  * because an attribute holding an arrow function has a `>` in it.
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { parse } from '@babel/parser';
+import { sourceFiles, TSX } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && entry.name !== '__tests__') sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx$/.test(entry.name)) found.push(full);
-  }
-  return found;
-}
 
 type Node = { type?: string; [key: string]: unknown };
 
@@ -65,7 +57,7 @@ function elementsByValue(src: string, element: string, wantValue: boolean): numb
 const controlledTextInputs = (src: string) => elementsByValue(src, 'TextInput', true);
 const textFieldsWithoutValue = (src: string) => elementsByValue(src, 'TextField', false);
 
-const files = sourceFiles(SRC)
+const files = sourceFiles(SRC, { match: TSX })
   .filter(f => !f.endsWith(join('components', 'TextField.tsx')))
   .map(f => ({ rel: f.slice(SRC.length + 1), src: readFileSync(f, 'utf8') }));
 

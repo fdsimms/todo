@@ -104,6 +104,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     isHiddenForVacation: (t: Task) => t.id.startsWith('vacation'),
     isUnscheduled: (t: Task) => t.id.startsWith('unscheduled'),
     isInbox: (t: Task) => t.id.startsWith('inbox'),
+    isDeferred: (t: Task) => t.id.startsWith('later'),
     isBlocked: (t: Task) => t.id.startsWith('blocked'),
     liveBlockers: () => [],
     isNotNeeded: () => false,
@@ -131,6 +132,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     medicationLogs: () => [],
     medicationSummary: (log: MedicationLog) => log.name,
     medicationIngredients: () => null,
+    medicationCheckIn: () => null,
     medicationSettings: () => [],
     // No store configured is the ordinary state for a replica pointed at a
     // file somebody copied, and the tool layer never calls this anyway.
@@ -315,7 +317,17 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     mostMissed: () => [],
     searchSettings: () => [],
     lastSyncedAt: () => null,
-    lib: () => { throw new Error('not stubbed'); },
+    lib: () => ({
+      // Only what getTask and getOverview read, by the same id convention as
+      // the lenses above.
+      visibility: {
+        isInPausedProject: (t: Task) => t.id.startsWith('paused'),
+        isTaskExpired: (t: Task) => t.id.startsWith('expired'),
+        isHeldBack: (t: Task) => t.id.startsWith('waiting'),
+        isWithheld: (t: Task) => t.id.startsWith('paused'),
+        isPinnedOnToday: (t: Task) => t.pinned,
+      },
+    }) as unknown as ReturnType<Replica['lib']>,
     allMoodLogs: () => [],
     milestones: () => [],
     cookware: () => [],
@@ -608,6 +620,19 @@ describe('getTask', () => {
     expect(result.hiddenUntil).toBeUndefined();
     // Visible tasks say nothing, whatever their flag.
     expect(getTask(withTasks([task({ id: 'today-1', title: 'x', vacationPause: true })]), 'today-1')!.hiddenReason).toBeUndefined();
+  });
+
+  // Each read as lost: a paused project's (hiddenUntil gave the date, not the
+  // reason), an expired one, and an undated project step had no reason at all.
+  it('names the other holds a moment cannot explain', () => {
+    const r = withTasks([
+      task({ id: 'paused-1', title: 'Prune', projectId: 'garden', dueDate: '2026-01-01T12:00:00.000Z' }),
+      task({ id: 'expired-1', title: 'Morning pages' }),
+      task({ id: 'step-1', title: 'Order soil', projectId: 'garden' }),
+    ], { visibleAt: () => new Date() });
+    expect(getTask(r, 'paused-1')!.hiddenReason).toBe('its project is paused');
+    expect(getTask(r, 'expired-1')!.hiddenReason).toBe('its time window has closed');
+    expect(getTask(r, 'step-1')!.hiddenReason).toMatch(/undated project step/);
   });
 
   it('shows a target\'s cadence, reminders and the places they are limited to', () => {
@@ -994,6 +1019,17 @@ describe('listMedicationLogs', () => {
     );
     expect(result.logs[0].otherIngredients).toBe('L-theanine 200 mg');
     expect(result.logs[1].otherIngredients).toBeUndefined();
+  });
+
+  it('carries a dose\'s check-in, and leaves it out when none was started', () => {
+    const result = listMedicationLogs(
+      stubReplica({
+        medicationLogs: () => [dose({ id: 'd1', name: 'Aleve' }), dose({ id: 'd2', name: 'Zinc' })],
+        medicationCheckIn: (log: MedicationLog) => (log.id === 'd1' ? { dueAt: '2026-11-02T15:00:00.000Z', answer: 'better' as const } : null),
+      })
+    );
+    expect(result.logs[0].checkIn).toEqual({ dueAt: '2026-11-02T15:00:00.000Z', answer: 'better' });
+    expect(result.logs[1].checkIn).toBeUndefined();
   });
 
   it('omits asNeeded when a dose was scheduled', () => {

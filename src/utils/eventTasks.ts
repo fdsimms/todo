@@ -3,7 +3,7 @@ import { isLiveEvent } from './calendarBusy';
 import type { EventTaskRule, Task } from '../types';
 import { generatedSourceOf } from './generatedTasks';
 import { pluralKeyVariants } from './groceryPlural';
-import { generateId } from './id';
+import { derivedId, spawnSeed } from './syncIds';
 import { parseRuleEstimate } from './ruleEstimate';
 import { parseRuleCategory } from './ruleCategory';
 import { parseRuleLog } from './ruleLog';
@@ -168,7 +168,7 @@ export function parseEventRules(raw: string | null | undefined): EventTaskRule[]
       ? Math.min(EVENT_LEAD_DAYS_MAX, Math.max(0, Math.round(r.leadDays)))
       : 0;
     out.push({
-      id: typeof r.id === 'string' && r.id ? r.id : generateId(),
+      id: typeof r.id === 'string' && r.id ? r.id : derivedId(spawnSeed.ruleWithoutId('event', `${title}|${matches.join('|')}`)),
       matches,
       title,
       leadDays,
@@ -706,8 +706,12 @@ export function matchedFollowUpTasks(
  * Compared on whole local days rather than on a 48-hour subtraction, so a
  * two-day rule against a Friday evening flight lands on Wednesday whatever
  * hour the sweep happens to run at. Deliberately not `dayResetTime`-aware:
- * both sides of this comparison come off the *event's* own calendar date, and
- * the day a task is written on is decided by `dueDate` below rather than here.
+ * `today` is the calendar date of `now`, on purpose. Read as the logical day,
+ * a same-day rule for an event between midnight and the reset (a 02:00 flight
+ * under a 04:00 reset) would never fire, since the event has started by the
+ * time the logical day reaches its date. Firing a few hours early instead is
+ * harmless: the day the task is written on is decided by `dueDate` below, so
+ * it waits in Later until its day begins.
  */
 export function leadTimeReached(event: BusyEvent, rule: EventTaskRule, now: Date): boolean {
   const start = new Date(event.start);

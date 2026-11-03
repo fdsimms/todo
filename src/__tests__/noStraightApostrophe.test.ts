@@ -14,10 +14,11 @@
  * console messages, SQL, and the few words matched against what a person
  * types rather than shown to them (`MATCHED_AGAINST_INPUT`).
  */
-import { readFileSync, readdirSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 import { parse } from '@babel/parser';
 import * as t from '@babel/types';
+import { sourceFiles, DEFAULT_SKIP_DIRS } from '../testSupport/sourceFiles';
 
 const SRC = join(__dirname, '..');
 
@@ -35,17 +36,6 @@ const MATCHED_AGAINST_INPUT = new Set([
 
 const STRAIGHT = /[A-Za-z]'[a-z]/;
 const SQL_START = /^(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|PRAGMA|WITH|BEGIN|COMMIT|REPLACE)\b/;
-
-function sourceFiles(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory() && !['__tests__', '__bench__', 'patchNotes'].includes(entry.name)) sourceFiles(full, found);
-    else if (entry.isFile() && /\.tsx?$/.test(entry.name) && !entry.name.endsWith('.d.ts') && entry.name !== 'patchNotesData.ts') {
-      found.push(full);
-    }
-  }
-  return found;
-}
 
 /** `new Error(...)`, `throw ...` or `console.x(...)`: a message for a developer. */
 function isDeveloperMessage(node: t.Node): boolean {
@@ -88,7 +78,10 @@ function straightApostrophes(code: string, tsx: boolean): string[] {
 }
 
 describe('straight apostrophes in copy', () => {
-  const files = sourceFiles(SRC);
+  const files = sourceFiles(SRC, {
+    skipDirs: [...DEFAULT_SKIP_DIRS, '__bench__', 'patchNotes'],
+    skipFiles: ['patchNotesData.ts'],
+  });
 
   it('scans a realistic number of files', () => {
     // A broken walk would make the real check below pass against nothing.

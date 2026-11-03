@@ -303,6 +303,11 @@ work is done"). Rules in `src/utils/rewardUnlocks.ts`, rows in `reward_unlocks`
   `liveActivity.ts`, behind the same `timerLiveActivity` setting), whose Done stops it
   (`play:` in `deepLinks.ts`). The store re-settles its notice from the rows on every load, so a
   timer started on another device or by the MCP server still rings here.
+- **A locked unlock can be made harder to open, never easier.** While its status is `locked`, the form
+  and the MCP server refuse a lower share, a dropped requirement, weekend or vacation opening switched
+  on, or an unlinked habit (`unlockLooseningsOf`), and refuse a delete. Without that, "edit it" was
+  the way past the lock. Once it is open, edits are free, which leaves loosening it while open as the
+  one way round; the lock only ever bound the day it was set against.
 - **Weekends and vacation can open it all day**, per unlock.
 - **The code is shown only while it's open**, and the MCP server neither returns nor writes it, so
   asking Claude isn't a way round the lock. Everything else about an unlock it can read and change

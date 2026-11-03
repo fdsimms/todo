@@ -1156,6 +1156,8 @@ export interface Replica {
   rotationDoneIds(task: Task): string[];
   isUnscheduled(task: Task): boolean;
   isInbox(task: Task): boolean;
+  /** On the app's Later list (`isTaskDeferred`): scheduled for later or snoozed, and not hidden for any other reason. */
+  isDeferred(task: Task): boolean;
   isBlocked(task: Task): boolean;
   /**
    * The tasks this one still waits on: the blockers that can still hold it
@@ -1231,6 +1233,8 @@ export interface Replica {
    * it stands now, which is how the app reads it.
    */
   medicationIngredients(log: MedicationLog): string | null;
+  /** The follow-up asked after a dose, or null when none was started. Read-only: the phone schedules and answers it. */
+  medicationCheckIn(log: MedicationLog): { dueAt: string; answer: 'better' | 'same' | 'worse' | null } | null;
   /**
    * The limit and supply the person set per medication, read the app's way:
    * where each one stands against its limit now, and what's left of its
@@ -3595,6 +3599,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   let lastChangeToken: string | null = null;
 
   /** What the server runs before each request: `refresh`, unless nothing changed. */
+  // A pause an agent ends (update_project, through useProjectStore.updateProject)
+  // forgives the streaks it held, as the phone's own listener does; this server
+  // can't load the task store that registers that one.
+  projectPause.registerPauseEndListener((projectId, endedOn) => {
+    const streakRules = require('../../src/utils/vacationStreaks') as typeof import('../../src/utils/vacationStreaks'); // eslint-disable-line @typescript-eslint/no-require-imports
+    const forgiven = streakRules.forgivePausedProjectStreaks(tasks(), new Map([[projectId, endedOn]]));
+    forgiven.forEach(t => db.dbUpdateTask(t));
+    if (forgiven.length > 0) taskCache = null;
+  });
+
   const refreshIfChanged = (): void => {
     const token = changeToken();
     if (token === lastChangeToken && taskCache !== null) return;
@@ -3788,6 +3802,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       } else {
         const gate = gateFor(onlyIfAnswer.answers, deliverables.deliverableOptionsFor(question), errors);
         if (gate) patch.answerGate = { taskId: question.id, answers: gate };
+      }
+    }
+    if (patch.templateId) {
+      const templateId = patch.templateId;
+      if (!db.dbGetAllTemplates().some(t => t.id === templateId)) {
+        errors.push(`templateId: no template with id ${templateId}. list_templates lists them.`);
       }
     }
     if (patch.workoutRoutineId) {
@@ -4356,6 +4376,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         .map(m => m.item.id),
     isUnscheduled: (task: Task) => visibility.isUnscheduledTask(task),
     isInbox: (task: Task) => visibility.isInboxTask(task),
+    isDeferred: (task: Task) => visibility.isTaskDeferred(task),
     isBlocked: (task: Task) => visibility.isTaskBlocked(task),
     liveBlockers: (task: Task) => {
       const own = new Set(blocking.blockerIdsOf(task));
@@ -4407,6 +4428,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     medicationLogs: (from: string, to: string) =>
       db.dbGetAllMedicationLogs().filter(l => l.dayKey >= from && l.dayKey <= to),
     medicationSummary: (log: MedicationLog) => medication.medicationLogSummary(log),
+    medicationCheckIn: (log: MedicationLog) => {
+      const found = db.dbGetAllCheckIns().find(c => c.sourceKind === 'medication' && c.sourceId === log.id);
+      return found ? { dueAt: found.dueAt, answer: found.answer } : null;
+    },
     medicationIngredients: (log: MedicationLog) => {
       const map = medicationSettings.parseMedicationSettings(db.dbGetSetting(medicationSettings.MEDICATION_SETTINGS_KEY));
       const list = supplementDose.doseIngredients(medicationSettings.prefsFor(map, log.name).nutrition, log);
@@ -8739,6 +8764,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const clean = unlockLib.cleanUnlockDraft({ ...current, ...allowed, pin: current.pin });
       if (!clean.title) throw new Error('An unlock needs a name.');
       checkUnlockLinks(clean, id);
+      // Same rule as the app's form: a locked unlock can't be made easier to open.
+      if (unlockLib.statusOfUnlock(current, replica.unlockWorld()).status.kind === 'locked') {
+        const loosenings = unlockLib.unlockLooseningsOf(current, clean);
+        if (loosenings.length > 0) throw new Error(`"${current.title}" is locked until today's work is done, so you can't ${unlockLib.joinPhrases(loosenings)} yet. Make the other changes now and this one once it's unlocked.`);
+      }
       const next: RewardUnlock = { ...current, ...clean };
       db.dbUpsertRewardUnlock(next);
       refresh();
@@ -8747,7 +8777,11 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
 
     deleteUnlock(id): RewardUnlock {
       requireRewardsOn();
+      const unlockLib = require('../../src/utils/rewardUnlocks') as typeof import('../../src/utils/rewardUnlocks');
       const unlock = requireUnlock(id);
+      if (unlockLib.statusOfUnlock(unlock, replica.unlockWorld()).status.kind === 'locked') {
+        throw new Error(`"${unlock.title}" is locked until today's work is done, so it can't be deleted yet. Delete it once it's unlocked.`);
+      }
       db.dbDeleteRewardUnlock(id);
       refresh();
       return unlock;

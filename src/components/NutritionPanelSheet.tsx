@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSheetOpening } from '../hooks/useSheetOpening';
 import {
   Alert,
   Keyboard,
@@ -259,10 +260,9 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   // Which opening a photo read belongs to. Reading a label takes a moment,
   // and a person can close the sheet (or the host can open it on another
   // food) while it's being read; the figures then landed in the form of
-  // whatever the sheet was showing by the time they arrived. Bumped on every
-  // open and close and on a change of food, and read back after each await.
-  const openingRef = useRef(0);
-  useEffect(() => { openingRef.current += 1; }, [visible, foodName]);
+  // whatever the sheet was showing by the time they arrived. A change of food
+  // starts a new opening too.
+  const openings = useSheetOpening(visible, foodName);
 
   useEffect(() => {
     if (!visible) return;
@@ -290,8 +290,8 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   }, [visible]);
 
   const handlePhoto = useCallback(async (source: 'camera' | 'library') => {
-    const opening = openingRef.current;
-    const stillHere = () => openingRef.current === opening;
+    const opening = openings.begin();
+    const stillHere = () => openings.isCurrent(opening);
     // Started from the action menu, which is still leaving; the system
     // picker can't present until it has.
     await afterMenuDismissed();
@@ -383,12 +383,12 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   }, [visible]);
 
   // A photo the food log's camera already took: nothing to present, so it is
-  // read at once. After the reset and `openingRef` effects above, which run
+  // read at once. After the reset and `openings` effects above, which run
   // first in the same commit.
   useEffect(() => {
     if (!visible || !initialPhoto) return;
-    const opening = openingRef.current;
-    void readPhoto(initialPhoto, () => openingRef.current === opening);
+    const opening = openings.begin();
+    void readPhoto(initialPhoto, () => openings.isCurrent(opening));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 

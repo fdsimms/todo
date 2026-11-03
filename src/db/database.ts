@@ -11,6 +11,7 @@ import type {
   GeneratedKind,
   LoggedSymptom,
   MedicationLog,
+  CheckIn,
   CoinEntry,
   Reward,
   RewardUnlock,
@@ -793,6 +794,21 @@ function runInitDatabase(): void {
       note TEXT
     );
 
+    -- A follow-up asked after a dose or a food (see CheckIn). source_id is
+    -- provenance and carries no foreign key: the dose or entry it was about
+    -- may be deleted, and the answer is still what it was.
+    CREATE TABLE IF NOT EXISTS check_ins (
+      id TEXT PRIMARY KEY NOT NULL,
+      source_kind TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      about TEXT,
+      due_at TEXT NOT NULL,
+      day_key TEXT NOT NULL,
+      answer TEXT,
+      answered_at TEXT
+    );
+
     -- The coin ledger and the rewards it buys — see CoinEntry/Reward in
     -- types/index.ts and src/utils/rewards.ts. The balance is the sum of
     -- coin_entries, never a stored number, so the ledger merges across devices
@@ -1332,6 +1348,7 @@ function runInitDatabase(): void {
     // Same read as mood_logs above: every stat groups doses by day, and the
     // "how often this month" window is a run of day keys.
     'CREATE INDEX IF NOT EXISTS idx_medication_logs_day ON medication_logs(day_key)',
+    'CREATE INDEX IF NOT EXISTS idx_check_ins_source ON check_ins(source_kind, source_id)',
     // Null for every existing row is exactly right: nothing predating this has
     // been asserted as on hand. See GroceryItem.onHandUntil.
     'ALTER TABLE grocery_items ADD COLUMN on_hand_until TEXT',
@@ -2538,6 +2555,8 @@ function runInitDatabase(): void {
     // which is no linked alarm.
     'ALTER TABLE tasks ADD COLUMN alarm_link TEXT',
     'ALTER TABLE tasks ADD COLUMN alarm_link_leaves_open INTEGER NOT NULL DEFAULT 0',
+    // Task.templateId: NULL on every existing row, which is no linked template.
+    'ALTER TABLE tasks ADD COLUMN template_id TEXT',
     // CoinEntry.saved: 0 on every existing entry, which put nothing into and
     // took nothing out of the savings for a goal.
     'ALTER TABLE coin_entries ADD COLUMN saved INTEGER NOT NULL DEFAULT 0',
@@ -2648,15 +2667,21 @@ function runInitDatabase(): void {
     dbSetSetting('task_backfill_seen_generated_done', '1');
   }
 
-  // One-time migration: populate categories table from legacy category_registry setting
-  const catCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM categories')?.n ?? 0;
-  if (catCount === 0) {
-    const registry = dbGetCategoryRegistry();
-    for (const name of registry) {
-      try {
-        db.runSync('INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)', [generateId(), name]);
-      } catch (_) {}
+  // One-time migration: populate categories table from legacy category_registry
+  // setting. Behind a flag rather than "the table is empty": nothing removes the
+  // registry, so deleting every category brought the legacy ones back at the
+  // next launch, under new ids that then synced out.
+  if (dbGetSetting('category_registry_migration_done') !== '1') {
+    const catCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM categories')?.n ?? 0;
+    if (catCount === 0) {
+      const registry = dbGetCategoryRegistry();
+      for (const name of registry) {
+        try {
+          db.runSync('INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)', [generateId(), name]);
+        } catch (_) {}
+      }
     }
+    dbSetSetting('category_registry_migration_done', '1');
   }
 
   // One-time migration: projects previously stored a category name drawn from
@@ -2664,14 +2689,19 @@ function runInitDatabase(): void {
   // have their own separate category pool, seed project_categories with
   // whatever names existing projects were already using so they don't lose
   // their assignment.
-  const projCatCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM project_categories')?.n ?? 0;
-  if (projCatCount === 0) {
-    const rows = db.getAllSync<{ category: string }>(
-      "SELECT DISTINCT category FROM projects WHERE category IS NOT NULL AND category != ''"
-    );
-    rows.forEach((row, i) => {
-      try { db.runSync('INSERT OR IGNORE INTO project_categories (id, name, sort_order) VALUES (?, ?, ?)', [generateId(), row.category, i + 1]); } catch (_) {}
-    });
+  // Behind a flag for the same reason, and so an install with no project
+  // categories doesn't scan every project on each launch.
+  if (dbGetSetting('project_categories_seed_done') !== '1') {
+    const projCatCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM project_categories')?.n ?? 0;
+    if (projCatCount === 0) {
+      const rows = db.getAllSync<{ category: string }>(
+        "SELECT DISTINCT category FROM projects WHERE category IS NOT NULL AND category != ''"
+      );
+      rows.forEach((row, i) => {
+        try { db.runSync('INSERT OR IGNORE INTO project_categories (id, name, sort_order) VALUES (?, ?, ?)', [generateId(), row.category, i + 1]); } catch (_) {}
+      });
+    }
+    dbSetSetting('project_categories_seed_done', '1');
   }
 
   // One-time cleanup: the cookbook index feature was removed, so its table is
@@ -2990,6 +3020,9 @@ export const BACKUP_TABLES = [
   // provenance rather than a reference — a dose whose task is gone is still a
   // dose — so it has no ordering requirement against `tasks`.
   'medication_logs',
+  // A check-in is a health record beside the dose or food it follows up on.
+  // source_id is provenance, so no ordering requirement against either log.
+  'check_ins',
   // The coin ledger and the rewards it buys. Standalone: every pointer an entry
   // carries is provenance and may dangle, so no ordering requirement.
   'coin_entries',
@@ -4401,6 +4434,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     alarmSoundPool: parseSoundPool(row.alarm_sound_pool),
     alarmLink: typeof row.alarm_link === 'string' && row.alarm_link !== '' ? row.alarm_link : null,
     alarmLinkLeavesOpen: Boolean(row.alarm_link_leaves_open),
+    templateId: typeof row.template_id === 'string' && row.template_id !== '' ? row.template_id : null,
     completionTimerNote: (row.completion_timer_note as string | null) ?? null,
     completionTimerStartedAt: (row.completion_timer_started_at as string | null) ?? null,
     // Narrowed the same way healthMetric above is: an unrecognized column value
@@ -4544,8 +4578,8 @@ export function dbInsertTask(task: Task): void {
       rain_skip_mm, rain_skipped_on,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
       slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, quota_tap_times, medication_extras, attachments, reminder_place_id, reminder_place_on,
-      mission, alarm_sound, alarm_link, alarm_link_leaves_open, alarm_sound_pool
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      mission, alarm_sound, alarm_link, alarm_link_leaves_open, alarm_sound_pool, template_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4703,6 +4737,7 @@ export function dbInsertTask(task: Task): void {
       task.alarmLink ?? null,
       task.alarmLinkLeavesOpen ? 1 : 0,
       task.alarmSoundPool?.length ? JSON.stringify(task.alarmSoundPool) : null,
+      task.templateId ?? null,
     ]
   );
 }
@@ -4743,7 +4778,7 @@ export function dbUpdateTask(task: Task): void {
       rain_skip_mm=?, rain_skipped_on=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
       slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, quota_tap_times=?, medication_extras=?, attachments=?, reminder_place_id=?, reminder_place_on=?,
-      mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?, alarm_sound_pool=?
+      mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?, alarm_sound_pool=?, template_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -4902,6 +4937,7 @@ export function dbUpdateTask(task: Task): void {
       task.alarmLink ?? null,
       task.alarmLinkLeavesOpen ? 1 : 0,
       task.alarmSoundPool?.length ? JSON.stringify(task.alarmSoundPool) : null,
+      task.templateId ?? null,
       task.id,
     ]
   );
@@ -5047,6 +5083,29 @@ function fillCalendarExternalIds(
     }
   });
   return written;
+}
+
+/**
+ * Fills in `recurrence_anchor_day` on rows that predate the column, and puts
+ * each row's sync stamp back (`fillCalendarExternalIds`' shape). Every device
+ * derives the same anchor from the dates it already syncs, so this is not an
+ * edit to send; written through `dbUpdateTask`, every such row became this
+ * device's newest copy at launch, and a peer's edit made while it was closed
+ * lost to it. Only a row still without an anchor is touched.
+ */
+export function dbBackfillRecurrenceAnchorDays(anchors: ReadonlyArray<{ id: string; day: number }>): void {
+  if (anchors.length === 0) return;
+  withTransaction(() => {
+    for (const { id, day } of anchors) {
+      const row = db.getFirstSync<{ updated_at: string | null }>(
+        'SELECT updated_at FROM tasks WHERE id = ? AND recurrence_anchor_day IS NULL',
+        [id],
+      );
+      if (!row) continue;
+      db.runSync('UPDATE tasks SET recurrence_anchor_day = ? WHERE id = ?', [day, id]);
+      db.runSync('UPDATE tasks SET updated_at = ? WHERE id = ?', [row.updated_at ?? null, id]);
+    }
+  });
 }
 
 /** `fillCalendarExternalIds` over tasks: deadline events, time blocks and completion events. */
@@ -8767,6 +8826,44 @@ export function dbUpdateMedicationLog(log: MedicationLog): void {
     [log.name, log.takenAt, log.dayKey, log.amount, log.unit,
      log.asNeeded ? 1 : 0, log.taskId, log.note, log.strength?.amount ?? null, log.strength?.unit ?? null, log.id]
   );
+}
+
+function rowToCheckIn(row: Record<string, unknown>): CheckIn {
+  const answer = row.answer as string | null;
+  return {
+    id: row.id as string,
+    sourceKind: row.source_kind === 'food' ? 'food' : 'medication',
+    sourceId: row.source_id as string,
+    subject: row.subject as string,
+    about: (row.about as string | null) || null,
+    dueAt: row.due_at as string,
+    dayKey: row.day_key as string,
+    answer: answer === 'better' || answer === 'same' || answer === 'worse' ? answer : null,
+    answeredAt: (row.answered_at as string | null) || null,
+  };
+}
+
+export function dbGetAllCheckIns(): CheckIn[] {
+  return db.getAllSync<Record<string, unknown>>('SELECT * FROM check_ins ORDER BY due_at DESC').map(rowToCheckIn);
+}
+
+export function dbInsertCheckIn(c: CheckIn): void {
+  db.runSync(
+    `INSERT INTO check_ins (id, source_kind, source_id, subject, about, due_at, day_key, answer, answered_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [c.id, c.sourceKind, c.sourceId, c.subject, c.about, c.dueAt, c.dayKey, c.answer, c.answeredAt]
+  );
+}
+
+export function dbUpdateCheckIn(c: CheckIn): void {
+  db.runSync(
+    `UPDATE check_ins SET subject=?, about=?, due_at=?, day_key=?, answer=?, answered_at=? WHERE id=?`,
+    [c.subject, c.about, c.dueAt, c.dayKey, c.answer, c.answeredAt, c.id]
+  );
+}
+
+export function dbDeleteCheckIn(id: string): void {
+  db.runSync('DELETE FROM check_ins WHERE id = ?', [id]);
 }
 
 export function dbDeleteMedicationLog(id: string): void {

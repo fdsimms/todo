@@ -144,6 +144,9 @@ import { TextField } from './TextField';
 import { OTHER_UNIT_KEY, UnitMenuChip } from './UnitMenuChip';
 import { ChoiceMenuChip } from './ChoiceMenuChip';
 import { HelpText } from './HelpText';
+import { CheckInFields } from './CheckInFields';
+import { allowCheckInNotification, startCheckIn } from '../utils/checkInRecording';
+import { defaultWaitMinutes } from '../utils/checkIns';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /**
@@ -586,6 +589,16 @@ export function FoodLogEntrySheet({
   // dish rather than remembered across picks — see `choose`.
   const [dishMeasure, setDishMeasure] = useState<DishMeasure>('servings');
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
+  // "Check in later": a follow-up question after this food. Off for every new log.
+  const [checkIn, setCheckIn] = useState(false);
+  const [checkInMinutes, setCheckInMinutes] = useState<number | null>(null);
+  const [checkInAbout, setCheckInAbout] = useState('');
+  useEffect(() => {
+    if (!visible) return;
+    setCheckIn(false);
+    setCheckInMinutes(null);
+    setCheckInAbout('');
+  }, [visible]);
   const standardDrinkGrams = useSettingsStore(s => s.standardDrinkGrams);
   // The alcohol row's own answer, or null while it has none and the entry's
   // figures (or a name that is plainly a drink) are speaking for it.
@@ -1556,9 +1569,28 @@ export function FoodLogEntrySheet({
       return match?.id ?? null;
     })();
     const draft: FoodLogDraft = { ...measurement, mealPlanEntryId: resolvedMealPlanEntryId, at };
-    if (!addEntry(draft)) {
+    const added = addEntry(draft);
+    if (!added) {
       haptics.error();
       return false;
+    }
+    if (checkIn) {
+      // Refused permission still logs the food; the alert says why no check-in will arrive.
+      allowCheckInNotification().then(granted => {
+        if (!granted) return;
+        startCheckIn({
+          sourceKind: 'food',
+          sourceId: added.id,
+          subject: measurement.label,
+          about: checkInAbout,
+          minutes: checkInMinutes ?? defaultWaitMinutes('food', measurement.label),
+          from: at,
+          dayKey: added.dayKey,
+        });
+      }).catch(() => {});
+      setCheckIn(false);
+      setCheckInAbout('');
+      setCheckInMinutes(null);
     }
     // Eating a catalog product is a moment the person has certainly tried it:
     // ask how it was if it hasn't been rated (ProductRatingOffer).
@@ -2793,6 +2825,20 @@ export function FoodLogEntrySheet({
               label="Which meal"
               surface="page"
             />
+
+            {!editing && !onPickFood && (
+              <CheckInFields
+                flat
+                kind="food"
+                subject={picked.label}
+                enabled={checkIn}
+                onEnabledChange={setCheckIn}
+                minutes={checkInMinutes}
+                onMinutesChange={setCheckInMinutes}
+                about={checkInAbout}
+                onAboutChange={setCheckInAbout}
+              />
+            )}
 
             {/* Only for a food that is a catalog row (a dish or a bare database
                 food has no pantry entry to update), and not when correcting an
