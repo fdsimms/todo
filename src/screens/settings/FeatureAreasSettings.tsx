@@ -4,6 +4,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsSegments } from './SettingsSegments';
 import { makeSettingsStyles } from './settingsStyles';
 import { SIMPLE_AREAS, SIMPLE_AREA_LABELS, SIMPLE_FEATURES, simpleFeaturesIn } from '../../utils/simpleMode';
 import { DEFAULT_TAB_ROUTES, NAV_MENU_ROWS, type NavDestination } from '../../utils/navHubs';
@@ -44,6 +45,8 @@ export function FeatureAreasSettings() {
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const setSimpleMode = useSettingsStore(s => s.setSimpleMode);
   const tabRoutes = useSettingsStore(s => s.tabRoutes);
+  const reopenLastScreen = useSettingsStore(s => s.reopenLastScreen);
+  const setReopenLastScreen = useSettingsStore(s => s.setReopenLastScreen);
   const setTabSlot = useSettingsStore(s => s.setTabSlot);
   const clearTabSlot = useSettingsStore(s => s.clearTabSlot);
   const resetTabRoutes = useSettingsStore(s => s.resetTabRoutes);
@@ -168,6 +171,24 @@ export function FeatureAreasSettings() {
           />
         </>
       )}
+    </SettingsSection>
+
+    {/* What a cold launch shows. The app has always reopened on the last
+        screen, which nothing said and nothing turned off. */}
+    <SettingsSection
+      label="Open the app on"
+      entryId="openAppOn"
+      footer="Last screen reopens the screen you were on when the app closed. Today always opens Today. This applies the next time the app opens."
+    >
+      <SettingsSegments
+        label="Which screen the app opens on"
+        options={[
+          { value: false, label: 'Today' },
+          { value: true, label: 'Last screen' },
+        ]}
+        selected={reopenLastScreen}
+        onSelect={setReopenLastScreen}
+      />
     </SettingsSection>
     <FirstRunSheet visible={setupOpen} onClose={() => setSetupOpen(false)} rerun />
     <TabSlotPickerSheet

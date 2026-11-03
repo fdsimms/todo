@@ -106,6 +106,7 @@ describe('table definitions', () => {
       'mirroringMode',        // how one phone is being driven
       'grocery_trip_shop_id', // what one device is doing right now
       'tabRoutes',            // an iPad's sidebar and a phone's tab bar differ
+      'reopenLastScreen',     // where this device opens, like the last screen it remembers
       'confirmBeforeDeleting', // how much one device interrupts
     ]) {
       expect(isSyncedSettingKey(key)).toBe(false);

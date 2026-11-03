@@ -1702,6 +1702,44 @@ describe('hideHelpText', () => {
   });
 });
 
+describe('reopenLastScreen', () => {
+  // On by default, as the app has always reopened where it left off, and
+  // `!== 'false'` in initialize so an install that predates the setting does
+  // not start opening on Today.
+  it('defaults on, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().reopenLastScreen).toBe(true);
+  });
+
+  it('reads a stored "false"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'reopenLastScreen' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().reopenLastScreen).toBe(false);
+  });
+
+  it('round-trips through setReopenLastScreen', () => {
+    useSettingsStore.getState().setReopenLastScreen(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('reopenLastScreen', 'false');
+    expect(useSettingsStore.getState().reopenLastScreen).toBe(false);
+  });
+
+  it('keeps recording the last screen while it is off, so turning it back on has somewhere to go', () => {
+    useSettingsStore.getState().setReopenLastScreen(false);
+    useSettingsStore.getState().setLastVisitedScreen('Stats');
+    expect(useSettingsStore.getState().lastVisitedScreen).toBe('Stats');
+    useSettingsStore.getState().setReopenLastScreen(true);
+    expect(useSettingsStore.getState().lastVisitedScreen).toBe('Stats');
+  });
+
+  it('is written back on by a settings reset', () => {
+    useSettingsStore.getState().setReopenLastScreen(false);
+    useSettingsStore.getState().resetToDefaults();
+    expect(dbSetSetting).toHaveBeenCalledWith('reopenLastScreen', 'true');
+  });
+});
+
 describe('tips', () => {
   // On by default, and `!== 'false'` in initialize, so an install that
   // upgrades into the feature actually gets the tips rather than silence.
