@@ -716,7 +716,11 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     if (!bridge) return null;
     const window = Math.max(1, Math.round(days));
     const anchor = addDays(getCurrentDayStart(), -(window - 1));
-    return parseBloodPressureReadings(await bridge.readBloodPressureSeries(anchor.toISOString(), window));
+    const raw = await bridge.readBloodPressureSeries(anchor.toISOString(), window);
+    // "null" is a query that failed (Health locked in a background run, say),
+    // which is not "asked, and nothing came back".
+    if (raw === 'null') return null;
+    return parseBloodPressureReadings(raw);
   },
 
   async syncWeightTargets() {

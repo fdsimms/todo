@@ -325,13 +325,16 @@ export async function writeBloodPressureSample(
 
 /**
  * Every blood pressure reading in the window, as the raw JSON the native side
- * wrote (`[{"at","sys","dia"}]`), or `"[]"` for every reason there is nothing
- * to say. Unparsed for the reason `readActivitySummary` gives: the parse has
- * rules worth testing (`parseBloodPressureReadings`), and tests reach `src/`,
- * not this folder. Nothing is cached.
+ * wrote (`[{"at","sys","dia"}]`). `"[]"` means Health was asked and the window
+ * is empty; `"null"` means it could not be asked (the query failed, the call
+ * rejected, or there is no native half). The request pass must tell those
+ * apart, and the screen reads both as no readings. Unparsed for the reason
+ * `readActivitySummary` gives: the parse has rules worth testing
+ * (`parseBloodPressureReadings`), and tests reach `src/`, not this folder.
+ * Nothing is cached.
  */
 export function readBloodPressureSeries(anchorISO: string, days: number): Promise<string> {
-  return degradeOnReject(() => nativeModule!.readBloodPressureSeries(anchorISO, days), '[]');
+  return degradeOnReject(() => nativeModule!.readBloodPressureSeries(anchorISO, days), 'null');
 }
 
 /**

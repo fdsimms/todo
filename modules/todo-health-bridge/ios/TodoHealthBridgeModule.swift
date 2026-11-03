@@ -1969,7 +1969,16 @@ public class TodoHealthBridgeModule: Module {
           predicate: HKQuery.predicateForSamples(withStart: anchor, end: end, options: .strictStartDate),
           limit: HKObjectQueryNoLimit,
           sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]
-        ) { _, samples, _ in
+        ) { _, samples, error in
+          // A query that failed (Health locked while the phone is, access not
+          // granted yet) has no samples, which is not the same answer as a
+          // window with none in it. "null" says so, and the request pass
+          // treats it as "could not ask" rather than writing a task claiming
+          // nothing was recorded.
+          if samples == nil, error != nil {
+            promise.resolve("null")
+            return
+          }
           let unit = HKUnit.millimeterOfMercury()
           var readings: [(at: Date, sys: Int, dia: Int)] = []
           for case let correlation as HKCorrelation in samples ?? [] {

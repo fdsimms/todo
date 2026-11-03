@@ -36,6 +36,7 @@ let bridge: {
   readWeightSeries: jest.Mock;
   readActivitySummary: jest.Mock;
   readSleepSeries: jest.Mock;
+  readBloodPressureSeries: jest.Mock;
 };
 
 const SLEEP_JSON = JSON.stringify([
@@ -64,6 +65,7 @@ beforeEach(() => {
       .fn()
       .mockResolvedValue([{ start: '2026-01-01T00:00:00.000Z', kilograms: 70 }]),
     readSleepSeries: jest.fn().mockResolvedValue(SLEEP_JSON),
+    readBloodPressureSeries: jest.fn().mockResolvedValue('[]'),
   };
   (healthBridge as jest.Mock).mockReturnValue(bridge);
   useHealthStore.setState({
@@ -471,5 +473,33 @@ describe('a reading this app just wrote', () => {
     useHealthStore.setState({ bloodPressure: null });
     useHealthStore.getState().noteBloodPressureWritten(earlier);
     expect(useHealthStore.getState().bloodPressure).toBeNull();
+  });
+});
+
+describe('readRecentBloodPressure', () => {
+  const ONE = JSON.stringify([{ at: new Date(2026, 0, 1, 8).toISOString(), sys: 125, dia: 77 }]);
+
+  it('answers null without the bridge, which is not the same as no readings', async () => {
+    (healthBridge as jest.Mock).mockReturnValue(null);
+    await expect(useHealthStore.getState().readRecentBloodPressure(7)).resolves.toBeNull();
+  });
+
+  // A failed query used to come back as "[]", so the request pass wrote "Nothing
+  // recorded in Apple Health" over a reading that was there.
+  it('answers null when the read could not be made, not an empty window', async () => {
+    bridge.readBloodPressureSeries.mockResolvedValue('null');
+    await expect(useHealthStore.getState().readRecentBloodPressure(7)).resolves.toBeNull();
+  });
+
+  it('answers an empty array when Health was asked and had nothing', async () => {
+    bridge.readBloodPressureSeries.mockResolvedValue('[]');
+    await expect(useHealthStore.getState().readRecentBloodPressure(7)).resolves.toEqual([]);
+  });
+
+  it('parses the readings in the window', async () => {
+    bridge.readBloodPressureSeries.mockResolvedValue(ONE);
+    const readings = await useHealthStore.getState().readRecentBloodPressure(7);
+    expect(readings).toHaveLength(1);
+    expect(readings?.[0]).toMatchObject({ systolic: 125, diastolic: 77 });
   });
 });
