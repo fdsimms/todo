@@ -89,12 +89,33 @@ export function useProjectActions(project: Project | null, options: Options = {}
     );
   };
 
+  // Asks what to do with the tasks that are left, as Complete does: an archived
+  // project's tasks stay live on Today, which is the surprise when "archive"
+  // meant "put this away".
   const archive = () => {
     if (!project) return;
-    haptics.success();
-    prepare?.();
-    archiveProject(project.id);
-    onEnded?.();
+    const remaining = useTaskStore.getState().tasks.filter(
+      t => t.projectId === project.id && t.parentId === null && !t.completed && !t.archived
+    );
+    const finish = (archiveRemaining: boolean) => {
+      haptics.success();
+      prepare?.();
+      archiveProject(project.id, { archiveRemaining });
+      onEnded?.();
+    };
+    if (remaining.length === 0) {
+      finish(false);
+      return;
+    }
+    Alert.alert(
+      `Archive “${displayTitle()}”?`,
+      `It still has ${remaining.length} open ${remaining.length === 1 ? 'task' : 'tasks'}. They stay on your lists unless you archive them too.`,
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Leave remaining tasks', onPress: () => finish(false) },
+        { text: 'Archive remaining tasks', onPress: () => finish(true) },
+      ],
+    );
   };
 
   // Reopening and unarchiving only flip the flag underneath; the host stays.

@@ -18,7 +18,9 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { allGroups, groupName, isAllowGroup, resolveGroupId } from '../utils/appGroups';
-import { BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, scheduleEditLocked } from '../utils/blockEditLock';
+import {
+  BLOCK_EDIT_LOCKED_MESSAGE, BLOCK_EDIT_LOCKED_TITLE, BLOCK_STARTS_NOW_TITLE, scheduleEditLocked, startsBlockingNowMessage,
+} from '../utils/blockEditLock';
 import {
   WEEKDAYS, formatMinutes, isAllDay, scheduleProblem, type BlockSchedule,
 } from '../utils/blockSchedule';
@@ -150,17 +152,29 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
       name: draft.name,
       enabled: existing?.enabled ?? true,
     };
-    const store = useAppGroupStore.getState();
-    const result = scheduleId ? store.updateSchedule(scheduleId, fields) : store.addSchedule(fields);
-    if (!result.ok) {
-      Alert.alert(
-        result.reason === 'full' ? 'Too many schedules' : 'Can’t save this schedule',
-        result.reason === 'full' ? 'Remove a schedule before adding another.' : result.message,
-      );
-      return;
-    }
-    haptics.success();
-    onClose();
+    const commit = () => {
+      const store = useAppGroupStore.getState();
+      const result = scheduleId ? store.updateSchedule(scheduleId, fields) : store.addSchedule(fields);
+      if (!result.ok) {
+        Alert.alert(
+          result.reason === 'full' ? 'Too many schedules' : 'Can’t save this schedule',
+          result.reason === 'full' ? 'Remove a schedule before adding another.' : result.message,
+        );
+        return;
+      }
+      haptics.success();
+      onClose();
+    };
+    const startsNow = startsBlockingNowMessage(
+      { ...fields, id: scheduleId ?? 'draft', pausedUntil: existing?.pausedUntil ?? null },
+      new Date(),
+      use24HourTime,
+    );
+    if (!startsNow) { commit(); return; }
+    Alert.alert(BLOCK_STARTS_NOW_TITLE, startsNow, [
+      { text: BUTTON_LABEL.cancel, style: 'cancel' },
+      { text: 'Save and block', onPress: commit },
+    ]);
   };
 
   const toggleDay = (day: number) => {

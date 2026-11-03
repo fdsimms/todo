@@ -223,7 +223,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
     <>
       <SettingsSection
         label="App lock"
-        footer={`${syncsAnywhere ? '' : 'All app data stays on this device. '}Opening the app requires ${lockLabel}, with your device passcode as the fallback. Lock again after sets how long you can leave and return without unlocking.`}
+        footer={`${syncsAnywhere ? '' : 'All app data stays on this device. '}Opening the app requires ${lockLabel}, with your device passcode as the fallback. It doesn’t cover widgets or reminders, which can show task titles unless the project is locked. Lock again after sets how long you can leave and return without unlocking.`}
       >
         <SettingsRow
           entryId="appLock"

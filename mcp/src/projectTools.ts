@@ -309,12 +309,13 @@ export function updateProject(
     prior = eventNoonIso(opts.moveTasksFrom!);
     if (!prior) throw new Error(`moveTasksFrom: "${opts.moveTasksFrom}" is not a date I can read.`);
   }
-  // Finishing a project can archive what is left in it, as the app asks when
-  // it is completed with tasks still open. Each through archive_task's own
-  // write, so each is in Activity with its way back.
+  // Finishing or archiving a project can archive what is left in it, as the app
+  // asks when either is done with tasks still open. Without it an archived
+  // project's open tasks stay on Today. Each through archive_task's own write,
+  // so each is in Activity with its way back.
   let archivedRemaining = 0;
   if (opts.archiveRemaining) {
-    if (patch.completed !== true) throw new Error('archiveRemaining goes with completed: true.');
+    if (patch.completed !== true && patch.archived !== true) throw new Error('archiveRemaining goes with completed: true or archived: true.');
     for (const t of replica.tasks().filter(x => x.projectId === id && !x.parentId && !x.completed && !x.archived)) {
       replica.setTaskArchived(t.id, true);
       archivedRemaining += 1;

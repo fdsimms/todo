@@ -69,7 +69,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/beatSound.ts` — playBeatSound
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
 - `src/utils/blankPicker.ts` — isBlankExcluded, blankFits, kitchenEntryItemId, BlankCandidate, BlankChoices, USUAL_CANDIDATE_LIMIT, blankChoices, needsUsing, BlankSuggestion, blankSuggestions, +3 more
-- `src/utils/blockEditLock.ts` — liveGroupIds, groupEditLocked, supergroupEditLocked, reasonGroupLocked, reasonSwitchLocked, appRemovalSwitchLocked, defaultGroupLocked, scheduleEditLocked, groupBlockHint, BLOCK_PICKER_NOTE_TITLE, +4 more
+- `src/utils/blockEditLock.ts` — liveGroupIds, groupEditLocked, supergroupEditLocked, reasonGroupLocked, reasonSwitchLocked, appRemovalSwitchLocked, defaultGroupLocked, scheduleEditLocked, groupBlockHint, BLOCK_PICKER_NOTE_TITLE, +6 more
 - `src/utils/blockOfferAccept.ts` — offerBlockStart
 - `src/utils/blockOfferTasks.ts` — BLOCK_OFFER_TITLE_MAX_LENGTH, BLOCK_OFFER_COINS_MIN, BLOCK_OFFER_COINS_MAX, BLOCK_OFFER_COINS_DEFAULT, BLOCK_OFFER_MINUTES_DEFAULT, BLOCK_OFFER_MINUTE_CHOICES, clampBlockOfferMinutes, clampBlockOfferCoins, blockOfferTitle, describeOfferCoins, +16 more
 - `src/utils/blockSchedule.ts` — BLOCK_SCHEDULES_SETTING, MAX_BLOCK_SCHEDULES, MIN_WINDOW_MINUTES, MAX_SCHEDULE_NAME_LENGTH, readGroupIds, BlockSchedule, ALL_DAYS, WEEKDAYS, cleanScheduleName, windowLengthMinutes, +23 more
@@ -114,7 +114,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/checkInRecording.ts` — StartCheckInInput, allowCheckInNotification, startCheckIn, cancelCheckInFor, answerCheckIn, askCheckIn
 - `src/utils/checkIns.ts` — CHECK_IN_ACTIONS, CHECK_IN_ANSWERS, answerLabel, answerForAction, CHECK_IN_WAIT_PRESETS, DEFAULT_FOOD_WAIT_MINUTES, DEFAULT_MEDICATION_WAIT_MINUTES, suggestedWaitMinutes, defaultWaitMinutes, formatWait, +5 more
 - `src/utils/chipUses.ts` — ChipUses, ChipUseKind, chipUseKey, bumpChipUses, rankByUse, parseChipUses, suggestExistingTags
-- `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, carryClockTime, overdueDayCount, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, dateToHHMM, +1 more
+- `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, carryClockTime, overdueDayCount, hhmmMinutes, effectiveWindowEndTime, formatHHMM, clockTimeToken, formatUntil, +2 more
 - `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, subscribeToCloudKitChanges, addCloudKitChangeListener, cloudKitChangeHandled, cloudKitTransport
 - `src/utils/coinBurst.ts` — BurstPiece, BURST_GRAVITY, burstPieces, burstOffset, burstOpacity
 - `src/utils/columnCap.ts` — WIDE_LIST_ROUTES, DASHBOARD_ROUTES, UNCAPPED_WIDTH, dashboardColumnsFor, columnCapFor
@@ -309,7 +309,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/looseNameMatch.ts` — LOOSE_NAME_WEIGHT, looseNameWeight
 - `src/utils/macMenu.ts` — MenuPlacement, MenuItemSpec, MenuCommandTarget, menuTitleCase, buildMenuItems, menuCommandTarget, sinkShortcuts, shortcutsWithMenuBar, APP_WINDOW_TITLE, MIN_WINDOW_SIZE, +1 more
 - `src/utils/maintenancePasses.ts` — MaintenanceStep, expiryPasses, catchUpPasses, launchCatchUpPasses, retentionPasses, rebuildNotificationQueue
-- `src/utils/manualBlock.ts` — MANUAL_BLOCK_SETTING, MIN_MANUAL_MINUTES, MAX_MANUAL_MINUTES, MANUAL_BLOCK_PRESETS, ManualBlock, manualMinutesProblem, parseManualBlock, newManualBlock, serializeManualBlock, isTimedBlock, +4 more
+- `src/utils/manualBlock.ts` — MANUAL_BLOCK_SETTING, MIN_MANUAL_MINUTES, MAX_MANUAL_MINUTES, MANUAL_BLOCK_PRESETS, ManualBlock, manualMinutesProblem, parseManualBlock, newManualBlock, serializeManualBlock, isTimedBlock, +5 more
 - `src/utils/maps.ts` — DirectionsApp, DirectionsCoordinate, directionsUrl, isMappable
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent, mealEventLink, deleteMealEvent, MealEventSyncPlan, mealEventsAfterSync
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +7 more
@@ -356,7 +356,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, slipAllowanceOf, nextSlipIsFree, lastSlipWasFree, isCleanToday, isFailedToday, slipPatch, undoSlipPatch, +9 more
 - `src/utils/negativeHold.ts` — negativeHoldNow, negativeHoldOffered
 - `src/utils/nfcBridge.ts` — NfcBridge, nfcBridge, isNfcSupported, NfcScanResult, parseScanAnswer, scanKeyTag
-- `src/utils/nfcKey.ts` — NFC_KEYS_SETTING, NFC_KEY_LOCK_SETTING, NfcKeyKind, NfcKey, MAX_NFC_KEYS, MAX_KEY_NAME_LENGTH, normalizeTagUid, newLinkToken, normalizeLinkToken, keyLinkUrl, +10 more
+- `src/utils/nfcKey.ts` — NFC_KEYS_SETTING, NFC_KEY_LOCK_SETTING, NfcKeyKind, NfcKey, MAX_NFC_KEYS, MAX_KEY_NAME_LENGTH, normalizeTagUid, newLinkToken, normalizeLinkToken, keyLinkUrl, +12 more
 - `src/utils/nicknames.ts` — nicknamesOf, primaryNickname
 - `src/utils/notificationTapRoute.ts` — NotificationTapData, NotificationTapRoute, routeNotificationTap
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
@@ -389,7 +389,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pastWorkout.ts` — PastSetText, PastExerciseDraft, PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MIN_MINUTES, PAST_WORKOUT_MAX_MINUTES, PastWorkoutProblem, nextSetText, newSupersetKey, withoutPastExercise, joinPastSuperset, +4 more
 - `src/utils/pastedLines.ts` — cleanPastedLines
 - `src/utils/patchNotes.ts` — PatchNote
-- `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, penaltyShieldWanted
+- `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipUndoLabel, penaltyChipLabel, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, +1 more
 - `src/utils/pendingCompletionDate.ts` — PENDING_COMPLETION_DATE_WINDOW_MS, setPendingCompletionDate, claimPendingCompletionDate
 - `src/utils/pendingHealthFoodWrites.ts` — runPendingHealthFoodWrites
 - `src/utils/pendingHealthWorkoutWrites.ts` — runPendingHealthWorkoutWrites

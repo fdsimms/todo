@@ -288,6 +288,21 @@ describe('the project writes, against a real database', () => {
     expect(real.tasks().filter(t => t.projectId === id && !t.archived)).toHaveLength(0);
   });
 
+  it('archives a project and what is left in it when asked, and leaves the tasks live otherwise', () => {
+    const left = plan();
+    const result = tools.updateProject(real, left, { archived: true });
+    expect(result.archivedRemaining).toBeUndefined();
+    expect(real.tasks().filter(t => t.projectId === left && !t.archived)).toHaveLength(2);
+    const taken = plan();
+    expect(tools.updateProject(real, taken, { archived: true }, { archiveRemaining: true }).archivedRemaining).toBe(2);
+    expect(real.tasks().filter(t => t.projectId === taken && !t.archived)).toHaveLength(0);
+  });
+
+  it('refuses archiveRemaining on an update that neither completes nor archives', () => {
+    const id = plan();
+    expect(() => tools.updateProject(real, id, { title: 'Party' }, { archiveRemaining: true })).toThrow(/completed: true or archived: true/);
+  });
+
   it('deletes a project, leaving or taking its tasks, restorable from Activity', () => {
     const id = plan();
     expect(tools.deleteProject(real, id)).toMatchObject({ tasksDeleted: 0, tasksLeftInNoProject: 2 });

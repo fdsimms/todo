@@ -587,10 +587,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const end = () => {
     haptics.tap();
     Alert.alert(
-      'End this workout?',
-      'Close keeps it running, and Workouts has it under In progress. Discard deletes it and every set logged in it.',
+      'Leave workout mode?',
+      'The workout keeps running, and Workouts has it under In progress. To save it, tap Finish. Discard deletes it and every set logged in it.',
       [
-        { text: 'Close', onPress: close },
+        { text: 'Leave it running', onPress: close },
         {
           text: 'Discard',
           style: 'destructive',
@@ -718,11 +718,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <SheetHeaderButton
-            label="End"
+            label="Leave"
             role="cancel"
             minWidth={64}
             onPress={end}
-            accessibilityLabel="End or close the workout"
+            accessibilityLabel="Leave workout mode"
           />
           <View style={styles.headerTitle}>
             <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>

@@ -133,6 +133,18 @@ function joinNames(names: readonly string[]): string {
  * and until when. `endsAt` is the formatted clock time, null for an open-ended
  * block or one whose time couldn't be read.
  */
+/**
+ * What it takes to end a block before its time, for the sheet that starts one.
+ * Shown as a plain line, never `HelpText`: it is the consequence of the Start
+ * button under it, and Hide help text must not remove it. The open-ended length
+ * has no end of its own, so it says so in so many words.
+ */
+export function describeManualBlockEnding(minutes: number | null): string {
+  return minutes === null
+    ? 'There is no end button for this one. A key tag or the emergency button ends it early, and that is saved in the record.'
+    : 'Ending a block early takes a key tag or the emergency button, and is saved in the record.';
+}
+
 export function describeManualBlock(minutes: number | null, groupNames: readonly string[], endsAt: string | null): string {
   const what = groupNames.length > 0 ? `Blocks ${joinNames(groupNames)}` : 'Blocks apps';
   if (minutes === null) return `${what} until you end it.`;

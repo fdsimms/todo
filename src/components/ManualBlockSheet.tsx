@@ -5,14 +5,13 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { MinutesSegments } from './MinutesSegments';
 import { AppGroupChecklist } from './AppGroupChecklist';
-import { HelpText } from './HelpText';
 import { PressableScale } from './PressableScale';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import type { AppGroup } from '../utils/appGroups';
 import {
-  MANUAL_BLOCK_PRESETS, MAX_MANUAL_MINUTES, MIN_MANUAL_MINUTES, describeDuration, describeManualBlock,
+  MANUAL_BLOCK_PRESETS, MAX_MANUAL_MINUTES, MIN_MANUAL_MINUTES, describeDuration, describeManualBlock, describeManualBlockEnding,
 } from '../utils/manualBlock';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -102,7 +101,7 @@ export function ManualBlockSheet({ visible, groups, initialIds, formatEnd, onClo
           >
             <Text style={styles.startText}>Start block</Text>
           </PressableScale>
-          <HelpText style={styles.hint}>Ending a block early takes a key tag or the emergency button, and is saved in the record.</HelpText>
+          <Text style={styles.hint}>{describeManualBlockEnding(minutes)}</Text>
         </ScrollView>
       </View>
     </CardSheet>

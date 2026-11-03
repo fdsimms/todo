@@ -14,9 +14,12 @@ import Foundation
 // src/utils/widgetSync.ts). The moment travels with it because "6 hours apart"
 // is measured from when the dose was taken, not from when the app got round
 // to recording it. The app fills in the amount from the last dose recorded,
-// the same as the Medications screen's quick button, and checks the limit and
-// the supply on the way in. Opening the app is what lets those two answer
-// straight away rather than whenever it is next opened.
+// the same as the Medications screen's quick button, and records it through
+// `recordDose`, so a supply that just ran low offers a refill. It asks no limit
+// question: the person already asked for the dose, and a question after the fact
+// can't un-take it (see processPendingDoses). Opening the app is what lets that
+// happen straight away rather than whenever it is next opened. The dialog says
+// what is about to be recorded, since the amount is the app's to fill in.
 private enum MedicationIndexStore {
     // Must match the same literals in TodoWidgetBridgeModule.swift, which
     // writes the first and drains the second. File-scoped `private`, so each
@@ -150,7 +153,7 @@ struct LogMedicationIntent: AppIntent {
         self.medication = medication
     }
 
-    func perform() async throws -> some IntentResult {
+    func perform() async throws -> some IntentResult & ProvidesDialog {
         MedicationIndexStore.append(
             MedicationIndexStore.PendingDose(
                 id: medication.id,
@@ -158,6 +161,11 @@ struct LogMedicationIntent: AppIntent {
                 at: ISO8601DateFormatter().string(from: Date())
             )
         )
-        return .result()
+        // ProvidesDialog and IntentDialog(_: LocalizedStringResource) are iOS 16,
+        // and `result(dialog:)` is not throwing or async (Apple's AppIntents docs).
+        // The amount isn't known here (the app repeats the last one), so the line
+        // says that rather than a number.
+        let message: LocalizedStringResource = "Logging \(medication.name), the same amount as last time."
+        return .result(dialog: IntentDialog(message))
     }
 }

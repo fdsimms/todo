@@ -1,0 +1,1 @@
+{ "message": "When logging a slip starts an app block, the undo bar now says the apps stay blocked and until when. Undoing a slip never lifted the block.", "date": "2026-11-02" }
