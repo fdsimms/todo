@@ -997,9 +997,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               // dumbbell or a machine has nothing to load. A pound lifter who never set an
               // inventory gets the pound default (`effectivePlateInventory`).
               const inventory = effectivePlateInventory(plateInventory, unit);
-              const plate = openSet && viewedInfo && isPlateLoaded(viewedInfo.equipment) && kind === 'weight_reps' && openSet.weightKg
-                ? plateLoad(openSet.weightKg, barKgFor(withGymBar(viewedInfo, gymSetting).barKg, inventory, viewedInfo.equipment, unit), inventory, unit)
+              const plateFor = (s: WorkoutSet) => viewedInfo && isPlateLoaded(viewedInfo.equipment) && kind === 'weight_reps' && s.weightKg
+                ? plateLoad(s.weightKg, barKgFor(withGymBar(viewedInfo, gymSetting).barKg, inventory, viewedInfo.equipment, unit), inventory, unit)
                 : null;
+              const plate = openSet ? plateFor(openSet) : null;
+              // The first set not yet checked off shows its plates under its row without a tap, so
+              // the line is found by use rather than by knowing the set number opens a tray. The
+              // open set's tray carries its own copy, so it isn't drawn twice.
+              const nextSet = viewed.sets.find(s => s.completedAt === null) ?? null;
+              const nextPlate = nextSet && nextSet.id !== openSet?.id ? plateFor(nextSet) : null;
 
               // Last time, for this exercise: one read per exercise shown, not per row.
               const previous = session ? useWorkoutStore.getState().lastTimeFor(viewed.exerciseId, session.id) : [];
@@ -1332,6 +1338,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           </CheckPop>
                         </TouchableOpacity>
                       </View>
+                      {!!nextPlate && nextSet?.id === set.id && (
+                        <View style={styles.nextPlates}>
+                          <PlateLine load={nextPlate} unit={unit} />
+                        </View>
+                      )}
                       {isTray && (
                         <View style={styles.tray}>
                           <SegmentedControl
@@ -1861,6 +1872,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   checkDone: { backgroundColor: colors.done, borderColor: colors.done },
   tray: { paddingHorizontal: spacing.md, paddingBottom: spacing.smd, gap: spacing.smd },
+  // Lines up under the "Previous" column, past the set number's column.
+  nextPlates: { paddingLeft: spacing.md + 34 + spacing.sm, paddingRight: spacing.md, paddingBottom: spacing.smd },
   deletePanel: { width: 88, alignSelf: 'stretch', backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center', gap: spacing.xxs },
   deleteText: { color: colors.onFill, fontSize: font.sm, fontWeight: fontWeight.semibold },
   adds: {
