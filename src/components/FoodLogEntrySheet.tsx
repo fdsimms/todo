@@ -42,6 +42,8 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
 import { subDays } from 'date-fns/subDays';
 import { addCustomPortion, catalogPanelWrite, nutritionFor } from '../utils/foodNutrition';
+import { foodListEmptyNote } from '../utils/foodListEmptyNote';
+import { parseGroceryInput } from '../utils/groceryParse';
 import {
   amountExample,
   amountHint,
@@ -487,6 +489,32 @@ function databaseCandidate(key: string, label: string, panel: FoodNutrition): Ca
   };
 }
 
+/**
+ * A catalog row as a candidate, carrying the panel that answers for it.
+ *
+ * One builder for the list's own rows and for a food whose nutrition was just
+ * typed in, so the candidate chosen straight after typing is the same one the
+ * list would have offered next time. `panelItemId` is the row itself: its
+ * figures are the ones a weighed portion or a correction writes back to.
+ */
+function itemCandidate(item: GroceryItem, panel: FoodNutrition): Candidate {
+  return {
+    key: `i:${item.id}`,
+    label: item.name,
+    detail: null,
+    kind: 'food',
+    panel,
+    recipeId: null,
+    itemId: item.id,
+    productId: null,
+    panelItemId: item.id,
+    fromDatabase: false,
+    servingPanel: null,
+    cookedGrams: null,
+    dishServings: null,
+  };
+}
+
 // What the store bindings read before the sheet has ever opened.
 const NO_ITEMS: GroceryItem[] = [];
 const NO_PRODUCTS: ItemProduct[] = [];
@@ -632,6 +660,12 @@ export function FoodLogEntrySheet({
   const [catalogPickOpen, setCatalogPickOpen] = useState(false);
   // The label panel for the food on screen, opened from "Edit nutrition facts".
   const [factsOpen, setFactsOpen] = useState(false);
+  // The name a food is being typed in under, from "Add nutrition" on a search
+  // that found nothing. A name rather than a flag, so editing the search field
+  // while the sheet is up can't change what the figures are filed under.
+  const [typedFactsName, setTypedFactsName] = useState<string | null>(null);
+  // Held through the sheet's fade, so its title doesn't blank as it closes.
+  const shownTypedFactsName = useSheetSubject(typedFactsName);
   // What was typed for each of a dish's amount-varies lines, keyed by the
   // recipe ingredient's own id. See `varyingLines` below.
   const [varyingEntries, setVaryingEntries] = useState<Record<string, { number: string; unit: string | null }>>({});
@@ -746,21 +780,7 @@ export function FoodLogEntrySheet({
       if (isNonFoodAisle(item.aisle, nonFoodAisles)) continue;
       const panel = nutritionFor(item);
       if (!panel) continue;
-      out.push({
-        key: `i:${item.id}`,
-        label: item.name,
-        detail: null,
-        kind: 'food',
-        panel,
-        recipeId: null,
-        itemId: item.id,
-        productId: null,
-        panelItemId: item.id,
-        fromDatabase: false,
-        servingPanel: null,
-        cookedGrams: null,
-        dishServings: null,
-      });
+      out.push(itemCandidate(item, panel));
     }
     for (const recipe of recipes) {
       const dish = recipeNutrition(recipe, items, itemProducts, recipesById, UNANSWERED, 1, swaps);
@@ -1469,19 +1489,64 @@ export function FoodLogEntrySheet({
       link(item.id);
       return;
     }
+    askKeepOrReplace(item, () => link(null), () => { setItemNutrition(item.id, panel); link(item.id); });
+  };
+
+  /**
+   * The question for a catalog row that already states its own figures when
+   * other figures are about to be filed against it. Keeping what it has is
+   * offered first, for the reason `fileInCatalog` gives; filing a database
+   * food and typing a label in by hand both ask it, in the same words.
+   */
+  const askKeepOrReplace = (item: GroceryItem, keep: () => void, replace: () => void) => {
     Alert.alert(
       `${item.name} already has figures`,
       `Keep the ones already on ${item.name}, or replace them with these? Either way this entry is filed as ${item.name}.`,
       [
         { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        { text: 'Keep its own', onPress: () => link(null) },
-        {
-          text: 'Replace',
-          style: 'destructive',
-          onPress: () => { setItemNutrition(item.id, panel); link(item.id); },
-        },
+        { text: 'Keep its own', onPress: keep },
+        { text: 'Replace', style: 'destructive', onPress: replace },
       ],
     );
+  };
+
+  // ==== typing nutrition for a food nothing here has figures for ====
+  /**
+   * Opens the label form for what is typed in the search field, named the way
+   * the catalog will name it ("2 lb margarine" files under "margarine", the
+   * quantity left for the amount step).
+   */
+  const openTypedFacts = () => {
+    const typed = query.trim();
+    if (!typed) return;
+    haptics.tap();
+    Keyboard.dismiss();
+    setTypedFactsName(parseGroceryInput(typed).name.trim() || typed);
+  };
+
+  /**
+   * Files the typed label on a catalog row (minting one off the shopping list
+   * when the name is new, as `fileAsNewItem` does) and goes straight to the
+   * amount step for it, so typing a food's nutrition is a step on the way to
+   * logging it rather than a trip out and back. A name that already has
+   * figures asks first, the same question a database food asks.
+   */
+  const saveTypedFacts = (panel: FoodNutrition | null) => {
+    const name = typedFactsName;
+    setTypedFactsName(null);
+    // Nothing typed is the same as Cancel.
+    if (!name || !panel) return;
+    const item = ensureCatalogItem(name);
+    if (!item) { haptics.error(); return; }
+    const verdict = catalogPanelWrite(item.nutrition, panel);
+    if (verdict === 'refuse') { haptics.error(); return; }
+    const take = () => {
+      setItemNutrition(item.id, panel);
+      haptics.success();
+      choose(itemCandidate(item, panel));
+    };
+    if (verdict === 'write') { take(); return; }
+    askKeepOrReplace(item, () => choose(itemCandidate(item, item.nutrition ?? panel)), take);
   };
 
   /**
@@ -2205,18 +2270,16 @@ export function FoodLogEntrySheet({
   // first, since it is about everything typed, then the database's matches.
   const dbRows = dbShowAll ? db.ranked : db.ranked.slice(0, DB_ROWS_SHOWN);
   const hasQuery = query.trim() !== '';
-  // Said about the catalog when logged-before rows are showing above, so it
-  // doesn't claim there is nothing to log while offering something to log.
-  // Without a key the database button can only lead to Settings, so the next
-  // step is the key, not the search.
-  const lookupHint = hasFdcKey
-    ? 'Search a food database for it, or add nutrition to a grocery item.'
-    : 'To search a food database, add a free FoodData Central key in Settings. You can also add nutrition to a grocery item.';
-  const emptyListNote = unfiguredRecipes.length > 0
-    ? `${unfiguredRecipes.length === 1 ? `${unfiguredRecipes[0]} has no figures yet` : `${unfiguredRecipes.length} matching recipes have no figures yet`}. Too few of its ingredients have nutrition to work out a total. Add nutrition to more of them, or describe it with Estimate.`
-    : candidates.length === 0
-    ? `${helpings.length > 0 ? 'Nothing in your catalog has figures yet' : 'Nothing has figures yet'}. A food can be logged once it has nutrition. ${hasQuery ? lookupHint : 'Type a food above to search a food database, or add nutrition to a grocery item.'}`
-    : `${helpings.length > 0 ? 'Nothing in your catalog matches' : 'No matching food'}. Only foods and recipes with nutrition can be logged. ${hasQuery ? lookupHint : ''}`.trim();
+  // What the note says (and only names the offers that are on screen) is
+  // `foodListEmptyNote`, so it is tested and can't drift from the buttons.
+  const emptyListNote = foodListEmptyNote({
+    unfiguredRecipes,
+    anyLoggable: candidates.length > 0,
+    hasHelpings: helpings.length > 0,
+    query,
+    hasFdcKey,
+    canEstimate: !!canEstimate,
+  });
   const dbStale = dbOpen && !!db.searchedFor && hasQuery && query.trim() !== db.searchedFor;
   // The way past the foods this app already has figures for, offered as the
   // first rows of the list once there is text to send. Always offered apart
@@ -2234,8 +2297,19 @@ export function FoodLogEntrySheet({
   }
   if (onSavedMeal) startTiles.push({ label: 'Log a saved meal', icon: 'bookmark-outline', onPress: () => { haptics.tap(); Keyboard.dismiss(); onSavedMeal(); } });
   const offerEstimate = hasQuery && !!canEstimate && !estimateOpen;
-  const lookupOffers = offerDatabase || offerEstimate ? (
+  // "Add nutrition" is always offered once there is text: the list holds only
+  // foods that already have nutrition, and typing the label in is the one way
+  // to a new food that needs neither a key nor a model. It has no results of
+  // its own to leave, unlike the other two.
+  const lookupOffers = hasQuery ? (
     <View style={styles.lookupOffers}>
+      <InlineAction
+        icon="create-outline"
+        label="Add nutrition"
+        onPress={openTypedFacts}
+        style={styles.lookupOffer}
+        accessibilityLabel={`Add the nutrition of ${query.trim()} from its label`}
+      />
       {offerDatabase && (
         <InlineAction
           icon="search-outline"
@@ -3068,6 +3142,15 @@ export function FoodLogEntrySheet({
         nutrition={null}
         onClose={() => setFiguresLineId(null)}
         onSave={next => { if (figuresLine) writeLinePanel(figuresLine, next); }}
+      />
+      {/* Inside this Modal for the same reason: the search it was typed from
+          is held by this sheet and would be lost with it. */}
+      <NutritionPanelSheet
+        visible={typedFactsName !== null}
+        foodName={shownTypedFactsName ?? ''}
+        nutrition={null}
+        onClose={() => setTypedFactsName(null)}
+        onSave={saveTypedFacts}
       />
       {/* Inside this Modal, not beside it: it is raised from a sheet that is
           already presenting. */}
