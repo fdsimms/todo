@@ -7,7 +7,7 @@
 //   makeStyles              styles, at the bottom
 //
 // The small components above TodayScreen (SectionHeader, LaterTodaySection,
-// ExpiredSection, …) are its section furniture and are declared at module level.
+// HeldBackSection, …) are its section furniture and are declared at module level.
 import React, { useState, useCallback, useMemo, useEffect, useRef, useOptimistic, startTransition } from 'react';
 import {
   View,
@@ -63,6 +63,14 @@ import {
   type TodayListItem,
   type LaterTodaySectionData,
 } from '../utils/taskGrouping';
+import {
+  HELD_BACK_COPY,
+  heldBackGroups,
+  heldBackHasHeadings,
+  heldBackIcon,
+  heldBackToggleText,
+  type HeldBackGroup,
+} from '../utils/heldBack';
 import { liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { useDemoStore } from '../store/useDemoStore';
 import {
@@ -564,7 +572,7 @@ function VacationHiddenSection({
 // window that hasn't opened, or a daily target you're keeping up with (which
 // is also how a unit gets logged at a moment nothing asked for it: the rows
 // here keep their meters, and one tap logs without sending the row anywhere).
-// Mirrors ExpiredSection below: collapsed and deemphasized by default, expands
+// Mirrors HeldBackSection below: collapsed and deemphasized by default, expands
 // in place to show the tasks, sub-grouped by time segment
 // (Morning/Afternoon/Evening) the same way the Later screen sub-groups by
 // segment within a day. A target has no segment, so it sits in the headerless
@@ -624,25 +632,32 @@ function LaterTodaySection({
   );
 }
 
-// Collapsible reveal for tasks whose time window has closed. Stays put until
-// the user deletes it (or, for a recurring task, skips it) — expiring never
-// deletes automatically unless the "auto-remove" setting is on.
-function ExpiredSection({
-  tasks,
+// Collapsible reveal for the tasks Today is holding back for a reason that will
+// pass: a time window that has closed (it stays until it is deleted or, for a
+// repeating task, skipped, since expiring never deletes unless "auto-remove" is
+// on), a day with room (slot-in), or another task (Waits for). A held task is
+// hidden from every list on Today, so without this nothing said where it had
+// gone: the Stuck screen holds the blocked ones, but only if you already knew
+// to look. One footer for all of them, collapsed by default; opened, each
+// reason is named above its rows once there is more than one (see heldBack.ts).
+function HeldBackSection({
+  groups,
   expanded,
   onToggle,
-  renderExpiredTask,
+  renderTask,
   styles,
   colors,
 }: {
-  tasks: Task[];
+  groups: HeldBackGroup<Task>[];
   expanded: boolean;
   onToggle: () => void;
-  renderExpiredTask: (task: Task) => React.ReactNode;
+  renderTask: (task: Task) => React.ReactNode;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
-  if (tasks.length === 0) return null;
+  const toggleText = heldBackToggleText(groups, expanded);
+  if (toggleText === null) return null;
+  const headings = heldBackHasHeadings(groups);
   return (
     <View style={styles.hiddenSection}>
       <TouchableOpacity
@@ -650,93 +665,22 @@ function ExpiredSection({
         onPress={onToggle}
         activeOpacity={interaction.activeOpacity}
       >
-        <Ionicons name="time-outline" size={13} color={colors.textTertiary} />
-        <Text style={styles.hiddenToggleText}>
-          {expanded ? 'Hide' : 'Show'} {tasks.length} expired
-        </Text>
+        <Ionicons name={heldBackIcon(groups)} size={13} color={colors.textTertiary} />
+        <Text style={styles.hiddenToggleText}>{toggleText}</Text>
         <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
       </TouchableOpacity>
-      {expanded && tasks.map(task => (
-        <React.Fragment key={task.id}>{renderExpiredTask(task)}</React.Fragment>
-      ))}
-    </View>
-  );
-}
-
-// Collapsible reveal for tasks the slot-in pass is holding back until a day
-// with room. Shaped like ExpiredSection and sat beside it, so a held task is one
-// tap from the list without a block of its own at the top of Today.
-function SlotWaitingSection({
-  tasks,
-  expanded,
-  onToggle,
-  renderWaitingTask,
-  styles,
-  colors,
-}: {
-  tasks: Task[];
-  expanded: boolean;
-  onToggle: () => void;
-  renderWaitingTask: (task: Task) => React.ReactNode;
-  styles: ReturnType<typeof makeStyles>;
-  colors: Colors;
-}) {
-  if (tasks.length === 0) return null;
-  return (
-    <View style={styles.hiddenSection}>
-      <TouchableOpacity
-        style={styles.hiddenToggle}
-        onPress={onToggle}
-        activeOpacity={interaction.activeOpacity}
-      >
-        <Ionicons name="hourglass-outline" size={13} color={colors.textTertiary} />
-        <Text style={styles.hiddenToggleText}>
-          {expanded ? 'Hide' : 'Show'} {tasks.length} waiting for a lighter day
-        </Text>
-        <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
-      </TouchableOpacity>
-      {expanded && tasks.map(task => (
-        <React.Fragment key={task.id}>{renderWaitingTask(task)}</React.Fragment>
-      ))}
-    </View>
-  );
-}
-
-// Collapsible reveal for tasks held back by another task (Waits for). A blocked
-// task is hidden from every list on Today, so without this nothing said where it
-// had gone: the Stuck screen holds them, but only if you already knew to look.
-// Shaped like the two sections above it, for the same reason they are alike.
-function WaitingOnTaskSection({
-  tasks,
-  expanded,
-  onToggle,
-  renderWaitingTask,
-  styles,
-  colors,
-}: {
-  tasks: Task[];
-  expanded: boolean;
-  onToggle: () => void;
-  renderWaitingTask: (task: Task) => React.ReactNode;
-  styles: ReturnType<typeof makeStyles>;
-  colors: Colors;
-}) {
-  if (tasks.length === 0) return null;
-  return (
-    <View style={styles.hiddenSection}>
-      <TouchableOpacity
-        style={styles.hiddenToggle}
-        onPress={onToggle}
-        activeOpacity={interaction.activeOpacity}
-      >
-        <Ionicons name="pause-circle-outline" size={13} color={colors.textTertiary} />
-        <Text style={styles.hiddenToggleText}>
-          {expanded ? 'Hide' : 'Show'} {tasks.length} waiting on another task
-        </Text>
-        <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
-      </TouchableOpacity>
-      {expanded && tasks.map(task => (
-        <React.Fragment key={task.id}>{renderWaitingTask(task)}</React.Fragment>
+      {expanded && groups.map(group => (
+        <View key={group.kind}>
+          {headings && (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionHeaderText}>{HELD_BACK_COPY[group.kind].heading} {group.tasks.length}</Text>
+              <SpotlightScrim />
+            </View>
+          )}
+          {group.tasks.map(task => (
+            <React.Fragment key={task.id}>{renderTask(task)}</React.Fragment>
+          ))}
+        </View>
       ))}
     </View>
   );
@@ -968,6 +912,10 @@ export function TodayScreen() {
   const expiredTasks = useTaskStore(useShallow(s => (showingToday ? s.expiredTasks() : NO_TASKS)));
   const slotWaitingTasks = useTaskStore(useShallow(s => (showingToday ? s.slotWaitingTasks() : NO_TASKS)));
   const waitingOnTasks = useTaskStore(useShallow(s => (showingToday ? s.waitingTasks() : NO_TASKS)));
+  const heldBack = useMemo(
+    () => heldBackGroups({ expired: expiredTasks, slot: slotWaitingTasks, waitingOn: waitingOnTasks }),
+    [expiredTasks, slotWaitingTasks, waitingOnTasks],
+  );
   const vacationHiddenTasks = useTaskStore(
     useShallow(s => (showingToday || viewMode === 'later' ? s.vacationHiddenTasks() : NO_TASKS)),
   );
@@ -1298,9 +1246,9 @@ export function TodayScreen() {
     if (showingToday && pinnedTasks.length === 0) setOthersHidden(false);
   }, [showingToday, pinnedTasks.length]);
   const [showHidden, setShowHidden] = useState(false);
-  const [showExpired, setShowExpired] = useState(false);
-  const [showSlotWaiting, setShowSlotWaiting] = useState(false);
-  const [showWaitingOn, setShowWaitingOn] = useState(false);
+  // One footer for everything held back (expired, waiting for a lighter day,
+  // waiting on another task), so one flag.
+  const [showHeldBack, setShowHeldBack] = useState(false);
   // Persisted: folding a section shut is a statement about how you want the
   // list to look, and it used to be forgotten on every cold start. Kept as a
   // Set here (the three call sites below all ask "is this one collapsed") and
@@ -4853,46 +4801,16 @@ export function TodayScreen() {
         />
       )}
       {viewMode === 'today' && (
-        <ExpiredSection
-          tasks={expiredTasks}
-          expanded={showExpired}
+        <HeldBackSection
+          groups={heldBack}
+          expanded={showHeldBack}
           onToggle={() => {
             haptics.tap();
             animateLayout();
             setExpandedTaskId(null);
-            setShowExpired(v => !v);
+            setShowHeldBack(v => !v);
           }}
-          renderExpiredTask={renderHiddenTask}
-          styles={styles}
-          colors={colors}
-        />
-      )}
-      {viewMode === 'today' && (
-        <SlotWaitingSection
-          tasks={slotWaitingTasks}
-          expanded={showSlotWaiting}
-          onToggle={() => {
-            haptics.tap();
-            animateLayout();
-            setExpandedTaskId(null);
-            setShowSlotWaiting(v => !v);
-          }}
-          renderWaitingTask={renderHiddenTask}
-          styles={styles}
-          colors={colors}
-        />
-      )}
-      {viewMode === 'today' && (
-        <WaitingOnTaskSection
-          tasks={waitingOnTasks}
-          expanded={showWaitingOn}
-          onToggle={() => {
-            haptics.tap();
-            animateLayout();
-            setExpandedTaskId(null);
-            setShowWaitingOn(v => !v);
-          }}
-          renderWaitingTask={renderHiddenTask}
+          renderTask={renderHiddenTask}
           styles={styles}
           colors={colors}
         />

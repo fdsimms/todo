@@ -210,9 +210,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/followUpTask.ts` — MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N, canHoldFollowUpTask, FollowUpTaskRule, followUpTaskRule, FollowUpTaskEndRule, repeatHasEnd, followUpTaskEndRule, advanceFollowUpTaskTally, FollowUpTaskSuppression, +13 more
 - `src/utils/foodCapture.ts` — CaptureMode, captureModes, captureHint, CAPTURE_MODE_LABEL, resolveCaptureMode
 - `src/utils/foodKinds.ts` — FOOD_KINDS, FOOD_KIND_LABELS, guessFoodKinds, foodKindsOf, isFoodKind, parseFoodKinds, normalizeFoodKinds, serializeFoodKinds, describeFoodKinds
-- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, servingMeaning, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, +58 more
 - `src/utils/foodListEmptyNote.ts` — FoodListEmptyNoteInput, foodLookupHint, foodListEmptyNote
-- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, servingMeaning, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, +57 more
+- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, servingMeaning, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, +58 more
 - `src/utils/foodLogEntry.ts` — buildFoodLogEntry
 - `src/utils/foodLogExport.ts` — FOOD_LOG_EXPORT_COLUMNS, foodLogExportCsv, foodLogExportFileName, foodLogExportSummary
 - `src/utils/foodLogRecents.ts` — FoodRecency, creditedKeys, foodLogRecency, foodLastAmounts, rankByRecency, USUAL_FOR_SLOT_LIMIT, USUAL_FOR_SLOT_DAYS, usualForSlot, sameMealYesterday, entriesCalories, +7 more
@@ -259,6 +258,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/healthWorkoutSync.ts` — WORKOUT_HEALTH_ACTIVITY, PENDING_WORKOUT_WRITE_MAX_AGE_DAYS, WATCH_WORKOUT_WAIT_MINUTES, workoutSpanWritable, pendingWorkoutWriteAction, describedWorkoutHealthOffer, workoutHealthWriteOn, WorkoutWriteResult, logWorkoutToHealth, retractWorkoutFromHealth, +3 more
 - `src/utils/healthWorkouts.ts` — HEALTH_WORKOUT_ACTIVITIES, HealthWorkoutActivity, HEALTH_WORKOUT_ACTIVITY_LABEL, HealthWorkout, parseHealthWorkouts, readHealthWorkouts
 - `src/utils/heartRateZones.ts` — HEART_RATE_ZONE_SHARES, AGE_ESTIMATE_BASE, MAX_HEART_RATE_RANGE, MAX_READING_GAP_SECONDS, MaxHeartRate, parseMaxHeartRate, resolveMaxHeartRate, describeMaxHeartRate, describeZoneBasis, HeartRateZone, +11 more
+- `src/utils/heldBack.ts` — HeldBackKind, HeldBackGroup, HeldBackCopy, HELD_BACK_COPY, heldBackGroups, heldBackTotal, heldBackHasHeadings, heldBackToggleText, heldBackIcon
 - `src/utils/hiddenEvents.ts` — HiddenEvent, hiddenEventKey, hiddenEventFromEvent, isHiddenEventStale, pruneStaleHiddenEvents
 - `src/utils/holidays.ts` — HolidaySet, HOLIDAY_SETS, HOLIDAY_SET_LABELS, Holiday, HolidayConfig, holidaysInYear, holidayOn, hasAnyHolidays, nextHoliday, parseHolidaySet, +1 more
 - `src/utils/httpSyncTransport.ts` — HTTP_SYNC_SOURCE, SYNC_REQUEST_TIMEOUT_MS, SYNC_BODY_TIMEOUT_MS, HttpSyncConfig, isHttpSyncConfigured, httpSyncTransport, readPullBody
