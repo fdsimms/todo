@@ -124,6 +124,16 @@ export function renameSavedPlace(places: readonly SavedPlace[], id: string, name
 }
 
 /**
+ * Whether `name` is another place's name (a loose match, `savedPlaceKey`),
+ * which is what `editSavedPlace` refuses on. `id` is the place being edited, or
+ * null for a new one, which has no row of its own to ignore.
+ */
+export function savedPlaceNameTaken(places: readonly SavedPlace[], id: string | null, name: string): boolean {
+  const key = savedPlaceKey(name);
+  return !!key && places.some(p => p.id !== id && savedPlaceKey(p.name) === key);
+}
+
+/**
  * Rewrites one place's name, address and pin. Refused (list unchanged) for an
  * empty name or address, or a name another place already has. The pin is
  * replaced, not merged: an address typed over the old one no longer means the
@@ -133,7 +143,7 @@ export function editSavedPlace(places: readonly SavedPlace[], id: string, input:
   const name = input.name.trim();
   const text = input.text.trim();
   const key = savedPlaceKey(name);
-  if (!key || !text || places.some(p => p.id !== id && savedPlaceKey(p.name) === key)) return [...places];
+  if (!key || !text || savedPlaceNameTaken(places, id, name)) return [...places];
   return places.map(p => (p.id === id
     ? {
       ...p, name, text,

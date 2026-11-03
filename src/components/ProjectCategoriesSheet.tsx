@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
-  Alert,
   Keyboard,
   View,
   Text,
@@ -21,6 +20,8 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { InlineAction } from './InlineAction';
+import { FieldError } from './FieldError';
+import { projectCategoryTakenBy } from '../utils/nameTaken';
 import { EmptyState } from './EmptyState';
 import { SortableList } from './SortableList';
 import { confirmDelete } from '../utils/confirmDelete';
@@ -146,6 +147,15 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     setDraft(name);
   };
 
+  // What each open field says about what is typed in it, as it is typed, from
+  // the rule the store refuses on (`projectCategoryTakenBy`, which ignores
+  // case). The renamed row is not a clash with itself, so re-casing its own
+  // name is a rename.
+  const renamingRow = editingName === null ? undefined : categories.find(c => c.name === editingName);
+  const renameTakenBy = renamingRow ? projectCategoryTakenBy(categories, draft, renamingRow.id) : undefined;
+  const newTakenBy = addingNew ? projectCategoryTakenBy(categories, newName) : undefined;
+  const takenMessage = (taken: { name: string }) => `A project category named “${taken.name}” already exists.`;
+
   const commitRename = (name: string) => {
     if (committedRef.current) return;
     committedRef.current = true;
@@ -159,11 +169,11 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
     }
     if (!renameCategory(name, trimmed)) {
       // The field stays open holding what was typed, as the store's contract
-      // asks. It used to close before the refusal was known, so the alert
-      // arrived after the text it was about had already been thrown away.
+      // asks, with the message under it (`renameTakenBy`, which reads the same
+      // live list the store just refused on).
       committedRef.current = false;
       setDraft(trimmed);
-      Alert.alert('That name is taken', `A project category named “${trimmed}” already exists.`);
+      haptics.error();
       return;
     }
     setEditingName(null);
@@ -185,16 +195,20 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
 
   const commitNew = () => {
     const trimmed = newName.trim();
-    setNewName('');
-    setAddingNew(false);
-    if (!trimmed) return;
-    // addCategory answers a taken name with the existing row, which from here
-    // looked like the tap doing nothing at all.
-    const taken = categories.find(c => c.name.toLocaleLowerCase() === trimmed.toLocaleLowerCase());
-    if (taken) {
-      Alert.alert('That name is taken', `A project category named “${taken.name}” already exists.`);
+    if (!trimmed) {
+      setNewName('');
+      setAddingNew(false);
       return;
     }
+    // addCategory answers a taken name with the existing row, which from here
+    // looked like the tap doing nothing at all. The field stays open on the
+    // message instead, holding what was typed, as a refused rename does.
+    if (projectCategoryTakenBy(categories, trimmed)) {
+      haptics.error();
+      return;
+    }
+    setNewName('');
+    setAddingNew(false);
     animateLayout();
     addCategory(trimmed);
     haptics.tap();
@@ -258,7 +272,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                         {editing ? (
                           <TextField
                             autoFocus
-                            style={styles.rowInput}
+                            style={[styles.rowInput, !!renameTakenBy && styles.inputTaken]}
                             value={draft}
                             onChangeText={setDraft}
                             onSubmitEditing={() => commitRename(name)}
@@ -279,6 +293,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                             <Text style={styles.rowLabel} numberOfLines={1}>{name}</Text>
                           </TouchableOpacity>
                         )}
+                        {editing && !!renameTakenBy && <FieldError>{takenMessage(renameTakenBy)}</FieldError>}
                         <Text style={styles.rowCount}>{describeCount(name)}</Text>
                       </View>
                       <TouchableOpacity
@@ -311,7 +326,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
             {addingNew ? (
               <TextField
                 autoFocus
-                style={styles.addInput}
+                style={[styles.addInput, !!newTakenBy && styles.inputTaken]}
                 value={newName}
                 onChangeText={setNewName}
                 onSubmitEditing={commitNew}
@@ -331,6 +346,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
               />
             )}
           </View>
+          {!!newTakenBy && <FieldError>{takenMessage(newTakenBy)}</FieldError>}
         </ScrollView>
       </View>
     </SheetModal>
@@ -388,6 +404,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowButton: { padding: spacing.xxs },
   dragHandle: { padding: spacing.xxs },
   addRow: { marginTop: spacing.md, flexDirection: 'row' },
+  // Both fields underline in the accent while they are being typed in.
+  inputTaken: { borderBottomColor: colors.red },
   addInput: {
     flex: 1,
     color: colors.text,

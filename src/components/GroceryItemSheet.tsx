@@ -72,7 +72,7 @@ import { describeForgetLoss } from '../utils/groceryFacts';
 import { genericNameSuggestions } from '../utils/itemVarieties';
 import { groceryNameKey } from '../utils/groceryParse';
 import { describeFoodKinds, FOOD_KINDS, FOOD_KIND_LABELS, foodKindsOf } from '../utils/foodKinds';
-import { renameClash } from '../utils/groceryItemWrite';
+import { SHOP_NAME_TAKEN, renameClash } from '../utils/groceryItemWrite';
 import { entryFor } from '../utils/groceryLists';
 import { SubstituteSheet } from './SubstituteSheet';
 import { featureHidden, groceryRowShown } from '../utils/simpleMode';
@@ -527,7 +527,7 @@ function GroceryItemSheetBody({
    */
   const handleCreateShop = (shopName: string) => {
     const created = addShop(shopName);
-    if (!created) return 'There’s already a store with that name.';
+    if (!created) return SHOP_NAME_TAKEN;
     linkItemShop(item.id, created.id);
     haptics.success();
     // No closeField: stores are multi-select, so you're probably not done.

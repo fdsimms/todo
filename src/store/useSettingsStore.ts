@@ -2186,6 +2186,18 @@ interface SettingsStore {
   // instead of always on Today. Null (fresh install, or a name AppNavigator
   // no longer recognizes) falls back to Today.
   lastVisitedScreen: string | null;
+  /**
+   * Whether a cold launch reopens on `lastVisitedScreen` (true) or always on
+   * Today (false). Read once, by `AppNavigator`, so a change applies from the
+   * next launch. On by default because that is what the app has always done.
+   * `lastVisitedScreen` keeps being recorded while this is off, so turning it
+   * back on has somewhere to go.
+   *
+   * Not synced (it is absent from `SYNCED_SETTING_KEYS`), like `tabRoutes`:
+   * what one device opens on says nothing about another, and a phone and an
+   * iPad are reasonably different here.
+   */
+  reopenLastScreen: boolean;
   // The top-level screens visited lately, newest first (see addRecentScreen in
   // utils/navHubs.ts). State, not a preference, kept out of DEFAULT_SETTINGS
   // like lastVisitedScreen above, and not synced: what you looked at on this
@@ -2296,6 +2308,7 @@ interface SettingsStore {
   setHideHelpText: (on: boolean) => void;
   setMirroringMode: (on: boolean) => void;
   setTipsEnabled: (on: boolean) => void;
+  setReopenLastScreen: (on: boolean) => void;
   setFirstRunDone: (done: boolean) => void;
   /**
    * Records a tip as promoted, which spends that logical day's one slot.
@@ -2674,6 +2687,7 @@ const DEFAULT_SETTINGS = {
   // progress, and are cleared by resetTips rather than by a settings reset —
   // see their notes on the interface above.
   tipsEnabled: true,
+  reopenLastScreen: true,
   timerLiveActivity: true,
   tripLiveActivity: true,
   leaveLiveActivity: true,
@@ -3128,6 +3142,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   hideHelpText: false,
   mirroringMode: false,
   tipsEnabled: true,
+  reopenLastScreen: true,
   seenTips: [],
   firstRunDone: false,
   lastTipShown: null,
@@ -4010,6 +4025,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // `!== 'false'`, same as postponeCheckEnabled above: defaults on, so an
     // install that predates the setting gets tips rather than silence.
     const tipsEnabled = dbGetSetting('tipsEnabled') !== 'false';
+    // `!== 'false'` for the same reason: an install that predates the setting
+    // keeps reopening where it left off.
+    const reopenLastScreen = dbGetSetting('reopenLastScreen') !== 'false';
     const firstRunDone = dbGetSetting('firstRunDone') === 'true';
     // Both stored as JSON, and both fall back to "nothing seen yet" on a parse
     // failure rather than throwing. The cost of getting this wrong is one
@@ -4332,6 +4350,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       remindersImportEnabled,
       remindersImportListId,
       remindersImportReview,
+      reopenLastScreen,
       restockOfferEnabled,
       rewardGoalId,
       rewardGoalPlan,
@@ -5792,6 +5811,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setTipsEnabled(on: boolean) {
     dbSetSetting('tipsEnabled', on ? 'true' : 'false');
     set({ tipsEnabled: on });
+  },
+
+  setReopenLastScreen(on: boolean) {
+    dbSetSetting('reopenLastScreen', on ? 'true' : 'false');
+    set({ reopenLastScreen: on });
   },
 
   setFirstRunDone(done: boolean) {

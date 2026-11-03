@@ -30,7 +30,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { ThumbIcon } from '../components/ThumbIcon';
 import { useShallow } from 'zustand/react/shallow';
 import type { ComponentPlacement, RecipeBlank, RecipeIngredient, RecipeOverride, RecipePrepTask, RecipeStep, RecipeVote } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_VOTE_LABELS, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, RECIPE_CHOICE_GROUP_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_VOTE_LABELS, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSyncStore } from '../store/useSyncStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -94,7 +94,6 @@ import { afterSheetsDismissed } from '../utils/sheetModal';
 import { pickRecipeImage, recipeImageOnDevice, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
 import {
   blockedIngredientNote,
-  cleanChoiceGroup,
   describeRecipe,
   duplicateIngredientIn,
   ingredientsFromText,
@@ -163,6 +162,8 @@ import { FadeInImage } from '../components/FadeInImage';
 import { HelpText } from '../components/HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { LazySheet } from '../components/LazySheet';
+import { NameSheet, type NameRequest } from '../components/NameSheet';
+import { choiceGroupRenameTaken } from '../utils/nameTaken';
 
 type RootStackParamList = {
   /**
@@ -377,30 +378,29 @@ export function RecipeDetailScreen() {
   // Renames a group of this recipe's own ingredient lines from its heading above
   // the chips. Only an all-ingredient group: a side dish's label lives on the
   // component row, which `renameChoiceGroup` doesn't touch.
+  //
+  // A name sheet rather than a native prompt, so a label this recipe already
+  // uses is said under the field while it is typed instead of in a second alert
+  // after the text is gone. The check is the rule `renameChoiceGroup` refuses on.
+  const [namingGroup, setNamingGroup] = useState<NameRequest | null>(null);
   const promptRenameGroup = (group: ChoiceGroup) => {
     haptics.tap();
-    Alert.prompt(
-      'Group name',
-      'Shown above the choices. Renames it for every ingredient in the group.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.save,
-          onPress: (value?: string) => {
-            const clean = cleanChoiceGroup(value);
-            if (!clean || clean === group.label) return;
-            if (renameChoiceGroup(group.recipe.id, group.label, clean)) {
-              haptics.success();
-              return;
-            }
-            haptics.error();
-            Alert.alert('That name is taken', 'Another group in this recipe already has that name.');
-          },
-        },
-      ],
-      'plain-text',
-      group.label,
-    );
+    setNamingGroup({
+      title: 'Group name',
+      initial: group.label,
+      placeholder: 'Group name',
+      hint: 'Shown above the choices. Renames it for every ingredient in the group.',
+      maxLength: RECIPE_CHOICE_GROUP_MAX_LENGTH,
+      refusal: typed => (
+        choiceGroupRenameTaken(group.recipe, group.label, typed) ? 'Another group in this recipe already has that name.' : null
+      ),
+      onSave: typed => {
+        if (renameChoiceGroup(group.recipe.id, group.label, typed)) { haptics.success(); return; }
+        // Taken since the sheet opened, or the group was removed meanwhile.
+        haptics.error();
+        Alert.alert('Couldn’t rename the group', 'It may have been changed on another screen. Open it again and try once more.');
+      },
+    });
   };
 
   // What each step's own sentence is worth: the amount this reading of the
@@ -3282,6 +3282,8 @@ export function RecipeDetailScreen() {
           onClose={() => { setPlanVisible(false); setPendingPlanScale(null); }}
         />
       </LazySheet>
+
+      <NameSheet request={namingGroup} onClose={() => setNamingGroup(null)} />
 
       <LazySheet open={addToListVisible}>
         <RecipeToListSheet

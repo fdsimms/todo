@@ -15,6 +15,7 @@ import {
   productEditRow,
   renameRows,
   renamedShopRow,
+  shopNameTaken,
   shopLinkRow,
   subLinkRows,
 } from '../utils/groceryItemWrite';
@@ -112,6 +113,22 @@ describe('shopLinkRow and the shop rows', () => {
     expect(b.sortOrder).toBe(a.sortOrder + 1);
     expect(renamedShopRow(b, 'Safeway', [a, b])).toBeNull();
     expect(renamedShopRow(b, 'Costco Wholesale', [a, b])?.name).toBe('Costco Wholesale');
+  });
+
+  it('shopNameTaken is the rule those two refuse on, by the same key', () => {
+    const a = newShopRow('Safeway', [], 's1', NOW)!;
+    const b = newShopRow('Costco', [a], 's2', NOW)!;
+    expect(shopNameTaken([a, b], ' SAFEWAY ')).toBe(true);
+    expect(shopNameTaken([a, b], 'Trader Joe’s')).toBe(false);
+    // A store keeping its own name, or re-casing it, is not a clash with itself.
+    expect(shopNameTaken([a, b], 'costco', b)).toBe(false);
+    expect(shopNameTaken([a, b], 'Safeway', b)).toBe(true);
+    // Blank is no name, not a taken one.
+    expect(shopNameTaken([a, b], '   ')).toBe(false);
+    for (const typed of ['safeway', 'Costco', 'Aldi']) {
+      expect(newShopRow(typed, [a, b], 's3', NOW) === null).toBe(shopNameTaken([a, b], typed));
+      expect(renamedShopRow(a, typed, [a, b]) === null).toBe(shopNameTaken([a, b], typed, a));
+    }
   });
 });
 

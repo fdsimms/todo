@@ -32,6 +32,9 @@ import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddP
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
+import { WhichToUseSheet } from '../components/WhichToUseSheet';
+import { useWhichToUse } from '../hooks/useWhichToUse';
+import { PROJECT_DEFINITION, WHICH_TO_USE_LABEL } from '../utils/organizeGuide';
 import { EmbeddedRoute } from '../components/EmbeddedRoute';
 import { TwoPane } from '../components/TwoPane';
 import { useTwoPane } from '../hooks/useTwoPane';
@@ -129,6 +132,7 @@ function ProjectsList() {
   // ==== screen setup ====
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const whichToUse = useWhichToUse();
   const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
@@ -637,6 +641,8 @@ function ProjectsList() {
           ? `${listProjects.length} ${projectFilter} ${listProjects.length === 1 ? 'project' : 'projects'}`
           : undefined}
         actions={[
+          // Beside the menu, and gone with it while selecting.
+          ...(selectionMode ? [] : [whichToUse.action]),
           // Selecting is reached by swiping a row now, same as every other
           // bulk-selecting list — no header button needed.
           // Hidden while selecting: the menu switches which list is on
@@ -655,6 +661,8 @@ function ProjectsList() {
               }]),
         ]}
       />
+
+      <WhichToUseSheet {...whichToUse.sheet} />
 
       <TipHost screen="projects" />
 
@@ -710,11 +718,16 @@ function ProjectsList() {
             subtitle={
               projectFilter === 'archived' || projectFilter === 'completed'
                 ? undefined
-                : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time.'
+                : PROJECT_DEFINITION
             }
             // The button is hidden on these two lists, so this is the way back.
             actionLabel={projectFilter === 'active' ? 'New project' : 'Show active projects'}
             onAction={projectFilter === 'active' ? () => setQuickAddVisible(true) : () => setProjectFilter('active')}
+            // Only where someone is starting from nothing, not on the empty
+            // Completed and Archived lists.
+            secondaryActionLabel={projectFilter === 'active' ? WHICH_TO_USE_LABEL : undefined}
+            secondaryActionIcon="help-circle-outline"
+            onSecondaryAction={projectFilter === 'active' ? whichToUse.open : undefined}
             bottomOffset={tabBarHeight}
           />
         )

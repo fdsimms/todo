@@ -19,6 +19,7 @@ import {
 } from '../db/database';
 import { firstEmoji } from '../utils/emojiInput';
 import { useSettingsStore } from './useSettingsStore';
+import { categoryRenameTaken } from '../utils/nameTaken';
 import { GENERATED_KINDS, GENERATED_KIND_LIST, GENERATED_KIND_SPECS, generatorSwitchedOn, type GeneratedKind } from '../utils/generatedTasks';
 
 interface CategoryStore {
@@ -85,7 +86,7 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
     if (!trimmed || trimmed === name) return false;
     const cat = get().categories.find(c => c.name === name);
     if (!cat) return false;
-    if (get().categories.some(c => c.name === trimmed)) return false;
+    if (categoryRenameTaken(get().categories.map(c => c.name), name, trimmed)) return false;
     dbRenameCategory(cat.id, name, trimmed);
     set(s => ({
       categories: s.categories.map(c => (c.id === cat.id ? { ...c, name: trimmed } : c)),

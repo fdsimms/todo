@@ -47,7 +47,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/amountMath.ts` — resolveAmountMath, AmountOperator, AMOUNT_OPERATORS, appendOperator
 - `src/utils/amountUnit.ts` — NO_UNIT, OTHER_UNIT, AmountUnitGroup, VOLUME_UNITS, WEIGHT_UNITS, COUNT_UNITS, ingredientAmountGroups, amountUnitLabel, readAmount, writeAmount
 - `src/utils/appGate.ts` — isGateTask, gateGroupFor, outstandingGates, gateShieldWanted, GATE_WINDOW_MINUTES, GATE_ARM_HORIZON_MS, GateWindow, gateWindowFor, PendingGate, nextPendingGate, +1 more
-- `src/utils/appGroups.ts` — APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, BASE_GROUP_NAME_SETTING, FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, MAX_APP_GROUPS, MAX_SUPERGROUPS, MAX_GROUP_NAME_LENGTH, AppGroup, +31 more
+- `src/utils/appGroups.ts` — APP_GROUPS_SETTING, GROUP_ASSIGNMENTS_SETTING, BASE_GROUP_NAME_SETTING, FALLBACK_GROUP_SETTING, DEFAULT_GROUP_ID, DEFAULT_GROUP_NAME, MAX_APP_GROUPS, MAX_SUPERGROUPS, MAX_GROUP_NAME_LENGTH, AppGroup, +33 more
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
 - `src/utils/appShield.ts` — AppShieldState, ShieldReasonKind, ShieldReasonEntry, shieldReasons, speedBumpWanted, shieldGroupIds, shieldAllowSets, appShieldWanted, syncAppShield
@@ -211,6 +211,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodCapture.ts` — CaptureMode, captureModes, captureHint, CAPTURE_MODE_LABEL, resolveCaptureMode
 - `src/utils/foodKinds.ts` — FOOD_KINDS, FOOD_KIND_LABELS, guessFoodKinds, foodKindsOf, isFoodKind, parseFoodKinds, normalizeFoodKinds, serializeFoodKinds, describeFoodKinds
 - `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, servingMeaning, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, +58 more
+- `src/utils/foodListEmptyNote.ts` — FoodListEmptyNoteInput, foodLookupHint, foodListEmptyNote
+- `src/utils/foodLog.ts` — FoodLogTotals, FoodLogSection, isBeverageName, scalePanelToAmount, portionExamples, servingMeaning, amountHint, amountExample, FoodUnitOption, VOLUME_UNIT_OPTIONS, +57 more
 - `src/utils/foodLogEntry.ts` — buildFoodLogEntry
 - `src/utils/foodLogExport.ts` — FOOD_LOG_EXPORT_COLUMNS, foodLogExportCsv, foodLogExportFileName, foodLogExportSummary
 - `src/utils/foodLogRecents.ts` — FoodRecency, creditedKeys, foodLogRecency, foodLastAmounts, rankByRecency, USUAL_FOR_SLOT_LIMIT, USUAL_FOR_SLOT_DAYS, usualForSlot, sameMealYesterday, entriesCalories, +7 more
@@ -229,7 +231,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, isNonFoodAisle, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, +2 more
 - `src/utils/groceryExpiry.ts` — wantsUseUpTask, useUpTaskTitle, clampUseUpLeadDays, useUpTaskFields, useUpTaskDraft, USE_UP_RECIPES_SHOWN, useUpRecipeNotes, useUpTaskDrift, useUpDeadlineDay, finishedUseUpFor
 - `src/utils/groceryFacts.ts` — ItemRelations, linkCounts, hasUserFacts, factSignature, describeForgetLoss
-- `src/utils/groceryItemWrite.ts` — pricedRows, ProductPatch, productEditRow, preferredProductRow, renameClash, renameRows, shopLinkRow, newShopRow, renamedShopRow, SubLinkOptions, +14 more
+- `src/utils/groceryItemWrite.ts` — pricedRows, ProductPatch, productEditRow, preferredProductRow, renameClash, renameRows, shopLinkRow, SHOP_NAME_TAKEN, shopNameTaken, newShopRow, +16 more
 - `src/utils/groceryLists.ts` — HOME_LIST_NAME, isAwayList, listNameFor, entryFor, onListAnywhere, listedAnywhere, itemsOnList, withHomeMembership, trolleyStateFor, listCount, +4 more
 - `src/utils/groceryMerge.ts` — laterOf, pickPriceFields, MergeRows, MergePlan, planMergeItems
 - `src/utils/groceryParse.ts` — groceryNameKey, parseGroceryInput, LEADING_PREP_PRODUCTS, splitQuantityNote, splitPrep, splitPurpose, splitExample, suggestShorterCatalogName, splitAlternativeNames, splitImportAlternatives, +4 more
@@ -352,6 +354,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/moodTasks.ts` — MOOD_LOG_LINK_URL, MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MIN, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodLogSegmentOf, moodLogSourceId, +5 more
 - `src/utils/morningAlarm.ts` — NEXT_ALARM_LINK, morningDate, ringOn, MorningAlarm, morningAlarmFor, overrideFor, overrideDay, overrideAt, isOverrideSpent, AlarmDetailIcon, +2 more
 - `src/utils/morningCheckIn.ts` — isMorningCheckInCandidate, morningCheckInTasks
+- `src/utils/nameTaken.ts` — categoryRenameTaken, projectCategoryTakenBy, recipeRenameTaken, cookbookRenameTaken, choiceGroupRenameTaken, ingredientLineClash
 - `src/utils/naturalKeyFold.ts` — NaturalKey, NATURAL_KEYS, foldRows, Reference, REFERENCES, SettingReference, SETTING_REFERENCES, foldWinner
 - `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +35 more
 - `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, slipAllowanceOf, nextSlipIsFree, lastSlipWasFree, isCleanToday, isFailedToday, slipPatch, undoSlipPatch, +9 more
@@ -375,6 +378,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/openExternalUrl.ts` — ExternalKind, externalKindFor, externalFailureCopy, openExternalUrl
 - `src/utils/openTasks.ts` — openTasksOf
 - `src/utils/ordinal.ts` — ordinal
+- `src/utils/organizeGuide.ts` — WHICH_TO_USE_LABEL, OrganizeKind, OrganizeGuideEntry, PROJECT_DEFINITION, ORGANIZE_GUIDE, organizeGuideEntries
 - `src/utils/ovenTemp.ts` — OvenTempUnit, OVEN_TEMP_UNITS, OVEN_TEMP_RANGE, cleanOvenTemp, formatOvenTemp, parseOvenTemp, ovenTempFor, describeOvenTemp, OvenSetup, ovenSetupsFor
 - `src/utils/paintSelect.ts` — PaintRowRect, PAINT_GUTTER_WIDTH, ROW_HIT_SLOP, isInPaintGutter, rowIdAtY, rowIdsBetween
 - `src/utils/panOil.ts` — PAN_OIL_SHARE, DEEP_FRY_SHARE, isCookingFat, CookMethod, stepsCookMethod, FatCooking, fatCooking, panOilShare
@@ -524,10 +528,10 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/runningOnMac.ts` — runningOnMac
 - `src/utils/savedDefaults.ts` — SavedDefaultRow, savedDefaultRows
 - `src/utils/savedEventTasks.ts` — BOOK_LEAD_DAYS, bookSourceId, bookEventSourceOf, bookDueDay, wantsBookTask, bookTaskTitle, bookTaskNotes
-- `src/utils/savedEvents.ts` — SAVED_EVENTS_KEY, BOOK_EVERY_MONTHS_MAX, SavedEvent, SavedEventFields, parseSavedEvents, readSavedEvents, writeSavedEvents, findSavedEvent, sortedSavedEvents, saveEventAs, +10 more
+- `src/utils/savedEvents.ts` — SAVED_EVENTS_KEY, BOOK_EVERY_MONTHS_MAX, SavedEvent, SavedEventFields, parseSavedEvents, readSavedEvents, writeSavedEvents, findSavedEvent, sortedSavedEvents, saveEventAs, +11 more
 - `src/utils/savedLinks.ts` — SAVED_LINKS_KEY, SAVED_LINKS_LIMIT, SavedLink, savedLinkKey, parseSavedLinks, isChipUrl, canSaveLink, suggestLinkName, addSavedLink, renameSavedLink, +7 more
 - `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, appendLine, +6 more
-- `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, editSavedPlace, +7 more
+- `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, savedPlaceNameTaken, +8 more
 - `src/utils/scanItemType.ts` — itemTypeFromCategory, cleanModelItemType, catalogSpellingOf, ItemTypeMove, itemTypeMoveFor
 - `src/utils/scanPermission.ts` — scanPermissionMessage
 - `src/utils/scanPortion.ts` — PackageChoice, servingsPerPackage, packSizeGrams, servingsIn, packageChoices, packageFractions, servingDescription, packageHelping
@@ -539,7 +543,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/screenTimeBridge.ts` — ScreenTimeBridge, screenTimeBridge, isScreenTimeSupported
 - `src/utils/screenTimeRules.ts` — SCREEN_TIME_RULE_TITLE_MAX_LENGTH, SCREEN_TIME_THRESHOLD_MIN, SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_DEFAULT, clampThresholdMinutes, defaultScreenTimeRules, parseScreenTimeRules, serializeScreenTimeRules, screenTimeSourceId, parseScreenTimeSourceId, +3 more
 - `src/utils/scrollClamp.ts` — maxRestingOffset, strandedScrollOffset, NO_INSET, NO_INSET_ALT, pulseNoInset
-- `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, hiddenBelow, hiddenAbove, edgeFadeOpacity
+- `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, ScrollAxisMetrics, hiddenAfter, hiddenBefore, hiddenBelow, hiddenAbove, edgeFadeOpacity
 - `src/utils/sealedNoteTasks.ts` — addSealedNoteReminder, dropSealedNoteReminder
 - `src/utils/searchActionRun.ts` — SearchActionReceipt, addWaterAt, waterTodayMl, waterTargetTodayMl, openMoodLogFor, runSearchAction
 - `src/utils/searchActions.ts` — QUICK_ACTION_LIMIT, MAX_GLASSES, MAX_DOSE_STEPS, DoseAction, WaterAction, MoodAction, SymptomAction, GroceryAction, PantryAnswer, PantryAction, +12 more
@@ -906,6 +910,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useWatchRetractNotice.ts` — useWatchRetractNotice
 - `src/hooks/useWeatherWaitSync.ts` — useWeatherWaitSync
 - `src/hooks/useWeighIn.ts` — useWeighIn, WeighIn
+- `src/hooks/useWhichToUse.ts` — useWhichToUse
 - `src/hooks/useWithoutLockedTasks.ts` — useWithoutLockedTasks
 - `src/hooks/useWorkoutHeartRate.ts` — useWorkoutHeartRate
 - `src/hooks/useWorkoutLiveActivitySync.ts` — syncWorkoutLiveActivityNow, useWorkoutLiveActivitySync

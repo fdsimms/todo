@@ -43,6 +43,7 @@ import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH } from '../types';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
+import { SHOP_NAME_TAKEN } from '../utils/groceryItemWrite';
 
 /** Matches the shopping list's own checkbox, so the shape reads as familiar. */
 const CHECK_SIZE = 22;
@@ -490,7 +491,7 @@ export function FinishShoppingSheet({
   /** Returning the message rejects the name and holds the field open. */
   const handleAdd = (name: string) => {
     const shop = addShop(name);
-    if (!shop) return 'You already have a store with that name.';
+    if (!shop) return SHOP_NAME_TAKEN;
     haptics.success();
     setSelected(shop.id);
   };

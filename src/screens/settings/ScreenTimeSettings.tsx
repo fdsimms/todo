@@ -8,13 +8,14 @@ import { BlockScheduleSheet } from '../../components/BlockScheduleSheet';
 import { SpeedBumpRulesSheet } from '../../components/SpeedBumpRulesSheet';
 import { ManualBlockSheet } from '../../components/ManualBlockSheet';
 import { SupergroupMembersSheet } from '../../components/SupergroupMembersSheet';
+import { NameSheet, type NameRequest } from '../../components/NameSheet';
 import { useShieldReleaseStore } from '../../store/useShieldReleaseStore';
 import { describeEnded, releasesThisMonth, timesWord } from '../../utils/shieldRelease';
 import { useManualBlockStore } from '../../store/useManualBlockStore';
 import { manualBlockWanted } from '../../utils/manualBlock';
 import {
-  DEFAULT_GROUP_ID, allGroups, cleanGroupName, groupName, isAllowGroup, isSupergroup, plainGroups, resolveAssignments, resolveGroupId,
-  supergroupMembers, supergroupMode, type GroupedReason,
+  DEFAULT_GROUP_ID, MAX_GROUP_NAME_LENGTH, allGroups, cleanGroupName, groupNameTaken, groupName, groupsFull, isAllowGroup, isSupergroup, plainGroups,
+  resolveAssignments, resolveGroupId, supergroupMembers, supergroupMode, type GroupedReason,
 } from '../../utils/appGroups';
 import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
@@ -179,6 +180,9 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
     await onChooseApps(groupId);
   };
 
+  // What the store can still refuse after the name sheet has accepted a name:
+  // only a list that filled up, or a name taken, since the sheet opened. The
+  // usual duplicate is said under the field while it is typed.
   const groupNameFailed = (reason: 'full' | 'duplicate' | 'invalid') => {
     Alert.alert(
       reason === 'full' ? 'Too many groups' : 'That name is taken',
@@ -186,20 +190,50 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
     );
   };
 
+  // The name sheet for a new group, a new supergroup, or either one's rename.
+  // It replaces four native text prompts, which could only refuse a taken name
+  // in a second alert after the typed text was gone.
+  const [naming, setNaming] = useState<NameRequest | null>(null);
+  const closeNaming = () => setNaming(null);
+  const takenMessage = 'Another group already has that name.';
+
   const handleNewGroup = () => {
     haptics.tap();
-    Alert.prompt('Name this group', 'For example, Social or Games.', [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      {
-        text: 'Add',
-        onPress: (text?: string) => {
-          const added = useAppGroupStore.getState().addGroup(text ?? '');
-          if (!added.ok) { groupNameFailed(added.reason); return; }
-          haptics.success();
-          if (added.group) void handleChooseApps(added.group.id);
-        },
+    // Said before asking for a name, not after typing one.
+    if (groupsFull(customGroups, false)) { groupNameFailed('full'); return; }
+    setNaming({
+      title: 'Name this group',
+      initial: '',
+      placeholder: 'e.g. Social or Games',
+      saveLabel: 'Add',
+      maxLength: MAX_GROUP_NAME_LENGTH,
+      refusal: typed => (groupNameTaken(customGroups, typed, undefined, groupsMeta) ? takenMessage : null),
+      onSave: typed => {
+        const added = useAppGroupStore.getState().addGroup(typed);
+        if (!added.ok) { groupNameFailed(added.reason); return; }
+        haptics.success();
+        if (added.group) void handleChooseApps(added.group.id);
       },
-    ], 'plain-text');
+    });
+  };
+
+  // Renaming either kind, and the original group (whose name is the base name,
+  // so its own current name is not a clash with itself).
+  const requestRename = (groupId: string, name: string, title: string) => {
+    const original = groupId === DEFAULT_GROUP_ID;
+    setNaming({
+      title,
+      initial: name,
+      placeholder: 'Group name',
+      maxLength: MAX_GROUP_NAME_LENGTH,
+      refusal: typed => (
+        groupNameTaken(customGroups, typed, groupId, original ? { ...groupsMeta, baseName: '' } : groupsMeta) ? takenMessage : null
+      ),
+      onSave: typed => {
+        const renamed = useAppGroupStore.getState().renameGroup(groupId, typed);
+        if (!renamed.ok) groupNameFailed(renamed.reason);
+      },
+    });
   };
 
   // The sheet that picks a supergroup's groups, for a new one (`id` null, named
@@ -212,13 +246,18 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
       Alert.alert('Make another group first', 'A supergroup combines groups you already made. Add at least two groups, then combine them.');
       return;
     }
-    Alert.prompt('Name this supergroup', 'For example, Distractions or Work apps.', [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      {
-        text: 'Next',
-        onPress: (text?: string) => setMemberSheet({ open: true, id: null, name: text ?? '' }),
-      },
-    ], 'plain-text');
+    if (groupsFull(customGroups, true)) { groupNameFailed('full'); return; }
+    // Named first and the groups picked next, so a taken name is refused here
+    // rather than after the whole choice has been made.
+    setNaming({
+      title: 'Name this supergroup',
+      initial: '',
+      placeholder: 'e.g. Distractions or Work apps',
+      saveLabel: 'Next',
+      maxLength: MAX_GROUP_NAME_LENGTH,
+      refusal: typed => (groupNameTaken(customGroups, typed, undefined, groupsMeta) ? takenMessage : null),
+      onSave: typed => setMemberSheet({ open: true, id: null, name: typed }),
+    });
   };
 
   const confirmMembers = (ids: string[]) => {
@@ -247,16 +286,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
       },
       {
         text: 'Rename',
-        onPress: () => Alert.prompt('Rename supergroup', undefined, [
-          { text: BUTTON_LABEL.cancel, style: 'cancel' },
-          {
-            text: BUTTON_LABEL.save,
-            onPress: (text?: string) => {
-              const renamed = useAppGroupStore.getState().renameGroup(groupId, text ?? '');
-              if (!renamed.ok) groupNameFailed(renamed.reason);
-            },
-          },
-        ], 'plain-text', name),
+        onPress: () => requestRename(groupId, name, 'Rename supergroup'),
       },
       {
         text: BUTTON_LABEL.delete,
@@ -293,16 +323,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
       { text: 'Choose apps', onPress: () => { void handleChooseApps(groupId); } },
       {
         text: 'Rename',
-        onPress: () => Alert.prompt('Rename group', undefined, [
-          { text: BUTTON_LABEL.cancel, style: 'cancel' },
-          {
-            text: BUTTON_LABEL.save,
-            onPress: (text?: string) => {
-              const renamed = useAppGroupStore.getState().renameGroup(groupId, text ?? '');
-              if (!renamed.ok) groupNameFailed(renamed.reason);
-            },
-          },
-        ], 'plain-text', name),
+        onPress: () => requestRename(groupId, name, 'Rename group'),
       },
       // The original group and the default group always block their apps: a
       // deleted group falls back to the default, and that must never turn into
@@ -1005,6 +1026,9 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
         onClose={() => setManualSheetOpen(false)}
         onConfirm={(minutes, ids) => { void startManual(minutes, ids); }}
       />
+      {/* Beside the members sheet rather than inside it: the name sheet closes
+          before that one opens, and the two are never up together. */}
+      <NameSheet request={naming} onClose={closeNaming} />
       <SupergroupMembersSheet
         visible={memberSheet.open}
         title={memberSheet.id ? groupName(customGroups, memberSheet.id, groupsMeta) : cleanGroupName(memberSheet.name, 'New supergroup')}

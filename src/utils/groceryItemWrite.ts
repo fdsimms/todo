@@ -181,11 +181,27 @@ export function shopLinkRow(existing: ItemShopLink | undefined, itemId: string, 
 }
 
 /** A new store. Null when the name is empty or its key is taken. */
+/** What a screen says when a store's name is one another store already has. */
+export const SHOP_NAME_TAKEN = 'You already have a store with that name.';
+
+/**
+ * Whether `name` is a store name another store already has, which is what
+ * `newShopRow` and `renamedShopRow` refuse on, for a field that says so while
+ * it is typed. `own` is the store being renamed: keeping its own name is not a
+ * clash. A blank name is no name, not a taken one.
+ */
+export function shopNameTaken(shops: readonly Shop[], name: string, own?: Pick<Shop, 'nameKey'>): boolean {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  const key = groceryNameKey(trimmed) || trimmed.toLowerCase();
+  return key !== own?.nameKey && shops.some(s => s.nameKey === key);
+}
+
 export function newShopRow(name: string, shops: readonly Shop[], id: string, nowIso: string): Shop | null {
   const trimmed = name.trim();
   if (!trimmed) return null;
   const key = groceryNameKey(trimmed) || trimmed.toLowerCase();
-  if (shops.some(s => s.nameKey === key)) return null;
+  if (shopNameTaken(shops, trimmed)) return null;
   return {
     id,
     name: trimmed,
@@ -204,7 +220,7 @@ export function renamedShopRow(shop: Shop, name: string, shops: readonly Shop[])
   const trimmed = name.trim();
   if (!trimmed) return null;
   const key = groceryNameKey(trimmed) || trimmed.toLowerCase();
-  if (key !== shop.nameKey && shops.some(s => s.nameKey === key)) return null;
+  if (shopNameTaken(shops, trimmed, shop)) return null;
   return { ...shop, name: trimmed, nameKey: key };
 }
 

@@ -62,6 +62,7 @@ import { GROCERY_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type GroceryItem, type R
 import { TextField } from './TextField';
 import { ActionRow } from './ActionRow';
 import { BUTTON_LABEL } from '../copy/shared';
+import { SHOP_NAME_TAKEN } from '../utils/groceryItemWrite';
 
 /**
  * One "Left alone" line the user opted to add as bought instead — either
@@ -681,7 +682,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   /** Returning the message rejects the name and holds the field open. */
   const handleAddShop = (name: string) => {
     const shop = addShop(name);
-    if (!shop) return 'You already have a store with that name.';
+    if (!shop) return SHOP_NAME_TAKEN;
     haptics.success();
     setShopId(shop.id);
   };

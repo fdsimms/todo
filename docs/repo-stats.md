@@ -25,4 +25,5 @@ one component holding most of the file is owed a header map and banners (CLAUDE.
 
 The suite is **811 test files**, and `npm test` runs all of them in about a minute.
 The suite is **810 test files**, and `npm test` runs all of them in about a minute.
+The suite is **813 test files**, and `npm test` runs all of them in about a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists.

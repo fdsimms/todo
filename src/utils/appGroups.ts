@@ -208,6 +208,37 @@ export type AddGroupResult =
   | { ok: true; groups: AppGroup[] }
   | { ok: false; reason: 'full' | 'duplicate' | 'invalid' };
 
+/** Whether another group of this kind (plain or super) can be added. */
+export function groupsFull(custom: readonly AppGroup[], supergroup: boolean): boolean {
+  return supergroup
+    ? custom.filter(isSupergroup).length >= MAX_SUPERGROUPS
+    : custom.filter(g => !isSupergroup(g)).length >= MAX_APP_GROUPS;
+}
+
+/** The group name's own rule, on a lowercase key: the base group's name, or another custom group's. */
+function groupNameClash(custom: readonly AppGroup[], meta: GroupsMeta, key: string, exceptId?: string): boolean {
+  return key === meta.baseName.toLowerCase() || custom.some(g => g.id !== exceptId && g.name.toLowerCase() === key);
+}
+
+/**
+ * Whether `typed` is a name `withGroupAdded` or `withGroupRenamed` would refuse
+ * as a repeat (case aside), for a sheet that says so while it is typed. The
+ * name is cleaned first, as the store cleans it, and a blank name is not a
+ * repeat: it is no name, which the sheet's Save already refuses. `exceptId` is
+ * the group being renamed, which is not a clash with itself. Renaming the
+ * original group passes `meta` with an empty `baseName`, as the store does,
+ * since it is the base group's own name that is changing.
+ */
+export function groupNameTaken(
+  custom: readonly AppGroup[],
+  typed: string,
+  exceptId?: string,
+  meta: GroupsMeta = DEFAULT_GROUPS_META,
+): boolean {
+  const key = cleanGroupName(typed, '').toLowerCase();
+  return key !== '' && groupNameClash(custom, meta, key, exceptId);
+}
+
 /** Add a group, refusing a repeated name (case aside) since two would be indistinguishable in a picker. */
 export function withGroupAdded(
   custom: readonly AppGroup[],
@@ -215,14 +246,8 @@ export function withGroupAdded(
   meta: GroupsMeta = DEFAULT_GROUPS_META,
 ): AddGroupResult {
   if (!ID_PATTERN.test(group.id) || group.id === DEFAULT_GROUP_ID) return { ok: false, reason: 'invalid' };
-  const capped = isSupergroup(group)
-    ? custom.filter(isSupergroup).length >= MAX_SUPERGROUPS
-    : custom.filter(g => !isSupergroup(g)).length >= MAX_APP_GROUPS;
-  if (capped) return { ok: false, reason: 'full' };
-  const key = group.name.toLowerCase();
-  if (key === meta.baseName.toLowerCase() || custom.some(g => g.name.toLowerCase() === key)) {
-    return { ok: false, reason: 'duplicate' };
-  }
+  if (groupsFull(custom, isSupergroup(group))) return { ok: false, reason: 'full' };
+  if (groupNameClash(custom, meta, group.name.toLowerCase())) return { ok: false, reason: 'duplicate' };
   // In the order the groups are listed, not the order they were picked.
   const members = isSupergroup(group) ? homogeneousMembers(custom, new Set(group.members), meta) : undefined;
   return { ok: true, groups: [...custom, members ? { ...group, members } : group] };
@@ -234,10 +259,7 @@ export function withGroupRenamed(
   name: string,
   meta: GroupsMeta = DEFAULT_GROUPS_META,
 ): AddGroupResult {
-  const key = name.toLowerCase();
-  if (key === meta.baseName.toLowerCase() || custom.some(g => g.id !== id && g.name.toLowerCase() === key)) {
-    return { ok: false, reason: 'duplicate' };
-  }
+  if (groupNameClash(custom, meta, name.toLowerCase(), id)) return { ok: false, reason: 'duplicate' };
   return { ok: true, groups: custom.map(g => (g.id === id ? { ...g, name } : g)) };
 }
 

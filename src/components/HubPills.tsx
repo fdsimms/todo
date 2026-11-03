@@ -20,6 +20,8 @@ import { attentionLeftovers, freshnessOf } from '../utils/leftovers';
 import { freshnessFill } from './LeftoversCard';
 import { AnimatedNumber } from './AnimatedNumber';
 import { usePillRowReveal } from '../hooks/usePillRowReveal';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 
 interface Props {
   hub: NavHubId;
@@ -60,6 +62,11 @@ export function HubPills({ hub, active }: Props) {
   const navigation = useNavigation<any>();
   // Opened from the menu on a member past the edge, the row starts there.
   const reveal = usePillRowReveal(active);
+  // The row scrolls sideways with its indicator hidden, so a pill past the edge
+  // is only hinted at by a cut-off one, and not at all where the row happens to
+  // break between two. A fade at each end says there is more that way, and goes
+  // once the row has been scrolled to it.
+  const fade = useScrollEdgeFade({ axis: 'horizontal' });
   const simpleMode = useSettingsStore(s => s.simpleMode);
   // Scalars, so each selector is referentially stable and the row doesn't
   // re-render every time a stack or template is edited.
@@ -107,8 +114,13 @@ export function HubPills({ hub, active }: Props) {
   if (tabs.length < 2) return null;
 
   return (
+    <View style={styles.wrap}>
     <ScrollView
       {...reveal.scrollProps}
+      {...fade.scrollProps}
+      // Both hooks want the viewport and the content size, so each is called.
+      onLayout={e => { reveal.scrollProps.onLayout(e); fade.scrollProps.onLayout(e); }}
+      onContentSizeChange={(w, h) => { reveal.scrollProps.onContentSizeChange(w); fade.scrollProps.onContentSizeChange(w, h); }}
       horizontal
       showsHorizontalScrollIndicator={false}
       style={styles.scroll}
@@ -164,10 +176,16 @@ export function HubPills({ hub, active }: Props) {
         );
       })}
     </ScrollView>
+    {/* The screen's own background, which the pills dissolve into. */}
+    <ScrollEdgeFade edge="left" opacity={fade.leadingOpacity} color={colors.bg} />
+    <ScrollEdgeFade edge="right" opacity={fade.trailingOpacity} color={colors.bg} />
+    </View>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  // The fades are positioned against this, not the screen.
+  wrap: { position: 'relative' },
   scroll: { flexGrow: 0, flexShrink: 0 },
   pills: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
