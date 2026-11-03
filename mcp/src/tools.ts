@@ -26,6 +26,7 @@ import { isRotationTask } from '../../src/utils/rotation';
 import { liveFollowUpSource } from '../../src/utils/followUpTask';
 import { groceryNameKey } from '../../src/utils/groceryParse';
 import { roundToHalf } from '../../src/utils/produceServings';
+import { MEAL_SLOTS } from '../../src/types';
 import { entryNovaGroup, processingMix } from '../../src/utils/processingStats';
 import * as negativeHabits from '../../src/utils/negativeHabits';
 import { checkTemplateLibrary, type LibraryCheck } from './templateLibrary';
@@ -896,13 +897,20 @@ function matchesEveryWord(text: string, query: string): boolean {
   return query.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.includes(w));
 }
 
-export function listFoodLog(replica: Replica, input: FoodLogInput = {}): FoodLogResult {
+/** The range a food log listing covers, and the entries in it a `query` kept. */
+function foodLogSelection(replica: Replica, input: FoodLogInput) {
   const range = resolveRange(replica, input);
-  const inRange = replica.foodLogEntries(range.from, range.to);
+  const inRange: FoodLogEntry[] = replica.foodLogEntries(range.from, range.to);
   const query = input.query?.trim();
   const entries = query
     ? inRange.filter((e: FoodLogEntry) => matchesEveryWord(`${e.label} ${e.savedMealName ?? ''}`, query))
     : inRange;
+  return { range, inRange, query, entries };
+}
+
+/** Everything a food log listing says apart from the entries themselves, shared by both shapes. */
+function foodLogSummary(replica: Replica, sel: ReturnType<typeof foodLogSelection>): Omit<FoodLogResult, 'entries'> {
+  const { range, inRange, query, entries } = sel;
   const totals = replica.foodTotals(entries);
 
   const produce = replica.foodProduce(entries).map(day => ({
@@ -918,21 +926,6 @@ export function listFoodLog(replica: Replica, input: FoodLogInput = {}): FoodLog
   return {
     range,
     ...(query ? { filteredBy: { query, matched: entries.length, inRange: inRange.length } } : {}),
-    entries: entries.map((e: FoodLogEntry) => ({
-      id: e.id,
-      dayKey: e.dayKey,
-      at: e.atISO,
-      slot: e.slot ?? undefined,
-      label: e.label,
-      quantity: e.quantity || undefined,
-      grams: e.grams ?? undefined,
-      recipeId: e.recipeId ?? undefined,
-      savedMeal: e.savedMealName ?? undefined,
-      amounts: e.nutrition?.amounts && Object.keys(e.nutrition.amounts).length > 0 ? (e.nutrition.amounts as Record<string, number>) : undefined,
-      inAppleHealth: e.healthSampleIds?.length > 0 ? true : undefined,
-      breakdown: e.nutrition?.breakdown?.length ? e.nutrition.breakdown : undefined,
-      nova: (e.nutrition ? entryNovaGroup(e) : null) ?? undefined,
-    })),
     totals: {
       total: totals.total as Record<string, number>,
       reported: totals.reported as Record<string, number>,
@@ -954,6 +947,93 @@ export function listFoodLog(replica: Replica, input: FoodLogInput = {}): FoodLog
     targets: replica.nutritionTargets(),
     // Which of those are limits to stay under rather than figures to reach.
     limits: replica.nutritionLimits(),
+  };
+}
+
+export function listFoodLog(replica: Replica, input: FoodLogInput = {}): FoodLogResult {
+  const sel = foodLogSelection(replica, input);
+  const { range, filteredBy, ...rest } = foodLogSummary(replica, sel);
+  return {
+    range,
+    ...(filteredBy ? { filteredBy } : {}),
+    entries: sel.entries.map((e: FoodLogEntry) => ({
+      id: e.id,
+      dayKey: e.dayKey,
+      at: e.atISO,
+      slot: e.slot ?? undefined,
+      label: e.label,
+      quantity: e.quantity || undefined,
+      grams: e.grams ?? undefined,
+      recipeId: e.recipeId ?? undefined,
+      savedMeal: e.savedMealName ?? undefined,
+      amounts: e.nutrition?.amounts && Object.keys(e.nutrition.amounts).length > 0 ? (e.nutrition.amounts as Record<string, number>) : undefined,
+      inAppleHealth: e.healthSampleIds?.length > 0 ? true : undefined,
+      breakdown: e.nutrition?.breakdown?.length ? e.nutrition.breakdown : undefined,
+      nova: (e.nutrition ? entryNovaGroup(e) : null) ?? undefined,
+    })),
+    ...rest,
+  };
+}
+
+/** One meal of one day, as `list_food_log` with `byMeal` lists it. */
+export interface FoodLogMeal {
+  dayKey: string;
+  slot: string;
+  /** What was logged in it, in the order it was eaten, each name once. */
+  foods: string[];
+  /** The meal's calories, summed from the entries that stated them. Absent when none did. */
+  kcal?: number;
+  /** How many of its entries stated no calories, so a low kcal can be read as partly unknown. */
+  noKcal?: number;
+}
+
+export type FoodLogByMealResult = Omit<FoodLogResult, 'entries'> & {
+  /**
+   * Each day's meals, breakfast to snack. Only entries filed under a meal and
+   * eaten as one (`countsAsMealLog`: water and nutrient-only rows such as a
+   * supplement are left out); `unfiled` counts the rest per day.
+   */
+  meals: FoodLogMeal[];
+  unfiled: { dayKey: string; entries: number }[];
+};
+
+/**
+ * The food log grouped by meal: what someone ate at each meal of each day,
+ * without the per-entry figures that make a week of the full listing too large
+ * to read in one call. The totals, produce, processing, targets and limits are
+ * the full listing's own. Entry ids are not here, so finding one to correct is
+ * still the full listing (with `query`).
+ */
+export function listFoodLogByMeal(replica: Replica, input: FoodLogInput = {}): FoodLogByMealResult {
+  const sel = foodLogSelection(replica, input);
+  // Lazily: mealLogCoverage reaches the meal plan utils and through them the
+  // database, which this module's own importers (and their tests) don't load.
+  // The app's own test of "is this a meal", so the grouping can't disagree with
+  // the strip or the log nudge about what counts.
+  const { countsAsMealLog } = require('../../src/utils/mealLogCoverage') as typeof import('../../src/utils/mealLogCoverage');
+  const order = new Map<string, number>(MEAL_SLOTS.map((slot, i) => [slot, i]));
+  const meals = new Map<string, FoodLogMeal>();
+  const unfiled = new Map<string, number>();
+  const sorted = [...sel.entries].sort((a: FoodLogEntry, b: FoodLogEntry) => a.atISO.localeCompare(b.atISO));
+  for (const e of sorted as FoodLogEntry[]) {
+    if (!countsAsMealLog(e)) {
+      unfiled.set(e.dayKey, (unfiled.get(e.dayKey) ?? 0) + 1);
+      continue;
+    }
+    const key = `${e.dayKey}#${e.slot}`;
+    const meal = meals.get(key) ?? { dayKey: e.dayKey, slot: e.slot as string, foods: [] };
+    const name = e.label.trim();
+    if (name && !meal.foods.includes(name)) meal.foods.push(name);
+    const kcal = e.nutrition?.amounts?.calorieKcal;
+    if (typeof kcal === 'number') meal.kcal = Math.round((meal.kcal ?? 0) + kcal);
+    else meal.noKcal = (meal.noKcal ?? 0) + 1;
+    meals.set(key, meal);
+  }
+  return {
+    ...foodLogSummary(replica, sel),
+    meals: [...meals.values()].sort((a, b) =>
+      a.dayKey.localeCompare(b.dayKey) || (order.get(a.slot) ?? 9) - (order.get(b.slot) ?? 9)),
+    unfiled: [...unfiled.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([dayKey, n]) => ({ dayKey, entries: n })),
   };
 }
 

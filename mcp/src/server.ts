@@ -45,6 +45,7 @@ import {
   TASK_VIEWS,
   getTask,
   listFoodLog,
+  listFoodLogByMeal,
   listGroceryItems,
   listMedicationLogs,
   listMoodLogs,
@@ -538,12 +539,14 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_food_log',
-    'Logged food over a range of days, with summed nutrients and, in produce, an estimate of vegetable and fruit servings per day: 80 g servings, beans count once a day, rounded to the nearest half. It is read from food names and weights, so a food not named as produce counts as none, and unmeasured is how many entries that day could not be weighed and are not counted. Say it is an estimate, and say when unmeasured is above zero. A nutrient nobody logged is absent rather than zero. Each entry carries its own figures as amounts (a nutrient it did not state is absent), so a surprising total can be traced to the entry behind it, and inAppleHealth: true when it was written to Apple Health, which refresh_dish_entry, update_food_entry and delete_food_entry refuse and only the phone can change. An entry the person described and the app estimated may carry a breakdown, the same estimate split across what it named (for example the beer and the pretzel); it adds up to the entry\'s own figures, so do not add it to the totals again. Defaults to the last 7 days; a long range is large, so pass query to look for one food instead of reading it all. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
+    'Logged food over a range of days, with summed nutrients and, in produce, an estimate of vegetable and fruit servings per day: 80 g servings, beans count once a day, rounded to the nearest half. It is read from food names and weights, so a food not named as produce counts as none, and unmeasured is how many entries that day could not be weighed and are not counted. Say it is an estimate, and say when unmeasured is above zero. A nutrient nobody logged is absent rather than zero. Each entry carries its own figures as amounts (a nutrient it did not state is absent), so a surprising total can be traced to the entry behind it, and inAppleHealth: true when it was written to Apple Health, which refresh_dish_entry, update_food_entry and delete_food_entry refuse and only the phone can change. An entry the person described and the app estimated may carry a breakdown, the same estimate split across what it named (for example the beer and the pretzel); it adds up to the entry\'s own figures, so do not add it to the totals again. Defaults to the last 7 days; a long range is large, so pass query to look for one food, or byMeal for what was eaten at each meal, instead of reading it all. Empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that nothing was logged.',
     {
       ...logRange,
       query: z.string().min(1).optional().describe('Only entries whose name contains every word of this ("baked beans"). Use it to find an entry to copy or correct without reading the whole range; the totals then cover only the matches.'),
+      byMeal: z.boolean().optional().describe('Group by meal instead of listing entries: meals holds, per day and meal, the food names and the meal\'s calories (kcal, with noKcal counting entries that stated none), and unfiled counts entries outside a meal (supplements, water, food logged with no meal). Leaves out entry ids and per-entry figures, so a week fits in one call. Use it for "what did I eat" or to read eating patterns; use the full listing to find an entry to correct.'),
     },
-    async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listFoodLog(replica, input))))
+    async ({ byMeal, ...input }) => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs',
+      byMeal ? listFoodLogByMeal(replica, input) : listFoodLog(replica, input))))
   );
 
   server.tool(
