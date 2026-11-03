@@ -255,6 +255,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/healthWorkoutSync.ts` — WORKOUT_HEALTH_ACTIVITY, PENDING_WORKOUT_WRITE_MAX_AGE_DAYS, WATCH_WORKOUT_WAIT_MINUTES, workoutSpanWritable, pendingWorkoutWriteAction, describedWorkoutHealthOffer, workoutHealthWriteOn, WorkoutWriteResult, logWorkoutToHealth, retractWorkoutFromHealth, +3 more
 - `src/utils/healthWorkouts.ts` — HEALTH_WORKOUT_ACTIVITIES, HealthWorkoutActivity, HEALTH_WORKOUT_ACTIVITY_LABEL, HealthWorkout, parseHealthWorkouts, readHealthWorkouts
 - `src/utils/heartRateZones.ts` — HEART_RATE_ZONE_SHARES, AGE_ESTIMATE_BASE, MAX_HEART_RATE_RANGE, MAX_READING_GAP_SECONDS, MaxHeartRate, parseMaxHeartRate, resolveMaxHeartRate, describeMaxHeartRate, describeZoneBasis, HeartRateZone, +11 more
+- `src/utils/heldBack.ts` — HeldBackKind, HeldBackGroup, HeldBackCopy, HELD_BACK_COPY, heldBackGroups, heldBackTotal, heldBackHasHeadings, heldBackToggleText, heldBackIcon
 - `src/utils/hiddenEvents.ts` — HiddenEvent, hiddenEventKey, hiddenEventFromEvent, isHiddenEventStale, pruneStaleHiddenEvents
 - `src/utils/holidays.ts` — HolidaySet, HOLIDAY_SETS, HOLIDAY_SET_LABELS, Holiday, HolidayConfig, holidaysInYear, holidayOn, hasAnyHolidays, nextHoliday, parseHolidaySet, +1 more
 - `src/utils/httpSyncTransport.ts` — HTTP_SYNC_SOURCE, SYNC_REQUEST_TIMEOUT_MS, SYNC_BODY_TIMEOUT_MS, HttpSyncConfig, isHttpSyncConfigured, httpSyncTransport, readPullBody
