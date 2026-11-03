@@ -301,12 +301,12 @@ export function SyncSettings() {
         entryId="syncServerJournal"
         icon="book-outline"
         iconColor={serverJournal ? colors.accent : undefined}
-        label="Include journal and dreams"
-        hint="Sends your journal entries and dreams to the sync server so Claude can read and write them. Turning this off stops sending new entries. Entries already sent stay on the server, and the server is told this is off so Claude knows they may be incomplete."
+        label="Include journal, dreams and notes"
+        hint="Sends your journal entries, dreams and notes to the sync server so Claude can read and write them. Turning this off stops sending new entries. Entries already sent stay on the server, and the server is told this is off so Claude knows they may be incomplete."
         toggle={serverJournal}
         value={serverJournal ? 'On' : 'Off'}
         onPress={() => setServerJournal(!serverJournal)}
-        accessibilityLabel="Include journal and dreams on the sync server"
+        accessibilityLabel="Include journal, dreams and notes on the sync server"
       />
 
       <AgentNotesRows />

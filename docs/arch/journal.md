@@ -41,7 +41,7 @@ it holds nothing, for the reason Mood is).
 - **Search is `textMatchesQuery`**, the mood note search's own rule: every
   word, plain substring.
 - **They have their own sync switch** (`JOURNAL_SYNC_TABLES`): never sent to
-  iCloud, and sent to a sync server only with "Include journal and dreams" on,
+  iCloud, and sent to a sync server only with "Include journal, dreams and notes" on,
   separate from "Include health logs". The server is what the MCP server reads,
   so that switch is also the decision to let Claude read and write the journal
   (`docs/arch/mcp-server.md`).
@@ -63,7 +63,7 @@ sheet and screen as the other two (`Notes` is the third route onto
   there with the reason it is right for every kind.
 
 It rides the journal's sync switch and the journal lock, so the MCP sees it only
-when "Include journal and dreams" is on. Photos, tags and people work as they do
+when "Include journal, dreams and notes" is on. Photos, tags and people work as they do
 on an entry. Audio was left out: it would be an attachment on an entry, not a
 kind.
 
