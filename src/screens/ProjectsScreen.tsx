@@ -94,6 +94,7 @@ import type { Project } from '../types';
 import { LazySheet } from '../components/LazySheet';
 import { BUTTON_LABEL } from '../copy/shared';
 import { isOpenEnded } from '../utils/listMode';
+import { explainRefusedDeletes } from '../utils/lockedDelete';
 
 /**
  * How many projects a list holds before it grows a search bar. Below this the
@@ -356,7 +357,7 @@ function ProjectsList() {
     haptics.warning();
     const run = (cascade: boolean) => {
       animateLayout();
-      bulkDeleteProjects(ids, { cascade });
+      explainRefusedDeletes(bulkDeleteProjects(ids, { cascade }));
       exitSelection();
     };
     Alert.alert(

@@ -2581,7 +2581,8 @@ interface TaskStore extends UndoHistoryActions {
   uncompleteGroup: (groupId: string) => void;
   deferGroup: (groupId: string, until: Date) => void;
   pinGroup: (groupId: string) => void;
-  deleteGroup: (groupId: string, opts: { cascade: boolean }) => void;
+  /** Returns the cascade's tasks deleteTask refused (a locked unlock needs them); they're kept, unfiled. */
+  deleteGroup: (groupId: string, opts: { cascade: boolean }) => string[];
   // Bulk selection on the Stacks screen. Same one-entry-per-batch undo rule as
   // bulkDeleteProjects: deleteGroup already knows how to unfile or cascade a
   // stack's roster, so each id goes through it and only the undo is batched.
@@ -2601,7 +2602,8 @@ interface TaskStore extends UndoHistoryActions {
   bulkRemoveFromProject: (taskIds: string[]) => void;
   /** Files the selection under another project, as one undo entry. */
   bulkMoveToProject: (taskIds: string[], projectId: string) => void;
-  deleteProject: (projectId: string, opts: { cascade: boolean }) => void;
+  /** Returns the cascade's tasks deleteTask refused (a locked unlock needs them); they're kept, unfiled. */
+  deleteProject: (projectId: string, opts: { cascade: boolean }) => string[];
   // Archive/restore a project through here rather than through useProjectStore
   // directly — these are the ones that register an undo entry.
   archiveProject: (projectId: string, opts?: { archiveRemaining: boolean }) => void;
@@ -2622,7 +2624,8 @@ interface TaskStore extends UndoHistoryActions {
   startFreshFromProject: (projectId: string) => Project | null;
   // Bulk selection on the Projects screen. One undo entry covers the whole
   // batch — see the note on bulkDeleteProjects.
-  bulkDeleteProjects: (projectIds: string[], opts: { cascade: boolean }) => void;
+  /** Returns the tasks refused across the batch, as deleteProject does. */
+  bulkDeleteProjects: (projectIds: string[], opts: { cascade: boolean }) => string[];
   bulkSetProjectArchived: (projectIds: string[], archived: boolean, opts?: { archiveRemaining: boolean }) => void;
 
   deleteTemplate: (id: string) => void;
@@ -4334,8 +4337,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   deleteTask(id, opts = {}) {
     const task = get().tasks.find(t => t.id === id);
     if (!task) return false;
-    if (!opts.ignoreUnlockLock && lockedUnlockBlocking(task)) return false;
     const subtasks = get().subtasksOf(id);
+    // A subtask goes with its parent, so a required one holds the parent too.
+    if (!opts.ignoreUnlockLock && (lockedUnlockBlocking(task) || subtasks.some(s => lockedUnlockBlocking(s)))) return false;
 
     dbDeleteSubtasks(id);
     dbDeleteTask(id);
@@ -10744,19 +10748,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         }
       }
     }
+    // A doomed child that deleteTask refuses (a locked unlock needs it) stays,
+    // unfiled with the stack, and is reported back to the caller.
+    const refused: string[] = [];
+    const kept = new Set<string>();
     dbTransaction(() => {
       children.forEach(child => {
-        if (doomed.has(child.id)) {
-          get().deleteTask(child.id);
+        if (doomed.has(child.id) && get().deleteTask(child.id)) {
           const action = get().lastAction;
           if (action) undos.push(action.undo);
         } else {
+          if (doomed.has(child.id)) refused.push(child.id);
+          kept.add(child.id);
           get().removeFromGroup(child.id);
         }
       });
     });
     useTaskGroupStore.getState().removeGroupRow(groupId);
-    if (!group) return;
+    if (!group) return refused;
     get().setLastAction({
       label: opts.cascade ? 'Stack and its tasks deleted' : 'Stack deleted',
       destructive: true,
@@ -10765,10 +10774,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         useTaskGroupStore.getState().restoreGroup(group);
         undos.forEach(fn => fn());
         children.forEach(child => {
-          if (!doomed.has(child.id)) get().addExistingToGroup(child.id, groupId);
+          if (kept.has(child.id)) get().addExistingToGroup(child.id, groupId);
         });
       },
     }, { replacing: historyBefore });
+    return refused;
   },
 
   // Same one-entry-per-batch rule as bulkDeleteProjects; the ids are filtered
@@ -11099,12 +11109,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // deleted project it would instead be unreachable from every screen.
     const homedGroups = useTaskGroupStore.getState().groups.filter(g => g.projectId === projectId);
     const undos: Array<() => void> = [];
+    // Members deleteTask refuses (a locked unlock needs them) are kept and
+    // unfiled, since the project is going; the caller is told which.
+    const refused: string[] = [];
     dbTransaction(() => {
       if (opts.cascade) {
         members.forEach(member => {
-          get().deleteTask(member.id);
-          const action = get().lastAction;
-          if (action) undos.push(action.undo);
+          if (get().deleteTask(member.id)) {
+            const action = get().lastAction;
+            if (action) undos.push(action.undo);
+          } else {
+            refused.push(member.id);
+            get().removeFromProject(member.id);
+          }
         });
       } else {
         members.forEach(member => get().removeFromProject(member.id));
@@ -11121,7 +11138,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // checkProjectReviewTasks makes. Called before setLastAction below, since
     // dropGeneratedTask clears any pending lastAction.
     dropGeneratedTask('projectReview', projectId);
-    if (!project) return;
+    if (!project) return refused;
     get().setLastAction({
       label: opts.cascade ? 'Project and its tasks deleted' : 'Project deleted',
       destructive: true,
@@ -11133,11 +11150,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         }
         if (opts.cascade) {
           undos.forEach(fn => fn());
+          refused.forEach(id => get().addExistingToProject(id, projectId));
         } else {
           members.forEach(member => get().addExistingToProject(member.id, projectId));
         }
       },
     }, { replacing: historyBefore });
+    return refused;
   },
 
   // Bulk deletes go one project at a time — deleteProject already knows how to
@@ -11154,10 +11173,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Filtered to rows that exist, so a stale id can't leave the previous
     // action's undo in the batch below.
     const ids = projectIds.filter(id => store.getProjectById(id) !== null);
-    if (ids.length === 0) return;
+    if (ids.length === 0) return [];
     const undos: Array<() => void> = [];
+    const refused: string[] = [];
     ids.forEach(id => {
-      get().deleteProject(id, opts);
+      refused.push(...get().deleteProject(id, opts));
       const action = get().lastAction;
       if (action) undos.push(action.undo);
     });
@@ -11167,6 +11187,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       redo: () => get().bulkDeleteProjects(projectIds, opts),
       undo: () => undos.forEach(fn => fn()),
     }, { replacing: historyBefore });
+    return refused;
   },
 
   // `archiveRemaining` is `archiveProject`'s cascade over the whole selection:

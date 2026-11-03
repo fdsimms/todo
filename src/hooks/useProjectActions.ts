@@ -9,6 +9,7 @@ import { templateFromProject } from '../utils/projectTemplate';
 import { haptics } from '../utils/haptics';
 import type { Project } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
+import { explainRefusedDeletes } from '../utils/lockedDelete';
 
 interface Options {
   /** The name as it reads on screen right now (the editor's title may be mid-edit). */
@@ -54,7 +55,7 @@ export function useProjectActions(project: Project | null, options: Options = {}
         {
           text: 'Delete project and tasks',
           style: 'destructive',
-          onPress: () => { deleteProject(project.id, { cascade: true }); onDeleted?.(); },
+          onPress: () => { explainRefusedDeletes(deleteProject(project.id, { cascade: true })); onDeleted?.(); },
         },
       ],
     );

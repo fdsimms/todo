@@ -54,6 +54,7 @@ import { Toggle } from './Toggle';
 import { HelpText } from './HelpText';
 import { sectionIsList, sectionListPatch } from '../utils/listMode';
 import { BUTTON_LABEL } from '../copy/shared';
+import { explainRefusedDeletes } from '../utils/lockedDelete';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags' | 'project';
@@ -465,7 +466,7 @@ export function TaskGroupEditor({ visible, group: liveGroup, isNew, onClose, pro
     // completed occurrences still counts as empty: those are unfiled either
     // way, never deleted.
     const deleteThenClose = (cascade: boolean) => () => {
-      deleteGroup(group.id, { cascade });
+      explainRefusedDeletes(deleteGroup(group.id, { cascade }));
       onClose();
     };
     Alert.alert(
