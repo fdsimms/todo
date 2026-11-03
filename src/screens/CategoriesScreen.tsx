@@ -19,6 +19,9 @@ import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSetting
 import { usePullToSearch } from '../hooks/usePullToSearch';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { WhichToUseSheet } from '../components/WhichToUseSheet';
+import { useWhichToUse } from '../hooks/useWhichToUse';
+import { WHICH_TO_USE_LABEL } from '../utils/organizeGuide';
 import { ReorderableList } from '../components/ReorderableList';
 import { CategoryEditor } from '../components/CategoryEditor';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
@@ -32,6 +35,7 @@ import { formatCategorySchedule } from '../utils/categorySchedule';
 export function CategoriesScreen() {
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const whichToUse = useWhichToUse();
   const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation();
@@ -80,9 +84,10 @@ export function CategoriesScreen() {
         subtitle={allCategories.length > 0
           ? `${allCategories.length} ${allCategories.length === 1 ? 'category' : 'categories'}`
           : undefined}
-        actions={withScreenSettings(undefined, screenSettings.action)}
+        actions={withScreenSettings([whichToUse.action], screenSettings.action)}
       />
       <ScreenSettingsSheet {...screenSettings.sheet} />
+      <WhichToUseSheet {...whichToUse.sheet} />
       <HubPills hub="organize" active="Categories" />
 
       {allCategories.length === 0 ? (
@@ -92,6 +97,9 @@ export function CategoriesScreen() {
           subtitle="Group tasks by part of life, like work, health or errands. Each category can have its own visibility schedule."
           actionLabel="New category"
           onAction={() => setQuickAddVisible(true)}
+          secondaryActionLabel={WHICH_TO_USE_LABEL}
+          secondaryActionIcon="help-circle-outline"
+          onSecondaryAction={whichToUse.open}
           bottomOffset={tabBarHeight}
         />
       ) : (

@@ -20,6 +20,9 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { WhichToUseSheet } from '../components/WhichToUseSheet';
+import { useWhichToUse } from '../hooks/useWhichToUse';
+import { WHICH_TO_USE_LABEL } from '../utils/organizeGuide';
 import { InlineNameField } from '../components/InlineNameField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { Fab, FAB_SIZE } from '../components/Fab';
@@ -62,6 +65,7 @@ export function StacksScreen() {
   const navigation = useNavigation();
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const whichToUse = useWhichToUse();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -211,7 +215,9 @@ export function StacksScreen() {
         subtitle={groups.length > 0
           ? `${groups.length} ${groups.length === 1 ? 'stack' : 'stacks'}`
           : undefined}
+        actions={[whichToUse.action]}
       />
+      <WhichToUseSheet {...whichToUse.sheet} />
       <HubPills hub="organize" active="Stacks" />
 
       {groups.length === 0 && !naming ? (
@@ -221,6 +227,9 @@ export function StacksScreen() {
           subtitle="Group tasks that belong together, like a morning routine. Each task keeps its own schedule, and they show up together on Today."
           actionLabel="New stack"
           onAction={startNaming}
+          secondaryActionLabel={WHICH_TO_USE_LABEL}
+          secondaryActionIcon="help-circle-outline"
+          onSecondaryAction={whichToUse.open}
           bottomOffset={tabBarHeight}
         />
       ) : (

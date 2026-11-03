@@ -38,6 +38,9 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { WhichToUseSheet } from '../components/WhichToUseSheet';
+import { useWhichToUse } from '../hooks/useWhichToUse';
+import { WHICH_TO_USE_LABEL } from '../utils/organizeGuide';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { Fab, FAB_SIZE } from '../components/Fab';
@@ -68,6 +71,7 @@ export function TagsScreen() {
   const pullSearch = usePullToSearch();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const whichToUse = useWhichToUse();
   const scrollTop = useListScrollToTop();
   const tabBarHeight = useBottomTabBarHeight();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -314,7 +318,9 @@ export function TagsScreen() {
         <ScreenHeader
           title="Tags"
           subtitle={allTags.length > 0 ? `${allTags.length} ${allTags.length === 1 ? 'tag' : 'tags'}` : undefined}
+          actions={[whichToUse.action]}
         />
+        <WhichToUseSheet {...whichToUse.sheet} />
         <HubPills hub="organize" active="Tags" />
 
         <FlatList
@@ -336,6 +342,9 @@ export function TagsScreen() {
               subtitle="Tags work across categories. A task can have as many as you like."
               actionLabel="New tag"
               onAction={() => setQuickAddVisible(true)}
+              secondaryActionLabel={WHICH_TO_USE_LABEL}
+              secondaryActionIcon="help-circle-outline"
+              onSecondaryAction={whichToUse.open}
               bottomOffset={tabBarHeight}
             />
           }

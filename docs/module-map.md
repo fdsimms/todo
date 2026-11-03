@@ -374,6 +374,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/openExternalUrl.ts` — ExternalKind, externalKindFor, externalFailureCopy, openExternalUrl
 - `src/utils/openTasks.ts` — openTasksOf
 - `src/utils/ordinal.ts` — ordinal
+- `src/utils/organizeGuide.ts` — WHICH_TO_USE_LABEL, OrganizeKind, OrganizeGuideEntry, PROJECT_DEFINITION, ORGANIZE_GUIDE, organizeGuideEntries
 - `src/utils/ovenTemp.ts` — OvenTempUnit, OVEN_TEMP_UNITS, OVEN_TEMP_RANGE, cleanOvenTemp, formatOvenTemp, parseOvenTemp, ovenTempFor, describeOvenTemp, OvenSetup, ovenSetupsFor
 - `src/utils/paintSelect.ts` — PaintRowRect, PAINT_GUTTER_WIDTH, ROW_HIT_SLOP, isInPaintGutter, rowIdAtY, rowIdsBetween
 - `src/utils/panOil.ts` — PAN_OIL_SHARE, DEEP_FRY_SHARE, isCookingFat, CookMethod, stepsCookMethod, FatCooking, fatCooking, panOilShare
@@ -902,6 +903,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useWatchRetractNotice.ts` — useWatchRetractNotice
 - `src/hooks/useWeatherWaitSync.ts` — useWeatherWaitSync
 - `src/hooks/useWeighIn.ts` — useWeighIn, WeighIn
+- `src/hooks/useWhichToUse.ts` — useWhichToUse
 - `src/hooks/useWithoutLockedTasks.ts` — useWithoutLockedTasks
 - `src/hooks/useWorkoutHeartRate.ts` — useWorkoutHeartRate
 - `src/hooks/useWorkoutLiveActivitySync.ts` — syncWorkoutLiveActivityNow, useWorkoutLiveActivitySync

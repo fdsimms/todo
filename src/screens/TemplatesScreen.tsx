@@ -19,6 +19,9 @@ import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { WhichToUseSheet } from '../components/WhichToUseSheet';
+import { useWhichToUse } from '../hooks/useWhichToUse';
+import { WHICH_TO_USE_LABEL } from '../utils/organizeGuide';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { Fab, FAB_SIZE, type FabDragHandlers, useFabBottom } from '../components/Fab';
 import {
@@ -80,6 +83,7 @@ const SEARCH_BAR_MIN_TEMPLATES = 8;
 export function TemplatesScreen() {
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const whichToUse = useWhichToUse();
   const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
@@ -291,8 +295,9 @@ export function TemplatesScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Templates" actions={withScreenSettings(undefined, screenSettings.action)} />
+      <ScreenHeader title="Templates" actions={withScreenSettings([whichToUse.action], screenSettings.action)} />
       <ScreenSettingsSheet {...screenSettings.sheet} />
+      <WhichToUseSheet {...whichToUse.sheet} />
       <HubPills hub="organize" active="Templates" />
       {showSearch && (
         <SearchField
@@ -355,6 +360,9 @@ export function TemplatesScreen() {
             subtitle="Create a reusable set of tasks, like a pre-vacation checklist, and add them all in one tap."
             actionLabel="Create template"
             onAction={() => setQuickAddVisible(true)}
+            secondaryActionLabel={WHICH_TO_USE_LABEL}
+            secondaryActionIcon="help-circle-outline"
+            onSecondaryAction={whichToUse.open}
             bottomOffset={tabBarHeight}
           />
         )}
