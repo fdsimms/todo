@@ -1,6 +1,6 @@
 import {
   describeSavedEvent, editSavedEvent, findSavedEvent, parseSavedEvents, recordSavedEventUse, removeSavedEvent, saveEventAs,
-  savedEventRecall, SAVED_EVENTS_KEY, sortedSavedEvents, suggestSavedEvents, updateSavedEvent,
+  savedEventRecall, savedEventTitleTaken, SAVED_EVENTS_KEY, sortedSavedEvents, suggestSavedEvents, updateSavedEvent,
   type SavedEventFields,
 } from '../utils/savedEvents';
 import { isSyncedSettingKey } from '../db/syncTracking';
@@ -12,6 +12,21 @@ const fields: SavedEventFields = {
   alertMinutes: 1440, availability: 'busy', calendarTitle: 'Health',
 };
 const start = new Date(2026, 9, 13, 9);
+
+describe('savedEventTitleTaken', () => {
+  const list = saveEventAs([], 'Optometrist', fields, start, 1);
+
+  it('flags another saved event’s title, loosely, as editSavedEvent refuses it', () => {
+    expect(savedEventTitleTaken(list, null, 'optometrist')).toBe(true);
+    expect(savedEventTitleTaken(list, 'Dentist', ' OPTOMETRIST ')).toBe(true);
+  });
+
+  it('is not a clash with the event being edited, or with a free or blank title', () => {
+    expect(savedEventTitleTaken(list, 'Optometrist', 'optometrist')).toBe(false);
+    expect(savedEventTitleTaken(list, null, 'Dentist')).toBe(false);
+    expect(savedEventTitleTaken(list, null, '  ')).toBe(false);
+  });
+});
 
 describe('saveEventAs', () => {
   it('adds a new saved event with the start it was used for', () => {

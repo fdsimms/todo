@@ -199,6 +199,19 @@ export function savedEventRecall(
 export type SavedEventInput = Pick<SavedEvent, 'title' | 'location' | 'place' | 'durationMinutes' | 'alertMinutes'>;
 
 /**
+ * Whether `title` is another saved event's title (a loose match,
+ * `eventMemoryKey`), which is what `editSavedEvent` refuses on. `originalTitle`
+ * is the event being edited, or null for a new one; keeping its own title is
+ * not a clash.
+ */
+export function savedEventTitleTaken(list: readonly SavedEvent[], originalTitle: string | null, title: string): boolean {
+  const key = eventMemoryKey(title.trim());
+  if (!key) return false;
+  const originalKey = originalTitle === null ? null : eventMemoryKey(originalTitle);
+  return key !== originalKey && list.some(e => eventMemoryKey(e.title) === key);
+}
+
+/**
  * Creates a saved event, or rewrites the one saved under `originalTitle`, from
  * Settings. Returns null for an empty title, or a title another saved event
  * already has (a loose match, `eventMemoryKey`), so the caller can say why.
@@ -218,7 +231,7 @@ export function editSavedEvent(
   const key = eventMemoryKey(title);
   if (!key) return null;
   const originalKey = originalTitle === null ? null : eventMemoryKey(originalTitle);
-  if (list.some(e => eventMemoryKey(e.title) === key && key !== originalKey)) return null;
+  if (savedEventTitleTaken(list, originalTitle, title)) return null;
   const existing = originalKey === null ? undefined : list.find(e => eventMemoryKey(e.title) === originalKey);
   const entry: SavedEvent = {
     title,

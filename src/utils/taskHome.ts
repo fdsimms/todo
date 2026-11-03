@@ -29,3 +29,21 @@ export function taskHomeFor(task: Task): TaskHome | null {
   if (isTaskDeferred(task)) return 'later';
   return null;
 }
+
+/**
+ * Where a task that was just created, or just left the Inbox, shows up, for the
+ * toast that says so: `taskHomeFor`'s four lists, plus `'project'` for the one
+ * case it leaves null on purpose, a task filed in a project with no date, whose
+ * home is the project's own page. A toast that fell back to Later for it sent
+ * "Go to it" to a list the task was never in.
+ *
+ * `null` is "no list to point at" (completed, a subtask, blocked, hidden with
+ * its project); archived is null too, since nothing makes a task archived and
+ * announces it as arriving somewhere.
+ */
+export function landingFor(task: Task): Exclude<TaskHome, 'archived'> | 'project' | null {
+  const home = taskHomeFor(task);
+  if (home === 'archived') return null;
+  if (home !== null) return home;
+  return task.projectId && !task.dueDate && !task.parentId && !task.completed ? 'project' : null;
+}

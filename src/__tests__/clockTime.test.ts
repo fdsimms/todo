@@ -1,4 +1,4 @@
-import { hhmmToDate, formatHHMM, dateToHHMM, clockTimeToken, effectiveWindowEndTime, onLogicalDay, carryClockTime } from '../utils/clockTime';
+import { hhmmToDate, formatHHMM, dateToHHMM, clockTimeToken, effectiveWindowEndTime, onLogicalDay, carryClockTime, formatUntil } from '../utils/clockTime';
 
 const NOW = new Date(2025, 5, 10, 14, 30, 0); // Tue Jun 10 2025, 2:30 PM
 
@@ -188,5 +188,17 @@ describe('carryClockTime', () => {
     const due = new Date(2026, 7, 27, 12, 0);
     expect(carryClockTime(due, original, '04:00')).toEqual(new Date(2026, 7, 27, 17, 30));
     expect(carryClockTime(due, original, '00:00')).toEqual(new Date(2026, 7, 27, 17, 30));
+  });
+});
+
+describe('formatUntil', () => {
+  it('gives the time alone for an end later today', () => {
+    expect(formatUntil(new Date(2025, 5, 10, 17, 30), NOW, false)).toBe('5:30 PM');
+    expect(formatUntil(new Date(2025, 5, 10, 17, 30), NOW, true)).toBe('17:30');
+  });
+
+  it('puts the weekday in front for any other day', () => {
+    expect(formatUntil(new Date(2025, 5, 11, 9, 0), NOW, false)).toBe('Wed 9:00 AM');
+    expect(formatUntil(new Date(2025, 5, 11, 9, 0), NOW, true)).toBe('Wed 09:00');
   });
 });

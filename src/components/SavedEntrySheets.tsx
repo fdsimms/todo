@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { FieldError } from './FieldError';
 import { TextField } from './TextField';
 import { FieldClearButton } from './FieldClearButton';
 import { CountStepper } from './CountStepper';
@@ -14,8 +15,8 @@ import { haptics } from '../utils/haptics';
 import { alertPermissionOff } from '../utils/permissionAlert';
 import { requestLocationPermission } from '../utils/weatherLocation';
 import { placeLocationText, placeRowTitle, placeSubtitle, type PlaceResult } from '../utils/places';
-import { editSavedPlace, addSavedPlace, findSavedPlace, type SavedPlace } from '../utils/savedPlaces';
-import { editSavedEvent, type SavedEvent } from '../utils/savedEvents';
+import { editSavedPlace, addSavedPlace, savedPlaceNameTaken, type SavedPlace } from '../utils/savedPlaces';
+import { editSavedEvent, savedEventTitleTaken, type SavedEvent } from '../utils/savedEvents';
 import { ALERT_CHOICES, describeAlert } from '../utils/quickEventSave';
 import { HelpText } from './HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -153,27 +154,19 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
 
   if (!subject) return null;
   const isNew = subject === 'new';
+  // Said under the name as it is typed, from the rule `editSavedPlace` refuses
+  // on (a loose match, so "home" is "Home"); a place keeping its own name is
+  // not a clash with itself.
+  const nameTaken = savedPlaceNameTaken(places, isNew ? null : subject.id, name);
 
   const save = () => {
     if (!name.trim() || !text.trim()) {
       Alert.alert('Name and address needed', 'Enter a name and the address it stands for.');
       return;
     }
+    if (nameTaken) { haptics.error(); return; }
     const input = { name, text, place: pin, moodTag };
-    let next: SavedPlace[];
-    if (isNew) {
-      if (findSavedPlace(places, name)) {
-        Alert.alert('That name is taken', 'Another saved place has that name.');
-        return;
-      }
-      next = addSavedPlace(places, input);
-    } else {
-      next = editSavedPlace(places, subject.id, input);
-      if (!next.some(p => p.id === subject.id && p.name === name.trim())) {
-        Alert.alert('That name is taken', 'Another saved place has that name.');
-        return;
-      }
-    }
+    const next = isNew ? addSavedPlace(places, input) : editSavedPlace(places, subject.id, input);
     haptics.success();
     finish(() => onSave(next));
   };
@@ -184,7 +177,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
       <View style={styles.header}>
         <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => finish()} />
         <Text style={styles.headerTitle}>{isNew ? 'New place' : 'Edit place'}</Text>
-        <SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} />
+        <SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} disabled={nameTaken} />
       </View>
       <View style={styles.body}>
         <Text style={styles.fieldLabel}>NAME</Text>
@@ -198,6 +191,7 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
           returnKeyType="next"
           accessibilityLabel="Place name"
         />
+        {nameTaken && <FieldError>Another saved place has that name.</FieldError>}
         <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>ADDRESS</Text>
         <PlaceAddressField
           text={text}
@@ -283,12 +277,16 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
 
   if (!subject) return null;
   const isNew = subject === 'new';
+  // Said under the title as it is typed, from the rule `editSavedEvent`
+  // refuses on; an event keeping its own title is not a clash with itself.
+  const titleTaken = savedEventTitleTaken(events, isNew ? null : subject.title, title);
 
   const save = () => {
     if (!title.trim()) {
       Alert.alert('Title needed', 'Enter a title to identify this event.');
       return;
     }
+    if (titleTaken) { haptics.error(); return; }
     const next = editSavedEvent(events, isNew ? null : subject.title, {
       title,
       location: location.trim() || null,
@@ -296,10 +294,7 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
       durationMinutes: length,
       alertMinutes: alert === NO_ALERT ? null : alert,
     }, Date.now());
-    if (!next) {
-      Alert.alert('That title is taken', 'Another saved event has that title.');
-      return;
-    }
+    if (!next) { haptics.error(); return; }
     haptics.success();
     finish(() => onSave(next));
   };
@@ -310,7 +305,7 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
       <View style={styles.header}>
         <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => finish()} />
         <Text style={styles.headerTitle}>{isNew ? 'New saved event' : 'Edit saved event'}</Text>
-        <SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} />
+        <SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} disabled={titleTaken} />
       </View>
       <View style={styles.body}>
         <Text style={styles.fieldLabel}>TITLE</Text>
@@ -324,6 +319,7 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
           returnKeyType="next"
           accessibilityLabel="Event title"
         />
+        {titleTaken && <FieldError>Another saved event has that title.</FieldError>}
         <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>LOCATION</Text>
         <PlaceAddressField
           text={location}

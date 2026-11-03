@@ -3986,7 +3986,7 @@ function registerWriteTools(
       }).nullable().optional().describe('Priority, difficulty, time estimate, streak chip, vacation pause, skip-in-suggestions and if-the-day-is-full every new task in the project starts with, so a list like a wish list never reaches backfill. Null clears them. Existing tasks are not changed.'),
       completed: z.boolean().optional(),
       archived: z.boolean().optional(),
-      archiveRemaining: z.boolean().optional().describe('With completed: true, archive its open tasks too, as the app offers when a project is finished with tasks left. Ask the person first.'),
+      archiveRemaining: z.boolean().optional().describe('With completed: true or archived: true, archive its open tasks too, as the app offers when a project is finished or archived with tasks left. Without it they stay on the person\'s lists. Ask the person first.'),
       pausedUntil: z.string().nullable().optional().describe('Pause it until a day (YYYY-MM-DD, after today): its tasks are held off every list until then, as "park the garden for winter". null resumes it now.'),
       planning: z.boolean().optional().describe('true puts it in Planning: its tasks, dated ones too, are held off every list and it gets no nudges until it is marked ready, for a project still being set up. false marks it ready. Not with pausedUntil.'),
       inOrder: z.boolean().optional().describe('Work the steps in page order: the app offers only the first open one.'),

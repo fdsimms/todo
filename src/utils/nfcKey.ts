@@ -40,6 +40,12 @@ export interface NfcKey {
   /** A `tag` key's normalized hardware id, or a `link` key's token. */
   secret: string;
   addedAt: string;
+  /**
+   * When a scan last matched this key. A link key is enrolled by naming it and
+   * the tag is written afterwards in another app, so enrolling proves nothing
+   * about it; this is the first sign it works (see `isKeyProven`).
+   */
+  lastScannedAt?: string;
 }
 
 /** The most keys enrolled at once. A handful of tags is a lot of tags. */
@@ -129,15 +135,16 @@ export function parseNfcKeys(raw: string | null | undefined): NfcKey[] {
   const keys: NfcKey[] = [];
   for (const item of parsed) {
     if (typeof item !== 'object' || item === null) continue;
-    const { id, name, kind, secret, addedAt } = item as Partial<NfcKey>;
+    const { id, name, kind, secret, addedAt, lastScannedAt } = item as Partial<NfcKey>;
+    const scanned = typeof lastScannedAt === 'string' ? { lastScannedAt } : {};
     if (typeof id !== 'string' || typeof name !== 'string' || typeof addedAt !== 'string') continue;
     if (typeof secret !== 'string') continue;
     if (kind === 'tag') {
       const uid = normalizeTagUid(secret);
-      if (uid) keys.push({ id, name, kind, secret: uid, addedAt });
+      if (uid) keys.push({ id, name, kind, secret: uid, addedAt, ...scanned });
     } else if (kind === 'link') {
       const token = normalizeLinkToken(secret);
-      if (token) keys.push({ id, name, kind, secret: token, addedAt });
+      if (token) keys.push({ id, name, kind, secret: token, addedAt, ...scanned });
     }
   }
   return keys.slice(0, MAX_NFC_KEYS);
@@ -178,6 +185,21 @@ export function matchKey(keys: readonly NfcKey[], kind: NfcKeyKind, secret: stri
  */
 export function canLock(keys: readonly NfcKey[]): boolean {
   return keys.length > 0;
+}
+
+/**
+ * Whether a key is known to work. A scanned tag was read to enroll it, so it is
+ * proven from the start. A link key is only a token the app made: whether the
+ * tag was ever written is invisible to the app until a tap reaches it, so it is
+ * unproven until a scan has matched it.
+ */
+export function isKeyProven(key: Pick<NfcKey, 'kind' | 'lastScannedAt'>): boolean {
+  return key.kind === 'tag' || !!key.lastScannedAt;
+}
+
+/** At least one key is known to work, so a lock raised now has a way out that has been seen to work. */
+export function hasProvenKey(keys: readonly Pick<NfcKey, 'kind' | 'lastScannedAt'>[]): boolean {
+  return keys.some(isKeyProven);
 }
 
 /** What a scan does to the lock: it flips it. */

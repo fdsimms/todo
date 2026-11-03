@@ -13,6 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
+import { useProjectStore } from '../store/useProjectStore';
 import type { Category, Task, TaskGroup } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -20,6 +21,9 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
+import { WhichToUseSheet } from '../components/WhichToUseSheet';
+import { useWhichToUse } from '../hooks/useWhichToUse';
+import { WHICH_TO_USE_LABEL } from '../utils/organizeGuide';
 import { InlineNameField } from '../components/InlineNameField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { Fab, FAB_SIZE } from '../components/Fab';
@@ -62,6 +66,7 @@ export function StacksScreen() {
   const navigation = useNavigation();
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const whichToUse = useWhichToUse();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -189,11 +194,19 @@ export function StacksScreen() {
     );
   };
 
+  // A stack made on a project's page lists here too, and without the project's
+  // name it read as a stray stack the person had never made.
+  const projects = useProjectStore(useShallow(s => s.projects));
+  const projectTitles = useMemo(() => new Map(projects.map(p => [p.id, p.title])), [projects]);
+
+  const listExtra = useMemo(() => ({ paintProps, projectTitles }), [paintProps, projectTitles]);
+
   const renderStack = ({ item: group }: { item: TaskGroup }) => (
     <StackRow
       group={group}
       roster={rostersByGroupId.get(group.id) ?? NO_ROSTER}
       categories={categories}
+      projectTitle={group.projectId ? projectTitles.get(group.projectId) ?? null : null}
       colors={colors}
       styles={styles}
       selectionMode={selectionMode}
@@ -211,7 +224,9 @@ export function StacksScreen() {
         subtitle={groups.length > 0
           ? `${groups.length} ${groups.length === 1 ? 'stack' : 'stacks'}`
           : undefined}
+        actions={[whichToUse.action]}
       />
+      <WhichToUseSheet {...whichToUse.sheet} />
       <HubPills hub="organize" active="Stacks" />
 
       {groups.length === 0 && !naming ? (
@@ -221,6 +236,9 @@ export function StacksScreen() {
           subtitle="Group tasks that belong together, like a morning routine. Each task keeps its own schedule, and they show up together on Today."
           actionLabel="New stack"
           onAction={startNaming}
+          secondaryActionLabel={WHICH_TO_USE_LABEL}
+          secondaryActionIcon="help-circle-outline"
+          onSecondaryAction={whichToUse.open}
           bottomOffset={tabBarHeight}
         />
       ) : (
@@ -239,7 +257,7 @@ export function StacksScreen() {
             // renderStack closes over the selection, and rows are otherwise
             // only keyed on the group id, so the list has to be told what
             // else changed.
-            extraData={paintProps}
+            extraData={listExtra}
             renderItem={renderStack}
             contentContainerStyle={[styles.list, selectionMode && { paddingBottom: selectionListPadding }]}
             ListFooterComponent={
@@ -307,11 +325,13 @@ export function StacksScreen() {
  * of the chevron.
  */
 const StackRow = React.memo(function StackRow({
-  group, roster, categories, colors, styles, selectionMode, selected, onOpen, onToggleSelect, onSwipeSelect,
+  group, roster, categories, projectTitle, colors, styles, selectionMode, selected, onOpen, onToggleSelect, onSwipeSelect,
 }: {
   group: TaskGroup;
   roster: Task[];
   categories: Category[];
+  /** The project whose page this stack was made on, or null. A section there is a stack here too. */
+  projectTitle: string | null;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
   selectionMode: boolean;
@@ -333,7 +353,8 @@ const StackRow = React.memo(function StackRow({
     : `${roster.length} ${roster.length === 1 ? 'task' : 'tasks'}`;
   const todayLabel = dueToday > 0 ? `${dueToday} due today` : 'Nothing due today';
   const catLabel = group.category ? categoryLabel(group.category, categories) : null;
-  const spokenMeta = [memberLabel, todayLabel, catLabel].filter(Boolean).join('. ');
+  const projectLabel = projectTitle ? `In ${projectTitle}` : null;
+  const spokenMeta = [memberLabel, todayLabel, catLabel, projectLabel].filter(Boolean).join('. ');
   // Shared by the swipe and the iPhone Mirroring button.
   const swipeSelect = { onSelect: () => onSwipeSelect(group.id), accessibilityLabel: `Select ${group.title}` };
   // What the row already offers, for a right-click on a Mac: a tap and the
@@ -377,6 +398,14 @@ const StackRow = React.memo(function StackRow({
                   <Text style={styles.metaDot}>·</Text>
                   <Text style={[styles.metaText, styles.metaCategory]} numberOfLines={1}>
                     {catLabel}
+                  </Text>
+                </>
+              )}
+              {projectLabel && (
+                <>
+                  <Text style={styles.metaDot}>·</Text>
+                  <Text style={[styles.metaText, styles.metaCategory]} numberOfLines={1}>
+                    {projectLabel}
                   </Text>
                 </>
               )}

@@ -2,15 +2,20 @@ import { useCallback, useMemo, useRef } from 'react';
 import { Animated, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import {
   SCROLL_FADE_HEIGHT,
-  ScrollEdgeMetrics,
+  ScrollAxisMetrics,
   edgeFadeOpacity,
-  hiddenAbove,
-  hiddenBelow,
+  hiddenAfter,
+  hiddenBefore,
 } from '../utils/scrollFade';
 
 interface Options {
-  /** Ramp distance, which should match the band's own height. */
+  /**
+   * Ramp distance, which should match the band's own thickness: its height for
+   * a list that scrolls up and down, its width for one that scrolls sideways.
+   */
   height?: number;
+  /** Which way the list scrolls. Defaults to vertical. */
+  axis?: 'vertical' | 'horizontal';
 }
 
 export interface ScrollEdgeFadeScrollProps {
@@ -27,6 +32,10 @@ export interface ScrollEdgeFadeBinding {
   bottomOpacity: Animated.Value;
   /** Pass to a top-edge `ScrollEdgeFade`. */
   topOpacity: Animated.Value;
+  /** The same value as `bottomOpacity`, named for either axis: the far end (right, or bottom). */
+  trailingOpacity: Animated.Value;
+  /** The same value as `topOpacity`, named for either axis: the near end (left, or top). */
+  leadingOpacity: Animated.Value;
 }
 
 /**
@@ -47,15 +56,17 @@ export interface ScrollEdgeFadeBinding {
  * unless the target actually moves, so the long middle of a scroll — where
  * both ends are far away and both values are pinned at 1 — costs nothing.
  */
-export function useScrollEdgeFade({ height = SCROLL_FADE_HEIGHT }: Options = {}): ScrollEdgeFadeBinding {
+export function useScrollEdgeFade({ height = SCROLL_FADE_HEIGHT, axis = 'vertical' }: Options = {}): ScrollEdgeFadeBinding {
   const bottomOpacity = useRef(new Animated.Value(0)).current;
   const topOpacity = useRef(new Animated.Value(0)).current;
-  const metrics = useRef<ScrollEdgeMetrics>({ offsetY: 0, contentHeight: 0, viewportHeight: 0 });
+  // Held along whichever axis the list scrolls, so the one `sync` serves both.
+  const metrics = useRef<ScrollAxisMetrics>({ offset: 0, content: 0, viewport: 0 });
   const applied = useRef({ bottom: 0, top: 0 });
+  const sideways = axis === 'horizontal';
 
   const sync = useCallback(() => {
-    const bottom = edgeFadeOpacity(hiddenBelow(metrics.current), height);
-    const top = edgeFadeOpacity(hiddenAbove(metrics.current), height);
+    const bottom = edgeFadeOpacity(hiddenAfter(metrics.current), height);
+    const top = edgeFadeOpacity(hiddenBefore(metrics.current), height);
     if (Math.abs(bottom - applied.current.bottom) > 0.005) {
       applied.current.bottom = bottom;
       bottomOpacity.setValue(bottom);
@@ -70,25 +81,24 @@ export function useScrollEdgeFade({ height = SCROLL_FADE_HEIGHT }: Options = {})
     () => ({
       onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
         const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-        metrics.current = {
-          offsetY: contentOffset.y,
-          contentHeight: contentSize.height,
-          viewportHeight: layoutMeasurement.height,
-        };
+        metrics.current = sideways
+          ? { offset: contentOffset.x, content: contentSize.width, viewport: layoutMeasurement.width }
+          : { offset: contentOffset.y, content: contentSize.height, viewport: layoutMeasurement.height };
         sync();
       },
       onLayout: (e: LayoutChangeEvent) => {
-        metrics.current = { ...metrics.current, viewportHeight: e.nativeEvent.layout.height };
+        const { width, height: tall } = e.nativeEvent.layout;
+        metrics.current = { ...metrics.current, viewport: sideways ? width : tall };
         sync();
       },
-      onContentSizeChange: (_width: number, contentHeight: number) => {
-        metrics.current = { ...metrics.current, contentHeight };
+      onContentSizeChange: (contentWidth: number, contentHeight: number) => {
+        metrics.current = { ...metrics.current, content: sideways ? contentWidth : contentHeight };
         sync();
       },
       scrollEventThrottle: 16,
     }),
-    [sync],
+    [sync, sideways],
   );
 
-  return { scrollProps, bottomOpacity, topOpacity };
+  return { scrollProps, bottomOpacity, topOpacity, trailingOpacity: bottomOpacity, leadingOpacity: topOpacity };
 }

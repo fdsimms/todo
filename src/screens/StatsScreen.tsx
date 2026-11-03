@@ -22,7 +22,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { subDays } from 'date-fns/subDays';
 import { startOfWeek } from 'date-fns/startOfWeek';
-import { useTaskStore } from '../store/useTaskStore';
+import { redoRestoringRows, useTaskStore } from '../store/useTaskStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ScreenSettingsSheet } from '../components/ScreenSettingsSheet';
 import { useScreenSettings, withScreenSettings } from '../hooks/useScreenSettings';
@@ -351,10 +351,22 @@ export function StatsScreen() {
   // Default scope, so the change follows the task forward: timeSegments is a
   // CONTENT_FIELD, so a series fans it out to its later dates and a recurring
   // task carries it onto the next occurrence it spawns.
+  //
+  // Time of day is a visibility gate, so the rows can leave Today right here,
+  // and the tap has no confirmation of its own: the undo bar is the way back.
   const applyMismatch = (m: SegmentMismatch) => {
+    const snapshots = useTaskStore.getState().tasks
+      .filter(t => m.taskIds.includes(t.id))
+      .map(t => ({ ...t }));
     haptics.success();
     animateLayout();
     m.taskIds.forEach(id => updateTask(id, { timeSegments: [m.observed] }));
+    useTaskStore.getState().setLastAction({
+      label: `Moved “${m.title}” to ${m.observed}`,
+      undo: () => snapshots.forEach(snapshot => useTaskStore.getState().updateTask(snapshot.id, snapshot)),
+      redo: redoRestoringRows(snapshots.map(t => t.id)),
+      announce: true,
+    });
   };
 
   // Bars grow up from the baseline once on mount (height isn't supported by

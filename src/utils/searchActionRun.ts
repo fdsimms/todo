@@ -4,6 +4,7 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { clockTimeToken } from './clockTime';
 import { dbGetFoodLogEntries } from '../db/database';
 import { useHealthStore } from '../store/useHealthStore';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from './dateUtils';
@@ -106,7 +107,7 @@ async function runDose(action: DoseAction): Promise<SearchActionReceipt | null> 
   if (!log) return null;
   return {
     title: `Recorded ${log.name}`,
-    meta: [formatDose(log), format(new Date(log.takenAt), 'h:mm a')].filter(Boolean).join(' · '),
+    meta: [formatDose(log), format(new Date(log.takenAt), clockTimeToken(useSettingsStore.getState().use24HourTime))].filter(Boolean).join(' · '),
     undo: () => unrecordDose(log),
   };
 }
@@ -156,7 +157,7 @@ function runSymptom(action: SymptomAction): SearchActionReceipt | null {
   if (!log) return null;
   return {
     title: `Logged ${action.symptom}`,
-    meta: `${severityLabel(action.severity)} · ${format(new Date(log.loggedAt), 'h:mm a')}`,
+    meta: `${severityLabel(action.severity)} · ${format(new Date(log.loggedAt), clockTimeToken(useSettingsStore.getState().use24HourTime))}`,
     undo: () => useMoodStore.getState().removeLog(log.id),
   };
 }

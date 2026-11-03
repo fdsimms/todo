@@ -32,6 +32,9 @@ import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddP
 import { ScreenHeader } from '../components/ScreenHeader';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
+import { WhichToUseSheet } from '../components/WhichToUseSheet';
+import { useWhichToUse } from '../hooks/useWhichToUse';
+import { PROJECT_DEFINITION, WHICH_TO_USE_LABEL } from '../utils/organizeGuide';
 import { EmbeddedRoute } from '../components/EmbeddedRoute';
 import { TwoPane } from '../components/TwoPane';
 import { useTwoPane } from '../hooks/useTwoPane';
@@ -75,6 +78,7 @@ import { navigateToSettingsEntry } from '../navigation/openSettings';
 import { useScreenSettings } from '../hooks/useScreenSettings';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
+  PROJECT_SORT_LABEL,
   projectCardCaption,
   projectMatchesQuery,
   projectNextStepTitle,
@@ -128,6 +132,7 @@ function ProjectsList() {
   // ==== screen setup ====
   const pullSearch = usePullToSearch();
   const insets = useSafeAreaInsets();
+  const whichToUse = useWhichToUse();
   const fabBottom = useFabBottom();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
@@ -305,13 +310,39 @@ function ProjectsList() {
     exitSelection();
   };
 
-  // Archiving is the reversible half of filing a batch away, so it needs no
-  // confirmation — a shake undoes it. In the archived list the same button
-  // means the other direction.
+  // Archiving is reversible, so it asks nothing about the projects themselves —
+  // a shake undoes it. What it does ask, as one project's Archive does, is what
+  // to do with the open tasks left in them, since archived projects' tasks stay
+  // live on Today otherwise. A selection with nothing open archives straight
+  // away. In the archived list the same button means the other direction.
   const handleBulkArchive = () => {
-    animateLayout();
-    bulkSetProjectArchived(Array.from(selectedIds), projectFilter !== 'archived');
-    exitSelection();
+    const ids = Array.from(selectedIds);
+    const run = (archiveRemaining: boolean) => {
+      animateLayout();
+      bulkSetProjectArchived(ids, projectFilter !== 'archived', { archiveRemaining });
+      exitSelection();
+    };
+    if (projectFilter === 'archived') {
+      run(false);
+      return;
+    }
+    const picked = new Set(ids);
+    const open = allTasks.filter(
+      t => t.projectId !== null && picked.has(t.projectId) && t.parentId === null && !t.completed && !t.archived,
+    ).length;
+    if (open === 0) {
+      run(false);
+      return;
+    }
+    Alert.alert(
+      `Archive ${ids.length} ${ids.length === 1 ? 'project' : 'projects'}?`,
+      `${open} open ${open === 1 ? 'task is' : 'tasks are'} still in ${ids.length === 1 ? 'it' : 'them'}. ${open === 1 ? 'It stays' : 'They stay'} on your lists unless you archive ${open === 1 ? 'it' : 'them'} too.`,
+      [
+        { text: BUTTON_LABEL.cancel, style: 'cancel' },
+        { text: 'Leave remaining tasks', onPress: () => run(false) },
+        { text: 'Archive remaining tasks', onPress: () => run(true) },
+      ],
+    );
   };
 
   // The same question ProjectEditor's own delete asks, and for the same reason:
@@ -610,6 +641,8 @@ function ProjectsList() {
           ? `${listProjects.length} ${projectFilter} ${listProjects.length === 1 ? 'project' : 'projects'}`
           : undefined}
         actions={[
+          // Beside the menu, and gone with it while selecting.
+          ...(selectionMode ? [] : [whichToUse.action]),
           // Selecting is reached by swiping a row now, same as every other
           // bulk-selecting list — no header button needed.
           // Hidden while selecting: the menu switches which list is on
@@ -629,6 +662,8 @@ function ProjectsList() {
         ]}
       />
 
+      <WhichToUseSheet {...whichToUse.sheet} />
+
       <TipHost screen="projects" />
 
       <PaintSelectionProvider {...paintProps}>
@@ -644,6 +679,13 @@ function ProjectsList() {
           style={styles.searchBar}
           accessibilityLabel="Search projects"
         />
+      )}
+      {/* A drag is only offered on Your order (see canReorder), and a long-press
+          that does nothing says nothing, so the sorted lists say why. */}
+      {projectSort !== 'manual' && visibleProjects.length > 1 && (
+        <Text style={styles.reorderNote}>
+          {`Dragging is off while sorted by ${PROJECT_SORT_LABEL[projectSort].toLowerCase()}. Choose Your order in the … menu to rearrange.`}
+        </Text>
       )}
       {visibleProjects.length === 0 ? (
         query ? (
@@ -676,11 +718,16 @@ function ProjectsList() {
             subtitle={
               projectFilter === 'archived' || projectFilter === 'completed'
                 ? undefined
-                : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time.'
+                : PROJECT_DEFINITION
             }
             // The button is hidden on these two lists, so this is the way back.
             actionLabel={projectFilter === 'active' ? 'New project' : 'Show active projects'}
             onAction={projectFilter === 'active' ? () => setQuickAddVisible(true) : () => setProjectFilter('active')}
+            // Only where someone is starting from nothing, not on the empty
+            // Completed and Archived lists.
+            secondaryActionLabel={projectFilter === 'active' ? WHICH_TO_USE_LABEL : undefined}
+            secondaryActionIcon="help-circle-outline"
+            onSecondaryAction={projectFilter === 'active' ? whichToUse.open : undefined}
             bottomOffset={tabBarHeight}
           />
         )
@@ -1190,5 +1237,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
     marginBottom: spacing.sm,
+  },
+  reorderNote: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+    color: colors.textSecondary,
+    fontSize: font.sm,
   },
 });

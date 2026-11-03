@@ -1,0 +1,1 @@
+{ "message": "Saving a block schedule that covers the current time now asks first. It blocks at once and can't be changed until the window ends, and the alert says until when.", "date": "2026-11-02" }

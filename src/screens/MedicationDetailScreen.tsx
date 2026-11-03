@@ -57,6 +57,7 @@ import { ChartGuides, BAR_GUIDE_GAP, useGuideGutter } from '../components/ChartG
 import { countStripScale } from '../utils/stripScale';
 import { BUTTON_LABEL } from '../copy/shared';
 import { resetToTask } from '../navigation/navigationRef';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 
 type RootStackParamList = {
   MedicationDetail: {
@@ -82,6 +83,7 @@ const GUIDE_LABEL_WIDTH = 22;
  * doses rather than stored as a number that goes down.
  */
 export function MedicationDetailScreen() {
+  const timeToken = useClockTimeToken();
   const navigation = useNavigation<{ goBack: () => void; setParams: (params: { medicationKey: string }) => void }>();
   const route = useRoute<RouteProp<RootStackParamList, 'MedicationDetail'>>();
   const key = route.params.medicationKey;
@@ -657,11 +659,11 @@ export function MedicationDetailScreen() {
             {!limit
               ? 'Set hours apart or a cap above to turn this on.'
               : status.nextOkAt
-                ? `Within your limit again at ${format(status.nextOkAt, 'h:mm a')}.`
+                ? `Within your limit again at ${format(status.nextOkAt, timeToken)}.`
                 : `${describeLimit(limit)}. ${status.inLast24h} in the last 24 hours.`}
           </Text>
           <Text style={styles.fieldNote}>
-            Warns you before a dose goes past this limit. Copy it from the label or what your doctor told you.
+            Warns you before a dose you record in the app goes past this limit. A dose logged from Siri or a widget isn’t checked. Copy the limit from the label or what your doctor told you.
           </Text>
         </View>
 
@@ -783,7 +785,7 @@ export function MedicationDetailScreen() {
               accessibilityLabel={`Edit the dose on ${format(new Date(log.takenAt), 'MMM d')}`}
             >
               <Text style={styles.doseWhen} numberOfLines={1}>
-                {format(new Date(log.takenAt), 'EEE, MMM d · h:mm a')}
+                {format(new Date(log.takenAt), `EEE, MMM d · ${timeToken}`)}
               </Text>
               <Text style={styles.doseMeta} numberOfLines={1}>
                 {[

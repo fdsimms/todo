@@ -31,6 +31,8 @@ import { dateToHHMM, hhmmToDate } from '../utils/clockTime';
 import { firstEmoji } from '../utils/emojiInput';
 import { sameTimeSegments } from '../utils/visibilityUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { FieldError } from './FieldError';
+import { categoryRenameTaken } from '../utils/nameTaken';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import type { TimeOfDay } from '../types';
@@ -75,6 +77,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const cat = useCategoryStore(s => (category ? s.getCategoryByName(category) : null));
+  const categories = useCategoryStore(s => s.categories);
   const setCategorySchedule = useCategoryStore(s => s.setCategorySchedule);
   const removeCategorySchedule = useCategoryStore(s => s.removeCategorySchedule);
   const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
@@ -220,9 +223,17 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
     setPicker(null);
   };
 
+  // Said under the field as it is typed, from the rule `renameCategory` refuses
+  // on, so what the sheet flags and what the store accepts can't disagree.
+  const nameTaken = !!category && categoryRenameTaken(categories.map(c => c.name), category, name);
+
   const saveAndClose = () => {
     Keyboard.dismiss();
     if (!category) { onClose(); return; }
+    // Nothing is written while the name is refused, rather than writing the
+    // other fields and then declining the rename. The sheet stays open on the
+    // message, for Done and for a swipe down alike.
+    if (nameTaken) { haptics.error(); return; }
 
     // Everything below is keyed by the category's *current* name, so the
     // rename has to happen last or the other writes would miss.
@@ -254,11 +265,11 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
     }
 
     const trimmedName = name.trim();
-    if (trimmedName && trimmedName !== category) {
-      if (!renameCategory(category, trimmedName)) {
-        Alert.alert('That name is taken', `A category named “${trimmedName}” already exists.`);
-        return;
-      }
+    // A refusal here is a name taken since the check above, which the live list
+    // above shows as the same message on the next render.
+    if (trimmedName && trimmedName !== category && !renameCategory(category, trimmedName)) {
+      haptics.error();
+      return;
     }
     onClose();
   };
@@ -282,7 +293,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
     <SheetModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={saveAndClose}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} disabled={nameTaken} />
           <Text style={styles.headerTitle}>Edit category</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete category ${category}`}>
             <Ionicons name="trash-outline" size={20} color={colors.red} />
@@ -321,6 +332,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
               accessibilityLabel="Category name"
             />
           </View>
+          {nameTaken && <FieldError>{`A category named “${name.trim()}” already exists.`}</FieldError>}
           <Text style={styles.identityHint}>
             {taskCount === 1 ? '1 task' : `${taskCount} tasks`} in this category. Tap the icon to pick an emoji.
           </Text>

@@ -183,6 +183,20 @@ describe('applyKeyScan', () => {
     expect(useNfcKeyStore.getState().locked).toBe(false);
   });
 
+  it('records that the key was scanned, so a link tag is proven by its first tap', () => {
+    const enrolled = useNfcKeyStore.getState().enrollLink('Door');
+    if (!enrolled.ok) throw new Error('enroll failed');
+    expect(useNfcKeyStore.getState().keys[0].lastScannedAt).toBeUndefined();
+    expect(applyKeyScan('link', enrolled.key.secret).outcome).toBe('locked');
+    expect(useNfcKeyStore.getState().keys[0].lastScannedAt).toBe(WED_10.toISOString());
+  });
+
+  it('records nothing for a tag nobody enrolled', () => {
+    enroll();
+    applyKeyScan('tag', '04FFFFFFFFFFFF');
+    expect(useNfcKeyStore.getState().keys[0].lastScannedAt).toBeUndefined();
+  });
+
   it('locks when nothing is blocking', () => {
     enroll();
     expect(applyKeyScan('tag', UID).outcome).toBe('locked');

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Alert, Share, Switch } from 'react-native';
+import { View, Alert, Switch } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useNfcKeyStore } from '../../store/useNfcKeyStore';
@@ -8,14 +8,14 @@ import { BlockScheduleSheet } from '../../components/BlockScheduleSheet';
 import { SpeedBumpRulesSheet } from '../../components/SpeedBumpRulesSheet';
 import { ManualBlockSheet } from '../../components/ManualBlockSheet';
 import { SupergroupMembersSheet } from '../../components/SupergroupMembersSheet';
-import { EmergencyReleaseSheet } from '../../components/EmergencyReleaseSheet';
+import { NameSheet, type NameRequest } from '../../components/NameSheet';
 import { useShieldReleaseStore } from '../../store/useShieldReleaseStore';
 import { describeEnded, releasesThisMonth, timesWord } from '../../utils/shieldRelease';
 import { useManualBlockStore } from '../../store/useManualBlockStore';
 import { manualBlockWanted } from '../../utils/manualBlock';
 import {
-  DEFAULT_GROUP_ID, allGroups, cleanGroupName, groupName, isAllowGroup, isSupergroup, plainGroups, resolveAssignments, resolveGroupId,
-  supergroupMembers, supergroupMode, type GroupedReason,
+  DEFAULT_GROUP_ID, MAX_GROUP_NAME_LENGTH, allGroups, cleanGroupName, groupNameTaken, groupName, groupsFull, isAllowGroup, isSupergroup, plainGroups,
+  resolveAssignments, resolveGroupId, supergroupMembers, supergroupMode, type GroupedReason,
 } from '../../utils/appGroups';
 import { currentWindowEnd, describeDays, describeWindow, formatMinutes, isScheduleActive, MAX_BLOCK_SCHEDULES, type BlockSchedule } from '../../utils/blockSchedule';
 import { selectionLabel } from '../../utils/shieldReasonText';
@@ -32,7 +32,7 @@ import { haptics } from '../../utils/haptics';
 import { isDemoModeActive } from '../../utils/demoState';
 import { screenTimeBridge } from '../../utils/screenTimeBridge';
 import { isNfcSupported, scanKeyTag } from '../../utils/nfcBridge';
-import { keyLinkUrl, type NfcKey } from '../../utils/nfcKey';
+import { hasProvenKey, isKeyProven, keyLinkUrl, type NfcKey } from '../../utils/nfcKey';
 import { applyKeyScan } from '../../utils/releaseBlocks';
 import { UNIVERSAL_LINK_HOSTS } from '../../utils/deepLinks';
 import { alertPermissionOff } from '../../utils/permissionAlert';
@@ -42,6 +42,7 @@ import { navigateToSettingsEntry } from '../../navigation/openSettings';
 import * as Clipboard from 'expo-clipboard';
 import { format } from 'date-fns/format';
 import { clockTimeToken } from '../../utils/clockTime';
+import { shareContent } from '../../utils/shareContent';
 import { BUTTON_LABEL } from '../../copy/shared';
 
 interface Props {
@@ -53,6 +54,8 @@ interface Props {
   pending: Record<string, boolean>;
   /** Opens the system picker for one group. Owned by the screen, which also shows the counts. */
   onChooseApps: (groupId: string) => Promise<void>;
+  /** Opens the emergency sheet. Owned by the screen, whose status card has the same button. */
+  onEndAllBlocks: () => void;
 }
 
 /**
@@ -71,7 +74,7 @@ interface Props {
  * lifting a block from this screen would bypass that record, so a new one goes
  * through `releaseAllBlocks` rather than writing a store.
  */
-export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: Props) {
+export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onEndAllBlocks }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const navigation = useNavigation();
@@ -177,6 +180,9 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
     await onChooseApps(groupId);
   };
 
+  // What the store can still refuse after the name sheet has accepted a name:
+  // only a list that filled up, or a name taken, since the sheet opened. The
+  // usual duplicate is said under the field while it is typed.
   const groupNameFailed = (reason: 'full' | 'duplicate' | 'invalid') => {
     Alert.alert(
       reason === 'full' ? 'Too many groups' : 'That name is taken',
@@ -184,20 +190,50 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
     );
   };
 
+  // The name sheet for a new group, a new supergroup, or either one's rename.
+  // It replaces four native text prompts, which could only refuse a taken name
+  // in a second alert after the typed text was gone.
+  const [naming, setNaming] = useState<NameRequest | null>(null);
+  const closeNaming = () => setNaming(null);
+  const takenMessage = 'Another group already has that name.';
+
   const handleNewGroup = () => {
     haptics.tap();
-    Alert.prompt('Name this group', 'For example, Social or Games.', [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      {
-        text: 'Add',
-        onPress: (text?: string) => {
-          const added = useAppGroupStore.getState().addGroup(text ?? '');
-          if (!added.ok) { groupNameFailed(added.reason); return; }
-          haptics.success();
-          if (added.group) void handleChooseApps(added.group.id);
-        },
+    // Said before asking for a name, not after typing one.
+    if (groupsFull(customGroups, false)) { groupNameFailed('full'); return; }
+    setNaming({
+      title: 'Name this group',
+      initial: '',
+      placeholder: 'e.g. Social or Games',
+      saveLabel: 'Add',
+      maxLength: MAX_GROUP_NAME_LENGTH,
+      refusal: typed => (groupNameTaken(customGroups, typed, undefined, groupsMeta) ? takenMessage : null),
+      onSave: typed => {
+        const added = useAppGroupStore.getState().addGroup(typed);
+        if (!added.ok) { groupNameFailed(added.reason); return; }
+        haptics.success();
+        if (added.group) void handleChooseApps(added.group.id);
       },
-    ], 'plain-text');
+    });
+  };
+
+  // Renaming either kind, and the original group (whose name is the base name,
+  // so its own current name is not a clash with itself).
+  const requestRename = (groupId: string, name: string, title: string) => {
+    const original = groupId === DEFAULT_GROUP_ID;
+    setNaming({
+      title,
+      initial: name,
+      placeholder: 'Group name',
+      maxLength: MAX_GROUP_NAME_LENGTH,
+      refusal: typed => (
+        groupNameTaken(customGroups, typed, groupId, original ? { ...groupsMeta, baseName: '' } : groupsMeta) ? takenMessage : null
+      ),
+      onSave: typed => {
+        const renamed = useAppGroupStore.getState().renameGroup(groupId, typed);
+        if (!renamed.ok) groupNameFailed(renamed.reason);
+      },
+    });
   };
 
   // The sheet that picks a supergroup's groups, for a new one (`id` null, named
@@ -210,13 +246,18 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       Alert.alert('Make another group first', 'A supergroup combines groups you already made. Add at least two groups, then combine them.');
       return;
     }
-    Alert.prompt('Name this supergroup', 'For example, Distractions or Work apps.', [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      {
-        text: 'Next',
-        onPress: (text?: string) => setMemberSheet({ open: true, id: null, name: text ?? '' }),
-      },
-    ], 'plain-text');
+    if (groupsFull(customGroups, true)) { groupNameFailed('full'); return; }
+    // Named first and the groups picked next, so a taken name is refused here
+    // rather than after the whole choice has been made.
+    setNaming({
+      title: 'Name this supergroup',
+      initial: '',
+      placeholder: 'e.g. Distractions or Work apps',
+      saveLabel: 'Next',
+      maxLength: MAX_GROUP_NAME_LENGTH,
+      refusal: typed => (groupNameTaken(customGroups, typed, undefined, groupsMeta) ? takenMessage : null),
+      onSave: typed => setMemberSheet({ open: true, id: null, name: typed }),
+    });
   };
 
   const confirmMembers = (ids: string[]) => {
@@ -245,16 +286,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       },
       {
         text: 'Rename',
-        onPress: () => Alert.prompt('Rename supergroup', undefined, [
-          { text: BUTTON_LABEL.cancel, style: 'cancel' },
-          {
-            text: BUTTON_LABEL.save,
-            onPress: (text?: string) => {
-              const renamed = useAppGroupStore.getState().renameGroup(groupId, text ?? '');
-              if (!renamed.ok) groupNameFailed(renamed.reason);
-            },
-          },
-        ], 'plain-text', name),
+        onPress: () => requestRename(groupId, name, 'Rename supergroup'),
       },
       {
         text: BUTTON_LABEL.delete,
@@ -291,16 +323,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       { text: 'Choose apps', onPress: () => { void handleChooseApps(groupId); } },
       {
         text: 'Rename',
-        onPress: () => Alert.prompt('Rename group', undefined, [
-          { text: BUTTON_LABEL.cancel, style: 'cancel' },
-          {
-            text: BUTTON_LABEL.save,
-            onPress: (text?: string) => {
-              const renamed = useAppGroupStore.getState().renameGroup(groupId, text ?? '');
-              if (!renamed.ok) groupNameFailed(renamed.reason);
-            },
-          },
-        ], 'plain-text', name),
+        onPress: () => requestRename(groupId, name, 'Rename group'),
       },
       // The original group and the default group always block their apps: a
       // deleted group falls back to the default, and that must never turn into
@@ -503,7 +526,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
   const shareKeyLink = async (key: NfcKey) => {
     const url = keyLinkUrl(key.secret, UNIVERSAL_LINK_HOSTS);
     if (!url) return;
-    await Share.share({ message: url }).catch(() => {});
+    await shareContent({ message: url });
   };
 
   // The code a Shortcuts action takes in place of the tag, which Shortcuts
@@ -534,7 +557,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
       haptics.success();
       Alert.alert(
         'Write the link to a tag',
-        'Next, share the link and write it to an NFC tag with an NFC writer app. After that, tapping the tag with the app closed locks or unlocks your apps.',
+        'Next, share the link and write it to an NFC tag with an NFC writer app. After that, tapping the tag with the app closed locks or unlocks your apps. Tap it once to check that it works: the first tap locks your apps and the next one unlocks them.',
         [{ text: 'Share link', onPress: () => { void shareKeyLink(enrolled.key); } }, { text: 'Later', style: 'cancel' }],
       );
     });
@@ -603,6 +626,19 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
     }
     if (!(await ensureAuthorized('Locking apps with a tag needs Screen Time access. Grant it in Settings, under Screen Time.'))) return;
     if (totalOf(resolved.key) === 0) await onChooseApps(resolved.key);
+    // A link key nobody has tapped yet may not be written to a tag at all, and
+    // then only the emergency button could end this lock.
+    if (!hasProvenKey(nfcKeys)) {
+      Alert.alert(
+        'No key tag has been scanned yet',
+        'Your link tag hasn’t been tapped, so nothing is known to unlock this except the emergency button, which is saved in the record. Lock anyway?',
+        [
+          { text: BUTTON_LABEL.cancel, style: 'cancel' },
+          { text: 'Lock anyway', onPress: () => { useNfcKeyStore.getState().lock(); } },
+        ],
+      );
+      return;
+    }
     useNfcKeyStore.getState().lock();
   };
 
@@ -632,7 +668,6 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
 
   // ==== ending blocks early ====
 
-  const [emergencyOpen, setEmergencyOpen] = useState(false);
   const releaseLog = useShieldReleaseStore(s => s.log);
   const recentReleases = useMemo(() => releaseLog.slice(-5).reverse(), [releaseLog]);
   const monthReleases = releasesThisMonth(releaseLog, new Date()).length;
@@ -832,7 +867,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
           entryId="blockAppRemoval"
           icon="trash-outline"
           iconColor={blockAppRemoval ? colors.accent : undefined}
-          label="Prevent deleting apps"
+          label="Prevent deleting any app"
           toggle={blockAppRemoval}
           onPress={() => {
             if (blockAppRemoval && refuseWhileBlocked(appRemovalSwitchLocked(reasons))) return;
@@ -926,7 +961,9 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
             ? 'Hold your phone to a key tag to unlock them.'
             : nfcKeys.length === 0
               ? 'Add a key tag below first.'
-              : 'Blocks your apps until you hold your phone to a key tag.'}
+              : !hasProvenKey(nfcKeys)
+                ? 'Your link tag hasn’t been tapped yet. Tap it once to check that it works.'
+                : 'Blocks your apps until you hold your phone to a key tag.'}
           value={keyLocked ? 'Scan tag' : undefined}
           onPress={handleKeyLock}
         />
@@ -937,6 +974,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
               icon={key.kind === 'link' ? 'link-outline' : 'radio-outline'}
               label={key.name}
               value={key.kind === 'link' ? 'Link tag' : 'Scanned tag'}
+              hint={isKeyProven(key) ? undefined : 'Not tapped yet. Write its link to a tag, then tap it once.'}
               onPress={() => handleKeyRow(key)}
             />
           </React.Fragment>
@@ -974,18 +1012,12 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
             icon="warning-outline"
             iconColor={colors.red}
             label="End all blocks now"
-            hint="Ends focus, task, failed-task, schedule, timed and key tag blocks."
-            onPress={() => { haptics.tap(); setEmergencyOpen(true); }}
+            hint="Ends every block that is on, and is saved in the record."
+            onPress={() => { haptics.tap(); onEndAllBlocks(); }}
           />
         </SettingsSection>
       )}
 
-      <EmergencyReleaseSheet
-        visible={emergencyOpen}
-        reasons={reasons}
-        formatTime={formatReasonTime}
-        onClose={() => setEmergencyOpen(false)}
-      />
       <ManualBlockSheet
         visible={manualSheetOpen}
         groups={allGroups(customGroups, groupsMeta)}
@@ -994,6 +1026,9 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps }: P
         onClose={() => setManualSheetOpen(false)}
         onConfirm={(minutes, ids) => { void startManual(minutes, ids); }}
       />
+      {/* Beside the members sheet rather than inside it: the name sheet closes
+          before that one opens, and the two are never up together. */}
+      <NameSheet request={naming} onClose={closeNaming} />
       <SupergroupMembersSheet
         visible={memberSheet.open}
         title={memberSheet.id ? groupName(customGroups, memberSheet.id, groupsMeta) : cleanGroupName(memberSheet.name, 'New supergroup')}

@@ -2,7 +2,7 @@ import {
   DEFAULT_GROUP_ID, MAX_APP_GROUPS, MAX_SUPERGROUPS, allGroups, allowGroupIds, isAllowGroup, withGroupMode, assignmentsAfterRemoval,
   cleanGroupName, expandGroupId, groupName, isSupergroup, plainGroups, supergroupMode,
   parseAppGroups, parseGroupAssignments, parseGroupsMeta, resolveAssignments, resolveGroupId, withGroupAdded,
-  supergroupMembers, withGroupRemoved, withGroupRenamed, withMembersSet,
+  supergroupMembers, withGroupRemoved, withGroupRenamed, withMembersSet, groupNameTaken, groupsFull,
 } from '../utils/appGroups';
 
 const social = { id: 'g1', name: 'Social' };
@@ -252,5 +252,57 @@ describe('supergroups and allowlists', () => {
     const same = withGroupMode(groups, 'g1', false);
     expect(same.ok && same.groups.find(g => g.id === 's1')?.members).toEqual(['g1', 'default']);
     expect(withGroupMode(groups, 's1', true)).toEqual({ ok: false, reason: 'missing' });
+  });
+});
+
+describe('groupNameTaken', () => {
+  const custom = [social, { id: 'g2', name: 'Games' }];
+  const meta = { baseName: 'Default', fallbackId: DEFAULT_GROUP_ID };
+
+  it('flags another group’s name, case aside, and the base group’s name', () => {
+    expect(groupNameTaken(custom, 'games', undefined, meta)).toBe(true);
+    expect(groupNameTaken(custom, '  SOCIAL ', undefined, meta)).toBe(true);
+    expect(groupNameTaken(custom, 'default', undefined, meta)).toBe(true);
+  });
+
+  it('cleans the name the way the store does before comparing', () => {
+    expect(groupNameTaken(custom, 'Social   ', undefined, meta)).toBe(true);
+    expect(groupNameTaken(custom, 'x'.repeat(30), undefined, meta)).toBe(false);
+  });
+
+  it('is not a clash with the group being renamed, so re-casing its own name is a rename', () => {
+    expect(groupNameTaken(custom, 'SOCIAL', 'g1', meta)).toBe(false);
+    expect(groupNameTaken(custom, 'games', 'g1', meta)).toBe(true);
+  });
+
+  it('lets the original group be renamed to anything the custom groups do not have', () => {
+    const renaming = { ...meta, baseName: '' };
+    expect(groupNameTaken(custom, 'Everything else', DEFAULT_GROUP_ID, renaming)).toBe(false);
+    expect(groupNameTaken(custom, 'Social', DEFAULT_GROUP_ID, renaming)).toBe(true);
+  });
+
+  it('is not a clash to type nothing', () => {
+    expect(groupNameTaken(custom, '   ', undefined, meta)).toBe(false);
+    expect(groupNameTaken([], '', undefined, { baseName: '', fallbackId: DEFAULT_GROUP_ID })).toBe(false);
+  });
+
+  it('agrees with what withGroupAdded and withGroupRenamed refuse', () => {
+    for (const typed of ['games', 'Default', 'Fresh']) {
+      const name = cleanGroupName(typed);
+      expect(withGroupAdded(custom, { id: 'g9', name }, meta).ok).toBe(!groupNameTaken(custom, typed, undefined, meta));
+      expect(withGroupRenamed(custom, 'g1', name, meta).ok).toBe(!groupNameTaken(custom, typed, 'g1', meta));
+    }
+  });
+});
+
+describe('groupsFull', () => {
+  it('counts plain groups and supergroups apart', () => {
+    const plain = Array.from({ length: MAX_APP_GROUPS }, (_, i) => ({ id: `p${i}`, name: `P${i}` }));
+    expect(groupsFull(plain, false)).toBe(true);
+    expect(groupsFull(plain, true)).toBe(false);
+    expect(groupsFull(plain.slice(1), false)).toBe(false);
+    const supers = Array.from({ length: MAX_SUPERGROUPS }, (_, i) => ({ id: `s${i}`, name: `S${i}`, members: [] as string[] }));
+    expect(groupsFull(supers, true)).toBe(true);
+    expect(groupsFull(supers, false)).toBe(false);
   });
 });

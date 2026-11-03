@@ -7,6 +7,7 @@ import {
   convertAmountNumber,
   largeAmountWarning,
   describeFoodLogEntry,
+  describeNutrientCoverage,
   foodSearchKeys,
   typedGrams,
   ESTIMATE_AMOUNTS,
@@ -455,6 +456,25 @@ describe('combineFoodNutrition', () => {
     const b = panel({ basis: 'perServing', amounts: { calorieKcal: 12 } });
     const combined = combineFoodNutrition(dish, [{ nutrition: a }, { nutrition: b }], NOW);
     expect(combined.amounts.calorieKcal).toBe(357);
+  });
+});
+
+describe('describeNutrientCoverage', () => {
+  const stated = (amounts: Partial<Record<NutrientKey, number>>) => entry({ nutrition: panel({ amounts }) });
+
+  it('says how many food entries a total covers when some left the nutrient out', () => {
+    const day = [stated({ sodiumMg: 400 }), stated({ sodiumMg: 600 }), stated({ calorieKcal: 90 })];
+    expect(describeNutrientCoverage(day, 'sodiumMg')).toBe('From 2 of 3 entries');
+  });
+
+  it('says nothing when every entry stated it, or none did', () => {
+    expect(describeNutrientCoverage([stated({ sodiumMg: 400 }), stated({ sodiumMg: 600 })], 'sodiumMg')).toBeNull();
+    expect(describeNutrientCoverage([stated({ calorieKcal: 90 })], 'sodiumMg')).toBeNull();
+  });
+
+  it('does not count a water entry as a food that left the nutrient out', () => {
+    const water = entry({ recipeId: null, itemId: null, productId: null, nutrition: panel({ amounts: { waterMl: 500 } }) });
+    expect(describeNutrientCoverage([stated({ sodiumMg: 400 }), water], 'sodiumMg')).toBeNull();
   });
 });
 

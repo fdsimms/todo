@@ -550,7 +550,7 @@ function BoardColumnView({
         {newLine ?? (
           <InlineAction
             icon="add"
-            label={isList ? 'Add item' : 'Add task'}
+            label={isList ? 'Add item' : 'New task'}
             style={styles.addAction}
             onPress={() => { haptics.tap(); onOpenLine(); }}
           />

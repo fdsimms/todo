@@ -15,8 +15,10 @@ import {
   penaltyChargeFor,
   penaltyCreditFor,
   penaltyCutoffAt,
+  penaltyChipLabel,
   penaltyShieldWanted,
   slipPenaltyUntil,
+  slipUndoLabel,
 } from '../utils/penaltyShield';
 
 /** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
@@ -354,5 +356,45 @@ describe('uncreditShieldUntil', () => {
     const until = new Date(2026, 0, 10, 11, 0).toISOString();
     const credited = creditShieldUntil(until, 45, now)!;
     expect(uncreditShieldUntil(credited, 45, now.toISOString(), now)).toBe(until);
+  });
+});
+
+describe('slipUndoLabel', () => {
+  const now = new Date(2026, 7, 12, 14, 0);
+
+  it('is the plain label when no block was started', () => {
+    expect(slipUndoLabel('Logged', null, now, false)).toBe('Logged');
+  });
+
+  it('says the block stays, until when', () => {
+    expect(slipUndoLabel('Logged', new Date(2026, 7, 12, 17, 30), now, false)).toBe('Logged. Apps stay blocked until 5:30 PM.');
+    expect(slipUndoLabel('Streak reset (was 12)', new Date(2026, 7, 12, 17, 30), now, true))
+      .toBe('Streak reset (was 12). Apps stay blocked until 17:30.');
+  });
+
+  it('names the day when the block runs past today', () => {
+    expect(slipUndoLabel('Logged', new Date(2026, 7, 13, 9, 0), now, false)).toBe('Logged. Apps stay blocked until Thu 9:00 AM.');
+  });
+});
+
+describe('penaltyChipLabel', () => {
+  const open = { penaltyMinutes: 120, polarity: 'positive' as const, dueDate: '2026-08-14T12:00:00.000Z', completed: false };
+
+  it('says what missing the task costs', () => {
+    expect(penaltyChipLabel(open, true)).toBe('Blocks apps 2h if missed');
+    expect(penaltyChipLabel({ ...open, penaltyMinutes: 30 }, true)).toBe('Blocks apps 30m if missed');
+  });
+
+  it('says on a slip for a habit, which needs no date', () => {
+    expect(penaltyChipLabel({ ...open, polarity: 'negative', dueDate: null }, true)).toBe('Blocks apps 2h on a slip');
+  });
+
+  it('is null when nothing would happen', () => {
+    // The Settings switch is off: failing a task blocks nothing.
+    expect(penaltyChipLabel(open, false)).toBeNull();
+    // No penalty set, already done, or a positive task with no day to miss.
+    expect(penaltyChipLabel({ ...open, penaltyMinutes: null }, true)).toBeNull();
+    expect(penaltyChipLabel({ ...open, completed: true }, true)).toBeNull();
+    expect(penaltyChipLabel({ ...open, dueDate: null }, true)).toBeNull();
   });
 });

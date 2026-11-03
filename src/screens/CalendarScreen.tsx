@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { useStableCallback } from '../hooks/useStableCallback';
-import { View, Text, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, useWindowDimensions, TouchableOpacity, type StyleProp, type ViewStyle } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
@@ -1096,6 +1096,15 @@ export function CalendarScreen() {
             </View>
           ))}
         </View>
+        {/* The dots are calendar events only, so a day full of tasks looks as
+            empty as one with nothing on it. Only while reading is on: with it
+            off there are no dots to explain, and the link below says why. */}
+        {reading && (
+          <View style={styles.gridLegend}>
+            <View style={styles.gridLegendDot} />
+            <Text style={styles.gridLegendText}>Dots are calendar events. The day you select lists its tasks below.</Text>
+          </View>
+        )}
       </View>
       )}
 
@@ -1151,6 +1160,10 @@ export function CalendarScreen() {
             {!reading && !isDemoModeActive() && (
               <View style={styles.dayBody}>
                 <EmptyNote icon="calendar-outline">Turn on Read my calendar in Settings to see your events here.</EmptyNote>
+                {/* The Day view is the one mode whose message sits above a
+                    24-hour timeline, so the link every other mode keeps at the
+                    foot of the page would be a full scroll away. */}
+                <CalendarSettingsLink styles={styles} style={styles.settingsLinkInBody} />
               </View>
             )}
             <DayTimeline
@@ -1180,16 +1193,7 @@ export function CalendarScreen() {
             )}
           </>
         )}
-        {!reading && !isDemoModeActive() && viewMode !== 'day' && (
-          <TouchableOpacity
-            style={styles.settingsLink}
-            activeOpacity={interaction.activeOpacity}
-            onPress={() => openSettingsEntryById('calendarRead')}
-            accessibilityRole="button"
-          >
-            <Text style={styles.settingsLinkText}>Open calendar settings</Text>
-          </TouchableOpacity>
-        )}
+        {!reading && !isDemoModeActive() && viewMode !== 'day' && <CalendarSettingsLink styles={styles} />}
       </ScrollView>
 
       <DeliverablePromptQueue {...queueProps} />
@@ -1267,6 +1271,20 @@ export function CalendarScreen() {
  * same reason. Same rule, and the same failure, as `renderTaskRow`'s `rowKey`
  * on Today.
  */
+/** The way from "Read my calendar is off" to the switch that turns it on. */
+function CalendarSettingsLink({ styles, style }: { styles: ReturnType<typeof makeStyles>; style?: StyleProp<ViewStyle> }) {
+  return (
+    <TouchableOpacity
+      style={[styles.settingsLink, style]}
+      activeOpacity={interaction.activeOpacity}
+      onPress={() => openSettingsEntryById('calendarRead')}
+      accessibilityRole="button"
+    >
+      <Text style={styles.settingsLinkText}>Open calendar settings</Text>
+    </TouchableOpacity>
+  );
+}
+
 const DayCell = React.memo(function DayCell({
   dayKey, day, dots, eventCount, inMonth, isToday, isSelected, styles, onSelect,
 }: {
@@ -1462,6 +1480,23 @@ function makeStyles(colors: Colors, textScaleFactor = 1, cellSize = 0) {
     dotOtherMonth: {
       opacity: 0.5,
     },
+    gridLegend: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
+    gridLegendDot: {
+      width: EVENT_DOT,
+      height: EVENT_DOT,
+      borderRadius: EVENT_DOT / 2,
+      backgroundColor: colors.textTertiary,
+    },
+    gridLegendText: {
+      flex: 1,
+      color: colors.textTertiary,
+      fontSize: font.xs,
+    },
     // Both sides: the grid sits directly above and the scrolling detail
     // directly below, and neither carries a margin of its own.
     detailHeader: {
@@ -1558,6 +1593,10 @@ function makeStyles(colors: Colors, textScaleFactor = 1, cellSize = 0) {
       marginTop: spacing.sm,
       minHeight: 44,
       justifyContent: 'center',
+    },
+    // Inside `dayBody`, whose own gap already spaces it from the message above.
+    settingsLinkInBody: {
+      marginTop: 0,
     },
     settingsLinkText: {
       color: colors.accentText,

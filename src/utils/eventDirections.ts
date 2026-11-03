@@ -1,7 +1,7 @@
-import { Linking } from 'react-native';
 import { eventCoordinate, readEventJoinLink } from './calendarSync';
 import { directionsUrl } from './maps';
 import { haptics } from './haptics';
+import { openExternalUrl } from './openExternalUrl';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 /**
@@ -10,19 +10,15 @@ import { useSettingsStore } from '../store/useSettingsStore';
  * for the text. Shared by Today's event row and the events sheet, so the two
  * can't route differently.
  *
- * Failing to open is silent: there is no toast infrastructure for a row-level
- * action, and https links need no `canOpenURL` check (see `maps.ts`).
+ * A failed open says so through `openExternalUrl`, and https links need no
+ * `canOpenURL` check (see `maps.ts`).
  */
 export async function openEventDirections(eventId: string, location: string | null | undefined): Promise<void> {
   const coordinate = await eventCoordinate(eventId);
   const url = directionsUrl(location, useSettingsStore.getState().mapsApp, coordinate);
   if (!url) return;
   haptics.tap();
-  try {
-    await Linking.openURL(url);
-  } catch {
-    // silently ignore
-  }
+  await openExternalUrl(url, 'directions');
 }
 
 /**
@@ -33,9 +29,5 @@ export async function openEventJoinLink(eventId: string, occurrenceStart: string
   const link = await readEventJoinLink(eventId, occurrenceStart);
   if (!link) return;
   haptics.tap();
-  try {
-    await Linking.openURL(link);
-  } catch {
-    // silently ignore
-  }
+  await openExternalUrl(link, 'link');
 }

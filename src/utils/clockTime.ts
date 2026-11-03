@@ -162,9 +162,19 @@ export function formatHHMM(hhmm: string, use24Hour = false): string {
  * Exported so the callers formatting a Date (rather than an "HH:MM" string)
  * pick the same shape instead of spelling out 'h:mm a' again — every place
  * that did was a place the setting silently didn't reach.
+ * `noHardCodedClockFormat.test.ts` fails the build on one.
  */
 export function clockTimeToken(use24Hour = false): string {
   return use24Hour ? 'HH:mm' : 'h:mm a';
+}
+
+/**
+ * When something ends, for a sentence that says "until …": the time alone for
+ * an end later today, with the weekday in front for any other day.
+ */
+export function formatUntil(end: Date, now: Date, use24Hour: boolean): string {
+  const clock = format(end, clockTimeToken(use24Hour));
+  return differenceInCalendarDays(end, now) === 0 ? clock : `${format(end, 'EEE')} ${clock}`;
 }
 
 /** Inverse of hhmmToDate — extracts "HH:MM" from a Date's clock time. */

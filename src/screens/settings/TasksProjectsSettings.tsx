@@ -238,7 +238,7 @@ export function TasksProjectsSettings() {
       explain={{
         title: 'Quick add and the task editor',
         paragraphs: [
-          'The task editor always keeps its rarely used fields under “More options” until a task uses them, and its field search still finds them.',
+          'This setting does not change the task editor. To find a field there, use the magnifier in the editor’s header.',
         ],
       }}
       >

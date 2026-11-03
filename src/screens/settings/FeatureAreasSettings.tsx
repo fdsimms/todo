@@ -4,6 +4,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsSegments } from './SettingsSegments';
 import { makeSettingsStyles } from './settingsStyles';
 import { SIMPLE_AREAS, SIMPLE_AREA_LABELS, SIMPLE_FEATURES, simpleFeaturesIn } from '../../utils/simpleMode';
 import { DEFAULT_TAB_ROUTES, NAV_MENU_ROWS, type NavDestination } from '../../utils/navHubs';
@@ -44,6 +45,8 @@ export function FeatureAreasSettings() {
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const setSimpleMode = useSettingsStore(s => s.setSimpleMode);
   const tabRoutes = useSettingsStore(s => s.tabRoutes);
+  const reopenLastScreen = useSettingsStore(s => s.reopenLastScreen);
+  const setReopenLastScreen = useSettingsStore(s => s.setReopenLastScreen);
   const setTabSlot = useSettingsStore(s => s.setTabSlot);
   const clearTabSlot = useSettingsStore(s => s.clearTabSlot);
   const resetTabRoutes = useSettingsStore(s => s.resetTabRoutes);
@@ -76,7 +79,7 @@ export function FeatureAreasSettings() {
         iconColor={kitchenEnabled ? colors.accent : undefined}
         label="Groceries & meals"
         hint={!kitchenEnabled
-          ? 'Hidden from the menu and the tab bar'
+          ? 'Hides groceries, recipes, the meal plan, the pantry and the food log from the menu and the tab bar'
           : tabRoutes.includes('Groceries') ? 'Shown in the menu and the tab bar' : 'Shown in the menu'}
         toggle={kitchenEnabled}
         onPress={() => setKitchenEnabled(!kitchenEnabled)}
@@ -122,7 +125,7 @@ export function FeatureAreasSettings() {
         entryId="firstRunSetup"
         icon="help-circle-outline"
         label="Run setup again"
-        hint="Asks the three first-launch questions again: groceries and meals, simplified mode and reminders."
+        hint="Asks the first-launch questions again: groceries and meals, simplified mode, reminders, workouts, and coins and rewards."
         onPress={() => { haptics.tap(); setSetupOpen(true); }}
       />
       <View style={styles.sep} />
@@ -145,7 +148,7 @@ export function FeatureAreasSettings() {
         the menu reaches can be one; see normalizeTabRoutes for the rules. */}
     <SettingsSection
       label="Tab bar"
-      footer="Choose three to five screens to show beside More in the bottom bar. More opens the menu, which lists every screen. Touch and hold a tab that belongs to a group, like Groceries, then drag to another screen in that group to open it."
+      footer="Choose three to five screens to show beside More in the bottom bar. More opens the menu, which lists every screen that isn’t already in the bar. Touch and hold a tab that belongs to a group, like Groceries, then drag to another screen in that group to open it."
     >
       <SettingsRow entryId="tabRoutes" {...slotRow(0)} />
       <View style={styles.sep} />
@@ -168,6 +171,24 @@ export function FeatureAreasSettings() {
           />
         </>
       )}
+    </SettingsSection>
+
+    {/* What a cold launch shows. The app has always reopened on the last
+        screen, which nothing said and nothing turned off. */}
+    <SettingsSection
+      label="Open the app on"
+      entryId="openAppOn"
+      footer="Last screen reopens the screen you were on when the app closed. Today always opens Today. This applies the next time the app opens."
+    >
+      <SettingsSegments
+        label="Which screen the app opens on"
+        options={[
+          { value: false, label: 'Today' },
+          { value: true, label: 'Last screen' },
+        ]}
+        selected={reopenLastScreen}
+        onSelect={setReopenLastScreen}
+      />
     </SettingsSection>
     <FirstRunSheet visible={setupOpen} onClose={() => setSetupOpen(false)} rerun />
     <TabSlotPickerSheet

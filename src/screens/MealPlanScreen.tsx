@@ -8,7 +8,7 @@
 // Leftovers and the fridge are planned from here too; the rules live in
 // src/utils/leftovers.ts and src/utils/mealPlan.ts.
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Animated, View, Text, FlatList, StyleSheet, Alert, TouchableOpacity, Share, type GestureResponderEvent } from 'react-native';
+import { Animated, View, Text, FlatList, StyleSheet, Alert, TouchableOpacity, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -163,6 +163,7 @@ import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
 import { busyEveningOn, describeBusyEvening } from '../utils/busyEvenings';
 import { isDemoModeActive } from '../utils/demoState';
+import { shareContent } from '../utils/shareContent';
 import { LazySheet } from '../components/LazySheet';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -2005,7 +2006,7 @@ export function MealPlanScreen() {
   const handleShareWeek = useCallback(() => {
     if (!weekShareText) return;
     haptics.tap();
-    Share.share({ message: weekShareText }).catch(() => {});
+    void shareContent({ message: weekShareText });
   }, [weekShareText]);
 
   const headerActions = useMemo<ScreenHeaderAction[]>(() => {

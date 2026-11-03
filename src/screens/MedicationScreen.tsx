@@ -66,6 +66,7 @@ import { useActionMenu } from '../hooks/useActionMenu';
 import { useLingering } from '../hooks/useLingering';
 import { BUTTON_LABEL } from '../copy/shared';
 import { LazySheet } from '../components/LazySheet';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 
 /** How many recent doses the list shows at first, and how many more each tap adds. */
 const RECENT_PAGE = 25;
@@ -102,6 +103,7 @@ const TREND_DAYS = 14;
  * button on the as-needed ones), Archived, and Recent.
  */
 export function MedicationScreen() {
+  const timeToken = useClockTimeToken();
   const actionMenu = useActionMenu();
   const pullSearch = usePullToSearch();
   const colors = useColors();
@@ -434,7 +436,7 @@ export function MedicationScreen() {
                         <View style={styles.doseText}>
                           <Text style={styles.doseName} numberOfLines={1}>{log.name}</Text>
                           <Text style={styles.doseMeta} numberOfLines={1}>
-                            {[`Taken ${format(new Date(log.takenAt), 'h:mm a')}`, formatDose(log), log.asNeeded ? 'as needed' : null].filter(Boolean).join(' · ')}
+                            {[`Taken ${format(new Date(log.takenAt), timeToken)}`, formatDose(log), log.asNeeded ? 'as needed' : null].filter(Boolean).join(' · ')}
                           </Text>
                         </View>
                         <SwipeActionButtons enabled={undoable} undoAction={undoAction} />
@@ -542,7 +544,7 @@ export function MedicationScreen() {
                     <Text style={styles.doseName} numberOfLines={1}>{log.name}</Text>
                     <Text style={styles.doseMeta} numberOfLines={1}>
                       {[
-                        format(new Date(log.takenAt), 'EEE, MMM d · h:mm a'),
+                        format(new Date(log.takenAt), `EEE, MMM d · ${timeToken}`),
                         formatDose(log),
                         log.asNeeded ? 'as needed' : null,
                       ].filter(Boolean).join(' · ')}
@@ -605,13 +607,14 @@ function statusParts(
   settings: MedicationSettingsMap,
   supplyTask: Task | null,
   now: Date,
+  timeToken: string,
 ): { text: string; warn: boolean }[] {
   const { limit, supply } = prefsFor(settings, stat.name);
   const parts: { text: string; warn: boolean }[] = [];
   if (limit) {
     const status = limitStatus(logs, stat.name, limit, now);
     if (status.nextOkAt) {
-      parts.push({ text: `Within your limit again at ${format(status.nextOkAt, 'h:mm a')}`, warn: true });
+      parts.push({ text: `Within your limit again at ${format(status.nextOkAt, timeToken)}`, warn: true });
     } else if (status.maxPer24h !== null && status.inLast24h > 0) {
       parts.push({ text: `${status.inLast24h} of ${status.maxPer24h} in 24 hours`, warn: false });
     } else if (status.maxAmount24h && status.amountInLast24h) {
@@ -659,11 +662,12 @@ function MedicationRow({
   onPress: () => void;
   onRecord?: () => void;
 }) {
+  const timeToken = useClockTimeToken();
   // An archived medication is not one you are taking now, so its use is not
   // being compared against anything, and neither its limit nor its supply is
   // a live question.
   const trend = stat.asNeeded && !archivedRow ? frequencyTrend(logs, stat.key, today, TREND_DAYS) : null;
-  const status = archivedRow ? [] : statusParts(stat, logs, settings, supplyTask, now);
+  const status = archivedRow ? [] : statusParts(stat, logs, settings, supplyTask, now, timeToken);
 
   return (
     <View style={[styles.medRow, first && styles.firstRow]}>
@@ -707,6 +711,7 @@ function MedicationRow({
       {onRecord && (
         <PressableScale
           style={styles.recordButton}
+          hitSlop={5}
           onPress={onRecord}
           accessibilityLabel={`Record a dose of ${stat.name}`}
         >

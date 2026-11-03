@@ -1,0 +1,1 @@
+{ "message": "When a name is already taken, the category, project category, recipe, cookbook, saved place and saved event editors now say so under the field as you type and turn Done or Save off, instead of showing an alert after you tap it. A project category you type a taken name for now stays open to fix instead of clearing.", "date": "2026-11-03" }

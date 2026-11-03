@@ -100,9 +100,11 @@ otherwise the task would stay hidden until tomorrow for no reason anyone could s
 
 ## Where a held task shows
 
-On Later it sorts under "Waiting for a lighter day" with a "Waiting since" chip. On Today it is a
-footer reveal beside "later today" and "expired" (`SlotWaitingSection`, fed by `slotWaitingTasks`),
-collapsed by default. It is deliberately **not a block at the top of Today**: the feature exists so a
+On Later it sorts under "Waiting for a lighter day" with a "Waiting since" chip. On Today it is one
+reason in the held-back footer, which also holds expired tasks and ones waiting on another task
+(`HeldBackSection`, fed by `slotWaitingTasks`; `src/utils/heldBack.ts` has the grouping and wording).
+The footer is collapsed by default and reads "Show 3 waiting for a lighter day" while that is the only
+reason, "Show 7 held back" with a heading per reason once there are several. It is deliberately **not a block at the top of Today**: the feature exists so a
 person doesn't have to look at these tasks, and the rows are the ordinary actionable ones (no drag,
 since a held task has no slot in the category order).
 

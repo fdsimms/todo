@@ -278,6 +278,7 @@ import {
   wantedSupplyReorders,
 } from '../utils/supply';
 import { formatTimeOfDay, getNextDueDate, getNextOccurrence, getCurrentDayStart, getCurrentLogicalDayKey, getLogicalDayKey, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
+import { describeRescheduled } from '../utils/createdTaskPlacement';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { logSlotToMealSlot, slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
@@ -287,7 +288,7 @@ import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKin
 import { nextStreakRecord } from '../utils/streakRecord';
 import { countsUnits } from '../utils/streakUnits';
 import { isNegativeTask, slipsToday, slipPatch, undoSlipPatch, cleanDayPatch, nextSlipIsFree, lastSlipWasFree, closeDayPatch, reopenDayPatch, windowCloseDayPatch, cleanDaysCredited, isClosedToday, oneDayEndPatch } from '../utils/negativeHabits';
-import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, uncreditShieldUntil } from '../utils/penaltyShield';
+import { creditShieldUntil, extendShieldUntil, penaltyChargeFor, penaltyCreditFor, slipPenaltyUntil, slipUndoLabel, uncreditShieldUntil } from '../utils/penaltyShield';
 // One name per line, deliberately, and not to be re-joined. See the note
 // on the settings load in useSettingsStore.ts: this is a list every new
 // visibility helper is added to, so one line is a guaranteed conflict.
@@ -2588,7 +2589,7 @@ interface TaskStore extends UndoHistoryActions {
   deleteProject: (projectId: string, opts: { cascade: boolean }) => void;
   // Archive/restore a project through here rather than through useProjectStore
   // directly — these are the ones that register an undo entry.
-  archiveProject: (projectId: string) => void;
+  archiveProject: (projectId: string, opts?: { archiveRemaining: boolean }) => void;
   unarchiveProject: (projectId: string) => void;
   // Marking a project complete is independent of archiving it (see
   // Project.completed). When incomplete member tasks remain, the caller
@@ -2607,7 +2608,7 @@ interface TaskStore extends UndoHistoryActions {
   // Bulk selection on the Projects screen. One undo entry covers the whole
   // batch — see the note on bulkDeleteProjects.
   bulkDeleteProjects: (projectIds: string[], opts: { cascade: boolean }) => void;
-  bulkSetProjectArchived: (projectIds: string[], archived: boolean) => void;
+  bulkSetProjectArchived: (projectIds: string[], archived: boolean, opts?: { archiveRemaining: boolean }) => void;
 
   deleteTemplate: (id: string) => void;
   bulkDeleteTemplates: (ids: string[]) => void;
@@ -5005,8 +5006,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       destructive: finishedRecurrence,
       // A tick that wrote a dose or a meal says so, with the undo that takes it
-      // back. An ordinary completion stays shake-only (see UndoBar).
-      announce: loggedLabel !== null,
+      // back, and so does a missed mark, which moves the row out of sight the
+      // way a skip does. An ordinary completion stays shake-only (see UndoBar).
+      announce: loggedLabel !== null || missed,
       label: missed
         ? 'Task marked missed'
         : finishedRecurrence
@@ -5300,8 +5302,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A tap here costs a run that may be weeks long, so the undo is offered
     // rather than buried — the same affordance a logged quota unit gets, for a
     // mis-tap that is considerably more expensive.
+    // Read after the charge, since a longer block already running keeps its own
+    // end: what Undo can't lift is the block as it stands now.
+    const { penaltyShieldEnabled, penaltyShieldUntil, use24HourTime } = useSettingsStore.getState();
+    const blockedUntil = slipUntil && penaltyShieldEnabled && penaltyShieldUntil ? new Date(penaltyShieldUntil) : null;
+    const slipLabel = task.streakCount > 0 && updated.streakCount === 0 ? `Streak reset (was ${task.streakCount})` : 'Logged';
     get().setLastAction({
-      label: task.streakCount > 0 && updated.streakCount === 0 ? `Streak reset (was ${task.streakCount})` : 'Logged',
+      label: slipUndoLabel(slipLabel, blockedUntil, new Date(), use24HourTime),
       undo: () => get().undoSlip(id),
       redo: () => get().logSlip(id),
     });
@@ -6173,7 +6180,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const snapshot = { ...task };
     get().updateTask(id, { deferUntil: until.toISOString() });
     get().setLastAction({
-      label: 'Task rescheduled',
+      label: describeRescheduled(1, until, useSettingsStore.getState().dayResetTime),
       // On the bar as well as the shake: a reschedule moves the task out of
       // sight, and the bar is how a mis-tapped day gets taken back.
       announce: true,
@@ -9644,6 +9651,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // so the undo puts the whole row back rather than inverting each field.
     if (opts?.registerUndo === false) return;
     get().setLastAction({
+      // The row jumps to its next date and leaves the list, so there is nothing
+      // left on screen to put it back from: the bar is the way (see UndoBar).
+      announce: true,
       label: 'Task skipped',
       undo: () => get().updateTask(id, snapshot),
       redo: redoRestoringRows([id]),
@@ -9678,7 +9688,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const pinned = task.pinned;
     get().updateTask(id, { archived: true, archivedAt: new Date().toISOString(), pinned: false });
     get().setLastAction({
-      label: 'Task archived',
+      // Names where it went: archiving takes the task out of every list, and
+      // the Archived screen sits under History, which nothing else points at.
+      label: 'Task archived. Find it in History › Archived.',
       // On the bar: archiving takes the task out of every list, and the bar
       // is what lets the places that archive without asking first do so.
       announce: true,
@@ -10556,7 +10568,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       });
     });
     if (completedIds.length === 0) return;
+    // Several rows leave at once, and un-ticking each from the list is the
+    // slow way back, so a bulk completion announces where a single tick doesn't.
     get().setLastAction({
+      announce: true,
       label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
       redo: () => get().completeGroup(groupId, options),
       undo: () => [...undos].reverse().forEach(fn => fn()),
@@ -10815,14 +10830,43 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // Archiving a project lives here rather than in useProjectStore for the same
   // reason deleting one does: the undo queue is a task-store concern, and every
   // undoable action registers its entry through setLastAction.
-  archiveProject(projectId) {
+  //
+  // `archiveRemaining` is the same reversible cascade `completeProject` offers:
+  // the project's open tasks are archived with it, and one undo entry puts back
+  // the project and every task. Without it the tasks stay where they are, live
+  // on Today, which is what archiving did before the person was asked.
+  archiveProject(projectId, opts) {
+    const historyBefore = get().undoStack;
     const project = useProjectStore.getState().getProjectById(projectId);
     if (!project || project.archived) return;
+    const members = opts?.archiveRemaining
+      ? get().tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.completed && !t.archived)
+      : [];
+    if (members.length === 0) {
+      useProjectStore.getState().applyProjectArchived(projectId, true);
+      get().setLastAction({
+        label: 'Project archived',
+        undo: () => useProjectStore.getState().applyProjectArchived(projectId, false),
+      });
+      return;
+    }
+    const undos: Array<() => void> = [];
+    dbTransaction(() => {
+      members.forEach(member => {
+        get().archiveTask(member.id);
+        const action = get().lastAction;
+        if (action) undos.push(action.undo);
+      });
+    });
     useProjectStore.getState().applyProjectArchived(projectId, true);
     get().setLastAction({
-      label: 'Project archived',
-      undo: () => useProjectStore.getState().applyProjectArchived(projectId, false),
-    });
+      label: 'Project archived, remaining tasks archived',
+      redo: () => get().archiveProject(projectId, opts),
+      undo: () => {
+        useProjectStore.getState().applyProjectArchived(projectId, false);
+        undos.forEach(fn => fn());
+      },
+    }, { replacing: historyBefore });
   },
 
   unarchiveProject(projectId) {
@@ -11053,7 +11097,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }, { replacing: historyBefore });
   },
 
-  bulkSetProjectArchived(projectIds, archived) {
+  // `archiveRemaining` is `archiveProject`'s cascade over the whole selection:
+  // every changed project's open tasks are archived with it, under the one undo
+  // entry this already filed. Only an archive takes it (a restore never touches
+  // a task), and it is the plain archive when nothing is open.
+  bulkSetProjectArchived(projectIds, archived, opts) {
+    // The stack as it was before the tasks below register their own undos, so
+    // the one entry filed for the batch replaces them rather than sitting on top.
+    const historyBefore = get().undoStack;
     const idSet = new Set(projectIds);
     // Snapshotted before the write so undoing an unarchive can hand each
     // project back the day it was originally archived, exactly as
@@ -11062,14 +11113,36 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .getState()
       .projects.filter(p => idSet.has(p.id) && p.archived !== archived);
     if (changed.length === 0) return;
+    const changedIds = new Set(changed.map(p => p.id));
+    const members = archived && opts?.archiveRemaining
+      ? get().tasks.filter(
+          t => t.projectId !== null && changedIds.has(t.projectId) && t.parentId === null && !t.completed && !t.archived,
+        )
+      : [];
+    const undos: Array<() => void> = [];
+    if (members.length > 0) {
+      dbTransaction(() => {
+        members.forEach(member => {
+          get().archiveTask(member.id);
+          const action = get().lastAction;
+          if (action) undos.push(action.undo);
+        });
+      });
+    }
     changed.forEach(p => useProjectStore.getState().applyProjectArchived(p.id, archived));
+    const count = `${changed.length} project${changed.length === 1 ? '' : 's'}`;
     get().setLastAction({
-      label: `${changed.length} project${changed.length === 1 ? '' : 's'} ${archived ? 'archived' : 'restored'}`,
-      undo: () =>
+      label: members.length > 0
+        ? `${count} archived, remaining tasks archived`
+        : `${count} ${archived ? 'archived' : 'restored'}`,
+      ...(members.length > 0 ? { redo: () => get().bulkSetProjectArchived(projectIds, archived, opts) } : {}),
+      undo: () => {
         changed.forEach(p =>
           useProjectStore.getState().applyProjectArchived(p.id, !archived, p.archivedAt),
-        ),
-    });
+        );
+        undos.forEach(fn => fn());
+      },
+    }, members.length > 0 ? { replacing: historyBefore } : undefined);
   },
 
   deleteTemplate(id) {
@@ -11260,6 +11333,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     if (completedIds.length === 0) return;
     get().setLastAction({
+      announce: true,
       label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
       redo: () => get().bulkCompleteTasks(ids),
       undo: () => completedIds.forEach(id => get().uncompleteTask(id)),
@@ -11282,6 +11356,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     if (missedIds.length === 0) return;
     get().setLastAction({
+      announce: true,
       label: `${missedIds.length} task${missedIds.length === 1 ? '' : 's'} marked missed`,
       redo: () => get().bulkMarkMissed(ids),
       undo: () => missedIds.forEach(id => get().uncompleteTask(id)),
@@ -11478,7 +11553,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().markTasksSeen(staleNew);
     if (snapshots.length > 0) {
       get().setLastAction({
-        label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
+        label: describeRescheduled(snapshots.length, until, dayResetTime),
         announce: true,
         redo: () => get().bulkDefer(ids, until),
         undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),

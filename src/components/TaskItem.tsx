@@ -21,7 +21,6 @@ import {
   Alert,
   Keyboard,
   LayoutChangeEvent,
-  Linking,
   type NativeSyntheticEvent,
   type TextLayoutEventData,
 } from 'react-native';
@@ -68,6 +67,7 @@ import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMoveP
 import { describeReschedule } from '../utils/rescheduleLabel';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { confirmSlip } from '../utils/slipConfirm';
+import { penaltyChipLabel } from '../utils/penaltyShield';
 import { leavePrepLine, openLeavePrep } from '../utils/leavePrep';
 import { confirmLeaveWithOpenPrep } from '../utils/leavePrepConfirm';
 import { scheduleCompletionTimer } from '../utils/notifications';
@@ -104,6 +104,7 @@ import { telUrl, smsUrl } from '../utils/phone';
 import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
+import { openExternalUrl } from '../utils/openExternalUrl';
 import { eventCoordinate } from '../utils/calendarSync';
 import { SegmentedControl } from './SegmentedControl';
 import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, TRAVEL_MODES, TRAVEL_MODE_LABELS, travelSourceStart, travelWalkUnderFor, type TravelChoice } from '../utils/travelTasks';
@@ -665,16 +666,8 @@ const TaskItemRow = React.memo(function TaskItem({
     // out through Linking would come back to us anyway, but as an app-switch
     // round trip that flashes.
     if (openInAppUrl(url)) return;
-    try {
-      // Skip Linking.canOpenURL: on iOS it only returns true for schemes
-      // pre-declared in LSApplicationQueriesSchemes, which would break both
-      // the preset chips and arbitrary user-entered custom schemes. openURL
-      // itself isn't restricted — it just fails harmlessly if nothing
-      // handles the scheme.
-      await Linking.openURL(url);
-    } catch {
-      // silently ignore — no toast infra for this row-level action
-    }
+    // No canOpenURL check (see openExternalUrl); a link nothing can open says so.
+    await openExternalUrl(url, 'link');
   };
   // Sanitised here rather than at save time, so the row keeps showing the
   // number the way it was written (see utils/phone.ts). Null means the field
@@ -710,26 +703,15 @@ const TaskItemRow = React.memo(function TaskItem({
     if (!callUrl) return;
     haptics.tap();
     stampReachOut('call');
-    try {
-      // Same reasoning as the link button: no canOpenURL check. tel: needs no
-      // LSApplicationQueriesSchemes entry, and on a device with no phone (an
-      // iPad) openURL simply does nothing rather than throwing.
-      await Linking.openURL(callUrl);
-    } catch {
-      // silently ignore — no toast infra for this row-level action
-    }
+    // tel: needs no LSApplicationQueriesSchemes entry, and on a device with no
+    // phone (an iPad) openURL rejects, which the helper turns into an alert.
+    await openExternalUrl(callUrl, 'call');
   };
   const handleText = async () => {
     if (!textUrl) return;
     haptics.tap();
     stampReachOut('text');
-    try {
-      // Same reasoning as handleCall — sms: needs no
-      // LSApplicationQueriesSchemes entry either.
-      await Linking.openURL(textUrl);
-    } catch {
-      // silently ignore — no toast infra for this row-level action
-    }
+    await openExternalUrl(textUrl, 'message');
   };
   // Same sanitise-at-render, null-hides-the-button pattern as callUrl above.
   const emailUrl = mailtoUrl(contact.emailAddress);
@@ -754,12 +736,7 @@ const TaskItemRow = React.memo(function TaskItem({
     if (!emailUrl) return;
     haptics.tap();
     stampReachOut('email');
-    try {
-      // Same reasoning as call/link: no canOpenURL check needed for mailto:.
-      await Linking.openURL(emailUrl);
-    } catch {
-      // silently ignore — no toast infra for this row-level action
-    }
+    await openExternalUrl(emailUrl, 'email');
   };
   // Same sanitise-at-render, null-hides-the-button pattern as callUrl/emailUrl
   // above — see maps.ts for why an https: directions link needs no
@@ -777,11 +754,7 @@ const TaskItemRow = React.memo(function TaskItem({
     const coordinate = eventId ? await eventCoordinate(eventId) : null;
     const url = directionsUrl(task.location, useSettingsStore.getState().mapsApp, coordinate);
     if (!url) return;
-    try {
-      await Linking.openURL(url);
-    } catch {
-      // silently ignore — no toast infra for this row-level action
-    }
+    await openExternalUrl(url, 'directions');
   };
   const colors = useColors();
   const { shadows } = useTheme();
@@ -3316,9 +3289,14 @@ const TaskItemRow = React.memo(function TaskItem({
   // Whether the meta row has anything to show besides the notes and deadline
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
-  const hasOtherMeta = morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
+  const penaltyLabel = penaltyChipLabel(task, penaltyShieldEnabled);
+  const hasOtherMeta = penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
-  const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !deadlineOnMeta;
+  // A task the app wrote by itself says so on its row. Only a small sparkle
+  // inside the expanded panel did, so a "Review tomorrow's calendar" looked
+  // hand-made. Not on the nutrient rows, which are a different shape of row.
+  const automaticChip = task.generatedKind != null && !nutrientRow;
+  const notesStayInTitle = markersOnMeta && hasNotes && !hasOtherMeta && !automaticChip && !deadlineOnMeta;
 
   const rowBody = (
     <View style={[styles.row, isActive && styles.rowActive]}>
@@ -3801,7 +3779,7 @@ const TaskItemRow = React.memo(function TaskItem({
             dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}
           />
         )}
-        {(markersOnMeta || hasOtherMeta) && (
+        {(markersOnMeta || hasOtherMeta || automaticChip) && (
           <View style={styles.metaRow}>
             {morning && (
               <PressableScale
@@ -3929,6 +3907,12 @@ const TaskItemRow = React.memo(function TaskItem({
                 <AnimatedNumber text={`${subtaskDoneCount}/${subtaskCount}`} value={subtaskDoneCount} style={styles.subtaskBadgeText} />
               </View>
             )}
+            {automaticChip && (
+              <View style={styles.metaChip} accessibilityLabel="Added automatically">
+                <Ionicons name="sparkles-outline" size={9} color={colors.textSecondary} />
+                <Text style={styles.subtaskBadgeText} numberOfLines={1}>Automatic</Text>
+              </View>
+            )}
             {task.generatedKind === 'calendarReview' && (
               // The row's only sign that it opens: the panel holds the events
               // themselves, and a bare checkbox gives no hint of that. Shown
@@ -3966,6 +3950,12 @@ const TaskItemRow = React.memo(function TaskItem({
                 >
                   {supplyLabel}
                 </Text>
+              </View>
+            )}
+            {penaltyLabel !== null && (
+              <View style={styles.metaChip} accessibilityLabel={penaltyLabel}>
+                <Ionicons name="lock-closed-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.subtaskBadgeText} numberOfLines={1}>{penaltyLabel}</Text>
               </View>
             )}
             {timed && (
@@ -5427,6 +5417,19 @@ const TaskItemRow = React.memo(function TaskItem({
                       }
                     >
                       <Ionicons name="close-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
+                  {/* Opens that same menu from a button, since a long-press
+                      nothing on screen mentions was the only other way to
+                      reach Skip, Mark missed and Someone else did it. */}
+                  {showActions && completionMenuOffered && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={openCompletionMenu}
+                      hitSlop={8}
+                      accessibilityLabel={`More options for ${task.title}`}
+                    >
+                      <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                   )}
                 </View>

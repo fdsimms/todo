@@ -1,5 +1,5 @@
 import {
-  appRemovalSwitchLocked, defaultGroupLocked, groupBlockHint, groupEditLocked, liveGroupIds, reasonGroupLocked, reasonSwitchLocked, scheduleEditLocked, supergroupEditLocked,
+  appRemovalSwitchLocked, defaultGroupLocked, groupBlockHint, groupEditLocked, liveGroupIds, reasonGroupLocked, reasonSwitchLocked, scheduleEditLocked, startsBlockingNowMessage, supergroupEditLocked,
 } from '../utils/blockEditLock';
 import type { ShieldReasonEntry } from '../utils/appShield';
 import type { BlockSchedule } from '../utils/blockSchedule';
@@ -114,5 +114,28 @@ describe('a supergroup', () => {
     expect(supergroupEditLocked(['games', 'default'], live)).toBe(false);
     expect(supergroupEditLocked(['social'], [])).toBe(false);
     expect(supergroupEditLocked([], live)).toBe(false);
+  });
+});
+
+describe('startsBlockingNowMessage', () => {
+  it('says it blocks now, until when, and that it is then locked', () => {
+    const message = startsBlockingNowMessage(schedule(), WED(14), false);
+    expect(message).toContain('starts blocking now until 5:00 PM');
+    expect(message).toContain('can’t be changed or switched off until then');
+    expect(message).toContain('emergency button');
+  });
+
+  it('follows the 24-hour setting', () => {
+    expect(startsBlockingNowMessage(schedule(), WED(14), true)).toContain('until 17:00');
+  });
+
+  it('is null when the window is not open, the day is not covered, or it is off', () => {
+    expect(startsBlockingNowMessage(schedule(), WED(8), false)).toBeNull();
+    expect(startsBlockingNowMessage(schedule({ days: [0, 6] }), WED(14), false)).toBeNull();
+    expect(startsBlockingNowMessage(schedule({ enabled: false }), WED(14), false)).toBeNull();
+  });
+
+  it('is null while a key tag has lifted this window', () => {
+    expect(startsBlockingNowMessage(schedule({ pausedUntil: WED(17).toISOString() }), WED(14), false)).toBeNull();
   });
 });

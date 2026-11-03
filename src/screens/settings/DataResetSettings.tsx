@@ -24,6 +24,7 @@ import {
   selectPurgeableFocusSessionIds, selectPurgeableTaskIds, type RetentionDays,
 } from '../../utils/retention';
 import { useFocusStore } from '../../store/useFocusStore';
+import { selectSyncsAnywhere, useSyncStore } from '../../store/useSyncStore';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
@@ -101,6 +102,7 @@ export function DataResetSettings() {
   const completedRetentionDays = useSettingsStore(s => s.completedRetentionDays);
   const setCompletedRetentionDays = useSettingsStore(s => s.setCompletedRetentionDays);
   const resetToDefaults = useSettingsStore(s => s.resetToDefaults);
+  const syncsAnywhere = useSyncStore(selectSyncsAnywhere);
 
   const allTasks = useTaskStore(useShallow(s => s.tasks));
   const focusHistory = useFocusStore(useShallow(s => s.history));
@@ -173,7 +175,7 @@ export function DataResetSettings() {
       const backup = result.backup;
       Alert.alert(
         'Replace everything with this backup?',
-        `The backup holds ${summarizeBackup(backup)}. Everything currently in the app (tasks, projects, groceries, recipes, the meal plan, the food and mood logs, workouts, people and settings) is deleted and replaced with it. Meals and workouts already written to Apple Health, and events added to your calendar, stay. This can’t be undone, so export your current data first.`,
+        `The backup holds ${summarizeBackup(backup)}. Everything currently in the app (tasks, projects, groceries, recipes, the meal plan, the food and mood logs, workouts, people and settings) is deleted and replaced with it.${syncsAnywhere ? ' Because sync is on, your other synced devices are replaced with it too.' : ''} Meals and workouts already written to Apple Health, and events added to your calendar, stay. This can’t be undone, so export your current data first.`,
         [
           { text: BUTTON_LABEL.cancel, style: 'cancel' },
           {
@@ -282,7 +284,9 @@ export function DataResetSettings() {
     <>
       <SettingsSection
         label="Backup"
-        footer="Your data lives only on this device, so a backup is the only copy if you lose the phone."
+        footer={syncsAnywhere
+          ? 'A backup is a separate copy. Syncing keeps your devices matching, so a deletion on one reaches the others.'
+          : 'Your data lives only on this device, so a backup is the only copy if you lose the phone.'}
       explain={{
         title: 'What a backup holds',
         paragraphs: [

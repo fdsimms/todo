@@ -48,6 +48,8 @@ interface NfcKeyStore {
   /** Enroll a new link tag; the key's `secret` is the token to write into its link. */
   enrollLink: (name: string) => EnrollResult;
   removeKey: (id: string) => void;
+  /** A scan matched this key: the sign a link key's tag was written and works. */
+  markScanned: (id: string, at?: Date) => void;
   /** Raise the lock from the app. Refused with no key enrolled to end it. */
   lock: () => boolean;
   /** End the lock. The caller decides it may: a scan (`applyKeyScan`) or the emergency button. */
@@ -119,6 +121,12 @@ export const useNfcKeyStore = create<NfcKeyStore>((set, get) => ({
     const locked = lockAfterRemoval(keys, get().locked);
     if (locked !== get().locked) persistLocked(locked);
     set({ keys, locked });
+  },
+
+  markScanned(id, at = new Date()) {
+    const keys = get().keys.map(k => (k.id === id ? { ...k, lastScannedAt: at.toISOString() } : k));
+    persistKeys(keys);
+    set({ keys });
   },
 
   lock() {

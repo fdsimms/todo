@@ -7,7 +7,7 @@
 //   makeStyles              styles, at the bottom
 //
 // The small components above TodayScreen (SectionHeader, LaterTodaySection,
-// ExpiredSection, …) are its section furniture and are declared at module level.
+// HeldBackSection, …) are its section furniture and are declared at module level.
 import React, { useState, useCallback, useMemo, useEffect, useRef, useOptimistic, startTransition } from 'react';
 import {
   View,
@@ -32,13 +32,14 @@ import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, NutrientKey, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { runAfterPaint, runAfterTransition } from '../utils/afterPaint';
-import { taskHomeFor } from '../utils/taskHome';
-import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster, isQuotaTask, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
+import { landingFor, taskHomeFor } from '../utils/taskHome';
+import { isTaskNew, isTaskVisible, isDismissedToday, isRelevantToGroupToday, groupRoster, isQuotaTask, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
 import { sameGroupsApartFromFold } from '../utils/groupFold';
 import { openTasksOf } from '../utils/openTasks';
 import { reuseUnchangedLists } from '../utils/stableLists';
 import { confirmBulkSetWhen } from '../utils/scheduleMovePrompt';
 import { type CreatedTaskDestination } from '../utils/createdTaskPlacement';
+import { editedTaskMove } from '../utils/editedTaskMove';
 import { completedOnDay, describeAllClear } from '../utils/allClear';
 import {
   makeCategoryGroups,
@@ -62,6 +63,14 @@ import {
   type TodayListItem,
   type LaterTodaySectionData,
 } from '../utils/taskGrouping';
+import {
+  HELD_BACK_COPY,
+  heldBackGroups,
+  heldBackHasHeadings,
+  heldBackIcon,
+  heldBackToggleText,
+  type HeldBackGroup,
+} from '../utils/heldBack';
 import { liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { useDemoStore } from '../store/useDemoStore';
 import {
@@ -563,7 +572,7 @@ function VacationHiddenSection({
 // window that hasn't opened, or a daily target you're keeping up with (which
 // is also how a unit gets logged at a moment nothing asked for it: the rows
 // here keep their meters, and one tap logs without sending the row anywhere).
-// Mirrors ExpiredSection below: collapsed and deemphasized by default, expands
+// Mirrors HeldBackSection below: collapsed and deemphasized by default, expands
 // in place to show the tasks, sub-grouped by time segment
 // (Morning/Afternoon/Evening) the same way the Later screen sub-groups by
 // segment within a day. A target has no segment, so it sits in the headerless
@@ -623,25 +632,32 @@ function LaterTodaySection({
   );
 }
 
-// Collapsible reveal for tasks whose time window has closed. Stays put until
-// the user deletes it (or, for a recurring task, skips it) — expiring never
-// deletes automatically unless the "auto-remove" setting is on.
-function ExpiredSection({
-  tasks,
+// Collapsible reveal for the tasks Today is holding back for a reason that will
+// pass: a time window that has closed (it stays until it is deleted or, for a
+// repeating task, skipped, since expiring never deletes unless "auto-remove" is
+// on), a day with room (slot-in), or another task (Waits for). A held task is
+// hidden from every list on Today, so without this nothing said where it had
+// gone: the Stuck screen holds the blocked ones, but only if you already knew
+// to look. One footer for all of them, collapsed by default; opened, each
+// reason is named above its rows once there is more than one (see heldBack.ts).
+function HeldBackSection({
+  groups,
   expanded,
   onToggle,
-  renderExpiredTask,
+  renderTask,
   styles,
   colors,
 }: {
-  tasks: Task[];
+  groups: HeldBackGroup<Task>[];
   expanded: boolean;
   onToggle: () => void;
-  renderExpiredTask: (task: Task) => React.ReactNode;
+  renderTask: (task: Task) => React.ReactNode;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
-  if (tasks.length === 0) return null;
+  const toggleText = heldBackToggleText(groups, expanded);
+  if (toggleText === null) return null;
+  const headings = heldBackHasHeadings(groups);
   return (
     <View style={styles.hiddenSection}>
       <TouchableOpacity
@@ -649,53 +665,22 @@ function ExpiredSection({
         onPress={onToggle}
         activeOpacity={interaction.activeOpacity}
       >
-        <Ionicons name="time-outline" size={13} color={colors.textTertiary} />
-        <Text style={styles.hiddenToggleText}>
-          {expanded ? 'Hide' : 'Show'} {tasks.length} expired
-        </Text>
+        <Ionicons name={heldBackIcon(groups)} size={13} color={colors.textTertiary} />
+        <Text style={styles.hiddenToggleText}>{toggleText}</Text>
         <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
       </TouchableOpacity>
-      {expanded && tasks.map(task => (
-        <React.Fragment key={task.id}>{renderExpiredTask(task)}</React.Fragment>
-      ))}
-    </View>
-  );
-}
-
-// Collapsible reveal for tasks the slot-in pass is holding back until a day
-// with room. Shaped like ExpiredSection and sat beside it, so a held task is one
-// tap from the list without a block of its own at the top of Today.
-function SlotWaitingSection({
-  tasks,
-  expanded,
-  onToggle,
-  renderWaitingTask,
-  styles,
-  colors,
-}: {
-  tasks: Task[];
-  expanded: boolean;
-  onToggle: () => void;
-  renderWaitingTask: (task: Task) => React.ReactNode;
-  styles: ReturnType<typeof makeStyles>;
-  colors: Colors;
-}) {
-  if (tasks.length === 0) return null;
-  return (
-    <View style={styles.hiddenSection}>
-      <TouchableOpacity
-        style={styles.hiddenToggle}
-        onPress={onToggle}
-        activeOpacity={interaction.activeOpacity}
-      >
-        <Ionicons name="hourglass-outline" size={13} color={colors.textTertiary} />
-        <Text style={styles.hiddenToggleText}>
-          {expanded ? 'Hide' : 'Show'} {tasks.length} waiting for a lighter day
-        </Text>
-        <RotatingChevron open={expanded} size={13} color={colors.textTertiary} />
-      </TouchableOpacity>
-      {expanded && tasks.map(task => (
-        <React.Fragment key={task.id}>{renderWaitingTask(task)}</React.Fragment>
+      {expanded && groups.map(group => (
+        <View key={group.kind}>
+          {headings && (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionHeaderText}>{HELD_BACK_COPY[group.kind].heading} {group.tasks.length}</Text>
+              <SpotlightScrim />
+            </View>
+          )}
+          {group.tasks.map(task => (
+            <React.Fragment key={task.id}>{renderTask(task)}</React.Fragment>
+          ))}
+        </View>
       ))}
     </View>
   );
@@ -926,6 +911,11 @@ export function TodayScreen() {
   );
   const expiredTasks = useTaskStore(useShallow(s => (showingToday ? s.expiredTasks() : NO_TASKS)));
   const slotWaitingTasks = useTaskStore(useShallow(s => (showingToday ? s.slotWaitingTasks() : NO_TASKS)));
+  const waitingOnTasks = useTaskStore(useShallow(s => (showingToday ? s.waitingTasks() : NO_TASKS)));
+  const heldBack = useMemo(
+    () => heldBackGroups({ expired: expiredTasks, slot: slotWaitingTasks, waitingOn: waitingOnTasks }),
+    [expiredTasks, slotWaitingTasks, waitingOnTasks],
+  );
   const vacationHiddenTasks = useTaskStore(
     useShallow(s => (showingToday || viewMode === 'later' ? s.vacationHiddenTasks() : NO_TASKS)),
   );
@@ -1037,6 +1027,9 @@ export function TodayScreen() {
   const [createdToast, setCreatedToast] = useState<
     | { source: 'created'; task: Task; destination: CreatedTaskDestination }
     | { source: 'moved'; task: Task; destination: CreatedTaskDestination; previous: Task }
+    // Saved in the editor and left this list. No Undo: an edit can reach a whole
+    // series, and one row's snapshot would put back only part of it.
+    | { source: 'edited'; task: Task; destination: CreatedTaskDestination }
     | null
   >(null);
   const createdToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1142,14 +1135,21 @@ export function TodayScreen() {
   // back to when the editor it opened closes. Consumed by the first close, so an
   // editor opened any other way afterwards never navigates anywhere.
   const editorReturnToRef = useRef<string | null>(null);
+  // Filled in below, where the toast helpers live; closeEditor is cached with no
+  // dependencies and reaches them through this, as the import chip's does.
+  const presentEditedTaskRef = useRef<(previous: Task) => void>(() => {});
   const closeEditor = useCallback(() => {
+    // The task as the editor opened it, read before anything closes: saving may
+    // have moved it off the list it was opened from.
+    const opened = editorStore.getState().task;
     setEditorVisible(false);
     setLayoutHold(null);
     setExpandedTaskId(null);
     const returnTo = editorReturnToRef.current;
     editorReturnToRef.current = null;
     if (returnTo) navigateToTab(returnTo);
-  }, []);
+    if (opened) presentEditedTaskRef.current(opened);
+  }, [editorStore]);
   const {
     selectionMode,
     selectedIds,
@@ -1246,8 +1246,9 @@ export function TodayScreen() {
     if (showingToday && pinnedTasks.length === 0) setOthersHidden(false);
   }, [showingToday, pinnedTasks.length]);
   const [showHidden, setShowHidden] = useState(false);
-  const [showExpired, setShowExpired] = useState(false);
-  const [showSlotWaiting, setShowSlotWaiting] = useState(false);
+  // One footer for everything held back (expired, waiting for a lighter day,
+  // waiting on another task), so one flag.
+  const [showHeldBack, setShowHeldBack] = useState(false);
   // Persisted: folding a section shut is a statement about how you want the
   // list to look, and it used to be forgotten on every cold start. Kept as a
   // Set here (the three call sites below all ask "is this one collapsed") and
@@ -1528,6 +1529,12 @@ export function TodayScreen() {
   // going there straight away (destination === 'today', in handleTaskCreated)
   // and going there later from the created-task toast's "Go to it".
   const goToCreatedTask = (task: Task, destination: CreatedTaskDestination) => {
+    if (destination === 'project') {
+      // On none of this screen's lists: an undated project task lives on its
+      // project's page, so that's where "Go to it" has to go.
+      if (task.projectId) handleOpenProject(task.projectId);
+      return;
+    }
     if (destination !== viewMode) {
       setViewMode(destination);
       // A row left spotlighted on the view being switched away from has no
@@ -1574,6 +1581,19 @@ export function TodayScreen() {
     createdToastTimeoutRef.current = setTimeout(dismissCreatedToast, CREATED_TOAST_VISIBLE_MS);
   };
 
+  // Where a task went when saving it in the editor took it off this list: the
+  // same "it moved, and here is where" the quick-add toast gives, without Undo.
+  const presentEditedTask = (previous: Task) => {
+    const updated = useTaskStore.getState().tasks.find(t => t.id === previous.id);
+    if (!updated) return;
+    const destination = editedTaskMove(previous, updated, viewMode);
+    if (!destination) return;
+    if (createdToastTimeoutRef.current) clearTimeout(createdToastTimeoutRef.current);
+    setCreatedToast({ source: 'edited', task: updated, destination });
+    createdToastTimeoutRef.current = setTimeout(dismissCreatedToast, CREATED_TOAST_VISIBLE_MS);
+  };
+  presentEditedTaskRef.current = presentEditedTask;
+
   const handleCreatedToastGoTo = () => {
     if (!createdToast) return;
     const { task, destination } = createdToast;
@@ -1586,6 +1606,8 @@ export function TodayScreen() {
     const toast = createdToast;
     dismissCreatedToast();
     haptics.tap();
+    // An edit has no Undo to offer (see the toast's state), so none reaches here.
+    if (toast.source === 'edited') return;
     if (toast.source === 'moved') {
       // Whole-snapshot revert, same as deferTask's own undo — the row goes
       // back to exactly what it was before the suggestion was applied,
@@ -1604,12 +1626,10 @@ export function TodayScreen() {
   // there does; anywhere else gets the same go-to/undo toast a creation does,
   // unless the row never actually left the view already being looked at.
   const presentMovedFromInbox = (previous: Task, updated: Task) => {
-    const destination: ViewMode = isInboxTask(updated)
-      ? 'inbox'
-      : isTaskVisible(updated) ? 'today'
-      : isUnscheduledTask(updated) ? 'unscheduled'
-      : 'later';
-    if (destination === 'inbox') return;
+    const destination = landingFor(updated);
+    // Still in the Inbox, or on none of the lists (blocked, a paused project):
+    // there is no list to point at.
+    if (destination === 'inbox' || destination === null) return;
     if (destination === 'today') {
       if (destination !== viewMode) {
         setViewMode(destination);
@@ -1649,11 +1669,7 @@ export function TodayScreen() {
     const dropped = pendingDropRef.current;
     pendingDropRef.current = null;
 
-    const destination: ViewMode = isInboxTask(task)
-      ? 'inbox'
-      : isTaskVisible(task) ? 'today'
-      : isUnscheduledTask(task) ? 'unscheduled'
-      : 'later';
+    const destination = landingFor(task);
     // Position it only if it actually landed in the list it was dropped on: the
     // sheet can push a task out of Today entirely (a defer date, no date at
     // all), and then the spot it was dropped at isn't somewhere it can go.
@@ -1661,8 +1677,12 @@ export function TodayScreen() {
       if (destination === 'today') placeCreatedTask(task, dropped);
       else if (destination === 'later') placeCreatedLaterTask(task, dropped);
       else if (destination === 'unscheduled') placeCreatedUnscheduledTask(task, dropped);
-      else placeCreatedInboxTask(task, dropped);
+      else if (destination === 'inbox') placeCreatedInboxTask(task, dropped);
     }
+
+    // On none of the lists (blocked, a paused project): nothing to point at,
+    // and naming Later for it sent "Go to it" to a list it was never in.
+    if (destination === null) return;
 
     if (destination === 'today') {
       if (destination !== viewMode) {
@@ -4781,31 +4801,16 @@ export function TodayScreen() {
         />
       )}
       {viewMode === 'today' && (
-        <ExpiredSection
-          tasks={expiredTasks}
-          expanded={showExpired}
+        <HeldBackSection
+          groups={heldBack}
+          expanded={showHeldBack}
           onToggle={() => {
             haptics.tap();
             animateLayout();
             setExpandedTaskId(null);
-            setShowExpired(v => !v);
+            setShowHeldBack(v => !v);
           }}
-          renderExpiredTask={renderHiddenTask}
-          styles={styles}
-          colors={colors}
-        />
-      )}
-      {viewMode === 'today' && (
-        <SlotWaitingSection
-          tasks={slotWaitingTasks}
-          expanded={showSlotWaiting}
-          onToggle={() => {
-            haptics.tap();
-            animateLayout();
-            setExpandedTaskId(null);
-            setShowSlotWaiting(v => !v);
-          }}
-          renderWaitingTask={renderHiddenTask}
+          renderTask={renderHiddenTask}
           styles={styles}
           colors={colors}
         />
@@ -6201,8 +6206,10 @@ export function TodayScreen() {
           <CreatedTaskToast
             task={createdToastShown.value.task}
             destination={createdToastShown.value.destination}
-            mode={createdToastShown.value.source}
+            mode={createdToastShown.value.source === 'created' ? 'created' : 'moved'}
+            canUndo={createdToastShown.value.source !== 'edited'}
             dayResetTime={dayResetTime}
+            projectName={projects.find(p => p.id === createdToastShown.value?.task.projectId)?.title}
             bottom={fabBottom + FAB_SIZE + spacing.md}
             onGoToTask={handleCreatedToastGoTo}
             onUndo={handleCreatedToastUndo}
@@ -6342,6 +6349,11 @@ export function TodayScreen() {
               setOptionsMenuVisible(false);
               setSuggestedPinsVisible(true);
             } : undefined}
+            onSelectTasks={() => {
+              setOptionsMenuVisible(false);
+              setExpandedTaskId(null);
+              enterSelectionMode();
+            }}
             plannedLabel={plannedLabel}
             lightenNote={deloadNotes[0] ?? null}
             onLookAhead={featureHidden('lookAhead', simpleMode) ? undefined : () => {

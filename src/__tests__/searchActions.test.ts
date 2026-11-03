@@ -385,7 +385,7 @@ describe('searchActions: pantry', () => {
   });
 
   it('is described by the answer the line named', () => {
-    const ctx: DescribeContext = { medicationLogs: [], medicationSettings: {}, waterUnit: 'ml', waterTodayMl: 0, waterTargetMl: undefined, now: new Date('2026-10-05T12:00') };
+    const ctx: DescribeContext = { medicationLogs: [], medicationSettings: {}, waterUnit: 'ml', waterTodayMl: 0, waterTargetMl: undefined, now: new Date('2026-10-05T12:00'), use24HourTime: false };
     expect(describeSearchAction(pantry('out of milk')!, ctx)).toMatchObject({ title: 'Mark Milk as out', meta: [] });
     expect(describeSearchAction(pantry('low on milk')!, ctx)).toMatchObject({ title: 'Mark Milk as running low' });
   });
@@ -400,6 +400,7 @@ describe('describeSearchAction', () => {
     waterTodayMl: 0,
     waterTargetMl: undefined,
     now,
+    use24HourTime: false,
     ...overrides,
   });
   const aleve = only<DoseAction>('take aleve', meds())!;
@@ -413,6 +414,12 @@ describe('describeSearchAction', () => {
     });
     expect(describeSearchAction(aleve, ctx({ now: new Date('2026-10-08T12:00') })).meta[1])
       .toBe('Last taken Oct 5, 9:00 AM');
+  });
+
+  it('says the time in the 24-hour format when that is the setting', () => {
+    expect(describeSearchAction(aleve, ctx({ use24HourTime: true })).meta[1]).toBe('Last taken 09:00');
+    expect(describeSearchAction(aleve, ctx({ use24HourTime: true, now: new Date('2026-10-08T12:00') })).meta[1])
+      .toBe('Last taken Oct 5, 09:00');
   });
 
   it('says when the limit you set allows the next dose, when that is not yet', () => {

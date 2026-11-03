@@ -847,7 +847,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['screen time', 'block apps', 'gate', 'first', 'before', 'unlock', 'precondition', 'accountability', 'restrict', 'morning'] },
   { id: 'penaltyShield', iosOnly: true, groupId: 'screenTime', label: 'When you fail a task', section: 'Reasons to block', simple: true,
     keywords: ['screen time', 'block apps', 'penalty', 'punish', 'consequence', 'miss', 'missed', 'slip', 'deadline', 'cutoff', 'accountability', 'restrict', 'blocked until', 'end early'] },
-  { id: 'blockAppRemoval', iosOnly: true, groupId: 'screenTime', label: 'Prevent deleting apps', section: 'While blocked', simple: true,
+  { id: 'blockAppRemoval', iosOnly: true, groupId: 'screenTime', label: 'Prevent deleting any app', section: 'While blocked', simple: true,
     keywords: ['screen time', 'delete', 'uninstall', 'remove apps', 'block', 'loophole', 'offload', 'restrict'] },
   { id: 'nfcKey', iosOnly: true, groupId: 'screenTime', label: 'Add a key tag', section: 'Key tags', simple: true,
     keywords: ['nfc', 'sticker', 'tap', 'physical key', 'screen time', 'lock', 'unlock', 'ritual'] },
@@ -902,6 +902,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'tabRoutes', groupId: 'featureAreas', label: 'Tab bar', section: 'Tab bar',
     keywords: ['tabs', 'bottom bar', 'customize', 'shortcut', 'quick access', 'first tab',
       'second tab', 'third tab', 'fourth tab', 'pin a screen', 'navigation', 'buttons along the bottom'] },
+  { id: 'openAppOn', groupId: 'featureAreas', label: 'Open the app on', section: 'Open the app on',
+    keywords: ['launch', 'start', 'startup', 'cold start', 'reopen', 'last screen', 'today', 'home',
+      'where the app starts', 'first screen'] },
   { id: 'simpleMode', groupId: 'featureAreas', label: 'Simplified mode', section: 'Feature areas',
     keywords: ['simple', 'simplify', 'basic', 'minimal', 'declutter', 'overwhelming', 'advanced',
       'hide', 'remove', 'disable', 'turn off', 'chains', 'timed', 'daily target', 'quota',
@@ -919,7 +922,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // nothing.
   // Sits above every generator rather than inside one: it decides when the
   // whole list gets a chance to run, not what any of them do.
-  { id: 'backgroundRefreshEnabled', groupId: 'generated', label: 'Add tasks while the app is closed',
+  { id: 'backgroundRefreshEnabled', groupId: 'generated', label: 'Run while the app is closed',
     section: 'Automations',
     keywords: ['background', 'background refresh', 'overnight', 'away', 'wake',
       'catch up', 'top up', 'widget', 'stale', 'battery'] },

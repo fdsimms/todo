@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Linking, View } from 'react-native';
+import { Alert, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useWaniKaniStore } from '../../store/useWaniKaniStore';
 import type { WaniKaniProblem, WaniKaniUser } from '../../services/wanikani';
@@ -10,6 +10,7 @@ import { spacing } from '../../theme';
 import { isDemoModeActive } from '../../utils/demoState';
 import { haptics } from '../../utils/haptics';
 import { WANIKANI_TOKEN_URL } from '../../utils/wanikaniTasks';
+import { openExternalUrl } from '../../utils/openExternalUrl';
 import { navigateToSettingsEntry } from '../../navigation/openSettings';
 import { useNavigation } from '@react-navigation/native';
 import { SettingsRow } from './SettingsRow';
@@ -106,7 +107,7 @@ export function WaniKaniTokenRows({ entryId, linkToPrivacy = false }: {
               icon="open-outline"
               onPress={() => {
                 haptics.tap();
-                void Linking.openURL(WANIKANI_TOKEN_URL).catch(() => {});
+                void openExternalUrl(WANIKANI_TOKEN_URL, 'link');
               }}
             />
           )}

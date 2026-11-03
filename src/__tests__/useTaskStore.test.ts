@@ -10017,6 +10017,15 @@ describe('skipNextRecurrence', () => {
     jest.useRealTimers();
   });
 
+  it('announces itself on the undo bar, since the row leaves the list', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', recurrenceType: 'daily', recurrenceInterval: 1, dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString() })],
+      lastAction: null,
+    });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    expect(useTaskStore.getState().lastAction).toMatchObject({ label: 'Task skipped', announce: true });
+  });
+
   it('advances dueDate to the next occurrence', () => {
     const task = makeTask({
       id: 't1',
@@ -10354,6 +10363,12 @@ describe('markMissed', () => {
     recurrenceInterval: 1,
     dueDate: new Date(2025, 5, 10, 9, 0, 0).toISOString(),
     ...overrides,
+  });
+
+  it('announces itself on the undo bar, as a skip does', () => {
+    useTaskStore.setState({ tasks: [recurring()], lastAction: null });
+    useTaskStore.getState().markMissed('t1');
+    expect(useTaskStore.getState().lastAction).toMatchObject({ label: 'Task marked missed', announce: true });
   });
 
   it('closes the occurrence out as history and spawns the next one', () => {
@@ -12464,6 +12479,19 @@ describe('bulkCompleteTasks', () => {
     expect(useTaskStore.getState().tasks.every(t => !t.completed)).toBe(true);
   });
 
+  it('announces itself on the undo bar, where a single tick stays shake-only', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', recurrenceType: 'none' }), makeTask({ id: 'b', recurrenceType: 'none' })],
+      lastAction: null,
+    });
+    useTaskStore.getState().bulkCompleteTasks(['a', 'b']);
+    expect(useTaskStore.getState().lastAction?.announce).toBe(true);
+
+    useTaskStore.setState({ tasks: [makeTask({ id: 'c', recurrenceType: 'none' })], lastAction: null });
+    useTaskStore.getState().completeTask('c');
+    expect(useTaskStore.getState().lastAction?.announce).toBeFalsy();
+  });
+
   it('does nothing for an empty id list', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
     useTaskStore.getState().bulkCompleteTasks([]);
@@ -14259,6 +14287,55 @@ describe('bulkSetProjectArchived', () => {
     useTaskStore.getState().bulkSetProjectArchived(['p1', 'p2'], true);
     expect(useTaskStore.getState().lastAction).toBeNull();
   });
+
+  it('leaves every open task live unless asked to archive them too', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' }), makeProject({ id: 'p2' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p2' })],
+      lastAction: null,
+    });
+    useTaskStore.getState().bulkSetProjectArchived(['p1', 'p2'], true, { archiveRemaining: false });
+    expect(useTaskStore.getState().tasks.every(t => !t.archived)).toBe(true);
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 projects archived');
+  });
+
+  it('archives the open tasks of every selected project, and one undo puts everything back', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' }), makeProject({ id: 'p2' }), makeProject({ id: 'p3' })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', completed: false }),
+        makeTask({ id: 'b', projectId: 'p2', completed: false }),
+        makeTask({ id: 'done', projectId: 'p1', completed: true }),
+        // Not selected: its project and task stay put.
+        makeTask({ id: 'c', projectId: 'p3', completed: false }),
+      ],
+      lastAction: null,
+    });
+    useTaskStore.getState().bulkSetProjectArchived(['p1', 'p2'], true, { archiveRemaining: true });
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+    expect(byId('a').archived).toBe(true);
+    expect(byId('b').archived).toBe(true);
+    expect(byId('done').archived).toBe(false);
+    expect(byId('c').archived).toBe(false);
+    expect(useProjectStore.getState().getProjectById('p3')!.archived).toBe(false);
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 projects archived, remaining tasks archived');
+
+    useTaskStore.getState().undoLastAction();
+    expect(useProjectStore.getState().projects.every(p => !p.archived)).toBe(true);
+    expect(useTaskStore.getState().tasks.every(t => !t.archived)).toBe(true);
+  });
+
+  it('is the plain archive when nothing is open, and ignores the option on a restore', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'b', projectId: 'p1', completed: true })], lastAction: null });
+    useTaskStore.getState().bulkSetProjectArchived(['p1'], true, { archiveRemaining: true });
+    expect(useTaskStore.getState().lastAction?.label).toBe('1 project archived');
+
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1', completed: false })], lastAction: null });
+    useTaskStore.getState().bulkSetProjectArchived(['p1'], false, { archiveRemaining: true });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.archived).toBe(false);
+    expect(useTaskStore.getState().lastAction?.label).toBe('1 project restored');
+  });
 });
 
 // ─── deleteTemplate ─────────────────────────────────────────────────────────
@@ -14569,6 +14646,45 @@ describe('archiveProject', () => {
     useTaskStore.setState({ lastAction: null });
     useTaskStore.getState().archiveProject('p1');
     expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('leaves the open tasks live when asked to leave them', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1', completed: false })], lastAction: null });
+    useTaskStore.getState().archiveProject('p1', { archiveRemaining: false });
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(true);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.archived).toBe(false);
+    expect(useTaskStore.getState().lastAction?.label).toBe('Project archived');
+  });
+
+  it('archives the open tasks with it when asked, and one undo puts everything back', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', completed: false }),
+        makeTask({ id: 'b', projectId: 'p1', completed: true }),
+        makeTask({ id: 'c', projectId: 'other', completed: false }),
+      ],
+      lastAction: null,
+    });
+    useTaskStore.getState().archiveProject('p1', { archiveRemaining: true });
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(true);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.archived).toBe(true);
+    // Done work and another project's tasks are not touched.
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'b')?.archived).toBe(false);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'c')?.archived).toBe(false);
+    expect(useTaskStore.getState().lastAction?.label).toBe('Project archived, remaining tasks archived');
+
+    useTaskStore.getState().undoLastAction();
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(false);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.archived).toBe(false);
+  });
+
+  it('is the plain archive when the project has nothing open to archive', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'b', projectId: 'p1', completed: true })], lastAction: null });
+    useTaskStore.getState().archiveProject('p1', { archiveRemaining: true });
+    expect(useTaskStore.getState().lastAction?.label).toBe('Project archived');
   });
 });
 

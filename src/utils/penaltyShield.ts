@@ -1,6 +1,7 @@
 import { addDays } from 'date-fns/addDays';
 import type { Task } from '../types';
-import { hhmmToDate, logicalDayStart, taskDayStart } from './clockTime';
+import { formatUntil, hhmmToDate, logicalDayStart, taskDayStart } from './clockTime';
+import { formatDuration } from './effort';
 
 /**
  * What failing a task costs: the apps picked in Settings, blocked for a while.
@@ -137,6 +138,34 @@ export function penaltyChargeFor(
  * taps are answered where they happen instead, by asking first (see the slip
  * confirmation in `TaskItem`), which costs one tap and closes nothing.
  */
+/**
+ * The undo bar's label for a logged slip. Undoing a slip takes back the count,
+ * the streak and the coins but not the app block it started (see
+ * `slipPenaltyUntil`), so when one is running the bar says so rather than
+ * letting Undo read as a refund.
+ */
+export function slipUndoLabel(base: string, blockedUntil: Date | null, now: Date, use24Hour: boolean): string {
+  return blockedUntil ? `${base}. Apps stay blocked until ${formatUntil(blockedUntil, now, use24Hour)}.` : base;
+}
+
+/**
+ * The chip on a task row saying it costs something to fail: "Blocks apps 2h if
+ * missed", or "on a slip" for a habit. Null when nothing would happen, which is
+ * more often than a configured penalty suggests: the switch in Settings is off,
+ * the task is done, or a positive task has no day (see `penaltyCutoffAt`, which
+ * refuses the same shapes). Without it the stakes were visible only inside the
+ * editor, so a row looked like any other until the block arrived.
+ */
+export function penaltyChipLabel(
+  task: Pick<Task, 'penaltyMinutes' | 'polarity' | 'dueDate' | 'completed'>,
+  shieldEnabled: boolean,
+): string | null {
+  if (!shieldEnabled || task.penaltyMinutes === null || task.completed) return null;
+  const negative = task.polarity === 'negative';
+  if (!negative && !task.dueDate) return null;
+  return `Blocks apps ${formatDuration(task.penaltyMinutes)} ${negative ? 'on a slip' : 'if missed'}`;
+}
+
 export function slipPenaltyUntil(task: Task, now: Date): Date | null {
   if (task.penaltyMinutes === null) return null;
   if (task.polarity !== 'negative') return null;

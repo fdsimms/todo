@@ -356,6 +356,7 @@ export function SleepScreen() {
               <View style={styles.stepper}>
                 <PressableScale
                   style={[styles.stepButton, timelineIndex === 0 && styles.stepButtonOff]}
+                  hitSlop={5}
                   onPress={() => stepTimeline(-1)}
                   disabled={timelineIndex === 0}
                   accessibilityLabel="Earlier night"
@@ -376,6 +377,7 @@ export function SleepScreen() {
                 </View>
                 <PressableScale
                   style={[styles.stepButton, timelineIndex === timelineNights.length - 1 && styles.stepButtonOff]}
+                  hitSlop={5}
                   onPress={() => stepTimeline(1)}
                   disabled={timelineIndex === timelineNights.length - 1}
                   accessibilityLabel="Later night"

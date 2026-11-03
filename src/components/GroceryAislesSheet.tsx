@@ -43,6 +43,8 @@ import {
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
+import { SHOP_NAME_TAKEN, shopNameTaken } from '../utils/groceryItemWrite';
+import { FieldError } from './FieldError';
 import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type GroceryGroupBy, type Shop } from '../types';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -679,6 +681,12 @@ function StoresTab({
   onSetScoped,
   onSetAisles,
 }: StoresTabProps) {
+  // Said while it is typed, from the rule `addShop` and `renameShop` refuse on.
+  // A rename that collides still just closes the field on the old name, as it
+  // always has (see `commitRename` above), with this line having said why.
+  const editingShop = editingShopId === null ? undefined : shops.find(s => s.id === editingShopId);
+  const renameTaken = !!editingShop && shopNameTaken(shops, editingName, editingShop);
+  const newShopTaken = shopNameTaken(shops, newShop);
   return (
     <>
       <Text style={styles.intro}>
@@ -842,6 +850,7 @@ function StoresTab({
                 )}
               </View>
             )}
+            {editing && renameTaken && <FieldError style={styles.rowError}>{SHOP_NAME_TAKEN}</FieldError>}
             </View>
           );
         }}
@@ -853,6 +862,7 @@ function StoresTab({
           />
         }
         ListFooterComponent={
+          <View>
           <View style={styles.addWrap}>
             <TextField
               ref={newShopInputRef}
@@ -874,9 +884,11 @@ function StoresTab({
               icon="add"
               variant="neutral"
               onPress={onAdd}
-              disabled={!newShop.trim()}
+              disabled={!newShop.trim() || newShopTaken}
               style={styles.addButton}
             />
+          </View>
+          {newShopTaken && <FieldError style={styles.addError}>{SHOP_NAME_TAKEN}</FieldError>}
           </View>
         }
       />
@@ -966,6 +978,11 @@ function makeStyles(colors: Colors) {
     rowText: { flex: 1, gap: spacing.xxs },
     rowLabel:{ fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     rowRange: { fontSize: font.xs, color: colors.textSecondary },
+    // Under the rename row and inside the same margin, with a gap above and
+    // below: the row has none below it and the next row none above.
+    rowError: { marginHorizontal: spacing.md, marginTop: spacing.xs, marginBottom: spacing.sm },
+    // Under the add row, in the same margin its field sits in.
+    addError: { marginHorizontal: spacing.md, marginTop: spacing.xs },
     // Sits under its store's card and inside the same horizontal margin, with
     // a gap on both sides: the row above has none below it and the next row
     // has none above.

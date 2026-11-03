@@ -89,11 +89,12 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const storeAliases = useGroceryStore(useShallow(s => s.storeAliases));
   const addExistingMany = useGroceryStore(s => s.addExistingMany);
+  const addByName = useGroceryStore(s => s.addByName);
   const deleteItems = useGroceryStore(s => s.deleteItems);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const { query, clear: clearQuery, props: filterField } = useFilterField();
+  const { query, clear: clearQuery, seed: seedQuery, props: filterField } = useFilterField();
   // The results sit under a search field, so without this the keyboard covers
   // the last of them with no room to scroll them clear (see the hook's
   // `fieldAbove` note, and the same list in FoodLogEntrySheet).
@@ -176,17 +177,27 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   // No cap under a store filter: that set is already bounded, and its chip
   // said how many rows it holds. Capping it hid everything past 40 behind a
   // search nobody was told to make.
+  const searched = useMemo(
+    () => query.trim()
+      ? rankGrocerySuggestions(query, scoped, now, shopFilter ? Infinity : 50, inTrolley)
+      : null,
+    [query, scoped, now, inTrolley, shopFilter],
+  );
   const rows = useMemo(() => {
-    if (query.trim()) {
-      return rankGrocerySuggestions(query, scoped, now, shopFilter ? Infinity : 50, inTrolley)
-        .filter(s => !s.onList)
-        .map(s => s.item);
-    }
+    if (searched) return searched.filter(s => !s.onList).map(s => s.item);
     // Scoped to the active list, not to "on any list": a staple already on the
     // list at home is exactly what Buy again should offer while you're
     // stocking a rental kitchen.
     return rankedCatalogItems(scoped, now, shopFilter ? Infinity : 40, inTrolley);
-  }, [query, scoped, now, inTrolley, shopFilter]);
+  }, [searched, scoped, now, inTrolley, shopFilter]);
+  // Whether a search came up empty because everything it found is already on
+  // the list, or because the catalog has nothing by that name. A typo used to
+  // get the first answer too.
+  const searchHidOnList = !!searched && searched.some(s => s.onList);
+  // A search that found nothing by that name can offer to add the name itself.
+  // Not under a store filter: that view is "what I buy at this store", and the
+  // row this makes would not be linked to it.
+  const offerTypedName = !!searched && !searchHidOnList && !shopFilter && rows.length === 0;
 
   // Deliberately over `items` and not `scoped`: the prune offer is about the
   // whole catalog, and scoping it to a store would offer to forget a subset
@@ -219,6 +230,22 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
     haptics.success();
     Keyboard.dismiss();
     onClose();
+  };
+
+  /**
+   * Adds what was typed straight to the list, quantity and all ("2 lb
+   * margarine"), the way the add field on the list does, with its own undo.
+   * The search is then re-seeded with the row's real name, so the empty state
+   * flips to "All on the list" as the confirmation, and can't match nothing
+   * again and offer the same add twice. Picks already ticked here stay ticked
+   * for Add, which is still the one batch write.
+   */
+  const addTypedName = () => {
+    const typed = query.trim();
+    if (!typed) return;
+    const item = addByName(typed);
+    if (!item) { haptics.error(); return; }
+    seedQuery(item.name);
   };
 
   // Picks made here aren't written anywhere until Add — a swipe-down with a
@@ -431,20 +458,25 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
             ) : null
           }
           ListEmptyComponent={
-            // Three different empties, told apart by whether there is a
-            // catalog to be empty of. The list hides what's already on it, so
+            // Four different empties, told apart by whether there is a
+            // catalog to be empty of, and for a search by whether what it
+            // found is on the list. The list hides what's already on it, so
             // a catalog whose every item is on the list used to say it had
             // nothing in it yet, beside a list full of those items.
             <EmptyState
               icon="basket-outline"
               title={query.trim()
-                ? 'Nothing matches'
+                ? searchHidOnList ? 'All on the list' : 'Nothing matches'
                 : scoped.length > 0
                   ? 'All on the list'
                   : shopFilter ? 'Nothing from this store yet' : 'Nothing in your catalog yet'}
               subtitle={
                 query.trim()
-                  ? 'Everything matching is already on the list.'
+                  ? searchHidOnList
+                    ? 'Everything matching is already on the list.'
+                    : shopFilter
+                      ? `Nothing you buy at this store matches “${query.trim()}”.`
+                      : `Nothing in your catalog matches “${query.trim()}”.`
                   : scoped.length > 0
                     ? shopFilter
                       ? 'Everything you buy at this store is already on the list.'
@@ -453,6 +485,8 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
                       ? 'Finish a trip at this store and what you bought shows up here.'
                       : 'Finish a shopping trip and what you bought shows up here.'
               }
+              actionLabel={offerTypedName ? `Add “${query.trim()}” to the list` : undefined}
+              onAction={offerTypedName ? addTypedName : undefined}
             />
           }
         />

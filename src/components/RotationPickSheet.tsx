@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { Animated, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SafeBlurView } from './SafeBlurView';
@@ -17,6 +17,7 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, sheetBottomIn
 import type { Task } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 import { overlayDock } from '../utils/frameWidth';
+import { openExternalUrl } from '../utils/openExternalUrl';
 
 interface Props {
   visible: boolean;
@@ -110,11 +111,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel, onPlan }: P
   const openLink = async (url: string) => {
     haptics.tap();
     if (openInAppUrl(url)) { dismiss(onCancel); return; }
-    try {
-      await Linking.openURL(url);
-    } catch {
-      // silently ignore — no toast infra for a row-level action
-    }
+    await openExternalUrl(url, 'link');
   };
 
   const renderRow = (

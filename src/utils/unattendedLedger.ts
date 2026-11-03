@@ -98,6 +98,8 @@ export function unattendedSource(entry: Pick<UnattendedEntry, 'action' | 'kind'>
   if (entry.action === 'purged') return 'Completed task cleanup';
   // The one app-written move: an occurrence skipped because it rained (rainSkip.ts).
   if (entry.action === 'moved') return 'Skipped after rain';
+  // The one app-written add with no generator: a template whose schedule came due.
+  if (entry.action === 'created') return 'Scheduled template';
   return 'Expired task sweep';
 }
 

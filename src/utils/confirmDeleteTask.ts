@@ -96,8 +96,8 @@ export function confirmDeleteTask(task: Task, onDone?: () => void): void {
   }
   if (isMissableOneOff(task)) {
     Alert.alert(
-      'Delete task',
-      'Mark it missed to keep a record, or delete it?',
+      'Delete task?',
+      'Mark it missed to keep it in the Logbook as a miss, or delete it?',
       [
         { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Mark missed', onPress: () => finish(() => store().markMissed(task.id), false) },

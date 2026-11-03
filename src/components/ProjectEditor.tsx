@@ -970,7 +970,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
       <Text style={styles.groupLabel}>Organize</Text>
       <View style={styles.card}>
         <CollapsibleField
-          label="Category"
+          label="Project category"
           summary={category ?? undefined}
           hint="Groups this project with others of the same kind on the Projects page."
           expanded={categoryOpen}
@@ -1387,7 +1387,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             <View style={styles.optionContent}>
               <Text style={styles.optionLabel}>{archived ? 'Unarchive' : 'Archive'}</Text>
               <Text style={styles.optionHint}>
-                {archived ? 'Moves it back out of the Archived list' : 'Moves it to the Archived list. Its tasks stay where they are'}
+                {archived ? 'Moves it back out of the Archived list' : 'Moves it to the Archived list. You choose whether its open tasks come with it'}
               </Text>
             </View>
           </TouchableOpacity>

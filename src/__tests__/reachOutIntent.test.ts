@@ -144,6 +144,10 @@ describe('copy', () => {
     expect(message).toBe('“Called Sarah”, 3:42 PM');
   });
 
+  it('quotes the time in the 24-hour format when asked', () => {
+    expect(reachOutPromptMessage('call', 'Sarah', new Date(2026, 8, 15, 15, 42), true)).toBe('“Called Sarah”, 15:42');
+  });
+
   it('says nothing about the person beyond their name', () => {
     const message = reachOutPromptMessage('text', 'Mom', new Date(2026, 8, 15, 9, 5));
     expect(message).toBe('“Texted Mom”, 9:05 AM');

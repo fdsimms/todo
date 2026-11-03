@@ -396,7 +396,10 @@ const MainTabs = React.memo(function MainTabs({
 // re-render MainTabs) on every tab switch for the rest of the session, which
 // is exactly what MainTabs's own React.memo exists to prevent.
 function initialScreenFromSettings(): string {
-  const { kitchenEnabled, simpleMode, workoutsEnabled } = useSettingsStore.getState();
+  const { kitchenEnabled, simpleMode, workoutsEnabled, reopenLastScreen } = useSettingsStore.getState();
+  // "Open the app on: Today". The last screen is still recorded as it changes
+  // (see flushScreenBookkeeping), so switching back has somewhere to go.
+  if (!reopenLastScreen) return 'Today';
   // A screen the last launch never got past (see launchGuard.ts) is not
   // restored, or a screen that crashes on open would crash every cold start.
   const { screen: lastVisitedScreen, tripped } = screenToRestore(

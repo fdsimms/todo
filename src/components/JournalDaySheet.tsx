@@ -16,6 +16,7 @@ import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
 import { JOURNAL_KIND_COPY, entriesOnDay, openEntries } from '../utils/journal';
 import { journalPlainText } from '../utils/journalMarkdown';
 import { BUTTON_LABEL } from '../copy/shared';
+import { useClockTimeToken } from '../hooks/useClockTimeToken';
 
 interface Props {
   visible: boolean;
@@ -36,6 +37,7 @@ interface Props {
  * (`openEntries`), like every other reader.
  */
 export function JournalDaySheet({ visible, kind, dayKey, onEdit, onAnother, onClose }: Props) {
+  const timeToken = useClockTimeToken();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const all = useJournalStore(s => s.entries);
@@ -67,9 +69,9 @@ export function JournalDaySheet({ visible, kind, dayKey, onEdit, onAnother, onCl
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); onEdit(entry); }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Edit ${copy.one} from ${format(new Date(entry.loggedAt), 'h:mm a')}: ${journalPlainText(entry.text)}`}
+                  accessibilityLabel={`Edit ${copy.one} from ${format(new Date(entry.loggedAt), timeToken)}: ${journalPlainText(entry.text)}`}
                 >
-                  <Text style={styles.time}>{format(new Date(entry.loggedAt), 'h:mm a')}</Text>
+                  <Text style={styles.time}>{format(new Date(entry.loggedAt), timeToken)}</Text>
                   <JournalText text={entry.text} textStyle={styles.text} />
                 </TouchableOpacity>
               ))}

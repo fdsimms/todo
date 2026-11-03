@@ -1214,6 +1214,7 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
         {rowKcal !== undefined && <KcalFigure styles={styles} kcal={rowKcal} />}
         <PressableScale
           style={styles.offerAdd}
+          hitSlop={6}
           onPress={() => quickLog(row)}
           accessibilityLabel={'error' in rowWrite ? `Log ${food.label}, same amount as before` : `Log ${rowTitle}`}
         >
