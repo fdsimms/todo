@@ -415,7 +415,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
     }
     return {
       ...base, move: 'same', sets: sets(lastKg, max), repsMin: min, repsMax: max, lastKg,
-      reason: `Same weight. Last time reached ${repsList(last.sets)}, so aim for ${max} on every set before adding weight.`,
+      reason: `Same weight. Last time: ${repsList(last.sets)}.`,
       brief: `Aim for ${max} on every set`,
     };
   }
@@ -448,7 +448,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
       if (!(next > 0) || !(hundredths(next, unit) < hundredths(lastKg, unit))) {
         return {
           ...base, move: 'same', sets: sets(lastKg, reps), repsMin: reps, repsMax: reps, lastKg,
-          reason: `Same weight. ${formatWeightNumber(lastKg * (load.scale ?? 1), unit)} ${unit} is already the lightest load, so there is nothing lighter to go down to after ${misses} workouts short of ${reps} reps.`,
+          reason: `Same weight. ${formatWeightNumber(lastKg * (load.scale ?? 1), unit)} ${unit} is the lightest load.`,
           brief: 'Already the lightest load',
         };
       }
@@ -460,7 +460,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
     }
     return {
       ...base, move: 'same', sets: sets(lastKg, reps), repsMin: reps, repsMax: reps, lastKg,
-      reason: `Same weight, because a set last time fell short of ${reps}. After ${LINEAR_DELOAD_AFTER} short workouts in a row, the suggestion goes down to the closest load at or under 90% of this weight.`,
+      reason: `Same weight. A set fell short of ${reps} last time.`,
       brief: `A set fell short of ${reps} last time`,
     };
   }
