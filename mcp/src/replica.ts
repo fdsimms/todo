@@ -1233,6 +1233,8 @@ export interface Replica {
    * it stands now, which is how the app reads it.
    */
   medicationIngredients(log: MedicationLog): string | null;
+  /** The follow-up asked after a dose, or null when none was started. Read-only: the phone schedules and answers it. */
+  medicationCheckIn(log: MedicationLog): { dueAt: string; answer: 'better' | 'same' | 'worse' | null } | null;
   /**
    * The limit and supply the person set per medication, read the app's way:
    * where each one stands against its limit now, and what's left of its
@@ -4426,6 +4428,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     medicationLogs: (from: string, to: string) =>
       db.dbGetAllMedicationLogs().filter(l => l.dayKey >= from && l.dayKey <= to),
     medicationSummary: (log: MedicationLog) => medication.medicationLogSummary(log),
+    medicationCheckIn: (log: MedicationLog) => {
+      const found = db.dbGetAllCheckIns().find(c => c.sourceKind === 'medication' && c.sourceId === log.id);
+      return found ? { dueAt: found.dueAt, answer: found.answer } : null;
+    },
     medicationIngredients: (log: MedicationLog) => {
       const map = medicationSettings.parseMedicationSettings(db.dbGetSetting(medicationSettings.MEDICATION_SETTINGS_KEY));
       const list = supplementDose.doseIngredients(medicationSettings.prefsFor(map, log.name).nutrition, log);

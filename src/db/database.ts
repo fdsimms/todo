@@ -11,6 +11,7 @@ import type {
   GeneratedKind,
   LoggedSymptom,
   MedicationLog,
+  CheckIn,
   CoinEntry,
   Reward,
   RewardUnlock,
@@ -793,6 +794,21 @@ function runInitDatabase(): void {
       note TEXT
     );
 
+    -- A follow-up asked after a dose or a food (see CheckIn). source_id is
+    -- provenance and carries no foreign key: the dose or entry it was about
+    -- may be deleted, and the answer is still what it was.
+    CREATE TABLE IF NOT EXISTS check_ins (
+      id TEXT PRIMARY KEY NOT NULL,
+      source_kind TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      about TEXT,
+      due_at TEXT NOT NULL,
+      day_key TEXT NOT NULL,
+      answer TEXT,
+      answered_at TEXT
+    );
+
     -- The coin ledger and the rewards it buys — see CoinEntry/Reward in
     -- types/index.ts and src/utils/rewards.ts. The balance is the sum of
     -- coin_entries, never a stored number, so the ledger merges across devices
@@ -1332,6 +1348,7 @@ function runInitDatabase(): void {
     // Same read as mood_logs above: every stat groups doses by day, and the
     // "how often this month" window is a run of day keys.
     'CREATE INDEX IF NOT EXISTS idx_medication_logs_day ON medication_logs(day_key)',
+    'CREATE INDEX IF NOT EXISTS idx_check_ins_source ON check_ins(source_kind, source_id)',
     // Null for every existing row is exactly right: nothing predating this has
     // been asserted as on hand. See GroceryItem.onHandUntil.
     'ALTER TABLE grocery_items ADD COLUMN on_hand_until TEXT',
@@ -3003,6 +3020,9 @@ export const BACKUP_TABLES = [
   // provenance rather than a reference — a dose whose task is gone is still a
   // dose — so it has no ordering requirement against `tasks`.
   'medication_logs',
+  // A check-in is a health record beside the dose or food it follows up on.
+  // source_id is provenance, so no ordering requirement against either log.
+  'check_ins',
   // The coin ledger and the rewards it buys. Standalone: every pointer an entry
   // carries is provenance and may dangle, so no ordering requirement.
   'coin_entries',
@@ -8806,6 +8826,44 @@ export function dbUpdateMedicationLog(log: MedicationLog): void {
     [log.name, log.takenAt, log.dayKey, log.amount, log.unit,
      log.asNeeded ? 1 : 0, log.taskId, log.note, log.strength?.amount ?? null, log.strength?.unit ?? null, log.id]
   );
+}
+
+function rowToCheckIn(row: Record<string, unknown>): CheckIn {
+  const answer = row.answer as string | null;
+  return {
+    id: row.id as string,
+    sourceKind: row.source_kind === 'food' ? 'food' : 'medication',
+    sourceId: row.source_id as string,
+    subject: row.subject as string,
+    about: (row.about as string | null) || null,
+    dueAt: row.due_at as string,
+    dayKey: row.day_key as string,
+    answer: answer === 'better' || answer === 'same' || answer === 'worse' ? answer : null,
+    answeredAt: (row.answered_at as string | null) || null,
+  };
+}
+
+export function dbGetAllCheckIns(): CheckIn[] {
+  return db.getAllSync<Record<string, unknown>>('SELECT * FROM check_ins ORDER BY due_at DESC').map(rowToCheckIn);
+}
+
+export function dbInsertCheckIn(c: CheckIn): void {
+  db.runSync(
+    `INSERT INTO check_ins (id, source_kind, source_id, subject, about, due_at, day_key, answer, answered_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [c.id, c.sourceKind, c.sourceId, c.subject, c.about, c.dueAt, c.dayKey, c.answer, c.answeredAt]
+  );
+}
+
+export function dbUpdateCheckIn(c: CheckIn): void {
+  db.runSync(
+    `UPDATE check_ins SET subject=?, about=?, due_at=?, day_key=?, answer=?, answered_at=? WHERE id=?`,
+    [c.subject, c.about, c.dueAt, c.dayKey, c.answer, c.answeredAt, c.id]
+  );
+}
+
+export function dbDeleteCheckIn(id: string): void {
+  db.runSync('DELETE FROM check_ins WHERE id = ?', [id]);
 }
 
 export function dbDeleteMedicationLog(id: string): void {
