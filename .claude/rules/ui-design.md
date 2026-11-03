@@ -177,3 +177,12 @@ consequence the person has to see before confirming. `SettingsRow`, `EditorRow` 
 `CollapsibleField` already check the setting themselves, so their `hint` props need nothing extra.
 No test enforces this (whether a line is help text is a judgment call), so check it on sight when
 adding a hint.
+
+**A refusal the store can make is said under the field while it is typed, never as an alert after
+Save.** Show it with `FieldError` (`src/components/FieldError.tsx`), turn Done or Save off while it
+holds, and get the check from the same function the store refuses on (`src/utils/nameTaken.ts`,
+`groupNameTaken` in `appGroups.ts`, `shopNameTaken` in `groceryItemWrite.ts`), never a lookalike
+`toLowerCase()` compare: that is how a sheet comes to flag a name the store accepts, or let one
+through that it refuses. A name that has to be asked for from a native `Alert.prompt` has nowhere to
+put the message, so ask for it with `NameSheet` instead. Where the way out is a button far from the
+field, an alert is still right for that button.
