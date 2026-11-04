@@ -428,16 +428,16 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
   const scheduleHint = (schedule: BlockSchedule) => {
     const now = new Date();
     const end = isScheduleActive(schedule, now) ? currentWindowEnd(schedule, now) : null;
-    const parts = [
-      ...(end ? [`Blocking now until ${formatMinutes(end.getHours() * 60 + end.getMinutes(), use24HourTime)}`] : []),
-      describeDays(schedule.days),
-      describeWindow(schedule, use24HourTime),
-      schedule.groupIds.map(id => groupName(customGroups, id, groupsMeta)).join(', '),
+    const window = describeWindow(schedule, use24HourTime);
+    const lines = [
+      ...(end ? [`Blocking until ${formatMinutes(end.getHours() * 60 + end.getMinutes(), use24HourTime)}`] : []),
+      `Active: ${describeDays(schedule.days)}, ${window.charAt(0).toLowerCase()}${window.slice(1)}`,
+      `App groups blocked: ${schedule.groupIds.map(id => groupName(customGroups, id, groupsMeta)).join(', ')}`,
     ];
     if (schedule.pausedUntil && new Date(schedule.pausedUntil) > new Date()) {
-      parts.push(`Paused until ${formatMinutes(new Date(schedule.pausedUntil).getHours() * 60 + new Date(schedule.pausedUntil).getMinutes(), use24HourTime)}`);
+      lines.push(`Paused until ${formatMinutes(new Date(schedule.pausedUntil).getHours() * 60 + new Date(schedule.pausedUntil).getMinutes(), use24HourTime)}`);
     }
-    return parts.join(' · ');
+    return lines.join('\n');
   };
 
   /**

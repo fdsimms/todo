@@ -1,16 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { TextField } from './TextField';
+import { HoldToConfirmButton } from './HoldToConfirmButton';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
-import { haptics } from '../utils/haptics';
+import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import type { ShieldReasonEntry } from '../utils/appShield';
 import { shieldReasonLines } from '../utils/shieldReasonText';
 import { releaseAllBlocks } from '../utils/releaseBlocks';
 import {
-  MAX_RELEASE_REASON_LENGTH, releaseReasonProblem, releasesThisMonth, timesWord,
+  MAX_RELEASE_REASON_LENGTH, RELEASE_HOLD_MS, releaseReasonProblem, releasesThisMonth, timesWord,
 } from '../utils/shieldRelease';
 import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -50,9 +50,11 @@ export function EmergencyReleaseSheet({ visible, reasons, formatTime, onClose }:
 
   const dismiss = (after?: () => void) => card.close(() => { onClose(); after?.(); });
 
+  const holdSeconds = Math.round(RELEASE_HOLD_MS / 1000);
+
+  // The button's own haptic fires as the hold completes.
   const confirm = () => {
     if (problem) return;
-    haptics.warning();
     dismiss(() => { releaseAllBlocks('emergency', reason); });
   };
 
@@ -106,16 +108,17 @@ export function EmergencyReleaseSheet({ visible, reasons, formatTime, onClose }:
           </Text>
         </View>
 
-        <TouchableOpacity
-          style={[styles.confirm, problem !== null && styles.confirmOff]}
-          onPress={confirm}
+        <HoldToConfirmButton
+          label="Hold to end all blocks"
+          holdMs={RELEASE_HOLD_MS}
+          onConfirm={confirm}
           disabled={problem !== null}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: problem !== null }}
-        >
-          <Text style={styles.confirmText}>End all blocks</Text>
-        </TouchableOpacity>
+          accessibilityLabel={`End all blocks, hold for ${holdSeconds} seconds`}
+          style={styles.confirm}
+        />
+        <Text style={styles.holdNote}>
+          Hold for {holdSeconds} seconds. Let go early and it starts over.
+        </Text>
       </View>
       </ScrollView>
     </CardSheet>
@@ -146,10 +149,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text, fontSize: font.md, minHeight: 72, textAlignVertical: 'top',
     backgroundColor: colors.bgTertiary, borderRadius: radius.md, padding: spacing.smd,
   },
-  confirm: {
-    marginTop: spacing.md, marginHorizontal: spacing.md, minHeight: 44, borderRadius: radius.md,
-    alignItems: 'center', justifyContent: 'center', backgroundColor: colors.redFill,
+  confirm: { marginTop: spacing.md, marginHorizontal: spacing.md },
+  holdNote: {
+    color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, textAlign: 'center',
+    paddingHorizontal: spacing.md, marginTop: spacing.sm,
   },
-  confirmOff: { opacity: 0.4 },
-  confirmText: { color: colors.onFill, fontSize: font.md, fontWeight: fontWeight.semibold },
 });

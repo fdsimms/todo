@@ -31,6 +31,9 @@ const MAX_RELEASED_GATES = 100;
 export const MIN_RELEASE_REASON_LENGTH = 10;
 export const MAX_RELEASE_REASON_LENGTH = 200;
 
+/** How long End all blocks has to be held. Twice the alarm mission's Give up, since this lifts the blocks for real. */
+export const RELEASE_HOLD_MS = 20_000;
+
 /** What a person has released that nothing else records. */
 export interface ShieldReleases {
   /** The focus session whose shield was ended, so its next session blocks again. */
