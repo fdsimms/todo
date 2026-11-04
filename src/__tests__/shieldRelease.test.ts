@@ -10,27 +10,27 @@ const record = (over: Partial<ReleaseRecord> = {}): ReleaseRecord => ({
 
 describe('release state', () => {
   it('reads what was stored and shrugs at anything else', () => {
-    expect(parseShieldReleases('{"focusSessionId":"s1","gateTaskIds":["a","b"]}')).toEqual({ focusSessionId: 's1', gateTaskIds: ['a', 'b'] });
-    expect(parseShieldReleases('nonsense')).toEqual({ focusSessionId: null, gateTaskIds: [] });
-    expect(parseShieldReleases(null)).toEqual({ focusSessionId: null, gateTaskIds: [] });
+    expect(parseShieldReleases('{"focusSessionId":"s1","gateTaskIds":["a","b"]}')).toEqual({ focusSessionId: 's1', gateTaskIds: ['a', 'b'], unlockDays: {} });
+    expect(parseShieldReleases('nonsense')).toEqual({ focusSessionId: null, gateTaskIds: [], unlockDays: {} });
+    expect(parseShieldReleases(null)).toEqual({ focusSessionId: null, gateTaskIds: [], unlockDays: {} });
     expect(parseShieldReleases('{"gateTaskIds":[1,"a"]}').gateTaskIds).toEqual(['a']);
   });
 
   it('adds a release and drops what no longer matters', () => {
-    const prev = { focusSessionId: 'old', gateTaskIds: ['done', 'live'] };
+    const prev = { focusSessionId: 'old', gateTaskIds: ['done', 'live'], unlockDays: {} };
     const next = withReleased(prev, { gateTaskIds: ['new'], focusSessionId: 's2' }, {
       focusSessionId: 's2', outstandingGateIds: new Set(['live', 'new']),
     });
-    expect(next).toEqual({ focusSessionId: 's2', gateTaskIds: ['live', 'new'] });
+    expect(next).toEqual({ focusSessionId: 's2', gateTaskIds: ['live', 'new'], unlockDays: {} });
   });
 
   it('forgets a focus session that is not the current one', () => {
-    const next = withReleased({ focusSessionId: 's1', gateTaskIds: [] }, {}, { focusSessionId: 's2', outstandingGateIds: new Set() });
+    const next = withReleased({ focusSessionId: 's1', gateTaskIds: [], unlockDays: {} }, {}, { focusSessionId: 's2', outstandingGateIds: new Set() });
     expect(next.focusSessionId).toBeNull();
   });
 
   it('answers whether one gate or one session was released', () => {
-    const releases = { focusSessionId: 's1', gateTaskIds: ['a'] };
+    const releases = { focusSessionId: 's1', gateTaskIds: ['a'], unlockDays: {} };
     expect(isGateReleased('a', releases)).toBe(true);
     expect(isGateReleased('b', releases)).toBe(false);
     expect(isFocusReleased('s1', releases)).toBe(true);

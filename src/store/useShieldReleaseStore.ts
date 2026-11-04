@@ -30,8 +30,8 @@ interface ShieldReleaseStore {
   reload: () => void;
   /** Remember a gate's or a focus session's block as ended, forgetting what no longer matters. */
   release: (
-    added: { focusSessionId?: string | null; gateTaskIds?: readonly string[] },
-    stillRelevant: { focusSessionId: string | null; outstandingGateIds: ReadonlySet<string> },
+    added: { focusSessionId?: string | null; gateTaskIds?: readonly string[]; unlockIds?: readonly string[] },
+    stillRelevant: { focusSessionId: string | null; outstandingGateIds: ReadonlySet<string>; dayKey?: string },
   ) => void;
   addRecord: (record: ReleaseRecord) => void;
 }

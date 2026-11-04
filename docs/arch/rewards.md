@@ -321,6 +321,16 @@ work is done"). Rules in `src/utils/rewardUnlocks.ts`, rows in `reward_unlocks`
 - **The code is shown only while it's open**, and the MCP server neither returns nor writes it, so
   asking Claude isn't a way round the lock. Everything else about an unlock it can read and change
   (`create_unlock`, `update_unlock`, `delete_unlock`, `set_unlock_play`).
+- **A locked unlock can block a group of apps** (`blockGroupId`, iOS only), for a console's phone
+  companion app that would otherwise be a way round the lock. It is a shield reason (`unlock` in
+  `shieldReasons`) held for exactly as long as `statusOfUnlock` says `locked`, so open, a free
+  weekend or vacation day and a running timer all lift it. `lockedUnlockBlocks` (`unlockShield.ts`)
+  is the rule; it reads no coins of its own. This is work unblocking apps, the direction "coins never
+  touch the app shield" leaves open, and nothing is bought. Like a gate it is an "other reason" the
+  monitor extension must not lift when a penalty or schedule ends. Changing or dropping the group is a
+  loosening (`unlockLooseningsOf`), so the lock can't be edited away. A key tag or the emergency button
+  ends it for the rest of the logical day (`ShieldReleases.unlockDays`), logged like any other release.
+  Which apps are in a group is the phone's, so the MCP server only reads `blocksAppsWhileLocked`.
 - **A linked habit** (`guardsTaskId`) is an "Avoid this" habit for doing it while locked. A slip on
   it while the unlock is open asks first (`openUnlockLinkedTo` in `slipConfirm`). A habit has one
   link: a reward that guards it or one unlock, and each picker leaves out the others'.

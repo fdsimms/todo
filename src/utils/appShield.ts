@@ -5,6 +5,7 @@ import { KEY_LOCK_DETAIL } from './nfcKey';
 import { isTimedBlock, manualBlockWanted, type ManualBlock } from './manualBlock';
 import type { LiveSpeedBump } from './speedBump';
 import { penaltyShieldWanted } from './penaltyShield';
+import { unlockBlockSubtitle, type UnlockBlock } from './unlockBlockText';
 import { screenTimeBridge } from './screenTimeBridge';
 import { uniqueGroupIds, type GroupAssignments } from './appGroups';
 import { activeSchedules, currentWindowEnd, nativeScheduleWindows, resolvedGroups, type BlockSchedule, type GroupResolver } from './blockSchedule';
@@ -90,6 +91,12 @@ export interface AppShieldState {
    */
   gateTitles: readonly string[];
   /**
+   * The unlocks that are locked and name a group to block (`lockedUnlockBlocks`).
+   * Optional so a caller that predates it, and a test that doesn't care,
+   * needn't supply it. Each group is resolved here like every other reason's.
+   */
+  unlockBlocks?: readonly UnlockBlock[];
+  /**
    * The resolved group of each gate in `gateTitles`, in the same order. A gate
    * with no entry here (or no array at all) holds the gate setting's group
    * (`groups.gate`). Optional so a caller that predates per-task groups, and a
@@ -126,12 +133,12 @@ export interface AppShieldState {
 }
 
 /** Why the apps are blocked, in the order a person should read the reasons. */
-export type ShieldReasonKind = 'focus' | 'gate' | 'penalty' | 'key' | 'schedule' | 'manual' | 'speedBump';
+export type ShieldReasonKind = 'focus' | 'gate' | 'unlock' | 'penalty' | 'key' | 'schedule' | 'manual' | 'speedBump';
 
 /** One reason the shield is up, with only what a screen needs to say it. */
 export interface ShieldReasonEntry {
   reason: ShieldReasonKind;
-  /** The gate tasks standing in the way. Set for `gate` only. */
+  /** The gate tasks standing in the way, or the locked unlocks' names. Set for `gate` and `unlock` only. */
   titles?: readonly string[];
   /** When a penalty, manual, speed bump or schedule block runs out. Set for those only. */
   until?: string | null;
@@ -191,6 +198,13 @@ export function shieldReasons(state: AppShieldState): ShieldReasonEntry[] {
       byGroup.set(groupId, [...(byGroup.get(groupId) ?? []), title]);
     });
     for (const [groupId, titles] of byGroup) reasons.push({ reason: 'gate', titles, groupIds: held([groupId]), namedGroupIds: named([groupId]) });
+  }
+  // A locked unlock reads right after the gates: it is also work to do first,
+  // and finishing it is the way out. One entry per group, like a gate.
+  if (state.unlockBlocks && state.unlockBlocks.length > 0) {
+    const byGroup = new Map<string, string[]>();
+    for (const block of state.unlockBlocks) byGroup.set(block.groupId, [...(byGroup.get(block.groupId) ?? []), block.title]);
+    for (const [groupId, titles] of byGroup) reasons.push({ reason: 'unlock', titles, groupIds: held([groupId]), namedGroupIds: named([groupId]) });
   }
   if (penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now)) {
     reasons.push({
@@ -256,6 +270,7 @@ export function appShieldWanted(state: AppShieldState): boolean {
     shieldWanted(state.session, state.focusEnabled) ||
     penaltyShieldWanted(state.penaltyUntil, state.penaltyEnabled, state.now) ||
     gateShieldWanted(state.gateTitles.length, state.gateEnabled) ||
+    (state.unlockBlocks?.length ?? 0) > 0 ||
     manualBlockWanted(state.manual ?? null, state.now) ||
     speedBumpWanted(state.speedBump ?? null, state.now) ||
     activeSchedules(state.schedules, state.now).length > 0 ||
@@ -297,6 +312,9 @@ export function syncAppShield(state: AppShieldState): void {
   const focusWants = reasons.some(r => r.reason === 'focus');
   const penaltyWants = reasons.some(r => r.reason === 'penalty');
   const gateWants = reasons.some(r => r.reason === 'gate');
+  // Held like a gate or the key lock: it ends when work is done, never on a clock
+  // the extension watches, so a penalty or schedule ending must not lift it.
+  const unlockWants = reasons.some(r => r.reason === 'unlock');
   const keyWants = reasons.some(r => r.reason === 'key');
   const scheduleWants = reasons.some(r => r.reason === 'schedule');
   const manualWants = reasons.some(r => r.reason === 'manual');
@@ -334,14 +352,16 @@ export function syncAppShield(state: AppShieldState): void {
   const penaltyGroups = penaltyWants ? resolvedGroups([state.groups.penalty], state.resolveGroup).groupIds : [];
   const manualGroups = manualTimed ? resolvedGroups(state.manual?.groupIds ?? [], state.resolveGroup).groupIds : [];
   bridge.setShieldState({
-    otherReasonWantsShield: focusWants || gateWants || keyWants || scheduleWants || manualOpen,
+    otherReasonWantsShield: focusWants || gateWants || unlockWants || keyWants || scheduleWants || manualOpen,
     reason: lead?.reason ?? 'none',
     untilIso: lead?.reason === 'penalty' || lead?.reason === 'schedule' || lead?.reason === 'manual' || lead?.reason === 'speedBump' ? lead.until ?? null : null,
     detail: !lead
       ? null
       : lead.reason === 'gate'
         ? gateSubtitle(state.gateTitles)
-        : lead.reason === 'penalty'
+        : lead.reason === 'unlock'
+          ? unlockBlockSubtitle(lead.titles ?? [])
+          : lead.reason === 'penalty'
           ? state.penaltyReason
           : lead.reason === 'schedule'
             ? lead.name ?? null
@@ -353,7 +373,7 @@ export function syncAppShield(state: AppShieldState): void {
     pendingGateDetail: gateWindow ? pendingDetail : null,
     groups: {
       otherGroupIds: uniqueGroupIds(reasons
-        .filter(r => r.reason === 'focus' || r.reason === 'gate' || r.reason === 'key' || (r.reason === 'manual' && manualOpen))
+        .filter(r => r.reason === 'focus' || r.reason === 'gate' || r.reason === 'unlock' || r.reason === 'key' || (r.reason === 'manual' && manualOpen))
         .flatMap(r => r.groupIds)),
       penaltyGroupId: penaltyGroups[0] ?? null,
       penaltyGroupIds: penaltyGroups,

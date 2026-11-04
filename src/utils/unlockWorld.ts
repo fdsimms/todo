@@ -5,6 +5,10 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useUnlockStore } from '../store/useUnlockStore';
 import { getCurrentDayStart, getLogicalDayKey } from './dateUtils';
 import { isUnlockOpen, statusOfUnlock, type UnlockWorld } from './rewardUnlocks';
+import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
+import { isUnlockReleased } from './shieldRelease';
+import { lockedUnlockBlocks } from './unlockShield';
+import type { UnlockBlock } from './unlockBlockText';
 
 /**
  * The stores' current state as `statusOfUnlock` reads it, for a reader outside
@@ -22,6 +26,16 @@ export function unlockWorldNow(now: Date = new Date()): UnlockWorld {
     todayKey: getLogicalDayKey(now, settings.dayResetTime),
     vacation: settings.vacationMode,
   };
+}
+
+/** The unlocks holding apps shut right now, read from the stores (see `lockedUnlockBlocks`). */
+export function lockedUnlockBlocksNow(now: Date = new Date()): UnlockBlock[] {
+  const { unlocks } = useUnlockStore.getState();
+  // Most installs have none, and the world read below walks every task.
+  if (!unlocks.some(u => u.blockGroupId)) return [];
+  const world = unlockWorldNow(now);
+  const { releases } = useShieldReleaseStore.getState();
+  return lockedUnlockBlocks(unlocks, world, useSettingsStore.getState().rewardsEnabled, id => isUnlockReleased(id, world.todayKey, releases));
 }
 
 /**

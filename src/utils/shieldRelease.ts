@@ -37,9 +37,15 @@ export interface ShieldReleases {
   focusSessionId: string | null;
   /** The gate tasks whose block was ended. A task is one occurrence, so a repeat gates again. */
   gateTaskIds: string[];
+  /**
+   * Unlocks whose app block was ended, each with the logical day (`YYYY-MM-DD`)
+   * it was ended on. An unlock resets every day, so a release holds for that
+   * day only and the block returns on the next.
+   */
+  unlockDays: Record<string, string>;
 }
 
-export const NO_RELEASES: ShieldReleases = { focusSessionId: null, gateTaskIds: [] };
+export const NO_RELEASES: ShieldReleases = { focusSessionId: null, gateTaskIds: [], unlockDays: {} };
 
 export function parseShieldReleases(raw: string | null | undefined): ShieldReleases {
   if (!raw) return NO_RELEASES;
@@ -51,10 +57,20 @@ export function parseShieldReleases(raw: string | null | undefined): ShieldRelea
       gateTaskIds: Array.isArray(parsed.gateTaskIds)
         ? parsed.gateTaskIds.filter((id): id is string => typeof id === 'string').slice(-MAX_RELEASED_GATES)
         : [],
+      unlockDays: parseUnlockDays(parsed.unlockDays),
     };
   } catch {
     return NO_RELEASES;
   }
+}
+
+function parseUnlockDays(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [id, day] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof day === 'string') out[id] = day;
+  }
+  return out;
 }
 
 /**
@@ -64,9 +80,15 @@ export function parseShieldReleases(raw: string | null | undefined): ShieldRelea
  */
 export function withReleased(
   prev: ShieldReleases,
-  added: { focusSessionId?: string | null; gateTaskIds?: readonly string[] },
-  stillRelevant: { focusSessionId: string | null; outstandingGateIds: ReadonlySet<string> },
+  added: { focusSessionId?: string | null; gateTaskIds?: readonly string[]; unlockIds?: readonly string[] },
+  stillRelevant: { focusSessionId: string | null; outstandingGateIds: ReadonlySet<string>; dayKey?: string },
 ): ShieldReleases {
+  // Only today's unlock releases can still matter; yesterday's lapsed with the day.
+  const unlockDays: Record<string, string> = {};
+  if (stillRelevant.dayKey) {
+    for (const [id, day] of Object.entries(prev.unlockDays ?? {})) if (day === stillRelevant.dayKey) unlockDays[id] = day;
+    for (const id of added.unlockIds ?? []) unlockDays[id] = stillRelevant.dayKey;
+  }
   const gateTaskIds = [...new Set([...prev.gateTaskIds, ...(added.gateTaskIds ?? [])])]
     .filter(id => stillRelevant.outstandingGateIds.has(id))
     .slice(-MAX_RELEASED_GATES);
@@ -74,11 +96,16 @@ export function withReleased(
   return {
     focusSessionId: candidate !== null && candidate === stillRelevant.focusSessionId ? candidate : null,
     gateTaskIds,
+    unlockDays,
   };
 }
 
 export function isGateReleased(taskId: string, releases: ShieldReleases): boolean {
   return releases.gateTaskIds.includes(taskId);
+}
+
+export function isUnlockReleased(unlockId: string, dayKey: string, releases: ShieldReleases): boolean {
+  return releases.unlockDays?.[unlockId] === dayKey;
 }
 
 export function isFocusReleased(sessionId: string | null | undefined, releases: ShieldReleases): boolean {
@@ -99,7 +126,7 @@ export interface ReleaseRecord {
   ended: ShieldReasonKind[];
 }
 
-const KINDS: readonly ShieldReasonKind[] = ['focus', 'gate', 'penalty', 'key', 'schedule', 'manual', 'speedBump'];
+const KINDS: readonly ShieldReasonKind[] = ['focus', 'gate', 'unlock', 'penalty', 'key', 'schedule', 'manual', 'speedBump'];
 
 export function parseReleaseLog(raw: string | null | undefined): ReleaseRecord[] {
   if (!raw) return [];
@@ -155,6 +182,7 @@ export function releaseReasonProblem(raw: string): string | null {
 const KIND_WORDS: Record<ShieldReasonKind, string> = {
   focus: 'focus session',
   gate: 'task block',
+  unlock: 'locked-app block',
   penalty: 'failed-task block',
   key: 'key tag lock',
   schedule: 'schedule',

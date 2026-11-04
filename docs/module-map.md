@@ -51,7 +51,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
 - `src/utils/appShield.ts` — AppShieldState, ShieldReasonKind, ShieldReasonEntry, shieldReasons, speedBumpWanted, shieldGroupIds, shieldAllowSets, appShieldWanted, syncAppShield
-- `src/utils/appShieldReconcile.ts` — reconcileAppShield, outstandingGatesNow, liveGatesNow, currentShieldReasons, keyLockedNow, gateKeyNow, gateTitlesNow
+- `src/utils/appShieldReconcile.ts` — reconcileAppShield, outstandingGatesNow, liveGatesNow, currentShieldReasons, keyLockedNow, gateKeyNow, unlockBlockKeyNow, lockedUnlockReleaseNow, gateTitlesNow
 - `src/utils/applyToAll.ts` — ApplyScope, applyToAllLabel, applyTargets
 - `src/utils/applyToAllOffer.ts` — ApplyOffer, setApplyOffer, clearApplyOffer, getApplyOffer, subscribeApplyOffer, resetApplyOffer
 - `src/utils/archiveMatch.ts` — findArchivedMatch
@@ -570,7 +570,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/sheetMotion.ts` — SHEET_TRAVEL_SLACK, sheetTravel
 - `src/utils/shelfLabel.ts` — ScanBox, ScanText, printedPricesIn, priceNearBarcode
 - `src/utils/shieldReasonText.ts` — MAX_NAMED_GATES, shieldReasonLines, shieldHeadline, shieldHeadlineNote, shieldNotEnforced, shieldSkippedLine, selectionLabel
-- `src/utils/shieldRelease.ts` — SHIELD_RELEASES_SETTING, SHIELD_RELEASE_LOG_SETTING, MAX_RELEASE_LOG, MIN_RELEASE_REASON_LENGTH, MAX_RELEASE_REASON_LENGTH, ShieldReleases, NO_RELEASES, parseShieldReleases, withReleased, isGateReleased, +10 more
+- `src/utils/shieldRelease.ts` — SHIELD_RELEASES_SETTING, SHIELD_RELEASE_LOG_SETTING, MAX_RELEASE_LOG, MIN_RELEASE_REASON_LENGTH, MAX_RELEASE_REASON_LENGTH, ShieldReleases, NO_RELEASES, parseShieldReleases, withReleased, isGateReleased, +11 more
 - `src/utils/shoppingTrip.ts` — MAX_TRIP_STOPS, ShopCoverage, TripPlan, TripSummary, planTrip, summarizeTrip, describeShopCoverage, joinNames
 - `src/utils/shortNight.ts` — SHORT_NIGHT_MINUTES_MIN, SHORT_NIGHT_MINUTES_MAX, SHORT_NIGHT_MINUTES_STEP, SHORT_NIGHT_MINUTES_DEFAULT, clampShortNightMinutes, parseShortNightMinutes
 - `src/utils/shortcutQueue.ts` — QueuedShortcutAction, QUEUED_WATER_MAX_GLASSES, QUEUED_ITEM_MAX_LENGTH, parseShortcutActions
@@ -676,7 +676,9 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, AGENT_SOURCE, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, +5 more
 - `src/utils/undoHistory.ts` — UndoableAction, UndoHistory, UNDO_STACK_LIMIT, topOf, pushEntry, popEntry, freshest, redoIsCurrent, offersOnUndoBar, latestUndoHistory, +9 more
 - `src/utils/unitConvert.ts` — UnitSystem, UNIT_SYSTEMS, Dimension, ML_PER_TBSP, ConvertedQuantity, MeasuredQuantity, measureQuantity, measureParsedQuantity, shelfUnit, unitBase, +7 more
-- `src/utils/unlockWorld.ts` — unlockWorldNow, openUnlockLinkedTo
+- `src/utils/unlockBlockText.ts` — UnlockBlock, unlockBlockSubtitle
+- `src/utils/unlockShield.ts` — lockedUnlockBlocks
+- `src/utils/unlockWorld.ts` — unlockWorldNow, lockedUnlockBlocksNow, openUnlockLinkedTo
 - `src/utils/useReduceMotion.ts` — reduceMotionEnabled, useReduceMotion
 - `src/utils/useShakeToUndo.ts` — useShakeToUndo
 - `src/utils/useSyncOnForeground.ts` — FOREGROUND_SYNC_INTERVAL_MS, LOCAL_CHANGE_PROBE_MS, useSyncOnForeground
