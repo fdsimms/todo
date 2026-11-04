@@ -1421,6 +1421,21 @@ describe('the replica', () => {
     expect(result.rolledOver).toEqual([]);
   });
 
+  // A bare date was read as UTC midnight, the evening before in New York, and
+  // a time later than now was stored as written.
+  it('reads a bare completedAt as that day at local noon, and refuses one that has not happened', () => {
+    const task = replica.createTask({ title: 'Hang the picture' });
+    completeTaskTool(replica, task.id, { completedAt: '2026-10-03' });
+    replica.refresh();
+    const at = new Date(replica.tasks().find(t => t.id === task.id)!.completedAt!);
+    expect([at.getMonth(), at.getDate(), at.getHours()]).toEqual([9, 3, 12]);
+
+    const other = replica.createTask({ title: 'Water the plants' });
+    expect(() => completeTaskTool(replica, other.id, { completedAt: '2999-01-01' })).toThrow(/in the future/);
+    expect(() => completeTaskTool(replica, other.id, { completedAt: 'yesterday' })).toThrow(/not a date/);
+    expect(replica.tasks().find(t => t.id === other.id)!.completed).toBe(false);
+  });
+
   // The reason the whole completion core was lifted out of useTaskStore rather
   // than reimplemented: a recurring task whose successor never appears reads
   // as a daily habit that stopped after one day.

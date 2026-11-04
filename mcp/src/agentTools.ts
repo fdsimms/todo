@@ -306,6 +306,14 @@ function readLine(replica: Replica, line: string): { row: QuickAddRow; draft: Pa
     ...(notes.length > 0 ? { notes } : {}),
   };
   if (!draft.title) return { row: { ...row, problem: 'Nothing is left for a title once the date and tags are read out.' }, draft: null };
+  // Every task made here lands in a category (docs/arch/mcp-server.md, "Every
+  // task it creates has a category"): a line that names none, with no project
+  // default, title rule or new-task default to supply one, would sit in no
+  // section on Today. The line is sent back for one rather than filed nowhere.
+  if (!replica.categoryForDraft(draft)) {
+    const problem = `Needs a category: add #category to the line, one of yours (${categories.join(', ') || 'none yet'}).`;
+    return { row: { ...row, problem }, draft: null };
+  }
   return { row, draft };
 }
 

@@ -38,6 +38,22 @@ export function atFrom(value: string | undefined): Date | undefined {
   return at;
 }
 
+/**
+ * `atFrom` for something that already happened (a completion, a bit of history).
+ * A bare date is noon that day, which for *today* is usually hours ahead, so
+ * asking for today read as "in the future" and was refused until the afternoon:
+ * a bare date for today is now. Anything else later than now is refused here,
+ * naming the input, rather than by a check further down that cannot say which
+ * one was wrong.
+ */
+export function pastAtFrom(value: string, now: Date = new Date()): Date {
+  const at = atFrom(value);
+  if (!at) throw new Error('Give a date (YYYY-MM-DD) or an ISO date-time.');
+  if (at.getTime() <= now.getTime()) return at;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value.trim()) && at.toDateString() === now.toDateString()) return now;
+  throw new Error(`"${value}" is in the future. This has to be something that already happened.`);
+}
+
 export const NUTRIENT_KEY_LIST = NUTRIENT_KEYS as readonly NutrientKey[];
 
 /**

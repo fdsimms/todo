@@ -898,7 +898,11 @@ export function taskFieldsPatch(
         followUpTaskAtEnd: atEnd,
         followUpTaskTitle: f.title?.trim() ?? null,
         followUpTaskDraft: {
-          ...deps.emptyFollowUpDraft(),
+          // The draft the person already set up on the phone (category, tags,
+          // priority, subtasks) is kept: changing the rule's count or title was
+          // replacing all of it with an empty one, and get_task does not show
+          // the draft, so an agent could not have known what it was wiping.
+          ...(current?.followUpTaskDraft ?? deps.emptyFollowUpDraft()),
           ...(f.notes !== undefined ? { notes: f.notes } : {}),
           ...(f.estimatedMinutes !== undefined ? { estimatedMinutes: f.estimatedMinutes } : {}),
         },

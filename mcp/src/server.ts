@@ -105,7 +105,7 @@ import { deleteRule, listAutomations, saveRule, setAutomation, RULE_TYPES } from
 import { createCategory, deleteCategory, updateCategory } from './categoryTools';
 import { REORDER_KINDS, reorder } from './reorderTools';
 import { cancelCalendarRequest, changeCalendarEvent, listCalendarRequests, proposeTaskDeviceAction, requestCalendarEvent } from './calendarTools';
-import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logRecipe, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, refreshDishEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
+import { ESTIMATE_KEY_LIST, NUTRIENT_KEY_LIST, atFrom, pastAtFrom, deleteSavedMeal, duplicateFoodEntry, listSavedMeals, logRecipe, logSavedMeal, moveFoodEntry, saveMealFromEntries, setNutritionTargets, renameMedication, renameMoodTag, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, logFood, logMedication, setSupplementNutrients, logMood, logWater, updateRecipe, patchRecipe, deleteRecipe, updateFoodEntry, refreshDishEntry, deleteFoodEntry, updateMoodLog, deleteMoodLog, updateMedicationLog, deleteMedicationLog, saveRecipe } from './logTools';
 import { listErrors, MAX_ERRORS } from './errorTools';
 import { storageReport } from './storageTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
@@ -2755,7 +2755,7 @@ function registerWriteTools(
 
   server.tool(
     'quick_add',
-    `Add up to ${MAX_QUICK_ADD} tasks from lines of text, each read with the app's own quick-add grammar: "Pay rent tomorrow 5pm #home !high ^easy ~30m +Moving". Dates and repeats ("every other Monday"), #category or #tag, !priority, ^difficulty (trivial, easy, normal, hard), +project, an estimate (~30m) and a date that can wait ("~fri": Friday, or later if that day is full) are read out of the title, and a repeat can end in "unless it rains" to skip a day it rained; anything that matches nothing stays in the title and the row says so. Start a line with "remind me" to set a reminder at its time. Bullets and numbering are ignored, so a pasted list works. Without apply: true it only shows how each line reads.`,
+    `Add up to ${MAX_QUICK_ADD} tasks from lines of text, each read with the app's own quick-add grammar: "Pay rent tomorrow 5pm #home !high ^easy ~30m +Moving". Dates and repeats ("every other Monday"), #category or #tag, !priority, ^difficulty (trivial, easy, normal, hard), +project, an estimate (~30m) and a date that can wait ("~fri": Friday, or later if that day is full) are read out of the title, and a repeat can end in "unless it rains" to skip a day it rained; anything that matches nothing stays in the title and the row says so. Start a line with "remind me" to set a reminder at its time. Bullets and numbering are ignored, so a pasted list works. Every task lands in a category, so a line needs #category unless a +project's default, one of the person's title rules or their new-task default supplies one; a line with none comes back as a problem and nothing is added until it has one. Without apply: true it only shows how each line reads.`,
     {
       lines: z.array(z.string()).min(1),
       apply: z.boolean().optional(),
@@ -3287,7 +3287,7 @@ function registerWriteTools(
     },
     async ({ id, date }) => {
       try {
-        const at = /^\d{4}-\d{2}-\d{2}$/.test(date.trim()) ? `${date.trim()}T12:00` : date;
+        const at = pastAtFrom(date).toISOString();
         return json(withLink(await withWrite(() => setCompletionDate(replica, id, at)), LINKS?.task(id)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change the date.' });

@@ -1088,6 +1088,11 @@ matches nothing makes a section nobody created. So `taskPatch` refuses both for 
 task: the category has to be one of the person's (matched ignoring case and saved as they spell
 it), the project's own default, or one a title rule supplies. A new category is allowed only when
 asked for in so many words (`newCategory: true`), and is created inside the write that uses it.
+`quick_add` does not go through `taskPatch`, so it asks the same question of the task a line would
+create (`categoryForDraft`, which also counts the new-task default) and sends a line with no answer
+back as a problem row. The settings that file things under a name (`limitsTodayCategory`,
+`newTaskDefaults.category`) are checked the same way, and `rewardListProjectId` against the real
+projects, before anything is stored.
 `list_categories` is what the model chooses from, with a few open tasks per category so it can
 judge what belongs where. A checklist item is exempt: it has no section of its own.
 

@@ -111,6 +111,32 @@ describe('quickAdd', () => {
     expect(replica.tasks()).toHaveLength(1);
   });
 
+  // Every task made through this server lands in a category (docs/arch/mcp-server.md);
+  // a line that names none and has nothing to supply one would sit in no section on Today.
+  it('sends back a line that would land in no category, and adds nothing until it has one', () => {
+    mockRaw.runSync("INSERT OR IGNORE INTO categories (id, name, sort_order) VALUES ('c1', 'Home', 1)");
+    replica.refresh();
+    const sent = quickAdd(replica, { lines: ['Call mom tomorrow', 'Pay rent tomorrow #home'], apply: true });
+
+    expect(sent.applied).toBe(false);
+    expect(sent.rows[0].problem).toMatch(/Needs a category: add #category to the line, one of yours \(.*Home.*\)/);
+    expect(sent.rows[1].problem).toBeUndefined();
+    expect(replica.tasks()).toHaveLength(0);
+  });
+
+  it('takes the new-task default category as the category for a line that names none', () => {
+    mockRaw.runSync("INSERT OR IGNORE INTO categories (id, name, sort_order) VALUES ('c1', 'Home', 1)");
+    replica.refresh();
+    replica.applySettings({ newTaskDefaults: { category: 'Home' } });
+    try {
+      const added = quickAdd(replica, { lines: ['Call mom tomorrow'], apply: true });
+      expect(added.applied).toBe(true);
+      expect(added.rows[0].task).toMatchObject({ title: 'Call mom', category: 'Home' });
+    } finally {
+      replica.applySettings({ newTaskDefaults: { category: null } });
+    }
+  });
+
   it('notes a clock time it read as a time of day rather than setting a reminder', () => {
     const [row] = quickAdd(replica, { lines: ['Call mom tomorrow 5pm'] }).rows;
     expect(row.reminderTime).toBeUndefined();
@@ -142,7 +168,9 @@ describe('quickAdd and the sun', () => {
   });
 
   it('reads "unless it rains" after the repeat it skips, and says when weather is off', () => {
-    const { rows } = quickAdd(replica, { lines: ['Water the garden every 2 days unless it rains 10mm'], apply: true });
+    mockRaw.runSync("INSERT OR IGNORE INTO categories (id, name, sort_order) VALUES ('c1', 'Home', 1)");
+    replica.refresh();
+    const { rows } = quickAdd(replica, { lines: ['Water the garden every 2 days unless it rains 10mm #home'], apply: true });
     expect(rows[0].title).toBe('Water the garden');
     expect(rows[0].repeat).toMatchObject({ every: 'day', interval: 2, skipAfterRainMm: 10 });
     expect(rows[0].notes?.join(' ')).toMatch(/Weather is switched off/);

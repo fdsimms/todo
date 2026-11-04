@@ -53,6 +53,7 @@ import {
 import { hasCountedTarget, serializeTasks, type SerializedTask } from './serialize';
 import { localDateInput } from './timeZone';
 import { updateGroceryItem } from './groceryTools';
+import { pastAtFrom } from './logTools';
 // Pure over the rows it is handed (types only), so safe to import for its
 // value where awayDates, which reaches the settings store, is not.
 
@@ -1282,10 +1283,16 @@ export function completeTask(
   options?: { deliverableValue?: string | null; completedAt?: string; why?: string; revisitIf?: string },
 ): CompleteTaskResult {
   const { why, revisitIf, ...rest } = options ?? {};
+  // A bare date is the day at local noon, as set_completion_date reads one, not
+  // UTC midnight (the evening before in New York), and a time later than now is
+  // refused: it was stored as written, and a recurring task's next occurrence
+  // was then dated off a completion in the future.
+  const completedAt = rest.completedAt ? pastAtFrom(rest.completedAt).toISOString() : undefined;
   // Reasoning only means something next to an answer; `in` keeps the
   // "was an answer sent at all" test the refusal makes intact.
   const result = replica.completeTask(id, options === undefined ? undefined : {
     ...rest,
+    ...(completedAt !== undefined ? { completedAt } : {}),
     ...(why !== undefined || revisitIf !== undefined
       ? { deliverableReasoning: { why: why ?? null, revisitIf: revisitIf ?? null } }
       : {}),

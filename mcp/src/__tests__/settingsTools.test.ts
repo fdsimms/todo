@@ -47,6 +47,39 @@ describe('settings', () => {
     expect(() => updateSettings(replica, { anthropicApiKey: 'x' })).toThrow(/Not a setting this can change/);
   });
 
+  // A name a setting files things under has to be real: stored as given, a
+  // typo made every new task on the phone land in a section nobody made.
+  describe('settings that name a category or a project', () => {
+    beforeAll(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('../../../src/store/useCategoryStore').useCategoryStore.getState().addCategory('Home');
+      replica.refresh();
+    });
+
+    it('stores the category in the spelling it was made in, and refuses one that does not exist', () => {
+      const result = updateSettings(replica, { newTaskDefaults: { category: 'home' }, limitsTodayCategory: 'HOME' });
+      expect(replica.settingValues().limitsTodayCategory).toBe('Home');
+      expect(getSettings(replica).settings.tasks.newTaskDefaults.value).toMatchObject({ category: 'Home' });
+      expect(result.note).toMatch(/limitsTodayCategory is Home/);
+
+      expect(() => updateSettings(replica, { newTaskDefaults: { category: 'Bogus' } })).toThrow(/newTaskDefaults\.category: "Bogus" isn't one of your categories/);
+      expect(() => updateSettings(replica, { limitsTodayCategory: 'Bogus' })).toThrow(/limitsTodayCategory/);
+      // Nothing was stored by the refused calls.
+      expect(replica.settingValues().limitsTodayCategory).toBe('Home');
+    });
+
+    it('refuses a wish-list project that does not exist, whole call included', () => {
+      updateSettings(replica, { weekStartsOn: 1 });
+      expect(() => updateSettings(replica, { weekStartsOn: 0, rewardListProjectId: 'nope' })).toThrow(/no project with id "nope"/);
+      expect(replica.settings().weekStartsOn).toBe(1);
+    });
+
+    it('still lets healthCategory name a category that does not exist yet', () => {
+      updateSettings(replica, { healthCategory: 'Body' });
+      expect(replica.settingValues().healthCategory).toBe('Body');
+    });
+  });
+
   it('says when the app kept a value within its own range', () => {
     const result = updateSettings(replica, { weekendNudgeLeadDays: 14 });
     expect(result.changed[0].to).toBeLessThanOrEqual(14);
