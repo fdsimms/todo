@@ -39,12 +39,13 @@ Reach for one of these before hand-rolling the thing it does. Each component's o
   sheet raised from the card goes in `overlays`, not in the card (see "Two sibling Modals" in `ui-sheets-and-lists.md`). A
   picker over a long list, a filter (see below) or a multi-step flow still wants a bottom sheet.
 - `ScreenHeader` (`src/components/ScreenHeader.tsx`) — every screen's large-title header: title, optional subtitle/overline, 34pt icon actions with badges/active tint/loading, or custom `right` content.
-- `PressableScale` (`src/components/PressableScale.tsx`) — standard press feedback (spring scale + opacity dip) for buttons, chips, FABs, icon buttons. Full-width list rows keep `TouchableOpacity` with `interaction.activeOpacity` — scaling a full row looks wrong.
+- `PressableScale` (`src/components/PressableScale.tsx`) — standard press feedback (spring scale + opacity dip) for buttons, chips, FABs, icon buttons. Full-width list rows keep `TouchableOpacity` with `interaction.activeOpacity` — scaling a full row looks wrong. `noBareTouchableOpacity.test.ts` fails the build on a `TouchableOpacity` that sets no `activeOpacity`, since the 0.2 default flashes far deeper than the rest of the app.
 - `Toggle` (`src/components/Toggle.tsx`) — the on/off switch drawn in a row whose whole surface is
   the button: every editor toggle and Settings switch. The knob slides and the track colour eases;
   `look="settings"` and `onColor` cover the two styles in use. Never draw a knob inside a track by
   hand: seventeen copies did, and every one jumped. The row keeps the press, the haptic and the
-  `switch` role.
+  `switch` role. `noRawSwitch.test.ts` fails the build on `react-native`'s `Switch`, which is
+  bigger and keeps a white knob that glares in the dark themes.
 - `CheckPop` (`src/components/CheckPop.tsx`) — a small checkbox that isn't `TaskItem`'s circle (a
   subtask, a grocery row, Today's meal row): the box pops and the tick springs in. The tick is a
   sibling of the box, never a child, so the pop can't resample its bitmap (#1024).
