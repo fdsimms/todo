@@ -141,7 +141,7 @@ describe('proposeNext, rep range (double)', () => {
     const p = proposeNext(input({ history }))!;
     expect(p.move).toBe('same');
     expect(p.sets.every(s => s.weightKg === 80 && s.reps === 8)).toBe(true);
-    expect(p.reason).toBe('Same weight. Last time reached 8, 7 and 6, so aim for 8 on every set before adding weight.');
+    expect(p.reason).toBe('Same weight. Last time: 8, 7 and 6.');
     expect(p.brief).toBe('Aim for 8 on every set');
   });
 
@@ -220,7 +220,7 @@ describe('proposeNext, linear', () => {
     const p = proposeNext(input({ scheme: 'linear', item: lin, history: day('s5', 100, [5, 5, 4]) }))!;
     expect(p.move).toBe('same');
     expect(p.sets[0].weightKg).toBe(100);
-    expect(p.reason).toBe(`Same weight, because a set last time fell short of 5. After ${LINEAR_DELOAD_AFTER} short workouts in a row, the suggestion goes down to the closest load at or under 90% of this weight.`);
+    expect(p.reason).toBe('Same weight. A set fell short of 5 last time.');
   });
 
   it('proposes about 10% less after three short workouts in a row at one weight', () => {
@@ -263,7 +263,7 @@ describe('proposeNext, linear', () => {
     const p = proposeNext(input({ scheme: 'linear', item: lin, history }))!;
     expect(p.move).toBe('same');
     expect(p.sets[0].weightKg).toBe(20);
-    expect(p.reason).toBe('Same weight. 20 kg is already the lightest load, so there is nothing lighter to go down to after 3 workouts short of 5 reps.');
+    expect(p.reason).toBe('Same weight. 20 kg is the lightest load.');
     expect(p.reason).not.toMatch(/Down 0/);
   });
 
