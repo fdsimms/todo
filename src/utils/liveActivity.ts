@@ -16,6 +16,7 @@ import { workoutActivitySessionId } from './workoutLiveActivity';
 import { isTimedTask, timerRemaining } from './timer';
 import { isStepTimerRunning, stepTimerRemaining } from './stepTimers';
 import { displayTitleFor } from './visibilityUtils';
+import { maskedOutsideApp } from './projectLock';
 
 /**
  * Drives the "running timer" Live Activity (Lock Screen + Dynamic Island) —
@@ -104,7 +105,8 @@ export function buildTimerRuns(
       key: `task:${task.id}`,
       kind: 'task',
       itemId: task.id,
-      title: truncate(displayTitleFor(task)),
+      // The Lock Screen and Dynamic Island can't ask for Face ID.
+      title: maskedOutsideApp(task.projectId, truncate(displayTitleFor(task)), 'Timer'),
       subtitle: '',
       symbolName: 'timer',
       startedAtMs,
@@ -131,8 +133,8 @@ export function buildTimerRuns(
       key: `completionTimer:${task.id}`,
       kind: 'completionTimer',
       itemId: task.id,
-      title: truncate(displayTitleFor(task)),
-      subtitle: task.completionTimerNote ? truncate(task.completionTimerNote) : '',
+      title: maskedOutsideApp(task.projectId, truncate(displayTitleFor(task)), 'Timer'),
+      subtitle: maskedOutsideApp(task.projectId, task.completionTimerNote ? truncate(task.completionTimerNote) : '', ''),
       symbolName: 'bell.fill',
       startedAtMs,
       targetEndMs,

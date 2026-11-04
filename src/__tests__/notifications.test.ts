@@ -142,6 +142,7 @@ import {
   cancelCheckIn,
   CHECK_IN_CATEGORY,
 } from '../utils/notifications';
+import { registerLockedProjectSource } from '../utils/projectLock';
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { setDemoModeActive } from '../utils/demoState';
 import type { EventReminder } from '../utils/eventReminders';
@@ -641,6 +642,20 @@ describe('rescheduleAllReminders', () => {
     const task = makeTask({ id: 'task-1', completed: true, reminderTime: FUTURE });
     await rescheduleAllReminders([task]);
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  // A rebuild only schedules what is wanted, so a reminder that was pending
+  // before vacation began (or before a project was paused) used to survive it
+  // and fire, which is the thing both are meant to quiet.
+  it('lets go of the reminder a task had pending once vacation mode withholds it', async () => {
+    mockSettings.vacationMode = true;
+    try {
+      await rescheduleAllReminders([makeTask({ id: 'held', reminderTime: FUTURE, vacationPause: true })]);
+      expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('held');
+      expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    } finally {
+      mockSettings.vacationMode = false;
+    }
   });
 
   it('does not schedule a task with no reminderTime', async () => {
@@ -2522,5 +2537,65 @@ describe('cancelQuotaNudges sweeps an extended run', () => {
     for (let i = 0; i < MAX_QUOTA_NUDGES_AHEAD; i++) {
       expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(`pace:walk:${i}`);
     }
+  });
+});
+
+// ─── a task in a locked project ───────────────────────────────────────────────
+//
+// Everything below lands on the lock screen, where Face ID can't be asked, so
+// none of it may name or quote the task (docs/arch/app-lock.md).
+
+describe('a task in a locked project', () => {
+  const SECRET_TITLE = 'Surprise party for Sam';
+  const SECRET_NOTE = 'Cake order 44';
+  const locked = (overrides: Partial<Task> = {}): Task =>
+    makeTask({ projectId: 'secret', title: SECRET_TITLE, notes: SECRET_NOTE, ...overrides });
+  const sentText = (): string =>
+    JSON.stringify((Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(c => c[0].content));
+  const sentCount = (): number => (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.length;
+
+  beforeEach(() => registerLockedProjectSource(() => ['secret']));
+  afterEach(() => {
+    registerLockedProjectSource(() => []);
+    jest.useRealTimers();
+  });
+
+  it('is announced without its title or notes in a plain reminder', async () => {
+    await scheduleTaskReminder(locked({ reminderTime: FUTURE }));
+    expect(sentCount()).toBeGreaterThan(0);
+    expect(sentText()).not.toContain(SECRET_TITLE);
+    expect(sentText()).not.toContain(SECRET_NOTE);
+  });
+
+  it('is not named or quoted when its completion timer goes off', async () => {
+    await scheduleCompletionTimer(locked({ completionTimerMinutes: 30, completionTimerNote: 'Check the oven for Sam' }));
+    expect(sentCount()).toBe(1);
+    expect(sentText()).not.toContain(SECRET_TITLE);
+    expect(sentText()).not.toContain('Sam');
+  });
+
+  it('is not named when its countdown ends', async () => {
+    await scheduleTimerAlarm(locked({ timedMinutes: 15, timerStartedAt: new Date().toISOString() }));
+    expect(sentCount()).toBe(1);
+    expect(sentText()).not.toContain(SECRET_TITLE);
+    await scheduleTimerAlarm(locked({ timedMinutes: 15, targetCount: 3, timerStartedAt: new Date().toISOString() }));
+    expect(sentText()).not.toContain(SECRET_TITLE);
+  });
+
+  it('is not named or quoted in a pace nudge', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 7, 26, 9, 5, 0));
+    await scheduleQuotaNudges(locked({
+      targetCount: 24, quotaIntervalMinutes: 20, quotaReminders: true,
+      windowStart: '09:00', windowEnd: '17:00', recurrenceType: 'daily',
+    }));
+    expect(sentCount()).toBeGreaterThan(0);
+    expect(sentText()).not.toContain(SECRET_TITLE);
+    expect(sentText()).not.toContain(SECRET_NOTE);
+  });
+
+  it('still names a task whose project is not locked', async () => {
+    await scheduleCompletionTimer(makeTask({ projectId: 'open', title: SECRET_TITLE, completionTimerMinutes: 30 }));
+    expect(sentText()).toContain(SECRET_TITLE);
   });
 });

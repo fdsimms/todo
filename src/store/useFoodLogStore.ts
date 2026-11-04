@@ -27,6 +27,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { useHealthStore } from './useHealthStore';
 import { useTaskStore } from './useTaskStore';
 import { buildFoodLogEntry } from '../utils/foodLogEntry';
+import { cancelCheckInFor } from '../utils/checkInRecording';
 import {
   type UndoableAction,
   type UndoHistoryActions,
@@ -989,6 +990,9 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       totalCount: Math.max(0, s.totalCount - 1),
     }));
     if (removed) syncWaterQuotaTasksIfToday(removed.dayKey);
+    // "How do you feel after this?" is about a meal that is gone now; without
+    // this the notification still arrived and the tap found nothing to ask.
+    if (removed) cancelCheckInFor('food', id);
     if (removed && opts?.undoable !== false) {
       get().setLastAction({
         label: `Deleted “${removed.label}”`,
@@ -1017,6 +1021,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       insightEntries: s.insightEntries.filter(e => !idSet.has(e.id)),
       totalCount: Math.max(0, s.totalCount - idSet.size),
     }));
+    removed.forEach(e => cancelCheckInFor('food', e.id));
     const todayKey = dayKeyOf(getCurrentDayStart());
     if (removed.some(e => e.dayKey === todayKey)) {
       useTaskStore.getState().syncWaterQuotaTasks();

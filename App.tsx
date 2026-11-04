@@ -51,6 +51,7 @@ import { useWaniKaniSync } from './src/hooks/useWaniKaniSync';
 import { useEventTaskSync } from './src/hooks/useEventTaskSync';
 import { useReminderMeetingResync } from './src/hooks/useReminderMeetingResync';
 import { usePlaceGateRefresh } from './src/hooks/usePlaceGateRefresh';
+import { useReminderWithholdSync } from './src/hooks/useReminderWithholdSync';
 import { useScreenTimeSync } from './src/store/useScreenTimeStore';
 import { useHealthSync } from './src/store/useHealthStore';
 import { useAppShieldSync } from './src/hooks/useAppShieldSync';
@@ -398,6 +399,7 @@ function AppRoot() {
   // pushed past it. Inert while the meeting nudge or calendar reading is off.
   useReminderMeetingResync();
   usePlaceGateRefresh();
+  useReminderWithholdSync();
   // Keeps the OS usage monitor armed against the current rules and drains
   // what it has reported. Inert until screenTimeTasks is switched on.
   useScreenTimeSync();

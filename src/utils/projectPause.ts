@@ -124,3 +124,16 @@ export function registerPauseEndListener(fn: ((projectId: string, endedOn: strin
 export function notifyPauseEnded(projectId: string, endedOn: string): void {
   pauseEndListener?.(projectId, endedOn);
 }
+
+/**
+ * A string that changes exactly when some project's pause is set, moved or
+ * lifted. For a subscriber that has to react to a pause (rebuilding the
+ * notification queue) without re-running on every unrelated project edit.
+ */
+export function pauseSignature(projects: readonly Pick<Project, 'id' | 'pausedUntil'>[]): string {
+  return projects
+    .filter(p => !!p.pausedUntil)
+    .map(p => `${p.id}:${p.pausedUntil}`)
+    .sort()
+    .join('|');
+}

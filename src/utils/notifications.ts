@@ -1,5 +1,5 @@
 import * as Notifications from 'expo-notifications';
-import { isProjectLockedAtAll } from './projectLock';
+import { isProjectLockedAtAll, maskedOutsideApp } from './projectLock';
 import { placeGateAllows, placeTrustedUntil, readPlaceFix } from './placeGate';
 import type { PermissionResponse } from 'expo-modules-core';
 import { AppState, Platform } from 'react-native';
@@ -421,8 +421,13 @@ export async function scheduleCompletionTimer(task: Task, completedAt: Date = ne
   await Notifications.scheduleNotificationAsync({
     identifier: completionTimerNotificationId(task.id),
     content: {
-      title: displayTitleFor(task) || 'Task timer',
-      body: task.completionTimerNote || `“${displayTitleFor(task) || task.title}” timer is up.`,
+      // A locked project's task is not named here, as in a plain reminder.
+      title: maskedOutsideApp(task.projectId, displayTitleFor(task) || 'Task timer', 'Task timer'),
+      body: maskedOutsideApp(
+        task.projectId,
+        task.completionTimerNote || `“${displayTitleFor(task) || task.title}” timer is up.`,
+        'Your timer is up.',
+      ),
       data: { taskId: task.id, completionTimer: true },
       sound: true,
       interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
@@ -770,6 +775,17 @@ export async function rescheduleAllReminders(
 
   for (const task of budgeted) await scheduleTaskReminder(task);
 
+  // A task that is withheld now (vacation mode, a paused project) or no longer
+  // needed is left out of `upcoming`, so nothing above touches the reminder it
+  // had pending, and with no blanket cancel up top that one would still fire.
+  // Let go of it by identifier, the way every other kind here is.
+  if (!isDemoModeActive()) {
+    for (const task of tasks) {
+      if (!task.reminderTime || task.completed || task.archived) continue;
+      if (isWithheld(task) || isTaskNotNeeded(task)) await cancelTaskReminder(task.id);
+    }
+  }
+
   // Every kind this function schedules is now namespaced and cancelled on its
   // own terms rather than through a blanket `cancelAllScheduledNotificationsAsync`
   // up top: AlarmKit and budgeted reminders just above rebuild by identifier
@@ -994,8 +1010,8 @@ export async function scheduleTimerAlarm(task: Task): Promise<void> {
       // A target's countdown is for one unit, and tapping it logs one rather
       // than completing the task, so it can't say "complete".
       body: isQuotaTask(task)
-        ? `${displayTitleFor(task) || 'Your task'} is ready to log`
-        : `${displayTitleFor(task) || 'Your task'} is ready to complete`,
+        ? `${maskedOutsideApp(task.projectId, displayTitleFor(task) || 'Your task', 'Your task')} is ready to log`
+        : `${maskedOutsideApp(task.projectId, displayTitleFor(task) || 'Your task', 'Your task')} is ready to complete`,
       data: { taskId: task.id },
       sound: true,
       // A countdown the user started and is waiting on, same urgency as a
@@ -1344,7 +1360,9 @@ export async function scheduleQuotaNudges(
   await cancelQuotaNudges(task.id);
   if (isDemoModeActive()) return;
 
-  const title = displayTitleFor(task) || 'Daily target';
+  // A locked project's target is not named or quoted: this lands on the lock screen.
+  const title = maskedOutsideApp(task.projectId, displayTitleFor(task) || 'Daily target', 'Daily target');
+  const body = maskedOutsideApp(task.projectId, task.notes || 'One is due now.', 'One is due now.');
   for (const { index, time } of quotaNudgeInstants(task, now, ahead)) {
     await Notifications.scheduleNotificationAsync({
       identifier: quotaNudgeId(task.id, index),
@@ -1353,7 +1371,7 @@ export async function scheduleQuotaNudges(
         // The notes carry the instruction where there are any — for a routine
         // whose whole content is "what do I actually do", that sentence is the
         // notification, and the title alone would be a nag with no method.
-        body: task.notes || 'One is due now.',
+        body,
         data: { taskId: task.id, quotaNudge: true },
         sound: true,
         categoryIdentifier: TASK_REMINDER_CATEGORY,

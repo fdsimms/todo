@@ -76,3 +76,14 @@ export function registerLockedProjectSource(source: () => readonly string[]): vo
 export function isProjectLockedAtAll(projectId: string | null | undefined): boolean {
   return !!projectId && lockedIdsSource().includes(projectId);
 }
+
+/**
+ * Text drawn outside the app (a notification, a Live Activity, the Lock
+ * Screen), where Face ID can't be asked: `masked` stands in for `text` when
+ * the task's project is locked. Anything that puts a task's title or notes
+ * somewhere the app can't gate goes through this, so a new surface cannot
+ * forget the rule.
+ */
+export function maskedOutsideApp(projectId: string | null | undefined, text: string, masked: string): string {
+  return isProjectLockedAtAll(projectId) ? masked : text;
+}

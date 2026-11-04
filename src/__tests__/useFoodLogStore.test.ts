@@ -1,4 +1,5 @@
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
+import { cancelCheckInFor } from '../utils/checkInRecording';
 import {
   dbBulkDeleteFoodLogEntries,
   dbBulkSetFoodLogSlot,
@@ -16,6 +17,7 @@ import { estimateAmountPatch } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition } from '../types';
 
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+jest.mock('../utils/checkInRecording', () => ({ cancelCheckInFor: jest.fn() }));
 
 /**
  * Standing in for the table rather than for one call.
@@ -985,6 +987,12 @@ describe('removeEntry', () => {
     expect(state().totalCount).toBe(0);
   });
 
+  it('drops the check-in about the meal it forgets', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue({ id: 'e1', label: 'Toast', dayKey: '2026-04-02', healthSampleIds: [] });
+    state().removeEntry('e1');
+    expect(cancelCheckInFor).toHaveBeenCalledWith('food', 'e1');
+  });
+
   it('cannot drive the count below zero', () => {
     // A delete of a row outside the loaded window would otherwise make the
     // screen vanish while it still held entries.
@@ -1039,6 +1047,13 @@ describe('removeEntries', () => {
     expect(dbBulkDeleteFoodLogEntries).toHaveBeenCalledWith([a.id, b.id]);
     expect(state().entries.map(e => e.label)).toEqual(['C']);
     expect(state().totalCount).toBe(1);
+  });
+
+  it('drops the check-in about each meal it forgets', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => ({ id, label: id, dayKey: '2026-04-02', healthSampleIds: [] }));
+    state().removeEntries(['a', 'b']);
+    expect(cancelCheckInFor).toHaveBeenCalledWith('food', 'a');
+    expect(cancelCheckInFor).toHaveBeenCalledWith('food', 'b');
   });
 
   it('is a no-op on an empty selection', () => {
