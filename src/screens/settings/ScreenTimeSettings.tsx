@@ -153,7 +153,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
   };
   /** The line under a supergroup: what is blocking it now, else the groups it combines. */
   const supergroupHint = (group: { id: string; members?: string[] }) => {
-    if (groupLocked(group.id)) return 'Currently blocked. Its groups can’t change until the block is lifted.';
+    if (groupLocked(group.id)) return 'Its groups can’t change until the block is lifted.';
     const names = supergroupMembers(customGroups, group.id, groupsMeta).map(g => g.name);
     if (names.length === 0) return 'No groups';
     return supergroupMode(customGroups, group.id, groupsMeta) === 'allow'
