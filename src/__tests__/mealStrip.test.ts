@@ -85,6 +85,14 @@ describe('mealStripCells', () => {
     ]);
   });
 
+  it('names a logged meal with the caller\'s label, so one food is not said twice', () => {
+    const cells = mealStripCells(
+      slots, [], [logged({ label: 'protein powder, Optimum Nutrition' })], DAY, title,
+      () => 'Optimum Nutrition',
+    );
+    expect(cells.find(c => c.slot === 'lunch')?.text).toBe('Optimum Nutrition');
+  });
+
   it('reads the log over the plan, since the log is what was eaten', () => {
     const cells = mealStripCells(
       slots,

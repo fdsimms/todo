@@ -5055,8 +5055,16 @@ export function TodayScreen() {
   // real task now (see utils/projectReviewTasks.ts), so the offer arrives in
   // the list rather than as a strip over it. What the header holds is the
   // pinned block and, under it, the project bands.
-  const todayListHeader = pinnedBlock === null && projectBandsBlock === null ? null : (
+  // The meal strip is the first thing in the list, so it scrolls with the rows
+  // rather than sitting fixed above them. It replaces the meal tasks (see
+  // MealsOnToday), and has its own gate because simplified mode hides
+  // workloadLine, which it used to hang off.
+  const mealStripBlock = viewMode === 'today' && mealsOnToday === 'top'
+    ? <MealStrip dayKey={todayKey} refreshKey={minuteTick} />
+    : null;
+  const todayListHeader = mealStripBlock === null && pinnedBlock === null && projectBandsBlock === null ? null : (
     <>
+      {mealStripBlock}
       {pinnedBlock}
       {projectBandsBlock}
     </>
@@ -5558,14 +5566,6 @@ export function TodayScreen() {
 
         {workloadLine && <Text style={styles.workloadLine}>{workloadLine}</Text>}
 
-        {/* The meal strip, the one kitchen thing above the list, and only when
-            asked for: it replaces the meal tasks rather than sitting beside
-            them (see MealsOnToday). Its own `viewMode` gate rather than
-            hanging off workloadLine, which simplified mode hides. */}
-        {viewMode === 'today' && mealsOnToday === 'top' && (
-          <MealStrip dayKey={todayKey} refreshKey={minuteTick} />
-        )}
-
         {/* Outside the `viewMode` gate on purpose: a session runs against the
             tasks, not against a lens over them, so switching to Later must
             not make it look as though it stopped. */}
@@ -5602,7 +5602,7 @@ export function TodayScreen() {
           any more. Both were a fixed block here — which meant the top of the
           Today screen was never a task — and both are rows in the list itself
           now (see contextRows / dayContextRows.ts). Nor does the kitchen render
-          anything here any longer, the opt-in meal strip above aside: what a
+          anything here any longer, the opt-in meal strip (now the list's first row) aside: what a
           cooking asks is a sheet raised from the navigator (CookRecap), not a
           banner this screen has to make room for above its own list.
         */}
