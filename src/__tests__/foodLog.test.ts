@@ -1662,7 +1662,7 @@ describe('savedMealRuns', () => {
 
   it('trays neighbouring entries from one meal at one moment, named by the snapshot', () => {
     const runs = savedMealRuns([header, part('a'), part('b'), part('c')]);
-    expect(runs.get('a')).toEqual({ position: 'first', name: 'Usual lunch', count: 3 });
+    expect(runs.get('a')).toEqual({ position: 'first', name: 'Usual lunch', count: 3, entryIds: ['a', 'b', 'c'] });
     expect(runs.get('b')?.position).toBe('middle');
     expect(runs.get('c')?.position).toBe('last');
   });

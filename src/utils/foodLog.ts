@@ -1011,6 +1011,8 @@ export interface SavedMealRun {
   name: string;
   /** How many entries this tray holds right now, not how many the meal had. */
   count: number;
+  /** Every entry in the tray, in order, so an action on the tray can act on all of them. */
+  entryIds: string[];
 }
 
 /**
@@ -1036,6 +1038,7 @@ export function savedMealRuns(items: readonly FoodLogListItem[]): Map<string, Sa
         position: i === 0 ? 'first' : i === run.length - 1 ? 'last' : 'middle',
         name,
         count: run.length,
+        entryIds: run.map(r => r.id),
       }));
     }
     run = [];

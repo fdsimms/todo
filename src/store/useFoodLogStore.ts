@@ -534,9 +534,10 @@ function restoreEntries(rows: FoodLogEntry[], get: () => FoodLogStore, set: Food
  * meal (`dbBulkSetFoodLogSlot` does the same in SQL), so a tray never carries
  * its name into a different meal's section.
  */
-function inSlot(entry: FoodLogEntry, slot: MealSlot | null, sortOrder?: number): FoodLogEntry {
+function inSlot(entry: FoodLogEntry, slot: MealSlot | null, sortOrder?: number, keepSavedMeal = false): FoodLogEntry {
   const next = sortOrder === undefined ? entry : { ...entry, sortOrder };
   if (entry.slot === slot) return next;
+  if (keepSavedMeal) return { ...next, slot };
   return { ...next, slot, savedMealId: null, savedMealName: null };
 }
 
@@ -1049,15 +1050,36 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     if (ids.length === 0) return;
     const idSet = new Set(ids);
     const priorSlots = get().entries.filter(e => idSet.has(e.id)).map(e => ({ id: e.id, slot: e.slot }));
-    const cleared = linksClearedBySlot(get().entries.filter(e => idSet.has(e.id)), () => slot);
-    dbBulkSetFoodLogSlot(ids, slot);
+    // A saved meal moved whole (every food of one logging is in `ids`) keeps
+    // its name; only a food leaving the others behind drops out of the tray.
+    const trayKey = (e: FoodLogEntry) => (e.savedMealId ? `${e.savedMealId}|${e.atISO}|${e.slot ?? ''}` : null);
+    const mates = new Map<string, FoodLogEntry[]>();
+    for (const e of get().entries) {
+      const k = trayKey(e);
+      if (k) mates.set(k, [...(mates.get(k) ?? []), e]);
+    }
+    const kept = new Set(
+      get().entries
+        .filter(e => {
+          const k = trayKey(e);
+          const group = k === null ? [] : mates.get(k) ?? [];
+          // A lone food is no tray (`savedMealRuns`), so it still leaves its meal.
+          return idSet.has(e.id) && group.length >= 2 && group.every(m => idSet.has(m.id));
+        })
+        .map(e => e.id),
+    );
+    const cleared = linksClearedBySlot(get().entries.filter(e => idSet.has(e.id) && !kept.has(e.id)), () => slot);
+    const moving = ids.filter(id => !kept.has(id));
+    if (moving.length > 0) dbBulkSetFoodLogSlot(moving, slot);
+    if (kept.size > 0) dbBulkSetFoodLogSlot(Array.from(kept), slot, true);
+    const place = (e: FoodLogEntry) => (idSet.has(e.id) ? inSlot(e, slot, undefined, kept.has(e.id)) : e);
     set(s => ({
-      entries: s.entries.map(e => (idSet.has(e.id) ? inSlot(e, slot) : e)),
-      windowEntries: s.windowEntries.map(e => (idSet.has(e.id) ? inSlot(e, slot) : e)),
+      entries: s.entries.map(place),
+      windowEntries: s.windowEntries.map(place),
       // The insight window too. A slot change is not cosmetic to it: the
       // thin-day rule counts *distinct meals*, so moving two entries into one
       // slot can drop a day out of every mood pairing.
-      insightEntries: s.insightEntries.map(e => (idSet.has(e.id) ? inSlot(e, slot) : e)),
+      insightEntries: s.insightEntries.map(place),
     }));
     if (priorSlots.length > 0) {
       get().setLastAction({

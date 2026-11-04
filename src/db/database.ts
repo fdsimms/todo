@@ -9195,14 +9195,16 @@ const CLEAR_SAVED_MEAL_ON_SLOT_CHANGE = `
   saved_meal_id = CASE WHEN slot IS ? THEN saved_meal_id ELSE NULL END,
   saved_meal_name = CASE WHEN slot IS ? THEN saved_meal_name ELSE NULL END`;
 
-export function dbBulkSetFoodLogSlot(ids: string[], slot: MealSlot | null): void {
+/**
+ * `keepSavedMeal` is for a whole saved-meal tray moving together: the foods
+ * still sit side by side, so the link stays. A lone entry leaving does not.
+ */
+export function dbBulkSetFoodLogSlot(ids: string[], slot: MealSlot | null, keepSavedMeal = false): void {
   if (ids.length === 0) return;
   withTransaction(() => {
     for (const id of ids) {
-      db.runSync(
-        `UPDATE food_logs SET ${CLEAR_SAVED_MEAL_ON_SLOT_CHANGE}, slot = ? WHERE id = ?`,
-        [slot, slot, slot, id],
-      );
+      if (keepSavedMeal) db.runSync('UPDATE food_logs SET slot = ? WHERE id = ?', [slot, id]);
+      else db.runSync(`UPDATE food_logs SET ${CLEAR_SAVED_MEAL_ON_SLOT_CHANGE}, slot = ? WHERE id = ?`, [slot, slot, slot, id]);
     }
   });
 }

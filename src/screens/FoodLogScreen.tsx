@@ -351,6 +351,8 @@ export function FoodLogScreen() {
   /** The entry whose "…" menu is open, and the touch it opened from. */
   const [menuEntry, setMenuEntry] = useState<FoodLogEntry | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<CardAnchor | null>(null);
+  // The "…" on a saved meal's tray caption: acts on every food in the tray.
+  const [trayMenu, setTrayMenu] = useState<{ run: SavedMealRun; anchor: CardAnchor | null } | null>(null);
   // The planned-meal row whose menu is open, by slot (the card's own key).
   const [plannedMenu, setPlannedMenu] = useState<{ slot: MealSlot; anchor: CardAnchor } | null>(null);
   /**
@@ -759,6 +761,46 @@ export function FoodLogScreen() {
     setMenuAnchor(anchor ?? null);
     setMenuEntry(entry);
   }, []);
+
+  const handleOpenTrayMenu = useCallback((run: SavedMealRun, anchor?: CardAnchor) => {
+    setTrayMenu({ run, anchor: anchor ?? null });
+  }, []);
+
+  const trayMenuActions = useMemo<ActionMenuAction[]>(() => {
+    const run = trayMenu?.run;
+    if (!run) return [];
+    const first = entries.find(e => e.id === run.entryIds[0]);
+    const moveChoices: ActionMenuChoice[] = MEAL_SLOTS
+      .filter(s => s !== (first?.slot ?? null))
+      .map(s => ({
+        key: s,
+        label: MEAL_SLOT_LABELS[s],
+        onPress: () => { animateLayout(); moveEntries(run.entryIds, s); },
+      }));
+    if (first && first.slot !== null) {
+      moveChoices.push({ key: 'other', label: 'Other', onPress: () => { animateLayout(); moveEntries(run.entryIds, null); } });
+    }
+    return [
+      { key: 'move', label: 'Move to meal', icon: 'swap-vertical-outline', choices: moveChoices },
+      {
+        key: 'forget',
+        label: 'Forget all',
+        icon: 'trash-outline',
+        destructive: true,
+        onPress: () => confirmDelete({
+          title: `Forget ${run.name}?`,
+          message: `This removes all ${run.count} foods from the day’s totals.`,
+          confirmLabel: 'Forget',
+          undoable: true,
+          onConfirm: () => {
+            haptics.warning();
+            animateLayout();
+            removeEntries(run.entryIds);
+          },
+        }),
+      },
+    ];
+  }, [trayMenu, entries, moveEntries, removeEntries]);
 
   const menuActions = useMemo<ActionMenuAction[]>(() => {
     const entry = menuEntry;
@@ -1674,6 +1716,7 @@ export function FoodLogScreen() {
                   onToggleSelect={toggleSelection}
                   onSwipeSelect={enterSelectionMode}
                   onOpenMenu={handleOpenMenu}
+                  onOpenTrayMenu={handleOpenTrayMenu}
                   onEdit={handleEditEntry}
                 />
                 </FabDropZone>
@@ -1845,6 +1888,13 @@ export function FoodLogScreen() {
         actions={menuActions}
         anchor={menuAnchor}
         onClose={() => setMenuEntry(null)}
+      />
+      <ActionMenu
+        visible={trayMenu !== null}
+        title={trayMenu?.run.name ?? ''}
+        actions={trayMenuActions}
+        anchor={trayMenu?.anchor ?? null}
+        onClose={() => setTrayMenu(null)}
       />
       <LazySheet open={linkingEntry !== null}>
         <CatalogLinkSheet
@@ -2251,7 +2301,7 @@ function LogFoodFabWithDropLabel({
 }
 
 const FoodLogRow = React.memo(function FoodLogRow({
-  entry, tray, isActive, selectionMode, selected, drag, styles, colors, waterUnit, onToggleSelect, onSwipeSelect, onOpenMenu, onEdit,
+  entry, tray, isActive, selectionMode, selected, drag, styles, colors, waterUnit, onToggleSelect, onSwipeSelect, onOpenMenu, onOpenTrayMenu, onEdit,
 }: {
   entry: FoodLogEntry;
   /** Set when the entry sits in a saved meal's tray. See `savedMealRuns`. */
@@ -2272,6 +2322,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
   onToggleSelect: (entryId: string) => void;
   onSwipeSelect: (entryId: string) => void;
   onOpenMenu: (entry: FoodLogEntry, anchor?: CardAnchor) => void;
+  onOpenTrayMenu: (run: SavedMealRun, anchor?: CardAnchor) => void;
   onEdit: (entry: FoodLogEntry) => void;
 }) {
   const paintRef = usePaintSelectionRow(entry.id);
@@ -2400,6 +2451,16 @@ const FoodLogRow = React.memo(function FoodLogRow({
         <View style={styles.trayCaption} accessibilityLabel={`${tray.name}, ${tray.count} foods`}>
           <Text style={styles.trayName} numberOfLines={1}>{tray.name}</Text>
           <Text style={styles.trayCount}>{tray.count} foods</Text>
+          {!selectionMode && (
+            <TouchableOpacity
+              onPress={e => onOpenTrayMenu(tray, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`More options for ${tray.name}`}
+            >
+              <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
+            </TouchableOpacity>
+          )}
         </View>
       )}
       {swipeable}
