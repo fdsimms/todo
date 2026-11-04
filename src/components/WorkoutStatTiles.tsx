@@ -13,6 +13,8 @@ interface Props {
   /** Kilograms lifted, `liftVolumeKg`; null or 0 reads as 0. */
   volumeKg: number | null;
   unit: WeightUnit;
+  /** Replaces "Exercise"/"Exercises" under the first count, for a caller whose count is of something else (Overview counts workouts). */
+  countLabel?: string;
   /** One row of exercises, sets and volume, for a caller that already says the time elsewhere. */
   compact?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -23,12 +25,12 @@ interface Props {
  * how many sets, and the volume lifted (0 when nothing weighted was done). Workout mode's finish summary and the workout page both draw
  * it, so the figures read the same on both; each caller says what it counts.
  */
-export function WorkoutStatTiles({ minutes, exercises, sets, volumeKg, unit, compact = false, style }: Props) {
+export function WorkoutStatTiles({ minutes, exercises, sets, volumeKg, unit, compact = false, countLabel, style }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tiles = [
     ...(compact ? [] : [{ value: `${minutes} min`, label: 'Time' }]),
-    { value: String(exercises), label: exercises === 1 ? 'Exercise' : 'Exercises' },
+    { value: String(exercises), label: countLabel ?? (exercises === 1 ? 'Exercise' : 'Exercises') },
     { value: String(sets), label: sets === 1 ? 'Set' : 'Sets' },
     { value: withThousands(kgToUnit(volumeKg ?? 0, unit)), label: `Volume (${unit})` },
   ];

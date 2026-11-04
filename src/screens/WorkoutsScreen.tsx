@@ -1,4 +1,4 @@
-// The Workouts area: history (with Health's workouts mixed in), routines,
+// The Workouts area: an overview (next workout, this week, records), history (with Health's workouts mixed in), routines,
 // programs and the exercise library (see the file note under the imports and
 // docs/arch/workouts.md). One component of ~800 lines, so grep a landmark:
 //
@@ -35,6 +35,7 @@ import { ProgramLibrarySheet } from '../components/ProgramLibrarySheet';
 import { EmptyNote } from '../components/EmptyNote';
 import { HelpText } from '../components/HelpText';
 import { ExerciseDetailSheet } from '../components/ExerciseDetailSheet';
+import { WorkoutOverview } from '../components/WorkoutOverview';
 import { WorkoutDetailSheet } from '../components/WorkoutDetailSheet';
 import { LazySheet } from '../components/LazySheet';
 import { ActionMenu } from '../components/ActionMenu';
@@ -84,7 +85,8 @@ import {
 } from '../utils/workoutHistory';
 
 /**
- * The Workouts area: the workouts logged so far, the routines to start one
+ * The Workouts area opens on an Overview (`WorkoutOverview`): the next workout to start, this week, and the
+ * weekly bars, muscles and records Stats draws. It then holds the workouts logged so far, the routines to start one
  * from, and the exercise library. See docs/arch/workouts.md; the routine list
  * and the in-progress card are mocked in the phase 2 PR.
  *
@@ -121,9 +123,10 @@ interface RoutineEmptyItem { kind: 'empty'; key: string; group: string }
 interface RoutineRowItem { kind: 'routine'; key: string; routine: WorkoutRoutine }
 type RoutineListItem = RoutineHeaderItem | RoutineArchivedHeaderItem | RoutineEmptyItem | RoutineRowItem;
 
-type View_ = 'history' | 'routines' | 'programs' | 'exercises';
+type View_ = 'overview' | 'history' | 'routines' | 'programs' | 'exercises';
 
 const VIEW_OPTIONS = [
+  { value: 'overview' as const, label: 'Overview' },
   { value: 'history' as const, label: 'History' },
   { value: 'routines' as const, label: 'Routines' },
   { value: 'programs' as const, label: 'Programs' },
@@ -228,7 +231,7 @@ export function WorkoutsScreen() {
   const loadSets = useWorkoutStore(s => s.loadSets);
 
   // ==== the view, and searching the library ====
-  const [view, setView] = useState<View_>('history');
+  const [view, setView] = useState<View_>('overview');
   // Only the library has a field, so only its list listens for the keyboard.
   const keyboardScroll = useKeyboardInsetScroll<FlatList>({
     refreshing: pullSearch.pulling,
@@ -267,6 +270,8 @@ export function WorkoutsScreen() {
   }, []);
 
   const health = useHealthWorkoutHistory(sessions, view === 'history');
+  // The Overview's Recent card: the newest finished workouts, drawn as History draws them.
+  const recentSessions = useMemo(() => sessions.filter(x => x.endedAt !== null).slice(0, 3), [sessions]);
   const historyRows = useMemo(
     () => interleaveHistory(sessions, health.workouts, health.windowStart),
     [sessions, health.workouts, health.windowStart],
@@ -795,6 +800,29 @@ export function WorkoutsScreen() {
             refreshControl={pullSearch.refreshControl}
             contentContainerStyle={[styles.list, listBottom]}
             ListFooterComponent={routineActions}
+          />
+        )
+      ) : view === 'overview' ? (
+        sessions.length === 0 && routines.length === 0 ? (
+          <EmptyState
+            icon="barbell-outline"
+            title="No workouts yet"
+            subtitle="Your week, records and next workout show here. Start one from a routine, or start an empty one and add exercises as you go."
+            actionLabel={live ? undefined : 'Start a workout'}
+            onAction={live ? undefined : () => startWorkout()}
+            bottomOffset={tabBarHeight}
+          />
+        ) : (
+          <WorkoutOverview
+            live={live !== null}
+            onSeeAll={() => setView('history')}
+            refreshControl={pullSearch.refreshControl}
+            bottomPadding={listBottom.paddingBottom}
+            recent={recentSessions.map(session => (
+              <React.Fragment key={session.id}>
+                {renderHistoryRow({ item: { kind: 'session', key: session.id, session } })}
+              </React.Fragment>
+            ))}
           />
         )
       ) : view === 'history' ? (
