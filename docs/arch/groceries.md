@@ -1379,6 +1379,10 @@ write. "Computed first, corrected second" is the rule; this is the second half, 
   "Got it"/"Out of it" pair was missing, and it is the one answer with an outlet — it puts the row on
   the shopping list. That is what gives a review pass something to show for itself rather than being
   pure bookkeeping.
+- **Adding to the list is its own button, never a switch or a setting.** Swipe up and "Running low" pass
+  `addToList: false`, so they only mark the row and ignore `runningLowAddsToList`; the "Low, add to list" pill
+  under the card is `low` with `addToList: true`. A pass-wide toggle had to be set before every card that
+  needed it, and a button whose effect depended on a setting the card didn't show was ambiguous.
 - **"Restocked" is the one answer about a different packet.** Everything else asks about the packet the
   card was already holding; this says it has been replaced. So it is "still have it" over the row
   `acquiredRow` leaves (the same clear a receipt or scan does): frozen, opened and running low go,

@@ -5,7 +5,6 @@ import {
   PanResponder,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from 'react-native';
@@ -46,7 +45,6 @@ import { InlineAction } from './InlineAction';
 import { GroceryItemSheet } from './GroceryItemSheet';
 import { navigateToFoodSearchSettings } from './NutritionSearchSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import { useSettingsStore } from '../store/useSettingsStore';
 import { useTextScale } from '../hooks/useTextScale';
 import { ProgressBar } from './ProgressBar';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -108,11 +106,6 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors, textScaleFactor), [colors, textScaleFactor]);
 
   const answerPantryReview = useGroceryStore(s => s.answerPantryReview);
-  const runningLowAddsToList = useSettingsStore(s => s.runningLowAddsToList);
-  // One choice for the whole pass rather than one per card, so a swipe stays a
-  // swipe. Undefined follows the setting; reset each time the deck opens.
-  const [lowAddsToList, setLowAddsToList] = useState<boolean | undefined>(undefined);
-  const addToList = lowAddsToList ?? runningLowAddsToList;
   const revertPantryAnswer = useGroceryStore(s => s.revertPantryAnswer);
   const navigation = useNavigation<any>();
   const recipes = useRecipeStore(useShallow(s => s.recipes));
@@ -167,13 +160,12 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
     setDeck(buildPantryReviewDeck(grocery.items, new Date(), grocery.itemProducts));
     setIndex(0);
     setHistory([]);
-    setLowAddsToList(undefined);
     setEditingId(null);
     pan.setValue({ x: 0, y: 0 });
   }, [visible, pan]);
 
   const commit = useCallback(
-    (answer: PantryReviewAnswer) => {
+    (answer: PantryReviewAnswer, addToList = false) => {
       const card = deckRef.current.cards[indexRef.current];
       if (!card) return;
       // Snapshotted from the store rather than from the card, so the row put
@@ -191,7 +183,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       setHistory(h => [...h, { kind: 'answered', item: live ?? card.item, entry, answer, portions }]);
       setIndex(i => i + 1);
     },
-    [answerPantryReview, addToList]
+    [answerPantryReview]
   );
 
   /**
@@ -217,7 +209,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
    * finished state's counts would tick over a beat early.
    */
   const flingOut = useCallback(
-    (answer: PantryReviewAnswer) => {
+    (answer: PantryReviewAnswer, addToList = false) => {
       const toValue =
         answer === 'low' ? { x: 0, y: -SCREEN_HEIGHT }
         : answer === 'new' ? { x: 0, y: SCREEN_HEIGHT }
@@ -237,7 +229,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
         useNativeDriver: true,
       }).start(({ finished }) => {
         if (!finished) return;
-        commit(answer);
+        commit(answer, addToList);
         // `pan` is one shared node bound to whichever card sits at offset 0,
         // so resetting it here — before this commit's `setIndex` has actually
         // been rendered — snaps the card that just flew out back into view
@@ -299,10 +291,10 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       if (!entry || entry.kind !== 'answered' || entry.answer === answer) return;
       haptics.tap();
       revertPantryAnswer(entry.item, entry.entry, entry.portions);
-      const portions = answerPantryReview(entry.item.id, answer, { addToList });
+      const portions = answerPantryReview(entry.item.id, answer, { addToList: false });
       setHistory(h => h.map((e, idx) => (idx === i && e.kind === 'answered' ? { ...e, answer, portions } : e)));
     },
-    [answerPantryReview, addToList, history, revertPantryAnswer]
+    [answerPantryReview, history, revertPantryAnswer]
   );
 
   const responder = useMemo(
@@ -395,15 +387,6 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
             <Text style={styles.progressText}>
               {reviewed} of {cards.length} reviewed
             </Text>
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Add running low items to the grocery list</Text>
-              <Switch
-                value={addToList}
-                onValueChange={on => { haptics.tap(); setLowAddsToList(on); }}
-                trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-                accessibilityLabel="Add running low items to the grocery list"
-              />
-            </View>
           </View>
         )}
 
@@ -495,15 +478,23 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
                   </Animated.View>
                 ))}
             </View>
-            <InlineAction
-              label="Edit item"
-              icon="create-outline"
-              variant="neutral"
-              surface="page"
-              onPress={() => setEditingId(card.item.id)}
-              accessibilityLabel={`Edit ${card.item.name}`}
-              style={styles.editItem}
-            />
+            <View style={styles.cardActions}>
+              <InlineAction
+                label="Edit item"
+                icon="create-outline"
+                variant="neutral"
+                surface="page"
+                onPress={() => setEditingId(card.item.id)}
+                accessibilityLabel={`Edit ${card.item.name}`}
+              />
+              <InlineAction
+                label="Low, add to list"
+                icon="add"
+                tint={colors.orangeText}
+                onPress={() => flingOut('low', true)}
+                accessibilityLabel={`Mark ${card.item.name} as running low and add it to the grocery list`}
+              />
+            </View>
           </View>
         )}
 
@@ -777,8 +768,6 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) =>
     },
     title: { fontSize: font.xxl, fontWeight: fontWeight.bold, color: colors.text },
     progress: { paddingHorizontal: spacing.md, marginTop: spacing.md },
-    switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.smd, marginTop: spacing.sm },
-    switchLabel: { fontSize: font.sm, color: colors.text, flexShrink: 1 },
     progressText: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.sm },
 
     reviewWrap: { flex: 1 },
@@ -831,7 +820,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) =>
     },
 
     stage: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.md },
-    editItem: { alignSelf: 'center', marginTop: spacing.md },
+    cardActions: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: spacing.smd, marginTop: spacing.md },
     deck: { height: Math.round(CARD_HEIGHT * textScaleFactor) },
     card: {
       position: 'absolute',
