@@ -167,7 +167,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
   }
 
   /// The order `shieldReasons` in `src/utils/appShield.ts` reads them in.
-  private static let readingOrder = ["focus", "manual", "speedBump", "gate", "penalty", "schedule", "key"]
+  private static let readingOrder = ["focus", "manual", "speedBump", "gate", "unlock", "penalty", "schedule", "key"]
 
   /// Every reason that may hold an app right now, in reading order: the ones
   /// the app wrote at its last reconcile that haven't run out, and the ones the
@@ -218,7 +218,7 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     case "unlock":
       // A locked unlock holds these until enough of the day's work is done. The
       // app writes the whole sentence (`unlockBlockSubtitle`), as for a gate.
-      return state.detail.flatMap { $0.isEmpty ? nil : $0 }
+      return detail.flatMap { $0.isEmpty ? nil : $0 }
         ?? "Locked until enough of today’s work is done."
     case "key":
       // A tag locked these, and only the tag ends it. The app writes the whole

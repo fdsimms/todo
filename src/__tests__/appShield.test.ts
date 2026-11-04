@@ -813,6 +813,11 @@ describe('the reason the shield screen gives for each app', () => {
     ]);
   });
 
+  it('gives a locked unlock its own sentence and group', () => {
+    const reasons = shieldScreenReasons(shieldReasons(state({ unlockBlocks: [{ id: 'u1', title: 'Movie night', groupId: 'games' }] })));
+    expect(reasons).toEqual([expect.objectContaining({ reason: 'unlock', groupIds: ['games'], detail: expect.stringContaining('Movie night') })]);
+  });
+
   it('writes an empty list when nothing is blocking', () => {
     syncAppShield(state());
     const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ groups: { reasons: unknown } }];

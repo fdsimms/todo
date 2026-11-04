@@ -251,6 +251,8 @@ export function shieldScreenReasons(reasons: readonly ShieldReasonEntry[]): Shie
       : null,
     detail: r.reason === 'gate'
       ? gateSubtitle(r.titles ?? [])
+      : r.reason === 'unlock'
+        ? unlockBlockSubtitle(r.titles ?? [])
       : r.reason === 'penalty'
         ? r.cause ?? null
         : r.reason === 'schedule'

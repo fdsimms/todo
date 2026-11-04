@@ -51,8 +51,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
 - `src/utils/appShield.ts` — AppShieldState, ShieldReasonKind, ShieldReasonEntry, shieldReasons, speedBumpWanted, shieldScreenReasons, shieldGroupIds, shieldAllowSets, appShieldWanted, syncAppShield
-- `src/utils/appShieldReconcile.ts` — reconcileAppShield, outstandingGatesNow, liveGatesNow, currentShieldReasons, keyLockedNow, gateKeyNow, gateTitlesNow
-- `src/utils/appShield.ts` — AppShieldState, ShieldReasonKind, ShieldReasonEntry, shieldReasons, speedBumpWanted, shieldGroupIds, shieldAllowSets, appShieldWanted, syncAppShield
 - `src/utils/appShieldReconcile.ts` — reconcileAppShield, outstandingGatesNow, liveGatesNow, currentShieldReasons, keyLockedNow, gateKeyNow, unlockBlockKeyNow, lockedUnlockReleaseNow, gateTitlesNow
 - `src/utils/applyToAll.ts` — ApplyScope, applyToAllLabel, applyTargets
 - `src/utils/applyToAllOffer.ts` — ApplyOffer, setApplyOffer, clearApplyOffer, getApplyOffer, subscribeApplyOffer, resetApplyOffer

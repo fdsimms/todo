@@ -403,7 +403,7 @@ struct ShieldGroupsShared: Codable {
 /// One live reason as the shield screen says it. See `ShieldScreenReason` in the
 /// bridge's index.ts, which this mirrors field for field.
 struct ShieldReasonShared: Codable {
-  /// "focus", "manual", "speedBump", "gate", "penalty", "schedule" or "key".
+  /// "focus", "manual", "speedBump", "gate", "unlock", "penalty", "schedule" or "key".
   let reason: String
   let untilIso: String?
   let detail: String?
