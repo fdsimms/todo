@@ -283,6 +283,7 @@ Where each component can appear.
 - `src/components/MaxHeartRateSheet.tsx` — on SettingsGroupScreen
 - `src/components/MealEntrySheet.tsx` — on MealPlanScreen
 - `src/components/MealOverrideSheet.tsx` — on MealPlanScreen
+- `src/components/MealPickerRow.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +6 more
 - `src/components/MealReplaceItemSheet.tsx` — on MealPlanScreen
 - `src/components/MealSlotRow.tsx` — on MealPlanScreen
 - `src/components/MealStrip.tsx` — on TodayScreen

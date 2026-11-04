@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ScrollView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodLogEntry, type MealSlot } from '../types';
+import { type FoodLogEntry, type MealSlot } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -24,6 +24,7 @@ import {
 import { formatQuantityAmount } from '../utils/quantity';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
+import { MealPickerRow } from './MealPickerRow';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -232,6 +233,8 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
           />
         </View>
 
+        {asksMeal && <MealPickerRow value={chosenSlot} onChange={setChosenSlot} />}
+
         <Text style={styles.label}>{question}</Text>
         <View style={styles.body}>
           {counted && stepped ? (
@@ -335,22 +338,6 @@ export function EstimateAmountSheet({ visible, entry, onSave, onClose, saveLabel
               ))}
             </View>
           )}
-          {asksMeal && (
-            <View style={styles.mealBlock}>
-              <Text style={styles.mealLabel}>Which meal</Text>
-              <SegmentedControl<MealSlot | null>
-                options={[
-                  ...MEAL_SLOTS.map(s => ({ value: s as MealSlot | null, label: MEAL_SLOT_LABELS[s] })),
-                  { value: null, label: 'Other' },
-                ]}
-                value={chosenSlot}
-                onChange={setChosenSlot}
-                columns={3}
-                label="Which meal"
-                surface="page"
-              />
-            </View>
-          )}
           <Text style={styles.hint}>
             {counted
               ? `The estimate was ${wholeKcalText ? `${wholeKcalText} ` : ''}for ${whole?.servingText ?? ''}. The figures change with the count, so nothing is re-estimated. ${stepped ? 'Setting it back to' : 'Entering'} ${formatQuantityAmount(counted.count, counted.decimal)}${stepped ? '' : ` ${estimateCountNoun(counted, counted.count)}`} puts them back.`
@@ -432,13 +419,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   amount: { color: colors.textSecondary, fontSize: font.sm },
   partRow: { flexDirection: 'row', justifyContent: 'space-between' },
   partLabel: { flex: 1, marginRight: spacing.md },
-  mealBlock: { gap: spacing.sm, marginTop: spacing.xs },
-  mealLabel: {
-    color: colors.textSecondary,
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
   hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
 });

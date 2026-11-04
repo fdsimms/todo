@@ -9,6 +9,7 @@ import { LazySheet } from './LazySheet';
 import { FoodLogEntrySheet } from './FoodLogEntrySheet';
 import { TextField } from './TextField';
 import { SegmentedControl } from './SegmentedControl';
+import { MealPickerRow } from './MealPickerRow';
 import { UNIT_OPTIONS, amountRefusal, amountText, countFromTyped, countRefusal, factorFromTyped, type AmountUnit } from './EstimateAmountSheet';
 import { UnitMenuChip, OTHER_UNIT_KEY } from './UnitMenuChip';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -53,7 +54,7 @@ import { confirmLargeAmount } from '../utils/confirmLargeAmount';
 import { netWeight, plainGramsReading } from '../utils/cookware';
 import { useWeighIn } from '../hooks/useWeighIn';
 import { CookwareWeighIn } from './CookwareWeighIn';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot, type SavedMeal, type SavedMealItem } from '../types';
+import { type FoodNutrition, type MealSlot, type SavedMeal, type SavedMealItem } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -378,20 +379,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
           {...keyboardScroll.props}
         >
           {/* First, so the meal this log lands in is not missed below the foods. */}
-          <Text style={styles.mealLabel}>WHICH MEAL</Text>
-          <View style={styles.mealPicker}>
-            <SegmentedControl<MealSlot | null>
-              options={[
-                ...MEAL_SLOTS.map(s => ({ value: s as MealSlot | null, label: MEAL_SLOT_LABELS[s] })),
-                { value: null, label: 'Other' },
-              ]}
-              value={chosenSlot}
-              onChange={setChosenSlot}
-              columns={3}
-              label="Which meal"
-              surface="page"
-            />
-          </View>
+          <MealPickerRow value={chosenSlot} onChange={setChosenSlot} />
 
           <Text style={styles.hint}>
             Changes here apply to this log only, unless you save them to the meal.
@@ -710,14 +698,6 @@ function makeStyles(colors: Colors) {
     choiceText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
     actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.smd },
     addRow: { flexDirection: 'row', marginTop: spacing.smd, marginBottom: spacing.lg },
-    mealLabel: {
-      color: colors.textSecondary,
-      fontSize: font.xs,
-      fontWeight: fontWeight.semibold,
-      letterSpacing: 0.8,
-      marginBottom: spacing.xs,
-    },
-    mealPicker: { marginBottom: spacing.lg },
     summary: {
       flexDirection: 'row',
       alignItems: 'center',
