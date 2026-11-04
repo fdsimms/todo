@@ -81,6 +81,14 @@ export interface RewardUnlock {
    */
   guardsTaskId: string | null;
   /**
+   * The app group the shield blocks while this unlock is locked ("Switch
+   * Parental Controls" for a console's phone app), or null for none. Lifts the
+   * moment it opens. A group id as the app-groups store knows it; a removed one
+   * resolves to the fallback group like every other reason's. Device-local
+   * apps, so only the id is stored here. Rules in `src/utils/unlockShield.ts`.
+   */
+  blockGroupId?: string | null;
+  /**
    * A code kept for the person (a console's parental controls PIN), shown only
    * while the unlock is open. Never sent to the MCP server's reader.
    */

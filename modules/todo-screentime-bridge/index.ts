@@ -230,7 +230,7 @@ export function setAllowSets(sets: readonly (readonly string[])[]): boolean {
 }
 
 /** Why the apps are blocked, as the two extensions will read it back. */
-export type ShieldReason = 'penalty' | 'focus' | 'gate' | 'key' | 'schedule' | 'manual' | 'speedBump' | 'none';
+export type ShieldReason = 'penalty' | 'focus' | 'gate' | 'unlock' | 'key' | 'schedule' | 'manual' | 'speedBump' | 'none';
 
 export interface ShieldState {
   /**

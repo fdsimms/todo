@@ -10,6 +10,7 @@ const mockReconcile = jest.fn();
 jest.mock('../utils/appShieldReconcile', () => ({
   currentShieldReasons: () => mockReasons,
   outstandingGatesNow: () => mockGates,
+  lockedUnlockReleaseNow: () => ({ ids: [], dayKey: '2026-08-12' }),
   reconcileAppShield: () => mockReconcile(),
 }));
 const mockClearSpeedBump = jest.fn();
@@ -103,14 +104,14 @@ describe('releaseAllBlocks', () => {
     mockSession = { id: 's1' };
     live('gate', 'focus');
     releaseAllBlocks('emergency', 'Need the map to get home');
-    expect(useShieldReleaseStore.getState().releases).toEqual({ focusSessionId: 's1', gateTaskIds: ['walk'] });
+    expect(useShieldReleaseStore.getState().releases).toEqual({ focusSessionId: 's1', gateTaskIds: ['walk'], unlockDays: {} });
 
     // The task is done and the session is over: the next release forgets both.
     mockGates = [];
     mockSession = null;
     live('penalty');
     releaseAllBlocks('emergency', 'Need the map to get home');
-    expect(useShieldReleaseStore.getState().releases).toEqual({ focusSessionId: null, gateTaskIds: [] });
+    expect(useShieldReleaseStore.getState().releases).toEqual({ focusSessionId: null, gateTaskIds: [], unlockDays: {} });
   });
 
   it('records when, how, why and what ended, and keeps it off the wire as its own settings', () => {

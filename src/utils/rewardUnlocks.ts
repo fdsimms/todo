@@ -82,7 +82,7 @@ export function cleanIgnoreAfter(value: string | null | undefined): string | nul
 }
 
 /** What the form (and the MCP server's tools) edit on an unlock. */
-export type UnlockDraft = Pick<RewardUnlock, 'title' | 'glyph' | 'sharePct' | 'requiredTaskIds' | 'playMinutes' | 'freeOnWeekends' | 'freeOnVacation' | 'ignoreAfter' | 'guardsTaskId' | 'pin'>;
+export type UnlockDraft = Pick<RewardUnlock, 'title' | 'glyph' | 'sharePct' | 'requiredTaskIds' | 'playMinutes' | 'freeOnWeekends' | 'freeOnVacation' | 'ignoreAfter' | 'guardsTaskId' | 'blockGroupId' | 'pin'>;
 
 /** A draft as stored: trimmed, in range, no repeated requirement, blanks as null. */
 export function cleanUnlockDraft(draft: UnlockDraft): UnlockDraft {
@@ -96,6 +96,7 @@ export function cleanUnlockDraft(draft: UnlockDraft): UnlockDraft {
     freeOnVacation: !!draft.freeOnVacation,
     ignoreAfter: cleanIgnoreAfter(draft.ignoreAfter),
     guardsTaskId: draft.guardsTaskId || null,
+    blockGroupId: draft.blockGroupId || null,
     pin: draft.pin?.trim() || null,
   };
 }
@@ -121,6 +122,8 @@ export function unlockLooseningsOf(before: UnlockDraft, after: UnlockDraft): str
   const afterCut = cleanIgnoreAfter(after.ignoreAfter);
   if (afterCut && (!beforeCut || afterCut < beforeCut)) out.push('ignore tasks that start later in the day');
   if (before.guardsTaskId && before.guardsTaskId !== (after.guardsTaskId || null)) out.push('unlink its habit');
+  // Dropping or swapping the blocked group would lift the block the lock was set with.
+  if (before.blockGroupId && before.blockGroupId !== (after.blockGroupId || null)) out.push('stop blocking its apps');
   return out;
 }
 

@@ -72,6 +72,11 @@ jest.mock('../store/useNfcKeyStore', () => ({
   useNfcKeyStore: { getState: () => mockKeyState },
 }));
 
+let mockUnlockBlocks: { id: string; title: string; groupId: string }[] = [];
+jest.mock('../utils/unlockWorld', () => ({
+  lockedUnlockBlocksNow: () => mockUnlockBlocks,
+}));
+
 let mockSpeedBumpJson = '';
 jest.mock('../utils/screenTimeBridge', () => ({
   screenTimeBridge: () => ({ readSpeedBump: () => mockSpeedBumpJson }),
@@ -102,6 +107,7 @@ beforeEach(() => {
   mockFocus.session = null;
   mockManual.block = null;
   mockSpeedBumpJson = '';
+  mockUnlockBlocks = [];
   mockReleases.focusSessionId = null;
   mockReleases.gateTaskIds = [];
   mockVisible.mockReturnValue(true);
@@ -110,6 +116,12 @@ beforeEach(() => {
 });
 
 describe('reconcileAppShield', () => {
+  it('hands the shield the locked unlocks that hold apps', () => {
+    mockUnlockBlocks = [{ id: 'u', title: 'Switch', groupId: 'default' }];
+    reconcileAppShield();
+    expect(mockSync).toHaveBeenCalledWith(expect.objectContaining({ unlockBlocks: mockUnlockBlocks }));
+  });
+
   it('tells the block timer whether the shield is up, from the same reasons', () => {
     reconcileAppShield();
     expect(mockObserve).toHaveBeenLastCalledWith(false, [], expect.any(Date));

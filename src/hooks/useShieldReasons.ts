@@ -12,6 +12,10 @@ import { useManualBlockStore } from '../store/useManualBlockStore';
 import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
 import { isFocusReleased, isGateReleased } from '../utils/shieldRelease';
 import { useTaskStore } from '../store/useTaskStore';
+import { useRewardStore } from '../store/useRewardStore';
+import { useUnlockStore } from '../store/useUnlockStore';
+import { lockedUnlockBlocksNow } from '../utils/unlockWorld';
+import type { UnlockBlock } from '../utils/unlockBlockText';
 
 /** Just under 24.8 days, the largest delay setTimeout stores without overflowing. */
 const MAX_TIMER_MS = 2_147_483_647;
@@ -47,6 +51,13 @@ export function useShieldReasons(): ShieldReasonEntry[] {
       ? JSON.stringify(outstandingGates(s.tasks, isTaskVisible).filter(t => !isGateReleased(t.id, releases)).map(t => ({ title: t.title, own: t.gateGroupId ?? null })))
       : '[]'
   ));
+  // The same inputs `lockedUnlockBlocksNow` reads, so the page re-renders when
+  // an unlock opens or re-locks. Held as a string so a write that changes no
+  // lock costs no render; the stores below are read only to wake the selector.
+  useUnlockStore(s => s.unlocks);
+  useRewardStore(s => s.entries);
+  useSettingsStore(s => s.rewardsEnabled && s.vacationMode);
+  const unlockKey = useTaskStore(() => JSON.stringify(lockedUnlockBlocksNow()));
   const groups = useAppGroupStore(s => s.groups);
   const assignments = useAppGroupStore(s => s.assignments);
   const schedules = useAppGroupStore(s => s.schedules);
@@ -85,6 +96,7 @@ export function useShieldReasons(): ShieldReasonEntry[] {
       keyLocked: locked && canLock(keys),
       gateTitles: gateRows.map(g => g.title),
       gateGroupIds: gateRows.map(g => (g.own ? resolveGroupNow(g.own) : settingGroup)),
+      unlockBlocks: JSON.parse(unlockKey) as UnlockBlock[],
       pendingGate: null,
       groups: resolvedAssignments(),
       schedules,
@@ -92,5 +104,5 @@ export function useShieldReasons(): ShieldReasonEntry[] {
       now,
     };
     return shieldReasons(state);
-  }, [session, focusEnabled, penaltyUntil, penaltyEnabled, penaltyReason, gateEnabled, locked, keys, gateKey, manualBlock, now, groups, assignments, schedules]);
+  }, [session, focusEnabled, penaltyUntil, penaltyEnabled, penaltyReason, gateEnabled, locked, keys, gateKey, unlockKey, manualBlock, now, groups, assignments, schedules]);
 }

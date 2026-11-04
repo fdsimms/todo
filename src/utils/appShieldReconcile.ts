@@ -5,6 +5,8 @@ import { canLock } from './nfcKey';
 import { isTimedBlock, manualBlockWanted } from './manualBlock';
 import { liveSpeedBump, type LiveSpeedBump } from './speedBump';
 import { screenTimeBridge } from './screenTimeBridge';
+import { lockedUnlockBlocksNow } from './unlockWorld';
+import { getLogicalDayKey } from './dateUtils';
 import type { Task } from '../types';
 import { nextScheduleBoundary, resolvedGroups } from './blockSchedule';
 import { beginVisibleAtPass, getVisibleAt, isHiddenForVacation, isTaskVisible } from './visibilityUtils';
@@ -148,6 +150,7 @@ function buildShieldState(now: Date): AppShieldState {
     resolveGroup: expandGroupNow,
     gateTitles: gates.map(t => t.title),
     gateGroupIds: gates.map(groupOf),
+    unlockBlocks: lockedUnlockBlocksNow(now),
     pendingGate: pending
       ? { liveAt: pending.liveAt, titles: pending.tasks.map(t => t.title), groupIds: pending.tasks.map(groupOf) }
       : null,
@@ -180,6 +183,26 @@ export function gateKeyNow(): string {
   return liveGatesNow()
     .map(t => `${t.title}:${gateGroupFor(t, settingGroup, resolveGroupNow)}`)
     .join('\n');
+}
+
+/**
+ * The locked unlocks that hold apps shut, with their groups, as one string for
+ * the sync hook's own change check (the same job `gateKeyNow` does for gates).
+ */
+export function unlockBlockKeyNow(): string {
+  return lockedUnlockBlocksNow().map(b => `${b.title}:${resolveGroupNow(b.groupId)}`).join('\n');
+}
+
+/**
+ * The locked unlocks a release would end, and the logical day it holds for.
+ * Here rather than in `releaseBlocks.ts` so that file keeps one seam to the
+ * stores, the way it reads gates.
+ */
+export function lockedUnlockReleaseNow(now: Date): { ids: string[]; dayKey: string } {
+  return {
+    ids: lockedUnlockBlocksNow(now).map(b => b.id),
+    dayKey: getLogicalDayKey(now, useSettingsStore.getState().dayResetTime),
+  };
 }
 
 /** The gate titles standing in the way right now. */
