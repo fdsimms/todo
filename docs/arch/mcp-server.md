@@ -1072,7 +1072,10 @@ A dollar-priced reward can be `taxable`: `create_reward`/`update_reward` add the
   is an open, non-avoid task; a linked habit is a live avoid habit with no other link). Start is
   refused while it's locked, the same as the card offering no Start. A timer started here gets its
   notice and Live Activity on the phone when it syncs in (`useUnlockStore.initialize` settles the
-  notice from the rows). **The code is the phone's in both directions**: nothing the server returns
+  notice from the rows). `leaveOut` (categories by name, stacks and projects by id) replaces the
+  unlock's leave-out list; a name or id that doesn't exist is refused when it is added, and adding
+  to the list while locked is refused as a loosening. A category rename rewrites the lists that name
+  it in the replica too. **The code is the phone's in both directions**: nothing the server returns
   carries it and no tool writes it, so asking Claude is not a way round a lock the person set.
 - **Logged as `subject: 'reward'`**, a record only like a stack's. A reward, claim or goal has no
   task to revert; a bounty edit carries the task revert; a miss has its own `missed` action ("Marked

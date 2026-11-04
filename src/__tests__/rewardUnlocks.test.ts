@@ -3,7 +3,9 @@ import {
   addPlayTime,
   cleanPlayMinutes,
   cleanIgnoreAfter,
+  cleanIgnoreList,
   cleanUnlockSharePct,
+  renameInIgnoreList,
   coinsEarnedToday,
   coinsShortOf,
   coinsStillOpenToday,
@@ -279,6 +281,42 @@ describe('the cutoff time', () => {
     expect(earned).toBe(7);
     expect(open).toBe(coinsStillOpenToday([plain]));
     expect(coinsStillOpenToday([plain, cups])).toBeGreaterThan(open);
+  });
+
+  it('leaves out tasks filed in a listed category, stack or project, on both sides', () => {
+    const plain = task('plain', { estimatedMinutes: 30 });
+    const evening = task('evening', { estimatedMinutes: 30, groupId: 'g1' });
+    const hobby = task('hobby', { estimatedMinutes: 30, category: 'Hobbies' });
+    const wedding = task('wedding', { estimatedMinutes: 30, projectId: 'p1' });
+    const doneEvening = task('doneEvening', { completed: true, groupId: 'g1' });
+    const entries = [earn(5, at(9), { taskId: 'plain' }), earn(4, at(10), { taskId: 'doneEvening' }), earn(2, at(11), { taskId: 'gone' })];
+    const ignoreList = { categories: ['Hobbies'], stackIds: ['g1'], projectIds: ['p1'] };
+    const world = { entries, tasks: [plain, evening, hobby, wedding, doneEvening], onToday: [plain, evening, hobby, wedding], todayStart: TODAY, todayKey: KEY, vacation: false };
+    const { earned, open } = workCoinsToday({ ignoreAfter: null, ignoreList }, world);
+    expect(earned).toBe(7); // the done stack task drops out; a purged task's earning stays
+    expect(open).toBe(coinsStillOpenToday([plain]));
+    expect(workCoinsToday({ ignoreAfter: null, ignoreList: null }, world).open).toBeGreaterThan(open);
+  });
+
+  it('cleans a leave-out list and follows a category rename', () => {
+    expect(cleanIgnoreList(null)).toBeNull();
+    expect(cleanIgnoreList({ categories: [], stackIds: [''], projectIds: [] })).toBeNull();
+    expect(cleanIgnoreList({ categories: ['A', 'A'], stackIds: ['s'] })).toEqual({ categories: ['A'], stackIds: ['s'], projectIds: [] });
+    const list = { categories: ['Hobbies', 'Fun'], stackIds: [], projectIds: [] };
+    expect(renameInIgnoreList(list, 'Hobbies', 'Play')).toEqual({ categories: ['Play', 'Fun'], stackIds: [], projectIds: [] });
+    expect(renameInIgnoreList(list, 'Hobbies', 'Fun').categories).toEqual(['Fun']);
+    expect(renameInIgnoreList(list, 'Other', 'X')).toBe(list);
+    expect(renameInIgnoreList(null, 'Other', 'X')).toBeNull();
+  });
+
+  it('counts adding to the leave-out list as loosening, and removing from it as not', () => {
+    const base = { title: 'a', glyph: null, sharePct: 60, requiredTaskIds: [], playMinutes: 60, freeOnWeekends: false, freeOnVacation: false, ignoreAfter: null, guardsTaskId: null, blockGroupId: null, pin: null };
+    const some = { categories: ['Hobbies'], stackIds: [], projectIds: [] };
+    const words = ['leave out more categories, stacks or projects'];
+    expect(unlockLooseningsOf({ ...base, ignoreList: null }, { ...base, ignoreList: some })).toEqual(words);
+    expect(unlockLooseningsOf({ ...base, ignoreList: some }, { ...base, ignoreList: { ...some, stackIds: ['g'] } })).toEqual(words);
+    expect(unlockLooseningsOf({ ...base, ignoreList: some }, { ...base, ignoreList: null })).toEqual([]);
+    expect(unlockLooseningsOf({ ...base, ignoreList: some }, { ...base, ignoreList: some })).toEqual([]);
   });
 
   it('counts setting or moving it earlier as loosening, and removing or delaying it as not', () => {

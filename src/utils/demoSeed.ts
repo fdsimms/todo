@@ -4004,6 +4004,8 @@ function seedRewards(today: Date): void {
     freeOnWeekends: true,
     freeOnVacation: false,
     ignoreAfter: '20:30',
+    // Ideas are things to think about, not work that should hold a game shut.
+    ignoreList: { categories: ['Ideas'], stackIds: [], projectIds: [] },
     guardsTaskId: noGames.id,
     blockGroupId: 'default',
     pin: '4817',

@@ -295,6 +295,12 @@ work is done"). Rules in `src/utils/rewardUnlocks.ts`, rows in `reward_unlocks`
   has still to pay nor the coins it earned. "Drink 15 cups" is paced across the day, so counting what
   was left at 3pm held the unlock shut for work that wasn't late. Name it as a required task to make an
   unlock wait for it.
+- **A leave-out list names places a clock can't** (`RewardUnlock.ignoreList`, `isIgnoredByList`): tasks
+  in a listed category, stack or project count as neither owed nor earned, for an evening stack or a
+  hobby category. It hides nothing and changes no coins. Categories are stored by name, so
+  `useTaskStore.renameCategory` (and the MCP replica's) rewrites the lists that name one; stacks and
+  projects are ids. **Adding to it is a loosening** (`unlockLooseningsOf`), so a locked unlock can
+  only drop entries, in the form and over MCP.
 - **Required tasks count on the days they're due**, matched by family (`occurrenceFamilyKey`) so a
   repeating task's later rows match. The Rewards screen moves each requirement to its family's newest
   row (`repointRequirements`), so the retention window purging the row it was set on doesn't lose it.
