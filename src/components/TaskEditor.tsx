@@ -68,6 +68,8 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors, textScale } from '../theme';
 import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
+import { openExternalUrl } from '../utils/openExternalUrl';
+import { claudeChatUrl, taskChatPrompt } from '../utils/askClaude';
 import { runAfterTransition } from '../utils/afterPaint';
 import { resumeTasks } from '../utils/resumePrompt';
 import { BOUNTY_WITHDRAWN, DIFFICULTY_HINT, DIFFICULTY_PICKER_SEGMENTS, DIFFICULTY_SEGMENTS, bountyCoinsFor, canPostBounty, describeBounty, formatCoins, isBountyLive, liveBountyCount } from '../utils/rewards';
@@ -9048,6 +9050,20 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       Resuming stays open, where the switch does show the change. */}
                   {task.archived && <Toggle value onColor={colors.orange} />}
                 </TouchableOpacity>
+          <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); openExternalUrl(claudeChatUrl(taskChatPrompt(task))); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Discuss with Claude"
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Discuss with Claude</Text>
+              <Text style={styles.optionHint}>Start a chat about this task in the Claude app</Text>
+            </View>
+          </TouchableOpacity>
           <View style={styles.sep} />
           <TouchableOpacity
             style={styles.optionRow}

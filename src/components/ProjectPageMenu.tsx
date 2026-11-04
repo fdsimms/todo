@@ -5,6 +5,8 @@ import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { openExternalUrl } from '../utils/openExternalUrl';
+import { claudeChatUrl, projectChatPrompt } from '../utils/askClaude';
 import { useProjectActions } from '../hooks/useProjectActions';
 import { useProjectStore } from '../store/useProjectStore';
 import type { Project } from '../types';
@@ -111,6 +113,13 @@ export function ProjectPageMenu({ visible, onClose, anchor, project }: Props) {
         label="Start a fresh copy"
         hint="A new project with the same tasks, all open and undated"
         onPress={actions.startFresh}
+      />
+      <View style={styles.sep} />
+      <MenuRow card={card}
+        icon="chatbubble-ellipses-outline"
+        label="Discuss with Claude"
+        hint="Start a chat about this project in the Claude app"
+        onPress={() => { openExternalUrl(claudeChatUrl(projectChatPrompt(project))); }}
       />
       <View style={styles.sep} />
       <MenuRow card={card}
