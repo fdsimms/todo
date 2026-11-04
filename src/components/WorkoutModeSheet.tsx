@@ -22,6 +22,7 @@ import { useKeepAwake } from 'expo-keep-awake';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SheetModal } from './SheetModal';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { WorkoutVolumePill } from './WorkoutVolumePill';
 import { ActionMenu } from './ActionMenu';
 import type { CardAnchor } from './CardSheet';
 import { CountStepper } from './CountStepper';
@@ -712,6 +713,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
 
   // ==== render. Everything below is JSX ====
   const headerTitle = session?.title ?? 'Workout';
+  // Lifted so far, in a pill under the header. Left off until a weighted set is logged.
+  const liveVolumeKg = liftVolumeKg(sets, id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps') || null;
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close} name="WorkoutModeSheet">
       <ScreenAwake />
@@ -736,6 +739,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         {/* Under the header, not in a footer: the keyboard is up while sets are
             typed, and anything at the bottom of the sheet is behind it. */}
         {session && !finishing && <RestStrip sessionId={visible ? session.id : undefined} styles={styles} />}
+        {session && !finishing && <WorkoutVolumePill volumeKg={liveVolumeKg} unit={unit} />}
 
         {!session ? (
           <View style={styles.emptyWrap}>
