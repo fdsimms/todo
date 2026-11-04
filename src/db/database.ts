@@ -2448,6 +2448,8 @@ function runInitDatabase(): void {
     'ALTER TABLE rewards ADD COLUMN glyph TEXT',
     // Null on every existing unlock: all of today's work counts. See RewardUnlock.ignoreAfter.
     'ALTER TABLE reward_unlocks ADD COLUMN ignore_after TEXT',
+    // Null on every existing unlock: none blocks apps while locked. See RewardUnlock.blockGroupId.
+    'ALTER TABLE reward_unlocks ADD COLUMN block_group_id TEXT',
     // Null on every existing row: no row has had a second recipe fold into it
     // yet. See GroceryItem.recipeSources.
     'ALTER TABLE grocery_items ADD COLUMN recipe_sources TEXT',
@@ -8985,6 +8987,7 @@ function rowToRewardUnlock(row: Record<string, unknown>): RewardUnlock {
     freeOnVacation: row.free_on_vacation === 1,
     ignoreAfter: typeof row.ignore_after === 'string' && /^\d{2}:\d{2}$/.test(row.ignore_after) ? row.ignore_after : null,
     guardsTaskId: (row.guards_task_id as string | null) || null,
+    blockGroupId: (row.block_group_id as string | null) || null,
     pin: (row.pin as string | null) || null,
     playDay: (row.play_day as string | null) || null,
     playUsedMs: Math.max(0, Math.round(Number(row.play_used_ms) || 0)),
@@ -9003,11 +9006,11 @@ export function dbGetAllRewardUnlocks(): RewardUnlock[] {
 export function dbUpsertRewardUnlock(unlock: RewardUnlock): void {
   db.runSync(
     `INSERT OR REPLACE INTO reward_unlocks (id, title, glyph, created_at, share_pct, required_task_ids, play_minutes,
-       free_on_weekends, free_on_vacation, guards_task_id, pin, play_day, play_used_ms, play_extra_ms, play_started_at, ignore_after)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       free_on_weekends, free_on_vacation, guards_task_id, pin, play_day, play_used_ms, play_extra_ms, play_started_at, ignore_after, block_group_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [unlock.id, unlock.title, unlock.glyph, unlock.createdAt, unlock.sharePct, JSON.stringify(unlock.requiredTaskIds),
       unlock.playMinutes, unlock.freeOnWeekends ? 1 : 0, unlock.freeOnVacation ? 1 : 0, unlock.guardsTaskId, unlock.pin,
-      unlock.playDay, unlock.playUsedMs, unlock.playExtraMs, unlock.playStartedAt, unlock.ignoreAfter ?? null]
+      unlock.playDay, unlock.playUsedMs, unlock.playExtraMs, unlock.playStartedAt, unlock.ignoreAfter ?? null, unlock.blockGroupId ?? null]
   );
 }
 

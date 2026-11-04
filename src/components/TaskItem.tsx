@@ -3302,18 +3302,93 @@ const TaskItemRow = React.memo(function TaskItem({
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
   const penaltyLabel = penaltyChipLabel(task, penaltyShieldEnabled);
-  const hasOtherMeta = penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || travelNote !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
+  const hasOtherMeta = penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || (travelNote !== null && travelOptions.length === 0) || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
-  // A task the app wrote by itself says so on its row. Only a small sparkle
-  // inside the expanded panel did, so a "Review tomorrow's calendar" looked
-  // hand-made. Not on the nutrient rows, which are a different shape of row.
-  const automaticChip = task.generatedKind != null && !nutrientRow;
-  const notesStayInTitle = markersOnMeta && (hasNotes || hasAttachments) && !hasOtherMeta && !automaticChip && !deadlineOnMeta;
+  // A task the app wrote by itself says so on its row, in a tab on the card's
+  // top-left corner (see `autoTab` in the styles). Only a small sparkle inside
+  // the expanded panel did, so a "Review tomorrow's calendar" looked hand-made.
+  // Not on the nutrient rows, which are a different shape of row.
+  const showAutoTab = task.generatedKind != null && !nutrientRow;
+  // The comparison strip runs the full width of the card under the row's
+  // content, not inside the narrow content column beside the action buttons.
+  const showTravelStrip = (travelPending && travelCompareModes) || travelOptions.length > 0;
+  const notesStayInTitle = markersOnMeta && (hasNotes || hasAttachments) && !hasOtherMeta && !deadlineOnMeta;
+
+  // The calendar, directions and pin buttons.
+  const trailingActions = (
+    <>
+    {!selectionMode && showActions && canOpenTravelEvent && (
+      <TouchableOpacity
+        onPress={handleOpenTravelEvent}
+        hitSlop={8}
+        style={styles.mapBtn}
+        accessibilityRole="button"
+        accessibilityLabel={`Open the calendar event for ${task.title}`}
+      >
+        <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
+      </TouchableOpacity>
+    )}
+
+    {!selectionMode && showActions && mapsUrl && (
+      <TouchableOpacity
+        onPress={handleDirections}
+        hitSlop={8}
+        style={styles.mapBtn}
+        accessibilityRole="button"
+        accessibilityLabel={`Get directions to ${task.location} for ${task.title}`}
+      >
+        <Ionicons name="navigate-outline" size={iconSize.sm} color={colors.accent} />
+      </TouchableOpacity>
+    )}
+
+    {!selectionMode && showActions && showPin && canPinTask(task) && !pinWaiting && (
+      <TouchableOpacity
+        onPress={() => {
+          haptics.tap();
+          setPinOverride(!(pinOverride ?? pinLit));
+          pinWritesPending.current += 1;
+          // A frame later, so the glyph commits and paints before the
+          // screen-wide render the write causes. animateLayout goes with the
+          // write, since it applies to the next layout pass and would
+          // otherwise be spent on the glyph's own commit.
+          requestAnimationFrame(() => {
+            animateLayout();
+            togglePin(task.id);
+            pinWritesPending.current -= 1;
+            if (pinWritesPending.current === 0) setPinOverride(null);
+          });
+        }}
+        hitSlop={8}
+        style={styles.pinBtn}
+        accessibilityRole="button"
+        accessibilityState={{ selected: pinOverride ?? pinLit }}
+        accessibilityLabel={
+          (pinOverride ?? pinLit) ? `Unpin ${task.title}` : `Pin ${task.title}`
+        }
+      >
+        <PinIcon
+          filled={pinOverride ?? pinLit}
+          size={iconSize.sm}
+          color={(pinOverride ?? pinLit) ? colors.orangeText : colors.textSecondary}
+        />
+      </TouchableOpacity>
+    )}
+    </>
+  );
 
   const rowBody = (
-    <View style={[styles.row, isActive && styles.rowActive]}>
+    <View style={[styles.row, showTravelStrip && styles.rowWrap, showAutoTab && styles.rowBelowAutoTab, isActive && styles.rowActive]}>
       {task.priority > 0 && (
         <View style={[styles.priorityBar, { backgroundColor: priorityColor }]} />
+      )}
+
+      {/* After the priority bar, so the tab paints over the top of it: the bar
+          starts just under the tab rather than running beside it. */}
+      {showAutoTab && (
+        <View style={styles.autoTab} accessible accessibilityLabel="Added automatically">
+          <Ionicons name="sparkles-outline" size={iconSize.xs} color={colors.accentText} />
+          <Text style={styles.autoTabLabel} maxFontSizeMultiplier={textScale.badge} numberOfLines={1}>Auto</Text>
+        </View>
       )}
 
       {!nutrientRow && (
@@ -3791,7 +3866,7 @@ const TaskItemRow = React.memo(function TaskItem({
             dismissLabel={activeTitleOffer.kind === 'filed' ? 'Hide suggestion' : 'Not a date'}
           />
         )}
-        {(markersOnMeta || hasOtherMeta || automaticChip) && (
+        {(markersOnMeta || hasOtherMeta) && (
           <View style={styles.metaRow}>
             {morning && (
               <PressableScale
@@ -3922,12 +3997,6 @@ const TaskItemRow = React.memo(function TaskItem({
               >
                 <Ionicons name="list-outline" size={9} color={colors.textSecondary} />
                 <AnimatedNumber text={`${subtaskDoneCount}/${subtaskCount}`} value={subtaskDoneCount} style={styles.subtaskBadgeText} />
-              </View>
-            )}
-            {automaticChip && (
-              <View style={styles.metaChip} accessibilityLabel="Added automatically">
-                <Ionicons name="sparkles-outline" size={9} color={colors.textSecondary} />
-                <Text style={styles.subtaskBadgeText} numberOfLines={1}>Automatic</Text>
               </View>
             )}
             {task.generatedKind === 'calendarReview' && (
@@ -4139,12 +4208,12 @@ const TaskItemRow = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
-            {/* When leaving at the reminder gets you there. Beside the reminder
-                chip when on time, so the two read as one "leave, then arrive"
-                line; on its own line, with the start time, in the warning colour
-                when the arrival is after the start. */}
+            {/* When leaving at the reminder gets you there. Always on its own
+                line under the reminder chip, so it can't run into the row's
+                buttons whatever the width; with the start time, in the warning
+                colour, when the arrival is after the start. */}
             {travelArrival !== null && (
-              <View style={[styles.metaChip, travelArrival.late && styles.travelDisruptionChip]} accessibilityLabel={travelArrival.text}>
+              <View style={[styles.metaChip, styles.travelDisruptionChip]} accessibilityLabel={travelArrival.text}>
                 <Ionicons name="flag-outline" size={iconSize.xs} color={travelArrival.late ? colors.warningText : colors.textSecondary} />
                 <Text style={travelArrival.late ? styles.travelDisruptionLabel : styles.scheduledLabel} numberOfLines={2}>
                   {travelArrival.text}
@@ -4165,22 +4234,6 @@ const TaskItemRow = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
-            {travelPending && travelCompareModes && (
-              <View style={styles.travelChoices} pointerEvents="none" accessibilityLabel="Checking travel time">
-                <SegmentedControl
-                  label="Way of getting there"
-                  value={null}
-                  options={TRAVEL_MODES.map(mode => ({
-                    value: mode,
-                    label: '…',
-                    icon: TRAVEL_CHOICE_ICONS[mode],
-                    accessibilityLabel: TRAVEL_MODE_LABELS[mode],
-                    disabled: true,
-                  }))}
-                  onChange={() => {}}
-                />
-              </View>
-            )}
             {travelNote !== null && travelOptions.length === 0 && (
               <TouchableOpacity
                 style={styles.metaChip}
@@ -4197,34 +4250,6 @@ const TaskItemRow = React.memo(function TaskItem({
                   {travelNote}
                 </Text>
               </TouchableOpacity>
-            )}
-            {/* Every way of getting there as one track, so the shortest is
-                visible before leaving. The chosen one is raised; the others
-                switch the event to them, and a tap on the chosen one opens the
-                "Getting there" card. One control rather than a pill each: three
-                pills wrapped onto a line apiece in the narrow column. */}
-            {travelOptions.length > 0 && (
-              <View style={styles.travelChoices} pointerEvents={selectionMode ? 'none' : 'auto'}>
-                <SegmentedControl
-                  label="Way of getting there"
-                  fit
-                  value={travelOptions.find(c => c.selected)?.mode ?? null}
-                  options={travelOptions.map(choice => ({
-                    value: choice.mode,
-                    label: choice.duration,
-                    icon: TRAVEL_CHOICE_ICONS[choice.mode],
-                    accessibilityLabel: `${choice.label}${choice.fastest ? ', fastest' : ''}${choice.selected ? ', in use' : ''}`,
-                  }))}
-                  onChange={mode => {
-                    const choice = travelOptions.find(c => c.mode === mode);
-                    if (choice) handleTravelChoice(choice);
-                  }}
-                  onDeselect={() => {
-                    const choice = travelOptions.find(c => c.selected);
-                    if (choice) handleTravelChoice(choice);
-                  }}
-                />
-              </View>
             )}
             {/* The prep tasks that have to be done before walking out. Same
                 line-of-its-own treatment as the notice below, in the plain
@@ -4690,62 +4715,7 @@ const TaskItemRow = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && canOpenTravelEvent && (
-        <TouchableOpacity
-          onPress={handleOpenTravelEvent}
-          hitSlop={8}
-          style={styles.mapBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`Open the calendar event for ${task.title}`}
-        >
-          <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
-      )}
-
-      {!selectionMode && showActions && mapsUrl && (
-        <TouchableOpacity
-          onPress={handleDirections}
-          hitSlop={8}
-          style={styles.mapBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`Get directions to ${task.location} for ${task.title}`}
-        >
-          <Ionicons name="navigate-outline" size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
-      )}
-
-      {!selectionMode && showActions && showPin && canPinTask(task) && !pinWaiting && (
-        <TouchableOpacity
-          onPress={() => {
-            haptics.tap();
-            setPinOverride(!(pinOverride ?? pinLit));
-            pinWritesPending.current += 1;
-            // A frame later, so the glyph commits and paints before the
-            // screen-wide render the write causes. animateLayout goes with the
-            // write, since it applies to the next layout pass and would
-            // otherwise be spent on the glyph's own commit.
-            requestAnimationFrame(() => {
-              animateLayout();
-              togglePin(task.id);
-              pinWritesPending.current -= 1;
-              if (pinWritesPending.current === 0) setPinOverride(null);
-            });
-          }}
-          hitSlop={8}
-          style={styles.pinBtn}
-          accessibilityRole="button"
-          accessibilityState={{ selected: pinOverride ?? pinLit }}
-          accessibilityLabel={
-            (pinOverride ?? pinLit) ? `Unpin ${task.title}` : `Pin ${task.title}`
-          }
-        >
-          <PinIcon
-            filled={pinOverride ?? pinLit}
-            size={iconSize.sm}
-            color={(pinOverride ?? pinLit) ? colors.orangeText : colors.textSecondary}
-          />
-        </TouchableOpacity>
-      )}
+      {trailingActions}
 
       {showActions && (
         <SpotlitSwipeActionButtons
@@ -4764,6 +4734,51 @@ const TaskItemRow = React.memo(function TaskItem({
         <SelectionDot selected={selected} onPress={() => onSelect?.(task.id)} />
       )}
 
+      {travelPending && travelCompareModes && (
+        <View style={styles.travelStrip} pointerEvents="none" accessibilityLabel="Checking travel time">
+          <SegmentedControl
+            label="Way of getting there"
+            value={null}
+            options={TRAVEL_MODES.map(mode => ({
+              value: mode,
+              label: '…',
+              icon: TRAVEL_CHOICE_ICONS[mode],
+              accessibilityLabel: TRAVEL_MODE_LABELS[mode],
+              disabled: true,
+            }))}
+            onChange={() => {}}
+          />
+        </View>
+      )}
+      {/* Every way of getting there as one track, so the shortest is
+          visible before leaving. The chosen one is raised; the others
+          switch the event to them, and a tap on the chosen one opens the
+          "Getting there" card. One control rather than a pill each. It is
+          the row's last child so `rowWrap` puts it on a line of its own,
+          the full width of the card under the checkbox, title and buttons. */}
+      {travelOptions.length > 0 && (
+        <View style={styles.travelStrip} pointerEvents={selectionMode ? 'none' : 'auto'}>
+          <SegmentedControl
+            label="Way of getting there"
+            fit
+            value={travelOptions.find(c => c.selected)?.mode ?? null}
+            options={travelOptions.map(choice => ({
+              value: choice.mode,
+              label: choice.duration,
+              icon: TRAVEL_CHOICE_ICONS[choice.mode],
+              accessibilityLabel: `${choice.label}${choice.fastest ? ', fastest' : ''}${choice.selected ? ', in use' : ''}`,
+            }))}
+            onChange={mode => {
+              const choice = travelOptions.find(c => c.mode === mode);
+              if (choice) handleTravelChoice(choice);
+            }}
+            onDeselect={() => {
+              const choice = travelOptions.find(c => c.selected);
+              if (choice) handleTravelChoice(choice);
+            }}
+          />
+        </View>
+      )}
     </View>
   );
 
@@ -6007,6 +6022,43 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
   rowActive: {
     backgroundColor: colors.bgTertiary,
   },
+  // A row with a strip under its content: the strip's full-width basis wraps
+  // onto a second line. Only these rows wrap, so every other row keeps
+  // shrinking its title rather than ever wrapping a control onto a new line.
+  rowWrap: {
+    flexWrap: 'wrap',
+  },
+  // Room for `autoTab` above the content. The tab is at most about 25pt tall at
+  // the largest size its label grows to, so the title never meets it.
+  rowBelowAutoTab: {
+    paddingTop: 10 + 22,
+  },
+  // The "Auto" marker on a generated task. Flush to the card's top-left corner
+  // (cardClip rounds the outer corner) and over the priority bar, whose top it
+  // covers. A tint of the accent, not a fill: it labels the row, it isn't a
+  // control.
+  autoTab: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    zIndex: 1,
+    minHeight: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingLeft: spacing.md - 4,
+    paddingRight: spacing.sm + 2,
+    paddingVertical: 3,
+    borderBottomRightRadius: radius.md,
+    backgroundColor: colors.accentSubtle,
+  },
+  autoTabLabel: {
+    color: colors.accentText,
+    fontSize: font.xxs,
+    fontWeight: fontWeight.bold,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
   cardClip: {
     borderRadius: radius.md,
     overflow: 'hidden',
@@ -6357,8 +6409,12 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
   travelDisruptionChip: {
     flexBasis: '100%',
   },
-  travelChoices: {
+  // Last child of a `rowWrap` row: the full-width basis is what puts it on a
+  // line of its own, and the left padding lines it up with the checkbox.
+  travelStrip: {
     flexBasis: '100%',
+    paddingLeft: spacing.md,
+    paddingTop: spacing.xs,
   },
   travelDisruptionLabel: {
     color: colors.warningText,

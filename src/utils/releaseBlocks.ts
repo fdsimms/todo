@@ -1,4 +1,4 @@
-import { currentShieldReasons, outstandingGatesNow, reconcileAppShield } from './appShieldReconcile';
+import { currentShieldReasons, lockedUnlockReleaseNow, outstandingGatesNow, reconcileAppShield } from './appShieldReconcile';
 import type { ShieldReasonKind } from './appShield';
 import { generateId } from './id';
 import { screenTimeBridge } from './screenTimeBridge';
@@ -25,6 +25,8 @@ import { useShieldReleaseStore } from '../store/useShieldReleaseStore';
  *   the window that would have lifted it);
  * - a failed-task block: cleared (`setPenaltyShieldUntil(null)`), and the next
  *   failed task starts a fresh one;
+ * - a locked unlock's app block: remembered as released for the day, because an
+ *   unlock has no end of its own to write (`unlockDays`);
  * - a gate and a focus session: remembered as released (`useShieldReleaseStore`),
  *   because neither has an end of its own to write. The session keeps running.
  *
@@ -56,12 +58,14 @@ export function releaseAllBlocks(source: ReleaseSource, reason?: string): Shield
   // forgotten, so the list cannot grow without a reader.
   const session = useFocusStore.getState().session;
   const outstandingIds = new Set(outstandingGatesNow().map(t => t.id));
+  const unlockRelease = lockedUnlockReleaseNow(now);
   useShieldReleaseStore.getState().release(
     {
       gateTaskIds: ended.includes('gate') ? [...outstandingIds] : [],
       focusSessionId: ended.includes('focus') ? session?.id ?? null : null,
+      unlockIds: ended.includes('unlock') ? unlockRelease.ids : [],
     },
-    { focusSessionId: session?.id ?? null, outstandingGateIds: outstandingIds },
+    { focusSessionId: session?.id ?? null, outstandingGateIds: outstandingIds, dayKey: unlockRelease.dayKey },
   );
 
   // Scanning the tag that raised the lock is how that lock ends, not an early

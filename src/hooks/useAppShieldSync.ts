@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { AppState, Platform } from 'react-native';
-import { gateKeyNow, reconcileAppShield } from '../utils/appShieldReconcile';
+import { gateKeyNow, reconcileAppShield, unlockBlockKeyNow } from '../utils/appShieldReconcile';
+import { useRewardStore } from '../store/useRewardStore';
+import { useUnlockStore } from '../store/useUnlockStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
@@ -96,6 +98,8 @@ export function useAppShieldSync(): void {
         state.gateShieldEnabled !== prev.gateShieldEnabled ||
         state.initialized !== prev.initialized
       ) reconcile();
+      // Rewards off, or vacation on, changes whether an unlock is locked.
+      if (state.rewardsEnabled !== prev.rewardsEnabled || state.vacationMode !== prev.vacationMode) reconcileIfKeyChanged();
     });
     // A tag scan, or the lock button in Settings, writes the key store; the
     // shield has to follow in the same breath or a tap would unlock nothing
@@ -126,12 +130,22 @@ export function useAppShieldSync(): void {
     // mean finishing the walk and still being locked out of the apps. Compared
     // by the titles it resolves to rather than firing on every task write,
     // since most of them change nothing here and each one costs a native call.
-    let lastGateKey = gateKeyNow();
-    const unsubscribeTasks = useTaskStore.subscribe(() => {
-      const key = gateKeyNow();
+    // A locked unlock that holds a group of apps follows the same rule, and
+    // opens (or re-locks) on a task write, a coin write, an edit to the unlock
+    // or vacation mode, so each of those is watched below.
+    let lastGateKey = `${gateKeyNow()}\n--\n${unlockBlockKeyNow()}`;
+    const reconcileIfKeyChanged = () => {
+      const key = `${gateKeyNow()}\n--\n${unlockBlockKeyNow()}`;
       if (key === lastGateKey) return;
       lastGateKey = key;
       reconcile();
+    };
+    const unsubscribeTasks = useTaskStore.subscribe(reconcileIfKeyChanged);
+    const unsubscribeCoins = useRewardStore.subscribe((state, prev) => {
+      if (state.entries !== prev.entries) reconcileIfKeyChanged();
+    });
+    const unsubscribeUnlocks = useUnlockStore.subscribe((state, prev) => {
+      if (state.unlocks !== prev.unlocks) reconcileIfKeyChanged();
     });
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') reconcile();
@@ -146,6 +160,8 @@ export function useAppShieldSync(): void {
       unsubscribeManual();
       unsubscribeGroups();
       unsubscribeTasks();
+      unsubscribeCoins();
+      unsubscribeUnlocks();
       subscription.remove();
     };
   }, []);

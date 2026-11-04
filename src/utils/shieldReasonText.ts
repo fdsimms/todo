@@ -1,4 +1,5 @@
 import type { ShieldReasonEntry } from './appShield';
+import { unlockBlockSubtitle } from './unlockBlockText';
 
 /**
  * The words the Screen Time page uses for why the apps are blocked, kept out
@@ -43,6 +44,8 @@ function reasonLines(entry: ShieldReasonEntry, formatTime: (iso: string) => stri
       const rest = titles.length - named.length;
       return rest > 0 ? [...named, `${rest} more ${rest === 1 ? 'task isn’t' : 'tasks aren’t'} done yet.`] : named;
     }
+    case 'unlock':
+      return [unlockBlockSubtitle(entry.titles ?? [])];
     case 'penalty': {
       const time = entry.until ? formatTime(entry.until) : null;
       const cause = entry.cause?.trim() ? entry.cause.trim() : null;
@@ -86,8 +89,7 @@ export function shieldHeadlineNote(reasonCount: number, selectedCount: number): 
       ? 'Choose apps, then pick when they get blocked.'
       : 'Choose apps below, or these reasons have nothing to block.';
   }
-  if (reasonCount === 0) return null;
-  return 'The block lifts when every reason is gone, or when a key tag or the emergency button ends them.';
+  return null;
 }
 
 /**

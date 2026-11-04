@@ -319,6 +319,36 @@ describe('what syncAppShield leaves behind for the extension', () => {
  * is the one where it meets the penalty — because that one is the race this
  * module exists for, reappearing in the process that can't see any of it.
  */
+describe('a locked unlock holding apps', () => {
+  const held = { unlockBlocks: [{ id: 'u', title: 'Switch', groupId: 'switchapp' }] };
+
+  it('wants the apps blocked and names its group', () => {
+    expect(appShieldWanted(state(held))).toBe(true);
+    expect(shieldReasons(state(held))).toEqual([
+      expect.objectContaining({ reason: 'unlock', titles: ['Switch'], groupIds: ['switchapp'] }),
+    ]);
+  });
+
+  it('stops once nothing is locked', () => {
+    expect(appShieldWanted(state({ unlockBlocks: [] }))).toBe(false);
+  });
+
+  it('counts as an other reason, so a penalty running out cannot lift it', () => {
+    syncAppShield(state({ ...held, penaltyUntil: LATER, penaltyEnabled: true }));
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(
+      expect.objectContaining({ otherReasonWantsShield: true, groups: expect.objectContaining({ otherGroupIds: ['switchapp'] }) }),
+    );
+  });
+
+  it('says why on the shield screen and blocks its group', () => {
+    syncAppShield(state(held));
+    expect(mockBridge.setShieldState).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'unlock', detail: 'Switch is locked until enough of today’s work is done.' }),
+    );
+    expect(mockBridge.applyShield).toHaveBeenCalledWith(['switchapp']);
+  });
+});
+
 describe('a gate', () => {
   const gated = { gateEnabled: true, gateTitles: ['Morning walk'] };
 

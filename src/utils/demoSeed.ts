@@ -4005,6 +4005,7 @@ function seedRewards(today: Date): void {
     freeOnVacation: false,
     ignoreAfter: '20:30',
     guardsTaskId: noGames.id,
+    blockGroupId: 'default',
     pin: '4817',
   });
 }

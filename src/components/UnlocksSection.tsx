@@ -8,6 +8,9 @@ import type { CoinEntry, RewardUnlock, Task } from '../types';
 import { useUnlockStore, type UnlockDraft } from '../store/useUnlockStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useAppGroupStore } from '../store/useAppGroupStore';
+import { allGroups, resolveGroupId } from '../utils/appGroups';
+import { AppGroupChecklist } from './AppGroupChecklist';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -78,6 +81,7 @@ const EMPTY_DRAFT: UnlockDraft = {
   freeOnVacation: false,
   ignoreAfter: null,
   guardsTaskId: null,
+  blockGroupId: null,
   pin: null,
 };
 
@@ -89,6 +93,8 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
   const [cutoffPickerOpen, setCutoffPickerOpen] = useState(false);
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const unlocks = useUnlockStore(s => s.unlocks);
+  const customGroups = useAppGroupStore(s => s.groups);
+  const groupsMeta = useAppGroupStore(s => s.meta);
   const vacation = useSettingsStore(s => s.vacationMode);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   // What Today shows: the work the share is a share of.
@@ -124,7 +130,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
     setFields(from ? {
       title: from.title, glyph: from.glyph, sharePct: from.sharePct, requiredTaskIds: from.requiredTaskIds,
       playMinutes: from.playMinutes, freeOnWeekends: from.freeOnWeekends, freeOnVacation: from.freeOnVacation,
-      ignoreAfter: from.ignoreAfter ?? null, guardsTaskId: from.guardsTaskId, pin: from.pin,
+      ignoreAfter: from.ignoreAfter ?? null, guardsTaskId: from.guardsTaskId, blockGroupId: from.blockGroupId ?? null, pin: from.pin,
     } : EMPTY_DRAFT);
     setDraft(next);
   };
@@ -342,6 +348,17 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
           )}
         </View>
         </FormField>
+
+        {Platform.OS === 'ios' ? (
+          <FormField label="Blocks apps while locked" hint="Blocks this group of apps until it’s unlocked, such as your console’s companion app. Groups are set up in Screen Time settings.">
+            <AppGroupChecklist
+              groups={allGroups(customGroups, groupsMeta)}
+              selectedIds={fields.blockGroupId ? [resolveGroupId(customGroups, fields.blockGroupId, groupsMeta)] : []}
+              onToggle={groupId => { haptics.tap(); set('blockGroupId', fields.blockGroupId && resolveGroupId(customGroups, fields.blockGroupId, groupsMeta) === groupId ? null : groupId); }}
+              bare
+            />
+          </FormField>
+        ) : null}
 
         {editingLocked && editingUnlock?.pin ? (
           // A saved code stays hidden and fixed while it's locked, or opening the editor

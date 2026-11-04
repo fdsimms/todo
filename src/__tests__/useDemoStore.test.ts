@@ -2382,6 +2382,7 @@ describe('demo seed — people', () => {
     const [unlock] = useUnlockStore.getState().unlocks;
     expect(unlock).toMatchObject({ title: 'Switch', sharePct: 60, playMinutes: 120, pin: '4817', ignoreAfter: '20:30' });
     expect(unlock.guardsTaskId).not.toBeNull();
+    expect(unlock.blockGroupId).toBe('default');
   });
 
   it('seeds coins and rewards switched on, with every kind of entry', () => {

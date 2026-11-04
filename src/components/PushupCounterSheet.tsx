@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, AppState, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AppState, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +19,7 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { AnimatedNumber } from './AnimatedNumber';
 import { InlineAction } from './InlineAction';
+import { HoldToConfirmButton } from './HoldToConfirmButton';
 import { BUTTON_LABEL } from '../copy/shared';
 import { haptics } from '../utils/haptics';
 import { MISSION_GIVE_UP_HOLD_MS } from '../utils/missions';
@@ -377,7 +378,7 @@ export function PushupCounterSheet({
         </View>
         {onGiveUp && !counted && (
           <View style={[styles.giveUpWrap, { paddingBottom: insets.bottom + spacing.md }]}>
-            <GiveUpButton onGiveUp={onGiveUp} colors={colors} styles={styles} />
+            <GiveUpButton onGiveUp={onGiveUp} styles={styles} />
           </View>
         )}
       </View>
@@ -405,56 +406,22 @@ function cardText(mode: CountMode, depthBlocked: boolean, cameraLost: boolean): 
 }
 
 /**
- * The way out of a ringing mission that isn't the mission: held for
- * `MISSION_GIVE_UP_HOLD_MS`, filling as it goes, and nothing on a shorter
- * press. Long on purpose, so stopping the alarm this way is a decision made
- * awake rather than a tap made half asleep.
+ * The way out of a ringing mission that isn't the mission: a hold of
+ * `MISSION_GIVE_UP_HOLD_MS` and nothing on a shorter press.
  */
-function GiveUpButton({ onGiveUp, colors, styles }: {
+function GiveUpButton({ onGiveUp, styles }: {
   onGiveUp: () => void;
-  colors: Colors;
   styles: ReturnType<typeof makeStyles>;
 }) {
-  const fill = useRef(new Animated.Value(0)).current;
-  const holding = useRef<Animated.CompositeAnimation | null>(null);
   const seconds = Math.round(MISSION_GIVE_UP_HOLD_MS / 1000);
-
-  const start = () => {
-    haptics.impactLight();
-    holding.current = Animated.timing(fill, {
-      toValue: 1,
-      duration: MISSION_GIVE_UP_HOLD_MS,
-      useNativeDriver: false,
-    });
-    holding.current.start(({ finished }) => {
-      if (!finished) return;
-      haptics.warning();
-      onGiveUp();
-    });
-  };
-  const stop = () => {
-    holding.current?.stop();
-    holding.current = null;
-    Animated.timing(fill, { toValue: 0, duration: 150, useNativeDriver: false }).start();
-  };
-
   return (
     <>
-      <Pressable
-        onPressIn={start}
-        onPressOut={stop}
-        style={styles.giveUp}
-        accessibilityRole="button"
+      <HoldToConfirmButton
+        label="Give up"
+        holdMs={MISSION_GIVE_UP_HOLD_MS}
+        onConfirm={onGiveUp}
         accessibilityLabel={`Give up, hold for ${seconds} seconds`}
-      >
-        <Animated.View
-          style={[
-            styles.giveUpFill,
-            { width: fill.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }) },
-          ]}
-        />
-        <Text style={styles.giveUpText}>Give up</Text>
-      </Pressable>
+      />
       <Text style={styles.giveUpNote}>
         Hold for {seconds} seconds. The alarm stops, and Activity records that you gave up.
       </Text>
@@ -572,26 +539,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   giveUpWrap: {
     paddingHorizontal: spacing.lg,
-  },
-  giveUp: {
-    minHeight: 50,
-    borderRadius: radius.md,
-    backgroundColor: colors.bgSecondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  giveUpFill: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: colors.redFill,
-  },
-  giveUpText: {
-    color: colors.redText,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
   },
   giveUpNote: {
     color: colors.textSecondary,

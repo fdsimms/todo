@@ -23,6 +23,8 @@ interface Props {
   iconColor?: string;
   label: string;
   labelColor?: string;
+  /** A small red pill beside the label, for a row that is in effect right now (a group that is blocking). */
+  badge?: string;
   /**
    * The line under the label. Give one only where the control doesn't already
    * say what it does — a toggle labelled "24-hour time" doesn't need a hint
@@ -96,7 +98,7 @@ interface Props {
  * semantic would reach into all five editors.
  */
 export function SettingsRow({
-  icon, iconColor, label, labelColor, hint, alwaysShowHint, value, stackValue, toggle, chevron, expanded, busy,
+  icon, iconColor, label, labelColor, badge, hint, alwaysShowHint, value, stackValue, toggle, chevron, expanded, busy,
   trailing, children, onPress, disabled, tight, entryId,
   accessibilityLabel, accessibilityHint,
 }: Props) {
@@ -136,7 +138,14 @@ export function SettingsRow({
         />
       )}
       <View style={styles.rowContent}>
-        <Text style={[styles.rowLabel, !!labelColor && { color: labelColor }]}>{label}</Text>
+        {badge ? (
+          <View style={styles.rowLabelLine}>
+            <Text style={[styles.rowLabel, styles.rowLabelFlex, !!labelColor && { color: labelColor }]}>{label}</Text>
+            <View style={styles.rowBadge}><Text style={styles.rowBadgeText}>{badge}</Text></View>
+          </View>
+        ) : (
+          <Text style={[styles.rowLabel, !!labelColor && { color: labelColor }]}>{label}</Text>
+        )}
         {showHint && <Text style={[styles.rowHint, !!children && styles.rowHintSpaced]}>{hint}</Text>}
         {valueBelow && <Text style={[styles.rowValue, styles.rowValueBelow]}>{value}</Text>}
         {children}

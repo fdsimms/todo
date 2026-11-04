@@ -215,6 +215,11 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // which is the one thing the app cannot work out for this screen.
       return detail.flatMap { $0.isEmpty ? nil : $0 }
         ?? "A task has to be done first. Open dundundun to see which."
+    case "unlock":
+      // A locked unlock holds these until enough of the day's work is done. The
+      // app writes the whole sentence (`unlockBlockSubtitle`), as for a gate.
+      return state.detail.flatMap { $0.isEmpty ? nil : $0 }
+        ?? "Locked until enough of today’s work is done."
     case "key":
       // A tag locked these, and only the tag ends it. The app writes the whole
       // sentence, for the same reason a gate does: a fixed line here would be a

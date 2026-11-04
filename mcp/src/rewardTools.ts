@@ -92,6 +92,8 @@ export interface SerializedUnlock {
   linkedHabitId?: string;
   /** It keeps a code (a parental controls PIN) for the person. The code itself is never shown here. */
   hasCode?: true;
+  /** It blocks a group of apps on the phone while locked. Which group is the phone's to set, not Claude's. */
+  blocksAppsWhileLocked?: true;
 }
 
 export interface RewardsReport {
@@ -483,6 +485,7 @@ function serializeUnlock(
     ...(u.ignoreAfter ? { ignoreTasksStartingAfter: u.ignoreAfter } : {}),
     ...(habit ? { linkedHabit: replica.displayTitle(habit), linkedHabitId: habit.id } : {}),
     ...(u.pin ? { hasCode: true as const } : {}),
+    ...(u.blockGroupId ? { blocksAppsWhileLocked: true as const } : {}),
   };
 }
 

@@ -319,18 +319,15 @@ export function ScreenTimeScreen() {
               )
             )}
             {blocked && (
-              <>
-                <TouchableOpacity
-                  style={[styles.endAll, showTagCta && styles.endAllBelowCta]}
-                  onPress={openEmergency}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel="End all blocks. Emergency, saved in the record."
-                >
-                  <Text style={styles.endAllText}>End all blocks…</Text>
-                </TouchableOpacity>
-                <Text style={styles.endAllNote}>Emergency. Saved in the record.</Text>
-              </>
+              <TouchableOpacity
+                style={[styles.endAll, showTagCta && styles.endAllBelowCta]}
+                onPress={openEmergency}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="End all blocks"
+              >
+                <Text style={styles.endAllText}>End all blocks…</Text>
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -378,7 +375,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   endAllBelowCta: { marginTop: spacing.sm },
   endAllText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-  endAllNote: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, textAlign: 'center', marginTop: spacing.xsm, marginHorizontal: spacing.xs },
   ctaHint: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     marginTop: spacing.md, padding: spacing.smd, borderRadius: radius.md, backgroundColor: colors.bgTertiary,
