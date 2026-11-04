@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useSyncExternalStore } from 'react';
-import { InputAccessoryView, Keyboard, Platform, StyleSheet, Text, View } from 'react-native';
+import { InputAccessoryView, Keyboard, Platform, StyleSheet, Text } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { AMOUNT_OPERATORS, type AmountOperator } from '../utils/amountMath';
@@ -12,7 +12,8 @@ import {
   unregisterAccessory,
 } from '../utils/accessoryStack';
 import { BUTTON_LABEL } from '../copy/shared';
-import { AccessoryBar } from './AccessoryBar';
+import { AccessoryBar, AccessoryCapsule, accessoryFill } from './AccessoryBar';
+import { glassSupported } from './GlassLayer';
 
 /**
  * Every number-pad TextInput in the app points its `inputAccessoryViewID` at
@@ -72,16 +73,22 @@ export function NumberPadAccessory({ onNext, onOperator }: {
   if (!ios || !isTop) return null;
 
   const styles = makeStyles(colors);
+  const glass = glassSupported();
+  const textCapsule = glass ? styles.textCapsule : undefined;
   return (
-    <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor={colors.bgSecondary}>
+    <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor={accessoryFill(colors)}>
       <AccessoryBar style={[styles.bar, onNext && styles.barWithNext]}>
-        {onNext && <SheetHeaderButton label="Next" role="cancel" onPress={onNext} />}
+        {onNext && (
+          <AccessoryCapsule style={textCapsule}>
+            <SheetHeaderButton label="Next" role="cancel" onPress={onNext} />
+          </AccessoryCapsule>
+        )}
         {onOperator && (
-          <View style={styles.operators}>
+          <AccessoryCapsule style={styles.operators}>
             {AMOUNT_OPERATORS.map(({ op, glyph, label }) => (
               <PressableScale
                 key={op}
-                style={styles.operator}
+                style={[styles.operator, glass && styles.operatorOnGlass]}
                 haptic
                 onPress={() => onOperator(op)}
                 accessibilityLabel={label}
@@ -89,9 +96,11 @@ export function NumberPadAccessory({ onNext, onOperator }: {
                 <Text style={styles.operatorGlyph}>{glyph}</Text>
               </PressableScale>
             ))}
-          </View>
+          </AccessoryCapsule>
         )}
-        <SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => Keyboard.dismiss()} />
+        <AccessoryCapsule style={textCapsule}>
+          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => Keyboard.dismiss()} />
+        </AccessoryCapsule>
       </AccessoryBar>
     </InputAccessoryView>
   );
@@ -117,5 +126,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // The capsule is the surface, so the operator keys lose their own fill.
+  operatorOnGlass: { backgroundColor: 'transparent', height: 40 },
+  textCapsule: { paddingHorizontal: spacing.smd },
   operatorGlyph: { fontSize: font.lg, fontWeight: fontWeight.medium, color: colors.text },
 });

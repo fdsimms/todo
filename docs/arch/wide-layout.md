@@ -50,7 +50,9 @@ repeated the shape, which is why it is now one set of caps in `frameWidth.ts` an
   full of unrelated ones.
 - **The keyboard accessory strip is `AccessoryBar`.** An `InputAccessoryView` gets the window's whole width
   (a Mac does draw one, at the bottom of the window), so its tokens sat at one end and its confirm at the
-  other. The strip keeps its full-width fill and its content is a card-width column under the card.
+  other. The strip keeps its full-width fill and its content is a card-width column under the card. Where
+  Liquid Glass is available the fill is dropped and each control sits in an `AccessoryCapsule` instead, in the
+  same card-width column.
 - **A tall picker scrolls under its header** (`pickerCardMaxHeightFor`), so Cancel and Save can't leave a
   window as short as `MIN_WINDOW_SIZE` allows.
 - **Floating bars sit over the list pane, not across the window** (`FloatingLayer`, `floatingLayerInsetFor`).

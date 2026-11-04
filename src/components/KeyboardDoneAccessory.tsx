@@ -5,7 +5,8 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { fontWeight, font, iconSize, radius, spacing, type Colors } from '../theme';
 import { BUTTON_LABEL } from '../copy/shared';
 import { PressableScale } from './PressableScale';
-import { AccessoryBar } from './AccessoryBar';
+import { AccessoryBar, AccessoryCapsule, accessoryFill, ACCESSORY_CAPSULE_HEIGHT } from './AccessoryBar';
+import { GlassLayer, glassSupported } from './GlassLayer';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import {
   isTopAccessory,
@@ -64,16 +65,19 @@ function DoneBar() {
   const colors = useColors();
   const styles = makeStyles(colors);
   return (
-    <InputAccessoryView nativeID={DONE_ACCESSORY_ID} backgroundColor={colors.bgSecondary}>
+    <InputAccessoryView nativeID={DONE_ACCESSORY_ID} backgroundColor={accessoryFill(colors)}>
       <AccessoryBar style={styles.bar}>
-        <PressableScale
-          onPress={() => Keyboard.dismiss()}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={BUTTON_LABEL.done}
-        >
-          <Text style={styles.label}>{BUTTON_LABEL.done}</Text>
-        </PressableScale>
+        <AccessoryCapsule>
+          <PressableScale
+            onPress={() => Keyboard.dismiss()}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={BUTTON_LABEL.done}
+            style={glassSupported() ? styles.doneOnGlass : undefined}
+          >
+            <Text style={styles.label}>{BUTTON_LABEL.done}</Text>
+          </PressableScale>
+        </AccessoryCapsule>
       </AccessoryBar>
     </InputAccessoryView>
   );
@@ -85,6 +89,7 @@ function FloatingDone() {
   const keyboardHeight = useKeyboardHeight(wanted);
   if (!wanted || keyboardHeight <= 0) return null;
   const styles = makeStyles(colors);
+  const glass = glassSupported();
   return (
     <View pointerEvents="box-none" style={[styles.floatingHost, { bottom: keyboardHeight + spacing.sm }]}>
       <PressableScale
@@ -92,8 +97,10 @@ function FloatingDone() {
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={BUTTON_LABEL.done}
-        style={[styles.chip, shadows.card]}
+        style={glass ? [styles.chip, styles.chipOnGlass] : [styles.chip, shadows.card]}
       >
+        {/* The glass draws its own depth, so the card shadow and hairline come off. */}
+        <GlassLayer interactive style={styles.chipRadius} />
         <Ionicons name="chevron-down" size={iconSize.sm} color={colors.accentText} />
         <Text style={styles.label}>{BUTTON_LABEL.done}</Text>
       </PressableScale>
@@ -122,5 +129,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.separator,
+  },
+  chipOnGlass: { backgroundColor: 'transparent', borderWidth: 0, minHeight: ACCESSORY_CAPSULE_HEIGHT },
+  chipRadius: { borderRadius: radius.full },
+  doneOnGlass: {
+    minHeight: ACCESSORY_CAPSULE_HEIGHT,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.smd,
   },
 });
