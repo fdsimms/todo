@@ -1,0 +1,1 @@
+{ "message": "Tasks and projects now have Discuss with Claude (an icon on an expanded task or an item in its long-press menu, and in the project menu). It opens the Claude app on a new chat about that task or project. If Claude is connected to your sync server it can look the item up; otherwise the title and notes are included.", "date": "2026-11-04" }

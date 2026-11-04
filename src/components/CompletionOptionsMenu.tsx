@@ -27,6 +27,8 @@ interface Props {
   /** Records a miss and ends the rest of the chain, rather than moving into its next step. */
   onEndChain?: () => void;
   onDuplicate?: () => void;
+  /** Opens the Claude app on a new chat about this task. */
+  onDiscuss?: () => void;
   onClose: () => void;
 }
 
@@ -38,7 +40,7 @@ interface Props {
  * that doesn't repeat has no next date to skip to, so it gets Mark missed
  * (which closes it) and the third.
  */
-export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeoneElse, takeOffCount, onTakeOff, onNextStep, onPrevStep, onEndChain, onDuplicate, onClose }: Props) {
+export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeoneElse, takeOffCount, onTakeOff, onNextStep, onPrevStep, onEndChain, onDuplicate, onDiscuss, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
@@ -196,6 +198,23 @@ export function CompletionOptionsMenu({ visible, anchor, onSkip, onMiss, onSomeo
             <Ionicons name="duplicate-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
             <View style={styles.text}>
               <Text style={styles.label}>Duplicate</Text>
+            </View>
+          </TouchableOpacity>
+        </>
+      )}
+      {onDiscuss && (
+        <>
+          <View style={styles.sep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => choose(haptics.tap, onDiscuss)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Discuss with Claude"
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={iconSize.md} color={colors.accent} style={styles.icon} />
+            <View style={styles.text}>
+              <Text style={styles.label}>Discuss with Claude</Text>
             </View>
           </TouchableOpacity>
         </>
