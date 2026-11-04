@@ -92,19 +92,26 @@ export function fieldText(
  * overlay's copy of it (the doubled, misaligned title in the new-task sheet).
  * So when the style changes and the tree is empty but the field has words, the
  * same words are written back with a command, which rebuilds them with the
- * current attributes. Same text, so the caret is left where it was.
+ * current attributes.
+ *
+ * **That write cannot be the same text on its own.** iOS's `setTextAndSelection`
+ * skips the rebuild when the string equals what the field holds
+ * (`RCTTextInputComponentView.mm`), so writing the same words back changed
+ * nothing and the doubled title stayed. `rebuild` says the write is a restyle:
+ * the caller clears the field first, so the words that follow are a real
+ * change, and puts the caret back itself.
  */
 export function nextFieldSync(
   prev: FieldSync,
   value: string,
   styleKey: string,
-): { sync: FieldSync; write: string | null } {
+): { sync: FieldSync; write: string | null; rebuild: boolean } {
   const styleChanged = styleKey !== prev.styleKey;
   const restyle = styleChanged && prev.tree === '' && value !== '';
   const write = value !== prev.known || restyle ? value : null;
   const known = value;
   const tree = styleChanged && prev.tree !== '' ? known : prev.tree;
-  return { sync: { known, tree, styleKey }, write };
+  return { sync: { known, tree, styleKey }, write, rebuild: restyle && write != null };
 }
 
 /** Record a change the field made itself. Never a write. */

@@ -84,6 +84,7 @@ export function TextField({
   onChange,
   onFocus,
   onBlur,
+  onSelectionChange,
   style,
   dismissBar,
   inputAccessoryViewID,
@@ -132,10 +133,24 @@ export function TextField({
   const eventCount = useRef(0);
   // Survives a render that's thrown away before it commits, so the commit
   // after it still sends the write that render noticed.
-  const pending = useRef<{ text: string | null; selection: { start: number; end?: number } | null }>({
+  const pending = useRef<{
+    text: string | null;
+    selection: { start: number; end?: number } | null;
+    rebuild: boolean;
+  }>({
     text: null,
     selection: null,
+    rebuild: false,
   });
+  // Where the caret is, so a rebuild (below) can put it back.
+  const caret = useRef<{ start: number; end: number } | null>(null);
+  const handleSelectionChange = useCallback(
+    (e: Parameters<NonNullable<TextInputProps['onSelectionChange']>>[0]) => {
+      caret.current = e.nativeEvent.selection;
+      onSelectionChange?.(e);
+    },
+    [onSelectionChange],
+  );
 
   if (sync.current == null) {
     sync.current = initialFieldSync(text, styleKey);
@@ -143,6 +158,7 @@ export function TextField({
     const next = nextFieldSync(sync.current, text, styleKey);
     sync.current = next.sync;
     if (next.write != null) pending.current.text = next.write;
+    if (next.rebuild) pending.current.rebuild = true;
   }
 
   // Starts unset so a `selection` passed at mount is applied too.
@@ -153,13 +169,22 @@ export function TextField({
   }
 
   useLayoutEffect(() => {
-    const { text: write, selection: sel } = pending.current;
-    if (write == null && sel == null) return;
-    pending.current = { text: null, selection: null };
+    const { text: write, selection: sel0, rebuild } = pending.current;
+    if (write == null && sel0 == null) return;
+    pending.current = { text: null, selection: null, rebuild: false };
     const node = inputRef.current;
     if (node == null) return;
+    const view = node as unknown as React.ElementRef<HostComponent<unknown>>;
+    // A restyle is the same words with new attributes, which iOS ignores as a
+    // write; emptying the field first makes the words a change it applies.
+    // Both commands run before the next frame, so nothing is drawn between.
+    let sel = sel0;
+    if (rebuild && write != null) {
+      Commands.setTextAndSelection(view, eventCount.current, '', -1, -1);
+      if (!sel && caret.current) sel = caret.current;
+    }
     Commands.setTextAndSelection(
-      node as unknown as React.ElementRef<HostComponent<unknown>>,
+      view,
       eventCount.current,
       write,
       sel ? sel.start : -1,
@@ -182,6 +207,7 @@ export function TextField({
       inputAccessoryViewID={barKind === 'accessory' ? DONE_ACCESSORY_ID : inputAccessoryViewID}
       onFocus={handleFocus}
       onBlur={handleBlur}
+      onSelectionChange={handleSelectionChange}
       ref={setRef}
       style={style}
       defaultValue={sync.current.tree}
