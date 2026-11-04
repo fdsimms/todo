@@ -331,6 +331,8 @@ work is done"). Rules in `src/utils/rewardUnlocks.ts`, rows in `reward_unlocks`
   loosening (`unlockLooseningsOf`), so the lock can't be edited away. A key tag or the emergency button
   ends it for the rest of the logical day (`ShieldReleases.unlockDays`), logged like any other release.
   Which apps are in a group is the phone's, so the MCP server only reads `blocksAppsWhileLocked`.
+  Anything else that acts on whether an unlock is locked reads `statusOfUnlock`, never its own copy of
+  the share, weekend or vacation checks, or it will disagree with the Rewards screen about when it opens.
 - **A linked habit** (`guardsTaskId`) is an "Avoid this" habit for doing it while locked. A slip on
   it while the unlock is open asks first (`openUnlockLinkedTo` in `slipConfirm`). A habit has one
   link: a reward that guards it or one unlock, and each picker leaves out the others'.
