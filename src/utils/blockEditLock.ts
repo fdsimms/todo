@@ -108,12 +108,12 @@ export function groupBlockHint(live: boolean, pending: boolean, allowOnly = fals
   if (!live) return null;
   if (allowOnly) {
     return pending
-      ? 'Blocking now. Your changes to the allowed apps apply when it ends.'
-      : 'Blocking now. Changes to the allowed apps wait until it ends.';
+      ? 'Currently blocked. Your changes to the allowed apps apply the next time the block is lifted.'
+      : 'Currently blocked. Changes to the allowed apps won’t take effect until the next time the block is lifted.';
   }
   return pending
-    ? 'Blocking now. Apps you removed stay blocked until it ends.'
-    : 'Blocking now. You can add apps, but removing one waits until it ends.';
+    ? 'Currently blocked. Apps you removed stay blocked until the next time the block is lifted.'
+    : 'Currently blocked. You can add new apps to the group, but removing apps won’t take effect until the next time the block is lifted.';
 }
 
 export const BLOCK_PICKER_NOTE_TITLE = 'Blocking right now';

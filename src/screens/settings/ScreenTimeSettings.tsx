@@ -151,7 +151,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
   };
   /** The line under a supergroup: what is blocking it now, else the groups it combines. */
   const supergroupHint = (group: { id: string; members?: string[] }) => {
-    if (groupLocked(group.id)) return 'Blocking now. Its groups can’t change until it ends.';
+    if (groupLocked(group.id)) return 'Currently blocked. Its groups can’t change until the block is lifted.';
     const names = supergroupMembers(customGroups, group.id, groupsMeta).map(g => g.name);
     if (names.length === 0) return 'No groups';
     return supergroupMode(customGroups, group.id, groupsMeta) === 'allow'
@@ -746,8 +746,8 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
       >
         <SettingsRow
           entryId="screenTimeApps"
-          icon="apps-outline"
-          iconColor={totalOf(DEFAULT_GROUP_ID) > 0 ? colors.accent : undefined}
+          icon={groupLocked(DEFAULT_GROUP_ID) ? 'lock-closed' : 'apps-outline'}
+          iconColor={groupLocked(DEFAULT_GROUP_ID) ? colors.red : totalOf(DEFAULT_GROUP_ID) > 0 ? colors.accent : undefined}
           label={groupsMeta.baseName}
           hint={groupHint(DEFAULT_GROUP_ID)}
           alwaysShowHint={groupLocked(DEFAULT_GROUP_ID)}
@@ -760,8 +760,8 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
             <View style={styles.sep} />
             {isSupergroup(group) ? (
               <SettingsRow
-                icon="layers-outline"
-                iconColor={totalOf(group.id) > 0 ? colors.accent : undefined}
+                icon={groupLocked(group.id) ? 'lock-closed' : 'layers-outline'}
+                iconColor={groupLocked(group.id) ? colors.red : totalOf(group.id) > 0 ? colors.accent : undefined}
                 label={group.name}
                 hint={supergroupHint(group)}
                 alwaysShowHint
@@ -771,8 +771,8 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
               />
             ) : (
               <SettingsRow
-                icon={allowGroup(group.id) ? 'shield-checkmark-outline' : 'apps-outline'}
-                iconColor={totalOf(group.id) > 0 ? colors.accent : undefined}
+                icon={groupLocked(group.id) ? 'lock-closed' : allowGroup(group.id) ? 'shield-checkmark-outline' : 'apps-outline'}
+                iconColor={groupLocked(group.id) ? colors.red : totalOf(group.id) > 0 ? colors.accent : undefined}
                 label={group.name}
                 hint={groupHint(group.id)}
                 alwaysShowHint={groupLocked(group.id)}
