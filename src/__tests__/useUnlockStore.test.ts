@@ -57,6 +57,19 @@ describe('useUnlockStore', () => {
     expect(state().unlockLinkedTo('other')).toBeNull();
   });
 
+  it('follows a category rename in the leave-out lists that name it', () => {
+    const named = state().addUnlock(draft({ ignoreList: { categories: ['Hobbies'], stackIds: ['g'], projectIds: [] } }))!;
+    const other = state().addUnlock(draft({ ignoreList: { categories: ['Chores'], stackIds: [], projectIds: [] } }))!;
+    const none = state().addUnlock(draft())!;
+    jest.clearAllMocks();
+    state().renameIgnoredCategory('Hobbies', 'Play');
+    const byId = (id: string) => state().unlocks.find(u => u.id === id)!;
+    expect(byId(named.id).ignoreList).toEqual({ categories: ['Play'], stackIds: ['g'], projectIds: [] });
+    expect(byId(other.id).ignoreList).toEqual({ categories: ['Chores'], stackIds: [], projectIds: [] });
+    expect(byId(none.id).ignoreList).toBeNull();
+    expect(dbUpsertRewardUnlock).toHaveBeenCalledTimes(1);
+  });
+
   it('deletes the row and its notice', () => {
     const u = state().addUnlock(draft())!;
     state().deleteUnlock(u.id);

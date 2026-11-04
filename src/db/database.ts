@@ -15,6 +15,7 @@ import type {
   CoinEntry,
   Reward,
   RewardUnlock,
+  UnlockIgnoreList,
   Milestone,
   Cookware,
   CopyFlag,
@@ -2450,6 +2451,8 @@ function runInitDatabase(): void {
     'ALTER TABLE reward_unlocks ADD COLUMN ignore_after TEXT',
     // Null on every existing unlock: none blocks apps while locked. See RewardUnlock.blockGroupId.
     'ALTER TABLE reward_unlocks ADD COLUMN block_group_id TEXT',
+    // JSON { categories, stackIds, projectIds }, null on every existing unlock: nothing is left out. See RewardUnlock.ignoreList.
+    'ALTER TABLE reward_unlocks ADD COLUMN ignore_list TEXT',
     // Null on every existing row: no row has had a second recipe fold into it
     // yet. See GroceryItem.recipeSources.
     'ALTER TABLE grocery_items ADD COLUMN recipe_sources TEXT',
@@ -8989,6 +8992,7 @@ function rowToRewardUnlock(row: Record<string, unknown>): RewardUnlock {
     freeOnWeekends: row.free_on_weekends === 1,
     freeOnVacation: row.free_on_vacation === 1,
     ignoreAfter: typeof row.ignore_after === 'string' && /^\d{2}:\d{2}$/.test(row.ignore_after) ? row.ignore_after : null,
+    ignoreList: parseUnlockIgnoreList(row.ignore_list),
     guardsTaskId: (row.guards_task_id as string | null) || null,
     blockGroupId: (row.block_group_id as string | null) || null,
     pin: (row.pin as string | null) || null,
@@ -8997,6 +9001,19 @@ function rowToRewardUnlock(row: Record<string, unknown>): RewardUnlock {
     playExtraMs: Math.max(0, Math.round(Number(row.play_extra_ms) || 0)),
     playStartedAt: (row.play_started_at as string | null) || null,
   };
+}
+
+/** A stored leave-out list, or null when it is empty or won't parse (nothing is left out). */
+function parseUnlockIgnoreList(raw: unknown): UnlockIgnoreList | null {
+  if (typeof raw !== 'string' || !raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<Record<keyof UnlockIgnoreList, unknown>>;
+    const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length > 0) : []);
+    const list = { categories: strings(parsed.categories), stackIds: strings(parsed.stackIds), projectIds: strings(parsed.projectIds) };
+    return list.categories.length + list.stackIds.length + list.projectIds.length > 0 ? list : null;
+  } catch {
+    return null;
+  }
 }
 
 export function dbGetAllRewardUnlocks(): RewardUnlock[] {
@@ -9009,11 +9026,12 @@ export function dbGetAllRewardUnlocks(): RewardUnlock[] {
 export function dbUpsertRewardUnlock(unlock: RewardUnlock): void {
   db.runSync(
     `INSERT OR REPLACE INTO reward_unlocks (id, title, glyph, created_at, share_pct, required_task_ids, play_minutes,
-       free_on_weekends, free_on_vacation, guards_task_id, pin, play_day, play_used_ms, play_extra_ms, play_started_at, ignore_after, block_group_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       free_on_weekends, free_on_vacation, guards_task_id, pin, play_day, play_used_ms, play_extra_ms, play_started_at, ignore_after, block_group_id, ignore_list)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [unlock.id, unlock.title, unlock.glyph, unlock.createdAt, unlock.sharePct, JSON.stringify(unlock.requiredTaskIds),
       unlock.playMinutes, unlock.freeOnWeekends ? 1 : 0, unlock.freeOnVacation ? 1 : 0, unlock.guardsTaskId, unlock.pin,
-      unlock.playDay, unlock.playUsedMs, unlock.playExtraMs, unlock.playStartedAt, unlock.ignoreAfter ?? null, unlock.blockGroupId ?? null]
+      unlock.playDay, unlock.playUsedMs, unlock.playExtraMs, unlock.playStartedAt, unlock.ignoreAfter ?? null, unlock.blockGroupId ?? null,
+      unlock.ignoreList ? JSON.stringify(unlock.ignoreList) : null]
   );
 }
 

@@ -87,6 +87,8 @@ export interface SerializedUnlock {
   freeOnWeekends: boolean;
   freeOnVacation: boolean;
   ignoreTasksStartingAfter?: string;
+  /** Categories (names), stacks and projects (ids) whose tasks do not count toward the share, done or not. */
+  leaveOut?: { categories: string[]; stackIds: string[]; projectIds: string[] };
   /** The "don't do this" habit it is linked to, and its id. */
   linkedHabit?: string;
   linkedHabitId?: string;
@@ -467,7 +469,7 @@ function serializeUnlock(
   const play = rewardUnlocks.playState(u, new Date(), world.todayKey);
   const habit = u.guardsTaskId ? replica.taskById(u.guardsTaskId) : null;
   const share = status.kind === 'free'
-    ? rewardUnlocks.workShareDone(rewardUnlocks.coinsEarnedToday(world.entries, world.todayStart), rewardUnlocks.coinsStillOpenToday(world.onToday))
+    ? (({ earned, open }) => rewardUnlocks.workShareDone(earned, open))(rewardUnlocks.workCoinsToday(u, world))
     : status.share;
   return {
     id: u.id,
@@ -483,6 +485,7 @@ function serializeUnlock(
     freeOnWeekends: u.freeOnWeekends,
     freeOnVacation: u.freeOnVacation,
     ...(u.ignoreAfter ? { ignoreTasksStartingAfter: u.ignoreAfter } : {}),
+    ...(u.ignoreList ? { leaveOut: u.ignoreList } : {}),
     ...(habit ? { linkedHabit: replica.displayTitle(habit), linkedHabitId: habit.id } : {}),
     ...(u.pin ? { hasCode: true as const } : {}),
     ...(u.blockGroupId ? { blocksAppsWhileLocked: true as const } : {}),
@@ -499,6 +502,8 @@ export interface UnlockToolInput {
   freeOnWeekends?: boolean;
   freeOnVacation?: boolean;
   ignoreTasksStartingAfter?: string | null;
+  /** Replaces the whole leave-out list; null or empty clears it. */
+  leaveOut?: { categories?: string[]; stackIds?: string[]; projectIds?: string[] } | null;
   linkedHabitId?: string | null;
 }
 
@@ -512,6 +517,9 @@ function unlockFields(input: UnlockToolInput): Partial<UnlockInput> {
     ...(input.freeOnWeekends !== undefined ? { freeOnWeekends: input.freeOnWeekends } : {}),
     ...(input.freeOnVacation !== undefined ? { freeOnVacation: input.freeOnVacation } : {}),
     ...(input.ignoreTasksStartingAfter !== undefined ? { ignoreAfter: input.ignoreTasksStartingAfter } : {}),
+    ...(input.leaveOut !== undefined
+      ? { ignoreList: input.leaveOut ? { categories: input.leaveOut.categories ?? [], stackIds: input.leaveOut.stackIds ?? [], projectIds: input.leaveOut.projectIds ?? [] } : null }
+      : {}),
     ...(input.linkedHabitId !== undefined ? { guardsTaskId: input.linkedHabitId } : {}),
   };
 }
@@ -533,6 +541,7 @@ export function createUnlock(replica: Replica, input: UnlockToolInput & { title:
     freeOnWeekends: fields.freeOnWeekends ?? false,
     freeOnVacation: fields.freeOnVacation ?? false,
     ignoreAfter: fields.ignoreAfter ?? null,
+    ignoreList: fields.ignoreList ?? null,
     guardsTaskId: fields.guardsTaskId ?? null,
   });
   return unlockResult(replica, unlock);
