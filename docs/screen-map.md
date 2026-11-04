@@ -518,6 +518,7 @@ Where each component can appear.
 - `src/components/TwoPane.tsx` — on GroceryScreen, ProjectsScreen, RecipesScreen, TodayScreen
 - `src/components/UndoBar.tsx` — on app shell
 - `src/components/UnitMenuChip.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +6 more
+- `src/components/UnlockLeaveOutSheet.tsx` — on RewardsScreen
 - `src/components/UnlocksSection.tsx` — on RewardsScreen
 - `src/components/UseUpResolveSheet.tsx` — on app shell
 - `src/components/VersionLabelSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, StackDetailScreen, +5 more

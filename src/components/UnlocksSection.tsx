@@ -9,6 +9,8 @@ import { useUnlockStore, type UnlockDraft } from '../store/useUnlockStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useAppGroupStore } from '../store/useAppGroupStore';
+import { useProjectStore } from '../store/useProjectStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { allGroups, resolveGroupId } from '../utils/appGroups';
 import { AppGroupChecklist } from './AppGroupChecklist';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -47,6 +49,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { TextField } from './TextField';
 import { Toggle } from './Toggle';
+import { UnlockLeaveOutSheet } from './UnlockLeaveOutSheet';
 
 /**
  * The Rewards screen's Unlocks section: treats opened by the day's work
@@ -80,6 +83,7 @@ const EMPTY_DRAFT: UnlockDraft = {
   freeOnWeekends: false,
   freeOnVacation: false,
   ignoreAfter: null,
+  ignoreList: null,
   guardsTaskId: null,
   blockGroupId: null,
   pin: null,
@@ -121,6 +125,9 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
   const [fields, setFields] = useState<UnlockDraft>(EMPTY_DRAFT);
   const [habitPickerOpen, setHabitPickerOpen] = useState(false);
   const [taskPickerOpen, setTaskPickerOpen] = useState(false);
+  const [leaveOutOpen, setLeaveOutOpen] = useState(false);
+  const stackTitles = useTaskGroupStore(useShallow(s => Object.fromEntries(s.groups.map(g => [g.id, g.title]))));
+  const projectTitles = useProjectStore(useShallow(s => Object.fromEntries(s.projects.map(p => [p.id, p.title]))));
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(new Set());
   const editingId = draft?.mode === 'edit' ? draft.id : null;
   const set = <K extends keyof UnlockDraft>(key: K, value: UnlockDraft[K]) => setFields(f => ({ ...f, [key]: value }));
@@ -130,7 +137,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
     setFields(from ? {
       title: from.title, glyph: from.glyph, sharePct: from.sharePct, requiredTaskIds: from.requiredTaskIds,
       playMinutes: from.playMinutes, freeOnWeekends: from.freeOnWeekends, freeOnVacation: from.freeOnVacation,
-      ignoreAfter: from.ignoreAfter ?? null, guardsTaskId: from.guardsTaskId, blockGroupId: from.blockGroupId ?? null, pin: from.pin,
+      ignoreAfter: from.ignoreAfter ?? null, ignoreList: from.ignoreList ?? null, guardsTaskId: from.guardsTaskId, blockGroupId: from.blockGroupId ?? null, pin: from.pin,
     } : EMPTY_DRAFT);
     setDraft(next);
   };
@@ -333,6 +340,36 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
         ) : null}
         </FormField>
 
+        <FormField label="Leave out" hint="Tasks in these stacks, categories and projects don’t count toward the percentage, done or not.">
+        <View style={styles.chipRow}>
+          {([
+            ['stackIds', 'layers-outline', (id: string) => stackTitles[id] ?? 'A stack that’s gone'],
+            ['categories', 'folder-outline', (name: string) => name],
+            ['projectIds', 'briefcase-outline', (id: string) => projectTitles[id] ?? 'A project that’s gone'],
+          ] as const).flatMap(([kind, icon, labelOf]) =>
+            (fields.ignoreList?.[kind] ?? []).map(key => (
+              <TouchableOpacity
+                key={`${kind}:${key}`}
+                style={styles.taskChip}
+                onPress={() => {
+                  haptics.tap();
+                  const current = fields.ignoreList!;
+                  const next = { ...current, [kind]: current[kind].filter(x => x !== key) };
+                  set('ignoreList', next.categories.length + next.stackIds.length + next.projectIds.length > 0 ? next : null);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Stop leaving out ${labelOf(key)}`}
+              >
+                <Ionicons name={icon} size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.taskChipText} numberOfLines={1}>{labelOf(key)}</Text>
+                <Ionicons name="close" size={iconSize.xs} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )))}
+          <InlineAction label="Add" icon="add" variant="neutral" onPress={() => { haptics.tap(); setLeaveOutOpen(true); }} />
+        </View>
+        </FormField>
+
         <FormField label="Linked habit" hint="An “Avoid this” habit for doing it while it’s locked. Logging a slip on it while it’s unlocked asks first.">
         <View style={styles.chipRow}>
           {habit ? (
@@ -525,6 +562,13 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
         value={fields.guardsTaskId}
         onSelect={id => set('guardsTaskId', id)}
         excludeIds={habitExcluded}
+      />
+      <UnlockLeaveOutSheet
+        visible={leaveOutOpen}
+        onClose={() => setLeaveOutOpen(false)}
+        value={fields.ignoreList ?? null}
+        onChange={next => set('ignoreList', next)}
+        addingRefused={editingLocked}
       />
       <TaskRelationPickerSheet
         visible={taskPickerOpen}

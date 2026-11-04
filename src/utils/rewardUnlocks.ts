@@ -1,10 +1,10 @@
-import type { CoinEntry, RewardUnlock, Task } from '../types';
+import type { CoinEntry, RewardUnlock, Task, UnlockIgnoreList } from '../types';
 import { addDays } from 'date-fns/addDays';
 import { baseCoinsFor, bountyCoinsFor, cleanRewardGlyph, isBalanceReset } from './rewards';
 import { isNegativeTask } from './negativeHabits';
 import { occurrenceFamilyKey } from './searchCollapse';
 import { onLogicalDay } from './clockTime';
-import { windowBoundsFor } from './visibilityUtils';
+import { isQuotaTask, windowBoundsFor } from './visibilityUtils';
 
 /**
  * Unlocks: a treat opened by doing a share of the day's work, rather than
@@ -42,6 +42,18 @@ import { windowBoundsFor } from './visibilityUtils';
  *   that unlock (`isAfterCutoff`), so a bedtime routine doesn't hold the share
  *   down until bedtime. Only the window's start counts; it changes nothing
  *   about the task or its coins.
+ *
+ * - **A target task is left out of the count.** "Drink 15 cups" is paced
+ *   across the day, so what is left of it at 3pm isn't work that is late, and
+ *   counting it kept the unlock shut until the last cup. Neither its coins
+ *   still open nor the coins it earns count (`workCoinsToday`). Name it as a
+ *   required task to make an unlock wait for it.
+ *
+ * - **A leave-out list names places instead of a time.** Tasks in a category,
+ *   stack or project the unlock lists are neither work done nor work owed
+ *   (`isIgnoredByList`), for the cases a clock can't say: an evening stack, a
+ *   hobby category. Like the cutoff it hides nothing and changes no coins, and
+ *   adding to it is a loosening (`unlockLooseningsOf`).
  *
  * - **The play time is a daily allowance, not per stretch.** Stopping and
  *   starting again carries on from what's left. "+15 min" adds to today only.
@@ -81,8 +93,31 @@ export function cleanIgnoreAfter(value: string | null | undefined): string | nul
   return `${String(h).padStart(2, '0')}:${m[2]}`;
 }
 
+/** A leave-out list as stored: strings only, no repeats, and null when nothing is in it. */
+export function cleanIgnoreList(value: Partial<UnlockIgnoreList> | null | undefined): UnlockIgnoreList | null {
+  const clean = (v: readonly string[] | undefined): string[] => Array.from(new Set((v ?? []).filter(x => typeof x === 'string' && x.length > 0)));
+  const list = { categories: clean(value?.categories), stackIds: clean(value?.stackIds), projectIds: clean(value?.projectIds) };
+  return list.categories.length + list.stackIds.length + list.projectIds.length > 0 ? list : null;
+}
+
+/** The list after a category rename, or the same object when it names no such category. */
+export function renameInIgnoreList<T extends UnlockIgnoreList | null | undefined>(list: T, from: string, to: string): T {
+  if (!list || !list.categories.includes(from)) return list;
+  return { ...list, categories: Array.from(new Set(list.categories.map(c => (c === from ? to : c)))) } as T;
+}
+
+/** Whether the unlock's leave-out list names where `task` is filed. */
+export function isIgnoredByList(task: Pick<Task, 'category' | 'groupId' | 'projectId'>, list: UnlockIgnoreList | null | undefined): boolean {
+  if (!list) return false;
+  return (
+    (!!task.category && list.categories.includes(task.category)) ||
+    (!!task.groupId && list.stackIds.includes(task.groupId)) ||
+    (!!task.projectId && list.projectIds.includes(task.projectId))
+  );
+}
+
 /** What the form (and the MCP server's tools) edit on an unlock. */
-export type UnlockDraft = Pick<RewardUnlock, 'title' | 'glyph' | 'sharePct' | 'requiredTaskIds' | 'playMinutes' | 'freeOnWeekends' | 'freeOnVacation' | 'ignoreAfter' | 'guardsTaskId' | 'blockGroupId' | 'pin'>;
+export type UnlockDraft = Pick<RewardUnlock, 'title' | 'glyph' | 'sharePct' | 'requiredTaskIds' | 'playMinutes' | 'freeOnWeekends' | 'freeOnVacation' | 'ignoreAfter' | 'ignoreList' | 'guardsTaskId' | 'blockGroupId' | 'pin'>;
 
 /** A draft as stored: trimmed, in range, no repeated requirement, blanks as null. */
 export function cleanUnlockDraft(draft: UnlockDraft): UnlockDraft {
@@ -95,6 +130,7 @@ export function cleanUnlockDraft(draft: UnlockDraft): UnlockDraft {
     freeOnWeekends: !!draft.freeOnWeekends,
     freeOnVacation: !!draft.freeOnVacation,
     ignoreAfter: cleanIgnoreAfter(draft.ignoreAfter),
+    ignoreList: cleanIgnoreList(draft.ignoreList),
     guardsTaskId: draft.guardsTaskId || null,
     blockGroupId: draft.blockGroupId || null,
     pin: draft.pin?.trim() || null,
@@ -121,6 +157,11 @@ export function unlockLooseningsOf(before: UnlockDraft, after: UnlockDraft): str
   const beforeCut = cleanIgnoreAfter(before.ignoreAfter);
   const afterCut = cleanIgnoreAfter(after.ignoreAfter);
   if (afterCut && (!beforeCut || afterCut < beforeCut)) out.push('ignore tasks that start later in the day');
+  // Leaving a place out only shrinks what is owed, so adding to the list is easier; taking from it is not.
+  const was = cleanIgnoreList(before.ignoreList);
+  const now = cleanIgnoreList(after.ignoreList);
+  const addedTo = (key: keyof UnlockIgnoreList) => (now?.[key] ?? []).some(x => !(was?.[key] ?? []).includes(x));
+  if (addedTo('categories') || addedTo('stackIds') || addedTo('projectIds')) out.push('leave out more categories, stacks or projects');
   if (before.guardsTaskId && before.guardsTaskId !== (after.guardsTaskId || null)) out.push('unlink its habit');
   // Dropping or swapping the blocked group would lift the block the lock was set with.
   if (before.blockGroupId && before.blockGroupId !== (after.blockGroupId || null)) out.push('stop blocking its apps');
@@ -414,20 +455,31 @@ export interface UnlockWorld {
   vacation: boolean;
 }
 
+/**
+ * The coins earned and still open that an unlock's share is read from. A target
+ * task (`isQuotaTask`) is on neither side: it is paced across the day, so
+ * counting what is left of it held the share down for work that isn't due yet.
+ * A coin whose task is gone (purged) still counts: there is nothing to read
+ * its window or target from.
+ */
+export function workCoinsToday(unlock: Pick<RewardUnlock, 'ignoreAfter' | 'ignoreList'>, world: UnlockWorld): { earned: number; open: number } {
+  const cutoff = unlock.ignoreAfter;
+  const list = unlock.ignoreList;
+  const byId = new Map(world.tasks.map(t => [t.id, t]));
+  const skipTask = (t: Task) => isQuotaTask(t) || isIgnoredByList(t, list) || (!!cutoff && isAfterCutoff(t, cutoff, world.todayStart));
+  return {
+    earned: coinsEarnedToday(world.entries, world.todayStart, taskId => { const t = byId.get(taskId); return !!t && skipTask(t); }),
+    open: coinsStillOpenToday(world.onToday, skipTask),
+  };
+}
+
+/** Where one unlock stands now, and the required tasks behind it. */
 /** Where one unlock stands now, and the required tasks behind it. */
 export function statusOfUnlock(unlock: RewardUnlock, world: UnlockWorld): { status: UnlockStatus; required: RequiredToday } {
-  const cutoff = unlock.ignoreAfter;
-  const byId = cutoff ? new Map(world.tasks.map(t => [t.id, t])) : null;
-  // A coin whose task is gone (purged) still counts: there is nothing to read its window from.
-  const skipEarned = cutoff && byId
-    ? (taskId: string) => { const t = byId.get(taskId); return !!t && isAfterCutoff(t, cutoff, world.todayStart); }
-    : undefined;
-  const skipOpen = cutoff ? (t: Task) => isAfterCutoff(t, cutoff, world.todayStart) : undefined;
   const required = requiredToday(unlock.requiredTaskIds, world.tasks, world.onToday, world.todayStart);
   const weekday = world.todayStart.getDay();
   const status = unlockStatus(unlock, {
-    earned: coinsEarnedToday(world.entries, world.todayStart, skipEarned),
-    open: coinsStillOpenToday(world.onToday, skipOpen),
+    ...workCoinsToday(unlock, world),
     pending: required.pending,
     weekend: weekday === 0 || weekday === 6,
     vacation: world.vacation,

@@ -44,6 +44,17 @@ export interface CoinEntry {
 }
 
 /**
+ * Where an unlock's leave-out list looks. Categories are named because that is
+ * how a task holds one (`Task.category`, rewritten on a rename); stacks and
+ * projects are ids.
+ */
+export interface UnlockIgnoreList {
+  categories: string[];
+  stackIds: string[];
+  projectIds: string[];
+}
+
+/**
  * A treat opened by doing a share of the day's work rather than bought with
  * coins ("Switch, once 60% of today's work is done"). Rules in
  * `src/utils/rewardUnlocks.ts`. It never moves the balance.
@@ -75,6 +86,13 @@ export interface RewardUnlock {
    * day). It doesn't hide the task or change the coins it pays.
    */
   ignoreAfter?: string | null;
+  /**
+   * Tasks in these categories (by name), stacks or projects (by id) aren't part
+   * of today's work for this unlock, done or not: the same leave-out as
+   * `ignoreAfter`, picked by where a task is filed instead of when it starts.
+   * Null leaves nothing out. Rules in `src/utils/rewardUnlocks.ts`.
+   */
+  ignoreList?: UnlockIgnoreList | null;
   /**
    * An "Avoid this" habit for doing it while it's locked. A slip logged on
    * it while the unlock is open asks first, since it isn't one.
