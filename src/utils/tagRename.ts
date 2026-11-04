@@ -26,6 +26,21 @@ export function renameInTagList(tags: string[], from: string, to: string): strin
   return next.filter((t, i) => next.indexOf(t) === i);
 }
 
+/**
+ * A deleted tag taken out of the places that carry tags by name, which a rename
+ * already follows. Left in a series' shared defaults or a follow-up's draft, the
+ * next occurrence put the deleted tag straight back on its task.
+ */
+export function removeTagFromSeriesDefaults(defaults: Partial<Task> | null, tag: string): Partial<Task> | null {
+  if (!defaults?.tags || !defaults.tags.includes(tag)) return defaults;
+  return { ...defaults, tags: defaults.tags.filter(t => t !== tag) };
+}
+
+export function removeTagFromFollowUpDraft(draft: FollowUpTaskDraft | null, tag: string): FollowUpTaskDraft | null {
+  if (!draft || !draft.tags.includes(tag)) return draft;
+  return { ...draft, tags: draft.tags.filter(t => t !== tag) };
+}
+
 export function renameTagInSeriesDefaults(
   defaults: Partial<Task> | null,
   from: string,

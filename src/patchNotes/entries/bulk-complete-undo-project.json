@@ -1,0 +1,1 @@
+{ "message": "Undoing a bulk \"Complete\" now also reopens a project the last task had finished, and no longer reopens tasks that were already done.", "date": "2026-11-04" }

@@ -1,4 +1,5 @@
 import type { Task } from '../types';
+import { freshOccurrenceFields } from './occurrenceReset';
 
 /**
  * A copy of a task: what `duplicateTask` writes, lifted out of the store so the
@@ -26,18 +27,24 @@ export function duplicateRows(
     previousStreakCount: 0,
     previousStreakDate: null,
     priorBestStreak: 0,
-    timerStartedAt: null,
     actualMinutes: null,
-    // The duplicate keeps the duration but starts its countdown fresh. The
-    // health target is not reset alongside it, and neither is timedMinutes:
-    // the countdown's *progress* is what belongs to the original run, where
-    // the target is part of what the task is.
-    timerElapsedSeconds: 0,
-    // Same split as actualMinutes above: the copy still asks the question,
-    // it just hasn't been answered yet.
-    deliverableValue: null,
-    deliverableWhy: null,
-    deliverableRevisitIf: null,
+    // The duplicate keeps the duration but starts its countdown fresh, and
+    // keeps the question but not the answer, the target but not the count (the
+    // fields freshOccurrenceFields clears). The health target is not reset
+    // alongside them, and neither is timedMinutes: progress is what belongs to
+    // the original run, where the target is part of what the task is.
+    ...freshOccurrenceFields(),
+    // The tally of completions since a follow-up task was last added is
+    // progress too.
+    followUpTaskTally: 0,
+    previousFollowUpTaskTally: 0,
+    // A copy is not the generated task: the app's reconcile finds a generated
+    // task by its source, so a second claimant breaks it (and deleting the copy
+    // stamped the original's source as declined). The successor of a
+    // completion clears these for the same reason.
+    generatedKind: null,
+    generatedSourceId: null,
+    generatedReadyAt: null,
     previousOccurrenceId: null,
     seriesId: null,
     seriesMonthDays: [],

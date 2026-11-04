@@ -44,8 +44,8 @@ import { useSettingsStore } from './useSettingsStore';
 import { useWidgetCompletionStore } from './useWidgetCompletionStore';
 import { claimPendingCompletionDate } from '../utils/pendingCompletionDate';
 import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory, renameGeneratedCategorySettings, clearGeneratedCategorySettings, setGeneratedCategory } from './useCategoryStore';
-import { renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
-import { renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules } from '../utils/categoryRename';
+import { clearInRuleCategories, renameInRuleCategories, ruleCategoryFor } from '../utils/ruleCategory';
+import { clearInFollowUpDraft, clearInSeriesDefaults, clearInTitleRules, renameInFollowUpDraft, renameInReminderCaptures, renameInSeriesDefaults, renameInTitleRules } from '../utils/categoryRename';
 import {
   normalizeTagName,
   renameInTagList,
@@ -54,6 +54,8 @@ import {
   renameTagInReminderCaptures,
   renameTagInSeriesDefaults,
   renameTagInTitleRules,
+  removeTagFromFollowUpDraft,
+  removeTagFromSeriesDefaults,
 } from '../utils/tagRename';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
@@ -555,6 +557,24 @@ function readTasksForInitialize(
     if (merged) return merged;
   }
   return dbGetAllTasks();
+}
+
+/**
+ * Lets go of everything a row had set up outside the database: its reminder,
+ * pace nudges, completion timer, countdown alarm and deadline calendar event.
+ * For a row that is going away for good, whichever path deletes it: the path
+ * deletes the row itself. `deleteTask` was the one place that did all of it, so
+ * deleting every date of a series, or taking a completion back (which deletes
+ * the successor it spawned), left nudges scheduled for a row that no longer
+ * existed and an event on the person's calendar nothing would ever remove.
+ */
+function releaseRowSideEffects(task: Task): void {
+  cancelTaskReminder(task.id);
+  if (task.quotaReminders) cancelQuotaNudges(task.id);
+  cancelCompletionTimer(task.id);
+  if (task.timerStartedAt !== null) cancelTimerAlarm(task.id);
+  // Fire-and-forget, same as every other calendar side effect here.
+  if (task.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(task));
 }
 
 function writeSpawnedTask(row: Task, held: ReadonlySet<string>): void {
@@ -3969,11 +3989,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const dropRow = (t: Task) => {
       dbDeleteSubtasks(t.id);
       dbDeleteTask(t.id);
-      cancelTaskReminder(t.id);
-      cancelQuotaNudges(t.id);
       // The row is gone for good, not archived — nothing will ever revisit
       // it to notice a dangling event, so clean it up now, same as deleteTask.
-      if (t.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(t));
+      releaseRowSideEffects(t);
     };
 
     if (step.kind === 'plain') {
@@ -4032,8 +4050,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     live.forEach(t => {
       dbDeleteSubtasks(t.id);
       dbDeleteTask(t.id);
-      cancelTaskReminder(t.id);
-      cancelQuotaNudges(t.id);
+      releaseRowSideEffects(t);
     });
     set(s => ({ tasks: s.tasks.filter(t => !ids.has(t.id) && !(t.parentId && ids.has(t.parentId))) }));
 
@@ -4045,6 +4062,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         [...live, ...subtasks].forEach(t => {
           dbInsertTask(t);
           scheduleTaskReminder(t);
+        });
+        // As deleteTask's undo does: nudges back, and a fresh calendar event,
+        // since the one deleted above isn't coming back under the same id.
+        live.forEach(t => {
+          scheduleQuotaNudges(t);
+          reconcileDeadlineEvent(t);
         });
         set(s => ({ tasks: [...s.tasks, ...live, ...subtasks] }));
       },
@@ -4285,7 +4308,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       writeEditToFollowUpSource(current, edited);
     }
     if (scope === 'series' && edited?.seriesId) {
-      const patched = seriesFanOutRows(edited, updates, get().tasks);
+      const patched = seriesFanOutRows(edited, updates, get().tasks, current);
       if (patched.length > 0) {
         patched.forEach(t => {
           dbUpdateTask(t);
@@ -4343,15 +4366,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     dbDeleteSubtasks(id);
     dbDeleteTask(id);
-    cancelTaskReminder(id);
-    if (task.quotaReminders) cancelQuotaNudges(id);
-    cancelCompletionTimer(id);
-    if (task.timerStartedAt !== null) cancelTimerAlarm(id);
-    // Fire-and-forget, same as every other calendar/notification side effect
-    // here. Not restored on undo below — deleting a device event isn't
-    // reversible, so an undone delete gets a fresh event on its next
-    // reconcile rather than a promise this can't keep.
-    if (task.calendarEventId) void deleteDeadlineEvent(deadlineEventLink(task));
+    // The calendar event is not restored on undo below — deleting a device
+    // event isn't reversible, so an undone delete gets a fresh event on its
+    // next reconcile rather than a promise this can't keep.
+    releaseRowSideEffects(task);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id && t.parentId !== id) }));
 
     // Deleting a generated task is the user saying this source doesn't need
@@ -4560,7 +4578,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // refuses, so this is unreachable; it is here because the two run the same
     // rule and only one of them may be the authority on it.
     if (!built) return;
-    const { completed, nextTask, nextSubtasks, followUpTask, followUpSubtasks, rolledOver } = built;
+    const { completed, followUpTask, followUpSubtasks, rolledOver } = built;
+    // The successor's id is derived from this row's, so reopening an older
+    // occurrence and completing it again derives the id of one that already
+    // exists. When that row is done, the schedule has moved on past it (it has
+    // a live successor of its own), and writing this one over it would turn a
+    // finished occurrence back into an open one and leave two live rows. A row
+    // that is still open is the other-device case writeSpawnedTask exists for,
+    // and is written over as before.
+    const successorSettled = built.nextTask !== null && get().tasks.some(t => t.id === built.nextTask!.id && t.completed);
+    const nextTask = successorSettled ? null : built.nextTask;
+    const nextSubtasks = successorSettled ? [] : built.nextSubtasks;
 
     if (task.pinned) pendingUnpinIds.push(id);
 
@@ -5035,7 +5063,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // chrome, while a schedule quietly reaching its end leaves nothing on
     // screen to notice or reverse. Without the flag this message was written
     // but never shown — the bar it names was never raised for it.
-    const finishedRecurrence = built.recurs && built.advancesBySchedule && !missed && nextTask === null;
+    const finishedRecurrence = built.recurs && built.advancesBySchedule && !missed && built.nextTask === null;
     get().setLastAction({
       destructive: finishedRecurrence,
       // A tick that wrote a dose or a meal says so, with the undo that takes it
@@ -5145,7 +5173,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     followUps.forEach(f => {
       dbDeleteSubtasks(f.id);
       dbDeleteTask(f.id);
-      cancelTaskReminder(f.id);
+      releaseRowSideEffects(f);
     });
 
     set(s => ({
@@ -5221,6 +5249,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         [...followUps, ...followUpSubtasks].forEach(t => {
           dbInsertTask(t);
           scheduleTaskReminder(t);
+        });
+        // What completeTask set up for the successor when it spawned it.
+        followUps.forEach(t => {
+          scheduleQuotaNudges(t);
+          reconcileDeadlineEvent(t);
         });
         set(s => ({
           tasks: [
@@ -11417,11 +11450,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   bulkCompleteTasks(ids) {
     if (ids.length === 0) return;
+    // The stack as it was before the tasks below register theirs, so the one
+    // entry filed for this batch replaces them (see completeGroup).
+    const historyBefore = get().undoStack;
     const completedIds: string[] = [];
+    // Each task's own undo, which knows what its completion touched (a project
+    // it finished, a meal marked cooked, a supply it restocked): a bare
+    // uncompleteTask puts the task back and leaves all of that done.
+    const undos: Array<() => void> = [];
     dbTransaction(() => {
       ids.forEach(id => {
+        // Already done: completeTask leaves it alone, so it is no part of this
+        // batch and its undo must not reopen it.
+        if (get().tasks.find(t => t.id === id)?.completed) return;
         get().completeTask(id);
-        if (get().tasks.find(t => t.id === id)?.completed) completedIds.push(id);
+        if (get().tasks.find(t => t.id === id)?.completed) {
+          completedIds.push(id);
+          const action = get().lastAction;
+          if (action) undos.push(action.undo);
+        }
       });
     });
     if (completedIds.length === 0) return;
@@ -11429,8 +11476,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       announce: true,
       label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
       redo: () => get().bulkCompleteTasks(ids),
-      undo: () => completedIds.forEach(id => get().uncompleteTask(id)),
-    });
+      undo: () => [...undos].reverse().forEach(fn => fn()),
+    }, { replacing: historyBefore });
   },
 
   // Bulk equivalent of markMissed. Same per-task guard applies (not already
@@ -11952,15 +11999,48 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     dbRemoveTagFromAllTasks(tag);
     dbRemoveFromTagRegistry(tag);
+    // Also out of the two JSON columns that carry tags by name (a series' shared
+    // defaults, a follow-up's draft) and off the stacks, which renameTag already
+    // follows. Left there, the next occurrence put the deleted tag back.
+    const clearedRows: Array<{ before: Task; after: Task }> = [];
     set(s => ({
-      tasks: s.tasks.map(t => ({ ...t, tags: t.tags.filter(tg => tg !== tag) })),
+      tasks: s.tasks.map(t => {
+        const tags = t.tags.filter(tg => tg !== tag);
+        const seriesDefaults = removeTagFromSeriesDefaults(t.seriesDefaults, tag);
+        const followUpTaskDraft = removeTagFromFollowUpDraft(t.followUpTaskDraft, tag);
+        if (seriesDefaults !== t.seriesDefaults || followUpTaskDraft !== t.followUpTaskDraft) {
+          const after = { ...t, tags, seriesDefaults, followUpTaskDraft };
+          clearedRows.push({ before: t, after });
+          return after;
+        }
+        return { ...t, tags };
+      }),
       tagRegistry: s.tagRegistry.filter(t => t !== tag),
     }));
+    clearedRows.forEach(c => dbUpdateTask(c.after));
+    const groupStore = useTaskGroupStore.getState();
+    const groupsWithTag = groupStore.groups.filter(g => g.tags.includes(tag));
+    groupsWithTag.forEach(g => groupStore.updateGroup(g.id, { tags: g.tags.filter(tg => tg !== tag) }));
 
     get().setLastAction({
       label: `Deleted tag “${tag}”`,
       destructive: true,
       undo: () => {
+        groupsWithTag.forEach(g => useTaskGroupStore.getState().updateGroup(g.id, { tags: g.tags }));
+        if (clearedRows.length > 0) {
+          const before = new Map(clearedRows.map(c => [c.before.id, c.before]));
+          const restored: Task[] = [];
+          set(s => ({
+            tasks: s.tasks.map(t => {
+              const b = before.get(t.id);
+              if (!b) return t;
+              const next = { ...t, seriesDefaults: b.seriesDefaults, followUpTaskDraft: b.followUpTaskDraft };
+              restored.push(next);
+              return next;
+            }),
+          }));
+          restored.forEach(dbUpdateTask);
+        }
         if (wasRegistered) {
           dbAddToTagRegistry(tag);
           set(s => ({ tagRegistry: [...s.tagRegistry, tag] }));
@@ -12050,6 +12130,60 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       settings.setCollapsedCategories(settings.collapsedCategories.filter(c => c !== name));
     }
 
+    // And the rest of what renameCategory follows, for the same reason: each of
+    // these files something *into* a category by name, so one left naming the
+    // deleted category makes the next task land under it, and allCategories()
+    // then lists the name again as a phantom section. A project's default, the
+    // new-task default, the three "Today" categories and every rule kind let go
+    // of it; a series' shared defaults and a follow-up's draft are JSON on the
+    // task rows. Each keeps what it was so the undo below can put it back.
+    const releases: Array<() => void> = [];
+    const cleared: Array<{ before: Task; after: Task }> = [];
+    set(s => ({
+      tasks: s.tasks.map(t => {
+        const seriesDefaults = clearInSeriesDefaults(t.seriesDefaults, name);
+        const followUpTaskDraft = clearInFollowUpDraft(t.followUpTaskDraft, name);
+        if (seriesDefaults === t.seriesDefaults && followUpTaskDraft === t.followUpTaskDraft) return t;
+        const after = { ...t, seriesDefaults, followUpTaskDraft };
+        cleared.push({ before: t, after });
+        return after;
+      }),
+    }));
+    cleared.forEach(c => dbUpdateTask(c.after));
+    const projectIds = useProjectStore.getState().projects.filter(p => p.defaultTaskCategory === name).map(p => p.id);
+    if (projectIds.length > 0) {
+      useProjectStore.setState(s => ({
+        projects: s.projects.map(p => (p.defaultTaskCategory === name ? { ...p, defaultTaskCategory: null } : p)),
+      }));
+      releases.push(() => useProjectStore.setState(s => ({
+        projects: s.projects.map(p => (projectIds.includes(p.id) ? { ...p, defaultTaskCategory: name } : p)),
+      })));
+    }
+    const clearSetting = (isSet: boolean, clear: () => void, restore: () => void) => {
+      if (!isSet) return;
+      clear();
+      releases.push(restore);
+    };
+    clearSetting(settings.healthCategory === name,
+      () => settings.setHealthCategory(null), () => useSettingsStore.getState().setHealthCategory(name));
+    clearSetting(settings.limitsTodayCategory === name,
+      () => settings.setLimitsTodayCategory(null), () => useSettingsStore.getState().setLimitsTodayCategory(name));
+    clearSetting(settings.goalsTodayCategory === name,
+      () => settings.setGoalsTodayCategory(null), () => useSettingsStore.getState().setGoalsTodayCategory(name));
+    clearSetting(settings.newTaskDefaults.category === name,
+      () => settings.setNewTaskDefaults({ category: null }), () => useSettingsStore.getState().setNewTaskDefaults({ category: name }));
+    const clearList = <R,>(current: R[], next: R[], write: (rules: R[]) => void) => {
+      if (next === current) return;
+      write(next);
+      releases.push(() => write(current));
+    };
+    clearList(settings.titleRules, clearInTitleRules(settings.titleRules, name), r => useSettingsStore.getState().setTitleRules(r));
+    clearList(settings.weatherRules, clearInRuleCategories(settings.weatherRules, name), r => useSettingsStore.getState().setWeatherRules(r));
+    clearList(settings.screenTimeRules, clearInRuleCategories(settings.screenTimeRules, name), r => useSettingsStore.getState().setScreenTimeRules(r));
+    clearList(settings.blockOfferRules, clearInRuleCategories(settings.blockOfferRules, name), r => useSettingsStore.getState().setBlockOfferRules(r));
+    clearList(settings.healthRules, clearInRuleCategories(settings.healthRules, name), r => useSettingsStore.getState().setHealthRules(r));
+    clearList(settings.eventRules, clearInRuleCategories(settings.eventRules, name), r => useSettingsStore.getState().setEventRules(r));
+
     if (!category) return;
     get().setLastAction({
       label: 'Category deleted',
@@ -12069,6 +12203,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           }));
         }
         affectedGroupIds.forEach(id => useTaskGroupStore.getState().updateGroup(id, { category: name }));
+        releases.forEach(restore => restore());
+        if (cleared.length > 0) {
+          const before = new Map(cleared.map(c => [c.before.id, c.before]));
+          const restored: Task[] = [];
+          set(s => ({
+            tasks: s.tasks.map(t => {
+              const b = before.get(t.id);
+              if (!b) return t;
+              const next = { ...t, seriesDefaults: b.seriesDefaults, followUpTaskDraft: b.followUpTaskDraft };
+              restored.push(next);
+              return next;
+            }),
+          }));
+          restored.forEach(dbUpdateTask);
+        }
       },
     });
   },

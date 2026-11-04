@@ -36,6 +36,31 @@ describe('skipPatch', () => {
   });
 
   // Thursdays from Nov 21, 2030; the 28th is Thanksgiving.
+  it('starts the next occurrence with none of the skipped one\'s progress, answer or stamps', () => {
+    const task: Task = {
+      ...make({ title: 'Drink water', dueDate: new Date(2026, 2, 10).toISOString(), recurrence: { type: 'daily', interval: 1 } } as Partial<TaskDraft>),
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      progressCount: 5,
+      targetCount: 8,
+      quotaLoggedDayKey: '2026-03-10',
+      quotaTapTimes: ['2026-03-10T09:00:00.000Z', '2026-03-10T11:00:00.000Z'],
+      deliverableValue: '42',
+      followUpOn: '2026-03-12',
+      penaltyFiredAt: '2026-03-10T23:00:00.000Z',
+      penaltyCreditedAt: '2026-03-10T23:30:00.000Z',
+      timerStartedAt: '2026-03-10T08:00:00.000Z',
+      timerElapsedSeconds: 300,
+    };
+    const patch = skipPatch(task, '00:00')!;
+    expect(patch).toMatchObject({
+      progressCount: 0, quotaLoggedDayKey: null, quotaTapTimes: [], deliverableValue: null,
+      followUpOn: null, penaltyFiredAt: null, penaltyCreditedAt: null, timerStartedAt: null, timerElapsedSeconds: 0,
+    });
+    // The target itself is configuration and is left alone.
+    expect('targetCount' in patch).toBe(false);
+  });
+
   it('moves an occurrence off a holiday and writes the rule\'s own day as the anchor', () => {
     const task = make({ dueDate: new Date(2030, 10, 21, 9).toISOString(), recurrenceType: 'weekly', recurrenceDays: [4], recurrenceHolidays: 'move' });
     expect(task.recurrenceHolidays).toBe('move');

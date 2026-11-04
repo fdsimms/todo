@@ -589,12 +589,20 @@ export function mergeTaskUpdate(t: Task, patch: Partial<Task>, ctx: TaskUpdateCo
  * `updates` named copied onto them, or [] when there is nothing to write.
  * Only CONTENT_FIELDS: dueDate and the series' own fields are per-row or
  * per-set and would flatten the whole schedule onto one day.
+ *
+ * Pass `before`, the row as it stood, so a field `updates` names without
+ * changing is not fanned out. A whole-row snapshot undo (of a defer, a bulk
+ * move, a reorder) names every field and changes only what the action did,
+ * and copying all of it forward overwrote every later date's own notes, tags
+ * and category with this one's.
  */
-export function seriesFanOutRows(edited: Task, updates: Partial<Task>, tasks: readonly Task[]): Task[] {
+export function seriesFanOutRows(edited: Task, updates: Partial<Task>, tasks: readonly Task[], before?: Task): Task[] {
   if (!edited.seriesId) return [];
   const fanOut: Partial<Task> = {};
   for (const key of CONTENT_FIELDS) {
-    if (key in updates) captureField(fanOut, edited, key);
+    if (!(key in updates)) continue;
+    if (before && JSON.stringify(before[key]) === JSON.stringify(edited[key])) continue;
+    captureField(fanOut, edited, key);
   }
   if (Object.keys(fanOut).length === 0) return [];
   const from = edited.dueDate ? +new Date(edited.dueDate) : -Infinity;

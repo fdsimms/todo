@@ -1,0 +1,1 @@
+{ "message": "Deleting a category or tag now also removes it from project defaults, new task defaults, rules and repeating-task defaults, so it no longer comes back as an empty section.", "date": "2026-11-04" }

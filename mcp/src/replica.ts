@@ -7984,7 +7984,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         freshPinnedOrder: patch.pinned === true ? taskUpdate.nextPinnedOrder(all) : 0,
         dayResetTime: useSettingsStore.getState().dayResetTime,
       });
-      const siblings = taskUpdate.seriesFanOutRows(updated, patch, all);
+      const siblings = taskUpdate.seriesFanOutRows(updated, patch, all, task);
       db.dbTransaction(() => {
         ensureCategory(updated.category);
         db.dbUpdateTask(updated);

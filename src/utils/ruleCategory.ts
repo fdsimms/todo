@@ -36,6 +36,20 @@ export function renameInRuleCategories<R extends RuleTaskCategory>(rules: R[], f
 }
 
 /**
+ * The rules with a deleted category let go of: a rule that named it keeps its
+ * place and files under the kind's setting again, as a rule that named none
+ * does. The same array by identity when none names it.
+ */
+export function clearInRuleCategories<R extends RuleTaskCategory>(rules: R[], name: string): R[] {
+  if (!rules.some(r => r.category === name)) return rules;
+  return rules.map(r => {
+    if (r.category !== name) return r;
+    const { category: _gone, ...rest } = r;
+    return rest as R;
+  });
+}
+
+/**
  * The rule list with one rule filed under `category`, or null when nothing
  * would change (no such rule, or it already resolves there), so a caller can
  * skip the settings write. `fallback` is the kind's setting: a rule naming no
