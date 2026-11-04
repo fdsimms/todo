@@ -105,6 +105,7 @@ import { type ReachOutKind } from '../utils/reachOutIntent';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
 import { openExternalUrl } from '../utils/openExternalUrl';
+import { claudeChatUrl, taskChatPrompt } from '../utils/askClaude';
 import { eventCoordinate } from '../utils/calendarSync';
 import { SegmentedControl } from './SegmentedControl';
 import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, TRAVEL_MODES, TRAVEL_MODE_LABELS, travelSourceStart, travelWalkUnderFor, type TravelChoice } from '../utils/travelTasks';
@@ -5515,6 +5516,21 @@ const TaskItemRow = React.memo(function TaskItem({
                       <Ionicons name="duplicate-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                   )}
+                  {/* Only where it fits: a row with the "..." menu is already at the
+                      width of the panel, so it gets this there instead. */}
+                  {!completionMenuOffered && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={() => {
+                        haptics.tap();
+                        completionActions.onDiscuss();
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Discuss ${task.title} with Claude`}
+                    >
+                      <Ionicons name="chatbubble-ellipses-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
                   {/* A list line already has its trash in the date's place.
                       Every other row asks what its kind needs asked first
                       (missed instead, this date or all), the same questions
@@ -5594,6 +5610,7 @@ const TaskItemRow = React.memo(function TaskItem({
       ? () => handleMiss(true)
       : undefined,
     onDuplicate: () => duplicateTask(task.id),
+    onDiscuss: () => { void openExternalUrl(claudeChatUrl(taskChatPrompt(task))); },
   };
 
   // ==== the right-click menu (Mac) ====
@@ -5629,6 +5646,7 @@ const TaskItemRow = React.memo(function TaskItem({
     ...(!notice
       ? [
           pointerMenuItem('duplicate', 'Duplicate', 'plus.square.on.square'),
+          pointerMenuItem('discuss', 'Discuss with Claude', 'bubble.left.and.bubble.right'),
           // Titles are drawn as plain text, which can't be selected, so this is the way to copy one.
           pointerMenuItem('copyTitle', 'Copy Title', 'doc.on.doc'),
         ]
@@ -5654,6 +5672,7 @@ const TaskItemRow = React.memo(function TaskItem({
       case 'prevStep': completionActions.onPrevStep?.(); return;
       case 'endChain': completionActions.onEndChain?.(); return;
       case 'duplicate': completionActions.onDuplicate(); return;
+      case 'discuss': completionActions.onDiscuss(); return;
       case 'copyTitle': void Clipboard.setStringAsync(displayTitle).catch(() => {}); return;
       case 'delete':
         if (listRow) { animateLayout(); if (!deleteTask(task.id)) explainLockedDelete(); } else confirmDeleteTask(task);
