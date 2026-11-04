@@ -16,6 +16,7 @@ import {
   clearOtherStandingLinks,
   subLinkRows,
   chosenOptionRows,
+  parkedOffList,
   mergedItemRow,
   setOtherNamesRow,
   deletedItemSnapshot,
@@ -99,7 +100,7 @@ import {
 } from '../utils/groceryLists';
 import { appendPriceObservation } from '../utils/priceHistory';
 import { planMergeItems } from '../utils/groceryMerge';
-import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
+import { groceryNameKey, itemNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import { catalogItemForKey } from '../utils/groceryPlural';
 import { hasUserFacts, factSignature, linkCounts } from '../utils/groceryFacts';
 import { mergeQuantities } from '../utils/mealPlanGroceries';
@@ -2425,7 +2426,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // line, done once for the batch.
     const preexisting = new Set(get().items.map(i => i.id));
     for (const line of lines) {
-      const key = groceryNameKey(parseGroceryInput(line).name);
+      const key = itemNameKey(parseGroceryInput(line).name);
       // The same resolution addByName is about to make, or this loop counts a
       // line it merged into an existing row as a freshly minted one.
       const before = catalogItemForKey(key, get().items) ?? undefined;
@@ -2538,7 +2539,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // failed one. Same shape as applyTemplate's single dbTransaction.
     dbTransaction(() => {
       for (const row of rows) {
-        const key = groceryNameKey(row.name);
+        const key = itemNameKey(row.name);
         // Plural-tolerant, like addByName's own lookup below: a recipe line
         // reading "serrano pepper" must skip the Serrano peppers already in
         // the trolley rather than adding them again under a second name.
@@ -3426,7 +3427,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const refreshedIds = new Set<string>();
     let count = 0;
     for (const raw of names) {
-      const key = groceryNameKey(parseGroceryInput(raw).name);
+      const key = itemNameKey(parseGroceryInput(raw).name);
       // The resolution addToPantry itself makes, plural included — read bare,
       // a row it merely updated would look freshly minted and undo would
       // delete a catalog row the user already had.
@@ -4160,15 +4161,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (!entryFor(get().listEntries, id, listId)) return;
     // sourceRecipeTitle is the same kind of shop-scoped bookkeeping as
     // quantityFromRecipe above — see GroceryItem.sourceRecipeId — and clears
-    // for the same reason: leaving the list ends the reason it was on it.
-    const updated = {
-      ...item,
-      quantity: item.quantityFromRecipe ? null : item.quantity,
-      quantityFromRecipe: false,
-      sourceRecipeId: null,
-      sourceRecipeTitle: null,
-    };
-    dbUpdateGroceryItem(updated);
+    // for the same reason: leaving the list ends the reason it was on it. Unless
+    // another trolley still holds the row, whose recipe need is still live
+    // there (parkedOffList, as clearList keeps it).
+    const updated = parkedOffList(item, get().listEntries, listId);
+    if (updated !== item) dbUpdateGroceryItem(updated);
     set(s => ({
       items: s.items.map(i => (i.id === id ? updated : i)),
       cartHoldIds: s.cartHoldIds.filter(x => x !== id),
@@ -4188,17 +4185,16 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const parking = leaving
       .map(e => get().items.find(i => i.id === e.itemId))
       .filter((i): i is GroceryItem => !!i);
-    const toUpdate = parking.map(i => ({
-      ...i,
-      quantity: i.quantityFromRecipe ? null : i.quantity,
-      quantityFromRecipe: false,
-      sourceRecipeId: null,
-      sourceRecipeTitle: null,
-    }));
+    // Only the rows that change: one still on another trolley keeps its
+    // recipe amount and credit (parkedOffList), and is left unwritten.
+    const parkedRows = parking
+      .map(i => ({ before: i, after: parkedOffList(i, get().listEntries, listId) }))
+      .filter(p => p.after !== p.before);
+    const toUpdate = parkedRows.map(p => p.after);
     // What the park is about to null, for the undo below. Only these four
     // columns: the rest of the row isn't touched here, and restoring a whole
     // snapshot would also roll back anything recorded on it since.
-    const shopFields = new Map(parking.map(i => [i.id, {
+    const shopFields = new Map(parkedRows.map(p => p.before).map(i => [i.id, {
       quantity: i.quantity,
       quantityFromRecipe: i.quantityFromRecipe,
       sourceRecipeId: i.sourceRecipeId,
@@ -5451,7 +5447,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // Same fallback addByName and addToPantry make for a name that normalises
     // away ("???"): the key has to stay unique or the second such row collides
     // on the index.
-    const key = groceryNameKey(trimmed) || trimmed.toLowerCase();
+    const key = itemNameKey(trimmed);
     // Plural-tolerant, like addByName: naming "serrano pepper" so a standing
     // fact can hang off it means the Serrano peppers row you already have.
     const existing = catalogItemForKey(key, get().items);

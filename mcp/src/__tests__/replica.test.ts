@@ -1371,6 +1371,25 @@ describe('the replica', () => {
       expect(parked.sourceRecipeTitle).toBeNull();
     });
 
+    it('keeps the recipe amount and credit when the row is still on another list', () => {
+      // The amount and the credit are the item's, so taking beans off the cabin
+      // list must not wipe the "For Chili" the home list still needs.
+      mockRaw.runSync("INSERT INTO grocery_lists (id, name, sort_order, created_at) VALUES ('cabin', 'Cabin', 1, '2026-01-01T00:00:00.000Z')");
+      replica.refresh();
+      const beans = replica.addGroceryItem('beans').item;
+      replica.addGroceryItem('beans', { listId: 'cabin' });
+      mockRaw.runSync(
+        'UPDATE grocery_items SET quantity = ?, quantity_from_recipe = 1, source_recipe_id = ?, source_recipe_title = ? WHERE id = ?',
+        ['2 cans', 'r-chili', 'Chili', beans.id]
+      );
+      replica.refresh();
+
+      const after = replica.removeFromGroceryList(beans.id, 'cabin');
+
+      expect(after).toMatchObject({ quantity: '2 cans', quantityFromRecipe: true, sourceRecipeId: 'r-chili', sourceRecipeTitle: 'Chili' });
+      mockRaw.runSync('DELETE FROM grocery_lists');
+    });
+
     it('refuses an unknown id rather than doing nothing', () => {
       expect(() => replica.addGroceryItem('   ')).toThrow(/needs a name/);
       expect(() => replica.setGroceryChecked('nope', true)).toThrow(/No grocery item/);

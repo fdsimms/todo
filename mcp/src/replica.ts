@@ -6896,7 +6896,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       db.dbTransaction(() => {
         for (const row of rows) {
           const items = db.dbGetAllGroceryItems();
-          const existing = plural.catalogItemForKey(parse.groceryNameKey(row.name), items) ?? undefined;
+          const existing = plural.catalogItemForKey(parse.itemNameKey(row.name), items) ?? undefined;
           const entry = existing ? lists.entryFor(db.dbGetAllGroceryListEntries(), existing.id, listId) : undefined;
           if (existing && entry?.checked) { result.skippedInCart.push(existing); continue; }
           if (existing && entry) {
@@ -6932,7 +6932,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           let item = plan.item;
           // The recipe's aisle files the row unless the person already filed
           // that name somewhere (setAisle, which also remembers the filing).
-          const key = parse.groceryNameKey(row.name);
+          const key = parse.itemNameKey(row.name);
           if (row.aisle && !overrides[key]) {
             item = { ...item, aisle: aisles.placeAisle(row.aisle, order) };
             const remembered = aisles.rememberAisles(overrides, [{ nameKey: item.nameKey, aisle: item.aisle }]);
@@ -7323,14 +7323,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // ride back onto the catalog row, and nor does its credit: the same
       // parking `useGroceryStore.removeFromList` does. Left on, a hand-typed
       // re-add weeks later still read 'For "Chili"'.
-      const parked: GroceryItem = {
-        ...item,
-        quantity: item.quantityFromRecipe ? null : item.quantity,
-        quantityFromRecipe: false,
-        sourceRecipeId: null,
-        sourceRecipeTitle: null,
-      };
-      db.dbUpdateGroceryItem(parked);
+      // Unless another trolley still holds the row: the amount and credit are
+      // the item's, and its recipe need is still live there (parkedOffList).
+      const parked = itemWrite.parkedOffList(item, db.dbGetAllGroceryListEntries(), listId);
+      if (parked !== item) db.dbUpdateGroceryItem(parked);
       db.dbDeleteGroceryListEntry(id, listId);
 
       refresh();

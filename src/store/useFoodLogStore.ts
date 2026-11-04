@@ -589,6 +589,18 @@ function syncWaterQuotaTasksIfToday(dayKey: string): void {
 }
 
 /**
+ * Food landed in a meal or left one: the meal strip's coins for those days and
+ * the "Choose lunch" style tasks follow it. `updateEntry` always did this for
+ * one row; the bulk paths (move, reorder) and a correction that only changed
+ * the meal reach the same state, and left the coin paid for lunch while the
+ * food sat in dinner.
+ */
+function syncMealsAfterSlotChange(dayKeys: Iterable<string>): void {
+  new Set(dayKeys).forEach(day => useTaskStore.getState().syncMealStripCoins(day));
+  useTaskStore.getState().syncLoggedMealSlotTasks();
+}
+
+/**
  * Files what Health said about one entry: its sample ids, or the one refusal
  * worth saying out loud.
  *
@@ -832,10 +844,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       insightEntries: s.insightEntries.map(e => (e.id === id ? updated : e)),
     }));
     // Moving a row into a meal is the other way food lands in a slot.
-    if (patch.slot !== undefined) {
-      useTaskStore.getState().syncLoggedMealSlotTasks();
-      useTaskStore.getState().syncMealStripCoins(entry.dayKey);
-    }
+    if (patch.slot !== undefined) syncMealsAfterSlotChange([entry.dayKey]);
     const before = priorFields(entry, patch);
     get().setLastAction({
       label: `Edited “${entry.label}”`,
@@ -877,8 +886,12 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
 
     // A correction that moved the meal or re-filed the item changed nothing
     // Health is holding, and rewriting anyway would churn somebody's medical
-    // record for a field it never saw.
-    if (!rewrites) return;
+    // record for a field it never saw. It still moved food between meals, which
+    // the strip's coins and the meal tasks are read off.
+    if (!rewrites) {
+      if (patch.slot !== undefined && patch.slot !== current.slot) syncMealsAfterSlotChange([updated.dayKey]);
+      return;
+    }
 
     syncWaterQuotaTasksIfToday(updated.dayKey);
 
@@ -1022,13 +1035,11 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       totalCount: Math.max(0, s.totalCount - idSet.size),
     }));
     removed.forEach(e => cancelCheckInFor('food', e.id));
-    const todayKey = dayKeyOf(getCurrentDayStart());
-    if (removed.some(e => e.dayKey === todayKey)) {
-      useTaskStore.getState().syncWaterQuotaTasks();
-      useTaskStore.getState().syncSnackNudgeTasks();
-      useTaskStore.getState().syncLimitWarningTasks();
-      useTaskStore.getState().syncGoalTargetTasks();
-    }
+    // Each day the way removeEntry does one: the meal strip's coins for any day,
+    // and the passes that read today's log when it was today's. Only the
+    // second half was here, so "Forget all" on a saved-meal tray left the
+    // coin paid for a lunch that was no longer in the log.
+    new Set(removed.map(e => e.dayKey)).forEach(syncWaterQuotaTasksIfToday);
     if (removed.length > 0) {
       get().setLastAction({
         label: removed.length === 1 ? `Deleted “${removed[0].label}”` : `${removed.length} entries deleted`,
@@ -1074,6 +1085,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
         .map(e => e.id),
     );
     const cleared = linksClearedBySlot(get().entries.filter(e => idSet.has(e.id) && !kept.has(e.id)), () => slot);
+    const movedDays = get().entries.filter(e => idSet.has(e.id) && e.slot !== slot).map(e => e.dayKey);
     const moving = ids.filter(id => !kept.has(id));
     if (moving.length > 0) dbBulkSetFoodLogSlot(moving, slot);
     if (kept.size > 0) dbBulkSetFoodLogSlot(Array.from(kept), slot, true);
@@ -1086,6 +1098,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       // slot can drop a day out of every mood pairing.
       insightEntries: s.insightEntries.map(place),
     }));
+    if (movedDays.length > 0) syncMealsAfterSlotChange(movedDays);
     if (priorSlots.length > 0) {
       get().setLastAction({
         label: priorSlots.length === 1 ? 'Moved 1 entry' : `Moved ${priorSlots.length} entries`,
@@ -1108,6 +1121,11 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       .map(e => ({ id: e.id, slot: e.slot, sortOrder: e.sortOrder }));
     const byId = new Map(updates.map(u => [u.id, u]));
     const cleared = linksClearedBySlot(get().entries.filter(e => wanted.has(e.id)), e => byId.get(e.id)?.slot ?? e.slot);
+    // Only a row that changes meal moves food between meals; a reorder within
+    // one leaves the coins and the meal tasks as they were.
+    const changedMealDays = get().entries
+      .filter(e => wanted.has(e.id) && (byId.get(e.id)?.slot ?? e.slot) !== e.slot)
+      .map(e => e.dayKey);
     dbBulkUpdateFoodLogPlacement(updates);
     const place = (e: FoodLogEntry) => {
       const u = byId.get(e.id);
@@ -1118,6 +1136,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       windowEntries: s.windowEntries.map(place),
       insightEntries: s.insightEntries.map(place),
     }));
+    if (changedMealDays.length > 0) syncMealsAfterSlotChange(changedMealDays);
     if (prior.length > 0) {
       get().setLastAction({
         label: 'Reordered meals',

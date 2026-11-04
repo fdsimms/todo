@@ -1,5 +1,6 @@
 import {
   groceryNameKey,
+  itemNameKey,
   parseGroceryInput,
   splitPrep,
   splitQuantityNote,
@@ -1008,5 +1009,20 @@ describe('parseGroceryInput: recipe-site amount shapes', () => {
 
   it('leaves a slash that is not between two measures alone', () => {
     expect(parseGroceryInput('and/or salt').name).toBe('and/or salt');
+  });
+});
+
+// ─── itemNameKey ─────────────────────────────────────────────────────────────
+
+describe('itemNameKey', () => {
+  it('is groceryNameKey wherever that has an answer', () => {
+    expect(itemNameKey('Jalapeño Peppers')).toBe(groceryNameKey('Jalapeño Peppers'));
+    expect(itemNameKey('2% Milk')).toBe('2% milk');
+  });
+
+  it('falls back to the trimmed lower-case text for a name with no ASCII letter or digit', () => {
+    expect(groceryNameKey('🥛')).toBe('');
+    expect(itemNameKey(' 🥛 ')).toBe('🥛');
+    expect(itemNameKey('豆腐')).toBe('豆腐');
   });
 });

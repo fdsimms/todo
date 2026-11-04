@@ -49,6 +49,21 @@ export function groceryNameKey(name: string): string {
     .trim();
 }
 
+/**
+ * The key a catalog row is stored and found under: `groceryNameKey`, or the
+ * trimmed lower-case text when that comes out empty (a name with no ASCII
+ * letter or digit, like "🥛" or "豆腐"). The fallback keeps two such rows from
+ * colliding on the UNIQUE index, and is what the add itself resolves a name
+ * with. **Any pre-check that predicts whether an add will find an existing row
+ * calls this**, not `groceryNameKey`: read bare, an existing row for such a
+ * name looks freshly minted, a paste counts it as added and an undo deletes a
+ * catalog row the person already had. `groceryNameKey` itself must not change
+ * (see its note), which is why the fallback lives here.
+ */
+export function itemNameKey(name: string): string {
+  return groceryNameKey(name) || name.trim().toLowerCase();
+}
+
 // Units we're willing to treat as a leading quantity. A whitelist rather than
 // a pattern because the failure mode of guessing is eating the first word of
 // the item name, which is the one thing the key must keep.
