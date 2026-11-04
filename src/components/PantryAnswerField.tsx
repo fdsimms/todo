@@ -1,12 +1,13 @@
 import React, { useMemo } from 'react';
-import { View, Text, Switch, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, type StyleProp, type ViewStyle } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, spacing, type Colors } from '../theme';
+import { font, fontWeight, interaction, spacing, type Colors } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { pantryStanding, type PantryStanding } from '../utils/pantryStanding';
 import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { SegmentedControl } from './SegmentedControl';
+import { Toggle } from './Toggle';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -70,6 +71,7 @@ export function PantryAnswerField({ itemId, value, onChange, addToList, onAddToL
     : standing?.tone === 'warn' ? colors.orange
     : standing?.tone === 'bad' ? colors.red
     : colors.textTertiary;
+  const addsToList = value === 'low' ? (addToList ?? runningLowAddsToList) : false;
 
   return (
     <View style={[styles.root, style]}>
@@ -93,22 +95,25 @@ export function PantryAnswerField({ itemId, value, onChange, addToList, onAddToL
       {shown === 'low' && onAddToListChange && (onHomeList ? (
         <Text style={styles.switchLabel}>Already on the grocery list</Text>
       ) : (
-        <View style={styles.switchRow}>
+        <TouchableOpacity
+          style={styles.switchRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => {
+            haptics.tap();
+            const on = !addsToList;
+            // Already marked low, so "Running low" isn't a change the sheet
+            // would write. Turning the switch on picks it, which is what makes
+            // the sheet add the item; turning it off puts the pick back.
+            if (standing?.answer === 'low') onChange(on ? 'low' : null);
+            onAddToListChange(on);
+          }}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: addsToList }}
+          accessibilityLabel="Add to grocery list"
+        >
           <Text style={styles.switchLabel}>Add to grocery list</Text>
-          <Switch
-            value={value === 'low' ? (addToList ?? runningLowAddsToList) : false}
-            onValueChange={on => {
-              haptics.tap();
-              // Already marked low, so "Running low" isn't a change the sheet
-              // would write. Turning the switch on picks it, which is what makes
-              // the sheet add the item; turning it off puts the pick back.
-              if (standing?.answer === 'low') onChange(on ? 'low' : null);
-              onAddToListChange(on);
-            }}
-            trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-            accessibilityLabel="Add to grocery list"
-          />
-        </View>
+          <Toggle value={addsToList} />
+        </TouchableOpacity>
       ))}
     </View>
   );

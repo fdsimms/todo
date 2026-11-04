@@ -18,7 +18,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -3074,20 +3073,22 @@ export function FoodLogEntrySheet({
                 nearly every time this half is open, and a bar at the foot sat
                 behind it. */}
             {!!allowBurst && !editing && (
-              <View style={styles.burstRow}>
+              <TouchableOpacity
+                style={styles.burstRow}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); setKeepOpenAfterFoodLog(!keepOpenAfterFoodLog); }}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: keepOpenAfterFoodLog }}
+                accessibilityLabel="Log several. Keep this open after each food"
+              >
                 <Text style={styles.burstLabel}>Log several</Text>
                 {burstAdded.length > 0 && (
                   <Text style={styles.burstCount}>
                     {burstAdded.length} added
                   </Text>
                 )}
-                <Switch
-                  value={keepOpenAfterFoodLog}
-                  onValueChange={next => { haptics.tap(); setKeepOpenAfterFoodLog(next); }}
-                  trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-                  accessibilityLabel="Log several. Keep this open after each food"
-                />
-              </View>
+                <Toggle value={keepOpenAfterFoodLog} />
+              </TouchableOpacity>
             )}
             {/* The ways to start that need no text, as one row of tiles. They
                 are only here while the field is empty: once something is typed

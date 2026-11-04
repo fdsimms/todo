@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { Calendar as ReminderList } from 'expo-calendar/legacy';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, spacing, type Colors } from '../theme';
+import { border, font, fontWeight, interaction, spacing, type Colors } from '../theme';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, type MealSlot, type ReminderCapture, type ReminderCaptureFiling } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -22,6 +22,7 @@ import { PillGroup, type PillGroupOption } from './PillGroup';
 import { RuleListSheet } from './RuleListSheet';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { HelpText } from './HelpText';
+import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 
 /**
@@ -325,7 +326,25 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
                   prefilled with what you dictated. Project, Category, and Tag only file
                   the task.
                 </HelpText>
-                <View style={styles.toggleRowTop}>
+                <TouchableOpacity
+                  style={styles.toggleRowTop}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => {
+                    haptics.tap();
+                    changeFiling(
+                      capture,
+                      // Defaulting to lunch rather than breakfast on the way
+                      // in: it is the middle of the day, so it is the least
+                      // likely to be left wrong by somebody who flipped this
+                      // to see what it did.
+                      { kind: 'meal', slot: capture.filing.kind === 'meal' && capture.filing.slot !== null ? null : 'lunch' },
+                      update
+                    );
+                  }}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: capture.filing.slot !== null }}
+                  accessibilityLabel="Always log this list as the same meal"
+                >
                   <View style={styles.toggleText}>
                     <Text style={styles.toggleLabel}>Always the same meal</Text>
                     <Text style={styles.hint}>
@@ -334,25 +353,8 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
                         : 'Off. The meal is set by the time of day you dictated it, so one list can log breakfast, lunch, or dinner.'}
                     </Text>
                   </View>
-                  <Switch
-                    value={capture.filing.slot !== null}
-                    onValueChange={next => {
-                      haptics.tap();
-                      changeFiling(
-                        capture,
-                        // Defaulting to lunch rather than breakfast on the way
-                        // in: it is the middle of the day, so it is the least
-                        // likely to be left wrong by somebody who flipped this
-                        // to see what it did.
-                        { kind: 'meal', slot: next ? 'lunch' : null },
-                        update
-                      );
-                    }}
-                    trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-                    thumbColor={colors.onAccent}
-                    accessibilityLabel="Always log this list as the same meal"
-                  />
-                </View>
+                  <Toggle value={capture.filing.slot !== null} />
+                </TouchableOpacity>
                 {capture.filing.slot !== null && (
                   <View style={styles.block}>
                     <Text style={styles.label}>WHICH MEAL</Text>
@@ -443,7 +445,20 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
               )}
             </View>
 
-            <View style={styles.toggleRow}>
+            <TouchableOpacity
+              style={styles.toggleRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => {
+                haptics.tap();
+                // Same reasoning as changeFiling: the alert said whether the
+                // reminders would be deleted, so changing that answer means
+                // the confirmation was given for a different thing.
+                update({ deleteAfterImport: !capture.deleteAfterImport, confirmedListId: null });
+              }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: capture.deleteAfterImport }}
+              accessibilityLabel="Delete reminders after importing them"
+            >
               <View style={styles.toggleText}>
                 <Text style={styles.toggleLabel}>Delete after importing</Text>
                 <Text style={styles.hint}>
@@ -452,20 +467,8 @@ export function ReminderCapturesSheet({ visible, onClose, reminderLists, reserve
                     : 'Reminders stay in the list. Anything whose name already matches a task is skipped.'}
                 </Text>
               </View>
-              <Switch
-                value={capture.deleteAfterImport}
-                onValueChange={next => {
-                  haptics.tap();
-                  // Same reasoning as changeFiling: the alert said whether the
-                  // reminders would be deleted, so changing that answer means
-                  // the confirmation was given for a different thing.
-                  update({ deleteAfterImport: next, confirmedListId: null });
-                }}
-                trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-                thumbColor={colors.onAccent}
-                accessibilityLabel="Delete reminders after importing them"
-              />
-            </View>
+              <Toggle value={capture.deleteAfterImport} />
+            </TouchableOpacity>
           </View>
         );
       }}

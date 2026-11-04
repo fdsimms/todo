@@ -159,6 +159,7 @@ import { SectionComposer } from '../components/SectionComposer';
 import { useActionMenu } from '../hooks/useActionMenu';
 import type { ActionMenuAction } from '../components/ActionMenu';
 import { FadeInImage } from '../components/FadeInImage';
+import { RotatingChevron } from '../components/RotatingChevron';
 import { HelpText } from '../components/HelpText';
 import { BUTTON_LABEL } from '../copy/shared';
 import { LazySheet } from '../components/LazySheet';
@@ -2605,11 +2606,7 @@ export function RecipeDetailScreen() {
           >
             <Ionicons name="scale-outline" size={iconSize.sm} color={colors.textSecondary} />
             <Text style={styles.matchSummaryText}>{weightLine ?? 'Set cooked weight'}</Text>
-            <Ionicons
-              name={cookedWeightOpen ? 'chevron-up' : 'chevron-forward'}
-              size={14}
-              color={colors.textTertiary}
-            />
+            <RotatingChevron open={cookedWeightOpen} closed="forward" size={14} color={colors.textTertiary} />
           </TouchableOpacity>
         )}
         {cookedWeightOpen && (

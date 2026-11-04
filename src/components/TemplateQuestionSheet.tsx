@@ -5,14 +5,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  Switch,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { TemplateQuestion, TemplateQuestionKind, TemplateQuestionSource } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -25,6 +24,7 @@ import { InlineAction } from './InlineAction';
 import { TemplateQuestionItemsSheet } from './TemplateQuestionItemsSheet';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
+import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -240,21 +240,30 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
 
       {kind === 'choice' && (
         <View style={styles.sectionCard}>
-          <View style={styles.switchRow}>
+          <TouchableOpacity
+            style={styles.switchRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); setMultiple(v => !v); }}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: multiple }}
+            accessibilityLabel="Allow more than one answer"
+          >
             <View style={styles.switchText}>
               <Text style={styles.switchLabel}>Allow more than one answer</Text>
               <HelpText style={styles.note}>
                 A run can pick several answers. An item is checked if it is set for any of them.
               </HelpText>
             </View>
-            <Switch
-              value={multiple}
-              onValueChange={next => { haptics.tap(); setMultiple(next); }}
-              trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-              accessibilityLabel="Allow more than one answer"
-            />
-          </View>
-          <View style={styles.switchRow}>
+            <Toggle value={multiple} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.switchRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); setShowForecast(v => !v); }}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: showForecast }}
+            accessibilityLabel="Show the destination forecast"
+          >
             <View style={styles.switchText}>
               <Text style={styles.switchLabel}>Show the destination forecast</Text>
               <HelpText style={styles.note}>
@@ -262,13 +271,8 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
                 Needs a destination and dates, and Destination forecast turned on in Settings.
               </HelpText>
             </View>
-            <Switch
-              value={showForecast}
-              onValueChange={next => { haptics.tap(); setShowForecast(next); }}
-              trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-              accessibilityLabel="Show the destination forecast"
-            />
-          </View>
+            <Toggle value={showForecast} />
+          </TouchableOpacity>
         </View>
       )}
 
