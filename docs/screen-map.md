@@ -67,7 +67,7 @@ components below.
 - `src/screens/TodayScreen.tsx` — AddTaskFab, AgentSuggestionCards, AllClearMark, AnimatedCollapsible, AnimatedNumber, ApplyTemplateSheet, BulkActionBar, CardSheet, CategoryOrderSheet, CoinIcon, CompletionCollapse, CreatedTaskToast, +51 more
 - `src/screens/UnattendedLogScreen.tsx` — ActivitySourceSheet, EmptyState, HubPills, InlineAction, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton
 - `src/screens/WeightScreen.tsx` — EmptyState, HubPills, LogWeightSheet, ProgressBar, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SegmentedControl, WeightChart, WeightGoalSheet
-- `src/screens/WorkoutsScreen.tsx` — ActionMenu, CardSheet, CsvExportSheet, EmptyNote, EmptyState, ExerciseDetailSheet, ExerciseFilterBar, Fab, GroupNameSheet, GymsSheet, HelpText, InlineAction, +13 more
+- `src/screens/WorkoutsScreen.tsx` — ActionMenu, CardSheet, CsvExportSheet, EmptyNote, EmptyState, ExerciseDetailSheet, ExerciseFilterBar, Fab, GroupNameSheet, GymsSheet, HelpText, InlineAction, +14 more
 
 ## Components
 
@@ -90,7 +90,7 @@ Where each component can appear.
 - `src/components/AlarmsSection.tsx` — on RemindersScreen
 - `src/components/AllClearMark.tsx` — on TodayScreen
 - `src/components/AmountUnitField.tsx` — on BackfillScreen, GroceryScreen, KitchenScreen, MealPlanScreen, RecipeDetailScreen, RecipesScreen
-- `src/components/AnimatedBarFill.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, KitchenScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MoodScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, +13 more
+- `src/components/AnimatedBarFill.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, KitchenScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MoodScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, +14 more
 - `src/components/AnimatedCollapsible.tsx` — on FoodLogScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, StuckScreen, TodayScreen
 - `src/components/AnimatedNumber.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +30 more
 - `src/components/AppFrame.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, +34 more
@@ -534,9 +534,10 @@ Where each component can appear.
 - `src/components/WorkoutImportSheet.tsx` — on WorkoutsScreen
 - `src/components/WorkoutModeHost.tsx` — on app shell
 - `src/components/WorkoutModeSheet.tsx` — on app shell
+- `src/components/WorkoutOverview.tsx` — on WorkoutsScreen
 - `src/components/WorkoutRecordsCard.tsx` — on WorkoutsScreen, app shell
 - `src/components/WorkoutStatTiles.tsx` — on WorkoutsScreen, app shell
-- `src/components/WorkoutStatsCards.tsx` — on StatsScreen
+- `src/components/WorkoutStatsCards.tsx` — on StatsScreen, WorkoutsScreen
 - `src/components/WorkoutTimesSheet.tsx` — on WorkoutsScreen
 - `src/components/WorkoutVolumePill.tsx` — on app shell
 - `src/components/YearOfBirthSheet.tsx` — on SettingsGroupScreen
