@@ -3742,6 +3742,30 @@ function remapReferences(ctx: FoldContext, table: string, row: BackupRow): Backu
   return out;
 }
 
+/**
+ * A deletion of a composite-key row whose key names a row this device has since
+ * folded into another, as the same deletion at the survivor's key, or null when
+ * its key names nothing folded.
+ *
+ * An incoming row has its references pointed at survivors (`remapReferences`),
+ * but a deletion is only a key. The peer took Milk off the list under the id it
+ * knew, `(g2, '')`; this device had folded g2 into g1 and holds the entry as
+ * `(g1, '')`, so the deletion found nothing, was kept as a tombstone, and the
+ * entry stayed on this list for good. The key's columns are rewritten by the
+ * same references as a row's.
+ */
+function redirectedDeletion(ctx: FoldContext, table: SyncTable, deletion: SyncDeletion): SyncDeletion | null {
+  if (table.key.length < 2) return null;
+  const parts = deletion.rowKey.split(KEY_SEPARATOR);
+  if (parts.length !== table.key.length) return null;
+  const keyRow: BackupRow = {};
+  table.key.forEach((col, i) => { keyRow[col] = parts[i]; });
+  const remapped = remapReferences(ctx, table.name, keyRow);
+  if (remapped === keyRow) return null;
+  const key = rowKeyOf(table, remapped);
+  return key === null || key === deletion.rowKey ? null : { ...deletion, rowKey: key };
+}
+
 /** Local rows other than `row` itself that share one of its natural keys. */
 function naturalKeyClashes(name: string, row: BackupRow): BackupRow[] {
   const keys = NATURAL_KEYS[name];
@@ -4059,7 +4083,15 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
       }
     }
 
-    for (const deletion of payload.deletions) {
+    // Each deletion, then the same one at the survivor's key where its own key
+    // names a row folded away since (redirectedDeletion). The original stays: it
+    // records the tombstone the peer's id needs.
+    const deletions = payload.deletions.flatMap(d => {
+      const t = trackedTable(d.table);
+      const redirected = t ? redirectedDeletion(ctx, t, d) : null;
+      return redirected ? [d, redirected] : [d];
+    });
+    for (const deletion of deletions) {
       const table = trackedTable(deletion.table);
       if (!table || (deletion.table === 'settings' && !isSyncedSettingKey(deletion.rowKey))) {
         report.lossy++;

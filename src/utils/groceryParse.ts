@@ -159,6 +159,28 @@ function extractLeadingSize(name: string, quantity: string): { name: string; qua
   return { name: rest, quantity: `${quantity}, ${size}` };
 }
 
+/**
+ * A measure restated in parentheses at the front of what is left of the name
+ * ("4 (6-ounce) salmon fillets", "1 large (about 8 oz) onion") belongs to the
+ * quantity, the way it does after a unit ("1 cup (235 ml) buttermilk"). Left in
+ * the name, "(6-ounce) salmon fillets" keyed as "6 ounce salmon fillets", which
+ * never matched the catalog's "salmon fillets" or the pantry's. A unit word right
+ * after it ("1 (1-inch) piece ginger") goes with it. Only when a measure is
+ * there; any other line is returned untouched.
+ */
+function foldMeasureAside(sized: { name: string; quantity: string }): { name: string; quantity: string } {
+  const aside = MEASURE_PAREN.exec(sized.name.trim());
+  if (!aside) return sized;
+  let name = aside[2];
+  let quantity = `${sized.quantity} ${aside[1]}`;
+  const [first, ...more] = name.split(/\s+/);
+  if (more.length > 0 && first.toLowerCase() !== 'x' && UNIT_SET.has(first.toLowerCase())) {
+    quantity = `${quantity} ${UNIT_ABBREVIATIONS[first.toLowerCase()] ?? first.toLowerCase()}`;
+    name = more.join(' ');
+  }
+  return { name, quantity };
+}
+
 // "milk x2", "eggs x 12"
 const TRAILING_X = /^(.*?)\s+x\s*(\d+)$/i;
 // "eggs (dozen)", "milk (2%)" — only when the parens close the string.
@@ -367,8 +389,13 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
         // is the next thing rather than the start of the name.
         const packSize = canonicalUnit === 'x' ? PACK_SIZE.exec(name.trim()) : null;
         if (packSize && UNIT_SET.has(packSize[2].toLowerCase()) && packSize[3].trim()) {
+          // "2 x 400g tins chopped tomatoes": the container word is what the
+          // size is of, so it goes with the size rather than staying in the
+          // name, where "tins chopped tomatoes" never matched "chopped tomatoes".
+          const [container, ...afterContainer] = packSize[3].trim().split(/\s+/);
+          const dropContainer = afterContainer.length > 0 && isSizedContainer(packSize[2], container);
           return {
-            name: clampName(packSize[3]),
+            name: clampName(dropContainer ? afterContainer.join(' ') : packSize[3]),
             quantity: clampQuantity(`${count} x ${packSize[1]}${packSize[2].toLowerCase()}`),
           };
         }
@@ -381,14 +408,14 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
       if (!maybeUnit) {
         // Bare count: "3 avocados". The unit slot was whitespace, so `rest`
         // already holds the whole name.
-        const sized = extractLeadingSize(rest.trim(), count);
+        const sized = foldMeasureAside(extractLeadingSize(rest.trim(), count));
         return { name: clampName(sized.name), quantity: clampQuantity(sized.quantity) };
       }
       // A number followed by a word we don't know as a unit — the word belongs
       // to the name, unless it's a size word, which is a known closed set
       // rather than an unrecognised one.
       const fullName = `${maybeUnit} ${rest}`;
-      const sized = extractLeadingSize(fullName.trim(), count);
+      const sized = foldMeasureAside(extractLeadingSize(fullName.trim(), count));
       return { name: clampName(sized.name), quantity: clampQuantity(sized.quantity) };
     }
   }
@@ -493,6 +520,45 @@ export function splitQuantityNote(quantity: string): { quantity: string; note: s
   return { quantity: trimmed, note: null };
 }
 
+// Adjectives that recipes write in front of the name and then follow with a
+// comma — "boneless, skinless chicken thighs" — where PREP_SPLIT's rule (the
+// name is everything before the first comma) takes the adjective as the whole
+// name: the ingredient became "boneless", keyed onto nothing in the catalog.
+// A closed list for the reason LEADING_PREP_WORDS is one: these are words that
+// describe how a food is sold or prepared and are not a product by themselves.
+// Keep it tight; anything else stays to the AI extractor.
+const LEADING_COMMA_ADJECTIVES = new Set([
+  'boneless', 'skinless', 'bone-in', 'skin-on', 'lean', 'cooked', 'ripe', 'fresh', 'thick-cut', 'low-sodium', 'fat-free',
+]);
+
+/**
+ * The listed adjectives from the front of `text` ("boneless, skinless chicken
+ * thighs" gives boneless and skinless, leaving "chicken thighs"), or null when
+ * it does not open with one followed by a comma. Only the first adjective needs
+ * the comma; once one is peeled, a listed word right in front of the name goes
+ * with it.
+ */
+function peelLeadingAdjectives(text: string): { adjectives: string[]; rest: string } | null {
+  const adjectives: string[] = [];
+  let rest = text;
+  for (;;) {
+    const comma = /^([a-z]+(?:-[a-z]+)?),\s+(.+)$/i.exec(rest);
+    if (comma && LEADING_COMMA_ADJECTIVES.has(comma[1].toLowerCase())) {
+      adjectives.push(comma[1].toLowerCase());
+      rest = comma[2];
+      continue;
+    }
+    const word = adjectives.length > 0 ? /^([a-z]+(?:-[a-z]+)?)\s+(.+)$/i.exec(rest) : null;
+    if (word && LEADING_COMMA_ADJECTIVES.has(word[1].toLowerCase())) {
+      adjectives.push(word[1].toLowerCase());
+      rest = word[2];
+      continue;
+    }
+    break;
+  }
+  return adjectives.length > 0 ? { adjectives, rest } : null;
+}
+
 export function splitPrep(name: string): { name: string; prep: string | null } {
   const trimmed = name.trim();
 
@@ -502,6 +568,16 @@ export function splitPrep(name: string): { name: string; prep: string | null } {
   // *and* puts the split suggestion out of reach — see looksLikeAlternativeList
   // for why only the Oxford-comma form qualifies.
   if (looksLikeAlternativeList(trimmed)) return { name: trimmed, prep: null };
+
+  // Leading adjectives first, so the comma after them is not read as the end of
+  // the name. What is left is split as any other name (it may carry its own
+  // trailing clause), and the adjectives go in front of that prep note.
+  const peeled = peelLeadingAdjectives(trimmed);
+  if (peeled && peeled.rest.trim()) {
+    const inner = splitPrep(peeled.rest);
+    const prep = [peeled.adjectives.join(', '), inner.prep].filter(Boolean).join(', ');
+    return { name: inner.name, prep: prep.slice(0, PREP_MAX_LENGTH) || null };
+  }
 
   const match = PREP_SPLIT.exec(trimmed);
   if (match) {

@@ -173,6 +173,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     renameStack: () => { throw new Error('not stubbed'); },
     reorderTemplates: () => { throw new Error('not stubbed'); },
     createTask: () => { throw new Error('not stubbed'); },
+    categoryForDraft: () => { throw new Error('not stubbed'); },
     scaleFirstWeek: () => {},
     completeTask: () => { throw new Error('not stubbed'); },
     completionProblem: () => null,

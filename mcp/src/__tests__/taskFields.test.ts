@@ -405,7 +405,7 @@ describe('habit, window, follow-up, blockers', () => {
   });
 
   it('keeps the draft already set up on the phone when only the count or title changes', () => {
-    const draft = { ...deps.emptyFollowUpDraft(), notes: 'Size 10', category: 'Errands', tags: ['shoes'], priority: 2 };
+    const draft = { ...deps.emptyFollowUpDraft(), notes: 'Size 10', category: 'Errands', tags: ['shoes'], priority: 2 as FollowUpTaskDraft['priority'] };
     const current = existing({ recurrenceType: 'weekly', followUpTaskEveryN: 4, followUpTaskTitle: 'Replace shoes', followUpTaskDraft: draft });
     const p = ok({ followUp: { everyN: 5, title: 'Replace the shoes' } }, current);
     expect(p.followUpTaskDraft).toEqual(draft);

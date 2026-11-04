@@ -428,6 +428,16 @@ describe('makeIngredient', () => {
     expect(result.nameKey).toBe('chicken thighs');
   });
 
+  // The ingredient was "boneless", keyed onto nothing in the catalog, so the
+  // pantry never saw that the chicken thighs were already in the house.
+  it('keeps the product as the name when boneless, skinless leads the line', () => {
+    const result = makeIngredient('2 pounds boneless, skinless chicken thighs')!;
+    expect(result.name).toBe('chicken thighs');
+    expect(result.nameKey).toBe('chicken thighs');
+    expect(result.quantity).toBe('2 pounds');
+    expect(result.prep).toBe('boneless, skinless');
+  });
+
   it('handles a bare count and a trailing x', () => {
     expect(makeIngredient('3 avocados')!.quantity).toBe('3');
     expect(makeIngredient('eggs x12')!.quantity).toBe('x12');
