@@ -1403,6 +1403,17 @@ describe('getStreakOutcome', () => {
     expect(getStreakOutcome(task)).toBe('reset');
   });
 
+  it('measures an "every N hours" streak in days, not weeks', () => {
+    // Every 8 hours, last done Saturday June 7 and now Tuesday June 10: three
+    // days with nothing, which resets a daily habit and has to reset this one.
+    const task: Task = { ...baseTask, recurrenceType: 'hours', recurrenceInterval: 8, streakDate: new Date(2025, 5, 7).toISOString() };
+    expect(getStreakOutcome(task)).toBe('reset');
+    // Done yesterday still continues it, and so does a day-and-a-half interval
+    // (36 hours) done two days ago.
+    expect(getStreakOutcome({ ...task, streakDate: new Date(2025, 5, 9).toISOString() })).toBe('continued');
+    expect(getStreakOutcome({ ...task, recurrenceInterval: 36, streakDate: new Date(2025, 5, 8).toISOString() })).toBe('continued');
+  });
+
   it('derives the gap from selected weekdays, not a flat 7', () => {
     // Mon/Wed/Fri habit last completed Monday June 2 — the next slot is Wednesday June 4, a 2-day gap.
     const task: Task = {

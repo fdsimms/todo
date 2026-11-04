@@ -532,3 +532,47 @@ describe('compacting the history behind a snapshot', () => {
     expect(tasks(mac)).toEqual(tasks(phone));
   });
 });
+
+describe('a table whose key contains the key separator', () => {
+  // gym_exercises ids are `gymId|exerciseId` (gymExerciseId), and the sync
+  // layer joins a composite key with the same '|'. Splitting a single-column
+  // key bound two values to one placeholder, which threw, rolled the whole
+  // apply back and left the receiving device unable to sync past that payload.
+  const saveGymExercise = (d: Device, id: string, notes: string): void => {
+    later();
+    d.raw.prepare(
+      'INSERT OR REPLACE INTO gym_exercises (id, gym_id, exercise_id, notes) VALUES (?, ?, ?, ?)'
+    ).run(id, id.split('|')[0], id.split('|')[1], notes);
+  };
+  const gymExercises = (d: Device): Array<{ id: string; notes: string }> =>
+    d.raw.prepare('SELECT id, notes FROM gym_exercises ORDER BY id').all();
+
+  it('a per-gym exercise row reaches the other device and its deletion follows', async () => {
+    const cloud = fakeICloud();
+    const phone = newDevice('phone');
+    const mac = newDevice('mac');
+    addTask(phone, 'a', 'Pay rent');
+    saveGymExercise(phone, 'g1|e1', 'Use the left rack');
+
+    await settle(cloud, phone, mac);
+
+    expect(gymExercises(mac)).toEqual([{ id: 'g1|e1', notes: 'Use the left rack' }]);
+    expect(titles(mac)).toEqual(['Pay rent']);
+
+    later();
+    phone.raw.prepare('DELETE FROM gym_exercises WHERE id = ?').run('g1|e1');
+    await settle(cloud, phone, mac);
+
+    expect(gymExercises(mac)).toEqual([]);
+  });
+
+  it('restoring a backup that holds one succeeds', () => {
+    const phone = newDevice('phone');
+    saveGymExercise(phone, 'g1|e1', 'Use the left rack');
+    const mac = newDevice('mac');
+
+    mac.db.dbReplaceAllData(phone.db.dbExportTables());
+
+    expect(gymExercises(mac)).toEqual([{ id: 'g1|e1', notes: 'Use the left rack' }]);
+  });
+});

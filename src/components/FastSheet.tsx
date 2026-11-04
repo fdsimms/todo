@@ -80,7 +80,12 @@ export function FastSheet({ visible, fast, lastMealAt, onClose }: Props) {
 
   const now = new Date();
   const startDay = dayName(start, now);
-  const problem = fastStartProblem(start, now, fast?.endedAt ? new Date(fast.endedAt) : null);
+  const problem = fastStartProblem(
+    start,
+    now,
+    fast?.endedAt ? new Date(fast.endedAt) : null,
+    fast ? new Date(fast.startedAt) : null
+  );
   const dirty = fast
     ? !sameMinute(start, new Date(fast.startedAt)) || goal !== fast.goalHours
     : false;

@@ -372,6 +372,24 @@ describe('the replica', () => {
       expect(() => replica.deleteMoodLog(log.id)).toThrow(/No mood check-in/);
     });
 
+    it('edits a mood check-in and a dose that arrived from the phone, not through this process', () => {
+      // Rows a sync pull wrote straight to the database. The stores answer from
+      // memory, so an edit of one used to find nothing, change nothing and still
+      // return the unedited row as if it had worked.
+      mockRaw.runSync(
+        "INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags) VALUES (?,?,?,?,?,?)",
+        ['m-synced', '2026-09-11T09:00:00.000Z', '2026-09-11', 2, '[]', '[]']
+      );
+      mockRaw.runSync(
+        "INSERT INTO medication_logs (id, name, taken_at, day_key, amount, unit, as_needed) VALUES (?,?,?,?,?,?,?)",
+        ['d-synced', 'Ibuprofen', '2026-09-11T20:00:00.000Z', '2026-09-11', 200, 'mg', 1]
+      );
+      replica.refresh();
+
+      expect(replica.updateMoodLog('m-synced', { mood: 4 }).mood).toBe(4);
+      expect(replica.updateMedicationLog('d-synced', { amount: 400 }).amount).toBe(400);
+    });
+
     it('corrects a dose, keeping amount and unit together', () => {
       const dose = replica.logMedication({ name: 'Ibuprofen', amount: 200, unit: 'mg' });
       expect(replica.updateMedicationLog(dose.id, { amount: 400 })).toMatchObject({ amount: 400, unit: 'mg', name: 'Ibuprofen' });

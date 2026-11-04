@@ -75,6 +75,8 @@ import {
   rescheduleAllReminders,
   cancelCompletionTimer,
   cancelQuotaNudges,
+  scheduleMedicationOkAgain,
+  cancelMedicationOkAgain,
 } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
@@ -358,6 +360,10 @@ jest.mock('../utils/notifications', () => ({
   cancelTripReminder: jest.fn().mockResolvedValue(undefined),
   scheduleCompletionTimer: jest.fn().mockResolvedValue(undefined),
   cancelCompletionTimer: jest.fn().mockResolvedValue(undefined),
+  // The "OK again" notice a medication limit moves when a task writes or takes
+  // back a dose (okAgainNotification.ts).
+  scheduleMedicationOkAgain: jest.fn().mockResolvedValue(undefined),
+  cancelMedicationOkAgain: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('../utils/deadlineCalendarSync', () => ({
@@ -21826,6 +21832,62 @@ describe('a task that records a dose', () => {
     useTaskStore.getState().completeTask('t1');
     const next = useTaskStore.getState().tasks.find(t => t.id !== 't1');
     expect(next?.medicationExtras).toEqual([{ name: 'Vitamin C', amount: 500, unit: 'mg' }]);
+  });
+
+  describe('and a limit that notifies when the next dose is allowed', () => {
+    const limitOn = (name: string) => useMedicationStore.setState({
+      settings: {
+        [name.toLowerCase()]: {
+          limit: { minHours: 6, maxPer24h: null, notify: true, since: '2020-01-01T00:00:00.000Z' },
+          supply: null,
+        },
+      },
+    });
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      useMedicationStore.setState({ settings: {} });
+    });
+
+    it('schedules it when a task records the dose, for six hours on', () => {
+      limitOn('Ibuprofen');
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1', medicationName: 'Ibuprofen', medicationAmount: 200, medicationUnit: 'mg' })] });
+      const before = Date.now();
+      useTaskStore.getState().completeTask('t1');
+      expect(scheduleMedicationOkAgain).toHaveBeenCalledTimes(1);
+      const [, name, at] = (scheduleMedicationOkAgain as jest.Mock).mock.calls[0];
+      expect(name).toBe('Ibuprofen');
+      expect((at as Date).getTime()).toBeGreaterThanOrEqual(before + 6 * 3_600_000 - 5000);
+    });
+
+    it('moves it back when the task is unchecked, instead of leaving the later time', () => {
+      limitOn('Ibuprofen');
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1', medicationName: 'Ibuprofen', medicationAmount: 200, medicationUnit: 'mg' })] });
+      useTaskStore.getState().completeTask('t1');
+      jest.clearAllMocks();
+      useTaskStore.getState().uncompleteTask('t1');
+      expect(useMedicationStore.getState().logs).toHaveLength(0);
+      expect(cancelMedicationOkAgain).toHaveBeenCalledWith('ibuprofen');
+      expect(scheduleMedicationOkAgain).not.toHaveBeenCalled();
+    });
+
+    it('moves it for each unit of a daily target, and back when a unit is undone', () => {
+      limitOn('Ibuprofen');
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 't2', targetCount: 3, progressCount: 0, medicationName: 'Ibuprofen', medicationAmount: 200, medicationUnit: 'mg' })],
+      });
+      useTaskStore.getState().logQuotaUnit('t2');
+      expect(scheduleMedicationOkAgain).toHaveBeenCalledTimes(1);
+      jest.clearAllMocks();
+      useTaskStore.getState().unlogQuotaUnit('t2');
+      expect(cancelMedicationOkAgain).toHaveBeenCalledWith('ibuprofen');
+    });
+
+    it('leaves a medicine with no limit alone beyond clearing any stale notice', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1', medicationName: 'Sertraline', medicationAmount: 50, medicationUnit: 'mg' })] });
+      useTaskStore.getState().completeTask('t1');
+      expect(scheduleMedicationOkAgain).not.toHaveBeenCalled();
+    });
   });
 
   it('records nothing for a task carrying no medication', () => {

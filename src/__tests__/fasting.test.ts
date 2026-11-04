@@ -90,6 +90,17 @@ describe('fastStartProblem', () => {
     expect(fastStartProblem(new Date(hoursAgo(80)), now)).toMatch(/72 hours/);
     expect(fastStartProblem(new Date(hoursAgo(2)), now, new Date(hoursAgo(3)))).toMatch(/before the end/);
   });
+
+  it('does not hold an edit that leaves an old start where it was to the age limit', () => {
+    const oldStart = new Date(hoursAgo(96));
+    const oldEnd = new Date(hoursAgo(84));
+    expect(fastStartProblem(oldStart, now, oldEnd)).toMatch(/72 hours/);
+    expect(fastStartProblem(oldStart, now, oldEnd, oldStart)).toBeNull();
+    // Moving it somewhere else that is just as old is still a start being set.
+    expect(fastStartProblem(new Date(hoursAgo(100)), now, oldEnd, oldStart)).toMatch(/72 hours/);
+    // The other two checks still apply to an unchanged start.
+    expect(fastStartProblem(oldStart, now, new Date(hoursAgo(97)), oldStart)).toMatch(/before the end/);
+  });
 });
 
 describe('lastMealLoggedAt', () => {

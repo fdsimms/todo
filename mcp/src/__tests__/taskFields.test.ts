@@ -25,6 +25,16 @@ const existing = (over: Partial<Task> = {}): Task => ({
   targetCount: null, ...over,
 }) as Task;
 
+describe('tags', () => {
+  it('stores them the way the editor does: trimmed, lower case, no leading #, once each', () => {
+    expect(ok({ tags: ['Errand', ' Post Office ', '#x', 'errand', '  ', '##'] }).tags).toEqual(['errand', 'post office', 'x']);
+  });
+
+  it('clears them with an empty list', () => {
+    expect(ok({ tags: [] }).tags).toEqual([]);
+  });
+});
+
 describe('medication taken together', () => {
   it('sets the further medicines beside the main one, as a whole list', () => {
     expect(ok({ medication: { name: 'Iron', amount: 1, unit: 'capsule', also: [{ name: 'Vitamin C', amount: 500, unit: 'mg' }, { name: 'Zinc' }] } })).toMatchObject({

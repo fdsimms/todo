@@ -1,0 +1,1 @@
+{ "message": "Fixed a medication summary shared after midnight leaving a day of doses out of the next \"since last\" report when your day starts later than midnight.", "date": "2026-11-04" }

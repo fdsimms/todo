@@ -115,10 +115,21 @@ export function describeFastMoment(at: Date, now: Date, time: (d: Date) => strin
  * Why a start can't be saved, or null when it can: not in the future, not
  * longer ago than `MAX_FAST_START_AGE_HOURS`, and before the end when there is
  * one.
+ *
+ * The age limit is about where a start is being *set*, so an edit that leaves
+ * the start where it was passes `currentStart` and skips it: a fast from four
+ * days ago is listed under Past fasts with "tap one to change its goal", and
+ * would otherwise refuse a goal change with a complaint about its start.
  */
-export function fastStartProblem(start: Date, now: Date, endedAt: Date | null = null): string | null {
+export function fastStartProblem(
+  start: Date,
+  now: Date,
+  endedAt: Date | null = null,
+  currentStart: Date | null = null
+): string | null {
   if (start.getTime() > now.getTime() + 60_000) return 'A fast can’t start in the future.';
-  if (now.getTime() - start.getTime() > MAX_FAST_START_AGE_HOURS * HOUR_MS) {
+  const startUnchanged = currentStart !== null && Math.abs(start.getTime() - currentStart.getTime()) < 60_000;
+  if (!startUnchanged && now.getTime() - start.getTime() > MAX_FAST_START_AGE_HOURS * HOUR_MS) {
     return `A fast can start at most ${MAX_FAST_START_AGE_HOURS} hours ago.`;
   }
   if (endedAt && start.getTime() >= endedAt.getTime()) return 'The start has to be before the end.';

@@ -24,6 +24,13 @@ describe('scaleQuantity', () => {
     expect(text('1/3 cup', 0.25)).toBe('1/12 cup');
   });
 
+  it('scales a fifth or a sixth the way it scales a half', () => {
+    // A glyph the parser didn't know stayed in the text after the whole number,
+    // so this came back as "5 ⅕ cups" and still reported itself scaled.
+    expect(scaleQuantity('1⅕ cups', 5)).toEqual({ text: '6 cups', scaled: true });
+    expect(text('⅙ cup', 6)).toBe('1 cup');
+  });
+
   it('scales a whole number spaced apart from a Unicode fraction', () => {
     expect(scaleQuantity('1 ½ cups', 2).text).toBe('3 cups');
   });

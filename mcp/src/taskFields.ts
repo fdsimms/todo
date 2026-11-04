@@ -41,6 +41,7 @@ import { MAX_MEDICATION_EXTRAS, parseMedicationExtras } from '../../src/utils/me
 import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES } from '../../src/utils/healthTarget';
 import { isRotationTask, MAX_ROTATION_PER_WEEK, MIN_ROTATION_ITEMS, rotationItemFromInput, rotationMemberTitle, rotationPerWeek, rotationTargetTotal, type RotationMemberInput } from '../../src/utils/rotation';
 import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
+import { normalizeTagName } from '../../src/utils/tagRename';
 import { canWaitForWeather } from '../../src/utils/weatherCondition';
 import { isSlotHold } from '../../src/utils/slotIn';
 import { PUSHUP_MAX_COUNT } from '../../src/utils/pushupCounter';
@@ -474,7 +475,13 @@ export function taskFieldsPatch(
   }
   if (input.notes !== undefined) patch.notes = input.notes;
   if (input.category !== undefined) patch.category = input.category;
-  if (input.tags !== undefined) patch.tags = input.tags;
+  if (input.tags !== undefined) {
+    // Stored the way the editor stores one (trimmed, lower case, no leading
+    // "#"), or "Errand" and "errand" become two tags, a tag filter misses the
+    // capitalised one and rename_tag can't find it.
+    const tags = input.tags.map(normalizeTagName).filter(t => t !== '');
+    patch.tags = tags.filter((t, i) => tags.indexOf(t) === i);
+  }
   if (input.projectId !== undefined) patch.projectId = input.projectId;
   for (const key of ['dueDate', 'deferUntil', 'deadline', 'reminderTime'] as const) {
     const v = input[key];
