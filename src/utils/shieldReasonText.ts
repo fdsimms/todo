@@ -86,8 +86,7 @@ export function shieldHeadlineNote(reasonCount: number, selectedCount: number): 
       ? 'Choose apps, then pick when they get blocked.'
       : 'Choose apps below, or these reasons have nothing to block.';
   }
-  if (reasonCount === 0) return null;
-  return 'The block lifts when every reason is gone, or when a key tag or the emergency button ends them.';
+  return null;
 }
 
 /**
