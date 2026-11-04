@@ -1882,6 +1882,11 @@ describe('isRedundantInForeground', () => {
     expect(isRedundantInForeground({ focusSessionId: 's1' }, false)).toBe(false);
   });
 
+  it('silences a rest timer notification while the app is open, not when it is away', () => {
+    expect(isRedundantInForeground({ restTimerId: 'r1', workoutSessionId: 's1' }, true)).toBe(true);
+    expect(isRedundantInForeground({ restTimerId: 'r1', workoutSessionId: 's1' }, false)).toBe(false);
+  });
+
   it('leaves every other notification alone', () => {
     expect(isRedundantInForeground({ taskId: 't1' }, true)).toBe(false);
     expect(isRedundantInForeground(null, true)).toBe(false);

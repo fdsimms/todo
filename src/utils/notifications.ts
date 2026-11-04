@@ -138,10 +138,14 @@ export function deferPastQuietHours(
  * The focus step chime exists for a phone that is locked or backgrounded; the
  * session sheet already shows "Time's up" on screen, and a banner over it is
  * often the previous step's, still sliding in after the person tapped on.
+ * The same goes for a rest timer: the card on the workout screen turns to
+ * "Rest over" at the same instant and `useRestTimer` buzzes, so a banner only
+ * covers the countdown it is announcing.
  */
 export function isRedundantInForeground(data: unknown, appIsActive: boolean): boolean {
   if (!appIsActive || typeof data !== 'object' || data === null) return false;
-  return typeof (data as { focusSessionId?: unknown }).focusSessionId === 'string';
+  const { focusSessionId, restTimerId } = data as { focusSessionId?: unknown; restTimerId?: unknown };
+  return typeof focusSessionId === 'string' || typeof restTimerId === 'string';
 }
 
 Notifications.setNotificationHandler({
