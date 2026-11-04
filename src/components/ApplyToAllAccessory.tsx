@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useSyncExternalStore } from 'react';
-import { InputAccessoryView, Keyboard, Platform, StyleSheet, View } from 'react-native';
+import { InputAccessoryView, Keyboard, Platform, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, type Colors } from '../theme';
+import { font, fontWeight, spacing, type Colors } from '../theme';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import {
@@ -12,7 +12,9 @@ import {
 } from '../utils/accessoryStack';
 import { getApplyOffer, subscribeApplyOffer } from '../utils/applyToAllOffer';
 import { BUTTON_LABEL } from '../copy/shared';
-import { AccessoryBar } from './AccessoryBar';
+import { AccessoryBar, AccessoryCapsule, accessoryFill } from './AccessoryBar';
+import { glassSupported } from './GlassLayer';
+import { PressableScale } from './PressableScale';
 
 /** What a weight or reps cell in a set table points `inputAccessoryViewID` at. */
 export const APPLY_TO_ALL_ACCESSORY_ID = 'applyToAllAccessory';
@@ -49,12 +51,24 @@ export function ApplyToAllAccessory() {
   if (!ios || !isTop) return null;
 
   const styles = makeStyles(colors);
+  const glass = glassSupported();
   return (
-    <InputAccessoryView nativeID={APPLY_TO_ALL_ACCESSORY_ID} backgroundColor={colors.bgSecondary}>
+    <InputAccessoryView nativeID={APPLY_TO_ALL_ACCESSORY_ID} backgroundColor={accessoryFill(colors)}>
       <AccessoryBar style={styles.bar}>
-        {offer && <InlineAction label={offer.label} onPress={offer.apply} haptic />}
+        {offer && (glass ? (
+          // The capsule is the pill, so an `InlineAction`'s own tint would be a second surface.
+          <AccessoryCapsule>
+            <PressableScale haptic onPress={offer.apply} accessibilityLabel={offer.label} style={styles.offerOnGlass}>
+              <Text style={styles.offerLabel}>{offer.label}</Text>
+            </PressableScale>
+          </AccessoryCapsule>
+        ) : (
+          <InlineAction label={offer.label} onPress={offer.apply} haptic />
+        ))}
         <View style={styles.done}>
-          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => Keyboard.dismiss()} />
+          <AccessoryCapsule style={glass ? styles.doneOnGlass : undefined}>
+            <SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => Keyboard.dismiss()} />
+          </AccessoryCapsule>
         </View>
       </AccessoryBar>
     </InputAccessoryView>
@@ -70,4 +84,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.xsm,
   },
   done: { marginLeft: 'auto' },
+  doneOnGlass: { paddingHorizontal: spacing.smd },
+  offerOnGlass: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.smd },
+  offerLabel: { color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.semibold },
 });

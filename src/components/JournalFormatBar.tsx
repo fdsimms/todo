@@ -2,6 +2,8 @@ import React from 'react';
 import { Keyboard, Platform, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
+import { AccessoryCapsule, ACCESSORY_CAPSULE_HEIGHT } from './AccessoryBar';
+import { glassSupported } from './GlassLayer';
 import { useColors } from '../theme/ThemeContext';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
@@ -60,45 +62,51 @@ export function JournalFormatBar({ focused, onFormat }: Props) {
   const keyboardHeight = useKeyboardHeight(focused);
   if (Platform.OS !== 'ios' || !focused || keyboardHeight <= 0) return null;
   const styles = makeStyles(colors);
+  const glass = glassSupported();
+  const btn = [styles.btn, glass && styles.btnOnGlass];
 
   return (
     <View style={[styles.floatingWrap, { bottom: keyboardHeight }]}>
-      <View style={styles.bar}>
-        {BUTTONS.map(button => (
+      <View style={[styles.bar, glass && styles.barOnGlass]}>
+        <AccessoryCapsule style={styles.formatGroup}>
+          {BUTTONS.map(button => (
+            <PressableScale
+              key={button.label}
+              style={btn}
+              haptic
+              onPress={() => onFormat(button.action)}
+              accessibilityLabel={button.label}
+            >
+              {button.icon ? (
+                <Ionicons name={button.icon} size={iconSize.md} color={colors.text} />
+              ) : (
+                <Text
+                  style={[
+                    styles.glyph,
+                    button.glyphStyle === 'bold' && styles.bold,
+                    button.glyphStyle === 'italic' && styles.italic,
+                  ]}
+                >
+                  {button.glyph}
+                </Text>
+              )}
+            </PressableScale>
+          ))}
+        </AccessoryCapsule>
+        <AccessoryCapsule>
           <PressableScale
-            key={button.label}
-            style={styles.btn}
+            style={[...btn, glass && styles.hideOnGlass]}
             haptic
-            onPress={() => onFormat(button.action)}
-            accessibilityLabel={button.label}
+            onPress={() => Keyboard.dismiss()}
+            accessibilityLabel="Hide keyboard"
           >
-            {button.icon ? (
-              <Ionicons name={button.icon} size={iconSize.md} color={colors.text} />
-            ) : (
-              <Text
-                style={[
-                  styles.glyph,
-                  button.glyphStyle === 'bold' && styles.bold,
-                  button.glyphStyle === 'italic' && styles.italic,
-                ]}
-              >
-                {button.glyph}
-              </Text>
-            )}
+            <Ionicons name="chevron-down" size={iconSize.md} color={colors.text} />
           </PressableScale>
-        ))}
-        <PressableScale
-          style={styles.btn}
-          haptic
-          onPress={() => Keyboard.dismiss()}
-          accessibilityLabel="Hide keyboard"
-        >
-          <Ionicons name="chevron-down" size={iconSize.md} color={colors.text} />
-        </PressableScale>
+        </AccessoryCapsule>
       </View>
       {/* The keyboard's top corners are rounded; paint behind them as
-          TitleTokenAccessory's floating bar does. */}
-      <View style={styles.cornerFill} />
+          TitleTokenAccessory's floating bar does. Glass has no strip to paint. */}
+      {!glass && <View style={styles.cornerFill} />}
     </View>
   );
 }
@@ -122,6 +130,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.separator,
   },
+  // Glass: the row is transparent and the format buttons share one capsule beside the
+  // hide-keyboard capsule; a button on glass has no fill of its own.
+  barOnGlass: {
+    gap: spacing.sm,
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
+  },
+  formatGroup: { flex: 1, flexDirection: 'row', gap: spacing.xs },
+  btnOnGlass: { backgroundColor: 'transparent', borderRadius: radius.full, minHeight: ACCESSORY_CAPSULE_HEIGHT },
+  hideOnGlass: { flex: 0, minWidth: 44 },
   btn: {
     flex: 1,
     minHeight: 40,
