@@ -83,7 +83,13 @@ export const useFastStore = create<FastStore>((set, get) => ({
     const fast = get().fasts.find(f => f.id === id);
     if (!fast) return null;
     const startedAt = patch.startedAt ?? new Date(fast.startedAt);
-    if (fastStartProblem(startedAt, new Date(), fast.endedAt ? new Date(fast.endedAt) : null) !== null) return null;
+    const problem = fastStartProblem(
+      startedAt,
+      new Date(),
+      fast.endedAt ? new Date(fast.endedAt) : null,
+      new Date(fast.startedAt)
+    );
+    if (problem !== null) return null;
     const next: Fast = {
       ...fast,
       startedAt: startedAt.toISOString(),

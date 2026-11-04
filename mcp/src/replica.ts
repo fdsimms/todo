@@ -3629,6 +3629,13 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     useProjectStore.getState().initialize();
     useTaskGroupStore.getState().initialize();
     useRewardStore.getState().initialize();
+    // The dose and mood stores answer from memory (`updateLog` looks the entry up
+    // in `logs`, `addLog` reads the usual-dose settings), so one that was never
+    // loaded here, or loaded before a pull brought in a phone's entries, turns
+    // an edit of a synced entry into a silent no-op that still reports success.
+    useMedicationStore.getState().initialize();
+    const { useMoodStore } = require('../../src/store/useMoodStore') as typeof import('../../src/store/useMoodStore'); // eslint-disable-line @typescript-eslint/no-require-imports
+    useMoodStore.getState().initialize();
   };
 
   /**

@@ -401,6 +401,7 @@ import {
   staleWaitingFollowUpTasks,
 } from '../utils/waitingFollowUpTasks';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, rescheduleAllPlaceReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
+import { syncOkAgainNotification } from '../utils/okAgainNotification';
 import { syncDeadlineEvent, taskEventsAfterSync, deadlineEventLink, deleteDeadlineEvent } from '../utils/deadlineCalendarSync';
 import type { ApplyReport } from '../utils/syncMerge';
 import { logTaskCompletionToCalendar, completionEventLink, deleteCompletionEvent } from '../utils/completionCalendarSync';
@@ -555,6 +556,25 @@ function readTasksForInitialize(
     if (merged) return merged;
   }
   return dbGetAllTasks();
+}
+
+/**
+ * Moves each named medicine's "OK again" notification to match its doses now,
+ * after a task wrote or took back a dose. A dose recorded by ticking a task
+ * pushes the next allowed time back exactly as one recorded by hand does
+ * (`recordDose` does this for those), so the notice scheduled for the old time
+ * must move, and unticking must put it back. Never lets a notification problem
+ * fail the completion that caused it.
+ */
+function resyncOkAgain(names: readonly string[]): void {
+  for (const name of new Set(names)) {
+    try {
+      syncOkAgainNotification(name);
+    } catch {
+      // The dose is already stored; a notice that can't be moved is the same as
+      // before this ran.
+    }
+  }
 }
 
 function writeSpawnedTask(row: Task, held: ReadonlySet<string>): void {
@@ -4634,6 +4654,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           useUsualDose: true,
         });
       }
+      resyncOkAgain(completedDoses.map(d => d.name));
     }
 
     cancelTaskReminder(id);
@@ -5117,6 +5138,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       else medication.removeLogsForTask(id);
       const stillLogged = new Set(useMedicationStore.getState().logs.map(l => l.id));
       removedDoses = loggedBefore.filter(l => !stillLogged.has(l.id));
+      resyncOkAgain(removedDoses.map(l => l.name));
     }
     // What a named food logged on completion goes with it, for the reason the
     // dose does above: a task ticked by mistake means the food was not eaten.
@@ -5216,6 +5238,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       undo: () => {
         dbUpdateTask(original);
         removedDoses.forEach(log => useMedicationStore.getState().restoreLog(log));
+        resyncOkAgain(removedDoses.map(l => l.name));
         if (takenBackCoins.length > 0) useRewardStore.getState().restoreEntries(takenBackCoins);
         if (removedFood.length > 0) useFoodLogStore.getState().restoreRemovedEntries(removedFood);
         [...followUps, ...followUpSubtasks].forEach(t => {
@@ -5552,6 +5575,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const unitDose = medicationFor(task);
     if (unitDose) {
       useMedicationStore.getState().addLog({ ...unitDose, taskId: id, useUsualDose: true });
+      resyncOkAgain([unitDose.name]);
     }
     get().setLastAction({
       label: 'Logged',
@@ -5618,6 +5642,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const unitDose = medicationFor(task);
     if (unitDose) {
       useMedicationStore.getState().addLog({ ...unitDose, taskId: id, useUsualDose: true });
+      resyncOkAgain([unitDose.name]);
     }
     get().setLastAction({
       label: 'Logged',
@@ -5680,7 +5705,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useRewardStore.getState().takeBackTap(id, task.progressCount);
     // The unit being taken back is the dose that unit recorded, and only that
     // one — the day's earlier doses were still taken.
-    if (medicationFor(task)) useMedicationStore.getState().removeLatestLogForTask(id);
+    const unitDose = medicationFor(task);
+    if (unitDose) {
+      useMedicationStore.getState().removeLatestLogForTask(id);
+      resyncOkAgain([unitDose.name]);
+    }
     // Same reasoning, for a logged nutrient: the tap this undoes had logged
     // one unit into the food log (logQuotaUnit's own logTaskHealthValue call).
     // For water, leaving that in place would have syncWaterQuotaTasks read the

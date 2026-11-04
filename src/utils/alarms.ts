@@ -49,7 +49,11 @@ export function atTime(day: Date, hour: number, minute: number): Date {
 /** The next instant after `now` that a clock time comes round. */
 export function nextClockTime(hour: number, minute: number, now: Date): Date {
   const today = atTime(now, hour, minute);
-  return today.getTime() > now.getTime() ? today : atTime(new Date(now.getTime() + DAY_MS), hour, minute);
+  if (today.getTime() > now.getTime()) return today;
+  // Tomorrow by the calendar, not 24 hours on: the night before a spring-forward
+  // is 24 hours short of the next date, so adding DAY_MS at 23:30 landed two
+  // days out and the alarm skipped a day.
+  return atTime(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1), hour, minute);
 }
 
 export function isRepeating(alarm: Pick<Alarm, 'repeatDays'>): boolean {

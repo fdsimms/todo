@@ -378,7 +378,10 @@ export function completionHistory(replica: Replica, input: CompletionHistoryInpu
   const done = candidates
     .filter(t => replica.isRealCompletion(t))
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
-  const missed = candidates.length - done.length;
+  // Counted off `missedAt`, not as what is left after the real completions: a
+  // row somebody else did (`doneByOtherAt`) is not a real completion either, and
+  // as the remainder it was reported as missed.
+  const missed = candidates.filter(t => !!t.missedAt).length;
 
   const projectNames = new Map(replica.projects().map((p: Project) => [p.id, p.title]));
   const byDay = countBy(done, t => replica.logicalDayKeyOf(t.completedAt!));

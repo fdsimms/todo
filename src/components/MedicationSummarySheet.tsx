@@ -16,7 +16,7 @@ import { WhenPicker } from './WhenPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import {
   buildMedicationSummary,
   describeRange,
@@ -76,7 +76,11 @@ export function MedicationSummarySheet({ visible, onClose }: Props) {
   const [sharing, setSharing] = useState(false);
 
   const todayKey = dayKeyOf(getCurrentDayStart());
-  const lastSummaryDayKey = lastSummaryAt ? dayKeyOf(new Date(lastSummaryAt)) : null;
+  // The logical day the last summary was shared on, like `todayKey` and the
+  // dose day keys it is compared with. A summary shared at 01:30 under a 04:00
+  // day start belongs to the day before, and the calendar date put "since last"
+  // a day late, so that day's doses were in neither report.
+  const lastSummaryDayKey = lastSummaryAt ? getLogicalDayKey(new Date(lastSummaryAt)) : null;
 
   useEffect(() => {
     if (!visible) return;
