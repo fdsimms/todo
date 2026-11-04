@@ -3314,10 +3314,7 @@ const TaskItemRow = React.memo(function TaskItem({
   const showTravelStrip = (travelPending && travelCompareModes) || travelOptions.length > 0;
   const notesStayInTitle = markersOnMeta && (hasNotes || hasAttachments) && !hasOtherMeta && !deadlineOnMeta;
 
-  // The calendar, directions and pin buttons. On a travel row they stack in a
-  // column beside the title, so three of them don't take three columns of its
-  // width; everywhere else they stay a row of icons.
-  const actionStack = !selectionMode && showActions && canOpenTravelEvent;
+  // The calendar, directions and pin buttons.
   const trailingActions = (
     <>
     {!selectionMode && showActions && canOpenTravelEvent && (
@@ -3376,6 +3373,124 @@ const TaskItemRow = React.memo(function TaskItem({
         />
       </TouchableOpacity>
     )}
+    </>
+  );
+
+  // Every action button after the title: the timer, mic, links, call, email and
+  // the calendar, directions and pin buttons.
+  const rowButtons = (
+    <>
+      {/* Starting the countdown is the whole point of a timed task, so the
+          control sits on the row rather than only inside the expanded panel —
+          the chip in the meta line reports the time, this starts and pauses it.
+          It's gone once the countdown has run out: there is nothing left to run
+          and the next tap is the checkbox. Reset/discard stay in the panel;
+          they're the rarer, more destructive half. */}
+      {!selectionMode && showActions && timed && !completing && !task.completed && !(timerReady && !timerRunning) && (
+        <TouchableOpacity
+          onPress={handleTimerToggle}
+          hitSlop={8}
+          style={[styles.rowTimerBtn, timerRunning && styles.rowTimerBtnRunning]}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={
+            timerRunning ? `Pause timer for ${task.title}` : `Start timer for ${task.title}`
+          }
+          accessibilityValue={{ text: formatStopwatch(remainingSeconds) }}
+        >
+          <Ionicons
+            name={timerRunning ? 'pause' : 'play'}
+            size={iconSize.sm}
+            // The play triangle's bounding box is wider than its ink, so it
+            // reads left-of-centre in a circle without this.
+            style={!timerRunning && styles.rowTimerGlyphPlay}
+            color={timerRunning ? colors.onAccent : colors.accent}
+          />
+        </TouchableOpacity>
+      )}
+
+      {!selectionMode && showActions && recordMic && !completing && (
+        <TouchableOpacity
+          onPress={() => handleOpenLink(recordMic)}
+          hitSlop={8}
+          style={styles.rowTimerBtn}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`Say your ${task.generatedKind === 'dreamLog' ? 'dream' : 'journal entry'} out loud`}
+        >
+          <Ionicons name="mic" size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
+      {!selectionMode && showActions && peopleLink && (
+        <TouchableOpacity
+          onPress={() => handleOpenLink(peopleLink)}
+          hitSlop={8}
+          style={styles.linkBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Open people page for ${task.title}`}
+        >
+          <Ionicons name={linkIconFor(peopleLink) as never} size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
+      {!selectionMode && showActions && morning && (
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); setShowAlarmCard(true); }}
+          hitSlop={8}
+          style={styles.linkBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Tomorrow’s alarm for ${task.title}`}
+        >
+          <Ionicons name="alarm-outline" size={iconSize.sm} color={morning.ring ? colors.accent : colors.warningText} />
+        </TouchableOpacity>
+      )}
+
+      {!selectionMode && showActions && rowLink && rowLink !== peopleLink && (
+        <TouchableOpacity
+          onPress={() => handleOpenLink()}
+          hitSlop={8}
+          style={styles.linkBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Open link for ${task.title}`}
+        >
+          <Ionicons name={linkIconFor(rowLink!) as never} size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
+      {/* One button for both, because they're one fact about the task — a
+          number you can reach someone on — and the row was spending two of its
+          few action slots on the same phone number. Which of call or text you
+          want is a per-tap decision, so it's asked per tap. */}
+      {!selectionMode && showActions && callUrl && (
+        <TouchableOpacity
+          onPress={handleContact}
+          hitSlop={8}
+          style={styles.callBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Call or text ${contact.phoneNumber} for ${task.title}`}
+        >
+          {/* Accent, not the iOS phone-app green: in this row green already
+              means done (the checkbox) or ready (the timer), and the link and
+              timer buttons beside it are what "a control on this row" looks
+              like here. The handset glyph is what separates it from the link. */}
+          <Ionicons name="call" size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
+      {!selectionMode && showActions && emailUrl && (
+        <TouchableOpacity
+          onPress={handleEmail}
+          hitSlop={8}
+          style={styles.emailBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Email ${contact.emailAddress} for ${task.title}`}
+        >
+          <Ionicons name="mail" size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
+      {trailingActions}
     </>
   );
 
@@ -4608,117 +4723,10 @@ const TaskItemRow = React.memo(function TaskItem({
         </View>
       )}
 
-      {/* Starting the countdown is the whole point of a timed task, so the
-          control sits on the row rather than only inside the expanded panel —
-          the chip in the meta line reports the time, this starts and pauses it.
-          It's gone once the countdown has run out: there is nothing left to run
-          and the next tap is the checkbox. Reset/discard stay in the panel;
-          they're the rarer, more destructive half. */}
-      {!selectionMode && showActions && timed && !completing && !task.completed && !(timerReady && !timerRunning) && (
-        <TouchableOpacity
-          onPress={handleTimerToggle}
-          hitSlop={8}
-          style={[styles.rowTimerBtn, timerRunning && styles.rowTimerBtnRunning]}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityLabel={
-            timerRunning ? `Pause timer for ${task.title}` : `Start timer for ${task.title}`
-          }
-          accessibilityValue={{ text: formatStopwatch(remainingSeconds) }}
-        >
-          <Ionicons
-            name={timerRunning ? 'pause' : 'play'}
-            size={iconSize.sm}
-            // The play triangle's bounding box is wider than its ink, so it
-            // reads left-of-centre in a circle without this.
-            style={!timerRunning && styles.rowTimerGlyphPlay}
-            color={timerRunning ? colors.onAccent : colors.accent}
-          />
-        </TouchableOpacity>
-      )}
-
-      {!selectionMode && showActions && recordMic && !completing && (
-        <TouchableOpacity
-          onPress={() => handleOpenLink(recordMic)}
-          hitSlop={8}
-          style={styles.rowTimerBtn}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityLabel={`Say your ${task.generatedKind === 'dreamLog' ? 'dream' : 'journal entry'} out loud`}
-        >
-          <Ionicons name="mic" size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
-      )}
-
-      {!selectionMode && showActions && peopleLink && (
-        <TouchableOpacity
-          onPress={() => handleOpenLink(peopleLink)}
-          hitSlop={8}
-          style={styles.linkBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`Open people page for ${task.title}`}
-        >
-          <Ionicons name={linkIconFor(peopleLink) as never} size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
-      )}
-
-      {!selectionMode && showActions && morning && (
-        <TouchableOpacity
-          onPress={() => { haptics.tap(); setShowAlarmCard(true); }}
-          hitSlop={8}
-          style={styles.linkBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`Tomorrow’s alarm for ${task.title}`}
-        >
-          <Ionicons name="alarm-outline" size={iconSize.sm} color={morning.ring ? colors.accent : colors.warningText} />
-        </TouchableOpacity>
-      )}
-
-      {!selectionMode && showActions && rowLink && rowLink !== peopleLink && (
-        <TouchableOpacity
-          onPress={() => handleOpenLink()}
-          hitSlop={8}
-          style={styles.linkBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`Open link for ${task.title}`}
-        >
-          <Ionicons name={linkIconFor(rowLink!) as never} size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
-      )}
-
-      {/* One button for both, because they're one fact about the task — a
-          number you can reach someone on — and the row was spending two of its
-          few action slots on the same phone number. Which of call or text you
-          want is a per-tap decision, so it's asked per tap. */}
-      {!selectionMode && showActions && callUrl && (
-        <TouchableOpacity
-          onPress={handleContact}
-          hitSlop={8}
-          style={styles.callBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`Call or text ${contact.phoneNumber} for ${task.title}`}
-        >
-          {/* Accent, not the iOS phone-app green: in this row green already
-              means done (the checkbox) or ready (the timer), and the link and
-              timer buttons beside it are what "a control on this row" looks
-              like here. The handset glyph is what separates it from the link. */}
-          <Ionicons name="call" size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
-      )}
-
-      {!selectionMode && showActions && emailUrl && (
-        <TouchableOpacity
-          onPress={handleEmail}
-          hitSlop={8}
-          style={styles.emailBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`Email ${contact.emailAddress} for ${task.title}`}
-        >
-          <Ionicons name="mail" size={iconSize.sm} color={colors.accent} />
-        </TouchableOpacity>
-      )}
-
-      {actionStack ? <View style={styles.actionColumn}>{trailingActions}</View> : trailingActions}
+      {/* On a generated row the buttons sit in the band beside the Auto tab, so
+          the title and meta get the whole width and the row doesn't grow for
+          them. Every other row keeps them in the row, centered. */}
+      {showAutoTab ? <View style={styles.autoBand}>{rowButtons}</View> : rowButtons}
 
       {showActions && (
         <SpotlitSwipeActionButtons
@@ -6419,9 +6427,17 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
     paddingLeft: spacing.md,
     paddingTop: spacing.xs,
   },
-  actionColumn: {
+  // Where a generated row's action buttons go: top-right, level with the Auto
+  // tab on the left, so the title line keeps the whole row width.
+  autoBand: {
+    position: 'absolute',
+    top: 0,
+    right: spacing.smd,
+    minHeight: 26,
+    zIndex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   travelDisruptionLabel: {
     color: colors.warningText,
