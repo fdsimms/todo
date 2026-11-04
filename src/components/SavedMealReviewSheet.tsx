@@ -377,6 +377,22 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
           keyboardShouldPersistTaps="handled"
           {...keyboardScroll.props}
         >
+          {/* First, so the meal this log lands in is not missed below the foods. */}
+          <Text style={styles.mealLabel}>WHICH MEAL</Text>
+          <View style={styles.mealPicker}>
+            <SegmentedControl<MealSlot | null>
+              options={[
+                ...MEAL_SLOTS.map(s => ({ value: s as MealSlot | null, label: MEAL_SLOT_LABELS[s] })),
+                { value: null, label: 'Other' },
+              ]}
+              value={chosenSlot}
+              onChange={setChosenSlot}
+              columns={3}
+              label="Which meal"
+              surface="page"
+            />
+          </View>
+
           <Text style={styles.hint}>
             Changes here apply to this log only, unless you save them to the meal.
           </Text>
@@ -595,21 +611,6 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
               label="Add a food"
               icon="add"
               onPress={() => { haptics.tap(); setPickTarget({ kind: 'add' }); }}
-            />
-          </View>
-
-          <Text style={styles.mealLabel}>WHICH MEAL</Text>
-          <View style={styles.mealPicker}>
-            <SegmentedControl<MealSlot | null>
-              options={[
-                ...MEAL_SLOTS.map(s => ({ value: s as MealSlot | null, label: MEAL_SLOT_LABELS[s] })),
-                { value: null, label: 'Other' },
-              ]}
-              value={chosenSlot}
-              onChange={setChosenSlot}
-              columns={3}
-              label="Which meal"
-              surface="page"
             />
           </View>
 
