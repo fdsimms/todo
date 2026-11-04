@@ -379,6 +379,11 @@ struct ShieldGroupsShared: Codable {
   let manualEndIso: String?
   let pendingGateGroupIds: [String]?
   let pendingGateLiveAtIso: String?
+  /// Every live reason the app saw, in the order the shield screen reads them,
+  /// so the screen can say the one that holds the app being opened. Optional so
+  /// a state file written by an older build still decodes; absent reads as
+  /// "say the lead reason for every app", which is what that build did.
+  var reasons: [ShieldReasonShared]? = nil
 
   /// The groups the penalty holds: the list when there is one, else the single
   /// group an older state file named.
@@ -393,6 +398,16 @@ struct ShieldGroupsShared: Codable {
     if let ids = manualGroupIds, !ids.isEmpty { return ids }
     return manualGroupId.map { [$0] } ?? []
   }
+}
+
+/// One live reason as the shield screen says it. See `ShieldScreenReason` in the
+/// bridge's index.ts, which this mirrors field for field.
+struct ShieldReasonShared: Codable {
+  /// "focus", "manual", "speedBump", "gate", "unlock", "penalty", "schedule" or "key".
+  let reason: String
+  let untilIso: String?
+  let detail: String?
+  let groupIds: [String]
 }
 
 /// One schedule, as the extension evaluates it. Clock times and weekdays, no
@@ -735,6 +750,35 @@ extension ScreenTimeShared {
       webDomains.formUnion(selection.webDomainTokens)
     }
     return applications.count + categories.count + webDomains.count
+  }
+
+  /// Whether these groups hold the app or website a shield screen is being
+  /// drawn for. Pass the app's token or the website's, and the category iOS
+  /// says it was shielded under when there is one. A block list holds it when
+  /// it names the token or the category; an allowlist holds everything it
+  /// doesn't name. False when there is no token to compare, so the caller falls
+  /// back to the lead reason rather than guessing.
+  @available(iOS 16.0, *)
+  static func groupsHold(
+    _ groupIds: [String],
+    application: ApplicationToken? = nil,
+    webDomain: WebDomainToken? = nil,
+    category: ActivityCategoryToken? = nil
+  ) -> Bool {
+    if application == nil && webDomain == nil && category == nil { return false }
+    let allow = readAllowGroups().groupIds
+    for id in groupIds {
+      guard let selection = readSelection(groupId: id) else { continue }
+      if allow.contains(id) {
+        if let application, !selection.applicationTokens.contains(application) { return true }
+        if let webDomain, !selection.webDomainTokens.contains(webDomain) { return true }
+        continue
+      }
+      if let application, selection.applicationTokens.contains(application) { return true }
+      if let webDomain, selection.webDomainTokens.contains(webDomain) { return true }
+      if let category, selection.categoryTokens.contains(category) { return true }
+    }
+    return false
   }
 
   @available(iOS 16.0, *)

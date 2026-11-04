@@ -279,6 +279,26 @@ export interface ShieldGroupsState {
   manualEndIso: string | null;
   pendingGateGroupIds: string[];
   pendingGateLiveAtIso: string | null;
+  /**
+   * Every live reason in the order the shield screen reads them, each with the
+   * groups it holds. The shield screen says the first one whose groups hold the
+   * app being opened, so an app held only by a speed bump doesn't read as the
+   * schedule that happens to lead. Inside `groups` rather than a new argument
+   * so a native build that predates it ignores the key instead of refusing the
+   * call; that build says the lead reason for every app, as it always did.
+   */
+  reasons: ShieldScreenReason[];
+}
+
+/** One live reason as the shield screen says it. */
+export interface ShieldScreenReason {
+  reason: Exclude<ShieldReason, 'none'>;
+  /** When it ends, for a penalty, schedule, manual block or speed bump. */
+  untilIso: string | null;
+  /** The gate's sentence, the penalty's task, the schedule's name, or the key lock's line. */
+  detail: string | null;
+  /** Supergroups already expanded. */
+  groupIds: string[];
 }
 
 /** One schedule as the native side watches it. Clock times, evaluated by weekday on the device. */

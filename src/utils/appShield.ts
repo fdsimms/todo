@@ -4,6 +4,7 @@ import { shieldWanted } from './focusShield';
 import { KEY_LOCK_DETAIL } from './nfcKey';
 import { isTimedBlock, manualBlockWanted, type ManualBlock } from './manualBlock';
 import type { LiveSpeedBump } from './speedBump';
+import type { ShieldScreenReason } from 'todo-screentime-bridge';
 import { penaltyShieldWanted } from './penaltyShield';
 import { unlockBlockSubtitle, type UnlockBlock } from './unlockBlockText';
 import { screenTimeBridge } from './screenTimeBridge';
@@ -235,6 +236,32 @@ export function speedBumpWanted(bump: LiveSpeedBump | null, now: Date): boolean 
   return !Number.isNaN(end) && end > now.getTime();
 }
 
+/**
+ * The live reasons as the iOS shield screen reads them, in `shieldReasons`
+ * order. The screen is drawn per app, so it says the first reason whose
+ * groups hold the app being opened rather than whichever reason leads overall:
+ * with a schedule on one group and a speed bump on another, the speed bump's
+ * apps used to say they were blocked by the schedule.
+ */
+export function shieldScreenReasons(reasons: readonly ShieldReasonEntry[]): ShieldScreenReason[] {
+  return reasons.map(r => ({
+    reason: r.reason,
+    untilIso: r.reason === 'penalty' || r.reason === 'schedule' || r.reason === 'manual' || r.reason === 'speedBump'
+      ? r.until ?? null
+      : null,
+    detail: r.reason === 'gate'
+      ? gateSubtitle(r.titles ?? [])
+      : r.reason === 'unlock'
+        ? unlockBlockSubtitle(r.titles ?? [])
+      : r.reason === 'penalty'
+        ? r.cause ?? null
+        : r.reason === 'schedule'
+          ? r.name ?? null
+          : r.reason === 'key' ? KEY_LOCK_DETAIL : null,
+    groupIds: r.groupIds,
+  }));
+}
+
 /** The groups of apps to block right now: the union across every live reason. */
 export function shieldGroupIds(state: AppShieldState): string[] {
   return uniqueGroupIds(shieldReasons(state).flatMap(r => r.groupIds));
@@ -385,6 +412,7 @@ export function syncAppShield(state: AppShieldState): void {
         ? resolvedGroups(state.pendingGate?.groupIds ?? [state.groups.gate], state.resolveGroup).groupIds
         : [],
       pendingGateLiveAtIso: gateWindow ? gateWindow.startIso : null,
+      reasons: shieldScreenReasons(reasons),
     },
   });
   bridge.setBlockSchedules(nativeScheduleWindows(state.schedules, state.resolveGroup));
