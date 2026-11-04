@@ -48,6 +48,11 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   rowStacked: { alignItems: 'flex-start', paddingVertical: spacing.md },
   rowContent: { flex: 1 },
   rowLabel: { color: colors.text, fontSize: font.md },
+  rowLabelLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  rowLabelFlex: { flexShrink: 1 },
+  /** "Blocking now" and the like: a status colour as text on its own tint. */
+  rowBadge: { backgroundColor: colors.red + '26', borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: spacing.xxs },
+  rowBadgeText: { color: colors.redText, fontSize: font.xxs, fontWeight: fontWeight.semibold },
   rowHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
   /** Only when the row has its own control under the hint rather than beside it. */
   rowHintSpaced: { marginBottom: spacing.sm },
