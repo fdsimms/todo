@@ -29,7 +29,7 @@ jest.mock('../utils/screenTimeBridge', () => ({
 }));
 
 import type { FocusSession, FocusStep } from '../types';
-import { appShieldWanted, shieldReasons, syncAppShield, shieldAllowSets, type AppShieldState } from '../utils/appShield';
+import { appShieldWanted, shieldReasons, shieldScreenReasons, syncAppShield, shieldAllowSets, type AppShieldState } from '../utils/appShield';
 
 const NOW = new Date('2026-08-22T09:00:00.000Z');
 const LATER = new Date('2026-08-22T10:00:00.000Z').toISOString();
@@ -640,6 +640,10 @@ describe('app groups and schedules', () => {
       manualEndIso: null,
       pendingGateGroupIds: [],
       pendingGateLiveAtIso: null,
+      reasons: [
+        { reason: 'penalty', untilIso: LATER, detail: null, groupIds: ['games'] },
+        { reason: 'key', untilIso: null, detail: expect.any(String), groupIds: ['social'] },
+      ],
     });
   });
 
@@ -734,6 +738,55 @@ describe('a speed bump the monitor extension raised', () => {
     syncAppShield(state({ speedBump: { untilIso: EARLIER, groupIds: ['games'] } }));
     expect(mockBridge.clearShield).toHaveBeenCalled();
     expect(mockBridge.applyShield).not.toHaveBeenCalled();
+  });
+});
+
+describe('the reason the shield screen gives for each app', () => {
+  const around = {
+    id: 'sch', name: 'Work hours', groupIds: ['social'], days: [0, 1, 2, 3, 4, 5, 6],
+    startMinutes: NOW.getHours() * 60 + NOW.getMinutes() - 30,
+    endMinutes: NOW.getHours() * 60 + NOW.getMinutes() + 60,
+    enabled: true, pausedUntil: null,
+  };
+
+  // The bug: the screen read one lead reason for the whole shield, so an app
+  // held only by a speed bump said the schedule's sentence.
+  it('writes every live reason with its own groups, so an app can be matched to the one holding it', () => {
+    syncAppShield(state({ schedules: [around], speedBump: { untilIso: LATER, groupIds: ['ai'] } }));
+    const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ reason: string; groups: { reasons: unknown } }];
+    expect(written[0].reason).toBe('speedBump');
+    expect(written[0].groups.reasons).toEqual([
+      { reason: 'speedBump', untilIso: LATER, detail: null, groupIds: ['ai'] },
+      { reason: 'schedule', untilIso: expect.any(String), detail: 'Work hours', groupIds: ['social'] },
+    ]);
+  });
+
+  it('gives each gate group the sentence for its own tasks only', () => {
+    const reasons = shieldScreenReasons(shieldReasons(state({
+      gateEnabled: true, gateTitles: ['Walk', 'Read'], gateGroupIds: ['social', 'games'],
+    })));
+    expect(reasons).toEqual([
+      expect.objectContaining({ reason: 'gate', groupIds: ['social'], detail: expect.stringContaining('Walk') }),
+      expect.objectContaining({ reason: 'gate', groupIds: ['games'], detail: expect.stringContaining('Read') }),
+    ]);
+    expect(reasons[0].detail).not.toContain('Read');
+  });
+
+  it('carries a penalty\'s task and end, and no end for a reason that has none', () => {
+    const reasons = shieldScreenReasons(shieldReasons(state({
+      session: session(), focusEnabled: true,
+      penaltyUntil: LATER, penaltyEnabled: true, penaltyReason: 'Walk',
+    })));
+    expect(reasons).toEqual([
+      { reason: 'focus', untilIso: null, detail: null, groupIds: ['default'] },
+      { reason: 'penalty', untilIso: LATER, detail: 'Walk', groupIds: ['default'] },
+    ]);
+  });
+
+  it('writes an empty list when nothing is blocking', () => {
+    syncAppShield(state());
+    const written = mockBridge.setShieldState.mock.calls[0] as unknown as [{ groups: { reasons: unknown } }];
+    expect(written[0].groups.reasons).toEqual([]);
   });
 });
 

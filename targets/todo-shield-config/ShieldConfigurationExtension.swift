@@ -25,6 +25,11 @@ import UIKit
 /// - **It cannot work out why the apps are blocked.** The app decides that on
 ///   every reconcile and leaves the answer in the App Group; this reads it. A
 ///   state it cannot read falls back to naming the app rather than guessing.
+///   What it does decide is *which* of the live reasons to say: the screen is
+///   drawn per app, so it says the first reason whose groups hold this one
+///   (`ScreenTimeShared.groupsHold`), and the lead reason only when none can be
+///   matched. Saying the lead for every app is how an app held by a speed bump
+///   came to read "Blocked by the Work list".
 /// - **It cannot format against the user's own settings.** The app's 12/24-hour
 ///   preference isn't reachable, so the time is formatted with the system's,
 ///   which is the closest thing to the same answer and is what the rest of iOS
@@ -35,35 +40,46 @@ import UIKit
 /// only ever sees opaque tokens.
 class ShieldConfigurationExtension: ShieldConfigurationDataSource {
   override func configuration(shielding application: Application) -> ShieldConfiguration {
-    shield(named: application.localizedDisplayName)
+    shield(named: application.localizedDisplayName, holding: Held(application: application.token))
   }
 
   override func configuration(
     shielding application: Application,
     in category: ActivityCategory
   ) -> ShieldConfiguration {
-    shield(named: application.localizedDisplayName)
+    shield(
+      named: application.localizedDisplayName,
+      holding: Held(application: application.token, category: category.token)
+    )
   }
 
   override func configuration(shielding webDomain: WebDomain) -> ShieldConfiguration {
-    shield(named: webDomain.domain)
+    shield(named: webDomain.domain, holding: Held(webDomain: webDomain.token))
   }
 
   override func configuration(
     shielding webDomain: WebDomain,
     in category: ActivityCategory
   ) -> ShieldConfiguration {
-    shield(named: webDomain.domain)
+    shield(named: webDomain.domain, holding: Held(webDomain: webDomain.token, category: category.token))
+  }
+
+  /// What this screen is being drawn for, as the tokens the groups' selections
+  /// hold. Each is optional because iOS documents every one of them as such.
+  private struct Held {
+    var application: ApplicationToken? = nil
+    var webDomain: WebDomainToken? = nil
+    var category: ActivityCategoryToken? = nil
   }
 
   // ==== the screen ====
 
-  private func shield(named name: String?) -> ShieldConfiguration {
+  private func shield(named name: String?, holding held: Held) -> ShieldConfiguration {
     ShieldConfiguration(
       backgroundBlurStyle: .systemMaterial,
       icon: Self.mark,
       title: ShieldConfiguration.Label(text: Self.title(for: name), color: .label),
-      subtitle: ShieldConfiguration.Label(text: Self.subtitle(), color: .secondaryLabel),
+      subtitle: ShieldConfiguration.Label(text: Self.subtitle(holding: held), color: .secondaryLabel),
       // Says what the button does and nothing else. The action extension is
       // what makes it do it — a configuration extension never hears about a
       // tap, which is why the two are separate targets.
@@ -132,12 +148,61 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     return "\(name) is blocked"
   }
 
-  private static func subtitle() -> String {
+  /// The reason for this app: the first live reason whose groups hold it, else
+  /// the lead reason the app wrote for the whole shield.
+  private static func subtitle(holding held: Held) -> String {
     guard let state = ScreenTimeShared.readShieldState() else {
       return "dundundun is blocking it. Open dundundun to see why."
     }
+    if #available(iOS 16.0, *) {
+      for candidate in candidates(state, now: Date()) where ScreenTimeShared.groupsHold(
+        candidate.groupIds, application: held.application, webDomain: held.webDomain, category: held.category
+      ) {
+        if let line = sentence(reason: candidate.reason, untilIso: candidate.untilIso, detail: candidate.detail, groupIds: candidate.groupIds) {
+          return line
+        }
+      }
+    }
+    return sentence(reason: state.reason, untilIso: state.untilIso, detail: state.detail) ?? fallback(state)
+  }
 
-    switch state.reason {
+  /// The order `shieldReasons` in `src/utils/appShield.ts` reads them in.
+  private static let readingOrder = ["focus", "manual", "speedBump", "gate", "penalty", "schedule", "key"]
+
+  /// Every reason that may hold an app right now, in reading order: the ones
+  /// the app wrote at its last reconcile that haven't run out, and the ones the
+  /// monitor extension raised since with the app closed (a speed bump, a gate
+  /// whose moment came, a schedule that opened). A reason in both lists is
+  /// listed twice, which is harmless: whichever comes first says the same thing.
+  private static func candidates(_ state: ShieldStateShared, now: Date) -> [ShieldReasonShared] {
+    var list = (state.groups?.reasons ?? []).filter { entry in
+      guard let end = entry.untilIso.flatMap(ScreenTimeShared.parseIso) else { return true }
+      return end > now
+    }
+    if let live = ScreenTimeShared.readLiveSpeedBump(),
+       let end = ScreenTimeShared.parseIso(live.endIso), end > now {
+      list.append(ShieldReasonShared(reason: "speedBump", untilIso: live.endIso, detail: nil, groupIds: live.groupIds))
+    }
+    if let detail = state.pendingGateDetail, !detail.isEmpty,
+       let groups = state.groups?.pendingGateGroupIds, !groups.isEmpty,
+       let liveAt = ScreenTimeShared.parseIso(state.groups?.pendingGateLiveAtIso), liveAt <= now {
+      list.append(ShieldReasonShared(reason: "gate", untilIso: nil, detail: detail, groupIds: groups))
+    }
+    for window in ScreenTimeShared.activeSchedules(now: now) {
+      list.append(ShieldReasonShared(reason: "schedule", untilIso: nil, detail: window.name, groupIds: window.heldGroupIds))
+    }
+    // Stable, so the app's own entries keep their order within a kind.
+    let rank = { (reason: String) in readingOrder.firstIndex(of: reason) ?? readingOrder.count }
+    return list.enumerated()
+      .sorted { (rank($0.element.reason), $0.offset) < (rank($1.element.reason), $1.offset) }
+      .map { $0.element }
+  }
+
+  /// The sentence for one reason, or nil for "none" or a reason this build
+  /// doesn't know. `groupIds` is the speed bump's, for "this app" against
+  /// "these apps"; nil reads the extension's own live record.
+  private static func sentence(reason: String, untilIso: String?, detail: String?, groupIds: [String]? = nil) -> String? {
+    switch reason {
     case "focus":
       return "A focus session is running. It unblocks when you pause or finish it."
     case "gate":
@@ -148,18 +213,18 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
       // does it where it can be checked. The penalty below keeps its sentence
       // on this side only because it needs a time in the reader's own locale,
       // which is the one thing the app cannot work out for this screen.
-      return state.detail.flatMap { $0.isEmpty ? nil : $0 }
+      return detail.flatMap { $0.isEmpty ? nil : $0 }
         ?? "A task has to be done first. Open dundundun to see which."
     case "key":
       // A tag locked these, and only the tag ends it. The app writes the whole
       // sentence, for the same reason a gate does: a fixed line here would be a
       // copy of words that belong to the app and nothing in this target can be
       // tested against them.
-      return state.detail.flatMap { $0.isEmpty ? nil : $0 }
+      return detail.flatMap { $0.isEmpty ? nil : $0 }
         ?? "Locked until you tap your key tag."
     case "schedule":
-      let name = state.detail.flatMap { $0.isEmpty ? nil : $0 }
-      let until = state.untilIso.flatMap(Self.timeLabel)
+      let name = detail.flatMap { $0.isEmpty ? nil : $0 }
+      let until = untilIso.flatMap(Self.timeLabel)
       switch (name, until) {
       case let (name?, until?): return "Blocked by the \(name) list until \(until)."
       case let (name?, nil): return "Blocked by the \(name) list."
@@ -169,16 +234,16 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
     case "manual":
       // A block the person started themselves. Only the time is on this side;
       // the app writes no detail for it.
-      if let until = state.untilIso.flatMap(Self.timeLabel) {
+      if let until = untilIso.flatMap(Self.timeLabel) {
         return "You started this block. It ends at \(until)."
       }
       return "You started this block."
     case "speedBump":
       // A speed bump the app has seen. Only the time is on this side.
-      return Self.speedBumpSubtitle(until: state.untilIso.flatMap(Self.timeLabel))
+      return Self.speedBumpSubtitle(until: untilIso.flatMap(Self.timeLabel), groupIds: groupIds)
     case "penalty":
-      let cause = state.detail.flatMap { $0.isEmpty ? nil : $0 }
-      let until = state.untilIso.flatMap(Self.timeLabel)
+      let cause = detail.flatMap { $0.isEmpty ? nil : $0 }
+      let until = untilIso.flatMap(Self.timeLabel)
       switch (cause, until) {
       case let (cause?, until?):
         return "\(cause) wasn’t done in time. This ends at \(until)."
@@ -190,42 +255,48 @@ class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         return "A task wasn’t done in time."
       }
     default:
-      // A gate the monitor extension raised while the app was closed lands
-      // here, and it is the common case rather than an edge: the app's last
-      // reconcile wrote "none" because nothing wanted the shield *then*, and
-      // armed a window for the gate that was coming. `pendingGateDetail` is the
-      // sentence it wrote for exactly this screen, so prefer it over the
-      // fallback below — otherwise the one block somebody can act on right now
-      // is the one that refuses to say what it wants.
-      if let pending = state.pendingGateDetail, !pending.isEmpty { return pending }
-      // A speed bump raised by the monitor extension, which the app has not seen
-      // yet: the extension writes its own record and not the shield state.
-      if let live = ScreenTimeShared.readLiveSpeedBump(),
-         let end = ScreenTimeShared.parseIso(live.endIso), end > Date() {
-        return Self.speedBumpSubtitle(until: Self.timeLabel(live.endIso))
-      }
-      // A schedule that opened while the app was closed lands here too: the
-      // app's last reconcile wrote "none" because the window wasn't open yet,
-      // and the monitor raised the shield from the schedules file.
-      if let window = ScreenTimeShared.activeSchedules(now: Date()).first {
-        if let name = window.name, !name.isEmpty { return "Blocked by the \(name) list." }
-        return "Blocked by a schedule."
-      }
-      // The shield is up but the app's last reconcile says nothing wants it —
-      // a state the app's own next foreground resolves by lifting it. Saying
-      // so is better than claiming a reason that isn't there.
-      return "dundundun is blocking it. Open dundundun to see why."
+      return nil
     }
+  }
+
+  /// No reason the app wrote applies: say what the extensions raised on their
+  /// own, else that the app will sort it out.
+  private static func fallback(_ state: ShieldStateShared) -> String {
+    // A gate the monitor extension raised while the app was closed lands
+    // here, and it is the common case rather than an edge: the app's last
+    // reconcile wrote "none" because nothing wanted the shield *then*, and
+    // armed a window for the gate that was coming. `pendingGateDetail` is the
+    // sentence it wrote for exactly this screen, so prefer it over the
+    // fallback below — otherwise the one block somebody can act on right now
+    // is the one that refuses to say what it wants.
+    if let pending = state.pendingGateDetail, !pending.isEmpty { return pending }
+    // A speed bump raised by the monitor extension, which the app has not seen
+    // yet: the extension writes its own record and not the shield state.
+    if let live = ScreenTimeShared.readLiveSpeedBump(),
+       let end = ScreenTimeShared.parseIso(live.endIso), end > Date() {
+      return Self.speedBumpSubtitle(until: Self.timeLabel(live.endIso))
+    }
+    // A schedule that opened while the app was closed lands here too: the
+    // app's last reconcile wrote "none" because the window wasn't open yet,
+    // and the monitor raised the shield from the schedules file.
+    if let window = ScreenTimeShared.activeSchedules(now: Date()).first {
+      if let name = window.name, !name.isEmpty { return "Blocked by the \(name) list." }
+      return "Blocked by a schedule."
+    }
+    // The shield is up but the app's last reconcile says nothing wants it —
+    // a state the app's own next foreground resolves by lifting it. Saying
+    // so is better than claiming a reason that isn't there.
+    return "dundundun is blocking it. Open dundundun to see why."
   }
 
   /// The speed bump sentence, singular when the group it blocks holds exactly
   /// one thing. The group comes from the extension's own live record; when that
   /// is missing (the app wrote the state first) or unreadable, it stays plural,
   /// which is right for any group and only clumsy for a one-app one.
-  private static func speedBumpSubtitle(until: String?) -> String {
+  private static func speedBumpSubtitle(until: String?, groupIds: [String]? = nil) -> String {
     var single = false
-    if #available(iOS 16.0, *), let live = ScreenTimeShared.readLiveSpeedBump() {
-      single = ScreenTimeShared.selectionItemCount(groupIds: live.groupIds) == 1
+    if #available(iOS 16.0, *), let groups = groupIds ?? ScreenTimeShared.readLiveSpeedBump()?.groupIds {
+      single = ScreenTimeShared.selectionItemCount(groupIds: groups) == 1
     }
     let used = single ? "You’ve used this app a lot today." : "You’ve used these apps a lot today."
     guard let until else { return used }

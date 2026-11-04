@@ -18,6 +18,7 @@ Two consequences are easy to break:
 
 - **`otherReasonWantsShield` includes the key lock.** The monitor extension reads it at the end of a penalty window and has no way to ask the app, so a penalty running out must not hand back apps a tag still holds.
 - **The shield screen leads with the reasons that name something the person did.** The key reason comes last (`syncAppShield`), because it names nothing but the tag.
+- **The shield screen says the reason that holds the app being opened, not the overall lead.** `syncAppShield` writes every live reason with its groups (`shieldScreenReasons`, inside the shield state's `groups.reasons`), the extension adds what the monitor raised with the app closed (a speed bump, a gate whose moment came, an open schedule), and the first whose groups hold the app's token wins (`ScreenTimeShared.groupsHold`; an allowlist holds what it doesn't name). The lead reason is the fallback, for a build without the list or a token iOS didn't give. The reading order is `shieldReasons`', copied as `readingOrder` in the extension: change them together. Not verified without a device: the Swift was written without a compiler.
 
 ## What counts as a key
 
