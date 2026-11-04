@@ -35,6 +35,10 @@ function keyOf(iso: string): string {
 
 beforeAll(() => {
   replica = openReplica(':memory:');
+  // One category the cases share, made here once rather than by each: a case
+  // inserting it again fails on the unique name when another ran first.
+  mockRaw.runSync("INSERT OR IGNORE INTO categories (id, name, sort_order) VALUES ('c1', 'Home', 1)");
+  replica.refresh();
 });
 
 beforeEach(() => {
@@ -95,8 +99,6 @@ describe('batchUpdateTasks', () => {
 
 describe('quickAdd', () => {
   it('reads each line with the app\'s own grammar, and says what it did not use', () => {
-    mockRaw.runSync("INSERT INTO categories (id, name, sort_order) VALUES ('c1', 'Home', 1)");
-    replica.refresh();
     const preview = quickAdd(replica, { lines: ['- Pay rent tomorrow #home !high ~30m', '2. Fix the #mystery thing'] });
 
     expect(preview.applied).toBe(false);
@@ -114,8 +116,6 @@ describe('quickAdd', () => {
   // Every task made through this server lands in a category (docs/arch/mcp-server.md);
   // a line that names none and has nothing to supply one would sit in no section on Today.
   it('sends back a line that would land in no category, and adds nothing until it has one', () => {
-    mockRaw.runSync("INSERT OR IGNORE INTO categories (id, name, sort_order) VALUES ('c1', 'Home', 1)");
-    replica.refresh();
     const sent = quickAdd(replica, { lines: ['Call mom tomorrow', 'Pay rent tomorrow #home'], apply: true });
 
     expect(sent.applied).toBe(false);
@@ -125,8 +125,6 @@ describe('quickAdd', () => {
   });
 
   it('takes the new-task default category as the category for a line that names none', () => {
-    mockRaw.runSync("INSERT OR IGNORE INTO categories (id, name, sort_order) VALUES ('c1', 'Home', 1)");
-    replica.refresh();
     replica.applySettings({ newTaskDefaults: { category: 'Home' } });
     try {
       const added = quickAdd(replica, { lines: ['Call mom tomorrow'], apply: true });
@@ -168,8 +166,6 @@ describe('quickAdd and the sun', () => {
   });
 
   it('reads "unless it rains" after the repeat it skips, and says when weather is off', () => {
-    mockRaw.runSync("INSERT OR IGNORE INTO categories (id, name, sort_order) VALUES ('c1', 'Home', 1)");
-    replica.refresh();
     const { rows } = quickAdd(replica, { lines: ['Water the garden every 2 days unless it rains 10mm #home'], apply: true });
     expect(rows[0].title).toBe('Water the garden');
     expect(rows[0].repeat).toMatchObject({ every: 'day', interval: 2, skipAfterRainMm: 10 });

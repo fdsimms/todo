@@ -16,6 +16,8 @@ import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 /** A local wall-clock time as the ISO instant the app stores, so the suite reads the same in any zone. */
 const localIso = (local: string) => new Date(local).toISOString();
 
+// useFoodLogStore cancels a deleted meal's check-in, which reaches the notification module.
+jest.mock('../utils/checkInRecording', () => ({ cancelCheckInFor: jest.fn() }));
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 
 jest.mock('../db/database', () => ({
