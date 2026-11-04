@@ -284,23 +284,42 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
             <>
               <View style={styles.taskChip}>
                 <Ionicons name="moon-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.taskChipText}>From {formatHHMM(fields.ignoreAfter, use24HourTime)}</Text>
+                {Platform.OS === 'ios' ? (
+                  <>
+                    <Text style={styles.taskChipText}>From</Text>
+                    {/* The compact picker is the value and the control, so there is no separate time label or Change button on iOS. */}
+                    <DateTimePicker
+                      value={hhmmToDate(fields.ignoreAfter)}
+                      mode="time"
+                      display="compact"
+                      themeVariant={isDark ? 'dark' : 'light'}
+                      onChange={(e, d) => {
+                        if (e.type === 'dismissed' || !d) return;
+                        set('ignoreAfter', `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+                      }}
+                    />
+                  </>
+                ) : (
+                  <Text style={styles.taskChipText}>From {formatHHMM(fields.ignoreAfter, use24HourTime)}</Text>
+                )}
               </View>
-              <InlineAction label="Change" variant="neutral" onPress={() => { haptics.tap(); setCutoffPickerOpen(true); }} />
+              {Platform.OS !== 'ios' ? (
+                <InlineAction label="Change" variant="neutral" onPress={() => { haptics.tap(); setCutoffPickerOpen(true); }} />
+              ) : null}
               <InlineAction label="Remove" variant="neutral" onPress={() => { haptics.tap(); setCutoffPickerOpen(false); set('ignoreAfter', null); }} />
             </>
           ) : (
             <InlineAction label="Set a time" icon="moon-outline" variant="neutral" onPress={() => { haptics.tap(); set('ignoreAfter', '20:00'); setCutoffPickerOpen(true); }} />
           )}
         </View>
-        {fields.ignoreAfter && (cutoffPickerOpen || Platform.OS === 'ios') ? (
+        {fields.ignoreAfter && cutoffPickerOpen && Platform.OS !== 'ios' ? (
           <DateTimePicker
             value={hhmmToDate(fields.ignoreAfter)}
             mode="time"
-            display={Platform.OS === 'ios' ? 'compact' : 'default'}
+            display="default"
             themeVariant={isDark ? 'dark' : 'light'}
             onChange={(e, d) => {
-              if (Platform.OS !== 'ios') setCutoffPickerOpen(false);
+              setCutoffPickerOpen(false);
               if (e.type === 'dismissed' || !d) return;
               set('ignoreAfter', `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
             }}
