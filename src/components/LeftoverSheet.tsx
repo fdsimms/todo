@@ -995,13 +995,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.md,
     minHeight: 36,
   },
+  // Bottom padding so the line doesn't sit on the separator above the first
+  // action row when nothing else (no field rows) follows it.
   caption: {
     color: colors.textSecondary,
     fontSize: font.sm,
     paddingHorizontal: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.md,
   },
   label: {
     color: colors.textSecondary,
