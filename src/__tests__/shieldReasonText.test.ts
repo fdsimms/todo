@@ -85,7 +85,7 @@ describe('the headline', () => {
   it('adds the note that fits', () => {
     expect(shieldHeadlineNote(0, 0)).toMatch(/Choose apps/);
     expect(shieldHeadlineNote(1, 0)).toMatch(/nothing to block/);
-    expect(shieldHeadlineNote(1, 2)).toMatch(/key tag or the emergency button ends them/);
+    expect(shieldHeadlineNote(1, 2)).toBeNull();
     expect(shieldHeadlineNote(0, 2)).toBeNull();
   });
 });
