@@ -170,6 +170,7 @@ export function IngredientCatalogMatchSheet({
                   accessibilityLabel={`Rename ${ingredient.name} to ${match.suggestedName}`}
                 />
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); onEditIngredient(ingredient); }}
                   hitSlop={8}
                   style={styles.rowOpen}

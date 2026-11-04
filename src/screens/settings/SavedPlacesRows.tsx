@@ -3,7 +3,7 @@ import { Alert, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useColors } from '../../theme/ThemeContext';
-import { iconSize } from '../../theme';
+import { iconSize, interaction } from '../../theme';
 import { animateLayout } from '../../utils/layoutAnimation';
 import { haptics } from '../../utils/haptics';
 import { InlineAction } from '../../components/InlineAction';
@@ -81,6 +81,7 @@ export function SavedPlacesRows() {
             accessibilityLabel={`Edit ${place.name}`}
             trailing={(
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => remove(place)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"

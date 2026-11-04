@@ -15,7 +15,6 @@ import {
   Keyboard,
   type TextInput,
   Platform,
-  Switch,
   View,
   Text,
   TouchableOpacity,
@@ -62,6 +61,7 @@ import { activeLimits } from '../utils/nutritionTargets';
 import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
 import { PillGroup, type PillGroupOption } from './PillGroup';
+import { Toggle } from './Toggle';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -1501,15 +1501,17 @@ function GroceryItemSheetBody({
             <PillGroup options={pantryOptions} noun="state" />
             {/* What the lit pill is going to do, said before it is tapped: the
                 hint above only describes the state once it is already set. */}
-            <View style={styles.lowSwitchRow}>
+            <TouchableOpacity
+              style={styles.lowSwitchRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setLowAddsToListChoice(!runningLowAddsToList); }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: runningLowAddsToList }}
+              accessibilityLabel="Add to grocery list when running low"
+            >
               <Text style={styles.lowSwitchLabel}>Add to grocery list when running low</Text>
-              <Switch
-                value={runningLowAddsToList}
-                onValueChange={on => { haptics.tap(); setLowAddsToListChoice(on); }}
-                trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-                accessibilityLabel="Add to grocery list when running low"
-              />
-            </View>
+              <Toggle value={runningLowAddsToList} />
+            </TouchableOpacity>
             <Text style={styles.portionHint}>The running low mark lapses after up to two weeks.</Text>
             {/* The frozen half of a split pack, under the pills rather than
                 as a seventh one: the pills describe the item, and this is a
@@ -2163,6 +2165,7 @@ function GroceryItemSheetBody({
                 just saves reaching for backspace on a long mistyped number. */}
             {price.length > 0 && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => {
                   haptics.tap();
                   setPriceEdits(prev => ({ ...prev, [priceKey]: '' }));

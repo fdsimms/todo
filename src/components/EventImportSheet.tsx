@@ -7,9 +7,9 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Image,
   StyleSheet,
 } from 'react-native';
+import { FadeInImage } from './FadeInImage';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -337,7 +337,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
           />
         ) : photo ? (
           <View style={styles.preview}>
-            <Image
+            <FadeInImage
               source={{ uri: `data:${photo.mediaType};base64,${photo.base64}` }}
               style={styles.previewImage}
               resizeMode="cover"

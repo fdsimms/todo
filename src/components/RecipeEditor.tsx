@@ -443,6 +443,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
           left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} disabled={nameTaken} />}
           right={
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={handleDelete}
               hitSlop={8}
               accessibilityRole="button"

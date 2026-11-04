@@ -15,7 +15,7 @@ import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { defaultUsualDose, prefsFor } from '../utils/medicationSettings';
@@ -304,7 +304,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
           title={log ? 'Edit dose' : 'Record a dose'}
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={onClose} />}
           right={log ? (
-            <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete dose">
+            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete dose">
               <Ionicons name="trash-outline" size={20} color={colors.red} />
             </TouchableOpacity>
           ) : (

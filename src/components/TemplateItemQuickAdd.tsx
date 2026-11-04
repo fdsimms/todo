@@ -276,7 +276,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               onSubmitEditing={createItem}
               blurOnSubmit={false}
             />
-            <TouchableOpacity hitSlop={8}
+            <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
               style={[styles.addBtn, !trimmedTitle && styles.addBtnDisabled]}
               onPress={createItem}
               disabled={!trimmedTitle}
@@ -395,7 +395,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               />
               {dueOffsetDays !== null && (
                 <View style={styles.intervalRow}>
-                  <TouchableOpacity hitSlop={8}
+                  <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
                     style={styles.intervalBtn}
                     onPress={() => { haptics.tap(); setDueOffsetDays(d => (d ?? 0) - 1); }}
                     accessibilityRole="button"
@@ -404,7 +404,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
                     <Ionicons name="remove" size={16} color={colors.text} />
                   </TouchableOpacity>
                   <Text style={styles.offsetValue}>{formatOffsetWithAnchor(dueOffsetDays, anchor, tripTemplate)}</Text>
-                  <TouchableOpacity hitSlop={8}
+                  <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
                     style={styles.intervalBtn}
                     onPress={() => { haptics.tap(); setDueOffsetDays(d => (d ?? 0) + 1); }}
                     accessibilityRole="button"

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Switch } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { format } from 'date-fns/format';
@@ -41,6 +41,7 @@ import { CountStepper } from '../components/CountStepper';
 import { WeekdaySelector } from '../components/WeekdaySelector';
 import { MAX_SCHEDULE_INTERVAL, describeSchedule, describeScheduleStatus, scheduleStatus } from '../utils/medicationSchedule';
 import { HelpText } from '../components/HelpText';
+import { Toggle } from '../components/Toggle';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { DoseAmountField } from '../components/DoseAmountField';
 import { InlineAction } from '../components/InlineAction';
@@ -641,20 +642,23 @@ export function MedicationDetailScreen() {
                 : '.'}
             </Text>
           )}
-          <View style={styles.fieldRow}>
+          <TouchableOpacity
+            style={styles.fieldRow}
+            activeOpacity={interaction.activeOpacity}
+            disabled={!limit}
+            onPress={async () => {
+              haptics.tap();
+              const next = !(limit?.notify ?? false);
+              if (next && !(await allowOkAgainNotification())) return;
+              updateLimit({ notify: next });
+            }}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: limit?.notify ?? false, disabled: !limit }}
+            accessibilityLabel="Notify me when another dose is within the limit"
+          >
             <Text style={styles.fieldLabel}>Notify me when it’s OK</Text>
-            <Switch
-              value={limit?.notify ?? false}
-              disabled={!limit}
-              onValueChange={async next => {
-                haptics.tap();
-                if (next && !(await allowOkAgainNotification())) return;
-                updateLimit({ notify: next });
-              }}
-              trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-              accessibilityLabel="Notify me when another dose is within the limit"
-            />
-          </View>
+            <Toggle value={limit?.notify ?? false} style={!limit && styles.toggleDisabled} />
+          </TouchableOpacity>
           <Text style={styles.fieldHint}>
             {!limit
               ? 'Set hours apart or a cap above to turn this on.'
@@ -901,6 +905,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingTop: spacing.sm,
   },
   fieldLabel: { color: colors.text, fontSize: font.md, flexShrink: 1 },
+  toggleDisabled: { opacity: 0.4 },
   fieldHint: {
     color: colors.textSecondary, fontSize: font.sm,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,

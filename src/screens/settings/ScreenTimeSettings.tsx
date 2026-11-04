@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Alert, Switch } from 'react-native';
+import { View, Alert, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useNfcKeyStore } from '../../store/useNfcKeyStore';
@@ -25,6 +25,8 @@ import {
 } from '../../utils/blockEditLock';
 import { confirmLivePicker } from '../../utils/livePickerConfirm';
 import { useColors } from '../../theme/ThemeContext';
+import { interaction } from '../../theme';
+import { Toggle } from '../../components/Toggle';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
@@ -497,11 +499,17 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
   const keyLocked = useNfcKeyStore(s => s.locked);
 
   const nameThen = (title: string, fallback: string, then: (name: string) => void) => {
-    // iOS only, like the rest of this screen, so the prompt needs no Android branch.
-    Alert.prompt(title, 'Choose a name so you can tell your tags apart.', [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      { text: 'Add', onPress: (text?: string) => then(text ?? '') },
-    ], 'plain-text', fallback);
+    setNaming({
+      title,
+      initial: fallback,
+      placeholder: fallback,
+      hint: 'Choose a name so you can tell your tags apart.',
+      saveLabel: 'Add',
+      // A new tag, so the suggested name is a fair answer as it stands.
+      saveUnchanged: true,
+      refusal: () => null,
+      onSave: then,
+    });
   };
 
   const enrollFailed = (reason: 'unreadable' | 'full' | 'duplicate') => {
@@ -928,17 +936,23 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
               alwaysShowHint
               onPress={() => handleScheduleRow(schedule)}
               trailing={(
-                <Switch
-                  value={schedule.enabled}
-                  onValueChange={next => {
+                // Its own touch target, because the rest of the row opens the
+                // schedule: the hit slop brings the 26pt switch up to 44.
+                <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={{ top: 9, bottom: 9, left: 8, right: 8 }}
+                  onPress={() => {
                     haptics.tap();
+                    const next = !schedule.enabled;
                     if (!next && refuseWhileBlocked(scheduleEditLocked(schedule, new Date()))) return;
                     useAppGroupStore.getState().setScheduleEnabled(schedule.id, next);
                   }}
-                  trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-                  thumbColor={colors.onAccent}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: schedule.enabled }}
                   accessibilityLabel={`${schedule.name} on`}
-                />
+                >
+                  <Toggle value={schedule.enabled} look="settings" />
+                </TouchableOpacity>
               )}
             />
             <View style={styles.sep} />

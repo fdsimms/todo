@@ -2406,6 +2406,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       <Ionicons name={icon} size={13} color={colors.accent} />
       <Text style={styles.reminderText} numberOfLines={1}>{text}</Text>
       <TouchableOpacity
+        activeOpacity={interaction.activeOpacity}
         onPress={() => { haptics.tap(); animateLayout(); onClear(); }}
         hitSlop={8}
         accessibilityRole="button"
@@ -2621,6 +2622,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 <Ionicons name="return-down-forward" size={13} color={colors.accent} />
                 <Text style={styles.seedChipText} numberOfLines={1}>{seedLabel}</Text>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => {
                     haptics.tap();
                     if (seed?.category && category === seed.category) setCategory(null);
@@ -2709,6 +2711,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                 "Show fewer fields" is on — see the footer row below. */}
             {!simpleTaskForm && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 style={[styles.addBtn, (!title.trim() || blocked !== null) && styles.addBtnDisabled]}
                 onPress={handleAdd}
                 disabled={!title.trim() || blocked !== null}
@@ -2849,6 +2852,7 @@ parsed
                 Remind you at {formatTimeOfDay(reminderOffer)} too?
               </Text>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={acceptReminderOffer}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -2857,6 +2861,7 @@ parsed
                 <Text style={styles.reminderAccept}>Remind me</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={dismissReminderOffer}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -2877,6 +2882,7 @@ parsed
                 Use your “{templateOffer.name}” template?
               </Text>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={openTemplateOffer}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -2885,6 +2891,7 @@ parsed
                 <Text style={styles.reminderAccept}>Use template</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={dismissTemplateOffer}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -2961,6 +2968,7 @@ parsed
               <Ionicons name="funnel-outline" size={13} color={colors.textSecondary} />
               <Text style={styles.ruleText} numberOfLines={1}>{ruleCaption}</Text>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); setRulesOptedOut(true); }}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -3099,6 +3107,7 @@ parsed
                         />
                       ) : (
                         <TouchableOpacity
+                          activeOpacity={interaction.activeOpacity}
                           style={styles.stepTitleTouch}
                           onPress={() => startEditStep(item)}
                           accessibilityRole="button"
@@ -3108,6 +3117,7 @@ parsed
                         </TouchableOpacity>
                       )}
                       <TouchableOpacity
+                        activeOpacity={interaction.activeOpacity}
                         onPress={() => removeStep(item.id)}
                         hitSlop={8}
                         accessibilityRole="button"
@@ -3137,6 +3147,7 @@ parsed
                 />
                 {pendingStep.length > 0 && (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => addStep(newStepTitle)}
                     hitSlop={8}
                     accessibilityRole="button"
@@ -3504,6 +3515,7 @@ parsed
                 />
                 {tagInput.trim().length > 0 && (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => addTag(tagInput)}
                     hitSlop={8}
                     accessibilityRole="button"
@@ -3556,6 +3568,7 @@ parsed
                 <SaveLinkAction links={savedLinks} typed={customLinkText} />
                 {linkUrl !== null && (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); setLinkUrl(null); setCustomLinkText(''); setActivePanel(null); }}
                     hitSlop={8}
                     accessibilityRole="button"
@@ -3638,6 +3651,7 @@ parsed
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 />
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={commitPhone}
                   hitSlop={8}
                   accessibilityRole="button"
@@ -3647,6 +3661,7 @@ parsed
                 </TouchableOpacity>
                 {effectivePhone !== null && (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); setPhoneNumber(null); setMentionContactOff(true); setPhoneText(''); setActivePanel(null); }}
                     hitSlop={8}
                     accessibilityRole="button"
@@ -3680,6 +3695,7 @@ parsed
                 />
                 {effectiveEmail !== null && (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); setEmailAddress(null); setMentionContactOff(true); setEmailText(''); setActivePanel(null); }}
                     hitSlop={8}
                     accessibilityRole="button"

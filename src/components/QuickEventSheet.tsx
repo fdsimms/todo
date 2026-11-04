@@ -31,6 +31,7 @@ import { EventOptionSheet, type EventOption } from './EventOptionSheet';
 import { CustomMinutesPrompt } from './CustomMinutesPrompt';
 import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
+import { NameSheet, type NameRequest } from './NameSheet';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, animation, type Colors } from '../theme';
@@ -257,6 +258,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   // The chips' own picks. An alert typed in the line wins over `alertPick`,
   // which wins over the remembered default (see `effectiveAlert`).
   const [calendarId, setCalendarId] = useState<string | null>(null);
+  const [namingPlace, setNamingPlace] = useState<NameRequest | null>(null);
   const [alertPick, setAlertPick] = useState<number | null | undefined>(undefined);
   const [alertDefault, setAlertDefault] = useState<number | null>(null);
   const [availability, setAvailability] = useState<EventAvailability>('busy');
@@ -750,37 +752,31 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     const pin = effectivePlace ? { latitude: effectivePlace.latitude, longitude: effectivePlace.longitude } : null;
     const typed = typedBeforePick.trim();
     const suggested = typed && typed.length <= 24 && typed.toLowerCase() !== text.toLowerCase() ? typed : '';
-    Alert.prompt(
-      'Save place',
-      'Give it a name you can type instead of the address, like “home” or “gym”.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.save,
-          onPress: (name?: string) => {
-            const trimmed = (name ?? '').trim();
-            if (!trimmed) return;
-            const next = addSavedPlace(savedPlaces, { name: trimmed, text, place: pin });
-            // Past the limit the list comes back without the new name.
-            if (!next.some(p => savedPlaceKey(p.name) === savedPlaceKey(trimmed))) {
-              Alert.alert('Too many saved places', 'Remove one in Settings, under Calendar, to save another.');
-              return;
-            }
-            haptics.success();
-            animateLayout();
-            writeSavedPlaces(next);
-            setSavedPlaces(next);
-            // The location now reads as the new name, which resolves to the
-            // saved text and pin. A place typed in the line comes out of it.
-            if (draft.location !== null && draft.locationSpan) cutFromLine(draft.locationSpan);
-            setLocation(trimmed);
-            setSavedConfirmedKey(savedPlaceKey(trimmed));
-          },
-        },
-      ],
-      'plain-text',
-      suggested,
-    );
+    // Past the limit addSavedPlace hands the list back without the new name,
+    // so the same call is the refusal, said under the field.
+    const added = (name: string) => addSavedPlace(savedPlaces, { name, text, place: pin });
+    const fits = (name: string) => added(name).some(p => savedPlaceKey(p.name) === savedPlaceKey(name));
+    setNamingPlace({
+      title: 'Save place',
+      initial: suggested,
+      placeholder: 'e.g. Home',
+      hint: 'A name you can type instead of the address, like “home” or “gym”.',
+      saveUnchanged: true,
+      refusal: name => (fits(name) ? null : 'Too many saved places. Remove one in Settings, under Calendar, to save another.'),
+      onSave: trimmed => {
+        if (!fits(trimmed)) return;
+        const next = added(trimmed);
+        haptics.success();
+        animateLayout();
+        writeSavedPlaces(next);
+        setSavedPlaces(next);
+        // The location now reads as the new name, which resolves to the
+        // saved text and pin. A place typed in the line comes out of it.
+        if (draft.location !== null && draft.locationSpan) cutFromLine(draft.locationSpan);
+        setLocation(trimmed);
+        setSavedConfirmedKey(savedPlaceKey(trimmed));
+      },
+    });
   };
 
   // ==== applying what was read ====
@@ -1580,6 +1576,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                   : `Filled in from your last “${draft.title.trim()}”`}
               </Text>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); animateLayout(); setMemoryDismissedKey(memoryKey); }}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"
@@ -1601,6 +1598,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               <Ionicons name="bookmark" size={13} color={colors.textSecondary} />
               <Text style={styles.captionText} numberOfLines={1}>{savedInUse.text}</Text>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); animateLayout(); setSavedConfirmedKey(null); }}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"
@@ -1762,6 +1760,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
         }}
         onClose={() => setOriginPickerVisible(false)}
       />
+      <NameSheet request={namingPlace} onClose={() => setNamingPlace(null)} />
     </SheetModal>
   );
 }

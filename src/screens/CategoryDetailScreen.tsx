@@ -252,6 +252,7 @@ export function CategoryDetailScreen() {
           }
           actions={
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={handlePinCategory}
               disabled={categoryTasks.length === 0}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

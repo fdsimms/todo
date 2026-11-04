@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
+import { interaction } from '../../theme';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useColors, useTheme } from '../../theme/ThemeContext';
 import { makeSettingsStyles } from './settingsStyles';
@@ -36,6 +37,7 @@ export function InlineTimePicker({ value, onChange, onCancel, onConfirm }: Props
       />
       <View style={styles.pickerButtons}>
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           style={styles.pickerBtn}
           onPress={onCancel}
           accessibilityRole="button"
@@ -44,6 +46,7 @@ export function InlineTimePicker({ value, onChange, onCancel, onConfirm }: Props
           <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>{BUTTON_LABEL.cancel}</Text>
         </TouchableOpacity>
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           style={[styles.pickerBtn, styles.pickerBtnPrimary]}
           onPress={onConfirm}
           accessibilityRole="button"

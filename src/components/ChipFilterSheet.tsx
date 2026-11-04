@@ -130,6 +130,7 @@ export function ChipFilterSheet({ visible, onClose, title = 'Filter', groups, on
             <View style={styles.headerRight}>
               {activeCount > 0 && onClearAll && (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); onClearAll(); }}
                   style={styles.resetBtn}
                   accessibilityRole="button"
@@ -137,7 +138,7 @@ export function ChipFilterSheet({ visible, onClose, title = 'Filter', groups, on
                   <Text style={styles.resetText}>Clear all ({activeCount})</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>

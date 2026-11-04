@@ -5,7 +5,7 @@ import { RowHoverContext, type SelectAction, type UndoAction, type WhenAction } 
 import { useSettingsStore } from '../store/useSettingsStore';
 import { PointerView } from './PointerView';
 import { useColors } from '../theme/ThemeContext';
-import { animation, iconSize, radius, spacing } from '../theme';
+import { animation, iconSize, radius, spacing, interaction } from '../theme';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -100,6 +100,7 @@ export function SwipeActionButtons({
       {overlay && dragHandle ? (
         <PointerView toolTip="Drag to reorder" pointerEvents={buttonEvents}>
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             // Pressed in, not pressed: the drag has to start with the button still down.
             onPressIn={dragHandle}
             hitSlop={8}
@@ -115,6 +116,7 @@ export function SwipeActionButtons({
       {undoAction ? (
         <PointerView toolTip={undoAction.accessibilityLabel} pointerEvents={buttonEvents}>
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); undoAction.onUndo(); }}
             hitSlop={8}
             style={buttonStyle}
@@ -127,6 +129,7 @@ export function SwipeActionButtons({
       ) : whenAction ? (
         <PointerView toolTip={whenAction.accessibilityLabel} pointerEvents={buttonEvents}>
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); whenAction.onAction(); }}
             hitSlop={8}
             style={buttonStyle}
@@ -140,6 +143,7 @@ export function SwipeActionButtons({
       {selectAction && (
         <PointerView toolTip={selectAction.accessibilityLabel} pointerEvents={buttonEvents}>
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             // No tap of its own: onSelect enters selection mode, which fires a
             // heavy impact (useRowSelection), and the two landed together.
             onPress={selectAction.onSelect}

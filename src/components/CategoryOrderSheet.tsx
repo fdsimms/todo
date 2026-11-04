@@ -178,6 +178,7 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
                       </Text>
                     </View>
                     <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
                       onLongPress={drag}
                       delayLongPress={interaction.delayLongPress}
                       hitSlop={8}

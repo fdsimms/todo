@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, Alert, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
@@ -46,6 +46,7 @@ import { WhenPicker } from './WhenPicker';
 import { TextField } from './TextField';
 import { InlineAction } from './InlineAction';
 import { HelpText } from './HelpText';
+import { NameSheet, type NameRequest } from './NameSheet';
 import { BUTTON_LABEL } from '../copy/shared';
 
 const NOTE_MAX_LENGTH = 500;
@@ -124,6 +125,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   const [change, setChange] = useState<MoodChange | null>(null);
   const [symptoms, setSymptoms] = useState<LoggedSymptom[]>([]);
   const [contextTags, setContextTags] = useState<string[]>([]);
+  const [renaming, setRenaming] = useState<NameRequest | null>(null);
   const [note, setNote] = useState('');
   // Whether the note field is showing. Folded away behind "Add a note" on a new
   // entry so the sheet leads with the mood; open from the start when the entry
@@ -302,26 +304,20 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
    * the corrected name stays selected in its place.
    */
   const renameTag = (name: string) => {
-    Alert.prompt(
-      'Rename tag',
-      `Changes every entry that has “${name}”.`,
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.save,
-          onPress: (text?: string) => {
-            const trimmed = (text ?? '').trim();
-            if (!trimmed || trimmed === name) return;
-            haptics.success();
-            renameContextTag(name, trimmed);
-            setDraftedContext(current => current.map(t => (contextTagKey(t) === contextTagKey(name) ? trimmed : t)));
-            setContextTags(current => renamedContextTags(current, name, trimmed));
-          },
-        },
-      ],
-      'plain-text',
-      name,
-    );
+    setRenaming({
+      title: 'Rename tag',
+      initial: name,
+      placeholder: 'Tag name',
+      hint: `Changes every entry that has “${name}”.`,
+      refusal: () => null,
+      onSave: trimmed => {
+        if (trimmed === name) return;
+        haptics.success();
+        renameContextTag(name, trimmed);
+        setDraftedContext(current => current.map(t => (contextTagKey(t) === contextTagKey(name) ? trimmed : t)));
+        setContextTags(current => renamedContextTags(current, name, trimmed));
+      },
+    });
   };
 
   const createContextTag = (name: string): string | null | void => {
@@ -608,6 +604,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
         onConfirm={picked => { if (picked) pickDay(picked); setPickerOpen(false); }}
         onCancel={() => setPickerOpen(false)}
       />
+      <NameSheet request={renaming} onClose={() => setRenaming(null)} />
     </EditorSheet>
   );
 }

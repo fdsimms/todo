@@ -1332,6 +1332,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     >
                       <View style={styles.setRow}>
                         <TouchableOpacity
+                          activeOpacity={interaction.activeOpacity}
                           style={styles.colSet}
                           onPress={() => openRow(set, openSet)}
                           hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
@@ -1343,6 +1344,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         </TouchableOpacity>
                         {prev ? (
                           <TouchableOpacity
+                            activeOpacity={interaction.activeOpacity}
                             style={styles.colPrev}
                             onPress={() => fillFromPrevious(set, prev)}
                             hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
@@ -1384,6 +1386,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                           />
                         ))}
                         <TouchableOpacity
+                          activeOpacity={interaction.activeOpacity}
                           style={styles.colCheck}
                           onPress={() => toggleSet(set, viewed)}
                           hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}

@@ -284,6 +284,7 @@ export function CalendarPicker({
           <View style={styles.calSection}>
             <View style={styles.monthNav}>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => setDisplayMonth(m => subMonths(m, 1))}
                 hitSlop={8}
                 style={styles.navBtn}
@@ -294,6 +295,7 @@ export function CalendarPicker({
               </TouchableOpacity>
               <Text style={styles.monthLabel}>{format(displayMonth, 'MMMM yyyy')}</Text>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => setDisplayMonth(m => addMonths(m, 1))}
                 hitSlop={8}
                 style={styles.navBtn}

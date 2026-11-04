@@ -344,6 +344,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
               return (
                 <View style={[styles.slotRow, index > 0 && styles.rowSep]}>
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onLongPress={drag}
                     delayLongPress={interaction.delayLongPress}
                     hitSlop={8}
@@ -367,6 +368,7 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
                     {routine && <Text style={styles.slotMeta}>{describeRoutine(routine.items, musclesOf)}</Text>}
                   </TouchableOpacity>
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => removeSlot(slot.id)}
                     hitSlop={10}
                     accessibilityRole="button"

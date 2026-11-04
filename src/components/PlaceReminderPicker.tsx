@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { InlineAction } from './InlineAction';
 import { SegmentedControl } from './SegmentedControl';
 import { HelpText } from './HelpText';
+import { NameSheet, type NameRequest } from './NameSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -33,6 +34,7 @@ export function PlaceReminderPicker({ placeId, on, onChange }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [saving, setSaving] = useState(false);
+  const [naming, setNaming] = useState<NameRequest | null>(null);
 
   useEffect(() => { setPlaces(remindablePlaces(readSavedPlaces())); }, []);
 
@@ -63,18 +65,29 @@ export function PlaceReminderPicker({ placeId, on, onChange }: Props) {
         Alert.alert('Couldn’t find where you are', 'Try again in a moment, or add the place in Settings › Calendar › Places.');
         return;
       }
-      Alert.prompt('Save place', 'Give it a name, like “home” or “gym”.', name => {
-        const trimmed = (name ?? '').trim();
-        if (!trimmed) return;
-        const next = addSavedPlace(readSavedPlaces(), {
-          name: trimmed,
-          text: trimmed,
-          place: { latitude: here.latitude, longitude: here.longitude },
-        });
-        writeSavedPlaces(next);
-        const saved = next.find(p => savedPlaceKey(p.name) === savedPlaceKey(trimmed));
-        setPlaces(remindablePlaces(next));
-        if (saved) { haptics.success(); onChange(saved.id, on); }
+      // Past the limit addSavedPlace hands the list back without the new
+      // name, so the same call is the refusal, said under the field.
+      const added = (name: string) => addSavedPlace(readSavedPlaces(), {
+        name,
+        text: name,
+        place: { latitude: here.latitude, longitude: here.longitude },
+      });
+      const savedIn = (next: SavedPlace[], name: string) => next.find(p => savedPlaceKey(p.name) === savedPlaceKey(name));
+      setNaming({
+        title: 'Save place',
+        initial: '',
+        placeholder: 'e.g. Home',
+        hint: 'Saves where you are now under this name.',
+        refusal: name => (savedIn(added(name), name) ? null : 'Too many saved places. Remove one in Settings, under Calendar, to save another.'),
+        onSave: trimmed => {
+          const next = added(trimmed);
+          const saved = savedIn(next, trimmed);
+          if (!saved) return;
+          writeSavedPlaces(next);
+          setPlaces(remindablePlaces(next));
+          haptics.success();
+          onChange(saved.id, on);
+        },
       });
     } finally {
       setSaving(false);
@@ -127,6 +140,8 @@ export function PlaceReminderPicker({ placeId, on, onChange }: Props) {
       <HelpText style={styles.hint}>
         iPhone watches for this itself and shows the reminder. The app never reads your location in the background.
       </HelpText>
+      {/* Rendered here, so it presents from whichever sheet holds this picker. */}
+      <NameSheet request={naming} onClose={() => setNaming(null)} />
     </View>
   );
 }

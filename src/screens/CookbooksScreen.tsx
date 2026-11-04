@@ -80,6 +80,7 @@ export function CookbooksScreen() {
           </View>
         </View>
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); setEditingId(item.id); }}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityRole="button"

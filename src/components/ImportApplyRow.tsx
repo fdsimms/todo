@@ -101,6 +101,7 @@ export function ImportApplyRow({
     <View style={styles.block}>
       <View style={styles.row}>
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); onToggle(); }}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
           accessibilityRole="checkbox"
@@ -153,6 +154,7 @@ export function ImportApplyRow({
               return (
                 <View key={`${editKeyPrefix}-${i}`} style={styles.previewLine}>
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); onToggleLine?.(i); }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="checkbox"

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform, type GestureResponderEvent, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, type GestureResponderEvent, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Reanimated, { useAnimatedStyle, useSharedValue, withSequence, withSpring } from 'react-native-reanimated';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -99,6 +99,7 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 import { HelpText } from '../components/HelpText';
+import { Toggle } from '../components/Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from '../components/FieldLabel';
 import { confirmDelete } from '../utils/confirmDelete';
@@ -792,7 +793,17 @@ export function RewardsScreen() {
         <Text style={styles.hint}>Set a weekly budget under Exchange rate to price a reward in dollars.</Text>
       )}
       {priceDriven && taxPercent !== null && (
-        <View style={styles.switchRow}>
+        <TouchableOpacity
+          style={styles.switchRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => {
+            haptics.tap();
+            setDraftTaxable(v => !v);
+          }}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: draftTaxable }}
+          accessibilityLabel="Add sales tax"
+        >
           <View style={styles.switchText}>
             <Text style={styles.switchLabel}>Add sales tax</Text>
             <HelpText style={styles.hint}>
@@ -801,17 +812,8 @@ export function RewardsScreen() {
                 : `Adds ${formatSalesTaxPercent(taxPercent)} to the price.`}
             </HelpText>
           </View>
-          <Switch
-            value={draftTaxable}
-            onValueChange={next => {
-              haptics.tap();
-              setDraftTaxable(next);
-            }}
-            trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-            thumbColor={colors.onAccent}
-            accessibilityLabel="Add sales tax"
-          />
-        </View>
+          <Toggle value={draftTaxable} />
+        </TouchableOpacity>
       )}
       {priceDriven ? (
         <Text style={styles.hint}>
@@ -892,22 +894,23 @@ export function RewardsScreen() {
               <SaveLinkAction links={savedLinks} typed={customLink} />
             </View>
           )}
-          <View style={styles.switchRow}>
+          <TouchableOpacity
+            style={styles.switchRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => {
+              haptics.tap();
+              setDraftOneTime(v => !v);
+            }}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: draftOneTime }}
+            accessibilityLabel="One time only"
+          >
             <View style={styles.switchText}>
               <Text style={styles.switchLabel}>One time only</Text>
               <HelpText style={styles.hint}>Checked off in your project once claimed.</HelpText>
             </View>
-            <Switch
-              value={draftOneTime}
-              onValueChange={next => {
-                haptics.tap();
-                setDraftOneTime(next);
-              }}
-              trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-              thumbColor={colors.onAccent}
-              accessibilityLabel="One time only"
-            />
-          </View>
+            <Toggle value={draftOneTime} />
+          </TouchableOpacity>
           {!draftOneTime && (
             <>
               <Text style={styles.fieldLabel}>Limit claims</Text>

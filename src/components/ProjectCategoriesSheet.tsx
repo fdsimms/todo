@@ -297,6 +297,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                         <Text style={styles.rowCount}>{describeCount(name)}</Text>
                       </View>
                       <TouchableOpacity
+                        activeOpacity={interaction.activeOpacity}
                         onPress={() => handleDelete(name)}
                         hitSlop={8}
                         style={styles.rowButton}
@@ -306,6 +307,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
                         <Ionicons name="trash-outline" size={18} color={colors.red} />
                       </TouchableOpacity>
                       <TouchableOpacity
+                        activeOpacity={interaction.activeOpacity}
                         onLongPress={drag}
                         delayLongPress={interaction.delayLongPress}
                         hitSlop={8}

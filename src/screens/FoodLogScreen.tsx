@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -133,6 +133,7 @@ import { useFastStore } from '../store/useFastStore';
 import { activeFast, lastMealLoggedAt, showsFastingCard } from '../utils/fasting';
 import type { Fast } from '../types';
 import { ActionMenu, type ActionMenuAction, type ActionMenuChoice } from '../components/ActionMenu';
+import { NameSheet, type NameRequest } from '../components/NameSheet';
 import type { CardAnchor } from '../components/CardSheet';
 import { resetToMealPlan } from '../navigation/navigationRef';
 import { ProgressBar } from '../components/ProgressBar';
@@ -350,6 +351,7 @@ export function FoodLogScreen() {
   const [linkingEntry, setLinkingEntry] = useState<FoodLogEntry | null>(null);
   /** The entry whose "…" menu is open, and the touch it opened from. */
   const [menuEntry, setMenuEntry] = useState<FoodLogEntry | null>(null);
+  const [naming, setNaming] = useState<NameRequest | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<CardAnchor | null>(null);
   // The "…" on a saved meal's tray caption: acts on every food in the tray.
   const [trayMenu, setTrayMenu] = useState<{ run: SavedMealRun; anchor: CardAnchor | null } | null>(null);
@@ -693,27 +695,19 @@ export function FoodLogScreen() {
    * half: the label is part of what Health was told.
    */
   const handleRename = useCallback((entry: FoodLogEntry) => {
-    Alert.prompt(
-      'Rename entry',
-      'What this was. The figures stay the same.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.save,
-          onPress: (text?: string) => {
-            const trimmed = (text ?? '').trim();
-            // A blank or a no-op closes rather than being refused: the old name
-            // is still there and still correct, the same call the app's other
-            // renames make.
-            if (!trimmed || trimmed === entry.label) return;
-            reviseEntry(entry.id, { label: trimmed });
-            haptics.success();
-          },
-        },
-      ],
-      'plain-text',
-      entry.label,
-    );
+    // A blank keeps Save off and a no-op closes (NameSheet), the same call
+    // the app's other renames make: the old name is still there and correct.
+    setNaming({
+      title: 'Rename entry',
+      initial: entry.label,
+      placeholder: 'What this was',
+      hint: 'What this was. The figures stay the same.',
+      refusal: () => null,
+      onSave: trimmed => {
+        reviseEntry(entry.id, { label: trimmed });
+        haptics.success();
+      },
+    });
   }, [reviseEntry]);
 
   /**
@@ -897,30 +891,24 @@ export function FoodLogScreen() {
    * Bundles the selected entries into a saved meal — a shortcut to log the
    * same combination again, not a change to anything already logged. The
    * selection is left as it is on Cancel and cleared only once a name is
-   * actually given, the same rule `Alert.prompt` gives every other rename
-   * here (see `handleRename`).
+   * actually given, the same rule every other rename here follows (see
+   * `handleRename`).
    */
   const handleBulkSaveMeal = () => {
     const ids = new Set(selectedIds);
     const selected = dayEntries.filter(e => ids.has(e.id));
-    Alert.prompt(
-      'Save as meal',
-      'Name this combination so you can log it again in one tap.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.save,
-          onPress: (text?: string) => {
-            const name = (text ?? '').trim();
-            if (!name) return;
-            addSavedMealFromEntries(name, selected);
-            haptics.success();
-            exitSelection();
-          },
-        },
-      ],
-      'plain-text',
-    );
+    setNaming({
+      title: 'Save as meal',
+      initial: '',
+      placeholder: 'e.g. Weekday breakfast',
+      hint: 'Name this combination so you can log it again in one tap.',
+      refusal: () => null,
+      onSave: name => {
+        addSavedMealFromEntries(name, selected);
+        haptics.success();
+        exitSelection();
+      },
+    });
   };
 
   // ==== the day's water ====
@@ -1593,6 +1581,7 @@ export function FoodLogScreen() {
           </Text>
           {!isToday && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               hitSlop={{ top: 4, bottom: 8, left: 8, right: 8 }}
               onPress={() => { haptics.tap(); exitSelection(); setDayKey(todayKey); }}
               accessibilityRole="button"
@@ -1889,6 +1878,7 @@ export function FoodLogScreen() {
         anchor={menuAnchor}
         onClose={() => setMenuEntry(null)}
       />
+      <NameSheet request={naming} onClose={() => setNaming(null)} />
       <ActionMenu
         visible={trayMenu !== null}
         title={trayMenu?.run.name ?? ''}
@@ -2373,6 +2363,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
           </View>
         ) : (
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             style={styles.entryMenuButton}
             onPress={e => onOpenMenu(entry, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -2453,6 +2444,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
           <Text style={styles.trayCount}>{tray.count} foods</Text>
           {!selectionMode && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={e => onOpenTrayMenu(tray, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"

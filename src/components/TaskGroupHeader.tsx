@@ -402,6 +402,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
 
               {onPressOpen && (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); onPressOpen(group.id); }}
                   hitSlop={8}
                   style={styles.iconBtn}
@@ -413,6 +414,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
               )}
               {onPressPin && (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); onPressPin(group.id); }}
                   disabled={pinDisabled}
                   hitSlop={8}
@@ -429,6 +431,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
                 </TouchableOpacity>
               )}
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => onPressEdit(group.id)}
                 hitSlop={8}
                 style={styles.iconBtn}

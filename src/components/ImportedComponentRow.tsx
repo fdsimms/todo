@@ -271,6 +271,7 @@ export function ImportedComponentRow({ candidate, imports, parent }: Props) {
     <View style={styles.row}>
       {tickable ? (
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); onToggle(); }}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
           accessibilityRole="checkbox"

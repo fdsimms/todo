@@ -9,6 +9,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { CountStepper } from './CountStepper';
 import { TextField } from './TextField';
 import { HelpText } from './HelpText';
+import { NameSheet, type NameRequest } from './NameSheet';
 import { WorkoutTimesSheet, type TimeEnd } from './WorkoutTimesSheet';
 import { WorkoutRecordsCard } from './WorkoutRecordsCard';
 import { WorkoutStatTiles } from './WorkoutStatTiles';
@@ -36,7 +37,7 @@ import { routineItemsFromSets } from '../utils/workoutRoutine';
 import { startWorkout } from '../utils/startWorkout';
 import { formatSetLine, sessionExercises, sessionMinutes, setBadge, setLabels, setName } from '../utils/workoutSession';
 import { sameMinute } from '../utils/workoutTimes';
-import { WORKOUT_EFFORT } from '../utils/workoutData';
+import { WORKOUT_EFFORT, cleanWorkoutName } from '../utils/workoutData';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { resolveMaxHeartRate } from '../utils/heartRateZones';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -167,6 +168,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose, onOpenRoutine 
   const [notes, setNotes] = useState('');
   // Which time the picker is choosing; declared here so the open effect below can put it away.
   const [picking, setPicking] = useState<TimeEnd | null>(null);
+  const [naming, setNaming] = useState<NameRequest | null>(null);
   // The exercise page a row opened; put away with the picker below.
   const [detailId, setDetailId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -215,29 +217,19 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose, onOpenRoutine 
   const renameWorkout = () => {
     if (!current) return;
     haptics.tap();
-    Alert.prompt(
-      'Workout name',
-      undefined,
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.save,
-          onPress: (text?: string) => {
-            const name = (text ?? '').trim();
-            if (name === current.title) return;
-            const result = useWorkoutStore.getState().updateSession(current.id, { title: name });
-            if (result === 'blank') {
-              haptics.warning();
-              Alert.alert('Couldn’t rename the workout', 'Give it a name and try again.');
-              return;
-            }
-            if (typeof result !== 'string') haptics.success();
-          },
-        },
-      ],
-      'plain-text',
-      current.title,
-    );
+    const id = current.id;
+    setNaming({
+      title: 'Workout name',
+      initial: current.title,
+      placeholder: 'Workout name',
+      refusal: typed => (cleanWorkoutName(typed) ? null : 'Give it a name.'),
+      onSave: name => {
+        // Otherwise saved, or 'notFound': the workout has gone, and the
+        // effect above closes the page.
+        const result = useWorkoutStore.getState().updateSession(id, { title: name });
+        if (typeof result !== 'string') haptics.success();
+      },
+    });
   };
 
   // ==== the times ====
@@ -273,37 +265,36 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose, onOpenRoutine 
 
   const saveAsRoutine = () => {
     if (!current || routineItems.length === 0) return;
-    Alert.prompt(
-      'Save as routine',
-      'Warm-up sets are left out. The weights and reps are the ones from this workout.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.save,
-          onPress: (text?: string) => {
-            const result = useWorkoutStore.getState().addRoutine((text ?? '').trim(), routineItems);
-            if (typeof result === 'string') {
-              haptics.warning();
-              Alert.alert('Couldn’t save the routine', 'Give it a name and try again.');
-              return;
-            }
-            haptics.success();
-            Alert.alert(
-              'Saved as a routine',
-              `“${result.name}” is in the Routines tab.`,
-              onOpenRoutine
-                ? [
-                  { text: BUTTON_LABEL.done, style: 'cancel' },
-                  { text: 'Open routine', onPress: () => onOpenRoutine(result.id) },
-                ]
-                : undefined,
-            );
-          },
-        },
-      ],
-      'plain-text',
-      current.title,
-    );
+    setNaming({
+      title: 'Save as routine',
+      initial: current.title,
+      placeholder: 'Routine name',
+      hint: 'Warm-up sets are left out. The weights and reps are the ones from this workout.',
+      refusal: typed => (cleanWorkoutName(typed) ? null : 'Give it a name.'),
+      // A routine is new, so the workout's own name is a name to save as it
+      // stands, not an unchanged one.
+      saveUnchanged: true,
+      onSave: name => {
+        const result = useWorkoutStore.getState().addRoutine(name, routineItems);
+        if (typeof result === 'string') {
+          // A blank name is refused under the field, so this is the sets.
+          haptics.warning();
+          Alert.alert('Couldn’t save the routine', 'This workout’s sets can’t be made into a routine.');
+          return;
+        }
+        haptics.success();
+        Alert.alert(
+          'Saved as a routine',
+          `“${result.name}” is in the Routines tab.`,
+          onOpenRoutine
+            ? [
+              { text: BUTTON_LABEL.done, style: 'cancel' },
+              { text: 'Open routine', onPress: () => onOpenRoutine(result.id) },
+            ]
+            : undefined,
+        );
+      },
+    });
   };
 
   // ==== doing it again ====
@@ -595,6 +586,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose, onOpenRoutine 
         onClose={() => setPicking(null)}
       />
       <ExerciseDetailSheet visible={visible && detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
+      <NameSheet request={naming} onClose={() => setNaming(null)} />
     </SheetModal>
   );
 }

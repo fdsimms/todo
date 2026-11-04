@@ -15,7 +15,7 @@ import { cookbookRenameTaken } from '../utils/nameTaken';
 import { InlineAction } from './InlineAction';
 import { CookbookMergeSheet } from './CookbookMergeSheet';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { RECIPE_SOURCE_MAX_LENGTH, type Cookbook } from '../types';
@@ -153,6 +153,7 @@ export function CookbookEditor({ visible, cookbookId: liveCookbookId, onClose }:
         <SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} disabled={nameTaken} />
         <Text style={styles.headerTitle}>Edit cookbook</Text>
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={handleDelete}
           hitSlop={8}
           accessibilityRole="button"
