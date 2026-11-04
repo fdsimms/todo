@@ -925,6 +925,11 @@ export function KitchenScreen() {
     // thing going off is the one thing coloured.
     const tint = entry.freshness ? freshnessColor(entry.freshness, colors) : colors.textTertiary;
     const isPortion = entry.kind === 'product' && portionIds.has(entry.sourceId);
+    // What follows the product name on the caption line. The reason can be
+    // empty (a row the person marked on hand says nothing here, the pill does),
+    // and a line with nothing on it isn't drawn at all.
+    const metaRest = [entry.reason, entry.onList ? 'on the list' : ''].filter(Boolean);
+    const metaParts = [entry.productName, ...metaRest, entry.useByCaption].filter(Boolean);
     const facts = rowFacts(entry);
     const chipKind = facts ? pantryRowChip(facts) : 'have';
     const marks = facts ? pantryRowMarks(facts) : [];
@@ -972,21 +977,21 @@ export function KitchenScreen() {
       >
         <View style={styles.body}>
           <Text style={styles.name} numberOfLines={1}>{entry.title}</Text>
-          <Text style={styles.meta} numberOfLines={1}>
-            {/* Which packet, in its own weight and the brighter grey, because
-                on an item that has split into two rows this is the only thing
-                telling them apart — at caption weight the two read as one row
-                drawn twice. Leading, so it survives the truncation that eats
-                the end of a long line at 390pt. */}
-            {!!entry.productName && (
-              <Text style={styles.metaBox}>{`${entry.productName} · `}</Text>
-            )}
-            {entry.reason}
-            {entry.onList && ' · on the list'}
-            {!!entry.useByCaption && (
-              <Text style={{ color: tint }}>{` · ${entry.useByCaption}`}</Text>
-            )}
-          </Text>
+          {metaParts.length > 0 && (
+            <Text style={styles.meta} numberOfLines={1}>
+              {/* Which product, in its own weight and the brighter grey, so it
+                  reads as what the row is about rather than more caption.
+                  Leading, so it survives the truncation that eats the end of
+                  a long line at 390pt. */}
+              {!!entry.productName && (
+                <Text style={styles.metaBox}>{entry.productName}</Text>
+              )}
+              {metaRest.length > 0 && `${entry.productName ? ' · ' : ''}${metaRest.join(' · ')}`}
+              {!!entry.useByCaption && (
+                <Text style={{ color: tint }}>{`${entry.productName || metaRest.length > 0 ? ' · ' : ''}${entry.useByCaption}`}</Text>
+              )}
+            </Text>
+          )}
           {/* What was done to the packet, as tags rather than more caption: the
               caption keeps the dates and these keep it scannable. */}
           {marks.length > 0 && (

@@ -393,7 +393,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
         at,
       });
       const pantry = pantryAnswers[food.key];
-      if (pantry && food.itemId) answerPantryReview(food.itemId, pantry, { addToList: pantryAddToList[food.key] });
+      if (pantry && food.itemId) answerPantryReview(food.itemId, pantry, { addToList: pantryAddToList[food.key], productId: food.productId });
       const rating = ratings[food.key];
       if (rating && food.productId) updateProduct(food.productId, { rating });
     }

@@ -6150,6 +6150,32 @@ describe('answerPantryReview', () => {
     expect(new Date(updated.onHandUntil!).getTime()).toBeGreaterThan(Date.now());
   });
 
+  it('also marks the box a logged food named on hand, so the Pantry can name it', () => {
+    const milk = makeItem({ name: 'Oat milk', onHandUntil: null });
+    seed([milk]);
+    useGroceryStore.getState().addProduct(milk.id, { brand: 'Oatly', variant: 'Barista' }, { promote: false });
+    const box = useGroceryStore.getState().itemProducts[0];
+    expect(box.onHandUntil).toBeNull();
+
+    useGroceryStore.getState().answerPantryReview(milk.id, 'have', { productId: box.id });
+
+    expect(useGroceryStore.getState().itemProducts[0].onHandUntil).not.toBeNull();
+  });
+
+  it('leaves the box alone for "out", for a box of another item, and when none was named', () => {
+    const milk = makeItem({ name: 'Oat milk', onHandUntil: null });
+    const other = makeItem({ name: 'Soda', onHandUntil: null });
+    seed([milk, other]);
+    useGroceryStore.getState().addProduct(other.id, { brand: 'Fizz', variant: null }, { promote: false });
+    const fizz = useGroceryStore.getState().itemProducts[0];
+
+    useGroceryStore.getState().answerPantryReview(milk.id, 'have', { productId: fizz.id });
+    useGroceryStore.getState().answerPantryReview(other.id, 'out', { productId: fizz.id });
+    useGroceryStore.getState().answerPantryReview(other.id, 'have');
+
+    expect(useGroceryStore.getState().itemProducts[0].onHandUntil).toBe(fizz.onHandUntil);
+  });
+
   it('writes the "Out of it" sentinel for "out"', () => {
     const flour = makeItem({ name: 'Flour', onHandUntil: null });
     seed([flour]);

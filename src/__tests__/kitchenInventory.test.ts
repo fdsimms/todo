@@ -124,14 +124,23 @@ describe('kitchenInventory', () => {
     expect(entry.sourceId).toBe(item.id);
   });
 
-  it('is exactly what probablyHaveReason answers for, and carries its wording', () => {
+  it('is exactly what probablyHaveReason answers for, and leaves "marked as on hand" to the pill', () => {
     const marked = makeItem({ name: 'Rice' });
     const out = makeItem({ name: 'Olive oil', onHandUntil: daysAgo(1) });
     const unknown = makeItem({ name: 'Saffron', onHandUntil: null });
 
     const entries = kitchenInventory([marked, out, unknown], [], NOW);
     expect(entries.map(e => e.title)).toEqual(['Rice']);
-    expect(entries[0].reason).toBe('marked as on hand');
+    // The row's "Have it" pill says this already, so the caption doesn't.
+    expect(entries[0].reason).toBe('');
+  });
+
+  it('keeps a purchase guess, which says something the pill does not', () => {
+    const item = makeItem({
+      name: 'Bread', onHandUntil: null, purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(2),
+    });
+    const [entry] = kitchenInventory([item], [], NOW);
+    expect(entry.reason).not.toBe('');
   });
 
   it('leaves a use-by day on a row the pantry no longer vouches for out of it', () => {
@@ -163,8 +172,8 @@ describe('kitchenInventory', () => {
     expect(entry.freshness).toBeNull();
     expect(entry.daysLeft).toBeNull();
     expect(entry.useByCaption).toBe('');
-    // …and its caption is the reason on its own, with no trailing separator.
-    expect(entry.caption).toBe('marked as on hand');
+    // …and with nothing to say it has no caption, rather than a lone separator.
+    expect(entry.caption).toBe('');
   });
 
   it('composes a caption from the reason and the use-by clause', () => {
@@ -173,7 +182,7 @@ describe('kitchenInventory', () => {
       [],
       NOW
     );
-    expect(entry.caption).toBe('marked as on hand · Use by today');
+    expect(entry.caption).toBe('Use by today');
   });
 
   it('keeps a row that is also on the list, and says so', () => {
@@ -608,34 +617,52 @@ describe('a box of its own', () => {
       name, aisle, purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(2),
     });
 
-  it('draws one row per box beside the item, keyed apart', () => {
+  it('draws one row for an item however many boxes it has, naming the boxes', () => {
     const item = bought('Vegan ground beef', 'Meat');
-    const beyond = makeProduct({ itemId: item.id, brand: 'Beyond', frozenAt: daysAgo(20) });
+    const beyond = makeProduct({ itemId: item.id, brand: 'Beyond', onHandUntil: daysAgo(-5) });
     const impossible = makeProduct({ itemId: item.id, brand: 'Impossible', onHandUntil: daysAgo(-5) });
 
     const entries = kitchenInventory([item], [], NOW, [beyond, impossible]);
-    expect(entries.map(e => e.id)).toEqual([
-      kitchenEntryId('grocery', item.id),
-      kitchenEntryId('product', beyond.id),
-      kitchenEntryId('product', impossible.id),
-    ]);
-    // The item's name stays the title on all three — the pantry is a list of
-    // food you have, with the packet named underneath, not a list of brands.
-    expect(new Set(entries.map(e => e.title))).toEqual(new Set(['Vegan ground beef']));
-    expect(entries.map(e => e.productName)).toEqual([null, 'Beyond', 'Impossible']);
+    expect(entries.map(e => e.id)).toEqual([kitchenEntryId('grocery', item.id)]);
+    expect(entries[0].title).toBe('Vegan ground beef');
+    expect(entries[0].productName).toBe('Beyond, Impossible');
+    // A folded row is the item's, so its actions are the item's.
+    expect(entries[0].kind).toBe('grocery');
+    expect(entries[0].itemId).toBeNull();
   });
 
-  it('files a frozen box under the freezer while its sibling stays in the aisle', () => {
+  it('names no product on an item row nobody has named a box for', () => {
+    const item = bought('Bread');
+    expect(kitchenInventory([item], [], NOW)[0].productName).toBeNull();
+  });
+
+  it('keeps a frozen or opened box visible on the folded row', () => {
     const item = bought('Bread');
     const frozen = makeProduct({ itemId: item.id, brand: "Arnold's", frozenAt: daysAgo(9) });
-    const out = makeProduct({ itemId: item.id, brand: 'Store brand', onHandUntil: daysAgo(-5) });
+    const [entry] = kitchenInventory([item], [], NOW, [frozen]);
+    expect(entry.productName).toBe("Arnold's");
+    expect(entry.reason).toContain('in the freezer');
+  });
 
-    const bySection = new Map(
-      kitchenInventory([item], [], NOW, [frozen, out]).map(e => [e.productName, e.section])
-    );
-    expect(bySection.get("Arnold's")).toBe(FREEZER_SECTION);
-    expect(bySection.get('Store brand')).toBe('Bakery');
-    expect(bySection.get(null)).toBe('Bakery');
+  it('folds two boxes with no item row of their own into one item row', () => {
+    const item = makeItem({ name: 'Bread', aisle: 'Bakery', onHandUntil: null, purchaseCount: 0 });
+    const a = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5) });
+    const b = makeProduct({ itemId: item.id, brand: 'Store brand', onHandUntil: daysAgo(-5) });
+    const entries = kitchenInventory([item], [], NOW, [a, b]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].kind).toBe('grocery');
+    expect(entries[0].sourceId).toBe(item.id);
+    expect(entries[0].productName).toContain("Arnold's");
+    expect(entries[0].productName).toContain('Store brand');
+  });
+
+  it('counts down the soonest use-by day of the boxes it folds', () => {
+    const item = bought('Bread');
+    item.expiresAt = '2026-08-20';
+    const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5), expiresAt: '2026-08-14' });
+    const [entry] = kitchenInventory([item], [], NOW, [box]);
+    expect(entry.useBy).toBe('2026-08-14');
+    expect(entry.useByCaption).toBe('Use by tomorrow');
   });
 
   it('keeps the box name out of the reason, so the row can weight it apart', () => {
@@ -644,10 +671,10 @@ describe('a box of its own', () => {
     // line still reads as one sentence.
     const item = bought('Bread');
     const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5) });
-    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.productName)!;
     expect(entry.productName).toBe("Arnold's");
-    expect(entry.reason).toBe('marked as on hand');
-    expect(entry.caption).toBe("Arnold's · marked as on hand");
+    expect(entry.reason).toBe('');
+    expect(entry.caption).toBe("Arnold's");
   });
 
   it('still reads as one sentence when the box has a clock and an opening', () => {
@@ -656,15 +683,15 @@ describe('a box of its own', () => {
       itemId: item.id, brand: 'Herdez', onHandUntil: daysAgo(-5),
       openedAt: daysAgo(2), expiresAt: '2026-08-14',
     });
-    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
-    expect(entry.caption).toBe('Herdez · marked as on hand · opened Aug 11 · Use by tomorrow');
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.productName)!;
+    expect(entry.caption).toBe('Herdez · opened Aug 11 · Use by tomorrow');
   });
 
   it('counts down a box off its own use-by day, ahead of the item\'s', () => {
     const item = bought('Bread');
     item.expiresAt = '2026-08-20';
     const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5), expiresAt: '2026-08-14' });
-    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.productName)!;
     expect(entry.useBy).toBe('2026-08-14');
   });
 
@@ -674,7 +701,7 @@ describe('a box of its own', () => {
     const item = bought('Bread');
     item.expiresAt = '2026-08-20';
     const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5) });
-    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.productName)!;
     expect(entry.useBy).toBe('2026-08-20');
   });
 
@@ -685,7 +712,7 @@ describe('a box of its own', () => {
     item.expiresAt = '2026-08-01';
     item.frozenAt = daysAgo(3);
     const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5) });
-    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.productName)!;
     expect(entry.useBy).toBeNull();
   });
 
@@ -694,7 +721,7 @@ describe('a box of its own', () => {
     const box = makeProduct({
       itemId: item.id, brand: "Arnold's", frozenAt: daysAgo(9), expiresAt: '2026-08-14',
     });
-    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.productName)!;
     expect(entry.useBy).toBeNull();
     expect(entry.freshness).toBeNull();
     expect(box.expiresAt).toBe('2026-08-14');
@@ -703,15 +730,22 @@ describe('a box of its own', () => {
   it('carries the item id, which is what the ✕ and the drop need', () => {
     const item = bought('Bread');
     const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5) });
-    const entries = kitchenInventory([item], [], NOW, [box]);
-    expect(entries.find(e => e.kind === 'product')!.itemId).toBe(item.id);
-    expect(entries.find(e => e.kind === 'grocery')!.itemId).toBeNull();
+    // Alone (the item has no claim of its own), the box keeps its own row and
+    // its actions are about that packet, so it carries the item id.
+    const quiet = makeItem({ name: 'Bread', onHandUntil: null, purchaseCount: 0 });
+    const lone = makeProduct({ itemId: quiet.id, brand: "Arnold's", onHandUntil: daysAgo(-5) });
+    const entries = kitchenInventory([quiet], [], NOW, [lone]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].kind).toBe('product');
+    expect(entries[0].itemId).toBe(quiet.id);
+    // Folded into an item row that has a claim of its own, it is the item's.
+    expect(kitchenInventory([item], [], NOW, [box])[0].itemId).toBeNull();
   });
 
   it('leaves a box search-matchable by its item\'s name', () => {
     const item = bought('Bread');
     const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5) });
-    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.productName)!;
     expect(entry.matchKey).toBe(item.nameKey);
   });
 
