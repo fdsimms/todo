@@ -109,6 +109,7 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyNote } from './EmptyNote';
 import { InlineAction } from './InlineAction';
+import { GlassLayer, glassSupported } from './GlassLayer';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { LabelSubjectSheet, type LabelSubject } from './LabelSubjectSheet';
 import { FoodCameraSheet } from './FoodCameraSheet';
@@ -3159,15 +3160,16 @@ export function FoodLogEntrySheet({
                 rather than among the ways to find a food, because it isn't
                 one: it says what happens after a save. */}
             {estimateOpen && !!estimateLog && (
-              <View style={[styles.estimateLogBar, { marginBottom: keyboardHeight }]}>
+              <View style={[styles.estimateLogBar, glassSupported() && styles.estimateLogBarGlass, { marginBottom: keyboardHeight }]}>
                 <TouchableOpacity
-                  style={[styles.estimateLogButton, estimateLog.loading && styles.estimateLogOff]}
+                  style={[styles.estimateLogButton, glassSupported() && styles.estimateLogButtonGlass, estimateLog.loading && styles.estimateLogOff]}
                   activeOpacity={interaction.activeOpacity}
                   disabled={estimateLog.loading}
                   onPress={estimateLog.run}
                   accessibilityRole="button"
                   accessibilityLabel={estimateLog.accessibilityLabel}
                 >
+                  <GlassLayer interactive tintColor={colors.accentFill} style={styles.estimateLogGlass} />
                   <Text style={styles.estimateLogText}>{estimateLog.label}</Text>
                 </TouchableOpacity>
               </View>
@@ -3446,6 +3448,10 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.md,
       alignItems: 'center',
     },
+    // Glass: no strip behind the button, and the button is the capsule itself.
+    estimateLogBarGlass: { backgroundColor: 'transparent', borderTopWidth: 0 },
+    estimateLogButtonGlass: { backgroundColor: 'transparent', borderRadius: radius.full, paddingVertical: spacing.smd },
+    estimateLogGlass: { borderRadius: radius.full },
     estimateLogOff: { opacity: interaction.activeOpacity * 0.6 },
     estimateLogText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
     // The "Log several" switch, a card under the search field.
