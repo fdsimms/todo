@@ -1593,6 +1593,7 @@ export function FoodLogScreen() {
           </Text>
           {!isToday && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               hitSlop={{ top: 4, bottom: 8, left: 8, right: 8 }}
               onPress={() => { haptics.tap(); exitSelection(); setDayKey(todayKey); }}
               accessibilityRole="button"
@@ -2373,6 +2374,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
           </View>
         ) : (
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             style={styles.entryMenuButton}
             onPress={e => onOpenMenu(entry, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -2453,6 +2455,7 @@ const FoodLogRow = React.memo(function FoodLogRow({
           <Text style={styles.trayCount}>{tray.count} foods</Text>
           {!selectionMode && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={e => onOpenTrayMenu(tray, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"

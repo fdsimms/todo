@@ -413,6 +413,7 @@ export function PersonDetailScreen() {
         actions={
           <View style={styles.headerActions}>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); updatePerson(person.id, { pinned: !person.pinned }); }}
               hitSlop={8}
               accessibilityRole="switch"
@@ -426,6 +427,7 @@ export function PersonDetailScreen() {
               />
             </TouchableOpacity>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); setEditing(true); }}
               hitSlop={8}
               accessibilityRole="button"

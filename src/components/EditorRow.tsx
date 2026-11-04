@@ -62,6 +62,7 @@ export function EditorRow({ icon, label, value, hint, caption, expanded, onPress
           <Text style={styles.value} numberOfLines={1}>{value}</Text>
           {onClear && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={onClear}
               hitSlop={8}
               accessibilityRole="button"

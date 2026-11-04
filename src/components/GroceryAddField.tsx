@@ -688,6 +688,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           />
           {!!(activePanel === 'brand' ? brand : variant) && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => (activePanel === 'brand' ? setBrand('') : setVariant(''))}
               hitSlop={8}
               accessibilityRole="button"
@@ -721,6 +722,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
               <View style={styles.tokenChip}>
                 <Text style={styles.tokenChipText}>{tokens.quantity}</Text>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setRejectedQuantity(tokens.quantity); }}
                   hitSlop={8}
                   accessibilityRole="button"
@@ -734,6 +736,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
               <View style={styles.tokenChip}>
                 <Text style={styles.tokenChipText}>{tokens.prep}</Text>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setRejectedPrep(tokens.prep); }}
                   hitSlop={8}
                   accessibilityRole="button"
@@ -747,6 +750,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
               <View style={styles.tokenChip}>
                 <Text style={styles.tokenChipText}>for {tokens.purpose}</Text>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setRejectedPurpose(tokens.purpose); }}
                   hitSlop={8}
                   accessibilityRole="button"

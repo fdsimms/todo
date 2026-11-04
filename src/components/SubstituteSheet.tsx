@@ -521,6 +521,7 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
                   is a different link, not an edit of this one. */}
               {!editing && (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => {
                     haptics.tap();
                     setPickedId(null);

@@ -121,6 +121,7 @@ export function RingtonePickerSheet(props: Props) {
         </TouchableOpacity>
         {sound !== null && (
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => {
               haptics.tap();
               if (playing === sound) stopSoundPreview();
@@ -134,7 +135,7 @@ export function RingtonePickerSheet(props: Props) {
           </TouchableOpacity>
         )}
         {onDelete && (
-          <TouchableOpacity onPress={onDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${label}`}>
+          <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={onDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${label}`}>
             <Ionicons name="trash-outline" size={iconSize.md} color={colors.textSecondary} />
           </TouchableOpacity>
         )}

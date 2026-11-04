@@ -2165,6 +2165,7 @@ function GroceryItemSheetBody({
                 just saves reaching for backspace on a long mistyped number. */}
             {price.length > 0 && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => {
                   haptics.tap();
                   setPriceEdits(prev => ({ ...prev, [priceKey]: '' }));

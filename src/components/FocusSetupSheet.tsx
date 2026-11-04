@@ -547,6 +547,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
         </TouchableOpacity>
 
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onLongPress={drag}
           delayLongPress={interaction.delayLongPress}
           hitSlop={8}

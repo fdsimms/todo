@@ -402,6 +402,7 @@ export function TemplateDetailScreen() {
         actions={
         <View style={styles.detailHeaderActions}>
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => { if (!template) return; haptics.tap(); setSettingsTemplate(template); }}
             disabled={!template}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -413,6 +414,7 @@ export function TemplateDetailScreen() {
           </TouchableOpacity>
           {!!anthropicApiKey && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); setSuggestVisible(true); }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
@@ -422,6 +424,7 @@ export function TemplateDetailScreen() {
             </TouchableOpacity>
           )}
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => {
               if (!template || template.items.length === 0) return;
               haptics.tap();
@@ -816,6 +819,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
       {!selectionMode && broken && (
         <View style={styles.brokenActions}>
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => onReplace(item.id)}
             hitSlop={8}
             style={styles.brokenActionBtn}
@@ -826,6 +830,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
             <Text style={styles.brokenActionText}>Replace</Text>
           </TouchableOpacity>
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => onDelete(item.id)}
             hitSlop={8}
             style={styles.brokenActionBtn}
@@ -839,6 +844,7 @@ const TemplateItemRow = React.memo(function TemplateItemRow({
       )}
       {!selectionMode && !broken && isRef && (
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => onReplace(item.id)}
           hitSlop={8}
           style={styles.rowButton}
@@ -906,7 +912,7 @@ function TemplateGroupHeader({
       <Ionicons name="layers-outline" size={14} color={colors.textSecondary} />
       <Text style={styles.groupHeaderText}>{title}</Text>
       <Text style={styles.groupHeaderCount}>{count}</Text>
-      <TouchableOpacity onPress={onUngroup} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Ungroup ${title}`}>
+      <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={onUngroup} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Ungroup ${title}`}>
         <Ionicons name="close-circle-outline" size={16} color={colors.textTertiary} />
       </TouchableOpacity>
     </TouchableOpacity>

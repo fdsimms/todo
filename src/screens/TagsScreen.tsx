@@ -424,6 +424,7 @@ export function TagsScreen() {
               actions={selectedTag && !selectionMode ? (
                 <View style={styles.detailActions}>
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => handleRenameTag(selectedTag)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
@@ -432,6 +433,7 @@ export function TagsScreen() {
                     <Ionicons name="create-outline" size={22} color={colors.textSecondary} />
                   </TouchableOpacity>
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); Keyboard.dismiss(); setTaskQuickAddVisible(true); }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"

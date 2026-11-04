@@ -62,6 +62,7 @@ export function JournalMonthSheet({ visible, kind, onPickDay, onClose }: Props) 
         />
         <View style={styles.monthRow}>
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setMonth(m => addMonths(m, -1)); }}
             hitSlop={8}
             accessibilityRole="button"
@@ -71,6 +72,7 @@ export function JournalMonthSheet({ visible, kind, onPickDay, onClose }: Props) 
           </TouchableOpacity>
           <Text style={styles.monthTitle}>{format(month, 'MMMM yyyy')}</Text>
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setMonth(m => addMonths(m, 1)); }}
             disabled={!canGoForward}
             hitSlop={8}

@@ -142,6 +142,7 @@ export function WorkoutTimesSheet({ visible, start, end, initial, healthLimited,
 
           <View style={styles.day}>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => stepDay(-1)}
               hitSlop={8}
               style={styles.dayButton}
@@ -152,6 +153,7 @@ export function WorkoutTimesSheet({ visible, start, end, initial, healthLimited,
             </TouchableOpacity>
             <Text style={styles.dayText} accessibilityLiveRegion="polite">{dayName(active, now)}</Text>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => stepDay(1)}
               hitSlop={8}
               style={styles.dayButton}

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, type Colors } from '../theme';
+import { spacing, font, interaction, type Colors } from '../theme';
 import { makeSettingsStyles } from '../screens/settings/settingsStyles';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { CountStepper } from './CountStepper';
@@ -118,6 +118,7 @@ export function SunBoundPanel({
       </View>
       <View style={settingsStyles.pickerButtons}>
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           style={[settingsStyles.pickerBtn, settingsStyles.pickerBtnPrimary]}
           onPress={onDone}
           accessibilityRole="button"

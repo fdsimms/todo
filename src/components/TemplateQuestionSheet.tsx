@@ -220,6 +220,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
                 accessibilityLabel={`Answer ${index + 1}`}
               />
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => removeOption(index)}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -354,6 +355,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
 
       {question && (
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           style={styles.deleteRow}
           onPress={handleDelete}
           accessibilityRole="button"

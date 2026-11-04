@@ -10,7 +10,7 @@ import { FoodLogEntrySheet } from './FoodLogEntrySheet';
 import { TextField } from './TextField';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
-import { border, font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
+import { border, font, fontWeight, iconSize, radius, spacing, interaction, type Colors } from '../theme';
 import { savedMealCalories } from '../utils/foodLog';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
@@ -118,6 +118,7 @@ export function NewSavedMealSheet({ visible, slot, at, onSave, onClose }: Props)
                       <Text style={styles.meta}>{item.quantity}</Text>
                     </View>
                     <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
                       hitSlop={8}
                       onPress={() => { haptics.tap(); setItems(prev => prev.filter((_, n) => n !== i)); }}
                       accessibilityRole="button"

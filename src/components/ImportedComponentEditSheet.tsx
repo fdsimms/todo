@@ -13,7 +13,7 @@ import { RecipeComponentPicker } from './RecipeComponentPicker';
 import { HelpText } from './HelpText';
 import { useColors } from '../theme/ThemeContext';
 import {
-  spacing, radius, font, fontWeight, border, iconSize, checkboxRadius, type Colors,
+  spacing, radius, font, fontWeight, border, iconSize, checkboxRadius, interaction, type Colors,
 } from '../theme';
 import { RECIPE_NAME_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import type { Recipe } from '../types';
@@ -260,6 +260,7 @@ export function ImportedComponentEditSheet({
                 return (
                   <View key={`step-${i}`} style={styles.stepRow}>
                     <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
                       onPress={() => { haptics.tap(); toggleIn('acceptedSteps', i); }}
                       hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
                       accessibilityRole="checkbox"

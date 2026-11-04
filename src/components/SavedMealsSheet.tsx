@@ -120,6 +120,7 @@ export function SavedMealsSheet({ visible, meals, onLog, onDelete, onReview, ove
                         />
                       )}
                       <TouchableOpacity
+                        activeOpacity={interaction.activeOpacity}
                         style={styles.deleteBtn}
                         hitSlop={8}
                         onPress={() => handleDelete(meal)}

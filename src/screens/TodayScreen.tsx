@@ -4567,6 +4567,7 @@ export function TodayScreen() {
         </View>
         <View style={styles.pinnedSectionActions}>
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => {
               // Same first-tap-dismisses rule every header on this screen has.
               if (expandedTaskId !== null) {
@@ -4601,6 +4602,7 @@ export function TodayScreen() {
               a reach-out set renders inside. */}
           {!selectionMode && !focusSession && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => {
                 haptics.tap();
                 setFocusFromReachOuts(false);
@@ -4626,6 +4628,7 @@ export function TodayScreen() {
               acts on what was picked. */}
           {!selectionMode && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               // No confirm: clearAllPins puts an undo on the bar that pins the
               // block back as it was.
               onPress={() => {

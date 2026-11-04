@@ -3319,6 +3319,7 @@ const TaskItemRow = React.memo(function TaskItem({
     <>
     {!selectionMode && showActions && canOpenTravelEvent && (
       <TouchableOpacity
+        activeOpacity={interaction.activeOpacity}
         onPress={handleOpenTravelEvent}
         hitSlop={8}
         style={styles.mapBtn}
@@ -3331,6 +3332,7 @@ const TaskItemRow = React.memo(function TaskItem({
 
     {!selectionMode && showActions && mapsUrl && (
       <TouchableOpacity
+        activeOpacity={interaction.activeOpacity}
         onPress={handleDirections}
         hitSlop={8}
         style={styles.mapBtn}
@@ -3343,6 +3345,7 @@ const TaskItemRow = React.memo(function TaskItem({
 
     {!selectionMode && showActions && showPin && canPinTask(task) && !pinWaiting && (
       <TouchableOpacity
+        activeOpacity={interaction.activeOpacity}
         onPress={() => {
           haptics.tap();
           setPinOverride(!(pinOverride ?? pinLit));
@@ -3393,6 +3396,7 @@ const TaskItemRow = React.memo(function TaskItem({
 
       {!nutrientRow && (
       <TouchableOpacity
+        activeOpacity={interaction.activeOpacity}
         onPress={
           selectionMode ? () => onSelect?.(task.id)
           : isNegative ? handleSlip
@@ -4649,6 +4653,7 @@ const TaskItemRow = React.memo(function TaskItem({
 
       {!selectionMode && showActions && peopleLink && (
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => handleOpenLink(peopleLink)}
           hitSlop={8}
           style={styles.linkBtn}
@@ -4661,6 +4666,7 @@ const TaskItemRow = React.memo(function TaskItem({
 
       {!selectionMode && showActions && morning && (
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); setShowAlarmCard(true); }}
           hitSlop={8}
           style={styles.linkBtn}
@@ -4673,6 +4679,7 @@ const TaskItemRow = React.memo(function TaskItem({
 
       {!selectionMode && showActions && rowLink && rowLink !== peopleLink && (
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => handleOpenLink()}
           hitSlop={8}
           style={styles.linkBtn}
@@ -4689,6 +4696,7 @@ const TaskItemRow = React.memo(function TaskItem({
           want is a per-tap decision, so it's asked per tap. */}
       {!selectionMode && showActions && callUrl && (
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={handleContact}
           hitSlop={8}
           style={styles.callBtn}
@@ -4705,6 +4713,7 @@ const TaskItemRow = React.memo(function TaskItem({
 
       {!selectionMode && showActions && emailUrl && (
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={handleEmail}
           hitSlop={8}
           style={styles.emailBtn}
@@ -4883,6 +4892,7 @@ const TaskItemRow = React.memo(function TaskItem({
                     <View style={styles.subtaskRow}>
                       <SubtaskRail last={!!notice && i === subtasks.length - 1} color={colors.separator} />
                       <TouchableOpacity
+                        activeOpacity={interaction.activeOpacity}
                         // A check is the small-check haptic (a grocery row's
                         // too); unchecking is a tap.
                         onPress={() => {
@@ -4955,6 +4965,7 @@ const TaskItemRow = React.memo(function TaskItem({
                         </Text>
                       )}
                       <TouchableOpacity
+                        activeOpacity={interaction.activeOpacity}
                         onPress={() => {
                           haptics.tap();
                           deleteSubtask(sub.id);
@@ -5145,6 +5156,7 @@ const TaskItemRow = React.memo(function TaskItem({
                             Sync row below does — a fresh closure per row would
                             cost every TaskItem on the list its memo. */}
                         <TouchableOpacity
+                          activeOpacity={interaction.activeOpacity}
                           onPress={() => {
                             haptics.success();
                             const category = useSettingsStore.getState().calendarEventCategory;
@@ -5168,6 +5180,7 @@ const TaskItemRow = React.memo(function TaskItem({
                       review task, rather than only whatever's already sitting
                       in the store — see useCalendarStore's own refresh(). */}
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); useCalendarStore.getState().refresh(); }}
                     style={styles.calendarReviewSyncRow}
                     hitSlop={8}

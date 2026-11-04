@@ -3,7 +3,7 @@ import { Alert, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useColors } from '../../theme/ThemeContext';
-import { iconSize } from '../../theme';
+import { iconSize, interaction } from '../../theme';
 import { animateLayout } from '../../utils/layoutAnimation';
 import { haptics } from '../../utils/haptics';
 import {
@@ -123,6 +123,7 @@ export function AgentNotesRows() {
             accessibilityLabel={`Edit note: ${note.text}`}
             trailing={(
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => remove(note)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"

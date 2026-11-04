@@ -202,6 +202,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
           <View style={styles.tagRow}>
             {normalizeKeywords(draft.keywords).map(keyword => (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 key={keyword}
                 style={styles.keywordChip}
                 onPress={() => { haptics.tap(); patch({ keywords: draft.keywords.filter(k => k !== keyword) }); }}
@@ -249,6 +250,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
         >
           <View style={styles.pillRow}>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               style={[styles.pill, !draft.category && styles.pillActive]}
               onPress={() => { haptics.tap(); patch({ category: null }); closeField('category'); }}
             >
@@ -256,6 +258,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             </TouchableOpacity>
             {allCategories.map(cat => (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 key={cat}
                 style={[styles.pill, draft.category === cat && styles.pillActive]}
                 onPress={() => { haptics.tap(); patch({ category: cat }); closeField('category'); }}
@@ -281,6 +284,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             >
               <View style={styles.pillRow}>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   style={[styles.pill, !draft.projectId && styles.pillActive]}
                   onPress={() => { haptics.tap(); patch({ projectId: null }); closeField('project'); }}
                 >
@@ -288,6 +292,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
                 </TouchableOpacity>
                 {projects.map(p => (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     key={p.id}
                     style={[styles.pill, draft.projectId === p.id && styles.pillActive]}
                     onPress={() => { haptics.tap(); patch({ projectId: p.id }); closeField('project'); }}
@@ -313,6 +318,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
           <View style={styles.tagRow}>
             {draft.tags.map(tag => (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 key={tag}
                 style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
                 onPress={() => { haptics.tap(); patch({ tags: draft.tags.filter(t => t !== tag) }); }}
@@ -345,6 +351,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             <View style={styles.tagSuggestions}>
               {allTags.filter(t => !draft.tags.includes(t)).slice(0, 6).map(tag => (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   key={tag}
                   style={styles.tagSuggestion}
                   onPress={() => patch({ tags: [...draft.tags, tag] })}
@@ -431,6 +438,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             <SaveLinkAction links={savedLinks} typed={customLinkText} />
           </View>
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             style={styles.linkAppsToggle}
             onPress={() => { haptics.tap(); animateLayout(); setLinkAppsOpen(v => !v); }}
             accessibilityRole="button"
@@ -443,6 +451,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
           {linkAppsOpen && (
           <View style={styles.pillRow}>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               style={[styles.pill, !draft.linkUrl && styles.pillActive]}
               onPress={() => { haptics.tap(); patch({ linkUrl: null }); setCustomLinkText(''); closeField('link'); }}
             >
@@ -450,6 +459,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             </TouchableOpacity>
             {savedLinks.chips.map(app => (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 key={app.scheme}
                 style={[styles.linkAppChip, draft.linkUrl === app.scheme && styles.linkAppChipActive]}
                 onPress={() => { haptics.tap(); patch({ linkUrl: app.scheme }); setCustomLinkText(''); closeField('link'); }}

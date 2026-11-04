@@ -232,6 +232,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
         >
           <View style={styles.pillRow}>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               style={[styles.pill, !category && styles.pillActiveNeutral]}
               onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
             >
@@ -239,6 +240,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
             </TouchableOpacity>
             {allCategories.map(cat => (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 key={cat}
                 style={[styles.pill, category === cat && styles.pillActiveNeutral]}
                 onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
@@ -264,6 +266,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
             >
               <View style={styles.pillRow}>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   style={[styles.pill, !projectId && styles.pillActiveNeutral]}
                   onPress={() => { haptics.tap(); setProjectId(null); closeField('project'); }}
                 >
@@ -271,6 +274,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
                 </TouchableOpacity>
                 {projects.map(p => (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     key={p.id}
                     style={[styles.pill, projectId === p.id && styles.pillActiveNeutral]}
                     onPress={() => { haptics.tap(); setProjectId(p.id); closeField('project'); }}
@@ -295,6 +299,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
           <View style={styles.tagRow}>
             {tags.map(tag => (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 key={tag}
                 style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
                 onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}
@@ -327,6 +332,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
             <View style={styles.tagSuggestions}>
               {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   key={tag}
                   style={styles.tagSuggestion}
                   onPress={() => setTags(prev => [...prev, tag])}
@@ -369,6 +375,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
         >
           <View style={styles.pillRow}>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               style={[styles.pill, effort === 0 && estimatedMinutes === null && styles.pillActiveNeutral]}
               onPress={() => { haptics.tap(); setEffort(0); setEstimatedMinutes(null); }}
             >
@@ -378,6 +385,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
               const active = chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
               return (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   key={mins}
                   style={[styles.pill, active && styles.pillActiveNeutral]}
                   onPress={() => {
@@ -406,6 +414,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
                 />
                 <Text style={styles.intervalValueSm}>(custom)</Text>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => setEstimatedMinutes(null)}
                   hitSlop={8}
                   accessibilityRole="button"
@@ -461,6 +470,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
               const active = timeSegments.includes(tod);
               return (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   key={tod}
                   style={[styles.timePill, active && styles.timePillActive]}
                   onPress={() => {
@@ -519,6 +529,7 @@ export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }
                   <Text style={styles.subtaskTitle}>{sub.title}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => setSubtasks(prev => prev.filter(s => s.id !== sub.id))}
                   hitSlop={8}
                   style={styles.subtaskDelete}

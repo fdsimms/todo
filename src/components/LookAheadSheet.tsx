@@ -395,6 +395,7 @@ export function LookAheadSheet({ visible, onClose, tripProjectId = null }: Props
           </Text>
           {backOn ? (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => {
                 haptics.tap();
                 animateLayout();

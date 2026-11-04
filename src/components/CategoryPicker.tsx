@@ -219,6 +219,7 @@ export function CategoryPickerList({
         />
         {!!trimmed && (
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => clearQuery()}
             hitSlop={8}
             accessibilityRole="button"

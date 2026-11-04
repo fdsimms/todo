@@ -170,6 +170,7 @@ export function MoodHistoryScreen() {
         onBack={() => navigation.goBack()}
         actions={
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setFilterOpen(true); }}
             hitSlop={8}
             accessibilityRole="button"

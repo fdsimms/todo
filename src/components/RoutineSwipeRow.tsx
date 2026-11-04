@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, iconSize, spacing, radius, type Colors } from '../theme';
+import { font, fontWeight, iconSize, spacing, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -45,6 +45,7 @@ export function RoutineSwipeRow({ onArchive, archived, onDelete, name, children 
   const renderRight = () => (
     <View style={styles.rightPanels}>
       <TouchableOpacity
+        activeOpacity={interaction.activeOpacity}
         style={[styles.panel, styles.archive]}
         onPress={() => fire(onArchive)}
         accessibilityRole="button"
@@ -54,6 +55,7 @@ export function RoutineSwipeRow({ onArchive, archived, onDelete, name, children 
         <Text style={styles.label}>{archived ? 'Restore' : 'Archive'}</Text>
       </TouchableOpacity>
       <TouchableOpacity
+        activeOpacity={interaction.activeOpacity}
         style={[styles.panel, styles.delete]}
         onPress={() => fire(onDelete)}
         accessibilityRole="button"

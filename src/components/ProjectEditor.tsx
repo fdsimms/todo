@@ -1062,6 +1062,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
                 <Text style={styles.optionHint} numberOfLines={1}>{link.url}</Text>
               </View>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); setLinks(ls => ls.filter(l => l.id !== link.id)); }}
                 hitSlop={8}
                 accessibilityRole="button"

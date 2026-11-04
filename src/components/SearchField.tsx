@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { spacing, radius, font, interaction, type Colors } from '../theme';
 import type { FilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 
@@ -73,6 +73,7 @@ export function SearchField(
       />
       {field.query.length > 0 && (
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={field.clear}
           hitSlop={8}
           accessibilityRole="button"

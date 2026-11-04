@@ -1580,6 +1580,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                   : `Filled in from your last “${draft.title.trim()}”`}
               </Text>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); animateLayout(); setMemoryDismissedKey(memoryKey); }}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"
@@ -1601,6 +1602,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
               <Ionicons name="bookmark" size={13} color={colors.textSecondary} />
               <Text style={styles.captionText} numberOfLines={1}>{savedInUse.text}</Text>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); animateLayout(); setSavedConfirmedKey(null); }}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"

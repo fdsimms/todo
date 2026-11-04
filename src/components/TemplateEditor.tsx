@@ -175,6 +175,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
           left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} minWidth={40} />}
           right={
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={handleDelete}
               hitSlop={8}
               accessibilityRole="button"
@@ -206,6 +207,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
         >
           <View style={styles.pillRow}>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               style={[styles.pill, !category && styles.pillActiveNeutral]}
               onPress={() => { haptics.tap(); setCategory(null); closeCategory(); }}
             >
@@ -213,6 +215,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
             </TouchableOpacity>
             {categories.map(cat => (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 key={cat.id}
                 style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
                 onPress={() => { haptics.tap(); setCategory(cat.name); closeCategory(); }}
@@ -259,6 +262,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
           <View style={styles.pillRow}>
             {CONTAINER_OPTIONS.map(opt => (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 key={opt}
                 style={[styles.pill, container === opt && styles.pillActiveNeutral]}
                 onPress={() => { haptics.tap(); setContainer(opt); closeContainer(); }}
@@ -477,6 +481,7 @@ export function TemplateEditor({ visible, template: liveTemplate, onClose }: Pro
         </Text>
         {liveQuestions.map(question => (
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             key={question.id}
             style={styles.questionRow}
             onPress={() => { haptics.tap(); setEditingQuestion(question); }}

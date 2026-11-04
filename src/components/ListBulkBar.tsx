@@ -5,7 +5,7 @@ import { NamedIcon } from './CoinIcon';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, border, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
@@ -148,13 +148,14 @@ export function ListBulkBar({
         <>
           <View style={styles.topRow}>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               style={styles.selectAllBtn}
               onPress={() => { haptics.tap(); allSelected ? onDeselectAll() : onSelectAll(); }}
             >
               <Text style={styles.selectAllText}>{allSelected ? 'Deselect all' : 'Select all'}</Text>
             </TouchableOpacity>
             <Text style={styles.countText}>{selectedCount} selected</Text>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
+            <TouchableOpacity activeOpacity={interaction.activeOpacity} style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
               <Ionicons name="close" size={18} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -199,7 +200,7 @@ export function ListBulkBar({
       {panel === 'category' && category && (
         <View style={styles.subPanel}>
           <View style={styles.subHeader}>
-            <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
+            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
               <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
             <Text style={styles.subTitle}>{category.title}</Text>
@@ -225,18 +226,19 @@ export function ListBulkBar({
             {...fade.scrollProps}
           >
             {!query && category.allowNone !== false && (
-              <TouchableOpacity style={styles.categoryChip} onPress={() => handleSetCategory(null)}>
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} style={styles.categoryChip} onPress={() => handleSetCategory(null)}>
                 <Text style={styles.categoryChipText}>{category.noneLabel ?? 'None'}</Text>
               </TouchableOpacity>
             )}
             {filtered.map(name => (
-              <TouchableOpacity key={name} style={styles.categoryChip} onPress={() => handleSetCategory(name)}>
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} key={name} style={styles.categoryChip} onPress={() => handleSetCategory(name)}>
                 <Ionicons name="folder-outline" size={13} color={colors.textSecondary} />
                 <Text style={styles.categoryChipText}>{name}</Text>
               </TouchableOpacity>
             ))}
             {query !== '' && !exact && category.onCreate && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 style={[styles.categoryChip, styles.categoryCreateChip]}
                 onPress={handleCreateCategory}
               >

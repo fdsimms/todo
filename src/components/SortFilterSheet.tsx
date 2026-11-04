@@ -123,11 +123,11 @@ export function SortFilterSheet({
             <Text style={styles.sheetTitle}>Sort & filter</Text>
             <View style={styles.headerRight}>
               {activeCount > 0 && (
-                <TouchableOpacity onPress={reset} style={styles.resetBtn}>
+                <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={reset} style={styles.resetBtn}>
                   <Text style={styles.resetText}>Clear all ({activeCount})</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -171,6 +171,7 @@ export function SortFilterSheet({
                 const active = priorities.includes(p);
                 return (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     key={p}
                     style={[
                       styles.chip,
@@ -199,6 +200,7 @@ export function SortFilterSheet({
                 const active = efforts.includes(e);
                 return (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     key={e}
                     style={[styles.chip, active && styles.chipActive]}
                     onPress={() => {
@@ -222,6 +224,7 @@ export function SortFilterSheet({
                 const active = types.includes(t);
                 return (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     key={t}
                     style={[styles.chip, active && styles.chipActive]}
                     onPress={() => {

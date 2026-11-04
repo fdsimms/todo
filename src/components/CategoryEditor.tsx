@@ -295,7 +295,7 @@ export function CategoryEditor({ visible, category: liveCategory, onClose }: Pro
         <View style={styles.header}>
           <SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} disabled={nameTaken} />
           <Text style={styles.headerTitle}>Edit category</Text>
-          <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete category ${category}`}>
+          <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete category ${category}`}>
             <Ionicons name="trash-outline" size={20} color={colors.red} />
           </TouchableOpacity>
         </View>

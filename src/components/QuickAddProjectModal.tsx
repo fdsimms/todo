@@ -374,6 +374,7 @@ export function QuickAddProjectModal({
                 <Ionicons name="return-down-forward" size={13} color={colors.accent} />
                 <Text style={styles.seedChipText} numberOfLines={1}>{seedLabel}</Text>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => {
                     haptics.tap();
                     if (seed?.category && category === seed.category) setCategory(null);
@@ -403,7 +404,7 @@ export function QuickAddProjectModal({
               maxLength={TITLE_MAX_LENGTH}
               blurOnSubmit={false}
             />
-            <TouchableOpacity hitSlop={8}
+            <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={8}
               style={[styles.addBtn, !title.trim() && styles.addBtnDisabled]}
               onPress={handleAdd}
               disabled={!title.trim()}
@@ -491,6 +492,7 @@ export function QuickAddProjectModal({
                 Use your “{templateOffer.name}” template?
               </Text>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => { haptics.tap(); startFromTemplate(templateOffer); }}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -499,6 +501,7 @@ export function QuickAddProjectModal({
                 <Text style={styles.templateAccept}>Use template</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => setDismissedTemplateIds(prev => new Set(prev).add(templateOffer.id))}
                 hitSlop={8}
                 accessibilityRole="button"

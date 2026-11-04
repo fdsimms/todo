@@ -65,7 +65,7 @@ export function RoutinePickerList({ routines, selectedId, onSelect, none }: Prop
           accessibilityLabel="Find a routine"
         />
         {!!trimmed && (
-          <TouchableOpacity onPress={() => clear()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
+          <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={() => clear()} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
             <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
         )}

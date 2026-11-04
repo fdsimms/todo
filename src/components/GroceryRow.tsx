@@ -487,6 +487,7 @@ export const GroceryRow = React.memo(function GroceryRow({
         />
       )}
       <TouchableOpacity
+        activeOpacity={interaction.activeOpacity}
         onPress={() => (selectionMode ? onSelect?.(item.id) : onToggle(item.id))}
         onLongPress={selectionMode ? undefined : drag ?? (() => onEdit(item.id))}
         delayLongPress={interaction.delayLongPress}
@@ -670,6 +671,7 @@ export const GroceryRow = React.memo(function GroceryRow({
               it does, not swap an item out from under the selection. */}
           {!!storeMarker && !!swapSubstituteId && !selectionMode ? (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => onSwapForSubstitute?.(item.id, swapSubstituteId)}
               hitSlop={{ top: 6, bottom: 6, left: 0, right: 40 }}
               accessibilityRole="button"
@@ -730,6 +732,7 @@ export const GroceryRow = React.memo(function GroceryRow({
                 </View>
               ) : (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={startPricing}
                   hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
                   accessibilityRole="button"
@@ -761,6 +764,7 @@ export const GroceryRow = React.memo(function GroceryRow({
             noise this was built to avoid. */}
         {tripPriceShown && !pricingActive && !priceRecorded && (
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             style={styles.priceIconButton}
             onPress={startPricing}
             // Out to a 40x44 target around the narrow box, a little less on

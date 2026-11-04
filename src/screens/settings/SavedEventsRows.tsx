@@ -3,7 +3,7 @@ import { Alert, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useColors } from '../../theme/ThemeContext';
-import { iconSize } from '../../theme';
+import { iconSize, interaction } from '../../theme';
 import { CountStepper } from '../../components/CountStepper';
 import { InlineAction } from '../../components/InlineAction';
 import { SavedEventSheet } from '../../components/SavedEntrySheets';
@@ -111,6 +111,7 @@ export function SavedEventsRows() {
             accessibilityLabel={`Edit ${event.title}`}
             trailing={(
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => remove(event)}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 accessibilityRole="button"

@@ -219,7 +219,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
           <View style={styles.header}>
             <View style={styles.headerSpacer} />
             <Text style={styles.headerTitle}>Remind me</Text>
-            <TouchableOpacity onPress={cancel} hitSlop={10} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
+            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={cancel} hitSlop={10} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
               <Ionicons name="close" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -281,6 +281,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
               <Text style={styles.sectionLabel}>Date</Text>
               <View style={styles.monthNav}>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => setDisplayMonth(m => subMonths(m, 1))}
                   hitSlop={8}
                   style={styles.navBtn}
@@ -291,6 +292,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                 </TouchableOpacity>
                 <Text style={styles.monthLabel}>{format(displayMonth, 'MMMM yyyy')}</Text>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => setDisplayMonth(m => addMonths(m, 1))}
                   hitSlop={8}
                   style={styles.navBtn}

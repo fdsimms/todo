@@ -143,11 +143,11 @@ export function RecipeSortFilterSheet({
             <Text style={styles.sheetTitle}>Sort & filter</Text>
             <View style={styles.headerRight}>
               {activeCount > 0 && (
-                <TouchableOpacity onPress={reset} style={styles.resetBtn}>
+                <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={reset} style={styles.resetBtn}>
                   <Text style={styles.resetText}>Clear all ({activeCount})</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -186,6 +186,7 @@ export function RecipeSortFilterSheet({
             <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Filter</Text>
             <View style={styles.chips}>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 style={[styles.chip, lovedOnly && styles.chipActive]}
                 onPress={() => {
                   haptics.tap();
@@ -217,6 +218,7 @@ export function RecipeSortFilterSheet({
                     const color = tagColor(tag);
                     return (
                       <TouchableOpacity
+                        activeOpacity={interaction.activeOpacity}
                         key={tag}
                         style={[styles.chip, { backgroundColor: on ? color + '33' : colors.bgTertiary }]}
                         onPress={() => {
@@ -247,6 +249,7 @@ export function RecipeSortFilterSheet({
                     const on = cookbookId === book.id;
                     return (
                       <TouchableOpacity
+                        activeOpacity={interaction.activeOpacity}
                         key={book.id}
                         style={[styles.chip, on && styles.chipActive]}
                         onPress={() => {

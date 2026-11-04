@@ -77,7 +77,7 @@ export function TripPlannerSheet({ visible, people, onPickPerson, onClose }: Pro
             autoCapitalize="words"
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => clearQuery()} hitSlop={8} accessibilityLabel="Clear search">
+            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={() => clearQuery()} hitSlop={8} accessibilityLabel="Clear search">
               <Ionicons name="close-circle" size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>
           )}

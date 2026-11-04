@@ -1675,6 +1675,7 @@ export function RecipeDetailScreen() {
                   <Text style={styles.splitPillText}>Split into {splitInto}…</Text>
                 </PressableScale>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => dismissSplitPill(ingredient.id, ingredient.name)}
                   hitSlop={8}
                   accessibilityRole="button"
@@ -1702,6 +1703,7 @@ export function RecipeDetailScreen() {
                   <Text style={styles.splitPillText}>Split into {andInto} lines…</Text>
                 </PressableScale>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => dismissSplitPill(ingredient.id, ingredient.name)}
                   hitSlop={8}
                   accessibilityRole="button"
@@ -1734,6 +1736,7 @@ export function RecipeDetailScreen() {
                   </Text>
                 </PressableScale>
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => {
                     if (catalogSuggestion.suggestedName) {
                       dismissMatchPill(ingredient.id, catalogSuggestion.suggestedName);
@@ -1755,6 +1758,7 @@ export function RecipeDetailScreen() {
           {!stackQty && qtyGroup}
           {!selectionMode && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => confirmRemove(ingredient)}
               hitSlop={10}
               accessibilityRole="button"
@@ -1815,6 +1819,7 @@ export function RecipeDetailScreen() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); animateLayout(); removeEmptySection(recipe.id, row.name); }}
           hitSlop={10}
           accessibilityRole="button"
@@ -1971,6 +1976,7 @@ export function RecipeDetailScreen() {
           {!!target && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
           {!marker && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => confirmRemoveComponent(resolved)}
               hitSlop={10}
               accessibilityRole="button"
@@ -2055,6 +2061,7 @@ export function RecipeDetailScreen() {
         <Text style={styles.qtyText} numberOfLines={1}>{formatOffsetLabel(prepTask.offsetDays)}</Text>
       </View>
       <TouchableOpacity
+        activeOpacity={interaction.activeOpacity}
         onPress={() => confirmRemovePrepTask(prepTask)}
         hitSlop={10}
         accessibilityRole="button"
@@ -2133,6 +2140,7 @@ export function RecipeDetailScreen() {
         {!!step.note && <Text style={styles.stepNote}>{step.note}</Text>}
       </TouchableOpacity>
       <TouchableOpacity
+        activeOpacity={interaction.activeOpacity}
         onLongPress={drag}
         delayLongPress={interaction.delayLongPress}
         hitSlop={10}
@@ -2142,6 +2150,7 @@ export function RecipeDetailScreen() {
         <Ionicons name="reorder-three" size={iconSize.sm} color={colors.textTertiary} />
       </TouchableOpacity>
       <TouchableOpacity
+        activeOpacity={interaction.activeOpacity}
         onPress={() => confirmRemoveStep(step)}
         hitSlop={10}
         accessibilityRole="button"
@@ -2190,6 +2199,7 @@ export function RecipeDetailScreen() {
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); animateLayout(); removeEmptyStepSection(recipe.id, row.name); }}
           hitSlop={10}
           accessibilityRole="button"
@@ -2228,6 +2238,7 @@ export function RecipeDetailScreen() {
           <View style={styles.headerActions}>
             {!selectionMode && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={handleRate}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -2257,6 +2268,7 @@ export function RecipeDetailScreen() {
                 the title keeps its row. */}
             {!selectionMode && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={handleMoreMenu}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -2765,6 +2777,7 @@ export function RecipeDetailScreen() {
               </Text>
             </View>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => {
                 haptics.tap();
                 setMatchScopeIds(pasteResult.addedIds);
@@ -2777,6 +2790,7 @@ export function RecipeDetailScreen() {
               <Text style={styles.pasteBannerAction}>Review</Text>
             </TouchableOpacity>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); animateLayout(); setPasteResult(null); }}
               hitSlop={8}
               accessibilityRole="button"
@@ -2918,6 +2932,7 @@ export function RecipeDetailScreen() {
             <>
               {editingStepId && (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={cancelEditStep}
                   hitSlop={10}
                   accessibilityRole="button"

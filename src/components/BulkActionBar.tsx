@@ -12,7 +12,7 @@ import { PinIcon } from './PinIcon';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, border, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
@@ -217,6 +217,7 @@ export function BulkActionBar({
           <>
             <View style={styles.topRow}>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 style={styles.selectAllBtn}
                 onPress={() => { haptics.tap(); allSelected ? onDeselectAll() : onSelectAll(); }}
               >
@@ -225,7 +226,7 @@ export function BulkActionBar({
                 </Text>
               </TouchableOpacity>
               <Text style={styles.countText}>{selectedCount} selected</Text>
-              <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
                 <Ionicons name="close" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -291,33 +292,33 @@ export function BulkActionBar({
         {panel === 'more' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.subTitle}>More actions</Text>
-              <TouchableOpacity onPress={onCancel} hitSlop={8} style={{ width: 28, alignItems: 'flex-end' }} accessibilityRole="button" accessibilityLabel="Cancel selection">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={onCancel} hitSlop={8} style={{ width: 28, alignItems: 'flex-end' }} accessibilityRole="button" accessibilityLabel="Cancel selection">
                 <Ionicons name="close" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
             {onGroup && (
-              <TouchableOpacity style={styles.moreRow} onPress={() => setPanel('group')}>
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} style={styles.moreRow} onPress={() => setPanel('group')}>
                 <Ionicons name="layers-outline" size={18} color={colors.textSecondary} />
                 <Text style={styles.moreRowText}>Stack</Text>
                 <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={styles.moreRow} onPress={() => setPanel('tags')}>
+            <TouchableOpacity activeOpacity={interaction.activeOpacity} style={styles.moreRow} onPress={() => setPanel('tags')}>
               <Ionicons name="pricetag-outline" size={18} color={colors.textSecondary} />
               <Text style={styles.moreRowText}>Tag</Text>
               <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.moreRow} onPress={() => setPanel('priority')}>
+            <TouchableOpacity activeOpacity={interaction.activeOpacity} style={styles.moreRow} onPress={() => setPanel('priority')}>
               <Ionicons name="arrow-up-circle-outline" size={18} color={colors.textSecondary} />
               <Text style={styles.moreRowText}>Priority</Text>
               <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
             </TouchableOpacity>
             {onSetDifficulty && (
-              <TouchableOpacity style={styles.moreRow} onPress={() => setPanel('difficulty')}>
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} style={styles.moreRow} onPress={() => setPanel('difficulty')}>
                 <Ionicons name="speedometer-outline" size={18} color={colors.textSecondary} />
                 <Text style={styles.moreRowText}>Difficulty</Text>
                 <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
@@ -325,6 +326,7 @@ export function BulkActionBar({
             )}
             {/* No chevron — this fires immediately instead of opening a sub-panel. */}
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               style={styles.moreRow}
               onPress={() => { haptics.impactMedium(); onMarkMissed(); }}
             >
@@ -336,6 +338,7 @@ export function BulkActionBar({
                 stop being filed here. */}
             {moveToProject && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 style={styles.moreRow}
                 onPress={() => setPanel('project')}
                 accessibilityRole="button"
@@ -348,6 +351,7 @@ export function BulkActionBar({
             )}
             {onRemoveFromProject && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 style={styles.moreRow}
                 onPress={() => { haptics.impactMedium(); onRemoveFromProject(); }}
                 accessibilityRole="button"
@@ -363,11 +367,11 @@ export function BulkActionBar({
         {panel === 'project' && moveToProject && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.subTitle}>Move to project</Text>
-              <TouchableOpacity onPress={onCancel} hitSlop={8} style={{ width: 28, alignItems: 'flex-end' }} accessibilityRole="button" accessibilityLabel="Cancel selection">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={onCancel} hitSlop={8} style={{ width: 28, alignItems: 'flex-end' }} accessibilityRole="button" accessibilityLabel="Cancel selection">
                 <Ionicons name="close" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -377,6 +381,7 @@ export function BulkActionBar({
               <ScrollView style={styles.projectList} contentContainerStyle={styles.projectListContent}>
                 {moveToProject.projects.map(p => (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     key={p.id}
                     style={styles.moreRow}
                     onPress={() => { haptics.success(); moveToProject.onMove(p.id); }}
@@ -399,17 +404,18 @@ export function BulkActionBar({
         {panel === 'priority' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.subTitle}>Set priority</Text>
-              <TouchableOpacity onPress={onCancel} hitSlop={8} style={{ width: 28, alignItems: 'flex-end' }} accessibilityRole="button" accessibilityLabel="Cancel selection">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={onCancel} hitSlop={8} style={{ width: 28, alignItems: 'flex-end' }} accessibilityRole="button" accessibilityLabel="Cancel selection">
                 <Ionicons name="close" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
             <View style={styles.priorityRow}>
               {([0, 1, 2, 3, 4] as Priority[]).map(p => (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   key={p}
                   style={[
                     styles.priorityBtn,
@@ -435,17 +441,18 @@ export function BulkActionBar({
         {panel === 'difficulty' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.subTitle}>Set difficulty</Text>
-              <TouchableOpacity onPress={onCancel} hitSlop={8} style={{ width: 28, alignItems: 'flex-end' }} accessibilityRole="button" accessibilityLabel="Cancel selection">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={onCancel} hitSlop={8} style={{ width: 28, alignItems: 'flex-end' }} accessibilityRole="button" accessibilityLabel="Cancel selection">
                 <Ionicons name="close" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
             <View style={styles.priorityRow}>
               {[...DIFFICULTY_SEGMENTS, { value: null, label: 'Not set' }].map(d => (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   key={d.label}
                   style={[styles.priorityBtn, { borderColor: colors.bgQuaternary }]}
                   onPress={() => handleSetDifficulty(d.value)}
@@ -462,11 +469,12 @@ export function BulkActionBar({
         {panel === 'tags' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.subTitle}>Add tags</Text>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 style={[styles.applyBtn, (selectedTags.size === 0 && !newTagText.trim()) && styles.applyBtnDisabled]}
                 onPress={handleApplyTags}
               >
@@ -487,6 +495,7 @@ export function BulkActionBar({
               >
                 {existingTags.map(tag => (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     key={tag}
                     style={[
                       styles.tagChip,
@@ -523,11 +532,12 @@ export function BulkActionBar({
         {panel === 'group' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.subTitle}>Stack tasks</Text>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 style={[styles.applyBtn, !groupTitle.trim() && styles.applyBtnDisabled]}
                 onPress={handleApplyGroup}
               >
@@ -557,6 +567,7 @@ export function BulkActionBar({
                 <ScrollView style={styles.projectList} contentContainerStyle={styles.projectListContent} keyboardShouldPersistTaps="handled">
                   {existingGroups.map(g => (
                     <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
                       key={g.id}
                       style={styles.moreRow}
                       onPress={() => handleAddToGroup(g.id)}

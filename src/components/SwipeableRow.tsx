@@ -3,7 +3,7 @@ import { Animated, StyleSheet, Text, TouchableOpacity, View, type StyleProp, typ
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, iconSize, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, spacing, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { nextSwipeArm, swipeArmDistance } from '../utils/swipeArm';
 import { runningOnMac } from '../utils/runningOnMac';
@@ -206,6 +206,7 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
   const renderRightActions = undoAction
     ? () => (
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           style={styles.undoAction}
           onPress={() => fire(undoAction.onUndo)}
           accessibilityRole="button"
@@ -218,6 +219,7 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
     : selectAction
     ? () => (
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           style={styles.selectAction}
           onPress={() => fire(selectAction.onSelect)}
           accessibilityRole="button"
@@ -232,6 +234,7 @@ export function SwipeableRow({ selectAction, whenAction, undoAction, enabled = t
   const renderLeftActions = whenAction
     ? () => (
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           style={[styles.whenAction, whenAction.tint ? { backgroundColor: whenAction.tint } : null]}
           onPress={() => fire(whenAction.onAction)}
           accessibilityRole="button"
