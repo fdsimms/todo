@@ -118,6 +118,7 @@ export function ExtractedIngredientRow({
       {!!sectionHeader && <Text style={styles.sectionHeader}>{sectionHeader}</Text>}
       <View style={[styles.row, (linkOpen || sectionOpen) && styles.rowAttached]}>
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); onToggle(); }}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
           accessibilityRole="checkbox"
@@ -162,6 +163,7 @@ export function ExtractedIngredientRow({
         )}
 
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); animateLayout(); setLinkOpen(v => !v); }}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
           accessibilityRole="button"
@@ -180,6 +182,7 @@ export function ExtractedIngredientRow({
         </TouchableOpacity>
 
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); animateLayout(); setSectionOpen(v => !v); }}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
           accessibilityRole="button"

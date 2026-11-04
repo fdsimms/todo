@@ -633,6 +633,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
                     {role === 'first' && <Text style={styles.supersetTag}>Superset</Text>}
                     <View style={styles.itemRow}>
                       <TouchableOpacity
+                        activeOpacity={interaction.activeOpacity}
                         onLongPress={drag}
                         delayLongPress={interaction.delayLongPress}
                         hitSlop={8}
@@ -661,7 +662,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
                           })}
                         </Text>
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => toggleOpen(row.id)} hitSlop={8} accessibilityElementsHidden importantForAccessibility="no">
+                      <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={() => toggleOpen(row.id)} hitSlop={8} accessibilityElementsHidden importantForAccessibility="no">
                         <RotatingChevron open={open} size={iconSize.sm} color={colors.textTertiary} />
                       </TouchableOpacity>
                     </View>

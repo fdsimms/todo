@@ -1000,6 +1000,7 @@ const ProjectRow = React.memo(function ProjectRow({
                 <>
                 {projectFilter === 'archived' && (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => onQuickUnarchive(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
@@ -1010,6 +1011,7 @@ const ProjectRow = React.memo(function ProjectRow({
                 )}
                 {projectFilter === 'completed' && (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => onQuickUncomplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
@@ -1020,6 +1022,7 @@ const ProjectRow = React.memo(function ProjectRow({
                 )}
                 {allDone && !locked && (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => onQuickComplete(project)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
@@ -1029,6 +1032,7 @@ const ProjectRow = React.memo(function ProjectRow({
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => onEdit(project)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityRole="button"

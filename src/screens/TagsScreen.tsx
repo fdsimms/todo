@@ -43,6 +43,7 @@ import { useWhichToUse } from '../hooks/useWhichToUse';
 import { WHICH_TO_USE_LABEL } from '../utils/organizeGuide';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
+import { NameSheet, type NameRequest } from '../components/NameSheet';
 import { Fab, FAB_SIZE } from '../components/Fab';
 import { DetailHeader } from '../components/DetailHeader';
 import {
@@ -91,6 +92,7 @@ export function TagsScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<NameRequest | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -266,37 +268,34 @@ export function TagsScreen() {
   // already exists it is a merge, which can't be split again, so that asks.
   const handleRenameTag = (tag: string) => {
     haptics.tap();
-    Alert.prompt(
-      'Rename tag',
-      'Every task with this tag gets the new name, finished ones included.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: 'Rename',
-          onPress: (text?: string) => {
-            const to = normalizeTagName(text ?? '');
-            if (!to || to === tag) return;
-            const rename = () => {
-              if (!useTaskStore.getState().renameTag(tag, to)) return;
-              haptics.success();
-              animateLayout();
-              setSelectedTag(cur => (cur === tag ? to : cur));
-            };
-            if (!useTaskStore.getState().allTags().includes(to)) { rename(); return; }
-            Alert.alert(
-              `Merge into “${to}”?`,
-              `There’s already a tag called “${to}”. Every task tagged “${tag}” will be tagged “${to}” instead, and the two can’t be separated again.`,
-              [
-                { text: BUTTON_LABEL.cancel, style: 'cancel' },
-                { text: 'Merge', style: 'destructive', onPress: rename },
-              ],
-            );
-          },
-        },
-      ],
-      'plain-text',
-      tag,
-    );
+    setRenaming({
+      title: 'Rename tag',
+      initial: tag,
+      placeholder: 'Tag name',
+      hint: 'Every task with this tag gets the new name, finished ones included.',
+      saveLabel: 'Rename',
+      // The one name renameTag turns away that isn't the same tag: "#" alone.
+      refusal: typed => (normalizeTagName(typed) ? null : 'Type a name after the #.'),
+      onSave: typed => {
+        const to = normalizeTagName(typed);
+        if (!to || to === tag) return;
+        const rename = () => {
+          if (!useTaskStore.getState().renameTag(tag, to)) return;
+          haptics.success();
+          animateLayout();
+          setSelectedTag(cur => (cur === tag ? to : cur));
+        };
+        if (!useTaskStore.getState().allTags().includes(to)) { rename(); return; }
+        Alert.alert(
+          `Merge into “${to}”?`,
+          `There’s already a tag called “${to}”. Every task tagged “${tag}” will be tagged “${to}” instead, and the two can’t be separated again.`,
+          [
+            { text: BUTTON_LABEL.cancel, style: 'cancel' },
+            { text: 'Merge', style: 'destructive', onPress: rename },
+          ],
+        );
+      },
+    });
   };
 
   const handleDeleteTag = (tag: string) => {
@@ -424,6 +423,7 @@ export function TagsScreen() {
               actions={selectedTag && !selectionMode ? (
                 <View style={styles.detailActions}>
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => handleRenameTag(selectedTag)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
@@ -432,6 +432,7 @@ export function TagsScreen() {
                     <Ionicons name="create-outline" size={22} color={colors.textSecondary} />
                   </TouchableOpacity>
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); Keyboard.dismiss(); setTaskQuickAddVisible(true); }}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     accessibilityRole="button"
@@ -550,6 +551,9 @@ export function TagsScreen() {
               list's scroll offset, the expanded row and the selection survive;
               a hidden sheet's children unmount. See SheetModal. */}
           <DeliverablePromptQueue {...queueProps} />
+
+          {/* Raised from this sheet's header, so it presents from here too. */}
+          <NameSheet request={renaming} onClose={() => setRenaming(null)} />
 
           <LazySheet open={editorVisible} warm>
             <TaskEditor

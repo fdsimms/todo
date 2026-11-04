@@ -250,7 +250,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
           title={isNew ? 'New person' : 'Edit person'}
           left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />}
           right={
-            <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete person">
+            <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete person">
               <Ionicons name="trash-outline" size={20} color={colors.red} />
             </TouchableOpacity>
           }
@@ -436,6 +436,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
               const active = cadence.count !== null && cadence.unit === unit;
               return (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   key={unit}
                   style={[styles.pill, active && styles.pillActiveNeutral]}
                   onPress={() => { haptics.tap(); setCadenceDays(fromCadenceParts(withCadenceUnit(cadence, unit))); }}

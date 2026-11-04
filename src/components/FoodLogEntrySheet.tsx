@@ -18,7 +18,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -110,6 +109,7 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { EmptyNote } from './EmptyNote';
 import { InlineAction } from './InlineAction';
+import { GlassLayer, glassSupported } from './GlassLayer';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { LabelSubjectSheet, type LabelSubject } from './LabelSubjectSheet';
 import { FoodCameraSheet } from './FoodCameraSheet';
@@ -129,6 +129,7 @@ import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { MealPickerRow } from './MealPickerRow';
 import { CountStepper } from './CountStepper';
 import { Toggle } from './Toggle';
+import { NameSheet, type NameRequest } from './NameSheet';
 import {
   DRINK_PRESETS,
   DRINK_STEP,
@@ -594,6 +595,7 @@ export function FoodLogEntrySheet({
   const searchFilter = useFilterField();
   const query = searchFilter.query;
   const [picked, setPicked] = useState<Candidate | null>(null);
+  const [namingItem, setNamingItem] = useState<NameRequest | null>(null);
   /** The fridge container whose share is being asked, with the figures it would log. */
   const [shareAsk, setShareAsk] = useState<{ leftover: Leftover; figures: ContainerFigures } | null>(null);
   const shownShareAsk = useSheetSubject(shareAsk);
@@ -1586,33 +1588,30 @@ export function FoodLogEntrySheet({
    * is then the name it is searched for and listed under from here on. Only
    * the catalog row takes the typed name: this entry keeps the description it
    * was found under, the same as filing it against "Something I already have"
-   * does. A blank name files nothing, the way the app's renames treat a blank.
+   * does. Add stays off while the name is blank, the way the app's renames
+   * treat a blank.
    */
   const fileAsNewItem = () => {
     if (!picked) return;
     const described = picked.label;
-    Alert.prompt(
-      'Add as a new item',
-      'Name for this item in your grocery catalog. It isn’t added to your shopping list.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: 'Add',
-          onPress: (text?: string) => {
-            const name = (text ?? '').trim();
-            if (!name) return;
-            // `ensureCatalogItem` rather than `addByName`, the same restraint
-            // `FoodLogScreen`'s scan handler takes: eating something is not a
-            // plan to buy it, so a row minted here arrives off the list.
-            const item = ensureCatalogItem(name);
-            if (!item) { haptics.error(); return; }
-            fileInCatalog(item);
-          },
-        },
-      ],
-      'plain-text',
-      described,
-    );
+    setNamingItem({
+      title: 'Add as a new item',
+      initial: described,
+      placeholder: 'Item name',
+      hint: 'Name for this item in your grocery catalog. It isn’t added to your shopping list.',
+      saveLabel: 'Add',
+      // The database's own name is a fair answer as it stands.
+      saveUnchanged: true,
+      refusal: () => null,
+      onSave: name => {
+        // `ensureCatalogItem` rather than `addByName`, the same restraint
+        // `FoodLogScreen`'s scan handler takes: eating something is not a
+        // plan to buy it, so a row minted here arrives off the list.
+        const item = ensureCatalogItem(name);
+        if (!item) { haptics.error(); return; }
+        fileInCatalog(item);
+      },
+    });
   };
 
   // ==== actions: saving, picking from the database, leaving ====
@@ -3074,20 +3073,22 @@ export function FoodLogEntrySheet({
                 nearly every time this half is open, and a bar at the foot sat
                 behind it. */}
             {!!allowBurst && !editing && (
-              <View style={styles.burstRow}>
+              <TouchableOpacity
+                style={styles.burstRow}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); setKeepOpenAfterFoodLog(!keepOpenAfterFoodLog); }}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: keepOpenAfterFoodLog }}
+                accessibilityLabel="Log several. Keep this open after each food"
+              >
                 <Text style={styles.burstLabel}>Log several</Text>
                 {burstAdded.length > 0 && (
                   <Text style={styles.burstCount}>
                     {burstAdded.length} added
                   </Text>
                 )}
-                <Switch
-                  value={keepOpenAfterFoodLog}
-                  onValueChange={next => { haptics.tap(); setKeepOpenAfterFoodLog(next); }}
-                  trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-                  accessibilityLabel="Log several. Keep this open after each food"
-                />
-              </View>
+                <Toggle value={keepOpenAfterFoodLog} />
+              </TouchableOpacity>
             )}
             {/* The ways to start that need no text, as one row of tiles. They
                 are only here while the field is empty: once something is typed
@@ -3159,15 +3160,16 @@ export function FoodLogEntrySheet({
                 rather than among the ways to find a food, because it isn't
                 one: it says what happens after a save. */}
             {estimateOpen && !!estimateLog && (
-              <View style={[styles.estimateLogBar, { marginBottom: keyboardHeight }]}>
+              <View style={[styles.estimateLogBar, glassSupported() && styles.estimateLogBarGlass, { marginBottom: keyboardHeight }]}>
                 <TouchableOpacity
-                  style={[styles.estimateLogButton, estimateLog.loading && styles.estimateLogOff]}
+                  style={[styles.estimateLogButton, glassSupported() && styles.estimateLogButtonGlass, estimateLog.loading && styles.estimateLogOff]}
                   activeOpacity={interaction.activeOpacity}
                   disabled={estimateLog.loading}
                   onPress={estimateLog.run}
                   accessibilityRole="button"
                   accessibilityLabel={estimateLog.accessibilityLabel}
                 >
+                  <GlassLayer interactive tintColor={colors.accentFill} style={styles.estimateLogGlass} />
                   <Text style={styles.estimateLogText}>{estimateLog.label}</Text>
                 </TouchableOpacity>
               </View>
@@ -3228,6 +3230,7 @@ export function FoodLogEntrySheet({
         onClose={() => setShareAsk(null)}
       />
       {overlays}
+      <NameSheet request={namingItem} onClose={() => setNamingItem(null)} />
       <FoodCameraSheet
         visible={visible && cameraOpen}
         modes={cameraModes}
@@ -3445,6 +3448,10 @@ function makeStyles(colors: Colors) {
       paddingVertical: spacing.md,
       alignItems: 'center',
     },
+    // Glass: no strip behind the button, and the button is the capsule itself.
+    estimateLogBarGlass: { backgroundColor: 'transparent', borderTopWidth: 0 },
+    estimateLogButtonGlass: { backgroundColor: 'transparent', borderRadius: radius.full, paddingVertical: spacing.smd },
+    estimateLogGlass: { borderRadius: radius.full },
     estimateLogOff: { opacity: interaction.activeOpacity * 0.6 },
     estimateLogText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
     // The "Log several" switch, a card under the search field.

@@ -543,6 +543,7 @@ export function WorkoutsScreen() {
           )}
           {mirroringMode && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               hitSlop={8}
               style={styles.rowMenuButton}
               onPress={e => {

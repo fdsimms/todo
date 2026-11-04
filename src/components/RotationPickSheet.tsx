@@ -150,6 +150,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel, onPlan }: P
           {sub !== '' && <Text style={[styles.ago, isPlanned && styles.agoPlanned]}>{sub}</Text>}
         </View>
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           onPress={() => { haptics.tap(); onPlan(member.item.id); }}
           hitSlop={8}
           style={styles.linkButton}
@@ -166,6 +167,7 @@ export function RotationPickSheet({ visible, task, onPick, onCancel, onPlan }: P
         </TouchableOpacity>
         {link !== null && (
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => openLink(link)}
             hitSlop={8}
             style={styles.linkButton}

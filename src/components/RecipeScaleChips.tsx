@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, iconSize, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, iconSize, radius, spacing, interaction, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 import { CountStepper } from './CountStepper';
 import {
@@ -131,6 +131,7 @@ export function RecipeScaleChips({
             stepper has moved the selection away from any of the presets. */}
         {!isUnscaled(active) && (
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => {
               haptics.tap();
               onChange(1);

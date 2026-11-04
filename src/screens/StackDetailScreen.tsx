@@ -254,6 +254,7 @@ export function StackDetailScreen() {
               )}
               {!!group && (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   hitSlop={12}
                   onPress={() => setGroupEditorOpen(true)}
                   accessibilityRole="button"

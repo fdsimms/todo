@@ -600,6 +600,7 @@ export function MealEntrySheet({
                 <View key={line.targetId} style={styles.overrideRow}>
                   <Text style={styles.overrideText}>{line.text}</Text>
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     onPress={() => { haptics.tap(); onRemoveOverride?.(line.targetId); }}
                     hitSlop={10}
                     accessibilityRole="button"

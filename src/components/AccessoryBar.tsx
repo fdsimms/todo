@@ -1,7 +1,21 @@
 import React from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
+import { radius, spacing, type Colors } from '../theme';
 import { OVERLAY_CARD_MAX_WIDTH } from '../utils/frameWidth';
+import { GlassLayer, glassSupported } from './GlassLayer';
+
+/** A glass capsule's height: the 40pt row the journal bar's buttons already use. */
+export const ACCESSORY_CAPSULE_HEIGHT = 40;
+
+/**
+ * The fill an `InputAccessoryView` (or a floating stand-in) takes behind its
+ * bar. Transparent where the bar is glass capsules, since a solid fill behind
+ * them is the strip they replace.
+ */
+export function accessoryFill(colors: Colors): string {
+  return glassSupported() ? 'transparent' : colors.bgSecondary;
+}
 
 /**
  * The strip an `InputAccessoryView` carries above the keyboard (title tokens, a
@@ -12,13 +26,46 @@ import { OVERLAY_CARD_MAX_WIDTH } from '../utils/frameWidth';
  * and its content sits in a column the width of the card above it (a quick add
  * card is capped at the same `OVERLAY_CARD_MAX_WIDTH`).
  *
+ * Where Liquid Glass is available the fill and hairline are dropped and the
+ * bar is only a row: each control sits in its own `AccessoryCapsule`, floating
+ * over the keyboard's rounded top the way iOS 26's own toolbars do.
+ *
  * `style` is the content row's own layout (direction, spacing, padding).
  */
 export function AccessoryBar({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   const colors = useColors();
+  const glass = glassSupported();
   return (
-    <View style={[styles.strip, { backgroundColor: colors.bgSecondary, borderTopColor: colors.separator }]}>
+    <View
+      style={glass ? undefined : [styles.strip, { backgroundColor: colors.bgSecondary, borderTopColor: colors.separator }]}
+    >
       <View style={[styles.column, style]}>{children}</View>
+    </View>
+  );
+}
+
+/**
+ * One control, or one group of related controls, in a bar. Where glass is
+ * available it draws a capsule of Liquid Glass behind its children; elsewhere it
+ * is only a wrapper that gives them `style` (or nothing at all without one), so
+ * the solid bar looks as it always has. Buttons inside a capsule drop their own
+ * fill when `glassSupported()`: a second surface on the glass reads as a
+ * button stuck to it.
+ *
+ * `style` is the capsule's own layout (direction, gap), applied either way.
+ * `tintColor` colors the glass, for the one confirming control (a fill token,
+ * never a raw color).
+ */
+export function AccessoryCapsule({ children, style, tintColor }: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  tintColor?: string;
+}) {
+  if (!glassSupported()) return style ? <View style={style}>{children}</View> : <>{children}</>;
+  return (
+    <View style={[styles.capsule, style]}>
+      <GlassLayer interactive tintColor={tintColor} style={styles.capsuleRadius} />
+      {children}
     </View>
   );
 }
@@ -26,4 +73,12 @@ export function AccessoryBar({ children, style }: { children: React.ReactNode; s
 const styles = StyleSheet.create({
   strip: { borderTopWidth: StyleSheet.hairlineWidth },
   column: { width: '100%', maxWidth: OVERLAY_CARD_MAX_WIDTH, alignSelf: 'center' },
+  capsule: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: ACCESSORY_CAPSULE_HEIGHT,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.xs,
+  },
+  capsuleRadius: { borderRadius: radius.full },
 });

@@ -7,7 +7,8 @@ import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { useColors } from '../theme/ThemeContext';
 import type { TokenChip } from '../utils/titleTokenChips';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
-import { AccessoryBar } from './AccessoryBar';
+import { AccessoryBar, AccessoryCapsule, accessoryFill, ACCESSORY_CAPSULE_HEIGHT } from './AccessoryBar';
+import { glassSupported } from './GlassLayer';
 
 interface TokenDef {
   /** What `tokens` names it by. */
@@ -192,8 +193,9 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
   const compact = moreTokens.length > 0;
   const chipsActive = !showMore && !!onChip && !!chips && chips.length > 0;
   const styles = makeStyles(colors);
+  const glass = glassSupported();
   const bar = (
-    <AccessoryBar style={styles.bar}>
+    <AccessoryBar style={[styles.bar, glass && styles.barOnGlass]}>
       {chipsActive ? (
         // "always" so a tap lands on a chip instead of first dismissing the
         // keyboard, which would take this bar away mid-tap.
@@ -205,22 +207,23 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
           contentContainerStyle={styles.chipRow}
         >
           {chips!.map(chip => (
-            <PressableScale
-              key={chip.value}
-              style={styles.chipBtn}
-              haptic
-              onPress={() => onChip!(chip)}
-              accessibilityLabel={`Use ${chip.label}`}
-            >
-              <Text style={styles.chipText}>{chip.label}</Text>
-            </PressableScale>
+            <AccessoryCapsule key={chip.value}>
+              <PressableScale
+                style={[styles.chipBtn, glass && styles.btnOnGlass]}
+                haptic
+                onPress={() => onChip!(chip)}
+                accessibilityLabel={`Use ${chip.label}`}
+              >
+                <Text style={styles.chipText}>{chip.label}</Text>
+              </PressableScale>
+            </AccessoryCapsule>
           ))}
         </ScrollView>
       ) : (
-      <View style={[styles.tokenGroup, compact && styles.tokenGroupCompact]}>
+      <AccessoryCapsule style={[styles.tokenGroup, compact && styles.tokenGroupCompact, glass && styles.groupOnGlass]}>
         {showMore && (
           <PressableScale
-            style={[styles.tokenBtn, compact && styles.tokenBtnCompact]}
+            style={[styles.tokenBtn, compact && styles.tokenBtnCompact, glass && styles.btnOnGlass]}
             haptic
             onPress={() => setShowMore(false)}
             accessibilityLabel="Back to symbols"
@@ -233,7 +236,7 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
         {(showMore ? moreTokens : mainTokens).map(({ char, label, insert, glyph }) => (
           <PressableScale
             key={char}
-            style={[styles.tokenBtn, compact && styles.tokenBtnCompact]}
+            style={[styles.tokenBtn, compact && styles.tokenBtnCompact, glass && styles.btnOnGlass]}
             haptic
             onPress={() => {
               onInsert(insert ?? char);
@@ -246,7 +249,7 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
         ))}
         {onHelp && (showMore || moreTokens.length === 0) && (
           <PressableScale
-            style={[styles.tokenBtn, compact && styles.tokenBtnCompact]}
+            style={[styles.tokenBtn, compact && styles.tokenBtnCompact, glass && styles.btnOnGlass]}
             haptic
             onPress={() => { setShowMore(false); onHelp(); }}
             accessibilityLabel="What can I type?"
@@ -256,7 +259,7 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
         )}
         {!showMore && moreTokens.length > 0 && (
           <PressableScale
-            style={[styles.tokenBtn, compact && styles.tokenBtnCompact]}
+            style={[styles.tokenBtn, compact && styles.tokenBtnCompact, glass && styles.btnOnGlass]}
             haptic
             onPress={() => setShowMore(true)}
             accessibilityLabel="More symbols"
@@ -266,7 +269,7 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
         )}
         {!showMore && (
         <PressableScale
-          style={[styles.tokenBtn, compact && styles.tokenBtnCompact, !hasClipboardContent && styles.tokenBtnDisabled]}
+          style={[styles.tokenBtn, compact && styles.tokenBtnCompact, glass && styles.btnOnGlass, !hasClipboardContent && styles.tokenBtnDisabled]}
           haptic
           disabled={!hasClipboardContent}
           onPress={handlePaste}
@@ -280,17 +283,19 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
           />
         </PressableScale>
         )}
-      </View>
+      </AccessoryCapsule>
       )}
       {onConfirm && confirmVisible && (
-        <PressableScale
-          style={[styles.confirmBtn, compact && styles.tokenBtnCompact]}
-          haptic
-          onPress={onConfirm}
-          accessibilityLabel="Confirm suggestion"
-        >
-          <Ionicons name="checkmark" size={20} color={colors.onAccent} />
-        </PressableScale>
+        <AccessoryCapsule tintColor={colors.accentFill}>
+          <PressableScale
+            style={[styles.confirmBtn, compact && styles.tokenBtnCompact, glass && styles.btnOnGlass]}
+            haptic
+            onPress={onConfirm}
+            accessibilityLabel="Confirm suggestion"
+          >
+            <Ionicons name="checkmark" size={20} color={colors.onAccent} />
+          </PressableScale>
+        </AccessoryCapsule>
       )}
     </AccessoryBar>
   );
@@ -302,13 +307,13 @@ export function TitleTokenAccessory({ nativeID, onInsert, onConfirm, confirmVisi
         {/* The keyboard's top corners are rounded, so without this the page
             shows through beside them. Real accessory views get this fill
             from iOS; the floating stand-in has to paint it. */}
-        <View style={styles.cornerFill} />
+        {!glass && <View style={styles.cornerFill} />}
       </View>
     );
   }
 
   return (
-    <InputAccessoryView nativeID={nativeID} backgroundColor={colors.bgSecondary}>
+    <InputAccessoryView nativeID={nativeID} backgroundColor={accessoryFill(colors)}>
       {bar}
     </InputAccessoryView>
   );
@@ -337,6 +342,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
+  },
+  // The capsule is the surface, so a button in it drops its own fill.
+  // Seven buttons and the confirm still have to fit a 375pt phone, so the capsule's
+  // own padding is paid for out of the bar's edges and the buttons' minimum width.
+  barOnGlass: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
+  groupOnGlass: { gap: 0 },
+  btnOnGlass: {
+    backgroundColor: 'transparent',
+    minWidth: ACCESSORY_CAPSULE_HEIGHT,
+    minHeight: ACCESSORY_CAPSULE_HEIGHT,
+    borderRadius: radius.full,
+    paddingVertical: 0,
   },
   tokenGroup: {
     flexDirection: 'row',

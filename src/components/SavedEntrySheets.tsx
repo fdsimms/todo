@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, Alert, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CardSheet, useCardSheet } from './CardSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { FieldError } from './FieldError';
@@ -19,6 +19,7 @@ import { editSavedPlace, addSavedPlace, savedPlaceNameTaken, type SavedPlace } f
 import { editSavedEvent, savedEventTitleTaken, type SavedEvent } from '../utils/savedEvents';
 import { ALERT_CHOICES, describeAlert } from '../utils/quickEventSave';
 import { HelpText } from './HelpText';
+import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 
 type Pin = { latitude: number; longitude: number } | null;
@@ -202,7 +203,15 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
           accessibilityLabel="Place address"
         />
         <HelpText style={styles.hint}>Typing the name in a new event’s location fills in this address.</HelpText>
-        <View style={styles.switchRow}>
+        <TouchableOpacity
+          style={styles.switchRow}
+          activeOpacity={interaction.activeOpacity}
+          disabled={!pin}
+          onPress={() => { haptics.tap(); void toggleMoodTag(!moodTag); }}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: moodTag, disabled: !pin }}
+          accessibilityLabel="Suggest in mood log"
+        >
           <View style={styles.switchText}>
             <Text style={styles.switchLabel}>Suggest in mood log</Text>
             <Text style={styles.switchHint}>
@@ -211,14 +220,8 @@ export function SavedPlaceSheet({ visible, subject: liveSubject, places, onSave,
                 : 'Pick an address from the suggestions to turn this on.'}
             </Text>
           </View>
-          <Switch
-            value={moodTag}
-            disabled={!pin}
-            onValueChange={next => { haptics.tap(); void toggleMoodTag(next); }}
-            trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-            accessibilityLabel="Suggest in mood log"
-          />
-        </View>
+          <Toggle value={moodTag} style={!pin && styles.switchDisabled} />
+        </TouchableOpacity>
       </View>
       </ScrollView>
     </CardSheet>
@@ -392,6 +395,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.lg,
   },
   switchText: { flex: 1 },
+  switchDisabled: { opacity: 0.4 },
   switchLabel: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   switchHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   placeList: {

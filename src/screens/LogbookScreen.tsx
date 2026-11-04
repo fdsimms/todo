@@ -1074,6 +1074,7 @@ const LogbookRow = React.memo(function LogbookRow({
             as one whose completion state just changed. Selection is the dot at
             the row's other end. */}
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           style={[
             styles.checkCircle,
             // A miss still outranks a partial in the border, same as the glyph:
@@ -1241,6 +1242,7 @@ const LogbookRow = React.memo(function LogbookRow({
           <SelectionDot selected={selected} onPress={() => onToggleSelect(task.id)} />
         ) : (
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             style={styles.menuButton}
             onPress={e => onOpenMenu(task, { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY })}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

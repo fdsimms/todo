@@ -6,7 +6,7 @@ import { useSettingsStore } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useCalendarStore } from '../../store/useCalendarStore';
 import { useColors } from '../../theme/ThemeContext';
-import { spacing } from '../../theme';
+import { spacing, interaction } from '../../theme';
 import { WhenPicker } from '../../components/WhenPicker';
 import { getTaskDayStart } from '../../utils/dateUtils';
 import { SettingsSection } from './SettingsSection';
@@ -93,6 +93,7 @@ export function VacationTripsSettings() {
               accessibilityLabel="Vacation end date"
               trailing={vacationEnd ? (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => setVacationEnd(null)}
                   hitSlop={8}
                   style={{ marginLeft: spacing.xs }}

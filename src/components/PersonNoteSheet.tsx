@@ -11,7 +11,7 @@ import { SheetHeader } from './SheetHeader';
 import { SegmentedControl } from './SegmentedControl';
 import { WhenPicker } from './WhenPicker';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
   PERSON_NOTE_HINTS,
@@ -118,7 +118,7 @@ export function PersonNoteSheet({ visible, personId, personName, note, initialKi
           left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />}
           right={
             note ? (
-              <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete note">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete note">
                 <Ionicons name="trash-outline" size={20} color={colors.red} />
               </TouchableOpacity>
             ) : (

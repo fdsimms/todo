@@ -840,6 +840,7 @@ export function WhenPicker({
           <View style={styles.calSection}>
             <View style={styles.monthNav}>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => setDisplayMonth(m => subMonths(m, 1))}
                 disabled={!canPageBack}
                 hitSlop={8}
@@ -856,6 +857,7 @@ export function WhenPicker({
               </TouchableOpacity>
               <Text style={styles.monthLabel}>{format(displayMonth, 'MMMM yyyy')}</Text>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => setDisplayMonth(m => addMonths(m, 1))}
                 disabled={!canPageForward}
                 hitSlop={8}

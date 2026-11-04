@@ -12,7 +12,7 @@ import { makeSettingsStyles } from '../screens/settings/settingsStyles';
 import { useAppGroupStore } from '../store/useAppGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { font, fontWeight, radius, spacing, interaction, type Colors } from '../theme';
 import { fieldWell } from '../theme/textStyles';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
@@ -262,6 +262,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
                 const on = draft.days.includes(day);
                 return (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     key={day}
                     style={[settingsStyles.pill, on && settingsStyles.pillActive, styles.dayPill]}
                     onPress={() => toggleDay(day)}

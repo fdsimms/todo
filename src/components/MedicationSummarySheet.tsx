@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Switch, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useMedicationStore } from '../store/useMedicationStore';
@@ -32,6 +32,7 @@ import {
 import { canShare, discardBackupFile, sharePdfFile, writePdfFile } from '../utils/backupFile';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { HelpText } from './HelpText';
+import { Toggle } from './Toggle';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -262,14 +263,13 @@ export function MedicationSummarySheet({ visible, onClose }: Props) {
 
       <Text style={styles.groupLabel}>INCLUDE</Text>
       <View style={styles.card}>
-        <ToggleRow label="Notes you added" value={includeNotes} onChange={setIncludeNotes} styles={styles} colors={colors} />
+        <ToggleRow label="Notes you added" value={includeNotes} onChange={setIncludeNotes} styles={styles} />
         <ToggleRow
           label="Time of day"
           sub="For as-needed medications"
           value={includeTimeOfDay}
           onChange={setIncludeTimeOfDay}
           styles={styles}
-          colors={colors}
           border
         />
         <ToggleRow
@@ -277,7 +277,6 @@ export function MedicationSummarySheet({ visible, onClose }: Props) {
           value={includeMilestones}
           onChange={setIncludeMilestones}
           styles={styles}
-          colors={colors}
           border
         />
       </View>
@@ -320,29 +319,30 @@ export function MedicationSummarySheet({ visible, onClose }: Props) {
 }
 
 function ToggleRow({
-  label, sub, value, onChange, styles, colors, border,
+  label, sub, value, onChange, styles, border,
 }: {
   label: string;
   sub?: string;
   value: boolean;
   onChange: (next: boolean) => void;
   styles: ReturnType<typeof makeStyles>;
-  colors: Colors;
   border?: boolean;
 }) {
   return (
-    <View style={[styles.row, border && styles.rowBorder]}>
+    <TouchableOpacity
+      style={[styles.row, border && styles.rowBorder]}
+      activeOpacity={interaction.activeOpacity}
+      onPress={() => { haptics.tap(); onChange(!value); }}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      accessibilityLabel={label}
+    >
       <View style={styles.rowText}>
         <Text style={styles.rowTitle}>{label}</Text>
         {sub && <Text style={styles.rowSub}>{sub}</Text>}
       </View>
-      <Switch
-        value={value}
-        onValueChange={next => { haptics.tap(); onChange(next); }}
-        trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-        accessibilityLabel={label}
-      />
-    </View>
+      <Toggle value={value} />
+    </TouchableOpacity>
   );
 }
 

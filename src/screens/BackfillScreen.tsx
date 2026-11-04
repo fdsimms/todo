@@ -2394,6 +2394,7 @@ export function BackfillScreen() {
     : RECIPE_BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
   const redoButton = (
     <TouchableOpacity
+      activeOpacity={interaction.activeOpacity}
       onPress={confirmStartOver}
       hitSlop={8}
       accessibilityRole="button"
@@ -2477,6 +2478,7 @@ export function BackfillScreen() {
           <View style={styles.progressRow}>
             {history.length > 0 && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={goBack}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -2488,6 +2490,7 @@ export function BackfillScreen() {
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
             {!!currentId && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={skip}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -2644,6 +2647,7 @@ export function BackfillScreen() {
           <View style={styles.progressRow}>
             {history.length > 0 && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={goBack}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -2655,6 +2659,7 @@ export function BackfillScreen() {
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
             {!!currentId && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={skip}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -2767,6 +2772,7 @@ export function BackfillScreen() {
           <View style={styles.progressRow}>
             {history.length > 0 && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={goBack}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -2778,6 +2784,7 @@ export function BackfillScreen() {
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
             {!!currentId && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={skip}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -3081,6 +3088,7 @@ export function BackfillScreen() {
           <View style={styles.progressRow}>
             {history.length > 0 && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={goBack}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -3092,6 +3100,7 @@ export function BackfillScreen() {
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
             {!!currentId && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={skip}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -3242,6 +3251,7 @@ export function BackfillScreen() {
           <View style={styles.progressRow}>
             {history.length > 0 && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={goBack}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -3253,6 +3263,7 @@ export function BackfillScreen() {
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
             {!!currentId && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={skip}
                 hitSlop={8}
                 accessibilityRole="button"
@@ -3448,6 +3459,7 @@ export function BackfillScreen() {
         <View style={styles.progressRow}>
           {history.length > 0 && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={goBack}
               hitSlop={8}
               accessibilityRole="button"
@@ -3459,6 +3471,7 @@ export function BackfillScreen() {
           <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
           {!!currentId && (
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={skip}
               hitSlop={8}
               accessibilityRole="button"
@@ -3785,6 +3798,7 @@ function SessionReview({
               <Text style={styles.reviewRowValue} numberOfLines={1}>{item.valueText}</Text>
             </View>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => onUndo(item)}
               hitSlop={8}
               accessibilityRole="button"

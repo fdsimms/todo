@@ -184,6 +184,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
             />
             {!!query && (
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => clearQuery()}
                 hitSlop={8}
                 accessibilityRole="button"

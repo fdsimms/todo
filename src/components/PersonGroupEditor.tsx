@@ -111,7 +111,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
             title="Group"
             left={<SheetHeaderButton label={BUTTON_LABEL.done} onPress={saveAndClose} />}
             right={
-              <TouchableOpacity onPress={handleDeleteGroup} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete group">
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} onPress={handleDeleteGroup} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete group">
                 <Ionicons name="trash-outline" size={20} color={colors.red} />
               </TouchableOpacity>
             }
@@ -208,6 +208,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
         </View>
       </View>
       <TouchableOpacity
+        activeOpacity={interaction.activeOpacity}
         style={[styles.createButton, !newGroupName.trim() && styles.createButtonDisabled]}
         onPress={startNewGroup}
         disabled={!newGroupName.trim()}
@@ -225,6 +226,7 @@ export function PersonGroupEditor({ visible, person, onClose }: Props) {
               <React.Fragment key={g.id}>
                 {i > 0 && <View style={styles.sep} />}
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   style={styles.existingRow}
                   onPress={() => joinGroup(g.id)}
                   accessibilityRole="button"

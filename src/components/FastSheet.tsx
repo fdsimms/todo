@@ -159,6 +159,7 @@ export function FastSheet({ visible, fast, lastMealAt, onClose }: Props) {
 
           <View style={styles.day}>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); setStart(shiftDays(start, -1)); }}
               hitSlop={8}
               style={styles.dayButton}
@@ -171,6 +172,7 @@ export function FastSheet({ visible, fast, lastMealAt, onClose }: Props) {
               {`Started ${startDay}, ${formatTimeOfDay(start)}`}
             </Text>
             <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); setStart(shiftDays(start, 1)); }}
               hitSlop={8}
               style={styles.dayButton}

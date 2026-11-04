@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, border, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -71,13 +71,14 @@ export function SimpleBulkBar({
     >
       <View style={styles.topRow}>
         <TouchableOpacity
+          activeOpacity={interaction.activeOpacity}
           style={styles.selectAllBtn}
           onPress={() => { haptics.tap(); allSelected ? onDeselectAll() : onSelectAll(); }}
         >
           <Text style={styles.selectAllText}>{allSelected ? 'Deselect all' : 'Select all'}</Text>
         </TouchableOpacity>
         <Text style={styles.countText}>{selectedCount} selected</Text>
-        <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
+        <TouchableOpacity activeOpacity={interaction.activeOpacity} style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
           <Ionicons name="close" size={18} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>

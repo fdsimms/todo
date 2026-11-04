@@ -1891,6 +1891,7 @@ function ProjectDetailContent() {
                   copies in one step. */}
               {!!copyText && (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => {
                     void shareContent({ message: `${project?.title ?? ''}\n\n${copyText}` });
                   }}
@@ -1906,6 +1907,7 @@ function ProjectDetailContent() {
               )}
               {!!anthropicApiKey && (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => { haptics.tap(); setSuggestionsVisible(true); }}
                   hitSlop={8}
                   accessibilityRole="button"
@@ -1914,7 +1916,7 @@ function ProjectDetailContent() {
                   <Ionicons name="sparkles-outline" size={20} color={colors.purple} />
                 </TouchableOpacity>
               )}
-              <TouchableOpacity hitSlop={12}
+              <TouchableOpacity activeOpacity={interaction.activeOpacity} hitSlop={12}
                 onPress={() => project && setEditingProject(project)}
                 accessibilityRole="button"
                 accessibilityLabel="Edit project"
@@ -1925,6 +1927,7 @@ function ProjectDetailContent() {
               </TouchableOpacity>
               {!!project && (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   hitSlop={12}
                   onPress={(e) => {
                     setPageMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });

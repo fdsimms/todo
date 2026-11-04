@@ -74,6 +74,7 @@ export function StackPickerList({ stacks, value, onSelect }: Props) {
         />
         {!!trimmed && (
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             onPress={() => clearQuery()}
             hitSlop={8}
             accessibilityRole="button"

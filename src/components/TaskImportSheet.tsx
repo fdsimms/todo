@@ -7,9 +7,9 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Image,
   StyleSheet,
 } from 'react-native';
+import { FadeInImage } from './FadeInImage';
 import { format } from 'date-fns/format';
 import { SheetModal } from './SheetModal';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -229,7 +229,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
     <>
       <View style={styles.summary}>
         {photo && (
-          <Image
+          <FadeInImage
             source={{ uri: `data:${photo.mediaType};base64,${photo.base64}` }}
             style={styles.thumb}
             resizeMode="cover"
@@ -375,7 +375,7 @@ export function TaskImportSheet({ visible, onClose, onAdd, initialPhotos = NO_PH
           />
         ) : photo ? (
           <View style={styles.preview}>
-            <Image
+            <FadeInImage
               source={{ uri: `data:${photo.mediaType};base64,${photo.base64}` }}
               style={styles.previewImage}
               resizeMode="cover"

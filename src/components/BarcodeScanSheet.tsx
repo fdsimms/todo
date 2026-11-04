@@ -47,6 +47,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetHeader } from './SheetHeader';
 import { InlineAction } from './InlineAction';
+import { AccessoryCapsule } from './AccessoryBar';
+import { glassSupported } from './GlassLayer';
+import { PressableScale } from './PressableScale';
 import { EmptyState } from './EmptyState';
 import { ActionRow } from './ActionRow';
 import type { ReceiptAddDraft } from './ReceiptImportSheet';
@@ -1452,6 +1455,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
         <View
           style={[
             styles.manualBar,
+            glassSupported() && styles.manualBarGlass,
             { paddingBottom: keyboardHeight > 0 ? keyboardHeight + spacing.sm : Math.max(insets.bottom, spacing.md) },
           ]}
         >
@@ -1470,7 +1474,23 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
               autoCorrect={false}
               accessibilityLabel={CONTEXT_COPY[context].typedNames ? 'Add an item by name or barcode' : 'Add an item by barcode number'}
             />
-            <InlineAction label="Add" icon="add" onPress={handleManualAdd} />
+            {glassSupported() ? (
+              // The field stays a solid card so typing has a steady surface; only the
+              // button is glass, and the capsule is its pill.
+              <AccessoryCapsule tintColor={colors.accentFill}>
+                <PressableScale
+                  haptic
+                  onPress={handleManualAdd}
+                  accessibilityLabel="Add"
+                  style={styles.manualAddGlass}
+                >
+                  <Ionicons name="add" size={iconSize.sm} color={colors.onAccent} />
+                  <Text style={styles.manualAddText}>Add</Text>
+                </PressableScale>
+              </AccessoryCapsule>
+            ) : (
+              <InlineAction label="Add" icon="add" onPress={handleManualAdd} />
+            )}
           </View>
         </View>
       </View>
@@ -1555,6 +1575,16 @@ function makeStyles(colors: Colors) {
       borderTopWidth: border.hairline,
       borderTopColor: colors.separator,
     },
+    // Glass: no strip behind the field and button, which float over the sheet.
+    manualBarGlass: { backgroundColor: 'transparent', borderTopWidth: 0 },
+    manualAddGlass: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      minHeight: 40,
+      paddingHorizontal: spacing.smd,
+    },
+    manualAddText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
     manualError: { color: colors.redText, fontSize: font.xs },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
     // Full-height content container so EmptyState's own `flex: 1` has room

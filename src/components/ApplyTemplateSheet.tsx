@@ -15,10 +15,10 @@ import {
   useWindowDimensions,
   PanResponder,
   StyleSheet,
-  Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SheetModal } from './SheetModal';
+import { Toggle } from './Toggle';
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
@@ -632,20 +632,22 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
                 {runNameHint(container, containerUpgraded, placeholderNames.length > 0)}
               </Text>
               {createsProject && (
-                <View style={styles.planningRow}>
+                <TouchableOpacity
+                  style={styles.planningRow}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => { haptics.tap(); setPlanning(v => !v); }}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: planning }}
+                  accessibilityLabel="Start in Planning"
+                >
                   <View style={styles.planningText}>
                     <Text style={styles.planningLabel}>Start in Planning</Text>
                     <Text style={styles.runHint}>
                       Hides the project’s tasks, dated ones too, until you mark it ready.
                     </Text>
                   </View>
-                  <Switch
-                    value={planning}
-                    onValueChange={next => { haptics.tap(); setPlanning(next); }}
-                    trackColor={{ false: colors.bgTertiary, true: colors.accent }}
-                    accessibilityLabel="Start in Planning"
-                  />
-                </View>
+                  <Toggle value={planning} />
+                </TouchableOpacity>
               )}
             </View>
           )}

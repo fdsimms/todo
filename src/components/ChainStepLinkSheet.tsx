@@ -140,6 +140,7 @@ export function ChainStepLinkSheet({
             <SaveLinkAction links={savedLinks} typed={customText} />
           </View>
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             style={styles.appsRow}
             onPress={() => { haptics.tap(); animateLayout(); setAppsOpen(v => !v); }}
             accessibilityRole="button"
@@ -154,6 +155,7 @@ export function ChainStepLinkSheet({
             <View style={styles.chipRow}>
               {savedLinks.chips.map(app => (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   key={app.scheme}
                   style={[styles.chip, linkUrl === app.scheme && styles.chipActive]}
                   onPress={() => { haptics.tap(); setLinkUrl(app.scheme); setCustomText(''); }}

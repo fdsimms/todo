@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
+import { interaction } from '../../theme';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useCategoryStore } from '../../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -309,6 +310,7 @@ export function TasksProjectsSettings() {
               const active = defaultCadence.count !== null && defaultCadence.unit === unit;
               return (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   key={unit}
                   style={[styles.pill, { flex: 0 }, active && styles.pillActive]}
                   onPress={() => {

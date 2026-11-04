@@ -2,7 +2,7 @@ import React from 'react';
 import { TouchableOpacity, type StyleProp, type ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { iconSize } from '../theme';
+import { iconSize, interaction } from '../theme';
 
 interface Props {
   /** The field's mirrored text (`useFilterField().query`). The button shows only while there is some. */
@@ -29,6 +29,7 @@ export function FieldClearButton({ query, onClear, accessibilityLabel = 'Clear s
   if (query.length === 0) return null;
   return (
     <TouchableOpacity
+      activeOpacity={interaction.activeOpacity}
       onPress={onClear}
       style={style}
       hitSlop={8}

@@ -3955,6 +3955,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
         <View style={styles.windowPillRow}>
           {polarity !== 'negative' && (
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             style={[
               styles.timePill, styles.windowPill,
               !!windowStart && styles.timePillActive,
@@ -3968,6 +3969,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           </TouchableOpacity>
           )}
           <TouchableOpacity
+            activeOpacity={interaction.activeOpacity}
             style={[
               styles.timePill, styles.windowPill,
               !!windowEnd && styles.timePillActive,
@@ -4671,6 +4673,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           renderItem={(sub, _i, drag) => (
             <View style={styles.subtaskRow}>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 onPress={() => toggleDraftSubtask(sub.id)}
                 hitSlop={6}
                 style={styles.subtaskCheck}
@@ -4724,6 +4727,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   />
                 )}
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={() => deleteDraftSubtask(sub.id)}
                   hitSlop={8}
                   style={styles.subtaskDelete}
@@ -4934,6 +4938,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               <View style={styles.pillRow}>
                 {DURATION_PRESETS.map(m => (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     key={m}
                     style={[styles.pill, timedMinutes === m && styles.pillActiveNeutral]}
                     onPress={() => {
@@ -4956,6 +4961,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     box. Tapping it clears, same as an active preset. */}
                 {customDurationActive && timedMinutes != null && (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     style={[styles.pill, styles.pillCustomActive]}
                     onPress={() => {
                       haptics.tap();
@@ -5524,6 +5530,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       <View>
                       <View style={styles.rotationItemRow}>
                         <TouchableOpacity
+                          activeOpacity={interaction.activeOpacity}
                           onLongPress={drag}
                           delayLongPress={interaction.delayLongPress}
                           hitSlop={6}
@@ -5547,6 +5554,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                           onPress={() => setLinkMemberId(item.id)}
                         />
                         <TouchableOpacity
+                          activeOpacity={interaction.activeOpacity}
                           onPress={() => setRotationItems(prev => prev.filter(r => r.id !== item.id))}
                           hitSlop={8}
                           style={styles.chainItemDelete}
@@ -5570,6 +5578,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       </View>
                       {(workoutsEnabled || item.workoutRoutineId || item.workoutProgramId) && (
                         <TouchableOpacity
+                          activeOpacity={interaction.activeOpacity}
                           style={styles.rotationCountRow}
                           onPress={() => setWorkoutMemberId(item.id)}
                           accessibilityRole="button"
@@ -5703,6 +5712,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                           <View style={styles.chainItemRow}>
                             <View style={styles.chainItemHeader}>
                             <TouchableOpacity
+                              activeOpacity={interaction.activeOpacity}
                               onPress={() => setChainIndex(actualIdx)}
                               hitSlop={6}
                               style={styles.chainItemIndexBtn}
@@ -5743,6 +5753,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                               </TouchableOpacity>
                             )}
                             <TouchableOpacity
+                              activeOpacity={interaction.activeOpacity}
                               onPress={() => {
                                 // Track the active step by id (like onReorder above) rather
                                 // than by index — deleting an earlier step shifts every later
@@ -5990,6 +6001,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               <>
                 <View style={styles.windowPillRow}>
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     style={[
                       styles.timePill, styles.windowPill,
                       !!deadlineTime && styles.timePillActive,
@@ -6005,6 +6017,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   </TouchableOpacity>
                   {deadlineTime !== null && (
                     <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
                       style={[styles.timePill, styles.windowPill]}
                       onPress={() => { setDeadlineTime(null); setDeadlineTimePickerOpen(false); }}
                       accessibilityRole="button"
@@ -6213,6 +6226,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     const active = timeSegments.includes(tod);
                     return (
                       <TouchableOpacity
+                        activeOpacity={interaction.activeOpacity}
                         key={tod}
                         style={[styles.timePill, active && styles.timePillActive]}
                         onPress={() => {
@@ -6585,6 +6599,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     />
                     <Text style={styles.intervalLabel}>day{streakDraft === 1 ? '' : 's'}</Text>
                     <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
                       style={[styles.streakApplyBtn, streakDraft === liveStreakTask!.streakCount && styles.streakApplyBtnDisabled]}
                       onPress={() => applyStreakChange(streakDraft)}
                       disabled={streakDraft === liveStreakTask!.streakCount}
@@ -7304,6 +7319,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       <>
                         <View style={styles.windowPillRow}>
                           <TouchableOpacity
+                            activeOpacity={interaction.activeOpacity}
                             style={[
                               styles.timePill, styles.windowPill,
                               !!penaltyCutoffTime && styles.timePillActive,
@@ -7317,6 +7333,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                           </TouchableOpacity>
                           {penaltyCutoffTime !== null && (
                             <TouchableOpacity
+                              activeOpacity={interaction.activeOpacity}
                               style={[styles.timePill, styles.windowPill]}
                               onPress={() => { setPenaltyCutoffTime(null); setPenaltyPickerOpen(false); }}
                               accessibilityRole="button"
@@ -7357,6 +7374,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           >
             <View style={styles.pillRow}>
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 style={[styles.pill, !customEffortActive && effort === 0 && styles.pillActiveNeutral]}
                 onPress={() => { haptics.tap(); applyEffortPreset(0); closeField('effort'); }}
               >
@@ -7366,6 +7384,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 const active = !customEffortActive && chosenEstimateMinutes({ estimatedMinutes, effort }) === mins;
                 return (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     key={mins}
                     style={[styles.pill, active && styles.pillActiveNeutral]}
                     onPress={() => { haptics.tap(); applyEstimatePreset(mins); closeField('effort'); }}
@@ -7375,6 +7394,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 );
               })}
               <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
                 style={[styles.pill, customEffortActive && styles.pillCustomActive]}
                 onPress={openCustomEffort}
               >
@@ -7546,6 +7566,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             <View style={styles.tagRow}>
               {tags.map(tag => (
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   key={tag}
                   style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
                   onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}
@@ -7576,6 +7597,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               <View style={styles.tagSuggestions}>
                 {suggestedTags.map(tag => (
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     key={tag}
                     style={styles.tagSuggestion}
                     // Clears the field too: the suggestions narrow to what's
@@ -7719,6 +7741,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       {blockerTitles[i] || 'Task no longer exists'}
                     </Text>
                     <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
                       onPress={() => { animateLayout(); setBlockerIds(prev => prev.filter(x => x !== id)); }}
                       hitSlop={8}
                       style={styles.blocksRemove}
@@ -7932,6 +7955,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       {blocksTitles[i] || 'Task no longer exists'}
                     </Text>
                     <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
                       onPress={() => { animateLayout(); setBlocksIds(prev => prev.filter(x => x !== id)); }}
                       hitSlop={8}
                       style={styles.blocksRemove}
@@ -7985,6 +8009,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     const on = personIds.includes(p.id);
                     return (
                       <TouchableOpacity
+                        activeOpacity={interaction.activeOpacity}
                         key={p.id}
                         style={[styles.pill, on && styles.pillActiveNeutral]}
                         // Multi-select, so the field deliberately does not
@@ -8217,6 +8242,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 <View style={styles.linkPickerRow}>
                   {savedLinks.chips.map(app => (
                     <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
                       key={app.scheme}
                       style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
                       onPress={() => { setLinkUrl(app.scheme); setShowLinkPicker(false); }}
@@ -8314,6 +8340,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   autoFocus
                 />
                 <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
                   onPress={commitPhone}
                   hitSlop={8}
                   accessibilityRole="button"
@@ -8615,6 +8642,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   // the fields built on that component instead of this one.
                   right={isSet ? (
                     <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
                       onPress={() => {
                         haptics.tap();
                         setLogHealthAmount(null);
@@ -8879,6 +8907,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   onToggle={() => toggleField('logMealSlot')}
                   right={logMealSlot !== null ? (
                     <TouchableOpacity
+                      activeOpacity={interaction.activeOpacity}
                       onPress={() => {
                         haptics.tap();
                         setLogMealSlot(null);
@@ -8903,6 +8932,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     surface="card"
                   />
                   <TouchableOpacity
+                    activeOpacity={interaction.activeOpacity}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.smd }}
                     onPress={() => {
                       haptics.tap();

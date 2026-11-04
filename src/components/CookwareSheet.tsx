@@ -11,7 +11,7 @@ import { InlineAction } from './InlineAction';
 import { EmptyNote } from './EmptyNote';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { fieldWell } from '../theme/textStyles';
 import { ChoiceMenuChip, type ChoiceGroup } from './ChoiceMenuChip';
 import { parseWeightText, clampCookwareWeight, groupCookwareByType, cookwareTypeOf, isCookwareType, COOKWARE_TYPES } from '../utils/cookware';
@@ -225,6 +225,7 @@ export function CookwareSheet({ visible, onClose }: Props) {
                           <Text style={styles.unit}>g</Text>
                         </View>
                         <TouchableOpacity
+                          activeOpacity={interaction.activeOpacity}
                           onPress={finishEdit}
                           hitSlop={8}
                           accessibilityRole="button"
@@ -236,6 +237,7 @@ export function CookwareSheet({ visible, onClose }: Props) {
                     ) : (
                       <>
                         <TouchableOpacity
+                          activeOpacity={interaction.activeOpacity}
                           style={styles.rowTap}
                           onPress={() => startEdit(c.id, c.name, c.weightG)}
                           accessibilityRole="button"
@@ -246,6 +248,7 @@ export function CookwareSheet({ visible, onClose }: Props) {
                           <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
                         </TouchableOpacity>
                         <TouchableOpacity
+                          activeOpacity={interaction.activeOpacity}
                           onPress={() => handleDelete(c.id, c.name)}
                           hitSlop={8}
                           accessibilityRole="button"
