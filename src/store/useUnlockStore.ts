@@ -6,6 +6,7 @@ import {
   addPlayTime,
   cleanUnlockDraft,
   playState,
+  renameInIgnoreList,
   repointRequired,
   startPlay,
   stopPlay,
@@ -29,6 +30,8 @@ interface UnlockStore {
   unlocks: RewardUnlock[];
   initialized: boolean;
   initialize: () => void;
+  /** Follow a category rename in every unlock's leave-out list (`useTaskStore.renameCategory`). */
+  renameIgnoredCategory: (from: string, to: string) => void;
   addUnlock: (draft: UnlockDraft) => RewardUnlock | null;
   updateUnlock: (id: string, patch: Partial<UnlockDraft>) => void;
   deleteUnlock: (id: string) => void;
@@ -87,6 +90,13 @@ export const useUnlockStore = create<UnlockStore>((set, get) => {
       // notice to cancel. Both are settled from the rows as loaded.
       const now = new Date();
       unlocks.forEach(u => syncNotice(u, now));
+    },
+
+    renameIgnoredCategory(from, to) {
+      for (const unlock of get().unlocks) {
+        const list = renameInIgnoreList(unlock.ignoreList, from, to);
+        if (list !== unlock.ignoreList) write({ ...unlock, ignoreList: list });
+      }
     },
 
     addUnlock(draft) {

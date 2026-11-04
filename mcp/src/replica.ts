@@ -3922,7 +3922,23 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     return unlock;
   };
   // The checks the app's pickers make by only offering what qualifies.
-  const checkUnlockLinks = (draft: { requiredTaskIds: string[]; guardsTaskId: string | null }, selfId: string | null): void => {
+  const checkUnlockLinks = (
+    draft: { requiredTaskIds: string[]; guardsTaskId: string | null; ignoreList?: { categories: string[]; stackIds: string[]; projectIds: string[] } | null },
+    selfId: string | null,
+    // What the unlock already left out: only an entry added now has to exist, so a stale one
+    // (a deleted stack) can't block an unrelated edit.
+    before?: { categories: string[]; stackIds: string[]; projectIds: string[] } | null,
+  ): void => {
+    const list = draft.ignoreList;
+    if (list) {
+      const missing = (picked: string[], known: Set<string>, was: string[] | undefined, what: string, fix: string): void => {
+        const bad = picked.find(x => !known.has(x) && !(was ?? []).includes(x));
+        if (bad) throw new Error(`No ${what} "${bad}" to leave out. ${fix}`);
+      };
+      missing(list.categories, new Set(db.dbGetAllCategories().map(c => c.name)), before?.categories, 'category', 'list_categories has the names.');
+      missing(list.stackIds, new Set(db.dbGetAllTaskGroups().map(g => g.id)), before?.stackIds, 'stack with id', 'list_stacks has the ids.');
+      missing(list.projectIds, new Set(db.dbGetAllProjects().map(p => p.id)), before?.projectIds, 'project with id', 'list_projects has the ids.');
+    }
     const all = tasks();
     for (const taskId of draft.requiredTaskIds) {
       const t = all.find(x => x.id === taskId);
@@ -8273,6 +8289,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           if (!template.items.some(i => i.category === from)) continue;
           db.dbUpdateTemplate({ ...template, items: template.items.map(i => (i.category === from ? { ...i, category: to } : i)) });
         }
+        // An unlock's leave-out list names categories too.
+        const { renameInIgnoreList } = require('../../src/utils/rewardUnlocks') as typeof import('../../src/utils/rewardUnlocks'); // eslint-disable-line @typescript-eslint/no-require-imports
+        for (const unlock of db.dbGetAllRewardUnlocks()) {
+          const ignoreList = renameInIgnoreList(unlock.ignoreList, from, to);
+          if (ignoreList !== unlock.ignoreList) db.dbUpsertRewardUnlock({ ...unlock, ignoreList });
+        }
         categoryStore.renameGeneratedCategorySettings(from, to);
         const settings = useSettingsStore.getState();
         if (settings.calendarEventCategory === from) settings.setCalendarEventCategory(to);
@@ -8769,7 +8791,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const { pin: _ignored, ...allowed } = patch as Partial<UnlockInput> & { pin?: unknown };
       const clean = unlockLib.cleanUnlockDraft({ ...current, ...allowed, pin: current.pin });
       if (!clean.title) throw new Error('An unlock needs a name.');
-      checkUnlockLinks(clean, id);
+      checkUnlockLinks(clean, id, current.ignoreList);
       // Same rule as the app's form: a locked unlock can't be made easier to open.
       if (unlockLib.statusOfUnlock(current, replica.unlockWorld()).status.kind === 'locked') {
         const loosenings = unlockLib.unlockLooseningsOf(current, clean);

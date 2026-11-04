@@ -12108,6 +12108,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // silently blanking it would throw away what the user chose. A rename has
     // an obvious correct value, so leaving it stale was just a gap.
     useTemplateStore.getState().renameItemCategory(name, trimmed);
+    // And an unlock's leave-out list, which names categories rather than pointing at them.
+    useUnlockStore.getState().renameIgnoredCategory(name, trimmed);
     // So do the settings that name a category, which was the same gap one
     // level further out: every one of these files something *into* a category
     // by name, so a rename left them pointing at a name nothing had any more.
