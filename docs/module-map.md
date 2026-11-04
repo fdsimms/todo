@@ -55,6 +55,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/applyToAll.ts` — ApplyScope, applyToAllLabel, applyTargets
 - `src/utils/applyToAllOffer.ts` — ApplyOffer, setApplyOffer, clearApplyOffer, getApplyOffer, subscribeApplyOffer, resetApplyOffer
 - `src/utils/archiveMatch.ts` — findArchivedMatch
+- `src/utils/askClaude.ts` — NOTES_LIMIT, taskChatPrompt, projectChatPrompt, claudeChatUrl
 - `src/utils/autoComplete.ts` — autoCompleteReason
 - `src/utils/autoCompleteScope.ts` — setAutoCompleteAttended, runUnattended, setAutoCompleteRowsLive, autoCompleteRowsLive, canAutoComplete
 - `src/utils/awayDates.ts` — AwaySpan, AwayPhase, AwayStatus, awayNoonIso, departureFromAnswer, departureMoveFromAnswer, awaySpanOf, liveAwaySpans, isAwayDay, awayNights, +13 more

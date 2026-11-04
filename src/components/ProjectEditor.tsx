@@ -54,6 +54,8 @@ import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { buildAwayShiftPlan } from '../utils/awayShift';
 import { haptics } from '../utils/haptics';
+import { openExternalUrl } from '../utils/openExternalUrl';
+import { claudeChatUrl, projectChatPrompt } from '../utils/askClaude';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { useProjectLockStore, isProjectHidden } from '../store/useProjectLockStore';
 import { unlockProjects } from '../hooks/useProjectAccess';
@@ -1442,6 +1444,20 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             <View style={styles.optionContent}>
               <Text style={styles.optionLabel}>Start a fresh copy</Text>
               <Text style={styles.optionHint}>A new project with the same tasks, all open and undated</Text>
+            </View>
+          </TouchableOpacity>
+          <View style={styles.sepIcon} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { if (liveProject) openExternalUrl(claudeChatUrl(projectChatPrompt(liveProject))); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Discuss with Claude"
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Discuss with Claude</Text>
+              <Text style={styles.optionHint}>Start a chat about this project in the Claude app</Text>
             </View>
           </TouchableOpacity>
         </View>
