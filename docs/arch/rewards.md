@@ -291,6 +291,10 @@ work is done"). Rules in `src/utils/rewardUnlocks.ts`, rows in `reward_unlocks`
   still pay. Coins already weigh hard against easy and pay nothing for trivial tasks. A share, so a
   light day asks for less; a day with nothing on it is open. Deferring tasks lowers the bar, which
   is accepted: someone gaming it would play anyway.
+- **A target task is left out of the count** (`workCoinsToday`, `isQuotaTask`): neither the coins it
+  has still to pay nor the coins it earned. "Drink 15 cups" is paced across the day, so counting what
+  was left at 3pm held the unlock shut for work that wasn't late. Name it as a required task to make an
+  unlock wait for it.
 - **Required tasks count on the days they're due**, matched by family (`occurrenceFamilyKey`) so a
   repeating task's later rows match. The Rewards screen moves each requirement to its family's newest
   row (`repointRequirements`), so the retention window purging the row it was set on doesn't lose it.

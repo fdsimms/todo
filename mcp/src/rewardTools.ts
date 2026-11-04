@@ -467,7 +467,7 @@ function serializeUnlock(
   const play = rewardUnlocks.playState(u, new Date(), world.todayKey);
   const habit = u.guardsTaskId ? replica.taskById(u.guardsTaskId) : null;
   const share = status.kind === 'free'
-    ? rewardUnlocks.workShareDone(rewardUnlocks.coinsEarnedToday(world.entries, world.todayStart), rewardUnlocks.coinsStillOpenToday(world.onToday))
+    ? (({ earned, open }) => rewardUnlocks.workShareDone(earned, open))(rewardUnlocks.workCoinsToday(u, world))
     : status.share;
   return {
     id: u.id,

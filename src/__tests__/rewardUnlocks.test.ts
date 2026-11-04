@@ -21,6 +21,7 @@ import {
   lockedUnlockNeeding,
   unlockLooseningsOf,
   unlockStatus,
+  workCoinsToday,
   workShareDone,
 } from '../utils/rewardUnlocks';
 import { BALANCE_RESET_LABEL } from '../utils/rewards';
@@ -265,6 +266,19 @@ describe('the cutoff time', () => {
     expect(coinsStillOpenToday([day, bed], lateTask)).toBe(coinsStillOpenToday([day]));
     expect(coinsStillOpenToday([day, bed])).toBeGreaterThan(coinsStillOpenToday([day]));
 
+  });
+
+  it('leaves target tasks out of both sides, so cups still to drink do not hold it shut', () => {
+    const plain = task('plain', { estimatedMinutes: 30 });
+    const cups = task('cups', { estimatedMinutes: 30, targetCount: 15, progressCount: 7 });
+    const doneCups = task('doneCups', { completed: true, targetCount: 15 });
+    const entries = [earn(5, at(9), { taskId: 'plain' }), earn(4, at(10), { taskId: 'doneCups' }), earn(2, at(11), { taskId: 'gone' })];
+    const world = { entries, tasks: [plain, cups, doneCups], onToday: [plain, cups], todayStart: TODAY, todayKey: KEY, vacation: false };
+    const { earned, open } = workCoinsToday({ ignoreAfter: null }, world);
+    // The target task's open coins and its earning drop out; a purged task's earning stays.
+    expect(earned).toBe(7);
+    expect(open).toBe(coinsStillOpenToday([plain]));
+    expect(coinsStillOpenToday([plain, cups])).toBeGreaterThan(open);
   });
 
   it('counts setting or moving it earlier as loosening, and removing or delaying it as not', () => {

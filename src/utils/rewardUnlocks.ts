@@ -4,7 +4,7 @@ import { baseCoinsFor, bountyCoinsFor, cleanRewardGlyph, isBalanceReset } from '
 import { isNegativeTask } from './negativeHabits';
 import { occurrenceFamilyKey } from './searchCollapse';
 import { onLogicalDay } from './clockTime';
-import { windowBoundsFor } from './visibilityUtils';
+import { isQuotaTask, windowBoundsFor } from './visibilityUtils';
 
 /**
  * Unlocks: a treat opened by doing a share of the day's work, rather than
@@ -42,6 +42,12 @@ import { windowBoundsFor } from './visibilityUtils';
  *   that unlock (`isAfterCutoff`), so a bedtime routine doesn't hold the share
  *   down until bedtime. Only the window's start counts; it changes nothing
  *   about the task or its coins.
+ *
+ * - **A target task is left out of the count.** "Drink 15 cups" is paced
+ *   across the day, so what is left of it at 3pm isn't work that is late, and
+ *   counting it kept the unlock shut until the last cup. Neither its coins
+ *   still open nor the coins it earns count (`workCoinsToday`). Name it as a
+ *   required task to make an unlock wait for it.
  *
  * - **The play time is a daily allowance, not per stretch.** Stopping and
  *   starting again carries on from what's left. "+15 min" adds to today only.
@@ -414,20 +420,30 @@ export interface UnlockWorld {
   vacation: boolean;
 }
 
+/**
+ * The coins earned and still open that an unlock's share is read from. A target
+ * task (`isQuotaTask`) is on neither side: it is paced across the day, so
+ * counting what is left of it held the share down for work that isn't due yet.
+ * A coin whose task is gone (purged) still counts: there is nothing to read
+ * its window or target from.
+ */
+export function workCoinsToday(unlock: Pick<RewardUnlock, 'ignoreAfter'>, world: UnlockWorld): { earned: number; open: number } {
+  const cutoff = unlock.ignoreAfter;
+  const byId = new Map(world.tasks.map(t => [t.id, t]));
+  const skipTask = (t: Task) => isQuotaTask(t) || (!!cutoff && isAfterCutoff(t, cutoff, world.todayStart));
+  return {
+    earned: coinsEarnedToday(world.entries, world.todayStart, taskId => { const t = byId.get(taskId); return !!t && skipTask(t); }),
+    open: coinsStillOpenToday(world.onToday, skipTask),
+  };
+}
+
+/** Where one unlock stands now, and the required tasks behind it. */
 /** Where one unlock stands now, and the required tasks behind it. */
 export function statusOfUnlock(unlock: RewardUnlock, world: UnlockWorld): { status: UnlockStatus; required: RequiredToday } {
-  const cutoff = unlock.ignoreAfter;
-  const byId = cutoff ? new Map(world.tasks.map(t => [t.id, t])) : null;
-  // A coin whose task is gone (purged) still counts: there is nothing to read its window from.
-  const skipEarned = cutoff && byId
-    ? (taskId: string) => { const t = byId.get(taskId); return !!t && isAfterCutoff(t, cutoff, world.todayStart); }
-    : undefined;
-  const skipOpen = cutoff ? (t: Task) => isAfterCutoff(t, cutoff, world.todayStart) : undefined;
   const required = requiredToday(unlock.requiredTaskIds, world.tasks, world.onToday, world.todayStart);
   const weekday = world.todayStart.getDay();
   const status = unlockStatus(unlock, {
-    earned: coinsEarnedToday(world.entries, world.todayStart, skipEarned),
-    open: coinsStillOpenToday(world.onToday, skipOpen),
+    ...workCoinsToday(unlock, world),
     pending: required.pending,
     weekend: weekday === 0 || weekday === 6,
     vacation: world.vacation,
