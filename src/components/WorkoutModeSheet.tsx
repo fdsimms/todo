@@ -52,6 +52,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { useRestTimer } from '../hooks/useRestTimer';
 import { ExerciseRestSheet } from './ExerciseRestSheet';
+import { ManualRestSheet } from './ManualRestSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
@@ -484,6 +485,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // ==== the exercise's "•••" menu: supersets ====
   // The exercise whose rest the Rest chip's card is open on.
   const [restFor, setRestFor] = useState<string | null>(null);
+  // The header's timer card, for a rest no set started.
+  const [timerOpen, setTimerOpen] = useState(false);
   const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
   const joinSuperset = (exerciseId: string, partnerId: string) => {
     if (!session) return;
@@ -752,7 +755,18 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} startedStyle={styles.subtitle} />}
           </View>
           {!finishing && session ? (
-            <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
+            <View style={styles.headerRight}>
+              <TouchableOpacity
+                style={styles.headerIcon}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); Keyboard.dismiss(); setTimerOpen(true); }}
+                accessibilityRole="button"
+                accessibilityLabel="Start a timer"
+              >
+                <Ionicons name="timer-outline" size={iconSize.lg} color={colors.accentText} />
+              </TouchableOpacity>
+              <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
+            </View>
           ) : <View style={styles.headerSpacer} />}
         </View>
 
@@ -1500,6 +1514,17 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           />
         );
       })()}
+      <ManualRestSheet
+        visible={visible && timerOpen && session !== null}
+        initialSeconds={defaultRestSeconds}
+        onStart={seconds => {
+          if (!session) return;
+          // exerciseId and label are empty: no set started this one, and an empty
+          // label reads as plain "Rest" in the strip and on the Lock Screen.
+          useStepTimerStore.getState().startRest({ sessionId: session.id, exerciseId: '', sessionTitle: session.title, label: '', durationSeconds: seconds });
+        }}
+        onClose={() => setTimerOpen(false)}
+      />
       <ExerciseRestSheet
         visible={visible && restFor !== null && session !== null}
         exerciseName={restFor ? catalogExercise(exerciseRows, restFor)?.name ?? 'This exercise' : ''}
@@ -1831,6 +1856,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.smd, gap: spacing.sm },
   headerTitle: { flex: 1, alignItems: 'center' },
   headerSpacer: { minWidth: 64 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  headerIcon: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
   title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
   elapsed: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   subtitle: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs, fontVariant: ['tabular-nums'] },
