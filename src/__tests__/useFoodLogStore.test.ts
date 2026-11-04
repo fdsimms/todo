@@ -1094,6 +1094,29 @@ describe('moveEntries', () => {
   });
 });
 
+describe('moveEntries and saved meals', () => {
+  const meal = { savedMealId: 'm1', savedMealName: 'Shake' };
+
+  it('keeps the saved meal when every food in the tray moves together', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft({ label: 'A', slot: 'dinner', ...meal }))!;
+    const b = state().addEntry(draft({ label: 'B', slot: 'dinner', ...meal }))!;
+    state().moveEntries([a.id, b.id], 'lunch');
+    expect(dbBulkSetFoodLogSlot).toHaveBeenCalledWith([a.id, b.id], 'lunch', true);
+    const moved = state().entries.filter(e => e.slot === 'lunch');
+    expect(moved.map(e => e.savedMealId)).toEqual(['m1', 'm1']);
+  });
+
+  it('still drops one food that leaves the others behind', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft({ label: 'A', slot: 'dinner', ...meal }))!;
+    const b = state().addEntry(draft({ label: 'B', slot: 'dinner', ...meal }))!;
+    state().moveEntries([a.id], 'lunch');
+    expect(state().entries.find(e => e.id === a.id)?.savedMealId).toBeNull();
+    expect(state().entries.find(e => e.id === b.id)?.savedMealId).toBe('m1');
+  });
+});
+
 describe('reorderEntries', () => {
   it('persists a drop\'s new slot and rank together', () => {
     state().loadRange('2026-04-02', '2026-04-02');
