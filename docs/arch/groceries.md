@@ -273,13 +273,22 @@ times over, and the restraint that keeps it from becoming one is a single rule:
   actually alternate with — the exact case this exists to describe; and it would put a row in the
   pantry for every box anyone had ever named, three loaves of bread included. The item's own
   purchase reading stays the answer to "do I have any of this"; a box says which packet.
-- **A box's row joins the item's, never replaces it.** Replacing was written first and hides data:
-  freezing one packet dropped the item row, and with it the *other* packet, which nothing but the
-  item's own purchase reading covers. An item silently leaving the pantry because you spoke about
-  one of its boxes is a worse failure than naming it twice. So an item nobody has said anything
-  box-specific about is exactly one row, as always, and each packet spoken about adds one. The one
-  subtraction: when a box is the *only* thing answering for the item, the item row would be that
-  box's claim wearing the item's name, so it's dropped and the box row says it better.
+- **A box's claim joins the item's, never replaces it, and the Pantry draws one row per item.**
+  Replacing was written first and hides data: freezing one packet dropped the item row, and with
+  it the *other* packet, which nothing but the item's own purchase reading covers. So
+  `pantryEntries` still returns the item's own row plus a row per box, and `kitchenInventory`
+  folds them into one (`mergeItemRows`): the item's name, the named boxes in the bright weight
+  ahead of the caption ("Oatly Barista · …"), the soonest use-by day, and every folded row's reason,
+  so a frozen or opened box still reads as such. Two rows for one food read as a bug. Where a box is
+  the *only* thing answering for the item (no row of the item's own, one box), it stays the one row
+  and keeps its box-specific actions. **A frozen portion is not folded**: it is stock in another
+  place rather than a product, so it keeps its freezer row (see "Freeze some" below). A folded row
+  is an item row, so its ✕ and drops are the item's.
+- **A product is named only from something the person said.** `answerPantryReview` takes the box a
+  logged food named (`productId`) and, for "Still have it" and "Bought more", marks that box on
+  hand alongside the item (`reviewedBoxRow`). The Pantry field on the food log sheet and the scanned
+  package sheet are the control: left blank, as for a soda finished at the store, nothing is
+  written, so no location or inference decides what is in the kitchen.
 - **An item-level "Out of it" outranks every box but a frozen portion.** It's the blunter, later
   statement — "I'm out of vegan ground beef" is about all of them — and keeping it in front is what
   stops the ✕ on an item row reading as a dead control, the same argument that puts it above the
@@ -1026,7 +1035,9 @@ gesture onto it — that's the inventory again.
   added to a list, which reads as the assertion having been forgotten. The row says "on the list"
   instead.
 - **The row's caption is `probablyHaveReason`'s own words**, verbatim — the same line a week plan
-  and the item sheet already show. A second phrasing here is a second thing to keep true.
+  and the item sheet already show. A second phrasing here is a second thing to keep true. The one
+  exception is "marked as on hand" (`MARKED_ON_HAND_REASON`), which the row leaves off: its "Have
+  it" pill already says so, and the line is better spent on the product's name.
 - **A purchase is read, never asserted** (#1770). `finishShopping` used to stamp a computed
   `onHandUntil` onto everything it bought, which meant `probablyHaveReason` took its assertion
   branch for any row ever bought and the purchase branch below was unreachable — so the pantry

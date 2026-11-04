@@ -1852,7 +1852,7 @@ export function FoodLogEntrySheet({
     }
     // Written only once the entry is, so a refused log leaves the pantry as it
     // was. The same write the pantry review's three answers make.
-    if (pantryAnswer && picked.itemId && !editing && !onPickFood) answerPantryReview(picked.itemId, pantryAnswer, { addToList: pantryAddToList });
+    if (pantryAnswer && picked.itemId && !editing && !onPickFood) answerPantryReview(picked.itemId, pantryAnswer, { addToList: pantryAddToList, productId: picked.productId });
     afterSave(picked.label);
   };
 

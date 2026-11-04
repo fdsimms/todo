@@ -19,6 +19,7 @@ import {
   productOnHandRow,
   productOpenedRow,
   productsOutPlan,
+  reviewedBoxRow,
   reviewedRow,
   runningLowRow,
   thawedPortionsOf,
@@ -167,6 +168,21 @@ describe('boxes', () => {
   it('productOnHandRow is null when unchanged and clears the story on out', () => {
     expect(productOnHandRow(box(), null)).toBeNull();
     expect(productOnHandRow(box({ expiresAt: '2026-09-01' }), OUT_OF_IT_UNTIL)).toMatchObject({ expiresAt: null });
+  });
+
+  it('reviewedBoxRow marks a logged box on hand, and a new packet ends the old one\'s story', () => {
+    const until = '2026-09-10T00:00:00.000Z';
+    const opened = box({ openedAt: iso(NOW), frozenAt: iso(NOW), expiresAt: '2026-09-01' });
+    expect(reviewedBoxRow(opened, 'have', until)).toMatchObject({ onHandUntil: until, openedAt: iso(NOW), frozenAt: iso(NOW) });
+    expect(reviewedBoxRow(opened, 'new', until)).toMatchObject({ onHandUntil: until, openedAt: null, frozenAt: null, expiresAt: null });
+  });
+
+  it('reviewedBoxRow writes nothing for the other answers, a portion, or no change', () => {
+    const until = '2026-09-10T00:00:00.000Z';
+    expect(reviewedBoxRow(box(), 'out', until)).toBeNull();
+    expect(reviewedBoxRow(box(), 'low', until)).toBeNull();
+    expect(reviewedBoxRow(box({ isPortion: true }), 'have', until)).toBeNull();
+    expect(reviewedBoxRow(box({ onHandUntil: until }), 'have', until)).toBeNull();
   });
 
   it('freezePortionRow reuses the portion, restarts nothing when already frozen and clears the rest', () => {

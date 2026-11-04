@@ -166,6 +166,36 @@ export function productOnHandRow(product: ItemProduct, until: string | null): It
 }
 
 /**
+ * The box a logged food named, answering "Still have it" or "Bought more" on
+ * the log sheet. Written alongside the item's own answer, so the Pantry can
+ * say which product the row is about; the person said it, nothing is guessed.
+ *
+ * `new` is a packet that just came home, so it ends the old packet's story
+ * (use-by, frozen and opened stamps), the same as `reviewedRow` does for the
+ * item. A portion is never the answer: it is stock of the item, not a brand.
+ * Null when nothing would change.
+ */
+export function reviewedBoxRow(
+  product: ItemProduct,
+  answer: PantryReviewAnswer,
+  until: string
+): ItemProduct | null {
+  if (answer !== 'have' && answer !== 'new') return null;
+  if (isPortionBox(product)) return null;
+  const next: ItemProduct = {
+    ...product,
+    onHandUntil: until,
+    ...(answer === 'new' ? BOX_STORY_CLEARED : null),
+  };
+  const same =
+    next.onHandUntil === product.onHandUntil &&
+    next.expiresAt === product.expiresAt &&
+    next.frozenAt === product.frozenAt &&
+    next.openedAt === product.openedAt;
+  return same ? null : next;
+}
+
+/**
  * Boxes going out. A portion goes altogether rather than being marked, since
  * there is no "out of the portion" worth remembering; everything else keeps
  * its row. Boxes already out are left out of both lists.

@@ -669,7 +669,7 @@ export function probablyHaveReason(
   // see `describeFrozenSince`, which the kitchen row pairs with this.
   if (item.frozenAt) return FROZEN_REASON;
 
-  if (asserted === true) return 'marked as on hand';
+  if (asserted === true) return MARKED_ON_HAND_REASON;
 
   // A box's own claim, above the purchase guess below for the reason every
   // hand-made statement in this ladder outranks it: the user said this about a
@@ -796,7 +796,7 @@ export function productHaveReason(product: ItemProduct, now: Date): string | nul
   // it" does — the thaw stamps one (`setProductFrozen`), so it lapses like any
   // other claim rather than sitting in the pantry for ever — but in its own
   // words, since nobody marked it on hand. They took it out of the freezer.
-  if (asserted === true) return isPortionBox(product) ? THAWED_PORTION_REASON : 'marked as on hand';
+  if (asserted === true) return isPortionBox(product) ? THAWED_PORTION_REASON : MARKED_ON_HAND_REASON;
   return null;
 }
 
@@ -870,6 +870,13 @@ export function correctableHaveReason(item: GroceryItem, now: Date): string | nu
 export function defaultOnHandUntil(item: GroceryItem, now: Date): string {
   return new Date(now.getTime() + onHandWindowDays(item, now) * DAY_MS).toISOString();
 }
+
+/**
+ * What `probablyHaveReason` says for a row the person marked on hand. Exported
+ * so the Pantry, whose "Have it" pill already says exactly this, can leave it
+ * off the row instead of comparing against a copy of the string.
+ */
+export const MARKED_ON_HAND_REASON = 'marked as on hand';
 
 export interface PantryEntry {
   item: GroceryItem;

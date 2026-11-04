@@ -2,7 +2,7 @@ import type { GroceryItem, ItemProduct, Leftover, LeftoverFreshness } from '../t
 import { FROZEN_REASON, isPortionBox } from '../types';
 import { OTHER_AISLE } from './groceryAisles';
 import { groceryNameKey } from './groceryParse';
-import { matchWeight, pantryEntries, sectionsInAisleOrder } from './grocerySuggest';
+import { MARKED_ON_HAND_REASON, matchWeight, pantryEntries, sectionsInAisleOrder } from './grocerySuggest';
 import { describeProduct } from './groceryProduct';
 import { daysUntilDay, describeFrozenSince, describeOpenedOn, describeUseBy, freshnessFor, isUseUpSoon, liveUseBy } from './freshness';
 import { liveExpiresAt } from './groceryShelfLife';
@@ -384,9 +384,15 @@ export function kitchenInventory(
     // about the jar, not a state of the countdown — so it reads
     // "bought 4× · last on Aug 19 · opened Aug 12 · Use by tomorrow". Dropped
     // for a frozen row, which has already replaced the reason with the freezer.
+    //
+    // "marked as on hand" is left off: the row's "Have it" pill says the same
+    // thing, so a caption repeating it only crowded out the product's name.
+    // Every other reason (a purchase guess, the freezer, a thawed portion)
+    // says something the pill can't and stays.
+    const shownReason = reason === MARKED_ON_HAND_REASON ? '' : reason;
     const fullReason = openedAt && !frozenAt
-      ? `${reason} · ${describeOpenedOn(openedAt, now)}`
-      : reason;
+      ? [shownReason, describeOpenedOn(openedAt, now)].filter(Boolean).join(' · ')
+      : shownReason;
     const captionParts = [productName, fullReason, useByCaption || null]
       .filter((part): part is string => !!part);
     entries.push({
@@ -411,7 +417,74 @@ export function kitchenInventory(
     });
   }
 
-  return entries.sort(compareKitchenEntries);
+  return mergeItemRows(entries).sort(compareKitchenEntries);
+}
+
+/**
+ * One row per item. An item the person has said something box-specific about
+ * (`ItemProduct`'s own pantry claims) comes out of `pantryEntries` as its own
+ * row plus a row per box, which on screen read as the same food listed twice.
+ * Those fold back into one row carrying the item's name, with the box names on
+ * it: the Pantry is a list of things you have, with the product named where
+ * the app has a record of it.
+ *
+ * - **A lone box with no item row of its own stays a `product` row.** It is
+ *   already one row, and its actions (frozen, opened, out) are about that one
+ *   packet.
+ * - **A folded row is an item row** (`kind: 'grocery'`, `sourceId` the item), so
+ *   its actions are the item's, the blunt statements about all of it.
+ * - **A frozen portion is not folded.** It is stock in another place rather
+ *   than a product, so it keeps its own row in the freezer. Two named boxes
+ *   list both names, in the order the rows already sorted them.
+ * - **The earliest use-by day wins**, so folding two packets never hides the
+ *   one about to go off. The reasons of every folded row are kept, so a frozen
+ *   or opened box still says so; the section is the item row's, or the first
+ *   box's when no item row exists.
+ */
+function mergeItemRows(entries: KitchenEntry[]): KitchenEntry[] {
+  const groups = new Map<string, KitchenEntry[]>();
+  const out: KitchenEntry[] = [];
+  for (const entry of entries) {
+    // A frozen portion is stock in another place, not a product of the item
+    // ("Freeze some" put it in the freezer on purpose), so it keeps its row.
+    if (entry.kind === 'leftover' || entry.productName === PORTION_LABEL) { out.push(entry); continue; }
+    const itemId = entry.kind === 'product' ? entry.itemId! : entry.sourceId;
+    const group = groups.get(itemId);
+    if (group) group.push(entry);
+    else groups.set(itemId, [entry]);
+  }
+  for (const [itemId, group] of groups) {
+    if (group.length === 1) { out.push(group[0]); continue; }
+    const base = group.find(e => e.kind === 'grocery') ?? group[0];
+    const names = group
+      .filter(e => e.kind === 'product' && e.productName)
+      .map(e => e.productName as string);
+    const dated = group.filter(e => e.useBy);
+    const soonest = dated.length > 0
+      ? dated.reduce((a, b) => (b.useBy! < a.useBy! ? b : a))
+      : base;
+    const productName = names.length > 0 ? names.join(', ') : null;
+    // Every distinct thing the folded rows said, base first: a frozen or opened
+    // box still reads as such on the one row, even though its own row is gone.
+    const reason = [...new Set([base.reason, ...group.map(e => e.reason)].filter(Boolean))].join(' · ');
+    const useByCaption = soonest.useByCaption;
+    out.push({
+      ...base,
+      id: kitchenEntryId('grocery', itemId),
+      sourceId: itemId,
+      kind: 'grocery',
+      itemId: null,
+      productName,
+      useBy: soonest.useBy,
+      freshness: soonest.freshness,
+      daysLeft: soonest.daysLeft,
+      reason,
+      useByCaption,
+      caption: [productName, reason, useByCaption || null].filter((part): part is string => !!part).join(' · '),
+      onList: group.some(e => e.onList),
+    });
+  }
+  return out;
 }
 
 /**

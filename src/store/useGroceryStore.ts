@@ -116,6 +116,7 @@ import {
   openedRow,
   productFrozenRow,
   productOnHandRow,
+  reviewedBoxRow,
   productOpenedRow,
   productsOutPlan,
   planAddToPantry,
@@ -1175,7 +1176,15 @@ interface GroceryStore extends UndoHistoryActions {
   answerPantryReview: (
     itemId: string,
     answer: PantryReviewAnswer,
-    opts?: { addToList?: boolean }
+    opts?: {
+      addToList?: boolean;
+      /**
+       * The box the answer is about, from a logged food that named one. "Still
+       * have it" and "Bought more" then also mark that box on hand, so the
+       * Pantry row can name the product. Other answers ignore it.
+       */
+      productId?: string | null;
+    }
   ) => ItemProduct[];
   /**
    * Write an item's own fields back, and the remembered aisle for its name (the
@@ -3725,9 +3734,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       for (const p of thawedPortions) dbDeleteItemProduct(p.id);
     });
     const gone = new Set(thawedPortions.map(p => p.id));
+    // The logged food's own box, when it named one of this item's: its claim
+    // carries the same window the item just got.
+    const box = opts.productId
+      ? get().itemProducts.find(p => p.id === opts.productId && p.itemId === itemId)
+      : undefined;
+    const boxUpdated = box && updated.onHandUntil
+      ? reviewedBoxRow(box, answer, updated.onHandUntil)
+      : null;
+    if (boxUpdated) dbSetItemProduct(boxUpdated);
     set(s => ({
       items: s.items.map(i => (i.id === itemId ? updated : i)),
-      itemProducts: gone.size > 0 ? s.itemProducts.filter(p => !gone.has(p.id)) : s.itemProducts,
+      itemProducts: (gone.size > 0 ? s.itemProducts.filter(p => !gone.has(p.id)) : s.itemProducts)
+        .map(p => (boxUpdated && p.id === boxUpdated.id ? boxUpdated : p)),
     }));
     // After the row write above, which carries the item's home-list mirror
     // columns: removing the entry first had them written straight back.
