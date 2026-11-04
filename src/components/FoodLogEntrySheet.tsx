@@ -128,6 +128,7 @@ import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { MealPickerRow } from './MealPickerRow';
 import { CountStepper } from './CountStepper';
 import { Toggle } from './Toggle';
+import { NameSheet, type NameRequest } from './NameSheet';
 import {
   DRINK_PRESETS,
   DRINK_STEP,
@@ -593,6 +594,7 @@ export function FoodLogEntrySheet({
   const searchFilter = useFilterField();
   const query = searchFilter.query;
   const [picked, setPicked] = useState<Candidate | null>(null);
+  const [namingItem, setNamingItem] = useState<NameRequest | null>(null);
   /** The fridge container whose share is being asked, with the figures it would log. */
   const [shareAsk, setShareAsk] = useState<{ leftover: Leftover; figures: ContainerFigures } | null>(null);
   const shownShareAsk = useSheetSubject(shareAsk);
@@ -1585,33 +1587,30 @@ export function FoodLogEntrySheet({
    * is then the name it is searched for and listed under from here on. Only
    * the catalog row takes the typed name: this entry keeps the description it
    * was found under, the same as filing it against "Something I already have"
-   * does. A blank name files nothing, the way the app's renames treat a blank.
+   * does. Add stays off while the name is blank, the way the app's renames
+   * treat a blank.
    */
   const fileAsNewItem = () => {
     if (!picked) return;
     const described = picked.label;
-    Alert.prompt(
-      'Add as a new item',
-      'Name for this item in your grocery catalog. It isn’t added to your shopping list.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: 'Add',
-          onPress: (text?: string) => {
-            const name = (text ?? '').trim();
-            if (!name) return;
-            // `ensureCatalogItem` rather than `addByName`, the same restraint
-            // `FoodLogScreen`'s scan handler takes: eating something is not a
-            // plan to buy it, so a row minted here arrives off the list.
-            const item = ensureCatalogItem(name);
-            if (!item) { haptics.error(); return; }
-            fileInCatalog(item);
-          },
-        },
-      ],
-      'plain-text',
-      described,
-    );
+    setNamingItem({
+      title: 'Add as a new item',
+      initial: described,
+      placeholder: 'Item name',
+      hint: 'Name for this item in your grocery catalog. It isn’t added to your shopping list.',
+      saveLabel: 'Add',
+      // The database's own name is a fair answer as it stands.
+      saveUnchanged: true,
+      refusal: () => null,
+      onSave: name => {
+        // `ensureCatalogItem` rather than `addByName`, the same restraint
+        // `FoodLogScreen`'s scan handler takes: eating something is not a
+        // plan to buy it, so a row minted here arrives off the list.
+        const item = ensureCatalogItem(name);
+        if (!item) { haptics.error(); return; }
+        fileInCatalog(item);
+      },
+    });
   };
 
   // ==== actions: saving, picking from the database, leaving ====
@@ -3229,6 +3228,7 @@ export function FoodLogEntrySheet({
         onClose={() => setShareAsk(null)}
       />
       {overlays}
+      <NameSheet request={namingItem} onClose={() => setNamingItem(null)} />
       <FoodCameraSheet
         visible={visible && cameraOpen}
         modes={cameraModes}

@@ -22,6 +22,12 @@ export interface NameRequest {
   saveLabel?: string;
   maxLength?: number;
   /**
+   * Save the prefilled name as it stands. Off for a rename, where an unchanged
+   * name has nothing to write; on where the name makes something new and the
+   * prefill is a fair answer (a routine named after its workout).
+   */
+  saveUnchanged?: boolean;
+  /**
    * The sentence to show when what is typed can't be used, or null. Asked on
    * every keystroke and again at Save, from the same rule the store refuses on,
    * so the sheet can't accept a name the store would turn away.
@@ -74,7 +80,7 @@ export function NameSheet({ request: live, onClose }: Props) {
   const save = () => {
     if (!typed || refusal) return;
     // Nothing to write for a rename that changed nothing.
-    if (unchanged) { dismiss(); return; }
+    if (unchanged && !request.saveUnchanged) { dismiss(); return; }
     card.close(() => { request.onSave(typed); onClose(); });
   };
 

@@ -7,6 +7,7 @@ import { iconSize, interaction } from '../../theme';
 import { animateLayout } from '../../utils/layoutAnimation';
 import { haptics } from '../../utils/haptics';
 import {
+  AGENT_NOTE_MAX_LENGTH,
   addAgentNote,
   editAgentNote,
   readAgentNotes,
@@ -14,6 +15,7 @@ import {
   writeAgentNotes,
   type AgentNote,
 } from '../../utils/agentNotes';
+import { NameSheet, type NameRequest } from '../../components/NameSheet';
 import { SettingsRow } from './SettingsRow';
 import { makeSettingsStyles } from './settingsStyles';
 import { BUTTON_LABEL } from '../../copy/shared';
@@ -33,6 +35,7 @@ export function AgentNotesRows() {
   const styles = makeSettingsStyles(colors);
   const [notes, setNotes] = useState<AgentNote[]>([]);
   const [open, setOpen] = useState(false);
+  const [asking, setAsking] = useState<NameRequest | null>(null);
 
   useFocusEffect(React.useCallback(() => { setNotes(readAgentNotes()); }, []));
 
@@ -43,47 +46,41 @@ export function AgentNotesRows() {
   };
 
   const add = () => {
-    Alert.prompt(
-      'Add a note for Claude',
-      'Something for Claude to keep in mind when it works with your list.',
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: 'Add',
-          onPress: (text?: string) => {
-            const result = addAgentNote(notes, text ?? '');
-            if (!result.ok) {
-              Alert.alert('Not added', result.reason);
-              return;
-            }
-            haptics.success();
-            commit(result.notes);
-            setOpen(true);
-          },
-        },
-      ],
-      'plain-text',
-    );
+    setAsking({
+      title: 'Add a note for Claude',
+      initial: '',
+      placeholder: 'e.g. Errands happen on Saturdays',
+      hint: 'Something for Claude to keep in mind when it works with your list.',
+      saveLabel: 'Add',
+      maxLength: AGENT_NOTE_MAX_LENGTH,
+      // Asked of addAgentNote itself, so the sheet refuses exactly what the
+      // write would (the note limit, mostly) under the field, not after Add.
+      refusal: typed => {
+        const result = addAgentNote(notes, typed);
+        return result.ok ? null : result.reason;
+      },
+      onSave: typed => {
+        const result = addAgentNote(notes, typed);
+        if (!result.ok) return;
+        haptics.success();
+        commit(result.notes);
+        setOpen(true);
+      },
+    });
   };
 
   const edit = (note: AgentNote) => {
-    Alert.prompt(
-      'Edit note',
-      undefined,
-      [
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-        {
-          text: BUTTON_LABEL.save,
-          onPress: (text?: string) => {
-            if ((text ?? '').trim() === note.text) return;
-            haptics.success();
-            commit(editAgentNote(notes, note.id, text ?? ''));
-          },
-        },
-      ],
-      'plain-text',
-      note.text,
-    );
+    setAsking({
+      title: 'Edit note',
+      initial: note.text,
+      placeholder: 'Note',
+      maxLength: AGENT_NOTE_MAX_LENGTH,
+      refusal: () => null,
+      onSave: typed => {
+        haptics.success();
+        commit(editAgentNote(notes, note.id, typed));
+      },
+    });
   };
 
   const remove = (note: AgentNote) => {
@@ -147,6 +144,7 @@ export function AgentNotesRows() {
           />
         </>
       )}
+      <NameSheet request={asking} onClose={() => setAsking(null)} />
     </>
   );
 }

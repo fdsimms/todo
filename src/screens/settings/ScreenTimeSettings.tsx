@@ -499,11 +499,17 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
   const keyLocked = useNfcKeyStore(s => s.locked);
 
   const nameThen = (title: string, fallback: string, then: (name: string) => void) => {
-    // iOS only, like the rest of this screen, so the prompt needs no Android branch.
-    Alert.prompt(title, 'Choose a name so you can tell your tags apart.', [
-      { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      { text: 'Add', onPress: (text?: string) => then(text ?? '') },
-    ], 'plain-text', fallback);
+    setNaming({
+      title,
+      initial: fallback,
+      placeholder: fallback,
+      hint: 'Choose a name so you can tell your tags apart.',
+      saveLabel: 'Add',
+      // A new tag, so the suggested name is a fair answer as it stands.
+      saveUnchanged: true,
+      refusal: () => null,
+      onSave: then,
+    });
   };
 
   const enrollFailed = (reason: 'unreadable' | 'full' | 'duplicate') => {
