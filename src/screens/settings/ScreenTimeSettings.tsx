@@ -74,6 +74,8 @@ interface Props {
  * lifting a block from this screen would bypass that record, so a new one goes
  * through `releaseAllBlocks` rather than writing a store.
  */
+const BLOCKING_BADGE = 'Blocking now';
+
 export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onEndAllBlocks }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -151,7 +153,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
   };
   /** The line under a supergroup: what is blocking it now, else the groups it combines. */
   const supergroupHint = (group: { id: string; members?: string[] }) => {
-    if (groupLocked(group.id)) return 'Blocking now. Its groups can’t change until it ends.';
+    if (groupLocked(group.id)) return 'Its groups can’t change until the block is lifted.';
     const names = supergroupMembers(customGroups, group.id, groupsMeta).map(g => g.name);
     if (names.length === 0) return 'No groups';
     return supergroupMode(customGroups, group.id, groupsMeta) === 'allow'
@@ -748,6 +750,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
           entryId="screenTimeApps"
           icon="apps-outline"
           iconColor={totalOf(DEFAULT_GROUP_ID) > 0 ? colors.accent : undefined}
+          badge={groupLocked(DEFAULT_GROUP_ID) ? BLOCKING_BADGE : undefined}
           label={groupsMeta.baseName}
           hint={groupHint(DEFAULT_GROUP_ID)}
           alwaysShowHint={groupLocked(DEFAULT_GROUP_ID)}
@@ -762,6 +765,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
               <SettingsRow
                 icon="layers-outline"
                 iconColor={totalOf(group.id) > 0 ? colors.accent : undefined}
+                badge={groupLocked(group.id) ? BLOCKING_BADGE : undefined}
                 label={group.name}
                 hint={supergroupHint(group)}
                 alwaysShowHint
@@ -773,6 +777,7 @@ export function ScreenTimeSettings({ reasons, counts, pending, onChooseApps, onE
               <SettingsRow
                 icon={allowGroup(group.id) ? 'shield-checkmark-outline' : 'apps-outline'}
                 iconColor={totalOf(group.id) > 0 ? colors.accent : undefined}
+                badge={groupLocked(group.id) ? BLOCKING_BADGE : undefined}
                 label={group.name}
                 hint={groupHint(group.id)}
                 alwaysShowHint={groupLocked(group.id)}

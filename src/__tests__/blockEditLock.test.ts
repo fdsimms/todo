@@ -94,15 +94,15 @@ describe('the hint under a blocking group', () => {
   });
 
   it('says adds apply now and removals wait, and that a staged removal is still waiting', () => {
-    expect(groupBlockHint(true, false)).toContain('add apps');
+    expect(groupBlockHint(true, false)).toContain('add new apps');
     expect(groupBlockHint(true, true)).toContain('removed stay blocked');
   });
 
-  it('says an allowlist takes no change until the block ends, adds included', () => {
+  it('says an allowlist takes no change until the block is lifted, adds included', () => {
     expect(groupBlockHint(false, false, true)).toBeNull();
-    expect(groupBlockHint(true, false, true)).toContain('wait until it ends');
-    expect(groupBlockHint(true, false, true)).not.toContain('add apps');
-    expect(groupBlockHint(true, true, true)).toContain('apply when it ends');
+    expect(groupBlockHint(true, false, true)).toContain('won’t take effect');
+    expect(groupBlockHint(true, false, true)).not.toContain('add new apps');
+    expect(groupBlockHint(true, true, true)).toContain('apply the next time the block is lifted');
   });
 });
 
