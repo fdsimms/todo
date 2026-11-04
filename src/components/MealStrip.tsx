@@ -9,7 +9,9 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type MealPlanEntry, type MealSlot, type Recipe } from '../types';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { describeProductOfItem } from '../utils/groceryProduct';
+import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type FoodLogEntry, type MealPlanEntry, type MealSlot, type Recipe } from '../types';
 import { titleForEntry } from '../utils/mealPlan';
 import { isMealStripDone, mealStripCells, mealStripSlots, type MealStripCell } from '../utils/mealStrip';
 import { recipeLinkUrl } from '../utils/mealSlotTasks';
@@ -50,6 +52,8 @@ export function MealStrip({ dayKey, refreshKey }: Props) {
   const logCount = useFoodLogStore(s => s.totalCount);
   const logWindow = useFoodLogStore(s => s.entries);
   const recipes = useRecipeStore(s => s.recipes);
+  const itemProducts = useGroceryStore(s => s.itemProducts);
+  const items = useGroceryStore(s => s.items);
   const [menu, setMenu] = useState<{ cell: MealStripCell; anchor: CardAnchor } | null>(null);
 
   const recipesById = useMemo(() => new Map<string, Recipe>(recipes.map(r => [r.id, r])), [recipes]);
@@ -57,10 +61,17 @@ export function MealStrip({ dayKey, refreshKey }: Props) {
   const cells = useMemo(() => {
     const planned = useMealPlanStore.getState().entriesForDayLive(dayKey);
     const logged = useFoodLogStore.getState().recentEntries(dayKey, dayKey);
-    return mealStripCells(slots, planned, logged, dayKey, e => titleForEntry(e, recipesById));
+    // A log entry from a product is labeled "item, product". The strip says
+    // one or the other: the product when there is one, else the item.
+    const logLabelOf = (e: FoodLogEntry) => {
+      const product = e.productId ? itemProducts.find(p => p.id === e.productId) : null;
+      const item = e.itemId ? items.find(i => i.id === e.itemId) : null;
+      return (product && describeProductOfItem(product, item?.name)) || e.label;
+    };
+    return mealStripCells(slots, planned, logged, dayKey, e => titleForEntry(e, recipesById), logLabelOf);
     // The window and count deps aren't read here: they're the signal that a
     // read of the day would now come back different (see `refreshKey`).
-  }, [slots, dayKey, recipesById, planWindow, logCount, logWindow, refreshKey]);
+  }, [slots, dayKey, recipesById, itemProducts, items, planWindow, logCount, logWindow, refreshKey]);
 
   const open = (cell: MealStripCell, e: GestureResponderEvent) => {
     haptics.tap();

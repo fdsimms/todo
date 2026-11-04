@@ -96,6 +96,7 @@ export function mealStripCells(
   logged: readonly FoodLogEntry[],
   dayKey: string,
   titleOf: (entry: MealPlanEntry) => string,
+  logLabelOf: (entry: FoodLogEntry) => string = e => e.label,
 ): MealStripCell[] {
   const coverage = mealDayCoverage(planned, logged, dayKey);
   return slots.map(slot => {
@@ -104,7 +105,7 @@ export function mealStripCells(
     const inLog = c?.logged ?? [];
     const join = (names: string[]) => [...new Set(names.map(n => n.trim()).filter(Boolean))].join(', ') || null;
     if (inLog.length > 0) {
-      return { slot, state: 'logged', text: join(inLog.map(e => e.label)), planned: inPlan, logged: inLog };
+      return { slot, state: 'logged', text: join(inLog.map(logLabelOf)), planned: inPlan, logged: inLog };
     }
     if (inPlan.length > 0) {
       const state: MealStripState = inPlan.some(e => e.cookedAt) ? 'eaten' : 'planned';
