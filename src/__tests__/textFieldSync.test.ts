@@ -69,7 +69,13 @@ describe('nextFieldSync', () => {
     const sync = fieldChanged(initialFieldSync('', 'a'), 'rutabaga');
     const next = nextFieldSync(sync, 'rutabaga', 'b');
     expect(next.write).toBe('rutabaga');
+    expect(next.rebuild).toBe(true);
     expect(nextFieldSync(next.sync, 'rutabaga', 'b').write).toBeNull();
+  });
+
+  it('does not rebuild for an ordinary write', () => {
+    const sync = fieldChanged(initialFieldSync('', 'a'), 'rutabaga');
+    expect(nextFieldSync(sync, 'pay rent', 'a').rebuild).toBe(false);
   });
 
   it('writes nothing on a style change while an empty field is still empty', () => {
