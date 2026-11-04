@@ -36,7 +36,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useStoreWhileOpen } from '../hooks/useStoreWhileOpen';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, NUTRIENT_KEYS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type ItemProduct, type ItemSubLink, type Leftover, type NutrientKey, type MealSlot, type Recipe, type SavedMeal, type SavedMealItem } from '../types';
+import { NUTRIENT_KEYS, MEAL_SLOT_LABELS, isPortionBox, type FoodLogEntry, type FoodNutrition, type GroceryItem, type ItemProduct, type ItemSubLink, type Leftover, type NutrientKey, type MealSlot, type Recipe, type SavedMeal, type SavedMealItem } from '../types';
 import { itemFromPick } from '../utils/savedMealReview';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -126,6 +126,7 @@ import { ContainerShareSheet } from './ContainerShareSheet';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
+import { MealPickerRow } from './MealPickerRow';
 import { CountStepper } from './CountStepper';
 import { Toggle } from './Toggle';
 import {
@@ -2527,8 +2528,8 @@ export function FoodLogEntrySheet({
         {picked ? (
           // Scrolls, because this half can outgrow the sheet: the amount field
           // takes focus on arrival, so the keyboard is already up, and a dish
-          // with a couple of "Anything else?" lines pushes Which meal under it
-          // with no way to reach it. `useKeyboardInsetScroll` is what actually
+          // with a couple of "Anything else?" lines pushes the rows below it
+          // out of reach. `useKeyboardInsetScroll` is what actually
           // keeps the focused field clear of the keyboard — its two siblings
           // use the same mechanism (`ScanPortionSheet`) or `LogMealPrompt`'s
           // `KeyboardAvoidingView`, which fits that sheet's centered-card
@@ -2540,6 +2541,7 @@ export function FoodLogEntrySheet({
             keyboardShouldPersistTaps="handled"
             {...keyboardScroll.props}
           >
+            <MealPickerRow value={chosenSlot} onChange={setChosenSlot} />
             <Text style={styles.label}>HOW MUCH</Text>
             {/* Only for a dish that can answer both ways. A weighed dish with
                 no servings count has nothing to switch to, and offering the
@@ -2912,19 +2914,6 @@ export function FoodLogEntrySheet({
                 })}
               </>
             )}
-
-            <Text style={[styles.label, styles.labelSpaced]}>WHICH MEAL</Text>
-            <SegmentedControl<MealSlot | null>
-              options={[
-                ...MEAL_SLOTS.map(s => ({ value: s as MealSlot | null, label: MEAL_SLOT_LABELS[s] })),
-                { value: null, label: 'Other' },
-              ]}
-              value={chosenSlot}
-              onChange={setChosenSlot}
-              columns={3}
-              label="Which meal"
-              surface="page"
-            />
 
             {!editing && !onPickFood && (
               <CheckInFields

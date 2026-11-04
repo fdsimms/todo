@@ -12,7 +12,7 @@ import { subDays } from 'date-fns/subDays';
 import { useColors } from '../theme/ThemeContext';
 import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, EXTERNAL_NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
+import { EXTERNAL_NUTRIENT_KEYS, type FoodLogEntry, type FoodNutrition, type MealSlot, type NutrientKey } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { MAX_PENDING_ESTIMATES, isQueueableFailure, type PendingEstimate } from '../utils/estimateQueue';
@@ -75,6 +75,7 @@ import { ESTIMATE_AMOUNT_OPTIONS, UNIT_OPTIONS, amountRefusal, amountText, facto
 import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
 import { SegmentedControl } from './SegmentedControl';
+import { MealPickerRow } from './MealPickerRow';
 import { TextField } from './TextField';
 import { CookwareWeighIn } from './CookwareWeighIn';
 import { useWeighIn } from '../hooks/useWeighIn';
@@ -1442,6 +1443,8 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
             </View>
           )}
 
+          {estimate && <MealPickerRow value={chosenSlot} onChange={setChosenSlot} noneLabel="None" />}
+
           {estimate && (
             <View style={[styles.card, loading && styles.cardBusy]}>
               <View style={styles.resultHead}>
@@ -1618,23 +1621,6 @@ export function EstimatePanel({ description: rawDescription, onDescriptionChange
                     : 'Answering updates the figures. Skipping is fine.'}
               </Text>
             </View>
-          )}
-
-          {estimate && (
-            <>
-              <Text style={[styles.label, styles.labelSpaced]}>WHICH MEAL</Text>
-              <SegmentedControl<MealSlot | null>
-                options={[
-                  ...MEAL_SLOTS.map(s => ({ value: s as MealSlot | null, label: MEAL_SLOT_LABELS[s] })),
-                  { value: null, label: 'None' },
-                ]}
-                value={chosenSlot}
-                onChange={setChosenSlot}
-                columns={3}
-                label="Which meal"
-                surface="page"
-              />
-            </>
           )}
 
         {estimate && !onLogAction && (

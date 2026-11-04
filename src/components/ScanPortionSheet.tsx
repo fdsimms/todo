@@ -12,7 +12,7 @@ import { LimitImpactLines } from './LimitImpactLines';
 import { useLimitImpact } from '../hooks/useLimitImpact';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
-import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot, type NutrientKey, type ProductRating } from '../types';
+import { type FoodNutrition, type MealSlot, type NutrientKey, type ProductRating } from '../types';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useAmountOperators } from '../hooks/useAmountOperators';
@@ -41,7 +41,7 @@ import { PantryAnswerField } from './PantryAnswerField';
 import { ProductRatingField } from './ProductRatingField';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
-import { SegmentedControl } from './SegmentedControl';
+import { MealPickerRow } from './MealPickerRow';
 import { SheetHeader } from './SheetHeader';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TextField } from './TextField';
@@ -426,18 +426,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
           keyboardShouldPersistTaps="handled"
           {...keyboardScroll.props}
         >
-          <Text style={styles.groupLabel}>WHICH MEAL</Text>
-          <SegmentedControl<MealSlot | null>
-            options={[
-              ...MEAL_SLOTS.map(s => ({ value: s as MealSlot | null, label: MEAL_SLOT_LABELS[s] })),
-              { value: null, label: 'None' },
-            ]}
-            value={chosenSlot}
-            onChange={setChosenSlot}
-            columns={3}
-            label="Which meal"
-            surface="page"
-          />
+          <MealPickerRow value={chosenSlot} onChange={setChosenSlot} noneLabel="None" />
 
           {foods.map((food, foodIndex) => {
             const panel = panelFor(food);
@@ -731,12 +720,6 @@ function makeStyles(colors: Colors) {
     },
     weighUnit: { color: colors.textSecondary, fontSize: font.sm },
     weighHint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: 14 },
-    groupLabel: {
-      color: colors.textSecondary,
-      fontSize: font.xs,
-      fontWeight: fontWeight.semibold,
-      letterSpacing: 0.8,
-    },
     footnote: { color: colors.textSecondary, fontSize: font.sm },
   });
 }
