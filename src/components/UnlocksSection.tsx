@@ -324,6 +324,13 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
         </View>
         </FormField>
 
+        {editingLocked && editingUnlock?.pin ? (
+          // A saved code stays hidden and fixed while it's locked, or opening the editor
+          // would be a way to read or swap it without unlocking.
+          <FormField label="Code" hint="Hidden and can’t be changed while it’s locked.">
+            <Text style={styles.pinValue} accessibilityLabel="Code, hidden while locked">• • • •</Text>
+          </FormField>
+        ) : (
         <FormField label="Code" hint="Such as a console’s parental controls PIN. Shown only while it’s unlocked.">
         <TextField
           style={styles.input}
@@ -336,6 +343,7 @@ export function UnlocksSection({ tasks, entries, guardedByRewards }: Props) {
           accessibilityLabel="Code, such as a parental controls PIN"
         />
         </FormField>
+        )}
 
         {loosenings.length > 0 && (
           <Text style={styles.meta}>{`While it’s locked you can’t ${joinPhrases(loosenings)}. You can once it’s unlocked.`}</Text>
