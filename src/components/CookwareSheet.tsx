@@ -221,6 +221,7 @@ export function CookwareSheet({ visible, onClose }: Props) {
                             inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                             maxLength={6}
                             accessibilityLabel={`Empty weight of ${c.name} in grams`}
+                            selectTextOnFocus
                           />
                           <Text style={styles.unit}>g</Text>
                         </View>

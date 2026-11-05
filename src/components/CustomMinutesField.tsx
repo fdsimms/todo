@@ -44,6 +44,7 @@ export function CustomMinutesField({ text, onChangeText, range, label, autoFocus
           returnKeyType="done"
           inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
           accessibilityLabel={`${label} in ${unit}`}
+          selectTextOnFocus
         />
         <Text style={styles.unit}>{unit}</Text>
       </View>

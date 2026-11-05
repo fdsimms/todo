@@ -2159,6 +2159,7 @@ function GroceryItemSheetBody({
               inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               maxLength={PRICE_INPUT_MAX_LENGTH}
               accessibilityLabel={targetShopName ? `Last price at ${targetShopName}` : 'Last price'}
+              selectTextOnFocus
             />
             {/* Same clear affordance as SearchField's — emptying the field is
                 already how a price gets removed on Save (see handleSave), this

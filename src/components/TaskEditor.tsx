@@ -4988,6 +4988,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   placeholder="Amount"
                   placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                  selectTextOnFocus
                 />
                 <View style={styles.unitToggle}>
                   <SegmentedControl
@@ -7419,6 +7420,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   autoFocus
+                  selectTextOnFocus
                 />
                 <View style={styles.unitToggle}>
                   <SegmentedControl

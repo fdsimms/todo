@@ -576,6 +576,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
             maxLength={6}
             returnKeyType="done"
             accessibilityLabel={weighIn.picked.length > 0 ? 'Weight on the scale in grams' : 'Cooked weight in grams'}
+            selectTextOnFocus
           />
         )}
         {/* Under the number it modifies, lined up with it: the picker is the
@@ -610,6 +611,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
               maxLength={3}
               returnKeyType="done"
               accessibilityLabel={`Oven temperature in degrees ${ovenUnit === 'F' ? 'Fahrenheit' : 'Celsius'}`}
+              selectTextOnFocus
             />
             <View style={styles.ovenUnitRow}>
               <SegmentedControl<OvenTempUnit>

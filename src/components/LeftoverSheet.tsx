@@ -724,6 +724,7 @@ export function LeftoverSheet({
                   maxLength={6}
                   returnKeyType="done"
                   accessibilityLabel={weighIn.picked.length > 0 ? 'Weight on the scale in grams' : 'What this container weighs, in grams'}
+                  selectTextOnFocus
                 />
                 <Text style={styles.hintInline}>g</Text>
               </View>

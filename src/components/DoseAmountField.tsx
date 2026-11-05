@@ -83,6 +83,7 @@ export function DoseAmountField({
           inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
           returnKeyType="done"
           accessibilityLabel="How much, optional"
+          selectTextOnFocus
         />
         <ChoiceMenuChip
           groups={unitGroups}
