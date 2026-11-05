@@ -23,7 +23,7 @@ import type { AnswerEdit, MedicationSettingsView, Replica } from './replica';
 import { describeTemplateChanges, resolveRef, templateToPlan, templateVersion, templateWarnings, type TemplatePatch, type TemplatePlan } from './templatePlan';
 import { linkAppLabel } from '../../src/constants/linkApps';
 import { isRotationTask } from '../../src/utils/rotation';
-import { liveFollowUpSource } from '../../src/utils/followUpTask';
+import { followUpTaskDraftIsEmpty, liveFollowUpSource } from '../../src/utils/followUpTask';
 import { groceryNameKey } from '../../src/utils/groceryParse';
 import { roundToHalf } from '../../src/utils/produceServings';
 import { MEAL_SLOTS } from '../../src/types';
@@ -93,6 +93,32 @@ function isTopLevel(task: Task): boolean {
   // Subtasks are tasks with a parent, and every top-level selector in the app
   // filters them out. A list that mixed them in would double-count the work.
   return !task.parentId;
+}
+
+/** The parts of a follow-up rule's saved task that are set, as `get_task` shows them. */
+export interface FollowUpDraftView {
+  notes?: string;
+  category?: string;
+  projectId?: string;
+  tags?: string[];
+  priority?: number;
+  estimatedMinutes?: number;
+  subtasks?: string[];
+}
+
+function followUpDraftOf(task: Task): { draft?: FollowUpDraftView } {
+  const d = task.followUpTaskDraft;
+  if (!d || followUpTaskDraftIsEmpty(d)) return {};
+  const draft: FollowUpDraftView = {
+    ...(d.notes ? { notes: d.notes } : {}),
+    ...(d.category ? { category: d.category } : {}),
+    ...(d.projectId ? { projectId: d.projectId } : {}),
+    ...(d.tags.length > 0 ? { tags: d.tags } : {}),
+    ...(d.priority ? { priority: d.priority } : {}),
+    ...(d.estimatedMinutes != null ? { estimatedMinutes: d.estimatedMinutes } : {}),
+    ...(d.subtasks.length > 0 ? { subtasks: d.subtasks.map(s => s.title) } : {}),
+  };
+  return Object.keys(draft).length > 0 ? { draft } : {};
 }
 
 export function listTasks(replica: Replica, input: ListTasksInput = {}): ListTasksResult {
@@ -258,7 +284,19 @@ export interface GetTaskResult {
   /** Shown only for these answers to that task's question; `answered` is what it got, once it has. */
   onlyIfAnswer?: { taskId: string; question: string; answers: string[]; answered?: string };
   /** "Every Nth completion, add this task." */
-  followUp?: { everyN?: number; atEnd?: boolean; title: string; oneAtATime?: boolean; completionsSoFar?: number };
+  followUp?: {
+    everyN?: number;
+    atEnd?: boolean;
+    title: string;
+    oneAtATime?: boolean;
+    completionsSoFar?: number;
+    /**
+     * What the person set up on the phone for the task it adds, only the parts
+     * set. Read-only here, and kept when update_task changes the rule: only
+     * followUp.notes and followUp.estimatedMinutes are written from this side.
+     */
+    draft?: FollowUpDraftView;
+  };
   /**
    * Set on a task a repeating task's follow-up rule added. `ruleLive` is whether
    * that rule is still there to take an edit: update_task's futureFollowUps only
@@ -565,13 +603,14 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
         })()
       : undefined,
     followUp: task.followUpTaskAtEnd && task.followUpTaskTitle
-      ? { atEnd: true, title: task.followUpTaskTitle }
+      ? { atEnd: true, title: task.followUpTaskTitle, ...followUpDraftOf(task) }
       : task.followUpTaskEveryN != null && task.followUpTaskTitle
       ? {
           everyN: task.followUpTaskEveryN,
           title: task.followUpTaskTitle,
           ...(task.followUpTaskOneAtATime ? { oneAtATime: true } : {}),
           completionsSoFar: task.followUpTaskTally ?? 0,
+          ...followUpDraftOf(task),
         }
       : undefined,
     addedByFollowUp: task.followUpTaskSourceTitle

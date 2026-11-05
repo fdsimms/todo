@@ -1084,3 +1084,18 @@ describe('splitPrep with leading adjectives', () => {
     expect(splitPrep('lean ground beef')).toEqual({ name: 'lean ground beef', prep: null });
   });
 });
+
+describe('splitGroceryLines with names that have no ASCII letter or digit', () => {
+  it('keeps a line in another script or an emoji, which the paste used to drop without a word', () => {
+    expect(splitGroceryLines('豆腐\nМолоко\n🥛')).toEqual(['豆腐', 'Молоко', '🥛']);
+  });
+
+  it('still drops a line that is only decoration', () => {
+    expect(splitGroceryLines('---\n***\n•\n$$$\nmilk')).toEqual(['milk']);
+  });
+
+  it('dedupes a repeated line the way it does a Latin one', () => {
+    expect(splitGroceryLines('豆腐\n豆腐\n- 豆腐')).toEqual(['豆腐']);
+    expect(splitGroceryLines('Milk\nmilk')).toEqual(['Milk']);
+  });
+});

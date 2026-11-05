@@ -590,6 +590,23 @@ describe('isTaskExpired', () => {
     expect(isTaskExpired({ ...baseTask, windowStart: '07:00', windowEnd: '10:00' })).toBe(true);
   });
 
+  // Waiting on another task: not actionable, so not late. It used to read as
+  // Waiting and Expired at once and was sweepable.
+  it('is false for a task waiting on another, however long its window has been closed', () => {
+    const closed = { ...baseTask, windowStart: '07:00', windowEnd: '09:00' };
+    registerTaskSource(() => [{ ...baseTask, id: 'blocker' }]);
+    try {
+      const waiter = { ...closed, id: 'waiter', blockedById: 'blocker' };
+      expect(isTaskExpired(waiter)).toBe(false);
+      expect(isTaskSweepable(waiter, 0)).toBe(false);
+      // Once the blocker is done it is late like any other.
+      registerTaskSource(() => [{ ...baseTask, id: 'blocker', completed: true }]);
+      expect(isTaskExpired(waiter)).toBe(true);
+    } finally {
+      registerTaskSource(null);
+    }
+  });
+
   // A window that runs into the small hours ("22:00–02:00"). Both gates anchor
   // to one logical day, so taken literally the task is past 02:00 from 02:00
   // onward — expired before it ever opened, and never visible once.

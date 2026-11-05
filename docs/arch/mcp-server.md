@@ -337,6 +337,14 @@ the next occurrence, a title rule refiles a new task. Reading back what the writ
 description that cannot disagree with it. The preview's own result is returned too, minus ids and
 links, since everything it created was rolled back.
 
+**The confirmed write is one transaction too** (`replica.withBatch`), so a tool that writes row by row
+and throws partway leaves nothing stored, its Activity entries included, and the in-memory stores
+reload as a dry run's do. Without that the error read as "nothing happened" over a half-written
+change. Both the preview and the confirmed write **pull from the sync server first** (`withWrite`
+calls `gate.fresh()`): a confirm can arrive many minutes after its preview, and a whole-row write
+built from replica state older than the phone's gets a newer stamp than the phone's edit to another
+field of that row, so it won the next merge and undid it.
+
 What the server can guarantee is that a change was described before it was made; it cannot see
 whether the model showed the description to the person. The Claude apps' per-tool approval
 (driven by the annotations) is the guarantee on that side. Elicitation, where the server would ask

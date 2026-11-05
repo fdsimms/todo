@@ -2451,6 +2451,9 @@ function runInitDatabase(): void {
     'ALTER TABLE reward_unlocks ADD COLUMN ignore_after TEXT',
     // Null on every existing unlock: none blocks apps while locked. See RewardUnlock.blockGroupId.
     'ALTER TABLE reward_unlocks ADD COLUMN block_group_id TEXT',
+    // What a folded-away row's natural key was when it folded (see addAlias), so a
+    // later edit that changes it is told from a stale copy of the same row.
+    'ALTER TABLE sync_aliases ADD COLUMN loser_key TEXT',
     // JSON { categories, stackIds, projectIds }, null on every existing unlock: nothing is left out. See RewardUnlock.ignoreList.
     'ALTER TABLE reward_unlocks ADD COLUMN ignore_list TEXT',
     // Null on every existing row: no row has had a second recipe fold into it
@@ -3698,17 +3701,40 @@ export function dbRestoreRepoint(snapshot: RepointSnapshot): void {
 /** The aliases in force during one apply or restore, loaded once. */
 interface FoldContext {
   aliases: Map<string, Map<string, string>>;
+  /** `table|loser id` to the loser's natural key when it folded, where it was recorded. */
+  loserKeys: Map<string, string>;
 }
 
 function loadFoldContext(): FoldContext {
   const aliases = new Map<string, Map<string, string>>();
-  for (const r of db.getAllSync<{ table_name: string; loser_id: string; winner_id: string }>(
-    `SELECT table_name, loser_id, winner_id FROM ${SYNC_ALIASES_TABLE}`
+  const loserKeys = new Map<string, string>();
+  for (const r of db.getAllSync<{ table_name: string; loser_id: string; winner_id: string; loser_key: string | null }>(
+    `SELECT table_name, loser_id, winner_id, loser_key FROM ${SYNC_ALIASES_TABLE}`
   )) {
     if (!aliases.has(r.table_name)) aliases.set(r.table_name, new Map());
     aliases.get(r.table_name)!.set(r.loser_id, r.winner_id);
+    if (r.loser_key) loserKeys.set(`${r.table_name}|${r.loser_id}`, r.loser_key);
   }
-  return { aliases };
+  return { aliases, loserKeys };
+}
+
+/**
+ * What a row is called, for telling a stale copy of a folded-away row from an
+ * edit that changed it: the values of its natural-key columns, or null when
+ * the table has none or the row does not carry them (a partial row from an
+ * older build, which is then treated as the same thing, as before).
+ */
+function identityOf(name: string, row: BackupRow): string | null {
+  const keys = NATURAL_KEYS[name];
+  if (!keys) return null;
+  const parts: unknown[][] = [];
+  for (const key of keys) {
+    const values = key.columns.map(c => row[c]);
+    if (values.some(v => v === undefined)) return null;
+    if (key.ignoreNull && values.some(v => v === null)) continue;
+    parts.push(values);
+  }
+  return parts.length > 0 ? JSON.stringify(parts) : null;
 }
 
 /** Where `id` lives now, following folds of folds. */
@@ -3719,15 +3745,25 @@ function resolveAlias(ctx: FoldContext, table: string, id: string): string {
   return cur;
 }
 
-function addAlias(ctx: FoldContext, table: string, loser: string, winner: string): void {
+function addAlias(ctx: FoldContext, table: string, loser: string, winner: string, loserRow?: BackupRow): void {
   if (!ctx.aliases.has(table)) ctx.aliases.set(table, new Map());
   const map = ctx.aliases.get(table)!;
   map.set(loser, winner);
+  const identity = loserRow ? identityOf(table, loserRow) : null;
+  if (identity) ctx.loserKeys.set(`${table}|${loser}`, identity);
+  else ctx.loserKeys.delete(`${table}|${loser}`);
   db.runSync(
-    `INSERT OR REPLACE INTO ${SYNC_ALIASES_TABLE} (table_name, loser_id, winner_id, created_at)
-     VALUES (?, ?, ?, ${NOW_EXPR})`,
-    [table, loser, winner]
+    `INSERT OR REPLACE INTO ${SYNC_ALIASES_TABLE} (table_name, loser_id, winner_id, created_at, loser_key)
+     VALUES (?, ?, ?, ${NOW_EXPR}, ?)`,
+    [table, loser, winner, identity]
   );
+}
+
+/** Forgets that `loser` was folded away: it is a row of its own again. */
+function removeAlias(ctx: FoldContext, table: string, loser: string): void {
+  ctx.aliases.get(table)?.delete(loser);
+  ctx.loserKeys.delete(`${table}|${loser}`);
+  db.runSync(`DELETE FROM ${SYNC_ALIASES_TABLE} WHERE table_name = ? AND loser_id = ?`, [table, loser]);
 }
 
 /** `row` with every reference to a folded-away row pointed at its survivor. */
@@ -3822,8 +3858,8 @@ function afterFold(name: string, id: string): void {
  * peer), remembers where it went, and points everything local at the winner.
  * The caller has already folded the loser's values into the winner.
  */
-function foldAway(ctx: FoldContext, name: string, loser: string, winner: string): void {
-  addAlias(ctx, name, loser, winner);
+function foldAway(ctx: FoldContext, name: string, loser: string, winner: string, loserRow?: BackupRow): void {
+  addAlias(ctx, name, loser, winner, loserRow);
   db.runSync(`DELETE FROM "${name}" WHERE id = ?`, [loser]);
   for (const ref of REFERENCES) {
     if (ref.target !== name) continue;
@@ -3893,12 +3929,12 @@ function foldClashes(ctx: FoldContext, name: string, row: BackupRow): { row: Bac
     const theirs = String(other.id);
     if (foldWinner(mine, theirs) === mine) {
       current = { ...foldRows(name, current, other), id: mine };
-      foldAway(ctx, name, theirs, mine);
+      foldAway(ctx, name, theirs, mine, other);
       folded = true;
     } else {
       const merged = { ...foldRows(name, other, current), id: theirs };
       updateRowStampNow(name, { sql: 'id = ?', values: [theirs] }, merged);
-      foldAway(ctx, name, mine, theirs);
+      foldAway(ctx, name, mine, theirs, current);
       return null;
     }
   }
@@ -3915,6 +3951,24 @@ function absorbAliasedRow(ctx: FoldContext, name: string, row: BackupRow): boole
   if (typeof row.id !== 'string') return false;
   const winner = resolveAlias(ctx, name, row.id);
   if (winner === row.id) return false;
+  // A peer that renamed the loser before it heard of the fold has made it a
+  // different thing, no longer a duplicate: absorbed into the survivor its
+  // rename was lost on this device while the peer kept both. Told from a stale
+  // copy of the same row by the name it had when it folded (a survivor renamed
+  // since would otherwise look like the loser had been). A newer deletion of the
+  // loser still wins, as for any row; then it folds in as before.
+  const folded = ctx.loserKeys.get(`${name}|${row.id}`);
+  const now = identityOf(name, row);
+  if (folded && now !== null && now !== folded && typeof row.updated_at === 'string') {
+    const tombstone = db.getFirstSync<{ deleted_at: string }>(
+      `SELECT deleted_at FROM ${SYNC_DELETIONS_TABLE} WHERE table_name = ? AND row_key = ?`,
+      [name, row.id]
+    );
+    if (!tombstone || !remoteDeletionWins(row.updated_at, tombstone.deleted_at)) {
+      removeAlias(ctx, name, row.id);
+      return false;
+    }
+  }
   const local = db.getFirstSync<BackupRow>(`SELECT * FROM "${name}" WHERE id = ?`, [winner]);
   if (local) {
     updateRowStampNow(name, { sql: 'id = ?', values: [winner] }, { ...foldRows(name, local, row), id: winner });

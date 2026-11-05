@@ -1086,6 +1086,13 @@ const BULLET = /^\s*(?:[-*•·–—]|\d{1,3}[.)])\s+/;
 
 const MAX_PASTE_LINES = 100;
 
+// A line with nothing in it to call an item: punctuation, spaces, control
+// characters and math or currency marks. \p{C} is not used: it includes the
+// unassigned code points, a set that depends on the engine's Unicode version. General-category escapes only, as the
+// rest of the app uses; \p{Extended_Pictographic} is avoided on purpose (see
+// emojiInput.ts), so an emoji (a symbol, \p{So}) counts as a name.
+const NAMELESS_LINE = /^[\p{P}\p{Z}\p{Cc}\p{Sm}\p{Sc}\p{Sk}]+$/u;
+
 /**
  * Turns a pasted block into one item per line. Nothing else in the repo splits
  * on newlines, so this is the whole multi-line paste feature.
@@ -1101,7 +1108,12 @@ export function splitGroceryLines(raw: string): string[] {
   for (const line of raw.split(/\r?\n/)) {
     const cleaned = line.replace(BULLET, '').trim();
     if (!cleaned) continue;
-    const key = groceryNameKey(cleaned);
+    // Dropped for having no name only when it is decoration ("---", "***", a
+    // lone bullet). A name with no ASCII letter or digit ("豆腐", "Молоко", "🥛")
+    // keys to nothing in groceryNameKey but is a real item, and the add stores
+    // it under its lower-cased text (itemNameKey), so it is kept here under
+    // the same key. It used to vanish from a paste without a word.
+    const key = groceryNameKey(cleaned) || (NAMELESS_LINE.test(cleaned) ? '' : cleaned.toLowerCase());
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push(cleaned.slice(0, GROCERY_NAME_MAX_LENGTH));

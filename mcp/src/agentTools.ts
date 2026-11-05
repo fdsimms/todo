@@ -425,7 +425,18 @@ export function planDay(replica: Replica, input: { startAt?: string; endAt?: str
   const nowMin = Math.max(0, clockMinutes(now, todayStart));
   const from = input.startAt ? dayMinutesOf(input.startAt) : Math.max(nowMin, dayMinutesOf(settings.activeHoursStart));
   const to = input.endAt ? dayMinutesOf(input.endAt) : dayMinutesOf(settings.activeHoursEnd);
-  if (to <= from) throw new Error('The day ends before it starts; give startAt and endAt as HH:MM.');
+  if (to <= from) {
+    // Said by cause: asked late in the evening with nothing given, the old
+    // "give startAt and endAt" blamed arguments the caller never passed.
+    if (input.startAt && input.endAt) throw new Error(`endAt (${input.endAt}) has to be after startAt (${input.startAt}).`);
+    if (input.startAt) {
+      throw new Error(`startAt (${input.startAt}) is at or after the end of the person's active hours (${settings.activeHoursEnd}). Give an endAt after it to plan past those hours.`);
+    }
+    if (input.endAt) {
+      throw new Error(`endAt (${input.endAt}) is not after ${clockOf(from)}, the start of what is left of the day. Give a later endAt, or a startAt before it.`);
+    }
+    throw new Error(`Nothing is left to plan today: the person's active hours end at ${settings.activeHoursEnd}. Give startAt and endAt as HH:MM to plan a stretch beyond them.`);
+  }
 
   const busy = (input.busy ?? [])
     .map(b => ({ ...b, s: dayMinutesOf(b.start), e: dayMinutesOf(b.end) }))

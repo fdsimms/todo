@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { Task } from '../types';
 import type { DeliverableReasoning } from '../utils/deliverables';
+import { reopenWithExplanation } from '../utils/reopenTask';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useRewardStore } from '../store/useRewardStore';
@@ -91,7 +92,6 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const completeTask = useTaskStore(s => s.completeTask);
-  const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
   const logSlip = useTaskStore(s => s.logSlip);
   const undoSlip = useTaskStore(s => s.undoSlip);
@@ -284,7 +284,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
         haptics.tap();
         onTicked?.(task.id);
         animateLayout();
-        uncompleteTask(task.id);
+        reopenWithExplanation(task.id);
         return;
       case 'complete':
         if (!(await confirmLeaveWithOpenPrep(task, useTaskStore.getState().tasks, useSettingsStore.getState().eventRules))) return;

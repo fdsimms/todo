@@ -576,3 +576,71 @@ describe('a table whose key contains the key separator', () => {
     expect(gymExercises(mac)).toEqual([{ id: 'g1|e1', notes: 'Use the left rack' }]);
   });
 });
+
+describe('a category renamed on the losing side of a duplicate fold', () => {
+  // Two devices each make "Gym" offline. The smaller id survives a fold, so the
+  // mac (cat-a) folds the phone's (cat-z) away when it first hears of it.
+  const addCategory = (d: Device, id: string, name: string): void => {
+    later();
+    d.raw.prepare('INSERT INTO categories (id, name, sort_order) VALUES (?, ?, 1)').run(id, name);
+  };
+  const editCategory = (d: Device, id: string, fields: Record<string, unknown>): void => {
+    later();
+    d.raw.prepare(
+      `UPDATE categories SET ${Object.keys(fields).map(c => `"${c}" = ?`).join(', ')} WHERE id = ?`
+    ).run(...Object.values(fields), id);
+  };
+  const categoryNames = (d: Device): string[] =>
+    d.raw.prepare('SELECT name FROM categories ORDER BY name').all().map((r: { name: string }) => r.name);
+
+  it('keeps both on both devices when the phone renames its copy before it hears of the fold', async () => {
+    const cloud = fakeICloud();
+    const phone = newDevice('phone');
+    const mac = newDevice('mac');
+    addCategory(phone, 'cat-z', 'Gym');
+    addCategory(mac, 'cat-a', 'Gym');
+
+    await sync(cloud, phone);
+    await sync(cloud, mac); // folds cat-z into cat-a
+    expect(categoryNames(mac)).toEqual(['Gym']);
+
+    editCategory(phone, 'cat-z', { name: 'Home' }); // before the phone has heard of the fold
+    await settle(cloud, phone, mac);
+
+    // The rename was lost on the mac while the phone kept both. Now both do.
+    expect(categoryNames(phone)).toEqual(['Gym', 'Home']);
+    expect(categoryNames(mac)).toEqual(['Gym', 'Home']);
+  });
+
+  it('still absorbs a stale copy of the loser, even after the survivor has been renamed', async () => {
+    const cloud = fakeICloud();
+    const phone = newDevice('phone');
+    const mac = newDevice('mac');
+    addCategory(phone, 'cat-z', 'Gym');
+    addCategory(mac, 'cat-a', 'Gym');
+
+    await sync(cloud, phone);
+    await sync(cloud, mac);
+    editCategory(mac, 'cat-a', { name: 'Work' }); // the survivor is renamed
+    editCategory(phone, 'cat-z', { sort_order: 5 }); // the loser is edited, name unchanged
+    await sync(cloud, phone);
+    await sync(cloud, mac);
+
+    // Not brought back as a second "Gym": nothing about the loser's identity changed.
+    expect(categoryNames(mac)).toEqual(['Work']);
+  });
+
+  it('leaves two devices that agree on one name as one', async () => {
+    const cloud = fakeICloud();
+    const phone = newDevice('phone');
+    const mac = newDevice('mac');
+    addCategory(phone, 'cat-z', 'Gym');
+    addCategory(mac, 'cat-a', 'Gym');
+
+    await settle(cloud, phone, mac);
+
+    expect(categoryNames(phone)).toEqual(['Gym']);
+    expect(categoryNames(mac)).toEqual(['Gym']);
+  });
+});
+

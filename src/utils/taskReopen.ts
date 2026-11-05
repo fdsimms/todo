@@ -51,3 +51,21 @@ export function reopenedTask(task: Task): Task {
     penaltyCreditedAt: null,
   };
 }
+
+/**
+ * Why a completed task cannot be reopened, or null when it can.
+ *
+ * Reopening deletes the open occurrence the completion spawned, so it is the
+ * newest occurrence that can be taken back. One whose successor has been done
+ * since (and has a live successor of its own) would be reopened beside that
+ * live row, leaving two open at once, and the successor's id is derived from
+ * this row's, so completing it again would overwrite the one that was done.
+ * Refused rather than retiring the newer row, which would delete progress.
+ */
+export function reopenBlockedByLater(task: Task, tasks: readonly Task[]): string | null {
+  if (!task.completed) return null;
+  // Not a dated series, whose next set all point back at the last date done and
+  // whose completed dates are kept on purpose when that completion is undone.
+  if (!tasks.some(t => t.previousOccurrenceId === task.id && t.completed && !t.seriesId)) return null;
+  return 'A later one of this task has been done since, and reopening this one would leave two open at once. Reopen the most recent one instead.';
+}

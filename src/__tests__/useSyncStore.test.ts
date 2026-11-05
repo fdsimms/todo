@@ -7,6 +7,9 @@ import {
   isSyncSupported,
   markHealthLogsWithheld,
   settleHealthLogResend,
+  settleServerSnapshot,
+  SERVER_SNAPSHOT_SENT_KEY,
+  SERVER_SNAPSHOT_EVERY_MS,
   NOTHING_OWED,
   SERVER_HEALTH_RESEND_KEY,
   SYNC_EPOCH,
@@ -673,6 +676,9 @@ describe('the journal', () => {
     // Back on: the next sync rewinds to where the journal was last held back.
     useSyncStore.getState().setServerJournal(true);
     cursors.set('server:push', '2026-09-20T00:00:00.000Z');
+    // A device that has synced lately; with no record, the monthly full resend
+    // (settleServerSnapshot) would rewind to the start first.
+    settings.set(SERVER_SNAPSHOT_SENT_KEY, new Date().toISOString());
     (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
     (loadSecureKey as jest.Mock).mockResolvedValue('a-token');
     useSyncStore.setState({ serverUrl: 'https://sync.example.com' });
@@ -770,6 +776,56 @@ describe('settleHealthLogResend', () => {
     settings.delete(SERVER_HEALTH_RESEND_KEY);
     settleHealthLogResend();
     expect(cursors.has('server:push')).toBe(false);
+  });
+});
+
+describe('settleServerSnapshot', () => {
+  const NOW = new Date('2026-11-04T12:00:00.000Z');
+  const ago = (days: number) => new Date(NOW.getTime() - days * 24 * 3_600_000).toISOString();
+
+  it('sends everything again once a month has passed since the last time', () => {
+    const { settings, cursors } = storedSettings();
+    cursors.set('server:push', '2026-11-01T00:00:00.000Z');
+    settings.set(SERVER_SNAPSHOT_SENT_KEY, ago(31));
+
+    settleServerSnapshot(NOW);
+    expect(cursors.get('server:push')).toBe(SYNC_EPOCH);
+    expect(settings.get(SERVER_SNAPSHOT_SENT_KEY)).toBe(NOW.toISOString());
+  });
+
+  it('leaves the cursor alone inside the month', () => {
+    const { settings, cursors } = storedSettings();
+    cursors.set('server:push', '2026-11-01T00:00:00.000Z');
+    settings.set(SERVER_SNAPSHOT_SENT_KEY, ago(29));
+
+    settleServerSnapshot(NOW);
+    expect(cursors.get('server:push')).toBe('2026-11-01T00:00:00.000Z');
+    expect(settings.get(SERVER_SNAPSHOT_SENT_KEY)).toBe(ago(29));
+  });
+
+  it('treats a device that pushed before this was recorded as due, since the window may have forgotten rows', () => {
+    const { settings, cursors } = storedSettings();
+    cursors.set('server:push', '2026-11-01T00:00:00.000Z');
+
+    settleServerSnapshot(NOW);
+    expect(cursors.get('server:push')).toBe(SYNC_EPOCH);
+    expect(settings.get(SERVER_SNAPSHOT_SENT_KEY)).toBe(NOW.toISOString());
+  });
+
+  it('only starts the clock for a server never pushed to, whose first push is everything anyway', () => {
+    const { settings, cursors } = storedSettings();
+
+    settleServerSnapshot(NOW);
+    expect(cursors.has('server:push')).toBe(false);
+    expect(settings.get(SERVER_SNAPSHOT_SENT_KEY)).toBe(NOW.toISOString());
+
+    // And does not restart it on the next run.
+    settleServerSnapshot(new Date(NOW.getTime() + 1000));
+    expect(settings.get(SERVER_SNAPSHOT_SENT_KEY)).toBe(NOW.toISOString());
+  });
+
+  it('is a month, so it stays well inside the 90 days the server keeps', () => {
+    expect(SERVER_SNAPSHOT_EVERY_MS).toBe(30 * 24 * 3_600_000);
   });
 });
 

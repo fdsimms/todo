@@ -506,6 +506,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/remindersImport.ts` — draftFromReminder, recurrenceFromRule, reminderTimeFromAlarms, scheduleToDraft, pendingImportFor, describePendingImport, isImportableList, reminderListOptions, findReminderList, reminderCreatedAt, +14 more
 - `src/utils/remindersImportSync.ts` — RemindersPermission, ImportOutcome, lastImportOutcome, getRemindersPermission, requestRemindersPermission, listReminderLists, countImportableReminders, groceryMirrorSignature, importReminders, useRemindersImportSync
 - `src/utils/removedBeforeEating.ts` — isUsuallyRemovedBeforeEating
+- `src/utils/reopenTask.ts` — reopenWithExplanation
 - `src/utils/reorder.ts` — moveItem, dropIndexFromTranslation, cumulativeOffsets, rowDragOffset, rowIndexAtContentY, dragRange, dragTranslation, clampCardToSlots, reorderSubset
 - `src/utils/rescheduleLabel.ts` — movedDayLabel, describeReschedule
 - `src/utils/resumeDate.ts` — ResumeDate, hasStaleDate, resumeDueDateFor
@@ -639,7 +640,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances, taskForTitleKey
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, COUNTDOWN_LADDER, +12 more
 - `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, dailyRepeatBlocker, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, pullForwardChoice
-- `src/utils/taskReopen.ts` — reopenedTask
+- `src/utils/taskReopen.ts` — reopenedTask, reopenBlockedByLater
 - `src/utils/taskSkip.ts` — reminderOnto, deadlineOnto, skipPatch
 - `src/utils/taskSummary.ts` — SummaryPart, TaskSummaryInput, inSentence, buildTaskSummary
 - `src/utils/taskTypeFilter.ts` — TaskTypeFilter, TASK_TYPE_FILTERS, taskTypeFilterLabel, taskTypesOf, matchesTaskTypes, filterByTaskTypes, parseTaskTypeFilters
@@ -799,7 +800,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useSharedLinkStore.ts` — useSharedLinkStore
 - `src/store/useShieldReleaseStore.ts` — useShieldReleaseStore
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
-- `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, reportServerSharing, markHealthLogsWithheld, settleHealthLogResend, +12 more
+- `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, reportServerSharing, markHealthLogsWithheld, settleHealthLogResend, +15 more
 - `src/store/useTabHubMenuStore.ts` — TabHubMenu, useTabHubMenuStore
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
 - `src/store/useTaskStore.ts` — offerMealLog, TimeBlockPlan, writeEditToFollowUpSource, hasEstimateSource, redoRestoringRows, captureFollowUpDrafts, useTaskStore

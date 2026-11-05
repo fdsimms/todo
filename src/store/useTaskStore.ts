@@ -132,7 +132,7 @@ import {
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, markGeneratedReady, reconcileGeneratedTask, settleReadyMarks } from './generatedTaskSync';
 import { readSavedEvents, updateSavedEvent, writeSavedEvents, type SavedEvent } from '../utils/savedEvents';
 import { bookDueDay, bookSourceId, bookTaskNotes, bookTaskTitle, wantsBookTask } from '../utils/savedEventTasks';
-import { reopenedTask } from '../utils/taskReopen';
+import { reopenBlockedByLater, reopenedTask } from '../utils/taskReopen';
 import { forgiveVacationStreaks, forgivePausedProjectStreaks as pausedStreaksForgiven } from '../utils/vacationStreaks';
 import { pauseEndsOn, registerPauseEndListener } from '../utils/projectPause';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind, stoppableGenerator } from '../utils/generatedTasks';
@@ -5131,6 +5131,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   uncompleteTask(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || !task.completed) return;
+    // Only the newest occurrence can be taken back: see reopenBlockedByLater.
+    if (reopenBlockedByLater(task, get().tasks)) return;
     const original = task;
     // A catch-up task is in a person's history only while answered and done.
     const reopened = reachOutSourceId(task) ? { ...reopenedTask(task), personIds: [] } : reopenedTask(task);
@@ -5983,7 +5985,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // the current period: the successor keeps that day rather than
       // reappearing on Today.
       const heldDay = getTaskDayStart(new Date(getEffectiveTaskDate(task, dayResetTime)!), dayResetTime);
-      const nextDue = new Date(heldDay > todayStart ? heldDay : todayStart);
+      // And the repeat rule's own next day for a day-period target. "Drink
+      // water, Mon to Fri" left short on Friday and rolled on Saturday was dated
+      // Saturday, a day the rule skips, where finishing it on time puts the next
+      // one on Monday (the same getNextOccurrence a skip uses, which covers no
+      // day). A daily rule gives today, as before. A weekly target keeps its
+      // period reading: its row stands for the whole week.
+      const ruleDay = task.quotaPeriod !== 'week'
+        ? getNextOccurrence(task, dayResetTime, { catchUp: true })
+        : null;
+      const ruleStart = ruleDay ? getTaskDayStart(ruleDay.date, dayResetTime) : todayStart;
+      const earliest = ruleStart > todayStart ? ruleStart : todayStart;
+      const nextDue = new Date(heldDay > earliest ? heldDay : earliest);
       nextDue.setHours(12, 0, 0, 0);
       const effective: Task = inheritedOccurrence(task);
       spawned.push({

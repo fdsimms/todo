@@ -986,7 +986,12 @@ function getExpectedStreakGapDays(task: Task, from: Date): number {
  */
 export function getStreakOutcome(
   task: Task,
-  dayResetTime?: string
+  dayResetTime?: string,
+  // The moment the completion belongs to, when that is not now: a morning
+  // check-in answering for last night, a widget tap queued overnight. Measured
+  // from the real clock, a Monday completion answered on Tuesday found a
+  // two-day gap and reset a streak it had kept.
+  at?: Date
 ): 'same-day' | 'continued' | 'reset' {
   if (task.recurrenceType === 'none' || !task.streakDate) return 'reset';
 
@@ -995,7 +1000,7 @@ export function getStreakOutcome(
   // getTaskDayStart is the one that doesn't second-guess it if dayResetTime
   // has changed since it was written. Only "now" itself uses getDayStart.
   const lastDay = getTaskDayStart(new Date(task.streakDate), dayResetTime);
-  const todayDay = getDayStart(new Date(), dayResetTime);
+  const todayDay = getDayStart(at ?? new Date(), dayResetTime);
   const daysBetween = differenceInCalendarDays(todayDay, lastDay);
   if (daysBetween <= 0) return 'same-day';
 

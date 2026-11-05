@@ -577,6 +577,40 @@ describe('buildCompletion', () => {
     it('leaves the streak of a one-off task alone', () => {
       expect(build(makeTask({ streakCount: 3 })).completed.streakCount).toBe(3);
     });
+
+    // Tuesday 8:00. The streak was last counted on Sunday, and Monday's
+    // occurrence was never answered, so the morning check-in asks about it.
+    describe('answered the next morning for the day before', () => {
+      beforeEach(() => {
+        jest.useFakeTimers();
+        jest.setSystemTime(new Date(2026, 10, 3, 8, 0, 0));
+      });
+      afterEach(() => jest.useRealTimers());
+
+      const habit = (over: Partial<Task> = {}) => makeTask({
+        recurrenceType: 'daily', recurrenceInterval: 1, dueDate: new Date(2026, 10, 2, 9).toISOString(),
+        streakCount: 5, streakDate: new Date(2026, 10, 1).toISOString(), ...over,
+      });
+
+      it('keeps the streak, counted on the day it was done', () => {
+        const { completed, nextTask } = build(habit(), { completedAt: new Date(2026, 10, 2, 20).toISOString() });
+        expect(completed.streakCount).toBe(6);
+        expect(dayKeyOf(new Date(completed.streakDate!))).toBe('2026-11-02');
+        expect(nextTask!.streakCount).toBe(6);
+        expect(dayKeyOf(new Date(nextTask!.streakDate!))).toBe('2026-11-02');
+      });
+
+      it('still resets when it was only answered now, the two-day gap it really is', () => {
+        expect(build(habit()).completed.streakCount).toBe(1);
+      });
+
+      it('does not move the streak date back when an older day is answered after a newer one', () => {
+        const counted = habit({ streakCount: 5, streakDate: new Date(2026, 10, 3).toISOString() });
+        const { completed } = build(counted, { completedAt: new Date(2026, 10, 2, 20).toISOString() });
+        expect(completed.streakCount).toBe(5);
+        expect(dayKeyOf(new Date(completed.streakDate!))).toBe('2026-11-03');
+      });
+    });
   });
 
   describe('the deliverable answer', () => {

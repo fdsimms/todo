@@ -2642,7 +2642,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
   const projectOrder = require('../../src/utils/projectOrder') as typeof import('../../src/utils/projectOrder');
   const projectPause = require('../../src/utils/projectPause') as typeof import('../../src/utils/projectPause');
   const { generateId } = require('../../src/utils/id') as IdModule;
-  const { reopenedTask } = require('../../src/utils/taskReopen') as typeof import('../../src/utils/taskReopen');
+  const { reopenedTask, reopenBlockedByLater } = require('../../src/utils/taskReopen') as typeof import('../../src/utils/taskReopen');
   const { generatedSourceOf, liveGeneratedTask, latestCompletedTaskIdFor } = require('../../src/utils/generatedTasks') as typeof import('../../src/utils/generatedTasks');
   const { completesMealSlot, mealSlotSourceId, parseMealSlotSource } = require('../../src/utils/mealSlotTasks') as typeof import('../../src/utils/mealSlotTasks');
   const mealPlanGroceries = require('../../src/utils/mealPlanGroceries') as typeof import('../../src/utils/mealPlanGroceries');
@@ -6496,7 +6496,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const task = tasks().find(t => t.id === id);
       if (!task) throw new Error(`No task with id ${id}.`);
       if (!task.completed) throw new Error('That task is not completed, so there is nothing to reopen.');
-      const refusal = reopenRefusal(task);
+      const refusal = reopenRefusal(task) ?? reopenBlockedByLater(task, tasks());
       if (refusal) throw new Error(refusal);
       return reopenCore(task);
     },
@@ -9566,11 +9566,25 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     else db.dbInsertUnattendedEntries(toLedgerEntries(entries, generateId, new Date(), currentBatch));
   });
 
+  // One confirmed write is one transaction as well as one batch. Several tools
+  // write row by row (deleting a list of tasks, merging grocery items, archiving
+  // a project's remaining tasks before validating its patch), so one that threw
+  // partway left half of it stored, and the error read as though nothing had
+  // happened. Now it all lands or none of it does, the ledger entries with it,
+  // and the stores that hold settings, categories and projects in memory are
+  // reloaded from what the database says, as a dry run does.
   wrapped.withBatch = <T>(batchId: string, fn: () => T): T => {
     const outer = currentBatch;
     currentBatch = batchId;
+    let result!: T;
     try {
-      return fn();
+      db.dbTransaction(() => {
+        result = fn();
+      });
+      return result;
+    } catch (e) {
+      refresh();
+      throw e;
     } finally {
       currentBatch = outer;
     }

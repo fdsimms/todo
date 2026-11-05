@@ -31,6 +31,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { LazySheet } from '../components/LazySheet';
 import { againDraft } from '../utils/taskAgain';
+import { reopenWithExplanation } from '../utils/reopenTask';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -233,7 +234,6 @@ export function LogbookScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<any>();
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
-  const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const bulkUncompleteTasks = useTaskStore(s => s.bulkUncompleteTasks);
   const deleteTask = useTaskStore(s => s.deleteTask);
   const updateTask = useTaskStore(s => s.updateTask);
@@ -826,7 +826,7 @@ export function LogbookScreen() {
               selected={selectedIds.has(item.id)}
               onToggleSelect={toggleSelection}
               onEnterSelection={enterSelectionMode}
-              onUncomplete={uncompleteTask}
+              onUncomplete={reopenWithExplanation}
               onOpenMenu={openMenu}
             />
           );
@@ -886,7 +886,7 @@ export function LogbookScreen() {
         onMarkIncomplete={() => {
           if (menuTask) {
             animateLayout();
-            uncompleteTask(menuTask.id);
+            reopenWithExplanation(menuTask.id);
           }
           setMenuTask(null);
         }}

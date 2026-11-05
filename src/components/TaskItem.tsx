@@ -9,6 +9,7 @@
 // copy so two rows never claim one task id in the paint-select registry (see
 // the Pinning note in CLAUDE.md).
 import { countsUnits } from '../utils/streakUnits';
+import { reopenWithExplanation } from '../utils/reopenTask';
 import React, { createContext, useContext, useRef, useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -614,7 +615,6 @@ const TaskItemRow = React.memo(function TaskItem({
   // TaskItem is mounted once per row, not re-created per render.
   const {
     completeTask,
-    uncompleteTask,
     beginCompletionAnimation,
     cancelCompletionAnimation,
     logQuotaUnit,
@@ -3206,7 +3206,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // Logbook's checkbox uses.
   const handleUncompletePersisted = () => {
     haptics.tap();
-    uncompleteTask(task.id);
+    reopenWithExplanation(task.id);
   };
 
   // ==== inline title and subtask editing ====
