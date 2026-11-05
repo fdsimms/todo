@@ -36,6 +36,17 @@ import { isSizedContainer, UNICODE_FRACTION_CHARS } from './quantity';
  * each recipe, remap its ingredients, and write the row back. A stranded
  * ingredient is the quiet failure of the set: it still renders correctly and
  * merely stops matching the catalog, so nothing looks broken.
+ *
+ * KNOWN LIMIT, left as is on purpose: the key keeps ASCII letters and digits
+ * only, so a name in another script keys to whatever ASCII is left in it. A name
+ * with none ("豆腐") is covered by `itemNameKey`'s fallback. A mixed name is not:
+ * "Nutella チョコ" and "Nutella ヘーゼル" are both "nutella", so the second add
+ * finds the first row. Fixing it takes the backfill above, and `grocery_items`
+ * folds across devices on this column (`NATURAL_KEYS`, naturalKeyFold.ts), so
+ * two builds computing different keys for one item would split or merge it on
+ * every sync until both are updated. The collision is rare and costs one merged
+ * row; the migration risks every device. Revisit only if mixed-script names turn
+ * out to be common.
  */
 export function groceryNameKey(name: string): string {
   return name
