@@ -285,6 +285,10 @@ export const SYNC_DEVICE_LOCAL_COLUMNS: Readonly<Record<string, readonly string[
     // this phone, so a peer's copy would point at nothing here.
     'gate_group_id',
   ],
+  // The same for the app group an unlock blocks: the group's definition is not
+  // synced, so on another phone the id resolved to the fallback group and a
+  // locked unlock could shield that phone's own apps.
+  reward_unlocks: ['block_group_id'],
 };
 
 /** Whether `column` of `table` stays on this device — see SYNC_DEVICE_LOCAL_COLUMNS. */
@@ -1056,6 +1060,7 @@ export function deletionsTableStatements(): string[] {
       loser_id TEXT NOT NULL,
       winner_id TEXT NOT NULL,
       created_at TEXT NOT NULL,
+      loser_key TEXT,
       PRIMARY KEY (table_name, loser_id)
     )`,
   ];

@@ -1427,6 +1427,38 @@ describe('the replica', () => {
     expect(replica.tasks()).toHaveLength(2);
   });
 
+  // ==== a confirmed write ====
+
+  // Several tools write row by row (deleting a list of tasks, merging grocery
+  // items, archiving a project's tasks before validating its patch). One that
+  // threw partway left half of it stored while the error read as though nothing
+  // had happened.
+  it('lands a confirmed write entirely, with its Activity entries under one batch', () => {
+    mockRaw.runSync('DELETE FROM unattended_log');
+    replica.withBatch('batch-ok', () => {
+      replica.createTask({ title: 'First of two', category: 'Home' });
+      replica.createTask({ title: 'Second of two', category: 'Home' });
+    });
+    replica.refresh();
+    expect(replica.tasks().filter(t => /of two$/.test(t.title))).toHaveLength(2);
+    const batches = mockRaw.getAllSync<{ batch_id: string }>('SELECT DISTINCT batch_id FROM unattended_log');
+    expect(batches.map(b => b.batch_id)).toEqual(['batch-ok']);
+  });
+
+  it('rolls the whole write back, ledger included, when a later step throws', () => {
+    mockRaw.runSync('DELETE FROM unattended_log');
+    const before = replica.tasks().length;
+    expect(() => replica.withBatch('batch-fail', () => {
+      replica.createTask({ title: 'Half a write', category: 'Home' });
+      throw new Error('the second step failed');
+    })).toThrow('the second step failed');
+    replica.refresh();
+
+    expect(replica.tasks()).toHaveLength(before);
+    expect(replica.tasks().some(t => t.title === 'Half a write')).toBe(false);
+    expect(mockRaw.getAllSync('SELECT id FROM unattended_log')).toEqual([]);
+  });
+
   // ==== completing ====
 
   it('completes a plain task and spawns nothing', () => {
@@ -1495,7 +1527,9 @@ describe('the replica', () => {
     expect(replica.tasks().map(t => t.id)).toEqual([task.id]);
   });
 
-  it('keeps a successor that was completed since', () => {
+  // Reopening it would leave two open occurrences and, completed again, rewrite
+  // the successor that was done (its id is derived from this row's).
+  it('refuses to reopen an occurrence whose successor was completed since, and changes nothing', () => {
     const today = new Date();
     today.setHours(12, 0, 0, 0);
     const task = replica.createTask({ title: 'Water the plants', recurrenceType: 'daily', dueDate: today.toISOString() });
@@ -1505,7 +1539,11 @@ describe('the replica', () => {
     replica.refresh();
     replica.completeTask(first.nextTask!.id, {});
 
-    expect(replica.reopenTask(task.id).removed.map(t => t.id)).not.toContain(first.nextTask!.id);
+    expect(() => replica.reopenTask(task.id)).toThrow(/most recent/);
+    replica.refresh();
+    const byId = (id: string) => replica.tasks().find(t => t.id === id)!;
+    expect(byId(task.id).completed).toBe(true);
+    expect(byId(first.nextTask!.id).completed).toBe(true);
   });
 
   it('refuses to reopen what is not completed, and what only the phone can undo', () => {

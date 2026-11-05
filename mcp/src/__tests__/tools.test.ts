@@ -29,7 +29,7 @@ import {
   MAX_LOG_DAYS,
 } from '../tools';
 import type { Replica } from '../replica';
-import type { Category, FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../../src/types';
+import type { Category, FollowUpTaskDraft, FoodLogEntry, GroceryItem, GroceryListEntry, MedicationLog, MoodLog, Project, Task } from '../../../src/types';
 
 const task = (over: Partial<Task> & { id: string; title: string }): Task =>
   ({
@@ -593,6 +593,25 @@ describe('getTask', () => {
     expect(result.slips).toEqual({ count: 2, day: '2026-10-04' });
     expect(result.bounty).toEqual({ summary: '+5 extra when done.', pushes: 1 });
     expect(result.autoScheduledAt).toBe('2026-10-01T09:00:00.000Z');
+  });
+
+  // update_task keeps this draft when it changes the rule, but an agent could not
+  // see what it was keeping; only the parts the person set up are listed.
+  it('shows what the person set up for the task a follow-up rule adds, and nothing when it is empty', () => {
+    const rule = task({
+      id: 'rule-1', title: 'Shoes', followUpTaskEveryN: 4, followUpTaskTitle: 'Replace shoes',
+      followUpTaskDraft: {
+        notes: 'Size 10', category: 'Errands', projectId: null, tags: ['shoes'], priority: 2, effort: 0,
+        estimatedMinutes: 30, timeSegments: [], vacationPause: false, subtasks: [{ id: 's1', title: 'Check the sale' }],
+      } as FollowUpTaskDraft,
+    });
+    expect(getTask(withTasks([rule]), 'rule-1')!.followUp).toEqual({
+      everyN: 4, title: 'Replace shoes', completionsSoFar: 0,
+      draft: { notes: 'Size 10', category: 'Errands', tags: ['shoes'], priority: 2, estimatedMinutes: 30, subtasks: ['Check the sale'] },
+    });
+
+    const bare = task({ id: 'rule-2', title: 'Shoes', followUpTaskEveryN: 4, followUpTaskTitle: 'Replace shoes', followUpTaskDraft: null });
+    expect(getTask(withTasks([bare]), 'rule-2')!.followUp).toEqual({ everyN: 4, title: 'Replace shoes', completionsSoFar: 0 });
   });
 
   it("reports the medicine the live chain step records, in place of the task's", () => {

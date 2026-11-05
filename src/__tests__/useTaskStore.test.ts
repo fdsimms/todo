@@ -3754,6 +3754,30 @@ describe('checkVacationExpiry', () => {
 
 // ─── uncompleteTask ───────────────────────────────────────────────────────────
 
+describe('uncompleteTask on an occurrence that was followed by a done one', () => {
+  // Monday done, Tuesday done, Wednesday open. Reopening Monday would leave two
+  // open, and completing it again would derive Tuesday's id and rewrite it.
+  const chain = () => [
+    makeTask({ id: 'mon', recurrenceType: 'daily', completed: true, completedAt: new Date(2025, 5, 8).toISOString() }),
+    makeTask({ id: 'tue', recurrenceType: 'daily', completed: true, completedAt: new Date(2025, 5, 9).toISOString(), previousOccurrenceId: 'mon' }),
+    makeTask({ id: 'wed', recurrenceType: 'daily', completed: false, previousOccurrenceId: 'tue' }),
+  ];
+
+  it('does nothing, so the rows stay as they were', () => {
+    useTaskStore.setState({ tasks: chain() });
+    useTaskStore.getState().uncompleteTask('mon');
+    const rows = useTaskStore.getState().tasks;
+    expect(rows.map(t => [t.id, t.completed])).toEqual([['mon', true], ['tue', true], ['wed', false]]);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('still reopens the most recent completed one, removing the open one after it', () => {
+    useTaskStore.setState({ tasks: chain() });
+    useTaskStore.getState().uncompleteTask('tue');
+    expect(useTaskStore.getState().tasks.map(t => [t.id, t.completed])).toEqual([['mon', true], ['tue', false]]);
+  });
+});
+
 describe('uncompleteTask removing the successor', () => {
   it('lets go of the successor\'s nudges and calendar event along with the row', () => {
     useTaskStore.setState({
@@ -16528,6 +16552,35 @@ describe('quota tasks', () => {
     });
   });
 
+  // A daily target that repeats on weekdays only. The row left over from Friday
+  // closes when the app next runs, and the next one belongs on the rule's next day.
+  describe('rolloverQuotas: a daily target on weekdays only', () => {
+    const weekdays = (overrides: Partial<Task> = {}) =>
+      quota({
+        recurrenceType: 'weekly', recurrenceDays: [1, 2, 3, 4, 5], targetCount: 8, progressCount: 5,
+        dueDate: new Date(2025, 5, 13, 12, 0, 0).toISOString(), // Friday June 13
+        ...overrides,
+      });
+    const nextDayKey = () => dayKeyOf(new Date(useTaskStore.getState().tasks.find(t => !t.completed)!.dueDate!));
+
+    it('lands on Monday when the app runs on the Saturday, not on the day the rule skips', () => {
+      jest.setSystemTime(new Date(2025, 5, 14, 9, 0, 0)); // Saturday June 14
+      useTaskStore.setState({ tasks: [weekdays()] });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.completed).toBe(true);
+      expect(nextDayKey()).toBe('2025-06-16');
+    });
+
+    it('lands on today when today is one of the rule\'s days', () => {
+      jest.setSystemTime(new Date(2025, 5, 16, 9, 0, 0)); // Monday June 16
+      useTaskStore.setState({ tasks: [weekdays()] });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(nextDayKey()).toBe('2025-06-16');
+    });
+  });
+
   describe('rolloverQuotas: a weekly target', () => {
     const weekly = (overrides: Partial<Task> = {}) =>
       quota({ quotaPeriod: 'week', recurrenceType: 'weekly', targetCount: 3, ...overrides });
@@ -17062,7 +17115,10 @@ describe('quota tasks', () => {
           quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
           progressCount: 5,
           streakCount: 3,
-          streakDate: new Date(2025, 5, 9).toISOString(),
+          // Last counted the day before the one being closed (June 9). The sweep
+          // runs on the 10th with a completion stamped on the 9th, and measured
+          // from the 10th this read as a two-day gap and reset the streak.
+          streakDate: new Date(2025, 5, 8).toISOString(),
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
       });

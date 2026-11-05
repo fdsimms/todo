@@ -905,6 +905,21 @@ describe('addManyFromText', () => {
     expect(useGroceryStore.getState().items).toHaveLength(3);
   });
 
+  // These vanished from a paste: groceryNameKey keeps ASCII letters only, so a
+  // line in another script (or an emoji) keyed to nothing and was skipped. The add
+  // stores them under their lower-cased text, so the paste does too.
+  it('adds a line in another script or an emoji, and knows it the second time', () => {
+    seed([]);
+    const first = useGroceryStore.getState().addManyFromText('豆腐\n🥛\n---');
+    expect(first.added.map(i => i.name)).toEqual(['豆腐', '🥛']);
+    expect(first.alreadyOnList).toEqual([]);
+
+    const again = useGroceryStore.getState().addManyFromText('豆腐');
+    expect(again.added).toEqual([]);
+    expect(again.alreadyOnList.map(i => i.name)).toEqual(['豆腐']);
+    expect(useGroceryStore.getState().items).toHaveLength(2);
+  });
+
   it('strips bullets and numbering from a pasted recipe', () => {
     useGroceryStore.getState().addManyFromText('- milk\n1. eggs\n• bread');
     expect(useGroceryStore.getState().items.map(i => i.name)).toEqual(['milk', 'eggs', 'bread']);

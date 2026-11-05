@@ -4918,6 +4918,28 @@ describe('dbApplySyncChanges', () => {
     }
   });
 
+  // The group's definition is not synced, so its id means nothing on a peer.
+  // A peer's edit of the unlock arrives; this phone's own group stays.
+  it('keeps this device\'s app group on an unlock the peer edited, even from a peer that sends one', () => {
+    mockRawDb.exec("DELETE FROM reward_unlocks WHERE id = 'unlock-1'");
+    mockRawDb.prepare(
+      "INSERT INTO reward_unlocks (id, title, created_at, block_group_id) VALUES ('unlock-1', 'Games', '2026-10-01T00:00:00.000Z', 'grp-local')"
+    ).run();
+    try {
+      const peerRow = {
+        ...(mockRawDb.prepare("SELECT * FROM reward_unlocks WHERE id = 'unlock-1'").get() as Record<string, unknown>),
+        title: 'Games and video', block_group_id: 'grp-from-peer', updated_at: '2099-01-01T00:00:00.000Z',
+      };
+      const report = dbApplySyncChanges(payload({ tables: { reward_unlocks: [peerRow] } }));
+
+      const after = mockRawDb.prepare("SELECT title, block_group_id FROM reward_unlocks WHERE id = 'unlock-1'").get() as { title: string; block_group_id: string };
+      expect(report.updated).toBe(1);
+      expect(after).toEqual({ title: 'Games and video', block_group_id: 'grp-local' });
+    } finally {
+      mockRawDb.exec("DELETE FROM reward_unlocks WHERE id = 'unlock-1'");
+    }
+  });
+
   it('inserts a row this device has never seen', () => {
     const report = dbApplySyncChanges(payload({
       tables: { tasks: [peerTaskRow('p1', 'From peer', '2026-01-01T00:00:00.000Z')] },

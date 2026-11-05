@@ -335,6 +335,12 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
    */
   const withWrite = async <T>(fn: () => T): Promise<T> => {
     const start = Date.now();
+    // Pulled first, for the preview and the confirmed write alike. A confirm can
+    // arrive many minutes after its preview, and a whole-row write built from
+    // replica state older than the phone's gets a newer stamp than the phone's
+    // edit to another field of that row, so it won the next merge and undid it.
+    await gate.fresh();
+    noteWait('sync', Date.now() - start);
     replica.refresh();
     // Previewing (see confirmWrites.ts): the same write, measured and rolled
     // back, and nothing pushed, since nothing changed.
@@ -365,7 +371,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_tasks',
-    "Tasks in one of the app's own lenses: today (visible now), later (deferred or not yet due), unscheduled, inbox, all, or archived (put away with archive_task, as the Archived screen lists them; every other view leaves those out). target narrows to tasks with a counted target (\"3 a week\"), and each such task carries its target briefly, including whether it is alwaysVisible.",
+    "Tasks in one of the app's own lenses: today (visible now), later (deferred or not yet due), unscheduled, inbox, all, or archived (put away with archive_task, as the Archived screen lists them; every other view leaves those out). target narrows to tasks with a counted target (\"3 a week\"), and each such task carries its target briefly, including whether it is alwaysVisible. Tasks come in the app's own manual order (each list's drag order, then oldest created first), not by date; matched is how many there are, and limit cuts from the end of that order, so with includeCompleted the newest completions can fall past it. For history by date, use completion_history.",
     {
       view: z.enum(TASK_VIEWS).optional(),
       target: z.enum(['any', 'day', 'week']).optional(),

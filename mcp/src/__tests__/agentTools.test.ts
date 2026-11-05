@@ -278,6 +278,26 @@ describe('planDay', () => {
   });
 });
 
+describe('planDay when there is no day to plan', () => {
+  // Each says which input is the problem, or that the day is simply over; the
+  // old single message blamed startAt and endAt even when none was given.
+  it('names the cause', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useSettingsStore } = require('../../../src/store/useSettingsStore') as typeof import('../../../src/store/useSettingsStore');
+    const settings = useSettingsStore.getState();
+    jest.useFakeTimers({ now: new Date(2026, 9, 6, 23, 0) });
+    settings.setActiveHoursEnd('22:00');
+    try {
+      expect(() => planDay(replica)).toThrow(/Nothing is left to plan today: the person's active hours end at 22:00/);
+      expect(() => planDay(replica, { startAt: '10:00', endAt: '09:00' })).toThrow(/endAt \(09:00\) has to be after startAt \(10:00\)/);
+      expect(() => planDay(replica, { startAt: '23:00' })).toThrow(/startAt \(23:00\) is at or after the end of the person's active hours \(22:00\)/);
+      expect(() => planDay(replica, { endAt: '09:00' })).toThrow(/endAt \(09:00\) is not after 23:00/);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
 describe('rebalanceWeek', () => {
   it('brings a heavy later day under the busy line by moving its biggest tasks to lighter days', () => {
     for (let i = 0; i < 5; i++) replica.createTask({ title: `Chunk ${i}`, dueDate: day(2), estimatedMinutes: 60 });

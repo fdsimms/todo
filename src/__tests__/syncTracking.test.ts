@@ -416,6 +416,12 @@ describe('device-local columns', () => {
     })).toEqual({ id: 'm1' });
   });
 
+  it('keeps the app group an unlock blocks on the device', () => {
+    expect(isDeviceLocalColumn('reward_unlocks', 'block_group_id')).toBe(true);
+    expect(isDeviceLocalColumn('reward_unlocks', 'title')).toBe(false);
+    expect(withoutDeviceLocalColumns('reward_unlocks', { id: 'u1', title: 'Games', block_group_id: 'grp' })).toEqual({ id: 'u1', title: 'Games' });
+  });
+
   it('keeps a task\'s three event ids on the device and nothing else of its row', () => {
     expect(isDeviceLocalColumn('tasks', 'calendar_event_id')).toBe(true);
     expect(isDeviceLocalColumn('tasks', 'completion_calendar_event_id')).toBe(true);

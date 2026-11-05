@@ -131,6 +131,46 @@ export function settleHealthLogResend(resendKey: string = SERVER_HEALTH_RESEND_K
   dbSetSetting(resendKey, NOTHING_OWED);
 }
 
+/**
+ * When this device last sent the sync server everything. Device-local: it is not
+ * on the synced-settings list, and means nothing to a peer.
+ */
+export const SERVER_SNAPSHOT_SENT_KEY = 'syncServerSnapshotSentAt';
+/** About how often the whole database is sent again. The server keeps 90 days. */
+export const SERVER_SNAPSHOT_EVERY_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Send the sync server everything again about every 30 days.
+ *
+ * The server prunes payloads older than 90 days (mcp/src/syncStore.ts), and the
+ * push cursor only moves forward, so a row nobody has edited since the first
+ * sync was held by one payload that is later forgotten. A phone or replica that
+ * joins afterwards receives only the rows edited recently, and the older
+ * recipes, people, templates and settings never arrive, with nothing to say so.
+ * A full resend inside the window keeps a complete copy on the server.
+ *
+ * Rewinds the push cursor to the very start, as the health-log resend does, at
+ * the start of a sync and under its lock. The rows repeat what the server has,
+ * which applying twice makes a no-op, so the cost is bandwidth for the rows only
+ * (recipe images are tracked separately and are not sent again). A server never
+ * pushed to has no cursor and reads everything anyway, so that case only starts
+ * the clock. A device that has pushed but never recorded this (every install
+ * before it existed) is due now, since the window may already have forgotten
+ * rows. The rewind stands until a push succeeds, so a failed run is not lost.
+ */
+export function settleServerSnapshot(now: Date = new Date()): void {
+  const key = pushCursorKey(HTTP_SYNC_SOURCE);
+  const last = dbGetSetting(SERVER_SNAPSHOT_SENT_KEY);
+  if (dbGetSyncCursor(key) === null) {
+    if (!last) dbSetSetting(SERVER_SNAPSHOT_SENT_KEY, now.toISOString());
+    return;
+  }
+  const lastMs = last ? Date.parse(last) : NaN;
+  if (Number.isFinite(lastMs) && now.getTime() - lastMs < SERVER_SNAPSHOT_EVERY_MS) return;
+  dbSetSyncCursor(key, SYNC_EPOCH);
+  dbSetSetting(SERVER_SNAPSHOT_SENT_KEY, now.toISOString());
+}
+
 export type SyncPhase = 'idle' | 'syncing';
 
 /** Where a device joins sync: iCloud, or a sync server the person runs. */
@@ -580,6 +620,7 @@ async function syncOnce(state: SyncConfig): Promise<SyncSummary | null> {
   // with only a payload store configured still has somewhere to sync to.
   // `configuredTransports` is what decides, and an empty list is a no-op
   // rather than a failure.
+  if (state.serverUrl.trim()) settleServerSnapshot();
   if (state.serverHealthLogs) settleHealthLogResend();
   if (state.serverJournal) settleHealthLogResend(SERVER_JOURNAL_RESEND_KEY);
   const transports = await configuredTransports(state);

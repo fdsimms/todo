@@ -40,6 +40,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import {
   getNextOccurrence,
   getCurrentDayStart,
+  getDayStart,
   getStreakOutcome,
   getNextSeriesDates,
   getDeadlineFromOffset,
@@ -254,6 +255,18 @@ export function buildCompletion(
   // the completed row's own timestamps move, plus the date a
   // repeat-after-completion successor is measured from (see getNextDueDate).
   const completedAt = options?.completedAt ? new Date(options.completedAt) : now;
+  // A backdated completion counts on the day it belongs to, for the streak too:
+  // keyed to the real moment, "yes, I did it last night" answered the next
+  // morning found a two-day gap and reset a streak the answer was meant to
+  // keep, which MorningCheckInSheet promises it does not. Unchanged for a
+  // completion made now. Never moves a streak date back: answering for an older
+  // day after a newer one was counted leaves the newer one.
+  const backdated = !!options?.completedAt;
+  const streakDayIso = (): string => {
+    if (!backdated) return getCurrentDayStart().toISOString();
+    const day = getDayStart(completedAt, dayResetTime);
+    return task.streakDate && new Date(task.streakDate) > day ? task.streakDate : day.toISOString();
+  };
 
   const recurs = task.recurrenceType !== 'none';
   // 'hours' has no calendar grid: it never gets a dueDate, and its "next
@@ -325,7 +338,7 @@ export function buildCompletion(
     // streak the way an on-time one does. isCompletionOnTime is vacuously
     // true for a task with no window, so the setting is inert there.
     const onTime = !task.streakRequiresWindow || isCompletionOnTime(task);
-    const outcome = onTime ? getStreakOutcome(task, dayResetTime) : 'reset';
+    const outcome = onTime ? getStreakOutcome(task, dayResetTime, backdated ? completedAt : undefined) : 'reset';
     if (outcome === 'same-day') {
       newStreakCount = task.streakCount;
     } else if (outcome === 'continued') {
@@ -412,7 +425,7 @@ export function buildCompletion(
     // instead of getting the same fade-out grace period every other list
     // gives a completed task. That hold lives in the store.
     streakCount: nextStreak,
-    streakDate: streakBreaks ? null : streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
+    streakDate: streakBreaks ? null : streakAdvances ? streakDayIso() : task.streakDate,
     previousStreakCount: task.streakCount,
     previousStreakDate: task.streakDate,
     // Folds the run that just ended into the record, if one did — a miss
@@ -721,7 +734,7 @@ export function buildCompletion(
         // resetting only the missed row would hand the next occurrence the
         // old count straight back and the break would never be visible.
         streakCount: nextStreak,
-        streakDate: streakBreaks ? null : streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
+        streakDate: streakBreaks ? null : streakAdvances ? streakDayIso() : task.streakDate,
         previousStreakCount: task.streakCount,
         previousStreakDate: task.streakDate,
         // Rides onto the successor for the same reason the streak does: the

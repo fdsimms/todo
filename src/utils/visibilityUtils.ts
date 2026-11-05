@@ -554,6 +554,11 @@ export function isTaskExpired(task: Task): boolean {
   // A paused project's task isn't late for anything: the pause is the person
   // saying "not until then", and the sweep behind this deletes what it flags.
   if (isInPausedProject(task)) return false;
+  // A task waiting on another task, a person or an answer is not late for
+  // anything: every list that gates on being actionable leaves it out, and it
+  // sat in both Waiting and Expired, where the expired sweep could delete it
+  // for a window that closed while it couldn't be done.
+  if (isHeldBack(task)) return false;
   if (!isPlacedOnADay(task)) return false;
   if (!hasDayArrived(task)) return false;
   return new Date() >= getWindowThreshold(end);
