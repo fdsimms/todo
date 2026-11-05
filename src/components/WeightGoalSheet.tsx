@@ -544,6 +544,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                       placeholder={`e.g. ${suggestPlaceholder(startKg, direction, unit)}`}
                       placeholderTextColor={colors.textTertiary}
                       accessibilityLabel={`Target weight in ${unit === 'kg' ? 'kilograms' : 'pounds'}`}
+                      selectTextOnFocus
                     />
                     <Text style={styles.unit}>{unit}</Text>
                   </View>

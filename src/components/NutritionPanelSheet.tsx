@@ -723,6 +723,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                     keyboardType="decimal-pad"
                     inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                     accessibilityLabel={`Serving weight in ${weightUnit === 'g' ? 'grams' : 'ounces'}`}
+                    selectTextOnFocus
                   />
                   <View style={styles.weightUnitToggle}>
                     <SegmentedControl
@@ -752,6 +753,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                     keyboardType="decimal-pad"
                     inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                     accessibilityLabel={`Package weight in ${packageUnit === 'g' ? 'grams' : 'ounces'}`}
+                    selectTextOnFocus
                   />
                   <View style={styles.weightUnitToggle}>
                     <SegmentedControl
@@ -813,6 +815,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
                         keyboardType="decimal-pad"
                         inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                         accessibilityLabel="Cooked grams per raw gram"
+                        selectTextOnFocus
                       />
                       <HelpText style={styles.hint}>
                         For example, white rice is about 2.8. Lets you enter an amount as

@@ -2649,6 +2649,7 @@ export function RecipeDetailScreen() {
               returnKeyType="done"
               autoFocus
               accessibilityLabel={weighIn.picked.length > 0 ? 'Weight on the scale in grams' : 'Cooked weight in grams'}
+              selectTextOnFocus
             />
             <Text style={styles.weightEditUnit}>g</Text>
             <View style={styles.weightEditSpacer} />

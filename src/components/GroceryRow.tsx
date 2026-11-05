@@ -720,6 +720,7 @@ export const GroceryRow = React.memo(function GroceryRow({
                     placeholderTextColor={colors.textTertiary}
                     maxLength={PRICE_INPUT_MAX_LENGTH}
                     accessibilityLabel={`Price for ${item.name}`}
+                    selectTextOnFocus
                   />
                   {/* Mounted by the row rather than by the grocery screen, because
                       the field it belongs to is the row's own: pricingActive is

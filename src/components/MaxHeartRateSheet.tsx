@@ -80,6 +80,7 @@ export function MaxHeartRateSheet({ visible, onClose }: Props) {
             returnKeyType="done"
             onSubmitEditing={save}
             accessibilityLabel="Maximum heart rate, in beats per minute"
+            selectTextOnFocus
           />
           {!valid && (
             <Text style={styles.refusal}>

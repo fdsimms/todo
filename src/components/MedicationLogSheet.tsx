@@ -385,6 +385,7 @@ export function MedicationLogSheet({ visible, log, initialName, onClose, onDelet
           keyboardType="decimal-pad"
           inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
           accessibilityLabel="Amount"
+          selectTextOnFocus
         />
         <SegmentedControl
           options={DOSE_UNITS.map(u => ({ value: u.value, label: u.value }))}

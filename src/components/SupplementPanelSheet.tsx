@@ -285,6 +285,7 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
                   keyboardType="decimal-pad"
                   inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                   accessibilityLabel="Serving size on the label"
+                  selectTextOnFocus
                 />
               </View>
               <SegmentedControl
@@ -338,6 +339,7 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
                       keyboardType="decimal-pad"
                       inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                       accessibilityLabel={`Ingredient ${i + 1} amount`}
+                      selectTextOnFocus
                     />
                     <View style={styles.flex}>
                       <SegmentedControl

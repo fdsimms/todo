@@ -442,6 +442,7 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
                             placeholder={usingPills ? 'e.g. 1.5' : `e.g. ${panel ? amountExample(panel) : '1 cup'}`}
                             placeholderTextColor={colors.textTertiary}
                             accessibilityLabel={`Amount of ${line.item.label}`}
+                            selectTextOnFocus
                           />
                           {unitOptions.length > 0 && (
                             <UnitMenuChip

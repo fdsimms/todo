@@ -875,6 +875,7 @@ function QuestionRow({
           maxLength={TITLE_MAX_LENGTH}
           returnKeyType="done"
           accessibilityLabel={questionLabel(question)}
+          selectTextOnFocus
         />
       )}
     </View>

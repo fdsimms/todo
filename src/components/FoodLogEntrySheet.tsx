@@ -2591,10 +2591,11 @@ export function FoodLogEntrySheet({
                     }
                     placeholderTextColor={colors.textTertiary}
                     autoFocus
-                    // An amount filled in from last time is selected on
-                    // arrival, so typing a different one replaces it rather
-                    // than appending to it ("250" becoming "250200").
-                    selectTextOnFocus={recalledAmount !== null && amount === recalledAmount}
+                    // Whatever the amount starts as (last time's, an amount typed
+                    // with the food, one serving, a saved entry being corrected)
+                    // is selected on arrival, so typing a different one replaces
+                    // it rather than appending to it ("250" becoming "250200").
+                    selectTextOnFocus
                     // A food's number takes a sum ("120 - 50"), typed with the
                     // + − × buttons on the bar above the pad.
                     keyboardType={

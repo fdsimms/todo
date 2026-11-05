@@ -3490,6 +3490,7 @@ parsed
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   accessibilityLabel="Custom effort in minutes"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectTextOnFocus
                 />
               </View>
             </View>
