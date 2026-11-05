@@ -5732,6 +5732,20 @@ describe('checkReachOutTasks', () => {
     expect(reachOutTasks()).toHaveLength(0);
   });
 
+  // A row written before the "What did you do?" prompt existed has no
+  // question, and drift used to chase only the title, so it never got one.
+  it('gives a live row written without the question its question', () => {
+    useTaskStore.getState().checkReachOutTasks();
+    const id = reachOutTasks()[0].id;
+    useTaskStore.setState({
+      tasks: useTaskStore.getState().tasks.map(t => (t.id === id ? { ...t, deliverableKind: null } : t)),
+    });
+
+    useTaskStore.getState().checkReachOutTasks();
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === id)?.deliverableKind).toBe('text');
+  });
+
   // The decline is a stamp with a hold, not "never again" — nudgeOptIn is the
   // only field allowed to mean that, and a swipe must not be able to write it.
   it('asks again once the decline has held for its window', () => {

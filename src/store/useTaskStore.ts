@@ -7044,11 +7044,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         kind: 'reachOut',
         sourceId: want.sourceId,
         wanted: true,
-        // Chases the title only, and only when it has actually changed — a
+        // Chases the title, and only when it has actually changed — a
         // renamed person, or an "ask about" note added or answered since the
-        // row was written. Deliberately never the date: by the time a second
-        // sweep runs the user may have deferred this to Saturday.
-        drift: existing => (existing.title === want.title ? null : { title: want.title }),
+        // row was written. Also the question: a row written before "What did
+        // you do?" existed would otherwise tick off with no prompt for as
+        // long as slot-in and postpones keep it alive. Deliberately never the
+        // date: by the time a second sweep runs the user may have deferred
+        // this to Saturday.
+        drift: existing => {
+          const updates: Partial<Task> = {};
+          if (existing.title !== want.title) updates.title = want.title;
+          if (!existing.deliverableKind) updates.deliverableKind = 'text';
+          return Object.keys(updates).length > 0 ? updates : null;
+        },
         draft: () => ({
           title: want.title,
           dueDate: dueDate.toISOString(),
