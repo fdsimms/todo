@@ -6345,7 +6345,11 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
-    gap: spacing.sm,
+    columnGap: spacing.sm,
+    // Tighter than the column gap: chips that sit on a line of their own (the
+    // reminder, arrival and transit alert lines of a travel row) read as one
+    // block of facts, not as separate items.
+    rowGap: spacing.xs,
   },
   // Tomorrow's alarm, the one chip on a row that's a button with a fill: it
   // opens the card, and on a morning with none it turns the warning colour.
