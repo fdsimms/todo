@@ -6060,10 +6060,12 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
   rowWrap: {
     flexWrap: 'wrap',
   },
-  // Room for `autoTab` above the content. The tab is at most about 25pt tall at
-  // the largest size its label grows to, so the title never meets it.
+  // Room for `autoTab` above the content: the tab's 20pt plus a 6pt gap. A bare
+  // one-line row would look hollow with more, and it reads as a gap under the
+  // pill rather than as the row's own padding. At the largest text size the
+  // tab grows to about 25pt and sits a hair into that gap, which is fine.
   rowBelowAutoTab: {
-    paddingTop: 10 + 22,
+    paddingTop: 10 + 16,
   },
   // The "Auto" marker on a generated task. Flush to the card's top-left corner
   // (cardClip rounds the outer corner) and over the priority bar, whose top it
