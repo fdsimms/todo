@@ -33,7 +33,7 @@ export const WeekPoolCard = memo(function WeekPoolCard({ entries, onAdd, onPress
     <View style={styles.wrap}>
       <View style={styles.header}>
         <Ionicons name="layers-outline" size={iconSize.xs} color={colors.accent} />
-        <Text style={styles.caption}>Not on a day yet</Text>
+        <Text style={styles.caption}>Recipe pool</Text>
         {entries.length > 0 && <Text style={styles.count}>{describePool(entries.length)}</Text>}
       </View>
       <View style={styles.card}>

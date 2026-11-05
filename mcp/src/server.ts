@@ -1173,7 +1173,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_meal_plan',
-    `Meals planned over a range of days. Defaults to the ${DEFAULT_PLAN_DAYS} days from today. pool lists the meals chosen for those weeks with no day yet (the app's "Not on a day yet" card); they are not on the plan until place_pool_meal gives them a day.`,
+    `Meals planned over a range of days. Defaults to the ${DEFAULT_PLAN_DAYS} days from today. pool lists the meals chosen for those weeks with no day yet (the app's "Recipe pool" card); they are not on the plan until place_pool_meal gives them a day.`,
     {
       from: dayKey.optional(),
       to: dayKey.optional(),
@@ -4477,7 +4477,7 @@ function registerWriteTools(
 
   server.tool(
     'add_to_week_pool',
-    'Choose a meal for a week without picking its day or meal yet (the app\'s "Not on a day yet" card). week is any day in that week. A recipe (recipeId) or just a title. Choosing a recipe takes it off Up next, as planning it does. The meal counts toward that week\'s shopping, cost and nutrition in the app, but is not on the plan until place_pool_meal.',
+    'Choose a meal for a week without picking its day or meal yet (the app\'s "Recipe pool" card). week is any day in that week. A recipe (recipeId) or just a title. Choosing a recipe takes it off Up next, as planning it does. The meal counts toward that week\'s shopping, cost and nutrition in the app, but is not on the plan until place_pool_meal.',
     {
       week: dayKey,
       recipeId: z.string().nullable().optional(),
