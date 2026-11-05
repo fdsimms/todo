@@ -185,6 +185,20 @@ describe('play time', () => {
     expect(playState(u, at(21), KEY).endsAt).toEqual(at(22));
   });
 
+  it('counts play as started even when it is stopped in the same instant', () => {
+    // A stop folds the elapsed time into `playUsedMs`, and `playedToday` reads
+    // "started" off that being above zero once nothing is running. Stopped in
+    // the same millisecond it began, 0 ms folded in and the unlock locked again
+    // despite play having started.
+    let u = { ...unlock(), ...startPlay(unlock(), at(19), KEY) };
+    u = { ...u, ...stopPlay(u, at(19), KEY) };
+    expect(u.playStartedAt).toBeNull();
+    expect(playedToday(u, KEY)).toBe(true);
+    // Stopping when nothing was running adds nothing.
+    const idle = unlock({ playDay: KEY, playUsedMs: 0, playStartedAt: null });
+    expect(stopPlay(idle, at(19), KEY).playUsedMs).toBe(0);
+  });
+
   it('adds time to today, picking up again if it had run out', () => {
     let u = { ...unlock(), ...startPlay(unlock(), at(19), KEY) };
     u = { ...u, ...addPlayTime(u, 15, at(21, 30), KEY) };
