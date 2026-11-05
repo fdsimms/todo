@@ -544,13 +544,28 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   const titleFits = inputW === 0 || titleW <= inputW;
   const hasOverlay = wantsOverlay && titleFits;
 
+  // The bubble's position depends on widths that each arrive through onLayout
+  // after its first render. Forget them when the phrase goes away, and hold the
+  // entrance until all are in: a spring that starts on mount is already visible
+  // at the unmeasured resting spot (the left edge) when the real one arrives.
   useEffect(() => {
-    if (activeMatch && !hadMatch.current) {
+    if (activeMatch) return;
+    setPrefixW(null);
+    setMatchW(null);
+    setBubbleW(0);
+    setTooltipRowW(0);
+  }, [activeMatch]);
+  const tooltipReady = activeMatch != null && prefixW != null && matchW != null && bubbleW > 0 && tooltipRowW > 0;
+
+  useEffect(() => {
+    if (tooltipReady && !hadMatch.current) {
       tooltipAnim.setValue(0);
       Animated.spring(tooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    } else if (!tooltipReady) {
+      tooltipAnim.setValue(0);
     }
-    hadMatch.current = activeMatch != null;
-  }, [activeMatch]);
+    hadMatch.current = tooltipReady;
+  }, [tooltipReady]);
 
   const { bubbleLeft, caretLeft } = activeMatch
     ? aimTooltip({ prefixW, matchW, inputW, bubbleW, rowW: tooltipRowW, candidateLayouts })

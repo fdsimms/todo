@@ -22,8 +22,8 @@ export function aimTooltip(m: {
   rowW: number;
   candidateLayouts?: readonly ({ x: number; width: number } | undefined)[];
 }): { bubbleLeft: number; caretLeft: number } {
-  // Mirror widths land a frame after the phrase appears; until then the
-  // tooltip is still fading in, so the resting spot doesn't matter.
+  // Mirror widths land a frame after the phrase appears. The caller keeps the
+  // tooltip hidden until they have, so this resting spot is never seen.
   if (m.prefixW == null || m.matchW == null) return { bubbleLeft: 0, caretLeft: 14 };
   const center = Math.min((m.prefixW + m.matchW) / 2, Math.max(m.inputW - 8, 0));
   const bubbleLeft = Math.min(Math.max(center - m.bubbleW / 2, 0), Math.max(m.rowW - m.bubbleW, 0));
