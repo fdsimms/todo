@@ -68,6 +68,20 @@ describe('updateFast', () => {
     expect(scheduleFastGoal).toHaveBeenLastCalledWith(18, new Date(start.getTime() + 18 * 3_600_000));
   });
 
+  it('changes only the goal of a fast that started more than 72 hours ago', () => {
+    const old = {
+      id: 'old',
+      startedAt: hoursAgo(96).toISOString(),
+      endedAt: hoursAgo(84).toISOString(),
+      goalHours: 16,
+      createdAt: hoursAgo(96).toISOString(),
+    };
+    useFastStore.setState({ fasts: [old] });
+    const updated = state().updateFast('old', { goalHours: 18 });
+    expect(updated).toEqual(expect.objectContaining({ id: 'old', startedAt: old.startedAt, goalHours: 18 }));
+    expect(dbUpdateFast).toHaveBeenCalledWith(expect.objectContaining({ id: 'old', goalHours: 18 }));
+  });
+
   it('refuses a start after the end of an ended fast', () => {
     const fast = state().startFast(hoursAgo(5), 16)!;
     state().endFast(hoursAgo(3));

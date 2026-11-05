@@ -163,7 +163,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/deviceTimeZone.ts` — DEVICE_TIME_ZONE_KEY, isValidTimeZone, currentTimeZone, recordDeviceTimeZone
 - `src/utils/dictation.ts` — DICTATION_BARS, joinDictation, transcriptRestarted, dictationJoiner, pushLevel, barHeight, DictationRefusal, dictationRefusal
 - `src/utils/digitRoll.ts` — RollColumn, rollColumns, rollDirection
-- `src/utils/doseRecording.ts` — syncOkAgainNotification, allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose, restoreDose
+- `src/utils/doseRecording.ts` — allowOkAgainNotification, confirmWithinLimit, recordDose, unrecordDose, restoreDose
 - `src/utils/dreamQueue.ts` — QueuedDream, QUEUED_DREAM_MAX_LENGTH, parseQueuedDreams
 - `src/utils/dumbbellLoad.ts` — DumbbellEntry, dumbbellsUsed, entryFor, weightScale, shownKg, storedKgFromTyped, storedKgFromShown, formatScaledWeight, weightHeadingSuffix, DUMBBELL_ENTRY_LABELS, +1 more
 - `src/utils/editedTaskMove.ts` — TodayView, editedTaskMove
@@ -378,6 +378,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nutritionSanity.ts` — PanelWarning, panelWarnings
 - `src/utils/nutritionStats.ts` — NutritionCounts, NutrientAverage, LoggedFood, SourceMix, EMPTY_NUTRITION_COUNTS, EMPTY_SOURCE_MIX, nutritionCounts, ProduceAverage, produceAverage, nutrientAverages, +13 more
 - `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NO_DAILY_VALUE, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, displayFigure, targetProgress, TargetStatus, +30 more
+- `src/utils/okAgainNotification.ts` — syncOkAgainNotification
 - `src/utils/openExternalUrl.ts` — ExternalKind, externalKindFor, externalFailureCopy, openExternalUrl
 - `src/utils/openTasks.ts` — openTasksOf
 - `src/utils/ordinal.ts` — ordinal

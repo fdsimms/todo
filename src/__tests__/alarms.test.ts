@@ -78,6 +78,13 @@ describe('nextClockTime', () => {
     expect(nextClockTime(9, 0, NOW)).toEqual(new Date(2026, 9, 15, 9, 0));
     expect(nextClockTime(10, 0, NOW)).toEqual(new Date(2026, 9, 15, 10, 0));
   });
+
+  it('is the next calendar day when 24 hours on would skip one (the night before spring-forward)', () => {
+    // 23:30 on Saturday Mar 7 2026, asking for 07:00. Sunday is 23 hours long in
+    // a US-style DST zone, so 24 hours later is already Monday. Visible in
+    // `npm run test:tz`'s Newfoundland run; in a zone without DST it holds trivially.
+    expect(nextClockTime(7, 0, new Date(2026, 2, 7, 23, 30))).toEqual(new Date(2026, 2, 8, 7, 0));
+  });
 });
 
 describe('nextFireAt', () => {

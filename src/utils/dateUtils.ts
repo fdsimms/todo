@@ -961,6 +961,10 @@ const STREAK_LATE_TOLERANCE_DAYS = 1;
  */
 function getExpectedStreakGapDays(task: Task, from: Date): number {
   if (task.recurrenceType === 'daily') return task.recurrenceInterval;
+  // An hours interval is hours, not weeks: the streak is keyed by day, so an
+  // "every 8 hours" task expects a completion on each day, and "every 36 hours"
+  // one every two. It fell through to 7 * interval and survived 56 days of gaps.
+  if (task.recurrenceType === 'hours') return Math.max(1, Math.ceil(task.recurrenceInterval / 24));
   if (task.recurrenceDays.length > 0) {
     return Math.max(1, differenceInCalendarDays(getNextWeekdayOccurrence(task.recurrenceDays, from, task.recurrenceInterval), from));
   }

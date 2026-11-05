@@ -359,14 +359,19 @@ export interface Quantity {
   rangeSeparator: 'to' | '-' | null;
 }
 
-// The Unicode vulgar fractions `decodeEntities` (recipeUrl.ts) writes when a
-// recipe page spells a fraction as an HTML entity ("&frac12;" -> "½") — the
-// only glyphs the app's own recipe import can produce, so this is the exact
-// set worth reading back rather than every vulgar fraction Unicode defines.
+// Every Unicode vulgar fraction with a plain ratio. `decodeEntities`
+// (recipeUrl.ts) turns any numeric reference into its glyph ("&#8537;" -> "⅙"),
+// and a page's JSON-LD can carry one literally, so the set can't be limited to
+// the nine a named entity writes. A glyph left out of this table is not
+// ignored: it stays in the text after the whole number, so "1⅙ cups" doubled
+// reads "2 ⅙ cups" and claims to have scaled.
 const UNICODE_FRACTIONS: Record<string, Rational> = {
   '½': rational(1, 2), '⅓': rational(1, 3), '⅔': rational(2, 3),
   '¼': rational(1, 4), '¾': rational(3, 4),
-  '⅛': rational(1, 8), '⅜': rational(3, 8), '⅝': rational(5, 8), '⅞': rational(7, 8),
+  '⅕': rational(1, 5), '⅖': rational(2, 5), '⅗': rational(3, 5), '⅘': rational(4, 5),
+  '⅙': rational(1, 6), '⅚': rational(5, 6),
+  '⅐': rational(1, 7), '⅛': rational(1, 8), '⅜': rational(3, 8), '⅝': rational(5, 8), '⅞': rational(7, 8),
+  '⅑': rational(1, 9), '⅒': rational(1, 10),
 };
 export const UNICODE_FRACTION_CHARS = Object.keys(UNICODE_FRACTIONS).join('');
 // A whole number followed by one of those glyphs, glued ("1½") or spaced

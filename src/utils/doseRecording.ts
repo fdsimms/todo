@@ -17,11 +17,8 @@ import {
   prefsFor,
   supplyRemaining,
 } from './medicationSettings';
-import {
-  cancelMedicationOkAgain,
-  requestNotificationPermissions,
-  scheduleMedicationOkAgain,
-} from './notifications';
+import { requestNotificationPermissions } from './notifications';
+import { syncOkAgainNotification } from './okAgainNotification';
 import { BUTTON_LABEL } from '../copy/shared';
 import { alertPermissionOff } from './permissionAlert';
 import { cancelCheckInFor } from './checkInRecording';
@@ -50,22 +47,9 @@ const REFILL_OFFER_DELAY_MS = 600;
  * request.
  */
 
-/** Move a medication's "OK again" notification to match its doses now. */
-export function syncOkAgainNotification(name: string, now: Date = new Date()): void {
-  const { logs, settings } = useMedicationStore.getState();
-  const key = medicationKey(name);
-  const { limit } = prefsFor(settings, name);
-  if (!key) return;
-  // Caught rather than left floating: a schedule refused for want of
-  // permission is the person's setting, not an error to surface here.
-  if (!limit?.notify) {
-    cancelMedicationOkAgain(key).catch(() => {});
-    return;
-  }
-  const status = limitStatus(logs, name, limit, now);
-  if (status.nextOkAt) scheduleMedicationOkAgain(key, name, status.nextOkAt).catch(() => {});
-  else cancelMedicationOkAgain(key).catch(() => {});
-}
+// Lives in its own module so the task store can call it (this file imports the
+// task store); re-exported because the sheets and screens already import it here.
+export { syncOkAgainNotification };
 
 /**
  * Turn a limit's notification on: ask for permission first, and say so when

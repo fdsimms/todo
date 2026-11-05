@@ -67,6 +67,15 @@ describe('parseQuantity — Unicode vulgar fractions', () => {
     expect(amount('⅓ cup')).toBe(1 / 3);
   });
 
+  it('reads the fifths, sixths and the rest of the vulgar fractions, not just the common nine', () => {
+    expect(amount('⅕ cup')).toBe(1 / 5);
+    expect(amount('2⅖ cups')).toBe(2.4);
+    expect(amount('1⅙ cups')).toBe(1 + 1 / 6);
+    expect(amount('⅚ cup')).toBe(5 / 6);
+    expect(amount('⅐ tsp')).toBe(1 / 7);
+    expect(amount('⅒ cup')).toBe(0.1);
+  });
+
   it('still finds the unit after the glyph, not just the amount', () => {
     const q = parseQuantity('1½ cups');
     expect(q.unit).toBe('cup');

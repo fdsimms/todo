@@ -3569,7 +3569,10 @@ function trackedTable(name: string): SyncTable | null {
 
 /** `WHERE id = ?`, and-ed across a composite key, with its bound values. */
 function keyClause(table: SyncTable, rowKey: string): { sql: string; values: string[] } {
-  const values = rowKey.split(KEY_SEPARATOR);
+  // A single-column key is the whole string: `gym_exercises` ids are
+  // `gymId|exerciseId` (gymExerciseId), so splitting on the separator bound two
+  // values to one placeholder and threw, which failed the whole apply.
+  const values = table.key.length === 1 ? [rowKey] : rowKey.split(KEY_SEPARATOR);
   return {
     sql: table.key.map(col => `"${col}" = ?`).join(' AND '),
     values,

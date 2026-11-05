@@ -63,7 +63,9 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     },
     logicalDayKeyOf: (iso: string) => iso.slice(0, 10),
     dayKeyOf: (iso: string) => iso.slice(0, 10),
-    isRealCompletion: (t: Task) => t.completed && !t.missedAt,
+    // The app's own predicate (src/utils/missed.ts): a row somebody else did is
+    // not a real completion either, which the shorter version of this missed.
+    isRealCompletion: (t: Task) => t.completed && !t.missedAt && !t.doneByOtherAt,
     describeBounty: () => null,
     onTimeSummary: (list: readonly Task[]) => {
       const judged = list.filter(t => t.deadline);
@@ -199,6 +201,8 @@ describe('completionHistory', () => {
       tags: ['deep'], deadline: '2026-10-04T00:00:00' }),
     task({ id: 'c', title: 'Plan', completed: true, completedAt: '2026-09-28T10:00:00', category: 'Work', deadline: '2026-09-27T00:00:00' }),
     task({ id: 'missed', title: 'Floss', completed: true, completedAt: '2026-10-02T00:00:00', missedAt: '2026-10-02T00:00:00' }),
+    // Done by somebody else: neither the person's completion nor a miss.
+    task({ id: 'other', title: 'Bins', completed: true, completedAt: '2026-10-02T12:00:00', doneByOtherAt: '2026-10-02T12:00:00' }),
     task({ id: 'old', title: 'Ancient', completed: true, completedAt: '2026-01-01T10:00:00' }),
     task({ id: 'sub', title: 'Step', completed: true, completedAt: '2026-10-03T10:00:00', parentId: 'b' }),
     task({ id: 'open', title: 'Open' }),
