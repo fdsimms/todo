@@ -1,3 +1,47 @@
+diff --git a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/InputAccessory/RCTInputAccessoryContentView.mm b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/InputAccessory/RCTInputAccessoryContentView.mm
+index cd75536..a53dce2 100644
+--- a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/InputAccessory/RCTInputAccessoryContentView.mm
++++ b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/InputAccessory/RCTInputAccessoryContentView.mm
+@@ -45,6 +45,39 @@
+   [_safeAreaContainer insertSubview:view atIndex:index];
+ }
+ 
++// iOS hosts an accessory view inside its own keyboard container, and on iOS 26
++// that container paints a solid backdrop behind it. A bar of Liquid Glass
++// capsules (backgroundColor clear) is meant to float over the keyboard's rounded
++// top, so while ours is clear the backdrop views that sit beside it come off.
++// Only siblings along our own ancestor chain are touched, never the keyboard.
++- (void)didMoveToWindow
++{
++  [super didMoveToWindow];
++  if (self.window == nil) {
++    return;
++  }
++  CGFloat alpha = 0;
++  [self.backgroundColor getRed:nil green:nil blue:nil alpha:&alpha];
++  if (self.backgroundColor != nil && alpha > 0) {
++    return;
++  }
++  UIView *child = self;
++  UIView *parent = self.superview;
++  for (int depth = 0; parent != nil && ![parent isKindOfClass:[UIWindow class]] && depth < 3; depth++) {
++    for (UIView *sibling in parent.subviews) {
++      if (sibling == child) {
++        continue;
++      }
++      NSString *name = NSStringFromClass([sibling class]);
++      if ([sibling isKindOfClass:[UIVisualEffectView class]] || [name containsString:@"Backdrop"]) {
++        sibling.hidden = YES;
++      }
++    }
++    child = parent;
++    parent = parent.superview;
++  }
++}
++
+ - (void)setFrame:(CGRect)frame
+ {
+   [super setFrame:frame];
 diff --git a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
 index 917dc6d..9cb123d 100644
 --- a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm
