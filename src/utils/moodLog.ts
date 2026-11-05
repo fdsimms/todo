@@ -102,6 +102,16 @@ export function changeAnchorFor(logs: readonly MoodLog[], at: Date, excludeId?: 
 }
 
 /**
+ * Whether "since your last entry" is worth asking: only when the new mood is
+ * the same level as the anchor's. A different level already says which way it
+ * moved, so the question adds nothing; with the same level it is the one thing
+ * the number can't say.
+ */
+export function asksChange(anchor: MoodLog | null, mood: MoodLevel | null): boolean {
+  return anchor !== null && mood !== null && anchor.mood === mood;
+}
+
+/**
  * How many entries since `fromDayKey` carry each answer. A tally of one thing,
  * so it has no minimum (see mood-log.md, "counting one thing has no minimum,
  * comparing two does"), and it counts only what was said: an entry with no
