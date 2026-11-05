@@ -1304,19 +1304,36 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     titleCaret.moveCaret(next);
   };
 
-  // Pop the tooltip in when a phrase is first detected (not on every keystroke
-  // that merely extends it).
+  // The measurements the bubble's position depends on all land after its first
+  // render (the mirror text, the bubble and its row each report through
+  // onLayout). Forget them when the phrase goes away so the next one can't be
+  // placed from the last one's widths, and hold the entrance until every one
+  // is in: a spring that starts on mount is already visible at the unmeasured
+  // resting spot (the left edge) when the real position arrives.
   useEffect(() => {
-    if (activeMatch && !hadParse.current) {
+    if (activeMatch) return;
+    setPrefixW(null);
+    setMatchW(null);
+    setBubbleW(0);
+    setTooltipRowW(0);
+  }, [activeMatch]);
+  const tooltipReady = activeMatch != null && prefixW != null && matchW != null && bubbleW > 0 && tooltipRowW > 0;
+
+  // Pop the tooltip in once it is measured and placed (not on every keystroke
+  // that merely extends the phrase).
+  useEffect(() => {
+    if (tooltipReady && !hadParse.current) {
       tooltipAnim.setValue(0);
       Animated.spring(tooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    } else if (!tooltipReady) {
+      tooltipAnim.setValue(0);
     }
-    hadParse.current = activeMatch != null;
-  }, [activeMatch]);
+    hadParse.current = tooltipReady;
+  }, [tooltipReady]);
 
   // Tooltip geometry: center the bubble under the highlighted phrase and aim
-  // the caret at it, clamped to the row. Mirror-text widths land a frame after
-  // the parse appears; until then the tooltip is still fading in from 0.
+  // the caret at it, clamped to the row. The bubble stays at opacity 0 (see
+  // tooltipReady) until every width here is known.
   const { bubbleLeft, caretLeft } = activeMatch
     ? aimTooltip({ prefixW, matchW, inputW, bubbleW, rowW: tooltipRowW, candidateLayouts })
     : { bubbleLeft: 0, caretLeft: 14 };
