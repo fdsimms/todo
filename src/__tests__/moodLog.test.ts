@@ -2,6 +2,7 @@ import {
   MOOD_LEVELS,
   MOOD_CHANGES,
   CHANGE_ANCHOR_WINDOW_MS,
+  asksChange,
   LOW_MOOD_AT_OR_BELOW,
   changeAnchorFor,
   changeTally,
@@ -323,6 +324,14 @@ describe('since your last entry', () => {
       log({ id: 'later', loggedAt: new Date(at.getTime() + 3600 * 1000).toISOString(), mood: 3 }),
     ];
     expect(changeAnchorFor(logs, at, 'self')).toBeNull();
+  });
+
+  it('asks only when the new mood is the same level as the anchor', () => {
+    const anchor = log({ mood: 3 });
+    expect(asksChange(anchor, 3)).toBe(true);
+    expect(asksChange(anchor, 4)).toBe(false);
+    expect(asksChange(anchor, null)).toBe(false);
+    expect(asksChange(null, 3)).toBe(false);
   });
 
   it('says what it is measured against, in plain words', () => {

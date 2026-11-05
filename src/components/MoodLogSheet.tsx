@@ -13,6 +13,7 @@ import {
   DEFAULT_CONTEXT_TAGS,
   MOOD_CHANGES,
   MOOD_LEVELS,
+  asksChange,
   changeAnchorFor,
   describeChangeAnchor,
   SYMPTOM_SEVERITIES,
@@ -361,8 +362,9 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
   // What "since your last entry" is measured against. A new entry is measured
   // from now and only for today (a backdated day has no "last entry" to speak
   // of); an edit is measured from its own moment, never against itself. No
-  // anchor, no question, except that an entry already holding an answer keeps
-  // showing it so it can be seen and cleared. See `changeAnchorFor`.
+  // anchor, or a mood that differs from the anchor's, no question (`asksChange`),
+  // except that an entry already holding an answer keeps showing it so it can be
+  // seen and cleared. See `changeAnchorFor`.
   const changeAt = useMemo(
     () => (editing ? new Date(editing.loggedAt) : new Date()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -372,7 +374,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     () => (!editing && !isSameDay(day, getLogicalToday()) ? null : changeAnchorFor(logs, changeAt, editing?.id)),
     [logs, changeAt, editing, day],
   );
-  const showChange = changeAnchor !== null || !!editing?.change;
+  const showChange = asksChange(changeAnchor, mood) || !!editing?.change;
   // A pick made while the row was showing is dropped if it stops showing (the
   // Day row moved to a past day), so an answer is never saved unseen.
   const savedChange = showChange ? change : null;

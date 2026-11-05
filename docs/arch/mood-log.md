@@ -982,7 +982,9 @@ rules hold it:
   earlier entry *with a mood* inside `CHANGE_ANCHOR_WINDOW_MS` (24 hours, wall clock). With none,
   the sheet does not show the row, because "better than last time" after three days is not a
   claim about last time. A new entry for a backdated day has no anchor and the row is hidden.
-  An entry that already holds an answer keeps showing the row when edited, so it can be seen
+  It is also hidden unless the mood picked is the same level as the anchor's (`asksChange`): a
+  different level already says which way it moved, and the row is for the day a 3 is a different
+  3. An entry that already holds an answer keeps showing the row when edited, so it can be seen
   and cleared.
 - **The sheet says what it is measured against** ("Last entry: Low, 3 hours ago") and the
   answer is dropped on save if the row stopped showing, so an answer is never saved unseen.
