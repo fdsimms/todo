@@ -5359,6 +5359,21 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(settings.wanikaniTasks).toBe(false);
   });
 
+  it('seeds a YNAB transactions task, with the switch left off so nothing reads', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const task = tasks.find(t => t.generatedKind === 'ynab');
+    expect(task).toBeDefined();
+    expect(task!.title).toBe('Approve 4 transactions in YNAB');
+    expect(task!.generatedSourceId).toBe(`queue:${dayKeyOf(getCurrentDayStart())}`);
+    expect(task!.linkUrl).toBe('https://app.ynab.com/');
+    expect(task!.category).toBe('Personal');
+    expect(settings.ynabTaskCategory).toBe('Personal');
+    expect(settings.ynabTasks).toBe(false);
+    expect(settings.ynabGroceryBudget).toBe(false);
+  });
+
   it('seeds a Stay under limit, shown on Today, and a warning for it', () => {
     const settings = useSettingsStore.getState();
     expect(settings.nutritionLimits).toEqual(['satFatG']);

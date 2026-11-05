@@ -22,6 +22,7 @@ import { CookwareSheet } from '../../components/CookwareSheet';
 import { useCookwareStore } from '../../store/useCookwareStore';
 import { standingSwaps } from '../../utils/standingSwaps';
 import { makeSettingsStyles } from './settingsStyles';
+import { YnabGroceryBudgetSection } from './YnabGroceryBudgetSection';
 import { haptics } from '../../utils/haptics';
 import { BUTTON_LABEL } from '../../copy/shared';
 import { CURRENCY_SYMBOLS, CURRENCY_SYMBOL_MAX_LENGTH } from '../../types';
@@ -313,6 +314,10 @@ export function KitchenSettings() {
           />
         </SettingsSection>
       )}
+
+      {/* Off the simplified-mode gate on purpose: a trip budget is something a
+          simplified setup still shows on the banner, and this is its source. */}
+      <YnabGroceryBudgetSection />
 
       <SettingsSection label="Grocery list">
         <SettingsRow

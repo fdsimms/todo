@@ -385,6 +385,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'dreamLogTaskCategory', current: s.dreamLogTaskCategory, assign: s.setDreamLogTaskCategory };
     case 'wanikani':
       return { key: 'wanikaniTaskCategory', current: s.wanikaniTaskCategory, assign: s.setWanikaniTaskCategory };
+    case 'ynab':
+      return { key: 'ynabTaskCategory', current: s.ynabTaskCategory, assign: s.setYnabTaskCategory };
     case 'moodNudge':
       return { key: 'moodNudgeTaskCategory', current: s.moodNudgeTaskCategory, assign: s.setMoodNudgeTaskCategory };
     case 'weekendNudge':

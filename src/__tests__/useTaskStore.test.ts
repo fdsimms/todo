@@ -82,6 +82,7 @@ import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
 import { setDemoModeActive } from '../utils/demoState';
+import { ynabMonthKey } from '../utils/ynabPlan';
 import type { FoodLogEntry, FoodNutrition, GroceryItem, Person, Project, Task, TaskGroup, TitleRule } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -420,6 +421,9 @@ jest.mock('../store/useTransitStore', () => ({
 }));
 jest.mock('../store/useWaniKaniStore', () => ({
   useWaniKaniStore: { getState: jest.fn(() => ({ snapshot: null })) },
+}));
+jest.mock('../store/useYnabStore', () => ({
+  useYnabStore: { getState: jest.fn(() => ({ snapshot: null })) },
 }));
 jest.mock('../store/useTravelTimeStore', () => ({
   useTravelTimeStore: { getState: jest.fn(() => ({ estimates: {} })) },
@@ -22993,5 +22997,196 @@ describe('list lens cache', () => {
     expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
     jest.setSystemTime(new Date(2025, 5, 10, 10, 1, 0, 100));
     expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['t1']);
+  });
+});
+
+// ─── checkYnabTasks ─────────────────────────────────────────────────────────
+
+describe('checkYnabTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { useYnabStore } = jest.requireMock('../store/useYnabStore') as {
+    useYnabStore: { getState: jest.Mock };
+  };
+
+  const NOW = new Date(2026, 10, 5, 10, 20);
+  const MONTH = ynabMonthKey(NOW);
+  const groceries = { id: 'c-groc', name: 'Groceries', groupId: 'g', groupName: 'Everyday', balanceMinor: 3600, hidden: false };
+  const dining = { id: 'c-dine', name: 'Dining Out', groupId: 'g', groupName: 'Everyday', balanceMinor: -1240, hidden: false };
+  const snap = (overrides: Record<string, unknown> = {}) => ({
+    fetchedAt: NOW.toISOString(),
+    planId: 'p1',
+    monthKey: MONTH,
+    serverKnowledge: 1,
+    queue: { unapproved: 3, uncategorized: 0, total: 3 },
+    categories: [groceries, dining],
+    ...overrides,
+  });
+
+  let current: Record<string, unknown>;
+  const setSettings = (overrides: Record<string, unknown> = {}) => {
+    current = {
+      dayResetTime: '00:00',
+      vacationMode: false,
+      newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      titleRules: [],
+      collapsedCategories: [],
+      currencySymbol: '$',
+      ynabTasks: true,
+      ynabTaskCategory: 'Personal',
+      ynabOverspentTasks: false,
+      ynabPlanId: 'p1',
+      ynabQueueLastDayKey: null,
+      ynabOverspentDeclined: [],
+      setYnabQueueLastDayKey: jest.fn((key: unknown) => { current.ynabQueueLastDayKey = key; }),
+      setYnabOverspentDeclined: jest.fn((ids: unknown) => { current.ynabOverspentDeclined = ids; }),
+      ...overrides,
+    };
+  };
+  const setSnapshot = (overrides: Record<string, unknown> = {}) =>
+    useYnabStore.getState.mockReturnValue({ snapshot: snap(overrides) });
+  const check = () => useTaskStore.getState().checkYnabTasks();
+  const live = (prefix: string) =>
+    useTaskStore.getState().tasks.filter(t =>
+      t.generatedKind === 'ynab' && !t.completed && !t.archived && t.generatedSourceId?.startsWith(prefix));
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    setSettings();
+    useSettingsStore.getState.mockImplementation(() => current);
+    setSnapshot();
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    useYnabStore.getState.mockReturnValue({ snapshot: null });
+  });
+
+  it('writes the queue task for today, opening YNAB, and spends the day', () => {
+    check();
+    const [task] = live('queue:');
+    expect(task.title).toBe('Approve 3 transactions in YNAB');
+    expect(task.category).toBe('Personal');
+    expect(task.linkUrl).toBe('https://app.ynab.com/');
+    expect(new Date(task.dueDate!)).toEqual(new Date(2026, 10, 5, 12, 0));
+    expect(task.vacationPause).toBe(true);
+    expect(current.ynabQueueLastDayKey).toBe('2026-11-05');
+  });
+
+  it('follows the queue on the open task, and reads ready (not completed) when it empties', () => {
+    check();
+    setSnapshot({ queue: { unapproved: 1, uncategorized: 1, total: 2 } });
+    check();
+    expect(live('queue:').map(t => t.title)).toEqual(['Review 2 transactions in YNAB']);
+    setSnapshot({ queue: { unapproved: 0, uncategorized: 0, total: 0 } });
+    check();
+    const [task] = live('queue:');
+    expect(task.title).toBe('Review transactions in YNAB');
+    expect(task.generatedReadyAt).toEqual(expect.any(String));
+    expect(task.completed).toBe(false);
+    // More arrive before it's checked off: not ready any more.
+    setSnapshot();
+    check();
+    expect(live('queue:')[0].generatedReadyAt).toBeNull();
+  });
+
+  it('writes no second task the same day once one was checked off', () => {
+    check();
+    useTaskStore.getState().completeTask(live('queue:')[0].id);
+    check();
+    expect(live('queue:')).toHaveLength(0);
+    // Tomorrow it can.
+    jest.setSystemTime(new Date(2026, 10, 6, 9, 0));
+    check();
+    expect(live('queue:').map(t => t.generatedSourceId)).toEqual(['queue:2026-11-06']);
+  });
+
+  it('keeps an open task from an earlier day rather than writing today\'s', () => {
+    check();
+    jest.setSystemTime(new Date(2026, 10, 6, 9, 0));
+    check();
+    expect(live('queue:').map(t => t.generatedSourceId)).toEqual(['queue:2026-11-05']);
+  });
+
+  it('writes nothing with nothing waiting, without a read, or for another plan', () => {
+    setSnapshot({ queue: { unapproved: 0, uncategorized: 0, total: 0 } });
+    check();
+    useYnabStore.getState.mockReturnValue({ snapshot: null });
+    check();
+    setSnapshot({ planId: 'other' });
+    check();
+    expect(live('')).toHaveLength(0);
+    expect(current.ynabQueueLastDayKey).toBeNull();
+  });
+
+  it('writes nothing switched off, on vacation, or in demo mode', () => {
+    setSettings({ ynabTasks: false });
+    check();
+    setSettings({ vacationMode: true });
+    check();
+    setSettings();
+    setDemoModeActive(true);
+    try {
+      check();
+    } finally {
+      setDemoModeActive(false);
+    }
+    expect(live('')).toHaveLength(0);
+  });
+
+  describe('overspent categories', () => {
+    beforeEach(() => setSettings({ ynabOverspentTasks: true }));
+
+    it('writes one per overspent category, by how much, only with its switch on', () => {
+      check();
+      expect(live('overspent:').map(t => t.title)).toEqual(['Cover $12.40 overspending in Dining Out']);
+      setSettings({ ynabOverspentTasks: false });
+      check();
+      expect(live('overspent:')).toHaveLength(0);
+    });
+
+    it('reads ready once the category is covered, and goes if it leaves the plan', () => {
+      check();
+      setSnapshot({ categories: [groceries, { ...dining, balanceMinor: 0 }] });
+      check();
+      const [task] = live('overspent:');
+      expect(task.title).toBe('Cover overspending in Dining Out');
+      expect(task.generatedReadyAt).toEqual(expect.any(String));
+      setSnapshot({ categories: [groceries] });
+      check();
+      expect(live('overspent:')).toHaveLength(0);
+    });
+
+    it('asks once a month: a checked-off one is not written again', () => {
+      check();
+      useTaskStore.getState().completeTask(live('overspent:')[0].id);
+      check();
+      expect(live('overspent:')).toHaveLength(0);
+    });
+
+    it('stays gone this month once deleted, and the decline lapses with the month', () => {
+      check();
+      const [task] = live('overspent:');
+      useTaskStore.getState().deleteTask(task.id);
+      expect(current.ynabOverspentDeclined).toEqual([task.generatedSourceId]);
+      check();
+      expect(live('overspent:')).toHaveLength(0);
+      current.ynabOverspentDeclined = ['overspent:2000-01:c-dine', task.generatedSourceId];
+      check();
+      expect(current.ynabOverspentDeclined).toEqual([task.generatedSourceId]);
+    });
+
+    it('withdraws last month\'s task when the month turns', () => {
+      check();
+      const next = new Date(2026, 11, 2, 10, 0);
+      jest.setSystemTime(next);
+      // A read of the new month has the category starting over.
+      setSnapshot({ monthKey: ynabMonthKey(next), categories: [groceries, { ...dining, balanceMinor: 5000 }] });
+      check();
+      expect(live('overspent:')).toHaveLength(0);
+    });
   });
 });

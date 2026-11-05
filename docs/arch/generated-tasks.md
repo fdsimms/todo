@@ -2131,7 +2131,8 @@ start of the last event added from it. Rules are in `src/utils/savedEventTasks.t
 
 ## `wanikani`: the review queue and a day's lessons, from the person's WaniKani account
 
-The one generator fed by an account on another service. `src/services/wanikani.ts` reads the
+The first generator fed by an account on another service (`ynab`, below, is the second and copies
+its shape). `src/services/wanikani.ts` reads the
 person's WaniKani summary (reviews waiting now, and how many arrive in each of the next 24 hours)
 with a token they paste in (read-only is enough; it lives in the keychain as
 `WANIKANI_TOKEN_SECURE_KEY` and never syncs). `useWaniKaniStore` holds the read in memory,
@@ -2178,6 +2179,44 @@ charger would read "no token".
 - Pauses on vacation (it is work), refuses in demo mode, and files under its own category setting
   (default Study). Source ids are `reviews:<local hour>` and `lessons:<day>`; a delete writes
   nothing, since the close is the decision.
+
+## `ynab`: transactions waiting, and overspent categories, from the person's YNAB plan
+
+`wanikani`'s shape for a second account: `src/services/ynab.ts` reads the person's YNAB plan with a
+personal access token they paste in (keychain, `YNAB_TOKEN_SECURE_KEY`, readable while locked,
+never synced), `useYnabStore` holds the read in memory, `useYnabSync` reads on mount, on foreground
+and every ten minutes, and `checkYnabTasks` (rules in `src/utils/ynabTasks.ts`) runs when a read
+lands. `runBackgroundYnab` reads before the background sync, like WaniKani's. The same read feeds
+the shopping trip's budget (`ynabGroceryBudget`, see "The active trip" in `groceries.md`), so the
+service is gated on either feature being on, and the plan is one setting both share.
+
+- **Nothing read from YNAB is stored.** No table, no setting: the categories, balances and counts
+  live in `useYnabStore`'s memory, so none of it reaches sync, a backup or the MCP replica. The
+  settings hold only the person's choices and YNAB's ids for them (`ynabPlanId`,
+  `ynabGroceryCategoryId`), and a category's name is read with the plan, never saved.
+- **Every request is a GET.** YNAB's personal tokens can write the whole plan; this phase only
+  reads, and the service file is where that is kept.
+- **The API is YNAB's "plans" API.** Since API 1.79.0 a budget is a plan and the paths are
+  `/plans/{id}/…`; the old `/budgets/…` paths still answer but are undocumented. Amounts are
+  milliunits, divided by ten into the app's hundredths. `src/utils/ynabPlan.ts` lists what was
+  checked against the reference.
+- **The rate limit is 200 requests an hour per token.** A read is at most three requests: the
+  categories as a delta (`last_knowledge_of_server`, merged into the last read, reset when the UTC
+  month turns because the amounts are the month's), and the unapproved and uncategorized lists read
+  whole, because a transaction approved since the last read no longer matches the filter, so a
+  filtered delta can't be relied on to report that it left. A 429 stands reads down for 15 minutes.
+- **The queue task is written once a day at most** (`ynabQueueLastDayKey`, per device, spent by the
+  write). While one is open, yesterday's included, its count follows the queue instead of a second
+  being written. Its title names what the transactions wait for: approval, a category, or both.
+- **The overspent task is one per category per UTC month** (`overspent:<month>:<category>`), behind
+  its own switch (`ynabOverspentTasks`, off). A checked-off one is on record (`blocksOnFinished`); a
+  deleted one goes on `ynabOverspentDeclined` (synced, pruned as the month turns). When the month
+  turns, last month's open tasks are withdrawn, since YNAB has already moved that shortfall.
+- **Nothing completes them.** An empty queue or a covered category sets `generatedReadyAt` through
+  the reconcile's `satisfied`, and the title drops its number.
+- Pauses on vacation, refuses in demo mode (the service, the store and the pass each check), and
+  files under its own category setting (default Personal). Nothing read from YNAB is sent to
+  Claude.
 
 ## A rule's own category
 

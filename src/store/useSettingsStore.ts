@@ -1961,6 +1961,23 @@ interface SettingsStore {
   wanikaniClientLink: string;
   wanikaniReviewState: WaniKaniReviewState;
   wanikaniLessonsLastDayKey: string | null;
+  // The person's YNAB plan (src/services/ynab.ts). Two features read it, each
+  // off by default and inert without a token in the keychain (useYnabStore):
+  // the transactions task (`ynabTasks`, the `ynab` generator, with the
+  // overspent-category task as its own switch inside it) and the grocery
+  // trip's budget taken from a YNAB category (`ynabGroceryBudget`). The plan
+  // and the grocery category are the ids YNAB gave them; their names are read
+  // with the plan and never stored. The queue day mark is this device's own.
+  ynabTasks: boolean;
+  ynabTaskCategory: string | null;
+  ynabOverspentTasks: boolean;
+  ynabGroceryBudget: boolean;
+  ynabPlanId: string | null;
+  ynabGroceryCategoryId: string | null;
+  ynabQueueLastDayKey: string | null;
+  // The overspent tasks deleted: their source ids, which name a category and
+  // a month, pruned to the current month as they are read.
+  ynabOverspentDeclined: string[];
   // Whether a run of low-mood days adds a task to plan something you enjoy.
   // Off by default and deliberately harder to reach than the rest: it is the
   // only generator that fires on a trend in the user's own answers, so opting
@@ -2547,6 +2564,15 @@ interface SettingsStore {
   setWanikaniClientLink: (link: string) => void;
   setWanikaniReviewState: (state: WaniKaniReviewState) => void;
   setWanikaniLessonsLastDayKey: (key: string | null) => void;
+  setYnabTasks: (on: boolean) => void;
+  setYnabTaskCategory: (category: string | null) => void;
+  setYnabOverspentTasks: (on: boolean) => void;
+  setYnabGroceryBudget: (on: boolean) => void;
+  /** Choosing another plan also forgets the grocery category, which belonged to the old one. */
+  setYnabPlanId: (planId: string | null) => void;
+  setYnabGroceryCategoryId: (categoryId: string | null) => void;
+  setYnabQueueLastDayKey: (key: string | null) => void;
+  setYnabOverspentDeclined: (sourceIds: string[]) => void;
   setMoodNudgeTasks: (on: boolean) => void;
   setMoodNudgeTaskCategory: (category: string | null) => void;
   setMoodNudgeAfterDays: (days: number) => void;
@@ -3361,6 +3387,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   wanikaniClientLink: '',
   wanikaniReviewState: WANIKANI_INITIAL_REVIEW_STATE,
   wanikaniLessonsLastDayKey: null,
+  ynabTasks: false,
+  ynabTaskCategory: null,
+  ynabOverspentTasks: false,
+  ynabGroceryBudget: false,
+  ynabPlanId: null,
+  ynabGroceryCategoryId: null,
+  ynabQueueLastDayKey: null,
+  ynabOverspentDeclined: [],
   moodNudgeTasks: false,
   moodNudgeTaskCategory: null,
   moodNudgeAfterDays: DEFAULT_MOOD_NUDGE_AFTER_DAYS,
@@ -3939,6 +3973,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const wanikaniClientLink = dbGetSetting('wanikaniClientLink') ?? '';
     const wanikaniReviewState = parseWaniKaniReviewState(dbGetSetting('wanikaniReviewState'));
     const wanikaniLessonsLastDayKey = dbGetSetting('wanikaniLessonsLastDayKey') || null;
+    const ynabTasks = dbGetSetting('ynabTasks') === 'true';
+    const ynabTaskCategory = dbGetSetting('ynabTaskCategory') || null;
+    const ynabOverspentTasks = dbGetSetting('ynabOverspentTasks') === 'true';
+    const ynabGroceryBudget = dbGetSetting('ynabGroceryBudget') === 'true';
+    const ynabPlanId = dbGetSetting('ynabPlanId') || null;
+    const ynabGroceryCategoryId = dbGetSetting('ynabGroceryCategoryId') || null;
+    const ynabQueueLastDayKey = dbGetSetting('ynabQueueLastDayKey') || null;
+    const ynabOverspentDeclined = parseCategoryNames(dbGetSetting('ynabOverspentDeclined'));
     const moodNudgeTasks = dbGetSetting('moodNudgeTasks') === 'true';
     const moodNudgeTaskCategory = dbGetSetting('moodNudgeTaskCategory') || null;
     const storedMoodNudgeAfterDays = parseInt(dbGetSetting('moodNudgeAfterDays') ?? '', 10);
@@ -4468,6 +4510,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       workoutLiveActivity,
       workoutsEnabled,
       workoutUnit,
+      ynabGroceryBudget,
+      ynabGroceryCategoryId,
+      ynabOverspentDeclined,
+      ynabOverspentTasks,
+      ynabPlanId,
+      ynabQueueLastDayKey,
+      ynabTaskCategory,
+      ynabTasks,
       initialized: true,
     });
   },
@@ -5406,6 +5456,49 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWanikaniLessonsLastDayKey(key: string | null) {
     dbSetSetting('wanikaniLessonsLastDayKey', key ?? '');
     set({ wanikaniLessonsLastDayKey: key });
+  },
+
+  setYnabTasks(on: boolean) {
+    dbSetSetting('ynabTasks', on ? 'true' : 'false');
+    set({ ynabTasks: on });
+  },
+
+  setYnabTaskCategory(category: string | null) {
+    dbSetSetting('ynabTaskCategory', category ?? '');
+    set({ ynabTaskCategory: category });
+  },
+
+  setYnabOverspentTasks(on: boolean) {
+    dbSetSetting('ynabOverspentTasks', on ? 'true' : 'false');
+    set({ ynabOverspentTasks: on });
+  },
+
+  setYnabGroceryBudget(on: boolean) {
+    dbSetSetting('ynabGroceryBudget', on ? 'true' : 'false');
+    set({ ynabGroceryBudget: on });
+  },
+
+  setYnabPlanId(planId: string | null) {
+    if (planId === get().ynabPlanId) return;
+    dbSetSetting('ynabPlanId', planId ?? '');
+    dbSetSetting('ynabGroceryCategoryId', '');
+    set({ ynabPlanId: planId, ynabGroceryCategoryId: null });
+  },
+
+  setYnabGroceryCategoryId(categoryId: string | null) {
+    dbSetSetting('ynabGroceryCategoryId', categoryId ?? '');
+    set({ ynabGroceryCategoryId: categoryId });
+  },
+
+  setYnabQueueLastDayKey(key: string | null) {
+    dbSetSetting('ynabQueueLastDayKey', key ?? '');
+    set({ ynabQueueLastDayKey: key });
+  },
+
+  setYnabOverspentDeclined(sourceIds: string[]) {
+    const unique = [...new Set(sourceIds.filter(id => typeof id === 'string' && id.length > 0))];
+    dbSetSetting('ynabOverspentDeclined', JSON.stringify(unique));
+    set({ ynabOverspentDeclined: unique });
   },
 
   setMoodNudgeTasks(on: boolean) {

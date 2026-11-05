@@ -572,6 +572,15 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
       { key: 'link', label: 'Link', summary: 'Opens WaniKani', hint: 'The review page on a reviews task, the lesson page on a lessons task.' },
     ],
   },
+  ynab: {
+    example: 'Approve 4 transactions in YNAB',
+    noun: 'YNAB task',
+    owned: () => [
+      { key: 'title', label: 'Title', summary: 'Approve (number) transactions in YNAB', hint: 'The number follows YNAB and is left off once nothing is waiting. An overspent category’s task names the category.' },
+      { key: 'date', label: 'Date', summary: 'The day transactions are waiting', hint: 'One task a day at most. While one is open, its number follows YNAB instead of a new one being added.' },
+      { key: 'link', label: 'Link', summary: 'Opens YNAB' },
+    ],
+  },
 };
 
 export function hasTaskSettingsSheet(kind: GeneratedKind): boolean {

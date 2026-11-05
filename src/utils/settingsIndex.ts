@@ -414,6 +414,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   dreamLog: ['dream journal', 'dreams', 'nightmare', 'sleep', 'woke', 'write', 'generated', 'automatic'],
   wanikani: ['japanese', 'kanji', 'srs', 'lessons', 'flashcards', 'study', 'language', 'generated',
     'automatic'],
+  ynab: ['you need a budget', 'budget', 'money', 'finance', 'bank', 'approve', 'categorize',
+    'overspent', 'spending', 'generated', 'automatic'],
 };
 
 /**
@@ -984,6 +986,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['link', 'url', 'third party', 'client', 'app', 'tsurukame', 'flaming durtles', 'japanese'] },
   { id: 'wanikaniNotify', requires: 'gen:wanikani', groupId: 'generated', label: 'Notify when reviews arrive', section: 'WaniKani reviews',
     keywords: ['notification', 'alert', 'remind', 'ping', 'japanese'] },
+  { id: 'ynabToken', requires: 'gen:ynab', groupId: 'generated', label: 'Personal access token', section: 'YNAB transactions',
+    keywords: ['key', 'secret', 'password', 'account', 'connect', 'sign in', 'budget', 'you need a budget'] },
+  { id: 'ynabPlan', requires: 'gen:ynab', groupId: 'generated', label: 'Plan', section: 'YNAB transactions',
+    keywords: ['budget', 'which budget', 'account', 'you need a budget'] },
+  { id: 'ynabOverspentTasks', requires: 'gen:ynab', groupId: 'generated', label: 'Overspent categories', section: 'YNAB transactions',
+    keywords: ['overspending', 'over budget', 'negative', 'cover', 'money', 'budget', 'you need a budget'] },
+  { id: 'ynabTokenPrivacy', groupId: 'privacyAi', label: 'Personal access token', section: 'YNAB',
+    keywords: ['key', 'secret', 'password', 'account', 'connect', 'sign in', 'budget', 'you need a budget'] },
   // Spans both use-up generators, so it sits below the loop rather than inside
   // either one's extras — and so its section can't be one generator's name.
   { id: 'useUpTaskCap', requires: ['gen:groceryUseUp', 'gen:leftoverUseUp'], groupId: 'generated', label: 'Limit use-up tasks', section: 'Automations',
@@ -1070,6 +1080,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['household', 'family', 'people', 'servings', 'serves', 'portions', 'scale', 'batch',
       'double', 'how many', 'default'],
     simple: true },
+  { id: 'ynabGroceryBudget', groupId: 'kitchen', label: 'Trip budget from YNAB', section: 'YNAB',
+    keywords: ['you need a budget', 'money', 'left', 'groceries', 'shopping', 'cart', 'spend', 'category'] },
+  { id: 'ynabGroceryToken', requires: 'ynabGroceryBudget', groupId: 'kitchen', label: 'Personal access token', section: 'YNAB',
+    keywords: ['key', 'secret', 'password', 'account', 'connect', 'you need a budget'] },
+  { id: 'ynabGroceryPlan', requires: 'ynabGroceryBudget', groupId: 'kitchen', label: 'Plan', section: 'YNAB',
+    keywords: ['budget', 'which budget', 'you need a budget'] },
+  { id: 'ynabGroceryCategory', requires: 'ynabGroceryBudget', groupId: 'kitchen', label: 'Category', section: 'YNAB',
+    keywords: ['groceries', 'food', 'budget', 'left', 'you need a budget'] },
   { id: 'tripLiveActivity', iosOnly: true, groupId: 'kitchen', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'],
     simple: true },
