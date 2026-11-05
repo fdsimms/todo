@@ -269,6 +269,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
     paddingVertical: spacing.smd,
+    // Tall enough for a label plus a two-line meal, so the strip doesn't change
+    // height as meals are chosen. A minimum, so a larger text size can still grow it.
+    minHeight: 80,
     borderRadius: radius.md,
     borderCurve: 'continuous',
     backgroundColor: colors.bgSecondary,
@@ -280,6 +283,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   value: { fontSize: font.sm, lineHeight: 18, color: colors.text },
   choose: {
     alignSelf: 'flex-start',
+    // Sits on the card's bottom edge, level with the last line of a filled cell.
+    marginTop: 'auto',
     backgroundColor: colors.accentFill,
     borderRadius: radius.full,
     paddingHorizontal: spacing.smd,
