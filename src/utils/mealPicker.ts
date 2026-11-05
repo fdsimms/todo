@@ -1,4 +1,4 @@
-import type { Recipe } from '../types';
+import type { Recipe, SavedMeal } from '../types';
 import { sortRecipesForDisplay } from './recipeUtils';
 
 /** How long a loved recipe goes uncooked before the picker brings it up again. */
@@ -36,4 +36,19 @@ export function mealPickerShelves(recipes: readonly Recipe[], now: Date, limit: 
     .filter(r => !shelved.has(r.id))
     .slice(0, Math.max(0, limit - shelved.size));
   return { upNext, lovedResting, rest, total: recipes.length };
+}
+
+/** How many saved meals the picker lists before anything is typed. */
+export const SAVED_MEALS_BROWSE_LIMIT = 5;
+
+/**
+ * The saved meals the plan sheet offers. With nothing typed, the first few in
+ * the saved-meals order; once something is typed, every saved meal whose name
+ * contains it. A plain substring, like the fridge's match: a handful of rows
+ * the person named themselves has nothing for a ranker to sort out.
+ */
+export function pickerSavedMeals(meals: readonly SavedMeal[], query: string): SavedMeal[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return meals.slice(0, SAVED_MEALS_BROWSE_LIMIT);
+  return meals.filter(m => m.name.toLowerCase().includes(q));
 }

@@ -21,9 +21,11 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { SegmentedControl } from './SegmentedControl';
-import { mealPickerShelves } from '../utils/mealPicker';
+import { mealPickerShelves, pickerSavedMeals } from '../utils/mealPicker';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { useSavedMealsStore } from '../store/useSavedMealsStore';
+import { savedMealCalories } from '../utils/foodLog';
 import { rankRecipes, describeRecipe, cleanRecipeName, sharedRecipeNameKeys } from '../utils/recipeUtils';
 import { recipeMap } from '../utils/recipeComponents';
 import { slotLabel } from '../utils/mealPlan';
@@ -169,6 +171,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const sharedNames = useMemo(() => sharedRecipeNameKeys(recipes), [recipes]);
   const libraryById = useMemo(() => recipeMap(recipes), [recipes]);
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
+  const savedMeals = useSavedMealsStore(useShallow(s => s.meals));
   const { query, clear: clearQuery, props: filterField, inputRef: searchInputRef } = useFilterField();
   const [slot, setSlot] = useState<MealSlot>(defaultSlot);
   // The day being planned now, which the week's chips move; opens on `dayKey`.
@@ -204,6 +207,9 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     const q = query.trim().toLowerCase();
     return q ? live.filter(l => l.title.toLowerCase().includes(q)) : live;
   }, [leftovers, query]);
+  // Food-log saved meals, offered as named meals: planning one writes its name
+  // only, with no recipe behind it, so nothing reaches the grocery list.
+  const savedShown = useMemo(() => pickerSavedMeals(savedMeals, query), [savedMeals, query]);
   // With nothing typed, the box is shelved: Up Next, then loved recipes gone
   // quiet, then the rest (mealPickerShelves). A search is one ranked list.
   const shelves = useMemo(
@@ -232,7 +238,9 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   // already offered above it — two rows planning the same dinner, one of them
   // silently losing the link to its ingredients, is the confusing version.
   const showFreeText =
-    !!typed && !matches.some(r => r.name.toLowerCase() === typed.toLowerCase());
+    !!typed
+    && !matches.some(r => r.name.toLowerCase() === typed.toLowerCase())
+    && !savedShown.some(m => m.name.toLowerCase() === typed.toLowerCase());
 
   const sheet = useSheetMotion(visible);
   const { translateY, backdropOpacity } = sheet;
@@ -516,11 +524,53 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                     </React.Fragment>
                   );
                 })}
-                {matches.length > 0 && !shelfCaptions.has(0) && <Text style={styles.listSection}>Recipes</Text>}
               </>
             )}
 
-            {matches.length === 0 && !showFreeText && fridge.length === 0 ? (
+            {/* Below the fridge, above the recipes: a saved meal is a thing the
+                person already eats, but it has no recipe behind it, so it sits
+                apart from the box. Planned by name, the same as a typed meal. */}
+            {savedShown.length > 0 && (
+              <>
+                {showFreeText && fridge.length === 0 && <View style={styles.inlineSep} />}
+                <Text style={styles.listSection}>Saved meals</Text>
+                {savedShown.map((meal, idx) => {
+                  const pickedId = pickedThisSlot.get(`t:${meal.name.toLowerCase()}`);
+                  const calories = savedMealCalories(meal.items);
+                  const meta = `${meal.items.length} ${meal.items.length === 1 ? 'item' : 'items'}${calories !== null ? ` · ${calories} cal` : ''}`;
+                  return (
+                    <React.Fragment key={meal.id}>
+                      {idx > 0 && <View style={styles.inlineSep} />}
+                      <TouchableOpacity
+                        style={[styles.row, pickedId && styles.rowPicked]}
+                        onPress={() => (pickedId ? unpick(pickedId) : pick(null, meal.name))}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={pickedId
+                          ? `Remove ${meal.name} from ${slotLabel(slot)}`
+                          : `Plan ${meal.name}. Saved meal, ${meta}`}
+                      >
+                        <View style={[styles.rowIcon, { backgroundColor: colors.bgTertiary }]}>
+                          <Ionicons name="nutrition-outline" size={16} color={colors.textSecondary} />
+                        </View>
+                        <View style={styles.rowInfo}>
+                          <Text style={styles.rowName} numberOfLines={1}>{meal.name}</Text>
+                          <Text style={styles.rowHint} numberOfLines={1}>{meta}</Text>
+                        </View>
+                        {pickedId
+                          ? <Ionicons name="checkmark-circle" size={16} color={colors.accent} />
+                          : <Ionicons name="add" size={16} color={colors.textTertiary} />}
+                      </TouchableOpacity>
+                    </React.Fragment>
+                  );
+                })}
+              </>
+            )}
+            {matches.length > 0 && !shelfCaptions.has(0) && (fridge.length > 0 || savedShown.length > 0) && (
+              <Text style={styles.listSection}>Recipes</Text>
+            )}
+
+            {matches.length === 0 && !showFreeText && fridge.length === 0 && savedShown.length === 0 ? (
               <View style={styles.emptyWrap}>
                 <EmptyState
                   icon="restaurant-outline"
@@ -540,7 +590,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                     {/* The "Recipes" caption already separates this run from the
                         fridge above it, so the first row only takes a rule when
                         it's butting straight up against the free-text one. */}
-                    {!caption && (idx > 0 || (showFreeText && fridge.length === 0)) && <View style={styles.inlineSep} />}
+                    {!caption && (idx > 0 || (showFreeText && fridge.length === 0 && savedShown.length === 0)) && <View style={styles.inlineSep} />}
                     <TouchableOpacity
                       style={[styles.row, pickedId && styles.rowPicked]}
                       onPress={() => (pickedId ? unpick(pickedId) : pick(recipe.id, recipe.name))}
