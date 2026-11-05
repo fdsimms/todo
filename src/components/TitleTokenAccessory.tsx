@@ -369,6 +369,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   chipBtn: {
+    // On glass the button is stretched to the capsule's minHeight with no
+    // vertical padding, so without this the label hugs the top edge.
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.smd,
     borderRadius: radius.md,
