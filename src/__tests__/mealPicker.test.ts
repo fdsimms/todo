@@ -1,5 +1,5 @@
-import { mealPickerShelves } from '../utils/mealPicker';
-import type { Recipe } from '../types';
+import { mealPickerShelves, pickerSavedMeals, SAVED_MEALS_BROWSE_LIMIT } from '../utils/mealPicker';
+import type { Recipe, SavedMeal } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
@@ -34,5 +34,20 @@ describe('mealPickerShelves', () => {
     recipes[0].upNext = true;
     const shelves = mealPickerShelves(recipes, NOW, 30);
     expect(shelves.upNext.length + shelves.lovedResting.length + shelves.rest.length).toBe(30);
+  });
+});
+
+describe('pickerSavedMeals', () => {
+  const meal = (name: string): SavedMeal => ({ id: name, name, items: [], createdAt: '2026-10-01T00:00:00.000Z' });
+
+  it('lists only the first few with nothing typed', () => {
+    const meals = Array.from({ length: SAVED_MEALS_BROWSE_LIMIT + 3 }, (_, i) => meal(`Meal ${i}`));
+    expect(pickerSavedMeals(meals, '  ')).toHaveLength(SAVED_MEALS_BROWSE_LIMIT);
+  });
+
+  it('searches every saved meal by name, ignoring case', () => {
+    const meals = [...Array.from({ length: 8 }, (_, i) => meal(`Meal ${i}`)), meal('Eggs on toast')];
+    expect(pickerSavedMeals(meals, ' TOAST ').map(m => m.name)).toEqual(['Eggs on toast']);
+    expect(pickerSavedMeals(meals, 'zzz')).toEqual([]);
   });
 });
