@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useSyncExternalStore } from 'react';
-import { InputAccessoryView, Keyboard, Platform, StyleSheet, Text } from 'react-native';
+import { InputAccessoryView, Platform, StyleSheet, Text } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { AMOUNT_OPERATORS, type AmountOperator } from '../utils/amountMath';
@@ -11,8 +11,7 @@ import {
   subscribeAccessories,
   unregisterAccessory,
 } from '../utils/accessoryStack';
-import { BUTTON_LABEL } from '../copy/shared';
-import { AccessoryBar, AccessoryCapsule, accessoryFill } from './AccessoryBar';
+import { AccessoryBar, AccessoryCapsule, AccessoryDoneButton, accessoryFill } from './AccessoryBar';
 import { glassSupported } from './GlassLayer';
 
 /**
@@ -98,9 +97,7 @@ export function NumberPadAccessory({ onNext, onOperator }: {
             ))}
           </AccessoryCapsule>
         )}
-        <AccessoryCapsule style={textCapsule}>
-          <SheetHeaderButton label={BUTTON_LABEL.done} onPress={() => Keyboard.dismiss()} />
-        </AccessoryCapsule>
+        <AccessoryDoneButton />
       </AccessoryBar>
     </InputAccessoryView>
   );

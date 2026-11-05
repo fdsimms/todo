@@ -1,12 +1,8 @@
 import React, { useEffect, useId, useSyncExternalStore } from 'react';
-import { InputAccessoryView, Keyboard, Platform, StyleSheet, Text, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { useColors, useTheme } from '../theme/ThemeContext';
-import { fontWeight, font, iconSize, radius, spacing, type Colors } from '../theme';
-import { BUTTON_LABEL } from '../copy/shared';
-import { PressableScale } from './PressableScale';
-import { AccessoryBar, AccessoryCapsule, accessoryFill, ACCESSORY_CAPSULE_HEIGHT } from './AccessoryBar';
-import { GlassLayer, glassSupported } from './GlassLayer';
+import { InputAccessoryView, Platform, StyleSheet, View } from 'react-native';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, type Colors } from '../theme';
+import { AccessoryBar, AccessoryDoneButton, accessoryFill } from './AccessoryBar';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import {
   isTopAccessory,
@@ -67,43 +63,19 @@ function DoneBar() {
   return (
     <InputAccessoryView nativeID={DONE_ACCESSORY_ID} backgroundColor={accessoryFill(colors)}>
       <AccessoryBar style={styles.bar}>
-        <AccessoryCapsule>
-          <PressableScale
-            onPress={() => Keyboard.dismiss()}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={BUTTON_LABEL.done}
-            style={glassSupported() ? styles.doneOnGlass : undefined}
-          >
-            <Text style={styles.label}>{BUTTON_LABEL.done}</Text>
-          </PressableScale>
-        </AccessoryCapsule>
+        <AccessoryDoneButton />
       </AccessoryBar>
     </InputAccessoryView>
   );
 }
 
 function FloatingDone() {
-  const { colors, shadows } = useTheme();
   const wanted = useSyncExternalStore(subscribeFloatingDone, floatingDoneWanted, () => false);
   const keyboardHeight = useKeyboardHeight(wanted);
   if (!wanted || keyboardHeight <= 0) return null;
-  const styles = makeStyles(colors);
-  const glass = glassSupported();
   return (
     <View pointerEvents="box-none" style={[styles.floatingHost, { bottom: keyboardHeight + spacing.sm }]}>
-      <PressableScale
-        onPress={() => Keyboard.dismiss()}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel={BUTTON_LABEL.done}
-        style={glass ? [styles.chip, styles.chipOnGlass] : [styles.chip, shadows.card]}
-      >
-        {/* The glass draws its own depth, so the card shadow and hairline come off. */}
-        <GlassLayer interactive style={styles.chipRadius} />
-        <Ionicons name="chevron-down" size={iconSize.sm} color={colors.accentText} />
-        <Text style={styles.label}>{BUTTON_LABEL.done}</Text>
-      </PressableScale>
+      <AccessoryDoneButton floating />
     </View>
   );
 }
@@ -117,24 +89,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xsm,
   },
-  label: { color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.semibold },
+});
+
+const styles = StyleSheet.create({
   floatingHost: { position: 'absolute', right: spacing.md, alignItems: 'flex-end' },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.smd,
-    paddingVertical: spacing.xsm,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgSecondary,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.separator,
-  },
-  chipOnGlass: { backgroundColor: 'transparent', borderWidth: 0, minHeight: ACCESSORY_CAPSULE_HEIGHT },
-  chipRadius: { borderRadius: radius.full },
-  doneOnGlass: {
-    minHeight: ACCESSORY_CAPSULE_HEIGHT,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.smd,
-  },
 });
