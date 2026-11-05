@@ -200,7 +200,7 @@ import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { linkAppLabel } from '../constants/linkApps';
 import { useSavedLinks } from '../hooks/useSavedLinks';
-import { SaveLinkAction, SavedLinksHint } from './SavedLinkParts';
+import { LinkFieldActions, SavedLinksHint } from './SavedLinkParts';
 import { capitalize } from '../utils/capitalize';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { useFilterField } from '../hooks/useFilterField';
@@ -8277,8 +8277,14 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     spellCheck={false}
                     returnKeyType="done"
                   />
-                  <SaveLinkAction links={savedLinks} typed={customLinkText} />
                 </View>
+                <LinkFieldActions
+                  links={savedLinks}
+                  typed={customLinkText}
+                  current={linkUrl}
+                  onSet={commitCustomLink}
+                  style={styles.linkFieldActions}
+                />
               </>
             )}
               </>
@@ -9449,6 +9455,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   linkAppChipActive: { backgroundColor: colors.accentFill },
   linkSavedHint: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  linkFieldActions: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
   linkAppChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   linkAppChipTextActive: { color: colors.onAccent, fontWeight: '600' },
   linkCustomRow: {
