@@ -1,7 +1,9 @@
 import React from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
-import { useColors } from '../theme/ThemeContext';
-import { radius, spacing, type Colors } from '../theme';
+import { Keyboard, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useColors, useTheme } from '../theme/ThemeContext';
+import { font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { BUTTON_LABEL } from '../copy/shared';
+import { PressableScale } from './PressableScale';
 import { OVERLAY_CARD_MAX_WIDTH } from '../utils/frameWidth';
 import { GlassLayer, glassSupported } from './GlassLayer';
 
@@ -70,7 +72,43 @@ export function AccessoryCapsule({ children, style, tintColor }: {
   );
 }
 
+/**
+ * The Done that dismisses the keyboard, in every accessory bar and in the
+ * floating one a multiline field gets: one capsule, one label, so the three
+ * can't drift apart. `floating` only matters without glass, where the button
+ * has no bar to sit in and so draws its own chip.
+ *
+ * It is not a `SheetHeaderButton`: that registers itself as the form's commit
+ * (⌘Return), and a Done that is mounted in every sheet would take the shortcut
+ * from the sheet's own Save.
+ */
+export function AccessoryDoneButton({ floating }: { floating?: boolean }) {
+  const { colors, shadows } = useTheme();
+  const glass = glassSupported();
+  const chip: StyleProp<ViewStyle> = floating && !glass
+    ? [styles.chip, { backgroundColor: colors.bgSecondary, borderColor: colors.separator }, shadows.card]
+    : undefined;
+  return (
+    <AccessoryCapsule style={chip}>
+      <PressableScale
+        onPress={() => Keyboard.dismiss()}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={BUTTON_LABEL.done}
+        style={glass ? styles.doneOnGlass : styles.done}
+      >
+        <Text style={{ color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.semibold }}>
+          {BUTTON_LABEL.done}
+        </Text>
+      </PressableScale>
+    </AccessoryCapsule>
+  );
+}
+
 const styles = StyleSheet.create({
+  chip: { borderRadius: radius.full, borderWidth: StyleSheet.hairlineWidth },
+  done: { paddingHorizontal: spacing.smd, paddingVertical: spacing.xsm },
+  doneOnGlass: { minHeight: ACCESSORY_CAPSULE_HEIGHT, justifyContent: 'center', paddingHorizontal: spacing.smd },
   strip: { borderTopWidth: StyleSheet.hairlineWidth },
   column: { width: '100%', maxWidth: OVERLAY_CARD_MAX_WIDTH, alignSelf: 'center' },
   capsule: {
