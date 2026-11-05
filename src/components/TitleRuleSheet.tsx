@@ -15,7 +15,7 @@ import {
 } from '../utils/titleRules';
 import { linkAppLabel } from '../constants/linkApps';
 import { useSavedLinks } from '../hooks/useSavedLinks';
-import { SaveLinkAction, SavedLinksHint } from './SavedLinkParts';
+import { LinkFieldActions, SavedLinksHint } from './SavedLinkParts';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -435,8 +435,15 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               returnKeyType="done"
               accessibilityLabel="Custom link URL this rule sets"
             />
-            <SaveLinkAction links={savedLinks} typed={customLinkText} />
           </View>
+          <LinkFieldActions
+            links={savedLinks}
+            typed={customLinkText}
+            current={draft.linkUrl}
+            onSet={commitCustomLink}
+            style={styles.linkFieldActions}
+          />
+
           <TouchableOpacity
             activeOpacity={interaction.activeOpacity}
             style={styles.linkAppsToggle}
@@ -607,6 +614,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingTop: spacing.sm,
   },
+  linkFieldActions: { paddingTop: spacing.sm },
   linkCustomInput: {
     flex: 1, color: colors.text, fontSize: font.sm,
     borderBottomWidth: 1, borderBottomColor: colors.accent,
