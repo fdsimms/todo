@@ -20,9 +20,10 @@ interface Props {
   value: PantryReviewAnswer | null;
   onChange: (answer: PantryReviewAnswer | null) => void;
   /**
-   * Whether "Running low" also puts the item on the grocery list, or undefined
-   * for the "Running low adds to the list" setting. Shown only while "Running
-   * low" is the picked answer, since it means nothing for the other two.
+   * Whether the answer also puts the item on the grocery list, or undefined for
+   * the default: the "Running low adds to the list" setting for "Running low",
+   * off for "Out of it". Shown only while one of those two is the shown answer,
+   * since it means nothing for the other two.
    */
   addToList?: boolean;
   onAddToListChange?: (on: boolean) => void;
@@ -63,7 +64,7 @@ export function PantryAnswerField({ itemId, value, onChange, addToList, onAddToL
     [item, itemProducts, itemId]
   );
 
-  // The home list, the one "Running low" joins (see answerPantryReview).
+  // The home list, the one "Running low" and "Out of it" join (see answerPantryReview).
   const onHomeList = useGroceryStore(s => s.listEntries.some(e => e.itemId === itemId && e.listId === null));
   const shown = value ?? standing?.answer ?? null;
   const dot =
@@ -71,7 +72,10 @@ export function PantryAnswerField({ itemId, value, onChange, addToList, onAddToL
     : standing?.tone === 'warn' ? colors.orange
     : standing?.tone === 'bad' ? colors.red
     : colors.textTertiary;
-  const addsToList = value === 'low' ? (addToList ?? runningLowAddsToList) : false;
+  const addsToList =
+    value === 'low' ? (addToList ?? runningLowAddsToList)
+    : value === 'out' ? (addToList ?? false)
+    : false;
 
   return (
     <View style={[styles.root, style]}>
@@ -92,7 +96,7 @@ export function PantryAnswerField({ itemId, value, onChange, addToList, onAddToL
         label={label}
         surface={surface}
       />
-      {shown === 'low' && onAddToListChange && (onHomeList ? (
+      {(shown === 'low' || shown === 'out') && onAddToListChange && (onHomeList ? (
         <Text style={styles.switchLabel}>Already on the grocery list</Text>
       ) : (
         <TouchableOpacity
@@ -101,10 +105,10 @@ export function PantryAnswerField({ itemId, value, onChange, addToList, onAddToL
           onPress={() => {
             haptics.tap();
             const on = !addsToList;
-            // Already marked low, so "Running low" isn't a change the sheet
-            // would write. Turning the switch on picks it, which is what makes
-            // the sheet add the item; turning it off puts the pick back.
-            if (standing?.answer === 'low') onChange(on ? 'low' : null);
+            // Already marked low (or out), so that answer isn't a change the
+            // sheet would write. Turning the switch on picks it, which is what
+            // makes the sheet add the item; turning it off puts the pick back.
+            if (standing?.answer === shown) onChange(on ? shown : null);
             onAddToListChange(on);
           }}
           accessibilityRole="switch"
