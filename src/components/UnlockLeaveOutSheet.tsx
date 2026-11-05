@@ -41,8 +41,15 @@ export function UnlockLeaveOutSheet({ visible, onClose, value, onChange, addingR
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const filter = useFilterField();
   const categories = useCategoryStore(useShallow(s => s.categories.map(c => c.name)));
-  const stacks = useTaskGroupStore(useShallow(s => s.groups.map(g => ({ id: g.id, title: g.title }))));
-  const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived && !p.completed).map(p => ({ id: p.id, title: p.title }))));
+  // Select the stored arrays and derive in useMemo: a selector that builds
+  // fresh objects never settles, even under useShallow, and loops the render.
+  const allStacks = useTaskGroupStore(s => s.groups);
+  const allProjects = useProjectStore(s => s.projects);
+  const stacks = useMemo(() => allStacks.map(g => ({ id: g.id, title: g.title })), [allStacks]);
+  const projects = useMemo(
+    () => allProjects.filter(p => !p.archived && !p.completed).map(p => ({ id: p.id, title: p.title })),
+    [allProjects],
+  );
 
   const list = value ?? EMPTY;
   const q = filter.query.trim().toLowerCase();
