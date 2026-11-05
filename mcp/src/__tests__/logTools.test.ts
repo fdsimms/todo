@@ -8,7 +8,7 @@ import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
 import { listFoodLog, listFoodLogByMeal } from '../tools';
 import { useMedicationStore } from '../../../src/store/useMedicationStore';
-import { atFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logRecipe, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, patchRecipe, updateRecipe, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
+import { atFrom, pastAtFrom, deleteMedicationLog, deleteSavedMeal, setSupplementNutrients, duplicateFoodEntry, listSavedMeals, logFood, logRecipe, logMedication, logMood, logSavedMeal, logWater, moveFoodEntry, renameMedication, renameMoodTag, saveMealFromEntries, saveRecipe, patchRecipe, updateRecipe, setMedicationArchived, addMedication, removeMedication, setMedicationProfile, setMedicationLimit, setMedicationSupply, setNutritionTargets, updateFoodEntry, updateMoodLog } from '../logTools';
 
 let mockRaw: ShimDatabase;
 
@@ -315,6 +315,29 @@ describe('atFrom', () => {
     expect([at.getDate(), at.getHours()]).toEqual([1, 12]);
     expect(atFrom(undefined)).toBeUndefined();
     expect(() => atFrom('soon')).toThrow();
+  });
+});
+
+describe('pastAtFrom', () => {
+  const now = new Date(2026, 10, 4, 9, 0);
+
+  it('reads a bare earlier date as noon that day, and a bare date for today as now', () => {
+    expect(pastAtFrom('2026-11-03', now)).toEqual(new Date(2026, 10, 3, 12));
+    // Today's noon is still ahead at 9:00; asking for today is not asking for the future.
+    expect(pastAtFrom('2026-11-04', now)).toBe(now);
+  });
+
+  it('keeps an explicit time that has passed', () => {
+    expect(pastAtFrom('2026-11-04T08:00:00', now)).toEqual(new Date(2026, 10, 4, 8));
+  });
+
+  it('refuses a later day and a later time today, naming the input', () => {
+    expect(() => pastAtFrom('2026-11-05', now)).toThrow(/"2026-11-05" is in the future/);
+    expect(() => pastAtFrom('2026-11-04T15:00:00', now)).toThrow(/in the future/);
+  });
+
+  it('refuses text that is not a date', () => {
+    expect(() => pastAtFrom('yesterday', now)).toThrow(/not a date/);
   });
 });
 

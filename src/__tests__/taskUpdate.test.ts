@@ -187,6 +187,20 @@ describe('seriesFanOutRows', () => {
     expect(rows[0].dueDate).toBe(later.dueDate);
   });
 
+  it('copies only what changed, so a snapshot that names every field does not flatten the set', () => {
+    const before = { ...series('2026-03-10T12:00:00.000Z'), notes: 'ten', tags: ['a'] };
+    const later = { ...series('2026-03-15T12:00:00.000Z'), notes: 'fifteen: bring treats', tags: ['b'] };
+    // What an undo of a defer writes back: every content field, one of them (dueDate) different.
+    const snapshot = { ...before };
+    const edited = { ...before, deferUntil: null };
+    expect(seriesFanOutRows(edited, snapshot, [edited, later], before)).toEqual([]);
+    // A real content change still reaches the later dates, and only that field.
+    const renoted = { ...before, notes: 'new' };
+    const rows = seriesFanOutRows(renoted, { ...snapshot, notes: 'new' }, [renoted, later], before);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ notes: 'new', tags: ['b'] });
+  });
+
   it('writes nothing for a field that is not content, or outside a series', () => {
     const edited = series('2026-03-10T12:00:00.000Z');
     const later = series('2026-03-15T12:00:00.000Z');

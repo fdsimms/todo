@@ -529,7 +529,12 @@ export function isTaskWindowActive(task: Task): boolean {
 // bug. This is about the one call with no way back.
 function isVacationPauseInForce(): boolean {
   if (useSettingsStore.getState().vacationMode) return true;
-  return isAwayPauseInForce();
+  // The logical day's start, as checkAwayVacation asks it. Bare, the question
+  // was asked of the calendar clock, which between midnight and the day start
+  // is already the next day: on the morning a trip ends, the arm still held
+  // and this said the pause was over, so a window that closed while the person
+  // was away read as expired and could be swept.
+  return isAwayPauseInForce(getCurrentDayStart());
 }
 
 // True once a task's time window has closed (windowEnd has passed on its own

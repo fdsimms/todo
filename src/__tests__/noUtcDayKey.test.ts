@@ -29,6 +29,15 @@ const MCP_SRC = join(ROOT, 'mcp', 'src');
 /** `.toISOString().slice(0, 10)` and its `substring`/`substr`/`split('T')` spellings. */
 const UTC_DAY_KEY = /toISOString\(\)\s*\.(?:(?:slice|substring|substr)\(\s*0\s*,\s*10\s*\)|split\(\s*['"]T['"]\s*\))/;
 
+/**
+ * The same bug one step on: a stored date is local noon written as a UTC ISO
+ * string, so slicing its first ten characters names the previous day from UTC+12
+ * to +14 ("due 2026-10-05" for Oct 6 in Auckland). Scoped to the MCP server and
+ * to a date-like field, because the wider pattern also matches ordinary array
+ * slices. `replica.dayKeyOf` is the local key.
+ */
+const ISO_FIELD_DAY_SLICE = /\.\w*(?:Date|Start|End|At)\.slice\(\s*0\s*,\s*10\s*\)/;
+
 const read = (f: string) => ({ rel: f.slice(ROOT.length + 1), src: readFileSync(f, 'utf8') });
 const files = sourceFiles(SRC).map(read);
 const mcpFiles = sourceFiles(MCP_SRC).map(read);
@@ -45,10 +54,18 @@ describe('UTC day keys', () => {
     expect(UTC_DAY_KEY.test('d.toISOString().substring(0,10)')).toBe(true);
     expect(UTC_DAY_KEY.test("d.toISOString().split('T')[0]")).toBe(true);
     expect(UTC_DAY_KEY.test('d.toISOString()')).toBe(false);
+    expect(ISO_FIELD_DAY_SLICE.test('result.nextTask.dueDate.slice(0, 10)')).toBe(true);
+    expect(ISO_FIELD_DAY_SLICE.test('project.awayEnd.slice(0,10)')).toBe(true);
+    expect(ISO_FIELD_DAY_SLICE.test('getRepeatedInstances(tasks).slice(0, 10)')).toBe(false);
   });
 
   it('keys no day off a UTC timestamp (use dayKeyOf or getLogicalDayKey)', () => {
     const offenders = [...files, ...mcpFiles].filter(f => UTC_DAY_KEY.test(f.src)).map(f => f.rel);
+    expect(offenders).toEqual([]);
+  });
+
+  it('slices no day off a stored ISO date in the MCP server (use replica.dayKeyOf)', () => {
+    const offenders = mcpFiles.filter(f => ISO_FIELD_DAY_SLICE.test(f.src)).map(f => f.rel);
     expect(offenders).toEqual([]);
   });
 });

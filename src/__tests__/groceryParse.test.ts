@@ -1,5 +1,6 @@
 import {
   groceryNameKey,
+  itemNameKey,
   parseGroceryInput,
   splitPrep,
   splitQuantityNote,
@@ -1008,5 +1009,78 @@ describe('parseGroceryInput: recipe-site amount shapes', () => {
 
   it('leaves a slash that is not between two measures alone', () => {
     expect(parseGroceryInput('and/or salt').name).toBe('and/or salt');
+  });
+});
+
+// ─── itemNameKey ─────────────────────────────────────────────────────────────
+
+describe('itemNameKey', () => {
+  it('is groceryNameKey wherever that has an answer', () => {
+    expect(itemNameKey('Jalapeño Peppers')).toBe(groceryNameKey('Jalapeño Peppers'));
+    expect(itemNameKey('2% Milk')).toBe('2% milk');
+  });
+
+  it('falls back to the trimmed lower-case text for a name with no ASCII letter or digit', () => {
+    expect(groceryNameKey('🥛')).toBe('');
+    expect(itemNameKey(' 🥛 ')).toBe('🥛');
+    expect(itemNameKey('豆腐')).toBe('豆腐');
+  });
+});
+
+// ─── a measure written in parentheses, and a pack's container word ────────────
+//
+// Recipe lines say how big each thing is in parentheses, or name the tin a
+// number of packs comes in. Read into the name, they keyed as "6 ounce salmon
+// fillets" and "tins chopped tomatoes", which never matched the catalog's or the
+// pantry's "salmon fillets" and "chopped tomatoes".
+
+describe('parseGroceryInput with a restated measure', () => {
+  it('moves a parenthesised size after a bare count into the quantity', () => {
+    expect(parseGroceryInput('4 (6-ounce) salmon fillets')).toEqual({ name: 'salmon fillets', quantity: '4 (6-ounce)' });
+  });
+
+  it('moves one after a size word too, keeping the size word', () => {
+    expect(parseGroceryInput('1 large (about 8 oz) onion')).toEqual({ name: 'onion', quantity: '1, large (about 8 oz)' });
+    expect(parseGroceryInput('2 medium (300 g) potatoes')).toEqual({ name: 'potatoes', quantity: '2, medium (300 g)' });
+  });
+
+  it('takes a unit word that follows the measure along with it', () => {
+    expect(parseGroceryInput('1 (1-inch) piece ginger')).toEqual({ name: 'ginger', quantity: '1 (1-inch) piece' });
+  });
+
+  it('leaves a parenthetical that is not a measure, and plain counts, where they were', () => {
+    expect(parseGroceryInput('3 avocados')).toEqual({ name: 'avocados', quantity: '3' });
+    expect(parseGroceryInput('2 (optional) eggs').name).toBe('(optional) eggs');
+    expect(parseGroceryInput('1 cup (235 ml) buttermilk')).toEqual({ name: 'buttermilk', quantity: '1 cup (235 ml)' });
+  });
+});
+
+describe('parseGroceryInput with a pack size', () => {
+  it('drops the container word from the name', () => {
+    expect(parseGroceryInput('2 x 400g tins chopped tomatoes')).toEqual({ name: 'chopped tomatoes', quantity: '2 x 400g' });
+    expect(parseGroceryInput('1 x 14 oz can black beans').name).toBe('black beans');
+  });
+
+  it('keeps a name that merely follows the size', () => {
+    expect(parseGroceryInput('2 x 500g pasta')).toEqual({ name: 'pasta', quantity: '2 x 500g' });
+  });
+});
+
+describe('splitPrep with leading adjectives', () => {
+  it('moves boneless, skinless and the like into the prep note, keeping the product as the name', () => {
+    expect(splitPrep('boneless, skinless chicken thighs')).toEqual({ name: 'chicken thighs', prep: 'boneless, skinless' });
+    expect(splitPrep('bone-in, skin-on chicken thighs')).toEqual({ name: 'chicken thighs', prep: 'bone-in, skin-on' });
+    expect(splitPrep('lean, ground beef')).toEqual({ name: 'ground beef', prep: 'lean' });
+  });
+
+  it('keeps a trailing clause the rest of the name carries', () => {
+    expect(splitPrep('cooked, shredded chicken, divided')).toEqual({ name: 'shredded chicken', prep: 'cooked, divided' });
+  });
+
+  it('still splits the trailing form, and leaves a name that merely starts with one of the words', () => {
+    expect(splitPrep('chicken breast, boneless, skinless')).toEqual({ name: 'chicken breast', prep: 'boneless, skinless' });
+    expect(splitPrep('tomatoes, diced')).toEqual({ name: 'tomatoes', prep: 'diced' });
+    // No comma after it, so nothing says it is a note rather than part of the name.
+    expect(splitPrep('lean ground beef')).toEqual({ name: 'lean ground beef', prep: null });
   });
 });

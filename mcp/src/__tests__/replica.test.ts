@@ -1389,6 +1389,25 @@ describe('the replica', () => {
       expect(parked.sourceRecipeTitle).toBeNull();
     });
 
+    it('keeps the recipe amount and credit when the row is still on another list', () => {
+      // The amount and the credit are the item's, so taking beans off the cabin
+      // list must not wipe the "For Chili" the home list still needs.
+      mockRaw.runSync("INSERT INTO grocery_lists (id, name, sort_order, created_at) VALUES ('cabin', 'Cabin', 1, '2026-01-01T00:00:00.000Z')");
+      replica.refresh();
+      const beans = replica.addGroceryItem('beans').item;
+      replica.addGroceryItem('beans', { listId: 'cabin' });
+      mockRaw.runSync(
+        'UPDATE grocery_items SET quantity = ?, quantity_from_recipe = 1, source_recipe_id = ?, source_recipe_title = ? WHERE id = ?',
+        ['2 cans', 'r-chili', 'Chili', beans.id]
+      );
+      replica.refresh();
+
+      const after = replica.removeFromGroceryList(beans.id, 'cabin');
+
+      expect(after).toMatchObject({ quantity: '2 cans', quantityFromRecipe: true, sourceRecipeId: 'r-chili', sourceRecipeTitle: 'Chili' });
+      mockRaw.runSync('DELETE FROM grocery_lists');
+    });
+
     it('refuses an unknown id rather than doing nothing', () => {
       expect(() => replica.addGroceryItem('   ')).toThrow(/needs a name/);
       expect(() => replica.setGroceryChecked('nope', true)).toThrow(/No grocery item/);
@@ -1418,6 +1437,21 @@ describe('the replica', () => {
     expect(result.completed.completedAt).toEqual(expect.any(String));
     expect(result.nextTask).toBeNull();
     expect(result.rolledOver).toEqual([]);
+  });
+
+  // A bare date was read as UTC midnight, the evening before in New York, and
+  // a time later than now was stored as written.
+  it('reads a bare completedAt as that day at local noon, and refuses one that has not happened', () => {
+    const task = replica.createTask({ title: 'Hang the picture' });
+    completeTaskTool(replica, task.id, { completedAt: '2026-10-03' });
+    replica.refresh();
+    const at = new Date(replica.tasks().find(t => t.id === task.id)!.completedAt!);
+    expect([at.getMonth(), at.getDate(), at.getHours()]).toEqual([9, 3, 12]);
+
+    const other = replica.createTask({ title: 'Water the plants' });
+    expect(() => completeTaskTool(replica, other.id, { completedAt: '2999-01-01' })).toThrow(/in the future/);
+    expect(() => completeTaskTool(replica, other.id, { completedAt: 'yesterday' })).toThrow(/not a date/);
+    expect(replica.tasks().find(t => t.id === other.id)!.completed).toBe(false);
   });
 
   // The reason the whole completion core was lifted out of useTaskStore rather

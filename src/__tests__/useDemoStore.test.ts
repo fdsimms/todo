@@ -233,6 +233,8 @@ let mockSchemaSnapshot: Buffer | null = null;
 // if the database is still open, and never removes -wal/-shm sidecars.
 let mockDeleteThrows = false;
 
+// useFoodLogStore cancels a deleted meal's check-in, which reaches the notification module.
+jest.mock('../utils/checkInRecording', () => ({ cancelCheckInFor: jest.fn() }));
 jest.mock('expo-sqlite', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const BS = require('better-sqlite3');

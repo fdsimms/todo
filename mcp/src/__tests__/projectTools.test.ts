@@ -32,6 +32,11 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     isBlocked: (t: Task) => !!t.blockedById,
     liveBlockers: (t: Task) => tasks.filter(b => b.id === t.blockedById && !b.completed && !b.archived),
     isNotNeeded: () => false,
+    // The local day of an instant, as the real replica answers it.
+    dayKeyOf: (iso: string) => {
+      const d = new Date(iso);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    },
     // The real awaySpanOf keeps an end only when it falls after the start.
     awaySpan: (p: Project) => (p.awayStart ? { start: new Date(p.awayStart), end: p.awayEnd && p.awayEnd > p.awayStart ? new Date(p.awayEnd) : null } : null),
     ...over,
@@ -155,10 +160,13 @@ describe('updateProject', () => {
     });
 
     it('says when the return moved with the departure, which the replica does as the editor does', () => {
-      const moved = updateProject(replicaWith({ awayStart: '2026-11-06T12:00:00.000Z', awayEnd: '2026-11-13T12:00:00.000Z' }), 'p1', { awayStart: '2026-11-06' });
+      // Local noon, as the app stores a day: a literal `Z` time is another day from UTC+12 on.
+      const start = new Date(2026, 10, 6, 12).toISOString();
+      const end = new Date(2026, 10, 13, 12).toISOString();
+      const moved = updateProject(replicaWith({ awayStart: start, awayEnd: end }), 'p1', { awayStart: '2026-11-06' });
       expect(moved.awayNote).toMatch(/moved with the departure.*2026-11-13/);
       // An end given alongside was asked for, so there is nothing to point out.
-      const both = updateProject(replicaWith({ awayStart: '2026-11-06T12:00:00.000Z', awayEnd: '2026-11-13T12:00:00.000Z' }), 'p1', { awayStart: '2026-11-06', awayEnd: '2026-11-13' });
+      const both = updateProject(replicaWith({ awayStart: start, awayEnd: end }), 'p1', { awayStart: '2026-11-06', awayEnd: '2026-11-13' });
       expect(both).not.toHaveProperty('awayNote');
     });
 

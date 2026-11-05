@@ -401,6 +401,31 @@ export interface FinishShoppingPlan {
 }
 
 /**
+ * A row taken off one list, parked off it rather than deleted: a recipe-owned
+ * quantity and its credit end with the shop they were for, so a rejected "2 cups
+ * pears" doesn't come back on a later re-add. **Not while another trolley still
+ * holds the row.** The quantity, `quantityFromRecipe` and the credit are the
+ * item's, not a list's, so wiping them for taking milk off the Airbnb list
+ * wiped the amount the home list still needs. `clearList` has always kept them
+ * for the same reason. Returns the same object when nothing changes.
+ */
+export function parkedOffList(
+  item: GroceryItem,
+  entries: readonly GroceryListEntry[],
+  listId: string | null
+): GroceryItem {
+  if (entries.some(e => e.itemId === item.id && e.listId !== listId)) return item;
+  if (!item.quantityFromRecipe && item.sourceRecipeId === null && item.sourceRecipeTitle === null) return item;
+  return {
+    ...item,
+    quantity: item.quantityFromRecipe ? null : item.quantity,
+    quantityFromRecipe: false,
+    sourceRecipeId: null,
+    sourceRecipeTitle: null,
+  };
+}
+
+/**
  * Checking off one option of an either/or ("apples or pears"): the winner
  * stops being an option and every other option in the same group on the same
  * list leaves that list, parked off it rather than deleted. A recipe-owned
@@ -426,7 +451,9 @@ export function chosenOptionRows(
   const removed = new Set(remove.map(e => e.itemId));
   const parked = items
     .filter(i => removed.has(i.id))
-    .map(i => ({ ...i, quantity: i.quantityFromRecipe ? null : i.quantity, quantityFromRecipe: false, sourceRecipeId: null, sourceRecipeTitle: null }));
+    .map(i => ({ before: i, after: parkedOffList(i, entries, listId) }))
+    .filter(p => p.after !== p.before)
+    .map(p => p.after);
   return { winner: { ...entry, choiceGroup: null }, remove, parked };
 }
 

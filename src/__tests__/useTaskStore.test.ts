@@ -74,6 +74,7 @@ import {
   cancelTaskReminder,
   rescheduleAllReminders,
   cancelCompletionTimer,
+  cancelQuotaNudges,
   scheduleMedicationOkAgain,
   cancelMedicationOkAgain,
 } from '../utils/notifications';
@@ -663,7 +664,8 @@ beforeEach(() => {
     dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
     mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
-    calendarEventCategory: null, collapsedCategories: [], titleRules: [],
+    calendarEventCategory: null, healthCategory: null, limitsTodayCategory: null, goalsTodayCategory: null,
+    collapsedCategories: [], titleRules: [], weatherRules: [], screenTimeRules: [], blockOfferRules: [], healthRules: [], eventRules: [],
     nutritionTargets: {}, waterExerciseBoost: null,
     setMealCookTaskCategory: jest.fn(), setGroceryUseUpTaskCategory: jest.fn(),
     setLeftoverUseUpTaskCategory: jest.fn(), setCalendarEventCategory: jest.fn(),
@@ -2031,6 +2033,36 @@ describe('completeTask', () => {
     expect(dbInsertTask).not.toHaveBeenCalledWith(expect.objectContaining({ id: successorId }));
     expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: successorId }));
     expect(useTaskStore.getState().tasks.filter(t => t.id === successorId)).toHaveLength(1);
+  });
+
+  // Reopened from the Logbook while later occurrences have since been done: the
+  // successor it derives is one that already exists and is finished, with a
+  // live occurrence after it. It used to be rewritten as an open row, which
+  // erased that day's completion and left two open occurrences.
+  it('leaves a successor that is already done as it was, when an older occurrence is completed again', () => {
+    const doneId = derivedId(spawnSeed.occurrence('r'));
+    const day = (d: number) => new Date(2025, 5, d, 12).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'r', recurrenceType: 'daily', recurrenceInterval: 1, dueDate: day(8) }),
+        makeTask({
+          id: doneId, recurrenceType: 'daily', recurrenceInterval: 1, dueDate: day(9),
+          completed: true, completedAt: day(9), previousOccurrenceId: 'r',
+        }),
+        makeTask({ id: 'live', recurrenceType: 'daily', recurrenceInterval: 1, dueDate: day(10), previousOccurrenceId: doneId }),
+      ],
+    });
+    (dbInsertTask as jest.Mock).mockClear();
+    (dbUpdateTask as jest.Mock).mockClear();
+
+    useTaskStore.getState().completeTask('r');
+
+    const rows = useTaskStore.getState().tasks;
+    expect(rows).toHaveLength(3);
+    expect(rows.find(t => t.id === doneId)).toMatchObject({ completed: true, completedAt: day(9) });
+    expect(rows.filter(t => !t.completed).map(t => t.id)).toEqual(['live']);
+    expect(dbUpdateTask).not.toHaveBeenCalledWith(expect.objectContaining({ id: doneId }));
+    expect(dbInsertTask).not.toHaveBeenCalledWith(expect.objectContaining({ id: doneId }));
   });
 
   it('marks the task completed with a completedAt timestamp', () => {
@@ -3721,6 +3753,21 @@ describe('checkVacationExpiry', () => {
 });
 
 // ─── uncompleteTask ───────────────────────────────────────────────────────────
+
+describe('uncompleteTask removing the successor', () => {
+  it('lets go of the successor\'s nudges and calendar event along with the row', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', completed: true, completedAt: new Date(2025, 5, 9).toISOString() }),
+        makeTask({ id: 'b', previousOccurrenceId: 'a', completed: false, calendarEventId: 'evt-b', quotaReminders: true }),
+      ],
+    });
+    useTaskStore.getState().uncompleteTask('a');
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['a']);
+    expect(cancelQuotaNudges).toHaveBeenCalledWith('b');
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('evt-b');
+  });
+});
 
 describe('uncompleteTask', () => {
   it('clears completed flag and completedAt', () => {
@@ -12600,6 +12647,39 @@ describe('bulkCompleteTasks', () => {
     expect(useTaskStore.getState().tasks.every(t => !t.completed)).toBe(true);
   });
 
+  it('undoes what each completion touched, not only the tasks (a project it finished)', () => {
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p1' })],
+    });
+    useTaskStore.getState().bulkCompleteTasks(['a', 'b']);
+    expect(useProjectStore.getState().getProjectById('p1')!.completed).toBe(true);
+
+    useTaskStore.getState().undoLastAction();
+
+    expect(useTaskStore.getState().tasks.every(t => !t.completed)).toBe(true);
+    expect(useProjectStore.getState().getProjectById('p1')!.completed).toBe(false);
+  });
+
+  it('leaves a task that was already done alone, in the count and in the undo', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'done', recurrenceType: 'none', completed: true, completedAt: new Date(2025, 5, 1).toISOString() }),
+        makeTask({ id: 'open', recurrenceType: 'none' }),
+      ],
+    });
+    useTaskStore.getState().bulkCompleteTasks(['done', 'open']);
+    expect(useTaskStore.getState().lastAction?.label).toBe('1 task completed');
+
+    useTaskStore.getState().lastAction?.undo();
+
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('open')?.completed).toBe(false);
+    expect(byId('done')?.completed).toBe(true);
+  });
+
   it('announces itself on the undo bar, where a single tick stays shake-only', () => {
     useTaskStore.setState({
       tasks: [makeTask({ id: 'a', recurrenceType: 'none' }), makeTask({ id: 'b', recurrenceType: 'none' })],
@@ -14552,6 +14632,59 @@ describe('deleteCategory', () => {
     expect(useTaskGroupStore.getState().groups.find(g => g.id === 'g1')?.category).toBe('Home');
   });
 
+  // Every place that files something into a category by name, which rename
+  // follows and delete used to leave: the next task landed under the deleted
+  // name and allCategories() listed it again as a section nobody made.
+  it('lets go of the project default, the settings, the rules and the stored defaults that name it, and puts them back on undo', () => {
+    const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+    const category = { id: 'cat-1', name: 'Work', scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, sortOrder: 1, emoji: null };
+    useCategoryStore.getState.mockReturnValue({
+      categories: [category], initialized: true, initialize: jest.fn(), addCategory: jest.fn(), deleteCategory: jest.fn(),
+      restoreCategory: jest.fn(), renameCategory: jest.fn().mockReturnValue(true), setCategorySchedule: jest.fn(),
+      removeCategorySchedule: jest.fn(), getCategoryByName: jest.fn().mockReturnValue(category),
+    });
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+    const fns = {
+      setHealthCategory: jest.fn(), setLimitsTodayCategory: jest.fn(), setGoalsTodayCategory: jest.fn(),
+      setNewTaskDefaults: jest.fn(), setWeatherRules: jest.fn(), setTitleRules: jest.fn(),
+      setScreenTimeRules: jest.fn(), setBlockOfferRules: jest.fn(), setHealthRules: jest.fn(), setEventRules: jest.fn(),
+      setCalendarEventCategory: jest.fn(), setCollapsedCategories: jest.fn(),
+    };
+    const weatherRules = [{ id: 'w1', category: 'Work' }, { id: 'w2', category: 'Home' }];
+    useSettingsStore.getState.mockReturnValue({
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
+      newTaskDefaults: { category: 'Work', priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      calendarEventCategory: null, healthCategory: 'Work', limitsTodayCategory: 'Home', goalsTodayCategory: null,
+      collapsedCategories: [], titleRules: [], weatherRules, screenTimeRules: [], blockOfferRules: [], healthRules: [], eventRules: [],
+      ...fns,
+    });
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', defaultTaskCategory: 'Work' }), makeProject({ id: 'p2', defaultTaskCategory: 'Home' })] });
+    const draft = { ...emptyFollowUpTaskDraft(), category: 'Work' };
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', category: 'Work', seriesDefaults: { category: 'Work', tags: ['x'] }, followUpTaskDraft: draft })],
+    });
+
+    useTaskStore.getState().deleteCategory('Work');
+
+    const row = () => useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(row().seriesDefaults).toEqual({ category: null, tags: ['x'] });
+    expect(row().followUpTaskDraft?.category).toBeNull();
+    expect(useProjectStore.getState().projects.map(p => p.defaultTaskCategory)).toEqual([null, 'Home']);
+    expect(fns.setHealthCategory).toHaveBeenCalledWith(null);
+    expect(fns.setLimitsTodayCategory).not.toHaveBeenCalled();
+    expect(fns.setNewTaskDefaults).toHaveBeenCalledWith({ category: null });
+    expect(fns.setWeatherRules).toHaveBeenCalledWith([{ id: 'w1' }, { id: 'w2', category: 'Home' }]);
+
+    useTaskStore.getState().lastAction?.undo();
+
+    expect(fns.setHealthCategory).toHaveBeenLastCalledWith('Work');
+    expect(fns.setNewTaskDefaults).toHaveBeenLastCalledWith({ category: 'Work' });
+    expect(fns.setWeatherRules).toHaveBeenLastCalledWith(weatherRules);
+    expect(useProjectStore.getState().projects.map(p => p.defaultTaskCategory)).toEqual(['Work', 'Home']);
+    expect(row().seriesDefaults).toEqual({ category: 'Work', tags: ['x'] });
+    expect(row().followUpTaskDraft?.category).toBe('Work');
+  });
+
   it('does not queue an undo when the category is unknown', () => {
     useTaskStore.getState().deleteCategory('Ghost');
     expect(useTaskStore.getState().lastAction).toBeNull();
@@ -14624,6 +14757,7 @@ describe('deleteCategory', () => {
       dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
       newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
       calendarEventCategory: 'Kitchen', collapsedCategories: [], titleRules: [],
+      weatherRules: [], screenTimeRules: [], blockOfferRules: [], healthRules: [], eventRules: [],
       setCalendarEventCategory,
       setCollapsedCategories: jest.fn(),
     });
@@ -14646,6 +14780,30 @@ describe('deleteCategory', () => {
 // ─── deleteTag ──────────────────────────────────────────────────────────────
 
 describe('deleteTag', () => {
+
+  it('takes the tag out of a series\' shared defaults, a follow-up draft and the stacks, and back on undo', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', tags: ['x', 'keep'] })] });
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'a', tags: ['x'], seriesDefaults: { tags: ['x', 'keep'] },
+        followUpTaskDraft: { ...emptyFollowUpTaskDraft(), tags: ['x'] },
+      })],
+    });
+
+    useTaskStore.getState().deleteTag('x');
+
+    const row = () => useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(row().tags).toEqual([]);
+    expect(row().seriesDefaults?.tags).toEqual(['keep']);
+    expect(row().followUpTaskDraft?.tags).toEqual([]);
+    expect(useTaskGroupStore.getState().groups[0].tags).toEqual(['keep']);
+
+    useTaskStore.getState().lastAction?.undo();
+
+    expect(row().seriesDefaults?.tags).toEqual(['x', 'keep']);
+    expect(row().followUpTaskDraft?.tags).toEqual(['x']);
+    expect(useTaskGroupStore.getState().groups[0].tags).toEqual(['x', 'keep']);
+  });
   it('strips the tag from every task and the registry', () => {
     useTaskStore.setState({
       tasks: [makeTask({ id: 'a', tags: ['urgent', 'home'] }), makeTask({ id: 'b', tags: ['urgent'] })],
@@ -17767,6 +17925,22 @@ describe('deleteSeries', () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0].id).toBe(rows[0].id);
     expect(tasks[0].completed).toBe(true);
+  });
+
+  it('lets go of each date\'s calendar event, nudges and completion timer, as deleting one task does', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', seriesId: 's', calendarEventId: 'evt-a', quotaReminders: true, dueDate: new Date(2025, 8, 10).toISOString() }),
+        makeTask({ id: 'b', seriesId: 's', calendarEventId: 'evt-b', dueDate: new Date(2025, 8, 15).toISOString() }),
+      ],
+    });
+    useTaskStore.getState().deleteSeries('s');
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('evt-a');
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('evt-b');
+    expect(cancelQuotaNudges).toHaveBeenCalledWith('a');
+    expect(cancelCompletionTimer).toHaveBeenCalledWith('a');
+    expect(cancelCompletionTimer).toHaveBeenCalledWith('b');
   });
 });
 

@@ -1577,6 +1577,60 @@ describe('list membership', () => {
     expect(after.sourceRecipeTitle).toBeNull();
   });
 
+  // The amount and its credit are the item's, not a list's. Taking rice off the
+  // Airbnb list used to wipe the "3 cups for Paella" the home list still needs,
+  // though the note beside removeFromList says the other trolley is left as it was.
+  describe('a row that is still on another list', () => {
+    const airbnb: GroceryList = { id: 'airbnb', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' };
+    const entry = (itemId: string, listId: string | null): GroceryListEntry => ({
+      itemId, listId, checked: false, sortOrder: 0, choiceGroup: null, addedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const rice = () => makeItem({
+      name: 'Rice', onList: true, quantity: '3 cups', quantityFromRecipe: true, sourceRecipeId: 'r1', sourceRecipeTitle: 'Paella',
+    });
+
+    it('removeFromList keeps its recipe amount and credit when taken off one list', () => {
+      const r = rice();
+      seed([r], { activeListId: 'airbnb', lists: [airbnb], listEntries: [entry(r.id, null), entry(r.id, 'airbnb')] });
+
+      useGroceryStore.getState().removeFromList(r.id);
+
+      const after = useGroceryStore.getState().itemById(r.id)!;
+      expect(after).toMatchObject({ quantity: '3 cups', quantityFromRecipe: true, sourceRecipeId: 'r1', sourceRecipeTitle: 'Paella' });
+      expect(useGroceryStore.getState().listEntries.map(e => e.listId)).toEqual([null]);
+    });
+
+    it('removeFromListMany keeps them too, and its undo does not rewrite a row it did not change', () => {
+      const r = rice();
+      const flour = makeItem({ name: 'Flour', onList: true, quantity: '2 cups', quantityFromRecipe: true });
+      seed([r, flour], {
+        activeListId: 'airbnb', lists: [airbnb],
+        listEntries: [entry(r.id, null), entry(r.id, 'airbnb'), entry(flour.id, 'airbnb')],
+      });
+
+      useGroceryStore.getState().removeFromListMany([r.id, flour.id], { listId: 'airbnb', registerUndo: true });
+
+      const byId = (id: string) => useGroceryStore.getState().itemById(id)!;
+      expect(byId(r.id)).toMatchObject({ quantity: '3 cups', quantityFromRecipe: true, sourceRecipeTitle: 'Paella' });
+      // Only on that list, so it leaves with its amount.
+      expect(byId(flour.id)).toMatchObject({ quantity: null, quantityFromRecipe: false });
+
+      useGroceryStore.getState().lastAction?.undo();
+
+      expect(byId(r.id).quantity).toBe('3 cups');
+      expect(byId(flour.id).quantity).toBe('2 cups');
+    });
+
+    it('still clears them when it was only on the list it left', () => {
+      const r = rice();
+      seed([r], { activeListId: 'airbnb', lists: [airbnb], listEntries: [entry(r.id, 'airbnb')] });
+
+      useGroceryStore.getState().removeFromList(r.id);
+
+      expect(useGroceryStore.getState().itemById(r.id)).toMatchObject({ quantity: null, quantityFromRecipe: false, sourceRecipeId: null });
+    });
+  });
+
   it('addExistingMany only touches rows that are off the list', () => {
     const milk = makeItem({ name: 'Milk', onList: false });
     const eggs = makeItem({ name: 'Eggs', onList: true });
@@ -5181,6 +5235,21 @@ describe('addManyToPantry', () => {
     useGroceryStore.getState().addManyToPantry(['Flour', 'Eggs']);
 
     expect(useGroceryStore.getState().lastAction?.label).toBe('2 items added to the pantry');
+  });
+
+  // A name with no ASCII letter or digit has an empty groceryNameKey; the add
+  // stores and finds it under its lower-cased text. The pre-check read the empty
+  // key, found nothing and called the row freshly minted, so the undo deleted a
+  // catalog row the person already had.
+  it('does not delete, on undo, an existing row whose name has no Latin letters', () => {
+    const tofu = makeItem({ name: '豆腐', nameKey: '豆腐', onHandUntil: null });
+    seed([tofu]);
+
+    useGroceryStore.getState().addManyToPantry(['豆腐']);
+    useGroceryStore.getState().undoLastAction();
+
+    const items = useGroceryStore.getState().items;
+    expect(items.map(i => i.id)).toEqual([tofu.id]);
   });
 
   it('undoes the whole session: deletes fresh rows, restores stamped ones', () => {

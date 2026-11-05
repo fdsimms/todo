@@ -21,6 +21,7 @@ jest.mock('../store/useCategoryStore', () => ({
 }));
 
 import { buildTimerRuns, fastRun, playRun } from '../utils/liveActivity';
+import { registerLockedProjectSource } from '../utils/projectLock';
 import type { Task, Recipe, ChainItem, RecipeStepTimer, RestTimer, Fast, RewardUnlock } from '../types';
 
 const NOW = new Date(2026, 7, 11, 12, 0, 0).getTime();
@@ -229,6 +230,22 @@ function makeStepTimer(overrides: Partial<RecipeStepTimer> = {}): RecipeStepTime
     ...overrides,
   };
 }
+
+describe('buildTimerRuns for a task in a locked project', () => {
+  afterEach(() => registerLockedProjectSource(() => []));
+
+  it('leaves the title and note off the Lock Screen', () => {
+    registerLockedProjectSource(() => ['secret']);
+    const running = makeTask({ projectId: 'secret', title: 'Surprise party for Sam', timerStartedAt: startedAgo(5), timedMinutes: 15 });
+    const afterwards = makeTask({
+      id: 'iron', projectId: 'secret', title: 'Surprise party for Sam', completed: true,
+      completionTimerMinutes: 60, completionTimerStartedAt: startedAgo(5), completionTimerNote: 'Check the oven for Sam',
+    });
+    const runs = buildTimerRuns([running, afterwards], [], [], { enabled: true });
+    expect(runs.length).toBe(2);
+    expect(JSON.stringify(runs)).not.toContain('Sam');
+  });
+});
 
 describe('buildTimerRuns', () => {
   it('returns nothing when disabled, even with runs in flight', () => {

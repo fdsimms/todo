@@ -1,5 +1,7 @@
 import {
   isProjectLockedAway,
+  maskedOutsideApp,
+  registerLockedProjectSource,
   isTaskLockedAway,
   lockedAwayCount,
   parseLockedProjectIds,
@@ -57,5 +59,22 @@ describe('withProjectLocked', () => {
     expect(withProjectLocked(['a', 'b'], 'b', true)).toEqual(['a', 'b']);
     expect(withProjectLocked(['a', 'b'], 'a', false)).toEqual(['b']);
     expect(withProjectLocked(['a'], 'c', false)).toEqual(['a']);
+  });
+});
+
+describe('maskedOutsideApp', () => {
+  afterEach(() => registerLockedProjectSource(() => []));
+
+  it('swaps in the stand-in text for a locked project, whatever the session says', () => {
+    registerLockedProjectSource(() => ['secret']);
+    expect(maskedOutsideApp('secret', 'Surprise party', 'Task')).toBe('Task');
+  });
+
+  it('leaves the text alone for an unlocked project, no project, or nothing locked', () => {
+    registerLockedProjectSource(() => ['secret']);
+    expect(maskedOutsideApp('other', 'Surprise party', 'Task')).toBe('Surprise party');
+    expect(maskedOutsideApp(null, 'Surprise party', 'Task')).toBe('Surprise party');
+    registerLockedProjectSource(() => []);
+    expect(maskedOutsideApp('secret', 'Surprise party', 'Task')).toBe('Surprise party');
   });
 });

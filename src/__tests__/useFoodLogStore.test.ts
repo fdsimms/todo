@@ -1,4 +1,5 @@
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
+import { cancelCheckInFor } from '../utils/checkInRecording';
 import {
   dbBulkDeleteFoodLogEntries,
   dbBulkSetFoodLogSlot,
@@ -16,6 +17,7 @@ import { estimateAmountPatch } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition } from '../types';
 
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+jest.mock('../utils/checkInRecording', () => ({ cancelCheckInFor: jest.fn() }));
 
 /**
  * Standing in for the table rather than for one call.
@@ -84,6 +86,8 @@ jest.mock('../store/useSettingsStore', () => ({
 // "wrote today" tests below assert on them directly.
 const mockCheckHealthTasks = jest.fn();
 const mockSyncWaterQuotaTasks = jest.fn();
+const mockSyncMealStripCoins = jest.fn();
+const mockSyncLoggedMealSlotTasks = jest.fn();
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: {
     getState: () => ({
@@ -92,8 +96,8 @@ jest.mock('../store/useTaskStore', () => ({
       syncSnackNudgeTasks: jest.fn(),
       syncLimitWarningTasks: jest.fn(),
       syncGoalTargetTasks: jest.fn(),
-      syncLoggedMealSlotTasks: jest.fn(),
-      syncMealStripCoins: jest.fn(),
+      syncLoggedMealSlotTasks: mockSyncLoggedMealSlotTasks,
+      syncMealStripCoins: mockSyncMealStripCoins,
     }),
   },
 }));
@@ -776,6 +780,14 @@ describe('reviseEntry', () => {
     return entry;
   }
 
+  it('resyncs the meal strip and the meal tasks when only the meal changed, though Health is untouched', () => {
+    const entry = stored({ slot: 'breakfast' });
+    state().reviseEntry(entry.id, { slot: 'dinner' });
+    expect(mockSyncMealStripCoins).toHaveBeenCalledWith('2026-04-02');
+    expect(mockSyncLoggedMealSlotTasks).toHaveBeenCalled();
+    expect(logFoodEntryToHealth).not.toHaveBeenCalled();
+  });
+
   it('writes the corrected helping to the row', () => {
     const entry = stored();
     state().reviseEntry(entry.id, {
@@ -985,6 +997,12 @@ describe('removeEntry', () => {
     expect(state().totalCount).toBe(0);
   });
 
+  it('drops the check-in about the meal it forgets', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue({ id: 'e1', label: 'Toast', dayKey: '2026-04-02', healthSampleIds: [] });
+    state().removeEntry('e1');
+    expect(cancelCheckInFor).toHaveBeenCalledWith('food', 'e1');
+  });
+
   it('cannot drive the count below zero', () => {
     // A delete of a row outside the loaded window would otherwise make the
     // screen vanish while it still held entries.
@@ -1041,6 +1059,22 @@ describe('removeEntries', () => {
     expect(state().totalCount).toBe(1);
   });
 
+  it('resyncs the meal strip for each day it forgot food on, so a paid meal is not left paid', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => ({
+      id, label: id, dayKey: id === 'a' ? '2026-04-02' : '2026-04-01', healthSampleIds: [],
+    }));
+    state().removeEntries(['a', 'b']);
+    expect(mockSyncMealStripCoins).toHaveBeenCalledWith('2026-04-02');
+    expect(mockSyncMealStripCoins).toHaveBeenCalledWith('2026-04-01');
+  });
+
+  it('drops the check-in about each meal it forgets', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) => ({ id, label: id, dayKey: '2026-04-02', healthSampleIds: [] }));
+    state().removeEntries(['a', 'b']);
+    expect(cancelCheckInFor).toHaveBeenCalledWith('food', 'a');
+    expect(cancelCheckInFor).toHaveBeenCalledWith('food', 'b');
+  });
+
   it('is a no-op on an empty selection', () => {
     state().removeEntries([]);
     expect(dbBulkDeleteFoodLogEntries).not.toHaveBeenCalled();
@@ -1092,6 +1126,18 @@ describe('moveEntries', () => {
     expect(state().entries.find(e => e.id === a.id)?.slot).toBe('lunch');
     expect(state().entries.find(e => e.id === b.id)?.slot).toBe('breakfast');
   });
+
+  it('resyncs the meal strip and meal tasks when food changes meal, and not when it stays put', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft({ label: 'A', slot: 'breakfast' }))!;
+    mockSyncMealStripCoins.mockClear();
+    mockSyncLoggedMealSlotTasks.mockClear();
+    state().moveEntries([a.id], 'breakfast');
+    expect(mockSyncMealStripCoins).not.toHaveBeenCalled();
+    state().moveEntries([a.id], 'lunch');
+    expect(mockSyncMealStripCoins).toHaveBeenCalledWith(a.dayKey);
+    expect(mockSyncLoggedMealSlotTasks).toHaveBeenCalled();
+  });
 });
 
 describe('moveEntries and saved meals', () => {
@@ -1130,6 +1176,17 @@ describe('reorderEntries', () => {
     expect(dbBulkUpdateFoodLogPlacement).toHaveBeenCalledWith(updates);
     expect(state().entries.find(e => e.id === a.id)).toMatchObject({ slot: 'lunch', sortOrder: 2 });
     expect(state().entries.find(e => e.id === b.id)).toMatchObject({ slot: 'lunch', sortOrder: 1 });
+  });
+
+  it('resyncs the meal strip only when a drop moves food into another meal', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft({ label: 'A', slot: 'breakfast' }))!;
+    const b = state().addEntry(draft({ label: 'B', slot: 'breakfast' }))!;
+    mockSyncMealStripCoins.mockClear();
+    state().reorderEntries([{ id: b.id, slot: 'breakfast', sortOrder: 1 }, { id: a.id, slot: 'breakfast', sortOrder: 2 }]);
+    expect(mockSyncMealStripCoins).not.toHaveBeenCalled();
+    state().reorderEntries([{ id: a.id, slot: 'dinner', sortOrder: 1 }]);
+    expect(mockSyncMealStripCoins).toHaveBeenCalledWith(a.dayKey);
   });
 });
 

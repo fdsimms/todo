@@ -1,7 +1,8 @@
 import type { Task } from '../types';
 import { carryClockTime } from './clockTime';
-import { getDeadlineFromMonthDay, getDeadlineFromOffset, getNextOccurrence, getReminderOffsetDate } from './dateUtils';
-import { CONTENT_FIELDS, captureField } from './taskUpdate';
+import { getDeadlineFromMonthDay, getDeadlineFromOffset, getNextOccurrence, getReminderOffsetDate, getTaskDayStart } from './dateUtils';
+import { CONTENT_FIELDS, captureField, derivedTargetCount } from './taskUpdate';
+import { freshOccurrenceFields } from './occurrenceReset';
 import { getVisibleAt } from './visibilityUtils';
 
 /**
@@ -56,6 +57,13 @@ export function deadlineOnto(effective: Task, due: Date): string | null {
  * none (no repeat, or a schedule that has ended). Written with the store's
  * SKIP_POSTPONE: a skip is not the person ducking the task.
  */
+/** An every-N-minutes target counts its own day's run, so the new day recounts it. */
+function targetCountOnto(effective: Task, due: Date, dayResetTime: string): Partial<Task> {
+  return effective.quotaIntervalMinutes != null
+    ? { targetCount: derivedTargetCount({ ...effective, quotaStartedAt: null }, getTaskDayStart(due, dayResetTime)) }
+    : {};
+}
+
 export function skipPatch(task: Task, dayResetTime: string): Partial<Task> | null {
   if (task.recurrenceType === 'none') return null;
   // This rolls the row onto its next occurrence *in place* rather than
@@ -92,6 +100,8 @@ export function skipPatch(task: Task, dayResetTime: string): Partial<Task> | nul
     return {
       ...contentReset,
       ...pinReset,
+      ...freshOccurrenceFields(),
+      ...targetCountOnto(effective, stepDue, dayResetTime),
       chainIndex: task.chainIndex + 1,
       dueDate: stepDue.toISOString(),
       // The rule's own day when a holiday moved this one off it, so the next
@@ -125,6 +135,8 @@ export function skipPatch(task: Task, dayResetTime: string): Partial<Task> | nul
   return {
     ...contentReset,
     ...pinReset,
+    ...freshOccurrenceFields(),
+    ...targetCountOnto(effective, nextDue, dayResetTime),
     dueDate: nextDue.toISOString(),
     // See the chain-step branch above.
     recurrenceAnchorDate: next.gridDate?.toISOString() ?? null,

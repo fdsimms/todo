@@ -330,7 +330,7 @@ export function updateProject(
   // The two things the replica does to the span beyond what was asked, said
   // here so the caller does not have to diff the project to find them.
   if (patch.awayStart !== undefined && patch.awayEnd === undefined && before.awayEnd && project.awayEnd && project.awayEnd !== before.awayEnd) {
-    result.awayNote = `Coming back moved with the departure, keeping the trip the same length: it is now ${project.awayEnd.slice(0, 10)}.`;
+    result.awayNote = `Coming back moved with the departure, keeping the trip the same length: it is now ${replica.dayKeyOf(project.awayEnd)}.`;
   } else if (patch.awayStart === null && (before.awayEnd || before.destination || before.awayPauses || before.awayListId)) {
     result.awayNote = 'Clearing the away dates also cleared the return date, the destination, and the vacation mode and grocery list nominations that hung off them.';
   }

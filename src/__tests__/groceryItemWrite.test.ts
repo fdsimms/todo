@@ -7,6 +7,7 @@ import {
   listNameProblem,
   mergedItemRow,
   chosenOptionRows,
+  parkedOffList,
   newListRow,
   newShopRow,
   planFinishShopping,
@@ -332,10 +333,43 @@ describe('chosenOptionRows', () => {
     const plan = chosenOptionRows(entries, items, 'a', null)!;
     expect(plan.winner.choiceGroup).toBeNull();
     expect(plan.remove.map(e => [e.itemId, e.listId])).toEqual([['b', null]]);
+    // Still on the away list, whose recipe need is live there: nothing to park.
+    expect(plan.parked).toEqual([]);
+  });
+
+  it('parks a rejected option\'s recipe amount when it was only on that list', () => {
+    const entries = [entry('a'), entry('b')];
+    const items = [item('a', { id: 'a' }), item('b', { id: 'b', quantity: '2 cups', quantityFromRecipe: true })];
+    const plan = chosenOptionRows(entries, items, 'a', null)!;
+    expect(plan.parked).toHaveLength(1);
     expect(plan.parked[0]).toMatchObject({ id: 'b', quantity: null, quantityFromRecipe: false });
   });
 
   it('is null for a row that is not an option', () => {
     expect(chosenOptionRows([entry('c', { choiceGroup: null })], [], 'c', null)).toBeNull();
+  });
+});
+
+describe('parkedOffList', () => {
+  const entry = (itemId: string, listId: string | null): GroceryListEntry => ({
+    itemId, listId, checked: false, choiceGroup: null, addedAt: NOW, sortOrder: 1,
+  });
+  const rice = item('Rice', { id: 'rice', quantity: '3 cups', quantityFromRecipe: true, sourceRecipeId: 'r1', sourceRecipeTitle: 'Paella' });
+
+  it('ends the recipe amount and credit when no other list holds the row', () => {
+    expect(parkedOffList(rice, [entry('rice', null)], null)).toMatchObject({
+      quantity: null, quantityFromRecipe: false, sourceRecipeId: null, sourceRecipeTitle: null,
+    });
+  });
+
+  it('is the same object when another list still holds it, or when there is nothing to end', () => {
+    expect(parkedOffList(rice, [entry('rice', null), entry('rice', 'away')], null)).toBe(rice);
+    const plain = item('Flour', { id: 'flour', quantity: '2 bags' });
+    expect(parkedOffList(plain, [entry('flour', null)], null)).toBe(plain);
+  });
+
+  it('keeps a hand-set amount while still dropping the credit', () => {
+    const hand = item('Salt', { id: 'salt', quantity: '1 box', quantityFromRecipe: false, sourceRecipeId: 'r1', sourceRecipeTitle: 'Stew' });
+    expect(parkedOffList(hand, [entry('salt', null)], null)).toMatchObject({ quantity: '1 box', sourceRecipeId: null, sourceRecipeTitle: null });
   });
 });

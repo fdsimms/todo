@@ -48,3 +48,26 @@ export function renameInReminderCaptures(
   if (!captures.some(hits)) return captures;
   return captures.map(c => (hits(c) ? { ...c, filing: { kind: 'category', category: to } } : c));
 }
+
+/**
+ * The same shapes, for a delete rather than a rename: the category is gone and
+ * there is no new name to follow it to, so each one lets go of it. A row left
+ * naming a deleted category files its next task under it, and allCategories()
+ * promptly brings the name back as a phantom section, so the delete appeared to
+ * half-undo itself. Each returns its input by identity when nothing names it.
+ */
+export function clearInSeriesDefaults(defaults: Partial<Task> | null, name: string): Partial<Task> | null {
+  if (!defaults || defaults.category !== name) return defaults;
+  return { ...defaults, category: null };
+}
+
+export function clearInFollowUpDraft(draft: FollowUpTaskDraft | null, name: string): FollowUpTaskDraft | null {
+  if (!draft || draft.category !== name) return draft;
+  return { ...draft, category: null };
+}
+
+export function clearInTitleRules(rules: TitleRule[], name: string): TitleRule[] {
+  if (!rules.some(r => r.category === name)) return rules;
+  return rules.map(r => (r.category === name ? { ...r, category: null } : r));
+}
+

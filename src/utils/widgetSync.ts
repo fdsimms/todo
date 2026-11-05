@@ -47,7 +47,9 @@ import { alertKeyScanResult } from './keyScanAlert';
 import { applyKeyScan } from './releaseBlocks';
 import type { KeyScanResult } from '../store/useNfcKeyStore';
 import { useJournalStore } from '../store/useJournalStore';
-import { isProjectLocked } from '../store/useProjectLockStore';
+import { isProjectLocked, useProjectLockStore } from '../store/useProjectLockStore';
+import { useProjectStore } from '../store/useProjectStore';
+import { pauseSignature } from './projectPause';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
 import { buildRoutineIndex, parseQueuedWorkoutStarts, resolveQueuedWorkoutStart } from './workoutSiri';
@@ -1058,6 +1060,17 @@ function subscribeToStores(): () => void {
     useCategoryStore.subscribe((s, p) => {
       if (s.categories !== p.categories) scheduleSnapshotWrite();
     }),
+    // What the snapshot filters tasks through without any task changing: a
+    // locked project's tasks stay off the widget (the lock list, not the session
+    // flag, since the widget can't ask for Face ID), and a paused project's are
+    // withheld. Locking a project used to leave its titles on the home screen
+    // until some task next changed.
+    useProjectLockStore.subscribe((s, p) => {
+      if (s.lockedIds !== p.lockedIds) scheduleSnapshotWrite();
+    }),
+    useProjectStore.subscribe((s, p) => {
+      if (s.projects !== p.projects && pauseSignature(s.projects) !== pauseSignature(p.projects)) scheduleSnapshotWrite();
+    }),
     useGroceryStore.subscribe((s, p) => {
       if (
         s.listEntries !== p.listEntries ||
@@ -1098,6 +1111,10 @@ function subscribeToStores(): () => void {
         s.nutritionTargets !== p.nutritionTargets ||
         s.nutritionLimits !== p.nutritionLimits ||
         s.limitWarnPercent !== p.limitWarnPercent ||
+        // Which tasks are visible: vacation hides some, and the day start moves
+        // which day a task belongs to. Neither changes a task.
+        s.vacationMode !== p.vacationMode ||
+        s.dayResetTime !== p.dayResetTime ||
         // The Calendar widget reads these calendars itself.
         s.calendarReadEnabled !== p.calendarReadEnabled ||
         s.calendarIds !== p.calendarIds

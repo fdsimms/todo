@@ -30,7 +30,7 @@
  */
 import type { GroceryItem, GroceryListEntry, ItemProduct } from '../types';
 import { generateId } from './id';
-import { groceryNameKey, parseGroceryInput } from './groceryParse';
+import { itemNameKey, parseGroceryInput } from './groceryParse';
 import { catalogItemForKey } from './groceryPlural';
 import { aisleForName, placeAisle } from './groceryAisles';
 import { entryFor, nextListSortOrder } from './groceryLists';
@@ -322,7 +322,7 @@ export function planGroceryAdd(
   // Falling back to the raw text keeps the key unique, which matters: two such
   // rows would collide on the UNIQUE index and the *second* insert would throw
   // out of whatever was calling — a paste, or the Reminders drain mid-batch.
-  const key = groceryNameKey(name) || name.trim().toLowerCase();
+  const key = itemNameKey(name);
   // Exact key first, then the singular/plural of it — "serrano pepper" against
   // a catalog holding Serrano peppers is that row, not a second one splitting
   // its purchase count and its aisle in two. See groceryPlural.ts; nothing

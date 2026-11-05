@@ -4874,6 +4874,50 @@ describe('dbApplySyncChanges', () => {
   const stampLocal = (id: string, at: string) =>
     mockRawDb.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run(at, id);
 
+  // A peer takes Milk off the list under the id it knows. This device folded
+  // that id into another earlier and holds the entry under the survivor's, so
+  // the deletion found nothing here, was only remembered, and the entry stayed
+  // on this list for good.
+  it('takes an entry off the list when the peer\'s deletion names an item this device folded away', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'fold-win', name: 'Milk', nameKey: 'milk', onList: true }));
+    mockRawDb.prepare(
+      "INSERT OR REPLACE INTO sync_aliases (table_name, loser_id, winner_id, created_at) VALUES ('grocery_items', 'fold-lose', 'fold-win', '2026-10-01T00:00:00.000Z')"
+    ).run();
+    try {
+      expect(dbGetAllGroceryListEntries().some(e => e.itemId === 'fold-win' && e.listId === null)).toBe(true);
+
+      const report = dbApplySyncChanges(payload({
+        deletions: [{ table: 'grocery_list_items', rowKey: 'fold-lose|', deletedAt: '2099-01-01T00:00:00.000Z' }],
+      }));
+
+      expect(dbGetAllGroceryListEntries().some(e => e.itemId === 'fold-win')).toBe(false);
+      expect(report.deleted).toBe(1);
+    } finally {
+      mockRawDb.exec("DELETE FROM sync_aliases WHERE loser_id = 'fold-lose'");
+      mockRawDb.exec("DELETE FROM grocery_list_items WHERE item_id = 'fold-win'");
+      mockRawDb.exec("DELETE FROM grocery_items WHERE id = 'fold-win'");
+    }
+  });
+
+  it('leaves an entry alone when its own edit is newer than the peer\'s deletion of the folded id', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'fold-win', name: 'Milk', nameKey: 'milk', onList: true }));
+    mockRawDb.prepare(
+      "INSERT OR REPLACE INTO sync_aliases (table_name, loser_id, winner_id, created_at) VALUES ('grocery_items', 'fold-lose', 'fold-win', '2026-10-01T00:00:00.000Z')"
+    ).run();
+    try {
+      const report = dbApplySyncChanges(payload({
+        deletions: [{ table: 'grocery_list_items', rowKey: 'fold-lose|', deletedAt: '2000-01-01T00:00:00.000Z' }],
+      }));
+
+      expect(dbGetAllGroceryListEntries().some(e => e.itemId === 'fold-win')).toBe(true);
+      expect(report.deletionsRefused).toBe(1);
+    } finally {
+      mockRawDb.exec("DELETE FROM sync_aliases WHERE loser_id = 'fold-lose'");
+      mockRawDb.exec("DELETE FROM grocery_list_items WHERE item_id = 'fold-win'");
+      mockRawDb.exec("DELETE FROM grocery_items WHERE id = 'fold-win'");
+    }
+  });
+
   it('inserts a row this device has never seen', () => {
     const report = dbApplySyncChanges(payload({
       tables: { tasks: [peerTaskRow('p1', 'From peer', '2026-01-01T00:00:00.000Z')] },

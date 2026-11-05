@@ -1816,6 +1816,12 @@ export interface Replica {
    * reschedules from every task rather than from the one that changed.
    */
   createTask(draft: Partial<TaskDraft>): Task;
+  /**
+   * The category a task made from this draft would land in, by the same steps
+   * `createTask` takes: the draft's own, a title rule's, the project's default,
+   * the new-task default. Null when none of them supplies one.
+   */
+  categoryForDraft(draft: Partial<TaskDraft>): string | null;
 
   /**
    * Give a just-created weekly target a first week scaled to the days left in
@@ -4533,16 +4539,37 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const unknown = Object.keys(changes).filter(k => !(k in SETTINGS_SPEC));
       if (unknown.length > 0) throw new Error(`Not a setting this can change: ${unknown.join(', ')}. get_settings lists them.`);
       const before = replica.settingValues();
+      // A setting that files things under a name has to name something real.
+      // Stored as given, a typo made every new task on the phone land in a
+      // section nobody made, a lower-cased spelling never matched the real
+      // category, and a project id that does not exist pointed the wish list
+      // at nothing. The category is stored in the spelling the person made it
+      // in, as every task field's is (categoryNamed). `healthCategory` is the
+      // one that creates a missing category, as the app's own setting does.
+      const refusals: string[] = [];
+      const given: Record<string, unknown> = { ...changes };
+      if (typeof given.limitsTodayCategory === 'string') {
+        given.limitsTodayCategory = categoryNamed(given.limitsTodayCategory, false, refusals, 'limitsTodayCategory') ?? given.limitsTodayCategory;
+      }
+      const defaults = given.newTaskDefaults;
+      if (defaults && typeof defaults === 'object' && typeof (defaults as { category?: unknown }).category === 'string') {
+        const named = categoryNamed((defaults as { category: string }).category, false, refusals, 'newTaskDefaults.category');
+        if (named) given.newTaskDefaults = { ...defaults, category: named };
+      }
+      if (typeof given.rewardListProjectId === 'string' && !projects().some(p => p.id === given.rewardListProjectId)) {
+        refusals.push(`rewardListProjectId: no project with id "${given.rewardListProjectId}". list_projects has the ids.`);
+      }
+      if (refusals.length > 0) throw new Error(refusals.join(' '));
       // Every check first, against the state with its setters stubbed out, so
       // one bad value refuses the call before any setting is stored.
       const state = useSettingsStore.getState();
       const dry = new Proxy(state, { get: (target, prop) => (typeof prop === 'string' && prop.startsWith('set') ? () => {} : Reflect.get(target, prop)) });
-      for (const [key, value] of Object.entries(changes)) SETTINGS_SPEC[key].write(dry, value);
+      for (const [key, value] of Object.entries(given)) SETTINGS_SPEC[key].write(dry, value);
       db.dbTransaction(() => {
         // A readings category the person names that doesn't exist yet is made, as the app's own
         // "Show Health readings under" does; the dry run above must not, so it lives here.
-        if (typeof changes.healthCategory === 'string') ensureCategory(changes.healthCategory.trim());
-        for (const [key, value] of Object.entries(changes)) SETTINGS_SPEC[key].write(useSettingsStore.getState(), value);
+        if (typeof given.healthCategory === 'string') ensureCategory(given.healthCategory.trim());
+        for (const [key, value] of Object.entries(given)) SETTINGS_SPEC[key].write(useSettingsStore.getState(), value);
       });
       refresh();
       const after = replica.settingValues();
@@ -6393,6 +6420,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       return updated;
     },
 
+    categoryForDraft(draft: Partial<TaskDraft>): string | null {
+      return taskDraft.newTaskFromDraft(taskDraft.applyTitleRulesToDraft(draft), new Date().toISOString(), 0, true).category;
+    },
+
     createTask(draft: Partial<TaskDraft>): Task {
       if (!draft.title?.trim()) throw new Error('A task needs a title.');
 
@@ -6903,7 +6934,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       db.dbTransaction(() => {
         for (const row of rows) {
           const items = db.dbGetAllGroceryItems();
-          const existing = plural.catalogItemForKey(parse.groceryNameKey(row.name), items) ?? undefined;
+          const existing = plural.catalogItemForKey(parse.itemNameKey(row.name), items) ?? undefined;
           const entry = existing ? lists.entryFor(db.dbGetAllGroceryListEntries(), existing.id, listId) : undefined;
           if (existing && entry?.checked) { result.skippedInCart.push(existing); continue; }
           if (existing && entry) {
@@ -6939,7 +6970,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           let item = plan.item;
           // The recipe's aisle files the row unless the person already filed
           // that name somewhere (setAisle, which also remembers the filing).
-          const key = parse.groceryNameKey(row.name);
+          const key = parse.itemNameKey(row.name);
           if (row.aisle && !overrides[key]) {
             item = { ...item, aisle: aisles.placeAisle(row.aisle, order) };
             const remembered = aisles.rememberAisles(overrides, [{ nameKey: item.nameKey, aisle: item.aisle }]);
@@ -7330,14 +7361,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // ride back onto the catalog row, and nor does its credit: the same
       // parking `useGroceryStore.removeFromList` does. Left on, a hand-typed
       // re-add weeks later still read 'For "Chili"'.
-      const parked: GroceryItem = {
-        ...item,
-        quantity: item.quantityFromRecipe ? null : item.quantity,
-        quantityFromRecipe: false,
-        sourceRecipeId: null,
-        sourceRecipeTitle: null,
-      };
-      db.dbUpdateGroceryItem(parked);
+      // Unless another trolley still holds the row: the amount and credit are
+      // the item's, and its recipe need is still live there (parkedOffList).
+      const parked = itemWrite.parkedOffList(item, db.dbGetAllGroceryListEntries(), listId);
+      if (parked !== item) db.dbUpdateGroceryItem(parked);
       db.dbDeleteGroceryListEntry(id, listId);
 
       refresh();
@@ -7991,7 +8018,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         freshPinnedOrder: patch.pinned === true ? taskUpdate.nextPinnedOrder(all) : 0,
         dayResetTime: useSettingsStore.getState().dayResetTime,
       });
-      const siblings = taskUpdate.seriesFanOutRows(updated, patch, all);
+      const siblings = taskUpdate.seriesFanOutRows(updated, patch, all, task);
       db.dbTransaction(() => {
         ensureCategory(updated.category);
         db.dbUpdateTask(updated);

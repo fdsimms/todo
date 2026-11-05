@@ -486,6 +486,10 @@ function extractEndCondition(text: string, now: Date): { end: EndCondition; rest
     const target = m[2];
     const month = MONTHS[target];
     if (month !== undefined) {
+      // The month the person is in counts as this month. monthDay answers with
+      // the next 1st on or after today, and this month's has already gone by, so
+      // "until june" typed in June ended on the 30th of June the year after.
+      if (month === now.getMonth()) return { end: { endDate: lastDayOfMonth(now) }, rest: m[1] };
       const dp = monthDay(month, 1, null, now);
       if (dp) return { end: { endDate: lastDayOfMonth(dp.date) }, rest: m[1] };
     } else {

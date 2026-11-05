@@ -1,4 +1,4 @@
-import { PLANNING_PAUSE_KEY, isPausedOn, isPlanning, isProjectPaused, notifyPauseEnded, pauseEndedByChange, pauseEndsOn, projectPausedUntil, registerPauseEndListener, registerPausedProjectSource } from '../utils/projectPause';
+import { PLANNING_PAUSE_KEY, pauseSignature, isPausedOn, isPlanning, isProjectPaused, notifyPauseEnded, pauseEndedByChange, pauseEndsOn, projectPausedUntil, registerPauseEndListener, registerPausedProjectSource } from '../utils/projectPause';
 
 afterEach(() => registerPausedProjectSource(null));
 
@@ -86,3 +86,24 @@ describe('when a pause ends', () => {
   });
 });
 
+describe('pauseSignature', () => {
+  const p = (id: string, pausedUntil: string | null) => ({ id, pausedUntil });
+
+  it('changes when a pause is set, moved or lifted', () => {
+    const none = pauseSignature([p('a', null), p('b', null)]);
+    const set = pauseSignature([p('a', '2026-03-01'), p('b', null)]);
+    const moved = pauseSignature([p('a', '2026-04-01'), p('b', null)]);
+    expect(new Set([none, set, moved]).size).toBe(3);
+    expect(pauseSignature([p('a', null), p('b', null)])).toBe(none);
+  });
+
+  it('does not depend on the order projects are listed in', () => {
+    expect(pauseSignature([p('a', '2026-03-01'), p('b', '2026-04-01')]))
+      .toBe(pauseSignature([p('b', '2026-04-01'), p('a', '2026-03-01')]));
+  });
+
+  it('is empty when nothing is paused', () => {
+    expect(pauseSignature([])).toBe('');
+    expect(pauseSignature([p('a', null)])).toBe('');
+  });
+});

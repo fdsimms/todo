@@ -649,6 +649,17 @@ describe('parseTaskInput — recurrence', () => {
     expect(end2.getDate()).toBe(4);
   });
 
+  // NOW is June 10, 2025. A bare month is "through the end of that month", and
+  // the month the person is in is that month, not the same month a year on.
+  it('reads "until <this month>" as the end of this month, and an earlier month as next year\'s', () => {
+    const june = new Date(parseTaskInput('gym every monday until june', NOW)!.schedule.recurrenceEndDate!);
+    expect([june.getFullYear(), june.getMonth(), june.getDate()]).toEqual([2025, 5, 30]);
+    const july = new Date(parseTaskInput('gym every monday until july', NOW)!.schedule.recurrenceEndDate!);
+    expect([july.getFullYear(), july.getMonth(), july.getDate()]).toEqual([2025, 6, 31]);
+    const may = new Date(parseTaskInput('gym every monday until may', NOW)!.schedule.recurrenceEndDate!);
+    expect([may.getFullYear(), may.getMonth(), may.getDate()]).toEqual([2026, 4, 31]);
+  });
+
   it('maps a "for N times/occurrences" clause to recurrenceCount', () => {
     const r = parseTaskInput('take medicine daily for 10 occurrences', NOW)!;
     expect(r.schedule.recurrenceCount).toBe(10);

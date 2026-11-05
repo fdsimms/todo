@@ -2634,6 +2634,24 @@ describe('isTaskExpired during a nominated away span', () => {
     mockProjects.push({ ...t, awayPauseDeclinedFor: t.awayStart });
     expect(isTaskExpired(closed({ vacationPause: true }))).toBe(true);
   });
+
+  // The trip returns on the 15th, so its last day away is the 14th. At 02:00 on
+  // the 15th under a 04:00 day start it is still the 14th, the same answer
+  // checkAwayVacation gives by asking the logical day: the pause holds until
+  // the day actually starts.
+  it('keeps sparing a vacation-paused task until the day start on the morning the trip ends', () => {
+    mockSettingsState.dayResetTime = '04:00';
+    try {
+      mockProjects.push(trip());
+      jest.setSystemTime(new Date(2025, 5, 15, 2, 0, 0));
+      expect(isTaskExpired(closed({ vacationPause: true }))).toBe(false);
+      // Once the day has started and the 09:00 window has closed on it, the trip is over.
+      jest.setSystemTime(new Date(2025, 5, 15, 10, 0, 0));
+      expect(isTaskExpired(closed({ vacationPause: true }))).toBe(true);
+    } finally {
+      mockSettingsState.dayResetTime = '00:00';
+    }
+  });
 });
 
 // Clock times earlier than dayResetTime belong to the small hours at the end

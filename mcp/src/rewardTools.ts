@@ -415,7 +415,7 @@ export function markMissed(replica: Replica, id: string): MissedResult {
   const result = replica.markMissed(id);
   const effects = ['The occurrence is recorded as missed, which is not a completion.'];
   if (before && before.streakCount > 0) effects.push(`Its streak of ${before.streakCount} was broken.`);
-  if (result.nextTask) effects.push(`The next occurrence was created${result.nextTask.dueDate ? `, due ${result.nextTask.dueDate.slice(0, 10)}` : ''}.`);
+  if (result.nextTask) effects.push(`The next occurrence was created${result.nextTask.dueDate ? `, due ${replica.dayKeyOf(result.nextTask.dueDate)}` : ''}.`);
   if (rewardsEnabled) {
     const cost = replica.lib().rewards.coinsForLoss(result.completed);
     effects.push(`Rewards are on, so the miss costs ${cost} ${cost === 1 ? 'coin' : 'coins'}.`);

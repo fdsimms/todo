@@ -3,6 +3,8 @@ import { useFoodLogStore } from '../store/useFoodLogStore';
 import { dbDeleteSavedMeal, dbGetSavedMeals, dbInsertSavedMeal } from '../db/database';
 import type { FoodLogEntry, FoodNutrition, SavedMeal } from '../types';
 
+// useFoodLogStore cancels a deleted meal's check-in, which reaches the notification module.
+jest.mock('../utils/checkInRecording', () => ({ cancelCheckInFor: jest.fn() }));
 jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 
 /** Standing in for the tables rather than for one call, same shape useFoodLogStore.test.ts keeps. */

@@ -14,6 +14,8 @@ import { healthBridge } from '../utils/healthBridge';
 
 // Same reason every other store test stubs it: the real module drags
 // expo-sqlite into the graph, and nothing here touches the database.
+// useFoodLogStore cancels a deleted meal's check-in, which reaches the notification module.
+jest.mock('../utils/checkInRecording', () => ({ cancelCheckInFor: jest.fn() }));
 jest.mock('../db/database', () => ({
   dbGetSetting: jest.fn().mockReturnValue(null),
   dbSetSetting: jest.fn(),

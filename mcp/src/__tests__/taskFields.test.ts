@@ -412,6 +412,16 @@ describe('habit, window, follow-up, blockers', () => {
     expect(p).toMatchObject({ followUpTaskEveryN: 4, followUpTaskTitle: 'Replace shoes', followUpTaskOneAtATime: false });
     expect(p.followUpTaskDraft!.notes).toBe('Size 10');
     expect(errorsOf({ followUp: { everyN: 4, title: 'X' } })).toMatch(/repeating/);
+  });
+
+  it('keeps the draft already set up on the phone when only the count or title changes', () => {
+    const draft = { ...deps.emptyFollowUpDraft(), notes: 'Size 10', category: 'Errands', tags: ['shoes'], priority: 2 as FollowUpTaskDraft['priority'] };
+    const current = existing({ recurrenceType: 'weekly', followUpTaskEveryN: 4, followUpTaskTitle: 'Replace shoes', followUpTaskDraft: draft });
+    const p = ok({ followUp: { everyN: 5, title: 'Replace the shoes' } }, current);
+    expect(p.followUpTaskDraft).toEqual(draft);
+    // A note given in the call still replaces just the note.
+    expect(ok({ followUp: { everyN: 5, title: 'Replace the shoes', notes: 'Size 11' } }, current).followUpTaskDraft)
+      .toEqual({ ...draft, notes: 'Size 11' });
     expect(errorsOf({ repeat: { every: 'week' }, followUp: { everyN: 1, title: 'X' } })).toMatch(/2 to 99/);
   });
 
