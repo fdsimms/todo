@@ -296,7 +296,7 @@ function serializePoolMeal(e: WeekPoolEntry, recipes: Map<string, string>): Seri
 
 /**
  * Planned meals over a range of days, plus the meals chosen for those weeks
- * with no day yet (`pool`, from the app's "Not on a day yet" card). A pool meal
+ * with no day yet (`pool`, from the app's "Recipe pool" card). A pool meal
  * is not on the plan: it has no date, and place_pool_meal puts it on one.
  */
 export function listMealPlan(replica: Replica, input: MealPlanInput = {}): { from: string; to: string; meals: SerializedMeal[]; pool?: SerializedPoolMeal[] } {

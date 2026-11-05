@@ -6562,7 +6562,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // a stamp on the week header, never a lock on adding again.
   stampAddedToList(dayKeyOf(buildWeekDays(today, weekStartsOn)[0]));
 
-  // Two meals chosen for this week with no night yet: the "Not on a day yet"
+  // Two meals chosen for this week with no night yet: the "Recipe pool"
   // card, which is the only way to see that the plan can hold a meal before it
   // has a day.
   const poolWeek = dayKeyOf(buildWeekDays(today, weekStartsOn)[0]);

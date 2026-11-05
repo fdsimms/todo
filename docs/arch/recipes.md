@@ -1504,7 +1504,7 @@ through a locked phone, and outlives the sheet.
 
 ## The weekly pool (`WeekPoolEntry`, `weekPool.ts`) — meals chosen for a week with no day
 
-"Not on a day yet": a card on the meal plan, between the week's navigation and its first day. A meal
+"Recipe pool": a card on the meal plan, between the week's navigation and its first day. A meal
 chosen for the week and not yet given a night or a meal.
 
 - **A separate table, never a `MealPlanEntry` with a null `date`.** Every reader of an entry takes
