@@ -401,10 +401,16 @@ export function startPlay(unlock: PlayFields, now: Date, todayKey: string): Play
   };
 }
 
-/** The fields to write to stop: the stretch's time folded into what's used. */
+/**
+ * The fields to write to stop: the stretch's time folded into what's used.
+ * A stretch that was running counts for at least 1 ms, because `playedToday`
+ * reads "started" off used time above zero once nothing is running: stopped in
+ * the same millisecond it began, 0 folded in and the unlock locked again.
+ */
 export function stopPlay(unlock: PlayFields, now: Date, todayKey: string): PlayFields {
   if (unlock.playDay !== todayKey) return { ...unlock, playStartedAt: null };
-  return { ...unlock, playUsedMs: playState(unlock, now, todayKey).usedMs, playStartedAt: null };
+  const used = playState(unlock, now, todayKey).usedMs;
+  return { ...unlock, playUsedMs: unlock.playStartedAt !== null ? Math.max(1, used) : used, playStartedAt: null };
 }
 
 /** The fields to write to add `minutes` to today's allowance. */
