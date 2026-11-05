@@ -1165,9 +1165,10 @@ interface GroceryStore extends UndoHistoryActions {
    * the affordance a mis-swipe actually reaches for. `revertPantryAnswer` is
    * what that button calls.
    *
-   * `opts.addToList` is "running low" only: whether this answer also puts the
-   * row on the list, over the "Running low adds to the list" setting. The food
-   * log sheets pass it from their own switch; the deck leaves it to the setting.
+   * `opts.addToList` is whether this answer also puts the row on the home list.
+   * For "running low" it overrides the "Running low adds to the list" setting;
+   * for "out of it" nothing adds unless it is `true` (the deck never passes it).
+   * The food log sheets pass it from their own switch.
    *
    * Returns the thawed portions an "out of it" answer deleted, the same ones
    * `markOutOfMany` deletes (see `ItemProduct.isPortion`), so the deck can
@@ -3763,6 +3764,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // having actually changed, which the stamp above no longer is: a second
     // "out of it" on a row already out has no task left to drop.
     if (answer === 'out' && item.onHandUntil !== OUT_OF_IT_UNTIL) dropUseUpTask(itemId);
+    // "Out of it, add to list": the home list, the scope "running low" joins at
+    // and the pantry check's third button uses. Only when asked outright.
+    if (answer === 'out' && opts.addToList === true && !entryFor(get().listEntries, itemId, null)) {
+      const stamp = new Date().toISOString();
+      const stamped: GroceryItem = { ...updated, lastAddedAt: stamp };
+      dbUpdateGroceryItem(stamped);
+      set(s => ({ items: s.items.map(i => (i.id === itemId ? stamped : i)) }));
+      joinList(itemId, null, stamp);
+    }
     // The new packet may have taken the old one's use-by day with it (frozen or
     // opened), so the use-up task follows the row, as `acquired` does.
     if (answer === 'new') {
