@@ -384,23 +384,29 @@ export function DayContextRow({ row, onPress, onMarkCooked, cardPosition, onDire
           {row.startsIn ? (
             <Text style={styles.startsIn} numberOfLines={1}>{row.startsIn}</Text>
           ) : null}
-          {onJoinCall && (
-            <PressableScale
-              onPress={onJoinCall}
-              hitSlop={10}
-              accessibilityLabel={`Join the call for ${row.title}`}
-            >
-              <Ionicons name="videocam-outline" size={iconSize.md} color={colors.accent} />
-            </PressableScale>
-          )}
-          {onDirections && (
-            <PressableScale
-              onPress={onDirections}
-              hitSlop={10}
-              accessibilityLabel={`Get directions to ${row.location ?? row.title}`}
-            >
-              <Ionicons name="navigate-outline" size={iconSize.md} color={colors.accent} />
-            </PressableScale>
+          {(onJoinCall || onDirections) && (
+            // Its own group so the icons sit further from the text and from
+            // each other than the row's 8pt gap, which read as cramped.
+            <View style={styles.actions}>
+              {onJoinCall && (
+                <PressableScale
+                  onPress={onJoinCall}
+                  hitSlop={10}
+                  accessibilityLabel={`Join the call for ${row.title}`}
+                >
+                  <Ionicons name="videocam-outline" size={iconSize.md} color={colors.accent} />
+                </PressableScale>
+              )}
+              {onDirections && (
+                <PressableScale
+                  onPress={onDirections}
+                  hitSlop={10}
+                  accessibilityLabel={`Get directions to ${row.location ?? row.title}`}
+                >
+                  <Ionicons name="navigate-outline" size={iconSize.md} color={colors.accent} />
+                </PressableScale>
+              )}
+            </View>
           )}
         </View>
         {/* Same scrim TaskItem draws over itself while another row is
@@ -466,6 +472,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowSeparated: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.separator,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginLeft: spacing.xs,
   },
   startsIn: {
     color: colors.accentText,
