@@ -899,6 +899,18 @@ export function FoodLogEntrySheet({
       setAmountNumber(typed);
       return;
     }
+    // The same for a dish that can be weighed ("195g frijoles"): grams typed
+    // with the name are the plate, and outrank the weight it was last logged at.
+    const typedPlate = weigh ? typedGrams(query) : null;
+    if (typedPlate) {
+      setRecalledAmount(null);
+      pickedAmountRef.current = typedPlate;
+      setDishMeasure('weight');
+      setAmount(typedPlate);
+      setAmountUnit(null);
+      setAmountNumber(typedPlate);
+      return;
+    }
     const recalled = recallFor(candidate);
     setRecalledAmount(recalled?.amount ?? null);
     pickedAmountRef.current = recalled ? recalled.amount : (candidate.kind === 'dish' && !weigh ? '1' : '');
