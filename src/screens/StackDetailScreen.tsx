@@ -287,7 +287,9 @@ export function StackDetailScreen() {
             CellRendererComponent={elevatedCell}
             {...keyboardScroll.props}
             {...scrollTop.listProps}
-            contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
+            // paddingTop only once there's a first row to clear, so the empty
+            // state keeps centering on true middle (same as ProjectDetailScreen).
+            contentContainerStyle={[{ flexGrow: 1 }, roster.length > 0 && { paddingTop: spacing.sm }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             renderItem={({ item }) => {
               const subs = subtasksOf(item.id);
               return (
