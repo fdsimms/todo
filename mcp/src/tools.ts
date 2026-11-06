@@ -235,7 +235,7 @@ export interface GetTaskResult {
    * food log's water goal divided by what one unit logs, worked out by the app
    * each day: update_task refuses to set it.
    */
-  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean; coinsPerTap?: true; alwaysVisible?: true; restAfterLog?: true; everyMinutes?: number; remind?: true; onlyAtPlaces?: string[]; followsWaterTarget?: true; rampUp?: { add: number; every: number; upTo?: number; hitsSoFar: number } };
+  target?: { count: number; per: 'day' | 'week'; done: number; unit?: string; allowOvershoot?: boolean; coinsPerTap?: true; alwaysVisible?: true; restAfterLog?: true; timePerUnit?: number; everyMinutes?: number; remind?: true; onlyAtPlaces?: string[]; followsWaterTarget?: true; rampUp?: { add: number; every: number; upTo?: number; hitsSoFar: number } };
   /** A countdown the task runs once started, in minutes. */
   timed?: TimedInput;
   /** The members of a rotation, and which this week's picks have covered. */
@@ -503,6 +503,8 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
           ...(task.coinsPerTap ? { coinsPerTap: true as const } : {}),
           ...(task.quotaAlwaysVisible ? { alwaysVisible: true as const } : {}),
           ...(task.quotaRestAfterLog ? { restAfterLog: true as const } : {}),
+          // On a target the countdown is per unit, so it is shown here and not as `timed`.
+          ...(task.timedMinutes != null && task.timedMinutes > 0 ? { timePerUnit: task.timedMinutes } : {}),
           // A cadence's count is worked out from the window, so the cadence is the
           // setting and the count only its result: say which one the person set.
           ...(task.quotaIntervalMinutes != null ? { everyMinutes: task.quotaIntervalMinutes } : {}),
@@ -521,7 +523,7 @@ export function getTask(replica: Replica, id: string): GetTaskResult | null {
             : {}),
         }
       : undefined,
-    timed: task.timedMinutes != null && task.timedMinutes > 0 ? { minutes: task.timedMinutes } : undefined,
+    timed: !hasCountedTarget(task) && task.timedMinutes != null && task.timedMinutes > 0 ? { minutes: task.timedMinutes } : undefined,
     rotation: describeRotation(task, new Set(isRotationTask(task) ? replica.rotationDoneIds(task) : [])) ?? undefined,
     healthTarget: describeHealthTarget(task) ?? undefined,
     supply: (() => {
