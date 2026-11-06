@@ -751,8 +751,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             accessibilityLabel="Leave workout mode"
           />
           <View style={styles.headerTitle}>
-            <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
-            {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} startedStyle={styles.subtitle} />}
+            {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />}
           </View>
           {!finishing && session ? (
             <View style={styles.headerRight}>
@@ -768,6 +767,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
             </View>
           ) : <View style={styles.headerSpacer} />}
+        </View>
+        {/* The name gets its own full-width line under the buttons, so a long
+            routine name isn't squeezed between Leave and Finish. */}
+        <View style={styles.titleBlock}>
+          <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
+          {session && <Text style={styles.subtitle} numberOfLines={1}>{`Started ${formatTimeOfDay(new Date(session.startedAt))}`}</Text>}
         </View>
 
         {/* Under the header, not in a footer: the keyboard is up while sets are
@@ -1744,29 +1749,21 @@ function SuggestionCard({ proposal, unit, scale, offer, onUse, styles }: {
 }
 
 /**
- * The header's running time: the elapsed time large and in the primary text
- * color so it can be read at a glance mid-set, with "Started 6:12 PM" muted
- * beneath it. Moves once a second. Its own component so the tick re-renders
- * these lines and not the whole sheet.
+ * The header's running time, large and in the primary text color so it can be
+ * read at a glance mid-set. Moves once a second. Its own component so the tick
+ * re-renders this line and not the whole sheet.
  */
-function SessionClock({ startedAt, elapsedStyle, startedStyle }: {
+function SessionClock({ startedAt, elapsedStyle }: {
   startedAt: string;
   elapsedStyle: object;
-  startedStyle: object;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
-  const start = new Date(startedAt);
-  const elapsed = formatStopwatch((now - start.getTime()) / 1000);
-  return (
-    <>
-      <Text style={elapsedStyle} numberOfLines={1} accessibilityLabel={`Workout time ${elapsed}`}>{elapsed}</Text>
-      <Text style={startedStyle} numberOfLines={1}>{`Started ${formatTimeOfDay(start)}`}</Text>
-    </>
-  );
+  const elapsed = formatStopwatch((now - new Date(startedAt).getTime()) / 1000);
+  return <Text style={elapsedStyle} numberOfLines={1} accessibilityLabel={`Workout time ${elapsed}`}>{elapsed}</Text>;
 }
 
 /**
@@ -1856,11 +1853,12 @@ function ScreenAwake() {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.smd, gap: spacing.sm },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xsm, gap: spacing.sm },
   headerTitle: { flex: 1, alignItems: 'center' },
   headerSpacer: { minWidth: 64 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   headerIcon: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
+  titleBlock: { alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
   title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
   elapsed: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   subtitle: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs, fontVariant: ['tabular-nums'] },
