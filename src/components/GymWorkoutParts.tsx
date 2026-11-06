@@ -108,7 +108,7 @@ export function GymNoteBox({ gymName, note, editing, draft, onChangeDraft, onCom
   if (editing) {
     return (
       <>
-        <FieldLabel>Note</FieldLabel>
+        <FieldLabel style={styles.noteFieldLabel}>Note</FieldLabel>
         <TextField
           style={styles.noteInput}
           value={draft}
@@ -152,8 +152,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8, marginBottom: spacing.xxs,
   },
   noteText: { color: colors.text, fontSize: font.md },
+  // The label clears the chips above it; the field sits directly under its label.
+  noteFieldLabel: { marginTop: spacing.md, marginBottom: spacing.xsm },
   noteInput: {
     color: colors.text, fontSize: font.md, backgroundColor: colors.bgTertiary, borderRadius: radius.md,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 48, marginTop: spacing.sm,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 48,
   },
 });
