@@ -142,12 +142,14 @@ interface SessionStat { value: string | null; unit: string }
  * sets, volume) drawn apart from it. The set count is every set row the session
  * has (`setCounts`), the minutes are `sessionMinutes`, and the volume is
  * `liftVolumeKg`: the workout page's tiles read the same, so the row and the
- * page agree. A session with no weighted sets reads 0, so every row has the same three figures.
+ * page agree. A session with no weighted sets reads 0, so every row has the same three figures; the estimated bodyweight volume
+ * (`bodyweightVolumeKg`) is a fourth, shown only on a session that has one.
  */
 function sessionFigures(
   session: WorkoutSession,
   sets: number,
   volumeKg: number | undefined,
+  bodyweightVolumeKg: number | undefined,
   unit: WeightUnit,
 ): { date: string; stats: SessionStat[] } {
   const stats: SessionStat[] = [];
@@ -159,6 +161,8 @@ function sessionFigures(
   }
   stats.push({ value: String(sets), unit: sets === 1 ? 'set' : 'sets' });
   stats.push({ value: withThousands(kgToUnit(volumeKg ?? 0, unit)), unit });
+  // An estimate, kept as its own figure and only when the workout has one.
+  if (bodyweightVolumeKg) stats.push({ value: withThousands(kgToUnit(bodyweightVolumeKg, unit)), unit: `${unit} bodyweight` });
   return { date: format(new Date(session.startedAt), 'EEE, MMM d'), stats };
 }
 
@@ -178,6 +182,7 @@ export function WorkoutsScreen() {
   const sessions = useWorkoutStore(s => s.sessions);
   const setCounts = useWorkoutStore(s => s.setCounts);
   const volumeKgBySession = useWorkoutStore(s => s.volumeKgBySession);
+  const bodyweightVolumeKgBySession = useWorkoutStore(s => s.bodyweightVolumeKgBySession);
   const exercises = useWorkoutStore(s => s.exercises);
   const routines = useWorkoutStore(s => s.routines);
   const routineGroups = useWorkoutStore(s => s.routineGroups);
@@ -279,7 +284,7 @@ export function WorkoutsScreen() {
 
   const renderHistoryRow = useCallback(({ item }: { item: WorkoutHistoryRow }) => {
     if (item.kind === 'session') {
-      const { date, stats } = sessionFigures(item.session, setCounts[item.session.id] ?? 0, volumeKgBySession[item.session.id], workoutUnit);
+      const { date, stats } = sessionFigures(item.session, setCounts[item.session.id] ?? 0, volumeKgBySession[item.session.id], bodyweightVolumeKgBySession[item.session.id], workoutUnit);
       const line = figuresLabel(date, stats);
       return (
         <TouchableOpacity
@@ -332,7 +337,7 @@ export function WorkoutsScreen() {
         <Ionicons name="open-outline" size={iconSize.sm} color={colors.textTertiary} />
       </TouchableOpacity>
     );
-  }, [styles, setCounts, volumeKgBySession, workoutUnit, colors, openSession]);
+  }, [styles, setCounts, volumeKgBySession, bodyweightVolumeKgBySession, workoutUnit, colors, openSession]);
 
   // ==== exercise rows ====
   const renderExercise = useCallback(({ item }: { item: CatalogExercise }) => (

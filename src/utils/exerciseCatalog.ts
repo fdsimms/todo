@@ -41,6 +41,7 @@ function fromLibrary(lib: LibraryExercise, override: Exercise | undefined): Cata
     barKg: override?.barKg ?? null,
     dumbbells: override?.dumbbells ?? null,
     loadEntry: override?.loadEntry ?? null,
+    bodyweightFraction: override?.bodyweightFraction ?? null,
     notes: override?.notes ?? '',
     archived: override?.archived ?? false,
     isCustom: false,

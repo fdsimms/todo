@@ -12,6 +12,11 @@ interface Props {
   sets: number;
   /** Kilograms lifted, `liftVolumeKg`; null or 0 reads as 0. */
   volumeKg: number | null;
+  /**
+   * Estimated kilograms of body weight moved (`bodyweightVolumeKg`), shown as a
+   * tile of its own and never added to `volumeKg`. Null or 0 leaves the tile off.
+   */
+  bodyweightVolumeKg?: number | null;
   unit: WeightUnit;
   /** Replaces "Exercise"/"Exercises" under the first count, for a caller whose count is of something else (Overview counts workouts). */
   countLabel?: string;
@@ -22,10 +27,11 @@ interface Props {
 
 /**
  * A workout's four figures in a two-by-two grid of tiles (four across leaves a six-digit volume no room): how long, how many exercises,
- * how many sets, and the volume lifted (0 when nothing weighted was done). Workout mode's finish summary and the workout page both draw
+ * how many sets, and the volume lifted (0 when nothing weighted was done), plus the estimated bodyweight volume as a fifth tile when
+ * the workout has one. Workout mode's finish summary and the workout page both draw
  * it, so the figures read the same on both; each caller says what it counts.
  */
-export function WorkoutStatTiles({ minutes, exercises, sets, volumeKg, unit, compact = false, countLabel, style }: Props) {
+export function WorkoutStatTiles({ minutes, exercises, sets, volumeKg, bodyweightVolumeKg, unit, compact = false, countLabel, style }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tiles = [
@@ -33,9 +39,10 @@ export function WorkoutStatTiles({ minutes, exercises, sets, volumeKg, unit, com
     { value: String(exercises), label: countLabel ?? (exercises === 1 ? 'Exercise' : 'Exercises') },
     { value: String(sets), label: sets === 1 ? 'Set' : 'Sets' },
     { value: withThousands(kgToUnit(volumeKg ?? 0, unit)), label: `Volume (${unit})` },
+    ...(bodyweightVolumeKg ? [{ value: withThousands(kgToUnit(bodyweightVolumeKg, unit)), label: `Bodyweight, est. (${unit})` }] : []),
   ];
   return (
-    <View style={[styles.row, compact && styles.rowCompact, style]}>
+    <View style={[styles.row, style]}>
       {tiles.map(t => (
         <View key={t.label} style={[styles.tile, compact && styles.tileCompact]} accessible accessibilityLabel={`${t.label}: ${t.value}`}>
           <Text style={styles.value}>{t.value}</Text>
@@ -48,8 +55,8 @@ export function WorkoutStatTiles({ minutes, exercises, sets, volumeKg, unit, com
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  rowCompact: { flexWrap: 'nowrap' },
-  tileCompact: { flexBasis: 0, minWidth: 0 },
+  // Three tiles share a row; a fourth (the bodyweight volume) wraps onto its own.
+  tileCompact: { flexBasis: '30%', minWidth: 0 },
   tile: { flexGrow: 1, flexBasis: '45%', backgroundColor: colors.bgSecondary, borderRadius: radius.md, paddingHorizontal: spacing.smd, paddingVertical: spacing.smd },
   value: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   label: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },

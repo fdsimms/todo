@@ -60,6 +60,8 @@ export interface ExerciseRow {
   archived?: true;
   /** A bar weight the person set, in kg. */
   barKg?: number;
+  /** For a bodyweight or assisted exercise, the share of body weight (0 to 1) the person set where the library's isn't right. */
+  bodyweightFraction?: number;
   /** For a dumbbell exercise, how many dumbbells it is held in (1 or 2). A set's weightKg is one dumbbell's either way. */
   dumbbells?: 1 | 2;
 }
@@ -79,6 +81,7 @@ function exerciseRow(e: CatalogExercise): ExerciseRow {
     ...(e.overridden ? { changedByYou: true as const } : {}),
     ...(e.archived ? { archived: true as const } : {}),
     ...(e.barKg !== null ? { barKg: e.barKg } : {}),
+    ...(e.bodyweightFraction != null ? { bodyweightFraction: e.bodyweightFraction } : {}),
     ...(dumbbellsUsed(e) ? { dumbbells: dumbbellsUsed(e)! } : {}),
   };
 }
@@ -190,6 +193,8 @@ export interface WorkoutRow {
   routineVersion?: number;
   /** How hard it felt, 1 to 10, as the person typed it. */
   effort?: number;
+  /** The body weight in kg the phone stamped from Health when the workout started. Absent when it had none. */
+  bodyweightKg?: number;
   notes?: string;
   /** Written to Apple Health by the phone; its times can't be changed, nor it deleted, from here. */
   inAppleHealth?: true;
@@ -224,6 +229,7 @@ function workoutRow(replica: Replica, s: WorkoutSession, sets: readonly WorkoutS
     ...(s.gymId && names.gymName.has(s.gymId) ? { gym: names.gymName.get(s.gymId)! } : {}),
     ...((() => { const n = names.routineVersion?.(s); return n ? { routineVersion: n } : {}; })()),
     ...(s.effort !== null ? { effort: s.effort } : {}),
+    ...(s.bodyweightKg ? { bodyweightKg: s.bodyweightKg } : {}),
     ...(s.notes ? { notes: s.notes } : {}),
     // In Apple Health: the phone wrote it there, so only the phone can move or delete it.
     ...(s.healthWorkoutId ? { inAppleHealth: true as const } : {}),
@@ -634,8 +640,8 @@ export interface RecordRowOut {
  *
  * **The estimated 1RM is an estimate and is labelled one.** Epley, from a set
  * of ten reps or fewer; it is a calculation and never a lift the person did.
- * Nothing here is relative to a body weight, and a bodyweight exercise's volume
- * is its reps. Weights are kilograms whatever unit the phone shows.
+ * No record here is relative to a body weight, and a bodyweight exercise's volume
+ * is its reps (the phone's estimated bodyweight volume is a separate figure it keeps for the workout page). Weights are kilograms whatever unit the phone shows.
  *
  * Sets are the health record, so with Include health logs off the history is
  * empty and the note says that is not evidence nobody trained, the reading

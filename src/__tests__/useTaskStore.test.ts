@@ -139,6 +139,7 @@ jest.mock('../db/database', () => ({
   dbGetWorkoutSets: jest.fn().mockReturnValue([]),
   dbCountWorkoutSetsBySession: jest.fn().mockReturnValue({}),
   dbWorkoutLiftVolumes: jest.fn().mockReturnValue([]),
+  dbWorkoutBodyweightSets: jest.fn().mockReturnValue([]),
   dbGetAllJournalEntries: jest.fn().mockReturnValue([]),
   dbInsertJournalEntry: jest.fn(),
   dbUpdateJournalEntry: jest.fn(),

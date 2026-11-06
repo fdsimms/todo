@@ -82,6 +82,7 @@ import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../u
 import { currentRoutineVersion, finishVersionText, routineVersionsOf, sessionPlan, versionNumber } from '../utils/routineVersions';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
+import { sessionBodyweightVolumeKg } from '../utils/bodyweightLoad';
 import { formatRecordChange, recordLabel, recordShortLabel } from '../utils/workoutRecordText';
 import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
@@ -738,6 +739,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   const headerTitle = session?.title ?? 'Workout';
   // Lifted so far, in a pill under the header. Left off until a weighted set is logged.
   const liveVolumeKg = liftVolumeKg(sets, id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps') || null;
+  const liveBodyweightVolumeKg = sessionBodyweightVolumeKg(sets, exerciseRows, session?.bodyweightKg) || null;
   return (
     <SheetModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={close} name="WorkoutModeSheet">
       <ScreenAwake />
@@ -773,7 +775,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         {/* Under the header, not in a footer: the keyboard is up while sets are
             typed, and anything at the bottom of the sheet is behind it. */}
         {session && !finishing && <RestStrip sessionId={visible ? session.id : undefined} styles={styles} />}
-        {session && !finishing && <WorkoutVolumePill volumeKg={liveVolumeKg} unit={unit} />}
+        {session && !finishing && <WorkoutVolumePill volumeKg={liveVolumeKg} bodyweightVolumeKg={liveBodyweightVolumeKg} unit={unit} />}
 
         {!session ? (
           <View style={styles.emptyWrap}>
@@ -801,6 +803,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               exercises={summary.exercises.length}
               sets={summary.setsDone}
               volumeKg={liftVolumeKg(sets, id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps')}
+              bodyweightVolumeKg={liveBodyweightVolumeKg}
               unit={unit}
               style={styles.stats}
             />

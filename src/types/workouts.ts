@@ -79,6 +79,15 @@ export interface Exercise {
    * one dumbbell either way (`src/utils/dumbbellLoad.ts`).
    */
   loadEntry: 'each' | 'pair' | null;
+  /**
+   * The share of the person's body weight this movement moves, from 0 to 1,
+   * where the default for it is wrong. Null (or absent) uses the library's
+   * figure for a built-in and 1 for a custom one (`bodyweightFractionOf`).
+   * Only a bodyweight or assisted exercise reads it, and only for the
+   * bodyweight volume (`bodyweightVolumeKg`), never for a record. 0 counts
+   * nothing.
+   */
+  bodyweightFraction?: number | null;
   notes: string;
   /** Hidden from the library and pickers; its history stays. */
   archived: boolean;
@@ -323,6 +332,14 @@ export interface WorkoutSession {
    * it as a change. Absent on a workout that set none.
    */
   restOverrides?: Record<string, number>;
+  /**
+   * The person's body weight in kilograms when the workout started, read from
+   * Health and kept here so a later weigh-in doesn't rewrite an old workout's
+   * bodyweight volume (`bodyweightVolumeKg`). Null or absent when Health had no
+   * reading (or reading was off), which leaves the workout without a bodyweight
+   * figure. Never filled in for a workout from before this existed.
+   */
+  bodyweightKg?: number | null;
 }
 
 /**

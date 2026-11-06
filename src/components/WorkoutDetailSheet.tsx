@@ -33,6 +33,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { catalogExercise } from '../utils/exerciseCatalog';
 import { liftVolumeKg, sessionRecordSummary } from '../utils/workoutRecords';
+import { sessionBodyweightVolumeKg } from '../utils/bodyweightLoad';
 import { routineItemsFromSets } from '../utils/workoutRoutine';
 import { startWorkout } from '../utils/startWorkout';
 import { formatSetLine, sessionExercises, sessionMinutes, setBadge, setLabels, setName } from '../utils/workoutSession';
@@ -420,6 +421,7 @@ export function WorkoutDetailSheet({ visible, sessionId, onClose, onOpenRoutine 
               exercises={exercises.length}
               sets={setCount}
               volumeKg={liftVolumeKg(sets, id => catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps')}
+              bodyweightVolumeKg={sessionBodyweightVolumeKg(sets, exerciseRows, session?.bodyweightKg)}
               unit={unit}
             />
 

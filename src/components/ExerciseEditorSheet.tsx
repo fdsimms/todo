@@ -21,6 +21,7 @@ import { catalogExercise, describeExercise } from '../utils/exerciseCatalog';
 import { libraryExercise } from '../utils/exerciseLibrary';
 import { DUMBBELL_ENTRY_LABELS, dumbbellsUsed } from '../utils/dumbbellLoad';
 import { barKgFor, effectivePlateInventory, isPlateLoaded } from '../utils/plateMath';
+import { bodyweightFractionOf } from '../utils/bodyweightLoad';
 import {
   EQUIPMENT_LABELS, EXERCISE_EQUIPMENT, MUSCLE_GROUPS, MUSCLE_LABELS, WEIGHT_PLACES, WORKOUT_NAME_MAX_LENGTH,
   cleanOtherNames, formatOtherNames, parseOtherNames, formatWeightWithUnit, weightFromDisplay, weightToDisplay,
@@ -45,7 +46,7 @@ const REFUSED: Record<string, string> = {
 /** The bar weight steps by half a kilogram, or a pound: bars come in odd weights. */
 const BAR_STEP = { kg: 0.5, lb: 1 } as const;
 
-const snapshotOf = (v: Staged) => JSON.stringify([v.name.trim(), cleanOtherNames(parseOtherNames(v.otherNames), v.name), v.kind, v.equipment, v.primary, v.secondary, v.barKg, v.dumbbells, v.loadEntry, v.notes.trim()]);
+const snapshotOf = (v: Staged) => JSON.stringify([v.name.trim(), cleanOtherNames(parseOtherNames(v.otherNames), v.name), v.kind, v.equipment, v.primary, v.secondary, v.barKg, v.dumbbells, v.loadEntry, v.bodyweightPercent, v.notes.trim()]);
 
 interface Staged {
   name: string;
@@ -59,12 +60,14 @@ interface Staged {
   /** The count in use: the library's answer or the person's, resolved. */
   dumbbells: 1 | 2;
   loadEntry: 'each' | 'pair' | null;
+  /** The share of body weight it moves as a whole percent, or null for the usual one (`bodyweightFractionOf`). */
+  bodyweightPercent: number | null;
   notes: string;
 }
 
 /**
  * Edit an exercise: for one the person made, everything about it; for a
- * built-in, only its name, other names, notes and bar weight, the override the catalog
+ * built-in, only its name, other names, notes, bar weight and body weight share, the override the catalog
  * takes from a row (what the movement is stays the library's, so a later
  * correction still reaches it). Writes through `updateExercise`, which
  * enforces the same split and refuses a name another exercise has.
@@ -85,7 +88,7 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
   const [v, setV] = useState<Staged>({
-    name: '', otherNames: '', kind: 'weight_reps', equipment: 'barbell', primary: [], secondary: [], barKg: null, dumbbells: 2, loadEntry: null, notes: '',
+    name: '', otherNames: '', kind: 'weight_reps', equipment: 'barbell', primary: [], secondary: [], barKg: null, dumbbells: 2, loadEntry: null, bodyweightPercent: null, notes: '',
   });
   const [refusal, setRefusal] = useState<string | null>(null);
   // Whether a set is logged on this device with the exercise: what a set
@@ -105,6 +108,7 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
       barKg: info.barKg,
       dumbbells: dumbbellsUsed(info) ?? 2,
       loadEntry: info.loadEntry,
+      bodyweightPercent: info.bodyweightFraction == null ? null : Math.round(info.bodyweightFraction * 100),
       notes: info.notes,
     };
     setV(next);
@@ -132,10 +136,12 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
       ? { dumbbells: v.dumbbells === defaultCount ? null : v.dumbbells, loadEntry: v.dumbbells === 2 ? v.loadEntry : null }
       : {};
     const otherNames = parseOtherNames(v.otherNames);
+    const bodyweightFraction = bodyweightWork && v.bodyweightPercent !== null ? v.bodyweightPercent / 100 : null;
     const change: ExercisePatch = builtIn
-      ? { name: v.name, otherNames, notes: v.notes, barKg: v.barKg, ...dumbbellChange }
+      ? { name: v.name, otherNames, notes: v.notes, barKg: v.barKg, bodyweightFraction, ...dumbbellChange }
       : {
         ...dumbbellChange,
+        bodyweightFraction,
         name: v.name, otherNames, notes: v.notes, barKg: isPlateLoaded(v.equipment) ? v.barKg : null,
         kind: v.kind, equipment: v.equipment, primaryMuscles: v.primary, secondaryMuscles: v.secondary.filter(m => !v.primary.includes(m)),
       };
@@ -150,6 +156,9 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
   };
 
   const isDumbbell = (builtIn ? info?.equipment : v.equipment) === 'dumbbell';
+  const shownKind = builtIn ? info?.kind : v.kind;
+  const bodyweightWork = shownKind === 'bodyweight_reps' || shownKind === 'assisted_reps';
+  const usualPercent = Math.round(bodyweightFractionOf(exerciseId ?? '', null) * 100);
   const dumbbellEntry = useSettingsStore(st => st.dumbbellEntry);
   const plateLoaded = isPlateLoaded(builtIn ? info?.equipment ?? 'other' : v.equipment);
   const inventory = effectivePlateInventory(plateInventory, unit);
@@ -268,6 +277,33 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
                 </View>
               </View>
               <HelpText style={styles.hint}>The plates are worked out on this bar. Leave it for your gym’s usual bar.</HelpText>
+            </>
+          )}
+
+          {bodyweightWork && (
+            <>
+              <Text style={styles.label}>Body weight moved</Text>
+              <View style={styles.card}>
+                <View style={styles.kv}>
+                  <Text style={styles.kvLabel}>Share of body weight</Text>
+                  <CountStepper
+                    value={v.bodyweightPercent}
+                    onChange={n => patch({ bodyweightPercent: n })}
+                    min={0}
+                    max={100}
+                    step={5}
+                    start={usualPercent}
+                    allowNull
+                    emptyLabel={`${usualPercent}% (usual)`}
+                    format={n => `${n}%`}
+                    label="Share of body weight"
+                    describeValue={n => (n === null ? `the usual ${usualPercent} percent` : `${n} percent`)}
+                  />
+                </View>
+              </View>
+              <HelpText style={styles.hint}>
+                {'Sets of this exercise add this share of your body weight, times the reps, to the bodyweight volume. A push-up moves about 64%. 0% counts nothing.'}
+              </HelpText>
             </>
           )}
 
