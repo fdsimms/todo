@@ -952,7 +952,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           <ScrollView
             key="live"
             style={styles.flex}
-            contentContainerStyle={styles.scroll}
+            contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]}
             keyboardShouldPersistTaps="handled"
             scrollEnabled={!dragging}
             {...keyboardScroll.props}
