@@ -3,7 +3,8 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View, type RefreshContr
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
-import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useWorkoutStats } from '../hooks/useWorkoutStats';
@@ -24,6 +25,8 @@ interface Props {
   /** Whether a workout is in progress: the screen's own card already says so above every view, so no start card here. */
   live: boolean;
   onSeeAll: () => void;
+  /** Opens a routine's page; the Up next card's name and exercises are the button. */
+  onOpenRoutine: (routineId: string) => void;
   refreshControl?: React.ReactElement<RefreshControlProps>;
   bottomPadding: number;
 }
@@ -37,7 +40,7 @@ const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
  * and nothing is a goal or a score: counts only, as docs/arch/workouts.md says.
  * Finished workouts only, like Stats; the live one has its own card.
  */
-export function WorkoutOverview({ recent, live, onSeeAll, refreshControl, bottomPadding }: Props) {
+export function WorkoutOverview({ recent, live, onSeeAll, onOpenRoutine, refreshControl, bottomPadding }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const sessions = useWorkoutStore(s => s.sessions);
@@ -103,13 +106,24 @@ export function WorkoutOverview({ recent, live, onSeeAll, refreshControl, bottom
     >
       {!live && (
         <View style={styles.card}>
-          <Text style={styles.tag}>{next ? next.tag : 'Ready when you are'}</Text>
-          <Text style={styles.heroTitle}>{next ? next.routine.name : 'Empty workout'}</Text>
-          <Text style={styles.detail}>
-            {next
-              ? describeRoutine(next.routine.items, id => catalogExercise(exercises, id)?.primaryMuscles ?? [])
-              : 'Add exercises as you go.'}
-          </Text>
+          <TouchableOpacity
+            disabled={!next}
+            onPress={() => next && onOpenRoutine(next.routine.id)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={next ? `Open routine ${next.routine.name}` : undefined}
+          >
+            <Text style={styles.tag}>{next ? next.tag : 'Ready when you are'}</Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.heroTitle}>{next ? next.routine.name : 'Empty workout'}</Text>
+              {next && <Ionicons name="chevron-forward" size={iconSize.md} color={colors.textSecondary} style={styles.chevron} />}
+            </View>
+            <Text style={styles.detail}>
+              {next
+                ? describeRoutine(next.routine.items, id => catalogExercise(exercises, id)?.primaryMuscles ?? [])
+                : 'Add exercises as you go.'}
+            </Text>
+          </TouchableOpacity>
           <InlineAction
             icon="play"
             label="Start workout"
@@ -192,7 +206,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.xxs, fontWeight: fontWeight.semibold,
     letterSpacing: 0.8, textTransform: 'uppercase',
   },
-  heroTitle: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, marginTop: spacing.xs },
+  titleRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs },
+  heroTitle: { flex: 1, color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold },
+  chevron: { marginLeft: spacing.xs },
   detail: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   start: { alignSelf: 'flex-start', marginTop: spacing.smd },
   headingRow: {

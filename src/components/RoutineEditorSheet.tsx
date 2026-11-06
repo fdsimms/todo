@@ -274,6 +274,19 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
     setOpenRowId(row.id);
   };
 
+  // Several picked at once, in tap order, after what is there. A superset gives them one key.
+  const addExercises = (exerciseIds: string[], asSuperset: boolean) => {
+    const key = asSuperset && exerciseIds.length > 1 ? generateId() : undefined;
+    const added: Row[] = exerciseIds.map(id => {
+      const item = newRoutineItem(id, kindOf(id));
+      return { id: generateId(), item: key ? { ...item, supersetKey: key } : item };
+    });
+    if (added.length === 0) return;
+    animateLayout();
+    setRows(prev => settled([...prev, ...added]));
+    setOpenRowId(added[0].id);
+  };
+
   const addEmptySuperset = () => {
     haptics.tap();
     animateLayout();
@@ -496,6 +509,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
             visible={visible && picking !== null}
             onClose={() => setPicking(null)}
             onPick={addExercise}
+            onPickMany={picking === null || picking === 'add' ? addExercises : undefined}
             addedIds={rows.filter(r => !r.open).map(r => r.item.exerciseId)}
             addedLabel="In routine"
           />

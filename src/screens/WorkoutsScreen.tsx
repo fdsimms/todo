@@ -817,6 +817,7 @@ export function WorkoutsScreen() {
           <WorkoutOverview
             live={live !== null}
             onSeeAll={() => setView('history')}
+            onOpenRoutine={routineId => openEditor(routineId)}
             refreshControl={pullSearch.refreshControl}
             bottomPadding={listBottom.paddingBottom}
             recent={recentSessions.map(session => (

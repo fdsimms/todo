@@ -95,7 +95,7 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  finishPlan, formatDistance, formatSetLine, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, nextSet, previousBadge,
+  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
   restSecondsFor, supersetGroup,
@@ -268,8 +268,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // The exercise the detail sheet is on, kept through its close so it doesn't retitle while it slides away.
   const [detailId, setDetailId] = useState<string | null>(null);
   // Exercises folded down to their title and a one-line summary. Session-only
-  // and per exercise. A card folds itself when its last set is ticked, and the
-  // chevron opens it again.
+  // and per exercise. Only the chevron folds a card; finishing its last set
+  // leaves it open.
   const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(new Set());
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
@@ -376,10 +376,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     );
     if (records.has(set.id)) haptics.success();
     if (next.showExerciseId !== viewedId) animateLayout();
-    // Ticking the last open set finishes the exercise: fold it out of the way.
-    if (exercise.sets.every(s => s.id === set.id || s.completedAt !== null)) {
-      setCollapsedIds(prev => new Set(prev).add(exercise.exerciseId));
-    }
     setViewedId(next.showExerciseId);
     setOpenSetId(null);
   };
@@ -455,6 +451,19 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     const added = useWorkoutStore.getState().addSessionExercise(session.id, exerciseId);
     if (typeof added === 'string') return;
     setViewedId(exerciseId);
+    setOpenSetId(null);
+  };
+
+  // Several picked at once, in tap order. A superset is made by joining each to the
+  // first, which puts every partner right below the group, so the order is kept.
+  const addExercises = (exerciseIds: string[], asSuperset: boolean) => {
+    if (!session) return;
+    const store = useWorkoutStore.getState();
+    const added = exerciseIds.filter(id => typeof store.addSessionExercise(session.id, id) !== 'string');
+    if (added.length === 0) return;
+    if (asSuperset) for (const id of added.slice(1)) store.joinSessionSuperset(session.id, added[0], id);
+    animateLayout();
+    setViewedId(added[0]);
     setOpenSetId(null);
   };
 
@@ -952,7 +961,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           <ScrollView
             key="live"
             style={styles.flex}
-            contentContainerStyle={styles.scroll}
+            contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]}
             keyboardShouldPersistTaps="handled"
             scrollEnabled={!dragging}
             {...keyboardScroll.props}
@@ -1032,7 +1041,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const todayNote = exerciseDayNote(viewed.sets);
               const collapsed = collapsedIds.has(viewed.exerciseId);
               const doneSets = viewed.sets.filter(s => s.completedAt !== null);
-              const collapsedSummary = `${doneSets.length} of ${viewed.sets.length} sets${doneSets.length > 0 ? ` · ${doneSets.map(s => formatSetLine(s, kind, unit, false, scale)).join(', ')}` : ''}`;
+              const collapsedSummary = collapsedSetSummary(doneSets.map(s => formatSetLine(s, kind, unit, false, scale)), viewed.sets.length);
 
               // The plates for the open set's weight, for a barbell, EZ bar or trap bar: a
               // dumbbell or a machine has nothing to load. A pound lifter who never set an
@@ -1227,7 +1236,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         <View style={styles.noteEditor}>
                           {(['today', 'always'] as const).map(k => (
                             <View key={k} style={styles.noteField}>
-                              <Text style={styles.noteLabel}>{k === 'today' ? 'Today' : 'Every time'}</Text>
+                              <Text style={styles.noteLabel}>{k === 'today' ? 'Today' : 'Notes'}</Text>
                               <HelpText style={styles.noteHelp}>{NOTE_HELP[k]}</HelpText>
                               <TextField
                                 style={styles.noteInput}
@@ -1238,7 +1247,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                                 placeholderTextColor={colors.textTertiary}
                                 multiline
                                 autoFocus={noteFocus === k}
-                                accessibilityLabel={`${k === 'today' ? 'Note for today on' : 'Note every time on'} ${viewedInfo?.name ?? 'this exercise'}`}
+                                accessibilityLabel={`${k === 'today' ? 'Note for today on' : 'Notes on'} ${viewedInfo?.name ?? 'this exercise'}`}
                               />
                             </View>
                           ))}
@@ -1254,9 +1263,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                               onPress={() => openNote(viewed, 'always')}
                               activeOpacity={interaction.activeOpacity}
                               accessibilityRole="button"
-                              accessibilityLabel={`Edit the every time note: ${viewedInfo.notes}`}
+                              accessibilityLabel={`Edit the exercise notes: ${viewedInfo.notes}`}
                             >
-                              <Text style={styles.noteLabel}>Every time</Text>
+                              <Text style={styles.noteLabel}>Notes</Text>
                               <Text style={styles.noteText}>{viewedInfo.notes}</Text>
                             </TouchableOpacity>
                           )}
@@ -1541,6 +1550,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         visible={visible && picking !== null}
         onClose={() => setPicking(null)}
         onPick={picking === 'swap' ? swapExercise : addExercise}
+        onPickMany={picking === 'swap' ? undefined : addExercises}
         addedIds={exercises.map(e => e.exerciseId)}
         addedLabel="In workout"
         suggestedIds={picking === 'swap' && viewed ? (gym ? candidatesFor(viewed.exerciseId) : swapCandidates(exerciseRows, viewed.exerciseId, exercises.map(e => e.exerciseId))) : undefined}
