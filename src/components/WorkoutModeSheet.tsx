@@ -268,8 +268,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // The exercise the detail sheet is on, kept through its close so it doesn't retitle while it slides away.
   const [detailId, setDetailId] = useState<string | null>(null);
   // Exercises folded down to their title and a one-line summary. Session-only
-  // and per exercise. A card folds itself when its last set is ticked, and the
-  // chevron opens it again.
+  // and per exercise. Only the chevron folds a card; finishing its last set
+  // leaves it open.
   const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(new Set());
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
@@ -376,10 +376,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     );
     if (records.has(set.id)) haptics.success();
     if (next.showExerciseId !== viewedId) animateLayout();
-    // Ticking the last open set finishes the exercise: fold it out of the way.
-    if (exercise.sets.every(s => s.id === set.id || s.completedAt !== null)) {
-      setCollapsedIds(prev => new Set(prev).add(exercise.exerciseId));
-    }
     setViewedId(next.showExerciseId);
     setOpenSetId(null);
   };
