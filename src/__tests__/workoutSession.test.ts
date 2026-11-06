@@ -8,6 +8,7 @@ import {
   finishPlan,
   formatDistance,
   formatSetLine,
+  collapsedSetSummary,
   matchPrevious,
   matchPreviousByPosition,
   previousBadge,
@@ -407,6 +408,13 @@ describe('what a set records, and how it reads', () => {
     expect(setFieldsFor('bodyweight_reps')).toEqual(['reps']);
     expect(setFieldsFor('duration')).toEqual(['duration']);
     expect(setFieldsFor('weight_distance')).toEqual(['weight', 'distance']);
+  });
+
+  it('says identical done sets once and lists differing ones', () => {
+    expect(collapsedSetSummary(['95 × 8', '95 × 8', '95 × 8'], 3)).toBe('3 of 3 sets · 95 × 8 each');
+    expect(collapsedSetSummary(['95 × 8', '95 × 6'], 3)).toBe('2 of 3 sets · 95 × 8, 95 × 6');
+    expect(collapsedSetSummary(['95 × 8'], 3)).toBe('1 of 3 sets · 95 × 8');
+    expect(collapsedSetSummary([], 3)).toBe('0 of 3 sets');
   });
 
   it('writes a set as one short line, in the unit shown', () => {
