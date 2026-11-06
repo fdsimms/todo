@@ -829,7 +829,12 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
         </TouchableOpacity>
       )}
 
-      {!!status && <Text style={styles.status}>{status}</Text>}
+      {!!status && (
+        <View style={styles.statusRow}>
+          <Ionicons name="information-circle" size={iconSize.md} color={colors.accent} />
+          <Text style={styles.status}>{status}</Text>
+        </View>
+      )}
 
       {/* The name just typed was already checked off. Stated by the status
           line above; this is only the way back, since wanting a second one is
@@ -988,6 +993,7 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
       padding: spacing.sm,
+      overflow: 'hidden',
     },
     toolbar: {
       flexDirection: 'row',
@@ -1104,10 +1110,22 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
       gap: spacing.sm,
       marginTop: spacing.sm,
     },
+    // The one line that says why nothing new landed, so it reads as a
+    // notice (icon, full-strength text) rather than a caption, and has room
+    // above the match list it sits over.
+    statusRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.xs,
+      paddingTop: spacing.xs,
+      paddingBottom: spacing.sm,
+    },
     status: {
-      fontSize: font.sm,
-      color: colors.textSecondary,
-      marginLeft: spacing.xs,
+      flex: 1,
+      fontSize: font.md,
+      fontWeight: fontWeight.medium,
+      color: colors.text,
     },
     // Under the status line that says why, aligned with it; the block's own
     // gap is the space between them.
@@ -1171,10 +1189,13 @@ function makeStyles(colors: Colors, textScaleFactor = 1) {
       fontSize: font.xs,
       color: colors.textTertiary,
     },
+    // Runs edge to edge of `results` (negative margins cancel its padding) so
+    // the list is as wide as the field above it rather than a narrower card
+    // inset inside another card. `results` clips the corners.
     matches: {
       backgroundColor: colors.bgTertiary,
-      borderRadius: radius.md,
-      overflow: 'hidden',
+      marginHorizontal: -spacing.sm,
+      marginBottom: -spacing.sm,
     },
     matchesScroll: {
       // Four rows before it scrolls. Sized against the smallest screen the app
