@@ -278,6 +278,8 @@ export interface RoutineRow {
     progression?: ProgressionScheme;
     /** Warm-ups are a ramp worked out from the working weight when the workout starts. */
     warmupRamp?: true;
+    /** What workout mode offers first when the gym can't do this exercise. */
+    alternate?: { exerciseId: string; name: string };
     targets: WorkoutRoutine['items'][number]['targets'];
   }[];
 }
@@ -305,6 +307,9 @@ function routineExercises(items: readonly WorkoutRoutineItem[], rows: readonly E
       ...(i.restSeconds !== null ? { restSeconds: i.restSeconds } : {}),
       ...(i.progression ? { progression: i.progression.scheme } : {}),
       ...(i.warmupRamp ? { warmupRamp: true as const } : {}),
+      ...(i.alternateId
+        ? { alternate: { exerciseId: i.alternateId, name: catalogExercise(rows, i.alternateId)?.name ?? 'Unknown exercise' } }
+        : {}),
       targets: i.targets,
   }));
 }
@@ -750,6 +755,8 @@ export interface RoutineExerciseInput {
   progression?: ProgressionScheme | null;
   /** Warm up with a ramp worked out from the working weight, in place of warm-up sets of its own. */
   warmupRamp?: boolean;
+  /** The exercise to do instead when the gym can't do this one. Null or absent for none. */
+  alternateId?: string | null;
 }
 
 export interface SaveRoutineInput {
@@ -792,6 +799,7 @@ export function routineItemsFrom(input: readonly RoutineExerciseInput[], newKey:
       ...(t.pctOfTm != null ? { pctOfTm: t.pctOfTm } : {}),
     })),
     ...(e.warmupRamp ? { warmupRamp: true } : {}),
+    ...(e.alternateId && e.alternateId !== e.exerciseId ? { alternateId: e.alternateId } : {}),
   }));
   input.forEach((e, i) => { if (e.supersetWithPrevious) items = joinPrevious(items, i, newKey()); });
   return items;
@@ -803,7 +811,7 @@ const supersetKey = () => `ss-${Date.now().toString(36)}-${(keySeq++).toString(3
 export function saveRoutine(replica: Replica, input: SaveRoutineInput): { routine: RoutineRow; note: string } {
   if (!input.id && !input.name?.trim()) throw new Error('A new routine needs a name.');
   if (input.exercises) {
-    const unknown = unknownExercises(replica, input.exercises.map(e => e.exerciseId));
+    const unknown = unknownExercises(replica, input.exercises.flatMap(e => (e.alternateId ? [e.exerciseId, e.alternateId] : [e.exerciseId])));
     if (unknown.length) throw unknownError(unknown);
     if (input.exercises.some(e => e.sets.length === 0)) throw new Error('Each exercise needs at least one set.');
     // A ramp is worked out from a weight and moves it by plates or an

@@ -129,6 +129,14 @@ export interface WorkoutRoutineItem {
    * (or false) for none, or for the warm-ups its targets list.
    */
   warmupRamp?: boolean;
+  /**
+   * The exercise to do in its place when the gym can't do this one (a goblet
+   * squat for a barbell squat). Workout mode offers it first, ahead of the
+   * ranked suggestions, and only when the gym has what it needs. A swap to it
+   * is the plan working, so the summary never offers it back as a change to
+   * the routine. Absent for none.
+   */
+  alternateId?: string | null;
 }
 
 /**

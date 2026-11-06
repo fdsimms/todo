@@ -38,12 +38,13 @@ export function swapCandidates(
   rows: readonly Exercise[],
   exerciseId: string,
   exceptIds: readonly string[] = [],
+  preferredId: string | null = null,
 ): string[] {
   const catalog = buildCatalog(rows);
   const from = catalog.find(e => e.id === exerciseId);
   if (!from) return [];
   const skip = new Set([exerciseId, ...exceptIds]);
-  return catalog
+  const ranked = catalog
     .filter(e => !e.archived && !skip.has(e.id) && swapKindsMatch(e.kind, from.kind) && e.equipment !== from.equipment)
     .map(e => ({ e, shared: e.primaryMuscles.filter(m => from.primaryMuscles.includes(m)).length }))
     .filter(x => x.shared > 0)
@@ -51,4 +52,16 @@ export function swapCandidates(
       || Number(b.e.kind === from.kind) - Number(a.e.kind === from.kind)
       || a.e.name.localeCompare(b.e.name))
     .map(x => x.e.id);
+  return preferredFirst(ranked, preferredId, catalog.filter(e => !e.archived && !skip.has(e.id)).map(e => e.id));
+}
+
+/**
+ * Puts the routine's own alternate for an exercise (`WorkoutRoutineItem.alternateId`)
+ * ahead of the ranked suggestions. The person chose it, so it needs no shared
+ * muscle or matching kind to qualify: it only has to be an exercise the
+ * workout can still take (`usable`).
+ */
+export function preferredFirst(ranked: readonly string[], preferredId: string | null, usable: readonly string[]): string[] {
+  if (!preferredId || !usable.includes(preferredId)) return [...ranked];
+  return [preferredId, ...ranked.filter(id => id !== preferredId)];
 }
