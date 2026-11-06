@@ -443,6 +443,21 @@ export function formatSetLine(
   }
 }
 
+/**
+ * The line under a collapsed exercise card: how many sets are done, then what they were. Sets that
+ * all read the same are said once ("95 × 8 each") instead of repeating the line per set.
+ */
+export function collapsedSetSummary(
+  doneLines: (string | null)[],
+  totalSets: number,
+): string {
+  const head = `${doneLines.length} of ${totalSets} sets`;
+  const lines = doneLines.filter((l): l is string => l !== null);
+  if (lines.length === 0) return head;
+  const allSame = lines.length > 1 && lines.every(l => l === lines[0]);
+  return `${head} · ${allSame ? `${lines[0]} each` : lines.join(', ')}`;
+}
+
 /** The letter a set's row leads with in place of its number: W for a warm-up, D for a drop set. */
 export function setBadge(kind: WorkoutSetKind): string | null {
   if (kind === 'warmup') return 'W';

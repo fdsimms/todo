@@ -95,7 +95,7 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  finishPlan, formatDistance, formatSetLine, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, nextSet, previousBadge,
+  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
   restSecondsFor, supersetGroup,
@@ -1032,7 +1032,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const todayNote = exerciseDayNote(viewed.sets);
               const collapsed = collapsedIds.has(viewed.exerciseId);
               const doneSets = viewed.sets.filter(s => s.completedAt !== null);
-              const collapsedSummary = `${doneSets.length} of ${viewed.sets.length} sets${doneSets.length > 0 ? ` · ${doneSets.map(s => formatSetLine(s, kind, unit, false, scale)).join(', ')}` : ''}`;
+              const collapsedSummary = collapsedSetSummary(doneSets.map(s => formatSetLine(s, kind, unit, false, scale)), viewed.sets.length);
 
               // The plates for the open set's weight, for a barbell, EZ bar or trap bar: a
               // dumbbell or a machine has nothing to load. A pound lifter who never set an
