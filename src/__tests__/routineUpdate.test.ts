@@ -107,6 +107,15 @@ describe('routineChanges', () => {
     expect(describeRoutineChange(got[0], name, 'kg').detail).toBe('2 sets of 12 at 20 kg, after FLY.');
   });
 
+  it('does not offer a swap to the routine\'s own alternate back as a change', () => {
+    const items = [item('bench', BENCH, { alternateId: 'db-press' }), routine[1]];
+    const sets = [set('db-press', 0, 0, 30, 10), set('db-press', 0, 1, 30, 10), ...asPlanned.filter(s => s.exerciseId === 'fly')];
+    const got = diff(sets, items);
+    expect(only(got, 'swap')).toEqual([]);
+    expect(only(got, 'add')).toEqual([]);
+    expect(only(got, 'remove')).toEqual([]);
+  });
+
   it('reads an exercise in the same slot as one skipped as a swap, and one skipped alone as a removal', () => {
     const swapped = [...asPlanned.filter(s => s.exerciseId === 'fly'), ...[]].map(s => ({ ...s, position: 1 }));
     const sets = [set('db-press', 0, 0, 30, 10), set('db-press', 0, 1, 30, 10), ...swapped];

@@ -3597,7 +3597,9 @@ function seedWorkouts(today: Date): void {
   // A stack that steps by 5 kg here, where the usual step is 2.5.
   if (bigId) gyms.setGymExercise(bigId, 'lib:triceps-pushdown', { incrementKg: 5 });
   const upperItems: WorkoutRoutineItem[] = [
+    // An alternate for a gym with no barbell, so Planet Fitness offers it first.
     { exerciseId: 'lib:barbell-bench-press', restSeconds: 150, progression: { scheme: 'double', incrementKg: 2.5 },
+      alternateId: 'lib:dumbbell-bench-press',
       targets: [working(6, 8, 60), working(6, 8, 60), working(6, 8, 60)] },
     { exerciseId: rowId, restSeconds: 120, progression: { scheme: 'double', incrementKg: 2.5 },
       targets: [working(8, 10, 40), working(8, 10, 40), working(8, 10, 40)] },

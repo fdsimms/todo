@@ -2464,6 +2464,8 @@ describe('demo seed — people', () => {
     expect(routines.find(r => r.name === 'Hotel bodyweight')).toMatchObject({ groupName: 'Travel', archived: true });
     // A superset, so the routine shape shows its pairing.
     expect(routines.some(r => r.items.filter(i => i.supersetKey === 'a').length === 2)).toBe(true);
+    // An exercise with an alternate for a gym that lacks its equipment.
+    expect(routines.some(r => r.items.some(i => i.alternateId === 'lib:dumbbell-bench-press'))).toBe(true);
     const custom = exercises.find(e => e.isCustom);
     expect(custom?.name).toBe('Landmine row');
     expect(catalogExercise(exercises, 'lib:barbell-bench-press')?.notes).toBe('Pause each rep on the chest.');

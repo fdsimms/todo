@@ -60,7 +60,7 @@ import type { RoutineDraft } from '../utils/workoutDraft';
 import {
   PROGRESSION_HINTS, PROGRESSION_LABELS, describeRoutineItem, itemShape, joinPrevious,
   droppedIntoSuperset, leaveSuperset, newRoutineItem, normalizeSupersets, settleOpenSlots, supersetRoles,
-  withProgression, withWarmupMode,
+  withAlternate, withProgression, withWarmupMode,
   type SupersetRole, type SupersetRowView,
 } from '../utils/workoutRoutine';
 import { joinAnd, loadContextFor, rampSteps } from '../utils/workoutProgression';
@@ -163,7 +163,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   const [notes, setNotes] = useState('');
   const [rows, setRows] = useState<Row[]>([]);
   const [openRowId, setOpenRowId] = useState<string | null>(null);
-  const [picking, setPicking] = useState<'add' | { slotId: string } | null>(null);
+  const [picking, setPicking] = useState<'add' | { slotId: string } | { alternateFor: string } | null>(null);
   const [dragging, setDragging] = useState(false);
   // The Progress tab reads the routine as saved. Only a saved routine has one: a new routine has no workouts.
   const [tab, setTab] = useState<EditorTab>('edit');
@@ -261,10 +261,17 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   };
 
   const addExercise = (exerciseId: string) => {
+    // Picking an alternate sets it on the exercise that asked, and adds nothing.
+    if (picking !== null && typeof picking === 'object' && 'alternateFor' in picking) {
+      const rowId = picking.alternateFor;
+      animateLayout();
+      updateItem(rowId, item => withAlternate(item, exerciseId));
+      return;
+    }
     const row: Row = { id: generateId(), item: newRoutineItem(exerciseId, kindOf(exerciseId)) };
     animateLayout();
     setRows(prev => {
-      if (picking === null || picking === 'add') return [...prev, row];
+      if (picking === null || picking === 'add' || 'alternateFor' in picking) return [...prev, row];
       // Into a superset: the row takes the slot's key and sits just above it.
       const at = prev.findIndex(r => r.id === picking.slotId);
       if (at < 0) return [...prev, row];
@@ -510,7 +517,7 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
             onClose={() => setPicking(null)}
             onPick={addExercise}
             onPickMany={picking === null || picking === 'add' ? addExercises : undefined}
-            addedIds={rows.filter(r => !r.open).map(r => r.item.exerciseId)}
+            addedIds={picking !== null && typeof picking === 'object' && 'alternateFor' in picking ? [] : rows.filter(r => !r.open).map(r => r.item.exerciseId)}
             addedLabel="In routine"
           />
           <ExerciseDetailSheet visible={visible && detailOpen} exerciseId={detailId} onClose={() => setDetailOpen(false)} />
@@ -690,6 +697,9 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
                         weightSuffix={weightHeadingSuffix(catalogExercise(exercises, row.item.exerciseId), dumbbellEntry)}
                         defaultRest={defaultRest}
                         canJoin={index > 0}
+                        alternateName={row.item.alternateId ? catalogExercise(exercises, row.item.alternateId)?.name ?? null : null}
+                        onPickAlternate={() => { haptics.tap(); setPicking({ alternateFor: row.id }); }}
+                        onClearAlternate={() => { haptics.tap(); animateLayout(); updateItem(row.id, i => withAlternate(i, null)); }}
                         rampLoads={kind === 'weight_reps' ? rampLoads(row.item) : null}
                         colors={colors}
                         styles={styles}
@@ -778,6 +788,10 @@ interface ItemControlsProps {
   weightSuffix: string;
   defaultRest: number;
   canJoin: boolean;
+  /** The exercise's chosen alternate, by name, or null for none. */
+  alternateName: string | null;
+  onPickAlternate: () => void;
+  onClearAlternate: () => void;
   /** What the ramp lays out from the target weight, for the table's ramp row. */
   rampLoads: string | null;
   colors: Colors;
@@ -795,7 +809,7 @@ interface ItemControlsProps {
  * each label beside or above its one control so no row has to hold two.
  */
 function ItemControls({
-  item, kind, role, unit, scale, weightSuffix, defaultRest, canJoin, rampLoads, colors, styles, onChange, onPendingChange, onJoin, onLeave, onRemove,
+  item, kind, role, unit, scale, weightSuffix, defaultRest, canJoin, alternateName, onPickAlternate, onClearAlternate, rampLoads, colors, styles, onChange, onPendingChange, onJoin, onLeave, onRemove,
 }: ItemControlsProps) {
   const scheme = item.progression?.scheme ?? null;
   const [explainOpen, setExplainOpen] = useState(false);
@@ -895,6 +909,24 @@ function ItemControls({
         </View>
       </View>
 
+      <View style={styles.section}>
+        <View style={styles.kv}>
+          <Text style={styles.rowLabel}>Alternate</Text>
+          <Text style={styles.altValue} numberOfLines={2}>{alternateName ?? 'None'}</Text>
+        </View>
+        <View style={styles.itemActions}>
+          <InlineAction
+            label={alternateName ? 'Change alternate' : 'Choose alternate'}
+            variant="neutral"
+            onPress={onPickAlternate}
+          />
+          {alternateName && <InlineAction label="Remove alternate" variant="neutral" onPress={onClearAlternate} />}
+        </View>
+        <HelpText style={styles.hint}>
+          Offered first when a gym can’t do this exercise, in place of the closest match.
+        </HelpText>
+      </View>
+
       <View style={[styles.section, styles.itemActions]}>
         {role === 'none' && canJoin && (
           <InlineAction label="Superset with the one above" variant="neutral" onPress={onJoin} />
@@ -967,6 +999,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44 },
   rowText: { flex: 1 },
   rowLabel: { color: colors.text, fontSize: font.md },
+  altValue: { color: colors.textSecondary, fontSize: font.md, flexShrink: 1, textAlign: 'right' },
   rowHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs, lineHeight: 16 },
   cap: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,

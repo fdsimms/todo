@@ -56,10 +56,12 @@ export function GymLine({ name, unavailableCount, onChoose, onSwapAll }: {
  * own candidates, and Keep dismisses the notice for this workout. Keep leaves
  * nothing behind, so the exercise is flagged again in the next workout here.
  */
-export function GymUnavailableBanner({ gymName, candidateName, candidateDetail, onSwap, onOther, onKeep }: {
+export function GymUnavailableBanner({ gymName, candidateName, candidateIsAlternate, candidateDetail, onSwap, onOther, onKeep }: {
   gymName: string;
   /** The best replacement, or null when the gym has nothing that works the same muscles. */
   candidateName: string | null;
+  /** Whether the candidate is the alternate the routine names for this exercise, not a ranked match. */
+  candidateIsAlternate: boolean;
   /** What it was last time ("last 100 kg × 5"), when it has history. */
   candidateDetail: string | null;
   onSwap: () => void;
@@ -73,7 +75,9 @@ export function GymUnavailableBanner({ gymName, candidateName, candidateDetail, 
       <Text style={styles.bannerTitle}>{`Not at ${gymName}`}</Text>
       {candidateName ? (
         <>
-          <Text style={styles.bannerHint}>Closest match here, working the same muscles:</Text>
+          <Text style={styles.bannerHint}>
+            {candidateIsAlternate ? 'Your alternate for this exercise:' : 'Closest match here, working the same muscles:'}
+          </Text>
           <Text style={styles.candidate}>
             {candidateName}
             {candidateDetail ? <Text style={styles.candidateDetail}>{` · ${candidateDetail}`}</Text> : null}

@@ -84,6 +84,8 @@ export function routineChanges(input: RoutineDiffInput): RoutineChange[] {
     if (slot && !inSession.has(slot.exerciseId) && !usedItems.has(slot.exerciseId)) {
       usedItems.add(slot.exerciseId);
       swapped.add(e.exerciseId);
+      // The routine's own alternate is the plan working, not a change to offer back.
+      if (slot.alternateId === e.exerciseId) return;
       out.push({ kind: 'swap', id: `swap:${slot.exerciseId}`, fromExerciseId: slot.exerciseId, toExerciseId: e.exerciseId, targets: e.sets.map(targetFromSet) });
     }
   });

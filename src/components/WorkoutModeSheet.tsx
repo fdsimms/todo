@@ -227,8 +227,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       : new Set<string>()),
     [gym, unavailableIds.length, sessionsList],
   );
+  // The routine's own alternate for an exercise, which a swap offers first.
+  const alternateOf = (exerciseId: string): string | null =>
+    startedPlan?.items.find(i => i.exerciseId === exerciseId)?.alternateId ?? null;
   const candidatesFor = (exerciseId: string, taken: readonly string[] = exercises.map(e => e.exerciseId)) =>
-    gymSwapCandidates(exerciseRows, exerciseId, gym, taken, doneHere);
+    gymSwapCandidates(exerciseRows, exerciseId, gym, taken, doneHere, alternateOf(exerciseId));
 
   // ==== screen state: which exercise is shown, which set is open ====
   const [viewedId, setViewedId] = useState<string | null>(null);
@@ -1180,6 +1183,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       <GymUnavailableBanner
                         gymName={gym.name}
                         candidateName={best ? catalogExercise(exerciseRows, best)?.name ?? null : null}
+                        candidateIsAlternate={!!best && best === alternateOf(viewed.exerciseId)}
                         candidateDetail={best && session ? describeLastLoad(useWorkoutStore.getState().lastTimeFor(best, session.id), unit) : null}
                         onSwap={() => { if (best) swapExercise(best, viewed.exerciseId); }}
                         onOther={() => { haptics.tap(); setViewedId(viewed.exerciseId); setPicking('swap'); }}
@@ -1559,7 +1563,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         onPickMany={picking === 'swap' ? undefined : addExercises}
         addedIds={exercises.map(e => e.exerciseId)}
         addedLabel="In workout"
-        suggestedIds={picking === 'swap' && viewed ? (gym ? candidatesFor(viewed.exerciseId) : swapCandidates(exerciseRows, viewed.exerciseId, exercises.map(e => e.exerciseId))) : undefined}
+        suggestedIds={picking === 'swap' && viewed ? (gym ? candidatesFor(viewed.exerciseId) : swapCandidates(exerciseRows, viewed.exerciseId, exercises.map(e => e.exerciseId), alternateOf(viewed.exerciseId))) : undefined}
       />
       <DescribeWorkoutSheet
         visible={visible && describing}

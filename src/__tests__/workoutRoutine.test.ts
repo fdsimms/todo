@@ -4,6 +4,7 @@ import {
   MAX_WARMUP_SETS,
   addSet,
   addWarmup,
+  withAlternate,
   canDuplicateSet,
   canRemoveSet,
   defaultTargets,
@@ -147,6 +148,19 @@ describe('one set at a time', () => {
     expect(describeTargetReps({ kind: 'warmup', repsMin: null, repsMax: null })).toBeNull();
     expect(describeTargetReps({ kind: 'amrap', repsMin: 6, repsMax: 6 })).toBe('6+');
     expect(describeTargetReps({ kind: 'amrap', repsMin: null, repsMax: null })).toBe('Max');
+  });
+});
+
+describe('withAlternate', () => {
+  it('sets and clears the alternate, leaving the field off when none', () => {
+    const set = withAlternate(bench, 'goblet');
+    expect(set.alternateId).toBe('goblet');
+    const cleared = withAlternate(set, null);
+    expect('alternateId' in cleared).toBe(false);
+    expect(cleared).toEqual(bench);
+  });
+  it('refuses the exercise itself as its own alternate', () => {
+    expect('alternateId' in withAlternate(bench, bench.exerciseId)).toBe(false);
   });
 });
 

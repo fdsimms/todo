@@ -771,6 +771,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         restSeconds: z.number().int().min(0).max(600).nullable().optional().describe('Rest after each set. Leave out for the person\'s default; 0 for none.'),
         supersetWithPrevious: z.boolean().optional().describe('Done with the exercise before it as a superset: set by set, back to back, resting after the last.'),
         progression: z.enum(['double', 'linear', 'percent', 'rpe']).nullable().optional().describe('double: add weight once every set reaches the top of the range. linear: add weight after each completed workout. percent: sets from a training max. rpe: by how hard the top set felt. Leave out to follow the program\'s scheme.'),
+        alternateId: z.string().nullable().optional().describe('The exercise to do instead when the gym the person is at cannot do this one (a goblet squat for a barbell squat). Workout mode offers it first, ahead of its own suggestions. Null or absent for none.'),
         warmupRamp: z.boolean().optional().describe('Warm up with sets at about 40, 60 and 80% of the working weight, worked out when the workout starts, in place of warm-up sets of its own. Weight and reps exercises only.'),
       })).max(30).optional().describe('Replaces every exercise when given.'),
     },
