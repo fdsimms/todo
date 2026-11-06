@@ -40,7 +40,7 @@ import { minutesToEffort } from '../../src/utils/effort';
 import { MAX_MEDICATION_EXTRAS, parseMedicationExtras } from '../../src/utils/medicationLog';
 import { followsRingGoal, hasHealthTarget, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES } from '../../src/utils/healthTarget';
 import { isRotationTask, MAX_ROTATION_PER_WEEK, MIN_ROTATION_ITEMS, rotationItemFromInput, rotationMemberTitle, rotationPerWeek, rotationTargetTotal, type RotationMemberInput } from '../../src/utils/rotation';
-import { normalizeTargetUnit } from '../../src/utils/quotaUnit';
+import { normalizeChunkMinutes, normalizeTargetUnit } from '../../src/utils/quotaUnit';
 import { normalizeTagName } from '../../src/utils/tagRename';
 import { canWaitForWeather } from '../../src/utils/weatherCondition';
 import { isSlotHold } from '../../src/utils/slotIn';
@@ -184,6 +184,8 @@ export interface TargetInput {
   alwaysVisible?: boolean;
   /** Weekly only: once a log puts it on pace, hide it for the rest of that day and bring it back the next (`Task.quotaRestAfterLog`). */
   restAfterLog?: boolean;
+  /** Weekly only: each log stands for this many minutes (5 to 240), so a target of 5 with 30 reads as 150 minutes and the meter counts minutes. null clears it (`Task.quotaChunkMinutes`). */
+  minutesPerLog?: number | null;
   /** Raise the count as it keeps being met: add `add` after every `every` days (weeks, for a weekly target) it was hit, stopping at `upTo`. null clears it. */
   rampUp?: { add: number; every: number; upTo?: number | null } | null;
   /** Creating a weekly target partway through a week: 'fewer' (the default) scales the first week to the days left, 'full' asks for the whole count. */
@@ -570,6 +572,7 @@ export function taskFieldsPatch(
         quotaPlaceIds: [],
         quotaAlwaysVisible: false,
         quotaRestAfterLog: false,
+        quotaChunkMinutes: null,
         quotaPeriod: 'day',
         quotaRampStep: null,
         quotaRampEvery: null,
@@ -629,6 +632,12 @@ export function taskFieldsPatch(
       if (t.restAfterLog !== undefined) {
         if (t.restAfterLog && (t.per ?? current?.quotaPeriod ?? 'day') !== 'week') errors.push('target.restAfterLog only applies to a weekly target.');
         else patch.quotaRestAfterLog = t.restAfterLog;
+      }
+      if (t.minutesPerLog !== undefined) {
+        if (t.minutesPerLog === null) patch.quotaChunkMinutes = null;
+        else if ((t.per ?? current?.quotaPeriod ?? 'day') !== 'week') errors.push('target.minutesPerLog only applies to a weekly target.');
+        else if (normalizeChunkMinutes(t.minutesPerLog) === null) errors.push('target.minutesPerLog must be a whole number of minutes from 5 to 240.');
+        else patch.quotaChunkMinutes = normalizeChunkMinutes(t.minutesPerLog);
       }
       if (t.unit !== undefined) patch.targetUnit = t.unit;
       // Ramp up: the app's own rule (src/utils/quotaRamp.ts). Only a plain count

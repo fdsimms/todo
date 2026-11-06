@@ -1665,6 +1665,7 @@ const taskFieldsShape = {
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
     coinsPerTap: z.boolean().optional().describe('Pay coins on every tap instead of when the target is reached. The total is the same; each tap earns its share and the last one the rest. Only matters while rewards are on. Omit to leave as is.'),
     restAfterLog: z.boolean().optional().describe('Weekly targets only. Once a log puts the target on pace, hide it from Today for the rest of that day and show it again the next day, however far ahead of pace it is. Without it a weekly target that is ahead of pace stays off Today until its next unit falls due, which can be days away. Ignored while alwaysVisible is on. Omit to leave as is.'),
+    minutesPerLog: z.number().int().min(5).max(240).nullable().optional().describe('Weekly targets only. Each log stands for this many minutes (5 to 240), so a count of 5 with 30 is 150 minutes a week and the meter reads in minutes. Catching up is logging more chunks. null clears it. Omit to leave as is.'),
     alwaysVisible: z.boolean().optional().describe('Keep the task on Today all day (a weekly one, all week) instead of hiding it while you are on pace. Pacing still runs underneath; only the hiding is switched off. A rotation hides while on pace like any weekly target, so this is how to keep one up. Omit to leave as is.'),
     rampUp: z.object({
       add: z.number().int().describe('How much to add to the count each time, 1 to 20.'),

@@ -1963,7 +1963,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // such reading: it lands in the store on the tap.
   const quotaLogged = quotaCompleting ? task.targetCount! : task.progressCount;
   const quotaProgress = isQuota
-    ? formatQuotaProgress(quotaLogged, task.targetCount!, task.targetUnit)
+    ? formatQuotaProgress(quotaLogged, task.targetCount!, task.targetUnit, task.quotaChunkMinutes)
     : '';
   // The supply chip: "3 filters left", or "Out of filters" once it's spent.
   //
@@ -3457,7 +3457,7 @@ const TaskItemRow = React.memo(function TaskItem({
               : completing
                 ? `Undo complete ${task.title}`
                 : meterInteractive
-                  ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${quotaProgress} done, ${task.title}`
+                  ? `${task.quotaChunkMinutes ? `Log ${task.quotaChunkMinutes} minutes` : `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}`}, ${quotaProgress} done, ${task.title}`
                   : timerReady
                     ? `${task.title}, timer done, complete`
                     : healthReady

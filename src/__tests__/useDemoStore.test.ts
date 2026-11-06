@@ -1255,6 +1255,14 @@ describe('demo mode', () => {
     expect(scaled!.quotaRestAfterLog).toBe(true);
   });
 
+  it('seeds a weekly target counted in 30 minute chunks', () => {
+    useDemoStore.getState().enterDemoMode();
+    const read = useTaskStore.getState().tasks.find(t => t.title === 'Read' && t.quotaChunkMinutes);
+    expect(read).toBeDefined();
+    expect(read!.quotaPeriod).toBe('week');
+    expect(read!.targetCount! * read!.quotaChunkMinutes!).toBe(150);
+  });
+
   // A rotation is the one shape a plain weekly target can't express: it knows
   // *which* of the set are still outstanding. Like the weekly target above it
   // is invisible until something has been logged against it, so the seed has

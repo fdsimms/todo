@@ -322,7 +322,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked, confirmFirst }: Props)
     : action === 'open-log' ? `${label}, opens the entry sheet`
     : action === 'start-block' ? `${label}, starts the block`
     : action === 'log-unit'
-      ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit)} done, ${label}`
+      ? `${task.quotaChunkMinutes ? `Log ${task.quotaChunkMinutes} minutes` : `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}`}, ${formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit, task.quotaChunkMinutes)} done, ${label}`
     : action === 'uncomplete' ? `Mark ${label} as not done`
     : recordReady ? `${label}, entry saved, complete`
     : `Complete ${label}`;

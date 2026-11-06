@@ -136,7 +136,7 @@ export function FocusBar({ onOpen, floating = false, lifted = false }: Props) {
   // session is on. Bare "4/10" without the unit: the title is right beside it
   // and the strip is one line that a long title already competes for.
   const quotaCount = !finished && task && isQuotaTask(task) && !task.completed
-    ? formatQuotaProgress(task.progressCount, task.targetCount!, null)
+    ? formatQuotaProgress(task.progressCount, task.targetCount!, null, task.quotaChunkMinutes)
     : null;
 
   // An over-run step counts up rather than sitting at 0:00, so the strip says

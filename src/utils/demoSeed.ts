@@ -909,6 +909,19 @@ export function seedDemoData(): void {
     // is back tomorrow (Task.quotaRestAfterLog).
     quotaRestAfterLog: true,
   });
+  // A weekly target counted in time: five logs of 30 minutes is 150 minutes a
+  // week, and catching up is logging more chunks (Task.quotaChunkMinutes).
+  addTask({
+    title: 'Read',
+    notes: 'Log 30 minute chunks toward 150 minutes a week. If you fall behind, log extra chunks to catch up.',
+    category: 'Hobbies',
+    dueDate: today.toISOString(),
+    targetCount: 5,
+    quotaPeriod: 'week',
+    recurrenceType: 'weekly',
+    recurrenceInterval: 1,
+    quotaChunkMinutes: 30,
+  });
   const strengthScaled = quotaProrationPatch(strength, 4, 2, today);
   if (strengthScaled) updateTask(strength.id, strengthScaled);
 

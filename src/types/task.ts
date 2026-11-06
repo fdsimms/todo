@@ -1130,6 +1130,16 @@ export interface Task {
    */
   quotaRestAfterLog?: boolean;
   /**
+   * Minutes one log stands for, so a weekly target can be read as time ("read
+   * 150 minutes a week, in 30 minute chunks") and catching up is logging more
+   * chunks rather than claiming extra sessions. null/absent = a plain count.
+   * `targetCount` and `progressCount` stay counts of chunks, so pace, rollover,
+   * ramp and streaks are untouched; only the display multiplies by this
+   * (`formatQuotaProgress` in `src/utils/quotaUnit.ts`). Replaces `targetUnit`
+   * in what the meter shows while it is set.
+   */
+  quotaChunkMinutes?: number | null;
+  /**
    * The logical day (`YYYY-MM-DD`) of the last unit logged on this occurrence,
    * which is what `quotaRestAfterLog` reads. Stamped by `logQuotaUnit`, cleared
    * by `unlogQuotaUnit`, and never carried onto a successor.

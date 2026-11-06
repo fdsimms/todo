@@ -2567,6 +2567,8 @@ function runInitDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN alarm_link_leaves_open INTEGER NOT NULL DEFAULT 0',
     // Task.templateId: NULL on every existing row, which is no linked template.
     'ALTER TABLE tasks ADD COLUMN template_id TEXT',
+    // Task.quotaChunkMinutes: NULL on every existing row, which is a plain count.
+    'ALTER TABLE tasks ADD COLUMN quota_chunk_minutes INTEGER',
     // CoinEntry.saved: 0 on every existing entry, which put nothing into and
     // took nothing out of the savings for a goal.
     'ALTER TABLE coin_entries ADD COLUMN saved INTEGER NOT NULL DEFAULT 0',
@@ -4531,6 +4533,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     alarmLink: typeof row.alarm_link === 'string' && row.alarm_link !== '' ? row.alarm_link : null,
     alarmLinkLeavesOpen: Boolean(row.alarm_link_leaves_open),
     templateId: typeof row.template_id === 'string' && row.template_id !== '' ? row.template_id : null,
+    quotaChunkMinutes: typeof row.quota_chunk_minutes === 'number' ? row.quota_chunk_minutes : null,
     completionTimerNote: (row.completion_timer_note as string | null) ?? null,
     completionTimerStartedAt: (row.completion_timer_started_at as string | null) ?? null,
     // Narrowed the same way healthMetric above is: an unrecognized column value
@@ -4674,8 +4677,8 @@ export function dbInsertTask(task: Task): void {
       rain_skip_mm, rain_skipped_on,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
       slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, quota_tap_times, medication_extras, attachments, reminder_place_id, reminder_place_on,
-      mission, alarm_sound, alarm_link, alarm_link_leaves_open, alarm_sound_pool, template_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      mission, alarm_sound, alarm_link, alarm_link_leaves_open, alarm_sound_pool, template_id, quota_chunk_minutes
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4834,6 +4837,7 @@ export function dbInsertTask(task: Task): void {
       task.alarmLinkLeavesOpen ? 1 : 0,
       task.alarmSoundPool?.length ? JSON.stringify(task.alarmSoundPool) : null,
       task.templateId ?? null,
+      task.quotaChunkMinutes ?? null,
     ]
   );
 }
@@ -4874,7 +4878,7 @@ export function dbUpdateTask(task: Task): void {
       rain_skip_mm=?, rain_skipped_on=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
       slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, quota_tap_times=?, medication_extras=?, attachments=?, reminder_place_id=?, reminder_place_on=?,
-      mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?, alarm_sound_pool=?, template_id=?
+      mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?, alarm_sound_pool=?, template_id=?, quota_chunk_minutes=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -5034,6 +5038,7 @@ export function dbUpdateTask(task: Task): void {
       task.alarmLinkLeavesOpen ? 1 : 0,
       task.alarmSoundPool?.length ? JSON.stringify(task.alarmSoundPool) : null,
       task.templateId ?? null,
+      task.quotaChunkMinutes ?? null,
       task.id,
     ]
   );

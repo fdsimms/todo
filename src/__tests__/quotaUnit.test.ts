@@ -4,6 +4,8 @@ import {
   formatQuotaProgress,
   formatQuotaTarget,
   formatQuotaCatchUp,
+  formatQuotaLogAction,
+  normalizeChunkMinutes,
 } from '../utils/quotaUnit';
 
 describe('normalizeTargetUnit', () => {
@@ -84,5 +86,34 @@ describe('formatQuotaCatchUp', () => {
 
   it('reads for an overshoot target logged past its target', () => {
     expect(formatQuotaCatchUp(11, 10, 0)).toBe('Past the target of 10 for the day.');
+  });
+});
+
+describe('chunked targets', () => {
+  it('reads the meter in minutes', () => {
+    expect(formatQuotaProgress(3, 5, 'sessions', 30)).toBe('90/150 min');
+    expect(formatQuotaTarget(5, null, 30)).toBe('150 min');
+  });
+
+  it('is unchanged without a chunk, or with one out of range', () => {
+    expect(formatQuotaProgress(3, 5, 'sessions')).toBe('3/5 sessions');
+    expect(formatQuotaProgress(3, 5, null, null)).toBe('3/5');
+    expect(formatQuotaProgress(3, 5, null, 2)).toBe('3/5');
+    expect(formatQuotaTarget(5, null, 1000)).toBe('5×');
+  });
+
+  it('keeps whole minutes from 5 to 240 only', () => {
+    expect(normalizeChunkMinutes(30)).toBe(30);
+    expect(normalizeChunkMinutes(29.6)).toBe(30);
+    expect(normalizeChunkMinutes(4)).toBeNull();
+    expect(normalizeChunkMinutes(241)).toBeNull();
+    expect(normalizeChunkMinutes(NaN)).toBeNull();
+    expect(normalizeChunkMinutes(undefined)).toBeNull();
+  });
+
+  it('names the tap for a screen reader', () => {
+    expect(formatQuotaLogAction(5, null, 30)).toBe('Log 30 minutes');
+    expect(formatQuotaLogAction(5, 'pages')).toBe('Log one of 5 pages');
+    expect(formatQuotaLogAction(5, null)).toBe('Log one of 5×');
   });
 });

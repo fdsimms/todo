@@ -24,7 +24,7 @@ import { contactDetailsFor } from '../utils/peopleRegistry';
 import { mailtoUrl } from '../utils/email';
 import { displayTitleFor, isQuotaTask, isQuotaOnPace, quotaUnitsToPace, quotaRidesOutTheDay } from '../utils/visibilityUtils';
 import { isTimedTask, isTimerRunning, timerElapsed, timerRemaining } from '../utils/timer';
-import { formatQuotaCatchUp, formatQuotaProgress, formatQuotaTarget } from '../utils/quotaUnit';
+import { formatQuotaCatchUp, formatQuotaLogAction, formatQuotaProgress } from '../utils/quotaUnit';
 import {
   currentFocusStep,
   focusMeasuredMinutes,
@@ -637,7 +637,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
               <View style={styles.quotaChip}>
                 <Ionicons name="speedometer-outline" size={iconSize.sm} color={colors.accent} />
                 <Text style={styles.quotaProgress}>
-                  {formatQuotaProgress(quotaTask.progressCount, quotaTask.targetCount!, quotaTask.targetUnit)}
+                  {formatQuotaProgress(quotaTask.progressCount, quotaTask.targetCount!, quotaTask.targetUnit, quotaTask.quotaChunkMinutes)}
                 </Text>
               </View>
               <Text style={styles.quotaNote}>
@@ -752,7 +752,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                 accessibilityRole="button"
                 accessibilityLabel={
                   quotaTask
-                    ? `Log one of ${formatQuotaTarget(quotaTask.targetCount!, quotaTask.targetUnit)}, ${formatQuotaProgress(quotaTask.progressCount, quotaTask.targetCount!, quotaTask.targetUnit)} done, ${titleOf(step.taskId)}`
+                    ? `${formatQuotaLogAction(quotaTask.targetCount!, quotaTask.targetUnit, quotaTask.quotaChunkMinutes)}, ${formatQuotaProgress(quotaTask.progressCount, quotaTask.targetCount!, quotaTask.targetUnit, quotaTask.quotaChunkMinutes)} done, ${titleOf(step.taskId)}`
                     : `Mark ${titleOf(step.taskId)} done`
                 }
               >

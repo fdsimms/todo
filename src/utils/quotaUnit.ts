@@ -30,12 +30,30 @@ export function normalizeTargetUnit(raw: string | null | undefined): string | nu
   return cleaned.length > 0 ? cleaned : null;
 }
 
-/** The meter's reading: "5/12", or "5/12 glasses" once a unit is set. */
+/**
+ * A chunk is how many minutes one log stands for ("read in 30 minute chunks").
+ * The stored count stays a count of chunks, so pace, rollover, ramp and the
+ * streak all keep working unchanged; the chunk only changes what the numbers
+ * are read as. Whole minutes from 5 to 240, anything else is no chunk.
+ */
+export const MIN_CHUNK_MINUTES = 5;
+export const MAX_CHUNK_MINUTES = 240;
+
+export function normalizeChunkMinutes(raw: number | null | undefined): number | null {
+  if (raw === null || raw === undefined || !Number.isFinite(raw)) return null;
+  const n = Math.round(raw);
+  return n >= MIN_CHUNK_MINUTES && n <= MAX_CHUNK_MINUTES ? n : null;
+}
+
+/** The meter's reading: "5/12", "5/12 glasses" once a unit is set, or "90/150 min" for chunks. */
 export function formatQuotaProgress(
   logged: number,
   target: number,
   unit: string | null | undefined,
+  chunkMinutes?: number | null,
 ): string {
+  const chunk = normalizeChunkMinutes(chunkMinutes);
+  if (chunk) return `${logged * chunk}/${target * chunk} min`;
   const u = normalizeTargetUnit(unit);
   return u ? `${logged}/${target} ${u}` : `${logged}/${target}`;
 }
@@ -64,12 +82,29 @@ export function formatQuotaCatchUp(logged: number, target: number, toPace: numbe
   return `${toPace} more to catch up and leave Today. All ${remaining} to finish for the day.`;
 }
 
+/** What a log tap does, for screen readers: "Log one of 5 pages" or "Log 30 minutes". */
+export function formatQuotaLogAction(
+  target: number,
+  unit: string | null | undefined,
+  chunkMinutes?: number | null,
+): string {
+  const chunk = normalizeChunkMinutes(chunkMinutes);
+  if (chunk) return `Log ${chunk} minutes`;
+  return `Log one of ${formatQuotaTarget(target, unit)}`;
+}
+
 /**
  * The target on its own, for the editor row's value and the quick-add summary.
  * Without a unit it keeps the bare "12×" it has always shown — the × is what
  * makes a naked number read as "twelve times" rather than as a quantity.
  */
-export function formatQuotaTarget(target: number, unit: string | null | undefined): string {
+export function formatQuotaTarget(
+  target: number,
+  unit: string | null | undefined,
+  chunkMinutes?: number | null,
+): string {
+  const chunk = normalizeChunkMinutes(chunkMinutes);
+  if (chunk) return `${target * chunk} min`;
   const u = normalizeTargetUnit(unit);
   return u ? `${target} ${u}` : `${target}×`;
 }

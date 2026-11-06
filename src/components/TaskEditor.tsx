@@ -93,7 +93,7 @@ import {
 import type { AlarmMission, HealthTargetMetric } from '../types';
 import { editorRowShown, featureShown, hiddenResultsNote, taskKindsForMode } from '../utils/simpleMode';
 import { QUOTA_RAMP_MAX_EVERY, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_TARGET, canRampQuota, describeQuotaRamp } from '../utils/quotaRamp';
-import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
+import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeChunkMinutes, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
   MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N,
   describeFollowUpTaskDraft, describeFollowUpTaskRule, followUpTaskSummary,
@@ -358,6 +358,7 @@ export interface TaskDraft {
   quotaPlaceIds?: string[];
   quotaAlwaysVisible?: boolean;
   quotaRestAfterLog?: boolean;
+  quotaChunkMinutes?: number | null;
   followWaterTarget?: boolean;
   supplyCount?: number | null;
   supplyUnit?: string | null;
@@ -766,6 +767,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [quotaPlaceIds, setQuotaPlaceIds] = useState<string[]>([]);
   const [quotaAlwaysVisible, setQuotaAlwaysVisible] = useState(false);
   const [quotaRestAfterLog, setQuotaRestAfterLog] = useState(false);
+  // Minutes one log stands for, typed as text so a half-typed number isn't rejected mid-keystroke.
+  const [quotaChunkText, setQuotaChunkText] = useState('');
   // Whether a weekly target set up partway through a week asks for fewer that
   // first week. On by default; only offered when it would change the count.
   const [prorateFirstWeek, setProrateFirstWeek] = useState(true);
@@ -1318,6 +1321,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setQuotaPlaceIds(task.quotaPlaceIds ?? []);
       setQuotaAlwaysVisible(task.quotaAlwaysVisible ?? false);
       setQuotaRestAfterLog(task.quotaRestAfterLog ?? false);
+      setQuotaChunkText(task.quotaChunkMinutes ? String(task.quotaChunkMinutes) : '');
       setFollowWaterTarget(task.followWaterTarget ?? false);
       setSupplyCount(task.supplyCount ?? null);
       setSupplyUnit(task.supplyUnit ?? '');
@@ -1417,7 +1421,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       // because the one before it was. A new field goes in both branches.
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setAttachments([]); setReminderPlaceId(null); setReminderPlaceOn('arrive'); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind(initialDraft?.reminderKind ?? 'notification'); setAlarmSound(null); setRingtonesOpen(false); setReminderTimeAnchor(initialDraft?.reminderTimeAnchor ?? 'wallClock'); setReminderOffsetDays(initialDraft?.reminderOffsetDays ?? null); setReminderTracksVisibility(initialDraft?.reminderTracksVisibility ?? false); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates(initialDraft?.extraDates ?? []); setSeriesRepeats(false); setDeadline(initialDraft?.deadline ?? null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setDeadlineTime(null); setDeadlineTimePickerOpen(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(initialDraft?.windowStart ?? null); setWindowEnd(initialDraft?.windowEnd ?? null); setWindowStartSun(initialDraft?.windowStartSun ?? null); setWindowEndSun(initialDraft?.windowEndSun ?? null); setPenaltyMinutes(initialDraft?.penaltyMinutes ?? null); setGatesApps(initialDraft?.gatesApps ?? false); setGateGroupId(initialDraft?.gateGroupId ?? null); setPenaltyCutoffTime(initialDraft?.penaltyCutoffTime ?? null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setQuotaPeriod(initialDraft?.quotaPeriod ?? 'day');  setStreakCountsUnits(false); setQuotaRampStep(null); setQuotaRampEvery(1); setQuotaRampGoal(null); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setCoinsPerTap(initialDraft?.coinsPerTap ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaPlaceIds(initialDraft?.quotaPlaceIds ?? []); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setQuotaRestAfterLog(initialDraft?.quotaRestAfterLog ?? false); setQuotaChunkText(initialDraft?.quotaChunkMinutes ? String(initialDraft.quotaChunkMinutes) : ''); setProrateFirstWeek(true); setFollowWaterTarget(initialDraft?.followWaterTarget ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setWeatherWait(initialDraft?.weatherWait ?? null); setWeatherWaitOpen(false); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind(initialDraft?.reminderKind ?? 'notification'); setAlarmSound(null); setRingtonesOpen(false); setReminderTimeAnchor(initialDraft?.reminderTimeAnchor ?? 'wallClock'); setReminderOffsetDays(initialDraft?.reminderOffsetDays ?? null); setReminderTracksVisibility(initialDraft?.reminderTracksVisibility ?? false); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -1548,6 +1552,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       quotaPlaceIds: task ? (task.quotaPlaceIds ?? []) : (initialDraft?.quotaPlaceIds ?? []),
       quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
       quotaRestAfterLog: task ? (task.quotaRestAfterLog ?? false) : (initialDraft?.quotaRestAfterLog ?? false),
+      quotaChunkMinutes: normalizeChunkMinutes(task ? task.quotaChunkMinutes : initialDraft?.quotaChunkMinutes),
       followWaterTarget: task ? (task.followWaterTarget ?? false) : (initialDraft?.followWaterTarget ?? false),
       quotaPeriod: task ? (task.quotaPeriod ?? 'day') : (initialDraft?.quotaPeriod ?? 'day'),
       quotaRampStep: task ? (task.quotaRampStep ?? null) : null,
@@ -2359,6 +2364,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       // Only the plain weekly target can rest for the day (a rotation has no
       // single count to be on pace with, and a daily one has tomorrow's own row).
       quotaRestAfterLog: targetCount !== null && quotaPeriod === 'week' && !rotationEnabled ? quotaRestAfterLog : false,
+      quotaChunkMinutes: targetCount !== null && quotaPeriod === 'week' && !rotationEnabled ? normalizeChunkMinutes(parseInt(quotaChunkText, 10)) : null,
       // Cleared when what it follows goes: it only means anything on a daily
       // target that logs water.
       followWaterTarget: followsWaterTarget ? followWaterTarget : false,
@@ -3344,6 +3350,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       // Only the plain weekly target can rest for the day (a rotation has no
       // single count to be on pace with, and a daily one has tomorrow's own row).
       quotaRestAfterLog: targetCount !== null && quotaPeriod === 'week' && !rotationEnabled ? quotaRestAfterLog : false,
+      quotaChunkMinutes: targetCount !== null && quotaPeriod === 'week' && !rotationEnabled ? normalizeChunkMinutes(parseInt(quotaChunkText, 10)) : null,
       // Cleared when what it follows goes: it only means anything on a daily
       // target that logs water.
       followWaterTarget: followsWaterTarget ? followWaterTarget : false,
@@ -3558,6 +3565,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // The count is derived from two fields in two different cards (the interval
   // here, the window under Schedule), so without this the only way to find out
   // how many a day you'd asked for would be to save and look at the row.
+  // Weekly targets only: what one log stands for, in minutes. Null reads as a plain count.
+  const chunkMinutes = quotaPeriod === 'week' && !rotationEnabled ? normalizeChunkMinutes(parseInt(quotaChunkText, 10)) : null;
   const quotaCadenceCaption = (() => {
     if (quotaIntervalMinutes === null) return '';
     const from = windowStart ? formatHHMM(windowStart, use24HourTime) : formatHHMM(activeHoursStart, use24HourTime);
@@ -5014,11 +5023,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   ? "Log it several times a week, on any days. The task hides while you’re on pace and comes back when you fall behind."
                   : "Log it several times a day. The task hides while you’re on pace and comes back when you fall behind."}
                 value={targetCount !== null
-                  ? (loggedProgress !== null ? formatQuotaProgress(loggedProgress, targetCount, targetUnit) : formatQuotaTarget(targetCount, targetUnit))
+                  ? (loggedProgress !== null ? formatQuotaProgress(loggedProgress, targetCount, targetUnit, chunkMinutes) : formatQuotaTarget(targetCount, targetUnit, chunkMinutes))
                   : undefined}
                 expanded={showTargetCount}
                 onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
-                onClear={targetCount !== null ? () => { setTargetCount(null); setTargetUnit(''); setShowTargetCount(false); } : undefined}
+                onClear={targetCount !== null ? () => { setTargetCount(null); setTargetUnit(''); setQuotaChunkText(''); setShowTargetCount(false); } : undefined}
               />
               {showTargetCount && (
                 <>
@@ -5081,7 +5090,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     <ProgressBar
                       progress={loggedProgress / targetCount}
                       style={styles.targetProgressTrack}
-                      accessibilityLabel={`Logged ${formatQuotaProgress(loggedProgress, targetCount, targetUnit)} so far this ${quotaPeriod}`}
+                      accessibilityLabel={`Logged ${formatQuotaProgress(loggedProgress, targetCount, targetUnit, chunkMinutes)} so far this ${quotaPeriod}`}
                     />
                   )}
                   {/* Says what the row will read as rather than what the field is
@@ -5097,8 +5106,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                           // The row's real count, not a zero: the preview used to
                           // read "0/6" on a target already half done, which looked
                           // like opening the editor had reset it.
-                          ? `Logged ${formatQuotaProgress(loggedProgress, targetCount, targetUnit)} so far this ${quotaPeriod}`
-                          : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a ${quotaPeriod}`}
+                          ? `Logged ${formatQuotaProgress(loggedProgress, targetCount, targetUnit, chunkMinutes)} so far this ${quotaPeriod}`
+                          : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit, chunkMinutes)} a ${quotaPeriod}`}
                   </Text>
                   {targetCount !== null && (
                     <>
@@ -5138,6 +5147,30 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                           ? 'Any days of the week. The count resets each week.'
                           : 'The count resets each day.'}
                       </Text>
+                      {quotaPeriod === 'week' && !rotationEnabled && (
+                        <>
+                          <View style={styles.sep} />
+                          {/* Each log is a chunk of time, so falling behind is
+                              fixed by logging more chunks and the meter reads in
+                              minutes. See Task.quotaChunkMinutes. */}
+                          <TextField
+                            style={[styles.fieldBox, styles.targetUnitInput]}
+                            value={quotaChunkText}
+                            onChangeText={t => setQuotaChunkText(t.replace(/[^0-9]/g, '').slice(0, 3))}
+                            placeholder="Minutes"
+                            placeholderTextColor={colors.textTertiary}
+                            keyboardType="number-pad"
+                            inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                            returnKeyType="done"
+                            accessibilityLabel="Minutes per log, optional"
+                          />
+                          <Text style={styles.targetStepperCaption}>
+                            {chunkMinutes
+                              ? `Each log counts as ${chunkMinutes} minutes, so ${targetCount} logs is ${targetCount * chunkMinutes} minutes a week.`
+                              : 'Optional. For example 30, to log time in 30 minute chunks.'}
+                          </Text>
+                        </>
+                      )}
                       <View style={styles.sep} />
                       {quotaPeriod === 'day' && (
                         <>
