@@ -78,7 +78,7 @@ import { lastTimeNotes } from '../utils/lastTimeNotes';
 import { parseSetCell, typedTickValues } from '../utils/workoutCell';
 import { weightHeadingSuffix, weightScale } from '../utils/dumbbellLoad';
 import { exerciseDayNote, exerciseDayNotePatches } from '../utils/exerciseDayNote';
-import { applyRoutineChanges, describeRoutineChange, routineChanges } from '../utils/routineUpdate';
+import { applyRoutineChanges, describeRoutineChange, rivalOf, routineChanges } from '../utils/routineUpdate';
 import { currentRoutineVersion, finishVersionText, routineVersionsOf, sessionPlan, versionNumber } from '../utils/routineVersions';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
@@ -682,6 +682,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         if (id === RESTORE_CHANGE) return new Set();
       } else {
         next.add(id);
+        // A swap and the alternate saved for it are two answers to one question.
+        const rival = routineDiff.find(c => c.id === id);
+        const rivalId = rival ? rivalOf(rival) : null;
+        if (rivalId) next.delete(rivalId);
         if (oldVersion) next.add(RESTORE_CHANGE);
       }
       return next;
@@ -689,7 +693,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   };
   const acceptedCount = routineDiff.filter(c => accepted.has(c.id)).length;
   const restoring = oldVersion !== null && accepted.has(RESTORE_CHANGE);
-  const changeTotal = routineDiff.length + (oldVersion ? 1 : 0);
+  // An alternate is the other way to take its swap, so it adds nothing to the count and Select all leaves it out.
+  const selectableDiff = routineDiff.filter(c => c.kind !== 'alternate');
+  const changeTotal = selectableDiff.length + (oldVersion ? 1 : 0);
   const selectedTotal = acceptedCount + (restoring ? 1 : 0);
 
   // What this workout beat, against everything before it. Read from each
@@ -927,7 +933,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         haptics.tap();
                         setAccepted(selectedTotal === changeTotal
                           ? new Set()
-                          : new Set([...routineDiff.map(c => c.id), ...(oldVersion ? [RESTORE_CHANGE] : [])]));
+                          : new Set([...selectableDiff.map(c => c.id), ...(oldVersion ? [RESTORE_CHANGE] : [])]));
                       }}
                     />
                     <Text style={styles.changeCount}>{`${selectedTotal} of ${changeTotal} selected`}</Text>

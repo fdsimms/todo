@@ -523,7 +523,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/routineGroups.ts` — RoutineGroup, RoutineSections, groupNames, resolveGroupName, routineSections, renamedRegistry, FlatRoutineRow, placementsFromList
 - `src/utils/routinePicker.ts` — RoutineOption, RoutineFilterResult, filterRoutines, resolveRoutineSubmit
 - `src/utils/routineProgress.ts` — RoutineWorkoutPoint, RoutineExerciseProgress, RoutineProgress, routineSessions, RoutineProgressInput, routineProgress, volumeForChart
-- `src/utils/routineUpdate.ts` — RoutineChange, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
+- `src/utils/routineUpdate.ts` — RoutineChange, rivalOf, RepRange, RoutineDiffInput, routineChanges, applyRoutineChanges, describeRoutineChange
 - `src/utils/routineVersions.ts` — initialRoutineVersionId, initialProgramVersionId, implicitRoutineVersion, routineVersionsOf, sessionPlan, currentRoutineVersion, versionNumber, versionAt, sessionVersionId, routineSessionsByVersion, +35 more
 - `src/utils/rowAmount.ts` — ROW_AMOUNT_PRESETS, MAX_ROW_FACTOR, adjustedQuantity, canAdjustAmount, parseRowFactor, describeRowFactor
 - `src/utils/rowCursor.ts` — stepCursor, settleCursor
