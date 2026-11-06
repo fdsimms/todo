@@ -6,7 +6,7 @@ import {
 import { EXERCISE_LIBRARY } from '../utils/exerciseLibrary';
 
 const gym = (over: Partial<Gym> = {}): Gym => ({
-  id: 'g1', name: 'Planet', equipment: ['dumbbell', 'machine', 'cable'], placeText: '', latitude: 40, longitude: -74,
+  id: 'g1', name: 'Planet', equipment: ['dumbbell', 'machine', 'cable'], dumbbells: null, placeText: '', latitude: 40, longitude: -74,
   radiusM: 150, sortOrder: 1, archived: false, createdAt: '2026-01-01T00:00:00.000Z', ...over,
 });
 const none: Exercise[] = [];
@@ -68,6 +68,15 @@ describe('unavailableExerciseIds and routineFit', () => {
     expect(describeRoutineFit(routineFit(gym(), routine([cable, barbell]), none), 'Planet')).toBe("No barbell at Planet. 1 of 2 exercises can’t be done.");
     expect(describeRoutineFit(routineFit(gym(), routine([barbell]), none), 'Planet')).toBe("No barbell at Planet. 1 of 1 exercise can’t be done.");
   });
+  it('does not count an exercise whose own alternate the gym can do', () => {
+    const goblet = byEquipment('dumbbell');
+    const withAlt = { items: [{ exerciseId: barbell, restSeconds: null, progression: null, targets: [], alternateId: goblet }] };
+    expect(routineFit(gym(), withAlt, none).blocked).toBe(0);
+    const stuck = { items: [{ exerciseId: barbell, restSeconds: null, progression: null, targets: [], alternateId: barbell }] };
+    expect(routineFit(gym(), stuck, none).blocked).toBe(1);
+    const lacking = { items: [{ exerciseId: barbell, restSeconds: null, progression: null, targets: [], alternateId: byEquipment('dip_bars') }] };
+    expect(routineFit(gym(), lacking, none).blocked).toBe(1);
+  });
   it('lists several missing pieces of equipment with "or"', () => {
     const fit = routineFit(gym(), routine([barbell, byEquipment('dip_bars')]), none);
     expect(describeRoutineFit(fit, 'Planet')).toBe("No barbell or dip bars at Planet. 2 of 2 exercises can’t be done.");
@@ -76,6 +85,7 @@ describe('unavailableExerciseIds and routineFit', () => {
 
 describe('gymSwapCandidates', () => {
   const bench = EXERCISE_LIBRARY.find(e => e.equipment === 'barbell' && e.primaryMuscles.includes('chest'))!.id;
+  const barbellId = EXERCISE_LIBRARY.find(e => e.equipment === 'barbell' && e.id !== bench)!.id;
   it('offers only equipment the gym has, sharing a primary muscle', () => {
     const ids = gymSwapCandidates(none, bench, gym());
     expect(ids.length).toBeGreaterThan(0);
@@ -84,6 +94,17 @@ describe('gymSwapCandidates', () => {
       expect(equipmentAvailable(gym(), ex(id).equipment)).toBe(true);
       expect(ex(id).primaryMuscles).toContain('chest');
     }
+  });
+  it('puts the routine\'s own alternate first, even without a shared muscle, when the gym has it', () => {
+    const cableId = byEquipment('cable');
+    const base = gymSwapCandidates(none, bench, gym());
+    const ranked = gymSwapCandidates(none, bench, gym(), [], new Set(), cableId);
+    expect(ranked[0]).toBe(cableId);
+    expect(ranked.filter(id => id === cableId)).toHaveLength(1);
+    expect(ranked.length).toBeGreaterThanOrEqual(base.length);
+    // Gear the gym lacks, or one already in the workout, is not forced to the top.
+    expect(gymSwapCandidates(none, bench, gym(), [], new Set(), barbellId)[0]).not.toBe(barbellId);
+    expect(gymSwapCandidates(none, bench, gym(), [cableId], new Set(), cableId)[0]).not.toBe(cableId);
   });
   it('puts an exercise done at this gym ahead of one with the same muscles', () => {
     const base = gymSwapCandidates(none, bench, gym());

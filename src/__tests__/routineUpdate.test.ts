@@ -1,5 +1,5 @@
 import type { ExerciseKind, RoutineSetTarget, WorkoutRoutineItem, WorkoutSet } from '../types';
-import { applyRoutineChanges, describeRoutineChange, routineChanges, type RoutineChange } from '../utils/routineUpdate';
+import { applyRoutineChanges, describeRoutineChange, rivalOf, routineChanges, type RoutineChange } from '../utils/routineUpdate';
 
 const DONE = '2026-10-19T18:10:00.000Z';
 const t = (kind: RoutineSetTarget['kind'], repsMin: number | null, repsMax: number | null, weightKg?: number): RoutineSetTarget =>
@@ -105,6 +105,33 @@ describe('routineChanges', () => {
     expect(got).toHaveLength(1);
     expect(got[0]).toMatchObject({ exerciseId: 'face-pull', afterExerciseId: 'fly' });
     expect(describeRoutineChange(got[0], name, 'kg').detail).toBe('2 sets of 12 at 20 kg, after FLY.');
+  });
+
+  it('offers a swap beside saving the swapped-in exercise as the alternate, and they are rivals', () => {
+    const sets = [set('db-press', 0, 0, 30, 10), set('db-press', 0, 1, 30, 10), ...asPlanned.filter(s => s.exerciseId === 'fly')];
+    const got = diff(sets);
+    const alt = only(got, 'alternate');
+    expect(alt).toEqual([{ kind: 'alternate', id: 'alternate:bench', exerciseId: 'bench', alternateId: 'db-press' }]);
+    expect(rivalOf(only(got, 'swap')[0])).toBe('alternate:bench');
+    expect(rivalOf(alt[0])).toBe('swap:bench');
+    expect(rivalOf(only(diff(asPlanned.filter(s => s.exerciseId === 'bench')), 'remove')[0])).toBeNull();
+    expect(describeRoutineChange(alt[0], name, 'kg').title).toBe('Keep BENCH, save DB-PRESS as its alternate');
+  });
+
+  it('applies the alternate by keeping the exercise and naming the one done instead', () => {
+    const next = applyRoutineChanges(routine, [{ kind: 'alternate', id: 'alternate:bench', exerciseId: 'bench', alternateId: 'db-press' }]);
+    expect(next.map(i => i.exerciseId)).toEqual(['bench', 'fly']);
+    expect(next[0].alternateId).toBe('db-press');
+    expect(next[0].targets).toEqual(BENCH);
+  });
+
+  it('does not offer a swap to the routine\'s own alternate back as a change', () => {
+    const items = [item('bench', BENCH, { alternateId: 'db-press' }), routine[1]];
+    const sets = [set('db-press', 0, 0, 30, 10), set('db-press', 0, 1, 30, 10), ...asPlanned.filter(s => s.exerciseId === 'fly')];
+    const got = diff(sets, items);
+    expect(only(got, 'swap')).toEqual([]);
+    expect(only(got, 'add')).toEqual([]);
+    expect(only(got, 'remove')).toEqual([]);
   });
 
   it('reads an exercise in the same slot as one skipped as a swap, and one skipped alone as a removal', () => {

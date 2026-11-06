@@ -1,6 +1,6 @@
 import type { ExerciseKind, RoutineSetTarget, WorkoutRoutineItem, WorkoutSet } from '../types';
 import type { WeightUnit } from './weightLog';
-import { normalizeSupersets } from './workoutRoutine';
+import { normalizeSupersets, withAlternate } from './workoutRoutine';
 import { formatRestSeconds, formatWeightWithUnit } from './workoutData';
 import { sessionExercises, setFieldsFor } from './workoutSession';
 
@@ -27,9 +27,26 @@ export type RoutineChange =
   | { kind: 'sets'; id: string; exerciseId: string; from: number; to: number; added: RoutineSetTarget[] }
   | { kind: 'rest'; id: string; exerciseId: string; from: number; to: number }
   | { kind: 'swap'; id: string; fromExerciseId: string; toExerciseId: string; targets: RoutineSetTarget[] }
+  /**
+   * The other way to take a swap: keep the routine's exercise and name the one
+   * done instead as its alternate (`WorkoutRoutineItem.alternateId`). It is
+   * offered beside every swap and is mutually exclusive with it (`rivalOf`).
+   */
+  | { kind: 'alternate'; id: string; exerciseId: string; alternateId: string }
   | { kind: 'add'; id: string; exerciseId: string; afterExerciseId: string | null; targets: RoutineSetTarget[] }
   | { kind: 'remove'; id: string; exerciseId: string }
   | { kind: 'order'; id: string; exerciseIds: string[] };
+
+/**
+ * The id of the change that can't be taken together with this one: a swap and
+ * the alternate saved for the same exercise are two answers to one question.
+ * Null for every other change.
+ */
+export function rivalOf(change: Pick<RoutineChange, 'kind' | 'id'>): string | null {
+  if (change.kind === 'swap') return change.id.replace(/^swap:/, 'alternate:');
+  if (change.kind === 'alternate') return change.id.replace(/^alternate:/, 'swap:');
+  return null;
+}
 
 export interface RepRange { min: number; max: number }
 
@@ -84,7 +101,10 @@ export function routineChanges(input: RoutineDiffInput): RoutineChange[] {
     if (slot && !inSession.has(slot.exerciseId) && !usedItems.has(slot.exerciseId)) {
       usedItems.add(slot.exerciseId);
       swapped.add(e.exerciseId);
+      // The routine's own alternate is the plan working, not a change to offer back.
+      if (slot.alternateId === e.exerciseId) return;
       out.push({ kind: 'swap', id: `swap:${slot.exerciseId}`, fromExerciseId: slot.exerciseId, toExerciseId: e.exerciseId, targets: e.sets.map(targetFromSet) });
+      out.push({ kind: 'alternate', id: `alternate:${slot.exerciseId}`, exerciseId: slot.exerciseId, alternateId: e.exerciseId });
     }
   });
   session.forEach((e, j) => {
@@ -189,7 +209,7 @@ export function applyRoutineChanges(
   const edit = (exerciseId: string, fn: (item: WorkoutRoutineItem) => WorkoutRoutineItem) => {
     next = next.map(i => (i.exerciseId === exerciseId ? fn(i) : i));
   };
-  const rank = { swap: 0, sets: 1, weight: 2, reps: 3, rest: 4, add: 5, remove: 6, order: 7 } as const;
+  const rank = { swap: 0, alternate: 0, sets: 1, weight: 2, reps: 3, rest: 4, add: 5, remove: 6, order: 7 } as const;
   for (const c of [...changes].sort((a, b) => rank[a.kind] - rank[b.kind])) {
     switch (c.kind) {
       case 'swap':
@@ -198,6 +218,9 @@ export function applyRoutineChanges(
           exerciseId: c.toExerciseId,
           targets: i.warmupRamp ? c.targets.filter(t => isWork(t.kind)) : c.targets,
         }));
+        break;
+      case 'alternate':
+        edit(c.exerciseId, i => withAlternate(i, c.alternateId));
         break;
       case 'sets':
         edit(c.exerciseId, i => {
@@ -298,6 +321,11 @@ export function describeRoutineChange(
       };
     case 'swap':
       return { title: `Swap ${nameOf(c.fromExerciseId)} for ${nameOf(c.toExerciseId)}`, detail: 'Same place in the routine.' };
+    case 'alternate':
+      return {
+        title: `Keep ${nameOf(c.exerciseId)}, save ${nameOf(c.alternateId)} as its alternate`,
+        detail: 'Offered first at a gym that can’t do it.',
+      };
     case 'add': {
       const work = c.targets.filter(t => isWork(t.kind));
       const first = work[0];

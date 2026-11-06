@@ -285,6 +285,8 @@ export interface RecordEvent {
   value: number;
   /** The best before this session. Always present: a first time is not a record. */
   previous: number;
+  /** Set only on a `weight` record that tied the old weight and beat its reps: the reps it beat. */
+  previousReps?: number;
   set: WorkoutSet | null;
 }
 
@@ -426,9 +428,15 @@ function walk(exerciseId: string, kind: ExerciseKind, groups: readonly SessionGr
     if (weighted && now.e1rm && standing.e1rm && now.e1rm.value > standing.e1rm.value) {
       fire({ type: 'e1rm', value: now.e1rm.value, previous: standing.e1rm.value, set: now.e1rm.set });
     }
-    if ((weighted || kind === 'weight_distance') && now.heaviest && standing.heaviest
-      && now.heaviest.weightKg! > standing.heaviest.set.weightKg!) {
-      fire({ type: 'weight', value: now.heaviest.weightKg!, previous: standing.heaviest.set.weightKg!, set: now.heaviest });
+    if ((weighted || kind === 'weight_distance') && now.heaviest && standing.heaviest) {
+      const held = standing.heaviest.set;
+      if (now.heaviest.weightKg! > held.weightKg!) {
+        fire({ type: 'weight', value: now.heaviest.weightKg!, previous: held.weightKg!, set: now.heaviest });
+      } else if (weighted && now.heaviest.weightKg === held.weightKg && (now.heaviest.reps ?? 0) > (held.reps ?? 0)) {
+        // The same weight for more reps is a better heaviest set (`heavier`), so it is announced
+        // too, with the reps it beat. A carry's tie-break is not reps, so only weight and reps does.
+        fire({ type: 'weight', value: now.heaviest.weightKg!, previous: held.weightKg!, previousReps: held.reps ?? undefined, set: now.heaviest });
+      }
     }
     if (weighted) {
       for (const [n, set] of [...now.ladder.entries()].sort((a, b) => a[0] - b[0])) {
@@ -681,12 +689,11 @@ export function isNewRecord(dayKey: string, todayKey: string): boolean {
  * Whether a standing record row deserves the "New" badge: a recent session
  * broke exactly this record. The badge follows the record events and not the
  * row's day, because the events are where "a record" is defined: a first
- * session, or an equal weight with more reps, holds a row but broke nothing.
+ * session holds a row but broke nothing.
  *
  * The event is matched by what it set, not by the session holding the row
- * now: a later session that equals the weight with more reps takes the row
- * (`heavier` breaks the tie on reps) without breaking anything, and the
- * record set a few days before it is still new.
+ * now: a later session can take the row from the session that set it, and the
+ * record set a few days before is still new.
  */
 export function isNewRecordRow(row: RecordRow, events: readonly RecordEvent[], todayKey: string): boolean {
   return events.some(e => e.type === row.type

@@ -347,6 +347,17 @@ export function withProgression(item: WorkoutRoutineItem, scheme: ProgressionSch
   };
 }
 
+/**
+ * The item with its alternate set (see `WorkoutRoutineItem.alternateId`), or
+ * cleared with null. An alternate that is the exercise itself is no alternate,
+ * and the field is left off rather than written as null, so an item with none
+ * is stored exactly as it was before the field existed.
+ */
+export function withAlternate(item: WorkoutRoutineItem, alternateId: string | null): WorkoutRoutineItem {
+  const { alternateId: _old, ...rest } = item;
+  return alternateId && alternateId !== item.exerciseId ? { ...rest, alternateId } : rest;
+}
+
 /** What each scheme is called on the editor's control. */
 export const PROGRESSION_LABELS: Record<ProgressionScheme, string> = {
   double: 'Rep range',

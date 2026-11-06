@@ -12,7 +12,6 @@ import {
   metricNote,
   metricNumber,
   recordLabel,
-  recordShortLabel,
   withThousands,
 } from '../utils/workoutRecordText';
 import type { SessionPoint } from '../utils/workoutRecords';
@@ -20,17 +19,6 @@ import type { SessionPoint } from '../utils/workoutRecords';
 const set = (extra: Partial<WorkoutSet> = {}): WorkoutSet => ({
   id: 's', sessionId: 'x', exerciseId: 'e', position: 0, setIndex: 0, kind: 'working', weightKg: 82.5, reps: 8,
   durationSeconds: null, distanceM: null, rpe: null, completedAt: 'z', supersetKey: null, note: null, ...extra,
-});
-
-describe('recordShortLabel', () => {
-  it('abbreviates each record to what a badge can hold', () => {
-    expect(recordShortLabel('e1rm', 'weight_reps')).toBe('1RM');
-    expect(recordShortLabel('weight', 'weight_reps')).toBe('Max');
-    expect(recordShortLabel('repsAt', 'weight_reps', 8)).toBe('8RM');
-    expect(recordShortLabel('best', 'bodyweight_reps')).toBe('Reps');
-    expect(recordShortLabel('best', 'duration')).toBe('Time');
-    expect(recordShortLabel('best', 'distance')).toBe('Dist');
-  });
 });
 
 describe('recordLabel', () => {
@@ -100,6 +88,11 @@ describe('formatRecordChange', () => {
       .toEqual({ before: '80 kg', after: '82.5 kg' });
     expect(formatRecordChange({ type: 'weight', value: 90, previous: 85, set: set({ reps: 3 }) }, 'weight_reps', 'kg'))
       .toEqual({ before: '85 kg', after: '90 kg × 3' });
+  });
+
+  it('names the old reps when a heaviest weight only tied the old weight', () => {
+    expect(formatRecordChange({ type: 'weight', value: 43, previous: 43, previousReps: 15, set: set({ reps: 20 }) }, 'weight_reps', 'kg'))
+      .toEqual({ before: '43 kg × 15', after: '43 kg × 20' });
   });
 });
 

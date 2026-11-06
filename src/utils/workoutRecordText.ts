@@ -38,24 +38,6 @@ export function recordLabel(type: RecordType, kind: ExerciseKind, reps?: number)
 }
 
 /**
- * A record as the few characters a badge has room for: "1RM", "8RM" for a best
- * set of 8, "Max" for the heaviest weight, and the figure's own word for the
- * kinds ranked by one number. `recordLabel` is the full name.
- */
-export function recordShortLabel(type: RecordType, kind: ExerciseKind, reps?: number): string {
-  switch (type) {
-    case 'e1rm': return '1RM';
-    case 'weight': return 'Max';
-    case 'repsAt': return `${reps ?? 0}RM`;
-    case 'best':
-      if (kind === 'duration') return 'Time';
-      if (kind === 'distance') return 'Dist';
-      return 'Reps';
-    case 'volume': return 'Vol';
-  }
-}
-
-/**
  * Every function here takes a `scale` (2 for a two-dumbbell exercise logged as a pair
  * total, `dumbbellLoad.ts`) that multiplies the stored one-dumbbell weights for
  * reading; the default 1 changes nothing.
@@ -109,16 +91,19 @@ export function formatRecordValue(
  * A record beaten this workout, as the finish summary shows it: the old figure,
  * then the new one ("102 kg" then "104.5 kg"). A best set of N already names its
  * reps in the label, so its new figure leaves the "× 8" off; a heaviest weight
- * keeps the reps it was lifted for, since those aren't in its label.
+ * keeps the reps it was lifted for, since those aren't in its label. A heaviest
+ * weight that only tied the old weight names the old reps too ("95 lb × 15"),
+ * or "was 95 lb" would read as no change.
  */
 export function formatRecordChange(
-  record: { type: RecordType; value: number; previous: number; reps?: number; set: Pick<WorkoutSet, 'reps' | 'distanceM'> | null },
+  record: { type: RecordType; value: number; previous: number; previousReps?: number; reps?: number; set: Pick<WorkoutSet, 'reps' | 'distanceM'> | null },
   kind: ExerciseKind,
   unit: WeightUnit,
   scale = 1,
 ): { before: string; after: string } {
+  const figure = formatRecordFigure(record.type, kind, record.previous, unit, scale);
   return {
-    before: formatRecordFigure(record.type, kind, record.previous, unit, scale),
+    before: record.previousReps != null ? `${figure} × ${record.previousReps}` : figure,
     after: record.type === 'repsAt'
       ? formatRecordFigure(record.type, kind, record.value, unit, scale)
       : formatRecordValue(record, kind, unit, scale),

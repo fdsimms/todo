@@ -196,6 +196,23 @@ describe('the workout write tools', () => {
       expect(entries).toEqual([expect.objectContaining({ action: 'created', subject: 'routine', title: 'Push A' })]);
     });
 
+    it('stores an exercise\'s alternate, reads it back by name, and refuses one that does not exist', () => {
+      const { routine } = saveRoutine(ledgered, {
+        name: 'Push A',
+        exercises: [{ exerciseId: BENCH, alternateId: 'lib:dumbbell-bench-press', sets: [{ repsMin: 8 }] }],
+      });
+      expect(routine.exercises[0].alternate).toEqual({ exerciseId: 'lib:dumbbell-bench-press', name: 'Dumbbell bench press' });
+      expect(() => saveRoutine(ledgered, {
+        id: routine.id,
+        exercises: [{ exerciseId: BENCH, alternateId: 'lib:nope', sets: [{ repsMin: 8 }] }],
+      })).toThrow(/No exercise with id lib:nope/);
+      const { routine: cleared } = saveRoutine(ledgered, {
+        id: routine.id,
+        exercises: [{ exerciseId: BENCH, alternateId: null, sets: [{ repsMin: 8 }] }],
+      });
+      expect(cleared.exercises[0].alternate).toBeUndefined();
+    });
+
     it('keeps the agent\'s plan as a version: amending it until a workout is done on it, a new one after', () => {
       const { routine } = saveRoutine(ledgered, { name: 'Legs', exercises: [{ exerciseId: 'lib:back-squat', sets: [{ repsMin: 5 }] }] });
       const versions = () => replica.routineVersions().filter(v => v.routineId === routine.id);

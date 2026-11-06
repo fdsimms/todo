@@ -15,6 +15,7 @@
  * Every weight is kilograms, whatever unit the person's phone shows.
  */
 import { dumbbellsUsed } from '../../src/utils/dumbbellLoad';
+import { cleanRack } from '../../src/utils/dumbbellRack';
 import { generateId } from '../../src/utils/id';
 import type {
   Exercise, ExerciseEquipment, ExerciseKind, Gym, GymExerciseSetting, MuscleGroup, ProgressionScheme, RoutineSetTarget, TrainingMax, WorkoutProgram, WorkoutRoutine,
@@ -288,6 +289,8 @@ export interface RoutineRow {
     progression?: ProgressionScheme;
     /** Warm-ups are a ramp worked out from the working weight when the workout starts. */
     warmupRamp?: true;
+    /** What workout mode offers first when the gym can't do this exercise. */
+    alternate?: { exerciseId: string; name: string };
     targets: WorkoutRoutine['items'][number]['targets'];
   }[];
 }
@@ -315,6 +318,9 @@ function routineExercises(items: readonly WorkoutRoutineItem[], rows: readonly E
       ...(i.restSeconds !== null ? { restSeconds: i.restSeconds } : {}),
       ...(i.progression ? { progression: i.progression.scheme } : {}),
       ...(i.warmupRamp ? { warmupRamp: true as const } : {}),
+      ...(i.alternateId
+        ? { alternate: { exerciseId: i.alternateId, name: catalogExercise(rows, i.alternateId)?.name ?? 'Unknown exercise' } }
+        : {}),
       targets: i.targets,
   }));
 }
@@ -324,6 +330,8 @@ export interface GymRow {
   name: string;
   /** What the gym has. Empty means nothing was told, not that it has none. */
   equipment: ExerciseEquipment[];
+  /** The dumbbells the gym has, in kg of one dumbbell. Absent means the person hasn't said, not that it has none. */
+  dumbbells?: { minKg: number; maxKg: number; stepKg: number };
   placeText?: string;
   /** Set once the person pinned the gym's place; workouts pick the gym by it. */
   hasLocation?: true;
@@ -340,6 +348,7 @@ function gymRow(g: Gym, settings: readonly GymExerciseSetting[], rows: readonly 
     id: g.id,
     name: g.name,
     equipment: g.equipment,
+    ...(g.dumbbells ? { dumbbells: g.dumbbells } : {}),
     ...(g.placeText ? { placeText: g.placeText } : {}),
     ...(g.latitude !== null && g.longitude !== null ? { hasLocation: true as const } : {}),
     ...(!g.archived && g.id === defaultGymId ? { isDefault: true as const } : {}),
@@ -760,6 +769,8 @@ export interface RoutineExerciseInput {
   progression?: ProgressionScheme | null;
   /** Warm up with a ramp worked out from the working weight, in place of warm-up sets of its own. */
   warmupRamp?: boolean;
+  /** The exercise to do instead when the gym can't do this one. Null or absent for none. */
+  alternateId?: string | null;
 }
 
 export interface SaveRoutineInput {
@@ -802,6 +813,7 @@ export function routineItemsFrom(input: readonly RoutineExerciseInput[], newKey:
       ...(t.pctOfTm != null ? { pctOfTm: t.pctOfTm } : {}),
     })),
     ...(e.warmupRamp ? { warmupRamp: true } : {}),
+    ...(e.alternateId && e.alternateId !== e.exerciseId ? { alternateId: e.alternateId } : {}),
   }));
   input.forEach((e, i) => { if (e.supersetWithPrevious) items = joinPrevious(items, i, newKey()); });
   return items;
@@ -813,7 +825,7 @@ const supersetKey = () => `ss-${Date.now().toString(36)}-${(keySeq++).toString(3
 export function saveRoutine(replica: Replica, input: SaveRoutineInput): { routine: RoutineRow; note: string } {
   if (!input.id && !input.name?.trim()) throw new Error('A new routine needs a name.');
   if (input.exercises) {
-    const unknown = unknownExercises(replica, input.exercises.map(e => e.exerciseId));
+    const unknown = unknownExercises(replica, input.exercises.flatMap(e => (e.alternateId ? [e.exerciseId, e.alternateId] : [e.exerciseId])));
     if (unknown.length) throw unknownError(unknown);
     if (input.exercises.some(e => e.sets.length === 0)) throw new Error('Each exercise needs at least one set.');
     // A ramp is worked out from a weight and moves it by plates or an
@@ -846,6 +858,7 @@ export interface SaveGymInput {
   id?: string;
   name?: string;
   equipment?: ExerciseEquipment[];
+  dumbbells?: { minKg: number; maxKg: number; stepKg: number } | null;
   placeText?: string;
   isDefault?: boolean;
   exerciseNotes?: { exerciseId: string; notes?: string; barKg?: number | null; incrementKg?: number | null }[];
@@ -853,6 +866,9 @@ export interface SaveGymInput {
 
 export function saveGym(replica: Replica, input: SaveGymInput): { gym: GymRow; note: string } {
   if (!input.id && !input.name?.trim()) throw new Error('A new gym needs a name.');
+  if (input.dumbbells && !cleanRack(input.dumbbells)) {
+    throw new Error('dumbbells needs minKg, maxKg and stepKg, all above zero, with maxKg no lighter than minKg. Send null to clear it.');
+  }
   if (input.exerciseNotes) {
     const unknown = unknownExercises(replica, input.exerciseNotes.map(n => n.exerciseId));
     if (unknown.length) throw unknownError(unknown);

@@ -138,6 +138,14 @@ export interface WorkoutRoutineItem {
    * (or false) for none, or for the warm-ups its targets list.
    */
   warmupRamp?: boolean;
+  /**
+   * The exercise to do in its place when the gym can't do this one (a goblet
+   * squat for a barbell squat). Workout mode offers it first, ahead of the
+   * ranked suggestions, and only when the gym has what it needs. A swap to it
+   * is the plan working, so the summary never offers it back as a change to
+   * the routine. Absent for none.
+   */
+  alternateId?: string | null;
 }
 
 /**
@@ -218,11 +226,24 @@ export interface WorkoutProgramVersion {
  * null) and `radiusM` are what starting a workout compares a position against
  * to offer this gym; nothing here reads the position itself.
  */
+/**
+ * The dumbbells a gym has: the lightest, the heaviest, and the gap between
+ * neighbours, in kilograms of one dumbbell (the same unit a set stores). The
+ * heaviest counts as a weight even when the step doesn't land on it.
+ */
+export interface DumbbellRack {
+  minKg: number;
+  maxKg: number;
+  stepKg: number;
+}
+
 export interface Gym {
   id: string;
   name: string;
   /** The equipment it has, from the closed `ExerciseEquipment` set. Empty means nothing is known yet, not "none". */
   equipment: ExerciseEquipment[];
+  /** The dumbbells on the rack, or null when the person hasn't said. Null means unknown, never "any weight". */
+  dumbbells: DumbbellRack | null;
   /** What the place was called when it was picked from a search, shown under the name. */
   placeText: string;
   latitude: number | null;

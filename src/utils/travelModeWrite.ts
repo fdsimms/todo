@@ -22,3 +22,16 @@ export function setTravelModeForEvent(eventId: string, sourceId: string | null, 
   if (!skip && mode && sourceId) useTravelTimeStore.getState().switchMode(sourceId, mode);
   settings.setTravelEventPref(eventId, { ...pref, mode, skip });
 }
+
+/**
+ * Writes how early one event should be arrived at from a "Leave for X" row: the
+ * same `arriveEarlyMinutes` the quick event sheet's "Arrive" chip writes. `key`
+ * is the picker's (`'default'` for null, which follows the Settings default, or
+ * the minutes as a string). The mode and the rest of the preference stay as they
+ * were, and the write wakes the sweep, which moves the reminder.
+ */
+export function setArriveEarlyForEvent(eventId: string, key: string): void {
+  const settings = useSettingsStore.getState();
+  const pref = settings.travelEventPrefs[eventId] ?? NO_PREF;
+  settings.setTravelEventPref(eventId, { ...pref, arriveEarlyMinutes: key === 'default' ? null : Number(key) });
+}

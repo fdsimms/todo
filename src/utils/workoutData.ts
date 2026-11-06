@@ -384,6 +384,8 @@ export function readRoutineItems(raw: unknown): WorkoutRoutineItem[] {
       ? i.targets.map(readTarget).filter((t): t is RoutineSetTarget => t !== null)
       : [];
     const ramp = i.warmupRamp === true;
+    // An alternate that is the exercise itself means nothing, so it reads as none.
+    const alternateId = typeof i.alternateId === 'string' && i.alternateId && i.alternateId !== i.exerciseId ? i.alternateId : null;
     out.push({
       exerciseId: i.exerciseId,
       supersetKey: typeof i.supersetKey === 'string' && i.supersetKey ? i.supersetKey : null,
@@ -394,6 +396,7 @@ export function readRoutineItems(raw: unknown): WorkoutRoutineItem[] {
       targets: ramp ? targets.filter(t => t.kind !== 'warmup') : targets,
       // Written only when on, so an item from before it reads exactly as it did.
       ...(ramp ? { warmupRamp: true } : {}),
+      ...(alternateId ? { alternateId } : {}),
     });
   }
   return out;

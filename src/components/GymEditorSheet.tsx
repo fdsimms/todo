@@ -17,7 +17,7 @@ import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
-import type { ExerciseEquipment } from '../types';
+import type { DumbbellRack, ExerciseEquipment } from '../types';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { alertPermissionOff } from '../utils/permissionAlert';
@@ -26,6 +26,8 @@ import { exerciseName } from '../utils/exerciseCatalog';
 import {
   ACCESSORY_EQUIPMENT, BENCH_EQUIPMENT, CARDIO_MACHINES, EQUIPMENT_LABELS, FREE_EQUIPMENT, STRENGTH_MACHINES, WORKOUT_NAME_MAX_LENGTH,
 } from '../utils/workoutData';
+import { WEIGHT_PLACES, WEIGHT_STEP, weightFromDisplay, weightToDisplay } from '../utils/workoutData';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { GYM_DEFAULT_RADIUS_M, GYM_MAX_RADIUS_M, GYM_MIN_RADIUS_M, GYM_RADIUS_STEP_M } from '../utils/gyms';
 import { BUTTON_LABEL } from '../copy/shared';
 
@@ -49,6 +51,14 @@ const GYM_EQUIPMENT_GROUPS: { title: string; items: readonly ExerciseEquipment[]
   { title: 'Cardio', items: [...CARDIO_MACHINES, 'cardio_machine'] },
 ];
 
+/** The smallest step a rack's gap is stepped by: light dumbbells go up in 2.5 lb or 1 kg. */
+const STEP_SMALLEST = { kg: 0.5, lb: 1 } as const;
+
+/** A rack to start from when the person says the gym has dumbbells: 5 to 100 lb, or 2.5 to 50 kg, in the usual steps. */
+const defaultRack = (unit: 'kg' | 'lb'): DumbbellRack => (unit === 'kg'
+  ? { minKg: 2.5, maxKg: 50, stepKg: 2.5 }
+  : { minKg: weightFromDisplay(5, 'lb'), maxKg: weightFromDisplay(100, 'lb'), stepKg: weightFromDisplay(5, 'lb') });
+
 const REFUSED: Record<string, string> = {
   blank: 'Give the gym a name.',
   taken: 'Another gym has that name.',
@@ -58,14 +68,15 @@ const REFUSED: Record<string, string> = {
 interface Staged {
   name: string;
   equipment: ExerciseEquipment[];
+  dumbbells: DumbbellRack | null;
   placeText: string;
   pin: { latitude: number; longitude: number } | null;
   radiusM: number;
 }
 
-const EMPTY: Staged = { name: '', equipment: [], placeText: '', pin: null, radiusM: GYM_DEFAULT_RADIUS_M };
+const EMPTY: Staged = { name: '', equipment: [], dumbbells: null, placeText: '', pin: null, radiusM: GYM_DEFAULT_RADIUS_M };
 
-const snapshotOf = (v: Staged) => JSON.stringify([v.name.trim(), v.equipment, v.placeText.trim(), v.pin, v.radiusM]);
+const snapshotOf = (v: Staged) => JSON.stringify([v.name.trim(), v.equipment, v.dumbbells, v.placeText.trim(), v.pin, v.radiusM]);
 
 /**
  * Add or edit a gym: its name, where it is, and the equipment it has
@@ -84,6 +95,7 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
   const gyms = useGymStore(s => s.gyms);
   const settings = useGymStore(s => s.settings);
   const exerciseRows = useWorkoutStore(s => s.exercises);
+  const unit = useSettingsStore(s => s.workoutUnit);
   const existing = subject && subject !== 'new' ? gyms.find(g => g.id === subject) ?? null : null;
   const isNew = subject === 'new';
 
@@ -106,6 +118,7 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
       ? {
         name: existing.name,
         equipment: [...existing.equipment],
+        dumbbells: existing.dumbbells,
         placeText: existing.placeText,
         pin: existing.latitude !== null && existing.longitude !== null
           ? { latitude: existing.latitude, longitude: existing.longitude }
@@ -162,6 +175,7 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
     const input = {
       name: v.name,
       equipment: v.equipment,
+      dumbbells: v.equipment.includes('dumbbell') ? v.dumbbells : null,
       placeText: v.placeText,
       latitude: v.pin?.latitude ?? null,
       longitude: v.pin?.longitude ?? null,
@@ -306,6 +320,57 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
           <HelpText style={styles.hint}>
             Exercises that need something this gym doesn’t have are flagged during a workout. Leave all of it off if you’d rather not say.
           </HelpText>
+
+          {v.equipment.includes('dumbbell') && (
+            <>
+              <Text style={styles.label}>Dumbbell weights</Text>
+              {v.dumbbells ? (
+                <View style={styles.card}>
+                  {([
+                    { key: 'minKg', label: 'Lightest', min: WEIGHT_STEP[unit], max: weightToDisplay(v.dumbbells.maxKg, unit) },
+                    { key: 'maxKg', label: 'Heaviest', min: weightToDisplay(v.dumbbells.minKg, unit), max: unit === 'kg' ? 150 : 330 },
+                    { key: 'stepKg', label: 'Step', min: STEP_SMALLEST[unit], max: unit === 'kg' ? 25 : 55 },
+                  ] as const).map((f, i) => (
+                    <View key={f.key} style={[styles.row, i > 0 && styles.ruled]}>
+                      <Text style={styles.rowLabel}>{f.label}</Text>
+                      <CountStepper
+                        style={styles.stepper}
+                        value={weightToDisplay(v.dumbbells![f.key], unit)}
+                        onChange={n => { if (n !== null) patch({ dumbbells: { ...v.dumbbells!, [f.key]: weightFromDisplay(n, unit) } }); }}
+                        min={f.min}
+                        max={f.max}
+                        step={f.key === 'stepKg' ? STEP_SMALLEST[unit] : WEIGHT_STEP[unit]}
+                        places={WEIGHT_PLACES[unit]}
+                        format={n => `${n} ${unit}`}
+                        label={`${f.label} dumbbell at this gym`}
+                        describeValue={n => `${n ?? 0} ${unit}`}
+                      />
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.addRow}>
+                  <InlineAction
+                    icon="add"
+                    label="Set the weights"
+                    variant="neutral"
+                    surface="page"
+                    onPress={() => { haptics.tap(); patch({ dumbbells: defaultRack(unit) }); }}
+                  />
+                </View>
+              )}
+              {v.dumbbells && (
+                <View style={styles.addRow}>
+                  <InlineAction icon="close" label="Clear" variant="neutral" surface="page" onPress={() => { haptics.tap(); patch({ dumbbells: null }); }} />
+                </View>
+              )}
+              <HelpText style={styles.hint}>
+                {v.dumbbells
+                  ? 'Suggested weights here land on these dumbbells, and stop at the heaviest.'
+                  : 'Say which dumbbells this gym has, and suggested weights here land on them. Leave it off if you’d rather not say.'}
+              </HelpText>
+            </>
+          )}
 
           {existing && (
             <>

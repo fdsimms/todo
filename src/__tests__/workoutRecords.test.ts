@@ -232,6 +232,35 @@ describe('analyzeExercise, weight and reps', () => {
     expect(analyzeExercise(BENCH, 'weight_reps', sets, sessions).events).toEqual([]);
   });
 
+  it('announces the same weight for more reps as a heaviest weight, naming the reps it beat', () => {
+    // 20 reps is past both the 1RM and the rep-count records, so this is the only one that can fire.
+    const sets = [set('s1', { weightKg: 43, reps: 15 }), set('s2', { weightKg: 43, reps: 20 })];
+    const { events } = analyzeExercise(BENCH, 'weight_reps', sets, sessions);
+    expect(events.filter(e => e.type === 'weight')).toEqual([expect.objectContaining({ value: 43, previous: 43, previousReps: 15 })]);
+  });
+
+  it('does not announce the same weight for fewer reps, or the same reps', () => {
+    for (const reps of [12, 15]) {
+      const sets = [set('s1', { weightKg: 43, reps: 15 }), set('s2', { weightKg: 43, reps }), set('s2', { weightKg: 30, reps: 25 })];
+      expect(analyzeExercise(BENCH, 'weight_reps', sets, sessions).events.filter(e => e.type === 'weight')).toEqual([]);
+    }
+  });
+
+  it('gives a heavier weight no previous reps, so only a tie names them', () => {
+    const sets = [set('s1', { weightKg: 43, reps: 15 }), set('s2', { weightKg: 45, reps: 20 })];
+    const weight = analyzeExercise(BENCH, 'weight_reps', sets, sessions).events.find(e => e.type === 'weight')!;
+    expect(weight.previous).toBe(43);
+    expect(weight.previousReps).toBeUndefined();
+  });
+
+  it('does not read a carry\'s reps as a tie-break', () => {
+    const sets = [
+      set('s1', { exerciseId: 'c', weightKg: 32, reps: null, distanceM: 20 }),
+      set('s2', { exerciseId: 'c', weightKg: 32, reps: null, distanceM: 40 }),
+    ];
+    expect(analyzeExercise('c', 'weight_distance', sets, sessions).events.filter(e => e.type === 'weight')).toEqual([]);
+  });
+
   it('is chronological whatever order the sessions arrive in, once they go through recordSessions', () => {
     const sets = [set('s2', { weightKg: 90, reps: 3 }), set('s1', { weightKg: 80, reps: 8 })];
     const ordered = recordSessions([s2, s1, s3], '00:00');
@@ -448,6 +477,14 @@ describe('liveSetRecords', () => {
     expect([...live([old, first, second]).keys()]).toEqual([second.id]);
   });
 
+  it('marks a set that matches the heaviest weight for more reps', () => {
+    const old = set('s1', { weightKg: 43, reps: 15 });
+    const tied = set('s2', { weightKg: 43, reps: 20 });
+    const marks = live([old, tied]);
+    expect([...marks.keys()]).toEqual([tied.id]);
+    expect(marks.get(tied.id)![0]).toMatchObject({ type: 'weight', previousReps: 15 });
+  });
+
   it('marks nothing for a first time, an unticked set, or a session volume', () => {
     expect(live([set('s2', { weightKg: 90, reps: 8 })]).size).toBe(0);
     const old = set('s1', { weightKg: 80, reps: 8 });
@@ -470,9 +507,9 @@ describe('isNewRecordRow', () => {
     expect(badged([set('s1', { weightKg: 100, reps: 5 })])).toEqual([]);
   });
 
-  it('does not badge heaviest weight when the same weight was done for more reps', () => {
+  it('badges heaviest weight when the same weight was done for more reps', () => {
     const rows = badged([set('s1', { weightKg: 100, reps: 3 }), set('s2', { weightKg: 100, reps: 5 })]);
-    expect(rows).not.toContain('weight');
+    expect(rows).toContain('weight');
     expect(rows).toContain('e1rm');
   });
 

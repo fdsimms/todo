@@ -1405,7 +1405,7 @@ export interface Replica {
    * this gym is it.
    */
   saveGym(input: {
-    id?: string; name?: string; equipment?: ExerciseEquipment[]; placeText?: string; isDefault?: boolean;
+    id?: string; name?: string; equipment?: ExerciseEquipment[]; dumbbells?: { minKg: number; maxKg: number; stepKg: number } | null; placeText?: string; isDefault?: boolean;
     latitude?: number | null; longitude?: number | null; radiusM?: number;
     exerciseNotes?: { exerciseId: string; notes?: string; barKg?: number | null; incrementKg?: number | null }[];
   }): Gym;

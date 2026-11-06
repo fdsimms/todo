@@ -1,5 +1,6 @@
 import type { WorkoutRoutine, WorkoutSession, WorkoutSet } from '../types';
 import { DEFAULT_PLATE_INVENTORY } from '../utils/workoutData';
+import { EXERCISE_LIBRARY } from '../utils/exerciseLibrary';
 
 // The stores as fakes: what is under test is that "Use" writes the proposal
 // through the store's own edits, the same calls workout mode's card made.
@@ -11,6 +12,9 @@ jest.mock('../store/useWorkoutStore', () => ({ useWorkoutStore: { getState: () =
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ plateInventory: mockPlates, workoutUnit: 'kg' }) },
 }));
+
+let mockGymState: Record<string, unknown> = { gyms: [], settings: [] };
+jest.mock('../store/useGymStore', () => ({ useGymStore: { getState: () => mockGymState } }));
 
 import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
 
@@ -86,5 +90,35 @@ describe('applyProposal', () => {
     expect(applyProposal('nobody', BENCH)).toBe(false);
     expect(applyProposal('live', 'lib:plank')).toBe(false);
     expect(mockEditSet).not.toHaveBeenCalled();
+  });
+});
+
+describe('liveProposal at a gym', () => {
+  const DB = EXERCISE_LIBRARY.find(e => e.equipment === 'dumbbell' && e.kind === 'weight_reps')!.id;
+  const topSets = [0, 1].map(i => set('old', i, { exerciseId: DB, weightKg: 40, reps: 12, completedAt: new Date(2026, 9, 10, 18, i).toISOString() }));
+  const plan = {
+    id: 'r1', name: 'Legs', notes: '', programId: null, sortOrder: 0, createdAt: '2026-10-01T00:00:00.000Z',
+    items: [{
+      exerciseId: DB, supersetKey: null, restSeconds: 90, progression: { scheme: 'double', incrementKg: null }, warmupRamp: false,
+      targets: [0, 1].map(() => ({ kind: 'working' as const, repsMin: 10, repsMax: 12 })),
+    }],
+  } as WorkoutRoutine;
+
+  const setup = (gymId: string | null, dumbbells: { minKg: number; maxKg: number; stepKg: number } | null) => {
+    mockGymState = { gyms: [{ id: 'g1', dumbbells }], settings: [] };
+    mockState = {
+      sessions: [session('old', 10), session('live', 12, { endedAt: null, gymId })],
+      routines: [plan], programs: [], exercises: [], exerciseHistory: () => topSets,
+    };
+  };
+
+  it('holds at the gym’s heaviest dumbbell, as the card does', () => {
+    setup('g1', { minKg: 5, maxKg: 40, stepKg: 5 });
+    expect(liveProposal('live', DB)?.proposal).toMatchObject({ move: 'same', brief: 'Heaviest dumbbell here' });
+  });
+
+  it('moves up when the session has no gym', () => {
+    setup(null, { minKg: 5, maxKg: 40, stepKg: 5 });
+    expect(liveProposal('live', DB)?.proposal.move).toBe('up');
   });
 });

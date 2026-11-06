@@ -383,6 +383,19 @@ export function travelModePickerOptions(
   ];
 }
 
+/**
+ * The "Arrive" picker's rows: the Settings default (naming what it resolves to)
+ * then each preset. Shared by the quick event sheet and a "Leave for X" row's
+ * arrival line, so the two can't list different choices. Keys are `'default'`
+ * or the minutes as a string.
+ */
+export function travelArrivePickerOptions(defaultMinutes: number): { key: string; label: string }[] {
+  return [
+    { key: 'default', label: `Settings default (${describeArrival(defaultMinutes)})` },
+    ...TRAVEL_ARRIVE_CHOICES.map(m => ({ key: String(m), label: describeArrival(m) })),
+  ];
+}
+
 /** One way of getting there, as a row of them shows it. */
 export interface TravelChoice {
   mode: TravelMode;

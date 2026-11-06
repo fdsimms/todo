@@ -91,6 +91,13 @@ describe('supersets in a past workout', () => {
     expect(keys(joined)).toEqual(['a:ss1', 'b:ss1', 'c:ss1']);
   });
 
+  it('keeps tap order when several new exercises are each joined to the first', () => {
+    // What the picker's "Make a superset" does: add a, b, c after x, then join b and c to a.
+    let list = [ex('x'), ex('a'), ex('b'), ex('c')];
+    for (const id of ['b', 'c']) list = joinPastSuperset(list, 'a', id) ?? list;
+    expect(keys(list)).toEqual(['x:-', 'a:ss1', 'b:ss1', 'c:ss1']);
+  });
+
   it('refuses to join an exercise to itself or its own superset', () => {
     expect(joinPastSuperset([ex('a'), ex('b')], 'a', 'a')).toBeNull();
     expect(joinPastSuperset([ex('a', 'ss1'), ex('b', 'ss1')], 'a', 'b')).toBeNull();
