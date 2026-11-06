@@ -8,7 +8,7 @@ import { describeProduct } from '../utils/groceryProduct';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { BarcodeScanSheet, type ScanProductDraft } from './BarcodeScanSheet';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
-import type { LabelSubject } from './LabelSubjectSheet';
+import { LabelSubjectSheet, type LabelSubject } from './LabelSubjectSheet';
 import { ScanPortionSheet, type ScannedFood } from './ScanPortionSheet';
 import type { ReceiptAddDraft } from './ReceiptImportSheet';
 
@@ -132,6 +132,13 @@ export function ScanToLogFlow({
       mealPlanEntryId: string | null;
     } | null
   >(null);
+  /**
+   * A label photo the scanner asked for before anyone named the food: the
+   * card that asks Food, Brand and Variant opens first, and its answer becomes
+   * `panelFor`. The scanner stays mounted underneath (hidden), so cancelling
+   * lands back on the same rows.
+   */
+  const [naming, setNaming] = useState<{ slot: MealSlot | null; at: Date; mealPlanEntryId: string | null } | null>(null);
   // The panel's subject: one the scanner raised, else the caller's own label
   // photo. Read at render time, which is safe for the second because the
   // caller's props only change after the panel's `onSave`/`onClose` pair.
@@ -281,14 +288,26 @@ export function ScanToLogFlow({
         // both present from the same view controller, which can only present
         // one. The second is refused silently. Same rule as the note on
         // `LogMealEntrySheet`.
-        visible={visible && session === null && panelSubject === null}
+        visible={visible && session === null && panelSubject === null && naming === null}
         context="log"
         initialCode={initialCode}
         onClose={onClose}
         onApply={handleScanApply}
-        onPhotographLabel={subject => setPanelFor({
-          itemId: null, productId: null, ...subject, slot, at, mealPlanEntryId: mealPlanEntryId ?? null,
-        })}
+        onPhotographLabel={subject => {
+          const context = { slot, at, mealPlanEntryId: mealPlanEntryId ?? null };
+          // No name yet (a barcode nothing knew): ask for it first, since the
+          // catalog row is named from it once the label is saved.
+          if (!subject.name.trim()) setNaming(context);
+          else setPanelFor({ itemId: null, productId: null, ...subject, ...context });
+        }}
+      />
+      <LabelSubjectSheet
+        visible={naming !== null}
+        initialName=""
+        onClose={() => setNaming(null)}
+        onNext={subject => {
+          if (naming) setPanelFor({ itemId: null, productId: null, ...subject, ...naming });
+        }}
       />
       <ScanPortionSheet
         visible={session !== null}
