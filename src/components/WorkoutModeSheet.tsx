@@ -1116,7 +1116,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   pairPos >= 0 && pairPos < viewedGroup.length - 1 && styles.cardSupersetJoinedBottom,
                 ]}
               >
-                <View style={styles.exHead}>
+                <View style={[styles.exHead, collapsed && styles.exHeadCollapsed]}>
                   {pairPos >= 0 && (
                     <View style={styles.supersetTag} accessible accessibilityLabel={`Superset, exercise ${pairPos + 1} of ${viewedGroup.length}`}>
                       <Ionicons name="repeat" size={iconSize.sm} color={colors.accent} />
@@ -1902,6 +1902,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   reorderDot: { width: 14, height: 14, borderRadius: 4, borderWidth: 2, borderColor: colors.controlBorder },
   reorderDotDone: { backgroundColor: colors.done, borderColor: colors.done },
   exHead: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs },
+  // Collapsed, the summary line is the last thing in the card, so the bottom padding matches the top.
+  exHeadCollapsed: { paddingBottom: spacing.md },
   exTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   exNameRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   exMenuButton: { padding: spacing.xs },
