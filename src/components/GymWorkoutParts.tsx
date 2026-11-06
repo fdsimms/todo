@@ -25,7 +25,8 @@ export function GymLine({ name, unavailableCount, onChoose, onSwapAll }: {
   name: string | null;
   unavailableCount: number;
   onChoose: () => void;
-  onSwapAll: () => void;
+  /** Absent where there is no workout to swap in (the Workouts screen). */
+  onSwapAll?: () => void;
 }) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -42,7 +43,7 @@ export function GymLine({ name, unavailableCount, onChoose, onSwapAll }: {
         <Text style={styles.lineText} numberOfLines={1}>{name ?? 'Choose a gym'}</Text>
         <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
       </TouchableOpacity>
-      {unavailableCount >= 2 && (
+      {unavailableCount >= 2 && onSwapAll && (
         <InlineAction label={`Swap all unavailable (${unavailableCount})`} surface="page" onPress={onSwapAll} />
       )}
     </View>

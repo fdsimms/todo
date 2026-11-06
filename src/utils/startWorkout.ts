@@ -31,6 +31,12 @@ export interface StartWorkoutInput {
    * carries no task, since the task it completed is done.
    */
   repeat?: { title: string; sets: readonly WorkoutSet[] } | null;
+  /**
+   * The gym the person picked for this workout (null for none), in place of the
+   * default or last-used one. Undefined leaves it to `defaultGymId`. A picked
+   * gym is the person's answer, so the position never moves it.
+   */
+  gymId?: string | null;
 }
 
 /** What a start did, for a caller that wants to know. */
@@ -85,16 +91,18 @@ export function startWorkout(input: StartWorkoutInput = {}): StartWorkoutResult 
     routineId = programProgress(program, store.sessions, store.routines).nextRoutineId;
     if (!routineId) return 'nothing';
   }
+  const pickedGym = input.gymId !== undefined;
+  const gymId = pickedGym ? input.gymId ?? null : defaultGymId();
   const started = input.repeat && !routineId
-    ? store.startSession({ title: input.repeat.title, planned: repeatedSets(input.repeat.sets), gymId: defaultGymId() })
+    ? store.startSession({ title: input.repeat.title, planned: repeatedSets(input.repeat.sets), gymId })
     : store.startSession({
-      routineId, programId: program?.id ?? null, taskId: input.taskId ?? null, gymId: defaultGymId(),
+      routineId, programId: program?.id ?? null, taskId: input.taskId ?? null, gymId,
       ...(input.routineVersionId ? { routineVersionId: input.routineVersionId } : {}),
     });
   if (typeof started === 'string') return 'nothing';
   // The workout opens at once at the gym last used; where the phone is follows
   // in a moment and moves it, so a slow fix never holds the start back.
-  void applyLocationGym(started.id);
+  if (!pickedGym) void applyLocationGym(started.id);
   haptics.impactMedium();
   show();
   return 'started';

@@ -28,6 +28,7 @@ jest.mock('../store/useWorkoutStore', () => ({
 }));
 
 import { startWorkout } from '../utils/startWorkout';
+import { applyLocationGym } from '../utils/gymLocation';
 
 const program: WorkoutProgram = {
   id: 'p1',
@@ -53,6 +54,23 @@ describe('startWorkout', () => {
     expect(startWorkout({ routineId: 'r1', taskId: 't1' })).toBe('started');
     expect(mockStartSession).toHaveBeenCalledWith({ routineId: 'r1', programId: null, taskId: 't1', gymId: null });
     expect(mockShow).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts at a picked gym and leaves the position out of it', () => {
+    expect(startWorkout({ routineId: 'r1', gymId: 'g9' })).toBe('started');
+    expect(mockStartSession).toHaveBeenCalledWith({ routineId: 'r1', programId: null, taskId: null, gymId: 'g9' });
+    expect(applyLocationGym).not.toHaveBeenCalled();
+  });
+
+  it('treats a picked "no gym" as an answer too', () => {
+    expect(startWorkout({ routineId: 'r1', gymId: null })).toBe('started');
+    expect(mockStartSession).toHaveBeenCalledWith({ routineId: 'r1', programId: null, taskId: null, gymId: null });
+    expect(applyLocationGym).not.toHaveBeenCalled();
+  });
+
+  it('asks where the phone is when no gym was picked', () => {
+    startWorkout({ routineId: 'r1' });
+    expect(applyLocationGym).toHaveBeenCalledWith('w1');
   });
 
   it('starts an older version of a routine when History asks for one', () => {
