@@ -1250,6 +1250,18 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                       accessibilityLabel={`${row.name.trim()} has no nutrition facts yet`}
                     />
                   )
+                ) : needsName && context === 'log' && !!row.gtin && !!onPhotographLabel ? (
+                  // A code nothing knew, before anything is typed: the same way out,
+                  // without making the person name it first. The flow asks for the
+                  // name once the label is in hand.
+                  <ActionRow
+                    icon="camera-outline"
+                    title="Photograph the label instead"
+                    note="Read the nutrition facts off the package"
+                    tone="action"
+                    onPress={() => onPhotographLabel(labelSubjectNamed(''))}
+                    accessibilityLabel="Photograph the nutrition label instead of typing a name"
+                  />
                 ) : null;
                 return (
                   <View key={row.key} style={index > 0 ? styles.rowDivided : undefined}>
