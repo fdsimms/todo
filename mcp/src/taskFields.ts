@@ -64,6 +64,8 @@ export const LIMITS = {
   chainSteps: 2,
   /** The editor has no ceiling on a countdown; a day is the most one can mean. */
   timedMinutes: [1, 1440],
+  /** The editor's per-unit countdown stops at three hours. */
+  timePerUnit: [1, 180],
   /**
    * `LIMITS.supplyCount[1]` in src/utils/supply.ts, copied rather than imported:
    * supply.ts reaches the settings store through dateUtils, and this module
@@ -188,6 +190,8 @@ export interface TargetInput {
   rampUp?: { add: number; every: number; upTo?: number | null } | null;
   /** Creating a weekly target partway through a week: 'fewer' (the default) scales the first week to the days left, 'full' asks for the whole count. */
   firstWeek?: 'fewer' | 'full';
+  /** A countdown for each unit, in whole minutes (1 to 180), that restarts when a unit is logged (`Task.timedMinutes` on a target). null removes it. Use this instead of `timed`, which a target cannot also have. */
+  timePerUnit?: number | null;
 }
 
 /** A countdown the task runs once started. Subtask stretches are not settable here. */
@@ -575,9 +579,17 @@ export function taskFieldsPatch(
         quotaRampEvery: null,
         quotaRampGoal: null,
         quotaRampHits: 0,
+        // On a target `timedMinutes` is the per-unit countdown, so it goes with it.
+        ...(input.timed === undefined ? { timedMinutes: null } : {}),
       } satisfies Partial<Task>);
     } else {
       const t = input.target;
+      if (t.timePerUnit !== undefined) {
+        if (input.timed != null) errors.push('Give target.timePerUnit or timed, not both: on a target the countdown is per unit.');
+        else if (t.timePerUnit === null) patch.timedMinutes = null;
+        else if (!inRange(t.timePerUnit, LIMITS.timePerUnit)) errors.push(`target.timePerUnit must be a whole number of minutes from ${LIMITS.timePerUnit[0]} to ${LIMITS.timePerUnit[1]}.`);
+        else patch.timedMinutes = t.timePerUnit;
+      }
       // With a cadence the count is arithmetic over the window, so it is not
       // asked for; the replica writes it once the whole patch is known
       // (`derivedTargetCount`). A placeholder stands in until then.

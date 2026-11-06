@@ -361,6 +361,34 @@ describe('target', () => {
   });
 });
 
+describe('a countdown for each unit of a target', () => {
+  it('writes the per-unit countdown on a weekly target', () => {
+    expect(ok({ target: { count: 5, per: 'week', timePerUnit: 30 } })).toMatchObject({ targetCount: 5, quotaPeriod: 'week', timedMinutes: 30 });
+  });
+
+  it('changes only the countdown on an existing target, and clears it with null', () => {
+    const current = existing({ targetCount: 5, quotaPeriod: 'week', timedMinutes: 30 });
+    expect(ok({ target: { per: 'week', timePerUnit: 45 } }, current)).toMatchObject({ timedMinutes: 45 });
+    expect(ok({ target: { per: 'week', timePerUnit: null } }, current)).toMatchObject({ timedMinutes: null });
+  });
+
+  it('leaves the countdown alone when not named', () => {
+    const current = existing({ targetCount: 5, quotaPeriod: 'week', timedMinutes: 30 });
+    expect('timedMinutes' in ok({ target: { count: 6, per: 'week' } }, current)).toBe(false);
+  });
+
+  it('refuses a countdown out of range, or given twice', () => {
+    expect(errorsOf({ target: { count: 5, per: 'week', timePerUnit: 0 } })).toMatch(/1 to 180/);
+    expect(errorsOf({ target: { count: 5, per: 'week', timePerUnit: 200 } })).toMatch(/1 to 180/);
+    expect(errorsOf({ target: { count: 5, per: 'week', timePerUnit: 30 }, timed: { minutes: 30 } })).toMatch(/not both/);
+  });
+
+  it('drops the countdown with the target', () => {
+    const current = existing({ targetCount: 5, quotaPeriod: 'week', timedMinutes: 30 });
+    expect(ok({ target: null }, current)).toMatchObject({ targetCount: null, timedMinutes: null });
+  });
+});
+
 describe('habit, window, follow-up, blockers', () => {
   it('makes a plain task an "avoid" habit, and refuses one on a chain or a target', () => {
     expect(ok({ habit: 'avoid' })).toMatchObject({ polarity: 'negative', showStreak: true });
