@@ -18,6 +18,7 @@ import {
   travelChoices,
   switchEstimateMode,
   travelModePickerOptions,
+  travelArrivePickerOptions,
   TRAVEL_ESTIMATE_STALE_MS,
   eventHasLocation,
   eventIsTravelEligible,
@@ -741,5 +742,14 @@ describe('travelModePickerOptions', () => {
     expect(travelModePickerOptions('driving', 0)[0].label).toBe('Settings default (Car)');
     expect(travelModePickerOptions('transit', 15)[0].label).toBe('Settings default (Walk if 15 min or less, else Transit)');
     expect(travelModePickerOptions('driving', 0).map(o => o.key)).toEqual(['default', 'driving', 'transit', 'walking', 'skip']);
+  });
+});
+
+describe('travelArrivePickerOptions', () => {
+  it('names what the Settings default resolves to, then lists every preset', () => {
+    const opts = travelArrivePickerOptions(10);
+    expect(opts[0]).toEqual({ key: 'default', label: 'Settings default (10 min early)' });
+    expect(opts.slice(1).map(o => o.key)).toEqual(['30', '15', '10', '5', '0', '-5', '-10', '-15']);
+    expect(opts.find(o => o.key === '0')?.label).toBe('On time');
   });
 });
