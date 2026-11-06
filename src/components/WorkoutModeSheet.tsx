@@ -1227,7 +1227,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         <View style={styles.noteEditor}>
                           {(['today', 'always'] as const).map(k => (
                             <View key={k} style={styles.noteField}>
-                              <Text style={styles.noteLabel}>{k === 'today' ? 'Today' : 'Every time'}</Text>
+                              <Text style={styles.noteLabel}>{k === 'today' ? 'Today' : 'Notes'}</Text>
                               <HelpText style={styles.noteHelp}>{NOTE_HELP[k]}</HelpText>
                               <TextField
                                 style={styles.noteInput}
@@ -1238,7 +1238,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                                 placeholderTextColor={colors.textTertiary}
                                 multiline
                                 autoFocus={noteFocus === k}
-                                accessibilityLabel={`${k === 'today' ? 'Note for today on' : 'Note every time on'} ${viewedInfo?.name ?? 'this exercise'}`}
+                                accessibilityLabel={`${k === 'today' ? 'Note for today on' : 'Notes on'} ${viewedInfo?.name ?? 'this exercise'}`}
                               />
                             </View>
                           ))}
@@ -1254,9 +1254,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                               onPress={() => openNote(viewed, 'always')}
                               activeOpacity={interaction.activeOpacity}
                               accessibilityRole="button"
-                              accessibilityLabel={`Edit the every time note: ${viewedInfo.notes}`}
+                              accessibilityLabel={`Edit the exercise notes: ${viewedInfo.notes}`}
                             >
-                              <Text style={styles.noteLabel}>Every time</Text>
+                              <Text style={styles.noteLabel}>Notes</Text>
                               <Text style={styles.noteText}>{viewedInfo.notes}</Text>
                             </TouchableOpacity>
                           )}
