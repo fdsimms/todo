@@ -94,6 +94,8 @@ export interface CreateExerciseInput {
   secondaryMuscles?: MuscleGroup[];
   otherNames?: string[];
   notes?: string;
+  /** For a bodyweight or assisted exercise, the share of body weight it moves, 0 to 1. Absent uses 1 for a custom exercise. */
+  bodyweightFraction?: number | null;
 }
 
 /**
@@ -119,6 +121,8 @@ export interface UpdateExerciseInput {
   otherNames?: string[];
   notes?: string;
   archived?: boolean;
+  /** For a bodyweight or assisted exercise, the share of body weight it moves, 0 to 1; null goes back to the usual one. Allowed on a built-in. */
+  bodyweightFraction?: number | null;
 }
 
 /**
@@ -131,7 +135,7 @@ export function updateExercise(replica: Replica, id: string, input: UpdateExerci
   const isBuiltIn = !replica.exercises().some(e => e.id === id && e.isCustom) && catalogExercise(replica.exercises(), id)?.builtIn === true;
   const movement = input.kind !== undefined || input.equipment !== undefined || input.primaryMuscles !== undefined || input.secondaryMuscles !== undefined;
   if (isBuiltIn && movement) {
-    throw new Error('A built-in exercise keeps the library\'s kind, equipment and muscles; only its name, otherNames, notes and archived change. Make a custom one with create_exercise for a different movement.');
+    throw new Error('A built-in exercise keeps the library\'s kind, equipment and muscles; only its name, otherNames, notes, bodyweightFraction and archived change. Make a custom one with create_exercise for a different movement.');
   }
   const made = replica.updateExercise(id, input);
   const row = catalogExercise(replica.exercises(), made.id);
@@ -910,6 +914,8 @@ export interface LogWorkoutInput {
   durationMinutes?: number | null;
   notes?: string;
   effort?: number | null;
+  /** The person's body weight in kg at the time, only if they said (the phone stamps one itself on a workout it starts). */
+  bodyweightKg?: number | null;
   exercises: LoggedExerciseInput[];
 }
 
@@ -995,6 +1001,7 @@ export function logWorkout(replica: Replica, input: LogWorkoutInput, now: Date =
     endedAt: end.toISOString(),
     notes: input.notes,
     effort: input.effort ?? null,
+    bodyweightKg: input.bodyweightKg ?? null,
     sets: setsFrom(input.exercises),
   });
   return { workout: workoutRow(replica, session, sets, namesOf(replica)) };
@@ -1006,6 +1013,8 @@ export interface UpdateWorkoutInput {
   effort?: number | null;
   startedAt?: string;
   durationMinutes?: number | null;
+  /** The body weight in kg to stamp on the workout; null clears it. */
+  bodyweightKg?: number | null;
   /** Replaces every set when given. */
   exercises?: LogWorkoutInput['exercises'];
 }
@@ -1043,6 +1052,7 @@ export function updateWorkout(replica: Replica, id: string, input: UpdateWorkout
     ...(input.title !== undefined ? { title: input.title } : {}),
     ...(input.notes !== undefined ? { notes: input.notes } : {}),
     ...(input.effort !== undefined ? { effort: input.effort } : {}),
+    ...(input.bodyweightKg !== undefined ? { bodyweightKg: input.bodyweightKg } : {}),
     ...(input.startedAt !== undefined ? { startedAt: start.toISOString() } : {}),
     ...(end ? { endedAt: end.toISOString() } : {}),
     ...(input.exercises ? { sets: setsKeepingWhatTheInputCannotSay(setsFrom(input.exercises), input.exercises, replica.workoutSets(id), delta) } : shifted && shifted.length ? { sets: shifted } : {}),

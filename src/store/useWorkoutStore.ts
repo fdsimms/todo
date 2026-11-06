@@ -247,6 +247,8 @@ export interface SessionPatch {
   endedAt?: string | null;
   /** Moves the session to another gym, or to none (null). */
   gymId?: string | null;
+  /** The body weight to stamp on it, in kilograms, or null to clear it (`WorkoutSession.bodyweightKg`). */
+  bodyweightKg?: number | null;
 }
 
 export interface FinishOptions extends Omit<SessionPatch, 'endedAt'> {
@@ -276,6 +278,8 @@ export interface FinishedSessionInput {
   endedAt: string;
   notes?: string;
   effort?: number | null;
+  /** The body weight to stamp on it, in kilograms (`WorkoutSession.bodyweightKg`). Absent or null leaves it without one. */
+  bodyweightKg?: number | null;
   /**
    * Leave the workout for the phone to write to Health on its next foreground
    * (`WorkoutSession.healthWritePending`). Set by the MCP server, which has no
@@ -940,28 +944,41 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     });
   };
 
+  /** One session's bodyweight volume, worked out again from its sets and the body weight now on its row. */
+  const refreshBodyweightVolume = (sessionId: string) => {
+    const sets = get().setsBySession[sessionId] ?? dbGetWorkoutSets(sessionId);
+    set({ bodyweightVolumeKgBySession: withVolume(get().bodyweightVolumeKgBySession, sessionId, bodyweightVolumeOf(sessionId, sets)) });
+  };
+
+  /** Every session's bodyweight volume again, for a change to an exercise's share that touches sessions already logged. */
+  const rebuildBodyweightVolumes = () => {
+    set({ bodyweightVolumeKgBySession: bodyweightVolumeBySession(get().exercises, get().sessions) });
+  };
+
   /**
-   * Stamps the body weight Health holds onto a workout that just started, and
-   * only if it still has none by the time the read comes back: the workout can
-   * be finished, deleted, or stamped by another path while Health answers, so
-   * the row is read again after the await rather than written from the copy
-   * taken before it. Nothing is stamped when reading Health is off, when it
-   * can't be asked, or when it holds no weigh-in in the last 90 days, and the
-   * workout then simply has no bodyweight figure.
+   * Stamps a body weight onto a workout that just started: the latest weigh-in
+   * Health holds, else the one typed in Settings (`workoutBodyweightKg`), and
+   * only if the row still has none by the time the read comes back: the
+   * workout can be finished, deleted, or stamped by another path while Health
+   * answers, so the row is read again after the await rather than written from
+   * the copy taken before it. Health is asked only while reading it is on. With
+   * neither a weigh-in nor a typed weight, or if the read fails with none typed,
+   * nothing is stamped and the workout simply has no bodyweight figure.
    */
   const stampBodyweight = async (sessionId: string) => {
     try {
-      if (!useSettingsStore.getState().healthReadEnabled) return;
-      const points = await healthStore().readRecentWeights(BODYWEIGHT_STAMP_WINDOW_DAYS);
-      if (points === null || !useSettingsStore.getState().healthReadEnabled) return;
-      const kg = latestWeight(points)?.kilograms ?? null;
-      if (kg === null || !(kg > 0)) return;
+      let kg: number | null = null;
+      if (useSettingsStore.getState().healthReadEnabled) {
+        const points = await healthStore().readRecentWeights(BODYWEIGHT_STAMP_WINDOW_DAYS);
+        // Settled again after the await: reading Health may have been turned off while it was in flight.
+        if (points !== null && useSettingsStore.getState().healthReadEnabled) kg = latestWeight(points)?.kilograms ?? null;
+      }
+      kg = positiveOrNull(kg) ?? positiveOrNull(useSettingsStore.getState().workoutBodyweightKg);
+      if (kg === null) return;
       const current = dbGetWorkoutSession(sessionId);
       if (!current || current.bodyweightKg) return;
-      const row: WorkoutSession = { ...current, bodyweightKg: kg };
-      putSession(row);
-      const sets = get().setsBySession[sessionId] ?? dbGetWorkoutSets(sessionId);
-      set({ bodyweightVolumeKgBySession: withVolume(get().bodyweightVolumeKgBySession, sessionId, bodyweightVolumeOf(sessionId, sets)) });
+      putSession({ ...current, bodyweightKg: kg });
+      refreshBodyweightVolume(sessionId);
     } catch {
       // A failed read leaves the workout without a figure, the same as no reading.
     }
@@ -1421,6 +1438,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         patch.loadEntry !== undefined ? patch.loadEntry : base.loadEntry,
       ));
       putExercise(row);
+      // A new share changes the bodyweight volume of every workout already logged with this exercise.
+      if ((row.bodyweightFraction ?? null) !== (base.bodyweightFraction ?? null) || row.kind !== base.kind) rebuildBodyweightVolumes();
       return row;
     },
 
@@ -1960,6 +1979,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         startedAt: patch.startedAt ?? existing.startedAt,
         endedAt: patch.endedAt !== undefined ? patch.endedAt : existing.endedAt,
         gymId: patch.gymId !== undefined ? patch.gymId : existing.gymId ?? null,
+        bodyweightKg: patch.bodyweightKg !== undefined ? positiveOrNull(patch.bodyweightKg) : existing.bodyweightKg ?? null,
       };
       if (row.endedAt !== null && new Date(row.endedAt).getTime() < new Date(row.startedAt).getTime()) return 'order';
       // A patch that changes nothing writes nothing. Saving the row anyway
@@ -1967,7 +1987,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       // one a peer has changed since (an agent's sets-only edit sending a
       // stale, unwritten copy over the phone's Health id is how a workout got
       // into Health twice).
-      if (row.title === existing.title && row.notes === existing.notes && row.effort === existing.effort && (row.gymId ?? null) === (existing.gymId ?? null) && sameSpan(row, existing)) {
+      if (row.title === existing.title && row.notes === existing.notes && row.effort === existing.effort && (row.gymId ?? null) === (existing.gymId ?? null) && (row.bodyweightKg ?? null) === (existing.bodyweightKg ?? null) && sameSpan(row, existing)) {
         return existing;
       }
       // Recorded, since nothing else says the times were moved by a person
@@ -2005,6 +2025,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const retimed = existing.endedAt !== null && row.endedAt !== null && !sameSpan(existing, row);
       const rewrite = retimed && stale !== null && workoutHealthWriteOn();
       putSession(row);
+      if ((row.bodyweightKg ?? null) !== (existing.bodyweightKg ?? null)) refreshBodyweightVolume(row.id);
       if (rewrite) {
         void (async () => {
           // In that order, and the write happens either way: a retract that
@@ -2087,6 +2108,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         healthWritePending: input.healthWritePending === true,
         measuredOnWatch: false,
         timesEdited: false,
+        bodyweightKg: positiveOrNull(input.bodyweightKg ?? null),
       };
       // Done when it ended unless a set says otherwise: a set logged after the
       // fact was done, and a planned set has no place in a record.

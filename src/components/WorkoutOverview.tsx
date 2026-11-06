@@ -43,6 +43,7 @@ export function WorkoutOverview({ recent, live, onSeeAll, refreshControl, bottom
   const sessions = useWorkoutStore(s => s.sessions);
   const setCounts = useWorkoutStore(s => s.setCounts);
   const volumeKgBySession = useWorkoutStore(s => s.volumeKgBySession);
+  const bodyweightVolumeKgBySession = useWorkoutStore(s => s.bodyweightVolumeKgBySession);
   const routines = useWorkoutStore(s => s.routines);
   const programs = useWorkoutStore(s => s.programs);
   const exercises = useWorkoutStore(s => s.exercises);
@@ -85,8 +86,10 @@ export function WorkoutOverview({ recent, live, onSeeAll, refreshControl, bottom
       workouts: inWeek.length,
       sets: inWeek.reduce((n, s) => n + (setCounts[s.id] ?? 0), 0),
       volumeKg: inWeek.reduce((n, s) => n + (volumeKgBySession[s.id] ?? 0), 0),
+      // Estimated, and a figure of its own: never added to the lifted one.
+      bodyweightVolumeKg: inWeek.reduce((n, s) => n + (bodyweightVolumeKgBySession[s.id] ?? 0), 0),
     };
-  }, [finished, todayKey, weekStartsOn, dayResetTime, setCounts, volumeKgBySession]);
+  }, [finished, todayKey, weekStartsOn, dayResetTime, setCounts, volumeKgBySession, bodyweightVolumeKgBySession]);
 
   const heading = (text: string, action?: ReactNode) => (
     <View style={styles.headingRow}>
@@ -140,6 +143,7 @@ export function WorkoutOverview({ recent, live, onSeeAll, refreshControl, bottom
           exercises={week.workouts}
           sets={week.sets}
           volumeKg={week.volumeKg}
+          bodyweightVolumeKg={week.bodyweightVolumeKg}
           unit={unit}
           style={styles.tiles}
           countLabel={week.workouts === 1 ? 'Workout' : 'Workouts'}

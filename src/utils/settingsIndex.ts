@@ -1100,6 +1100,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['dumbbells', 'each', 'pair', 'total', 'both', 'per hand', 'per arm', 'gym', 'lifting'] },
   { id: 'defaultRestSeconds', groupId: 'workouts', label: 'Rest between sets', section: 'Workouts',
     keywords: ['rest timer', 'break', 'seconds', 'gym', 'lifting', 'countdown'] },
+  { id: 'workoutBodyweightKg', groupId: 'workouts', label: 'Body weight for workouts', section: 'Workouts',
+    keywords: ['bodyweight', 'pull-up', 'push-up', 'dip', 'weigh-in', 'volume', 'estimate', 'gym', 'lifting', 'kg', 'lb'] },
   { id: 'exerciseImagesEnabled', groupId: 'workouts', label: 'Exercise photos', section: 'Workouts',
     keywords: ['images', 'pictures', 'demo', 'form', 'how to', 'gym', 'lifting', 'download', 'internet', 'network'] },
   { id: 'workoutLiveActivity', iosOnly: true, groupId: 'workouts', label: 'Live Activity while working out', section: 'Workouts',
