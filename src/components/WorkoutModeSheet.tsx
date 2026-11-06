@@ -454,6 +454,19 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     setOpenSetId(null);
   };
 
+  // Several picked at once, in tap order. A superset is made by joining each to the
+  // first, which puts every partner right below the group, so the order is kept.
+  const addExercises = (exerciseIds: string[], asSuperset: boolean) => {
+    if (!session) return;
+    const store = useWorkoutStore.getState();
+    const added = exerciseIds.filter(id => typeof store.addSessionExercise(session.id, id) !== 'string');
+    if (added.length === 0) return;
+    if (asSuperset) for (const id of added.slice(1)) store.joinSessionSuperset(session.id, added[0], id);
+    animateLayout();
+    setViewedId(added[0]);
+    setOpenSetId(null);
+  };
+
   // Described exercises are added after what is there, and the view goes to
   // the first new one. A `new:` exercise is made here, on confirm.
   const addDescribed = (draft: RoutineDraft) => {
@@ -1537,6 +1550,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         visible={visible && picking !== null}
         onClose={() => setPicking(null)}
         onPick={picking === 'swap' ? swapExercise : addExercise}
+        onPickMany={picking === 'swap' ? undefined : addExercises}
         addedIds={exercises.map(e => e.exerciseId)}
         addedLabel="In workout"
         suggestedIds={picking === 'swap' && viewed ? (gym ? candidatesFor(viewed.exerciseId) : swapCandidates(exerciseRows, viewed.exerciseId, exercises.map(e => e.exerciseId))) : undefined}

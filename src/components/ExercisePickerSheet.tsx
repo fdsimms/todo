@@ -6,6 +6,9 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SearchField } from './SearchField';
 import { HighlightedText } from './HighlightedText';
 import { InlineAction } from './InlineAction';
+import { PressableScale } from './PressableScale';
+import { SelectionDot } from './SelectionDot';
+import { Toggle } from './Toggle';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { PillGroup } from './PillGroup';
 import { HelpText } from './HelpText';
@@ -38,6 +41,15 @@ interface Props {
   addedLabel?: string;
   /** Exercises to list first while nothing is typed, in order: what a swap offers in place of the one shown. */
   suggestedIds?: readonly string[];
+  /**
+   * Turns the list into a multi-select: a tap stages the exercise instead of
+   * picking it, and a footer button adds everything staged in one go, in the
+   * order it was tapped. `superset` is true when two or more were staged and
+   * the person left "Make a superset" on. Without it a tap picks one and closes
+   * (a swap, a choice for one imported name), so a caller whose list can't hold
+   * a superset passes only `onPick`.
+   */
+  onPickMany?: (exerciseIds: string[], superset: boolean) => void;
 }
 
 /** What a set records, as the create form and the exercise editor offer it. */
@@ -70,7 +82,7 @@ const NAME_REFUSED: Record<string, string> = {
  * the chest. The field's own text is offered as the new exercise's name, the
  * way a `PillGroup`'s filter offers to create what it can't find.
  */
-export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], addedLabel = 'Added', suggestedIds }: Props) {
+export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], addedLabel = 'Added', suggestedIds, onPickMany }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const exercises = useWorkoutStore(s => s.exercises);
@@ -90,6 +102,11 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
       ...found.filter(r => !rank.has(r.exercise.id)),
     ];
   }, [visible, exercises, search.query, suggestedIds, filter.filters, narrowed]);
+
+  // The multi-select's staged exercises in tap order, and the superset switch.
+  const [staged, setStaged] = useState<string[]>([]);
+  const [superset, setSuperset] = useState(false);
+  const multi = onPickMany !== undefined;
 
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
@@ -123,6 +140,8 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
 
   const close = () => {
     resetForm();
+    setStaged([]);
+    setSuperset(false);
     search.clear();
     filter.clear();
     onClose();
@@ -131,13 +150,31 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
   const formDirty = creating && (cleanWorkoutName(name) !== '' || muscles.length > 0 || helpingMuscles.length > 0 || likeId !== null);
   const handleCancel = () => {
     if (choosingLike) { closeLike(); return; }
-    if (!formDirty) { close(); return; }
-    confirmDiscard(close, { title: 'Discard this exercise?', message: 'It hasn’t been saved yet. If you leave now, it will be lost.' });
+    if (formDirty) {
+      confirmDiscard(close, { title: 'Discard this exercise?', message: 'It hasn’t been saved yet. If you leave now, it will be lost.' });
+      return;
+    }
+    if (staged.length > 0) {
+      confirmDiscard(close, { title: 'Discard your selection?', message: 'The exercises you picked haven’t been added yet. If you leave now, they won’t be.' });
+      return;
+    }
+    close();
   };
 
   const pick = (id: string) => {
     haptics.tap();
+    if (multi) {
+      setStaged(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+      return;
+    }
     onPick(id);
+    close();
+  };
+
+  const addStaged = () => {
+    if (!onPickMany || staged.length === 0) return;
+    haptics.success();
+    onPickMany(staged, superset && staged.length > 1);
     close();
   };
 
@@ -182,6 +219,14 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
       return;
     }
     haptics.success();
+    if (multi) {
+      // Staged with the rest, so a new exercise can join a superset before anything is added.
+      setStaged(prev => [...prev, result.id]);
+      resetForm();
+      search.clear();
+      filter.clear();
+      return;
+    }
     onPick(result.id);
     close();
   };
@@ -189,6 +234,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
   const renderRow = useCallback(({ item }: { item: ExerciseSearchResult }) => {
     const e = item.exercise;
     const isAdded = !choosingLike && added.has(e.id);
+    const isStaged = !choosingLike && multi && staged.includes(e.id);
     return (
       <TouchableOpacity
         style={[styles.row, isAdded && styles.rowAdded]}
@@ -196,7 +242,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
         disabled={isAdded}
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="button"
-        accessibilityState={{ disabled: isAdded }}
+        accessibilityState={{ disabled: isAdded, ...(multi && !choosingLike ? { selected: isStaged } : {}) }}
         accessibilityLabel={`${e.name}, ${describeExercise(e)}${isAdded ? `, ${addedLabel.toLowerCase()}` : ''}`}
       >
         <View style={styles.rowText}>
@@ -204,11 +250,12 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
           <Text style={styles.rowMeta} numberOfLines={1}>{describeExercise(e, item.viaOtherName)}</Text>
         </View>
         {isAdded && <Text style={styles.addedTag}>{addedLabel}</Text>}
+        {multi && !choosingLike && !isAdded && <SelectionDot selected={isStaged} onPress={() => pick(e.id)} />}
       </TouchableOpacity>
     );
     // `pick` closes over onPick and the field, which are stable for a render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [styles, added, addedLabel, onPick, choosingLike, exercises]);
+  }, [styles, added, addedLabel, onPick, choosingLike, exercises, multi, staged]);
 
   const typed = search.query.trim();
 
@@ -345,6 +392,33 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
                 </EmptyNote>
               }
             />
+            {multi && !choosingLike && staged.length > 0 && (
+              <View style={styles.footer}>
+                {staged.length > 1 && (
+                  <TouchableOpacity
+                    style={styles.supersetRow}
+                    onPress={() => { haptics.tap(); setSuperset(v => !v); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: superset }}
+                    accessibilityLabel="Make a superset"
+                  >
+                    <View style={styles.rowText}>
+                      <Text style={styles.supersetLabel}>Make a superset</Text>
+                      <HelpText style={styles.supersetHint}>Alternate sets between these {staged.length} exercises.</HelpText>
+                    </View>
+                    <Toggle value={superset} />
+                  </TouchableOpacity>
+                )}
+                <PressableScale
+                  style={styles.addButton}
+                  onPress={addStaged}
+                  accessibilityLabel={`Add ${staged.length} ${staged.length === 1 ? 'exercise' : 'exercises'}`}
+                >
+                  <Text style={styles.addLabel}>Add {staged.length} {staged.length === 1 ? 'exercise' : 'exercises'}</Text>
+                </PressableScale>
+              </View>
+            )}
           </>
         )}
       </View>
@@ -370,6 +444,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowNameHit: { color: colors.accentText, fontWeight: fontWeight.semibold },
   rowMeta: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
   addedTag: { color: colors.textTertiary, fontSize: font.sm },
+  footer: {
+    paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator, backgroundColor: colors.bg,
+  },
+  supersetRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.smd, marginBottom: spacing.smd },
+  supersetLabel: { color: colors.text, fontSize: font.md },
+  supersetHint: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.xxs },
+  addButton: {
+    backgroundColor: colors.accentFill, borderRadius: radius.lg,
+    alignItems: 'center', justifyContent: 'center', minHeight: 48, paddingVertical: spacing.smd,
+  },
+  addLabel: { color: colors.onAccent, fontSize: font.lg, fontWeight: fontWeight.semibold },
   form: { padding: spacing.md, paddingBottom: spacing.xl },
   nameInput: {
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, color: colors.text,
