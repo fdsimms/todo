@@ -2107,6 +2107,13 @@ const TaskItemRow = React.memo(function TaskItem({
     return live.length > 1 ? `${first} +${live.length - 1}` : first;
   });
 
+  // The blocker the chip names, so tapping it can open that task. A string, so
+  // an unchanged blocker doesn't re-render the row.
+  const blockerId = useTaskStore(() => {
+    const live = liveBlockersOf(task, resolveBlocker);
+    return live.length > 0 ? live[0].id : undefined;
+  });
+
   // Resolved through the registry rather than the store's array, the same way
   // the blocker above is: a person who has been deleted or archived has already
   // freed this task (canWaitOn), so the chip goes with the wait.
@@ -4335,14 +4342,32 @@ const TaskItemRow = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
-            {!!blockerTitle && (
+            {!!blockerTitle && (onEdit && blockerId ? (
+              // Opens the blocker so what this task is waiting on is one tap
+              // away, rather than something to go and find in the list.
+              <TouchableOpacity
+                style={[styles.metaChip, styles.waitingChip]}
+                onPress={() => {
+                  haptics.tap();
+                  onEdit(blockerId);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Waiting on ${blockerTitle}. Double tap to open it.`}
+              >
+                <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
+                <Text style={styles.waitingLabel} numberOfLines={1}>
+                  After {blockerTitle}
+                </Text>
+              </TouchableOpacity>
+            ) : (
               <View style={[styles.metaChip, styles.waitingChip]} accessibilityLabel={`Waiting on ${blockerTitle}`}>
                 <Ionicons name="hourglass" size={iconSize.xs} color={colors.warningText} />
                 <Text style={styles.waitingLabel} numberOfLines={1}>
                   After {blockerTitle}
                 </Text>
               </View>
-            )}
+            ))}
             {/* Tappable where the blocker chip above isn't, and that asymmetry
                 is the point (#2087): a task waiting on a task frees itself when
                 the blocker is ticked off, where nobody completes a person. This
