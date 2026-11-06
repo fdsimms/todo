@@ -101,6 +101,11 @@ describe('formatRecordChange', () => {
     expect(formatRecordChange({ type: 'weight', value: 90, previous: 85, set: set({ reps: 3 }) }, 'weight_reps', 'kg'))
       .toEqual({ before: '85 kg', after: '90 kg × 3' });
   });
+
+  it('names the old reps when a heaviest weight only tied the old weight', () => {
+    expect(formatRecordChange({ type: 'weight', value: 43, previous: 43, previousReps: 15, set: set({ reps: 20 }) }, 'weight_reps', 'kg'))
+      .toEqual({ before: '43 kg × 15', after: '43 kg × 20' });
+  });
 });
 
 describe('the chart\'s words and numbers', () => {

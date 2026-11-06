@@ -109,16 +109,19 @@ export function formatRecordValue(
  * A record beaten this workout, as the finish summary shows it: the old figure,
  * then the new one ("102 kg" then "104.5 kg"). A best set of N already names its
  * reps in the label, so its new figure leaves the "× 8" off; a heaviest weight
- * keeps the reps it was lifted for, since those aren't in its label.
+ * keeps the reps it was lifted for, since those aren't in its label. A heaviest
+ * weight that only tied the old weight names the old reps too ("95 lb × 15"),
+ * or "was 95 lb" would read as no change.
  */
 export function formatRecordChange(
-  record: { type: RecordType; value: number; previous: number; reps?: number; set: Pick<WorkoutSet, 'reps' | 'distanceM'> | null },
+  record: { type: RecordType; value: number; previous: number; previousReps?: number; reps?: number; set: Pick<WorkoutSet, 'reps' | 'distanceM'> | null },
   kind: ExerciseKind,
   unit: WeightUnit,
   scale = 1,
 ): { before: string; after: string } {
+  const figure = formatRecordFigure(record.type, kind, record.previous, unit, scale);
   return {
-    before: formatRecordFigure(record.type, kind, record.previous, unit, scale),
+    before: record.previousReps != null ? `${figure} × ${record.previousReps}` : figure,
     after: record.type === 'repsAt'
       ? formatRecordFigure(record.type, kind, record.value, unit, scale)
       : formatRecordValue(record, kind, unit, scale),
