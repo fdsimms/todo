@@ -112,6 +112,7 @@ import { SegmentedControl } from './SegmentedControl';
 import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, TRAVEL_MODES, TRAVEL_MODE_LABELS, travelSourceStart, travelWalkUnderFor, type TravelChoice } from '../utils/travelTasks';
 import { setTravelModeForEvent } from '../utils/travelModeWrite';
 import { TravelModeSheet } from './TravelModeSheet';
+import { TravelArriveSheet } from './TravelArriveSheet';
 import { openEventInSystemCalendar } from '../utils/calendarSync';
 import { alertFailedWithSettings } from '../utils/permissionAlert';
 import { isDemoModeActive } from '../utils/demoState';
@@ -855,6 +856,8 @@ const TaskItemRow = React.memo(function TaskItem({
   const travelOptions = travelCompareModes ? travelChoices(travelHeld) : [];
   const [showTravelPicker, setShowTravelPicker] = useState(false);
   const mountTravelPicker = useSheetMount(showTravelPicker);
+  const [showArrivePicker, setShowArrivePicker] = useState(false);
+  const mountArrivePicker = useSheetMount(showArrivePicker);
   // A tap on another way switches the event to it; a tap on the one in use (or
   // on the lone estimate) opens the full "Getting there" card, which is also
   // where the Settings default and "no leave-by task" are.
@@ -4225,12 +4228,22 @@ const TaskItemRow = React.memo(function TaskItem({
                 buttons whatever the width; with the start time, in the warning
                 colour, when the arrival is after the start. */}
             {travelArrival !== null && (
-              <View style={[styles.metaChip, styles.travelDisruptionChip]} accessibilityLabel={travelArrival.text}>
+              <TouchableOpacity
+                style={[styles.metaChip, styles.travelDisruptionChip]}
+                disabled={selectionMode}
+                onPress={() => { haptics.tap(); setShowArrivePicker(true); }}
+                hitSlop={8}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={travelArrival.text}
+                accessibilityHint="Choose how early to arrive"
+              >
                 <Ionicons name="flag-outline" size={iconSize.xs} color={travelArrival.late ? colors.warningText : colors.textSecondary} />
                 <Text style={travelArrival.late ? styles.travelDisruptionLabel : styles.scheduledLabel} numberOfLines={2}>
                   {travelArrival.text}
                 </Text>
-              </View>
+                <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
+              </TouchableOpacity>
             )}
             {placeReminderLabel !== null && (
               <View style={styles.metaChip} accessibilityLabel={`Reminder when ${placeReminderLabel.toLowerCase()}`}>
@@ -5852,6 +5865,13 @@ const TaskItemRow = React.memo(function TaskItem({
           eventId={task.generatedSourceId ? localTravelEventId(task.generatedSourceId) : null}
           sourceId={task.generatedSourceId ?? null}
           onClose={() => setShowTravelPicker(false)}
+        />
+      )}
+      {mountArrivePicker && (
+        <TravelArriveSheet
+          visible={showArrivePicker}
+          eventId={task.generatedSourceId ? localTravelEventId(task.generatedSourceId) : null}
+          onClose={() => setShowArrivePicker(false)}
         />
       )}
       {mountPantryCheck && pantryCheckId && (

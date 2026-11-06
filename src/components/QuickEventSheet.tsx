@@ -39,11 +39,11 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
-  TRAVEL_ARRIVE_CHOICES,
   TRAVEL_MODE_LABELS,
   TRAVEL_ORIGIN_PHONE,
   TRAVEL_SKIP_KEY,
   describeArrival,
+  travelArrivePickerOptions,
   originCandidates,
   travelModePickerOptions,
   travelOriginFor,
@@ -1086,10 +1086,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   ];
   const travelModeOptions: EventOption[] = travelModePickerOptions(defaultTravelMode, walkUnderMinutes);
   const travelChipLabel = effectiveTravelSkip ? 'No leave-by task' : TRAVEL_MODE_LABELS[effectiveTravelMode ?? defaultTravelMode];
-  const arriveOptions: EventOption[] = [
-    { key: 'default', label: `Settings default (${describeArrival(defaultArriveEarly)})` },
-    ...TRAVEL_ARRIVE_CHOICES.map(m => ({ key: String(m), label: describeArrival(m) })),
-  ];
+  const arriveOptions: EventOption[] = travelArrivePickerOptions(defaultArriveEarly);
   // Only for an event with a place and a time, the only kind a "Leave for" task is written for.
   // A trip clause typed in the line shows its chip even before a place is named.
   const typedTrip = draft.travelMode !== undefined || draft.arriveEarlyMinutes !== undefined || draft.travelOriginId !== undefined;
