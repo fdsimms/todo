@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { GroceryItem, MealSlot } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { nutritionFor } from '../utils/foodNutrition';
-import { describeProduct } from '../utils/groceryProduct';
+import { describeProduct, describeProductOfItem } from '../utils/groceryProduct';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { BarcodeScanSheet, type ScanProductDraft } from './BarcodeScanSheet';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
@@ -301,7 +301,12 @@ export function ScanToLogFlow({
       />
       <NutritionPanelSheet
         visible={panelSubject !== null}
-        foodName={panelSubject?.name ?? ''}
+        // The product the figures will be filed under, not just the food: a
+        // brand typed on the "About this label" card has to show here, or the
+        // sheet reads as if it were filling in the generic food.
+        foodName={panelSubject
+          ? describeProductOfItem({ brand: panelSubject.brand ?? null, variant: panelSubject.variant ?? null }, panelSubject.name) ?? panelSubject.name
+          : ''}
         // A label with its photo already taken is read on open; one without it
         // (a caller that still asks for the name first) opens the camera.
         openCamera={panelFor === null && !!label && !label.photo}
@@ -327,8 +332,13 @@ export function ScanToLogFlow({
               ? addProduct(itemId, { brand: panelSubject.brand ?? null, variant: panelSubject.variant ?? null }, { promote: false })
               : null;
             productId = box?.id ?? null;
-            if (productId) setProductNutrition(productId, panel);
-            else setItemNutrition(itemId, panel);
+            if (productId) {
+              setProductNutrition(productId, panel);
+              // A brand's label doesn't set the generic food's figures, but a
+              // food with none still needs something to log by name: the first
+              // box filed seeds it, and later boxes never overwrite it.
+              if (panel && !item.nutrition) setItemNutrition(itemId, panel);
+            } else setItemNutrition(itemId, panel);
           } else if (productId) {
             // Onto the box when the scan named one, onto the catalog row when
             // it didn't — the same precedence `nutritionFor` reads them back
