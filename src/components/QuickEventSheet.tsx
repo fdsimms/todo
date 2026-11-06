@@ -69,6 +69,7 @@ import {
   readSavedEvents,
   recordSavedEventUse,
   removeSavedEvent,
+  saveEventAs,
   savedEventRecall,
   sortedSavedEvents,
   suggestSavedEvents,
@@ -704,6 +705,30 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
     setText(next);
     titleCaret.moveCaret(next);
     setMemoryDismissedKey(null);
+  };
+
+  // Keeps the card as typed so far as a favorite, before the event is added.
+  // Adding it afterwards refreshes it (`recordSavedEventUse`), and the toast
+  // no longer offers it. Read fresh, not from state, so a sync that landed
+  // while the card was open isn't written back over.
+  const favoriteTitle = draft.title.trim();
+  const canFavorite = !isEditing && favoriteTitle !== '';
+  const isFavorite = savedEventMatch !== null;
+  const addFavorite = () => {
+    if (!canFavorite || isFavorite) return;
+    const fields: SavedEventFields = {
+      location: effectiveLocation,
+      place: effectivePlace ? { latitude: effectivePlace.latitude, longitude: effectivePlace.longitude } : null,
+      durationMinutes: allDay ? null : effectiveDuration,
+      alertMinutes: effectiveAlert,
+      availability: effectiveAvailability,
+      calendarTitle: effectiveCalendar?.title ?? null,
+    };
+    const next = saveEventAs(readSavedEvents(), favoriteTitle, fields, null, Date.now());
+    writeSavedEvents(next);
+    haptics.success();
+    animateLayout();
+    setSavedEventList(next);
   };
 
   const confirmUnsave = (event: SavedEvent) => {
@@ -1482,12 +1507,12 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                   onPress={() => { haptics.tap(); animateLayout(); setSavedOpen(o => !o); }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel="Saved events"
+                  accessibilityLabel="Favorite events"
                   accessibilityValue={{ text: `${savedList.length}` }}
                   accessibilityState={{ expanded: savedOpen }}
                 >
                   <Ionicons name="bookmark" size={iconSize.sm} color={colors.accent} />
-                  <Text style={styles.savedHeaderText}>Saved events</Text>
+                  <Text style={styles.savedHeaderText}>Favorite events</Text>
                   <Text style={styles.placeAddress}>{savedList.length}</Text>
                   <RotatingChevron open={savedOpen} size={iconSize.sm} color={colors.textSecondary} />
                 </TouchableOpacity>
@@ -1524,7 +1549,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
                   onPress={() => pickSaved(event)}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel={`Use saved event ${event.title}, ${describeSavedEvent(event)}`}
+                  accessibilityLabel={`Use favorite event ${event.title}, ${describeSavedEvent(event)}`}
                 >
                   <Ionicons name="bookmark" size={iconSize.sm} color={colors.accent} />
                   <View style={styles.savedText}>
@@ -1648,6 +1673,26 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
           )}
 
           {section('Details', detailRows)}
+
+          {canFavorite && (
+            <View style={styles.placeOffer}>
+              <InlineAction
+                icon={isFavorite ? 'star' : 'star-outline'}
+                label={isFavorite ? 'Favorite' : 'Add to favorites'}
+                variant="neutral"
+                disabled={isFavorite}
+                onPress={addFavorite}
+                accessibilityLabel={isFavorite
+                  ? `${favoriteTitle} is a favorite event`
+                  : `Add ${favoriteTitle} to favorite events so you can add it again quickly`}
+              />
+              <HelpText style={styles.placeOfferText}>
+                {isFavorite
+                  ? 'Listed under Favorite events. Adding it keeps it up to date.'
+                  : 'Re-add it with one tap from Favorite events.'}
+              </HelpText>
+            </View>
+          )}
 
           {isEditing && original && (
             <View style={styles.deleteRow}>

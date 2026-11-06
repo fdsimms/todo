@@ -1197,9 +1197,9 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // Booking is work the app is reminding you of, so it waits out vacation.
     pausedOnVacation: true,
     enabledKey: 'bookEventTasks',
-    label: 'Book saved events',
-    onHint: 'Adds a task to book a saved event when its interval is nearly up',
-    offHint: 'No task to book a saved event',
+    label: 'Book favorite events',
+    onHint: 'Adds a task to book a favorite event when its interval is nearly up',
+    offHint: 'No task to book a favorite event',
     icon: 'calendar-number-outline',
     // A saved event lives in a setting, not a row, like eventTask's rules.
     sourced: false,
