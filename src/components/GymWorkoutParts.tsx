@@ -25,7 +25,8 @@ export function GymLine({ name, unavailableCount, onChoose, onSwapAll }: {
   name: string | null;
   unavailableCount: number;
   onChoose: () => void;
-  onSwapAll: () => void;
+  /** Absent where there is no workout to swap in (the Workouts screen). */
+  onSwapAll?: () => void;
 }) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -42,7 +43,7 @@ export function GymLine({ name, unavailableCount, onChoose, onSwapAll }: {
         <Text style={styles.lineText} numberOfLines={1}>{name ?? 'Choose a gym'}</Text>
         <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
       </TouchableOpacity>
-      {unavailableCount >= 2 && (
+      {unavailableCount >= 2 && onSwapAll && (
         <InlineAction label={`Swap all unavailable (${unavailableCount})`} surface="page" onPress={onSwapAll} />
       )}
     </View>
@@ -112,7 +113,7 @@ export function GymNoteBox({ gymName, note, editing, draft, onChangeDraft, onCom
   if (editing) {
     return (
       <>
-        <FieldLabel>Note</FieldLabel>
+        <FieldLabel style={styles.noteFieldLabel}>Note</FieldLabel>
         <TextField
           style={styles.noteInput}
           value={draft}
@@ -156,8 +157,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8, marginBottom: spacing.xxs,
   },
   noteText: { color: colors.text, fontSize: font.md },
+  // The label clears the chips above it; the field sits directly under its label.
+  noteFieldLabel: { marginTop: spacing.md, marginBottom: spacing.xsm },
   noteInput: {
     color: colors.text, fontSize: font.md, backgroundColor: colors.bgTertiary, borderRadius: radius.md,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 48, marginTop: spacing.sm,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.smd, minHeight: 48,
   },
 });

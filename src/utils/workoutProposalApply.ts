@@ -2,6 +2,8 @@ import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { exerciseProposal, proposalWrites, type ExerciseProposal } from './workoutProposal';
 import { sessionPlan } from './routineVersions';
+import { useGymStore } from '../store/useGymStore';
+import { gymIncrementKg, gymSettingFor } from './gyms';
 
 /**
  * "Use 82.5 kg" against the stores: the half of the suggestion card that
@@ -15,6 +17,11 @@ export function liveProposal(sessionId: string, exerciseId: string): ExercisePro
   const session = workouts.sessions.find(s => s.id === sessionId);
   if (!session) return null;
   const settings = useSettingsStore.getState();
+  // What workout mode's card read for this gym, so a Lock Screen or widget Use
+  // lands on the same load the card showed.
+  const gyms = useGymStore.getState();
+  const gym = session.gymId ? gyms.gyms.find(g => g.id === session.gymId) ?? null : null;
+  const gymSetting = gymSettingFor(gyms.settings, gym?.id, exerciseId);
   return exerciseProposal({
     exerciseId,
     exercises: workouts.exercises,
@@ -27,6 +34,9 @@ export function liveProposal(sessionId: string, exerciseId: string): ExercisePro
     exceptSessionId: session.id,
     plateInventory: settings.plateInventory,
     unit: settings.workoutUnit,
+    gymBarKg: gymSetting?.barKg ?? null,
+    gymIncrementKg: gymIncrementKg(gymSetting),
+    gymDumbbells: gym?.dumbbells ?? null,
   });
 }
 

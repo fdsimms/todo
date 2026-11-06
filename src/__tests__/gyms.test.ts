@@ -6,7 +6,7 @@ import {
 import { EXERCISE_LIBRARY } from '../utils/exerciseLibrary';
 
 const gym = (over: Partial<Gym> = {}): Gym => ({
-  id: 'g1', name: 'Planet', equipment: ['dumbbell', 'machine', 'cable'], placeText: '', latitude: 40, longitude: -74,
+  id: 'g1', name: 'Planet', equipment: ['dumbbell', 'machine', 'cable'], dumbbells: null, placeText: '', latitude: 40, longitude: -74,
   radiusM: 150, sortOrder: 1, archived: false, createdAt: '2026-01-01T00:00:00.000Z', ...over,
 });
 const none: Exercise[] = [];

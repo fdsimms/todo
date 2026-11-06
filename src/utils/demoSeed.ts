@@ -3576,7 +3576,12 @@ function seedWorkouts(today: Date): void {
   // not the other: lower days at home (no cable), upper days at the big gym.
   // Neither has a pin: demo mode never reads where the phone is.
   const gyms = useGymStore.getState();
-  const homeGym = gyms.addGym({ name: 'Home gym', equipment: ['barbell', 'dumbbell', 'band'] });
+  const homeGym = gyms.addGym({
+    name: 'Home gym',
+    equipment: ['barbell', 'dumbbell', 'band'],
+    // Adjustable dumbbells that stop at 24 kg, so a suggested weight never goes past them.
+    dumbbells: { minKg: 2, maxKg: 24, stepKg: 2 },
+  });
   const bigGym = gyms.addGym({
     name: 'Planet Fitness',
     equipment: [

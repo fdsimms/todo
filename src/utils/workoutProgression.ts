@@ -1,4 +1,5 @@
 import type {
+  DumbbellRack,
   ExerciseEquipment,
   ExerciseKind,
   MuscleGroup,
@@ -14,6 +15,7 @@ import type {
 import { kgToUnit, unitToKg, type WeightUnit } from './weightLog';
 import { formatWeightNumber, weightFromDisplay, weightToDisplay } from './workoutData';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad, warmupRamp } from './plateMath';
+import { rackAbove, rackBelow, snapToRack } from './dumbbellRack';
 
 /**
  * The next session's targets for one exercise, proposed from what was lifted
@@ -125,6 +127,12 @@ export interface LoadContext {
   /** The grid a dumbbell, machine or cable is stepped on, in kg. */
   incrementKg: number;
   /**
+   * The dumbbells the gym has. Only read for dumbbell equipment (`activeRack`),
+   * so a rack handed to a cable exercise changes nothing. Null or absent when
+   * the gym hasn't said, which never limits a load.
+   */
+  rack?: DumbbellRack | null;
+  /**
    * What a stored weight is multiplied by to be read: 2 for a two-dumbbell
    * exercise logged as a pair total (`dumbbellLoad.ts`), else 1 or absent. It
    * changes only the words, never a load: every weight here is one dumbbell's.
@@ -141,6 +149,11 @@ export function loadContextFor(
   scale = 1,
 ): LoadContext {
   return { equipment: exercise.equipment, barKg: exercise.barKg, inventory, unit, incrementKg: incrementFor(item, unit), ...(scale !== 1 ? { scale } : {}) };
+}
+
+/** The rack that limits this exercise's loads: the gym's, and only for dumbbells. */
+export function activeRack(ctx: Pick<LoadContext, 'equipment' | 'rack'>): DumbbellRack | null {
+  return ctx.equipment === 'dumbbell' ? ctx.rack ?? null : null;
 }
 
 /** Hundredths of the shown unit: the integers loads are compared in, as `plateLoad` does. */
@@ -191,6 +204,8 @@ export function roundLoad(kg: number, ctx: LoadContext, mode: 'nearest' | 'up' |
     // The plates can't make anything heavier: the heaviest they make.
     return near;
   }
+  const rack = activeRack(ctx);
+  if (rack) return snapToRack(kg, rack, unit, mode);
   const step = hundredths(ctx.incrementKg, unit);
   if (step <= 0) return kg;
   const h = hundredths(kg, unit) / step;
@@ -218,12 +233,24 @@ export function loadBelow(kg: number, ctx: LoadContext): number {
  * to the nearest multiple of 2.5.
  */
 function stepUp(kg: number, ctx: LoadContext): number {
+  const rack = activeRack(ctx);
+  if (rack) {
+    // The increment on top, landed on a dumbbell the gym has. Past the heaviest
+    // there is nothing to step to, and the weight comes back as it was.
+    const t = snapToRack(kg + ctx.incrementKg, rack, ctx.unit);
+    return hundredths(t, ctx.unit) > hundredths(kg, ctx.unit) ? t : rackAbove(kg, rack, ctx.unit) ?? kg;
+  }
   if (!isPlateLoaded(ctx.equipment)) return kg + ctx.incrementKg;
   const t = roundLoad(kg + ctx.incrementKg, ctx);
   return hundredths(t, ctx.unit) > hundredths(kg, ctx.unit) ? t : loadAbove(kg, ctx);
 }
 
 function stepDown(kg: number, ctx: LoadContext): number {
+  const rack = activeRack(ctx);
+  if (rack) {
+    const t = snapToRack(kg - ctx.incrementKg, rack, ctx.unit);
+    return hundredths(t, ctx.unit) < hundredths(kg, ctx.unit) ? t : rackBelow(kg, rack, ctx.unit) ?? kg;
+  }
   // A dumbbell, machine or cable never steps down to nothing: the floor is one
   // increment, or the weight itself when it is already lighter than that.
   if (!isPlateLoaded(ctx.equipment)) return Math.min(kg, Math.max(ctx.incrementKg, kg - ctx.incrementKg));
@@ -399,6 +426,13 @@ export function proposeNext(input: ProposalInput): Proposal | null {
   const kinds = setKinds(input.item, last.sets.length);
   const planned = kinds.length;
   const sets = (kg: number, reps: number | null): SetProposal[] => kinds.map(k => ({ kind: k, weightKg: kg, reps }));
+  // A step up that can't go up: the gym's heaviest dumbbell is the one already used.
+  const stuckAtRack = (next: number) => !(hundredths(next, unit) > hundredths(lastKg, unit)) && activeRack(load) !== null;
+  const atHeaviest = (reps: number | null, min: number | null, max: number | null): Proposal => ({
+    ...base, move: 'same', sets: sets(lastKg, reps), repsMin: min, repsMax: max, lastKg,
+    reason: `Same weight. ${formatWeightNumber(activeRack(load)?.maxKg ?? lastKg, unit)} ${unit} is the heaviest dumbbell at this gym, so add reps or slow the lowering.`,
+    brief: 'Heaviest dumbbell here',
+  });
 
   if (scheme === 'double') {
     const min = first?.repsMin ?? first?.repsMax ?? null;
@@ -407,6 +441,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
     const allTop = last.sets.length >= planned && last.sets.every(s => (s.reps ?? 0) >= max);
     if (allTop) {
       const next = stepUp(lastKg, load);
+      if (stuckAtRack(next)) return atHeaviest(max, min, max);
       return {
         ...base, move: 'up', sets: sets(next, min), repsMin: min, repsMax: max, lastKg,
         reason: `Up ${deltaText(lastKg, next, unit, load.scale)} because every set last time reached ${max}.`,
@@ -426,6 +461,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
     const hit = (p: PastSession) => p.sets.length >= planned && p.sets.every(s => (s.reps ?? 0) >= reps);
     if (hit(last)) {
       const next = stepUp(lastKg, load);
+      if (stuckAtRack(next)) return atHeaviest(reps, reps, reps);
       return {
         ...base, move: 'up', sets: sets(next, reps), repsMin: reps, repsMax: reps, lastKg,
         reason: `Up ${deltaText(lastKg, next, unit, load.scale)} because every set last time reached ${reps}.`,
@@ -491,6 +527,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
   if (diff > 0) {
     let next = roundLoad(lastKg * (1 + RPE_LOAD_PER_POINT * diff), load);
     if (!(hundredths(next, unit) > hundredths(lastKg, unit))) next = stepUp(lastKg, load);
+    if (stuckAtRack(next)) return atHeaviest(reps, min, max);
     return {
       ...base, move: 'up', sets: sets(next, reps), repsMin: min, repsMax: max, lastKg,
       reason: `Up ${deltaText(lastKg, next, unit, load.scale)} because the top set last time was RPE ${felt}, under the ${target} planned.`,

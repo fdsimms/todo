@@ -95,7 +95,7 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  finishPlan, formatDistance, formatSetLine, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, nextSet, previousBadge,
+  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
   restSecondsFor, supersetGroup,
@@ -271,8 +271,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // The exercise the detail sheet is on, kept through its close so it doesn't retitle while it slides away.
   const [detailId, setDetailId] = useState<string | null>(null);
   // Exercises folded down to their title and a one-line summary. Session-only
-  // and per exercise. A card folds itself when its last set is ticked, and the
-  // chevron opens it again.
+  // and per exercise. Only the chevron folds a card; finishing its last set
+  // leaves it open.
   const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(new Set());
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
 
@@ -379,10 +379,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     );
     if (records.has(set.id)) haptics.success();
     if (next.showExerciseId !== viewedId) animateLayout();
-    // Ticking the last open set finishes the exercise: fold it out of the way.
-    if (exercise.sets.every(s => s.id === set.id || s.completedAt !== null)) {
-      setCollapsedIds(prev => new Set(prev).add(exercise.exerciseId));
-    }
     setViewedId(next.showExerciseId);
     setOpenSetId(null);
   };
@@ -458,6 +454,19 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     const added = useWorkoutStore.getState().addSessionExercise(session.id, exerciseId);
     if (typeof added === 'string') return;
     setViewedId(exerciseId);
+    setOpenSetId(null);
+  };
+
+  // Several picked at once, in tap order. A superset is made by joining each to the
+  // first, which puts every partner right below the group, so the order is kept.
+  const addExercises = (exerciseIds: string[], asSuperset: boolean) => {
+    if (!session) return;
+    const store = useWorkoutStore.getState();
+    const added = exerciseIds.filter(id => typeof store.addSessionExercise(session.id, id) !== 'string');
+    if (added.length === 0) return;
+    if (asSuperset) for (const id of added.slice(1)) store.joinSessionSuperset(session.id, added[0], id);
+    animateLayout();
+    setViewedId(added[0]);
     setOpenSetId(null);
   };
 
@@ -754,8 +763,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             accessibilityLabel="Leave workout mode"
           />
           <View style={styles.headerTitle}>
-            <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
-            {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} startedStyle={styles.subtitle} />}
+            {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />}
           </View>
           {!finishing && session ? (
             <View style={styles.headerRight}>
@@ -771,6 +779,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
             </View>
           ) : <View style={styles.headerSpacer} />}
+        </View>
+        {/* The name gets its own full-width line under the buttons, so a long
+            routine name isn't squeezed between Leave and Finish. */}
+        <View style={styles.titleBlock}>
+          <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
+          {session && <Text style={styles.subtitle} numberOfLines={1}>{`Started ${formatTimeOfDay(new Date(session.startedAt))}`}</Text>}
         </View>
 
         {/* Under the header, not in a footer: the keyboard is up while sets are
@@ -955,7 +969,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
           <ScrollView
             key="live"
             style={styles.flex}
-            contentContainerStyle={styles.scroll}
+            contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + spacing.xl }]}
             keyboardShouldPersistTaps="handled"
             scrollEnabled={!dragging}
             {...keyboardScroll.props}
@@ -1035,7 +1049,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const todayNote = exerciseDayNote(viewed.sets);
               const collapsed = collapsedIds.has(viewed.exerciseId);
               const doneSets = viewed.sets.filter(s => s.completedAt !== null);
-              const collapsedSummary = `${doneSets.length} of ${viewed.sets.length} sets${doneSets.length > 0 ? ` · ${doneSets.map(s => formatSetLine(s, kind, unit, false, scale)).join(', ')}` : ''}`;
+              const collapsedSummary = collapsedSetSummary(doneSets.map(s => formatSetLine(s, kind, unit, false, scale)), viewed.sets.length);
 
               // The plates for the open set's weight, for a barbell, EZ bar or trap bar: a
               // dumbbell or a machine has nothing to load. A pound lifter who never set an
@@ -1095,6 +1109,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 unit,
                 gymBarKg: gymSetting?.barKg ?? null,
                 gymIncrementKg: gymIncrementKg(gymSetting),
+                gymDumbbells: gym?.dumbbells ?? null,
                 dumbbellEntry,
               }) : null;
               const proposal = shownProposal?.proposal ?? null;
@@ -1110,7 +1125,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   pairPos >= 0 && pairPos < viewedGroup.length - 1 && styles.cardSupersetJoinedBottom,
                 ]}
               >
-                <View style={styles.exHead}>
+                <View style={[styles.exHead, collapsed && styles.exHeadCollapsed]}>
                   {pairPos >= 0 && (
                     <View style={styles.supersetTag} accessible accessibilityLabel={`Superset, exercise ${pairPos + 1} of ${viewedGroup.length}`}>
                       <Ionicons name="repeat" size={iconSize.sm} color={colors.accent} />
@@ -1231,7 +1246,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         <View style={styles.noteEditor}>
                           {(['today', 'always'] as const).map(k => (
                             <View key={k} style={styles.noteField}>
-                              <Text style={styles.noteLabel}>{k === 'today' ? 'Today' : 'Every time'}</Text>
+                              <Text style={styles.noteLabel}>{k === 'today' ? 'Today' : 'Notes'}</Text>
                               <HelpText style={styles.noteHelp}>{NOTE_HELP[k]}</HelpText>
                               <TextField
                                 style={styles.noteInput}
@@ -1242,7 +1257,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                                 placeholderTextColor={colors.textTertiary}
                                 multiline
                                 autoFocus={noteFocus === k}
-                                accessibilityLabel={`${k === 'today' ? 'Note for today on' : 'Note every time on'} ${viewedInfo?.name ?? 'this exercise'}`}
+                                accessibilityLabel={`${k === 'today' ? 'Note for today on' : 'Notes on'} ${viewedInfo?.name ?? 'this exercise'}`}
                               />
                             </View>
                           ))}
@@ -1258,9 +1273,9 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                               onPress={() => openNote(viewed, 'always')}
                               activeOpacity={interaction.activeOpacity}
                               accessibilityRole="button"
-                              accessibilityLabel={`Edit the every time note: ${viewedInfo.notes}`}
+                              accessibilityLabel={`Edit the exercise notes: ${viewedInfo.notes}`}
                             >
-                              <Text style={styles.noteLabel}>Every time</Text>
+                              <Text style={styles.noteLabel}>Notes</Text>
                               <Text style={styles.noteText}>{viewedInfo.notes}</Text>
                             </TouchableOpacity>
                           )}
@@ -1545,6 +1560,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
         visible={visible && picking !== null}
         onClose={() => setPicking(null)}
         onPick={picking === 'swap' ? swapExercise : addExercise}
+        onPickMany={picking === 'swap' ? undefined : addExercises}
         addedIds={exercises.map(e => e.exerciseId)}
         addedLabel="In workout"
         suggestedIds={picking === 'swap' && viewed ? (gym ? candidatesFor(viewed.exerciseId) : swapCandidates(exerciseRows, viewed.exerciseId, exercises.map(e => e.exerciseId), alternateOf(viewed.exerciseId))) : undefined}
@@ -1748,29 +1764,21 @@ function SuggestionCard({ proposal, unit, scale, offer, onUse, styles }: {
 }
 
 /**
- * The header's running time: the elapsed time large and in the primary text
- * color so it can be read at a glance mid-set, with "Started 6:12 PM" muted
- * beneath it. Moves once a second. Its own component so the tick re-renders
- * these lines and not the whole sheet.
+ * The header's running time, large and in the primary text color so it can be
+ * read at a glance mid-set. Moves once a second. Its own component so the tick
+ * re-renders this line and not the whole sheet.
  */
-function SessionClock({ startedAt, elapsedStyle, startedStyle }: {
+function SessionClock({ startedAt, elapsedStyle }: {
   startedAt: string;
   elapsedStyle: object;
-  startedStyle: object;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
-  const start = new Date(startedAt);
-  const elapsed = formatStopwatch((now - start.getTime()) / 1000);
-  return (
-    <>
-      <Text style={elapsedStyle} numberOfLines={1} accessibilityLabel={`Workout time ${elapsed}`}>{elapsed}</Text>
-      <Text style={startedStyle} numberOfLines={1}>{`Started ${formatTimeOfDay(start)}`}</Text>
-    </>
-  );
+  const elapsed = formatStopwatch((now - new Date(startedAt).getTime()) / 1000);
+  return <Text style={elapsedStyle} numberOfLines={1} accessibilityLabel={`Workout time ${elapsed}`}>{elapsed}</Text>;
 }
 
 /**
@@ -1860,11 +1868,12 @@ function ScreenAwake() {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.smd, gap: spacing.sm },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xsm, gap: spacing.sm },
   headerTitle: { flex: 1, alignItems: 'center' },
   headerSpacer: { minWidth: 64 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   headerIcon: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
+  titleBlock: { alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
   title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
   elapsed: { color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   subtitle: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs, fontVariant: ['tabular-nums'] },
@@ -1896,6 +1905,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   reorderDot: { width: 14, height: 14, borderRadius: 4, borderWidth: 2, borderColor: colors.controlBorder },
   reorderDotDone: { backgroundColor: colors.done, borderColor: colors.done },
   exHead: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs },
+  // Collapsed, the summary line is the last thing in the card, so the bottom padding matches the top.
+  exHeadCollapsed: { paddingBottom: spacing.md },
   exTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   exNameRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   exMenuButton: { padding: spacing.xs },

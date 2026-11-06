@@ -2485,6 +2485,8 @@ describe('demo seed — people', () => {
     expect(gyms[1].equipment).toContain('cable');
     expect(gyms[1].equipment).toContain('leg_press');
     expect(gyms.every(g => g.latitude === null)).toBe(true);
+    expect(gyms[0].dumbbells).toEqual({ minKg: 2, maxKg: 24, stepKg: 2 });
+    expect(gyms[1].dumbbells).toBeNull();
     expect(settings.find(s => s.barKg === 15)?.exerciseId).toBe('lib:back-squat');
     expect(settings.find(s => s.incrementKg === 5)?.exerciseId).toBe('lib:triceps-pushdown');
     expect(settings.map(s => s.notes)).toEqual(expect.arrayContaining(['Rope attachment on the top pulley.', 'Safety bars at hole 4.']));
