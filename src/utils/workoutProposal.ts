@@ -1,4 +1,5 @@
 import type {
+  DumbbellRack,
   Exercise,
   ExerciseKind,
   PlateInventory,
@@ -59,6 +60,8 @@ export interface ExerciseProposalInput {
   gymBarKg?: number | null;
   /** The load step this exercise has at that gym, which outranks the routine's own. */
   gymIncrementKg?: number | null;
+  /** The dumbbells the workout's gym has, so a dumbbell exercise's loads land on one of them. */
+  gymDumbbells?: DumbbellRack | null;
   /** The Settings choice for two-dumbbell exercises, which scales the proposal's words only. */
   dumbbellEntry?: DumbbellEntry;
 }
@@ -84,7 +87,11 @@ export function exerciseProposal(input: ExerciseProposalInput): ExerciseProposal
   const scheme = schemeFor(item, input.program);
   if (!scheme) return null;
   const baseLoad = loadContextFor(info, input.plateInventory, input.unit, item, weightScale(base, input.dumbbellEntry ?? 'each'));
-  const load = input.gymIncrementKg ? { ...baseLoad, incrementKg: input.gymIncrementKg } : baseLoad;
+  const load: LoadContext = {
+    ...baseLoad,
+    ...(input.gymIncrementKg ? { incrementKg: input.gymIncrementKg } : {}),
+    ...(input.gymDumbbells ? { rack: input.gymDumbbells } : {}),
+  };
   // The week the program is in: the workout the proposal is for isn't
   // finished, so it isn't counted, and the finished ones say where it stands.
   const progress = input.program ? programProgress(input.program, input.sessions, input.routines) : null;
