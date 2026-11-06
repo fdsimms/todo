@@ -137,7 +137,7 @@ export function liftVolumeKg(
  * workout, or no qualifying set, so a row can leave the figure off.
  */
 export function bodyweightVolumeKg(
-  sets: Pick<WorkoutSet, 'exerciseId' | 'weightKg' | 'reps' | 'completedAt' | 'kind'>[],
+  sets: readonly Pick<WorkoutSet, 'exerciseId' | 'weightKg' | 'reps' | 'completedAt' | 'kind'>[],
   kindOf: (exerciseId: string) => ExerciseKind,
   fractionOf: (exerciseId: string) => number,
   bodyweightKg: number | null | undefined,
