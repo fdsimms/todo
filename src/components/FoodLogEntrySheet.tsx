@@ -78,7 +78,7 @@ import { cookedDishGrams, mealHelping, servingGrams, weighedHelping } from '../u
 import { UNANSWERED } from '../utils/itemEither';
 import { perServing, recipeNutrition, recipeNutritionLines, recipesWithoutFigures, type NutritionLine } from '../utils/recipeNutrition';
 import { standingSwapMap } from '../utils/standingSwaps';
-import { describeProduct } from '../utils/groceryProduct';
+import { describeProduct, describeProductOfItem } from '../utils/groceryProduct';
 import { isNonFoodAisle } from '../utils/groceryAisles';
 import { groceryNameKey } from '../utils/groceryParse';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
@@ -577,6 +577,7 @@ export function FoodLogEntrySheet({
   const answerPantryReview = useGroceryStore(s => s.answerPantryReview);
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
+  const addProduct = useGroceryStore(s => s.addProduct);
   const recentEntries = useFoodLogStore(s => s.recentEntries);
   const keepOpenAfterFoodLog = useSettingsStore(s => s.keepOpenAfterFoodLog);
   // Searching a food database by name needs a FoodData Central key, and the
@@ -677,12 +678,16 @@ export function FoodLogEntrySheet({
   const [catalogPickOpen, setCatalogPickOpen] = useState(false);
   // The label panel for the food on screen, opened from "Edit nutrition facts".
   const [factsOpen, setFactsOpen] = useState(false);
-  // The name a food is being typed in under, from "Add nutrition" on a search
-  // that found nothing. A name rather than a flag, so editing the search field
-  // while the sheet is up can't change what the figures are filed under.
-  const [typedFactsName, setTypedFactsName] = useState<string | null>(null);
+  // The food and product a label is being typed in under, from "Add nutrition"
+  // on a search that found nothing. A value rather than a flag, so editing the
+  // search field while the sheet is up can't change what the figures are filed under.
+  const [typedFacts, setTypedFacts] = useState<LabelSubject | null>(null);
   // Held through the sheet's fade, so its title doesn't blank as it closes.
-  const shownTypedFactsName = useSheetSubject(typedFactsName);
+  const shownTypedFacts = useSheetSubject(typedFacts);
+  // The "About this label" card asked first, so the figures land on the brand
+  // they were copied from. The name it opens with is the one the catalog would use.
+  const [typedAskName, setTypedAskName] = useState<string | null>(null);
+  const shownTypedAskName = useSheetSubject(typedAskName);
   // What was typed for each of a dish's amount-varies lines, keyed by the
   // recipe ingredient's own id. See `varyingLines` below.
   const [varyingEntries, setVaryingEntries] = useState<Record<string, { number: string; unit: string | null }>>({});
@@ -1562,7 +1567,7 @@ export function FoodLogEntrySheet({
     if (!typed) return;
     haptics.tap();
     Keyboard.dismiss();
-    setTypedFactsName(parseGroceryInput(typed).name.trim() || typed);
+    setTypedAskName(parseGroceryInput(typed).name.trim() || typed);
   };
 
   /**
@@ -1573,12 +1578,29 @@ export function FoodLogEntrySheet({
    * figures asks first, the same question a database food asks.
    */
   const saveTypedFacts = (panel: FoodNutrition | null) => {
-    const name = typedFactsName;
-    setTypedFactsName(null);
+    const subject = typedFacts;
+    setTypedFacts(null);
     // Nothing typed is the same as Cancel.
-    if (!name || !panel) return;
-    const item = ensureCatalogItem(name);
+    if (!subject || !panel) return;
+    const item = ensureCatalogItem(subject.name);
     if (!item) { haptics.error(); return; }
+    // A label with a brand or variant is one box, so the figures go on it and
+    // not on the generic food. The first box filed also gives a food with no
+    // figures something to log by name; later boxes never overwrite it.
+    if (subject.brand || subject.variant) {
+      const box = addProduct(item.id, { brand: subject.brand, variant: subject.variant }, { promote: false });
+      if (!box) { haptics.error(); return; }
+      setProductNutrition(box.id, panel);
+      if (!item.nutrition) setItemNutrition(item.id, panel);
+      haptics.success();
+      choose({
+        ...itemCandidate(item, panel),
+        key: `p:${box.id}`,
+        label: `${item.name}, ${describeProduct(box)}`,
+        productId: box.id,
+      });
+      return;
+    }
     const verdict = catalogPanelWrite(item.nutrition, panel);
     if (verdict === 'refuse') { haptics.error(); return; }
     const take = () => {
@@ -3222,11 +3244,21 @@ export function FoodLogEntrySheet({
       {/* Inside this Modal for the same reason: the search it was typed from
           is held by this sheet and would be lost with it. */}
       <NutritionPanelSheet
-        visible={typedFactsName !== null}
-        foodName={shownTypedFactsName ?? ''}
+        visible={typedFacts !== null}
+        foodName={shownTypedFacts ? describeProductOfItem(shownTypedFacts, shownTypedFacts.name) ?? shownTypedFacts.name : ''}
+        scopeNote={shownTypedFacts && !shownTypedFacts.brand && !shownTypedFacts.variant
+          ? `Saved for any brand of ${shownTypedFacts.name}.`
+          : undefined}
         nutrition={null}
-        onClose={() => setTypedFactsName(null)}
+        onClose={() => setTypedFacts(null)}
         onSave={saveTypedFacts}
+      />
+      <LabelSubjectSheet
+        visible={typedAskName !== null}
+        initialName={shownTypedAskName ?? ''}
+        typed
+        onNext={subject => setTypedFacts(subject)}
+        onClose={() => setTypedAskName(null)}
       />
       {/* Inside this Modal, not beside it: it is raised from a sheet that is
           already presenting. */}

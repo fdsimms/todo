@@ -307,6 +307,9 @@ export function ScanToLogFlow({
         foodName={panelSubject
           ? describeProductOfItem({ brand: panelSubject.brand ?? null, variant: panelSubject.variant ?? null }, panelSubject.name) ?? panelSubject.name
           : ''}
+        scopeNote={panelSubject && !panelSubject.productId && !panelSubject.brand && !panelSubject.variant
+          ? `Saved for any brand of ${panelSubject.name}.`
+          : undefined}
         // A label with its photo already taken is read on open; one without it
         // (a caller that still asks for the name first) opens the camera.
         openCamera={panelFor === null && !!label && !label.photo}

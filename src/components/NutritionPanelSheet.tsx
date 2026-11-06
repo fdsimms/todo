@@ -162,6 +162,13 @@ interface Props {
   visible: boolean;
   /** What this food is called, for the header. */
   foodName: string;
+  /**
+   * Said under the intro when the figures will apply more widely than the
+   * title suggests, e.g. a label saved with no brand ("Saved for any brand of
+   * vegan salmon."). Content rather than help, so it is not hidden with the
+   * help text setting.
+   */
+  scopeNote?: string;
   /** The panel being corrected, or null to type a new one. */
   nutrition: FoodNutrition | null;
   onClose: () => void;
@@ -202,7 +209,7 @@ const COOKED_STATE_OPTIONS: { value: PanelForm['cookedState']; label: string }[]
 /** What an unlabelled column is called, by position. A panel never prints more. */
 const COLUMN_ORDINAL = ['First column', 'Second column', 'Third column'];
 
-export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onSave, openCamera, initialPhoto }: Props) {
+export function NutritionPanelSheet({ visible, foodName, scopeNote, nutrition, onClose, onSave, openCamera, initialPhoto }: Props) {
   const actionMenu = useActionMenu();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -625,6 +632,7 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               Copy the numbers off the package label. Skip anything the label doesn’t
               list, and only type 0 where the label says 0.
             </Text>
+            {!!scopeNote && <Text style={styles.scopeNote}>{scopeNote}</Text>}
 
             <View style={styles.photoRow}>
               <InlineAction
@@ -907,6 +915,7 @@ function makeStyles(colors: Colors) {
     flex: { flex: 1 },
     body: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm },
     intro: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, marginBottom: spacing.sm },
+    scopeNote: { color: colors.text, fontSize: font.sm, lineHeight: 18, marginBottom: spacing.sm },
     // Margin on both sides it needs: the group label below has no top margin of
     // its own, per the spacing note in CLAUDE.md. Wraps rather than a fixed
     // row now that a second action sits beside the first — same treatment
