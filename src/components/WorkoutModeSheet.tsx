@@ -82,7 +82,7 @@ import { applyRoutineChanges, describeRoutineChange, rivalOf, routineChanges } f
 import { currentRoutineVersion, finishVersionText, routineVersionsOf, sessionPlan, versionNumber } from '../utils/routineVersions';
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
-import { formatRecordChange, recordLabel, recordShortLabel } from '../utils/workoutRecordText';
+import { formatRecordChange, recordLabel } from '../utils/workoutRecordText';
 import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
 import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
@@ -1343,7 +1343,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   const prevMark = prev ? previousBadge(prev) : null;
                   const label = labels.get(set.id) ?? '';
                   const record = done ? liveRecords?.get(set.id)?.[0] ?? null : null;
-                  const recordShort = record ? recordShortLabel(record.type, kind, record.reps) : '';
                   const recordChange = record ? formatRecordChange(record, kind, unit) : null;
                   const recordText = record && recordChange
                     ? `${recordLabel(record.type, kind, record.reps)}, was ${recordChange.before}`
@@ -1391,7 +1390,6 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             accessibilityLabel={`Personal record. ${recordText}`}
                           >
                             <Ionicons name="trophy" size={iconSize.xs} color={colors.accentText} />
-                            <Text style={styles.recordPillText}>{recordShort}</Text>
                           </View>
                         )}
                         {fields.map(f => (
@@ -1967,7 +1965,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, minHeight: 22, paddingHorizontal: spacing.sm,
     borderRadius: radius.full, backgroundColor: colors.accentSubtle,
   },
-  recordPillText: { color: colors.accentText, fontSize: font.xxs, fontWeight: fontWeight.bold, letterSpacing: 0.4 },
   prevMark: { color: colors.orangeText, fontSize: font.sm, fontWeight: fontWeight.bold },
   prevText: { color: colors.textTertiary, fontSize: font.md, fontVariant: ['tabular-nums'] },
   valuePlanned: { color: colors.textTertiary },
