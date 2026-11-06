@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import type { ExerciseEquipment, Gym, GymExerciseSetting } from '../types';
+import type { DumbbellRack, ExerciseEquipment, Gym, GymExerciseSetting } from '../types';
 import {
   dbDeleteGym, dbDeleteGymExercise, dbGetAllGymExercises, dbGetAllGyms, dbSaveGym, dbSaveGymExercise,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { cleanRack } from '../utils/dumbbellRack';
 import { EXERCISE_EQUIPMENT, cleanWorkoutName } from '../utils/workoutData';
 import {
   GYM_DEFAULT_RADIUS_M, GYM_MAX_RADIUS_M, GYM_MIN_RADIUS_M, gymExerciseId, isEmptyGymSetting,
@@ -25,6 +26,8 @@ export interface GymInput {
   latitude?: number | null;
   longitude?: number | null;
   radiusM?: number;
+  /** The dumbbells on the rack. Null, or anything not a full range, means none described. */
+  dumbbells?: DumbbellRack | null;
 }
 
 export type GymPatch = Partial<GymInput> & { archived?: boolean };
@@ -91,6 +94,7 @@ export const useGymStore = create<GymStore>((set, get) => ({
       id: generateId(),
       name,
       equipment: equipmentOf(input.equipment),
+      dumbbells: cleanRack(input.dumbbells),
       placeText: (input.placeText ?? '').trim(),
       latitude,
       longitude,
@@ -122,6 +126,7 @@ export const useGymStore = create<GymStore>((set, get) => ({
       ...existing,
       name,
       equipment: patch.equipment !== undefined ? equipmentOf(patch.equipment) : existing.equipment,
+      dumbbells: patch.dumbbells !== undefined ? cleanRack(patch.dumbbells) : existing.dumbbells,
       placeText: patch.placeText !== undefined ? patch.placeText.trim() : existing.placeText,
       latitude,
       longitude,

@@ -15,6 +15,7 @@
  * Every weight is kilograms, whatever unit the person's phone shows.
  */
 import { dumbbellsUsed } from '../../src/utils/dumbbellLoad';
+import { cleanRack } from '../../src/utils/dumbbellRack';
 import { generateId } from '../../src/utils/id';
 import type {
   Exercise, ExerciseEquipment, ExerciseKind, Gym, GymExerciseSetting, MuscleGroup, ProgressionScheme, RoutineSetTarget, TrainingMax, WorkoutProgram, WorkoutRoutine,
@@ -314,6 +315,8 @@ export interface GymRow {
   name: string;
   /** What the gym has. Empty means nothing was told, not that it has none. */
   equipment: ExerciseEquipment[];
+  /** The dumbbells the gym has, in kg of one dumbbell. Absent means the person hasn't said, not that it has none. */
+  dumbbells?: { minKg: number; maxKg: number; stepKg: number };
   placeText?: string;
   /** Set once the person pinned the gym's place; workouts pick the gym by it. */
   hasLocation?: true;
@@ -330,6 +333,7 @@ function gymRow(g: Gym, settings: readonly GymExerciseSetting[], rows: readonly 
     id: g.id,
     name: g.name,
     equipment: g.equipment,
+    ...(g.dumbbells ? { dumbbells: g.dumbbells } : {}),
     ...(g.placeText ? { placeText: g.placeText } : {}),
     ...(g.latitude !== null && g.longitude !== null ? { hasLocation: true as const } : {}),
     ...(!g.archived && g.id === defaultGymId ? { isDefault: true as const } : {}),
@@ -836,6 +840,7 @@ export interface SaveGymInput {
   id?: string;
   name?: string;
   equipment?: ExerciseEquipment[];
+  dumbbells?: { minKg: number; maxKg: number; stepKg: number } | null;
   placeText?: string;
   isDefault?: boolean;
   exerciseNotes?: { exerciseId: string; notes?: string; barKg?: number | null; incrementKg?: number | null }[];
@@ -843,6 +848,9 @@ export interface SaveGymInput {
 
 export function saveGym(replica: Replica, input: SaveGymInput): { gym: GymRow; note: string } {
   if (!input.id && !input.name?.trim()) throw new Error('A new gym needs a name.');
+  if (input.dumbbells && !cleanRack(input.dumbbells)) {
+    throw new Error('dumbbells needs minKg, maxKg and stepKg, all above zero, with maxKg no lighter than minKg. Send null to clear it.');
+  }
   if (input.exerciseNotes) {
     const unknown = unknownExercises(replica, input.exerciseNotes.map(n => n.exerciseId));
     if (unknown.length) throw unknownError(unknown);

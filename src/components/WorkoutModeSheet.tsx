@@ -1106,6 +1106,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 unit,
                 gymBarKg: gymSetting?.barKg ?? null,
                 gymIncrementKg: gymIncrementKg(gymSetting),
+                gymDumbbells: gym?.dumbbells ?? null,
                 dumbbellEntry,
               }) : null;
               const proposal = shownProposal?.proposal ?? null;

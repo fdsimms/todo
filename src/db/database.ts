@@ -94,6 +94,7 @@ import type {
 import { HEALTH_TARGET_METRICS } from '../utils/healthTarget';
 import { DEFAULT_NUDGE_CADENCE_DAYS, LOG_MEAL_SLOTS, MEAL_SLOTS, NUTRIENT_KEYS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
+import { cleanRack } from '../utils/dumbbellRack';
 import { isCookwareType } from '../utils/cookware';
 import type { PendingEstimate } from '../utils/estimateQueue';
 import type { PendingRecipeEstimate } from '../utils/recipeEstimateQueue';
@@ -2570,6 +2571,11 @@ function runInitDatabase(): void {
     // CoinEntry.saved: 0 on every existing entry, which put nothing into and
     // took nothing out of the savings for a goal.
     'ALTER TABLE coin_entries ADD COLUMN saved INTEGER NOT NULL DEFAULT 0',
+    // Gym.dumbbells (lightest, heaviest, step; kg of one dumbbell): all NULL on
+    // every existing gym, which is a rack nobody described.
+    'ALTER TABLE gyms ADD COLUMN dumbbell_min_kg REAL',
+    'ALTER TABLE gyms ADD COLUMN dumbbell_max_kg REAL',
+    'ALTER TABLE gyms ADD COLUMN dumbbell_step_kg REAL',
   ];
   // Asking SQLite for a table's columns once is cheaper than handing it every
   // ALTER for that table and catching the duplicate-column error, and by the
@@ -8443,6 +8449,7 @@ function rowToGym(row: Record<string, unknown>): Gym {
     id: String(row.id),
     name: String(row.name),
     equipment: readEquipmentList(row.equipment),
+    dumbbells: cleanRack({ minKg: numOrNull(row.dumbbell_min_kg), maxKg: numOrNull(row.dumbbell_max_kg), stepKg: numOrNull(row.dumbbell_step_kg) }),
     placeText: String(row.place_text ?? ''),
     latitude: pinned ? lat : null,
     longitude: pinned ? lon : null,
@@ -8462,9 +8469,11 @@ export function dbGetAllGyms(): Gym[] {
 export function dbSaveGym(g: Gym): void {
   db.runSync(
     `INSERT OR REPLACE INTO gyms
-      (id, name, equipment, place_text, latitude, longitude, radius_m, sort_order, archived, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [g.id, g.name, JSON.stringify(g.equipment), g.placeText, g.latitude, g.longitude, g.radiusM, g.sortOrder, g.archived ? 1 : 0, g.createdAt]
+      (id, name, equipment, place_text, latitude, longitude, radius_m, sort_order, archived, created_at,
+       dumbbell_min_kg, dumbbell_max_kg, dumbbell_step_kg)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [g.id, g.name, JSON.stringify(g.equipment), g.placeText, g.latitude, g.longitude, g.radiusM, g.sortOrder, g.archived ? 1 : 0, g.createdAt,
+      g.dumbbells?.minKg ?? null, g.dumbbells?.maxKg ?? null, g.dumbbells?.stepKg ?? null]
   );
 }
 

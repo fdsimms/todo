@@ -66,6 +66,18 @@ describe('gyms', () => {
     expect(cleared).toMatchObject({ latitude: null, longitude: null });
   });
 
+  it('keeps a dumbbell rack across a reload, and drops one that is not a full range', () => {
+    const rack = { minKg: 2.5, maxKg: 50, stepKg: 2.5 };
+    const g = ok(state().addGym({ name: 'A', equipment: ['dumbbell'], dumbbells: rack }));
+    state().initialize();
+    expect(state().gyms[0].dumbbells).toEqual(rack);
+    expect(ok(state().updateGym(g.id, { placeText: 'x' })).dumbbells).toEqual(rack);
+    expect(ok(state().updateGym(g.id, { dumbbells: { minKg: 10, maxKg: 5, stepKg: 5 } })).dumbbells).toBeNull();
+    state().initialize();
+    expect(state().gyms[0].dumbbells).toBeNull();
+    expect(ok(state().addGym({ name: 'B', equipment: [] })).dumbbells).toBeNull();
+  });
+
   it('archives without deleting, and hides archived from activeGyms', () => {
     const g = ok(state().addGym({ name: 'A', equipment: [] }));
     state().updateGym(g.id, { archived: true });
