@@ -246,6 +246,9 @@ struct TaskRowView: View {
     /// A target's count, or the calendar event a task was written for.
     private var detail: String? {
         if task.isTarget, let target = task.targetCount {
+            if let chunk = task.chunkMinutes, chunk > 0 {
+                return "\(min(progress, target) * chunk) of \(target * chunk) min"
+            }
             let unit = task.targetUnit.map { " \($0)" } ?? ""
             return "\(min(progress, target)) of \(target)\(unit)"
         }

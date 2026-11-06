@@ -34,6 +34,8 @@ struct WidgetTask: Codable, Identifiable {
     let targetCount: Int?
     let progressCount: Int
     let targetUnit: String?
+    /// Minutes one log stands for on a target counted in time; the pair is read multiplied by it.
+    let chunkMinutes: Int?
     /// The calendar event a rule wrote this task for, when there is one. Only
     /// the title crosses; the row dims it after the task's own title.
     let eventTitle: String?
@@ -57,7 +59,7 @@ struct WidgetTask: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id, title, priority, pinned, dueDate, category, streakCount, recurrenceType
-        case targetCount, progressCount, targetUnit, eventTitle, visibleAt
+        case targetCount, progressCount, targetUnit, chunkMinutes, eventTitle, visibleAt
         case reminderTime, needsApp, needsAppReason, question
     }
 
@@ -74,6 +76,7 @@ struct WidgetTask: Codable, Identifiable {
         targetCount = try c.decodeIfPresent(Int.self, forKey: .targetCount)
         progressCount = try c.decodeIfPresent(Int.self, forKey: .progressCount) ?? 0
         targetUnit = try c.decodeIfPresent(String.self, forKey: .targetUnit)
+        chunkMinutes = try c.decodeIfPresent(Int.self, forKey: .chunkMinutes)
         eventTitle = try c.decodeIfPresent(String.self, forKey: .eventTitle)
         visibleAt = try c.decodeIfPresent(String.self, forKey: .visibleAt)
         reminderTime = try c.decodeIfPresent(String.self, forKey: .reminderTime)

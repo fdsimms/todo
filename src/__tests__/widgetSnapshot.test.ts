@@ -60,6 +60,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task =>
     targetCount: null,
     progressCount: 0,
     targetUnit: null,
+    quotaChunkMinutes: null,
     polarity: 'positive',
     generatedKind: null,
     ...overrides,
@@ -128,6 +129,11 @@ describe('toWidgetTask', () => {
     expect(row.targetCount).toBe(8);
     expect(row.progressCount).toBe(3);
     expect(row.targetUnit).toBe('glasses');
+  });
+
+  it('carries the minutes a log stands for, and nothing on a plain target', () => {
+    expect(toWidgetTask(makeTask({ targetCount: 5, quotaChunkMinutes: 30 })).chunkMinutes).toBe(30);
+    expect(toWidgetTask(makeTask({ targetCount: 5 })).chunkMinutes).toBeNull();
   });
 
   it('leaves targetCount null on an ordinary task', () => {

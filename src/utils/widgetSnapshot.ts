@@ -14,6 +14,7 @@ import type {
 } from '../types';
 import { displayTitleFor, isHeldBack, isWithheld } from './visibilityUtils';
 import { liveStreakCount } from './dateUtils';
+import { normalizeChunkMinutes } from './quotaUnit';
 import {
   itemsOnList,
   listCount,
@@ -121,6 +122,8 @@ export interface WidgetTask {
   targetCount: number | null;
   progressCount: number;
   targetUnit: string | null;
+  /** Minutes one log stands for on a weekly target counted in time, else null (`Task.quotaChunkMinutes`). The widget and watch scale the pair by it. */
+  chunkMinutes: number | null;
   /**
    * The title of the calendar event a rule wrote this task for, or null on
    * every other row. The widget dims it after the task's own title.
@@ -420,6 +423,7 @@ export function toWidgetTask(
     targetCount: task.targetCount,
     progressCount: task.progressCount,
     targetUnit: task.targetUnit,
+    chunkMinutes: normalizeChunkMinutes(task.quotaChunkMinutes),
     // Only the title crosses, never "Tomorrow 3 PM": a day word baked at write
     // time is wrong after midnight. Null when the event has left the window or
     // the calendar wasn't read (a background refresh).

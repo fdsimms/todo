@@ -387,6 +387,9 @@ func taskCountLabel(_ count: Int) -> String {
 /// one has no count worth saying and keeps the streak.
 func taskRowDetail(_ task: WidgetTask, queuedUnits: Int = 0) -> String? {
     if task.tapsAreUnits, let target = task.targetCount {
+        if let chunk = task.chunkMinutes, chunk > 0 {
+            return "\((task.progressCount + queuedUnits) * chunk)/\(target * chunk) min"
+        }
         return "\(task.progressCount + queuedUnits)/\(target)"
     }
     return task.streakCount > 1 ? "\(task.streakCount)" : nil
