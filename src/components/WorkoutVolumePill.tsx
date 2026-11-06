@@ -17,12 +17,14 @@ const DELTA_MS = 2500;
 const COUNT_MS = 350;
 
 interface Props {
-  /** `liftVolumeKg` over the session's sets. Null renders nothing. */
+  /** `liftVolumeKg` over the session's sets. Null leaves the lifted line off. */
   volumeKg: number | null;
+  /** `bodyweightVolumeKg` over the session's sets, an estimate shown beneath the lifted total. Null leaves its line off. */
+  bodyweightVolumeKg?: number | null;
   unit: WeightUnit;
 }
 
-export function WorkoutVolumePill({ volumeKg, unit }: Props) {
+export function WorkoutVolumePill({ volumeKg, bodyweightVolumeKg, unit }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const reduceMotion = useReduceMotion();
@@ -60,20 +62,32 @@ export function WorkoutVolumePill({ volumeKg, unit }: Props) {
     return () => { clearTimeout(hide); cancelAnimationFrame(frame); };
   }, [target, reduceMotion, scale]);
 
-  if (target === null || shown === null) return null;
-  const total = withThousands(target);
+  const bodyweight = bodyweightVolumeKg ? Math.round(kgToUnit(bodyweightVolumeKg, unit)) : null;
+  if ((target === null || shown === null) && bodyweight === null) return null;
+  const total = target === null ? null : withThousands(target);
+  const spoken = [
+    total !== null ? `${total} ${unit} lifted so far` : null,
+    bodyweight !== null ? `about ${withThousands(bodyweight)} ${unit} of body weight moved` : null,
+  ].filter(Boolean).join(', ');
   return (
-    <Reanimated.View
-      style={[styles.pill, bump]}
-      accessible
-      accessibilityLabel={`${total} ${unit} lifted so far`}
-    >
-      <Ionicons name="barbell" size={iconSize.md} color={colors.accentText} />
-      <Text style={styles.total}>{`${withThousands(shown)} ${unit}`}</Text>
-      <Text style={styles.label}>lifted</Text>
-      {delta !== null && (
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>{`+${withThousands(delta)}`}</Text>
+    <Reanimated.View style={[styles.pill, bump]} accessible accessibilityLabel={spoken}>
+      {target !== null && shown !== null && (
+        <View style={styles.line}>
+          <Ionicons name="barbell" size={iconSize.md} color={colors.accentText} />
+          <Text style={styles.total}>{`${withThousands(shown)} ${unit}`}</Text>
+          <Text style={styles.label}>lifted</Text>
+          {delta !== null && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{`+${withThousands(delta)}`}</Text>
+            </View>
+          )}
+        </View>
+      )}
+      {bodyweight !== null && (
+        <View style={styles.line}>
+          <Ionicons name="body" size={iconSize.md} color={colors.accentText} />
+          <Text style={target === null ? styles.total : styles.secondaryTotal}>{`${withThousands(bodyweight)} ${unit}`}</Text>
+          <Text style={styles.label}>bodyweight, est.</Text>
         </View>
       )}
     </Reanimated.View>
@@ -82,10 +96,12 @@ export function WorkoutVolumePill({ volumeKg, unit }: Props) {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   pill: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm,
+    alignItems: 'center', justifyContent: 'center', gap: spacing.xs,
     marginHorizontal: spacing.md, marginBottom: spacing.smd, paddingVertical: spacing.sm, paddingHorizontal: spacing.smd,
     borderRadius: radius.full, backgroundColor: colors.accentSubtle,
   },
+  line: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  secondaryTotal: { color: colors.accentText, fontSize: font.md, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   total: { color: colors.accentText, fontSize: font.lg, fontWeight: fontWeight.bold, fontVariant: ['tabular-nums'] },
   label: { color: colors.textSecondary, fontSize: font.sm },
   badge: { backgroundColor: colors.accent, borderRadius: radius.full, paddingHorizontal: spacing.sm, paddingVertical: spacing.xxs },

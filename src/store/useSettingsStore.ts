@@ -20,6 +20,7 @@ import {
 } from '../utils/weightGoal';
 import { parseSleepGoal } from '../utils/sleepLog';
 import { parseMaxHeartRate } from '../utils/heartRateZones';
+import { parseWorkoutBodyweightKg } from '../utils/workoutBodyweight';
 import { parseJournalWordGoal, parseJournalCustomPrompts, cleanJournalPrompts } from '../utils/journal';
 import {
   parseWaterExerciseBoost,
@@ -1267,6 +1268,14 @@ interface SettingsStore {
    * what a screen displays, never what a set's `weightKg` holds.
    */
   workoutUnit: WeightUnit;
+  /**
+   * The body weight, in kilograms, a workout is stamped with when Apple Health
+   * has no recent weigh-in (or reading it is off), typed by the person; null for
+   * none. It feeds only the estimated bodyweight volume
+   * (`WorkoutSession.bodyweightKg`, docs/arch/workouts.md, "Bodyweight volume,
+   * as built") and nothing else. A weigh-in from Health outranks it.
+   */
+  workoutBodyweightKg: number | null;
   /** How a weight is typed for an exercise held in two dumbbells (`src/utils/dumbbellLoad.ts`). */
   dumbbellEntry: DumbbellEntry;
   /**
@@ -2364,6 +2373,7 @@ interface SettingsStore {
   setStandardDrinkGrams: (grams: number) => void;
   setWorkoutsEnabled: (on: boolean) => void;
   setWorkoutUnit: (unit: WeightUnit) => void;
+  setWorkoutBodyweightKg: (kg: number | null) => void;
   setDumbbellEntry: (entry: DumbbellEntry) => void;
   setDefaultGymId: (id: string | null) => void;
   setCurrentProgramId: (id: string | null) => void;
@@ -2758,6 +2768,7 @@ const DEFAULT_SETTINGS = {
   waterUnit: 'ml' as WaterUnit,
   standardDrinkGrams: 14,
   workoutUnit: 'kg' as WeightUnit,
+  workoutBodyweightKg: null as number | null,
   dumbbellEntry: 'each' as DumbbellEntry,
   defaultRestSeconds: DEFAULT_REST_SECONDS,
   moodContextSources: NO_MOOD_CONTEXT_SOURCES,
@@ -3251,6 +3262,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   standardDrinkGrams: 14,
   workoutsEnabled: false,
   workoutUnit: 'kg',
+  workoutBodyweightKg: null,
   dumbbellEntry: 'each',
   defaultGymId: null,
   currentProgramId: null,
@@ -3717,6 +3729,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const workoutsEnabled = dbGetSetting('workoutsEnabled') === 'true';
     // As weightUnit: anything that isn't 'lb' reads as kilograms.
     const workoutUnit: WeightUnit = dbGetSetting('workoutUnit') === 'lb' ? 'lb' : 'kg';
+    const workoutBodyweightKg = parseWorkoutBodyweightKg(dbGetSetting('workoutBodyweightKg'));
     const dumbbellEntry: DumbbellEntry = dbGetSetting('dumbbellEntry') === 'pair' ? 'pair' : 'each';
     const plateInventory = parsePlateInventory(dbGetSetting('plateInventory'));
     const defaultGymId = dbGetSetting('defaultGymId') || null;
@@ -4464,6 +4477,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       weighInTasks,
       weightGoal,
       weightUnit,
+      workoutBodyweightKg,
       workoutHealthWrite,
       workoutLiveActivity,
       workoutsEnabled,
@@ -6216,6 +6230,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWorkoutUnit(unit: WeightUnit) {
     dbSetSetting('workoutUnit', unit);
     set({ workoutUnit: unit });
+  },
+
+  setWorkoutBodyweightKg(kg: number | null) {
+    const value = kg === null ? null : parseWorkoutBodyweightKg(String(kg));
+    dbSetSetting('workoutBodyweightKg', value === null ? '' : String(value));
+    set({ workoutBodyweightKg: value });
   },
 
   setDumbbellEntry(entry: DumbbellEntry) {

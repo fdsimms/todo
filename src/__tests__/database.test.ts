@@ -79,6 +79,7 @@ import {
   dbGetWorkoutSets,
   dbGetWorkoutSetsForExercise,
   dbCountWorkoutSetsBySession,
+  dbWorkoutBodyweightSets,
   dbWorkoutLiftVolumes,
   dbSaveWorkoutSet,
   dbSaveWorkoutSets,
@@ -6663,13 +6664,13 @@ describe('reclaiming freed pages at launch', () => {
 describe('workouts', () => {
   const exercise = {
     id: 'c1', name: 'Landmine row', kind: 'weight_reps' as const, primaryMuscles: ['upper_back' as const],
-    secondaryMuscles: ['biceps' as const], equipment: 'barbell' as const, barKg: null, dumbbells: null, loadEntry: null as 'each' | 'pair' | null, notes: 'V handle', otherNames: [] as string[],
+    secondaryMuscles: ['biceps' as const], equipment: 'barbell' as const, barKg: null, dumbbells: null, loadEntry: null as 'each' | 'pair' | null, bodyweightFraction: 0.5 as number | null, notes: 'V handle', otherNames: [] as string[],
     archived: false, isCustom: true, createdAt: '2026-10-01T10:00:00.000Z',
   };
   const session = {
     id: 's1', routineId: 'r1', programId: null, taskId: null, gymId: 'g1', title: 'Upper A', startedAt: '2026-10-10T22:00:00.000Z',
     endedAt: '2026-10-10T23:00:00.000Z', notes: '', effort: 7, healthWorkoutId: null, healthWritePending: false, measuredOnWatch: false, timesEdited: false,
-    routineVersionId: 'v1',
+    routineVersionId: 'v1', bodyweightKg: 82.5 as number | null,
   };
   const set = (id: string, extra: Partial<Parameters<typeof dbSaveWorkoutSet>[0]> = {}) => ({
     id, sessionId: 's1', exerciseId: 'lib:back-squat', position: 0, setIndex: 0, kind: 'working' as const,
@@ -6682,6 +6683,19 @@ describe('workouts', () => {
     expect(dbGetAllExercises()[0]).toMatchObject({ dumbbells: 1, loadEntry: 'pair' });
     mockRawDb.prepare('UPDATE exercises SET dumbbells = 7, load_entry = ?').run('both');
     expect(dbGetAllExercises()[0]).toMatchObject({ dumbbells: null, loadEntry: null });
+  });
+
+  it('round-trips the body weight stamped on a workout and an exercise\'s share of it, and reads junk as none', () => {
+    dbSaveWorkoutSession(session);
+    dbSaveExercise(exercise);
+    expect(dbGetAllWorkoutSessions()[0].bodyweightKg).toBe(82.5);
+    expect(dbGetAllExercises()[0].bodyweightFraction).toBe(0.5);
+    dbSaveWorkoutSession({ ...session, bodyweightKg: null });
+    dbSaveExercise({ ...exercise, bodyweightFraction: null });
+    expect(dbGetAllWorkoutSessions()[0].bodyweightKg).toBeNull();
+    expect(dbGetAllExercises()[0].bodyweightFraction).toBeNull();
+    mockRawDb.prepare('UPDATE exercises SET bodyweight_fraction = 3').run();
+    expect(dbGetAllExercises()[0].bodyweightFraction).toBeNull();
   });
 
   it('round-trips an exercise, keying the name of a custom one only', () => {
@@ -6791,6 +6805,25 @@ describe('workouts', () => {
     expect(rows).toEqual([
       { sessionId: 's1', exerciseId: 'c1', kilograms: 100 },
       { sessionId: 's1', exerciseId: 'lib:back-squat', kilograms: 800 },
+    ]);
+  });
+
+  it('sums reps per session, exercise and weight, from done working sets only, for the bodyweight volume', () => {
+    dbSaveWorkoutSession(session);
+    dbSaveWorkoutSets([
+      set('a', { exerciseId: 'lib:pull-up', weightKg: null, reps: 8 }),
+      set('b', { exerciseId: 'lib:pull-up', setIndex: 1, weightKg: null, reps: 7 }),
+      set('c', { exerciseId: 'lib:assisted-pull-up', position: 1, weightKg: 30, reps: 5 }),
+      set('d', { exerciseId: 'lib:assisted-pull-up', position: 1, setIndex: 1, weightKg: 20, reps: 5 }),
+      set('w', { exerciseId: 'lib:pull-up', setIndex: 2, kind: 'warmup', weightKg: null, reps: 3 }),
+      set('p', { exerciseId: 'lib:pull-up', setIndex: 3, completedAt: null, weightKg: null, reps: 9 }),
+      set('n', { exerciseId: 'lib:plank', position: 2, weightKg: null, reps: null }),
+    ]);
+    const rows = dbWorkoutBodyweightSets().sort((x, y) => x.exerciseId.localeCompare(y.exerciseId) || (x.weightKg ?? 0) - (y.weightKg ?? 0));
+    expect(rows).toEqual([
+      { sessionId: 's1', exerciseId: 'lib:assisted-pull-up', weightKg: 20, reps: 5 },
+      { sessionId: 's1', exerciseId: 'lib:assisted-pull-up', weightKg: 30, reps: 5 },
+      { sessionId: 's1', exerciseId: 'lib:pull-up', weightKg: null, reps: 15 },
     ]);
   });
 

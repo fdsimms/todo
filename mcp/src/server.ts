@@ -655,6 +655,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       secondaryMuscles: z.array(z.enum(MUSCLE_GROUPS as [MuscleGroup, ...MuscleGroup[]])).max(MUSCLE_GROUPS.length).optional(),
       otherNames: z.array(z.string().min(1).max(80)).max(10).optional().describe('Other names the person calls it.'),
       notes: z.string().max(2000).optional(),
+      bodyweightFraction: z.number().min(0).max(1).nullable().optional().describe('Bodyweight or assisted exercises only: the share of the person\'s body weight it moves, 0 to 1 (a push-up is about 0.64, a pull-up 1). Only if they said; absent counts the whole body. 0 counts nothing.'),
     },
     async input => {
       try {
@@ -667,7 +668,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'update_exercise',
-    'Correct an exercise by its id from list_exercises: a custom one (one create_exercise or the person made) in full; a built-in only in the person\'s own words for it (name, otherNames, notes) and whether it is archived, since what the movement is belongs to the library. Fields left out stay. archived: true takes it out of the pickers and the list with its history kept (an exercise is never deleted); false brings it back. A kind can\'t change once sets are logged against it. Only what the person asked for.',
+    'Correct an exercise by its id from list_exercises: a custom one (one create_exercise or the person made) in full; a built-in only in the person\'s own words for it (name, otherNames, notes), its bodyweightFraction and whether it is archived, since what the movement is belongs to the library. Fields left out stay. archived: true takes it out of the pickers and the list with its history kept (an exercise is never deleted); false brings it back. A kind can\'t change once sets are logged against it. Only what the person asked for.',
     {
       id: z.string().min(1).describe('From list_exercises.'),
       name: z.string().min(1).max(80).optional(),
@@ -678,6 +679,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       otherNames: z.array(z.string().min(1).max(80)).max(10).optional().describe('Replaces the list.'),
       notes: z.string().max(2000).optional(),
       archived: z.boolean().optional(),
+      bodyweightFraction: z.number().min(0).max(1).nullable().optional().describe('The share of the person\'s body weight a bodyweight or assisted exercise moves, 0 to 1, for the phone\'s estimated bodyweight volume; null goes back to the usual one. Allowed on a built-in. Only if they said.'),
     },
     async ({ id, ...input }) => {
       try {
@@ -690,7 +692,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_workouts',
-    'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise), programs and gyms (where they train, the equipment each has and a note for an exercise there). Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets, and never work anything out from body weight.',
+    'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise), programs and gyms (where they train, the equipment each has and a note for an exercise there). Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets. A workout\'s bodyweightKg is the phone\'s own stamp for its estimated bodyweight volume; never work anything else out from body weight.',
     logRange,
     async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listWorkouts(replica, input))))
   );
@@ -984,6 +986,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       durationMinutes: z.number().positive().max(1440).nullable().optional().describe('How long it took, only if they said.'),
       notes: z.string().max(2000).optional(),
       effort: z.number().int().min(1).max(10).nullable().optional().describe('How hard it felt, 1 to 10, only as they rated it.'),
+      bodyweightKg: z.number().min(20).max(300).nullable().optional().describe('Their body weight in kg that day (convert pounds), only if they said. It lets the phone show an estimated bodyweight volume for pull-ups, push-ups and the like; without it the workout has none.'),
       exercises: loggedExercises,
     },
     async input => {
@@ -1005,6 +1008,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       effort: z.number().int().min(1).max(10).nullable().optional(),
       startedAt: z.string().min(1).optional().describe('An ISO date-time, or YYYY-MM-DD to move it to that day at the time it started. Keeps the length it had unless durationMinutes is given.'),
       durationMinutes: z.number().min(0).max(1440).nullable().optional(),
+      bodyweightKg: z.number().min(20).max(300).nullable().optional().describe('Their body weight in kg (convert pounds), only if they said; null clears it.'),
       exercises: loggedExercises.optional(),
     },
     async ({ id, ...input }) => {

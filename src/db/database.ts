@@ -119,6 +119,7 @@ import { normalizeScale } from '../utils/recipeScale';
 import { normalizeTemplateItem, normalizeTemplateQuestion } from '../utils/templateUtils';
 import { isDeviceLocalSetting, projectRow, type BackupRow } from '../utils/backup';
 import { foldRows, foldWinner, NATURAL_KEYS, REFERENCES, SETTING_REFERENCES } from '../utils/naturalKeyFold';
+import { readBodyweightFraction } from '../utils/bodyweightLoad';
 import {
   NO_SCHEME, exerciseNameKey, readEquipment, readEquipmentList, readExerciseKind, readIdList, readMuscles, readOtherNames, readRoutineItems, readProgramScheme,
   readSetKind, readTrainingMaxes, readIdMap, readRoutineVersionSource,
@@ -2551,6 +2552,12 @@ function runInitDatabase(): void {
     'ALTER TABLE workout_sessions ADD COLUMN routine_version_id TEXT',
     // WorkoutSession.restOverrides: rests set per exercise mid-workout, JSON. NULL on a workout that set none.
     'ALTER TABLE workout_sessions ADD COLUMN rest_overrides TEXT',
+    // WorkoutSession.bodyweightKg: the body weight read from Health when the workout started. NULL on every existing
+    // workout, which has no bodyweight figure (none is backfilled), and on one started with no Health reading.
+    'ALTER TABLE workout_sessions ADD COLUMN bodyweight_kg REAL',
+    // Exercise.bodyweightFraction: the share of body weight a movement moves. NULL on every existing exercise, which uses
+    // the library's figure (or 1 for a custom one).
+    'ALTER TABLE exercises ADD COLUMN bodyweight_fraction REAL',
     'CREATE INDEX IF NOT EXISTS idx_workout_routine_versions_routine ON workout_routine_versions(routine_id)',
     'CREATE INDEX IF NOT EXISTS idx_workout_program_versions_program ON workout_program_versions(program_id)',
     // Task.mission: NULL on every existing row, which is no mission.
@@ -8287,6 +8294,7 @@ function rowToExercise(row: Record<string, unknown>): Exercise {
     barKg: numOrNull(row.bar_kg),
     dumbbells: Number(row.dumbbells) === 1 ? 1 : Number(row.dumbbells) === 2 ? 2 : null,
     loadEntry: row.load_entry === 'each' || row.load_entry === 'pair' ? row.load_entry : null,
+    bodyweightFraction: readBodyweightFraction(row.bodyweight_fraction),
     notes: String(row.notes ?? ''),
     otherNames: readOtherNames(row.other_names),
     archived: Number(row.archived) === 1,
@@ -8315,18 +8323,20 @@ export function dbGetAllExercises(): Exercise[] {
 export function dbSaveExercise(e: Exercise): void {
   db.runSync(
     `INSERT INTO exercises
-      (id, name, name_key, kind, primary_muscles, secondary_muscles, equipment, bar_kg, dumbbells, load_entry, notes, archived, is_custom, created_at, other_names)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, name_key, kind, primary_muscles, secondary_muscles, equipment, bar_kg, dumbbells, load_entry, notes, archived, is_custom, created_at, other_names, bodyweight_fraction)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name, name_key = excluded.name_key, kind = excluded.kind,
         primary_muscles = excluded.primary_muscles, secondary_muscles = excluded.secondary_muscles,
         equipment = excluded.equipment, bar_kg = excluded.bar_kg,
         dumbbells = excluded.dumbbells, load_entry = excluded.load_entry, notes = excluded.notes,
-        archived = excluded.archived, is_custom = excluded.is_custom, other_names = excluded.other_names`,
+        archived = excluded.archived, is_custom = excluded.is_custom, other_names = excluded.other_names,
+        bodyweight_fraction = excluded.bodyweight_fraction`,
     [
       e.id, e.name, e.isCustom ? exerciseNameKey(e.name) : null, e.kind,
       JSON.stringify(e.primaryMuscles), JSON.stringify(e.secondaryMuscles), e.equipment, e.barKg, e.dumbbells, e.loadEntry,
       e.notes, e.archived ? 1 : 0, e.isCustom ? 1 : 0, e.createdAt, JSON.stringify(e.otherNames ?? []),
+      e.bodyweightFraction ?? null,
     ]
   );
 }
@@ -8565,6 +8575,7 @@ function rowToWorkoutSession(row: Record<string, unknown>): WorkoutSession {
     healthWritePending: Number(row.health_write_pending) === 1,
     measuredOnWatch: Number(row.measured_on_watch) === 1,
     timesEdited: Number(row.times_edited) === 1,
+    bodyweightKg: numOrNull(row.bodyweight_kg),
     ...restOverridesField(row.rest_overrides),
   };
 }
@@ -8622,13 +8633,14 @@ export function dbSaveWorkoutSession(s: WorkoutSession): void {
   db.runSync(
     `INSERT OR REPLACE INTO workout_sessions
       (id, routine_id, program_id, task_id, title, started_at, ended_at, notes, effort, health_workout_id, health_write_pending,
-       measured_on_watch, times_edited, gym_id, routine_version_id, rest_overrides)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       measured_on_watch, times_edited, gym_id, routine_version_id, rest_overrides, bodyweight_kg)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       s.id, s.routineId, s.programId, s.taskId, s.title, s.startedAt, s.endedAt, s.notes, s.effort,
       s.healthWorkoutId, s.healthWritePending ? 1 : 0, s.measuredOnWatch ? 1 : 0, s.timesEdited ? 1 : 0, s.gymId ?? null,
       s.routineVersionId ?? null,
       s.restOverrides && Object.keys(s.restOverrides).length > 0 ? JSON.stringify(s.restOverrides) : null,
+      s.bodyweightKg ?? null,
     ]
   );
 }
@@ -8720,6 +8732,24 @@ export function dbWorkoutLiftVolumes(): { sessionId: string; exerciseId: string;
        GROUP BY session_id, exercise_id`
     )
     .map(r => ({ sessionId: r.session_id, exerciseId: r.exercise_id, kilograms: r.kg }));
+}
+
+/**
+ * Every done, non-warm-up set that has reps, summed by session, exercise and
+ * weight: what a history list folds into each session's bodyweight volume
+ * without loading the sets. Grouped by weight too, because an assisted set's
+ * weight is the help it got and the clamp at 0 has to be applied per weight, not
+ * per total. The kind lives in the catalog, so the caller keeps only the
+ * bodyweight and assisted exercises.
+ */
+export function dbWorkoutBodyweightSets(): { sessionId: string; exerciseId: string; weightKg: number | null; reps: number }[] {
+  return db
+    .getAllSync<{ session_id: string; exercise_id: string; weight_kg: number | null; reps: number }>(
+      `SELECT session_id, exercise_id, weight_kg, SUM(reps) AS reps FROM workout_sets
+       WHERE completed_at IS NOT NULL AND kind != 'warmup' AND reps IS NOT NULL
+       GROUP BY session_id, exercise_id, weight_kg`
+    )
+    .map(r => ({ sessionId: r.session_id, exerciseId: r.exercise_id, weightKg: r.weight_kg, reps: r.reps }));
 }
 
 export function dbSaveWorkoutSet(s: WorkoutSet): void {

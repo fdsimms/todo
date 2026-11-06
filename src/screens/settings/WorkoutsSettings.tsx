@@ -6,7 +6,8 @@ import { CountStepper } from '../../components/CountStepper';
 import { MaxHeartRateSheet } from '../../components/MaxHeartRateSheet';
 import type { WeightUnit } from '../../utils/weightLog';
 import { DUMBBELL_ENTRY_LABELS, type DumbbellEntry } from '../../utils/dumbbellLoad';
-import { REST_SECONDS_MAX, REST_SECONDS_MIN, formatRestSeconds } from '../../utils/workoutData';
+import { REST_SECONDS_MAX, REST_SECONDS_MIN, formatRestSeconds, weightFromDisplay, weightToDisplay } from '../../utils/workoutData';
+import { WORKOUT_BODYWEIGHT_RANGE_KG } from '../../utils/workoutBodyweight';
 import { describeMaxHeartRate, resolveMaxHeartRate } from '../../utils/heartRateZones';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
@@ -32,6 +33,8 @@ import { haptics } from '../../utils/haptics';
  */
 export function WorkoutsSettings() {
   const workoutUnit = useSettingsStore(s => s.workoutUnit);
+  const workoutBodyweightKg = useSettingsStore(s => s.workoutBodyweightKg);
+  const setWorkoutBodyweightKg = useSettingsStore(s => s.setWorkoutBodyweightKg);
   const setWorkoutUnit = useSettingsStore(s => s.setWorkoutUnit);
   const dumbbellEntry = useSettingsStore(s => s.dumbbellEntry);
   const setDumbbellEntry = useSettingsStore(s => s.setDumbbellEntry);
@@ -108,6 +111,28 @@ export function WorkoutsSettings() {
             format={formatRestSeconds}
             label="Rest between sets"
             describeValue={n => (n === null ? 'not set' : `${n} seconds`)}
+          />
+        </View>
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="workoutBodyweightKg"
+          icon="body-outline"
+          label="Body weight for workouts"
+          hint="Pull-ups, push-ups and other bodyweight work show an estimate of the weight you moved. This is the weight used when Apple Health has no recent weigh-in, or reading it is off. A weigh-in from Apple Health is used first."
+          tight
+        />
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={workoutBodyweightKg === null ? null : Math.round(weightToDisplay(workoutBodyweightKg, workoutUnit))}
+            onChange={next => setWorkoutBodyweightKg(next === null ? null : Math.round(weightFromDisplay(next, workoutUnit) * 10) / 10)}
+            min={Math.ceil(weightToDisplay(WORKOUT_BODYWEIGHT_RANGE_KG.min, workoutUnit))}
+            max={Math.floor(weightToDisplay(WORKOUT_BODYWEIGHT_RANGE_KG.max, workoutUnit))}
+            start={workoutUnit === 'kg' ? 70 : 155}
+            allowNull
+            emptyLabel="Not set"
+            format={n => `${n} ${workoutUnit}`}
+            label="Body weight for workouts"
+            describeValue={n => (n === null ? 'not set' : `${n} ${workoutUnit === 'kg' ? 'kilograms' : 'pounds'}`)}
           />
         </View>
         <View style={styles.sep} />

@@ -2516,6 +2516,19 @@ describe('demo seed — people', () => {
     expect(analysis.events.some(e => e.type === 'e1rm' && e.sessionId === flat.sessionId)).toBe(false);
   });
 
+  // The capability is invisible until a workout carries a body weight and bodyweight sets, so one does.
+  it('seeds a workout with a body weight and bodyweight sets, counted apart from the lifted volume', () => {
+    const { sessions, bodyweightVolumeKgBySession, volumeKgBySession } = useWorkoutStore.getState();
+    const stamped = sessions.filter(s => !!s.bodyweightKg);
+    expect(stamped).toHaveLength(1);
+    const id = stamped[0].id;
+    // 78 kg x (pull-ups 1 x 15 reps + push-ups 0.64 x 27 reps)
+    expect(bodyweightVolumeKgBySession[id]).toBeCloseTo(78 * (15 + 0.64 * 27), 6);
+    expect(volumeKgBySession[id]).toBeGreaterThan(0);
+    // The other workouts have no body weight, so no bodyweight figure.
+    expect(Object.keys(bodyweightVolumeKgBySession)).toEqual([id]);
+  });
+
   it('seeds enough logged days around the training days for mood on training days to show', () => {
     const { sessions } = useWorkoutStore.getState();
     const dayResetTime = useSettingsStore.getState().dayResetTime;

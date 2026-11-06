@@ -1,4 +1,5 @@
 import { weightScale } from '../utils/dumbbellLoad';
+import { bodyweightFractionFor } from '../utils/bodyweightLoad';
 import React, { useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle, Polyline } from 'react-native-svg';
@@ -86,6 +87,7 @@ export function RoutineProgressView({ routineId, exerciseIds, onOpenExercise, on
       unit,
       dayResetTime,
       scaleOf: id => weightScale(catalogExercise(exercises, id), dumbbellEntry),
+      fractionOf: id => bodyweightFractionFor(catalogExercise(exercises, id), id),
     });
   }, [routineId, exerciseIds, sessions, exercises, unit, dayResetTime, dumbbellEntry]);
 
@@ -102,12 +104,20 @@ export function RoutineProgressView({ routineId, exerciseIds, onOpenExercise, on
     value: volumeForChart(v.volumeKg, unit),
     text: formatVolume(v.volumeKg, 'weight_reps', unit),
   }));
+  const bodyweightVolume = progress.bodyweightVolume;
+  const latestBodyweightVolume = bodyweightVolume.length > 0 ? bodyweightVolume[bodyweightVolume.length - 1] : null;
+  const bodyweightChartPoints: ExerciseChartPoint[] = bodyweightVolume.map(v => ({
+    dayKey: v.dayKey,
+    value: volumeForChart(v.volumeKg, unit),
+    text: `${formatVolume(v.volumeKg, 'weight_reps', unit)} est.`,
+  }));
   const percent = progress.volumeChangePercent;
   const tiles: { value: string; label: string }[] = [
     { value: String(progress.workouts), label: progress.workouts === 1 ? 'Workout' : 'Workouts' },
   ];
   if (latestVolume) tiles.push({ value: formatVolume(latestVolume.volumeKg, 'weight_reps', unit), label: 'Last volume' });
   if (percent !== null) tiles.push({ value: `${percent > 0 ? '+' : ''}${percent}%`, label: 'Volume since first' });
+  if (latestBodyweightVolume) tiles.push({ value: formatVolume(latestBodyweightVolume.volumeKg, 'weight_reps', unit), label: 'Last bodyweight, est.' });
 
   const rowSummary = (e: RoutineExerciseProgress, name: string) => {
     if (!e.first || !e.latest) return `${name}, no workouts yet`;
@@ -139,6 +149,20 @@ export function RoutineProgressView({ routineId, exerciseIds, onOpenExercise, on
               formatAxis={v => (v >= 1000 ? `${Number((v / 1000).toFixed(1))}k` : String(v))}
               onScrubChange={onScrubChange}
               summary={`Volume per workout, ${chartPoints.length} workouts, latest ${chartPoints[chartPoints.length - 1].text}`}
+            />
+          </View>
+        </>
+      )}
+
+      {bodyweightChartPoints.length >= 2 && (
+        <>
+          <Text style={styles.groupLabel}>Bodyweight volume per workout, est.</Text>
+          <View style={[styles.card, styles.chart]}>
+            <ExerciseProgressChart
+              points={bodyweightChartPoints}
+              formatAxis={v => (v >= 1000 ? `${Number((v / 1000).toFixed(1))}k` : String(v))}
+              onScrubChange={onScrubChange}
+              summary={`Estimated bodyweight volume per workout, ${bodyweightChartPoints.length} workouts, latest ${bodyweightChartPoints[bodyweightChartPoints.length - 1].text}`}
             />
           </View>
         </>
@@ -178,7 +202,7 @@ export function RoutineProgressView({ routineId, exerciseIds, onOpenExercise, on
         })}
       </View>
       <HelpText style={styles.foot}>
-        Volume is weight times reps over the sets you checked off, warm-ups left out. Gold marks a heavier top set than any earlier workout of this routine. Tap an exercise for its full chart.
+        Volume is weight times reps over the sets you checked off, warm-ups left out. Bodyweight volume is an estimate from your body weight when each workout started, and is not added to it. Gold marks a heavier top set than any earlier workout of this routine. Tap an exercise for its full chart.
       </HelpText>
     </View>
   );

@@ -26,10 +26,14 @@ import { logicalDayStart } from './clockTime';
  *    sets and drifts upward on long ones, so a set of 25 is not evidence of a
  *    one-rep max. A set of one rep is the weight itself. Every label that shows
  *    it says "estimated".
- * 3. **Nothing is relative to a body weight.** Volume for a bodyweight
- *    exercise is the reps, never reps times anyone's weight, and there is no
- *    standard, ratio or score. This is the weight rule of docs/arch/health-data.md
- *    (nothing derives anything from a body) carried into the workout log.
+ * 3. **No record is relative to a body weight.** A bodyweight exercise ranks and
+ *    charts by its reps, never reps times anyone's weight, and there is no
+ *    standard, ratio or score (so losing weight never reads as a regression).
+ *    The one place a body weight enters is `bodyweightVolumeKg`: an estimated
+ *    figure kept apart from the lifted volume, from the weight stamped on the
+ *    workout when it started (`WorkoutSession.bodyweightKg`), never summed into
+ *    `liftVolumeKg`. It is a carve-out from the weight rule of
+ *    docs/arch/health-data.md, written up in docs/arch/workouts.md, "Bodyweight volume, as built".
  * 4. **A first time is not a record.** A PR is announced only where there is
  *    something earlier to beat, so the first session of an exercise sets no
  *    PRs, and a rep count nobody had done before sets no "best set of N".
@@ -82,8 +86,9 @@ export function estimatedOneRepMax(weightKg: number | null, reps: number | null)
 /**
  * What one set adds to a volume, in the unit `volumeUnit` names for its kind,
  * or null when it has nothing to add. Weight times reps for a weighted lift;
- * the reps alone for a bodyweight or assisted one (an assisted set's weight is
- * the help it was given, so multiplying by it would reward more help); seconds
+ * the reps alone for a bodyweight or assisted one (a record reads reps, and an
+ * assisted set's weight is the help it was given, so multiplying by it would
+ * reward more help; the estimated kilograms are `bodyweightVolumeKg`'s); seconds
  * for a hold; metres for a distance or a carry.
  */
 export function setVolume(set: Pick<WorkoutSet, 'weightKg' | 'reps' | 'durationSeconds' | 'distanceM'>, kind: ExerciseKind): number | null {
@@ -120,6 +125,45 @@ export function liftVolumeKg(
     if (v !== null) total = (total ?? 0) + v;
   }
   return total;
+}
+
+/**
+ * A workout's bodyweight volume in kilograms, an estimate: for each done,
+ * non-warm-up set of a bodyweight exercise, the person's weight times the share
+ * of it the movement moves (`bodyweightFractionOf`) times the reps. An assisted
+ * set subtracts the help from that load (never below 0), so more help never
+ * adds volume. Kept apart from `liftVolumeKg` because one is measured and this
+ * isn't. Null when there is nothing to say: no body weight stamped on the
+ * workout, or no qualifying set, so a row can leave the figure off.
+ */
+export function bodyweightVolumeKg(
+  sets: readonly Pick<WorkoutSet, 'exerciseId' | 'weightKg' | 'reps' | 'completedAt' | 'kind'>[],
+  kindOf: (exerciseId: string) => ExerciseKind,
+  fractionOf: (exerciseId: string) => number,
+  bodyweightKg: number | null | undefined,
+): number | null {
+  if (bodyweightKg === null || bodyweightKg === undefined || !(bodyweightKg > 0)) return null;
+  let total: number | null = null;
+  for (const set of sets) {
+    if (!countsForRecords(set) || set.reps === null) continue;
+    const v = bodyweightSetVolume(set.weightKg, set.reps, kindOf(set.exerciseId), fractionOf(set.exerciseId), bodyweightKg);
+    if (v !== null && v > 0) total = (total ?? 0) + v;
+  }
+  return total;
+}
+
+/**
+ * One set's share of `bodyweightVolumeKg`, or null for a kind that isn't
+ * bodyweight work. Also what `dbWorkoutBodyweightSets`' rows are folded with,
+ * so the live figure and a history list can't disagree.
+ */
+export function bodyweightSetVolume(
+  weightKg: number | null, reps: number, kind: ExerciseKind, fraction: number, bodyweightKg: number,
+): number | null {
+  if (kind !== 'bodyweight_reps' && kind !== 'assisted_reps') return null;
+  const load = bodyweightKg * fraction;
+  if (kind === 'bodyweight_reps') return load * reps;
+  return Math.max(0, load - (weightKg ?? 0)) * reps;
 }
 
 export type VolumeUnit = 'kg' | 'reps' | 'seconds' | 'm';

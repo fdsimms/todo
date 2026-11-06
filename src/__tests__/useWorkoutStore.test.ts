@@ -67,6 +67,12 @@ jest.mock('../store/useTaskStore', () => ({
     updateTask: mockUpdateTask,
   }) },
 }));
+// The Health store's weight read, as a fake: what is under test is what the
+// workout store does with each answer when a workout starts.
+const mockReadRecentWeights = jest.fn();
+jest.mock('../store/useHealthStore', () => ({
+  useHealthStore: { getState: () => ({ readRecentWeights: mockReadRecentWeights }) },
+}));
 // The Health writer's two native calls and its switch, as fakes: what is
 // under test here is what the store does with each answer. The pure rules
 // (`pendingWorkoutWriteAction`) stay real.
@@ -104,6 +110,7 @@ beforeEach(() => {
   mockWrite.mockResolvedValue({ outcome: 'off', workoutId: null, sampleIds: [] });
   mockRetract.mockResolvedValue(true);
   mockWriteOn.mockReturnValue(false);
+  mockReadRecentWeights.mockResolvedValue(null);
 });
 
 const state = () => useWorkoutStore.getState();
@@ -550,6 +557,199 @@ describe('a live session', () => {
     expect(state().volumeKgBySession[s.id]).toBe(900);
     reload();
     expect(state().volumeKgBySession[s.id]).toBe(900);
+  });
+
+  describe('bodyweight volume', () => {
+    const bodyweightSets = (id: string) => {
+      ok(state().logSet(id, { exerciseId: 'lib:pull-up', reps: 8 }));
+      ok(state().logSet(id, { exerciseId: 'lib:pull-up', reps: 7 }));
+    };
+
+    it('is kept apart from the lifted volume, in step with the sets, and the same after a reload', () => {
+      const s = ok(state().startSession({ bodyweightKg: 80 }));
+      ok(state().logSet(s.id, { exerciseId: 'lib:back-squat', weightKg: 100, reps: 5 }));
+      bodyweightSets(s.id);
+      expect(state().sessions.find(x => x.id === s.id)?.bodyweightKg).toBe(80);
+      expect(state().volumeKgBySession[s.id]).toBe(500);
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBe(1200);
+      reload();
+      expect(state().volumeKgBySession[s.id]).toBe(500);
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBe(1200);
+      expect(dbGetWorkoutSession(s.id)?.bodyweightKg).toBe(80);
+    });
+
+    it('uses the person\'s share over the library\'s, and counts a custom exercise at the whole body', () => {
+      ok(state().updateExercise('lib:push-up', { bodyweightFraction: 0.5 }));
+      const custom = ok(state().addExercise({ name: 'Ring row', kind: 'bodyweight_reps', equipment: 'other', primaryMuscles: ['lats'] }));
+      const s = ok(state().startSession({ bodyweightKg: 100 }));
+      ok(state().logSet(s.id, { exerciseId: 'lib:push-up', reps: 10 }));
+      ok(state().logSet(s.id, { exerciseId: custom.id, reps: 10 }));
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBe(500 + 1000);
+      reload();
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBe(1500);
+    });
+
+    it('subtracts an assisted set\'s help', () => {
+      const s = ok(state().startSession({ bodyweightKg: 80 }));
+      ok(state().logSet(s.id, { exerciseId: 'lib:assisted-pull-up', weightKg: 30, reps: 5 }));
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBe(250);
+    });
+
+    it('has no entry when the workout has no body weight, however many bodyweight sets it holds', () => {
+      const s = ok(state().startSession({ bodyweightKg: null }));
+      bodyweightSets(s.id);
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBeUndefined();
+      reload();
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBeUndefined();
+    });
+
+    it('takes the body weight a start was given as it is, and does not ask Health', () => {
+      useSettingsStore.setState({ healthReadEnabled: true });
+      try {
+        ok(state().startSession({ bodyweightKg: 0 }));
+        expect(mockReadRecentWeights).not.toHaveBeenCalled();
+        expect(state().liveSession()?.bodyweightKg).toBeNull();
+      } finally {
+        useSettingsStore.setState({ healthReadEnabled: false });
+      }
+    });
+
+    it('stamps the latest weigh-in from Health after the start, and counts the sets already logged', async () => {
+      useSettingsStore.setState({ healthReadEnabled: true });
+      mockReadRecentWeights.mockResolvedValue([{ dayKey: '2026-01-01', kilograms: 82 }, { dayKey: '2026-01-04', kilograms: 80 }]);
+      try {
+        const s = ok(state().startSession());
+        bodyweightSets(s.id);
+        await flush();
+        expect(mockReadRecentWeights).toHaveBeenCalledTimes(1);
+        expect(dbGetWorkoutSession(s.id)?.bodyweightKg).toBe(80);
+        expect(state().sessions.find(x => x.id === s.id)?.bodyweightKg).toBe(80);
+        expect(state().bodyweightVolumeKgBySession[s.id]).toBe(1200);
+      } finally {
+        useSettingsStore.setState({ healthReadEnabled: false });
+      }
+    });
+
+    it('stamps nothing when reading Health is off, it can\'t be asked, or it holds no weigh-in', async () => {
+      const startAndFlush = async () => {
+        const s = ok(state().startSession());
+        await flush();
+        const stamped = dbGetWorkoutSession(s.id)?.bodyweightKg ?? null;
+        state().deleteSession(s.id);
+        return stamped;
+      };
+      // Off: Health is not asked at all.
+      expect(await startAndFlush()).toBeNull();
+      expect(mockReadRecentWeights).not.toHaveBeenCalled();
+      useSettingsStore.setState({ healthReadEnabled: true });
+      try {
+        mockReadRecentWeights.mockResolvedValue(null);
+        expect(await startAndFlush()).toBeNull();
+        mockReadRecentWeights.mockResolvedValue([]);
+        expect(await startAndFlush()).toBeNull();
+        mockReadRecentWeights.mockRejectedValue(new Error('locked'));
+        expect(await startAndFlush()).toBeNull();
+      } finally {
+        useSettingsStore.setState({ healthReadEnabled: false });
+      }
+    });
+
+    describe('the typed body weight in Settings', () => {
+      const setTyped = (kg: number | null) => useSettingsStore.setState({ workoutBodyweightKg: kg });
+      afterEach(() => { setTyped(null); useSettingsStore.setState({ healthReadEnabled: false }); });
+
+      it('stamps a workout when reading Health is off', async () => {
+        setTyped(75);
+        const s = ok(state().startSession());
+        bodyweightSets(s.id);
+        await flush();
+        expect(mockReadRecentWeights).not.toHaveBeenCalled();
+        expect(dbGetWorkoutSession(s.id)?.bodyweightKg).toBe(75);
+        expect(state().bodyweightVolumeKgBySession[s.id]).toBe(75 * 15);
+      });
+
+      it('stamps a workout when Health holds no weigh-in, or can\'t be asked', async () => {
+        useSettingsStore.setState({ healthReadEnabled: true });
+        setTyped(75);
+        mockReadRecentWeights.mockResolvedValue([]);
+        const a = ok(state().startSession());
+        await flush();
+        expect(dbGetWorkoutSession(a.id)?.bodyweightKg).toBe(75);
+        state().deleteSession(a.id);
+        mockReadRecentWeights.mockResolvedValue(null);
+        const b = ok(state().startSession());
+        await flush();
+        expect(dbGetWorkoutSession(b.id)?.bodyweightKg).toBe(75);
+      });
+
+      it('lets a weigh-in from Health outrank it', async () => {
+        useSettingsStore.setState({ healthReadEnabled: true });
+        setTyped(75);
+        mockReadRecentWeights.mockResolvedValue([{ dayKey: '2026-01-04', kilograms: 80 }]);
+        const s = ok(state().startSession());
+        await flush();
+        expect(dbGetWorkoutSession(s.id)?.bodyweightKg).toBe(80);
+      });
+
+      it('is not used by a start that was given a body weight, null included', async () => {
+        setTyped(75);
+        const s = ok(state().startSession({ bodyweightKg: null }));
+        await flush();
+        expect(dbGetWorkoutSession(s.id)?.bodyweightKg).toBeNull();
+      });
+    });
+
+    it('takes a body weight on a workout logged after the fact', () => {
+      const added = ok(state().addFinishedSession({
+        startedAt: '2026-10-07T18:00:00.000Z', endedAt: '2026-10-07T19:00:00.000Z', bodyweightKg: 80,
+        sets: [{ exerciseId: 'lib:pull-up', reps: 8 }, { exerciseId: 'lib:pull-up', reps: 7 }],
+      }));
+      expect(added.session.bodyweightKg).toBe(80);
+      expect(state().bodyweightVolumeKgBySession[added.session.id]).toBe(1200);
+      reload();
+      expect(state().bodyweightVolumeKgBySession[added.session.id]).toBe(1200);
+    });
+
+    it('works the figure out again when a workout\'s body weight is changed or cleared', () => {
+      const s = ok(state().startSession({ bodyweightKg: 80 }));
+      bodyweightSets(s.id);
+      ok(state().updateSession(s.id, { bodyweightKg: 90 }));
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBe(1350);
+      expect(dbGetWorkoutSession(s.id)?.bodyweightKg).toBe(90);
+      ok(state().updateSession(s.id, { bodyweightKg: null }));
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBeUndefined();
+    });
+
+    it('works every logged workout\'s figure out again when an exercise\'s share changes', () => {
+      const s = ok(state().startSession({ bodyweightKg: 100 }));
+      ok(state().logSet(s.id, { exerciseId: 'lib:push-up', reps: 10 }));
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBe(640);
+      ok(state().updateExercise('lib:push-up', { bodyweightFraction: 0.5 }));
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBe(500);
+      ok(state().updateExercise('lib:push-up', { bodyweightFraction: null }));
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBe(640);
+    });
+
+    it('does not stamp a workout that was deleted while Health was answering', async () => {
+      useSettingsStore.setState({ healthReadEnabled: true });
+      mockReadRecentWeights.mockResolvedValue([{ dayKey: '2026-01-04', kilograms: 80 }]);
+      try {
+        const s = ok(state().startSession());
+        state().deleteSession(s.id);
+        await flush();
+        expect(dbGetWorkoutSession(s.id)).toBeNull();
+        expect(state().sessions.find(x => x.id === s.id)).toBeUndefined();
+      } finally {
+        useSettingsStore.setState({ healthReadEnabled: false });
+      }
+    });
+
+    it('drops a deleted workout\'s figure', () => {
+      const s = ok(state().startSession({ bodyweightKg: 80 }));
+      bodyweightSets(s.id);
+      state().deleteSession(s.id);
+      expect(state().bodyweightVolumeKgBySession[s.id]).toBeUndefined();
+    });
   });
 
   it('has no volume entry for a session with no weighted sets', () => {

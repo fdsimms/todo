@@ -1690,6 +1690,12 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   is labelled estimated in the field names and a note, in kilograms, because it is a calculation and
   never a lift; nothing it returns is relative to a body weight. Like `list_workouts` it reads sets,
   so it is empty without Include health logs and says that an empty history is not evidence.
+  The phone's separate, estimated bodyweight volume (`docs/arch/workouts.md`, "Bodyweight volume, as
+  built") is fed by two fields the server may write only when the person gives the figure:
+  `bodyweightKg` on `log_workout`/`update_workout` (the phone stamps its own on a workout it
+  starts) and `bodyweightFraction` on `create_exercise`/`update_exercise` (allowed on a built-in).
+  `list_workouts` and `list_exercises` read them back, and `instructions.ts` says never to guess
+  either or to present that volume as weight lifted.
 - **The vacation switch is the settings store's own setter**, so what `set_vacation_mode` does is
   what the Settings toggle does. The rule every off-path shares, that the protected streaks are
   forgiven first or a paused daily habit reads as broken the moment the pause lifts, was lifted out

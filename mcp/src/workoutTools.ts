@@ -61,6 +61,8 @@ export interface ExerciseRow {
   archived?: true;
   /** A bar weight the person set, in kg. */
   barKg?: number;
+  /** For a bodyweight or assisted exercise, the share of body weight (0 to 1) the person set where the library's isn't right. */
+  bodyweightFraction?: number;
   /** For a dumbbell exercise, how many dumbbells it is held in (1 or 2). A set's weightKg is one dumbbell's either way. */
   dumbbells?: 1 | 2;
 }
@@ -80,6 +82,7 @@ function exerciseRow(e: CatalogExercise): ExerciseRow {
     ...(e.overridden ? { changedByYou: true as const } : {}),
     ...(e.archived ? { archived: true as const } : {}),
     ...(e.barKg !== null ? { barKg: e.barKg } : {}),
+    ...(e.bodyweightFraction != null ? { bodyweightFraction: e.bodyweightFraction } : {}),
     ...(dumbbellsUsed(e) ? { dumbbells: dumbbellsUsed(e)! } : {}),
   };
 }
@@ -92,6 +95,8 @@ export interface CreateExerciseInput {
   secondaryMuscles?: MuscleGroup[];
   otherNames?: string[];
   notes?: string;
+  /** For a bodyweight or assisted exercise, the share of body weight it moves, 0 to 1. Absent uses 1 for a custom exercise. */
+  bodyweightFraction?: number | null;
 }
 
 /**
@@ -117,6 +122,8 @@ export interface UpdateExerciseInput {
   otherNames?: string[];
   notes?: string;
   archived?: boolean;
+  /** For a bodyweight or assisted exercise, the share of body weight it moves, 0 to 1; null goes back to the usual one. Allowed on a built-in. */
+  bodyweightFraction?: number | null;
 }
 
 /**
@@ -129,7 +136,7 @@ export function updateExercise(replica: Replica, id: string, input: UpdateExerci
   const isBuiltIn = !replica.exercises().some(e => e.id === id && e.isCustom) && catalogExercise(replica.exercises(), id)?.builtIn === true;
   const movement = input.kind !== undefined || input.equipment !== undefined || input.primaryMuscles !== undefined || input.secondaryMuscles !== undefined;
   if (isBuiltIn && movement) {
-    throw new Error('A built-in exercise keeps the library\'s kind, equipment and muscles; only its name, otherNames, notes and archived change. Make a custom one with create_exercise for a different movement.');
+    throw new Error('A built-in exercise keeps the library\'s kind, equipment and muscles; only its name, otherNames, notes, bodyweightFraction and archived change. Make a custom one with create_exercise for a different movement.');
   }
   const made = replica.updateExercise(id, input);
   const row = catalogExercise(replica.exercises(), made.id);
@@ -191,6 +198,8 @@ export interface WorkoutRow {
   routineVersion?: number;
   /** How hard it felt, 1 to 10, as the person typed it. */
   effort?: number;
+  /** The body weight in kg the phone stamped from Health when the workout started. Absent when it had none. */
+  bodyweightKg?: number;
   notes?: string;
   /** Written to Apple Health by the phone; its times can't be changed, nor it deleted, from here. */
   inAppleHealth?: true;
@@ -225,6 +234,7 @@ function workoutRow(replica: Replica, s: WorkoutSession, sets: readonly WorkoutS
     ...(s.gymId && names.gymName.has(s.gymId) ? { gym: names.gymName.get(s.gymId)! } : {}),
     ...((() => { const n = names.routineVersion?.(s); return n ? { routineVersion: n } : {}; })()),
     ...(s.effort !== null ? { effort: s.effort } : {}),
+    ...(s.bodyweightKg ? { bodyweightKg: s.bodyweightKg } : {}),
     ...(s.notes ? { notes: s.notes } : {}),
     // In Apple Health: the phone wrote it there, so only the phone can move or delete it.
     ...(s.healthWorkoutId ? { inAppleHealth: true as const } : {}),
@@ -643,8 +653,8 @@ export interface RecordRowOut {
  *
  * **The estimated 1RM is an estimate and is labelled one.** Epley, from a set
  * of ten reps or fewer; it is a calculation and never a lift the person did.
- * Nothing here is relative to a body weight, and a bodyweight exercise's volume
- * is its reps. Weights are kilograms whatever unit the phone shows.
+ * No record here is relative to a body weight, and a bodyweight exercise's volume
+ * is its reps (the phone's estimated bodyweight volume is a separate figure it keeps for the workout page). Weights are kilograms whatever unit the phone shows.
  *
  * Sets are the health record, so with Include health logs off the history is
  * empty and the note says that is not evidence nobody trained, the reading
@@ -920,6 +930,8 @@ export interface LogWorkoutInput {
   durationMinutes?: number | null;
   notes?: string;
   effort?: number | null;
+  /** The person's body weight in kg at the time, only if they said (the phone stamps one itself on a workout it starts). */
+  bodyweightKg?: number | null;
   exercises: LoggedExerciseInput[];
 }
 
@@ -1005,6 +1017,7 @@ export function logWorkout(replica: Replica, input: LogWorkoutInput, now: Date =
     endedAt: end.toISOString(),
     notes: input.notes,
     effort: input.effort ?? null,
+    bodyweightKg: input.bodyweightKg ?? null,
     sets: setsFrom(input.exercises),
   });
   return { workout: workoutRow(replica, session, sets, namesOf(replica)) };
@@ -1016,6 +1029,8 @@ export interface UpdateWorkoutInput {
   effort?: number | null;
   startedAt?: string;
   durationMinutes?: number | null;
+  /** The body weight in kg to stamp on the workout; null clears it. */
+  bodyweightKg?: number | null;
   /** Replaces every set when given. */
   exercises?: LogWorkoutInput['exercises'];
 }
@@ -1053,6 +1068,7 @@ export function updateWorkout(replica: Replica, id: string, input: UpdateWorkout
     ...(input.title !== undefined ? { title: input.title } : {}),
     ...(input.notes !== undefined ? { notes: input.notes } : {}),
     ...(input.effort !== undefined ? { effort: input.effort } : {}),
+    ...(input.bodyweightKg !== undefined ? { bodyweightKg: input.bodyweightKg } : {}),
     ...(input.startedAt !== undefined ? { startedAt: start.toISOString() } : {}),
     ...(end ? { endedAt: end.toISOString() } : {}),
     ...(input.exercises ? { sets: setsKeepingWhatTheInputCannotSay(setsFrom(input.exercises), input.exercises, replica.workoutSets(id), delta) } : shifted && shifted.length ? { sets: shifted } : {}),

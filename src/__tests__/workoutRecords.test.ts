@@ -4,6 +4,8 @@ import {
   SECONDARY_MUSCLE_WEIGHT,
   analyzeAll,
   analyzeExercise,
+  bodyweightSetVolume,
+  bodyweightVolumeKg,
   countsForRecords,
   estimatedOneRepMax,
   isNewRecord,
@@ -649,5 +651,50 @@ describe('topMuscles', () => {
   it('caps the list and handles no week', () => {
     expect(topMuscles(week, 2)).toHaveLength(2);
     expect(topMuscles(undefined)).toEqual([]);
+  });
+});
+
+describe('bodyweightVolumeKg', () => {
+  const set = (exerciseId: string, weightKg: number | null, reps: number | null, extra: Partial<WorkoutSet> = {}) =>
+    ({ exerciseId, weightKg, reps, completedAt: '2026-01-05T10:00:00.000Z', kind: 'working' as const, ...extra });
+  const kinds: Record<string, 'bodyweight_reps' | 'assisted_reps' | 'weight_reps'> = {
+    pullup: 'bodyweight_reps', pushup: 'bodyweight_reps', assist: 'assisted_reps', squat: 'weight_reps',
+  };
+  const kindOf = (id: string) => kinds[id];
+  const fractions: Record<string, number> = { pullup: 1, pushup: 0.64, assist: 1, squat: 1 };
+  const fractionOf = (id: string) => fractions[id];
+
+  it('is body weight times the share it moves times the reps', () => {
+    expect(bodyweightVolumeKg([set('pullup', null, 8), set('pullup', null, 7)], kindOf, fractionOf, 80)).toBe(1200);
+    expect(bodyweightVolumeKg([set('pushup', null, 10)], kindOf, fractionOf, 100)).toBeCloseTo(640, 6);
+  });
+
+  it('keeps a set that has no weight and no reps out, and leaves lifted work to liftVolumeKg', () => {
+    expect(bodyweightVolumeKg([set('pullup', null, null), set('squat', 100, 5)], kindOf, fractionOf, 80)).toBeNull();
+  });
+
+  it('subtracts an assisted set\'s help from the load, never below 0', () => {
+    expect(bodyweightVolumeKg([set('assist', 30, 5)], kindOf, fractionOf, 80)).toBe(250);
+    // More help than the load adds nothing, and so is no figure at all.
+    expect(bodyweightVolumeKg([set('assist', 90, 5)], kindOf, fractionOf, 80)).toBeNull();
+  });
+
+  it('skips warm-ups and sets that were not done', () => {
+    expect(bodyweightVolumeKg([set('pullup', null, 8, { kind: 'warmup' }), set('pullup', null, 8, { completedAt: null })], kindOf, fractionOf, 80)).toBeNull();
+    expect(bodyweightVolumeKg([set('pullup', null, 8, { kind: 'drop' })], kindOf, fractionOf, 80)).toBe(640);
+  });
+
+  it('is null when the workout has no body weight, or the share is 0', () => {
+    expect(bodyweightVolumeKg([set('pullup', null, 8)], kindOf, fractionOf, null)).toBeNull();
+    expect(bodyweightVolumeKg([set('pullup', null, 8)], kindOf, fractionOf, undefined)).toBeNull();
+    expect(bodyweightVolumeKg([set('pullup', null, 8)], kindOf, fractionOf, 0)).toBeNull();
+    expect(bodyweightVolumeKg([set('pullup', null, 8)], kindOf, () => 0, 80)).toBeNull();
+  });
+
+  it('shares bodyweightSetVolume with the history list, and only reads bodyweight and assisted kinds', () => {
+    expect(bodyweightSetVolume(null, 10, 'bodyweight_reps', 0.64, 100)).toBeCloseTo(640, 6);
+    expect(bodyweightSetVolume(20, 10, 'assisted_reps', 1, 80)).toBe(600);
+    expect(bodyweightSetVolume(100, 5, 'weight_reps', 1, 80)).toBeNull();
+    expect(bodyweightSetVolume(null, 30, 'duration', 1, 80)).toBeNull();
   });
 });

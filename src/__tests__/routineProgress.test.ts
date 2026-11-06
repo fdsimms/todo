@@ -120,6 +120,38 @@ describe('routineProgress', () => {
   });
 });
 
+describe('routineProgress, bodyweight volume', () => {
+  const PULL = 'lib:pull-up';
+  const kinds: Record<string, 'bodyweight_reps' | 'weight_reps'> = { [PULL]: 'bodyweight_reps', [SQUAT]: 'weight_reps' };
+  const runBodyweight = (sessions: WorkoutSession[], sets: WorkoutSet[]) =>
+    routineProgress({
+      exerciseIds: [PULL, SQUAT],
+      sessions,
+      setsBySession: new Map(sessions.map(s => [s.id, sets.filter(x => x.sessionId === s.id)])),
+      kindOf: id => kinds[id],
+      fractionOf: () => 1,
+      unit: 'kg',
+      dayResetTime: '00:00',
+    });
+
+  it('lists a separate point for each workout with a body weight and bodyweight work, never added to the lifted volume', () => {
+    const sessions = [session('a', 9, 1, { bodyweightKg: 80 }), session('b', 9, 8, { bodyweightKg: 82 }), session('c', 9, 15)];
+    const sets = [
+      set('a', PULL, 0, 8), set('a', SQUAT, 100, 5),
+      set('b', PULL, 0, 10),
+      set('c', PULL, 0, 12),
+    ].map(x => (x.exerciseId === PULL ? { ...x, weightKg: null } : x));
+    const progress = runBodyweight(sessions, sets);
+    expect(progress.bodyweightVolume.map(p => [p.sessionId, p.volumeKg])).toEqual([['a', 640], ['b', 820]]);
+    expect(progress.volume.map(p => [p.sessionId, p.volumeKg])).toEqual([['a', 500]]);
+  });
+
+  it('is empty for a routine whose workouts have no body weight', () => {
+    const sessions = [session('a', 9, 1)];
+    expect(runBodyweight(sessions, [{ ...set('a', PULL, 0, 8), weightKg: null }]).bodyweightVolume).toEqual([]);
+  });
+});
+
 describe('progress wording', () => {
   const best = (value: number) => ({ value, set: set('a', SQUAT, value, 10) });
 

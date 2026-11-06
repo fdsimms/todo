@@ -18,6 +18,7 @@ import type {
 } from '../types';
 import {
   dbCountWorkoutSetsBySession,
+  dbWorkoutBodyweightSets,
   dbWorkoutLiftVolumes,
   dbDeleteExercise,
   dbDeleteProgramVersion,
@@ -106,7 +107,9 @@ import { watchCopyStale, type WatchWorkoutSpan } from '../utils/watchHealthWorko
 import { getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { useWatchClashStore } from './useWatchClashStore';
 import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
-import { liftVolumeKg } from '../utils/workoutRecords';
+import { bodyweightSetVolume, bodyweightVolumeKg, liftVolumeKg } from '../utils/workoutRecords';
+import { bodyweightFractionFor, readBodyweightFraction } from '../utils/bodyweightLoad';
+import { latestWeight } from '../utils/weightLog';
 import {
   cleanOtherNames,
   cleanWorkoutName,
@@ -151,12 +154,14 @@ export interface ExerciseInput {
   barKg?: number | null;
   dumbbells?: 1 | 2 | null;
   loadEntry?: 'each' | 'pair' | null;
+  /** The share of body weight it moves, 0 to 1 (`bodyweightFractionOf`). Null or absent takes the default for it. */
+  bodyweightFraction?: number | null;
   notes?: string;
   /** Other names it is known by. Cleaned (`cleanOtherNames`), and refused if another exercise already goes by one. */
   otherNames?: string[];
 }
 
-/** What an edit may change. On a built-in exercise only `name`, `otherNames`, `notes`, `barKg`, `dumbbells`, `loadEntry` and `archived` take effect. */
+/** What an edit may change. On a built-in exercise only `name`, `otherNames`, `notes`, `barKg`, `dumbbells`, `loadEntry`, `bodyweightFraction` and `archived` take effect. */
 export type ExercisePatch = Partial<Omit<ExerciseInput, 'secondaryMuscles'>> & {
   secondaryMuscles?: MuscleGroup[];
   archived?: boolean;
@@ -213,6 +218,12 @@ export interface StartSessionInput {
   taskId?: string | null;
   /** The gym it is done at; null or absent for none. */
   gymId?: string | null;
+  /**
+   * The body weight to stamp on the workout, in kilograms. Absent reads it from
+   * Health once the workout has started (`stampBodyweight`); a number, or null
+   * for none, is taken as given and Health is not asked.
+   */
+  bodyweightKg?: number | null;
   at?: Date;
   /**
    * A version of the routine to do instead of its current one ("Start a
@@ -236,6 +247,8 @@ export interface SessionPatch {
   endedAt?: string | null;
   /** Moves the session to another gym, or to none (null). */
   gymId?: string | null;
+  /** The body weight to stamp on it, in kilograms, or null to clear it (`WorkoutSession.bodyweightKg`). */
+  bodyweightKg?: number | null;
 }
 
 export interface FinishOptions extends Omit<SessionPatch, 'endedAt'> {
@@ -265,6 +278,8 @@ export interface FinishedSessionInput {
   endedAt: string;
   notes?: string;
   effort?: number | null;
+  /** The body weight to stamp on it, in kilograms (`WorkoutSession.bodyweightKg`). Absent or null leaves it without one. */
+  bodyweightKg?: number | null;
   /**
    * Leave the workout for the phone to write to Health on its next foreground
    * (`WorkoutSession.healthWritePending`). Set by the MCP server, which has no
@@ -392,6 +407,13 @@ interface WorkoutStore {
   setCounts: Record<string, number>;
   /** Kilograms lifted in each session that has any (`liftVolumeKg`), loaded or not. A session with none has no entry. */
   volumeKgBySession: Record<string, number>;
+  /**
+   * Estimated kilograms of body weight moved in each session that has any
+   * (`bodyweightVolumeKg`), loaded or not. Kept apart from `volumeKgBySession`,
+   * which it is never added to. A session with no body weight stamped, or no
+   * bodyweight sets, has no entry.
+   */
+  bodyweightVolumeKgBySession: Record<string, number>;
   initialized: boolean;
   initialize: () => void;
 
@@ -789,6 +811,11 @@ function mergedById<T extends { createdAt: string; id: string }>(list: readonly 
   return [...list.filter(r => !byId.has(r.id)), ...byId.values()].sort(byCreated);
 }
 
+/** How far back a workout's start looks for a weigh-in, in days. A body moves slowly, so a recent one is the right figure. */
+const BODYWEIGHT_STAMP_WINDOW_DAYS = 90;
+
+const positiveOrNull = (n: number | null): number | null => (n !== null && Number.isFinite(n) && n > 0 ? n : null);
+
 /** `volumes` with one session's figure set, or dropped when it has none. */
 function withVolume(volumes: Record<string, number>, sessionId: string, kilograms: number | null): Record<string, number> {
   const { [sessionId]: _old, ...rest } = volumes;
@@ -801,6 +828,19 @@ function volumeBySession(exercises: Exercise[]): Record<string, number> {
   for (const row of dbWorkoutLiftVolumes()) {
     if ((catalogExercise(exercises, row.exerciseId)?.kind ?? 'weight_reps') !== 'weight_reps') continue;
     out[row.sessionId] = (out[row.sessionId] ?? 0) + row.kilograms;
+  }
+  return out;
+}
+/** Every session's bodyweight volume from the database, kinds and shares read from `exercises`, body weights from `sessions`. */
+function bodyweightVolumeBySession(exercises: Exercise[], sessions: readonly WorkoutSession[]): Record<string, number> {
+  const weightOf = new Map(sessions.map(s => [s.id, s.bodyweightKg ?? null]));
+  const out: Record<string, number> = {};
+  for (const row of dbWorkoutBodyweightSets()) {
+    const bodyweightKg = weightOf.get(row.sessionId);
+    if (!bodyweightKg) continue;
+    const ex = catalogExercise(exercises, row.exerciseId);
+    const v = bodyweightSetVolume(row.weightKg, row.reps, ex?.kind ?? 'weight_reps', bodyweightFractionFor(ex, row.exerciseId), bodyweightKg);
+    if (v !== null && v > 0) out[row.sessionId] = (out[row.sessionId] ?? 0) + v;
   }
   return out;
 }
@@ -837,6 +877,11 @@ const changed = (a: WorkoutSet, b: WorkoutSet) => a.position !== b.position || a
  * no longer live, however it stopped being (finished, discarded, deleted on
  * another device).
  */
+function healthStore() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return (require('./useHealthStore') as typeof import('./useHealthStore')).useHealthStore.getState();
+}
+
 function taskStore() {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   return (require('./useTaskStore') as typeof import('./useTaskStore')).useTaskStore.getState();
@@ -885,12 +930,58 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
   /** Weighted lifts are the default kind, as everywhere else an exercise can't be found. */
   const kindOfExercise = (id: string) => catalogExercise(get().exercises, id)?.kind ?? 'weight_reps';
 
+  const exerciseFraction = (id: string) => bodyweightFractionFor(catalogExercise(get().exercises, id), id);
+
+  const bodyweightVolumeOf = (sessionId: string, sets: WorkoutSet[]) =>
+    bodyweightVolumeKg(sets, kindOfExercise, exerciseFraction, get().sessions.find(s => s.id === sessionId)?.bodyweightKg);
+
   const putSets = (sessionId: string, sets: WorkoutSet[]) => {
     set({
       setsBySession: { ...get().setsBySession, [sessionId]: sets },
       setCounts: { ...get().setCounts, [sessionId]: sets.length },
       volumeKgBySession: withVolume(get().volumeKgBySession, sessionId, liftVolumeKg(sets, kindOfExercise)),
+      bodyweightVolumeKgBySession: withVolume(get().bodyweightVolumeKgBySession, sessionId, bodyweightVolumeOf(sessionId, sets)),
     });
+  };
+
+  /** One session's bodyweight volume, worked out again from its sets and the body weight now on its row. */
+  const refreshBodyweightVolume = (sessionId: string) => {
+    const sets = get().setsBySession[sessionId] ?? dbGetWorkoutSets(sessionId);
+    set({ bodyweightVolumeKgBySession: withVolume(get().bodyweightVolumeKgBySession, sessionId, bodyweightVolumeOf(sessionId, sets)) });
+  };
+
+  /** Every session's bodyweight volume again, for a change to an exercise's share that touches sessions already logged. */
+  const rebuildBodyweightVolumes = () => {
+    set({ bodyweightVolumeKgBySession: bodyweightVolumeBySession(get().exercises, get().sessions) });
+  };
+
+  /**
+   * Stamps a body weight onto a workout that just started: the latest weigh-in
+   * Health holds, else the one typed in Settings (`workoutBodyweightKg`), and
+   * only if the row still has none by the time the read comes back: the
+   * workout can be finished, deleted, or stamped by another path while Health
+   * answers, so the row is read again after the await rather than written from
+   * the copy taken before it. Health is asked only while reading it is on. With
+   * neither a weigh-in nor a typed weight, or if the read fails with none typed,
+   * nothing is stamped and the workout simply has no bodyweight figure.
+   */
+  const stampBodyweight = async (sessionId: string) => {
+    try {
+      let kg: number | null = null;
+      if (useSettingsStore.getState().healthReadEnabled) {
+        const points = await healthStore().readRecentWeights(BODYWEIGHT_STAMP_WINDOW_DAYS);
+        // Settled again after the await: reading Health may have been turned off while it was in flight.
+        if (points !== null && useSettingsStore.getState().healthReadEnabled) kg = latestWeight(points)?.kilograms ?? null;
+      }
+      kg = positiveOrNull(kg) ?? positiveOrNull(useSettingsStore.getState().workoutBodyweightKg);
+      if (kg === null) return;
+      const current = dbGetWorkoutSession(sessionId);
+      if (!current || current.bodyweightKg) return;
+      putSession({ ...current, bodyweightKg: kg });
+      refreshBodyweightVolume(sessionId);
+    } catch {
+      // A failed read leaves the workout without a figure, the same as no reading.
+    }
   };
 
   const exerciseKnown = (id: string) => !!libraryExercise(id) || get().exercises.some(e => e.id === id);
@@ -1233,6 +1324,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
     setsBySession: {},
     setCounts: {},
     volumeKgBySession: {},
+    bodyweightVolumeKgBySession: {},
     initialized: false,
     pendingHealthWriteRefusal: false,
 
@@ -1253,6 +1345,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         setsBySession: live ? { [live.id]: dbGetWorkoutSets(live.id) } : {},
         setCounts: dbCountWorkoutSetsBySession(),
         volumeKgBySession: volumeBySession(exercises),
+        bodyweightVolumeKgBySession: bodyweightVolumeBySession(exercises, sessions),
         initialized: true,
       });
     },
@@ -1273,6 +1366,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         equipment: input.equipment,
         barKg: amount(input.barKg) || null,
         ...dumbbellFields(input.equipment, input.dumbbells, input.loadEntry),
+        bodyweightFraction: readBodyweightFraction(input.bodyweightFraction),
         notes: input.notes?.trim() ?? '',
         archived: false,
         isCustom: true,
@@ -1307,6 +1401,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         barKg: null,
         dumbbells: null,
         loadEntry: null,
+        bodyweightFraction: null,
         notes: '',
         archived: false,
         isCustom: false,
@@ -1327,6 +1422,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         otherNames,
         notes: patch.notes !== undefined ? patch.notes.trim() : base.notes,
         barKg: patch.barKg !== undefined ? amount(patch.barKg) || null : base.barKg,
+        bodyweightFraction: patch.bodyweightFraction !== undefined ? readBodyweightFraction(patch.bodyweightFraction) : base.bodyweightFraction ?? null,
         archived: patch.archived ?? base.archived,
         // What the movement is belongs to the library for a built-in.
         ...(custom ? {
@@ -1342,6 +1438,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         patch.loadEntry !== undefined ? patch.loadEntry : base.loadEntry,
       ));
       putExercise(row);
+      // A new share changes the bodyweight volume of every workout already logged with this exercise.
+      if ((row.bodyweightFraction ?? null) !== (base.bodyweightFraction ?? null) || row.kind !== base.kind) rebuildBodyweightVolumes();
       return row;
     },
 
@@ -1834,6 +1932,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         healthWritePending: false,
         measuredOnWatch: false,
         timesEdited: false,
+        bodyweightKg: input.bodyweightKg !== undefined ? positiveOrNull(input.bodyweightKg) : null,
       };
       putSession(row);
       dbSetSetting(STARTED_HERE_KEY, row.id);
@@ -1843,6 +1942,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       ).map(p => plannedRow(row.id, p.exerciseId, p.position, p.setIndex, p.values));
       if (planned.length > 0) dbSaveWorkoutSets(planned);
       putSets(row.id, planned);
+      if (input.bodyweightKg === undefined) void stampBodyweight(row.id);
       return row;
     },
 
@@ -1879,6 +1979,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         startedAt: patch.startedAt ?? existing.startedAt,
         endedAt: patch.endedAt !== undefined ? patch.endedAt : existing.endedAt,
         gymId: patch.gymId !== undefined ? patch.gymId : existing.gymId ?? null,
+        bodyweightKg: patch.bodyweightKg !== undefined ? positiveOrNull(patch.bodyweightKg) : existing.bodyweightKg ?? null,
       };
       if (row.endedAt !== null && new Date(row.endedAt).getTime() < new Date(row.startedAt).getTime()) return 'order';
       // A patch that changes nothing writes nothing. Saving the row anyway
@@ -1886,7 +1987,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       // one a peer has changed since (an agent's sets-only edit sending a
       // stale, unwritten copy over the phone's Health id is how a workout got
       // into Health twice).
-      if (row.title === existing.title && row.notes === existing.notes && row.effort === existing.effort && (row.gymId ?? null) === (existing.gymId ?? null) && sameSpan(row, existing)) {
+      if (row.title === existing.title && row.notes === existing.notes && row.effort === existing.effort && (row.gymId ?? null) === (existing.gymId ?? null) && (row.bodyweightKg ?? null) === (existing.bodyweightKg ?? null) && sameSpan(row, existing)) {
         return existing;
       }
       // Recorded, since nothing else says the times were moved by a person
@@ -1924,6 +2025,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const retimed = existing.endedAt !== null && row.endedAt !== null && !sameSpan(existing, row);
       const rewrite = retimed && stale !== null && workoutHealthWriteOn();
       putSession(row);
+      if ((row.bodyweightKg ?? null) !== (existing.bodyweightKg ?? null)) refreshBodyweightVolume(row.id);
       if (rewrite) {
         void (async () => {
           // In that order, and the write happens either way: a retract that
@@ -2006,6 +2108,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         healthWritePending: input.healthWritePending === true,
         measuredOnWatch: false,
         timesEdited: false,
+        bodyweightKg: positiveOrNull(input.bodyweightKg ?? null),
       };
       // Done when it ended unless a set says otherwise: a set logged after the
       // fact was done, and a planned set has no place in a record.
@@ -2220,7 +2323,8 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const { [id]: _sets, ...setsBySession } = get().setsBySession;
       const { [id]: _count, ...setCounts } = get().setCounts;
       const { [id]: _volume, ...volumeKgBySession } = get().volumeKgBySession;
-      set({ sessions: get().sessions.filter(s => s.id !== id), setsBySession, setCounts, volumeKgBySession });
+      const { [id]: _bodyweightVolume, ...bodyweightVolumeKgBySession } = get().bodyweightVolumeKgBySession;
+      set({ sessions: get().sessions.filter(s => s.id !== id), setsBySession, setCounts, volumeKgBySession, bodyweightVolumeKgBySession });
     },
 
     discardSession() {
