@@ -61,5 +61,5 @@ it('reads its source id off a task of its own kind only', () => {
 
 it('says what to do and why', () => {
   expect(bookTaskTitle('Optometrist')).toBe('Book Optometrist');
-  expect(bookTaskNotes(event())).toMatch(/^The last one was on .+2025\. Set to every 12 months in Settings › Calendar › Saved events\.$/);
+  expect(bookTaskNotes(event())).toMatch(/^The last one was on .+2025\. Set to every 12 months in Settings › Calendar › Favorite events\.$/);
 });

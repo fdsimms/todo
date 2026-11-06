@@ -2107,7 +2107,7 @@ limit one.
 
 A saved event (`src/utils/savedEvents.ts`, an event kept for re-adding from the
 quick event card) can carry an interval, `bookEveryMonths`, set in Settings ›
-Calendar › Saved events. `reconcileBookEvents` writes "Book Optometrist"
+Calendar › Favorite events. `reconcileBookEvents` writes "Book Optometrist"
 `BOOK_LEAD_DAYS` (30) before that interval is up, counted from `lastStart`, the
 start of the last event added from it. Rules are in `src/utils/savedEventTasks.ts`.
 

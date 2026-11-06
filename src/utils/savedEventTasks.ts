@@ -76,6 +76,6 @@ export function bookTaskNotes(event: Pick<SavedEvent, 'lastStart' | 'bookEveryMo
     : null;
   const every = event.bookEveryMonths === 1 ? 'every month' : `every ${event.bookEveryMonths} months`;
   return last
-    ? `The last one was on ${last}. Set to ${every} in Settings › Calendar › Saved events.`
-    : `Set to ${every} in Settings › Calendar › Saved events.`;
+    ? `The last one was on ${last}. Set to ${every} in Settings › Calendar › Favorite events.`
+    : `Set to ${every} in Settings › Calendar › Favorite events.`;
 }
