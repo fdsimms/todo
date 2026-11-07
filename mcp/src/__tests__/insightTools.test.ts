@@ -80,7 +80,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     workoutSessions: () => [],
     settings: () => ({
       dayResetTime: '04:00', weekStartsOn: 1, vacationMode: false, vacationEnd: null,
-      kitchenEnabled: false, simpleMode: false, rewardsEnabled: true, workoutsEnabled: false, completedRetentionDays: 90, calendarRequestsOn: false,
+      kitchenEnabled: false, mealsOnToday: 'inline', simpleMode: false, rewardsEnabled: true, workoutsEnabled: false, completedRetentionDays: 90, calendarRequestsOn: false,
     }),
     lastSyncedAt: () => null,
     agentNotes: () => [],

@@ -66,6 +66,7 @@ import {
   dbMarkTaskSeen,
   dbTransaction,
   dbGetMealPlanEntries,
+  dbGetMealSkipsSince,
   dbGetMealPlanEntry,
   dbGetFoodLogEntries,
 } from '../db/database';
@@ -124,6 +125,7 @@ jest.mock('../db/database', () => ({
   dbDeleteMoodLog: jest.fn(),
   // Milestones ride the same fan-out immediately after the mood log.
   dbGetAllMilestones: jest.fn().mockReturnValue([]),
+  dbGetMealSkipsSince: jest.fn().mockReturnValue([]),
   dbGetAllCookware: jest.fn().mockReturnValue([]),
   dbGetAllCopyFlags: jest.fn().mockReturnValue([]),
   dbGetAllFasts: jest.fn().mockReturnValue([]),
@@ -10095,6 +10097,21 @@ describe('checkMealLogNudgeTasks', () => {
     expect(nudgeRows().map(t => t.generatedSourceId)).toEqual(['m-dinner']);
   });
 
+  it('does not ask about a meal marked skipped, and drops a row already raised for it', () => {
+    useTaskStore.getState().checkMealLogNudgeTasks();
+    expect(nudgeRows()).toHaveLength(1);
+
+    (dbGetMealSkipsSince as jest.Mock).mockReturnValue([
+      { id: 's', dayKey: '2026-08-21', slot: 'dinner', createdAt: '2026-08-21T20:00:00.000Z' },
+    ]);
+    try {
+      useTaskStore.getState().checkMealLogNudgeTasks();
+      expect(nudgeRows()).toHaveLength(0);
+    } finally {
+      (dbGetMealSkipsSince as jest.Mock).mockReturnValue([]);
+    }
+  });
+
   it('writes nothing while off', () => {
     useSettingsStore.getState.mockReturnValue(settings({ mealLogNudgeTasks: false }));
 
@@ -17238,6 +17255,43 @@ describe('quota tasks', () => {
       const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
       expect(task.completed).toBe(false);
       expect(task.progressCount).toBe(5);
+    });
+
+    // A weekly overshoot target closes with its week, not at the first midnight.
+    it('holds a weekly overshoot target open until its week is over', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true, quotaPeriod: 'week', recurrenceType: 'weekly',
+          quotaIntervalMinutes: null, quotaReminders: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
+          targetCount: 3, progressCount: 5,
+          // Sunday June 8 opened this week (weekStartsOn 0); today is Tuesday the 10th.
+          dueDate: new Date(2025, 5, 8, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(5);
+    });
+
+    it('closes a weekly overshoot target from a past week with the count it reached', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true, quotaPeriod: 'week', recurrenceType: 'weekly',
+          quotaIntervalMinutes: null, quotaReminders: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
+          targetCount: 3, progressCount: 5,
+          dueDate: new Date(2025, 5, 1, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(done.completed).toBe(true);
+      expect(done.progressCount).toBe(5); // over target(3), kept as the tally
+      expect(done.missedAt).toBeNull();
     });
 
     it('spawns the next occurrence, same as any other completion', () => {

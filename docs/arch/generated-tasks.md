@@ -1177,6 +1177,11 @@ cooked. Five things follow:
 - **A planned leftover still gets no "Use up X"** (#2932's rule): `mealStripCoversMeal` answers for
   the missing meal task in `plannedMealRowFor`, over the same week the tasks covered. Switching
   modes in Settings re-runs `reconcileAllLeftoverTasks` along with the meal task pass.
+- **Skip is the one answer the strip stores itself** (`MealSkip`, `useMealSkipStore`). Nothing else
+  can say "no breakfast today", since an unplanned meal has no row to flag, so a skip is its own
+  synced row keyed by day and meal (`spawnSeed.mealSkip`), not a `MealPlanEntry` with a marker and
+  not a food log row. It settles the cell without counting as eaten, so it pays no coins; food in
+  the log or a meal marked eaten outranks it.
 - **It isn't the retired one-line strip back.** That one showed what was left to eat *beside* the
   meal tasks, a second answer above the list. This one is the only answer while it's on.
 

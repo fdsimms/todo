@@ -37,6 +37,7 @@ import {
   dbMarkTaskSeen,
   dbTransaction,
   dbGetMealPlanEntries,
+  dbGetMealSkipsSince,
   dbGetMealPlanEntry,
   dbGetFoodLogEntries,
 } from '../db/database';
@@ -116,6 +117,7 @@ import {
   staleMealLogNudgeTasks,
   answeredMealLogNudgeTasks,
   wantedMealLogNudges,
+  withoutSkippedMeals,
   type MealLogRecord,
 } from '../utils/mealLogNudgeTasks';
 import { loggedMealSlotKeys } from '../utils/mealLogCoverage';
@@ -204,6 +206,7 @@ import { usePendingRecipeEstimateStore } from './usePendingRecipeEstimateStore';
 import { useMoodStore } from './useMoodStore';
 import { useJournalStore } from './useJournalStore';
 import { useMilestoneStore } from './useMilestoneStore';
+import { useMealSkipStore } from './useMealSkipStore';
 import { useCookwareStore } from './useCookwareStore';
 import { useCopyFlagStore } from './useCopyFlagStore';
 import { useFastStore } from './useFastStore';
@@ -3682,6 +3685,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // And the plan, which points at those recipes by id. Range-scoped, so this
     // reloads whatever week is on screen rather than the whole table.
     timedPart('MealPlan', () => useMealPlanStore.getState().initialize());
+    // Skipped meals, read by the meal strip beside the plan; same database swap.
+    timedPart('MealSkip', () => useMealSkipStore.getState().initialize());
     // What's in the fridge — pointed at by the plan the same way recipes are,
     // and on the same swap-the-database hazard.
     timedPart('Leftover', () => useLeftoverStore.getState().initialize());
@@ -6179,8 +6184,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // judgment on the exact count, not a signal they expect to be marked as
   // having failed it (see CLAUDE.md).
   sweepOvershootQuotas() {
-    const { dayResetTime } = useSettingsStore.getState();
+    const { dayResetTime, weekStartsOn } = useSettingsStore.getState();
     const todayStart = getCurrentDayStart();
+    // A row's period as opening and closing instants, so a weekly overshoot
+    // closes at the end of its week and a daily one at the end of its day.
+    const periodStartOf = (date: Date, period: QuotaPeriod): Date => {
+      const dayStart = getTaskDayStart(date, dayResetTime);
+      return period === 'week' ? quotaWeekStart(dayStart, weekStartsOn) : dayStart;
+    };
+    const todayPeriodStart = (period: QuotaPeriod) => +periodStartOf(todayStart, period);
     const stale = get().tasks.filter(t =>
       t.allowOvershoot &&
       // An interval quota closes at the end of its own run rather than at day
@@ -6194,30 +6206,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       t.progressCount > 0 &&
       !isWithheld(t) &&
       t.dueDate !== null &&
-      // Weekly targets are deliberately out of scope for the overshoot and
-      // interval kinds (see Task.quotaPeriod), and this is the guard rather
-      // than the rule: if the combination ever arrives from a template, an
-      // import or a synced row, closing it on the day test would end its week
-      // six days early. Left daily, it is merely closed on time.
-      t.quotaPeriod === 'day' &&
-      getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart &&
-      // The count is the dueDate day's, but a row the person pushed to a day
-      // that hasn't come is held until then, and closing it now spawned the
+      // "Its own period is over", not "its own day is over": a weekly
+      // overshoot has six days left the morning after it was spawned, and the
+      // day test would close it at the first midnight.
+      +periodStartOf(new Date(t.dueDate), t.quotaPeriod) < todayPeriodStart(t.quotaPeriod) &&
+      // The count is the dueDate period's, but a row the person pushed to a
+      // later period is held until then, and closing it now spawned the
       // successor on today, undoing the push (rolloverQuotas keeps the same
       // rule for the same row).
-      getTaskDayStart(new Date(getEffectiveTaskDate(t, dayResetTime)!), dayResetTime) <= todayStart
+      +periodStartOf(new Date(getEffectiveTaskDate(t, dayResetTime)!), t.quotaPeriod) <= todayPeriodStart(t.quotaPeriod)
     );
     // neutral on a day the task's own category schedule didn't cover — see
     // #2201, isCategoryScheduledDay, and rolloverQuotas' own note above.
     //
-    // Stamped at the end of its own day, as rolloverQuotas stamps a partial:
-    // the tally is a record of that day, and a repeat-after-completion
+    // Stamped at the end of its own period, as rolloverQuotas stamps a partial:
+    // the tally is a record of that period, and a repeat-after-completion
     // successor measured from the sweep's own moment skipped a day.
     stale.forEach(t => {
       const ownDayStart = getTaskDayStart(new Date(t.dueDate!), dayResetTime);
+      const ownPeriodStart = periodStartOf(new Date(t.dueDate!), t.quotaPeriod);
       get().completeTask(t.id, {
         neutral: !isCategoryScheduledDay(t.category, ownDayStart),
-        completedAt: new Date(+addDays(ownDayStart, 1) - 1).toISOString(),
+        completedAt: new Date(+addDays(ownPeriodStart, t.quotaPeriod === 'week' ? 7 : 1) - 1).toISOString(),
       });
     });
   },
@@ -7818,7 +7828,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // told apart from one whose entry has vanished only by what's actually in
     // this set.
     const windowStart = shiftDayKey(todayKey, -MEAL_LOG_NUDGE_LOOKBACK_DAYS - 1);
-    const entries = dbGetMealPlanEntries(windowStart, todayKey);
+    // A meal marked skipped on the strip is answered: left out here, it raises
+    // nothing and a row already raised for it is dropped (withoutSkippedMeals).
+    const entries = withoutSkippedMeals(
+      dbGetMealPlanEntries(windowStart, todayKey),
+      dbGetMealSkipsSince(windowStart),
+    );
     const logged = mealLogRecord(dbGetFoodLogEntries(windowStart, todayKey));
 
     // Clear first, create second, the same ordering every generator here

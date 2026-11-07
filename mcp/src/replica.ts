@@ -72,6 +72,7 @@ import type {
   Shop,
   StoreAlias,
   MealPlanEntry,
+  MealSkip,
   WeekPoolEntry,
   RecipeOverride,
   MealSlot,
@@ -112,7 +113,6 @@ import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
 import { sectionListPatch } from '../../src/utils/listMode';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
 import { programVersionsOf, routineVersionsOf } from '../../src/utils/routineVersions';
-import { routineMergePatch } from '../../src/utils/workoutTask';
 import { sunAnchorHHMM } from '../../src/utils/sunTimes';
 import { SERVER_SHARING_KEY_PREFIX, type ServerSharing } from '../../src/db/syncTracking';
 import type { AwaySpan } from '../../src/utils/awayDates';
@@ -265,6 +265,8 @@ export interface ReplicaSettings {
   standardDrinkGrams: number;
   /** Groceries, recipes and the meal plan. Off means that whole area is hidden in the app. */
   kitchenEnabled: boolean;
+  /** How Today shows the day's meals: 'top' is the meal strip, the only place a meal can be marked skipped. */
+  mealsOnToday: string;
   /** Simplified mode: the advanced half of the app is hidden. */
   simpleMode: boolean;
   rewardsEnabled: boolean;
@@ -2340,6 +2342,14 @@ export interface Replica {
   cookbooks(): Cookbook[];
   /** Planned meals between two day keys, inclusive. */
   mealPlan(fromDayKey: string, toDayKey: string): MealPlanEntry[];
+  /** Meals marked skipped (`MealSkip`) between two day keys, inclusive. */
+  mealSkips(fromDayKey: string, toDayKey: string): MealSkip[];
+  /**
+   * Mark one meal of one day skipped, or not, as the meal strip's Skip and Not
+   * skipped do: one row per day and meal under a derived id. Refused when it
+   * is already that way.
+   */
+  setMealSkipped(dayKey: string, slot: MealSlot, skipped: boolean): MealSkip;
   /**
    * Put a meal on the plan, built by `buildMealPlanEntry` as the app's own
    * `planMeal` does. Not done: the slot's task and the calendar event, which
@@ -4594,6 +4604,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         waterUnit: s.waterUnit,
         standardDrinkGrams: s.standardDrinkGrams,
         kitchenEnabled: s.kitchenEnabled,
+        mealsOnToday: s.mealsOnToday,
         simpleMode: s.simpleMode,
         rewardsEnabled: s.rewardsEnabled,
         workoutsEnabled: s.workoutsEnabled,
@@ -4925,6 +4936,10 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         // The same rule as the phone's: a task still to do starts the kept
         // routine, and a finished one keeps naming the old one as provenance.
         moveTasks: (oldId, newId) => {
+          // Required here, not imported: workoutTask reaches database.ts
+          // through visibilityUtils (the one rule at the top of this file).
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          const { routineMergePatch } = require('../../src/utils/workoutTask') as typeof import('../../src/utils/workoutTask');
           for (const t of db.dbGetAllTasks()) {
             const patch = routineMergePatch(t, oldId, newId);
             if (patch) replica.updateTask(t.id, patch);
@@ -8982,6 +8997,23 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     recipes: () => db.dbGetAllRecipes(),
     cookbooks: () => db.dbGetAllCookbooks(),
     mealPlan: (from: string, to: string) => db.dbGetMealPlanEntries(from, to),
+    mealSkips: (from: string, to: string) => db.dbGetMealSkipsInRange(from, to),
+    // Straight to the db rather than through useMealSkipStore: the store holds
+    // only the last week, and an agent may name any day. The id is the store's.
+    setMealSkipped(dayKey: string, slot: MealSlot, skipped: boolean): MealSkip {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { mealSkipId } = require('../../src/store/useMealSkipStore') as typeof import('../../src/store/useMealSkipStore');
+      const existing = db.dbGetMealSkipsInRange(dayKey, dayKey).find(s => s.slot === slot);
+      if (skipped) {
+        if (existing) throw new Error(`${slot} on ${dayKey} is already marked skipped.`);
+        const skip: MealSkip = { id: mealSkipId(dayKey, slot), dayKey, slot, createdAt: new Date().toISOString() };
+        db.dbInsertMealSkip(skip);
+        return skip;
+      }
+      if (!existing) throw new Error(`${slot} on ${dayKey} is not marked skipped.`);
+      db.dbDeleteMealSkip(existing.id);
+      return existing;
+    },
 
     planMeal(draft: { date: string; slot: MealSlot; title?: string; recipeId?: string | null; leftoverId?: string | null }): MealPlanEntry {
       const recipe = draft.recipeId ? db.dbGetAllRecipes().find(r => r.id === draft.recipeId) : undefined;

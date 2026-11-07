@@ -37,6 +37,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { repeatTimerExcerpt, stepDurationOffers, stepTimerExcerpt } from './stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useMealSkipStore } from '../store/useMealSkipStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 import { useTransitStore } from '../store/useTransitStore';
@@ -874,12 +875,13 @@ export function seedDemoData(): void {
   // would be indistinguishable from a daily target nobody has started today.
   const runs = addTask({
     title: 'Go for a run',
-    notes: 'Three times a week, on any days. The count resets when the week starts.',
+    notes: 'Three times a week, on any days. Keep logging past three and it closes with your week\'s total.',
     category: 'Health',
     dueDate: today.toISOString(),
     targetCount: 3,
     targetUnit: 'runs',
     quotaPeriod: 'week',
+    allowOvershoot: true,
     // Weekly, to match the period — a daily repeat would spawn a fresh 0/3
     // every morning and the target could never be finished.
     recurrenceType: 'weekly',
@@ -6485,6 +6487,11 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   plan(0, 'lunch', { title: 'Turkey and avocado sandwich', recipeId: recipes.sandwich, cookTask: false });
   plan(0, 'dinner', { title: 'Weeknight chicken stir-fry', recipeId: recipes.stirFry });
   plan(0, 'snack', { title: 'Hummus snack plate', recipeId: recipes.snacks, cookTask: false });
+  // Breakfast marked skipped (MealSkip), over the oats planned for it: with
+  // the meal strip on (Settings, mealsOnToday 'top') it reads "Skipped" rather
+  // than "Choose", and its menu offers "Not skipped". Nothing else reads it,
+  // so inline mode looks as it did.
+  useMealSkipStore.getState().setSkipped(dayKeyOf(today), 'breakfast', true);
 
   // Captured for the shopping task seeded at the end of this function — it's
   // the night the kitchen can't currently make.

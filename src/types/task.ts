@@ -1187,9 +1187,10 @@ export interface Task {
    * week-long ramp is answering "am I going to run out of week", and the hour
    * of the day doesn't change that answer.
    *
-   * Deliberately only for the plain kind. `allowOvershoot` and interval quotas
-   * (`quotaRidesOutTheDay`) are day-shaped in their own sweeps and stay daily;
-   * the editor won't offer the combination, and the sweeps guard anyway.
+   * An interval quota is day-shaped and stays daily (the editor won't offer the
+   * combination). `allowOvershoot` works on either period: a weekly one keeps
+   * counting past the target and `sweepOvershootQuotas` closes it at the end
+   * of the week.
    *
    * Pairs with weekly recurrence, which is what spawns next week's occupant.
    */
@@ -2455,8 +2456,9 @@ export interface Task {
   // Unlike the derived flags elsewhere in this app, this one is stored rather
   // than computed — and it must be. The EventKit fields it came from are
   // destroyed with the reminder seconds after the import, so there is nothing
-  // left to re-derive it from. It's also inert: nothing in the app can
-  // invalidate it, so it needs none of the cascades a stored isBlocked would.
+  // left to re-derive it from. The one thing that makes it stale is the task
+  // being placed some other way (the editor's Date row, a swipe reschedule),
+  // and mergeTaskUpdate clears it then, so every route is covered by one rule.
   //
   // Partial<Task> rather than Partial<TaskDraft> for two reasons: TaskDraft is
   // Omit<Task, …> below, so naming it here would make Task's own keyof depend

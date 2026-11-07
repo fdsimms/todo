@@ -6,7 +6,7 @@
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
 import { openReplica } from '../replica';
-import { addToWeekPool, copyMeals, listMealPlan, placePoolMeal, planMeal, removePoolMeal, saveMealAsRecipe, setMealCooked, updateMeal } from '../kitchenTools';
+import { addToWeekPool, copyMeals, listMealPlan, placePoolMeal, planMeal, removePoolMeal, saveMealAsRecipe, setMealCooked, setMealSkipped, updateMeal } from '../kitchenTools';
 import { saveRecipe, updateRecipe } from '../logTools';
 import { addToPantry, logLeftover } from '../pantryTools';
 import { getGroceryItem, updateGroceryItem } from '../groceryTools';
@@ -37,7 +37,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  for (const table of ['meal_plan_entries', 'week_pool_entries', 'recipes', 'grocery_items', 'leftovers', 'tasks', 'unattended_log']) {
+  for (const table of ['meal_plan_entries', 'meal_skips', 'week_pool_entries', 'recipes', 'grocery_items', 'leftovers', 'tasks', 'unattended_log']) {
     mockRaw.runSync(`DELETE FROM ${table}`);
   }
   replica.refresh();
@@ -369,5 +369,28 @@ describe('the weekly pool', () => {
 
   it('needs a recipe or a title', () => {
     expect(() => addToWeekPool(replica, { week: DAY })).toThrow(/recipeId, or a title/);
+  });
+});
+
+describe('set_meal_skipped', () => {
+  it('marks a meal skipped, lists it on the plan, and takes it back', () => {
+    const out = setMealSkipped(replica, { date: DAY, slot: 'breakfast', skipped: true });
+    expect(out.skipped).toBe(true);
+    expect(listMealPlan(replica, { from: DAY, days: 1 }).skipped).toEqual([{ date: DAY, slot: 'breakfast' }]);
+
+    setMealSkipped(replica, { date: DAY, slot: 'breakfast', skipped: false });
+    expect(listMealPlan(replica, { from: DAY, days: 1 }).skipped).toBeUndefined();
+  });
+
+  it('refuses a meal already that way, rather than writing it twice', () => {
+    setMealSkipped(replica, { date: DAY, slot: 'lunch', skipped: true });
+    expect(() => setMealSkipped(replica, { date: DAY, slot: 'lunch', skipped: true })).toThrow(/already marked skipped/);
+    expect(() => setMealSkipped(replica, { date: DAY, slot: 'dinner', skipped: false })).toThrow(/not marked skipped/);
+  });
+
+  it('writes the id the phone would, so a skip made on both is one row', () => {
+    setMealSkipped(replica, { date: DAY, slot: 'dinner', skipped: true });
+    const { mealSkipId } = require('../../../src/store/useMealSkipStore') as typeof import('../../../src/store/useMealSkipStore');
+    expect(replica.mealSkips(DAY, DAY).map(s => s.id)).toEqual([mealSkipId(DAY, 'dinner')]);
   });
 });

@@ -10,6 +10,7 @@ import type { Task, TaskDraft } from '../types';
 
 const mockSettings = {
   dayResetTime: '00:00', vacationMode: false, newTaskDefaults: {}, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+  morningStart: '06:00', afternoonStart: '12:00', eveningStart: '17:00', nightStart: '21:00',
   sunLocation: null as { latitude: number; longitude: number } | null,
 };
 jest.mock('../store/useSettingsStore', () => ({
@@ -161,6 +162,34 @@ describe('mergeTaskUpdate', () => {
     const t = make({ title: 'Original' });
     const next = mergeTaskUpdate(t, { title: 'Just this once' }, { ...ctx, scope: 'occurrence' });
     expect(next.seriesDefaults).toEqual({ title: 'Original' });
+  });
+
+  describe('a Reminders import suggestion', () => {
+    const pending = { dueDate: new Date(2026, 10, 7, 12).toISOString() };
+    const imported = { ...make({ category: 'Reminders' }), pendingImport: pending };
+
+    it.each<[string, Partial<Task>]>([
+      ['a date', { dueDate: new Date(2026, 10, 7, 12).toISOString() }],
+      ['a defer', { deferUntil: new Date(2026, 10, 9).toISOString() }],
+      ['a time of day', { timeSegments: ['evening'] }],
+      ['a repeat', { recurrenceType: 'daily' }],
+      ['an alarm', { reminderTime: new Date(2026, 10, 7, 9).toISOString() }],
+    ])('goes once the task is given %s some other way', (_, patch) => {
+      expect(mergeTaskUpdate(imported, patch, ctx).pendingImport).toBeNull();
+    });
+
+    // The editor writes every schedule field on every save.
+    it('stays through an edit that re-states an empty schedule', () => {
+      const patch: Partial<Task> = { title: 'Renamed', dueDate: null, timeSegments: [], recurrenceType: 'none', reminderTime: null };
+      expect(mergeTaskUpdate(imported, patch, ctx).pendingImport).toEqual(pending);
+      expect(mergeTaskUpdate(imported, { category: 'Home' }, ctx).pendingImport).toEqual(pending);
+    });
+
+    it('lets a patch naming it win, as applying it and an undo do', () => {
+      expect(mergeTaskUpdate(imported, { ...pending, pendingImport: null }, ctx).pendingImport).toBeNull();
+      const dated = { ...imported, ...pending, pendingImport: null };
+      expect(mergeTaskUpdate(dated, { dueDate: null, pendingImport: pending }, ctx).pendingImport).toEqual(pending);
+    });
   });
 
   // A whole-snapshot undo puts back what was there, and a weekly target's
