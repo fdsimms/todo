@@ -234,6 +234,30 @@ function scheduleChanged(t: Task, updates: Partial<Task>, dayResetTime: string):
   });
 }
 
+// The fields that place a task on a day or give it a schedule: the date
+// signals hasNoDateSignal reads, plus the repeat and the alarm. Every field an
+// Apple Reminders suggestion (Task.pendingImport) can carry is one of these.
+const PLACEMENT_FIELDS = [
+  ...SCHEDULE_FIELDS,
+  'deferUntil',
+  'timeSegments',
+  'windowStart',
+  'recurrenceInterval',
+  'recurrenceDays',
+  'reminderTime',
+] as const;
+
+/**
+ * Whether the patch gives the task a different placement: one of
+ * PLACEMENT_FIELDS with a new value. Named but unchanged doesn't count, since
+ * the editor writes every one of them on every save.
+ */
+function placementChanged(t: Task, updates: Partial<Task>): boolean {
+  return PLACEMENT_FIELDS.some(f =>
+    f in updates && JSON.stringify(updates[f] ?? null) !== JSON.stringify(t[f] ?? null)
+  );
+}
+
 /** What the caller knows that the merge can't work out from the two rows. */
 export interface TaskUpdateContext {
   /** 'occurrence' keeps the row's old content as the series' defaults; 'series' drops them. */
@@ -462,6 +486,17 @@ export function mergeTaskUpdate(t: Task, patch: Partial<Task>, ctx: TaskUpdateCo
     // re-save here too.
     ...(!('recurrenceAnchorDate' in updates) && scheduleChanged(t, updates, ctx.dayResetTime)
       ? { recurrenceAnchorDate: null }
+      : {}),
+    // A task given a date, repeat or alarm by any route has answered the
+    // Reminders import's suggestion (Task.pendingImport), so the suggestion
+    // goes. Left in place, a task dated from the editor or a swipe still
+    // offered "Today" on Today, and tapping it would have written the
+    // reminder's schedule over the one just picked. One rule here rather than
+    // a clear at each mover, for the reason the grid anchor's rule above gives.
+    // A patch naming the field itself wins outright: applying the suggestion,
+    // and a whole-snapshot undo putting it back.
+    ...(t.pendingImport && !('pendingImport' in updates) && placementChanged(t, updates)
+      ? { pendingImport: null }
       : {}),
     // A window bound written as a clock time with no sun anchor beside it is
     // "this time, now", so the anchor goes: left in place it would outrank the
