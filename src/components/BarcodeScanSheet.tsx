@@ -1224,7 +1224,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         .slice(0, 3)
                     : [];
                 const matchWarning = matchWarningFor(row, rowItemId);
-                const foundLabel = !!rowItem && itemSourceLabel(rowItem, inPantry(rowItem));
 
                 // The way out of a code nothing has heard of: the packet is in hand and
                 // its figures are printed on it, so offer to read them off the label.
@@ -1362,7 +1361,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           selectTextOnFocus
                         />
                         {!!rowItem && (
-                          <Text style={styles.rowLabel}>{`Same as ${rowItem.name}. ${foundLabel}.`}</Text>
+                          <Text style={styles.rowLabel}>{`This goes with your existing item, ${rowItem.name}.`}</Text>
                         )}
                         {!!matchWarning && <Text style={styles.rowCaption}>{matchWarning}</Text>}
                         {suggestions.length > 0 && (
