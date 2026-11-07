@@ -770,7 +770,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             onPress={end}
             accessibilityLabel="Leave workout mode"
           />
-          <View style={styles.headerTitle}>
+          <View style={styles.headerTitle} pointerEvents="none">
             {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />}
           </View>
           {!finishing && session ? (
@@ -1875,8 +1875,10 @@ function ScreenAwake() {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xsm, gap: spacing.sm },
-  headerTitle: { flex: 1, alignItems: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xsm, gap: spacing.sm },
+  // Laid over the whole row rather than sharing it, so the clock sits at the
+  // screen's center whatever the widths of Leave and the timer + Finish group.
+  headerTitle: { position: 'absolute', left: 0, right: 0, top: spacing.sm, bottom: spacing.xsm, alignItems: 'center', justifyContent: 'center' },
   headerSpacer: { minWidth: 64 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   headerIcon: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
