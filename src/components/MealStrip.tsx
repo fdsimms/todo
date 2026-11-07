@@ -11,6 +11,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useMealSkipStore } from '../store/useMealSkipStore';
 import { describeProductOfItem } from '../utils/groceryProduct';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, type FoodLogEntry, type MealPlanEntry, type MealSlot, type Recipe } from '../types';
 import { titleForEntry } from '../utils/mealPlan';
@@ -43,7 +44,8 @@ interface Props {
  * meal (`setPendingManualMealLog`), the meal plan's picker (`resetToMealPlan`
  * with a slot), the meal plan's own cooked toggle (`setCookedPaired`), the
  * recipe link a meal task carried. The strip is a shortcut into those, not a
- * second meal planner.
+ * second meal planner. Skip is the one thing it writes of its own
+ * (`useMealSkipStore`), since nothing else stores a meal that didn't happen.
  */
 export function MealStrip({ dayKey, refreshKey }: Props) {
   const colors = useColors();
@@ -55,6 +57,7 @@ export function MealStrip({ dayKey, refreshKey }: Props) {
   const recipes = useRecipeStore(s => s.recipes);
   const itemProducts = useGroceryStore(s => s.itemProducts);
   const items = useGroceryStore(s => s.items);
+  const skips = useMealSkipStore(s => s.skips);
   const [menu, setMenu] = useState<{ cell: MealStripCell; anchor: CardAnchor } | null>(null);
 
   const recipesById = useMemo(() => new Map<string, Recipe>(recipes.map(r => [r.id, r])), [recipes]);
@@ -69,10 +72,11 @@ export function MealStrip({ dayKey, refreshKey }: Props) {
       const item = e.itemId ? items.find(i => i.id === e.itemId) : null;
       return (product && describeProductOfItem(product, item?.name)) || e.label;
     };
-    return mealStripCells(slots, planned, logged, dayKey, e => titleForEntry(e, recipesById), logLabelOf);
+    const skipped = skips.filter(s => s.dayKey === dayKey).map(s => s.slot);
+    return mealStripCells(slots, planned, logged, dayKey, e => titleForEntry(e, recipesById), logLabelOf, skipped);
     // The window and count deps aren't read here: they're the signal that a
     // read of the day would now come back different (see `refreshKey`).
-  }, [slots, dayKey, recipesById, itemProducts, items, planWindow, logCount, logWindow, refreshKey]);
+  }, [slots, dayKey, recipesById, itemProducts, items, skips, planWindow, logCount, logWindow, refreshKey]);
 
   const open = (cell: MealStripCell, e: GestureResponderEvent) => {
     haptics.tap();
@@ -103,10 +107,13 @@ export function MealStrip({ dayKey, refreshKey }: Props) {
                 />
                 <Text style={styles.label} numberOfLines={1}>{label}</Text>
                 {done && <Ionicons name="checkmark-circle" size={14} color={colors.done} />}
+                {cell.state === 'skipped' && <Ionicons name="ban-outline" size={13} color={colors.textTertiary} />}
               </View>
-              {cell.text
-                ? <Text style={styles.value} numberOfLines={2}>{cell.text}</Text>
-                : <View style={styles.choose}><Text style={styles.chooseText}>Choose</Text></View>}
+              {cell.state === 'skipped'
+                ? <Text style={styles.skipped} numberOfLines={1}>Skipped</Text>
+                : cell.text
+                  ? <Text style={styles.value} numberOfLines={2}>{cell.text}</Text>
+                  : <View style={styles.choose}><Text style={styles.chooseText}>Choose</Text></View>}
             </TouchableOpacity>
           </React.Fragment>
         );
@@ -133,6 +140,7 @@ function cellAccessibilityLabel(cell: MealStripCell): string {
   switch (cell.state) {
     case 'logged': return `${label}, logged: ${cell.text ?? ''}`;
     case 'eaten': return `${label}, eaten: ${cell.text ?? ''}`;
+    case 'skipped': return `${label}, skipped`;
     case 'planned': return `${label}, planned: ${cell.text ?? ''}`;
     case 'empty': return `${label}, not chosen yet`;
   }
@@ -164,15 +172,37 @@ function menuItems(
   });
   const plan: MenuItem = { key: 'plan', icon: 'calendar-outline', label: 'Plan it', run: () => resetToMealPlan(dayKey, slot) };
   const openPlan: MenuItem = { key: 'openPlan', icon: 'calendar-outline', label: 'Open meal plan', run: () => resetToMealPlan(dayKey) };
+  // A skip is the strip's own record (`useMealSkipStore`), undone from the
+  // same toast an Ate it is.
+  const skip: MenuItem = {
+    key: 'skip',
+    icon: 'ban-outline',
+    label: `Skip ${lower}`,
+    run: () => {
+      const undo = useMealSkipStore.getState().setSkipped(dayKey, slot, true);
+      if (!undo) return;
+      useMealPlanStore.getState().setLastAction({ label: `Skipped ${lower}`, undo });
+    },
+  };
   const openRecipe: MenuItem | null = entry?.recipeId && !entry.leftoverId
     ? { key: 'recipe', icon: 'restaurant-outline', label: 'Open recipe', run: () => { openInAppUrl(recipeLinkUrl(entry.recipeId as string, entry.id)); } }
     : null;
 
   switch (cell.state) {
     case 'empty':
-      return [logManually(), plan];
+      return [logManually(), plan, skip];
+    case 'skipped':
+      return [
+        {
+          key: 'unskip',
+          icon: 'arrow-undo-outline',
+          label: 'Not skipped',
+          run: () => { useMealSkipStore.getState().setSkipped(dayKey, slot, false); },
+        },
+        logManually(),
+      ];
     case 'planned': {
-      if (!entry) return [logManually(), plan];
+      if (!entry) return [logManually(), plan, skip];
       const title = titleOf(entry);
       const ateIt: MenuItem = {
         key: 'ate',
@@ -189,7 +219,7 @@ function menuItems(
           useMealPlanStore.getState().setLastAction({ label: `Ate “${title}”`, undo });
         },
       };
-      return [ateIt, ...(openRecipe ? [openRecipe] : []), logManually(), openPlan];
+      return [ateIt, ...(openRecipe ? [openRecipe] : []), logManually(), skip, openPlan];
     }
     case 'eaten': {
       const items: MenuItem[] = [];
@@ -294,6 +324,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   labelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   label: { flexShrink: 1, fontSize: font.xs, color: colors.textSecondary },
   value: { fontSize: font.sm, lineHeight: 18, color: colors.text },
+  skipped: { fontSize: font.sm, lineHeight: 18, color: colors.textTertiary },
   choose: {
     alignSelf: 'flex-start',
     // Sits on the card's bottom edge, level with the last line of a filled cell.

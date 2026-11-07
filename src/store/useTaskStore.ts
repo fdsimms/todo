@@ -204,6 +204,7 @@ import { usePendingRecipeEstimateStore } from './usePendingRecipeEstimateStore';
 import { useMoodStore } from './useMoodStore';
 import { useJournalStore } from './useJournalStore';
 import { useMilestoneStore } from './useMilestoneStore';
+import { useMealSkipStore } from './useMealSkipStore';
 import { useCookwareStore } from './useCookwareStore';
 import { useCopyFlagStore } from './useCopyFlagStore';
 import { useFastStore } from './useFastStore';
@@ -3679,6 +3680,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // And the plan, which points at those recipes by id. Range-scoped, so this
     // reloads whatever week is on screen rather than the whole table.
     timedPart('MealPlan', () => useMealPlanStore.getState().initialize());
+    // Skipped meals, read by the meal strip beside the plan; same database swap.
+    timedPart('MealSkip', () => useMealSkipStore.getState().initialize());
     // What's in the fridge — pointed at by the plan the same way recipes are,
     // and on the same swap-the-database hazard.
     timedPart('Leftover', () => useLeftoverStore.getState().initialize());

@@ -57,6 +57,7 @@ import type {
   Leftover,
   MealPlanEntry,
   WeekPoolEntry,
+  MealSkip,
   LogMealSlot,
   MealSlot,
   Recipe,
@@ -1167,6 +1168,16 @@ function runInitDatabase(): void {
       sort_order REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
+
+    -- A meal the person said they skipped — see MealSkip in types. day_key is a
+    -- YYYY-MM-DD logical day key like meal_plan_entries.date, and the id is
+    -- derived from the day and slot, so there is at most one row per meal.
+    CREATE TABLE IF NOT EXISTS meal_skips (
+      id TEXT PRIMARY KEY NOT NULL,
+      day_key TEXT NOT NULL,
+      slot TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
   `);
 
   // Migrations for existing installs (safe to run multiple times — a column
@@ -1336,6 +1347,8 @@ function runInitDatabase(): void {
     'CREATE INDEX IF NOT EXISTS idx_meal_plan_entries_date ON meal_plan_entries(date)',
     // Every read of the pool is one week's meals.
     'CREATE INDEX IF NOT EXISTS idx_week_pool_entries_week ON week_pool_entries(week_start)',
+    // Every read of the skips is a range of days, from the strip's today back.
+    'CREATE INDEX IF NOT EXISTS idx_meal_skips_day ON meal_skips(day_key)',
     // Every read is "this person's notes" — the detail screen, the birthday
     // task's gift ideas, a meal's guests — so the person is the index.
     'CREATE INDEX IF NOT EXISTS idx_person_notes_person ON person_notes(person_id)',
@@ -3077,6 +3090,8 @@ export const BACKUP_TABLES = [
   'leftovers',
   'meal_plan_entries',
   'week_pool_entries',
+  // Points at nothing: a day and a meal, not an entry.
+  'meal_skips',
   'templates',
   'tasks',
   // After tasks, though nothing enforces it: a record's `completedTaskIds` and
@@ -9799,6 +9814,36 @@ export function dbUpdateWeekPoolEntry(id: string, patch: Partial<Pick<WeekPoolEn
 
 export function dbDeleteWeekPoolEntry(id: string): void {
   db.runSync('DELETE FROM week_pool_entries WHERE id = ?', [id]);
+}
+
+function rowToMealSkip(row: Record<string, unknown>): MealSkip {
+  return {
+    id: row.id as string,
+    dayKey: row.day_key as string,
+    slot: row.slot as MealSlot,
+    createdAt: row.created_at as string,
+  };
+}
+
+/** The skipped meals on or after `fromKey`, oldest first. */
+export function dbGetMealSkipsSince(fromKey: string): MealSkip[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM meal_skips WHERE day_key >= ? ORDER BY day_key ASC',
+    [fromKey]
+  );
+  return rows.map(rowToMealSkip);
+}
+
+/** Replace rather than insert: the id is derived from the day and slot, so a second skip is the same row. */
+export function dbInsertMealSkip(skip: MealSkip): void {
+  db.runSync(
+    'INSERT OR REPLACE INTO meal_skips (id, day_key, slot, created_at) VALUES (?, ?, ?, ?)',
+    [skip.id, skip.dayKey, skip.slot, skip.createdAt]
+  );
+}
+
+export function dbDeleteMealSkip(id: string): void {
+  db.runSync('DELETE FROM meal_skips WHERE id = ?', [id]);
 }
 
 /** Drops the pool of every week that starts before `beforeKey`, returning how many went. */

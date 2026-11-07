@@ -149,6 +149,43 @@ describe('mealStripCells', () => {
   });
 });
 
+describe('mealStripCells: a skipped meal', () => {
+  const slots = ['breakfast', 'lunch', 'dinner'] as const;
+
+  it('reads a skipped meal as skipped, with no text, and leaves the others alone', () => {
+    const cells = mealStripCells(slots, [], [], DAY, title, e => e.label, ['breakfast']);
+    expect(cells.map(c => [c.slot, c.state, c.text])).toEqual([
+      ['breakfast', 'skipped', null],
+      ['lunch', 'empty', null],
+      ['dinner', 'empty', null],
+    ]);
+  });
+
+  it('puts the skip over a plan, keeping the entry for the menu', () => {
+    const cells = mealStripCells(slots, [planned()], [], DAY, title, e => e.label, ['dinner']);
+    expect(cells[2].state).toBe('skipped');
+    expect(cells[2].planned.map(e => e.title)).toEqual(['Frijoles']);
+  });
+
+  it('lets food in the log or a meal marked eaten win over a skip', () => {
+    const cells = mealStripCells(
+      slots,
+      [planned({ cookedAt: '2026-11-03T19:00:00.000Z' })],
+      [logged()],
+      DAY,
+      title,
+      e => e.label,
+      ['lunch', 'dinner'],
+    );
+    expect(cells[1].state).toBe('logged');
+    expect(cells[2].state).toBe('eaten');
+  });
+
+  it('is not done, so it pays no coins', () => {
+    expect(isMealStripDone({ state: 'skipped' })).toBe(false);
+  });
+});
+
 describe('isMealStripDone / mealStripDoneSlots', () => {
   it('counts a logged meal and a meal marked eaten, and nothing else', () => {
     expect(isMealStripDone({ state: 'logged' })).toBe(true);

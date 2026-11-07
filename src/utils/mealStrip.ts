@@ -66,15 +66,20 @@ export function mealStripCoversMeal(
  *   already does.
  * - `eaten`: a planned meal marked cooked (from the strip's Ate it, or the
  *   meal plan's own toggle) with nothing logged yet.
+ * - `skipped`: marked skipped (`MealSkip`) with nothing logged or eaten.
+ *   Settled, so it stops asking Choose, but not eaten, so it pays nothing.
+ *   It outranks a plan: skipping a planned lunch is saying the plan didn't
+ *   happen. Food logged in the slot outranks the skip, since the log is what
+ *   was actually eaten.
  * - `planned`: on the plan, not yet eaten.
  * - `empty`: nothing planned or logged.
  */
-export type MealStripState = 'logged' | 'eaten' | 'planned' | 'empty';
+export type MealStripState = 'logged' | 'eaten' | 'skipped' | 'planned' | 'empty';
 
 export interface MealStripCell {
   slot: MealSlot;
   state: MealStripState;
-  /** The line under the meal's name: what was logged, or what's planned. Null for `empty`. */
+  /** The line under the meal's name: what was logged, or what's planned. Null for `empty` and `skipped`. */
   text: string | null;
   /** The slot's plan entries, in plan order. The first is the one the menu acts on. */
   planned: MealPlanEntry[];
@@ -97,6 +102,7 @@ export function mealStripCells(
   dayKey: string,
   titleOf: (entry: MealPlanEntry) => string,
   logLabelOf: (entry: FoodLogEntry) => string = e => e.label,
+  skipped: readonly MealSlot[] = [],
 ): MealStripCell[] {
   const coverage = mealDayCoverage(planned, logged, dayKey);
   return slots.map(slot => {
@@ -107,8 +113,12 @@ export function mealStripCells(
     if (inLog.length > 0) {
       return { slot, state: 'logged', text: join(inLog.map(logLabelOf)), planned: inPlan, logged: inLog };
     }
+    const eaten = inPlan.some(e => e.cookedAt);
+    if (!eaten && skipped.includes(slot)) {
+      return { slot, state: 'skipped', text: null, planned: inPlan, logged: inLog };
+    }
     if (inPlan.length > 0) {
-      const state: MealStripState = inPlan.some(e => e.cookedAt) ? 'eaten' : 'planned';
+      const state: MealStripState = eaten ? 'eaten' : 'planned';
       return { slot, state, text: join(inPlan.map(titleOf)), planned: inPlan, logged: inLog };
     }
     return { slot, state: 'empty', text: null, planned: inPlan, logged: inLog };

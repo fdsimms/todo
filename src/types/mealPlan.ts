@@ -379,6 +379,31 @@ export interface WeekPoolEntry {
 }
 
 /**
+ * A meal the person said they skipped: "no breakfast today". Set from the
+ * meal strip on Today (`MealStrip.tsx`), keyed by the day and the meal rather
+ * than by a planned entry, because the meal most often skipped is one nobody
+ * planned and so has no `MealPlanEntry` to carry a flag.
+ *
+ * **Its own row, not a `MealPlanEntry` with a marker**, for the reason
+ * `WeekPoolEntry` is: every reader of an entry (the shopping list, the
+ * calendar event, cooking counts, "6 dinners planned") would have to learn to
+ * step over it, and the one that forgets turns a skipped breakfast into a
+ * planned one. Nor is it a food log row: the log is what was eaten, and Health
+ * reads it.
+ *
+ * The id is derived from the day and the meal (`spawnSeed.mealSkip`), so two
+ * phones that each skip the same breakfast before syncing write one row, and
+ * un-skipping on either deletes it everywhere.
+ */
+export interface MealSkip {
+  id: string;
+  /** A `YYYY-MM-DD` logical day key, like `MealPlanEntry.date`. */
+  dayKey: string;
+  slot: MealSlot;
+  createdAt: string;
+}
+
+/**
  * Something cooked that's now sitting in the fridge, with a clock on it.
  *
  * Its own row rather than a GroceryItem or a Recipe, because it is neither: a
