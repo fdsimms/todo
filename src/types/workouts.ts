@@ -79,6 +79,15 @@ export interface Exercise {
    * one dumbbell either way (`src/utils/dumbbellLoad.ts`).
    */
   loadEntry: 'each' | 'pair' | null;
+  /**
+   * The share of the person's body weight this movement moves, from 0 to 1,
+   * where the default for it is wrong. Null (or absent) uses the library's
+   * figure for a built-in and 1 for a custom one (`bodyweightFractionOf`).
+   * Only a bodyweight or assisted exercise reads it, and only for the
+   * bodyweight volume (`bodyweightVolumeKg`), never for a record. 0 counts
+   * nothing.
+   */
+  bodyweightFraction?: number | null;
   notes: string;
   /** Hidden from the library and pickers; its history stays. */
   archived: boolean;
@@ -129,6 +138,14 @@ export interface WorkoutRoutineItem {
    * (or false) for none, or for the warm-ups its targets list.
    */
   warmupRamp?: boolean;
+  /**
+   * The exercise to do in its place when the gym can't do this one (a goblet
+   * squat for a barbell squat). Workout mode offers it first, ahead of the
+   * ranked suggestions, and only when the gym has what it needs. A swap to it
+   * is the plan working, so the summary never offers it back as a change to
+   * the routine. Absent for none.
+   */
+  alternateId?: string | null;
 }
 
 /**
@@ -209,11 +226,24 @@ export interface WorkoutProgramVersion {
  * null) and `radiusM` are what starting a workout compares a position against
  * to offer this gym; nothing here reads the position itself.
  */
+/**
+ * The dumbbells a gym has: the lightest, the heaviest, and the gap between
+ * neighbours, in kilograms of one dumbbell (the same unit a set stores). The
+ * heaviest counts as a weight even when the step doesn't land on it.
+ */
+export interface DumbbellRack {
+  minKg: number;
+  maxKg: number;
+  stepKg: number;
+}
+
 export interface Gym {
   id: string;
   name: string;
   /** The equipment it has, from the closed `ExerciseEquipment` set. Empty means nothing is known yet, not "none". */
   equipment: ExerciseEquipment[];
+  /** The dumbbells on the rack, or null when the person hasn't said. Null means unknown, never "any weight". */
+  dumbbells: DumbbellRack | null;
   /** What the place was called when it was picked from a search, shown under the name. */
   placeText: string;
   latitude: number | null;
@@ -323,6 +353,14 @@ export interface WorkoutSession {
    * it as a change. Absent on a workout that set none.
    */
   restOverrides?: Record<string, number>;
+  /**
+   * The person's body weight in kilograms when the workout started, read from
+   * Health and kept here so a later weigh-in doesn't rewrite an old workout's
+   * bodyweight volume (`bodyweightVolumeKg`). Null or absent when Health had no
+   * reading (or reading was off), which leaves the workout without a bodyweight
+   * figure. Never filled in for a workout from before this existed.
+   */
+  bodyweightKg?: number | null;
 }
 
 /**

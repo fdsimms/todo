@@ -4,6 +4,8 @@ import {
   SECONDARY_MUSCLE_WEIGHT,
   analyzeAll,
   analyzeExercise,
+  bodyweightSetVolume,
+  bodyweightVolumeKg,
   countsForRecords,
   estimatedOneRepMax,
   isNewRecord,
@@ -230,6 +232,35 @@ describe('analyzeExercise, weight and reps', () => {
     expect(analyzeExercise(BENCH, 'weight_reps', sets, sessions).events).toEqual([]);
   });
 
+  it('announces the same weight for more reps as a heaviest weight, naming the reps it beat', () => {
+    // 20 reps is past both the 1RM and the rep-count records, so this is the only one that can fire.
+    const sets = [set('s1', { weightKg: 43, reps: 15 }), set('s2', { weightKg: 43, reps: 20 })];
+    const { events } = analyzeExercise(BENCH, 'weight_reps', sets, sessions);
+    expect(events.filter(e => e.type === 'weight')).toEqual([expect.objectContaining({ value: 43, previous: 43, previousReps: 15 })]);
+  });
+
+  it('does not announce the same weight for fewer reps, or the same reps', () => {
+    for (const reps of [12, 15]) {
+      const sets = [set('s1', { weightKg: 43, reps: 15 }), set('s2', { weightKg: 43, reps }), set('s2', { weightKg: 30, reps: 25 })];
+      expect(analyzeExercise(BENCH, 'weight_reps', sets, sessions).events.filter(e => e.type === 'weight')).toEqual([]);
+    }
+  });
+
+  it('gives a heavier weight no previous reps, so only a tie names them', () => {
+    const sets = [set('s1', { weightKg: 43, reps: 15 }), set('s2', { weightKg: 45, reps: 20 })];
+    const weight = analyzeExercise(BENCH, 'weight_reps', sets, sessions).events.find(e => e.type === 'weight')!;
+    expect(weight.previous).toBe(43);
+    expect(weight.previousReps).toBeUndefined();
+  });
+
+  it('does not read a carry\'s reps as a tie-break', () => {
+    const sets = [
+      set('s1', { exerciseId: 'c', weightKg: 32, reps: null, distanceM: 20 }),
+      set('s2', { exerciseId: 'c', weightKg: 32, reps: null, distanceM: 40 }),
+    ];
+    expect(analyzeExercise('c', 'weight_distance', sets, sessions).events.filter(e => e.type === 'weight')).toEqual([]);
+  });
+
   it('is chronological whatever order the sessions arrive in, once they go through recordSessions', () => {
     const sets = [set('s2', { weightKg: 90, reps: 3 }), set('s1', { weightKg: 80, reps: 8 })];
     const ordered = recordSessions([s2, s1, s3], '00:00');
@@ -446,6 +477,14 @@ describe('liveSetRecords', () => {
     expect([...live([old, first, second]).keys()]).toEqual([second.id]);
   });
 
+  it('marks a set that matches the heaviest weight for more reps', () => {
+    const old = set('s1', { weightKg: 43, reps: 15 });
+    const tied = set('s2', { weightKg: 43, reps: 20 });
+    const marks = live([old, tied]);
+    expect([...marks.keys()]).toEqual([tied.id]);
+    expect(marks.get(tied.id)![0]).toMatchObject({ type: 'weight', previousReps: 15 });
+  });
+
   it('marks nothing for a first time, an unticked set, or a session volume', () => {
     expect(live([set('s2', { weightKg: 90, reps: 8 })]).size).toBe(0);
     const old = set('s1', { weightKg: 80, reps: 8 });
@@ -468,9 +507,9 @@ describe('isNewRecordRow', () => {
     expect(badged([set('s1', { weightKg: 100, reps: 5 })])).toEqual([]);
   });
 
-  it('does not badge heaviest weight when the same weight was done for more reps', () => {
+  it('badges heaviest weight when the same weight was done for more reps', () => {
     const rows = badged([set('s1', { weightKg: 100, reps: 3 }), set('s2', { weightKg: 100, reps: 5 })]);
-    expect(rows).not.toContain('weight');
+    expect(rows).toContain('weight');
     expect(rows).toContain('e1rm');
   });
 
@@ -612,5 +651,50 @@ describe('topMuscles', () => {
   it('caps the list and handles no week', () => {
     expect(topMuscles(week, 2)).toHaveLength(2);
     expect(topMuscles(undefined)).toEqual([]);
+  });
+});
+
+describe('bodyweightVolumeKg', () => {
+  const set = (exerciseId: string, weightKg: number | null, reps: number | null, extra: Partial<WorkoutSet> = {}) =>
+    ({ exerciseId, weightKg, reps, completedAt: '2026-01-05T10:00:00.000Z', kind: 'working' as const, ...extra });
+  const kinds: Record<string, 'bodyweight_reps' | 'assisted_reps' | 'weight_reps'> = {
+    pullup: 'bodyweight_reps', pushup: 'bodyweight_reps', assist: 'assisted_reps', squat: 'weight_reps',
+  };
+  const kindOf = (id: string) => kinds[id];
+  const fractions: Record<string, number> = { pullup: 1, pushup: 0.64, assist: 1, squat: 1 };
+  const fractionOf = (id: string) => fractions[id];
+
+  it('is body weight times the share it moves times the reps', () => {
+    expect(bodyweightVolumeKg([set('pullup', null, 8), set('pullup', null, 7)], kindOf, fractionOf, 80)).toBe(1200);
+    expect(bodyweightVolumeKg([set('pushup', null, 10)], kindOf, fractionOf, 100)).toBeCloseTo(640, 6);
+  });
+
+  it('keeps a set that has no weight and no reps out, and leaves lifted work to liftVolumeKg', () => {
+    expect(bodyweightVolumeKg([set('pullup', null, null), set('squat', 100, 5)], kindOf, fractionOf, 80)).toBeNull();
+  });
+
+  it('subtracts an assisted set\'s help from the load, never below 0', () => {
+    expect(bodyweightVolumeKg([set('assist', 30, 5)], kindOf, fractionOf, 80)).toBe(250);
+    // More help than the load adds nothing, and so is no figure at all.
+    expect(bodyweightVolumeKg([set('assist', 90, 5)], kindOf, fractionOf, 80)).toBeNull();
+  });
+
+  it('skips warm-ups and sets that were not done', () => {
+    expect(bodyweightVolumeKg([set('pullup', null, 8, { kind: 'warmup' }), set('pullup', null, 8, { completedAt: null })], kindOf, fractionOf, 80)).toBeNull();
+    expect(bodyweightVolumeKg([set('pullup', null, 8, { kind: 'drop' })], kindOf, fractionOf, 80)).toBe(640);
+  });
+
+  it('is null when the workout has no body weight, or the share is 0', () => {
+    expect(bodyweightVolumeKg([set('pullup', null, 8)], kindOf, fractionOf, null)).toBeNull();
+    expect(bodyweightVolumeKg([set('pullup', null, 8)], kindOf, fractionOf, undefined)).toBeNull();
+    expect(bodyweightVolumeKg([set('pullup', null, 8)], kindOf, fractionOf, 0)).toBeNull();
+    expect(bodyweightVolumeKg([set('pullup', null, 8)], kindOf, () => 0, 80)).toBeNull();
+  });
+
+  it('shares bodyweightSetVolume with the history list, and only reads bodyweight and assisted kinds', () => {
+    expect(bodyweightSetVolume(null, 10, 'bodyweight_reps', 0.64, 100)).toBeCloseTo(640, 6);
+    expect(bodyweightSetVolume(20, 10, 'assisted_reps', 1, 80)).toBe(600);
+    expect(bodyweightSetVolume(100, 5, 'weight_reps', 1, 80)).toBeNull();
+    expect(bodyweightSetVolume(null, 30, 'duration', 1, 80)).toBeNull();
   });
 });

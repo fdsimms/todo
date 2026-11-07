@@ -1956,6 +1956,13 @@ describe('quota tasks', () => {
       expect(quotaUnitsToPace(over)).toBe(0);
     });
 
+    it('still counts a weekly overshoot target at its count as on pace', () => {
+      // A daily one stays up past its target; a weekly one follows the normal
+      // rule and leaves Today until a later unit falls due.
+      const weekly = { ...quotaTask, allowOvershoot: true, quotaPeriod: 'week' as const, targetCount: 3, progressCount: 3 };
+      expect(isQuotaOnPace(weekly)).toBe(true);
+    });
+
     it('is zero for a task that is not a quota', () => {
       expect(quotaUnitsToPace(baseTask)).toBe(0);
     });

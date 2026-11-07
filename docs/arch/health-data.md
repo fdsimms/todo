@@ -2353,6 +2353,10 @@ rule. "Writing what a task names: a logged nutrient", "The second write: body
 mass" and "The third write: a logged meal" above carry the arguments in full;
 read them rather than a summary before adding one.
 
+## Bodyweight volume in workouts
+
+**The third carve-out from "nothing derives anything from a weight", asked for, and fenced.** A workout can show an estimated bodyweight volume (body weight times the share a movement moves times the reps) beside its lifted volume, for pull-ups, push-ups and the rest of the work a bar doesn't measure. It reads a Health weigh-in once, when the workout starts, and stamps it on the workout (`WorkoutSession.bodyweightKg`), so no later weight changes an old figure. It is a separate, labelled estimate that is never added to the lifted volume and that no record, rank, chart, rule or Health write reads. With Read Apple Health off, or no weigh-in in the last 90 days, only a body weight the person typed in Settings › Workouts stands in, and a workout with neither has no figure. The reasoning and the rest are in `docs/arch/workouts.md`, "Bodyweight volume, as built".
+
 ## Maintenance measured from the log (`adaptiveExpenditure.ts`)
 
 **The second carve-out from "nothing derives anything from a weight", asked

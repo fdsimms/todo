@@ -116,6 +116,7 @@ export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; 
   split_leftover: { title: 'Split a leftover', destructive: false, idempotent: false },
   delete_leftover: { title: 'Delete a leftover', destructive: true, idempotent: true },
   set_meal_cooked: { title: 'Mark a meal cooked', destructive: true, idempotent: true },
+  set_meal_skipped: { title: 'Mark a meal skipped', destructive: true, idempotent: true },
   save_meal_as_recipe: { title: 'Save a meal as a recipe', destructive: false, idempotent: true },
   copy_meals: { title: 'Copy meals', destructive: false, idempotent: false },
   rename_cookbook: { title: 'Rename a cookbook', destructive: true, idempotent: true },

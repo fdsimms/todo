@@ -6269,6 +6269,20 @@ describe('answerPantryReview', () => {
     expect(useGroceryStore.getState().items[0].onHandUntil).toBe(OUT_OF_IT_UNTIL);
   });
 
+  it('puts an "out" row on the home list only when asked', () => {
+    const flour = makeItem({ name: 'Flour', onHandUntil: null });
+    const rice = makeItem({ name: 'Rice', onHandUntil: null });
+    seed([flour, rice]);
+
+    useGroceryStore.getState().answerPantryReview(flour.id, 'out');
+    useGroceryStore.getState().answerPantryReview(rice.id, 'out', { addToList: true });
+
+    const entries = useGroceryStore.getState().listEntries;
+    expect(entryFor(entries, flour.id, null)).toBeNull();
+    expect(entryFor(entries, rice.id, null)).not.toBeNull();
+    expect(useGroceryStore.getState().items.find(i => i.id === rice.id)?.onHandUntil).toBe(OUT_OF_IT_UNTIL);
+  });
+
   // The middle answer is the one with an outlet: saying you're nearly out is
   // nothing but a plan to buy it, which is what gives a review pass something
   // to show for itself.

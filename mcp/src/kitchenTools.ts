@@ -299,7 +299,10 @@ function serializePoolMeal(e: WeekPoolEntry, recipes: Map<string, string>): Seri
  * with no day yet (`pool`, from the app's "Recipe pool" card). A pool meal
  * is not on the plan: it has no date, and place_pool_meal puts it on one.
  */
-export function listMealPlan(replica: Replica, input: MealPlanInput = {}): { from: string; to: string; meals: SerializedMeal[]; pool?: SerializedPoolMeal[] } {
+export function listMealPlan(
+  replica: Replica,
+  input: MealPlanInput = {},
+): { from: string; to: string; meals: SerializedMeal[]; pool?: SerializedPoolMeal[]; skipped?: SkippedMeal[] } {
   const from = input.from ?? replica.todayKey();
   const days = Math.min(Math.max(input.days ?? DEFAULT_PLAN_DAYS, 1), MAX_PLAN_DAYS);
   const to = input.to ?? replica.shiftDayKey(from, days - 1);
@@ -308,14 +311,42 @@ export function listMealPlan(replica: Replica, input: MealPlanInput = {}): { fro
   const names = new Map(replica.recipes().map(r => [r.id, r.name]));
   const order = (s: MealSlot) => MEAL_SLOTS.indexOf(s);
   const pool = replica.weekPool(replica.weekStartOf(from), replica.weekStartOf(to));
+  const skipped = replica.mealSkips(from, to)
+    .sort((a, b) => a.dayKey.localeCompare(b.dayKey) || order(a.slot) - order(b.slot))
+    .map(s => ({ date: s.dayKey, slot: s.slot }));
   return {
     from,
     to,
     ...(pool.length > 0 ? { pool: pool.map(e => serializePoolMeal(e, names)) } : {}),
+    ...(skipped.length > 0 ? { skipped } : {}),
     meals: replica
       .mealPlan(from, to)
       .sort((a, b) => a.date.localeCompare(b.date) || order(a.slot) - order(b.slot) || a.sortOrder - b.sortOrder)
       .map(e => serializeMeal(e, names, replica)),
+  };
+}
+
+/** A meal the person marked skipped, by day and meal. */
+export interface SkippedMeal {
+  date: string;
+  slot: MealSlot;
+}
+
+/**
+ * Marks one meal of one day skipped, or not, as the meal strip on Today does.
+ * A skip is its own record, not a planned meal: a meal planned for that slot
+ * stays on the plan, and food logged in the slot outranks the skip.
+ */
+export function setMealSkipped(replica: Replica, input: { date: string; slot: MealSlot; skipped: boolean }) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new Error('date must be YYYY-MM-DD.');
+  replica.setMealSkipped(input.date, input.slot, input.skipped);
+  return {
+    date: input.date,
+    slot: input.slot,
+    skipped: input.skipped,
+    note: input.skipped
+      ? 'Skipping earns no coins and stops the "Log this meal?" nudge for it. A meal planned for this slot stays on the plan; food logged in the slot outranks the skip.'
+      : 'The meal is no longer marked skipped.',
   };
 }
 

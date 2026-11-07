@@ -449,3 +449,52 @@ describe('joinAnd', () => {
     expect(joinAnd(['8', '7', '6'])).toBe('8, 7 and 6');
   });
 });
+
+describe('a gym’s dumbbell rack', () => {
+  const rack = { minKg: 5, maxKg: 40, stepKg: 5 };
+  const racked: LoadContext = { ...dumbbell, rack, incrementKg: 2.5 };
+
+  it('snaps a load to a dumbbell the gym has', () => {
+    expect(roundLoad(22, racked)).toBe(20);
+    expect(roundLoad(22, racked, 'up')).toBe(25);
+    expect(roundLoad(90, racked)).toBe(40);
+    expect(roundLoad(22, dumbbell)).toBe(22.5);
+  });
+
+  it('leaves a barbell and a gym with no rack alone', () => {
+    expect(roundLoad(82.5, { ...barbell, rack })).toBe(82.5);
+    expect(roundLoad(22, { ...dumbbell, rack: null })).toBe(22.5);
+  });
+
+  it('steps up to the next dumbbell, not past a gap', () => {
+    const history = [done('s5', 0, 20, 12), done('s5', 1, 20, 12)];
+    const p = proposeNext(input({ history, item: item('double', range(10, 12, 2)), load: racked }))!;
+    expect(p).toMatchObject({ move: 'up' });
+    expect(p.sets[0].weightKg).toBe(25);
+  });
+
+  it('keeps the weight and says so at the heaviest dumbbell', () => {
+    const history = [done('s5', 0, 40, 12), done('s5', 1, 40, 12)];
+    const p = proposeNext(input({ history, item: item('double', range(10, 12, 2)), load: racked }))!;
+    expect(p).toMatchObject({ move: 'same', brief: 'Heaviest dumbbell here' });
+    expect(p.sets[0]).toMatchObject({ weightKg: 40, reps: 12 });
+    expect(p.reason).toBe('Same weight. 40 kg is the heaviest dumbbell at this gym, so add reps or slow the lowering.');
+  });
+
+  it('does the same under linear and rpe', () => {
+    const lin = item('linear', range(8, 8, 2));
+    const atTop = [done('s5', 0, 40, 8), done('s5', 1, 40, 8)];
+    expect(proposeNext(input({ scheme: 'linear', item: lin, history: atTop, load: racked }))).toMatchObject({ move: 'same', brief: 'Heaviest dumbbell here' });
+    const rpeItem = item('rpe', range(8, 8, 2, { rpe: 8 }));
+    const easy = [done('s5', 0, 40, 8, { rpe: 6 }), done('s5', 1, 40, 8, { rpe: 6 })];
+    expect(proposeNext(input({ scheme: 'rpe', item: rpeItem, history: easy, load: racked }))).toMatchObject({ move: 'same', brief: 'Heaviest dumbbell here' });
+  });
+
+  it('steps down to the dumbbell below, and holds at the lightest', () => {
+    const lin = item('linear', range(8, 8, 2));
+    const heavy = [done('s5', 0, 20, 5), done('s5', 1, 20, 5)];
+    const p = proposeNext(input({ scheme: 'linear', item: lin, history: heavy, load: racked }))!;
+    expect(p.move).toBe('same');
+    expect(proposeNext(input({ scheme: 'linear', item: lin, history: [done('s5', 0, 5, 5), done('s5', 1, 5, 5)], load: racked }))!.move).toBe('same');
+  });
+});

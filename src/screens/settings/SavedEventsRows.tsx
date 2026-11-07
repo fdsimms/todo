@@ -89,14 +89,14 @@ export function SavedEventsRows() {
         entryId="savedEvents"
         icon="bookmark-outline"
         iconColor={events.length > 0 ? colors.accent : undefined}
-        label="Saved events"
+        label="Favorite events"
         hint={anyInterval && !bookEventTasks
-          ? 'Booking reminders are off. Turn on “Book saved events” in Automations to get them.'
+          ? 'Booking reminders are off. Turn on “Book favorite events” in Automations to get them.'
           : 'Listed when you start a new event. Tapping one fills in everything but the day.'}
         value={events.length > 0 ? String(events.length) : undefined}
         expanded={open}
         onPress={() => { animateLayout(); setOpen(v => !v); }}
-        accessibilityLabel="Saved events"
+        accessibilityLabel="Favorite events"
       />
       {open && sortedSavedEvents(events).map(event => (
         <React.Fragment key={eventMemoryKey(event.title)}>
@@ -141,7 +141,7 @@ export function SavedEventsRows() {
       ))}
       {open && (
         <View style={styles.addRow}>
-          <InlineAction label="New saved event" icon="add" onPress={() => setEditing('new')} />
+          <InlineAction label="New favorite event" icon="add" onPress={() => setEditing('new')} />
         </View>
       )}
       <SavedEventSheet

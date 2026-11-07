@@ -27,8 +27,11 @@ import { BUTTON_LABEL } from '../copy/shared';
 import { getLogicalDayKey } from '../utils/dateUtils';
 import { catalogExercise, describeExercise } from '../utils/exerciseCatalog';
 import {
-  analyzeExercise, countsForRecords, isNewRecordRow, metricsFor, recordSessions, type RecordMetric,
+  analyzeExercise, bodyweightVolumeKg, countsForRecords, isNewRecordRow, metricsFor, recordSessions, type RecordMetric,
 } from '../utils/workoutRecords';
+import { bodyweightFractionFor } from '../utils/bodyweightLoad';
+import { kgToUnit } from '../utils/weightLog';
+import { withThousands } from '../utils/workoutRecordText';
 import {
   formatAxisValue, formatMetricPoint, formatRecordValue, metricCaption, metricLabel, metricNote, metricNumber,
   recordLabel,
@@ -36,6 +39,11 @@ import {
 import { formatSetLine, setLabels, setName } from '../utils/workoutSession';
 import { weightScale } from '../utils/dumbbellLoad';
 import type { WorkoutSet } from '../types';
+
+/** What the metric control can show: the three record readings, and the estimated bodyweight volume. */
+type ShownMetric = RecordMetric | 'bodyweight';
+const BODYWEIGHT_LABEL = 'Bodyweight, est.';
+const BODYWEIGHT_NOTE = 'An estimate: your body weight when each workout started, times the share of it this exercise moves, times the reps. Workouts with no body weight are left out.';
 
 /**
  * One exercise: how it has gone over time, the personal records, and every
@@ -49,8 +57,11 @@ import type { WorkoutSet } from '../types';
  *
  * Everything on it is derived from the sets each time (`analyzeExercise`):
  * nothing about a record is stored, so deleting a session moves the records.
- * Nothing is relative to a body weight, and the estimated 1RM says
- * "estimated" wherever it shows (docs/arch/workouts.md).
+ * No record is relative to a body weight, and the estimated 1RM says
+ * "estimated" wherever it shows (docs/arch/workouts.md). A bodyweight or
+ * assisted exercise adds one more chart, the estimated bodyweight volume of
+ * each session that has a body weight stamped on it, kept apart from the
+ * records (docs/arch/workouts.md, "Bodyweight volume, as built").
  *
  * **Full screen, not a page sheet.** The chart is scrubbed by dragging a
  * finger across it, and a page sheet's pull-down pan makes RN's modal touch
@@ -94,9 +105,9 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
   // A pair total reads every stored one-dumbbell weight doubled (`dumbbellLoad.ts`).
   const scale = weightScale(info, dumbbellEntry);
   const kind = info?.kind ?? 'weight_reps';
-  const metrics = metricsFor(kind);
-  const [chosen, setChosen] = useState<RecordMetric>('e1rm');
-  const metric = metrics.includes(chosen) ? chosen : metrics[0];
+  // `metrics` is what the records offer; the estimated bodyweight volume joins it below once a session has the figure.
+  const recordMetrics = metricsFor(kind);
+  const [chosen, setChosen] = useState<ShownMetric>('e1rm');
   const [shown, setShown] = useState(HISTORY_STEP);
   const [editing, setEditing] = useState(false);
   // A gym the history and records are narrowed to, or null for all of them.
@@ -105,7 +116,7 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
   const [gymEditOpen, setGymEditOpen] = useState(false);
 
   useEffect(() => {
-    if (visible) { setChosen(metricsFor(kind)[0]); setShown(HISTORY_STEP); setEditing(false); setGymFilter(null); setGymEditOpen(false); }
+    if (visible) { setChosen(recordMetrics[0]); setShown(HISTORY_STEP); setEditing(false); setGymFilter(null); setGymEditOpen(false); }
     // On open only: the kind is the opened exercise's.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, exerciseId]);
@@ -159,22 +170,49 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
     return out;
   }, [sets]);
 
-  const options = useMemo<SegmentOption<RecordMetric>[]>(
-    () => metrics.map(m => ({ value: m, label: metricLabel(m) })),
+  // Each session's estimated bodyweight volume, from the body weight stamped on it, for the exercises that move one.
+  const bodyweightBySession = useMemo(() => {
+    const out = new Map<string, number>();
+    if (kind !== 'bodyweight_reps' && kind !== 'assisted_reps') return out;
+    const fraction = bodyweightFractionFor(info, exerciseId ?? '');
+    for (const session of sessions) {
+      const list = setsBySession.get(session.id);
+      if (!list) continue;
+      const kg = bodyweightVolumeKg(list, () => kind, () => fraction, session.bodyweightKg);
+      if (kg !== null) out.set(session.id, kg);
+    }
+    return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [kind],
+  }, [setsBySession, sessions, kind, info?.bodyweightFraction, exerciseId]);
+  const metrics: ShownMetric[] = useMemo(
+    () => (bodyweightBySession.size > 0 ? [...recordMetrics, 'bodyweight'] : recordMetrics),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [kind, bodyweightBySession.size > 0],
+  );
+  const metric: ShownMetric = metrics.includes(chosen) ? chosen : metrics[0];
+
+  const options = useMemo<SegmentOption<ShownMetric>[]>(
+    () => metrics.map(m => ({ value: m, label: m === 'bodyweight' ? BODYWEIGHT_LABEL : metricLabel(m) })),
+    [metrics],
   );
 
   const plotted = useMemo<ExerciseChartPoint[]>(() => {
     if (!analysis) return [];
     const out: ExerciseChartPoint[] = [];
     for (const p of analysis.points) {
+      if (metric === 'bodyweight') {
+        const kg = bodyweightBySession.get(p.sessionId);
+        if (kg === undefined) continue;
+        const value = Math.round(kgToUnit(kg, unit));
+        out.push({ dayKey: p.dayKey, value, text: `${withThousands(value)} ${unit}` });
+        continue;
+      }
       const value = metricNumber(p, metric, kind, unit, scale);
       const text = formatMetricPoint(p, metric, kind, unit, scale);
       if (value !== null && text !== null) out.push({ dayKey: p.dayKey, value, text });
     }
     return out;
-  }, [analysis, metric, kind, unit, scale]);
+  }, [analysis, metric, kind, unit, scale, bodyweightBySession]);
 
   // The page scroll is off while a finger is scrubbing the chart.
   const [scrubbing, setScrubbing] = useState(false);
@@ -278,16 +316,16 @@ export function ExerciseDetailSheet({ visible, exerciseId, onClose }: Props) {
                   <View style={styles.headline}>
                     <Text style={styles.headlineValue}>{latest.text}</Text>
                     <Text style={styles.headlineCaption}>
-                      {[metricCaption(metric), shortDate(latest.dayKey, todayKey)].filter(Boolean).join(', ')}
+                      {[metric === 'bodyweight' ? 'estimated' : metricCaption(metric), shortDate(latest.dayKey, todayKey)].filter(Boolean).join(', ')}
                     </Text>
                   </View>
-                  <HelpText style={styles.note}>{metricNote(metric, kind)}</HelpText>
+                  <HelpText style={styles.note}>{metric === 'bodyweight' ? BODYWEIGHT_NOTE : metricNote(metric, kind)}</HelpText>
                   <View style={styles.chart}>
                     <ExerciseProgressChart
                       points={plotted}
-                      formatAxis={v => formatAxisValue(v, metric, kind)}
+                      formatAxis={v => (metric === 'bodyweight' ? withThousands(v) : formatAxisValue(v, metric, kind))}
                       onScrubChange={setScrubbing}
-                      summary={`${metricLabel(metric)} chart, ${plotted.length} ${plotted.length === 1 ? 'session' : 'sessions'}, latest ${latest.text}${metric === 'e1rm' ? ', estimated' : ''}`}
+                      summary={`${metric === 'bodyweight' ? BODYWEIGHT_LABEL : metricLabel(metric)} chart, ${plotted.length} ${plotted.length === 1 ? 'session' : 'sessions'}, latest ${latest.text}${metric === 'e1rm' || metric === 'bodyweight' ? ', estimated' : ''}`}
                     />
                   </View>
                   <HelpText style={styles.note}>

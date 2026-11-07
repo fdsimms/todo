@@ -244,6 +244,7 @@ function GroceryItemSheetBody({
   const addAisle = useGroceryStore(s => s.addAisle);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
+  const addExistingMany = useGroceryStore(s => s.addExistingMany);
   const setStaple = useGroceryStore(s => s.setStaple);
   const setFrozen = useGroceryStore(s => s.setFrozen);
   const freezePortion = useGroceryStore(s => s.freezePortion);
@@ -265,6 +266,9 @@ function GroceryItemSheetBody({
   const runningLowAddsToListSetting = useSettingsStore(s => s.runningLowAddsToList);
   // Chosen here for this item; undefined follows the setting.
   const [lowAddsToListChoice, setLowAddsToListChoice] = useState<boolean | undefined>(undefined);
+  // "Out of it" has no setting behind it: the switch starts off and only lasts
+  // while the sheet is open.
+  const [outAddsToList, setOutAddsToList] = useState(false);
   const runningLowAddsToList = lowAddsToListChoice ?? runningLowAddsToListSetting;
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
@@ -663,6 +667,10 @@ function GroceryItemSheetBody({
   // about its own two entry points.
   const markOutOfIt = () => {
     haptics.tap();
+    // The add goes first so the out answer (and its disposal question) is the
+    // last action registered, the one a shake undoes. The home list, the scope
+    // "Running low" and the pantry answer sheets join at.
+    if (outAddsToList) addExistingMany([item.id], { listId: null });
     markOutOfMany([item.id]);
   };
   const clearOnHand = () => {
@@ -1512,6 +1520,17 @@ function GroceryItemSheetBody({
               <Text style={styles.lowSwitchLabel}>Add to grocery list when running low</Text>
               <Toggle value={runningLowAddsToList} />
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.lowSwitchRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); setOutAddsToList(!outAddsToList); }}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: outAddsToList }}
+              accessibilityLabel="Add to grocery list when out of it"
+            >
+              <Text style={styles.lowSwitchLabel}>Add to grocery list when out of it</Text>
+              <Toggle value={outAddsToList} />
+            </TouchableOpacity>
             <Text style={styles.portionHint}>The running low mark lapses after up to two weeks.</Text>
             {/* The frozen half of a split pack, under the pills rather than
                 as a seventh one: the pills describe the item, and this is a
@@ -2159,6 +2178,7 @@ function GroceryItemSheetBody({
               inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               maxLength={PRICE_INPUT_MAX_LENGTH}
               accessibilityLabel={targetShopName ? `Last price at ${targetShopName}` : 'Last price'}
+              selectTextOnFocus
             />
             {/* Same clear affordance as SearchField's — emptying the field is
                 already how a price gets removed on Save (see handleSave), this

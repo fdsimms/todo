@@ -70,7 +70,7 @@ export function EventCreatedToast() {
   return (
     <BannerBar
       bottom={insets.bottom + barHeight + spacing.md}
-      label={justSaved ? 'Added to saved events' : 'Added to Calendar'}
+      label={justSaved ? 'Added to favorite events' : 'Added to Calendar'}
       layout="stacked"
       liveRegion
       onDismiss={clear}
@@ -81,10 +81,10 @@ export function EventCreatedToast() {
           <InlineAction label="Open" onPress={open} accessibilityLabel="Open event in Calendar" />
           {saveAs && !justSaved && (
             <InlineAction
-              label="Save as template"
+              label="Add to favorites"
               variant="neutral"
               onPress={save}
-              accessibilityLabel={`Save ${saveAs.title} as a template so you can add it again quickly`}
+              accessibilityLabel={`Add ${saveAs.title} to favorite events so you can add it again quickly`}
             />
           )}
         </>

@@ -100,6 +100,7 @@ import { liveReminderRemovals } from '../utils/reminderRemovals';
 import { useReminderRemovalStore } from '../store/useReminderRemovalStore';
 import { isRepeatingTimer, isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRemaining } from '../utils/stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useMealSkipStore } from '../store/useMealSkipStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
@@ -1232,6 +1233,7 @@ describe('demo mode', () => {
     expect(weekly).toBeDefined();
     expect(weekly!.quotaPeriod).toBe('week');
     expect(weekly!.targetCount).toBe(3);
+    expect(weekly!.allowOvershoot).toBe(true);
     expect(weekly!.progressCount).toBeGreaterThan(0);
     expect(weekly!.progressCount).toBeLessThan(weekly!.targetCount!);
     // Weekly recurrence, matching the period: on a daily repeat the rollover
@@ -2464,6 +2466,8 @@ describe('demo seed — people', () => {
     expect(routines.find(r => r.name === 'Hotel bodyweight')).toMatchObject({ groupName: 'Travel', archived: true });
     // A superset, so the routine shape shows its pairing.
     expect(routines.some(r => r.items.filter(i => i.supersetKey === 'a').length === 2)).toBe(true);
+    // An exercise with an alternate for a gym that lacks its equipment.
+    expect(routines.some(r => r.items.some(i => i.alternateId === 'lib:dumbbell-bench-press'))).toBe(true);
     const custom = exercises.find(e => e.isCustom);
     expect(custom?.name).toBe('Landmine row');
     expect(catalogExercise(exercises, 'lib:barbell-bench-press')?.notes).toBe('Pause each rep on the chest.');
@@ -2483,6 +2487,8 @@ describe('demo seed — people', () => {
     expect(gyms[1].equipment).toContain('cable');
     expect(gyms[1].equipment).toContain('leg_press');
     expect(gyms.every(g => g.latitude === null)).toBe(true);
+    expect(gyms[0].dumbbells).toEqual({ minKg: 2, maxKg: 24, stepKg: 2 });
+    expect(gyms[1].dumbbells).toBeNull();
     expect(settings.find(s => s.barKg === 15)?.exerciseId).toBe('lib:back-squat');
     expect(settings.find(s => s.incrementKg === 5)?.exerciseId).toBe('lib:triceps-pushdown');
     expect(settings.map(s => s.notes)).toEqual(expect.arrayContaining(['Rope attachment on the top pulley.', 'Safety bars at hole 4.']));
@@ -2510,6 +2516,19 @@ describe('demo seed — people', () => {
     const flat = analysis.points[3];
     expect(flat.e1rm).toBe(analysis.points[2].e1rm);
     expect(analysis.events.some(e => e.type === 'e1rm' && e.sessionId === flat.sessionId)).toBe(false);
+  });
+
+  // The capability is invisible until a workout carries a body weight and bodyweight sets, so one does.
+  it('seeds a workout with a body weight and bodyweight sets, counted apart from the lifted volume', () => {
+    const { sessions, bodyweightVolumeKgBySession, volumeKgBySession } = useWorkoutStore.getState();
+    const stamped = sessions.filter(s => !!s.bodyweightKg);
+    expect(stamped).toHaveLength(1);
+    const id = stamped[0].id;
+    // 78 kg x (pull-ups 1 x 15 reps + push-ups 0.64 x 27 reps)
+    expect(bodyweightVolumeKgBySession[id]).toBeCloseTo(78 * (15 + 0.64 * 27), 6);
+    expect(volumeKgBySession[id]).toBeGreaterThan(0);
+    // The other workouts have no body weight, so no bodyweight figure.
+    expect(Object.keys(bodyweightVolumeKgBySession)).toEqual([id]);
   });
 
   it('seeds enough logged days around the training days for mood on training days to show', () => {
@@ -2782,6 +2801,11 @@ describe('demo seed — people', () => {
     const sealed = sealedEntries(useJournalStore.getState().entries, today);
     expect(sealed).toHaveLength(1);
     expect(useTaskStore.getState().tasks.some(t => t.linkUrl === journalEntryLink(sealed[0].id) && !t.completed)).toBe(true);
+  });
+
+  it('seeds a meal marked skipped, so the meal strip shows the state', () => {
+    const today = dayKeyOf(getLogicalToday());
+    expect(useMealSkipStore.getState().isSkipped(today, 'breakfast')).toBe(true);
   });
 
   it('seeds a planned meal with a one-off replacement, shopped for as replaced', () => {

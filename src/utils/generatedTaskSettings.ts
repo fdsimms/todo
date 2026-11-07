@@ -523,8 +523,8 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
     example: 'Book Dentist',
     noun: 'Booking task',
     owned: () => [
-      { key: 'title', label: 'Title', summary: 'Book (saved event)' },
-      { key: 'date', label: 'Date', summary: 'A month before the next one is due', hint: 'Counted from the last appointment and how often it repeats, set in Saved events.' },
+      { key: 'title', label: 'Title', summary: 'Book (favorite event)' },
+      { key: 'date', label: 'Date', summary: 'A month before the next one is due', hint: 'Counted from the last appointment and how often it repeats, set in Favorite events.' },
       { key: 'notes', label: 'Notes', summary: 'When the last one was', hint: 'From the calendar.' },
     ],
   },

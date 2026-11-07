@@ -1,5 +1,5 @@
 import { format } from 'date-fns/format';
-import type { MealPlanEntry, MealSlot, Task } from '../types';
+import type { MealPlanEntry, MealSkip, MealSlot, Task } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import { mealPlanNudgeLinkUrl } from './mealPlanNudge';
@@ -76,6 +76,22 @@ import { mealSlotKey, shiftDayKey, slotLabel, slotRank } from './mealPlan';
  * naming staler meals, never earlier warning of anything.
  */
 export const MEAL_LOG_NUDGE_LOOKBACK_DAYS = 1;
+
+/**
+ * The entries with every meal marked skipped (`MealSkip`) taken out, which is
+ * how a skip answers the nudge: an entry missing from the set raises no row,
+ * and a row already raised for it reads stale and is dropped (no coins, since
+ * nothing was logged). Asking "Log lunch?" about a lunch the person said they
+ * skipped is asking a question they already answered.
+ */
+export function withoutSkippedMeals(
+  entries: readonly MealPlanEntry[],
+  skips: readonly Pick<MealSkip, 'dayKey' | 'slot'>[]
+): MealPlanEntry[] {
+  if (skips.length === 0) return [...entries];
+  const skipped = new Set(skips.map(s => mealSlotKey(s.dayKey, s.slot)));
+  return entries.filter(e => !skipped.has(mealSlotKey(e.date, e.slot)));
+}
 
 /** The row's title — the verb and the meal together, like `mealShortfallTitle`. */
 export function mealLogNudgeTitle(dayKey: string, slot: MealSlot, title: string): string {

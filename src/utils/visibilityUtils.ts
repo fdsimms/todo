@@ -759,7 +759,11 @@ export function isQuotaOnPace(task: Task): boolean {
   // the rest of the day, exactly the behavior overshoot mode exists to avoid.
   // A day-rollover sweep completes it later with whatever progressCount it
   // reached; see sweepOvershootQuotas in useTaskStore.ts.
-  if (quotaRidesOutTheDay(task) && isQuotaTask(task) && task.progressCount >= task.targetCount!) {
+  //
+  // Only a daily one. A weekly target at or past its count follows the normal
+  // rule (on pace, so it leaves Today unless "Stay visible" is on) and still
+  // takes logs; the week-end sweep closes it.
+  if (quotaRidesOutTheDay(task) && task.quotaPeriod === 'day' && isQuotaTask(task) && task.progressCount >= task.targetCount!) {
     return false;
   }
   return task.progressCount >= quotaExpectedByNow(task);

@@ -80,6 +80,16 @@ describe('readRoutineItems', () => {
     expect(readRoutineItems(JSON.stringify(items))).toEqual(items);
   });
 
+  it('keeps an alternate, and reads one that is the exercise itself as none', () => {
+    const base = { supersetKey: null, restSeconds: null, progression: null, targets: [] };
+    const [kept, self] = readRoutineItems([
+      { ...base, exerciseId: 'a', alternateId: 'b' },
+      { ...base, exerciseId: 'a', alternateId: 'a' },
+    ]);
+    expect(kept.alternateId).toBe('b');
+    expect('alternateId' in self).toBe(false);
+  });
+
   it('drops an item with no exercise, and a target that is not one, keeping the rest', () => {
     const read = readRoutineItems([
       { targets: [] },

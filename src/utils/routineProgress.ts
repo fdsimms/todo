@@ -1,7 +1,7 @@
 import type { ExerciseKind, WorkoutSession, WorkoutSet } from '../types';
 import type { WeightUnit } from './weightLog';
 import { kgToUnit } from './weightLog';
-import { analyzeExercise, liftVolumeKg, recordSessions, type SessionPoint } from './workoutRecords';
+import { analyzeExercise, bodyweightVolumeKg, liftVolumeKg, recordSessions, type SessionPoint } from './workoutRecords';
 import { metricNumber } from './workoutRecordText';
 
 /**
@@ -53,6 +53,11 @@ export interface RoutineProgress {
   workouts: number;
   firstDayKey: string | null;
   volume: RoutineWorkoutPoint[];
+  /**
+   * Estimated bodyweight volume in kilograms (`bodyweightVolumeKg`), one point per workout that had a
+   * body weight stamped and some bodyweight work. Kept apart from `volume`, which it is never added to.
+   */
+  bodyweightVolume: RoutineWorkoutPoint[];
   /** Whole percent from the first workout's volume to the latest. Null with fewer than two, or a first of zero. */
   volumeChangePercent: number | null;
   exercises: RoutineExerciseProgress[];
@@ -81,9 +86,11 @@ export interface RoutineProgressInput {
    * routine mixing exercises logged each way still adds like with like.
    */
   scaleOf?: (exerciseId: string) => number;
+  /** The share of body weight an exercise moves (`bodyweightFractionOf`). Without it every bodyweight exercise counts at 1. */
+  fractionOf?: (exerciseId: string) => number;
 }
 
-export function routineProgress({ exerciseIds, sessions, setsBySession, kindOf, unit, dayResetTime, scaleOf = () => 1 }: RoutineProgressInput): RoutineProgress {
+export function routineProgress({ exerciseIds, sessions, setsBySession, kindOf, unit, dayResetTime, scaleOf = () => 1, fractionOf = () => 1 }: RoutineProgressInput): RoutineProgress {
   const recSessions = recordSessions(sessions, dayResetTime);
   const dayOf = new Map(recSessions.map(s => [s.id, s.dayKey]));
 
@@ -91,6 +98,12 @@ export function routineProgress({ exerciseIds, sessions, setsBySession, kindOf, 
   for (const s of recSessions) {
     const kg = liftVolumeKg((setsBySession.get(s.id) ?? []).map(x => (x.weightKg === null ? x : { ...x, weightKg: x.weightKg * scaleOf(x.exerciseId) })), kindOf);
     if (kg !== null && kg > 0) volume.push({ sessionId: s.id, dayKey: s.dayKey, volumeKg: kg });
+  }
+  const bodyweightOf = new Map(sessions.map(s => [s.id, s.bodyweightKg]));
+  const bodyweightVolume: RoutineWorkoutPoint[] = [];
+  for (const s of recSessions) {
+    const kg = bodyweightVolumeKg(setsBySession.get(s.id) ?? [], kindOf, fractionOf, bodyweightOf.get(s.id));
+    if (kg !== null && kg > 0) bodyweightVolume.push({ sessionId: s.id, dayKey: s.dayKey, volumeKg: kg });
   }
   const volumeChangePercent = volume.length >= 2 && volume[0].volumeKg > 0
     ? Math.round(((volume[volume.length - 1].volumeKg - volume[0].volumeKg) / volume[0].volumeKg) * 100)
@@ -133,6 +146,7 @@ export function routineProgress({ exerciseIds, sessions, setsBySession, kindOf, 
     workouts: sessions.length,
     firstDayKey: recSessions.length > 0 ? recSessions[0].dayKey : null,
     volume,
+    bodyweightVolume,
     volumeChangePercent,
     exercises,
   };

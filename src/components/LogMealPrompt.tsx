@@ -454,6 +454,7 @@ export function LogMealPrompt() {
                   placeholderTextColor={colors.textTertiary}
                   maxLength={6}
                   accessibilityLabel="Weight on your plate in grams"
+                  selectTextOnFocus
                 />
                 <Text style={styles.weightUnit}>g</Text>
               </View>

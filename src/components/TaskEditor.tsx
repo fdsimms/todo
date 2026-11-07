@@ -200,7 +200,7 @@ import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { linkAppLabel } from '../constants/linkApps';
 import { useSavedLinks } from '../hooks/useSavedLinks';
-import { SaveLinkAction, SavedLinksHint } from './SavedLinkParts';
+import { LinkFieldActions, SavedLinksHint } from './SavedLinkParts';
 import { capitalize } from '../utils/capitalize';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { useFilterField } from '../hooks/useFilterField';
@@ -4988,6 +4988,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   placeholder="Amount"
                   placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                  selectTextOnFocus
                 />
                 <View style={styles.unitToggle}>
                   <SegmentedControl
@@ -5124,7 +5125,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                           if (next === 'week') {
                             setQuotaIntervalMinutes(null);
                             setQuotaReminders(false);
-                            setAllowOvershoot(false);
                           }
                         }}
                         options={[
@@ -5281,7 +5281,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       does nothing — and its hint would be describing a target
                       as something you can exceed, which is exactly the reading
                       a cadence is not. */}
-                  {targetCount !== null && quotaIntervalMinutes === null && quotaPeriod === 'day' && (
+                  {targetCount !== null && quotaIntervalMinutes === null && (
                     <TouchableOpacity
                       style={styles.optionRow}
                       onPress={() => { haptics.tap(); setAllowOvershoot(v => !v); }}
@@ -5293,7 +5293,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
                       <View style={styles.optionContent}>
                         <Text style={styles.optionLabel}>Allow going past target</Text>
-                        <Text style={styles.optionHint}>Keep logging past {targetCount}×. It stays on Today and completes at day’s end with the count you reached</Text>
+                        <Text style={styles.optionHint}>{quotaPeriod === 'week'
+                          ? `Keep logging past ${targetCount}×. It completes at the end of the week with the count you reached`
+                          : `Keep logging past ${targetCount}×. It stays on Today and completes at day’s end with the count you reached`}</Text>
                       </View>
                       <Toggle value={allowOvershoot} onColor={colors.orange} />
                     </TouchableOpacity>
@@ -7419,6 +7421,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   autoFocus
+                  selectTextOnFocus
                 />
                 <View style={styles.unitToggle}>
                   <SegmentedControl
@@ -8277,8 +8280,14 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                     spellCheck={false}
                     returnKeyType="done"
                   />
-                  <SaveLinkAction links={savedLinks} typed={customLinkText} />
                 </View>
+                <LinkFieldActions
+                  links={savedLinks}
+                  typed={customLinkText}
+                  current={linkUrl}
+                  onSet={commitCustomLink}
+                  style={styles.linkFieldActions}
+                />
               </>
             )}
               </>
@@ -9449,6 +9458,7 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   linkAppChipActive: { backgroundColor: colors.accentFill },
   linkSavedHint: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  linkFieldActions: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
   linkAppChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   linkAppChipTextActive: { color: colors.onAccent, fontWeight: '600' },
   linkCustomRow: {

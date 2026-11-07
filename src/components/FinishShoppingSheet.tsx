@@ -1158,6 +1158,7 @@ export function FinishShoppingSheet({
                             // a line under the name instead.
                             maxLength={PRICE_INPUT_MAX_LENGTH}
                             accessibilityLabel={`Price for ${row.name}`}
+                            selectTextOnFocus
                           />
                         </View>
                       </View>

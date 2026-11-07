@@ -85,6 +85,39 @@ describe('the workout write tools', () => {
     });
   });
 
+  describe('the body weight behind the estimated bodyweight volume', () => {
+    const at = new Date(2026, 9, 7, 18).toISOString();
+    const pullups = { exerciseId: 'lib:pull-up', sets: [{ reps: 8 }, { reps: 7 }] };
+
+    it('stamps the body weight a logged workout was given, reads it back, and counts it on the phone\'s side', () => {
+      const { workout } = logWorkout(replica, { startedAt: at, bodyweightKg: 80, exercises: [pullups] }, new Date(2026, 9, 8));
+      expect(workout.bodyweightKg).toBe(80);
+      expect(replica.workoutSession(workout.id)?.bodyweightKg).toBe(80);
+    });
+
+    it('leaves a workout without one when none is given', () => {
+      const { workout } = logWorkout(replica, { startedAt: at, exercises: [pullups] }, new Date(2026, 9, 8));
+      expect(workout).not.toHaveProperty('bodyweightKg');
+    });
+
+    it('changes it on an existing workout, and clears it with null', () => {
+      const { workout } = logWorkout(replica, { startedAt: at, exercises: [pullups] }, new Date(2026, 9, 8));
+      expect(updateWorkout(replica, workout.id, { bodyweightKg: 82.5 }, new Date(2026, 9, 8)).workout.bodyweightKg).toBe(82.5);
+      expect(updateWorkout(replica, workout.id, { bodyweightKg: null }, new Date(2026, 9, 8)).workout).not.toHaveProperty('bodyweightKg');
+    });
+
+    it('sets an exercise\'s share of body weight on a custom one and on a built-in, and shows it only where it was set', () => {
+      const { exercise } = createExercise(replica, {
+        name: 'Ring row', kind: 'bodyweight_reps', equipment: 'other', primaryMuscles: ['lats'], bodyweightFraction: 0.6,
+      });
+      expect(exercise.bodyweightFraction).toBe(0.6);
+      expect(updateExercise(replica, 'lib:push-up', { bodyweightFraction: 0.5 }).exercise.bodyweightFraction).toBe(0.5);
+      expect(updateExercise(replica, 'lib:push-up', { bodyweightFraction: null }).exercise).not.toHaveProperty('bodyweightFraction');
+      // A share is not a change to the movement, so a built-in takes it.
+      expect(() => updateExercise(replica, 'lib:push-up', { bodyweightFraction: 0.5, equipment: 'machine' })).toThrow(/built-in exercise keeps/);
+    });
+  });
+
   describe('save_gym', () => {
     it('creates a gym with equipment and an exercise note, lists it and records it', () => {
       const { gym, note } = saveGym(ledgered, {
@@ -161,6 +194,23 @@ describe('the workout write tools', () => {
       expect(note).toMatch(/nothing applies one unasked/);
       expect(listWorkouts(replica).routines.map(r => r.name)).toEqual(['Push A']);
       expect(entries).toEqual([expect.objectContaining({ action: 'created', subject: 'routine', title: 'Push A' })]);
+    });
+
+    it('stores an exercise\'s alternate, reads it back by name, and refuses one that does not exist', () => {
+      const { routine } = saveRoutine(ledgered, {
+        name: 'Push A',
+        exercises: [{ exerciseId: BENCH, alternateId: 'lib:dumbbell-bench-press', sets: [{ repsMin: 8 }] }],
+      });
+      expect(routine.exercises[0].alternate).toEqual({ exerciseId: 'lib:dumbbell-bench-press', name: 'Dumbbell bench press' });
+      expect(() => saveRoutine(ledgered, {
+        id: routine.id,
+        exercises: [{ exerciseId: BENCH, alternateId: 'lib:nope', sets: [{ repsMin: 8 }] }],
+      })).toThrow(/No exercise with id lib:nope/);
+      const { routine: cleared } = saveRoutine(ledgered, {
+        id: routine.id,
+        exercises: [{ exerciseId: BENCH, alternateId: null, sets: [{ repsMin: 8 }] }],
+      });
+      expect(cleared.exercises[0].alternate).toBeUndefined();
     });
 
     it('keeps the agent\'s plan as a version: amending it until a workout is done on it, a new one after', () => {

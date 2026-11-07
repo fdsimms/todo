@@ -81,6 +81,7 @@ const TABLE_LABELS: Record<string, string> = {
   recipes: 'Recipes',
   meal_plan_entries: 'Meal plan',
   week_pool_entries: 'Meal plan',
+  meal_skips: 'Meal plan',
   grocery_items: 'Grocery catalog',
   grocery_list_items: 'Grocery lists',
   gtin_lookups: 'Barcode lookups',

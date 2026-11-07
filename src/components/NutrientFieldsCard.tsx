@@ -118,6 +118,7 @@ export function NutrientFieldsCard({ amounts, bad, onChange, primary = 'main' }:
         keyboardType="decimal-pad"
         inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
         accessibilityLabel={`${NUTRIENT_LABEL[key].label} in ${NUTRIENT_LABEL[key].unit}`}
+        selectTextOnFocus
       />
       <Text style={styles.unit}>{NUTRIENT_LABEL[key].unit}</Text>
     </View>

@@ -784,6 +784,7 @@ export function RewardsScreen() {
           inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
           returnKeyType="done"
           accessibilityLabel="Price in dollars"
+          selectTextOnFocus
         />
       </View>
       {priceTyped && parsedPrice === null && (
@@ -830,6 +831,7 @@ export function RewardsScreen() {
           inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
           returnKeyType="done"
           accessibilityLabel="Cost in coins"
+          selectTextOnFocus
         />
       )}
       {parsedCost !== null && describeRewardPace(rate, parsedCost) !== null && (
@@ -1325,6 +1327,7 @@ export function RewardsScreen() {
               inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               returnKeyType="done"
               accessibilityLabel="Weekly reward budget"
+              selectTextOnFocus
             />
           </View>
         </View>
@@ -1346,6 +1349,7 @@ export function RewardsScreen() {
               inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               returnKeyType="done"
               accessibilityLabel="Sales tax percent"
+              selectTextOnFocus
             />
             <Text style={styles.priceSymbol}>%</Text>
           </View>

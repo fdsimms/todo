@@ -118,7 +118,7 @@ import { isDemoModeActive } from '../utils/demoState';
 import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
 import { describeTitleRuleTargets, resolveTitleRules } from '../utils/titleRules';
 import { useSavedLinks } from '../hooks/useSavedLinks';
-import { SaveLinkAction, SavedLinksHint } from './SavedLinkParts';
+import { LinkFieldActions, SavedLinksHint } from './SavedLinkParts';
 import { tagColor } from '../utils/tagColor';
 import { formatPhoneInput } from '../utils/phone';
 import { format } from 'date-fns/format';
@@ -3490,6 +3490,7 @@ parsed
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   accessibilityLabel="Custom effort in minutes"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
+                  selectTextOnFocus
                 />
               </View>
             </View>
@@ -3582,7 +3583,6 @@ parsed
                   returnKeyType="done"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
-                <SaveLinkAction links={savedLinks} typed={customLinkText} />
                 {linkUrl !== null && (
                   <TouchableOpacity
                     activeOpacity={interaction.activeOpacity}
@@ -3595,6 +3595,13 @@ parsed
                   </TouchableOpacity>
                 )}
               </View>
+              <LinkFieldActions
+                links={savedLinks}
+                typed={customLinkText}
+                current={linkUrl}
+                onSet={commitCustomLink}
+                style={styles.linkFieldActions}
+              />
               <TouchableOpacity
                 style={styles.linkAppsToggle}
                 onPress={() => { haptics.tap(); animateLayout(); setLinkAppsOpen(v => !v); }}
@@ -4635,6 +4642,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
+  linkFieldActions: { marginTop: spacing.sm },
   linkCustomInput: {
     flex: 1,
     color: colors.text,

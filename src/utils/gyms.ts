@@ -1,7 +1,7 @@
 import type { Exercise, ExerciseEquipment, Gym, GymExerciseSetting, WorkoutRoutine, WorkoutSet } from '../types';
 import { buildCatalog } from './exerciseCatalog';
 import { distanceMeters, PLACE_MAX_FIX_ERROR_M, type PlaceFix } from './moodPlaces';
-import { swapKindsMatch } from './exerciseSwap';
+import { preferredFirst, swapKindsMatch } from './exerciseSwap';
 import { EQUIPMENT_LABELS, formatWeightWithUnit, machineParent } from './workoutData';
 import type { WeightUnit } from './weightLog';
 
@@ -63,7 +63,11 @@ export interface RoutineFit {
   missing: ExerciseEquipment[];
 }
 
-/** How well a routine fits a gym: what it needs that the gym lacks. */
+/**
+ * How well a routine fits a gym: what it needs that the gym lacks. An exercise
+ * whose own alternate the gym can do isn't counted, since workout mode offers
+ * that alternate first.
+ */
 export function routineFit(
   gym: Pick<Gym, 'equipment'> | null | undefined,
   routine: Pick<WorkoutRoutine, 'items'>,
@@ -75,6 +79,8 @@ export function routineFit(
   for (const item of routine.items) {
     const e = catalog.find(c => c.id === item.exerciseId);
     if (!e || equipmentAvailable(gym, e.equipment)) continue;
+    const alt = item.alternateId ? catalog.find(c => c.id === item.alternateId && !c.archived) : undefined;
+    if (alt && equipmentAvailable(gym, alt.equipment)) continue;
     blocked++;
     if (!missing.includes(e.equipment)) missing.push(e.equipment);
   }
@@ -108,12 +114,13 @@ export function gymSwapCandidates(
   gym: Pick<Gym, 'equipment'> | null | undefined,
   exceptIds: readonly string[] = [],
   doneHere: ReadonlySet<string> = new Set(),
+  preferredId: string | null = null,
 ): string[] {
   const catalog = buildCatalog(rows);
   const from = catalog.find(e => e.id === exerciseId);
   if (!from) return [];
   const skip = new Set([exerciseId, ...exceptIds]);
-  return catalog
+  const ranked = catalog
     .filter(e => !e.archived && !skip.has(e.id) && swapKindsMatch(e.kind, from.kind) && equipmentAvailable(gym, e.equipment))
     .map(e => ({ e, shared: e.primaryMuscles.filter(m => from.primaryMuscles.includes(m)).length }))
     .filter(x => x.shared > 0)
@@ -123,6 +130,9 @@ export function gymSwapCandidates(
       || Number(doneHere.has(b.e.id)) - Number(doneHere.has(a.e.id))
       || a.e.name.localeCompare(b.e.name))
     .map(x => x.e.id);
+  // The routine's own alternate goes first when the gym has what it needs.
+  const usable = catalog.filter(e => !e.archived && !skip.has(e.id) && equipmentAvailable(gym, e.equipment)).map(e => e.id);
+  return preferredFirst(ranked, preferredId, usable);
 }
 
 /** The gym's pin, when it has one. */

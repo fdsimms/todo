@@ -122,6 +122,21 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
       ? prev
       : [...prev, { exerciseId, kind, sets: [{}] }]));
   };
+  // Several picked at once, in tap order. A superset joins each to the first, which keeps the order.
+  const addExercises = (exerciseIds: string[], asSuperset: boolean) => {
+    setExercises(prev => {
+      let next = [...prev];
+      const ids: string[] = [];
+      for (const id of exerciseIds) {
+        if (next.some(e => e.exerciseId === id)) continue;
+        const kind = catalogExercise(exerciseRows, id)?.kind ?? 'weight_reps';
+        next = [...next, { exerciseId: id, kind, sets: [{}] }];
+        ids.push(id);
+      }
+      if (asSuperset) for (const id of ids.slice(1)) next = joinPastSuperset(next, ids[0], id) ?? next;
+      return next;
+    });
+  };
   const removeExercise = (exerciseId: string) => {
     haptics.tap();
     setExercises(prev => withoutPastExercise(prev, exerciseId));
@@ -466,6 +481,7 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
           visible={visible && pickingExercise}
           onClose={() => setPickingExercise(false)}
           onPick={addExercise}
+          onPickMany={addExercises}
           addedIds={exercises.map(e => e.exerciseId)}
           addedLabel="In workout"
         />

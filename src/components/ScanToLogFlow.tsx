@@ -4,11 +4,11 @@ import { useShallow } from 'zustand/react/shallow';
 import type { GroceryItem, MealSlot } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { nutritionFor } from '../utils/foodNutrition';
-import { describeProduct } from '../utils/groceryProduct';
+import { describeProduct, describeProductOfItem } from '../utils/groceryProduct';
 import type { ScannedGtinLink } from '../utils/scanResolve';
 import { BarcodeScanSheet, type ScanProductDraft } from './BarcodeScanSheet';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
-import type { LabelSubject } from './LabelSubjectSheet';
+import { LabelSubjectSheet, type LabelSubject } from './LabelSubjectSheet';
 import { ScanPortionSheet, type ScannedFood } from './ScanPortionSheet';
 import type { ReceiptAddDraft } from './ReceiptImportSheet';
 
@@ -132,6 +132,13 @@ export function ScanToLogFlow({
       mealPlanEntryId: string | null;
     } | null
   >(null);
+  /**
+   * A label photo the scanner asked for before anyone named the food: the
+   * card that asks Food, Brand and Variant opens first, and its answer becomes
+   * `panelFor`. The scanner stays mounted underneath (hidden), so cancelling
+   * lands back on the same rows.
+   */
+  const [naming, setNaming] = useState<{ slot: MealSlot | null; at: Date; mealPlanEntryId: string | null } | null>(null);
   // The panel's subject: one the scanner raised, else the caller's own label
   // photo. Read at render time, which is safe for the second because the
   // caller's props only change after the panel's `onSave`/`onClose` pair.
@@ -281,14 +288,26 @@ export function ScanToLogFlow({
         // both present from the same view controller, which can only present
         // one. The second is refused silently. Same rule as the note on
         // `LogMealEntrySheet`.
-        visible={visible && session === null && panelSubject === null}
+        visible={visible && session === null && panelSubject === null && naming === null}
         context="log"
         initialCode={initialCode}
         onClose={onClose}
         onApply={handleScanApply}
-        onPhotographLabel={subject => setPanelFor({
-          itemId: null, productId: null, ...subject, slot, at, mealPlanEntryId: mealPlanEntryId ?? null,
-        })}
+        onPhotographLabel={subject => {
+          const context = { slot, at, mealPlanEntryId: mealPlanEntryId ?? null };
+          // No name yet (a barcode nothing knew): ask for it first, since the
+          // catalog row is named from it once the label is saved.
+          if (!subject.name.trim()) setNaming(context);
+          else setPanelFor({ itemId: null, productId: null, ...subject, ...context });
+        }}
+      />
+      <LabelSubjectSheet
+        visible={naming !== null}
+        initialName=""
+        onClose={() => setNaming(null)}
+        onNext={subject => {
+          if (naming) setPanelFor({ itemId: null, productId: null, ...subject, ...naming });
+        }}
       />
       <ScanPortionSheet
         visible={session !== null}
@@ -301,7 +320,15 @@ export function ScanToLogFlow({
       />
       <NutritionPanelSheet
         visible={panelSubject !== null}
-        foodName={panelSubject?.name ?? ''}
+        // The product the figures will be filed under, not just the food: a
+        // brand typed on the "About this label" card has to show here, or the
+        // sheet reads as if it were filling in the generic food.
+        foodName={panelSubject
+          ? describeProductOfItem({ brand: panelSubject.brand ?? null, variant: panelSubject.variant ?? null }, panelSubject.name) ?? panelSubject.name
+          : ''}
+        scopeNote={panelSubject && !panelSubject.productId && !panelSubject.brand && !panelSubject.variant
+          ? `Saved for any brand of ${panelSubject.name}.`
+          : undefined}
         // A label with its photo already taken is read on open; one without it
         // (a caller that still asks for the name first) opens the camera.
         openCamera={panelFor === null && !!label && !label.photo}
@@ -327,8 +354,13 @@ export function ScanToLogFlow({
               ? addProduct(itemId, { brand: panelSubject.brand ?? null, variant: panelSubject.variant ?? null }, { promote: false })
               : null;
             productId = box?.id ?? null;
-            if (productId) setProductNutrition(productId, panel);
-            else setItemNutrition(itemId, panel);
+            if (productId) {
+              setProductNutrition(productId, panel);
+              // A brand's label doesn't set the generic food's figures, but a
+              // food with none still needs something to log by name: the first
+              // box filed seeds it, and later boxes never overwrite it.
+              if (panel && !item.nutrition) setItemNutrition(itemId, panel);
+            } else setItemNutrition(itemId, panel);
           } else if (productId) {
             // Onto the box when the scan named one, onto the catalog row when
             // it didn't — the same precedence `nutritionFor` reads them back

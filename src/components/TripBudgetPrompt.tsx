@@ -114,6 +114,7 @@ export function TripBudgetPrompt({ visible, budgetMinor, currencySymbol, onSave,
               placeholderTextColor={colors.textTertiary}
               inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               accessibilityLabel="Trip budget"
+selectTextOnFocus
             />
           </View>
 

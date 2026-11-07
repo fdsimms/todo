@@ -39,6 +39,12 @@ interface Props {
   /** Called once the card has left, with the trimmed answer. */
   onNext: (subject: LabelSubject) => void;
   onClose: () => void;
+  /**
+   * Asked for a label that will be typed rather than photographed: the card
+   * says "label" where it would say "photo", and its button reads "Next"
+   * instead of "Read label".
+   */
+  typed?: boolean;
 }
 
 /**
@@ -52,7 +58,7 @@ interface Props {
  * `ScanToLogFlow` only once the photographed panel is saved, so backing out
  * here leaves nothing behind.
  */
-export function LabelSubjectSheet({ visible, initialName, onNext, onClose }: Props) {
+export function LabelSubjectSheet({ visible, initialName, onNext, onClose, typed }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
@@ -100,7 +106,7 @@ export function LabelSubjectSheet({ visible, initialName, onNext, onClose }: Pro
           <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => dismiss(onClose)} minWidth={88} />
           <Text style={styles.heading}>About this label</Text>
           <SheetHeaderButton
-            label="Read label"
+            label={typed ? 'Next' : 'Read label'}
             onPress={next}
             minWidth={88}
             disabled={!trimmedName}
@@ -108,7 +114,7 @@ export function LabelSubjectSheet({ visible, initialName, onNext, onClose }: Pro
           />
         </View>
         <Text style={styles.hint}>
-          The nutrition facts in the photo are saved for this exact product.
+          {typed ? 'The nutrition facts you type are saved for this exact product.' : 'The nutrition facts in the photo are saved for this exact product.'}
         </Text>
 
         <View style={styles.body}>

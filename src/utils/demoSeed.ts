@@ -37,6 +37,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { repeatTimerExcerpt, stepDurationOffers, stepTimerExcerpt } from './stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useMealSkipStore } from '../store/useMealSkipStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 import { useTransitStore } from '../store/useTransitStore';
@@ -875,12 +876,13 @@ export function seedDemoData(): void {
   // would be indistinguishable from a daily target nobody has started today.
   const runs = addTask({
     title: 'Go for a run',
-    notes: 'Three times a week, on any days. The count resets when the week starts.',
+    notes: 'Three times a week, on any days. Keep logging past three and it closes with your week\'s total.',
     category: 'Health',
     dueDate: today.toISOString(),
     targetCount: 3,
     targetUnit: 'runs',
     quotaPeriod: 'week',
+    allowOvershoot: true,
     // Weekly, to match the period — a daily repeat would spawn a fresh 0/3
     // every morning and the target could never be finished.
     recurrenceType: 'weekly',
@@ -3590,7 +3592,12 @@ function seedWorkouts(today: Date): void {
   // not the other: lower days at home (no cable), upper days at the big gym.
   // Neither has a pin: demo mode never reads where the phone is.
   const gyms = useGymStore.getState();
-  const homeGym = gyms.addGym({ name: 'Home gym', equipment: ['barbell', 'dumbbell', 'band'] });
+  const homeGym = gyms.addGym({
+    name: 'Home gym',
+    equipment: ['barbell', 'dumbbell', 'band'],
+    // Adjustable dumbbells that stop at 24 kg, so a suggested weight never goes past them.
+    dumbbells: { minKg: 2, maxKg: 24, stepKg: 2 },
+  });
   const bigGym = gyms.addGym({
     name: 'Planet Fitness',
     equipment: [
@@ -3606,7 +3613,9 @@ function seedWorkouts(today: Date): void {
   // A stack that steps by 5 kg here, where the usual step is 2.5.
   if (bigId) gyms.setGymExercise(bigId, 'lib:triceps-pushdown', { incrementKg: 5 });
   const upperItems: WorkoutRoutineItem[] = [
+    // An alternate for a gym with no barbell, so Planet Fitness offers it first.
     { exerciseId: 'lib:barbell-bench-press', restSeconds: 150, progression: { scheme: 'double', incrementKg: 2.5 },
+      alternateId: 'lib:dumbbell-bench-press',
       targets: [working(6, 8, 60), working(6, 8, 60), working(6, 8, 60)] },
     { exerciseId: rowId, restSeconds: 120, progression: { scheme: 'double', incrementKg: 2.5 },
       targets: [working(8, 10, 40), working(8, 10, 40), working(8, 10, 40)] },
@@ -3655,11 +3664,12 @@ function seedWorkouts(today: Date): void {
 
   const lowerId = typeof lower === 'string' ? null : lower.id;
   type DemoSet = [exerciseId: string, weightKg: number | null, reps: number | null, durationSeconds?: number, warmup?: boolean];
-  const session = (daysAgo: number, routine: typeof upper, sets: DemoSet[], effort: number) => {
+  // `bodyweightKg` is the weight Health would have given at the start, so a workout with bodyweight sets shows its estimated bodyweight volume.
+  const session = (daysAgo: number, routine: typeof upper, sets: DemoSet[], effort: number, bodyweightKg: number | null = null) => {
     if (typeof routine === 'string') return;
     const start = subDays(today, daysAgo);
     start.setHours(18, 0, 0, 0);
-    const started = useWorkoutStore.getState().startSession({ routineId: routine.id, at: start, gymId: routine.id === lowerId ? homeId : bigId });
+    const started = useWorkoutStore.getState().startSession({ routineId: routine.id, at: start, gymId: routine.id === lowerId ? homeId : bigId, bodyweightKg });
     if (typeof started === 'string') return;
     sets.forEach(([exerciseId, weightKg, reps, durationSeconds, warmup], i) => {
       useWorkoutStore.getState().logSet(started.id, {
@@ -3722,7 +3732,8 @@ function seedWorkouts(today: Date): void {
     ['lib:barbell-bench-press', 62.5, 8], ['lib:barbell-bench-press', 62.5, 8], ['lib:barbell-bench-press', 62.5, 7],
     [rowId, 42.5, 10], [rowId, 42.5, 9], [rowId, 42.5, 9],
     ['lib:dumbbell-lateral-raise', 8, 15], ['lib:triceps-pushdown', 27.5, 12],
-  ], 7);
+    ['lib:pull-up', null, 8], ['lib:pull-up', null, 7], ['lib:push-up', null, 15], ['lib:push-up', null, 12],
+  ], 7, 78);
 
   // A repeating task linked to the program (Task.workoutProgramId): its row's
   // Workout starts the program's next routine, and finishing that workout
@@ -6490,6 +6501,11 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   plan(0, 'lunch', { title: 'Turkey and avocado sandwich', recipeId: recipes.sandwich, cookTask: false });
   plan(0, 'dinner', { title: 'Weeknight chicken stir-fry', recipeId: recipes.stirFry });
   plan(0, 'snack', { title: 'Hummus snack plate', recipeId: recipes.snacks, cookTask: false });
+  // Breakfast marked skipped (MealSkip), over the oats planned for it: with
+  // the meal strip on (Settings, mealsOnToday 'top') it reads "Skipped" rather
+  // than "Choose", and its menu offers "Not skipped". Nothing else reads it,
+  // so inline mode looks as it did.
+  useMealSkipStore.getState().setSkipped(dayKeyOf(today), 'breakfast', true);
 
   // Captured for the shopping task seeded at the end of this function — it's
   // the night the kitchen can't currently make.

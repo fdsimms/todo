@@ -22,7 +22,7 @@ import { usePullToSearch } from '../hooks/usePullToSearch';
 import { useSheetSubject } from '../hooks/useSheetSubject';
 import { useWorkoutStore } from '../store/useWorkoutStore';
 import { useWorkoutModeStore } from '../store/useWorkoutModeStore';
-import { useStartWorkout } from '../hooks/useStartWorkout';
+import { startWorkout as startWorkoutNow, type StartWorkoutInput } from '../utils/startWorkout';
 import { InlineAction } from '../components/InlineAction';
 import { Fab, FAB_SIZE } from '../components/Fab';
 import { RoutineEditorSheet } from '../components/RoutineEditorSheet';
@@ -68,6 +68,7 @@ import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useGymStore } from '../store/useGymStore';
 import { describeRoutineFit, routineFit, startingGymId } from '../utils/gyms';
+import { GymLine } from '../components/GymWorkoutParts';
 import { currentProgram, describeProgress, isRunnableProgram, nextCycleStart, programProgress } from '../utils/workoutProgram';
 import { trainingMaxRaises } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
@@ -142,12 +143,14 @@ interface SessionStat { value: string | null; unit: string }
  * sets, volume) drawn apart from it. The set count is every set row the session
  * has (`setCounts`), the minutes are `sessionMinutes`, and the volume is
  * `liftVolumeKg`: the workout page's tiles read the same, so the row and the
- * page agree. A session with no weighted sets reads 0, so every row has the same three figures.
+ * page agree. A session with no weighted sets reads 0, so every row has the same three figures; the estimated bodyweight volume
+ * (`bodyweightVolumeKg`) is a fourth, shown only on a session that has one.
  */
 function sessionFigures(
   session: WorkoutSession,
   sets: number,
   volumeKg: number | undefined,
+  bodyweightVolumeKg: number | undefined,
   unit: WeightUnit,
 ): { date: string; stats: SessionStat[] } {
   const stats: SessionStat[] = [];
@@ -159,6 +162,8 @@ function sessionFigures(
   }
   stats.push({ value: String(sets), unit: sets === 1 ? 'set' : 'sets' });
   stats.push({ value: withThousands(kgToUnit(volumeKg ?? 0, unit)), unit });
+  // An estimate, kept as its own figure and only when the workout has one.
+  if (bodyweightVolumeKg) stats.push({ value: withThousands(kgToUnit(bodyweightVolumeKg, unit)), unit: `${unit} bodyweight` });
   return { date: format(new Date(session.startedAt), 'EEE, MMM d'), stats };
 }
 
@@ -178,20 +183,33 @@ export function WorkoutsScreen() {
   const sessions = useWorkoutStore(s => s.sessions);
   const setCounts = useWorkoutStore(s => s.setCounts);
   const volumeKgBySession = useWorkoutStore(s => s.volumeKgBySession);
+  const bodyweightVolumeKgBySession = useWorkoutStore(s => s.bodyweightVolumeKgBySession);
   const exercises = useWorkoutStore(s => s.exercises);
   const routines = useWorkoutStore(s => s.routines);
   const routineGroups = useWorkoutStore(s => s.routineGroups);
   const programs = useWorkoutStore(s => s.programs);
   const live = useWorkoutStore(s => s.sessions.find(x => x.endedAt === null) ?? null);
   const liveSets = useWorkoutStore(s => (live ? s.setsBySession[live.id] : undefined));
-  const startWorkout = useStartWorkout();
   // The gym a workout would start at, so a routine that needs what it lacks says so before Start.
+  // `pickedGym` is the person's choice from the gym line (null is "no gym", undefined is no pick). It
+  // holds for the next workout started from this screen, then the default or last-used gym applies again.
   const gyms = useGymStore(s => s.gyms);
   const defaultGymId = useSettingsStore(s => s.defaultGymId);
+  const [pickedGym, setPickedGym] = useState<string | null | undefined>(undefined);
+  const [gymPickerOpen, setGymPickerOpen] = useState(false);
+  // A picked gym that was archived or deleted since reads as no pick.
+  const pick = useMemo(
+    () => (pickedGym && !gyms.some(g => g.id === pickedGym && !g.archived) ? undefined : pickedGym),
+    [pickedGym, gyms],
+  );
   const fitGym = useMemo(() => {
-    const id = startingGymId(defaultGymId, gyms, sessions);
+    const id = pick !== undefined ? pick : startingGymId(defaultGymId, gyms, sessions);
     return gyms.find(g => g.id === id) ?? null;
-  }, [defaultGymId, gyms, sessions]);
+  }, [pick, defaultGymId, gyms, sessions]);
+  const startWorkout = useCallback((input: StartWorkoutInput = {}) => {
+    const result = startWorkoutNow(pick === undefined ? input : { ...input, gymId: pick });
+    if (result === 'started') setPickedGym(undefined);
+  }, [pick]);
   // ==== local state (editors, group sheet, row menus, folds) ====
   // Which routine the editor is on (null for a new one), kept through the
   // close so the sheet doesn't retitle itself while it slides away.
@@ -279,7 +297,7 @@ export function WorkoutsScreen() {
 
   const renderHistoryRow = useCallback(({ item }: { item: WorkoutHistoryRow }) => {
     if (item.kind === 'session') {
-      const { date, stats } = sessionFigures(item.session, setCounts[item.session.id] ?? 0, volumeKgBySession[item.session.id], workoutUnit);
+      const { date, stats } = sessionFigures(item.session, setCounts[item.session.id] ?? 0, volumeKgBySession[item.session.id], bodyweightVolumeKgBySession[item.session.id], workoutUnit);
       const line = figuresLabel(date, stats);
       return (
         <TouchableOpacity
@@ -332,7 +350,7 @@ export function WorkoutsScreen() {
         <Ionicons name="open-outline" size={iconSize.sm} color={colors.textTertiary} />
       </TouchableOpacity>
     );
-  }, [styles, setCounts, volumeKgBySession, workoutUnit, colors, openSession]);
+  }, [styles, setCounts, volumeKgBySession, bodyweightVolumeKgBySession, workoutUnit, colors, openSession]);
 
   // ==== exercise rows ====
   const renderExercise = useCallback(({ item }: { item: CatalogExercise }) => (
@@ -764,6 +782,12 @@ export function WorkoutsScreen() {
         />
       </View>
 
+      {gyms.some(g => !g.archived) && (
+        <View style={styles.gymLine}>
+          <GymLine name={fitGym?.name ?? null} unavailableCount={0} onChoose={() => setGymPickerOpen(true)} />
+        </View>
+      )}
+
       {liveCard}
 
       {view === 'programs' ? (
@@ -817,6 +841,7 @@ export function WorkoutsScreen() {
           <WorkoutOverview
             live={live !== null}
             onSeeAll={() => setView('history')}
+            onOpenRoutine={routineId => openEditor(routineId)}
             refreshControl={pullSearch.refreshControl}
             bottomPadding={listBottom.paddingBottom}
             recent={recentSessions.map(session => (
@@ -926,6 +951,14 @@ export function WorkoutsScreen() {
       <LazySheet open={gymsOpen}>
         <GymsSheet visible={gymsOpen} onClose={() => setGymsOpen(false)} />
       </LazySheet>
+      <LazySheet open={gymPickerOpen}>
+        <GymsSheet
+          visible={gymPickerOpen}
+          onClose={() => setGymPickerOpen(false)}
+          currentId={fitGym?.id ?? null}
+          onPick={setPickedGym}
+        />
+      </LazySheet>
       <LazySheet open={importOpen}>
         <WorkoutImportSheet visible={importOpen} onClose={() => setImportOpen(false)} fileText={importText} described={describedWorkout} />
       </LazySheet>
@@ -1031,6 +1064,7 @@ export function WorkoutsScreen() {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   segments: { paddingHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
+  gymLine: { paddingHorizontal: spacing.md },
   search: { marginHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.sm },
   list: { paddingHorizontal: spacing.md, paddingTop: spacing.xs, gap: spacing.sm },
   flex: { flex: 1 },

@@ -88,7 +88,7 @@ import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryL
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { deleteCookbook, listCookbooks, logCookTime, mergeCookbooks, renameCookbook } from './recipeTools';
 import { lintRecipes } from './recipeLint';
-import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, addToWeekPool, copyMeals, getRecipe, listMealPlan, listRecipes, placePoolMeal, planMeal, removeMeal, removePoolMeal, saveMealAsRecipe, setMealCooked, updateMeal } from './kitchenTools';
+import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, addToWeekPool, copyMeals, getRecipe, listMealPlan, listRecipes, placePoolMeal, planMeal, removeMeal, removePoolMeal, saveMealAsRecipe, setMealCooked, setMealSkipped, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, addPersonNote, createPerson, deletePerson, deletePersonNote, savePersonGroup, updatePerson, updatePersonNote, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
@@ -655,6 +655,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       secondaryMuscles: z.array(z.enum(MUSCLE_GROUPS as [MuscleGroup, ...MuscleGroup[]])).max(MUSCLE_GROUPS.length).optional(),
       otherNames: z.array(z.string().min(1).max(80)).max(10).optional().describe('Other names the person calls it.'),
       notes: z.string().max(2000).optional(),
+      bodyweightFraction: z.number().min(0).max(1).nullable().optional().describe('Bodyweight or assisted exercises only: the share of the person\'s body weight it moves, 0 to 1 (a push-up is about 0.64, a pull-up 1). Only if they said; absent counts the whole body. 0 counts nothing.'),
     },
     async input => {
       try {
@@ -667,7 +668,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'update_exercise',
-    'Correct an exercise by its id from list_exercises: a custom one (one create_exercise or the person made) in full; a built-in only in the person\'s own words for it (name, otherNames, notes) and whether it is archived, since what the movement is belongs to the library. Fields left out stay. archived: true takes it out of the pickers and the list with its history kept (an exercise is never deleted); false brings it back. A kind can\'t change once sets are logged against it. Only what the person asked for.',
+    'Correct an exercise by its id from list_exercises: a custom one (one create_exercise or the person made) in full; a built-in only in the person\'s own words for it (name, otherNames, notes), its bodyweightFraction and whether it is archived, since what the movement is belongs to the library. Fields left out stay. archived: true takes it out of the pickers and the list with its history kept (an exercise is never deleted); false brings it back. A kind can\'t change once sets are logged against it. Only what the person asked for.',
     {
       id: z.string().min(1).describe('From list_exercises.'),
       name: z.string().min(1).max(80).optional(),
@@ -678,6 +679,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       otherNames: z.array(z.string().min(1).max(80)).max(10).optional().describe('Replaces the list.'),
       notes: z.string().max(2000).optional(),
       archived: z.boolean().optional(),
+      bodyweightFraction: z.number().min(0).max(1).nullable().optional().describe('The share of the person\'s body weight a bodyweight or assisted exercise moves, 0 to 1, for the phone\'s estimated bodyweight volume; null goes back to the usual one. Allowed on a built-in. Only if they said.'),
     },
     async ({ id, ...input }) => {
       try {
@@ -690,7 +692,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_workouts',
-    'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise), programs and gyms (where they train, the equipment each has and a note for an exercise there). Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets, and never work anything out from body weight.',
+    'Workouts the person logged over a range of days, newest first, each with its exercises and sets (weights in kg, whatever unit the phone shows; done: false is a set laid out but not done), plus their routines (planned sets per exercise), programs and gyms (where they train, the equipment each has and a note for an exercise there). Defaults to the last 7 days. Workout history is part of the health record: it is empty unless the person has turned on Include health logs for the sync server on their phone, so an empty result is not evidence that they did not train. Routines and programs are plans and arrive either way. Report what was logged. Never estimate calories from sets. A workout\'s bodyweightKg is the phone\'s own stamp for its estimated bodyweight volume; never work anything else out from body weight.',
     logRange,
     async input => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listWorkouts(replica, input))))
   );
@@ -771,6 +773,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         restSeconds: z.number().int().min(0).max(600).nullable().optional().describe('Rest after each set. Leave out for the person\'s default; 0 for none.'),
         supersetWithPrevious: z.boolean().optional().describe('Done with the exercise before it as a superset: set by set, back to back, resting after the last.'),
         progression: z.enum(['double', 'linear', 'percent', 'rpe']).nullable().optional().describe('double: add weight once every set reaches the top of the range. linear: add weight after each completed workout. percent: sets from a training max. rpe: by how hard the top set felt. Leave out to follow the program\'s scheme.'),
+        alternateId: z.string().nullable().optional().describe('The exercise to do instead when the gym the person is at cannot do this one (a goblet squat for a barbell squat). Workout mode offers it first, ahead of its own suggestions. Null or absent for none.'),
         warmupRamp: z.boolean().optional().describe('Warm up with sets at about 40, 60 and 80% of the working weight, worked out when the workout starts, in place of warm-up sets of its own. Weight and reps exercises only.'),
       })).max(30).optional().describe('Replaces every exercise when given.'),
     },
@@ -894,11 +897,16 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'save_gym',
-    'Create a gym (no id) or change one (id from list_workouts). A gym is a place the person trains and the equipment it has (any of the equipment values list_exercises shows, such as barbell, dumbbell, cable, smith_machine, leg_press, leg_curl, chest_press_machine, treadmill or rowing_machine; machine and cardio_machine mean any strength or cardio machine, so use them only when the person says so and not as a stand-in for a machine they named; bodyweight and other need nothing). During a workout the phone flags an exercise the gym can\'t do and proposes a replacement from what the gym has; nothing is swapped unasked. exerciseNotes sets, per exercise, the note shown at this gym (seat positions, which rack; an empty string clears it), the bar weight and the load step in kg. Only write equipment the person told you the gym has: an empty list means nothing is known, which the phone treats as everything being available. The default gym (isDefault in list_workouts) is where a workout starts when the phone\'s location doesn\'t name a gym; with none, it is the gym last used. Where a gym is can only be set on the phone. Fields left out stay; equipment replaces the whole list when given.',
+    'Create a gym (no id) or change one (id from list_workouts). A gym is a place the person trains and the equipment it has (any of the equipment values list_exercises shows, such as barbell, dumbbell, cable, smith_machine, leg_press, leg_curl, chest_press_machine, treadmill or rowing_machine; machine and cardio_machine mean any strength or cardio machine, so use them only when the person says so and not as a stand-in for a machine they named; bodyweight and other need nothing). During a workout the phone flags an exercise the gym can\'t do and proposes a replacement from what the gym has; nothing is swapped unasked. exerciseNotes sets, per exercise, the note shown at this gym (seat positions, which rack; an empty string clears it), the bar weight and the load step in kg. Only write equipment the person told you the gym has: an empty list means nothing is known, which the phone treats as everything being available. The same goes for dumbbells (lightest, heaviest and step): write it only from what they said, since a missing range means any weight is allowed. The default gym (isDefault in list_workouts) is where a workout starts when the phone\'s location doesn\'t name a gym; with none, it is the gym last used. Where a gym is can only be set on the phone. Fields left out stay; equipment replaces the whole list when given.',
     {
       id: z.string().min(1).optional().describe('A gym id from list_workouts, to change it. Leave out to create one.'),
       name: z.string().min(1).max(80).optional().describe('Required to create one.'),
       equipment: z.array(z.enum(EXERCISE_EQUIPMENT.filter(e => e !== 'bodyweight' && e !== 'other') as [ExerciseEquipment, ...ExerciseEquipment[]])).max(EXERCISE_EQUIPMENT.length).optional().describe('Replaces the whole list when given.'),
+      dumbbells: z.object({
+        minKg: z.number().positive().max(150).describe('The lightest dumbbell, in kg.'),
+        maxKg: z.number().positive().max(150).describe('The heaviest dumbbell, in kg.'),
+        stepKg: z.number().positive().max(25).describe('The gap between neighbouring dumbbells, in kg.'),
+      }).nullable().optional().describe('The dumbbells the gym has, in kg of one dumbbell (45 lb is 20.412). Suggested weights at this gym land on them and stop at the heaviest. Only when the person told you the range; null clears it; leave out to keep it.'),
       placeText: z.string().max(200).optional().describe('An address or place name, shown under the gym. It does not set where the gym is.'),
       isDefault: z.boolean().optional().describe('true makes this the default gym, which replaces any other; false clears it if this gym is the default. Leave out to keep it.'),
       exerciseNotes: z.array(z.object({
@@ -978,6 +986,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       durationMinutes: z.number().positive().max(1440).nullable().optional().describe('How long it took, only if they said.'),
       notes: z.string().max(2000).optional(),
       effort: z.number().int().min(1).max(10).nullable().optional().describe('How hard it felt, 1 to 10, only as they rated it.'),
+      bodyweightKg: z.number().min(20).max(300).nullable().optional().describe('Their body weight in kg that day (convert pounds), only if they said. It lets the phone show an estimated bodyweight volume for pull-ups, push-ups and the like; without it the workout has none.'),
       exercises: loggedExercises,
     },
     async input => {
@@ -999,6 +1008,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       effort: z.number().int().min(1).max(10).nullable().optional(),
       startedAt: z.string().min(1).optional().describe('An ISO date-time, or YYYY-MM-DD to move it to that day at the time it started. Keeps the length it had unless durationMinutes is given.'),
       durationMinutes: z.number().min(0).max(1440).nullable().optional(),
+      bodyweightKg: z.number().min(20).max(300).nullable().optional().describe('Their body weight in kg (convert pounds), only if they said; null clears it.'),
       exercises: loggedExercises.optional(),
     },
     async ({ id, ...input }) => {
@@ -1173,7 +1183,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_meal_plan',
-    `Meals planned over a range of days. Defaults to the ${DEFAULT_PLAN_DAYS} days from today. pool lists the meals chosen for those weeks with no day yet (the app's "Recipe pool" card); they are not on the plan until place_pool_meal gives them a day.`,
+    `Meals planned over a range of days. Defaults to the ${DEFAULT_PLAN_DAYS} days from today. pool lists the meals chosen for those weeks with no day yet (the app's "Recipe pool" card); they are not on the plan until place_pool_meal gives them a day. skipped lists the meals the person marked skipped (set_meal_skipped); food logged in the same meal outranks a skip.`,
     {
       from: dayKey.optional(),
       to: dayKey.optional(),
@@ -1665,6 +1675,7 @@ const taskFieldsShape = {
     allowOvershoot: z.boolean().optional().describe('Per day only: keep counting past the target.'),
     coinsPerTap: z.boolean().optional().describe('Pay coins on every tap instead of when the target is reached. The total is the same; each tap earns its share and the last one the rest. Only matters while rewards are on. Omit to leave as is.'),
     restAfterLog: z.boolean().optional().describe('Weekly targets only. Once a log puts the target on pace, hide it from Today for the rest of that day and show it again the next day, however far ahead of pace it is. Without it a weekly target that is ahead of pace stays off Today until its next unit falls due, which can be days away. Ignored while alwaysVisible is on. Omit to leave as is.'),
+    timePerUnit: z.number().int().min(1).max(180).nullable().optional().describe('A countdown for each unit, in minutes (1 to 180), for logging time in chunks, such as 30 for reading. It restarts when a unit is logged and never blocks logging one early. Use this on a target instead of timed, which a target cannot also have. null removes it. Omit to leave as is.'),
     alwaysVisible: z.boolean().optional().describe('Keep the task on Today all day (a weekly one, all week) instead of hiding it while you are on pace. Pacing still runs underneath; only the hiding is switched off. A rotation hides while on pace like any weekly target, so this is how to keep one up. Omit to leave as is.'),
     rampUp: z.object({
       add: z.number().int().describe('How much to add to the count each time, 1 to 20.'),
@@ -4580,6 +4591,19 @@ function registerWriteTools(
     async ({ id, cooked }) => {
       try {
         return json(await withWrite(() => setMealCooked(replica, id, cooked)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that meal.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_meal_skipped',
+    'Mark one meal of one day skipped, or not, as Skip on the meal strip at the top of Today does. Only when the person says they skipped it. A skip earns no coins, stops the "Log this meal?" nudge for that meal, and leaves anything planned for it on the plan. skipped: false takes it back.',
+    { date: dayKey, slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]), skipped: z.boolean() },
+    async input => {
+      try {
+        return json(await withWrite(() => setMealSkipped(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change that meal.' });
       }

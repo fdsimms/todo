@@ -77,6 +77,7 @@ export function StepMinutes({ value, label, what = 'Time estimate', onChange, al
         returnKeyType="done"
         inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
         accessibilityLabel={`${what} in ${inSeconds ? 'seconds' : 'minutes'} for ${label}`}
+        selectTextOnFocus
       />
       {allowSeconds ? (
         <TouchableOpacity

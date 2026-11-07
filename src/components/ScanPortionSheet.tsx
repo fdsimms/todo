@@ -487,6 +487,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
                     inputAccessoryViewID={usingPills ? NUMBER_PAD_ACCESSORY_ID : undefined}
                     accessibilityLabel={`Amount of ${food.label}`}
                     autoFocus={foodIndex === 0}
+                    selectTextOnFocus
                   />
                   {/* The unit lives in the chip rather than a row of pills:
                       nearly every amount is a serving or grams, and the rest

@@ -182,6 +182,9 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'leftovers', key: ['id'] },
   { name: 'meal_plan_entries', key: ['id'] },
   { name: 'week_pool_entries', key: ['id'] },
+  // A skipped meal (MealSkip). Derived ids, so the same skip made on two
+  // phones is one row.
+  { name: 'meal_skips', key: ['id'] },
   // Finished focus sessions, and the one place this feature parts company with
   // `focus_sessions` in the exclusion list below. That row is excluded because
   // it is a cursor two devices could fight over; these are closed accounts,

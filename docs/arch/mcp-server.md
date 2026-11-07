@@ -1390,6 +1390,13 @@ here rather than leaving it to catch up. The same pairing runs the other way: co
 step of a meal's task here marks the meal cooked, as `completeTask` does on the phone, and
 `reopen_task` on that step points at `set_meal_cooked`.
 
+`set_meal_skipped` is the meal strip's Skip and Not skipped (`MealSkip`, a row per day and meal
+under `spawnSeed.mealSkip`'s derived id, so a skip made here and on the phone is one row). It writes
+the db directly rather than through `useMealSkipStore`, which holds only the last week while an agent
+can name any day. `list_meal_plan` returns the range's skips as `skipped`. Its ledger line is
+`edited` with no `recordId`, since a `created` meal with one reads as a planned meal the Activity
+screen can remove.
+
 `save_meal_as_recipe` is the meal sheet's "Save as recipe" (the recipe already called that, else a
 new empty one). `add_to_week_pool`, `place_pool_meal` and `remove_pool_meal` are the weekly pool (`WeekPoolEntry`, a meal chosen for a week with no day), which `list_meal_plan` returns as `pool`; placing one writes the planned meal through `planMeal` and deletes the pool row, as the app does in one undo step. `copy_meals` is the plan's three copies (`weekCopyDrafts`, `slotCopyDrafts`,
 `mealCopyDraft`): a whole week only into a week with nothing planned, one slot only into a week
@@ -1690,6 +1697,12 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   is labelled estimated in the field names and a note, in kilograms, because it is a calculation and
   never a lift; nothing it returns is relative to a body weight. Like `list_workouts` it reads sets,
   so it is empty without Include health logs and says that an empty history is not evidence.
+  The phone's separate, estimated bodyweight volume (`docs/arch/workouts.md`, "Bodyweight volume, as
+  built") is fed by two fields the server may write only when the person gives the figure:
+  `bodyweightKg` on `log_workout`/`update_workout` (the phone stamps its own on a workout it
+  starts) and `bodyweightFraction` on `create_exercise`/`update_exercise` (allowed on a built-in).
+  `list_workouts` and `list_exercises` read them back, and `instructions.ts` says never to guess
+  either or to present that volume as weight lifted.
 - **The vacation switch is the settings store's own setter**, so what `set_vacation_mode` does is
   what the Settings toggle does. The rule every off-path shares, that the protected streaks are
   forgiven first or a paused daily habit reads as broken the moment the pause lifts, was lifted out

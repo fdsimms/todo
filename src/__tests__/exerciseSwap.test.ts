@@ -1,5 +1,5 @@
 import type { Exercise, WorkoutSet } from '../types';
-import { swapCandidates, swappableSets } from '../utils/exerciseSwap';
+import { preferredFirst, swapCandidates, swappableSets } from '../utils/exerciseSwap';
 
 const set = (id: string, exerciseId: string, completedAt: string | null): WorkoutSet => ({
   id, sessionId: 's', exerciseId, position: 0, setIndex: 0, kind: 'working', weightKg: null, reps: null,
@@ -29,5 +29,16 @@ describe('swapCandidates', () => {
   it('leaves out what the workout already has, and an unknown exercise offers nothing', () => {
     expect(swapCandidates(none, 'lib:barbell-bench-press', ['lib:dumbbell-bench-press'])).not.toContain('lib:dumbbell-bench-press');
     expect(swapCandidates(none, 'nobody')).toEqual([]);
+  });
+});
+
+describe('preferredFirst', () => {
+  it('moves a usable alternate to the front without repeating it', () => {
+    expect(preferredFirst(['a', 'b', 'c'], 'c', ['a', 'b', 'c'])).toEqual(['c', 'a', 'b']);
+    expect(preferredFirst(['a', 'b'], 'z', ['a', 'b', 'z'])).toEqual(['z', 'a', 'b']);
+  });
+  it('leaves the ranking alone for no alternate or one that is not usable', () => {
+    expect(preferredFirst(['a', 'b'], null, ['a', 'b'])).toEqual(['a', 'b']);
+    expect(preferredFirst(['a', 'b'], 'z', ['a', 'b'])).toEqual(['a', 'b']);
   });
 });

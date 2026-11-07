@@ -307,7 +307,7 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
       <ScrollView keyboardShouldPersistTaps="handled" bounces={false} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={() => finish()} />
-        <Text style={styles.headerTitle}>{isNew ? 'New saved event' : 'Edit saved event'}</Text>
+        <Text style={styles.headerTitle}>{isNew ? 'New favorite event' : 'Edit favorite event'}</Text>
         <SheetHeaderButton label={BUTTON_LABEL.save} onPress={save} disabled={titleTaken} />
       </View>
       <View style={styles.body}>
@@ -322,7 +322,7 @@ export function SavedEventSheet({ visible, subject: liveSubject, events, onSave,
           returnKeyType="next"
           accessibilityLabel="Event title"
         />
-        {titleTaken && <FieldError>Another saved event has that title.</FieldError>}
+        {titleTaken && <FieldError>Another favorite event has that title.</FieldError>}
         <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>LOCATION</Text>
         <PlaceAddressField
           text={location}

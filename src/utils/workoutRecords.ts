@@ -26,10 +26,14 @@ import { logicalDayStart } from './clockTime';
  *    sets and drifts upward on long ones, so a set of 25 is not evidence of a
  *    one-rep max. A set of one rep is the weight itself. Every label that shows
  *    it says "estimated".
- * 3. **Nothing is relative to a body weight.** Volume for a bodyweight
- *    exercise is the reps, never reps times anyone's weight, and there is no
- *    standard, ratio or score. This is the weight rule of docs/arch/health-data.md
- *    (nothing derives anything from a body) carried into the workout log.
+ * 3. **No record is relative to a body weight.** A bodyweight exercise ranks and
+ *    charts by its reps, never reps times anyone's weight, and there is no
+ *    standard, ratio or score (so losing weight never reads as a regression).
+ *    The one place a body weight enters is `bodyweightVolumeKg`: an estimated
+ *    figure kept apart from the lifted volume, from the weight stamped on the
+ *    workout when it started (`WorkoutSession.bodyweightKg`), never summed into
+ *    `liftVolumeKg`. It is a carve-out from the weight rule of
+ *    docs/arch/health-data.md, written up in docs/arch/workouts.md, "Bodyweight volume, as built".
  * 4. **A first time is not a record.** A PR is announced only where there is
  *    something earlier to beat, so the first session of an exercise sets no
  *    PRs, and a rep count nobody had done before sets no "best set of N".
@@ -82,8 +86,9 @@ export function estimatedOneRepMax(weightKg: number | null, reps: number | null)
 /**
  * What one set adds to a volume, in the unit `volumeUnit` names for its kind,
  * or null when it has nothing to add. Weight times reps for a weighted lift;
- * the reps alone for a bodyweight or assisted one (an assisted set's weight is
- * the help it was given, so multiplying by it would reward more help); seconds
+ * the reps alone for a bodyweight or assisted one (a record reads reps, and an
+ * assisted set's weight is the help it was given, so multiplying by it would
+ * reward more help; the estimated kilograms are `bodyweightVolumeKg`'s); seconds
  * for a hold; metres for a distance or a carry.
  */
 export function setVolume(set: Pick<WorkoutSet, 'weightKg' | 'reps' | 'durationSeconds' | 'distanceM'>, kind: ExerciseKind): number | null {
@@ -120,6 +125,45 @@ export function liftVolumeKg(
     if (v !== null) total = (total ?? 0) + v;
   }
   return total;
+}
+
+/**
+ * A workout's bodyweight volume in kilograms, an estimate: for each done,
+ * non-warm-up set of a bodyweight exercise, the person's weight times the share
+ * of it the movement moves (`bodyweightFractionOf`) times the reps. An assisted
+ * set subtracts the help from that load (never below 0), so more help never
+ * adds volume. Kept apart from `liftVolumeKg` because one is measured and this
+ * isn't. Null when there is nothing to say: no body weight stamped on the
+ * workout, or no qualifying set, so a row can leave the figure off.
+ */
+export function bodyweightVolumeKg(
+  sets: readonly Pick<WorkoutSet, 'exerciseId' | 'weightKg' | 'reps' | 'completedAt' | 'kind'>[],
+  kindOf: (exerciseId: string) => ExerciseKind,
+  fractionOf: (exerciseId: string) => number,
+  bodyweightKg: number | null | undefined,
+): number | null {
+  if (bodyweightKg === null || bodyweightKg === undefined || !(bodyweightKg > 0)) return null;
+  let total: number | null = null;
+  for (const set of sets) {
+    if (!countsForRecords(set) || set.reps === null) continue;
+    const v = bodyweightSetVolume(set.weightKg, set.reps, kindOf(set.exerciseId), fractionOf(set.exerciseId), bodyweightKg);
+    if (v !== null && v > 0) total = (total ?? 0) + v;
+  }
+  return total;
+}
+
+/**
+ * One set's share of `bodyweightVolumeKg`, or null for a kind that isn't
+ * bodyweight work. Also what `dbWorkoutBodyweightSets`' rows are folded with,
+ * so the live figure and a history list can't disagree.
+ */
+export function bodyweightSetVolume(
+  weightKg: number | null, reps: number, kind: ExerciseKind, fraction: number, bodyweightKg: number,
+): number | null {
+  if (kind !== 'bodyweight_reps' && kind !== 'assisted_reps') return null;
+  const load = bodyweightKg * fraction;
+  if (kind === 'bodyweight_reps') return load * reps;
+  return Math.max(0, load - (weightKg ?? 0)) * reps;
 }
 
 export type VolumeUnit = 'kg' | 'reps' | 'seconds' | 'm';
@@ -241,6 +285,8 @@ export interface RecordEvent {
   value: number;
   /** The best before this session. Always present: a first time is not a record. */
   previous: number;
+  /** Set only on a `weight` record that tied the old weight and beat its reps: the reps it beat. */
+  previousReps?: number;
   set: WorkoutSet | null;
 }
 
@@ -382,9 +428,15 @@ function walk(exerciseId: string, kind: ExerciseKind, groups: readonly SessionGr
     if (weighted && now.e1rm && standing.e1rm && now.e1rm.value > standing.e1rm.value) {
       fire({ type: 'e1rm', value: now.e1rm.value, previous: standing.e1rm.value, set: now.e1rm.set });
     }
-    if ((weighted || kind === 'weight_distance') && now.heaviest && standing.heaviest
-      && now.heaviest.weightKg! > standing.heaviest.set.weightKg!) {
-      fire({ type: 'weight', value: now.heaviest.weightKg!, previous: standing.heaviest.set.weightKg!, set: now.heaviest });
+    if ((weighted || kind === 'weight_distance') && now.heaviest && standing.heaviest) {
+      const held = standing.heaviest.set;
+      if (now.heaviest.weightKg! > held.weightKg!) {
+        fire({ type: 'weight', value: now.heaviest.weightKg!, previous: held.weightKg!, set: now.heaviest });
+      } else if (weighted && now.heaviest.weightKg === held.weightKg && (now.heaviest.reps ?? 0) > (held.reps ?? 0)) {
+        // The same weight for more reps is a better heaviest set (`heavier`), so it is announced
+        // too, with the reps it beat. A carry's tie-break is not reps, so only weight and reps does.
+        fire({ type: 'weight', value: now.heaviest.weightKg!, previous: held.weightKg!, previousReps: held.reps ?? undefined, set: now.heaviest });
+      }
     }
     if (weighted) {
       for (const [n, set] of [...now.ladder.entries()].sort((a, b) => a[0] - b[0])) {
@@ -637,12 +689,11 @@ export function isNewRecord(dayKey: string, todayKey: string): boolean {
  * Whether a standing record row deserves the "New" badge: a recent session
  * broke exactly this record. The badge follows the record events and not the
  * row's day, because the events are where "a record" is defined: a first
- * session, or an equal weight with more reps, holds a row but broke nothing.
+ * session holds a row but broke nothing.
  *
  * The event is matched by what it set, not by the session holding the row
- * now: a later session that equals the weight with more reps takes the row
- * (`heavier` breaks the tie on reps) without breaking anything, and the
- * record set a few days before it is still new.
+ * now: a later session can take the row from the session that set it, and the
+ * record set a few days before is still new.
  */
 export function isNewRecordRow(row: RecordRow, events: readonly RecordEvent[], todayKey: string): boolean {
   return events.some(e => e.type === row.type
