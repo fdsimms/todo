@@ -37,7 +37,7 @@ import {
 } from '../utils/workoutSession';
 import {
   PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MAX_MINUTES, PAST_WORKOUT_MIN_MINUTES,
-  buildPastWorkout, joinPastSuperset, leavePastSuperset, movedPastExercise, nextSetText, pastWorkoutTouched, withoutPastExercise,
+  buildPastWorkout, joinPastSuperset, leavePastSuperset, movedPastExercise, movedPastWithinSuperset, nextSetText, pastWorkoutTouched, withoutPastExercise,
   type PastExerciseDraft, type PastSetText,
 } from '../utils/pastWorkout';
 import type { ImportedSession } from '../utils/workoutCsv';
@@ -145,7 +145,10 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
     setExercises(prev => joinPastSuperset(prev, exerciseId, partnerId) ?? prev);
   };
   const moveExercise = (exerciseId: string, direction: 'up' | 'down') => {
-    setExercises(prev => movedPastExercise(prev, exerciseId, direction) ?? prev);
+    // In a superset it swaps places with its partner; otherwise the exercise moves a place.
+    setExercises(prev => (supersetGroup(prev, exerciseId).length > 1
+      ? movedPastWithinSuperset(prev, exerciseId, direction)
+      : movedPastExercise(prev, exerciseId, direction)) ?? prev);
   };
   const leaveSuperset = (exerciseId: string) => {
     setExercises(prev => leavePastSuperset(prev, exerciseId) ?? prev);
@@ -446,7 +449,9 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
               onClose={() => setExerciseMenu(null)}
               actions={menuId && menuExercise ? [
                 ...(['up', 'down'] as const)
-                  .filter(direction => movedPastExercise(exercises, menuId, direction) !== null)
+                  .filter(direction => (group.length > 1
+                    ? movedPastWithinSuperset(exercises, menuId, direction)
+                    : movedPastExercise(exercises, menuId, direction)) !== null)
                   .map(direction => ({
                     key: `move-${direction}`,
                     label: direction === 'up' ? 'Move up' : 'Move down',

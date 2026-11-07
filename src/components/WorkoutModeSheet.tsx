@@ -96,7 +96,7 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, nextSet, previousBadge,
+  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, movedWithinSuperset, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
   restSecondsFor, supersetGroup,
@@ -508,9 +508,17 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     animateLayout();
   };
   // The view stays on the exercise that moved: `viewIndex` follows its id.
+  // In a superset it swaps places with its partner and leaves the superset where
+  // it is; moving the whole superset is the Reorder button's job.
   const moveExercise = (exerciseId: string, direction: 'up' | 'down') => {
     if (!session) return;
-    if (!useWorkoutStore.getState().moveSessionExercise(session.id, exerciseId, direction)) return;
+    const store = useWorkoutStore.getState();
+    const inSuperset = supersetGroup(exercises, exerciseId).length > 1;
+    if (inSuperset) {
+      const order = movedWithinSuperset(sets, exerciseId, direction);
+      if (!order) return;
+      store.reorderExercises(session.id, order);
+    } else if (!store.moveSessionExercise(session.id, exerciseId, direction)) return;
     haptics.tap();
     animateLayout();
   };
@@ -1507,7 +1515,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             onClose={() => setExerciseMenu(null)}
             actions={menuId && menuExercise ? [
               ...(['up', 'down'] as const)
-                .filter(direction => movedExerciseOrder(sets, menuId, direction) !== null)
+                .filter(direction => (group.length > 1 ? movedWithinSuperset(sets, menuId, direction) : movedExerciseOrder(sets, menuId, direction)) !== null)
                 .map(direction => ({
                   key: `move-${direction}`,
                   label: direction === 'up' ? 'Move up' : 'Move down',

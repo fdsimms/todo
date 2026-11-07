@@ -120,6 +120,28 @@ export function movedPastExercise(
   return blocks.flat();
 }
 
+/**
+ * The list with a superset member moved a place up or down inside its superset,
+ * as `movedWithinSuperset` does for a live workout. Null when it isn't in a
+ * superset, or is already first (up) or last (down) in it.
+ */
+export function movedPastWithinSuperset(
+  exercises: readonly PastExerciseDraft[],
+  exerciseId: string,
+  direction: 'up' | 'down',
+): PastExerciseDraft[] | null {
+  const group = supersetGroup(exercises, exerciseId);
+  const at = group.findIndex(e => e.exerciseId === exerciseId);
+  const to = direction === 'up' ? at - 1 : at + 1;
+  if (group.length < 2 || at < 0 || to < 0 || to >= group.length) return null;
+  const swapped = [...group];
+  [swapped[at], swapped[to]] = [swapped[to], swapped[at]];
+  // A superset is a contiguous run, so the group's slots in the list are
+  // the same run before and after the swap.
+  let next = 0;
+  return exercises.map(e => (group.includes(e) ? swapped[next++] : e));
+}
+
 /** Whether anything has been entered, for the discard guard. */
 export function pastWorkoutTouched(title: string, exercises: readonly PastExerciseDraft[]): boolean {
   return title.trim() !== '' || exercises.length > 0;
