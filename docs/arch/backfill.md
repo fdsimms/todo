@@ -90,6 +90,12 @@ tap), and a store's `receiptStyle`.
   preferred one or the only one) instead of adding a second, and saving them without renaming
   keeps the name, which is the same dismissal as **Keep this name**. A box is rated one at a
   time, so the card stays up while another box of the item is unrated.
+- **A revisited card can take its answer back.** A card reached with Previous or in a redo
+  shows what the row already holds, so tapping the chosen segment or estimate preset again,
+  the category card's None row, or a box's chosen rating clears it (`clearTaskField`,
+  `clearRating`). A clear is always the one card and its series, even with the group toggle
+  armed, and never offers to save a default. A new choice field's card passes `onClear` the
+  patch that means "nothing chosen".
 - **A new field is not finished until these are updated:** the field's id and entry in the
   module, its dismiss label (`backfillDismissCopy.ts`, at most `MAX_DISMISS_LABEL_LENGTH`
   characters), the batch lists (`backfillBatch.ts`) if a set can share the answer, the screen's

@@ -1146,6 +1146,39 @@ export function BackfillScreen() {
   };
 
   /**
+   * Takes a revisited card's answer back to "nothing chosen" (#4037): a second
+   * tap on the chosen segment or preset, or the category card's None row. Only
+   * a card that already holds a value can offer it, which in practice means a
+   * redo or a card reached with Previous, since the ordinary queue only holds
+   * tasks missing the field. Always the one card (and its series) even with the
+   * group toggle armed, because the batch was armed to answer, not to clear,
+   * and it never offers a default: "nothing" is not something to start new
+   * tasks with.
+   */
+  const clearTaskField = (patch: Partial<Task>) => {
+    if (!currentTask || active?.kind !== 'task') return;
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
+    const snapshots = writeWithPeers(currentTask, () => patch);
+    const undo = restoreRows(snapshots);
+    setLastAction({
+      label: `${fieldLabel} cleared`,
+      undo,
+      redo: redoRestoringRows(snapshots.map(row => row.id)),
+    });
+    logSession({
+      itemId: currentTask.id,
+      title: displayTitleFor(currentTask),
+      valueText: 'Cleared',
+      undo,
+    });
+    advance(currentTask.id);
+  };
+
+  /**
    * The same "use this for new tasks" offer a whole-group answer makes, for a
    * generated task that is the only one of its kind left in the queue. Such a
    * card has no group toggle (a batch needs two or more cards), yet it is
@@ -1948,6 +1981,27 @@ export function BackfillScreen() {
   };
 
   /**
+   * A second tap on a box's chosen rating takes it back to unrated (#4037). The
+   * card stays put: an unrated box is what the card is asking about, so there
+   * is nothing to move past.
+   */
+  const clearRating = (product: ItemProduct) => {
+    if (!currentItem || active?.kind !== 'item') return;
+    const item = currentItem;
+    const before = product.rating;
+    if (before == null) return;
+    haptics.tap();
+    animateLayout();
+    if (!updateProduct(product.id, { rating: null })) return;
+    commit('Rating cleared', {
+      itemId: product.id,
+      title: `${item.name} (${describeProduct(product) ?? 'box'})`,
+      valueText: 'Cleared',
+      undo: () => { updateProduct(product.id, { rating: before }); },
+    });
+  };
+
+  /**
    * The item pool's `scannedName` field: the row keeps its id and history and
    * only its words change.
    *
@@ -2556,7 +2610,8 @@ export function BackfillScreen() {
               onEstimate={applyEstimate}
               onPriority={p => apply({ priority: p }, PRIORITY_OPTIONS.find(o => o.value === p)?.label ?? 'Priority set')}
               onDifficulty={d => apply({ difficulty: d }, DIFFICULTY_SEGMENTS.find(o => o.value === d)?.label ?? 'Difficulty set')}
-              onCategory={applyTaskCategory}
+              onCategory={name => (name === null ? clearTaskField({ category: null }) : applyTaskCategory(name))}
+              onClear={clearTaskField}
               onStreak={() => apply({ showStreak: true }, 'Streak shown')}
               onVacation={() => apply({ vacationPause: true }, 'Paused on vacation')}
               onHolidays={rule => apply({ recurrenceHolidays: rule }, rule === 'skip' ? 'Skips holidays' : 'Moves to the next day')}
@@ -3603,6 +3658,7 @@ export function BackfillScreen() {
                     options={ratingOptions}
                     value={box.rating}
                     onChange={value => { if (value) applyRating(box, value); }}
+                    onDeselect={() => clearRating(box)}
                     label={`Rating for ${describeProduct(box) ?? 'this box'}`}
                   />
                 </View>
@@ -3934,6 +3990,11 @@ interface FieldControlProps {
   onEstimate: (minutes: number) => void;
   onPriority: (priority: (typeof PRIORITY_SEGMENTS)[number]['value']) => void;
   onCategory: (name: string | null) => void;
+  /**
+   * Takes the card's current answer back to unset, for a revisited card. Each
+   * field passes the patch that means "nothing chosen" for it.
+   */
+  onClear: (patch: Partial<Task>) => void;
   onStreak: () => void;
   onVacation: () => void;
   onHolidays: (rule: HolidayRule) => void;
@@ -3951,7 +4012,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({
-  field, task, colors, styles, onEstimate, onPriority, onDifficulty, onCategory, onStreak, onVacation, onHolidays, onSlotIn, onReminder, onSuggestions,
+  field, task, colors, styles, onEstimate, onPriority, onDifficulty, onCategory, onClear, onStreak, onVacation, onHolidays, onSlotIn, onReminder, onSuggestions,
   customOpen, customText, customUnit, onOpenCustom, onCustomTextChange, onCustomUnitChange, onCustomSubmit,
 }: FieldControlProps) {
   if (field === 'estimate') {
@@ -3964,9 +4025,12 @@ function FieldControl({
               <PressableScale
                 key={mins}
                 style={[styles.pill, isCurrent && styles.pillActive]}
-                onPress={() => onEstimate(mins)}
+                // A second tap on the chosen preset clears it, the way quick
+                // add's presets do (`applyEstimatePreset`).
+                onPress={() => (isCurrent ? onClear({ estimatedMinutes: null, effort: 0 }) : onEstimate(mins))}
                 accessibilityRole="button"
                 accessibilityLabel={formatDuration(mins)}
+                accessibilityState={{ selected: isCurrent }}
               >
                 <Text style={styles.pillText}>{formatDuration(mins)}</Text>
               </PressableScale>
@@ -4021,6 +4085,7 @@ function FieldControl({
         label="Priority"
         value={task.priority}
         onChange={onPriority}
+        onDeselect={() => onClear({ priority: 0 })}
         columns={2}
         options={PRIORITY_OPTIONS}
         surface="page"
@@ -4036,6 +4101,7 @@ function FieldControl({
         label="Difficulty"
         value={task.difficulty ?? null}
         onChange={d => { if (d) onDifficulty(d); }}
+        onDeselect={() => onClear({ difficulty: null })}
         options={DIFFICULTY_SEGMENTS}
         surface="page"
       />
@@ -4045,7 +4111,9 @@ function FieldControl({
   if (field === 'category') {
     return (
       <View style={[styles.categoryCard, { backgroundColor: colors.bgSecondary }]}>
-        <CategoryPickerList value={task.category} onSelect={onCategory} showNone={false} maxHeight={360} />
+        {/* None only once there is a category to take off: on an unanswered
+            card it would be a lit row that writes nothing. */}
+        <CategoryPickerList value={task.category} onSelect={onCategory} showNone={task.category != null} maxHeight={360} />
       </View>
     );
   }
@@ -4086,6 +4154,7 @@ function FieldControl({
         label="On a holiday"
         value={task.recurrenceHolidays ?? null}
         onChange={rule => { if (rule) onHolidays(rule); }}
+        onDeselect={() => onClear({ recurrenceHolidays: null })}
         options={HOLIDAY_SEGMENTS}
         surface="page"
       />
@@ -4098,6 +4167,7 @@ function FieldControl({
         label="If the day is full"
         value={task.slotIn ?? null}
         onChange={wait => { if (wait !== null) onSlotIn(wait); }}
+        onDeselect={() => onClear({ slotIn: null })}
         options={SLOT_IN_SEGMENTS}
         surface="page"
       />
