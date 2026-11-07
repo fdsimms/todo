@@ -17238,6 +17238,43 @@ describe('quota tasks', () => {
       expect(task.progressCount).toBe(5);
     });
 
+    // A weekly overshoot target closes with its week, not at the first midnight.
+    it('holds a weekly overshoot target open until its week is over', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true, quotaPeriod: 'week', recurrenceType: 'weekly',
+          quotaIntervalMinutes: null, quotaReminders: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
+          targetCount: 3, progressCount: 5,
+          // Sunday June 8 opened this week (weekStartsOn 0); today is Tuesday the 10th.
+          dueDate: new Date(2025, 5, 8, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(5);
+    });
+
+    it('closes a weekly overshoot target from a past week with the count it reached', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true, quotaPeriod: 'week', recurrenceType: 'weekly',
+          quotaIntervalMinutes: null, quotaReminders: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false, followWaterTarget: false,
+          targetCount: 3, progressCount: 5,
+          dueDate: new Date(2025, 5, 1, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(done.completed).toBe(true);
+      expect(done.progressCount).toBe(5); // over target(3), kept as the tally
+      expect(done.missedAt).toBeNull();
+    });
+
     it('spawns the next occurrence, same as any other completion', () => {
       useTaskStore.setState({
         tasks: [quota({

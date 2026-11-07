@@ -6176,8 +6176,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // judgment on the exact count, not a signal they expect to be marked as
   // having failed it (see CLAUDE.md).
   sweepOvershootQuotas() {
-    const { dayResetTime } = useSettingsStore.getState();
+    const { dayResetTime, weekStartsOn } = useSettingsStore.getState();
     const todayStart = getCurrentDayStart();
+    // A row's period as opening and closing instants, so a weekly overshoot
+    // closes at the end of its week and a daily one at the end of its day.
+    const periodStartOf = (date: Date, period: QuotaPeriod): Date => {
+      const dayStart = getTaskDayStart(date, dayResetTime);
+      return period === 'week' ? quotaWeekStart(dayStart, weekStartsOn) : dayStart;
+    };
+    const todayPeriodStart = (period: QuotaPeriod) => +periodStartOf(todayStart, period);
     const stale = get().tasks.filter(t =>
       t.allowOvershoot &&
       // An interval quota closes at the end of its own run rather than at day
@@ -6191,30 +6198,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       t.progressCount > 0 &&
       !isWithheld(t) &&
       t.dueDate !== null &&
-      // Weekly targets are deliberately out of scope for the overshoot and
-      // interval kinds (see Task.quotaPeriod), and this is the guard rather
-      // than the rule: if the combination ever arrives from a template, an
-      // import or a synced row, closing it on the day test would end its week
-      // six days early. Left daily, it is merely closed on time.
-      t.quotaPeriod === 'day' &&
-      getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart &&
-      // The count is the dueDate day's, but a row the person pushed to a day
-      // that hasn't come is held until then, and closing it now spawned the
+      // "Its own period is over", not "its own day is over": a weekly
+      // overshoot has six days left the morning after it was spawned, and the
+      // day test would close it at the first midnight.
+      +periodStartOf(new Date(t.dueDate), t.quotaPeriod) < todayPeriodStart(t.quotaPeriod) &&
+      // The count is the dueDate period's, but a row the person pushed to a
+      // later period is held until then, and closing it now spawned the
       // successor on today, undoing the push (rolloverQuotas keeps the same
       // rule for the same row).
-      getTaskDayStart(new Date(getEffectiveTaskDate(t, dayResetTime)!), dayResetTime) <= todayStart
+      +periodStartOf(new Date(getEffectiveTaskDate(t, dayResetTime)!), t.quotaPeriod) <= todayPeriodStart(t.quotaPeriod)
     );
     // neutral on a day the task's own category schedule didn't cover — see
     // #2201, isCategoryScheduledDay, and rolloverQuotas' own note above.
     //
-    // Stamped at the end of its own day, as rolloverQuotas stamps a partial:
-    // the tally is a record of that day, and a repeat-after-completion
+    // Stamped at the end of its own period, as rolloverQuotas stamps a partial:
+    // the tally is a record of that period, and a repeat-after-completion
     // successor measured from the sweep's own moment skipped a day.
     stale.forEach(t => {
       const ownDayStart = getTaskDayStart(new Date(t.dueDate!), dayResetTime);
+      const ownPeriodStart = periodStartOf(new Date(t.dueDate!), t.quotaPeriod);
       get().completeTask(t.id, {
         neutral: !isCategoryScheduledDay(t.category, ownDayStart),
-        completedAt: new Date(+addDays(ownDayStart, 1) - 1).toISOString(),
+        completedAt: new Date(+addDays(ownPeriodStart, t.quotaPeriod === 'week' ? 7 : 1) - 1).toISOString(),
       });
     });
   },

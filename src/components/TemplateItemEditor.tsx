@@ -1502,7 +1502,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
                 <View style={styles.optionContent}>
                   <Text style={styles.optionLabel}>Allow going past target</Text>
-                  <Text style={styles.optionHint}>Keep logging past {targetCount}×. It stays on Today and completes at the end of the {quotaPeriod} with whatever count you reached</Text>
+                  <Text style={styles.optionHint}>{quotaPeriod === 'week'
+                      ? `Keep logging past ${targetCount}×. It completes at the end of the week with whatever count you reached`
+                      : `Keep logging past ${targetCount}×. It stays on Today and completes at the end of the day with whatever count you reached`}</Text>
                 </View>
                 <Toggle value={allowOvershoot} />
               </TouchableOpacity>

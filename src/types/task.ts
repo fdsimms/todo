@@ -1187,9 +1187,10 @@ export interface Task {
    * week-long ramp is answering "am I going to run out of week", and the hour
    * of the day doesn't change that answer.
    *
-   * Deliberately only for the plain kind. `allowOvershoot` and interval quotas
-   * (`quotaRidesOutTheDay`) are day-shaped in their own sweeps and stay daily;
-   * the editor won't offer the combination, and the sweeps guard anyway.
+   * An interval quota is day-shaped and stays daily (the editor won't offer the
+   * combination). `allowOvershoot` works on either period: a weekly one keeps
+   * counting past the target and `sweepOvershootQuotas` closes it at the end
+   * of the week.
    *
    * Pairs with weekly recurrence, which is what spawns next week's occupant.
    */
