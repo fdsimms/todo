@@ -2455,8 +2455,9 @@ export interface Task {
   // Unlike the derived flags elsewhere in this app, this one is stored rather
   // than computed — and it must be. The EventKit fields it came from are
   // destroyed with the reminder seconds after the import, so there is nothing
-  // left to re-derive it from. It's also inert: nothing in the app can
-  // invalidate it, so it needs none of the cascades a stored isBlocked would.
+  // left to re-derive it from. The one thing that makes it stale is the task
+  // being placed some other way (the editor's Date row, a swipe reschedule),
+  // and mergeTaskUpdate clears it then, so every route is covered by one rule.
   //
   // Partial<Task> rather than Partial<TaskDraft> for two reasons: TaskDraft is
   // Omit<Task, …> below, so naming it here would make Task's own keyof depend
