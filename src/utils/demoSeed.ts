@@ -874,12 +874,13 @@ export function seedDemoData(): void {
   // would be indistinguishable from a daily target nobody has started today.
   const runs = addTask({
     title: 'Go for a run',
-    notes: 'Three times a week, on any days. The count resets when the week starts.',
+    notes: 'Three times a week, on any days. Keep logging past three and it closes with your week\'s total.',
     category: 'Health',
     dueDate: today.toISOString(),
     targetCount: 3,
     targetUnit: 'runs',
     quotaPeriod: 'week',
+    allowOvershoot: true,
     // Weekly, to match the period — a daily repeat would spawn a fresh 0/3
     // every morning and the target could never be finished.
     recurrenceType: 'weekly',

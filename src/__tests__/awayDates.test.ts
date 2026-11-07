@@ -190,7 +190,15 @@ describe('describeAwaySpan', () => {
   });
 
   it('names the return once you have gone', () => {
-    expect(describeAwaySpan(trip, new Date(2026, 10, 4, 9))).toBe('Back Nov 10');
+    // The return date is worded by formatDeadlineDate, which reads the real
+    // clock ("Tuesday" inside the coming week, "Nov 10" beyond it), so the
+    // clock is pinned to the day the test is asking about.
+    jest.useFakeTimers().setSystemTime(new Date(2026, 10, 4, 9));
+    try {
+      expect(describeAwaySpan(trip, new Date(2026, 10, 4, 9))).toBe('Back Nov 10');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('says only that you are away when there is no return date', () => {

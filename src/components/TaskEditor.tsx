@@ -5125,7 +5125,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                           if (next === 'week') {
                             setQuotaIntervalMinutes(null);
                             setQuotaReminders(false);
-                            setAllowOvershoot(false);
                           }
                         }}
                         options={[
@@ -5282,7 +5281,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       does nothing — and its hint would be describing a target
                       as something you can exceed, which is exactly the reading
                       a cadence is not. */}
-                  {targetCount !== null && quotaIntervalMinutes === null && quotaPeriod === 'day' && (
+                  {targetCount !== null && quotaIntervalMinutes === null && (
                     <TouchableOpacity
                       style={styles.optionRow}
                       onPress={() => { haptics.tap(); setAllowOvershoot(v => !v); }}
@@ -5294,7 +5293,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                       <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
                       <View style={styles.optionContent}>
                         <Text style={styles.optionLabel}>Allow going past target</Text>
-                        <Text style={styles.optionHint}>Keep logging past {targetCount}×. It stays on Today and completes at day’s end with the count you reached</Text>
+                        <Text style={styles.optionHint}>{quotaPeriod === 'week'
+                          ? `Keep logging past ${targetCount}×. It completes at the end of the week with the count you reached`
+                          : `Keep logging past ${targetCount}×. It stays on Today and completes at day’s end with the count you reached`}</Text>
                       </View>
                       <Toggle value={allowOvershoot} onColor={colors.orange} />
                     </TouchableOpacity>

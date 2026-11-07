@@ -1232,6 +1232,7 @@ describe('demo mode', () => {
     expect(weekly).toBeDefined();
     expect(weekly!.quotaPeriod).toBe('week');
     expect(weekly!.targetCount).toBe(3);
+    expect(weekly!.allowOvershoot).toBe(true);
     expect(weekly!.progressCount).toBeGreaterThan(0);
     expect(weekly!.progressCount).toBeLessThan(weekly!.targetCount!);
     // Weekly recurrence, matching the period: on a daily repeat the rollover
