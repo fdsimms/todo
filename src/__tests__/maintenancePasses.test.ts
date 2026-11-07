@@ -33,6 +33,7 @@ describe('the three maintenance groups', () => {
     // whole so a reorder has to be deliberate.
     expect(names(catchUpPasses())).toEqual([
       'record time zone',
+      'reanchor wall-clock reminders',
       'check vacation expiry',
       'forgive paused project streaks',
       'check away vacation',
@@ -127,6 +128,7 @@ describe('the launch split of the catch-up passes', () => {
     const { first, deferred } = launchCatchUpPasses();
     expect(names(first)).toEqual([
       'record time zone',
+      'reanchor wall-clock reminders',
       'check vacation expiry',
       'forgive paused project streaks',
       'check away vacation',

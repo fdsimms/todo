@@ -22,7 +22,7 @@ import { entryResolution } from './recipeComponents';
  * **Modelled on `pantryCheckTasks.ts`, which is itself modelled on
  * `projectReviewTasks.ts`**, and the likeness is structural: it fires on time
  * passing (a meal coming into range) rather than on a source mutation, so it
- * runs from the launch sequence and the Today foreground sweep; it caps the
+ * runs from the launch sequence and the foreground sweep (`useForegroundCatchUp`); it caps the
  * rows it writes; and it clears a row whose reason has gone.
  *
  * Where it deliberately differs, and why:

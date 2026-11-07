@@ -6409,6 +6409,8 @@ describe('checkTravelTasks', () => {
     expect(task.title).toBe('Leave for Dentist');
     expect(task.generatedSourceId).toBe(sourceId);
     expect(task.reminderTime).toBe(new Date(2026, 9, 5, 13, 30, 0).toISOString());
+    // Measured back from the event's start, so a zone change must not move it.
+    expect(task.reminderTimeAnchor).toBe('fixed');
     expect(task.windowEnd).toBe('14:00');
     expect(task.location).toBe('123 Main St');
     expect(task.category).toBe('Calendar');

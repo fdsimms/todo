@@ -13,7 +13,7 @@
  * charge state, and **it can decide never** — a user who force-quits the app is
  * one of several ways it simply doesn't fire. So nothing here may be the only
  * place a piece of work happens. Every pass this runs still runs at launch (see
- * `maintenancePasses.ts`) and on foreground (`TodayScreen`), and all of them are
+ * `maintenancePasses.ts`) and on foreground (`useForegroundCatchUp`), and all of them are
  * idempotent by construction: they were written for a launch sequence that runs
  * on every cold start, so running one an extra time is a no-op by design rather
  * than by luck. Treat that as the constraint on anything added here — a pass
