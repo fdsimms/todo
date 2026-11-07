@@ -121,6 +121,7 @@ import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceId, travelTaskTitle } from './
 import { healthSourceId, defaultHealthRules } from './healthRules';
 import { WAKE_UP_DEFAULT_GET_READY_MINUTES, wakeUpSourceId, wakeUpTitle } from './wakeUpTasks';
 import { WANIKANI_REVIEW_URL, wanikaniReviewSourceId, wanikaniReviewTitle } from './wanikaniTasks';
+import { YNAB_APP_URL, ynabQueueSourceId, ynabQueueTitle } from './ynabTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -2135,6 +2136,19 @@ export function seedDemoData(): void {
     category: 'Study',
     linkUrl: WANIKANI_REVIEW_URL,
     ...generatedBy('wanikani', wanikaniReviewSourceId(demoReviewsAt)),
+  });
+
+  // A YNAB transactions task, seeded directly for WaniKani's reason: the read
+  // (useYnabStore) and the pass (checkYnabTasks) both refuse in demo mode, and
+  // there is no token. The switch stays off, so nothing reads. The trip
+  // banner's YNAB balance can't be shown at all, since it is only ever a read.
+  useSettingsStore.getState().setYnabTaskCategory('Personal');
+  addTask({
+    title: ynabQueueTitle({ unapproved: 4, uncategorized: 0, total: 4 }),
+    dueDate: today.toISOString(),
+    category: 'Personal',
+    linkUrl: YNAB_APP_URL,
+    ...generatedBy('ynab', ynabQueueSourceId(dayKeyOf(today))),
   });
 
   // The weigh-in request, seeded directly for the same reason the health task

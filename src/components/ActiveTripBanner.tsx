@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Text, View, StyleSheet, TouchableOpacity } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -8,7 +8,9 @@ import { PressableScale } from './PressableScale';
 import { itemsOnList, listCheckedCount } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { describeCartTotal, estimateCartTotal } from '../utils/groceryPrice';
+import { describeCartAgainstCategory, describeCartTotal, estimateCartTotal } from '../utils/groceryPrice';
+import { useYnabStore } from '../store/useYnabStore';
+import { ynabCategoryNow } from '../utils/ynabPlan';
 import { TripBudgetPrompt } from './TripBudgetPrompt';
 import { haptics } from '../utils/haptics';
 
@@ -95,7 +97,22 @@ export function ActiveTripBanner({ shopName, onChange, onFinish, onClear }: Prop
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const [budgetOpen, setBudgetOpen] = useState(false);
 
-  const totalLine = describeCartTotal(cart, budgetMinor, currencySymbol);
+  // The budget can instead be a YNAB category's balance this month
+  // (`ynabGroceryBudget`). Only once a read of this month has that category:
+  // until then, or after one fails, the typed budget stands as it did.
+  const ynabOn = useSettingsStore(s => s.ynabGroceryBudget);
+  const ynabCategoryId = useSettingsStore(s => s.ynabGroceryCategoryId);
+  const ynabCategory = useYnabStore(s => (ynabOn ? ynabCategoryNow(s.snapshot, ynabCategoryId, new Date()) : null));
+  // A trip is when the balance matters, so the banner asks for a read that's
+  // fresh enough. The store's own staleness check keeps this from reading on
+  // every mount.
+  useEffect(() => {
+    if (ynabOn) void useYnabStore.getState().refresh();
+  }, [ynabOn]);
+
+  const totalLine = ynabCategory
+    ? describeCartAgainstCategory(cart, ynabCategory, currencySymbol)
+    : describeCartTotal(cart, budgetMinor, currencySymbol);
 
   const handleClear = () => {
     haptics.tap();
@@ -149,7 +166,7 @@ export function ActiveTripBanner({ shopName, onChange, onFinish, onClear }: Prop
           silence. Tapping it is how a budget gets set, changed or cleared — see
           TripBudgetPrompt for why the control lives here rather than at the
           moment a trip starts. */}
-      {totalLine !== null && (
+      {totalLine !== null && ynabCategory === null && (
         <TouchableOpacity
           style={styles.totalRow}
           onPress={() => { haptics.tap(); setBudgetOpen(true); }}
@@ -173,6 +190,17 @@ export function ActiveTripBanner({ shopName, onChange, onFinish, onClear }: Prop
           <Text style={styles.totalText} numberOfLines={2}>{totalLine}</Text>
           <Ionicons name="chevron-forward" size={iconSize.xs} color={colors.textTertiary} />
         </TouchableOpacity>
+      )}
+
+      {/* With a YNAB category as the budget (`ynabGroceryBudget`), the line is
+          there from the trip's start ("$36.00 left in Groceries"), and it is a
+          reading rather than a setting, so it isn't a button: the budget is
+          changed in YNAB, or its source in Settings. */}
+      {totalLine !== null && ynabCategory !== null && (
+        <View style={styles.totalRow} accessible accessibilityLabel={totalLine}>
+          <Ionicons name="wallet-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.totalText} numberOfLines={2}>{totalLine}</Text>
+        </View>
       )}
 
       {checkedCount > 0 && (

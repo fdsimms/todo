@@ -136,6 +136,7 @@ import { widgetBridge } from './widgetBridge';
 import { reconcileAppShield } from './appShieldReconcile';
 import { STANDALONE_STORE_LOADS } from './standaloneStores';
 import { useWaniKaniStore } from '../store/useWaniKaniStore';
+import { useYnabStore } from '../store/useYnabStore';
 
 /**
  * Namespaced to this app rather than reusing expo's own permitted identifier
@@ -263,6 +264,22 @@ export async function runBackgroundWaniKani(): Promise<void> {
   writeWidgetSnapshotNow();
 }
 
+/**
+ * Reads the YNAB plan and runs its task check, while the app is closed:
+ * `runBackgroundWaniKani`'s shape, for its reasons (see "The WaniKani read is
+ * the second" above, which holds for this read too). Only for the tasks: the
+ * grocery balance is read when a trip's banner is on screen.
+ */
+export async function runBackgroundYnab(): Promise<void> {
+  if (isDemoModeActive()) return;
+  if (!useSettingsStore.getState().ynabTasks) return;
+  const before = useYnabStore.getState().snapshot;
+  await useYnabStore.getState().refresh();
+  if (useYnabStore.getState().snapshot === before) return;
+  useTaskStore.getState().checkYnabTasks();
+  writeWidgetSnapshotNow();
+}
+
 // Registered at module scope, which is what makes a *cold* background launch
 // work at all: iOS starts the app with no UI, the bundle evaluates, and this is
 // what has to already exist by the time the native task looks for its handler.
@@ -320,6 +337,7 @@ TaskManager.defineTask(BACKGROUND_REFRESH_TASK, async () => {
     if (outcome.ran) {
       // Isolated, so a failed read can't cost the sync after it.
       await runBackgroundWaniKani().catch(error => console.error('Background WaniKani read failed', error));
+      await runBackgroundYnab().catch(error => console.error('Background YNAB read failed', error));
       await runBackgroundSync();
     }
     return BackgroundTask.BackgroundTaskResult.Success;

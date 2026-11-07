@@ -886,6 +886,17 @@ which rows you don't usually get here.
   while you stand in a third, and the demo has two stores anyone would shop at. The seeded trip
   is at Trader Joe's and shows the other two.
 
+**The budget can be a YNAB category's balance instead of a typed number** (`ynabGroceryBudget`,
+Settings › Kitchen › YNAB, off by default). The banner then reads `describeCartAgainstCategory`:
+"$36.00 left in Groceries" from the moment the trip starts, and once something priced is in the
+cart, the cart, what is left and what the trip leaves ("$11.90 after this"), on the same
+over-at-any-coverage, under-only-when-fully-priced rule as `cartBudgetStanding`. A category already
+below zero is said as overspent rather than measured against. The line is not a button, since the
+budget is changed in YNAB. It only replaces the typed budget once a read of this UTC month has the
+chosen category (`ynabCategoryNow`); before that, or after a failed read, the typed budget stands.
+The read is memory only and is described with the `ynab` generator in `generated-tasks.md`. The
+banner asks for a fresh read on mount, which the store's staleness check keeps cheap.
+
 **Skip is session-only and keeps the checkbox.** A row in the "Not at <store>" group can be skipped, which moves it to a "Skipped" group for the rest of the trip (`tripSkippedIds` in `useGroceryStore`, cleared when a trip starts or ends, never written to the database or synced). Both groups keep the checkbox because the app's claim is a record of an earlier visit and the shelf may disagree. Skipping hides and checks nothing, so the row is back in its aisle on the next trip. The caption in the group is `describeGroupedUnavailable`: aisle, "Try <other store>" (`TripMarker.elsewhere`, only a store on record), and "or <substitute>".
 
 ## Incidental purchases — what came home that wasn't on the list

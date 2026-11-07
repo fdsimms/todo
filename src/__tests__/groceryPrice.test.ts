@@ -1,6 +1,7 @@
 import {
   cheapestShopFor,
   cartBudgetStanding,
+  describeCartAgainstCategory,
   describeCartTotal,
   describeListEstimate,
   describePriceAge,
@@ -912,5 +913,44 @@ describe('describeCartTotal', () => {
       expect(describeCartTotal({ totalMinor: 2400, priced: 3, total: 9 }, budget, '$'))
         .toMatch(/^≈ /);
     }
+  });
+});
+
+describe('describeCartAgainstCategory', () => {
+  const groceries = { name: 'Groceries', balanceMinor: 3600 };
+
+  it('says what is left before anything is priced', () => {
+    expect(describeCartAgainstCategory({ totalMinor: 0, priced: 0, total: 0 }, groceries, '$')).toBe('$36.00 left in Groceries');
+    expect(describeCartAgainstCategory({ totalMinor: 0, priced: 0, total: 3 }, groceries, '$')).toBe('$36.00 left in Groceries');
+  });
+
+  it('says what the trip leaves once every row is priced', () => {
+    expect(describeCartAgainstCategory({ totalMinor: 2410, priced: 3, total: 3 }, groceries, '$'))
+      .toBe('≈ $24.10 in cart · $36.00 left in Groceries · $11.90 after this');
+  });
+
+  it('withholds "after this" while some rows are unpriced, and keeps the coverage', () => {
+    expect(describeCartAgainstCategory({ totalMinor: 2410, priced: 3, total: 4 }, groceries, '$'))
+      .toBe('≈ $24.10 in cart · $36.00 left in Groceries · 3 of 4 priced');
+  });
+
+  it('says over at any coverage, keeping the coverage beside it', () => {
+    expect(describeCartAgainstCategory({ totalMinor: 4010, priced: 2, total: 4 }, groceries, '$'))
+      .toBe('≈ $40.10 in cart · $36.00 left in Groceries · $4.10 over · 2 of 4 priced');
+    expect(describeCartAgainstCategory({ totalMinor: 4010, priced: 4, total: 4 }, groceries, '$'))
+      .toBe('≈ $40.10 in cart · $36.00 left in Groceries · $4.10 over');
+  });
+
+  it('says a category already below zero as it is', () => {
+    const overspent = { name: 'Groceries', balanceMinor: -500 };
+    expect(describeCartAgainstCategory({ totalMinor: 0, priced: 0, total: 2 }, overspent, '$'))
+      .toBe('Groceries is overspent by $5.00');
+    expect(describeCartAgainstCategory({ totalMinor: 1000, priced: 1, total: 2 }, overspent, '$'))
+      .toBe('≈ $10.00 in cart · Groceries is overspent by $5.00 · 1 of 2 priced');
+  });
+
+  it('reads an empty category as nothing left, so any priced cart is over', () => {
+    expect(describeCartAgainstCategory({ totalMinor: 150, priced: 1, total: 1 }, { name: 'Groceries', balanceMinor: 0 }, '$'))
+      .toBe('≈ $1.50 in cart · $0.00 left in Groceries · $1.50 over');
   });
 });

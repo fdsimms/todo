@@ -140,6 +140,12 @@ export const SYNC_TOKEN_READABLE_LOCKED_SETTING = 'syncTokenReadableWhileLocked'
  * someone's account on another service has no business riding the sync.
  */
 export const WANIKANI_TOKEN_SECURE_KEY = 'wanikaniApiToken';
+/**
+ * The person's YNAB personal access token (`src/services/ynab.ts`), kept
+ * device-local for the WaniKani token's reason. YNAB's tokens can read and
+ * write the whole plan, which is one more reason it stays off the sync.
+ */
+export const YNAB_TOKEN_SECURE_KEY = 'ynabApiToken';
 
 export async function loadSecureKey(name: string): Promise<string> {
   try {
