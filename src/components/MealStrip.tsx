@@ -18,6 +18,10 @@ import { isMealStripDone, mealStripCells, mealStripSlots, type MealStripCell } f
 import { recipeLinkUrl } from '../utils/mealSlotTasks';
 import { openInAppUrl } from '../utils/deepLinks';
 import { resetToFoodLog, resetToMealPlan } from '../navigation/navigationRef';
+import { RecipePickerSheet } from './RecipePickerSheet';
+import { usePlanMeal } from '../hooks/usePlanMeal';
+import { dayKeyToDate } from '../utils/dateUtils';
+import { format } from 'date-fns/format';
 import { animateLayout } from '../utils/layoutAnimation';
 import { haptics } from '../utils/haptics';
 
@@ -40,8 +44,8 @@ interface Props {
  *
  * The menu is a popover off the tapped meal (`CardSheet` with an anchor), and
  * every action it offers already exists elsewhere: the food log's sheet for a
- * meal (`setPendingManualMealLog`), the meal plan's picker (`resetToMealPlan`
- * with a slot), the meal plan's own cooked toggle (`setCookedPaired`), the
+ * meal (`setPendingManualMealLog`), the meal plan's picker (`RecipePickerSheet`,
+ * mounted here so choosing a meal leaves you on Today), the meal plan's own cooked toggle (`setCookedPaired`), the
  * recipe link a meal task carried. The strip is a shortcut into those, not a
  * second meal planner.
  */
@@ -56,6 +60,12 @@ export function MealStrip({ dayKey, refreshKey }: Props) {
   const itemProducts = useGroceryStore(s => s.itemProducts);
   const items = useGroceryStore(s => s.items);
   const [menu, setMenu] = useState<{ cell: MealStripCell; anchor: CardAnchor } | null>(null);
+  // The slot whose picker is open. Mounted here, like a meal task's Choose
+  // step does, so picking leaves you on Today rather than the Meal Plan tab.
+  const [pickSlot, setPickSlot] = useState<MealSlot | null>(null);
+  const planMeal = useMealPlanStore(s => s.planMeal);
+  const removeMealPlanEntry = useMealPlanStore(s => s.removeEntry);
+  const { offerPrepTasksForEach } = usePlanMeal();
 
   const recipesById = useMemo(() => new Map<string, Recipe>(recipes.map(r => [r.id, r])), [recipes]);
   const slots = useMemo(() => mealStripSlots(enabled), [enabled]);
@@ -116,7 +126,19 @@ export function MealStrip({ dayKey, refreshKey }: Props) {
         cell={menu?.cell ?? null}
         anchor={menu?.anchor ?? null}
         titleOf={e => titleForEntry(e, recipesById)}
+        onPick={setPickSlot}
         onClose={() => setMenu(null)}
+      />
+      <RecipePickerSheet
+        visible={pickSlot !== null}
+        dayKey={dayKey}
+        dayLabel={format(dayKeyToDate(dayKey), 'EEEE')}
+        defaultSlot={pickSlot ?? cells[0]?.slot ?? 'breakfast'}
+        forceSlot={pickSlot}
+        onPlan={planMeal}
+        onPlanned={offerPrepTasksForEach}
+        onUnplan={removeMealPlanEntry}
+        onClose={() => setPickSlot(null)}
       />
       {/* The strip sits in the list header, which is elevated above the spotlight
           overlay, so it has to dim itself like the task rows and headers do. The
@@ -150,6 +172,7 @@ function menuItems(
   dayKey: string,
   cell: MealStripCell,
   titleOf: (entry: MealPlanEntry) => string,
+  onPick: (slot: MealSlot) => void,
 ): MenuItem[] {
   const slot: MealSlot = cell.slot;
   const lower = MEAL_SLOT_LABELS[slot].toLowerCase();
@@ -162,7 +185,7 @@ function menuItems(
     label: cell.state === 'logged' ? `Log more for ${lower}` : 'Log what I ate',
     run: () => useFoodLogStore.getState().setPendingManualMealLog({ label, slot, dayKey, mealPlanEntryId: null }),
   });
-  const plan: MenuItem = { key: 'plan', icon: 'calendar-outline', label: 'Plan it', run: () => resetToMealPlan(dayKey, slot) };
+  const plan: MenuItem = { key: 'plan', icon: 'calendar-outline', label: 'Plan it', run: () => onPick(slot) };
   const openPlan: MenuItem = { key: 'openPlan', icon: 'calendar-outline', label: 'Open meal plan', run: () => resetToMealPlan(dayKey) };
   const openRecipe: MenuItem | null = entry?.recipeId && !entry.leftoverId
     ? { key: 'recipe', icon: 'restaurant-outline', label: 'Open recipe', run: () => { openInAppUrl(recipeLinkUrl(entry.recipeId as string, entry.id)); } }
@@ -219,11 +242,12 @@ function menuItems(
   }
 }
 
-function MealStripMenu({ dayKey, cell, anchor, titleOf, onClose }: {
+function MealStripMenu({ dayKey, cell, anchor, titleOf, onPick, onClose }: {
   dayKey: string;
   cell: MealStripCell | null;
   anchor: CardAnchor | null;
   titleOf: (entry: MealPlanEntry) => string;
+  onPick: (slot: MealSlot) => void;
   onClose: () => void;
 }) {
   const colors = useColors();
@@ -232,7 +256,7 @@ function MealStripMenu({ dayKey, cell, anchor, titleOf, onClose }: {
   // Kept through the fade-out, so the rows don't vanish while the card does.
   const [shown, setShown] = useState<MealStripCell | null>(cell);
   if (cell && cell !== shown) setShown(cell);
-  const items = shown ? menuItems(dayKey, shown, titleOf) : [];
+  const items = shown ? menuItems(dayKey, shown, titleOf, onPick) : [];
 
   return (
     <CardSheet
