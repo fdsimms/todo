@@ -32,9 +32,9 @@
  *
  * ## What is deliberately not here
  *
- * `TodayScreen`'s own foreground pass keeps its separate, slightly different
- * list, and that is not an oversight to unify: it runs on focus and on
- * foreground rather than at launch, and it carries two passes this list doesn't
+ * The foreground pass (`useForegroundCatchUp`, run from `App.tsx`) keeps its
+ * separate, slightly different list, and that is not an oversight to unify: it
+ * runs on every return to the front rather than at launch, and it carries two passes this list doesn't
  * (`sweepFinishedQuotaRuns`, `checkSupplyReorderTasks`) whose triggers arrive
  * while the user is looking at the row. Its per-line comments say why each one
  * sits there. Both lists reach the same store actions, so they can't disagree
@@ -80,6 +80,13 @@ export function catchUpPasses(): MaintenanceStep[] {
     // rather than once at launch so a background run after a flight lands
     // records the new zone before the next sync carries it.
     ['record time zone', () => { recordDeviceTimeZone(); }],
+    // A "9am" reminder set at home moves to 9am in the new zone (#1205). Here
+    // for the same reason as the step above: a phone left closed after a
+    // flight lands gets a background run before it gets a launch or a
+    // foreground, and the rebuild that run ends with would otherwise lay the
+    // queue down at the old zone's instants. Idempotent, so the launch
+    // sequence running it again after initialize() costs nothing.
+    ['reanchor wall-clock reminders', () => tasks().reanchorWallClockReminders()],
     // Turn vacation mode back off if its end date already passed while the
     // app was closed
     ['check vacation expiry', () => tasks().checkVacationExpiry()],
@@ -277,7 +284,7 @@ export function catchUpPasses(): MaintenanceStep[] {
     // A leftover can age from "fresh" into "soon" purely by time passing too
     // — same trigger as the two passes above, and it reads the leftovers
     // useTaskStore.initialize's fan-out has already loaded. This used to run only on
-    // foreground (TodayScreen's AppState listener), which never fires for a
+    // foreground (now `useForegroundCatchUp`), which never fires for a
     // true cold launch — so a leftover that crossed the threshold while the
     // app was closed sat with no use-up task until the app was backgrounded
     // and reopened at least once.

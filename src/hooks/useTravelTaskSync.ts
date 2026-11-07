@@ -30,7 +30,7 @@ const FOREGROUND_REFRESH_INTERVAL_MS = TRANSIT_SNAPSHOT_STALE_MS;
  *
  * **It re-runs `checkTravelTasks` whenever something that check reads
  * changes**: the calendar window, the snapshot, or one of its settings. Every
- * other generator checks on the launch sequence and the Today foreground sweep
+ * other generator checks on the launch sequence and the foreground sweep (`useForegroundCatchUp`)
  * and reads whatever its data store holds at that moment, which races: the
  * sweep fires on the same AppState change that starts the calendar read, so it
  * usually runs before the window lands and the answer waits for the next
