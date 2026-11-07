@@ -43,6 +43,12 @@ jobs:
       # the deployed server is asked for it.
       - run: npm ci --prefix mcp
       - run: npx tsc -p mcp/tsconfig.json
+      # Start the MCP server for real and fail unless it answers. Jest mocks
+      # expo-sqlite, so a server that crashes on boot passes the suite, and the
+      # deploy that finds out runs only after the merge (and leaves the crashing
+      # machine up). A few seconds, so it runs on every PR rather than behind a
+      # path filter: the server loads most of src/.
+      - run: node scripts/check-mcp-boot.js
       # The standard hosted runner has two cores, and Jest's default is one
       # worker fewer than that — so without this the whole suite runs in a
       # single worker and CI pays the sum of every file rather than the longest
