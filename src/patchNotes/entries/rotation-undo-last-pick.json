@@ -1,0 +1,1 @@
+{ "message": "Finishing the last step of a rotation no longer makes the task flicker off and back before it completes, and undoing that completion now takes the final pick back too.", "date": "2026-11-07" }
