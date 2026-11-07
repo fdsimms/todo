@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, type GestureResponderEvent } 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { CardSheet, useCardSheet, type CardAnchor } from './CardSheet';
+import { SpotlightScrim } from './SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, interaction, type Colors } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -117,6 +118,12 @@ export function MealStrip({ dayKey, refreshKey }: Props) {
         titleOf={e => titleForEntry(e, recipesById)}
         onClose={() => setMenu(null)}
       />
+      {/* The strip sits in the list header, which is elevated above the spotlight
+          overlay, so it has to dim itself like the task rows and headers do. The
+          wrapper rounds the scrim to the card's corners. */}
+      <View style={styles.scrimClip} pointerEvents="none">
+        <SpotlightScrim />
+      </View>
     </View>
   );
 }
@@ -263,6 +270,12 @@ function MealStripMenu({ dayKey, cell, anchor, titleOf, onClose }: {
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  scrimClip: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: radius.md,
+    borderCurve: 'continuous',
+    overflow: 'hidden',
+  },
   card: {
     flexDirection: 'row',
     marginHorizontal: spacing.md,
