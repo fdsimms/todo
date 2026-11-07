@@ -11,8 +11,10 @@ const { addAppExtensionTarget } = require('./lib/nativeTarget');
 const TARGET_NAME = 'TodoWidget';
 const BUNDLE_ID_SUFFIX = 'TodoWidget';
 // Widget extensions may target a higher minimum iOS than their host app —
-// .containerBackground(for:) in TodoTodayWidget.swift requires iOS 17.
-const DEPLOYMENT_TARGET = '17.0';
+// .containerBackground(for:) in TodoTodayWidget.swift requires iOS 17, and
+// WorkoutLiveActivity.swift opts into the watchOS Smart Stack with
+// supplementalActivityFamilies / activityFamily, which are iOS 18.
+const DEPLOYMENT_TARGET = '18.0';
 const SOURCE_DIR = path.join(__dirname, '..', 'targets', 'todo-widget');
 const SWIFT_FILES = [
   'TodoWidgetBundle.swift',
@@ -160,7 +162,7 @@ const withWidgetExtension = config => {
         'AppIntents.framework',
         // TimerLiveActivity.swift's `import ActivityKit`. Not weak-linked here
         // the way the app-side podspec does it — this target's deployment
-        // target is 17.0, above ActivityKit's 16.1 floor. ActivityConfiguration
+        // target is 18.0, above ActivityKit's 16.1 floor. ActivityConfiguration
         // and DynamicIsland themselves live in WidgetKit, already added above.
         'ActivityKit.framework',
         // TodoCalendarWidget.swift reads today's and tomorrow's events itself,

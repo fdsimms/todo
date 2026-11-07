@@ -2,7 +2,8 @@ import ActivityKit
 import WidgetKit
 import SwiftUI
 
-// Shown on the Lock Screen and in the Dynamic Island while a workout is in
+// Shown on the Lock Screen, in the Dynamic Island and, on a paired Apple Watch,
+// in the Smart Stack (`WorkoutSmallView`) while a workout is in
 // progress — see docs/arch/workouts.md ("Phase 6, as built") and
 // src/utils/workoutLiveActivity.ts, which writes every word drawn here. The
 // approved mock is docs/arch/workouts-mocks/workout-live-activity.png.
@@ -136,6 +137,66 @@ private struct WorkoutClockView: View {
     }
 }
 
+// The watchOS Smart Stack's presentation (`ActivityFamily.small`), which the
+// activity opts into below. A Live Activity started on the phone reaches a
+// paired watch on its own, with no watch app open, and this is what it draws
+// there: the rest countdown (counting up in orange once it has run out) and
+// what is next. No buttons: a Link can't open the phone's app from the wrist.
+@available(iOS 18.0, *)
+private struct WorkoutSmallView: View {
+    let context: ActivityViewContext<WorkoutActivityAttributes>
+
+    var body: some View {
+        let palette = WidgetPalette.dark
+        let state = context.state
+        let resting = state.phase == "rest"
+        let over = resting && (state.restOver || context.isStale)
+        let tint = over ? palette.orange : palette.brand
+
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 4) {
+                Image(systemName: resting ? "timer" : "dumbbell.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(tint)
+                Text(over ? state.overTitle : state.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(palette.text)
+                    .lineLimit(1)
+            }
+            WorkoutClockView(
+                attributes: context.attributes,
+                state: state,
+                over: over,
+                font: .system(size: 24, weight: .semibold).monospacedDigit(),
+                color: over ? palette.orange : (resting ? palette.text : palette.textSecondary)
+            )
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            Text(state.subtitle)
+                .font(.system(size: 11))
+                .foregroundColor(palette.textSecondary)
+                .lineLimit(1)
+        }
+    }
+}
+
+// Picks the presentation for where the activity is drawn: `.small` on the
+// watch, `.medium` (the Lock Screen card) on the phone.
+@available(iOS 18.0, *)
+private struct WorkoutActivityContent: View {
+    @Environment(\.activityFamily) private var family
+    let context: ActivityViewContext<WorkoutActivityAttributes>
+
+    var body: some View {
+        switch family {
+        case .small:
+            WorkoutSmallView(context: context)
+        default:
+            WorkoutLockScreenView(context: context)
+        }
+    }
+}
+
 @available(iOS 17.0, *)
 private struct WorkoutLockScreenView: View {
     let context: ActivityViewContext<WorkoutActivityAttributes>
@@ -199,11 +260,11 @@ private struct WorkoutLockScreenView: View {
     }
 }
 
-@available(iOS 17.0, *)
+@available(iOS 18.0, *)
 struct WorkoutLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: WorkoutActivityAttributes.self) { context in
-            WorkoutLockScreenView(context: context)
+            WorkoutActivityContent(context: context)
                 .activityBackgroundTint(WidgetPalette.dark.bgSecondary)
                 .activitySystemActionForegroundColor(WidgetPalette.dark.text)
                 .widgetURL(URL(string: "dundundun://workout"))
@@ -290,5 +351,7 @@ struct WorkoutLiveActivity: Widget {
             .widgetURL(URL(string: "dundundun://workout"))
             .keylineTint(tint)
         }
+        // Opts into the watch's Smart Stack, drawn with WorkoutSmallView.
+        .supplementalActivityFamilies([.small, .medium])
     }
 }
