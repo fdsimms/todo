@@ -315,7 +315,7 @@ other passing-bug call, ask rather than guess or widen the PR.
 
 Don't run `npx expo export` locally to check your work — it's the slowest thing CI does and only
 catches bundle-time breakage (a bad import path, a missing asset, a native config change), so run
-it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npx tsc -p mcp/tsconfig.json` (the MCP package compiles `src/` types, so a change to a shared type can break it with no diff in `mcp/`), `npm test` under
+it only when you changed one of those. **CI runs `npx tsc --noEmit`, `npx tsc -p mcp/tsconfig.json` (the MCP package compiles `src/` types, so a change to a shared type can break it with no diff in `mcp/`), `node scripts/check-mcp-boot.js` (starts the MCP server and fails if it crashes on boot, which Jest can't see), `npm test` under
 `--randomize` (the whole suite is order-independent, and randomizing is what keeps it so), and all
 three doc checks in `--check` mode on every PR and every push to `main`** — that whole list, not
 just the tests. `npx expo export
