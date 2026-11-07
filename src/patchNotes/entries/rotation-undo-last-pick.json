@@ -1,1 +1,1 @@
-{ "message": "Finishing the last step of a rotation no longer makes the task flicker off and back before it completes, and undoing that completion now takes the final pick back too.", "date": "2026-11-07" }
+{ "message": "Finishing the last step of a rotation no longer makes the task flicker off and back before it completes. Undoing that completion takes the final pick back too, and a rotation stuck at 6/7 with every step done now completes on the next tap.", "date": "2026-11-07" }

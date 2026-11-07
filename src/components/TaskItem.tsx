@@ -160,7 +160,7 @@ import type { CardAnchor } from '../utils/cardAnchor';
 import { RotationPickSheet } from './RotationPickSheet';
 import { RotationChecklist } from './RotationChecklist';
 import { RotationPills } from './RotationPills';
-import { isRotationTask, plannedRotationItem, rotationCoversNew, rotationLastPickLabel, rotationMembers, rotationOverCommitted } from '../utils/rotation';
+import { isRotationTask, plannedRotationItem, rotationCountAfterPick, rotationLastPickLabel, rotationMembers, rotationOverCommitted } from '../utils/rotation';
 import {
   describeProjectQuiet,
   projectQuietDays,
@@ -2984,8 +2984,8 @@ const TaskItemRow = React.memo(function TaskItem({
     // Today the instant the store updates, a beat before the completion's own
     // hold exists: the row vanished, came back, then played the send-off. So
     // the hold goes on first and completeTask gives it back.
-    if (rotationCoversNew(task, itemId, rotationDayStart, weekStartsOn)
-      && task.progressCount + 1 >= task.targetCount!) {
+    const countAfter = rotationCountAfterPick(task, itemId, new Date(), rotationDayStart, weekStartsOn);
+    if (countAfter !== null && countAfter >= task.targetCount!) {
       quotaHeldRef.current = true;
       holdQuotaOnToday(task.id);
     }

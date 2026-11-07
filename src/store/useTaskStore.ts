@@ -289,7 +289,7 @@ import { mealStripCoins, mealStripDoneSlots, mealStripOn, mealStripSlots } from 
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { logSlotToMealSlot, slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
-import { inheritedOccurrence, isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
+import { inheritedOccurrence, isRotationTask, rotationDoneCount, rotationPick, rotationPlanFor, rotationUnpick } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { countsUnits } from '../utils/streakUnits';
@@ -5652,16 +5652,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!task || task.completed || !isRotationTask(task) || !isQuotaTask(task)) return false;
     const { weekStartsOn } = useSettingsStore.getState();
     const dayStart = getCurrentDayStart();
-    const covers = rotationCoversNew(task, itemId, dayStart, weekStartsOn);
     const patch = rotationPick(task, itemId, new Date(), dayStart, weekStartsOn);
     if (!patch) return false;
-    // A repeat logs without moving the count: the week is about coverage, and
-    // a second Spanish is a real listen but not a sixth language.
-    const progressCount = covers ? task.progressCount + 1 : task.progressCount;
+    // Read off the ledger, not stepped from the stored count: a repeat leaves
+    // it where it was (a second Spanish is a real listen but not a sixth
+    // language), and a row whose count had fallen behind its ledger heals on
+    // its next pick instead of counting every tap as a repeat for ever.
+    const progressCount = rotationDoneCount({ ...task, ...patch }, dayStart, weekStartsOn);
     const updated = { ...task, ...patch, progressCount };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
-    return covers && progressCount >= task.targetCount!;
+    return progressCount >= task.targetCount!;
   },
 
   logRotationUnit(id, itemId) {
@@ -5720,11 +5721,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const dayStart = getCurrentDayStart();
     const patch = rotationUnpick(task, dayStart, weekStartsOn);
     if (!patch) return;
-    const uncovers = rotationUnpickUncovers(task, dayStart, weekStartsOn);
     const updated = {
       ...task,
       ...patch,
-      progressCount: uncovers ? Math.max(0, task.progressCount - 1) : task.progressCount,
+      progressCount: rotationDoneCount({ ...task, ...patch }, dayStart, weekStartsOn),
     };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
