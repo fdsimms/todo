@@ -160,7 +160,7 @@ import type { CardAnchor } from '../utils/cardAnchor';
 import { RotationPickSheet } from './RotationPickSheet';
 import { RotationChecklist } from './RotationChecklist';
 import { RotationPills } from './RotationPills';
-import { isRotationTask, plannedRotationItem, rotationLastPickLabel, rotationMembers, rotationOverCommitted } from '../utils/rotation';
+import { isRotationTask, plannedRotationItem, rotationCountAfterPick, rotationLastPickLabel, rotationMembers, rotationOverCommitted } from '../utils/rotation';
 import {
   describeProjectQuiet,
   projectQuietDays,
@@ -2980,6 +2980,15 @@ const TaskItemRow = React.memo(function TaskItem({
     // Recorded before anything animates, so the pick is in the ledger whichever
     // branch runs — and so the closing one closes over a complete week rather
     // than over four fifths of it.
+    // A pick that closes the week puts the row at target, which takes it off
+    // Today the instant the store updates, a beat before the completion's own
+    // hold exists: the row vanished, came back, then played the send-off. So
+    // the hold goes on first and completeTask gives it back.
+    const countAfter = rotationCountAfterPick(task, itemId, new Date(), rotationDayStart, weekStartsOn);
+    if (countAfter !== null && countAfter >= task.targetCount!) {
+      quotaHeldRef.current = true;
+      holdQuotaOnToday(task.id);
+    }
     const covered = recordRotationPick(task.id, itemId);
     if (covered) {
       // The set is covered, so this is a completion: hand off to the same path
