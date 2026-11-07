@@ -104,14 +104,62 @@ import {
 import { tickSet, type TickValues } from '../utils/workoutTick';
 import type { SessionExercise } from '../utils/workoutSession';
 
-// The four kinds of set, in the order the tray offers them. `amrap` is "Failure"
-// to match the F badge and `setName`'s "To failure".
-const SET_KIND_OPTIONS: SegmentOption<WorkoutSetKind>[] = [
-  { value: 'working', label: 'Working' },
-  { value: 'warmup', label: 'Warm-up' },
-  { value: 'drop', label: 'Drop' },
-  { value: 'amrap', label: 'Failure' },
+// The four kinds of set, in the order the tray offers them. Each segment leads
+// with the letter its row shows (W, D, F; a dot for a working set, which has
+// none), so the tray reads as the same thing as the badge. `amrap` is
+// "Failure" to match the F badge and `setName`'s "To failure". The short visible
+// labels are what fit four to a track; `accessibilityLabel` keeps the full name.
+const SET_KIND_SEGMENTS: { value: WorkoutSetKind; label: string; full: string }[] = [
+  { value: 'working', label: 'Work', full: 'Working' },
+  { value: 'warmup', label: 'Warm', full: 'Warm-up' },
+  { value: 'drop', label: 'Drop', full: 'Drop' },
+  { value: 'amrap', label: 'Fail', full: 'Failure' },
 ];
+
+/** One line under the tray saying what the chosen type does. Counting follows `countsForRecords`. */
+const SET_KIND_HELP: Record<WorkoutSetKind, string> = {
+  working: 'Counts toward records and volume.',
+  warmup: 'Left out of records and volume.',
+  drop: 'A lighter set right after a working set. Counts toward records and volume.',
+  amrap: 'To failure. Counts toward records and volume.',
+};
+
+function SetKindSegment({ kind, label, selected }: { kind: WorkoutSetKind; label: string; selected: boolean }) {
+  const colors = useColors();
+  const badge = setBadge(kind);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xsm }}>
+      <View
+        style={{
+          width: 20, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center',
+          backgroundColor: badge ? colors.orangeText + '26' : colors.textSecondary + '26',
+        }}
+      >
+        {badge ? (
+          <Text style={{ color: colors.orangeText, fontSize: font.xs, fontWeight: fontWeight.bold }}>{badge}</Text>
+        ) : (
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textSecondary }} />
+        )}
+      </View>
+      <Text
+        numberOfLines={1}
+        style={{
+          color: selected ? colors.text : colors.textSecondary, fontSize: font.sm,
+          fontWeight: selected ? fontWeight.semibold : fontWeight.medium,
+        }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+const SET_KIND_OPTIONS: SegmentOption<WorkoutSetKind>[] = SET_KIND_SEGMENTS.map(o => ({
+  value: o.value,
+  label: o.full,
+  accessibilityLabel: o.full,
+  node: (selected: boolean) => <SetKindSegment kind={o.value} label={o.label} selected={selected} />,
+}));
 import type { WeightUnit } from '../utils/weightLog';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -1438,6 +1486,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             value={set.kind}
                             onChange={next => changeKind(set, next)}
                           />
+                          <HelpText style={styles.kindHelp}>{SET_KIND_HELP[set.kind]}</HelpText>
                           {!!plate && <PlateLine load={plate} unit={unit} />}
                         </View>
                       )}
@@ -1977,6 +2026,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   checkDone: { backgroundColor: colors.done, borderColor: colors.done },
   tray: { paddingHorizontal: spacing.md, paddingBottom: spacing.smd, gap: spacing.smd },
+  kindHelp: { color: colors.textSecondary, fontSize: font.xs, paddingHorizontal: spacing.xs },
   // Lines up under the "Previous" column, past the set number's column.
   nextPlates: { paddingLeft: spacing.md + 34 + spacing.sm, paddingRight: spacing.md, paddingBottom: spacing.smd },
   deletePanel: { width: 88, alignSelf: 'stretch', backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center', gap: spacing.xxs },
