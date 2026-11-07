@@ -204,6 +204,7 @@ Where each component can appear.
 - `src/components/FirstRunSheet.tsx` — on SettingsGroupScreen, app shell
 - `src/components/FlagCopyHost.tsx` — on app shell
 - `src/components/FloatingLayer.tsx` — on app shell
+- `src/components/FlowStage.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, +34 more
 - `src/components/FocusBar.tsx` — on TodayScreen, app shell
 - `src/components/FocusSessionSheet.tsx` — on TodayScreen
 - `src/components/FocusSetupSheet.tsx` — on TodayScreen
@@ -434,6 +435,7 @@ Where each component can appear.
 - `src/components/SharedImageBanner.tsx` — on TodayScreen
 - `src/components/SharedLinkBanner.tsx` — on RecipesScreen
 - `src/components/SheetActionRow.tsx` — on KitchenScreen, MealPlanScreen, app shell
+- `src/components/SheetFlow.tsx` — on FoodLogScreen, app shell
 - `src/components/SheetHeader.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, FoodLogScreen, GroceryScreen, JournalScreen, KitchenScreen, +30 more
 - `src/components/SheetHeaderButton.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, FoodLogScreen, GroceryScreen, JournalScreen, +33 more
 - `src/components/SheetHosts.tsx` — on ProjectDetailScreen, ProjectsScreen, TodayScreen
