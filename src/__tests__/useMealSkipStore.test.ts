@@ -1,8 +1,9 @@
 import { mealSkipId, useMealSkipStore } from '../store/useMealSkipStore';
-import { dbDeleteMealSkip, dbGetMealSkipsSince, dbInsertMealSkip } from '../db/database';
+import { dbDeleteMealSkip, dbGetMealSkipsInRange, dbGetMealSkipsSince, dbInsertMealSkip } from '../db/database';
 
 jest.mock('../db/database', () => ({
   dbGetMealSkipsSince: jest.fn(() => []),
+  dbGetMealSkipsInRange: jest.fn(() => []),
   dbInsertMealSkip: jest.fn(),
   dbDeleteMealSkip: jest.fn(),
 }));
@@ -66,5 +67,12 @@ describe('setSkipped', () => {
     expect(state().isSkipped(DAY, 'dinner')).toBe(false);
     undo();
     expect(state().isSkipped(DAY, 'dinner')).toBe(true);
+  });
+});
+
+describe('skipsInRange', () => {
+  it('reads the range from the database', () => {
+    state().skipsInRange('2026-11-02', '2026-11-08');
+    expect(dbGetMealSkipsInRange).toHaveBeenCalledWith('2026-11-02', '2026-11-08');
   });
 });

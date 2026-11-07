@@ -1,14 +1,15 @@
 import { create } from 'zustand';
 import type { MealSkip, MealSlot } from '../types';
-import { dbDeleteMealSkip, dbGetMealSkipsSince, dbInsertMealSkip } from '../db/database';
+import { dbDeleteMealSkip, dbGetMealSkipsInRange, dbGetMealSkipsSince, dbInsertMealSkip } from '../db/database';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import { shiftDayKey } from '../utils/mealPlan';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 
 /**
  * Meals the person said they skipped (`MealSkip`), set from the meal strip on
- * Today. CRUD and nothing else: what a skip means for the strip is
- * `mealStripCells` in `src/utils/mealStrip.ts`.
+ * Today. CRUD and nothing else: what a skip means to a screen is
+ * `src/utils/mealSkips.ts`, and the log nudge drops a skipped meal's
+ * "Log lunch?" (`withoutSkippedMeals`).
  *
  * Loads a week back from the logical today rather than everything: the strip
  * only draws today, and a skip is three rows a day at most, so the window is
@@ -28,6 +29,12 @@ interface MealSkipStore {
   skips: MealSkip[];
   initialized: boolean;
   initialize: () => void;
+  /**
+   * The skips from `startKey` to `endKey` inclusive, read from SQLite, for a
+   * screen showing days outside the loaded week (the Meal plan). `skips`
+   * changing is the signal to read again.
+   */
+  skipsInRange: (startKey: string, endKey: string) => MealSkip[];
   /** Whether this meal of this day is marked skipped. */
   isSkipped: (dayKey: string, slot: MealSlot) => boolean;
   /**
@@ -44,6 +51,10 @@ export const useMealSkipStore = create<MealSkipStore>((set, get) => ({
   initialize() {
     const from = shiftDayKey(dayKeyOf(getLogicalToday()), -LOAD_DAYS_BACK);
     set({ skips: dbGetMealSkipsSince(from), initialized: true });
+  },
+
+  skipsInRange(startKey, endKey) {
+    return dbGetMealSkipsInRange(startKey, endKey);
   },
 
   isSkipped(dayKey, slot) {

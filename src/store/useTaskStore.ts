@@ -37,6 +37,7 @@ import {
   dbMarkTaskSeen,
   dbTransaction,
   dbGetMealPlanEntries,
+  dbGetMealSkipsSince,
   dbGetMealPlanEntry,
   dbGetFoodLogEntries,
 } from '../db/database';
@@ -116,6 +117,7 @@ import {
   staleMealLogNudgeTasks,
   answeredMealLogNudgeTasks,
   wantedMealLogNudges,
+  withoutSkippedMeals,
   type MealLogRecord,
 } from '../utils/mealLogNudgeTasks';
 import { loggedMealSlotKeys } from '../utils/mealLogCoverage';
@@ -7818,7 +7820,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // told apart from one whose entry has vanished only by what's actually in
     // this set.
     const windowStart = shiftDayKey(todayKey, -MEAL_LOG_NUDGE_LOOKBACK_DAYS - 1);
-    const entries = dbGetMealPlanEntries(windowStart, todayKey);
+    // A meal marked skipped on the strip is answered: left out here, it raises
+    // nothing and a row already raised for it is dropped (withoutSkippedMeals).
+    const entries = withoutSkippedMeals(
+      dbGetMealPlanEntries(windowStart, todayKey),
+      dbGetMealSkipsSince(windowStart),
+    );
     const logged = mealLogRecord(dbGetFoodLogEntries(windowStart, todayKey));
 
     // Clear first, create second, the same ordering every generator here

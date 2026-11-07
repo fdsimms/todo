@@ -1,6 +1,7 @@
 import type { FoodLogEntry, MealPlanEntry, MealSlot } from '../types';
 import { MEAL_SLOTS } from '../types';
 import { mealDayCoverage } from './mealLogCoverage';
+import { skipStands } from './mealSkips';
 import { DEFAULT_MEAL_SLOTS_ENABLED, MEAL_SLOT_TASK_DAYS } from './mealSlotTasks';
 import { shiftDayKey } from './mealPlan';
 import { baseCoinsFor } from './rewards';
@@ -113,12 +114,11 @@ export function mealStripCells(
     if (inLog.length > 0) {
       return { slot, state: 'logged', text: join(inLog.map(logLabelOf)), planned: inPlan, logged: inLog };
     }
-    const eaten = inPlan.some(e => e.cookedAt);
-    if (!eaten && skipped.includes(slot)) {
+    if (skipped.includes(slot) && skipStands(c)) {
       return { slot, state: 'skipped', text: null, planned: inPlan, logged: inLog };
     }
     if (inPlan.length > 0) {
-      const state: MealStripState = eaten ? 'eaten' : 'planned';
+      const state: MealStripState = inPlan.some(e => e.cookedAt) ? 'eaten' : 'planned';
       return { slot, state, text: join(inPlan.map(titleOf)), planned: inPlan, logged: inLog };
     }
     return { slot, state: 'empty', text: null, planned: inPlan, logged: inLog };

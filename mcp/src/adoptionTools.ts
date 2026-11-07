@@ -432,6 +432,25 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'meal_strip_skip',
+    title: 'Skipping a meal on the meal strip',
+    benefit: 'A meal you skipped can be marked skipped from the meal strip at the top of Today, so it stops asking you to choose one and the "Log this meal?" nudge leaves it alone.',
+    kitchen: true,
+    since: '2026-11-07',
+    evidence: ({ replica }) => {
+      if (replica.settings().mealsOnToday !== 'top') return null;
+      const today = replica.todayKey();
+      const from = replica.shiftDayKey(today, -14);
+      const to = replica.shiftDayKey(today, -1);
+      if (replica.mealSkips(from, to).length > 0) return null;
+      // Breakfasts with nothing logged over the last two weeks: the meal most
+      // often skipped, and the one the strip kept asking about.
+      const logged = new Set(replica.foodLogEntries(from, to).filter(e => e.slot === 'breakfast').map(e => e.dayKey));
+      const empty = 14 - logged.size;
+      return empty >= 5 ? `The meal strip is on and ${empty} of the last 14 breakfasts have nothing logged.` : null;
+    },
+  },
+  {
     id: 'slot_in',
     title: 'Waiting for a lighter day',
     benefit: 'A task or a whole category can wait for a day that isn\u2019t already full instead of piling onto a busy one. At least one waiting task still shows every day, longest wait first, and nothing waits more than a few days (3 unless you change it).',

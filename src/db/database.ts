@@ -9834,6 +9834,15 @@ export function dbGetMealSkipsSince(fromKey: string): MealSkip[] {
   return rows.map(rowToMealSkip);
 }
 
+/** The skipped meals from `startKey` to `endKey`, inclusive: the week the Meal plan has on screen. */
+export function dbGetMealSkipsInRange(startKey: string, endKey: string): MealSkip[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM meal_skips WHERE day_key >= ? AND day_key <= ? ORDER BY day_key ASC',
+    [startKey, endKey]
+  );
+  return rows.map(rowToMealSkip);
+}
+
 /** Replace rather than insert: the id is derived from the day and slot, so a second skip is the same row. */
 export function dbInsertMealSkip(skip: MealSkip): void {
   db.runSync(

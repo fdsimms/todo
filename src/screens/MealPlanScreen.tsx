@@ -30,6 +30,8 @@ import type { CardAnchor } from '../components/CardSheet';
 import { PeriodNav } from '../components/PeriodNav';
 import { MealDragCard, MealSlotRow } from '../components/MealSlotRow';
 import { describeSlotLog, mealDayCoverage, type SlotCoverage } from '../utils/mealLogCoverage';
+import { daySkips, skippedLine, skippedSlotsOn } from '../utils/mealSkips';
+import { useMealSkipStore } from '../store/useMealSkipStore';
 import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
@@ -585,6 +587,18 @@ export function MealPlanScreen() {
     () => (range ? recentFoodLogEntries(range.startKey, range.endKey) : NO_FOOD_LOG),
     [range?.startKey, range?.endKey, recentFoodLogEntries, foodLogCount],
     sameEntries,
+  );
+  /**
+   * Meals marked skipped from Today's strip over the week on screen, read
+   * from SQLite for the reason the food log is: the skip store holds only the
+   * last week. `skips` is the signal that a read would now come back different
+   * (a skip or un-skip, or a sync reload).
+   */
+  const skipStoreRows = useMealSkipStore(s => s.skips);
+  const weekSkips = useMemo(
+    () => (range ? useMealSkipStore.getState().skipsInRange(range.startKey, range.endKey) : []),
+    // `skipStoreRows` isn't read: it's the signal (see above).
+    [range?.startKey, range?.endKey, skipStoreRows],
   );
   const coverageByDay = useMemo(() => {
     const byDay = new Map<string, Map<MealSlot, SlotCoverage>>();
@@ -1531,6 +1545,10 @@ export function MealPlanScreen() {
     // restate what the reader can see. That line earns its place on the food
     // log's day view instead, where the plan isn't on screen at all.
     const dayCoverage = coverageByDay.get(key);
+    // A skipped meal says so in its own row when it has one, and in a line
+    // under the header when nothing was planned for it (mealSkips.ts).
+    const skips = daySkips(dayCoverage, skippedSlotsOn(weekSkips, key));
+    const skipLine = skippedLine(skips.unplanned);
     // Folded into the "Previous days" header rendered by the first previous
     // day below — every other previous day renders nothing of its own while
     // that section is collapsed.
@@ -1715,6 +1733,7 @@ export function MealPlanScreen() {
                 {!collapsed && produceLineByDay.has(key) && (
                   <Text style={styles.limitLine}>{produceLineByDay.get(key)}</Text>
                 )}
+                {!collapsed && skipLine && <Text style={styles.limitLine}>{skipLine}</Text>}
                 {!collapsed && dayEntries.length > 0 && (
                   (
                     /*
@@ -1754,6 +1773,7 @@ export function MealPlanScreen() {
                               choices={describeEntryChoices(entry)}
                               loggedText={describeSlotLog(dayCoverage?.get(entry.slot))}
                               busyText={entry.slot === 'dinner' && !entry.cookedAt ? busyEveningByDay.get(key) : null}
+                              skipped={skips.inRows.has(entry.slot)}
                               onPress={() => {
                                 if (selectionMode) toggleSelection(entry.id);
                                 else { haptics.tap(); setSelectedId(entry.id); }
@@ -1788,7 +1808,7 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag, busyEveningByDay, limitLineByDay, produceLineByDay, expandedLimitDays]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag, busyEveningByDay, limitLineByDay, produceLineByDay, expandedLimitDays, coverageByDay, weekSkips]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
