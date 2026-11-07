@@ -66,6 +66,7 @@ import {
   dbMarkTaskSeen,
   dbTransaction,
   dbGetMealPlanEntries,
+  dbGetMealSkipsSince,
   dbGetMealPlanEntry,
   dbGetFoodLogEntries,
 } from '../db/database';
@@ -124,6 +125,7 @@ jest.mock('../db/database', () => ({
   dbDeleteMoodLog: jest.fn(),
   // Milestones ride the same fan-out immediately after the mood log.
   dbGetAllMilestones: jest.fn().mockReturnValue([]),
+  dbGetMealSkipsSince: jest.fn().mockReturnValue([]),
   dbGetAllCookware: jest.fn().mockReturnValue([]),
   dbGetAllCopyFlags: jest.fn().mockReturnValue([]),
   dbGetAllFasts: jest.fn().mockReturnValue([]),
@@ -10091,6 +10093,21 @@ describe('checkMealLogNudgeTasks', () => {
     useTaskStore.getState().checkMealLogNudgeTasks();
 
     expect(nudgeRows().map(t => t.generatedSourceId)).toEqual(['m-dinner']);
+  });
+
+  it('does not ask about a meal marked skipped, and drops a row already raised for it', () => {
+    useTaskStore.getState().checkMealLogNudgeTasks();
+    expect(nudgeRows()).toHaveLength(1);
+
+    (dbGetMealSkipsSince as jest.Mock).mockReturnValue([
+      { id: 's', dayKey: '2026-08-21', slot: 'dinner', createdAt: '2026-08-21T20:00:00.000Z' },
+    ]);
+    try {
+      useTaskStore.getState().checkMealLogNudgeTasks();
+      expect(nudgeRows()).toHaveLength(0);
+    } finally {
+      (dbGetMealSkipsSince as jest.Mock).mockReturnValue([]);
+    }
   });
 
   it('writes nothing while off', () => {

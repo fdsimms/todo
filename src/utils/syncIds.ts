@@ -145,6 +145,12 @@ export const spawnSeed = {
    */
   coinMeal: (dayKey: string, slot: string) => `coin-meal:${dayKey}#${slot}`,
   /**
+   * A meal marked skipped from the meal strip (`MealSkip`). Keyed by the day
+   * and the meal, so skipping the same breakfast on two phones is one row and
+   * un-skipping on either removes it from both.
+   */
+  mealSkip: (dayKey: string, slot: string) => `meal-skip:${dayKey}#${slot}`,
+  /**
    * One line in the ledger of what the app did unattended. Every device runs
    * the same generators and sweeps, so two devices recording "Added 'Use up
    * spinach'" before they sync showed it twice. Keyed by what was done, to

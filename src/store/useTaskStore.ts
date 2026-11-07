@@ -37,6 +37,7 @@ import {
   dbMarkTaskSeen,
   dbTransaction,
   dbGetMealPlanEntries,
+  dbGetMealSkipsSince,
   dbGetMealPlanEntry,
   dbGetFoodLogEntries,
 } from '../db/database';
@@ -116,6 +117,7 @@ import {
   staleMealLogNudgeTasks,
   answeredMealLogNudgeTasks,
   wantedMealLogNudges,
+  withoutSkippedMeals,
   type MealLogRecord,
 } from '../utils/mealLogNudgeTasks';
 import { loggedMealSlotKeys } from '../utils/mealLogCoverage';
@@ -204,6 +206,7 @@ import { usePendingRecipeEstimateStore } from './usePendingRecipeEstimateStore';
 import { useMoodStore } from './useMoodStore';
 import { useJournalStore } from './useJournalStore';
 import { useMilestoneStore } from './useMilestoneStore';
+import { useMealSkipStore } from './useMealSkipStore';
 import { useCookwareStore } from './useCookwareStore';
 import { useCopyFlagStore } from './useCopyFlagStore';
 import { useFastStore } from './useFastStore';
@@ -3679,6 +3682,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // And the plan, which points at those recipes by id. Range-scoped, so this
     // reloads whatever week is on screen rather than the whole table.
     timedPart('MealPlan', () => useMealPlanStore.getState().initialize());
+    // Skipped meals, read by the meal strip beside the plan; same database swap.
+    timedPart('MealSkip', () => useMealSkipStore.getState().initialize());
     // What's in the fridge — pointed at by the plan the same way recipes are,
     // and on the same swap-the-database hazard.
     timedPart('Leftover', () => useLeftoverStore.getState().initialize());
@@ -7820,7 +7825,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // told apart from one whose entry has vanished only by what's actually in
     // this set.
     const windowStart = shiftDayKey(todayKey, -MEAL_LOG_NUDGE_LOOKBACK_DAYS - 1);
-    const entries = dbGetMealPlanEntries(windowStart, todayKey);
+    // A meal marked skipped on the strip is answered: left out here, it raises
+    // nothing and a row already raised for it is dropped (withoutSkippedMeals).
+    const entries = withoutSkippedMeals(
+      dbGetMealPlanEntries(windowStart, todayKey),
+      dbGetMealSkipsSince(windowStart),
+    );
     const logged = mealLogRecord(dbGetFoodLogEntries(windowStart, todayKey));
 
     // Clear first, create second, the same ordering every generator here

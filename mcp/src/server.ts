@@ -88,7 +88,7 @@ import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryL
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
 import { deleteCookbook, listCookbooks, logCookTime, mergeCookbooks, renameCookbook } from './recipeTools';
 import { lintRecipes } from './recipeLint';
-import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, addToWeekPool, copyMeals, getRecipe, listMealPlan, listRecipes, placePoolMeal, planMeal, removeMeal, removePoolMeal, saveMealAsRecipe, setMealCooked, updateMeal } from './kitchenTools';
+import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, addToWeekPool, copyMeals, getRecipe, listMealPlan, listRecipes, placePoolMeal, planMeal, removeMeal, removePoolMeal, saveMealAsRecipe, setMealCooked, setMealSkipped, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, addPersonNote, createPerson, deletePerson, deletePersonNote, savePersonGroup, updatePerson, updatePersonNote, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
 import { appLinks, appSiteAssociation, appUrlForOpenPath, openPage } from './appLinks';
 import { ANCHORS, CONTAINERS, QUESTION_KINDS, QUESTION_SOURCES, SCHEDULE_FREQUENCIES } from './templatePlan';
@@ -1183,7 +1183,7 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
 
   server.tool(
     'list_meal_plan',
-    `Meals planned over a range of days. Defaults to the ${DEFAULT_PLAN_DAYS} days from today. pool lists the meals chosen for those weeks with no day yet (the app's "Recipe pool" card); they are not on the plan until place_pool_meal gives them a day.`,
+    `Meals planned over a range of days. Defaults to the ${DEFAULT_PLAN_DAYS} days from today. pool lists the meals chosen for those weeks with no day yet (the app's "Recipe pool" card); they are not on the plan until place_pool_meal gives them a day. skipped lists the meals the person marked skipped (set_meal_skipped); food logged in the same meal outranks a skip.`,
     {
       from: dayKey.optional(),
       to: dayKey.optional(),
@@ -4591,6 +4591,19 @@ function registerWriteTools(
     async ({ id, cooked }) => {
       try {
         return json(await withWrite(() => setMealCooked(replica, id, cooked)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change that meal.' });
+      }
+    }
+  );
+
+  server.tool(
+    'set_meal_skipped',
+    'Mark one meal of one day skipped, or not, as Skip on the meal strip at the top of Today does. Only when the person says they skipped it. A skip earns no coins, stops the "Log this meal?" nudge for that meal, and leaves anything planned for it on the plan. skipped: false takes it back.',
+    { date: dayKey, slot: z.enum(KITCHEN_MEAL_SLOTS as unknown as [MealSlot, ...MealSlot[]]), skipped: z.boolean() },
+    async input => {
+      try {
+        return json(await withWrite(() => setMealSkipped(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not change that meal.' });
       }
