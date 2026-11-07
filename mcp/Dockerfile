@@ -32,10 +32,12 @@ COPY mcp mcp
 # bundle would break), so a syntax error otherwise surfaces only when the new
 # machine starts and crash-loops, with the old one already gone. This bundles to
 # nowhere purely to make esbuild read every file the server can reach.
-# .wav is loaded as empty because src/utils/alarmSoundDevice.ts require()s the
+# .wav is left external because src/utils/alarmSoundDevice.ts require()s the
 # alarm tones out of assets/, which the image deliberately doesn't contain; the
-# server never calls that function, so only the guard needs them to resolve.
-RUN cd mcp && node_modules/.bin/esbuild src/server.ts --bundle --platform=node --packages=external --loader:.wav=empty --outfile=/dev/null --log-level=warning
+# server never calls that function, so the guard only needs to not resolve them.
+# (--loader:.wav=empty was not enough: esbuild still has to find the file to
+# load it as empty, so the build failed on every deploy once that file existed.)
+RUN cd mcp && node_modules/.bin/esbuild src/server.ts --bundle --platform=node --packages=external --external:'*.wav' --outfile=/dev/null --log-level=warning
 
 ENV NODE_ENV=production
 ENV PORT=8080
