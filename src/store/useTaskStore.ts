@@ -2306,10 +2306,13 @@ interface TaskStore extends UndoHistoryActions {
    * Re-expresses every 'wallClock' reminder's stored instant under the
    * device's current timezone, so a reminder set for "9am" still fires at
    * 9am after the device has moved zones instead of at whatever 9am-in-the-
-   * old-zone now reads as here. Run on launch (initialize) and on every
-   * foreground (TodayScreen's AppState listener), since a phone left closed
-   * never sees a cold start and a timezone change while backgrounded is
-   * exactly the case this exists for. A 'fixed' reminder, or a task with no
+   * old-zone now reads as here. Run on launch (initialize), on every
+   * foreground (App.tsx's AppState listener, not a screen's, since a frozen
+   * tab runs no effects) and in every background run (catchUpPasses), since
+   * a phone left closed never sees a cold start and a timezone change while
+   * backgrounded is exactly the case this exists for. A reminder measured
+   * from a calendar or server instant (travel's leave-by, WaniKani's review
+   * hour) is written 'fixed' so this leaves it alone. A 'fixed' reminder, or a task with no
    * captured reminderUtcOffsetMinutes (a pre-migration row nobody has
    * touched yet), is left alone. See #1205.
    */
@@ -7927,7 +7930,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const grocery = useGroceryStore.getState();
       const lowIds = suppliesWantingList(tasks, grocery.items, dayResetTime);
       // registerUndo: false — nobody tapped anything. This runs from the launch
-      // sweep, the Today foreground and a completion, so the add left under the
+      // sweep, the foreground sweep and a completion, so the add left under the
       // user's next shake would be labelled as something they had just done and
       // point at an item they may never have opened. Same reason the completed
       // task purge doesn't route through bulkDeleteTasks.
@@ -8734,6 +8737,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           if (existing.title !== title) patch.title = title;
           if ((existing.notes ?? '') !== notes) patch.notes = notes;
           if (existing.reminderTime !== match.leaveAt) patch.reminderTime = match.leaveAt;
+          if (existing.reminderTimeAnchor !== 'fixed') patch.reminderTimeAnchor = 'fixed';
           // The reminder's body leads with the note, which no field holds, so a
           // change to it alone (the same headline under a new effect) would
           // leave the scheduled one stale. A patch reschedules through
@@ -8752,6 +8756,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           title,
           notes,
           reminderTime: match.leaveAt,
+          // Leaving is measured back from the event's start, which is a moment
+          // and not a clock time: a zone change must not move it (#1205).
+          reminderTimeAnchor: 'fixed',
           // The event's start as the window's close, so the row expires once
           // leaving is no longer possible and the user's expiry setting
           // decides what happens to it then.
@@ -9417,6 +9424,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             if (existing.dueDate !== hold.dueDate) patch.dueDate = hold.dueDate;
             if (existing.windowStart !== hold.windowStart) patch.windowStart = hold.windowStart;
             if (existing.reminderTime !== reminderTime) patch.reminderTime = reminderTime;
+            if (reminderTime && existing.reminderTimeAnchor !== 'fixed') patch.reminderTimeAnchor = 'fixed';
             // The notification's body, added with a reminder turned on later.
             // Never over a note somebody wrote.
             if (reminderTime && !existing.notes) patch.notes = WANIKANI_REVIEW_NOTES;
@@ -9433,6 +9441,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           dueDate: hold ? hold.dueDate : todayNoon.toISOString(),
           windowStart: hold ? hold.windowStart : null,
           reminderTime,
+          // The hour reviews come due is an instant the server named, not a
+          // clock time, so a zone change must not move it (#1205).
+          ...(reminderTime ? { reminderTimeAnchor: 'fixed' as const } : {}),
           ...(reminderTime ? { notes: WANIKANI_REVIEW_NOTES } : {}),
           category,
           linkUrl: reviewLink,

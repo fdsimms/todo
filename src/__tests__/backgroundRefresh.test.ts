@@ -55,6 +55,7 @@ const mockRecord = (name: string) => () => { mockCalls.push(name); };
 const mockTaskState = {
   initialize: mockRecord('initialize'),
   sweepExpiredTasks: mockRecord('sweepExpiredTasks'),
+  reanchorWallClockReminders: mockRecord('reanchorWallClockReminders'),
   checkVacationExpiry: mockRecord('checkVacationExpiry'),
   forgivePausedProjectStreaks: mockRecord('forgivePausedProjectStreaks'),
   checkAwayVacation: mockRecord('checkAwayVacation'),
@@ -280,6 +281,7 @@ describe('runBackgroundRefresh', () => {
     // hand-written expectation here is exactly how that would stop being true.
     const passNames = [
       'recordDeviceTimeZone',
+      'reanchorWallClockReminders',
       'checkVacationExpiry', 'forgivePausedProjectStreaks', 'checkAwayVacation', 'checkAwayGroceryList',
       'rolloverQuotas', 'sweepOvershootQuotas', 'syncWaterQuotaTasks',
       'syncSnackNudgeTasks', 'syncLimitWarningTasks', 'syncGoalTargetTasks',

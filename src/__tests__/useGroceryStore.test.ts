@@ -6184,7 +6184,7 @@ describe('setRunningLow', () => {
 
   it('arms no undo for a caller that is not a person tapping the pill', () => {
     // The supply sweep flags an item low because a task counted its last unit
-    // down. It runs from the launch pass, the Today foreground and a
+    // down. It runs from the launch pass, the foreground sweep and a
     // completion, so an entry left under the user's next shake would be
     // labelled as something they had just done, pointing at an item they may
     // never have opened. Same rule the completed-task purge follows by not

@@ -737,12 +737,21 @@ function GroceryItemSheetBody({
   // and writes the remembered shelf life instead — see
   // GroceryItem.shelfLifeDays for why a purchase is what activates it.
   //
+  // "On hand" is probablyHaveReason, the same test the Pantry screen draws its
+  // rows from, not a live "Got it" alone. A trip stamps expiresAt without
+  // touching onHandUntil, so reading the mark alone left a bag of spinach
+  // bought yesterday editing its shelf life rather than its date. And the
+  // column outlives the purchase (docs/arch/groceries.md, "Membership is
+  // pantryEntries"), so the date is only ever shown off a row this vouches
+  // for: shown on an item you've since used up, last month's "Mar 4 · 12 days
+  // past" read as a deadline for something you don't have (#1718).
+  //
   // Frozen counts as "nothing to count down from", which is the whole point of
   // the freezer: the stepper would otherwise write a date that liveExpiresAt
   // immediately suspends, so the number on screen would be one the app has
   // undertaken to ignore. Editing the shelf life is the useful thing to be
   // doing here anyway — that's the window setFrozen hands back on the thaw.
-  const countingDown = onHandFuture && !frozen;
+  const countingDown = !frozen && probablyHaveReason(item, new Date(), itemProducts) !== null;
   const expiryDays = countingDown
     // On hand with no date yet, the summary reads "Keeps N days" off the
     // remembered shelf life, so the stepper opens on that same N rather than
@@ -1636,7 +1645,7 @@ function GroceryItemSheetBody({
                 ? item.shelfLifeDays !== null
                   ? `Paused · keeps ${item.shelfLifeDays} ${item.shelfLifeDays === 1 ? 'day' : 'days'} once out`
                   : 'Paused'
-                : item.expiresAt
+                : countingDown && item.expiresAt
                   ? `${format(dayKeyToDate(item.expiresAt), 'MMM d')} · ${describeExpiry(item.expiresAt)}`
                   : item.shelfLifeDays !== null
                     ? `Keeps ${item.shelfLifeDays} ${item.shelfLifeDays === 1 ? 'day' : 'days'}`
@@ -1653,7 +1662,7 @@ function GroceryItemSheetBody({
                 ? "How long this keeps once it comes out of the freezer. Nothing counts down while it’s frozen."
                 : opened
                   ? 'The day this should be used up by, counted from when you opened it.'
-                  : item.expiresAt
+                  : countingDown && item.expiresAt
                   ? "The day to use this up by. Finishing a shopping trip fills it in for things that go bad and dates the use-up task."
                   : "How long this keeps once bought. Finishing a shopping trip starts the countdown and adds the use-up task.",
               describeDisposalHistory(item),

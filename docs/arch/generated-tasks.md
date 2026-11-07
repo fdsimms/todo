@@ -166,7 +166,7 @@ one. Those three rules and the reasoning behind them are in
   later reconcile will find room. For a leftover that was the foreground sweep; a grocery item had
   none, since every grocery reconcile runs off an edit to that one row, so the fourth perishable
   under a cap of three never got its task after the first three were done. The catch-up pass and
-  the Today foreground now run `useGroceryStore.reconcileAllUseUpTasks`, which walks
+  the foreground sweep (`useForegroundCatchUp`) now run `useGroceryStore.reconcileAllUseUpTasks`, which walks
   `useUpSweepOrder` (`src/utils/useUpSweep.ts`): every live leftover and every grocery item that
   wants a task, in one queue by date, which is also what makes the setting's "closest date first"
   hold across the two kinds. Two refusals keep it from being noisier than the per-row path. It still
@@ -287,7 +287,7 @@ one. Those three rules and the reasoning behind them are in
     silence-by-default rule exists to avoid.
   - **It's the one generator whose reconcile can't ride a source mutation.** A project goes quiet
     by time passing and stops being quiet when some *other* task gets a date, so the check runs on
-    the launch sequence and the Today foreground sweep, and `staleProjectReviewTasks` is what
+    the launch sequence and the foreground sweep (`useForegroundCatchUp`), and `staleProjectReviewTasks` is what
     clears a row whose reason has gone. It judges that against every stall, **not** against the
     capped set `wantedProjectReviews` returns: the cap decides who gets a *new* task when several
     projects are queued, and losing that contest is no reason to delete a row the user already
@@ -300,7 +300,7 @@ one. Those three rules and the reasoning behind them are in
   the user speaking; the fourth is the purchase reading's window running out, which changes no row
   and writes nothing. This offers to ask about exactly that, once.
   - **Structurally it is `projectReview`, one shelf over.** Same trigger shape (time passing, so it
-    runs from the launch sequence and the Today foreground sweep), same clear-then-create ordering,
+    runs from the launch sequence and the foreground sweep (`useForegroundCatchUp`)), same clear-then-create ordering,
     same cap, same stale pass, and the same decision to decline with a *stamp* rather than a
     permanent `false` — the source earns the question again later, which is what `useUpTask: false`
     could not express.
@@ -664,7 +664,7 @@ one. Those three rules and the reasoning behind them are in
   this meal" since the add-to-list sheets shipped; the only thing absent was something to say it
   unprompted, on a day you have no reason to be thinking about Thursday.
   - **Structurally it is `pantryCheck`, one shelf over** — same trigger shape (time passing, so it
-    runs from the launch sequence and the Today foreground *and* on focus), same clear-then-create
+    runs from the launch sequence and the foreground sweep *and* on Today's focus), same clear-then-create
     ordering, same cap of three, same `dropGeneratedTask` so the app's own tidying up never writes
     the source's opt-out.
   - **Its whole answer to a meal plan being a thing people re-plan is that the clear pass re-runs
@@ -1546,7 +1546,7 @@ argued out before it was built; read them before reopening one.
   in minutes where a forecast holds for hours. A reliable push for live incidents would need a
   server, which is the "no backend" promise, and is deliberately not built.
 - **The check re-runs when its data lands.** Every other generator checks on the launch sequence
-  and the Today foreground sweep, which fire before the calendar read resolves. For a forecast a
+  and the foreground sweep (`useForegroundCatchUp`), which fire before the calendar read resolves. For a forecast a
   late answer costs nothing; for a delay it is the feature. `useTravelTaskSync` subscribes to the
   calendar, transit and settings stores and re-runs the check on change. It lives in `src/hooks/`
   because `useTaskStore` already imports the calendar and transit stores, so a subscription in
@@ -1646,7 +1646,7 @@ so ("Wake up at 6:15", dated the evening before) and this phone's alarm is set f
 A weekend with nothing on it becomes "Make plans for the weekend", raised on the
 Thursday or Friday before it. Structurally it is `projectReview` one shelf over —
 a condition time passing brings about, so it fires from the launch sequence and
-the Today foreground sweep rather than off any mutation, with the same
+the foreground sweep (`useForegroundCatchUp`) rather than off any mutation, with the same
 clear-then-create ordering and the same stale pass — but its source is neither a
 row nor a single day key, which is what everything below follows from. The rules
 themselves live in `src/utils/weekendTasks.ts`; what belongs here is how it sits
@@ -2179,7 +2179,7 @@ charger would read "no token".
 - **A held task gives up its window once its hour has come.** A window gates every day, not just
   the first, so a reviews task left undone overnight would otherwise hide again until that hour
   the next day. That step needs no read, so `checkWaniKaniTasks` is also in `maintenancePasses.ts`
-  and the Today foreground sweep, where it does only that. Everything else waits for a read, which
+  and the foreground sweep (`useForegroundCatchUp`), where it does only that. Everything else waits for a read, which
   `useWaniKaniSync` and the background run make.
 - Pauses on vacation (it is work), refuses in demo mode, and files under its own category setting
   (default Study). Source ids are `reviews:<local hour>` and `lessons:<day>`; a delete writes
