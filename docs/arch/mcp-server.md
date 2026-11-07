@@ -1390,6 +1390,13 @@ here rather than leaving it to catch up. The same pairing runs the other way: co
 step of a meal's task here marks the meal cooked, as `completeTask` does on the phone, and
 `reopen_task` on that step points at `set_meal_cooked`.
 
+`set_meal_skipped` is the meal strip's Skip and Not skipped (`MealSkip`, a row per day and meal
+under `spawnSeed.mealSkip`'s derived id, so a skip made here and on the phone is one row). It writes
+the db directly rather than through `useMealSkipStore`, which holds only the last week while an agent
+can name any day. `list_meal_plan` returns the range's skips as `skipped`. Its ledger line is
+`edited` with no `recordId`, since a `created` meal with one reads as a planned meal the Activity
+screen can remove.
+
 `save_meal_as_recipe` is the meal sheet's "Save as recipe" (the recipe already called that, else a
 new empty one). `add_to_week_pool`, `place_pool_meal` and `remove_pool_meal` are the weekly pool (`WeekPoolEntry`, a meal chosen for a week with no day), which `list_meal_plan` returns as `pool`; placing one writes the planned meal through `planMeal` and deletes the pool row, as the app does in one undo step. `copy_meals` is the plan's three copies (`weekCopyDrafts`, `slotCopyDrafts`,
 `mealCopyDraft`): a whole week only into a week with nothing planned, one slot only into a week

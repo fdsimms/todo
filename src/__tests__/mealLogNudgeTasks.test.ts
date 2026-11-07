@@ -8,6 +8,7 @@ import {
   staleMealLogNudgeTasks,
   answeredMealLogNudgeTasks,
   wantedMealLogNudges,
+  withoutSkippedMeals,
   type MealLogRecord,
 } from '../utils/mealLogNudgeTasks';
 import { mealSlotKey } from '../utils/mealPlan';
@@ -280,5 +281,20 @@ describe('answeredMealLogNudgeTasks', () => {
   it('names nothing for a deleted meal', () => {
     const t = task({ generatedSourceId: 'gone' });
     expect(answeredMealLogNudgeTasks([t], [], NOTHING_LOGGED, TODAY)).toEqual([]);
+  });
+});
+
+describe('withoutSkippedMeals', () => {
+  it('takes out the meals marked skipped, matched on day and slot', () => {
+    const dinner = entry('2026-08-21', { slot: 'dinner' });
+    const lunch = entry('2026-08-21', { slot: 'lunch' });
+    const nextDinner = entry('2026-08-22', { slot: 'dinner' });
+    expect(withoutSkippedMeals([dinner, lunch, nextDinner], [{ dayKey: '2026-08-21', slot: 'dinner' }]))
+      .toEqual([lunch, nextDinner]);
+  });
+
+  it('keeps every entry when nothing is skipped', () => {
+    const dinner = entry('2026-08-21', { slot: 'dinner' });
+    expect(withoutSkippedMeals([dinner], [])).toEqual([dinner]);
   });
 });

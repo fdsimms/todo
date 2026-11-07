@@ -100,6 +100,7 @@ import { liveReminderRemovals } from '../utils/reminderRemovals';
 import { useReminderRemovalStore } from '../store/useReminderRemovalStore';
 import { isRepeatingTimer, isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRemaining } from '../utils/stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useMealSkipStore } from '../store/useMealSkipStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
@@ -2800,6 +2801,11 @@ describe('demo seed — people', () => {
     const sealed = sealedEntries(useJournalStore.getState().entries, today);
     expect(sealed).toHaveLength(1);
     expect(useTaskStore.getState().tasks.some(t => t.linkUrl === journalEntryLink(sealed[0].id) && !t.completed)).toBe(true);
+  });
+
+  it('seeds a meal marked skipped, so the meal strip shows the state', () => {
+    const today = dayKeyOf(getLogicalToday());
+    expect(useMealSkipStore.getState().isSkipped(today, 'breakfast')).toBe(true);
   });
 
   it('seeds a planned meal with a one-off replacement, shopped for as replaced', () => {

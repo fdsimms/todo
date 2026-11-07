@@ -928,6 +928,21 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return entry;
     },
 
+    setMealSkipped(dayKey, slot, skipped) {
+      const skip = replica.setMealSkipped(dayKey, slot, skipped);
+      // 'edited' with no recordId: a 'created' meal with one is read as a
+      // planned meal the Activity screen can remove (agentRecordPlan), and a
+      // skip is not one. The way back is set_meal_skipped the other way.
+      log({
+        action: 'edited',
+        subject: 'meal',
+        title: `${slot} on ${dayKey}`,
+        taskId: null,
+        note: `Mark ${slot} on ${dayKey} ${skipped ? 'skipped' : 'not skipped'}`,
+      });
+      return skip;
+    },
+
     setMealCooked(id, cooked) {
       const result = replica.setMealCooked(id, cooked);
       const title = result.entry.title;

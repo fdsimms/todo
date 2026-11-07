@@ -40,6 +40,11 @@ interface Props {
    * changes because of it.
    */
   busyText?: string | null;
+  /**
+   * Marked skipped from Today's meal strip (`MealSkip`), and nothing since
+   * says it was eaten (`skipStands`). The caller decides; the row only says so.
+   */
+  skipped?: boolean;
   onPress: () => void;
   /**
    * Ticks the entry off, or back on — the same shortcut a task row's checkbox
@@ -131,7 +136,7 @@ interface Props {
  * absence a reader is expected to infer.
  */
 export function MealSlotRow({
-  entry, title, hasRecipe, choices, loggedText, busyText, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
+  entry, title, hasRecipe, choices, loggedText, busyText, skipped, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
   onDragStart, dragging, surface,
 }: Props) {
   const colors = useColors();
@@ -193,7 +198,7 @@ export function MealSlotRow({
       accessibilityRole={selectionMode ? 'checkbox' : 'button'}
       accessibilityState={selectionMode ? { checked: !!selected } : undefined}
       accessibilityLabel={
-        [slotLabel(entry.slot), title, scaleLabel, choices, loggedText, busyText, cooked ? 'cooked' : null]
+        [slotLabel(entry.slot), title, scaleLabel, choices, loggedText, skipped ? 'skipped' : null, busyText, cooked ? 'cooked' : null]
           .filter(Boolean).join(', ')
       }
       accessibilityHint={
@@ -224,6 +229,7 @@ export function MealSlotRow({
           {[slotLabel(entry.slot), scaleLabel].filter(Boolean).join(' · ')}
           {!!choices && <Text style={styles.choices}> · {choices}</Text>}
           {!!loggedText && <Text style={styles.logged}> · {loggedText}</Text>}
+          {skipped && <Text style={styles.choices}> · Skipped</Text>}
           {!!busyText && <Text style={styles.busy}> · {busyText}</Text>}
         </Text>
       </View>
