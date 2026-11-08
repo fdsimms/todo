@@ -6037,8 +6037,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // one on Monday (the same getNextOccurrence a skip uses, which covers no
       // day). A daily rule gives today, as before. A weekly target keeps its
       // period reading: its row stands for the whole week.
+      //
+      // completedAt is the day being closed, because a repeat-from-completion
+      // rule measures from the day the work was done and otherwise reads "now":
+      // a daily target left short yesterday was then counted from today and
+      // landed on tomorrow, skipping today altogether.
       const ruleDay = task.quotaPeriod !== 'week'
-        ? getNextOccurrence(task, dayResetTime, { catchUp: true })
+        ? getNextOccurrence(task, dayResetTime, { catchUp: true, completedAt: ownDayEnd })
         : null;
       const ruleStart = ruleDay ? getTaskDayStart(ruleDay.date, dayResetTime) : todayStart;
       const earliest = ruleStart > todayStart ? ruleStart : todayStart;

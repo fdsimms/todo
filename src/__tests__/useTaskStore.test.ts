@@ -16653,8 +16653,25 @@ describe('quota tasks', () => {
     });
   });
 
+  describe('rolloverQuotas: a daily target that repeats from completion', () => {
+    it('lands on today after a short day, not on tomorrow', () => {
+      jest.setSystemTime(new Date(2025, 5, 14, 9, 0, 0)); // Saturday June 14
+      useTaskStore.setState({
+        tasks: [quota({
+          recurrenceType: 'daily', recurrenceFromCompletion: true, targetCount: 2, progressCount: 1,
+          dueDate: new Date(2025, 5, 13, 12, 0, 0).toISOString(), // yesterday
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.completed).toBe(true);
+      const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+      expect(dayKeyOf(new Date(next.dueDate!))).toBe('2025-06-14');
+    });
+  });
+
   describe('rolloverQuotas: a weekly target', () => {
-    const weekly = (overrides: Partial<Task> = {}) =>
+    const weekly =(overrides: Partial<Task> = {}) =>
       quota({ quotaPeriod: 'week', recurrenceType: 'weekly', targetCount: 3, ...overrides });
 
     // The bug the period comparison exists to prevent: on the day test this row
