@@ -568,7 +568,7 @@ Where each component can appear.
 - `src/screens/settings/SavedEventsRows.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SavedPlacesRows.tsx` — on SettingsGroupScreen
 - `src/screens/settings/ScreenTimeSettings.tsx` — on ScreenTimeScreen
-- `src/screens/settings/SettingsChoiceTray.tsx` — on SettingsGroupScreen
+- `src/screens/settings/SettingsChoiceTray.tsx` — on AutomationsScreen, SettingsGroupScreen
 - `src/screens/settings/SettingsDisclosure.tsx` — on SettingsGroupScreen
 - `src/screens/settings/SettingsFocus.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
 - `src/screens/settings/SettingsRow.tsx` — on AutomationsScreen, ScreenTimeScreen, SettingsGroupScreen
@@ -581,3 +581,6 @@ Where each component can appear.
 - `src/screens/settings/WaniKaniSettingsRows.tsx` — on AutomationsScreen
 - `src/screens/settings/WaniKaniTokenRows.tsx` — on AutomationsScreen, SettingsGroupScreen
 - `src/screens/settings/WorkoutsSettings.tsx` — on SettingsGroupScreen
+- `src/screens/settings/YnabAccountRows.tsx` — on AutomationsScreen, SettingsGroupScreen
+- `src/screens/settings/YnabGroceryBudgetSection.tsx` — on SettingsGroupScreen
+- `src/screens/settings/YnabSettingsRows.tsx` — on AutomationsScreen

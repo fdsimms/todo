@@ -137,6 +137,8 @@ import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { WaniKaniSettingsRows } from './WaniKaniSettingsRows';
+import { YnabSettingsRows } from './YnabSettingsRows';
+import { useYnabStore } from '../../store/useYnabStore';
 import { useWaniKaniStore } from '../../store/useWaniKaniStore';
 import { useSettingsFocus } from './SettingsFocus';
 import { navigateToSettingsEntry } from '../../navigation/openSettings';
@@ -226,6 +228,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
 
   const s = useSettingsStore();
   const wanikaniHasToken = useWaniKaniStore(state => state.hasToken);
+  const ynabHasToken = useYnabStore(state => state.hasToken);
   const navigation = useNavigation();
   const categories = useCategoryStore(useShallow(state => state.categories));
   // Names for the per-calendar leave-by rows. Filled by the calendar read, so a
@@ -415,6 +418,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'journalLog': return s.journalLogTaskCategory;
       case 'dreamLog': return s.dreamLogTaskCategory;
       case 'wanikani': return s.wanikaniTaskCategory;
+      case 'ynab': return s.ynabTaskCategory;
       case 'weekendNudge': return s.weekendNudgeTaskCategory;
       case 'weighIn': return s.weighInTaskCategory;
       case 'bloodPressureLog': return s.bloodPressureTaskCategory;
@@ -460,6 +464,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'journalLog': s.setJournalLogTaskCategory(category); break;
       case 'dreamLog': s.setDreamLogTaskCategory(category); break;
       case 'wanikani': s.setWanikaniTaskCategory(category); break;
+      case 'ynab': s.setYnabTaskCategory(category); break;
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
       case 'weighIn': s.setWeighInTaskCategory(category); break;
       case 'bloodPressureLog': s.setBloodPressureTaskCategory(category); break;
@@ -517,6 +522,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     }
     // On without a token reads nothing, so say what it is waiting for.
     if (spec.kind === 'wanikani' && !wanikaniHasToken) return 'Add an API token from WaniKani to start';
+    if (spec.kind === 'ynab' && !ynabHasToken) return 'Add a personal access token from YNAB to start';
     if (spec.kind === 'journalLog' && s.journalLogTimeSegments.length > 0) {
       const segmentNames = s.journalLogTimeSegments.map(seg =>
         timeSegmentChoices.find(o => o.value === seg)?.label.toLowerCase() ?? seg
@@ -1201,6 +1207,8 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     }
 
     if (kind === 'wanikani') return <WaniKaniSettingsRows />;
+
+    if (kind === 'ynab') return <YnabSettingsRows />;
 
     if (kind === 'weather') {
       return (

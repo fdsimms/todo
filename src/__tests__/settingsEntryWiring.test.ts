@@ -73,6 +73,12 @@ const TEMPLATED: { test: (id: string) => boolean; template: (id: string) => stri
   // HealthSettings maps one `MOOD_SOURCE_ROWS` array into the mood log's four
   // suggestion switches, so the literal ids live in the array, not the JSX.
   { test: id => id.startsWith('moodSource'), template: () => 'entryId={entryId}' },
+  // YnabAccountRows draws the token and plan rows in three places, so each
+  // place hands it its own ids. Resolved per id, like the segment helpers.
+  {
+    test: id => ['ynabToken', 'ynabPlan', 'ynabTokenPrivacy', 'ynabGroceryToken', 'ynabGroceryPlan'].includes(id),
+    template: id => `EntryId="${id}"`,
+  },
 ];
 
 describe('settings entry wiring', () => {

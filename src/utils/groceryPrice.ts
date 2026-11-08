@@ -611,6 +611,51 @@ export function describeCartTotal(
 }
 
 /**
+ * The banner's line when the budget is a YNAB category's balance this month
+ * rather than a number typed for the trip: what is in the cart, what is left
+ * in the category, and what that leaves.
+ *
+ * The same discipline as `describeCartTotal`, through the same
+ * `cartBudgetStanding`: "over" can be said at any coverage, "after this" only
+ * once every row in the cart is priced, and the coverage stays when a verdict
+ * can't replace it. Two differences, both because the budget here is a
+ * reading of somewhere else rather than a ceiling typed for this trip:
+ *
+ * - **It says something before anything is priced.** "$36.00 left in
+ *   Groceries" is worth seeing on the way in, so the line doesn't wait for the
+ *   cart the way the typed budget's does.
+ * - **A category can already be below zero.** YNAB lets spending run past
+ *   what was assigned, and that is said as it is ("Groceries is overspent by
+ *   $5.00") rather than measured against, since "$X over a negative budget"
+ *   is arithmetic nobody can read at a shelf.
+ */
+export function describeCartAgainstCategory(
+  estimate: ListEstimate,
+  category: { name: string; balanceMinor: number },
+  symbol: string,
+): string {
+  const coverage = estimate.priced === estimate.total
+    ? null
+    : `${estimate.priced} of ${estimate.total} priced`;
+  const left = category.balanceMinor < 0
+    ? `${category.name} is overspent by ${formatPrice(-category.balanceMinor, symbol)}`
+    : `${formatPrice(category.balanceMinor, symbol)} left in ${category.name}`;
+  if (estimate.priced === 0) return left;
+
+  const parts = [`≈ ${formatPrice(estimate.totalMinor, symbol)} in cart`, left];
+  if (category.balanceMinor >= 0) {
+    const standing = cartBudgetStanding(estimate, category.balanceMinor);
+    if (standing === 'over') parts.push(`${formatPrice(estimate.totalMinor - category.balanceMinor, symbol)} over`);
+    if (standing === 'under') parts.push(`${formatPrice(category.balanceMinor - estimate.totalMinor, symbol)} after this`);
+    // Under is the one verdict that says every row was counted.
+    if (standing !== 'under' && coverage) parts.push(coverage);
+  } else if (coverage) {
+    parts.push(coverage);
+  }
+  return parts.join(' · ');
+}
+
+/**
  * The one place the "which price do I seed a field with" rule lives: what this
  * item cost at *this* store if it's been priced there, else what it cost
  * anywhere. Standing in Costco, last week's Costco price is the number worth

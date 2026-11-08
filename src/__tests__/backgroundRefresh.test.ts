@@ -89,6 +89,7 @@ const mockTaskState = {
   checkMoodTasks: mockRecord('checkMoodTasks'),
   checkJournalTasks: mockRecord('checkJournalTasks'),
   checkWaniKaniTasks: mockRecord('checkWaniKaniTasks'),
+  checkYnabTasks: mockRecord('checkYnabTasks'),
   checkWeekendNudgeTasks: mockRecord('checkWeekendNudgeTasks'),
   // Sync-shaped like every other mock here even though the real pass is
   // async (`checkWeighInTasks(): Promise<void>`) — the caller wraps it as
@@ -122,6 +123,14 @@ const mockWaniKaniState: { snapshot: object | null; refresh: () => Promise<void>
     return Promise.resolve();
   },
 };
+const mockYnabState: { snapshot: object | null; refresh: () => Promise<void> } = {
+  snapshot: null,
+  refresh: () => {
+    mockCalls.push('ynabRefresh');
+    mockYnabState.snapshot = {};
+    return Promise.resolve();
+  },
+};
 const mockSyncState = {
   initialize: mockRecord('initializeSync'),
   syncNow: async () => { mockCalls.push('syncNow'); return null; },
@@ -137,6 +146,9 @@ jest.mock('../store/useSettingsStore', () => ({
 }));
 jest.mock('../store/useWaniKaniStore', () => ({
   useWaniKaniStore: { getState: () => mockWaniKaniState },
+}));
+jest.mock('../store/useYnabStore', () => ({
+  useYnabStore: { getState: () => mockYnabState },
 }));
 jest.mock('../store/useTemplateStore', () => ({
   useTemplateStore: { getState: () => ({ checkScheduledTemplates: mockRecord('checkScheduledTemplates') }) },
@@ -230,7 +242,7 @@ jest.mock('../utils/appShieldReconcile', () => ({
 }));
 
 import * as TaskManager from 'expo-task-manager';
-import { runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runWatchWork, BACKGROUND_REFRESH_TASK } from '../utils/backgroundRefresh';
+import { runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runBackgroundYnab, runWatchWork, BACKGROUND_REFRESH_TASK } from '../utils/backgroundRefresh';
 import { catchUpPasses, retentionPasses, expiryPasses } from '../utils/maintenancePasses';
 
 beforeEach(() => {
@@ -240,6 +252,9 @@ beforeEach(() => {
   mockSettingsState.initialized = true;
   mockSettingsState.wanikaniTasks = false;
   mockWaniKaniState.snapshot = null;
+  mockSettingsState.ynabTasks = false;
+  mockSettingsState.ynabGroceryBudget = false;
+  mockYnabState.snapshot = null;
   mockAppState = 'active';
   jest.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -555,5 +570,36 @@ describe('runWatchWork', () => {
     watchListeners[0]();
     await new Promise(resolve => setImmediate(resolve));
     expect(mockCalls).toEqual(['drainWatchQueues:requeue', 'syncWorkoutLiveActivity', 'writeWidgetSnapshot']);
+  });
+});
+
+describe('runBackgroundYnab', () => {
+  it('reads the plan, runs the check and rewrites the widget when a read lands', async () => {
+    mockSettingsState.ynabTasks = true;
+    await runBackgroundYnab();
+    expect(mockCalls).toEqual(['ynabRefresh', 'checkYnabTasks', 'writeWidgetSnapshot']);
+  });
+
+  it('stops at the read when nothing new landed', async () => {
+    mockSettingsState.ynabTasks = true;
+    mockYnabState.snapshot = {};
+    const refresh = mockYnabState.refresh;
+    mockYnabState.refresh = () => { mockCalls.push('ynabRefresh'); return Promise.resolve(); };
+    try {
+      await runBackgroundYnab();
+    } finally {
+      mockYnabState.refresh = refresh;
+    }
+    expect(mockCalls).toEqual(['ynabRefresh']);
+  });
+
+  it('reads nothing with the task switched off or in demo mode', async () => {
+    // The grocery balance alone is read with a trip on screen, not in the background.
+    mockSettingsState.ynabGroceryBudget = true;
+    await runBackgroundYnab();
+    mockSettingsState.ynabTasks = true;
+    setDemoModeActive(true);
+    await runBackgroundYnab();
+    expect(mockCalls).toEqual([]);
   });
 });
