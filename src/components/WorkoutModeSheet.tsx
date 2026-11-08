@@ -751,16 +751,18 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       <ScreenAwake />
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.headerIcon}
-            activeOpacity={interaction.activeOpacity}
-            onPress={minimize}
-            accessibilityRole="button"
-            accessibilityLabel="Minimize workout"
-            accessibilityHint="The workout keeps running"
-          >
-            <Ionicons name="chevron-down" size={iconSize.lg} color={colors.accentText} />
-          </TouchableOpacity>
+          <View style={styles.headerSide}>
+            <TouchableOpacity
+              style={styles.headerIcon}
+              activeOpacity={interaction.activeOpacity}
+              onPress={minimize}
+              accessibilityRole="button"
+              accessibilityLabel="Minimize workout"
+              accessibilityHint="The workout keeps running"
+            >
+              <Ionicons name="chevron-down" size={iconSize.lg} color={colors.accentText} />
+            </TouchableOpacity>
+          </View>
           <View style={styles.headerTitle}>
             {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />}
           </View>
@@ -786,7 +788,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               </TouchableOpacity>
               <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
             </View>
-          ) : <View style={styles.headerSpacer} />}
+          ) : <View style={styles.headerSide} />}
         </View>
         {/* The name gets its own full-width line under the buttons, so a long
             routine name isn't squeezed between Leave and Finish. */}
@@ -1876,9 +1878,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xsm, gap: spacing.sm },
-  headerTitle: { flex: 1, alignItems: 'center' },
-  headerSpacer: { minWidth: 64 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  // The two sides take equal width, so the clock between them is centered
+  // however wide the buttons on the right are.
+  headerSide: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  headerTitle: { alignItems: 'center' },
+  headerRight: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: spacing.xs },
   headerIcon: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
   titleBlock: { alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
   title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
