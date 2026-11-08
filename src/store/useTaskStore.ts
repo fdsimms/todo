@@ -2695,6 +2695,12 @@ interface TaskStore extends UndoHistoryActions {
   bulkCompleteTasks: (ids: string[]) => void;
   bulkUncompleteTasks: (ids: string[]) => void;
   bulkMarkMissed: (ids: string[]) => void;
+  /**
+   * Bulk `skipNextRecurrence`: rolls every repeating task in `ids` onto its next
+   * date with no record. Anything else in the selection is left alone, so a
+   * mixed selection needs no filtering by the caller. One undo for the batch.
+   */
+  bulkSkipRecurrence: (ids: string[]) => void;
   /** `skipGeneratedOptOut` has the same meaning as `deleteTask`'s — see its doc comment. */
   /**
    * Returns the ids it refused to delete because a locked unlock needs them
@@ -11576,6 +11582,27 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: `${missedIds.length} task${missedIds.length === 1 ? '' : 's'} marked missed`,
       redo: () => get().bulkMarkMissed(ids),
       undo: () => missedIds.forEach(id => get().uncompleteTask(id)),
+    });
+  },
+
+  // Bulk equivalent of skipNextRecurrence. skipPatch refuses anything that
+  // doesn't repeat, so the per-task guard is the one the row's Skip has.
+  bulkSkipRecurrence(ids) {
+    const before = new Map<string, Task>();
+    ids.forEach(id => {
+      const t = get().tasks.find(x => x.id === id);
+      if (t && !t.completed && t.recurrenceType !== 'none') before.set(t.id, { ...t });
+    });
+    if (before.size === 0) return;
+    dbTransaction(() => {
+      before.forEach((_, id) => get().skipNextRecurrence(id, { registerUndo: false }));
+    });
+    const n = before.size;
+    get().setLastAction({
+      announce: true,
+      label: `${n} task${n === 1 ? '' : 's'} skipped`,
+      undo: () => dbTransaction(() => before.forEach((snap, id) => get().updateTask(id, snap))),
+      redo: () => get().bulkSkipRecurrence(ids),
     });
   },
 

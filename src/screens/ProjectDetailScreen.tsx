@@ -423,6 +423,7 @@ function ProjectDetailContent() {
   const reorderProjectItems = useTaskStore(s => s.reorderProjectItems);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
+  const bulkSkipRecurrence = useTaskStore(s => s.bulkSkipRecurrence);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const groupTasks = useTaskStore(s => s.groupTasks);
   const bulkAddToGroup = useTaskStore(s => s.bulkAddToGroup);
@@ -2386,6 +2387,7 @@ function ProjectDetailContent() {
             onSetPriority={p => bulkSetPriorityAsking(Array.from(selectedIds), p, exitSelection)}
             onSetDifficulty={rewardsEnabled ? d => bulkSetDifficultyAsking(Array.from(selectedIds), d, exitSelection) : undefined}
             onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
+            onSkip={() => { bulkSkipRecurrence(Array.from(selectedIds)); exitSelection(); }}
             // Same majority-category rule TodayScreen's onGroup uses: the new
             // stack takes the category its members most often already have,
             // since groupTasks cascades that category onto every member.

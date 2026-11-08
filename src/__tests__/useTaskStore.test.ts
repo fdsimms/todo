@@ -12758,6 +12758,40 @@ describe('bulkCompleteTasks', () => {
   });
 });
 
+describe('bulkSkipRecurrence', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
+  });
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  const due = new Date(2025, 5, 10, 9, 0, 0).toISOString();
+  const daily = (id: string) => makeTask({ id, recurrenceType: 'daily', recurrenceInterval: 1, dueDate: due });
+
+  it('rolls repeating tasks forward, leaves others alone, and undoes as one', () => {
+    useTaskStore.setState({ tasks: [daily('a'), daily('b'), makeTask({ id: 'c', recurrenceType: 'none', dueDate: due })] });
+    useTaskStore.getState().bulkSkipRecurrence(['a', 'b', 'c']);
+    const get = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+    expect(get('a').dueDate).not.toBe(due);
+    expect(get('b').dueDate).not.toBe(due);
+    expect(get('c').dueDate).toBe(due);
+    expect(get('a').completed).toBe(false);
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 tasks skipped');
+    useTaskStore.getState().lastAction?.undo();
+    expect(get('a').dueDate).toBe(due);
+    expect(get('b').dueDate).toBe(due);
+  });
+
+  it('does nothing when nothing in the selection repeats', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'c', recurrenceType: 'none', dueDate: due })], lastAction: null });
+    useTaskStore.getState().bulkSkipRecurrence(['c']);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
 describe('bulkMarkMissed', () => {
   beforeEach(() => {
     jest.useFakeTimers();
