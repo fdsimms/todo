@@ -128,6 +128,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/confirmDeleteGenerated.ts` — confirmDeleteGenerated
 - `src/utils/confirmDeleteTask.ts` — confirmDeleteTask
 - `src/utils/confirmDiscard.ts` — confirmDiscard
+- `src/utils/confirmDiscardWorkout.ts` — confirmDiscardWorkout
 - `src/utils/confirmLargeAmount.ts` — confirmLargeAmount
 - `src/utils/contactsAccess.ts` — ContactsPermission, getContactsPermission, ContactsAccessScope, getContactsAccessScope, requestContactsPermission, toCandidate, searchContacts, fetchLimitedContacts
 - `src/utils/contactsImport.ts` — MIN_CONTACT_QUERY_LENGTH, MAX_CONTACT_RESULTS, ContactCandidate, ContactPersonDraft, contactAddress, contactBirthday, contactDates, normalizePhone, alreadyAdded, canSearchContacts, +6 more

@@ -57,6 +57,7 @@ import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { confirmDiscardWorkout } from '../utils/confirmDiscardWorkout';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { RotatingChevron } from './RotatingChevron';
@@ -621,25 +622,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     onClose();
   };
 
-  const end = () => {
+  // Closing the sheet is not ending the workout: it keeps running and
+  // `WorkoutBar` is the way back, so this asks nothing. Throwing it away is
+  // the trash can beside it.
+  const minimize = () => {
     haptics.tap();
-    Alert.alert(
-      'Leave workout mode?',
-      'The workout keeps running, and Workouts has it under In progress. To save it, tap Finish. Discard deletes it and every set logged in it.',
-      [
-        { text: 'Leave it running', onPress: close },
-        {
-          text: 'Discard',
-          style: 'destructive',
-          onPress: () => {
-            useWorkoutStore.getState().discardSession();
-            haptics.success();
-            close();
-          },
-        },
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      ],
-    );
+    close();
   };
 
   const plan = useMemo(() => finishPlan(sets), [sets]);
@@ -763,13 +751,16 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       <ScreenAwake />
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <SheetHeaderButton
-            label="Leave"
-            role="cancel"
-            minWidth={64}
-            onPress={end}
-            accessibilityLabel="Leave workout mode"
-          />
+          <TouchableOpacity
+            style={styles.headerIcon}
+            activeOpacity={interaction.activeOpacity}
+            onPress={minimize}
+            accessibilityRole="button"
+            accessibilityLabel="Minimize workout"
+            accessibilityHint="The workout keeps running"
+          >
+            <Ionicons name="chevron-down" size={iconSize.lg} color={colors.accentText} />
+          </TouchableOpacity>
           <View style={styles.headerTitle}>
             {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />}
           </View>
@@ -783,6 +774,15 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 accessibilityLabel="Start a timer"
               >
                 <Ionicons name="timer-outline" size={iconSize.lg} color={colors.accentText} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.headerIcon}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { Keyboard.dismiss(); confirmDiscardWorkout(close); }}
+                accessibilityRole="button"
+                accessibilityLabel="Discard workout"
+              >
+                <Ionicons name="trash-outline" size={iconSize.lg} color={colors.redText} />
               </TouchableOpacity>
               <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
             </View>
