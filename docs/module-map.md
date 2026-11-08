@@ -400,7 +400,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, reviewedBoxRow, +17 more
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, clockBesideDayPart, dayPartBesideClock, DatePart, NUMBER_WORDS, +5 more
 - `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +58 more
-- `src/utils/pastWorkout.ts` — PastSetText, PastExerciseDraft, PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MIN_MINUTES, PAST_WORKOUT_MAX_MINUTES, PastWorkoutProblem, nextSetText, newSupersetKey, withoutPastExercise, joinPastSuperset, +4 more
+- `src/utils/pastWorkout.ts` — PastSetText, PastExerciseDraft, PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MIN_MINUTES, PAST_WORKOUT_MAX_MINUTES, PastWorkoutProblem, nextSetText, newSupersetKey, withoutPastExercise, joinPastSuperset, +5 more
 - `src/utils/pastedLines.ts` — cleanPastedLines
 - `src/utils/patchNotes.ts` — PatchNote
 - `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipUndoLabel, penaltyChipLabel, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, +1 more
@@ -737,7 +737,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutRecordText.ts` — withThousands, recordLabel, formatVolume, formatRecordFigure, formatRecordValue, formatRecordChange, metricLabel, metricNote, metricCaption, formatBestPoint, +5 more
 - `src/utils/workoutRecords.ts` — E1RM_MAX_REPS, REP_RECORD_MAX, SECONDARY_MUSCLE_WEIGHT, NEW_RECORD_DAYS, RECENT_RECORD_DAYS, countsForRecords, estimatedOneRepMax, setVolume, liftVolumeKg, bodyweightVolumeKg, +35 more
 - `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, MAX_WARMUP_SETS, defaultTargets, newRoutineItem, withWarmups, WarmupMode, warmupMode, DEFAULT_WARMUP_SETS, +35 more
-- `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, movedExerciseOrder, exerciseBlocks, joinedSuperset, leftSuperset, nextSet, +33 more
+- `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, movedExerciseOrder, movedWithinSuperset, exerciseBlocks, joinedSuperset, leftSuperset, +34 more
 - `src/utils/workoutSiri.ts` — WorkoutRoutineIndexEntry, MAX_ROUTINE_INDEX_ENTRIES, buildRoutineIndex, QueuedWorkoutStart, parseQueuedWorkoutStarts, newestWorkoutStart, WorkoutStartPlan, QUEUED_START_MAX_AGE_MS, resolveQueuedWorkoutStart, myWorkoutStart
 - `src/utils/workoutTask.ts` — WorkoutTaskEffect, rotationPickFor, workoutTaskEffect, linkedTaskLine, routineMergePatch
 - `src/utils/workoutTick.ts` — TickRest, TickOutcome, restLabelFor, tickOutcome, TickValues, tickSet

@@ -13,6 +13,7 @@ import {
   matchPreviousByPosition,
   previousBadge,
   movedExerciseOrder,
+  movedWithinSuperset,
   exerciseBlocks,
   nextSet,
   plannedSetsFor,
@@ -124,6 +125,20 @@ describe('movedExerciseOrder', () => {
     expect(movedExerciseOrder(session(), 'bench', 'up')).toBeNull();
     expect(movedExerciseOrder(session(), 'triceps', 'down')).toBeNull();
     expect(movedExerciseOrder(session(), 'squat', 'up')).toBeNull();
+  });
+});
+
+describe('movedWithinSuperset', () => {
+  it('swaps a superset member with its partner and moves nothing else', () => {
+    expect(movedWithinSuperset(session(), 'fly', 'up')).toEqual(['bench', 'fly', 'incline', 'triceps']);
+    expect(movedWithinSuperset(session(), 'incline', 'down')).toEqual(['bench', 'fly', 'incline', 'triceps']);
+  });
+
+  it('is null at the superset\'s ends, and for an exercise that is not in one', () => {
+    expect(movedWithinSuperset(session(), 'incline', 'up')).toBeNull();
+    expect(movedWithinSuperset(session(), 'fly', 'down')).toBeNull();
+    expect(movedWithinSuperset(session(), 'bench', 'down')).toBeNull();
+    expect(movedWithinSuperset(session(), 'squat', 'up')).toBeNull();
   });
 });
 

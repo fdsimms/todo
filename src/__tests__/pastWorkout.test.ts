@@ -1,5 +1,5 @@
 import {
-  buildPastWorkout, joinPastSuperset, leavePastSuperset, movedPastExercise, nextSetText, pastWorkoutTouched, withoutPastExercise,
+  buildPastWorkout, joinPastSuperset, leavePastSuperset, movedPastExercise, movedPastWithinSuperset, nextSetText, pastWorkoutTouched, withoutPastExercise,
   type PastExerciseDraft,
 } from '../utils/pastWorkout';
 
@@ -133,5 +133,14 @@ describe('supersets in a past workout', () => {
     expect(keys(movedPastExercise(list, 'd', 'up'))).toEqual(['a:-', 'd:-', 'b:ss1', 'c:ss1']);
     expect(movedPastExercise(list, 'a', 'up')).toBeNull();
     expect(movedPastExercise(list, 'd', 'down')).toBeNull();
+  });
+
+  it('swaps a superset member with its partner, and only inside the superset', () => {
+    const list = [ex('a'), ex('b', 'ss1'), ex('c', 'ss1'), ex('d')];
+    expect(keys(movedPastWithinSuperset(list, 'c', 'up'))).toEqual(['a:-', 'c:ss1', 'b:ss1', 'd:-']);
+    expect(keys(movedPastWithinSuperset(list, 'b', 'down'))).toEqual(['a:-', 'c:ss1', 'b:ss1', 'd:-']);
+    expect(movedPastWithinSuperset(list, 'b', 'up')).toBeNull();
+    expect(movedPastWithinSuperset(list, 'c', 'down')).toBeNull();
+    expect(movedPastWithinSuperset(list, 'a', 'down')).toBeNull();
   });
 });

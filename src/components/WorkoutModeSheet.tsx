@@ -96,7 +96,7 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, nextSet, previousBadge,
+  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, movedWithinSuperset, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
   restSecondsFor, supersetGroup,
@@ -556,9 +556,18 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     animateLayout();
   };
   // The view stays on the exercise that moved: `viewIndex` follows its id.
-  const moveExercise = (exerciseId: string, direction: 'up' | 'down') => {
+  // In a superset, `wholeBlock` false swaps it with its partner and leaves the
+  // superset where it is; true moves the superset past its neighbour.
+  const moveExercise = (exerciseId: string, direction: 'up' | 'down', wholeBlock = true) => {
     if (!session) return;
-    if (!useWorkoutStore.getState().moveSessionExercise(session.id, exerciseId, direction)) return;
+    const store = useWorkoutStore.getState();
+    if (wholeBlock) {
+      if (!store.moveSessionExercise(session.id, exerciseId, direction)) return;
+    } else {
+      const order = movedWithinSuperset(sets, exerciseId, direction);
+      if (!order) return;
+      store.reorderExercises(session.id, order);
+    }
     haptics.tap();
     animateLayout();
   };
@@ -1555,11 +1564,19 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             anchor={exerciseMenu?.anchor ?? null}
             onClose={() => setExerciseMenu(null)}
             actions={menuId && menuExercise ? [
+              ...(group.length > 1 ? (['up', 'down'] as const)
+                .filter(direction => movedWithinSuperset(sets, menuId, direction) !== null)
+                .map(direction => ({
+                  key: `move-in-${direction}`,
+                  label: direction === 'up' ? 'Move up' : 'Move down',
+                  icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
+                  onPress: () => moveExercise(menuId, direction, false),
+                })) : []),
               ...(['up', 'down'] as const)
                 .filter(direction => movedExerciseOrder(sets, menuId, direction) !== null)
                 .map(direction => ({
                   key: `move-${direction}`,
-                  label: direction === 'up' ? 'Move up' : 'Move down',
+                  label: group.length > 1 ? (direction === 'up' ? 'Move superset up' : 'Move superset down') : (direction === 'up' ? 'Move up' : 'Move down'),
                   icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
                   onPress: () => moveExercise(menuId, direction),
                 })),

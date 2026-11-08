@@ -122,6 +122,27 @@ export function movedExerciseOrder(
 }
 
 /**
+ * The session's exercise order with one superset member moved a place up or
+ * down inside its superset, for `reorderExercises`: the pair swaps order and
+ * nothing else moves. Null when the exercise isn't in a superset, or is
+ * already first (up) or last (down) in it.
+ */
+export function movedWithinSuperset(
+  sets: readonly WorkoutSet[],
+  exerciseId: string,
+  direction: 'up' | 'down',
+): string[] | null {
+  const blocks = exerciseBlocks(sets);
+  const block = blocks.find(b => b.some(e => e.exerciseId === exerciseId));
+  if (!block || block.length < 2) return null;
+  const at = block.findIndex(e => e.exerciseId === exerciseId);
+  const to = direction === 'up' ? at - 1 : at + 1;
+  if (to < 0 || to >= block.length) return null;
+  [block[at], block[to]] = [block[to], block[at]];
+  return blocks.flat().map(e => e.exerciseId);
+}
+
+/**
  * The session's exercises as the blocks a reorder moves: a superset is one
  * block (its run of partners), any other exercise a block of its own. The
  * reorder list drags these, so a pair is never split by a drop.
