@@ -1,1 +1,1 @@
-{ "message": "Renaming a grocery item to a name you already have now offers a Merge button right under the message, instead of telling you to open the item.", "date": "2026-11-08" }
+{ "message": "Renaming a grocery item to the exact name of another item now merges the two (and can be undone). A near match, like a plural, offers a Merge button instead.", "date": "2026-11-08" }

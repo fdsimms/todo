@@ -419,6 +419,18 @@ export const GroceryRow = React.memo(function GroceryRow({
       return;
     }
     if (trimmed === refusedName.current) return;
+    // The same name another row already has is the same thing twice, not a
+    // choice between two things, so fold this row into that one (the merge
+    // files its own undo). A plural match ("Apples" beside "Apple") may be a
+    // typo, so that one is refused and offers the merge as a button below.
+    const exact = renameClash(useGroceryStore.getState().items, item.id, trimmed);
+    if (exact && exact.nameKey === groceryNameKey(trimmed)) {
+      animateLayout();
+      if (useGroceryStore.getState().mergeItems(item.id, exact.id)) {
+        haptics.success();
+        return;
+      }
+    }
     if (!renameItem(item.id, trimmed)) {
       // Stay in edit mode holding what was typed: the name is refused because
       // some other row already claims it, and reverting the field would take
