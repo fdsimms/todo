@@ -1,7 +1,8 @@
-import React, { createContext, useEffect, useId, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
 import { Animated, StyleSheet } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { animation } from '../theme';
+import { canHideSheet, PresentationLevelContext, subscribePresentation } from '../utils/sheetModal';
 
 /**
  * The state a `SheetFlow` shares with the stages inside it. All refs: the
@@ -50,6 +51,9 @@ interface Props {
 export function FlowStage({ flow, visible, onRequestClose, children }: Props) {
   const id = useId();
   const colors = useColors();
+  // The host's level: whatever a stage raises (a picker, the describe sheet) presents from it.
+  const level = useContext(PresentationLevelContext);
+  const unwatch = useRef<(() => void) | null>(null);
   const opacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
   const [rendered, setRendered] = useState(visible);
   const [layer, setLayer] = useState(0);
@@ -62,15 +66,30 @@ export function FlowStage({ flow, visible, onRequestClose, children }: Props) {
 
   const retire = () => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    if (unwatch.current) { unwatch.current(); unwatch.current = null; }
     opacity.setValue(0);
     flow.live.current.delete(id);
     setRendered(false);
+  };
+
+  // Unmounting a stage takes its content with it, and a sheet raised from that
+  // content may still be sliding down (the describe sheet closes in the same
+  // commit as the stage that held it). A presented sheet torn out mid-dismissal
+  // is the orphaned view controller `canHideSheet` exists to prevent, so wait
+  // until the host's level is clear, as a sheet waits for what it presents.
+  const retireWhenClear = () => {
+    if (canHideSheet(level)) { retire(); return; }
+    if (unwatch.current) return;
+    unwatch.current = subscribePresentation(level, () => {
+      if (canHideSheet(level)) retire();
+    });
   };
 
   useEffect(() => {
     if (visible === wasVisible.current) return;
     wasVisible.current = visible;
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    if (unwatch.current) { unwatch.current(); unwatch.current = null; }
     closing.current = false;
     if (visible) {
       const handoff = flow.hostWasVisible.current
@@ -96,7 +115,7 @@ export function FlowStage({ flow, visible, onRequestClose, children }: Props) {
       // host's own slide down. Only the moment its content goes differs.
       closing.current = !flow.hostVisible.current;
       const wait = closing.current ? HOST_DISMISS_MS : animation.duration.normal + 50;
-      timer.current = setTimeout(retire, wait);
+      timer.current = setTimeout(retireWhenClear, wait);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -115,6 +134,7 @@ export function FlowStage({ flow, visible, onRequestClose, children }: Props) {
 
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
+    unwatch.current?.();
     flow.stages.current.delete(id);
     flow.live.current.delete(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -38,6 +38,7 @@ import { ExerciseDetailSheet } from '../components/ExerciseDetailSheet';
 import { WorkoutOverview } from '../components/WorkoutOverview';
 import { WorkoutDetailSheet } from '../components/WorkoutDetailSheet';
 import { LazySheet } from '../components/LazySheet';
+import { SheetFlow } from '../components/SheetFlow';
 import { ActionMenu } from '../components/ActionMenu';
 import type { CardAnchor } from '../components/CardSheet';
 import { CsvExportSheet } from '../components/CsvExportSheet';
@@ -381,8 +382,8 @@ export function WorkoutsScreen() {
     setEditorOpen(true);
   }, []);
 
-  // The past-workout sheet closes in the same commit the review opens, which is
-  // what `SheetModal` sequences, so neither handler waits on the other.
+  // The past-workout sheet hands to the review inside one `SheetFlow`, so the
+  // two flags flip in the same commit and neither handler waits on the other.
   const openDescribedWorkout = useCallback((session: ImportedSession) => {
     setImportText('');
     setDescribedWorkout(session);
@@ -945,8 +946,16 @@ export function WorkoutsScreen() {
           ]}
         />
       </LazySheet>
-      <LazySheet open={logPastOpen}>
-        <LogPastWorkoutSheet visible={logPastOpen} onClose={() => setLogPastOpen(false)} onDescribed={openDescribedWorkout} />
+      {/* Logging a past workout, then reviewing the one it described, is one
+          sheet that crossfades. The describe sheet is raised from inside the
+          log sheet, so it slides over the host and away as an ordinary sheet
+          while the review is already underneath. The import sheet is also
+          opened alone for a Strong or Hevy file, a flow of one. See `SheetFlow`. */}
+      <LazySheet open={logPastOpen || importOpen}>
+        <SheetFlow name="Log a workout" visible={logPastOpen || importOpen}>
+          <LogPastWorkoutSheet visible={logPastOpen} onClose={() => setLogPastOpen(false)} onDescribed={openDescribedWorkout} />
+          <WorkoutImportSheet visible={importOpen} onClose={() => setImportOpen(false)} fileText={importText} described={describedWorkout} />
+        </SheetFlow>
       </LazySheet>
       <LazySheet open={gymsOpen}>
         <GymsSheet visible={gymsOpen} onClose={() => setGymsOpen(false)} />
@@ -958,9 +967,6 @@ export function WorkoutsScreen() {
           currentId={fitGym?.id ?? null}
           onPick={setPickedGym}
         />
-      </LazySheet>
-      <LazySheet open={importOpen}>
-        <WorkoutImportSheet visible={importOpen} onClose={() => setImportOpen(false)} fileText={importText} described={describedWorkout} />
       </LazySheet>
       <LazySheet open={exportOpen}>
         <CsvExportSheet
