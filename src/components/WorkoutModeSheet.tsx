@@ -508,17 +508,18 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     animateLayout();
   };
   // The view stays on the exercise that moved: `viewIndex` follows its id.
-  // In a superset it swaps places with its partner and leaves the superset where
-  // it is; moving the whole superset is the Reorder button's job.
-  const moveExercise = (exerciseId: string, direction: 'up' | 'down') => {
+  // In a superset, `wholeBlock` false swaps it with its partner and leaves the
+  // superset where it is; true moves the superset past its neighbour.
+  const moveExercise = (exerciseId: string, direction: 'up' | 'down', wholeBlock = true) => {
     if (!session) return;
     const store = useWorkoutStore.getState();
-    const inSuperset = supersetGroup(exercises, exerciseId).length > 1;
-    if (inSuperset) {
+    if (wholeBlock) {
+      if (!store.moveSessionExercise(session.id, exerciseId, direction)) return;
+    } else {
       const order = movedWithinSuperset(sets, exerciseId, direction);
       if (!order) return;
       store.reorderExercises(session.id, order);
-    } else if (!store.moveSessionExercise(session.id, exerciseId, direction)) return;
+    }
     haptics.tap();
     animateLayout();
   };
@@ -1514,11 +1515,19 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             anchor={exerciseMenu?.anchor ?? null}
             onClose={() => setExerciseMenu(null)}
             actions={menuId && menuExercise ? [
+              ...(group.length > 1 ? (['up', 'down'] as const)
+                .filter(direction => movedWithinSuperset(sets, menuId, direction) !== null)
+                .map(direction => ({
+                  key: `move-in-${direction}`,
+                  label: direction === 'up' ? 'Move up' : 'Move down',
+                  icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
+                  onPress: () => moveExercise(menuId, direction, false),
+                })) : []),
               ...(['up', 'down'] as const)
-                .filter(direction => (group.length > 1 ? movedWithinSuperset(sets, menuId, direction) : movedExerciseOrder(sets, menuId, direction)) !== null)
+                .filter(direction => movedExerciseOrder(sets, menuId, direction) !== null)
                 .map(direction => ({
                   key: `move-${direction}`,
-                  label: direction === 'up' ? 'Move up' : 'Move down',
+                  label: group.length > 1 ? (direction === 'up' ? 'Move superset up' : 'Move superset down') : (direction === 'up' ? 'Move up' : 'Move down'),
                   icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
                   onPress: () => moveExercise(menuId, direction),
                 })),
