@@ -28,6 +28,7 @@ import { convertQuantity, showContainerCount } from '../utils/unitConvert';
 import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
 import { formatPrice, formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { groceryNameKey } from '../utils/groceryParse';
+import { renameClash } from '../utils/groceryItemWrite';
 import { recipeLedgerFor } from '../utils/recipeSources';
 import { haptics } from '../utils/haptics';
 import { TextField } from './TextField';
@@ -419,14 +420,18 @@ export const GroceryRow = React.memo(function GroceryRow({
       // away the text the user needs to correct. Read non-reactively —
       // subscribing this memoised row to the items array would re-render every
       // row on the list whenever any item changed.
-      const key = groceryNameKey(trimmed);
-      const collision = useGroceryStore
-        .getState()
-        .items.find(i => i.id !== item.id && i.nameKey === key);
+      // The store's own check, so the row names the item the store refused on
+      // (plural-aware: "Apples" beside an "Apple" row), not a lookalike exact
+      // key match that finds nothing for those.
+      const collision = renameClash(useGroceryStore.getState().items, item.id, trimmed);
+      // When the other row is spelled the same as what was typed, "That's the
+      // same as salted butter" just repeats the field back, so say it exists.
       setNameError(
-        collision
-          ? `That’s the same as ${collision.name}. Open the item to merge them.`
-          : 'Another item already has that name.',
+        !collision
+          ? 'Another item already has that name.'
+          : groceryNameKey(collision.name) === groceryNameKey(trimmed)
+            ? `You already have an item called ${collision.name}. Open this item to merge them.`
+            : `That’s the same as ${collision.name}. Open this item to merge them.`,
       );
       refusedName.current = trimmed;
       haptics.error();
