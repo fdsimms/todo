@@ -6,11 +6,11 @@
  * expired", "Show 3 waiting for a lighter day", "Show 2 waiting on another
  * task"), each its own tap, each only there while it had something in it. A
  * day with all three read as a column of near-identical lines. Together they
- * are one: "Show 7 held back", and opening it names each reason with its own
+ * are one: "Show 7 set aside", and opening it names each reason with its own
  * count above its rows.
  *
  * **One reason alone keeps its own wording.** "Show 2 expired" says more than
- * "Show 2 held back", and most days have at most one group, so merging only
+ * "Show 2 set aside", and most days have at most one group, so merging only
  * changes the days that had several. "Later today" is not in here: those tasks
  * are not held, only not due yet, and vacation-hidden tasks have a footer of
  * their own that says why they are away.
@@ -59,7 +59,7 @@ export function heldBackHasHeadings(groups: readonly HeldBackGroup<unknown>[]): 
 /** The footer line, or null when nothing is held back. */
 export function heldBackToggleText(groups: readonly HeldBackGroup<unknown>[], expanded: boolean): string | null {
   if (groups.length === 0) return null;
-  const noun = groups.length === 1 ? HELD_BACK_COPY[groups[0].kind].noun : 'held back';
+  const noun = groups.length === 1 ? HELD_BACK_COPY[groups[0].kind].noun : 'set aside';
   return `${expanded ? 'Hide' : 'Show'} ${heldBackTotal(groups)} ${noun}`;
 }
 
