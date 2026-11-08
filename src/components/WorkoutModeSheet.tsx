@@ -25,6 +25,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { WorkoutVolumePill } from './WorkoutVolumePill';
 import { ActionMenu } from './ActionMenu';
 import type { CardAnchor } from './CardSheet';
+import { RecordsCard } from './RecordsCard';
 import { CountStepper } from './CountStepper';
 import { CheckPop } from './CheckPop';
 import { InlineAction } from './InlineAction';
@@ -83,7 +84,7 @@ import { currentRoutineVersion, finishVersionText, routineVersionsOf, sessionPla
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
 import { sessionBodyweightVolumeKg } from '../utils/bodyweightLoad';
-import { formatRecordChange, recordLabel } from '../utils/workoutRecordText';
+import { recordLines } from '../utils/workoutRecordText';
 import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
 import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
@@ -501,6 +502,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // The header's timer card, for a rest no set started.
   const [timerOpen, setTimerOpen] = useState(false);
   const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
+  // The trophy's card keeps the lines it was opened with, so it reads the same while it fades.
+  const [recordCard, setRecordCard] = useState<{ lines: ReturnType<typeof recordLines>; anchor: CardAnchor } | null>(null);
   const joinSuperset = (exerciseId: string, partnerId: string) => {
     if (!session) return;
     if (!useWorkoutStore.getState().joinSessionSuperset(session.id, exerciseId, partnerId)) return;
@@ -1345,11 +1348,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   const prevLine = prev ? formatSetLine(prev, kind, unit, false, scale) : null;
                   const prevMark = prev ? previousBadge(prev) : null;
                   const label = labels.get(set.id) ?? '';
-                  const record = done ? liveRecords?.get(set.id)?.[0] ?? null : null;
-                  const recordChange = record ? formatRecordChange(record, kind, unit) : null;
-                  const recordText = record && recordChange
-                    ? `${recordLabel(record.type, kind, record.reps)}, was ${recordChange.before}`
-                    : null;
+                  const setRecords = done ? liveRecords?.get(set.id) ?? [] : [];
+                  const lines = recordLines(setRecords, kind, unit, scale);
                   return (
                     <DeletableSet
                       key={set.id}
@@ -1386,14 +1386,21 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         ) : (
                           <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>–</Text>
                         )}
-                        {!!recordText && (
-                          <View
+                        {lines.length > 0 && (
+                          <TouchableOpacity
                             style={styles.recordPill}
-                            accessible
-                            accessibilityLabel={`Personal record. ${recordText}`}
+                            activeOpacity={interaction.activeOpacity}
+                            hitSlop={{ top: 12, bottom: 12, left: 6, right: 6 }}
+                            onPress={e => {
+                              haptics.tap();
+                              setRecordCard({ lines, anchor: { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY } });
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Personal record. ${lines.map(l => l.label).join(', ')}`}
+                            accessibilityHint="Shows what it was for"
                           >
                             <Ionicons name="trophy" size={iconSize.xs} color={colors.accentText} />
-                          </View>
+                          </TouchableOpacity>
                         )}
                         {fields.map(f => (
                           <SetInput
@@ -1493,6 +1500,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       </View>
       {/* Inside this Modal, not beside it: a second sheet presented from the
           same view controller as this one never appears. */}
+      <RecordsCard
+        visible={recordCard !== null}
+        lines={recordCard?.lines ?? []}
+        anchor={recordCard?.anchor ?? null}
+        onClose={() => setRecordCard(null)}
+      />
       {(() => {
         const menuId = exerciseMenu?.exerciseId ?? null;
         const menuExercise = menuId ? exercises.find(e => e.exerciseId === menuId) ?? null : null;

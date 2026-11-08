@@ -12,6 +12,7 @@ import {
   metricNote,
   metricNumber,
   recordLabel,
+  recordLines,
   withThousands,
 } from '../utils/workoutRecordText';
 import type { SessionPoint } from '../utils/workoutRecords';
@@ -93,6 +94,26 @@ describe('formatRecordChange', () => {
   it('names the old reps when a heaviest weight only tied the old weight', () => {
     expect(formatRecordChange({ type: 'weight', value: 43, previous: 43, previousReps: 15, set: set({ reps: 20 }) }, 'weight_reps', 'kg'))
       .toEqual({ before: '43 kg × 15', after: '43 kg × 20' });
+  });
+});
+
+describe('recordLines', () => {
+  it('gives one line per record a set broke, none dropped', () => {
+    expect(recordLines([
+      { type: 'weight', value: 90, previous: 85, set: set({ reps: 3 }) },
+      { type: 'e1rm', value: 104.5, previous: 102, set: set() },
+    ], 'weight_reps', 'kg')).toEqual([
+      { key: 'weight', label: 'Heaviest weight', detail: '90 kg × 3, was 85 kg' },
+      { key: 'e1rm', label: 'Estimated 1RM', detail: '104.5 kg, was 102 kg' },
+    ]);
+  });
+
+  it('keys two best-set records by their reps', () => {
+    const keys = recordLines([
+      { type: 'repsAt', value: 82.5, previous: 80, reps: 8, set: set() },
+      { type: 'repsAt', value: 85, previous: 82.5, reps: 5, set: set() },
+    ], 'weight_reps', 'kg').map(l => l.key);
+    expect(keys).toEqual(['repsAt-8', 'repsAt-5']);
   });
 });
 
