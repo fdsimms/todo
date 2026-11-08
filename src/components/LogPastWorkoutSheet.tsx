@@ -37,7 +37,7 @@ import {
 } from '../utils/workoutSession';
 import {
   PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MAX_MINUTES, PAST_WORKOUT_MIN_MINUTES,
-  buildPastWorkout, joinPastSuperset, leavePastSuperset, movedPastExercise, nextSetText, pastWorkoutTouched, withoutPastExercise,
+  buildPastWorkout, joinPastSuperset, leavePastSuperset, movedPastExercise, movedPastWithinSuperset, nextSetText, pastWorkoutTouched, withoutPastExercise,
   type PastExerciseDraft, type PastSetText,
 } from '../utils/pastWorkout';
 import type { ImportedSession } from '../utils/workoutCsv';
@@ -144,8 +144,11 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
   const joinSuperset = (exerciseId: string, partnerId: string) => {
     setExercises(prev => joinPastSuperset(prev, exerciseId, partnerId) ?? prev);
   };
-  const moveExercise = (exerciseId: string, direction: 'up' | 'down') => {
-    setExercises(prev => movedPastExercise(prev, exerciseId, direction) ?? prev);
+  // In a superset, `wholeBlock` false swaps it with its partner; true moves the superset.
+  const moveExercise = (exerciseId: string, direction: 'up' | 'down', wholeBlock = true) => {
+    setExercises(prev => (wholeBlock
+      ? movedPastExercise(prev, exerciseId, direction)
+      : movedPastWithinSuperset(prev, exerciseId, direction)) ?? prev);
   };
   const leaveSuperset = (exerciseId: string) => {
     setExercises(prev => leavePastSuperset(prev, exerciseId) ?? prev);
@@ -445,11 +448,19 @@ export function LogPastWorkoutSheet({ visible, onClose, onDescribed }: Props) {
               anchor={exerciseMenu?.anchor ?? null}
               onClose={() => setExerciseMenu(null)}
               actions={menuId && menuExercise ? [
+                ...(group.length > 1 ? (['up', 'down'] as const)
+                  .filter(direction => movedPastWithinSuperset(exercises, menuId, direction) !== null)
+                  .map(direction => ({
+                    key: `move-in-${direction}`,
+                    label: direction === 'up' ? 'Move up' : 'Move down',
+                    icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
+                    onPress: () => moveExercise(menuId, direction, false),
+                  })) : []),
                 ...(['up', 'down'] as const)
                   .filter(direction => movedPastExercise(exercises, menuId, direction) !== null)
                   .map(direction => ({
                     key: `move-${direction}`,
-                    label: direction === 'up' ? 'Move up' : 'Move down',
+                    label: group.length > 1 ? (direction === 'up' ? 'Move superset up' : 'Move superset down') : (direction === 'up' ? 'Move up' : 'Move down'),
                     icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
                     onPress: () => moveExercise(menuId, direction),
                   })),

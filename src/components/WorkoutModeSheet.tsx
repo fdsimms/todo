@@ -25,6 +25,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { WorkoutVolumePill } from './WorkoutVolumePill';
 import { ActionMenu } from './ActionMenu';
 import type { CardAnchor } from './CardSheet';
+import { RecordsCard } from './RecordsCard';
 import { CountStepper } from './CountStepper';
 import { CheckPop } from './CheckPop';
 import { InlineAction } from './InlineAction';
@@ -84,7 +85,7 @@ import { currentRoutineVersion, finishVersionText, routineVersionsOf, sessionPla
 import { barKgFor, effectivePlateInventory, isPlateLoaded, plateLoad } from '../utils/plateMath';
 import { liftVolumeKg, liveSetRecords, sessionRecordSummary } from '../utils/workoutRecords';
 import { sessionBodyweightVolumeKg } from '../utils/bodyweightLoad';
-import { formatRecordChange, recordLabel } from '../utils/workoutRecordText';
+import { recordLines } from '../utils/workoutRecordText';
 import { proposalActionLabel, proposalApplied, proposalHeadline, workingSetLogged, type Proposal } from '../utils/workoutProgression';
 import { exerciseProposal, type ExerciseProposal } from '../utils/workoutProposal';
 import { applyProposal, liveProposal } from '../utils/workoutProposalApply';
@@ -97,7 +98,7 @@ import {
   stepTimerRemaining,
 } from '../utils/stepTimers';
 import {
-  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, nextSet, previousBadge,
+  finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, movedWithinSuperset, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
   restSecondsFor, supersetGroup,
@@ -105,14 +106,62 @@ import {
 import { tickSet, type TickValues } from '../utils/workoutTick';
 import type { SessionExercise } from '../utils/workoutSession';
 
-// The four kinds of set, in the order the tray offers them. `amrap` is "Failure"
-// to match the F badge and `setName`'s "To failure".
-const SET_KIND_OPTIONS: SegmentOption<WorkoutSetKind>[] = [
-  { value: 'working', label: 'Working' },
-  { value: 'warmup', label: 'Warm-up' },
-  { value: 'drop', label: 'Drop' },
-  { value: 'amrap', label: 'Failure' },
+// The four kinds of set, in the order the tray offers them. Each segment leads
+// with the letter its row shows (W, D, F; a dot for a working set, which has
+// none), so the tray reads as the same thing as the badge. `amrap` is
+// "Failure" to match the F badge and `setName`'s "To failure". The short visible
+// labels are what fit four to a track; `accessibilityLabel` keeps the full name.
+const SET_KIND_SEGMENTS: { value: WorkoutSetKind; label: string; full: string }[] = [
+  { value: 'working', label: 'Work', full: 'Working' },
+  { value: 'warmup', label: 'Warm', full: 'Warm-up' },
+  { value: 'drop', label: 'Drop', full: 'Drop' },
+  { value: 'amrap', label: 'Fail', full: 'Failure' },
 ];
+
+/** One line under the tray saying what the chosen type does. Counting follows `countsForRecords`. */
+const SET_KIND_HELP: Record<WorkoutSetKind, string> = {
+  working: 'Counts toward records and volume.',
+  warmup: 'Left out of records and volume.',
+  drop: 'A lighter set right after a working set. Counts toward records and volume.',
+  amrap: 'To failure. Counts toward records and volume.',
+};
+
+function SetKindSegment({ kind, label, selected }: { kind: WorkoutSetKind; label: string; selected: boolean }) {
+  const colors = useColors();
+  const badge = setBadge(kind);
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xsm }}>
+      <View
+        style={{
+          width: 20, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center',
+          backgroundColor: badge ? colors.orangeText + '26' : colors.textSecondary + '26',
+        }}
+      >
+        {badge ? (
+          <Text style={{ color: colors.orangeText, fontSize: font.xs, fontWeight: fontWeight.bold }}>{badge}</Text>
+        ) : (
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.textSecondary }} />
+        )}
+      </View>
+      <Text
+        numberOfLines={1}
+        style={{
+          color: selected ? colors.text : colors.textSecondary, fontSize: font.sm,
+          fontWeight: selected ? fontWeight.semibold : fontWeight.medium,
+        }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+const SET_KIND_OPTIONS: SegmentOption<WorkoutSetKind>[] = SET_KIND_SEGMENTS.map(o => ({
+  value: o.value,
+  label: o.full,
+  accessibilityLabel: o.full,
+  node: (selected: boolean) => <SetKindSegment kind={o.value} label={o.label} selected={selected} />,
+}));
 import type { WeightUnit } from '../utils/weightLog';
 import { workoutSpanWritable } from '../utils/healthWorkoutSync';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -502,6 +551,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   // The header's timer card, for a rest no set started.
   const [timerOpen, setTimerOpen] = useState(false);
   const [exerciseMenu, setExerciseMenu] = useState<{ exerciseId: string; anchor: CardAnchor } | null>(null);
+  // The trophy's card keeps the lines it was opened with, so it reads the same while it fades.
+  const [recordCard, setRecordCard] = useState<{ lines: ReturnType<typeof recordLines>; anchor: CardAnchor } | null>(null);
   const joinSuperset = (exerciseId: string, partnerId: string) => {
     if (!session) return;
     if (!useWorkoutStore.getState().joinSessionSuperset(session.id, exerciseId, partnerId)) return;
@@ -509,9 +560,18 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     animateLayout();
   };
   // The view stays on the exercise that moved: `viewIndex` follows its id.
-  const moveExercise = (exerciseId: string, direction: 'up' | 'down') => {
+  // In a superset, `wholeBlock` false swaps it with its partner and leaves the
+  // superset where it is; true moves the superset past its neighbour.
+  const moveExercise = (exerciseId: string, direction: 'up' | 'down', wholeBlock = true) => {
     if (!session) return;
-    if (!useWorkoutStore.getState().moveSessionExercise(session.id, exerciseId, direction)) return;
+    const store = useWorkoutStore.getState();
+    if (wholeBlock) {
+      if (!store.moveSessionExercise(session.id, exerciseId, direction)) return;
+    } else {
+      const order = movedWithinSuperset(sets, exerciseId, direction);
+      if (!order) return;
+      store.reorderExercises(session.id, order);
+    }
     haptics.tap();
     animateLayout();
   };
@@ -751,19 +811,17 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       <ScreenAwake />
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <View style={styles.headerSide}>
-            <TouchableOpacity
-              style={styles.headerIcon}
-              activeOpacity={interaction.activeOpacity}
-              onPress={minimize}
-              accessibilityRole="button"
-              accessibilityLabel="Minimize workout"
-              accessibilityHint="The workout keeps running"
-            >
-              <Ionicons name="chevron-down" size={iconSize.lg} color={colors.accentText} />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.headerTitle}>
+          <TouchableOpacity
+            style={styles.headerIcon}
+            activeOpacity={interaction.activeOpacity}
+            onPress={minimize}
+            accessibilityRole="button"
+            accessibilityLabel="Minimize workout"
+            accessibilityHint="The workout keeps running"
+          >
+            <Ionicons name="chevron-down" size={iconSize.lg} color={colors.accentText} />
+          </TouchableOpacity>
+          <View style={styles.headerTitle} pointerEvents="none">
             {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />}
           </View>
           {!finishing && session ? (
@@ -788,10 +846,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               </TouchableOpacity>
               <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
             </View>
-          ) : <View style={styles.headerSide} />}
+          ) : <View style={styles.headerSpacer} />}
         </View>
         {/* The name gets its own full-width line under the buttons, so a long
-            routine name isn't squeezed between Leave and Finish. */}
+            routine name isn't squeezed between the minimize button and Finish. */}
         <View style={styles.titleBlock}>
           <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
           {session && <Text style={styles.subtitle} numberOfLines={1}>{`Started ${formatTimeOfDay(new Date(session.startedAt))}`}</Text>}
@@ -1347,11 +1405,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   const prevLine = prev ? formatSetLine(prev, kind, unit, false, scale) : null;
                   const prevMark = prev ? previousBadge(prev) : null;
                   const label = labels.get(set.id) ?? '';
-                  const record = done ? liveRecords?.get(set.id)?.[0] ?? null : null;
-                  const recordChange = record ? formatRecordChange(record, kind, unit) : null;
-                  const recordText = record && recordChange
-                    ? `${recordLabel(record.type, kind, record.reps)}, was ${recordChange.before}`
-                    : null;
+                  const setRecords = done ? liveRecords?.get(set.id) ?? [] : [];
+                  const lines = recordLines(setRecords, kind, unit, scale);
                   return (
                     <DeletableSet
                       key={set.id}
@@ -1388,14 +1443,21 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                         ) : (
                           <Text style={[styles.colPrev, styles.prevText]} numberOfLines={1}>–</Text>
                         )}
-                        {!!recordText && (
-                          <View
+                        {lines.length > 0 && (
+                          <TouchableOpacity
                             style={styles.recordPill}
-                            accessible
-                            accessibilityLabel={`Personal record. ${recordText}`}
+                            activeOpacity={interaction.activeOpacity}
+                            hitSlop={{ top: 12, bottom: 12, left: 6, right: 6 }}
+                            onPress={e => {
+                              haptics.tap();
+                              setRecordCard({ lines, anchor: { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY } });
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Personal record. ${lines.map(l => l.label).join(', ')}`}
+                            accessibilityHint="Shows what it was for"
                           >
                             <Ionicons name="trophy" size={iconSize.xs} color={colors.accentText} />
-                          </View>
+                          </TouchableOpacity>
                         )}
                         {fields.map(f => (
                           <SetInput
@@ -1440,6 +1502,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                             value={set.kind}
                             onChange={next => changeKind(set, next)}
                           />
+                          <HelpText style={styles.kindHelp}>{SET_KIND_HELP[set.kind]}</HelpText>
                           {!!plate && <PlateLine load={plate} unit={unit} />}
                         </View>
                       )}
@@ -1495,6 +1558,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       </View>
       {/* Inside this Modal, not beside it: a second sheet presented from the
           same view controller as this one never appears. */}
+      <RecordsCard
+        visible={recordCard !== null}
+        lines={recordCard?.lines ?? []}
+        anchor={recordCard?.anchor ?? null}
+        onClose={() => setRecordCard(null)}
+      />
       {(() => {
         const menuId = exerciseMenu?.exerciseId ?? null;
         const menuExercise = menuId ? exercises.find(e => e.exerciseId === menuId) ?? null : null;
@@ -1508,11 +1577,19 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
             anchor={exerciseMenu?.anchor ?? null}
             onClose={() => setExerciseMenu(null)}
             actions={menuId && menuExercise ? [
+              ...(group.length > 1 ? (['up', 'down'] as const)
+                .filter(direction => movedWithinSuperset(sets, menuId, direction) !== null)
+                .map(direction => ({
+                  key: `move-in-${direction}`,
+                  label: direction === 'up' ? 'Move up' : 'Move down',
+                  icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
+                  onPress: () => moveExercise(menuId, direction, false),
+                })) : []),
               ...(['up', 'down'] as const)
                 .filter(direction => movedExerciseOrder(sets, menuId, direction) !== null)
                 .map(direction => ({
                   key: `move-${direction}`,
-                  label: direction === 'up' ? 'Move up' : 'Move down',
+                  label: group.length > 1 ? (direction === 'up' ? 'Move superset up' : 'Move superset down') : (direction === 'up' ? 'Move up' : 'Move down'),
                   icon: (direction === 'up' ? 'arrow-up-outline' : 'arrow-down-outline') as 'arrow-up-outline',
                   onPress: () => moveExercise(menuId, direction),
                 })),
@@ -1877,12 +1954,12 @@ function ScreenAwake() {
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xsm, gap: spacing.sm },
-  // The two sides take equal width, so the clock between them is centered
-  // however wide the buttons on the right are.
-  headerSide: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  headerTitle: { alignItems: 'center' },
-  headerRight: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: spacing.xs },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xsm, gap: spacing.sm },
+  // Laid over the whole row rather than sharing it, so the clock sits at the
+  // screen's center whatever the widths of the minimize button and the timer + Finish group.
+  headerTitle: { position: 'absolute', left: 0, right: 0, top: spacing.sm, bottom: spacing.xsm, alignItems: 'center', justifyContent: 'center' },
+  headerSpacer: { minWidth: 64 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   headerIcon: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
   titleBlock: { alignItems: 'center', paddingHorizontal: spacing.md, paddingBottom: spacing.smd },
   title: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
@@ -1981,6 +2058,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   checkDone: { backgroundColor: colors.done, borderColor: colors.done },
   tray: { paddingHorizontal: spacing.md, paddingBottom: spacing.smd, gap: spacing.smd },
+  kindHelp: { color: colors.textSecondary, fontSize: font.xs, paddingHorizontal: spacing.xs },
   // Lines up under the "Previous" column, past the set number's column.
   nextPlates: { paddingLeft: spacing.md + 34 + spacing.sm, paddingRight: spacing.md, paddingBottom: spacing.smd },
   deletePanel: { width: 88, alignSelf: 'stretch', backgroundColor: colors.redFill, alignItems: 'center', justifyContent: 'center', gap: spacing.xxs },

@@ -163,6 +163,19 @@ import {
   wantsWaniKaniLessonsTask,
 } from '../utils/wanikaniTasks';
 import {
+  YNAB_APP_URL,
+  wantsYnabQueueTask,
+  ynabOverspentCategories,
+  ynabOverspentCategoryOf,
+  ynabOverspentMonthOf,
+  ynabOverspentSourceId,
+  ynabOverspentTitle,
+  ynabQueueSourceId,
+  ynabQueueTitle,
+  ynabTaskKind,
+} from '../utils/ynabTasks';
+import { ynabMonthKey } from '../utils/ynabPlan';
+import {
   WEIGH_IN_LINK_URL,
   WEIGH_IN_TITLE,
   clampWeighInEveryDays,
@@ -289,7 +302,7 @@ import { mealStripCoins, mealStripDoneSlots, mealStripOn, mealStripSlots } from 
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, loggedMealSlotTasks, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource, slotEntryForTask, staleMealSlotTasks } from '../utils/mealSlotTasks';
 import { logSlotToMealSlot, slotForHour, wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
-import { inheritedOccurrence, isRotationTask, rotationCoversNew, rotationPick, rotationPlanFor, rotationUnpick, rotationUnpickUncovers } from '../utils/rotation';
+import { inheritedOccurrence, isRotationTask, rotationDoneCount, rotationPick, rotationPlanFor, rotationUnpick } from '../utils/rotation';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { countsUnits } from '../utils/streakUnits';
@@ -496,6 +509,7 @@ import { datesAnchorStep, datesReconcile } from '../utils/taskDates';
 import { duplicateRows } from '../utils/taskDuplicate';
 import { useTransitStore } from './useTransitStore';
 import { useWaniKaniStore } from './useWaniKaniStore';
+import { useYnabStore } from './useYnabStore';
 import { travelOriginOfEvent, useTravelTimeStore } from './useTravelTimeStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
@@ -1179,6 +1193,19 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       useTaskStore.setState(s => ({
         tasks: s.tasks.map(t => (t.id === sourceId ? patched : t)),
       }));
+      return;
+    }
+    // The queue task writes nothing: its day is spent when it is written
+    // (ynabQueueLastDayKey), so a deleted one stays gone until tomorrow anyway.
+    // An overspent task is about one category for one month, so deleting it
+    // means "not about this one this month": its source id goes on
+    // ynabOverspentDeclined, which checkYnabTasks prunes as the month turns.
+    // `value === null` is the undo path and takes it back off.
+    case 'ynab': {
+      if (ynabTaskKind(task) !== 'overspent') return;
+      const settings = useSettingsStore.getState();
+      const rest = settings.ynabOverspentDeclined.filter(id => id !== sourceId);
+      settings.setYnabOverspentDeclined(value === false ? [...rest, sourceId] : rest);
       return;
     }
     default:
@@ -2494,6 +2521,11 @@ interface TaskStore extends UndoHistoryActions {
    * person's account (useWaniKaniStore). See src/utils/wanikaniTasks.ts.
    */
   checkWaniKaniTasks: () => void;
+  /**
+   * The YNAB transactions and overspent-category tasks, from the last read of
+   * the person's plan (useYnabStore). See src/utils/ynabTasks.ts.
+   */
+  checkYnabTasks: () => void;
   /** The bare-weekend offer — see src/utils/weekendTasks.ts. */
   checkWeekendNudgeTasks: () => void;
   /**
@@ -2695,6 +2727,12 @@ interface TaskStore extends UndoHistoryActions {
   bulkCompleteTasks: (ids: string[]) => void;
   bulkUncompleteTasks: (ids: string[]) => void;
   bulkMarkMissed: (ids: string[]) => void;
+  /**
+   * Bulk `skipNextRecurrence`: rolls every repeating task in `ids` onto its next
+   * date with no record. Anything else in the selection is left alone, so a
+   * mixed selection needs no filtering by the caller. One undo for the batch.
+   */
+  bulkSkipRecurrence: (ids: string[]) => void;
   /** `skipGeneratedOptOut` has the same meaning as `deleteTask`'s — see its doc comment. */
   /**
    * Returns the ids it refused to delete because a locked unlock needs them
@@ -5652,16 +5690,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!task || task.completed || !isRotationTask(task) || !isQuotaTask(task)) return false;
     const { weekStartsOn } = useSettingsStore.getState();
     const dayStart = getCurrentDayStart();
-    const covers = rotationCoversNew(task, itemId, dayStart, weekStartsOn);
     const patch = rotationPick(task, itemId, new Date(), dayStart, weekStartsOn);
     if (!patch) return false;
-    // A repeat logs without moving the count: the week is about coverage, and
-    // a second Spanish is a real listen but not a sixth language.
-    const progressCount = covers ? task.progressCount + 1 : task.progressCount;
+    // Read off the ledger, not stepped from the stored count: a repeat leaves
+    // it where it was (a second Spanish is a real listen but not a sixth
+    // language), and a row whose count had fallen behind its ledger heals on
+    // its next pick instead of counting every tap as a repeat for ever.
+    const progressCount = rotationDoneCount({ ...task, ...patch }, dayStart, weekStartsOn);
     const updated = { ...task, ...patch, progressCount };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
-    return covers && progressCount >= task.targetCount!;
+    return progressCount >= task.targetCount!;
   },
 
   logRotationUnit(id, itemId) {
@@ -5720,11 +5759,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const dayStart = getCurrentDayStart();
     const patch = rotationUnpick(task, dayStart, weekStartsOn);
     if (!patch) return;
-    const uncovers = rotationUnpickUncovers(task, dayStart, weekStartsOn);
     const updated = {
       ...task,
       ...patch,
-      progressCount: uncovers ? Math.max(0, task.progressCount - 1) : task.progressCount,
+      progressCount: rotationDoneCount({ ...task, ...patch }, dayStart, weekStartsOn),
     };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
@@ -5999,8 +6037,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // one on Monday (the same getNextOccurrence a skip uses, which covers no
       // day). A daily rule gives today, as before. A weekly target keeps its
       // period reading: its row stands for the whole week.
+      //
+      // completedAt is the day being closed, because a repeat-from-completion
+      // rule measures from the day the work was done and otherwise reads "now":
+      // a daily target left short yesterday was then counted from today and
+      // landed on tomorrow, skipping today altogether.
       const ruleDay = task.quotaPeriod !== 'week'
-        ? getNextOccurrence(task, dayResetTime, { catchUp: true })
+        ? getNextOccurrence(task, dayResetTime, { catchUp: true, completedAt: ownDayEnd })
         : null;
       const ruleStart = ruleDay ? getTaskDayStart(ruleDay.date, dayResetTime) : todayStart;
       const earliest = ruleStart > todayStart ? ruleStart : todayStart;
@@ -9474,6 +9517,143 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   /**
+   * The YNAB tasks. The rules (once a day for the queue, once a month per
+   * overspent category, ready rather than completed) are in
+   * `src/utils/ynabTasks.ts`; this reads the last snapshot, applies them and
+   * writes. It never fetches: `useYnabSync` reads the plan and calls this when
+   * a read lands, and the background run does the same.
+   */
+  checkYnabTasks() {
+    const settings = useSettingsStore.getState();
+    // A demo session's tasks are fiction; the real plan doesn't belong in them.
+    if (isDemoModeActive()) return;
+    if (!settings.ynabTasks) return;
+    if (!settings.ynabTaskCategory) return;
+    // At the top and spending nothing, so the first read after a trip picks
+    // the queue up as it stands then.
+    if (generatorPausedForVacation('ynab', settings.vacationMode)) return;
+    const snapshot = useYnabStore.getState().snapshot;
+    // An unread plan is not an empty queue, so without a read nothing moves.
+    // A read of a plan no longer chosen is about somebody else's money.
+    if (!snapshot || snapshot.planId !== settings.ynabPlanId) return;
+
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const category = settings.ynabTaskCategory;
+    const todayNoon = getCurrentDayStart();
+    todayNoon.setHours(12, 0, 0, 0);
+    const linkDrift = (existing: Task, title: string): Partial<Task> | null => {
+      const patch: Partial<Task> = {};
+      if (existing.title !== title) patch.title = title;
+      if (existing.linkUrl !== YNAB_APP_URL) patch.linkUrl = YNAB_APP_URL;
+      return Object.keys(patch).length > 0 ? patch : null;
+    };
+
+    // ==== the queue ====
+    const queue = snapshot.queue;
+    if (queue) {
+      const liveQueue = liveGeneratedTasksOfKind(get().tasks, 'ynab')
+        .filter(task => ynabTaskKind(task) === 'queue')
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      // One queue, one task. A second (two phones writing on different days
+      // before they synced) goes, and the older keeps any edits made to it.
+      liveQueue.slice(1).forEach(task => deleteGeneratedTaskQuietly(task.id));
+      const open = liveQueue[0] ?? null;
+      const title = ynabQueueTitle(queue);
+      if (open && open.generatedSourceId) {
+        reconcileGeneratedTask({
+          kind: 'ynab',
+          sourceId: open.generatedSourceId,
+          wanted: true,
+          // Empty is ready to check off, never checked off for them.
+          satisfied: queue.total === 0,
+          drift: existing => linkDrift(existing, title),
+          draft: () => ({ title }),
+        });
+      } else if (wantsYnabQueueTask(queue, todayKey, settings.ynabQueueLastDayKey)) {
+        const sourceId = ynabQueueSourceId(todayKey);
+        reconcileGeneratedTask({
+          kind: 'ynab',
+          sourceId,
+          wanted: true,
+          drift: existing => linkDrift(existing, title),
+          draft: () => ({
+            title,
+            dueDate: todayNoon.toISOString(),
+            category,
+            linkUrl: YNAB_APP_URL,
+            ...generatedBy('ynab', sourceId),
+          }),
+        });
+        // Spent only by writing it, so a create the reconcile refused leaves
+        // the day open, and one checked off or deleted stays gone today.
+        if (liveGeneratedTask(get().tasks, 'ynab', sourceId)) settings.setYnabQueueLastDayKey(todayKey);
+      }
+    }
+
+    // ==== overspent categories ====
+    const monthKey = ynabMonthKey(new Date());
+    // A decline is about one month; last month's can't match anything again.
+    const declined = settings.ynabOverspentDeclined.filter(id => ynabOverspentMonthOf(id) === monthKey);
+    if (declined.length !== settings.ynabOverspentDeclined.length) settings.setYnabOverspentDeclined(declined);
+    const liveOverspent = liveGeneratedTasksOfKind(get().tasks, 'ynab')
+      .filter(task => ynabTaskKind(task) === 'overspent');
+    // The switch off, or the month turned (YNAB starts each category again
+    // from what was assigned, so last month's shortfall has already moved):
+    // the reason is gone, so the row goes.
+    liveOverspent
+      .filter(task => !settings.ynabOverspentTasks
+        || ynabOverspentMonthOf(task.generatedSourceId ?? '') !== monthKey)
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+    // A read from last month says nothing about this one.
+    if (!settings.ynabOverspentTasks || snapshot.monthKey !== monthKey) return;
+    const symbol = settings.currencySymbol;
+    const byId = new Map(snapshot.categories.map(c => [c.id, c]));
+    // The open ones follow their category: the amount in the title, and ready
+    // once it is back at zero or above. A category gone from the plan takes
+    // its task with it.
+    liveGeneratedTasksOfKind(get().tasks, 'ynab')
+      .filter(task => ynabTaskKind(task) === 'overspent')
+      .forEach(task => {
+        const sourceId = task.generatedSourceId ?? '';
+        const found = byId.get(ynabOverspentCategoryOf(sourceId) ?? '');
+        if (!found || found.hidden) {
+          deleteGeneratedTaskQuietly(task.id);
+          return;
+        }
+        const title = ynabOverspentTitle(found, symbol);
+        reconcileGeneratedTask({
+          kind: 'ynab',
+          sourceId,
+          wanted: true,
+          satisfied: found.balanceMinor >= 0,
+          drift: existing => linkDrift(existing, title),
+          draft: () => ({ title }),
+        });
+      });
+    for (const overspent of ynabOverspentCategories(snapshot)) {
+      const sourceId = ynabOverspentSourceId(overspent.id, monthKey);
+      if (declined.includes(sourceId)) continue;
+      if (liveGeneratedTask(get().tasks, 'ynab', sourceId)) continue;
+      const title = ynabOverspentTitle(overspent, symbol);
+      reconcileGeneratedTask({
+        kind: 'ynab',
+        sourceId,
+        wanted: true,
+        // Once a month per category: one checked off this month is on record.
+        blocksOnFinished: true,
+        drift: existing => linkDrift(existing, title),
+        draft: () => ({
+          title,
+          dueDate: todayNoon.toISOString(),
+          category,
+          linkUrl: YNAB_APP_URL,
+          ...generatedBy('ynab', sourceId),
+        }),
+      });
+    }
+  },
+
+  /**
    * The weekend nudge — see `src/utils/weekendTasks.ts` for the five rules the
    * pure half holds, which is where anything about *what* a bare weekend is
    * belongs. This is only the plumbing: read the state, clear what has gone
@@ -11576,6 +11756,27 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: `${missedIds.length} task${missedIds.length === 1 ? '' : 's'} marked missed`,
       redo: () => get().bulkMarkMissed(ids),
       undo: () => missedIds.forEach(id => get().uncompleteTask(id)),
+    });
+  },
+
+  // Bulk equivalent of skipNextRecurrence. skipPatch refuses anything that
+  // doesn't repeat, so the per-task guard is the one the row's Skip has.
+  bulkSkipRecurrence(ids) {
+    const before = new Map<string, Task>();
+    ids.forEach(id => {
+      const t = get().tasks.find(x => x.id === id);
+      if (t && !t.completed && t.recurrenceType !== 'none') before.set(t.id, { ...t });
+    });
+    if (before.size === 0) return;
+    dbTransaction(() => {
+      before.forEach((_, id) => get().skipNextRecurrence(id, { registerUndo: false }));
+    });
+    const n = before.size;
+    get().setLastAction({
+      announce: true,
+      label: `${n} task${n === 1 ? '' : 's'} skipped`,
+      undo: () => dbTransaction(() => before.forEach((snap, id) => get().updateTask(id, snap))),
+      redo: () => get().bulkSkipRecurrence(ids),
     });
   },
 

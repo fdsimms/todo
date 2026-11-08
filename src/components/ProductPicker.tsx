@@ -140,7 +140,7 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
         <View style={styles.form}>
           <Text style={styles.label}>NEW BRAND OR FLAVOR</Text>
           <View style={styles.pair}>
-            <View style={styles.half}>
+            <View>
               <Text style={styles.fieldLabel}>BRAND</Text>
               <TextField
                 style={styles.input}
@@ -153,7 +153,7 @@ export function ProductPicker({ itemId, products, value, onPick, label, allowNon
                 accessibilityLabel="Brand"
               />
             </View>
-            <View style={styles.half}>
+            <View>
               <Text style={styles.fieldLabel}>FLAVOR OR TYPE</Text>
               <TextField
                 style={styles.input}
@@ -224,8 +224,9 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.sm,
       minHeight: 44,
     },
-    pair: { flexDirection: 'row', gap: spacing.sm },
-    half: { flex: 1 },
+    // Stacked, not side by side: a flavor name ("Tortilla Style Protein Chips")
+    // is longer than half a line, and the field is a single line.
+    pair: { gap: spacing.sm },
     fieldLabel: {
       color: colors.textSecondary,
       fontSize: font.xs,

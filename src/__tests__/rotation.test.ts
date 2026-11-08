@@ -17,7 +17,7 @@ import {
   rotationPills,
   rotationRemaining,
   rotationUnpick,
-  rotationUnpickUncovers,
+  rotationCountAfterPick,
   rotationUnitsLeft,
   rotationTargetTotal,
   rotationPerWeek,
@@ -428,11 +428,13 @@ describe('per-member counts', () => {
     expect(rotationUnitsLeft(task, WED, 1)).toBe(1);
   });
 
-  it('uncovers on an undo only when the member drops under its count', () => {
-    expect(rotationUnpickUncovers(workouts(['run', 'run']), WED, 1)).toBe(true);
-    expect(rotationUnpickUncovers(workouts(['run', 'run', 'run']), WED, 1)).toBe(true);
-    expect(rotationUnpickUncovers(workouts(['run', 'run', 'run', 'run']), WED, 1)).toBe(false);
-    expect(rotationUnpickUncovers(workouts([]), WED, 1)).toBe(false);
+  it('reads the count after a pick off the ledger, so a drifted count cannot hide the closing pick', () => {
+    // Run 3/3 and one bike ride: the set is covered whatever count the row stored.
+    const task = workouts(['run', 'run', 'run']);
+    expect(rotationCountAfterPick(task, 'bike', new Date(WED), WED, 1)).toBe(4);
+    // A repeat of a covered member adds nothing, and an unknown member is refused.
+    expect(rotationCountAfterPick(task, 'run', new Date(WED), WED, 1)).toBe(3);
+    expect(rotationCountAfterPick(task, 'nope', new Date(WED), WED, 1)).toBeNull();
   });
 
   it('flags a week that no longer fits', () => {

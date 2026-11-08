@@ -63,7 +63,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/backfillBatch.ts` — BatchScopeKind, BatchScope, BatchOption, batchOptionsFor, taskBatchScopes, personBatchScopes, itemBatchScopes, recipeBatchScopes, canBatchApply, canBatchDismiss, +1 more
 - `src/utils/backfillDismissCopy.ts` — MAX_DISMISS_LABEL_LENGTH, KEEP_AS_IS_LABEL, TASK_DISMISS_LABELS, CATEGORY_DISMISS_LABELS, PROJECT_DISMISS_LABELS, PERSON_DISMISS_LABELS, ITEM_DISMISS_LABELS, RECIPE_DISMISS_LABELS
 - `src/utils/backfillSuggest.ts` — SuggestibleBackfillFieldId, SUGGESTIBLE_BACKFILL_FIELDS, isSuggestibleBackfillField, MAX_SUGGESTION_TASKS, MAX_SUGGESTION_EXAMPLES, SUGGESTION_NOTES_MAX_CHARS, SuggestionTask, SuggestionExample, BackfillSuggestion, TitleOf, +4 more
-- `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runWatchWork, useBackgroundRefresh, APP_REFRESH_INTERVAL_MINUTES, useAppRefresh
+- `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runBackgroundYnab, runWatchWork, useBackgroundRefresh, APP_REFRESH_INTERVAL_MINUTES, +1 more
 - `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, isDeviceLocalSetting, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, +4 more
 - `src/utils/backupFile.ts` — writeExportFile, canShare, shareExportFile, shareBackupFile, shareCsvFile, shareMarkdownFile, writePdfFile, sharePdfFile, discardBackupFile, pickBackupFile
 - `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
@@ -239,7 +239,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryMerge.ts` — laterOf, pickPriceFields, MergeRows, MergePlan, planMergeItems
 - `src/utils/groceryParse.ts` — groceryNameKey, itemNameKey, parseGroceryInput, LEADING_PREP_PRODUCTS, splitQuantityNote, splitPrep, splitPurpose, splitExample, suggestShorterCatalogName, splitAlternativeNames, +5 more
 - `src/utils/groceryPlural.ts` — pluralKeyVariants, resolvePluralKey, catalogItemForKey
-- `src/utils/groceryPrice.ts` — parsePriceInput, formatPrice, priceToInput, formatPriceInput, describePriceAge, describePriceContext, describeShopPrices, ShopPrice, shopPricesFor, Comparable, +19 more
+- `src/utils/groceryPrice.ts` — parsePriceInput, formatPrice, priceToInput, formatPriceInput, describePriceAge, describePriceContext, describeShopPrices, ShopPrice, shopPricesFor, Comparable, +20 more
 - `src/utils/groceryProduct.ts` — productKeyFor, canonicalBrand, describeProduct, describeProductOfItem, describeCatalogItem, productsForItem, brandForNewBox, productForGtin, preferredProductOf, describePreferredProduct, +5 more
 - `src/utils/groceryReminderMirror.ts` — GroceryReminderLink, GroceryLinkIndex, parseGroceryLinks, serializeGroceryLinks, withGroceryLinks, MirrorItem, MirrorReminder, mirrorNote, mirrorTitleFor, normalizeMirrorTitle, +2 more
 - `src/utils/groceryReorder.ts` — GroceryDropRow, GroceryPlacement, resolveGroceryDrop, KeyedGroceryDropRow, placeNewGroceryItems, groceryDragRange
@@ -401,7 +401,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, reviewedBoxRow, +17 more
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, clockBesideDayPart, dayPartBesideClock, DatePart, NUMBER_WORDS, +5 more
 - `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +58 more
-- `src/utils/pastWorkout.ts` — PastSetText, PastExerciseDraft, PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MIN_MINUTES, PAST_WORKOUT_MAX_MINUTES, PastWorkoutProblem, nextSetText, newSupersetKey, withoutPastExercise, joinPastSuperset, +4 more
+- `src/utils/pastWorkout.ts` — PastSetText, PastExerciseDraft, PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MIN_MINUTES, PAST_WORKOUT_MAX_MINUTES, PastWorkoutProblem, nextSetText, newSupersetKey, withoutPastExercise, joinPastSuperset, +5 more
 - `src/utils/pastedLines.ts` — cleanPastedLines
 - `src/utils/patchNotes.ts` — PatchNote
 - `src/utils/penaltyShield.ts` — penaltyCutoffAt, PenaltyCharge, penaltyChargeFor, slipUndoLabel, penaltyChipLabel, slipPenaltyUntil, extendShieldUntil, penaltyCreditFor, uncreditShieldUntil, creditShieldUntil, +1 more
@@ -562,7 +562,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/searchPantryRun.ts` — runPantry
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/sectionRegistry.ts` — registerSectionSource, sectionsNow, isChecklistRow
-- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, SYNC_TOKEN_READABLE_LOCKED_SETTING, WANIKANI_TOKEN_SECURE_KEY, loadSecureKey, +2 more
+- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, SYNC_TOKEN_READABLE_LOCKED_SETTING, WANIKANI_TOKEN_SECURE_KEY, YNAB_TOKEN_SECURE_KEY, +3 more
 - `src/utils/segmentColumns.ts` — segmentRows
 - `src/utils/settingsActiveRows.ts` — SettingsGateState, SyncGateState, activeSettingsEntryIds, searchableSettingsEntries
 - `src/utils/settingsFocusScroll.ts` — SETTINGS_FOCUS_PADDING, settingsFocusScrollTarget
@@ -735,14 +735,16 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutProgression.ts` — LINEAR_DELOAD_AFTER, DELOAD_FRACTION, DEFAULT_TARGET_RPE, RPE_LOAD_PER_POINT, DEFAULT_WAVE_PERCENTS, WAVE_STEP_POINTS, WAVE_DELOAD_POINTS, TRAINING_MAX_FRACTION, defaultIncrementKg, incrementFor, +27 more
 - `src/utils/workoutProposal.ts` — ExerciseProposalInput, ExerciseProposal, exerciseProposal, proposalRamp, proposalWrites
 - `src/utils/workoutProposalApply.ts` — liveProposal, ApplyProposalOptions, applyProposal
-- `src/utils/workoutRecordText.ts` — withThousands, recordLabel, formatVolume, formatRecordFigure, formatRecordValue, formatRecordChange, metricLabel, metricNote, metricCaption, formatBestPoint, +5 more
+- `src/utils/workoutRecordText.ts` — withThousands, recordLabel, formatVolume, formatRecordFigure, formatRecordValue, formatRecordChange, recordLines, metricLabel, metricNote, metricCaption, +6 more
 - `src/utils/workoutRecords.ts` — E1RM_MAX_REPS, REP_RECORD_MAX, SECONDARY_MUSCLE_WEIGHT, NEW_RECORD_DAYS, RECENT_RECORD_DAYS, countsForRecords, estimatedOneRepMax, setVolume, liftVolumeKg, bodyweightVolumeKg, +35 more
 - `src/utils/workoutRoutine.ts` — RoutineItemShape, itemShape, MAX_ROUTINE_SETS, MAX_WARMUP_SETS, defaultTargets, newRoutineItem, withWarmups, WarmupMode, warmupMode, DEFAULT_WARMUP_SETS, +35 more
-- `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, movedExerciseOrder, exerciseBlocks, joinedSuperset, leftSuperset, nextSet, +33 more
+- `src/utils/workoutSession.ts` — SessionExercise, sessionExercises, supersetGroup, roundRobin, walkOrder, movedExerciseOrder, movedWithinSuperset, exerciseBlocks, joinedSuperset, leftSuperset, +34 more
 - `src/utils/workoutSiri.ts` — WorkoutRoutineIndexEntry, MAX_ROUTINE_INDEX_ENTRIES, buildRoutineIndex, QueuedWorkoutStart, parseQueuedWorkoutStarts, newestWorkoutStart, WorkoutStartPlan, QUEUED_START_MAX_AGE_MS, resolveQueuedWorkoutStart, myWorkoutStart
 - `src/utils/workoutTask.ts` — WorkoutTaskEffect, rotationPickFor, workoutTaskEffect, linkedTaskLine, routineMergePatch
 - `src/utils/workoutTick.ts` — TickRest, TickOutcome, restLabelFor, tickOutcome, TickValues, tickSet
 - `src/utils/workoutTimes.ts` — withClock, shiftDays, spanMinutes, sameMinute, workoutTimesProblem
+- `src/utils/ynabPlan.ts` — ynabMinorFromMilliunits, ynabMonthKey, YnabPlan, YnabCategory, YnabQueue, YnabSnapshot, ynabPlansFrom, mergeYnabCategories, ynabTransactionIdsFrom, ynabQueueFrom, +2 more
+- `src/utils/ynabTasks.ts` — YNAB_APP_URL, YNAB_TOKEN_URL, ynabQueueSourceId, ynabOverspentSourceId, ynabTaskKind, ynabOverspentMonthOf, ynabOverspentCategoryOf, ynabQueueTitle, ynabOverspentTitle, wantsYnabQueueTask, +1 more
 
 ## `src/store`
 
@@ -823,6 +825,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useWidgetCompletionStore.ts` — TAP_CLAIM_WINDOW_MS, useWidgetCompletionStore
 - `src/store/useWorkoutModeStore.ts` — useWorkoutModeStore
 - `src/store/useWorkoutStore.ts` — ExerciseInput, ExercisePatch, RoutinePatch, ProgramInput, ProgramPatch, VersionMode, RoutineSaveOptions, RoutineAddOptions, StartSessionInput, SessionPatch, +10 more
+- `src/store/useYnabStore.ts` — YNAB_SNAPSHOT_STALE_MS, YNAB_RATE_LIMIT_BACKOFF_MS, resetYnabBackoffForTests, useYnabStore
 
 ## `src/hooks`
 
@@ -931,6 +934,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useWorkoutHeartRate.ts` — useWorkoutHeartRate
 - `src/hooks/useWorkoutLiveActivitySync.ts` — syncWorkoutLiveActivityNow, useWorkoutLiveActivitySync
 - `src/hooks/useWorkoutStats.ts` — WORKOUT_STATS_WEEKS, WorkoutStatsRecord, WorkoutStats, useWorkoutStats
+- `src/hooks/useYnabSync.ts` — useYnabSync
 
 ## `src/db`
 
@@ -950,3 +954,4 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/services/travelTime.ts` — estimateTravelMinutes
 - `src/services/wanikani.ts` — WaniKaniProblem, WaniKaniUser, WaniKaniRead, WaniKaniReadOptions, waniKaniSummaryFrom, waniKaniUserFrom, lessonsStartedSince, fetchWaniKani
 - `src/services/weatherLookup.ts` — WeatherHour, WeatherSnapshot, snapshotFromResponse, fetchWeatherSnapshot, ForecastDay, fetchDestinationForecast
+- `src/services/ynab.ts` — YnabProblem, YnabPlansRead, YnabRead, YnabReadOptions, ynabProblemForStatus, ynabWanted, fetchYnabPlans, fetchYnab

@@ -76,6 +76,7 @@ export function StackDetailScreen() {
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
+  const bulkSkipRecurrence = useTaskStore(s => s.bulkSkipRecurrence);
   const bulkMoveToProject = useTaskStore(s => s.bulkMoveToProject);
   const projects = useProjectStore(useShallow(s => s.projects));
   const moveTargets = useMemo(() => projectMoveTargets(projects), [projects]);
@@ -357,6 +358,7 @@ export function StackDetailScreen() {
             onSetPriority={p => bulkSetPriorityAsking(Array.from(selectedIds), p, exitSelection)}
             onSetDifficulty={rewardsEnabled ? d => bulkSetDifficultyAsking(Array.from(selectedIds), d, exitSelection) : undefined}
             onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
+            onSkip={() => { bulkSkipRecurrence(Array.from(selectedIds)); exitSelection(); }}
             moveToProject={{
               projects: moveTargets,
               onMove: projectId => { animateLayout(); bulkMoveToProject(Array.from(selectedIds), projectId); exitSelection(); },

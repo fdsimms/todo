@@ -475,6 +475,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'goalTargetTasks',
   'bookEventTasks',
   'wanikaniTasks',
+  'ynabTasks',
 
   // Behaviour.
   'newTaskDefaults',
@@ -655,6 +656,18 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'wanikaniApprenticeCap',
   'wanikaniNotify',
   'wanikaniClientLink',
+  // The YNAB features and which plan and grocery category they read. The token
+  // is the keychain's and never syncs, and nothing read from YNAB is stored at
+  // all; these are the person's choices and YNAB's ids for them. The queue day
+  // mark says what this device has written and stays here. The overspent tasks
+  // deleted travel, like limitWarningDeclined, so a second phone doesn't write
+  // one back.
+  'ynabTaskCategory',
+  'ynabOverspentTasks',
+  'ynabGroceryBudget',
+  'ynabPlanId',
+  'ynabGroceryCategoryId',
+  'ynabOverspentDeclined',
   'waterShortfallTaskCategory',
   'weatherTaskCategory',
   'weekendNudgeTaskCategory',

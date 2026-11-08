@@ -418,6 +418,24 @@ export function rotationDoneCount(
 }
 
 /**
+ * The covered count the row should hold once `itemId` is logged, read off the
+ * ledger rather than stepped from the stored count. Stepping let the two drift
+ * (an undo that restored the count but not the ledger left every member covered
+ * at 6 of 7), after which no pick ever counted as the closing one. Null when
+ * the pick names no member.
+ */
+export function rotationCountAfterPick(
+  task: RotationCarrier,
+  itemId: string,
+  at: Date,
+  dayStart: Date,
+  weekStartsOn: 0 | 1,
+): number | null {
+  const patch = rotationPick(task, itemId, at, dayStart, weekStartsOn);
+  return patch ? rotationDoneCount({ ...task, ...patch }, dayStart, weekStartsOn) : null;
+}
+
+/**
  * Covered against total for a ledger read back on its own, with no period
  * check: the picks a closed week kept, against what the set asks for. Capped
  * per member exactly as `rotationDoneCount` is.
@@ -458,25 +476,6 @@ export function rotationCoversNew(
   if (!item) return false;
   const count = activeRotationLog(task, dayStart, weekStartsOn).filter(e => e.itemId === itemId).length;
   return count < rotationPerWeek(item);
-}
-
-/**
- * Whether taking back the newest pick lowers the covered total: true when the
- * member it belongs to is, after the undo, under its own count. Undoing a fourth
- * run leaves three runs covered, because the first three still count.
- */
-export function rotationUnpickUncovers(
-  task: RotationCarrier,
-  dayStart: Date,
-  weekStartsOn: 0 | 1,
-): boolean {
-  const log = activeRotationLog(task, dayStart, weekStartsOn);
-  const dropped = log[log.length - 1];
-  if (!dropped) return false;
-  const item = (task.rotationItems ?? []).find(i => i.id === dropped.itemId);
-  if (!item) return false;
-  const after = log.slice(0, -1).filter(e => e.itemId === dropped.itemId).length;
-  return after < rotationPerWeek(item);
 }
 
 /**

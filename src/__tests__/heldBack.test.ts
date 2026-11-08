@@ -34,8 +34,8 @@ describe('heldBackToggleText', () => {
   it('counts every task across the reasons once there is more than one', () => {
     const groups = heldBackGroups({ expired: tasks(2), slot: tasks(3), waitingOn: tasks(2) });
     expect(heldBackTotal(groups)).toBe(7);
-    expect(heldBackToggleText(groups, false)).toBe('Show 7 held back');
-    expect(heldBackToggleText(groups, true)).toBe('Hide 7 held back');
+    expect(heldBackToggleText(groups, false)).toBe('Show 7 set aside');
+    expect(heldBackToggleText(groups, true)).toBe('Hide 7 set aside');
   });
 });
 

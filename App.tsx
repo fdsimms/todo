@@ -48,6 +48,7 @@ import { useSlotInSync } from './src/hooks/useSlotInSync';
 import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
 import { useWakeUpTaskSync } from './src/hooks/useWakeUpTaskSync';
 import { useWaniKaniSync } from './src/hooks/useWaniKaniSync';
+import { useYnabSync } from './src/hooks/useYnabSync';
 import { useEventTaskSync } from './src/hooks/useEventTaskSync';
 import { useReminderMeetingResync } from './src/hooks/useReminderMeetingResync';
 import { usePlaceGateRefresh } from './src/hooks/usePlaceGateRefresh';
@@ -392,6 +393,7 @@ function AppRoot() {
   // the WaniKani task is switched on and has a token) and re-runs its check
   // when a read lands.
   useWaniKaniSync();
+  useYnabSync();
   // Re-runs the event rule sweep when the calendar windows land (including the
   // wider one the "after the event" rules read) or the rules change.
   useEventTaskSync();

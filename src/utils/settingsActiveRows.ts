@@ -35,6 +35,7 @@ export type SettingsGateState = GeneratedEnabledFlags & {
   transitAlerts: boolean;
   workoutsEnabled: boolean;
   workoutHealthWrite: boolean;
+  ynabGroceryBudget: boolean;
 };
 
 /** The sync store's values "Sync now" depends on. The sync store satisfies it. */
@@ -67,6 +68,7 @@ export function activeSettingsEntryIds(settings: SettingsGateState, sync: SyncGa
   if (settings.healthWriteEnabled) on.add('healthWrite');
   if (settings.calendarReadEnabled) on.add('calendarRead');
   if (settings.remindersImportEnabled) on.add('remindersImport');
+  if (settings.ynabGroceryBudget) on.add('ynabGroceryBudget');
   if (settings.workoutsEnabled) on.add('workoutsEnabled');
   // Its access row also needs Log to Health and the Workouts area, which the
   // entry says through `requiresAll`.

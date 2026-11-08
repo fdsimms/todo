@@ -110,6 +110,28 @@ export function formatRecordChange(
   };
 }
 
+/**
+ * What a set's trophy says when tapped: one line per record the set broke, the
+ * name of the record and the figure it now stands at beside the one it replaced
+ * ("Heaviest weight", "220 lb × 8, was 200 lb × 10"). A set can break several at
+ * once, so none is left out.
+ */
+export function recordLines(
+  records: readonly Parameters<typeof formatRecordChange>[0][],
+  kind: ExerciseKind,
+  unit: WeightUnit,
+  scale = 1,
+): { key: string; label: string; detail: string }[] {
+  return records.map(r => {
+    const change = formatRecordChange(r, kind, unit, scale);
+    return {
+      key: r.type === 'repsAt' ? `repsAt-${r.reps ?? 0}` : r.type,
+      label: recordLabel(r.type, kind, r.reps),
+      detail: `${change.after}, was ${change.before}`,
+    };
+  });
+}
+
 /** The segmented control's label for each metric. */
 export function metricLabel(metric: RecordMetric): string {
   return metric === 'e1rm' ? 'Estimated 1RM' : metric === 'best' ? 'Best set' : 'Volume';

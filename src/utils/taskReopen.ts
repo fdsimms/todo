@@ -8,6 +8,7 @@
  * stays with the caller, since each of those lives in a store or on the phone.
  */
 import type { Task } from '../types';
+import { isRotationTask } from './rotation';
 import { isMissed, isQuotaTask } from './visibilityUtils';
 
 export function reopenedTask(task: Task): Task {
@@ -33,6 +34,14 @@ export function reopenedTask(task: Task): Task {
     // real one and pulling it down to target-1 would invent progress.
     progressCount:
       isQuotaTask(task) && !isMissed(task) ? Math.max(0, task.targetCount! - 1) : task.progressCount,
+    // A rotation's closing pick is written to the ledger before the row
+    // completes, so dropping the count to target - 1 without dropping that pick
+    // leaves the ledger a pick ahead of the count (Weight lifting still reading
+    // 3/3 after the undo). Only a fully covered row got here by a pick: a
+    // week that rolled over short never had a closing one.
+    ...(isRotationTask(task) && isQuotaTask(task) && !isMissed(task) && task.progressCount >= task.targetCount!
+      ? { rotationLog: (task.rotationLog ?? []).slice(0, -1) }
+      : {}),
     // Same restore as the streak, and it has to be a snapshot rather than a
     // decrement: a completion that fired the rule reset the tally to 0, so
     // subtracting one would leave it at 0 and the next completion would fire

@@ -1,4 +1,4 @@
-import { reopenBlockedByLater } from '../utils/taskReopen';
+import { reopenBlockedByLater, reopenedTask } from '../utils/taskReopen';
 import type { Task } from '../types';
 
 // taskReopen reaches visibilityUtils, which reads these stores.
@@ -51,5 +51,28 @@ describe('reopenBlockedByLater', () => {
     const a = row({ id: 'a', completed: true });
     const b = row({ id: 'b', completed: true, missedAt: '2026-01-01T00:00:00.000Z', previousOccurrenceId: 'a' } as Partial<Task>);
     expect(reopenBlockedByLater(a, [a, b])).not.toBeNull();
+  });
+});
+
+describe('reopenedTask on a rotation', () => {
+  const items = [{ id: 'a' }, { id: 'b' }, { id: 'c' }] as unknown as Task['rotationItems'];
+  const log = [
+    { itemId: 'a', at: '2026-11-02T09:00:00' },
+    { itemId: 'b', at: '2026-11-03T09:00:00' },
+    { itemId: 'c', at: '2026-11-07T09:00:00' },
+  ];
+  const rotation = (over: Partial<Task>) => row({
+    completed: true, rotationEnabled: true, rotationItems: items, rotationLog: log,
+    targetCount: 3, progressCount: 3, ...over,
+  });
+
+  it('takes the closing pick back out of the ledger with the count', () => {
+    const reopened = reopenedTask(rotation({}));
+    expect(reopened.progressCount).toBe(2);
+    expect(reopened.rotationLog.map(e => e.itemId)).toEqual(['a', 'b']);
+  });
+
+  it('leaves the ledger alone on a week that closed short', () => {
+    expect(reopenedTask(rotation({ progressCount: 2 })).rotationLog).toHaveLength(3);
   });
 });
