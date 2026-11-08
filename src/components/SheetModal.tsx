@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Keyboard, Modal } from 'react-native';
 import { AppFrame } from './AppFrame';
+import { FlowStage, SheetFlowContext } from './FlowStage';
 import { KeyboardDoneAccessory } from './KeyboardDoneAccessory';
 import {
   beginDismissal,
@@ -175,7 +176,7 @@ type Props = React.ComponentProps<typeof Modal> & {
  * overriding it, so clearing only the outer one leaves it held open. Every
  * path today pairs them.
  */
-export function SheetModal({ visible = true, children, name, preempts = false, ...rest }: Props) {
+function PresentedSheetModal({ visible = true, children, name, preempts = false, ...rest }: Props) {
   // The view controller this sheet presents *from*, and the fresh one its own
   // children present from. See `PresentationLevelContext`.
   const parentLevel = useContext(PresentationLevelContext);
@@ -398,4 +399,26 @@ export function SheetModal({ visible = true, children, name, preempts = false, .
       {fillsWindow ? <AppFrame>{body}</AppFrame> : body}
     </Modal>
   );
+}
+
+/**
+ * `Modal`, or a layer of the `SheetFlow` it is rendered in. A pageSheet inside a
+ * flow's host is one of its stages and presents nothing itself, so a hand-off to
+ * the next stage is a crossfade rather than a slide down and a slide up. Every
+ * other sheet, including one raised from inside a stage, is a `Modal`.
+ */
+export function SheetModal(props: Props) {
+  const flow = useContext(SheetFlowContext);
+  if (flow && props.presentationStyle === 'pageSheet' && !props.transparent) {
+    return (
+      <FlowStage
+        flow={flow}
+        visible={props.visible ?? true}
+        onRequestClose={() => props.onRequestClose?.({} as never)}
+      >
+        {props.children}
+      </FlowStage>
+    );
+  }
+  return <PresentedSheetModal {...props} />;
 }

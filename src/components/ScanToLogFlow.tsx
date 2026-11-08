@@ -6,6 +6,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { nutritionFor } from '../utils/foodNutrition';
 import { describeProduct, describeProductOfItem } from '../utils/groceryProduct';
 import type { ScannedGtinLink } from '../utils/scanResolve';
+import { SheetFlow } from './SheetFlow';
 import { BarcodeScanSheet, type ScanProductDraft } from './BarcodeScanSheet';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { LabelSubjectSheet, type LabelSubject } from './LabelSubjectSheet';
@@ -135,8 +136,8 @@ export function ScanToLogFlow({
   /**
    * A label photo the scanner asked for before anyone named the food: the
    * card that asks Food, Brand and Variant opens first, and its answer becomes
-   * `panelFor`. The scanner stays mounted underneath (hidden), so cancelling
-   * lands back on the same rows.
+   * `panelFor`. The scanner stays up underneath the card, so cancelling lands
+   * back on the same rows.
    */
   const [naming, setNaming] = useState<{ slot: MealSlot | null; at: Date; mealPlanEntryId: string | null } | null>(null);
   // The panel's subject: one the scanner raised, else the caller's own label
@@ -279,16 +280,21 @@ export function ScanToLogFlow({
   };
 
   return (
-    <>
+    // One page sheet for the whole flow: the scanner, the amount sheet and the
+    // label panel are layers in it and hand off by crossfading, rather than one
+    // sliding down and the next sliding up. See `SheetFlow`. It stays up while
+    // any of them is wanted, which is why `visible` below is what each layer
+    // is asked for and not what the sheet is.
+    <SheetFlow
+      name="Scan to log"
+      visible={visible || session !== null || panelSubject !== null}
+    >
       <BarcodeScanSheet
-        // Hidden once the scan has produced something to portion or a panel to
-        // fill in. `BarcodeScanSheet` reports its result through `onApply`
-        // without closing itself, so without this the scanner is still
-        // presented when the sheet below opens — and these are siblings, so
-        // both present from the same view controller, which can only present
-        // one. The second is refused silently. Same rule as the note on
-        // `LogMealEntrySheet`.
-        visible={visible && session === null && panelSubject === null && naming === null}
+        // Not shown once the scan has produced something to portion or a panel
+        // to fill in. `BarcodeScanSheet` reports its result through `onApply`
+        // without closing itself, so the caller's `visible` stays true through
+        // the hand-off. The scanner stays up behind the "About this label" card.
+        visible={visible && session === null && panelSubject === null}
         context="log"
         initialCode={initialCode}
         onClose={onClose}
@@ -388,6 +394,6 @@ export function ScanToLogFlow({
           });
         }}
       />
-    </>
+    </SheetFlow>
   );
 }

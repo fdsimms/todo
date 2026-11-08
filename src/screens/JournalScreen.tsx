@@ -58,6 +58,7 @@ import { JournalText } from '../components/JournalText';
 import { JournalWordGoalSheet } from '../components/JournalWordGoalSheet';
 import { JournalDaySheet } from '../components/JournalDaySheet';
 import { JournalMonthSheet } from '../components/JournalMonthSheet';
+import { SheetFlow } from '../components/SheetFlow';
 import { journalPlainText } from '../utils/journalMarkdown';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
@@ -378,23 +379,25 @@ function JournalLogContent({ kind }: { kind: JournalKind }) {
       <LazySheet open={sheetOpen}>
         <JournalEntrySheet visible={sheetOpen} kind={kind} editing={editing} dictateOnOpen={dictateOnOpen} onClose={closeSheet} />
       </LazySheet>
-      <LazySheet open={monthOpen}>
-        <JournalMonthSheet
-          visible={monthOpen}
-          kind={kind}
-          onPickDay={dayKey => showDay(dayKey, false)}
-          onClose={() => setMonthOpen(false)}
-        />
-      </LazySheet>
-      <LazySheet open={dayOpen}>
-        <JournalDaySheet
-          visible={dayOpen}
-          kind={kind}
-          dayKey={shownDay}
-          onAnother={dayIsRandom ? showRandomDay : undefined}
-          onEdit={entry => { setDayOpen(false); openEdit(entry); }}
-          onClose={() => setDayOpen(false)}
-        />
+      {/* The month grid and the page it opens are one sheet that crossfades,
+          not one sliding down and the other sliding up. See `SheetFlow`. */}
+      <LazySheet open={monthOpen || dayOpen}>
+        <SheetFlow name="Journal pages" visible={monthOpen || dayOpen}>
+          <JournalMonthSheet
+            visible={monthOpen}
+            kind={kind}
+            onPickDay={dayKey => showDay(dayKey, false)}
+            onClose={() => setMonthOpen(false)}
+          />
+          <JournalDaySheet
+            visible={dayOpen}
+            kind={kind}
+            dayKey={shownDay}
+            onAnother={dayIsRandom ? showRandomDay : undefined}
+            onEdit={entry => { setDayOpen(false); openEdit(entry); }}
+            onClose={() => setDayOpen(false)}
+          />
+        </SheetFlow>
       </LazySheet>
     </>
   );
