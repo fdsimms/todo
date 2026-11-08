@@ -50,6 +50,8 @@ interface Props {
   onSetDifficulty?: (difficulty: Difficulty | null) => void;
   /** Marks every recurring task in the selection missed — a no-op for anything else, same guard as the per-row action. */
   onMarkMissed: () => void;
+  /** Rolls every repeating task in the selection to its next date without a record; a no-op for anything else. */
+  onSkip: () => void;
   // Optional: a screen that bulk-selects tasks but has no stack to file them
   // into omits this and the action hides. Today (all four sub-views) and a
   // project's page pass it.
@@ -116,6 +118,7 @@ export function BulkActionBar({
   onSetPriority,
   onSetDifficulty,
   onMarkMissed,
+  onSkip,
   onGroup,
   onRemoveFromProject,
   moveToProject,
@@ -332,6 +335,16 @@ export function BulkActionBar({
             >
               <Ionicons name="close-circle-outline" size={18} color={colors.textSecondary} />
               <Text style={styles.moreRowText}>Missed</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              activeOpacity={interaction.activeOpacity}
+              style={styles.moreRow}
+              onPress={() => { haptics.tap(); onSkip(); }}
+              accessibilityRole="button"
+              accessibilityLabel="Skip repeating tasks"
+            >
+              <Ionicons name="play-skip-forward-outline" size={18} color={colors.textSecondary} />
+              <Text style={styles.moreRowText}>Skip</Text>
             </TouchableOpacity>
             {/* Same immediate shape, and deliberately not destructive-tinted:
                 the tasks keep everything else and stay in the list, they just
