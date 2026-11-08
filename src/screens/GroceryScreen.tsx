@@ -106,6 +106,7 @@ import { describeProduct, preferredProductOf } from '../utils/groceryProduct';
 import { entryFor, itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
 import { shareContent } from '../utils/shareContent';
 import { LazySheet } from '../components/LazySheet';
+import { SheetFlow } from '../components/SheetFlow';
 import { TwoPane } from '../components/TwoPane';
 import { useTwoPane } from '../hooks/useTwoPane';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -2030,44 +2031,49 @@ export function GroceryScreen() {
         <GroceryListSheet visible={listSheetOpen} onClose={() => setListSheetOpen(false)} />
       </LazySheet>
 
-      <LazySheet open={finishOpen}>
-        <FinishShoppingSheet
-          visible={finishOpen}
-          checkedCount={checkedCount}
-          leftover={leftover}
-          purchased={purchased}
-          away={away}
-          seedShopId={receiptSeed?.shopId}
-          seedPriceText={receiptSeed?.priceText}
-          seedPurchasedAt={receiptSeed?.purchasedAt}
-          seedStamp={receiptSeed?.stamp}
-          seedFrozenIds={scanFrozenIds}
-          // Gated for the reason the list's own button is: with neither a key
-          // nor an on-device read, the action opens a sheet that can only
-          // apologise.
-          onScanReceipt={receiptRoute !== 'unavailable' && !featureHidden('receiptImport', simpleMode)
-            ? () => openReceipt('finish')
-            : undefined}
-          onClose={() => {
-            setFinishOpen(false);
-            setReceiptSeed(null);
-          }}
-          onFinished={handleFinished}
-          overlays={shownReceiptHost === 'finish' ? receiptSheet : null}
-        />
+      {/* Scanning or photographing a receipt, then finishing the trip: one sheet
+          that crossfades between them, not each sliding down before the next
+          slides up. See `SheetFlow`. A receipt raised from the finish sheet
+          is not a stage: it sits over a finish sheet that stays up, so it
+          renders in that sheet's `overlays` instead (see `receiptHost`). */}
+      <LazySheet open={scanOpen || finishOpen || (receiptOpen && receiptHost === 'list')}>
+        <SheetFlow
+          name="Finish shopping"
+          visible={scanOpen || finishOpen || (receiptOpen && receiptHost === 'list')}
+        >
+          <FinishShoppingSheet
+            visible={finishOpen}
+            checkedCount={checkedCount}
+            leftover={leftover}
+            purchased={purchased}
+            away={away}
+            seedShopId={receiptSeed?.shopId}
+            seedPriceText={receiptSeed?.priceText}
+            seedPurchasedAt={receiptSeed?.purchasedAt}
+            seedStamp={receiptSeed?.stamp}
+            seedFrozenIds={scanFrozenIds}
+            // Gated for the reason the list's own button is: with neither a key
+            // nor an on-device read, the action opens a sheet that can only
+            // apologise.
+            onScanReceipt={receiptRoute !== 'unavailable' && !featureHidden('receiptImport', simpleMode)
+              ? () => openReceipt('finish')
+              : undefined}
+            onClose={() => {
+              setFinishOpen(false);
+              setReceiptSeed(null);
+            }}
+            onFinished={handleFinished}
+            overlays={shownReceiptHost === 'finish' ? receiptSheet : null}
+          />
+          <BarcodeScanSheet
+            visible={scanOpen}
+            context="shopping"
+            onClose={() => setScanOpen(false)}
+            onApply={handleScanApply}
+          />
+          {shownReceiptHost === 'list' && receiptSheet}
+        </SheetFlow>
       </LazySheet>
-      <LazySheet open={scanOpen}>
-        <BarcodeScanSheet
-          visible={scanOpen}
-          context="shopping"
-          onClose={() => setScanOpen(false)}
-          onApply={handleScanApply}
-        />
-      </LazySheet>
-
-      {/* Only when it was opened from the list. Raised from the finish sheet
-          it renders inside that sheet instead — see `receiptHost`. */}
-      {shownReceiptHost === 'list' && receiptSheet}
       <LazySheet open={tripOpen}>
         <ShoppingTripSheet
           visible={tripOpen}
@@ -2093,34 +2099,38 @@ export function GroceryScreen() {
           {itemSheet(false)}
         </LazySheet>
       )}
-      <LazySheet open={aiMode !== null}>
-        <GroceryAISheet
-          visible={aiMode !== null}
-          mode={aiMode ?? 'tidy'}
-          onClose={() => setAiMode(null)}
-        />
-      </LazySheet>
-      <LazySheet open={recipeSourceOpen}>
-        <RecipeSourceSheet
-          visible={recipeSourceOpen}
-          allowAIImport={canImportRecipe}
-          onPickSaved={recipe => {
-            setRecipeSourceOpen(false);
-            setRecipeToAdd(recipe);
-          }}
-          onImportWithAI={() => {
-            setRecipeSourceOpen(false);
-            setAiMode('recipe');
-          }}
-          onClose={() => setRecipeSourceOpen(false)}
-        />
-      </LazySheet>
-      <LazySheet open={recipeToAdd !== null}>
-        <RecipeToListSheet
-          visible={recipeToAdd !== null}
-          recipe={recipeToAdd}
-          onClose={() => setRecipeToAdd(null)}
-        />
+      {/* Choosing a recipe, then adding it to the list or importing it with AI:
+          one sheet that crossfades. `GroceryAISheet` is also opened on its own
+          for the tidy-up, which is simply a flow of one. */}
+      <LazySheet open={aiMode !== null || recipeSourceOpen || recipeToAdd !== null}>
+        <SheetFlow
+          name="Add a recipe"
+          visible={aiMode !== null || recipeSourceOpen || recipeToAdd !== null}
+        >
+          <RecipeSourceSheet
+            visible={recipeSourceOpen}
+            allowAIImport={canImportRecipe}
+            onPickSaved={recipe => {
+              setRecipeSourceOpen(false);
+              setRecipeToAdd(recipe);
+            }}
+            onImportWithAI={() => {
+              setRecipeSourceOpen(false);
+              setAiMode('recipe');
+            }}
+            onClose={() => setRecipeSourceOpen(false)}
+          />
+          <RecipeToListSheet
+            visible={recipeToAdd !== null}
+            recipe={recipeToAdd}
+            onClose={() => setRecipeToAdd(null)}
+          />
+          <GroceryAISheet
+            visible={aiMode !== null}
+            mode={aiMode ?? 'tidy'}
+            onClose={() => setAiMode(null)}
+          />
+        </SheetFlow>
       </LazySheet>
       {pullSearch.sheet}
     </View>
