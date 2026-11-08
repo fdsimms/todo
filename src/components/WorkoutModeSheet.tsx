@@ -58,6 +58,7 @@ import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
+import { confirmDiscardWorkout } from '../utils/confirmDiscardWorkout';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { RotatingChevron } from './RotatingChevron';
@@ -681,25 +682,12 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
     onClose();
   };
 
-  const end = () => {
+  // Closing the sheet is not ending the workout: it keeps running and
+  // `WorkoutBar` is the way back, so this asks nothing. Throwing it away is
+  // the trash can beside it.
+  const minimize = () => {
     haptics.tap();
-    Alert.alert(
-      'Leave workout mode?',
-      'The workout keeps running, and Workouts has it under In progress. To save it, tap Finish. Discard deletes it and every set logged in it.',
-      [
-        { text: 'Leave it running', onPress: close },
-        {
-          text: 'Discard',
-          style: 'destructive',
-          onPress: () => {
-            useWorkoutStore.getState().discardSession();
-            haptics.success();
-            close();
-          },
-        },
-        { text: BUTTON_LABEL.cancel, style: 'cancel' },
-      ],
-    );
+    close();
   };
 
   const plan = useMemo(() => finishPlan(sets), [sets]);
@@ -823,13 +811,16 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
       <ScreenAwake />
       <View style={[styles.root, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <SheetHeaderButton
-            label="Leave"
-            role="cancel"
-            minWidth={64}
-            onPress={end}
-            accessibilityLabel="Leave workout mode"
-          />
+          <TouchableOpacity
+            style={styles.headerIcon}
+            activeOpacity={interaction.activeOpacity}
+            onPress={minimize}
+            accessibilityRole="button"
+            accessibilityLabel="Minimize workout"
+            accessibilityHint="The workout keeps running"
+          >
+            <Ionicons name="chevron-down" size={iconSize.lg} color={colors.accentText} />
+          </TouchableOpacity>
           <View style={styles.headerTitle} pointerEvents="none">
             {session && <SessionClock startedAt={session.startedAt} elapsedStyle={styles.elapsed} />}
           </View>
@@ -844,12 +835,21 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               >
                 <Ionicons name="timer-outline" size={iconSize.lg} color={colors.accentText} />
               </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.headerIcon}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { Keyboard.dismiss(); confirmDiscardWorkout(close); }}
+                accessibilityRole="button"
+                accessibilityLabel="Discard workout"
+              >
+                <Ionicons name="trash-outline" size={iconSize.lg} color={colors.redText} />
+              </TouchableOpacity>
               <SheetHeaderButton label="Finish" minWidth={64} onPress={() => { if (plan.loggedCount > 0) haptics.chainFinish(); else haptics.tap(); Keyboard.dismiss(); setFinishing(true); }} />
             </View>
           ) : <View style={styles.headerSpacer} />}
         </View>
         {/* The name gets its own full-width line under the buttons, so a long
-            routine name isn't squeezed between Leave and Finish. */}
+            routine name isn't squeezed between the minimize button and Finish. */}
         <View style={styles.titleBlock}>
           <Text style={styles.title} numberOfLines={1}>{headerTitle}</Text>
           {session && <Text style={styles.subtitle} numberOfLines={1}>{`Started ${formatTimeOfDay(new Date(session.startedAt))}`}</Text>}
@@ -1956,7 +1956,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   flex: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xsm, gap: spacing.sm },
   // Laid over the whole row rather than sharing it, so the clock sits at the
-  // screen's center whatever the widths of Leave and the timer + Finish group.
+  // screen's center whatever the widths of the minimize button and the timer + Finish group.
   headerTitle: { position: 'absolute', left: 0, right: 0, top: spacing.sm, bottom: spacing.xsm, alignItems: 'center', justifyContent: 'center' },
   headerSpacer: { minWidth: 64 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

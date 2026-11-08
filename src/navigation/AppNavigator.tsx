@@ -83,6 +83,7 @@ import { LogMealEntrySheet } from '../components/LogMealEntrySheet';
 import { CookRecap } from '../components/CookRecap';
 import { AlarmMissionHost } from '../components/AlarmMissionHost';
 import { WorkoutModeHost } from '../components/WorkoutModeHost';
+import { WorkoutBar } from '../components/WorkoutBar';
 import { CookingBar } from '../components/CookingBar';
 import { FloatingLayer } from '../components/FloatingLayer';
 import { FocusFloatingBar } from '../components/FocusBar';
@@ -806,6 +807,9 @@ export default function AppNavigator() {
           comment for why a cook timer needs the app-wide bar that shopping
           trip deliberately doesn't get. */}
       <CookingBar />
+      {/* A workout running with its sheet minimized: the way back in, or to
+          discard it. See WorkoutBar. */}
+      <WorkoutBar />
       {/* A minimized focus session's way back from every screen but Today,
           which has its own inline strip. See FocusFloatingBar. */}
       <FocusFloatingBar hidden={onToday} />
