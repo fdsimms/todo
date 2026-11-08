@@ -411,19 +411,17 @@ function StatusChip({
 
 /**
  * One text field in an open row's editor, its label above it. The label sits
- * over the field instead of in a column beside it so that two fields can share
- * a line (Brand and Flavor) and so a long answer gets the whole width.
+ * over the field instead of in a column beside it so a long answer gets the
+ * whole width.
  */
 function FieldInput({
-  styles, label, half, style, ...input
+  styles, label, style, ...input
 }: {
   styles: ReturnType<typeof makeStyles>;
   label: string;
-  /** Shares a line with its neighbour, each taking half. */
-  half?: boolean;
 } & React.ComponentProps<typeof TextField>) {
   return (
-    <View style={half ? styles.fieldHalf : undefined}>
+    <View>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextField
         style={[styles.fieldInput, style]}
@@ -1226,7 +1224,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         .slice(0, 3)
                     : [];
                 const matchWarning = matchWarningFor(row, rowItemId);
-                const foundLabel = !!rowItem && itemSourceLabel(rowItem, inPantry(rowItem));
 
                 // The way out of a code nothing has heard of: the packet is in hand and
                 // its figures are printed on it, so offer to read them off the label.
@@ -1364,7 +1361,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           selectTextOnFocus
                         />
                         {!!rowItem && (
-                          <Text style={styles.rowLabel}>{`Same as ${rowItem.name}. ${foundLabel}.`}</Text>
+                          <Text style={styles.rowLabel}>{`This goes with your existing item, ${rowItem.name}.`}</Text>
                         )}
                         {!!matchWarning && <Text style={styles.rowCaption}>{matchWarning}</Text>}
                         {suggestions.length > 0 && (
@@ -1391,7 +1388,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         <FieldInput
                           styles={styles}
                           label="BRAND"
-                          half
                           value={shownBrand}
                           placeholder="e.g. Biena"
                           placeholderTextColor={colors.textTertiary}
@@ -1401,7 +1397,6 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         <FieldInput
                           styles={styles}
                           label="FLAVOR"
-                          half
                           value={shownVariant}
                           placeholder="e.g. Chili lime"
                           placeholderTextColor={colors.textTertiary}
@@ -1660,8 +1655,9 @@ function makeStyles(colors: Colors) {
     // The input sits on `bgSunken`, a step down from the card it is in, because a
     // bare field on a card reads as a line of text. The label is over it, so two
     // fields can share a line.
-    fieldHalf: { flex: 1 },
-    fieldPair: { flexDirection: 'row', gap: spacing.sm },
+    // Stacked, not side by side: a flavor name ("Tortilla Style Protein Chips")
+    // is longer than half a line, and the field is a single line.
+    fieldPair: { gap: spacing.smd },
     fieldLabel: {
       color: colors.textSecondary,
       fontSize: font.xs,
