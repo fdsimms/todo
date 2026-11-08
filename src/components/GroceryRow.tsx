@@ -28,8 +28,10 @@ import { convertQuantity, showContainerCount } from '../utils/unitConvert';
 import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
 import { formatPrice, formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
 import { groceryNameKey } from '../utils/groceryParse';
+import { renameClash } from '../utils/groceryItemWrite';
 import { recipeLedgerFor } from '../utils/recipeSources';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { TextField } from './TextField';
 import { CheckPop } from './CheckPop';
 import { PointerView, pointerMenuItem, type PointerMenuItem } from './PointerView';
@@ -316,6 +318,8 @@ export const GroceryRow = React.memo(function GroceryRow({
   // Blanking the field is the way back out of a refusal, same as it always was
   // for "changed my mind" — an empty or unchanged name reverts and closes.
   const [nameError, setNameError] = useState<string | null>(null);
+  // The row the refused name matches, so the error can offer to merge into it.
+  const [nameClash, setNameClash] = useState<{ id: string; name: string } | null>(null);
   // onSubmitEditing is followed by onBlur, so a refusal that stays in edit
   // mode would be told twice. Remember what was already refused and say
   // nothing more until the text changes.
@@ -387,6 +391,7 @@ export const GroceryRow = React.memo(function GroceryRow({
     }
     setDraftName(item.name);
     setNameError(null);
+    setNameClash(null);
     refusedName.current = null;
     setRenaming(true);
   };
@@ -396,6 +401,7 @@ export const GroceryRow = React.memo(function GroceryRow({
     // The message is about the name that was refused, so any edit retires it
     // and re-arms the check for whatever is typed next.
     if (nameError) setNameError(null);
+    setNameClash(null);
     refusedName.current = null;
   };
 
@@ -413,20 +419,36 @@ export const GroceryRow = React.memo(function GroceryRow({
       return;
     }
     if (trimmed === refusedName.current) return;
+    // The same name another row already has is the same thing twice, not a
+    // choice between two things, so fold this row into that one (the merge
+    // files its own undo). A plural match ("Apples" beside "Apple") may be a
+    // typo, so that one is refused and offers the merge as a button below.
+    const exact = renameClash(useGroceryStore.getState().items, item.id, trimmed);
+    if (exact && exact.nameKey === groceryNameKey(trimmed)) {
+      animateLayout();
+      if (useGroceryStore.getState().mergeItems(item.id, exact.id)) {
+        haptics.success();
+        return;
+      }
+    }
     if (!renameItem(item.id, trimmed)) {
       // Stay in edit mode holding what was typed: the name is refused because
       // some other row already claims it, and reverting the field would take
       // away the text the user needs to correct. Read non-reactively —
       // subscribing this memoised row to the items array would re-render every
       // row on the list whenever any item changed.
-      const key = groceryNameKey(trimmed);
-      const collision = useGroceryStore
-        .getState()
-        .items.find(i => i.id !== item.id && i.nameKey === key);
+      // The store's own check, so the row names the item the store refused on
+      // (plural-aware: "Apples" beside an "Apple" row).
+      const collision = renameClash(useGroceryStore.getState().items, item.id, trimmed);
+      setNameClash(collision ? { id: collision.id, name: collision.name } : null);
+      // A merge is offered right under the message (`mergeIntoClash`), so the
+      // text states the situation and does not send the person elsewhere.
       setNameError(
-        collision
-          ? `That’s the same as ${collision.name}. Open the item to merge them.`
-          : 'Another item already has that name.',
+        !collision
+          ? 'Another item already has that name.'
+          : groceryNameKey(collision.name) === groceryNameKey(trimmed)
+            ? `You already have ${collision.name} in your catalog.`
+            : `That’s the same as ${collision.name}, which you already have.`,
       );
       refusedName.current = trimmed;
       haptics.error();
@@ -434,6 +456,15 @@ export const GroceryRow = React.memo(function GroceryRow({
     }
     setRenaming(false);
     setNameError(null);
+  };
+
+  // Folds this row into the one its new name matches. The merge files its own
+  // undo, so it needs no confirm. The row unmounts when its item is deleted.
+  const mergeIntoClash = () => {
+    if (!nameClash) return;
+    animateLayout();
+    if (useGroceryStore.getState().mergeItems(item.id, nameClash.id)) haptics.success();
+    else haptics.error();
   };
 
   // ==== render. Everything below is JSX ====
@@ -563,6 +594,15 @@ export const GroceryRow = React.memo(function GroceryRow({
             </View>
           )}
           {renaming && !!nameError && <Text style={styles.nameError}>{nameError}</Text>}
+          {renaming && !!nameClash && (
+            <InlineAction
+              label={`Merge into ${nameClash.name}`}
+              icon="git-merge-outline"
+              onPress={mergeIntoClash}
+              haptic
+              style={styles.mergeAction}
+            />
+          )}
           {/* First and never suppressed, because it is the one caption that
               changes which box leaves the shelf. Deliberately its own line
               rather than trailing the name: the name is numberOfLines={1} and
@@ -1045,6 +1085,10 @@ function makeStyles(colors: Colors) {
     // The one caption on this row that is a warning, so it's the one that gets
     // a colour — it appears only while a rename is being refused, and it goes
     // away as soon as the text changes.
+    mergeAction: {
+      alignSelf: 'flex-start',
+      marginTop: spacing.xsm,
+    },
     nameError: {
       fontSize: font.sm,
       color: colors.redText,
