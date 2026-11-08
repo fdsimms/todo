@@ -1,10 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useBottomBarHeight } from '../hooks/useBottomBarHeight';
 import { BannerBar } from './BannerBar';
+import { useAboveFabBottom } from './Fab';
 import { InlineAction } from './InlineAction';
 import { useEventCreatedToastStore } from '../store/useEventCreatedToastStore';
-import { spacing } from '../theme';
 import { openEventInSystemCalendar } from '../utils/calendarSync';
 import { alertFailedWithSettings } from '../utils/permissionAlert';
 import { readSavedEvents, saveEventAs, writeSavedEvents } from '../utils/savedEvents';
@@ -22,8 +20,8 @@ const VISIBLE_MS = 5000;
  * once at the navigator root so it survives the card that raised it closing.
  */
 export function EventCreatedToast() {
-  const insets = useSafeAreaInsets();
-  const barHeight = useBottomBarHeight();
+  // Above the add button's band, like UndoBar: the cooking bar rests just above the tab bar.
+  const bottom = useAboveFabBottom();
   const liveCreated = useEventCreatedToastStore(s => s.created);
   const clear = useEventCreatedToastStore(s => s.clear);
   // Still drawn while it drops away after the store clears (useLingering).
@@ -69,7 +67,7 @@ export function EventCreatedToast() {
 
   return (
     <BannerBar
-      bottom={insets.bottom + barHeight + spacing.md}
+      bottom={bottom}
       label={justSaved ? 'Added to favorite events' : 'Added to Calendar'}
       layout="stacked"
       liveRegion
