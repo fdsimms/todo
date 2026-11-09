@@ -63,6 +63,7 @@ import {
   withAlternate, withProgression, withWarmupMode,
   type SupersetRole, type SupersetRowView,
 } from '../utils/workoutRoutine';
+import { supersetColor, supersetColorIndexes } from '../utils/workoutSession';
 import { joinAnd, loadContextFor, rampSteps } from '../utils/workoutProgression';
 import { formatWeightNumber } from '../utils/workoutData';
 import type { WeightUnit } from '../utils/weightLog';
@@ -218,6 +219,8 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
   }, [visible, routineId]);
 
   const roles = useMemo(() => supersetRoles(rows.map(r => r.item)), [rows]);
+  // The open slot of a superset counts as part of it, so it takes its colour.
+  const supersetColors = useMemo(() => supersetColorIndexes(rows.map(r => r.item.supersetKey)).map(i => supersetColor(colors.tagPalette, i)), [rows, colors]);
   // An exercise the draft will create is named by its `new:` id until Save.
   const pending = (exerciseId: string) =>
     exerciseId.startsWith(NEW_EXERCISE_PREFIX)
@@ -617,10 +620,12 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
             onReorder={reorder}
             renderItem={(row, index, drag) => {
               const role = roles[index];
+              const railColor = supersetColors[index];
               if (row.open) {
                 return (
                   <OpenSlot
                     role={role}
+                    railColor={railColor}
                     colors={colors}
                     styles={styles}
                     onAdd={() => { haptics.tap(); setPicking({ slotId: row.id }); }}
@@ -646,12 +651,13 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
                     style={[
                       styles.itemCard,
                       role !== 'none' && styles.superset,
+                      role !== 'none' && railColor !== null && { borderLeftColor: railColor },
                       (role === 'middle' || role === 'last') && styles.itemSep,
                       joinsNext && styles.squareBottom,
                       (role === 'middle' || role === 'last') && styles.squareTop,
                     ]}
                   >
-                    {role === 'first' && <Text style={styles.supersetTag}>Superset</Text>}
+                    {role === 'first' && <Text style={[styles.supersetTag, railColor !== null && { color: railColor }]}>Superset</Text>}
                     <View style={styles.itemRow}>
                       <TouchableOpacity
                         activeOpacity={interaction.activeOpacity}
@@ -753,6 +759,8 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
 interface OpenSlotProps {
   /** 'last' when exercises sit above it in the superset, 'none' when it is empty. */
   role: SupersetRole;
+  /** The superset's colour, null when it has none. */
+  railColor: string | null;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
   onAdd: () => void;
@@ -760,12 +768,12 @@ interface OpenSlotProps {
 }
 
 /** The end of a superset still being filled: a way to add an exercise to it. Exercises are dropped on it like on any row. */
-function OpenSlot({ role, colors, styles, onAdd, onRemove }: OpenSlotProps) {
+function OpenSlot({ role, railColor, colors, styles, onAdd, onRemove }: OpenSlotProps) {
   const empty = role === 'none';
   return (
     <View style={empty && styles.itemGap}>
-      <View style={[styles.itemCard, styles.superset, !empty && styles.itemSep, !empty && styles.squareTop]}>
-        {empty && <Text style={styles.supersetTag}>Superset</Text>}
+      <View style={[styles.itemCard, styles.superset, railColor !== null && { borderLeftColor: railColor }, !empty && styles.itemSep, !empty && styles.squareTop]}>
+        {empty && <Text style={[styles.supersetTag, railColor !== null && { color: railColor }]}>Superset</Text>}
         <View style={styles.slotBody}>
           <View style={styles.itemActions}>
             <InlineAction icon="add" label="Add exercise" onPress={onAdd} />
