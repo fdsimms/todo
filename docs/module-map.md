@@ -276,7 +276,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/ingredientGrounding.ts` — ungroundedIngredientIndexes
 - `src/utils/ingredientPrintout.ts` — IngredientPrintInput, ALLERGEN_CAVEAT, ingredientPageHtml, ingredientCardHtml, ingredientFileName
 - `src/utils/itemAliases.ts` — otherNameKeysOf, aliasIndex, itemKeyIndex, itemForOtherName, OtherNamesResult, cleanOtherNames, describeOtherNames
-- `src/utils/itemBackfill.ts` — ItemBackfillFieldId, LATER_LABEL_NUTRIENTS, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, unratedBoxesOf, isItemFieldMissing, isItemFieldApplicable, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, +1 more
+- `src/utils/itemBackfill.ts` — ItemBackfillFieldId, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, unratedBoxesOf, isItemFieldMissing, isItemFieldApplicable, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, dismissItemBackfillField
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
 - `src/utils/itemEither.ts` — UNANSWERED, eitherPairKey, parseItemPicks, pickFor, withItemPick, withoutItemPick, hasUndecidedItem, EitherPairInUse, eitherPairsInUse, describeEitherPair, +2 more
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstituteLink, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
