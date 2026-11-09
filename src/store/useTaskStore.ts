@@ -539,6 +539,7 @@ import {
   undoHistoryActions,
 } from '../utils/undoHistory';
 import { isOpenEnded } from '../utils/listMode';
+import { payProjectBonus, takeBackProjectBonus } from '../utils/projectBonus';
 import { describeReschedule } from '../utils/rescheduleLabel';
 import { timedPart } from '../utils/perfLog';
 import { mergeTaskDelta } from '../utils/taskDeltaReload';
@@ -4848,6 +4849,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // line, and every other "you're done" path already refuses it.
       if (progress.total > 0 && progress.done === progress.total && project && !project.completed && !project.archived && !isOpenEnded(project)) {
         useProjectStore.getState().applyProjectCompleted(task.projectId, true);
+        // This tick's own coins are already in the ledger (recordEarn above).
+        payProjectBonus(project, get().tasks);
         autoCompletedProjectId = task.projectId;
       }
     }
@@ -5182,6 +5185,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       undo: () => {
         if (autoCompletedProjectId) {
           useProjectStore.getState().applyProjectCompleted(autoCompletedProjectId, false);
+          takeBackProjectBonus(autoCompletedProjectId);
         }
         // Before uncompleteTask, which would otherwise un-cook the meal on its
         // own and leave the recipe's counters bumped — this closure puts both
@@ -11311,6 +11315,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       });
     }
     useProjectStore.getState().applyProjectCompleted(projectId, true);
+    // After the archive cascade, which moves no coins, so what it pays is what
+    // the project's done tasks already earned.
+    payProjectBonus(project, get().tasks);
     get().setLastAction({
       label: opts.archiveRemaining && members.length > 0
         ? 'Project completed, remaining tasks archived'
@@ -11318,6 +11325,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       redo: () => get().completeProject(projectId, opts),
       undo: () => {
         useProjectStore.getState().applyProjectCompleted(projectId, false);
+        takeBackProjectBonus(projectId);
         undos.forEach(fn => fn());
       },
     }, { replacing: historyBefore });
@@ -11411,10 +11419,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!project || !project.completed) return;
     const completedAt = project.completedAt;
     useProjectStore.getState().applyProjectCompleted(projectId, false);
+    // Reopening takes the bonus back, so complete and reopen can't be repeated
+    // to collect it twice. The undo writes back exactly what was taken.
+    const takenBack = takeBackProjectBonus(projectId);
     get().setLastAction({
       label: 'Project restored to active',
       redo: () => get().uncompleteProject(projectId),
-      undo: () => useProjectStore.getState().applyProjectCompleted(projectId, true, completedAt),
+      undo: () => {
+        useProjectStore.getState().applyProjectCompleted(projectId, true, completedAt);
+        useRewardStore.getState().restoreEntries(takenBack);
+      },
     });
   },
 

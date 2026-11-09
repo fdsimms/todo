@@ -23,6 +23,7 @@ import {
   priceWithTax,
   lastClaimedAt,
   latestLossFor,
+  projectBonusFor,
   rewardIsOpen,
   sortCoinEntries,
   type RewardSourceTask,
@@ -120,6 +121,14 @@ interface RewardStore {
   takeBackMealEarn: (dayKey: string, slot: MealSlot) => void;
   /** Whether that meal has been paid. */
   hasMealEarn: (dayKey: string, slot: MealSlot) => boolean;
+  /**
+   * Completing a project paid its bonus (`projectBonusFor` over `taskIds`, the
+   * project's own tasks). Keyed by the project. Returns the entry written, or
+   * null when it pays nothing or rewards are off.
+   */
+  recordProjectBonus: (projectId: string, taskIds: ReadonlySet<string>, label: string, at: string) => CoinEntry | null;
+  /** Reopening a project: drop its bonus. Returns the entries removed. */
+  takeBackProjectBonus: (projectId: string) => CoinEntry[];
   /** Unticking a task: drop whatever its completion or miss wrote. Returns the entries removed. */
   takeBackTask: (taskId: string) => CoinEntry[];
   /** Writes back entries `takeBackTask` returned, for the undo of an action that took them. */
@@ -377,6 +386,24 @@ export const useRewardStore = create<RewardStore>((set, get) => {
     hasMealEarn(dayKey, slot) {
       const id = derivedId(spawnSeed.coinMeal(dayKey, slot));
       return get().entries.some(e => e.id === id);
+    },
+
+    recordProjectBonus(projectId, taskIds, label, at) {
+      if (!enabled()) return null;
+      const amount = projectBonusFor(get().entries, taskIds);
+      if (amount <= 0) return null;
+      const entry = earning({ id: derivedId(spawnSeed.coinProject(projectId)), kind: 'earn', amount, at, taskId: null, rewardId: null, label });
+      write(entry);
+      announce(entry);
+      return entry;
+    },
+
+    // Not gated, for the reason takeBackTask gives.
+    takeBackProjectBonus(projectId) {
+      const id = derivedId(spawnSeed.coinProject(projectId));
+      const taken = get().entries.filter(e => e.id === id);
+      remove(taken.map(e => e.id));
+      return taken;
     },
 
     // Not gated on `rewardsEnabled`: an entry written while the feature was on

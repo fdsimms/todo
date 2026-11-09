@@ -83,6 +83,27 @@ Trivial pays nothing), at the streak that day reached. Rules in `payCleanDays` (
   breaks a day already collected removes it too (a spoiled day isn't clean), and undoing that slip
   writes it again with the restored run. Earlier days stay paid.
 
+## Finishing a project
+
+Completing a project pays a bonus of `PROJECT_BONUS_PERCENT` (25%) of the coins its tasks earned
+(`projectBonusFor`, `src/utils/rewards.ts`; paid and taken back through `src/utils/projectBonus.ts`).
+Every path that completes one goes through it: `completeProject` and the auto-complete branch of
+`completeTask` in `useTaskStore`, and `updateProject` in the MCP replica.
+
+- **Coins are the measure of size.** The bonus reads the ledger's `earn` entries that name a task in the
+  project, so effort, difficulty and streaks already count, Trivial adds nothing, and a task marked
+  missed or done by someone else adds nothing. Adding tasks to inflate it only pays what those tasks pay.
+- **It never reads time.** No duration, push count or age enters it, for the reason bounties give: a bonus
+  that grew with waiting would pay for waiting. Don't add one.
+- **Only what was earned counts.** Completing with the remaining tasks archived pays on the done ones.
+- **One row per project** (`spawnSeed.coinProject`), so two phones, or completing again after a reopen,
+  write the same row. The row has no task and is never counted as one of the project's own earnings.
+- **Reopening takes it back** (`takeBackProjectBonus`, not gated on `rewardsEnabled`), and each undo
+  writes back or removes exactly that row. Complete, reopen, complete cannot collect twice.
+- **Ongoing projects and lists pay none** (`isOpenEnded`): they have no finish line.
+- **Tasks the retention window has purged no longer count**, since the ledger names a task but the
+  project's membership is read from live rows.
+
 ## Paying per tap
 
 A target (`Task.targetCount`) can pay on every tap instead of once at the end (`Task.coinsPerTap`, a switch

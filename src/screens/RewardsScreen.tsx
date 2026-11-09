@@ -1266,7 +1266,7 @@ export function RewardsScreen() {
           <View style={styles.rulesCard}>
             <Text style={styles.rulesTitle}>How coins work</Text>
             <Text style={styles.rulesBody}>
-              {`A task earns 1 to 12 coins depending on how long it takes. Hard tasks earn double and easy ones half. It also earns 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs what it would earn, capped at the time amount, so a hard task costs no more to miss. Unchecking a task takes its coins back.`}
+              {`A task earns 1 to 12 coins depending on how long it takes. Hard tasks earn double and easy ones half. It also earns 1 for every ${STREAK_BONUS_EVERY} in a row on its streak (up to ${STREAK_BONUS_CAP} extra). Marking a task missed or logging a slip costs what it would earn, capped at the time amount, so a hard task costs no more to miss. Completing a project earns a bonus of a quarter of what its tasks earned. Unchecking a task or reopening a project takes its coins back.`}
             </Text>
           </View>
         </CardSheet>

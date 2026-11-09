@@ -59,6 +59,7 @@ import {
   liveBountyCount,
   nextBountyPushes,
   parseBountyLimit,
+  projectBonusFor,
   suggestedBountyTasks,
 } from '../utils/rewards';
 import type { CoinEntry, ChainItem, Effort } from '../types';
@@ -768,5 +769,26 @@ describe('coinsForTap', () => {
 
   it('pays nothing on a trivial task', () => {
     expect(coinsForTap({ ...task(90), difficulty: 'trivial' }, 1, 3)).toBe(0);
+  });
+});
+
+describe('projectBonusFor', () => {
+  const earn = (taskId: string | null, amount: number, kind: 'earn' | 'loss' | 'spend' = 'earn') => ({ kind, amount, taskId });
+  const ids = new Set(['a', 'b']);
+
+  it('is a quarter of what the project tasks earned, rounded', () => {
+    expect(projectBonusFor([earn('a', 8), earn('b', 4)], ids)).toBe(3);
+    expect(projectBonusFor([earn('a', 6)], ids)).toBe(2);
+    expect(projectBonusFor([earn('a', 1)], ids)).toBe(0);
+  });
+
+  it('ignores other tasks, losses, spends and entries with no task', () => {
+    expect(projectBonusFor([earn('x', 100), earn('a', 4, 'loss'), earn('a', 4, 'spend'), earn(null, 100)], ids)).toBe(0);
+  });
+
+  it('grows with the coins earned, so a harder project pays more', () => {
+    const easy = projectBonusFor([earn('a', 2), earn('b', 2)], ids);
+    const hard = projectBonusFor([earn('a', 12), earn('b', 12)], ids);
+    expect(hard).toBeGreaterThan(easy);
   });
 });

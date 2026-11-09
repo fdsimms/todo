@@ -364,6 +364,39 @@ export function coinBalance(entries: readonly Pick<CoinEntry, 'kind' | 'amount' 
   return total;
 }
 
+// ---------------------------------------------------------------------------
+// Finishing a project
+// ---------------------------------------------------------------------------
+//
+// Completing a project pays a share of what its own tasks already paid, so the
+// bonus follows how big and how hard the project was, measured in the one
+// unit the app already uses for that. Rules in `docs/arch/rewards.md`,
+// "Finishing a project".
+
+/** The share of a project's earned coins paid again when it is completed. */
+export const PROJECT_BONUS_PERCENT = 25;
+
+/**
+ * The bonus for completing a project: `PROJECT_BONUS_PERCENT` of the coins its
+ * tasks earned, rounded. Read off the ledger (`earn` entries naming one of
+ * `taskIds`) rather than recomputed from the tasks, so it is exactly what was
+ * paid: a trivial task adds nothing, a task done by someone else or marked
+ * missed adds nothing, an unticked one is gone, and a project completed with
+ * its remaining tasks archived pays only for what got done. It never reads how
+ * long the project took or how often anything was pushed, since a bonus that
+ * grew with waiting would pay for waiting.
+ */
+export function projectBonusFor(
+  entries: readonly Pick<CoinEntry, 'kind' | 'amount' | 'taskId'>[],
+  taskIds: ReadonlySet<string>,
+): number {
+  let earned = 0;
+  for (const e of entries) {
+    if (e.kind === 'earn' && e.taskId !== null && taskIds.has(e.taskId)) earned += e.amount;
+  }
+  return Math.round((earned * PROJECT_BONUS_PERCENT) / 100);
+}
+
 /** Whether the balance covers a reward. */
 export function canClaimReward(balance: number, cost: number): boolean {
   return cost > 0 && balance >= cost;

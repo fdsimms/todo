@@ -29,6 +29,8 @@ import { useMedicationStore } from '../store/useMedicationStore';
 import { useCheckInStore } from '../store/useCheckInStore';
 import { installSupplementDoseEffects } from './supplementDoseSync';
 import { useRewardStore } from '../store/useRewardStore';
+import { coinsForCompletion } from './rewards';
+import { payProjectBonus } from './projectBonus';
 import { useUnlockStore } from '../store/useUnlockStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -4002,6 +4004,15 @@ function seedRewards(today: Date): void {
     rewards.recordEarn(`demo-coin-${i}`, amount, title, setHours(subDays(today, back), 9 + i % 8).toISOString());
   });
   rewards.recordMiss('demo-coin-miss', 3, 'Stretch', setHours(subDays(today, 3), 21).toISOString());
+  // The hallway project was completed before rewards were on, so its tasks paid
+  // nothing then. Pay them now through the store, then the bonus for finishing
+  // the project, so the history shows a "Project complete" row.
+  const hallway = useProjectStore.getState().projects.find(p => p.title === 'Repaint the hallway');
+  if (hallway) {
+    const hallwayTasks = useTaskStore.getState().tasks.filter(t => t.projectId === hallway.id && t.completed);
+    hallwayTasks.forEach(t => rewards.recordEarn(t.id, coinsForCompletion(t, 0), t.title, setHours(subDays(today, 2), 10).toISOString()));
+    payProjectBonus(hallway, hallwayTasks);
+  }
   if (episode) rewards.claimReward(episode.id, setHours(subDays(today, 1), 20));
 
   // A bounty on the task the seed has already been putting off, posted after
