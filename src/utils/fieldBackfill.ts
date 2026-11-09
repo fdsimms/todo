@@ -320,6 +320,64 @@ export function backfillCandidates(
   return rows.sort((a, b) => a.title.localeCompare(b.title));
 }
 
+/** One task in an "all fields" walk, with the selected fields it is still missing, in field order. */
+export interface BackfillStep {
+  task: Task;
+  fields: BackfillFieldId[];
+}
+
+/**
+ * The key a session-only skip of one field on one task is stored under, so an
+ * "all fields" walk can skip a step without skipping the whole task. A plain
+ * task id in the same set skips every step of it. Ids come from `generateId`
+ * (base 36), so `|` can't appear in one.
+ */
+export function backfillStepKey(taskId: string, fieldId: BackfillFieldId): string {
+  return `${taskId}|${fieldId}`;
+}
+
+/** Inverse of `backfillStepKey`; a plain task id comes back with no field. */
+export function splitBackfillStepKey(key: string): { id: string; field: BackfillFieldId | null } {
+  const at = key.indexOf('|');
+  return at < 0 ? { id: key, field: null } : { id: key.slice(0, at), field: key.slice(at + 1) as BackfillFieldId };
+}
+
+/**
+ * The queue for walking several fields at once: one entry per task that is
+ * missing any of `fields`, ordered by the first field that queues it and then
+ * by that field's own order, each holding every selected field it still needs.
+ * The screen shows a task's fields one after another before moving on, which is
+ * the only difference from walking the fields separately.
+ *
+ * `skipped` holds this session's skips, as plain task ids (the whole task) and
+ * `backfillStepKey`s (one field). A series is one entry, like a single field's
+ * queue: when two fields would queue different dates of it, the first wins and
+ * the other date comes up once that one is finished.
+ */
+export function backfillMultiQueue(
+  tasks: Task[],
+  fields: BackfillFieldId[],
+  opts: { categories?: Category[]; skipped?: ReadonlySet<string> } = {}
+): BackfillStep[] {
+  const skipped = opts.skipped;
+  const steps = new Map<string, BackfillStep>();
+  const seriesOwner = new Map<string, string>();
+  for (const fieldId of fields) {
+    for (const task of backfillCandidates(tasks, fieldId, { categories: opts.categories })) {
+      if (skipped && (skipped.has(task.id) || skipped.has(backfillStepKey(task.id, fieldId)))) continue;
+      if (task.seriesId) {
+        const owner = seriesOwner.get(task.seriesId);
+        if (owner && owner !== task.id) continue;
+        seriesOwner.set(task.seriesId, task.id);
+      }
+      const step = steps.get(task.id);
+      if (step) step.fields.push(fieldId);
+      else steps.set(task.id, { task, fields: [fieldId] });
+    }
+  }
+  return [...steps.values()];
+}
+
 /**
  * The other dates of `task`'s series that an answer to this card should reach:
  * the rows the field would have queued separately had the series not been

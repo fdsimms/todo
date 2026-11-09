@@ -54,6 +54,25 @@ a pool (a scheduled medication has no limit to ask for), `groupOnToday` and `hid
 projects, a recipe's `mealType`, a person's contact lines (Fill from contacts does that in one
 tap), and a store's `receiptStyle`.
 
+## All fields (tasks)
+
+The Tasks picker's first row walks every field with a gap at once, task by task, instead of one
+field across every task. `backfillMultiQueue` (`fieldBackfill.ts`) builds the queue: one entry per
+task, holding each selected field it is still missing. The screen keeps `activeField` (what the
+person chose) and derives `active` from it, swapping in the field the current task is on, so every
+task handler, the card and the dismiss label keep reading one `active`.
+
+- **Skips are step-aware.** `skippedIds` holds a plain task id to skip a whole task ("Skip this
+  task") and a `backfillStepKey` (`id|field`) to skip one field ("Skip for now"). `stepIdFor` files
+  `advance`, history and session lines under the step key in this mode, so one task's answers don't
+  replace each other in the review and Previous returns to the right field.
+- **No redo, no AI suggestions.** A redo is a different question about one field, and a suggestion
+  batch is asked for one field's whole queue while this mode changes the field card by card.
+- **The field set is fixed at the start:** every field the picker offers that has a task missing it.
+  There is no field chooser yet.
+- **A series is one entry.** When two fields would queue different dates of it, the first wins and
+  the other date comes up once that one is finished.
+
 ## Rules that are easy to break
 
 - **"Missing" and "dismissed" are separate.** A dismissal writes the field id into the row's

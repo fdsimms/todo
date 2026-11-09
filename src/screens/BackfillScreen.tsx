@@ -77,7 +77,8 @@ import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { hasAnyHolidays } from '../utils/holidays';
 import {
   BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, backfillSeriesPeers, dismissBackfillField,
-  isFieldMissing, backfillFieldsFor, type BackfillFieldId,
+  isFieldMissing, backfillFieldsFor, backfillMultiQueue, backfillStepKey, splitBackfillStepKey,
+  type BackfillFieldId,
 } from '../utils/fieldBackfill';
 import {
   isSuggestibleBackfillField, suggestionTasks, suggestionExamples, type BackfillSuggestion,
@@ -465,7 +466,14 @@ export function BackfillScreen() {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const holidaySet = useSettingsStore(s => s.holidaySet);
   const customHolidays = useSettingsStore(s => s.customHolidays);
-  const [active, setActive] = useState<ActiveField | null>(null);
+  // What the person chose from the picker. `active` below is this, except that
+  // an all-fields walk (`multiFields`) swaps in whichever of its fields the
+  // current task is on, so every handler keeps reading one `active` field.
+  const [activeField, setActive] = useState<ActiveField | null>(null);
+  // The fields of an "All fields" walk over tasks, or null in an ordinary
+  // single-field run. Set once by startAllFields and never edited: a task's
+  // own gaps decide which of them it is asked about.
+  const [multiFields, setMultiFields] = useState<BackfillFieldId[] | null>(null);
   // Redo-from-scratch (task fields only): widens the queue to every live
   // task for the field instead of just the ones missing a value — see
   // confirmStartOver.
@@ -490,6 +498,41 @@ export function BackfillScreen() {
   // shown once it empties — reset alongside history/skippedIds every time a
   // field is (re)chosen. See SessionEntry's doc comment.
   const [sessionLog, setSessionLog] = useState<SessionEntry[]>([]);
+
+  // ==== all-fields walk: the queue, the current task and which field it is on ====
+  // One entry per task missing any selected field. Session skips ride in the
+  // same `skippedIds` set the single-field queue uses: a plain id skips the
+  // whole task and a step key (`backfillStepKey`) skips one field of it.
+  const multiQueue = useMemo(
+    () => multiFields ? backfillMultiQueue(tasks, multiFields, { categories, skipped: skippedIds }) : [],
+    [multiFields, tasks, categories, skippedIds]
+  );
+  // The card on screen: the front of the queue, or the step Previous went back
+  // to (whose key names the field, so the card can show it again).
+  const multiCurrent = useMemo(() => {
+    if (!multiFields) return null;
+    if (manualCurrentId) {
+      const { id, field } = splitBackfillStepKey(manualCurrentId);
+      const task = tasks.find(t => t.id === id);
+      if (task && field && multiFields.includes(field)) {
+        const queued = multiQueue.find(s => s.task.id === id);
+        return { task, field, remaining: queued?.fields ?? [field] };
+      }
+    }
+    const front = multiQueue[0];
+    return front ? { task: front.task, field: front.fields[0], remaining: front.fields } : null;
+  }, [multiFields, manualCurrentId, tasks, multiQueue]);
+  const multiField = multiCurrent?.field ?? null;
+  const active = useMemo<ActiveField | null>(
+    () => multiField ? { kind: 'task', id: multiField } : activeField,
+    [multiField, activeField]
+  );
+  // The key a skip, an answer's session line and a history step are filed under:
+  // the task's id, or in an all-fields walk that id plus the field, since one
+  // task is on screen for several of them.
+  const stepIdFor = (id: string) =>
+    multiFields && active?.kind === 'task' ? backfillStepKey(id, active.id) : id;
+
   const [defaultsOpen, setDefaultsOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [customText, setCustomText] = useState('');
@@ -638,7 +681,8 @@ export function BackfillScreen() {
 
   const taskQueue = useMemo(
     () => active?.kind === 'task'
-      ? backfillCandidates(tasks, active.id, { fromScratch, categories, dayLoadOf: slotInDayLoadOf }).filter(t => !skippedIds.has(t.id))
+      ? backfillCandidates(tasks, active.id, { fromScratch, categories, dayLoadOf: slotInDayLoadOf })
+        .filter(t => !skippedIds.has(t.id) && !skippedIds.has(backfillStepKey(t.id, active.id)))
       : [],
     [tasks, active, fromScratch, skippedIds, categories, slotInDayLoadOf]
   );
@@ -650,7 +694,9 @@ export function BackfillScreen() {
     () => active?.kind === 'project' ? projectBackfillCandidates(projects, active.id, { fromScratch }).filter(p => !skippedIds.has(p.id)) : [],
     [projects, active, fromScratch, skippedIds]
   );
-  const currentTask = active?.kind === 'task'
+  const currentTask = multiFields
+    ? (multiCurrent?.task ?? null)
+    : active?.kind === 'task'
     ? (manualCurrentId ? tasks.find(t => t.id === manualCurrentId) ?? (taskQueue[0] ?? null) : (taskQueue[0] ?? null))
     : null;
   const currentCategory = active?.kind === 'category'
@@ -685,7 +731,8 @@ export function BackfillScreen() {
   // Every arm is tested, including the last: this used to fall through to the
   // item queue, which was right only for as long as items were the final kind
   // and would have read a stale length for the pool added after them.
-  const queueLength = active?.kind === 'task' ? taskQueue.length
+  const queueLength = multiFields ? multiQueue.length
+    : active?.kind === 'task' ? taskQueue.length
     : active?.kind === 'category' ? categoryQueue.length
     : active?.kind === 'project' ? projectQueue.length
     : active?.kind === 'person' ? personQueue.length
@@ -745,7 +792,9 @@ export function BackfillScreen() {
   };
   const groupLabel = activeBatch ? scopeLabelFor(activeBatch.scope) : null;
   useEffect(() => { setBatchScopeKey(null); }, [currentId, active?.kind, active?.id]);
-  const canSuggest = active?.kind === 'task' && isSuggestibleBackfillField(active.id)
+  // Off in an all-fields walk: a suggestion batch is asked for one field's
+  // whole queue, and that field changes under it from card to card.
+  const canSuggest = active?.kind === 'task' && !multiFields && isSuggestibleBackfillField(active.id)
     && suggestRoute !== 'unavailable';
   const currentSuggestion = currentTask ? suggestions.get(currentTask.id) ?? null : null;
 
@@ -800,7 +849,7 @@ export function BackfillScreen() {
     setSubSheetOpen(false);
     setNutritionSearchOpen(false);
     setNutritionPanelOpen(false);
-  }, [currentId]);
+  }, [currentId, active?.kind === 'task' ? active.id : null]);
 
   // Whatever the recipe already says, so the Previous button doesn't hand back
   // a blank stepper for a value that was just set — the same call the person
@@ -868,6 +917,7 @@ export function BackfillScreen() {
   const chooseTaskField = (id: BackfillFieldId) => {
     haptics.tap();
     animateLayout();
+    setMultiFields(null);
     setActive({ kind: 'task', id });
     setFromScratch(false);
     setSkippedIds(new Set());
@@ -876,6 +926,33 @@ export function BackfillScreen() {
     setSessionLog([]);
     clearSuggestions();
     setSessionTotal(backfillCandidates(tasks, id, { categories }).length);
+  };
+
+  // The fields an "All fields" walk covers: every one the picker offers that
+  // still has a task missing it, so a field nobody needs doesn't sit in the loop.
+  const allFieldIds = useMemo(
+    () => taskFields.filter(f => taskCounts[f.id] > 0).map(f => f.id),
+    [taskFields, taskCounts]
+  );
+  // How many tasks the walk would visit; the picker row says it.
+  const allFieldsCount = useMemo(
+    () => backfillMultiQueue(tasks, allFieldIds, { categories }).length,
+    [tasks, allFieldIds, categories]
+  );
+
+  const startAllFields = () => {
+    if (allFieldIds.length === 0) return;
+    haptics.tap();
+    animateLayout();
+    setMultiFields(allFieldIds);
+    setActive({ kind: 'task', id: allFieldIds[0] });
+    setFromScratch(false);
+    setSkippedIds(new Set());
+    setHistory([]);
+    setManualCurrentId(null);
+    setSessionLog([]);
+    clearSuggestions();
+    setSessionTotal(allFieldsCount);
   };
 
   const chooseCategoryField = (id: CategoryBackfillFieldId) => {
@@ -942,6 +1019,7 @@ export function BackfillScreen() {
     haptics.tap();
     animateLayout();
     setActive(null);
+    setMultiFields(null);
     setFromScratch(false);
     setHistory([]);
     setManualCurrentId(null);
@@ -956,7 +1034,9 @@ export function BackfillScreen() {
   // the queue once you've actually reached it). Every pool has it: the header's
   // redo icon is the same button on all six.
   const startOver = () => {
-    if (!active) return;
+    // An all-fields walk has no redo: it asks about what is missing, and a
+    // redo is a different question ("is this still right?") about one field.
+    if (!active || multiFields) return;
     haptics.tap();
     setFromScratch(true);
     setSkippedIds(new Set());
@@ -1011,7 +1091,7 @@ export function BackfillScreen() {
   // not-from-scratch task queue, or setting a category/project field) — in
   // fromScratch mode the task filter doesn't drop already-set tasks on its
   // own, so this is what actually moves past the current card there.
-  const advance = (id: string) => setSkippedIds(prev => new Set(prev).add(id));
+  const advance = (id: string) => setSkippedIds(prev => new Set(prev).add(stepIdFor(id)));
 
   // Called from every apply/skip/dismiss handler, before it acts, so the
   // item about to leave the front of the queue is captured regardless of
@@ -1025,7 +1105,7 @@ export function BackfillScreen() {
   const recordVisited = () => {
     if (!currentId) return;
     setBatchScopeKey(null);
-    setHistory(prev => [...prev, currentId]);
+    setHistory(prev => [...prev, stepIdFor(currentId)]);
     if (fromScratch && active?.kind !== 'task') advance(currentId);
   };
 
@@ -1041,10 +1121,14 @@ export function BackfillScreen() {
     animateLayout();
     const prevId = history[history.length - 1];
     setHistory(h => h.slice(0, -1));
+    // A step key also lifts a whole-task skip ("Skip this task"), which is
+    // filed under the plain id.
+    const { id: prevTaskId } = splitBackfillStepKey(prevId);
     setSkippedIds(prev => {
-      if (!prev.has(prevId)) return prev;
+      if (!prev.has(prevId) && !prev.has(prevTaskId)) return prev;
       const next = new Set(prev);
       next.delete(prevId);
+      next.delete(prevTaskId);
       return next;
     });
     setManualCurrentId(prevId);
@@ -1086,6 +1170,11 @@ export function BackfillScreen() {
   };
 
   // ==== applying a task field (series peers, group and kind defaults, slot-in) ====
+  // In an all-fields walk a task has several lines in the review, so each one
+  // names its field ("Priority: High"); a single-field run's lines are all the
+  // same field and stay as they were.
+  const sessionValueText = (fieldLabel: string, valueText: string) =>
+    multiFields ? `${fieldLabel}: ${valueText}` : valueText;
   // A tap here commits immediately and advances the queue, with no per-row
   // confirm — registering the snapshot with setLastAction, same as
   // TaskEditor's save, is what makes a mis-tap recoverable via shake-to-undo
@@ -1139,9 +1228,9 @@ export function BackfillScreen() {
       redo: redoRestoringRows(snapshots.map(row => row.id)),
     });
     logSession({
-      itemId: currentTask.id,
+      itemId: stepIdFor(currentTask.id),
       title: displayTitleFor(currentTask),
-      valueText,
+      valueText: sessionValueText(fieldLabel, valueText),
       undo,
     });
     advance(currentTask.id);
@@ -1174,9 +1263,9 @@ export function BackfillScreen() {
       redo: redoRestoringRows(snapshots.map(row => row.id)),
     });
     logSession({
-      itemId: currentTask.id,
+      itemId: stepIdFor(currentTask.id),
       title: displayTitleFor(currentTask),
-      valueText: 'Cleared',
+      valueText: sessionValueText(fieldLabel, 'Cleared'),
       undo,
     });
     advance(currentTask.id);
@@ -1233,9 +1322,9 @@ export function BackfillScreen() {
         if (stepId) useSettingsStore.getState().setMealSlotStepEstimate(stepId, patch.estimatedMinutes);
       }
       logSession({
-        itemId: task.id,
+        itemId: stepIdFor(task.id),
         title: displayTitleFor(task),
-        valueText,
+        valueText: sessionValueText(fieldLabel, valueText),
         undo: restoreRows(rowSnapshots),
       });
     });
@@ -1246,7 +1335,7 @@ export function BackfillScreen() {
     });
     setSkippedIds(prev => {
       const next = new Set(prev);
-      for (const task of batch) next.add(task.id);
+      for (const task of batch) next.add(stepIdFor(task.id));
       return next;
     });
     offerGroupDefault(offerFor, activeBatch.scope, defaultsFromAnswer(active.id, patchFor(offerFor), dismissed), `${fieldLabel} to ${valueText}`);
@@ -1449,9 +1538,9 @@ export function BackfillScreen() {
       }
       snapshots.push(...rowSnapshots);
       logSession({
-        itemId: task.id,
+        itemId: stepIdFor(task.id),
         title: displayTitleFor(task),
-        valueText,
+        valueText: sessionValueText(fieldLabel, valueText),
         undo: restoreRows(rowSnapshots),
       });
     });
@@ -1465,7 +1554,7 @@ export function BackfillScreen() {
     // what actually moves the queue past all of them.
     setSkippedIds(prev => {
       const next = new Set(prev);
-      for (const task of batch) next.add(task.id);
+      for (const task of batch) next.add(stepIdFor(task.id));
       return next;
     });
     offerFollowUpWriteBack(snapshots);
@@ -1713,6 +1802,18 @@ export function BackfillScreen() {
     advance(currentId);
   };
 
+  // An all-fields walk's way past a whole task: `skip` only moves on from the
+  // field on screen, and the task's other fields would come straight back.
+  const skipTask = () => {
+    if (!currentTask) return;
+    haptics.tap();
+    setBatchScopeKey(null);
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    setSkippedIds(prev => new Set(prev).add(currentTask.id));
+  };
+
   // The card can surface a task that was done and never checked off, so it can be
   // completed here instead of in the editor. One task only: the other dates of a
   // series are separate occurrences. A task that asks a question or has a mission
@@ -1764,9 +1865,12 @@ export function BackfillScreen() {
         redo: redoRestoringRows(snapshots.map(row => row.id)),
       });
       logSession({
-        itemId: currentTask.id,
+        itemId: stepIdFor(currentTask.id),
         title: displayTitleFor(currentTask),
-        valueText: wasMissing ? dismissedText : KEEP_AS_IS_LABEL,
+        valueText: sessionValueText(
+          BACKFILL_FIELDS.find(f => f.id === fieldId)!.label,
+          wasMissing ? dismissedText : KEEP_AS_IS_LABEL,
+        ),
         undo: restoreRows(snapshots),
       });
       advance(currentTask.id);
@@ -2247,6 +2351,27 @@ export function BackfillScreen() {
         </View>
         {shownEntityKind === 'task' && (
           <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
+            {allFieldIds.length > 1 && (
+              <TouchableOpacity
+                style={[styles.fieldRow, shadows.card]}
+                onPress={startAllFields}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`All fields, ${allFieldsCount} ${allFieldsCount === 1 ? 'task needs' : 'tasks need'} something`}
+              >
+                <View style={styles.fieldIcon}>
+                  <Ionicons name="layers-outline" size={iconSize.md} color={colors.accent} />
+                </View>
+                <View style={styles.fieldBody}>
+                  <Text style={styles.fieldLabel}>All fields</Text>
+                  <Text style={styles.fieldHint}>Fill in everything a task is missing before moving to the next one.</Text>
+                  <Text style={styles.fieldCount}>
+                    {`${allFieldsCount} ${allFieldsCount === 1 ? 'task needs' : 'tasks need'} something`}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+              </TouchableOpacity>
+            )}
             {taskFields.map(field => {
               const count = taskCounts[field.id];
               return (
@@ -2554,10 +2679,10 @@ export function BackfillScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <DetailHeader
-          title={field.label}
+          title={multiFields && !currentTask ? 'All fields' : field.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
-          actions={redoButton}
+          actions={multiFields ? undefined : redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2585,6 +2710,13 @@ export function BackfillScreen() {
               </TouchableOpacity>
             )}
           </View>
+        )}
+        {multiFields && !!multiCurrent && (
+          <Text style={styles.stepLine}>
+            {multiCurrent.remaining.length > 1
+              ? `${multiCurrent.remaining.length} fields left on this task`
+              : 'Last field for this task'}
+          </Text>
         )}
 
         {currentTask ? (
@@ -2677,6 +2809,16 @@ export function BackfillScreen() {
               </PressableScale>
             </View>
             <View style={styles.actionRow}>
+              {!!multiCurrent && multiCurrent.remaining.length > 1 && (
+                <PressableScale
+                  style={styles.skipButton}
+                  onPress={skipTask}
+                  accessibilityRole="button"
+                  accessibilityLabel="Skip the rest of this task for now"
+                >
+                  <Text style={styles.skipText}>Skip this task</Text>
+                </PressableScale>
+              )}
               <PressableScale
                 style={styles.skipButton}
                 onPress={markComplete}
@@ -2695,14 +2837,16 @@ export function BackfillScreen() {
             tabBarHeight={tabBarHeight}
             colors={colors}
             styles={styles}
-            itemWord="task"
-            itemWordPlural="tasks"
+            itemWord={multiFields ? 'answer' : 'task'}
+            itemWordPlural={multiFields ? 'answers' : 'tasks'}
           />
         ) : (
           <EmptyState
             icon="checkmark-circle-outline"
             title="All caught up"
-            subtitle={`Every task has a ${field.label.toLowerCase()} now. Pick another field.`}
+            subtitle={multiFields
+              ? 'Every task has these filled in now. Pick another field.'
+              : `Every task has a ${field.label.toLowerCase()} now. Pick another field.`}
             actionLabel="Choose another field"
             onAction={backToFields}
             bottomOffset={tabBarHeight}
@@ -4378,6 +4522,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   fieldCount: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   fieldCountDone: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
 
+  stepLine: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    textAlign: 'center',
+    marginTop: spacing.xxs,
+  },
   progress: {
     color: colors.textTertiary,
     fontSize: font.sm,
