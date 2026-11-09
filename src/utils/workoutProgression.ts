@@ -534,7 +534,7 @@ export function proposeNext(input: ProposalInput): Proposal | null {
     return {
       ...base, move: 'same', sets: sets(lastKg, reps), repsMin: reps, repsMax: reps, lastKg,
       reason: same.reason, goal: same.goal,
-      brief: `A set fell short of ${reps} last time`,
+      brief: last.sets.length < planned ? `Only ${last.sets.length} of ${planned} sets last time` : `A set fell short of ${reps} last time`,
     };
   }
 

@@ -237,6 +237,13 @@ describe('proposeNext, linear', () => {
     expect(p.reason).toBe('Same weight. Last time: 5, 5 and 4. Hit 5 on all 3 sets to go up.');
     expect(p.goal?.lastSets.map(x => x.state)).toEqual(['hit', 'hit', 'short']);
     expect(p.goal?.toGoUp).toBe('5 on all 3 sets');
+    expect(p.brief).toBe('A set fell short of 5 last time');
+  });
+
+  it('says a set was skipped, not short, in the brief when last time did fewer sets than planned', () => {
+    const p = proposeNext(input({ scheme: 'linear', item: lin, history: [done('s5', 0, 100, 5), done('s5', 1, 100, 5)] }))!;
+    expect(p.move).toBe('same');
+    expect(p.brief).toBe('Only 2 of 3 sets last time');
   });
 
   it('proposes about 10% less after three short workouts in a row at one weight', () => {
