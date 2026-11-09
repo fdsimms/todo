@@ -206,7 +206,6 @@ const ITEM_FIELD_ICONS: Record<ItemBackfillFieldId, keyof typeof Ionicons.glyphM
   substitutes: 'swap-horizontal-outline',
   variety: 'layers-outline',
   nutrition: 'nutrition-outline',
-  nutritionDetail: 'water-outline',
   product: 'cube-outline',
   rating: 'thumbs-up-outline',
 };
@@ -3746,25 +3745,6 @@ export function BackfillScreen() {
               >
                 <Ionicons name="create-outline" size={iconSize.md} color={colors.text} />
                 <Text style={styles.neutralButtonText}>Add nutrition info</Text>
-              </PressableScale>
-            </View>
-          )}
-
-          {active.id === 'nutritionDetail' && (
-            <View style={styles.nutritionField}>
-              <Text style={styles.renameHint}>
-                Saved figures stay as they are. Open the panel to add trans fat,
-                cholesterol or added sugars from the label. A food with none of them
-                stays in this list until you choose Nothing more to add.
-              </Text>
-              <PressableScale
-                style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
-                onPress={() => { haptics.tap(); setNutritionPanelOpen(true); }}
-                accessibilityRole="button"
-                accessibilityLabel={`Add fat and sugar detail for ${currentItem.name}`}
-              >
-                <Ionicons name="create-outline" size={iconSize.md} color={colors.onAccent} />
-                <Text style={styles.toggleButtonText}>Open nutrition panel</Text>
               </PressableScale>
             </View>
           )}

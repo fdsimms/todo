@@ -342,6 +342,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
               autoCorrect={false}
               spellCheck={false}
               returnKeyType="search"
+              autoFocus
             />
             <FieldClearButton query={query} onClear={clearQuery} />
           </View>
