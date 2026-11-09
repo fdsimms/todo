@@ -542,6 +542,8 @@ import { payProjectBonus, takeBackProjectBonus } from '../utils/projectBonus';
 import { describeReschedule } from '../utils/rescheduleLabel';
 import { timedPart } from '../utils/perfLog';
 import { mergeTaskDelta } from '../utils/taskDeltaReload';
+import { keepUnchanged } from '../utils/structuralSharing';
+import { reloadReaches, syncReloadScope, type ReloadPart, type SyncReloadScope } from '../utils/syncReloadScope';
 
 
 /**
@@ -565,16 +567,25 @@ import { mergeTaskDelta } from '../utils/taskDeltaReload';
  * one by design, and a plain insert of the same id threw, which left the task
  * impossible to complete on this device.
  */
+/** What `initialize` is told about the reload it is doing. See its declaration in `TaskStore`. */
+export interface InitializeOptions {
+  reload?: boolean;
+  applied?: Pick<ApplyReport, 'taskIds' | 'changedTables' | 'changedSettingKeys' | 'folded'>;
+}
+
 function readTasksForInitialize(
   inMemory: Task[],
   initialized: boolean,
-  opts?: { reload?: boolean; changedTaskIds?: string[] }
-): Task[] {
-  if (opts?.reload && initialized && opts.changedTaskIds) {
-    const merged = mergeTaskDelta(inMemory, dbGetTaskIds(), dbGetTasksByIds(opts.changedTaskIds));
-    if (merged) return merged;
+  opts: InitializeOptions | undefined,
+  scope: SyncReloadScope | null
+): { tasks: Task[]; delta: boolean } {
+  // Only for a scoped reload: with no scope the sync folded rows together, and
+  // a fold rewrites tasks (a supply's item, a link) that `taskIds` never names.
+  if (opts?.reload && initialized && opts.applied && scope) {
+    const merged = mergeTaskDelta(inMemory, dbGetTaskIds(), dbGetTasksByIds(opts.applied.taskIds));
+    if (merged) return { tasks: merged, delta: true };
   }
-  return dbGetAllTasks();
+  return { tasks: dbGetAllTasks(), delta: false };
 }
 
 /**
@@ -1926,12 +1937,14 @@ interface TaskStore extends UndoHistoryActions {
   /**
    * Loads every data store from the database. `reload` is for a reload after a
    * sync applied rows: the schema and migrations already ran this launch, so
-   * only the loads are repeated. `changedTaskIds` (the ids the sync wrote) lets
-   * that reload re-read just those rows instead of the whole table: the rest
-   * of memory already matches the database, and a deletion shows as an id the
-   * table no longer has.
+   * only the loads are repeated. `applied` (what the sync wrote) narrows that
+   * reload to the stores that read a table it changed, and to the task rows it
+   * names instead of the whole table: the rest of memory already matches the
+   * database, and a deletion shows as an id the table no longer has. A store
+   * that is reloaded keeps the identity of every value that came back the same
+   * (`keepUnchanged`), so only what changed re-renders.
    */
-  initialize: (opts?: { reload?: boolean; changedTaskIds?: string[] }) => void;
+  initialize: (opts?: InitializeOptions) => void;
   // Marks a completion as animating so the batched collapse waits for it.
   // Called when the row's completion animation starts, i.e. a beat before the
   // completeTask that follows it.
@@ -3614,7 +3627,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Each part is timed into the launch perf report's one "initialize tasks"
     // entry (perfLog.ts, timedPart), so a slow store shows by name.
     timedPart('open database', () => { if (opts?.reload) ensureDatabaseReady(); else initDatabase(); });
-    timedPart('Category', () => useCategoryStore.getState().initialize());
+    // After a sync, only the parts that read a table it wrote (#4267,
+    // syncReloadScope.ts). Null is everything: a launch, a database swap, or a
+    // sync that folded rows together.
+    const scope = opts?.reload && opts.applied && get().initialized ? syncReloadScope(opts.applied) : null;
+    const part = (name: ReloadPart, load: () => void): void => {
+      if (reloadReaches(scope, name)) timedPart(name, load);
+    };
+    part('Category', () => useCategoryStore.getState().initialize());
     // After the categories load, because it may add one: an install that
     // already had the calendar read on predates events having a section to
     // land in, and this is the whole of that migration (see
@@ -3628,132 +3648,147 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // than in the settings store because they add a category, and the
     // categories have just finished loading.
     ensureGeneratedTaskCategories();
-    timedPart('Template', () => useTemplateStore.getState().initialize());
-    timedPart('TaskGroup', () => useTaskGroupStore.getState().initialize());
-    timedPart('Project', () => useProjectStore.getState().initialize());
-    timedPart('ProjectCategory', () => useProjectCategoryStore.getState().initialize());
+    part('Template', () => useTemplateStore.getState().initialize());
+    part('TaskGroup', () => useTaskGroupStore.getState().initialize());
+    part('Project', () => useProjectStore.getState().initialize());
+    part('ProjectCategory', () => useProjectCategoryStore.getState().initialize());
     // Rides the same fan-out as everything below it, and for the identical
     // swap-the-database reason: a person list left pointed at the previous
     // database while tasks showed the new one would render demo tasks naming
     // real people, or the reverse.
-    timedPart('Person', () => usePersonStore.getState().initialize());
+    part('Person', () => usePersonStore.getState().initialize());
     // Immediately after the people, and on the same fan-out for the same
     // database-swap reason: notes left pointed at the previous database would
     // render real facts about real people under demo names.
-    timedPart('PersonNote', () => usePersonNoteStore.getState().initialize());
+    part('PersonNote', () => usePersonNoteStore.getState().initialize());
     // Also immediately after the people, for the identical reason: a group
     // left pointed at the previous database would name people who don't
     // exist in the new one.
-    timedPart('PersonGroup', () => usePersonGroupStore.getState().initialize());
+    part('PersonGroup', () => usePersonGroupStore.getState().initialize());
     // On the same fan-out as everything else here, and for the same
     // swap-the-database reason: a mood history left pointed at the previous
     // database would show a demo session's invented entries as the real
     // person's own record, or the reverse — and this is the one store where
     // that mistake is a claim about somebody's health.
-    timedPart('Mood', () => useMoodStore.getState().initialize());
+    part('Mood', () => useMoodStore.getState().initialize());
     // Beside the mood log, on the same fan-out and for the same reason:
     // milestones are read against it, so a device swap that left them out of
     // step would date a before/after split against the wrong person's phone.
-    timedPart('Milestone', () => useMilestoneStore.getState().initialize());
+    part('Milestone', () => useMilestoneStore.getState().initialize());
     // Pot weights are read while typing a dish's weight, so they swap with the
     // database the recipes came from.
-    timedPart('Cookware', () => useCookwareStore.getState().initialize());
+    part('Cookware', () => useCookwareStore.getState().initialize());
     // Temporary dev tooling (see CopyFlag): on the fan-out so a demo session
     // doesn't show real flags, and so a flag the MCP resolved shows up after a pull.
-    timedPart('CopyFlag', () => useCopyFlagStore.getState().initialize());
+    part('CopyFlag', () => useCopyFlagStore.getState().initialize());
     // Fasts are part of the health record, so like the workouts below they are
     // read from whichever database is live after a demo swap or a restore.
-    timedPart('Fast', () => useFastStore.getState().initialize());
+    part('Fast', () => useFastStore.getState().initialize());
     // Workouts: custom exercises, routines, programs and sessions. A session is
     // part of the health record, so after a demo swap or a restore it has to
     // be read from the database the rest came from, never kept from the last.
-    timedPart('Workout', () => useWorkoutStore.getState().initialize());
+    part('Workout', () => useWorkoutStore.getState().initialize());
     // Gyms are read against the sessions that name them, so they swap with them.
-    timedPart('Gym', () => useGymStore.getState().initialize());
+    part('Gym', () => useGymStore.getState().initialize());
     // The journal grew out of the mood entry's note, so it sits beside it on
     // the fan-out for the same swap-the-database reason.
-    timedPart('Journal', () => useJournalStore.getState().initialize());
+    part('Journal', () => useJournalStore.getState().initialize());
     // Beside the mood log, same fan-out, and the sharpest version of the same
     // stakes: a medication history left pointed at the previous database would
     // report a demo session's invented doses as a real person's record of what
     // they have taken.
-    timedPart('Medication', () => useMedicationStore.getState().initialize());
+    part('Medication', () => useMedicationStore.getState().initialize());
     // Follow-ups on doses and foods; same swap-the-database fan-out.
-    timedPart('CheckIn', () => useCheckInStore.getState().initialize());
+    part('CheckIn', () => useCheckInStore.getState().initialize());
     // What a supplement dose adds to the food log. Here because this is where
     // the app's stores come up together, and the medication store can't import
     // the food log's itself (see `DoseEffects`).
     installSupplementDoseEffects();
     // The coin ledger. Same fan-out, so a demo session's invented coins never
     // sit on top of a real balance.
-    timedPart('Reward', () => useRewardStore.getState().initialize());
+    part('Reward', () => useRewardStore.getState().initialize());
     // Unlocks hold no coins, but they name tasks and keep a play timer, so
     // they swap with the database the tasks came from.
-    timedPart('Unlock', () => useUnlockStore.getState().initialize());
+    part('Unlock', () => useUnlockStore.getState().initialize());
     // Beside the mood log and for the identical reason, with the same stakes:
     // a food log left pointed at the previous database would show a demo
     // session's invented meals as somebody's own record of what they ate.
-    timedPart('FoodLog', () => useFoodLogStore.getState().initialize());
+    part('FoodLog', () => useFoodLogStore.getState().initialize());
     // Beside the food log it's built from, for the same demo-mode stakes: a
     // saved meal left pointed at the previous database would offer a demo
     // session's invented combination as something to log again for real.
-    timedPart('SavedMeals', () => useSavedMealsStore.getState().initialize());
+    part('SavedMeals', () => useSavedMealsStore.getState().initialize());
     // Meals waiting for an estimate (`utils/estimateQueue.ts`). Device-local and
     // read from the live database, so a demo session never shows the real queue
     // and the real queue never reaches the scratch file.
-    timedPart('PendingEstimate', () => usePendingEstimateStore.getState().initialize());
+    part('PendingEstimate', () => usePendingEstimateStore.getState().initialize());
     // The recipe counterpart, for the same demo-mode reason.
-    timedPart('PendingRecipeEstimate', () => usePendingRecipeEstimateStore.getState().initialize());
+    part('PendingRecipeEstimate', () => usePendingRecipeEstimateStore.getState().initialize());
     // On the same fan-out for the plainest version of the reason: the ledger is
     // an account of what the app did to *this* database, so one left pointed at
     // the previous one would report a demo session's invented generators against
     // the real list, and the passes that run moments later would append to a log
     // belonging to a database they are not touching.
-    timedPart('Unattended', () => useUnattendedStore.getState().initialize());
-    timedPart('TemplateCategory', () => useTemplateCategoryStore.getState().initialize());
+    part('Unattended', () => useUnattendedStore.getState().initialize());
+    part('TemplateCategory', () => useTemplateCategoryStore.getState().initialize());
     // Groceries ride this fan-out rather than being initialized from App.tsx,
     // and that placement is load-bearing: enterDemoMode/exitDemoMode and
     // restore-from-backup all reload by calling *this* function after swapping
     // the database file. A store initialized outside it would keep its
     // in-memory rows pointed at the previous database while every other
     // surface showed the new one — i.e. your real groceries on a demo phone.
-    timedPart('Grocery', () => useGroceryStore.getState().initialize());
+    part('Grocery', () => useGroceryStore.getState().initialize());
     // Same reasoning, and the same swap-the-database hazard: recipes bridge to
     // the catalog by name_key, so a stale recipe list next to a fresh catalog
     // would match nothing.
-    timedPart('Recipe', () => useRecipeStore.getState().initialize());
+    part('Recipe', () => useRecipeStore.getState().initialize());
     // And the plan, which points at those recipes by id. Range-scoped, so this
     // reloads whatever week is on screen rather than the whole table.
-    timedPart('MealPlan', () => useMealPlanStore.getState().initialize());
+    part('MealPlan', () => useMealPlanStore.getState().initialize());
     // Skipped meals, read by the meal strip beside the plan; same database swap.
-    timedPart('MealSkip', () => useMealSkipStore.getState().initialize());
+    part('MealSkip', () => useMealSkipStore.getState().initialize());
     // What's in the fridge — pointed at by the plan the same way recipes are,
     // and on the same swap-the-database hazard.
-    timedPart('Leftover', () => useLeftoverStore.getState().initialize());
+    part('Leftover', () => useLeftoverStore.getState().initialize());
     // Read from the settings table the same way, and on the same
     // swap-the-database hazard: a reminder set in one database (real or
     // demo) is meaningless once the file underneath has changed.
-    timedPart('EventReminder', () => useEventReminderStore.getState().initialize());
+    part('EventReminder', () => useEventReminderStore.getState().initialize());
     // Same settings-table read, same swap-the-database hazard: an event hidden
     // in one database (real or demo) is meaningless once the file underneath
     // has changed.
-    timedPart('HiddenEvents', () => useHiddenEventsStore.getState().initialize());
+    part('HiddenEvents', () => useHiddenEventsStore.getState().initialize());
     // Same again: who an event is with names demo people in a demo database.
-    timedPart('EventPeople', () => useEventPeopleStore.getState().initialize());
-    timedPart('EventTaskLink', () => useEventTaskLinkStore.getState().initialize());
+    part('EventPeople', () => useEventPeopleStore.getState().initialize());
+    part('EventTaskLink', () => useEventTaskLinkStore.getState().initialize());
     // What an agent asked for and the person hasn't answered: arrives by sync,
     // which reloads through this, and names demo requests in a demo database.
-    timedPart('AgentSuggestion', () => useAgentSuggestionStore.getState().initialize());
-    const tasks = timedPart('read tasks', () => readTasksForInitialize(get().tasks, get().initialized, opts));
-    timedPart('backfill recurrence anchors', () => backfillRecurrenceAnchors(tasks));
-    const tagRegistry = dbGetTagRegistry();
+    part('AgentSuggestion', () => useAgentSuggestionStore.getState().initialize());
+    // The tasks only when the sync wrote one. Skipping the read is what keeps
+    // the list's identity: a delta with nothing in it still builds a new array,
+    // and every list on screen is a selector over this one.
+    const read = reloadReaches(scope, 'read tasks')
+      ? timedPart('read tasks', () => readTasksForInitialize(get().tasks, get().initialized, opts, scope))
+      : null;
+    const tasks = read ? read.tasks : get().tasks;
+    if (read) timedPart('backfill recurrence anchors', () => backfillRecurrenceAnchors(tasks));
     // After the tasks, and given them: a stored focus session points at task
     // ids, and the first thing it does is drop the stretches belonging to
     // tasks that were completed or deleted while the app was shut. Rides this
     // fan-out rather than App.tsx for the swap-the-database reason above.
-    timedPart('Focus', () => useFocusStore.getState().initialize(tasks));
+    part('Focus', () => useFocusStore.getState().initialize(tasks));
 
-    set({ tasks, tagRegistry, initialized: true });
+    if (read) {
+      const loaded = { tasks, tagRegistry: dbGetTagRegistry(), initialized: true };
+      // A delta is the rows already in memory with a few re-read, so the rows
+      // the sync didn't write are passed over by identity and only the ones it
+      // did are compared: one that came back the same keeps its object, and a
+      // delta that changed nothing changes nothing. The whole table re-read is
+      // every row walked field by field, which costs as much as the read did
+      // and is not worth it for the reloads that get here (a database swap, a
+      // restore, a fold).
+      set(s => (read.delta ? keepUnchanged(s, loaded) : loaded));
+    }
     // The device's timezone can have changed while the app was shut — a cold
     // start is the only chance to notice, since nothing runs while it's
     // closed. Reanchoring has to happen before rescheduling the native
@@ -3762,16 +3797,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // `tasks` from above) is what makes that ordering actually take effect.
     // See #1205.
     get().reanchorWallClockReminders();
-    const { tripShopId, tripStartedAt, shops } = useGroceryStore.getState();
-    const eventReminders = Object.values(useEventReminderStore.getState().remindersByKey);
-    timedPart('reschedule reminders', () => rescheduleAllReminders(get().tasks, { shopId: tripShopId, startedAt: tripStartedAt, shops }, eventReminders));
+    part('reschedule reminders', () => {
+      const { tripShopId, tripStartedAt, shops } = useGroceryStore.getState();
+      const eventReminders = Object.values(useEventReminderStore.getState().remindersByKey);
+      rescheduleAllReminders(get().tasks, { shopId: tripShopId, startedAt: tripStartedAt, shops }, eventReminders);
+    });
     // Deliberately after the set() above, not inside useLeftoverStore's own
     // initialize(): reconciling reads useTaskStore.getState().tasks to find
     // each leftover's live task, and at the point leftovers load (just above)
     // that array is still whatever this store held before this call — stale
     // rows on a demo-mode swap, or simply unset on a cold start. Running the
     // sweep here means it sees the tasks this launch actually has.
-    timedPart('reconcile leftover tasks', () => useLeftoverStore.getState().reconcileAllLeftoverTasks());
+    part('reconcile leftover tasks', () => useLeftoverStore.getState().reconcileAllLeftoverTasks());
   },
 
   // Must run after useSettingsStore.initialize() so autoRemoveExpiredTasks,

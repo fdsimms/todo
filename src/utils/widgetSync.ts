@@ -678,6 +678,16 @@ export function writeWidgetSnapshotNow(): void {
 }
 
 /**
+ * The same write on the debounce the store subscriptions share, for a caller
+ * in a live app that knows the snapshot may be stale without a slice having
+ * moved (the reload after a sync, backgroundRefresh.ts). One that does move a
+ * slice lands on the same timer, so the two cost a single write.
+ */
+export function scheduleWidgetSnapshotWrite(): void {
+  scheduleSnapshotWrite();
+}
+
+/**
  * Reads every store the snapshot draws on and hands the lot to the builder.
  *
  * **A store that reports `initialized: false` contributes null, not an empty

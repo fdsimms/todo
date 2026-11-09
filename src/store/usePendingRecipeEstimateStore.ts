@@ -7,6 +7,7 @@ import {
 import { isDemoModeActive } from '../utils/demoState';
 import { isQueueableFailure } from '../utils/estimateQueue';
 import { awaitingRecipeEstimate, type PendingRecipeEstimate } from '../utils/recipeEstimateQueue';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * Recipe nutrition estimates asked for with no connection, made when there is
@@ -68,7 +69,7 @@ export const usePendingRecipeEstimateStore = create<PendingRecipeEstimateStore>(
     draining: false,
 
     initialize() {
-      set({ pending: dbGetPendingRecipeEstimates(), initialized: true, draining: false });
+      set(state => keepUnchanged(state, { pending: dbGetPendingRecipeEstimates(), initialized: true, draining: false }));
     },
 
     enqueue(draft) {

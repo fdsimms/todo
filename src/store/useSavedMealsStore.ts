@@ -3,6 +3,7 @@ import type { FoodLogEntry, MealSlot, SavedMeal, SavedMealItem } from '../types'
 import { dbDeleteSavedMeal, dbGetSavedMeals, dbInsertSavedMeal, dbUpdateSavedMealItems } from '../db/database';
 import { generateId } from '../utils/id';
 import { useFoodLogStore } from './useFoodLogStore';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * Saved meals — several food log entries bundled under a name so the whole
@@ -66,7 +67,7 @@ export const useSavedMealsStore = create<SavedMealsStore>((set, get) => ({
   initialized: false,
 
   initialize() {
-    set({ meals: dbGetSavedMeals(), initialized: true });
+    set(state => keepUnchanged(state, { meals: dbGetSavedMeals(), initialized: true }));
   },
 
   addFromEntries(name, entries) {

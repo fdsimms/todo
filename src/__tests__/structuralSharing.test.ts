@@ -41,11 +41,29 @@ describe('reuseUnchanged', () => {
     expect(reuseUnchanged({ a: 1, b: undefined }, { a: 1, c: undefined })).not.toHaveProperty('b');
   });
 
-  it('treats NaN as equal to itself and 0 as different from -0', () => {
-    const prev = { n: NaN };
-    expect(reuseUnchanged(prev, { n: NaN })).toBe(prev);
-    const zero = { n: 0 };
-    expect(reuseUnchanged(zero, { n: -0 })).not.toBe(zero);
+  it('treats NaN as equal to itself', () => {
+    const prev = { n: NaN, list: [NaN] };
+    expect(reuseUnchanged(prev, { n: NaN, list: [NaN] })).toBe(prev);
+  });
+
+  it('keeps an object whose undefined key is still there and still undefined', () => {
+    const prev = { a: 1, b: undefined };
+    expect(reuseUnchanged(prev, { a: 1, b: undefined })).toBe(prev);
+  });
+
+  it('notices a key that was dropped, even when every remaining key matches', () => {
+    const prev = { a: 1, b: 2 };
+    const out = reuseUnchanged(prev, { a: 1 });
+    expect(out).not.toBe(prev);
+    expect(out).toEqual({ a: 1 });
+  });
+
+  it('is not fooled by a key that only the prototype has', () => {
+    const prev: Record<string, unknown> = { a: 1 };
+    const next: Record<string, unknown> = { a: 1, toString: undefined };
+    expect(Object.keys(reuseUnchanged(prev, next))).toEqual(['a', 'toString']);
+    const named: Record<string, unknown> = { constructor: 'x' };
+    expect(reuseUnchanged({}, named)).toBe(named);
   });
 
   describe('lists', () => {
@@ -162,13 +180,42 @@ describe('reuseUnchanged', () => {
 });
 
 describe('keepUnchanged', () => {
+  const action = () => {};
+
   it('swaps in what the store holds, key by key, and leaves the rest alone', () => {
-    const action = () => {};
     const state = { rows: [{ id: 'a' }], byId: { a: 1 }, count: 1, action };
     const patch = { rows: [{ id: 'a' }], byId: { a: 2 }, count: 1 };
     const out = keepUnchanged(state, patch);
     expect(out.rows).toBe(state.rows);
     expect(out.byId).toBe(patch.byId);
     expect(Object.keys(out)).toEqual(['rows', 'byId', 'count']);
+  });
+
+  it('hands back the state itself when the patch changes nothing', () => {
+    const state = { rows: [{ id: 'a' }], initialized: true, action };
+    expect(keepUnchanged(state, { rows: [{ id: 'a' }], initialized: true })).toBe(state);
+  });
+
+  it('counts a key the state never had as a change, even an undefined one', () => {
+    const state: { rows: string[]; extra?: string } = { rows: [] };
+    const out = keepUnchanged(state, { extra: undefined });
+    expect(out).not.toBe(state);
+    expect(Object.keys(out)).toEqual(['extra']);
+  });
+
+  it('is a no-op for a Zustand store when nothing changed', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createStore } = require('zustand/vanilla');
+    const store = createStore(() => ({ rows: [{ id: 'a', n: 1 }], initialized: false }));
+    const calls: unknown[] = [];
+    store.subscribe((s: unknown) => calls.push(s));
+    store.setState((s: { rows: { id: string; n: number }[]; initialized: boolean }) =>
+      keepUnchanged(s, { rows: [{ id: 'a', n: 1 }], initialized: true }));
+    expect(calls).toHaveLength(1);
+    const first = store.getState();
+    store.setState((s: { rows: { id: string; n: number }[]; initialized: boolean }) =>
+      keepUnchanged(s, { rows: [{ id: 'a', n: 1 }], initialized: true }));
+    expect(calls).toHaveLength(1);
+    expect(store.getState()).toBe(first);
   });
 });

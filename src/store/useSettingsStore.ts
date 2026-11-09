@@ -196,6 +196,7 @@ import {
   DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_AFTER_DAYS_MAX, MOOD_NUDGE_AFTER_DAYS_MIN,
 } from '../utils/moodTasks';
 import type { LastTipShown } from '../utils/tips';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
 
@@ -4177,7 +4178,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // settingsLoadSorted.test.ts enforces this, because nothing else can: a
     // field read from the database and left out of this list compiles clean
     // and simply never loads.
-    set({
+    //
+    // keepUnchanged, because this also runs after a sync: each array or object
+    // setting that came back the same keeps the identity it had, so only the
+    // settings that changed re-render their readers (#4267).
+    set(state => keepUnchanged(state, {
       activeEnergyBoost,
       activeHoursEnd,
       activeHoursStart,
@@ -4533,7 +4538,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       ynabTaskCategory,
       ynabTasks,
       initialized: true,
-    });
+    }));
   },
 
   /**

@@ -8,6 +8,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { registerSectionSource } from '../utils/sectionRegistry';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 interface TaskGroupStore {
   groups: TaskGroup[];
@@ -39,7 +40,7 @@ export const useTaskGroupStore = create<TaskGroupStore>((set, get) => ({
 
   initialize() {
     const groups = dbGetAllTaskGroups();
-    set({ groups, initialized: true });
+    set(state => keepUnchanged(state, { groups, initialized: true }));
   },
 
   createGroup(title, category, projectId = null, id) {

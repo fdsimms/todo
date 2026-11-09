@@ -3854,6 +3854,21 @@ function naturalKeyClashes(name: string, row: BackupRow): BackupRow[] {
   return [...found.values()];
 }
 
+/**
+ * What the apply in progress has written, for `ApplyReport.changedTables`. Null
+ * outside an apply. A module variable rather than a parameter because the fold
+ * helpers below call each other several levels deep and only two of them
+ * need it.
+ */
+let applyWrites: { tables: Set<string>; settingKeys: Set<string>; folded: boolean } | null = null;
+
+/** Notes that the apply changed a row of `table` (and which, for a setting). */
+function noteApplyWrite(table: string, rowKey?: string): void {
+  if (!applyWrites) return;
+  applyWrites.tables.add(table);
+  if (table === 'settings' && rowKey !== undefined) applyWrites.settingKeys.add(rowKey);
+}
+
 /** Writes `row`'s columns (never updated_at) over the row at `where`. */
 function updateRowStampNow(name: string, where: { sql: string; values: string[] }, row: BackupRow): void {
   const columns = Object.keys(row).filter(c => c !== 'updated_at');
@@ -3888,6 +3903,9 @@ function afterFold(name: string, id: string): void {
  * The caller has already folded the loser's values into the winner.
  */
 function foldAway(ctx: FoldContext, name: string, loser: string, winner: string, loserRow?: BackupRow): void {
+  // Everything below writes wherever the loser was named, which no list of
+  // tables kept here would stay right about: the report says so instead.
+  if (applyWrites) applyWrites.folded = true;
   addAlias(ctx, name, loser, winner, loserRow);
   db.runSync(`DELETE FROM "${name}" WHERE id = ?`, [loser]);
   for (const ref of REFERENCES) {
@@ -4001,6 +4019,7 @@ function absorbAliasedRow(ctx: FoldContext, name: string, row: BackupRow): boole
   const local = db.getFirstSync<BackupRow>(`SELECT * FROM "${name}" WHERE id = ?`, [winner]);
   if (local) {
     updateRowStampNow(name, { sql: 'id = ?', values: [winner] }, { ...foldRows(name, local, row), id: winner });
+    noteApplyWrite(name);
     afterFold(name, winner);
   }
   return true;
@@ -4026,6 +4045,20 @@ function recordRemoteTombstone(deletion: SyncPayload['deletions'][number], trans
 }
 
 export function dbApplySyncChanges(payload: SyncPayload, transport?: string): ApplyReport {
+  const writes = { tables: new Set<string>(), settingKeys: new Set<string>(), folded: false };
+  applyWrites = writes;
+  try {
+    const report = applySyncChanges(payload, transport);
+    report.changedTables = [...writes.tables];
+    report.changedSettingKeys = [...writes.settingKeys];
+    report.folded = writes.folded;
+    return report;
+  } finally {
+    applyWrites = null;
+  }
+}
+
+function applySyncChanges(payload: SyncPayload, transport?: string): ApplyReport {
   const report = emptyApplyReport();
 
   withTransaction(() => {
@@ -4127,6 +4160,7 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
         if (name === 'tasks' && typeof placed.row.id === 'string') {
           report.taskIds.push(placed.row.id);
         }
+        noteApplyWrite(name, rowKey);
         if (placed.folded) {
           if (local) updateRowStampNow(name, where, placed.row);
           else insertRowStampNow(name, placed.row);
@@ -4261,6 +4295,7 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
         }
       }
       db.runSync(`DELETE FROM "${deletion.table}" WHERE ${where.sql}`, where.values);
+      noteApplyWrite(deletion.table, deletion.rowKey);
       // The tombstone trigger just stamped this deletion with local now. Put
       // the peer's time back, or a third device hearing it relayed would take
       // it as newer than it is and delete an edit made after the real one; the
@@ -4276,11 +4311,13 @@ export function dbApplySyncChanges(payload: SyncPayload, transport?: string): Ap
       // delete arrived would otherwise be left pointing at no session.
       if (deletion.table === 'workout_sessions') {
         db.runSync('DELETE FROM workout_sets WHERE session_id = ?', [deletion.rowKey]);
+        noteApplyWrite('workout_sets');
       }
       report.deleted++;
     }
 
     for (const id of groceryItemIds) resyncGroceryHomeColumns(id);
+    if (groceryItemIds.size > 0) noteApplyWrite('grocery_items');
   });
 
   return report;

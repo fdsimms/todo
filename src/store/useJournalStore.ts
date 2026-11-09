@@ -10,6 +10,7 @@ import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import { cleanJournalTags, cleanPersonIds } from '../utils/journal';
 import { MAX_JOURNAL_PHOTOS, deleteJournalPhotos, droppedPhotos } from '../utils/journalPhotos';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * The journal and the dream log — see `docs/arch/journal.md`.
@@ -66,7 +67,7 @@ export const useJournalStore = create<JournalStore>((set, get) => ({
   initialized: false,
 
   initialize() {
-    set({ entries: dbGetAllJournalEntries(), initialized: true });
+    set(state => keepUnchanged(state, { entries: dbGetAllJournalEntries(), initialized: true }));
   },
 
   addEntry(kind, text, at, openOn, meta) {

@@ -7,6 +7,7 @@ import {
   dbDeletePersonNote,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * The things you have written down about the people you keep track of — see
@@ -46,7 +47,7 @@ export const usePersonNoteStore = create<PersonNoteStore>((set, get) => ({
   initialized: false,
 
   initialize() {
-    set({ notes: dbGetAllPersonNotes(), initialized: true });
+    set(state => keepUnchanged(state, { notes: dbGetAllPersonNotes(), initialized: true }));
   },
 
   // Refuses a blank, the same rule planMeal and renameEntry follow: an empty

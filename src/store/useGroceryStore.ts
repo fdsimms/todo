@@ -195,6 +195,7 @@ import {
   UndoHistoryActions,
   undoHistoryActions,
 } from '../utils/undoHistory';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 // One shared timer, re-armed by each tap, exactly like armCompletionCollapse
 // in useTaskStore — so a burst of checks sinks together instead of dribbling
@@ -2139,7 +2140,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       clearTimeout(cartHoldTimer);
       cartHoldTimer = null;
     }
-    set({
+    set(state => keepUnchanged(state, {
       items,
       aisleOrder,
       hiddenAisles,
@@ -2163,7 +2164,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       disposalOffer: null,
       ratingOffer: null,
       initialized: true,
-    });
+    }));
   },
 
   setGroceryGroupBy(groupBy) {

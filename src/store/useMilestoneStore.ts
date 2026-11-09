@@ -7,6 +7,7 @@ import {
   dbDeleteMilestone,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * Dated markers read as a before/after split against the mood log — see
@@ -39,7 +40,7 @@ export const useMilestoneStore = create<MilestoneStore>((set, get) => ({
   initialized: false,
 
   initialize() {
-    set({ milestones: dbGetAllMilestones(), initialized: true });
+    set(state => keepUnchanged(state, { milestones: dbGetAllMilestones(), initialized: true }));
   },
 
   // Refuses a blank label, the same rule addNote and addLog follow: the

@@ -21,6 +21,7 @@ import { firstEmoji } from '../utils/emojiInput';
 import { useSettingsStore } from './useSettingsStore';
 import { categoryRenameTaken } from '../utils/nameTaken';
 import { GENERATED_KINDS, GENERATED_KIND_LIST, GENERATED_KIND_SPECS, generatorSwitchedOn, type GeneratedKind } from '../utils/generatedTasks';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 interface CategoryStore {
   categories: Category[];
@@ -60,7 +61,7 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
 
   initialize() {
     const categories = dbGetAllCategories();
-    set({ categories, initialized: true });
+    set(state => keepUnchanged(state, { categories, initialized: true }));
   },
 
   addCategory(name) {

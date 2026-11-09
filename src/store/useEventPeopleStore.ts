@@ -24,6 +24,7 @@ import {
   dbUpsertEventPeopleLink,
 } from '../db/database';
 import { useCalendarStore } from './useCalendarStore';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * Where links lived before they had a table (device-local, one JSON blob).
@@ -126,7 +127,7 @@ export const useEventPeopleStore = create<EventPeopleState>((set, get) => ({
     const stale = staleEventPeopleIds(all, new Date());
     if (stale.length > 0) dbDeleteEventPeopleLinks(stale);
     const rows = all.filter(r => !stale.includes(r.id));
-    set({ rows, links: indexEventPeople(rows, get().links.externalIds), loaded: true });
+    set(state => keepUnchanged(state, { rows, links: indexEventPeople(rows, get().links.externalIds), loaded: true }));
 
     if (!calendarSubscribed) {
       calendarSubscribed = true;

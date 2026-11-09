@@ -33,6 +33,7 @@ import {
   UndoHistoryActions,
   undoHistoryActions,
 } from '../utils/undoHistory';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 export type { LeftoverDraft };
 
@@ -300,12 +301,12 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
   ...undoHistoryActions(set, get),
 
   initialize() {
-    set({
+    set(state => keepUnchanged(state, {
       leftovers: sortLeftovers(dbGetAllLeftovers()),
       pendingUseUpLeftoverId: null,
       pendingFinishLeftoverId: null,
       initialized: true,
-    });
+    }));
   },
 
   setPendingUseUpLeftover(id) {

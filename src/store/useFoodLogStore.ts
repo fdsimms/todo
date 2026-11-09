@@ -33,6 +33,7 @@ import {
   type UndoHistoryActions,
   undoHistoryActions,
 } from '../utils/undoHistory';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * The food log — what was eaten, and when.
@@ -734,13 +735,13 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // The current logical day, because that is what a day view opens on and it
     // is one small read. Anything wider is the screen's own loadRange call.
     const todayKey = dayKeyOf(getCurrentDayStart());
-    set({
+    set(state => keepUnchanged(state, {
       entries: dbGetFoodLogEntries(todayKey, todayKey),
       rangeStart: todayKey,
       rangeEnd: todayKey,
       totalCount: dbCountFoodLogEntries(),
       initialized: true,
-    });
+    }));
   },
 
   loadRange(startKey, endKey) {

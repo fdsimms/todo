@@ -8,6 +8,7 @@ import {
 } from '../utils/eventReminders';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import { scheduleEventReminder, cancelEventReminder } from '../utils/notifications';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 const SETTINGS_KEY = 'event_reminders';
 
@@ -49,7 +50,7 @@ export const useEventReminderStore = create<EventReminderState>((set, get) => ({
   initialize: () => {
     const pruned = pruneStaleReminders(load(), new Date());
     persist(pruned);
-    set({ remindersByKey: pruned, loaded: true });
+    set(state => keepUnchanged(state, { remindersByKey: pruned, loaded: true }));
   },
 
   reminderFor: event => get().remindersByKey[eventReminderKey(event)],

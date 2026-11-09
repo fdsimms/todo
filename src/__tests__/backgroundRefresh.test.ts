@@ -52,8 +52,12 @@ jest.mock('../utils/widgetBridge', () => {
 const mockCalls: string[] = [];
 const mockRecord = (name: string) => () => { mockCalls.push(name); };
 
+let mockInitializedWith: unknown = null;
 const mockTaskState = {
-  initialize: mockRecord('initialize'),
+  initialize: (opts?: unknown) => {
+    mockCalls.push('initialize');
+    mockInitializedWith = opts ?? null;
+  },
   sweepExpiredTasks: mockRecord('sweepExpiredTasks'),
   reanchorWallClockReminders: mockRecord('reanchorWallClockReminders'),
   checkVacationExpiry: mockRecord('checkVacationExpiry'),
@@ -219,6 +223,7 @@ jest.mock('../utils/notifications', () => ({
 }));
 jest.mock('../utils/widgetSync', () => ({
   writeWidgetSnapshotNow: () => { mockCalls.push('writeWidgetSnapshot'); },
+  scheduleWidgetSnapshotWrite: () => { mockCalls.push('scheduleWidgetSnapshot'); },
   drainWatchQueues: (handOff: string) => {
     mockCalls.push(`drainWatchQueues:${handOff}`);
     return Promise.resolve();
@@ -241,6 +246,7 @@ jest.mock('../utils/appShieldReconcile', () => ({
 }));
 
 import * as TaskManager from 'expo-task-manager';
+import { emptyApplyReport } from '../utils/syncMerge';
 import { runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runBackgroundYnab, runWatchWork, BACKGROUND_REFRESH_TASK } from '../utils/backgroundRefresh';
 import { catchUpPasses, retentionPasses, expiryPasses } from '../utils/maintenancePasses';
 
@@ -500,24 +506,60 @@ describe('the reload after a sync', () => {
   // A task's deadline event and time block are the same shape, and are
   // reconciled from the same report after the same re-read.
   it('re-reads the stores, then reconciles task and meal events with what was applied', () => {
-    const applied = { mealEntryIds: ['m1'], removedMealEvents: [], taskIds: ['t1'], removedTaskEvents: [], removedWatchWorkouts: [] };
+    const applied = { ...emptyApplyReport(), mealEntryIds: ['m1'], taskIds: ['t1'], changedTables: ['tasks', 'meal_plan_entries', 'settings'], changedSettingKeys: ['dayResetTime'] };
 
     const { mockRegistered } = jest.requireMock<{ mockRegistered: { reload: SyncReload } }>('../store/useSyncStore');
     mockRegistered.reload(applied);
 
     expect(mockCalls).toEqual([
-      'initialize', 'initializeSettings', 'reconcileSyncedTaskEvents', 'reconcileSyncedMealEvents',
+      'initialize', 'initializeSettings', 'reconcileSyncedTaskEvents', 'reconcileSyncedMealEvents', 'scheduleWidgetSnapshot',
     ]);
+    // The task store is handed the whole report, which is what narrows its reload.
+    expect(mockInitializedWith).toEqual({ reload: true, applied });
     expect(mockTaskReconciledWith).toBe(applied);
     expect(mockReconciledWith).toBe(applied);
     expect(mockAskedWatch).toEqual([]);
+  });
+
+  // #4267: the settings load re-parses every setting, so it runs only when a
+  // setting arrived.
+  it('leaves the settings alone when the sync wrote none', () => {
+    const applied = { ...emptyApplyReport(), taskIds: ['t1'], changedTables: ['tasks'] };
+
+    const { mockRegistered } = jest.requireMock<{ mockRegistered: { reload: SyncReload } }>('../store/useSyncStore');
+    mockRegistered.reload(applied);
+
+    expect(mockCalls).toContain('initialize');
+    expect(mockCalls).not.toContain('initializeSettings');
+  });
+
+  it('re-reads the settings after a fold, whatever tables the report names', () => {
+    const applied = { ...emptyApplyReport(), changedTables: ['grocery_items'], folded: true };
+
+    const { mockRegistered } = jest.requireMock<{ mockRegistered: { reload: SyncReload } }>('../store/useSyncStore');
+    mockRegistered.reload(applied);
+
+    expect(mockCalls).toContain('initializeSettings');
+  });
+
+  // A background run has no store subscription to carry the change to the
+  // widget, and may be suspended before a debounce fires.
+  it('writes the widget at once when the app is not in front', () => {
+    mockAppState = 'background';
+    const applied = { ...emptyApplyReport(), taskIds: ['t1'], changedTables: ['tasks'] };
+
+    const { mockRegistered } = jest.requireMock<{ mockRegistered: { reload: SyncReload } }>('../store/useSyncStore');
+    mockRegistered.reload(applied);
+
+    expect(mockCalls).toContain('writeWidgetSnapshot');
+    expect(mockCalls).not.toContain('scheduleWidgetSnapshot');
   });
 
   // A workout the watch measured, deleted on another device: only the phone
   // paired with the watch can ask it to retract what it saved.
   it('asks the watch about workouts it measured that a sync deleted', () => {
     const removedWatchWorkouts = [{ sessionId: 's1', healthWorkoutId: 'HK-WATCH' }, { sessionId: 's2', healthWorkoutId: null }];
-    const applied = { mealEntryIds: [], removedMealEvents: [], taskIds: [], removedTaskEvents: [], removedWatchWorkouts };
+    const applied = { ...emptyApplyReport(), removedWatchWorkouts };
 
     const { mockRegistered } = jest.requireMock<{ mockRegistered: { reload: SyncReload } }>('../store/useSyncStore');
     mockRegistered.reload(applied);

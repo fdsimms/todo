@@ -7,6 +7,7 @@ import {
   pruneStaleHiddenEvents,
 } from '../utils/hiddenEvents';
 import { dbGetSetting, dbSetSetting } from '../db/database';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 const SETTINGS_KEY = 'hidden_calendar_events';
 
@@ -42,7 +43,7 @@ export const useHiddenEventsStore = create<HiddenEventsState>((set, get) => ({
   initialize: () => {
     const pruned = pruneStaleHiddenEvents(load(), new Date());
     persist(pruned);
-    set({ hiddenByKey: pruned, loaded: true });
+    set(state => keepUnchanged(state, { hiddenByKey: pruned, loaded: true }));
   },
 
   isHidden: event => hiddenEventKey(event) in get().hiddenByKey,

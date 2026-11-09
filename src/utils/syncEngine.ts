@@ -464,6 +464,9 @@ function addReport(into: ApplyReport, from: ApplyReport): void {
   into.taskIds.push(...from.taskIds);
   into.removedTaskEvents.push(...from.removedTaskEvents);
   into.removedWatchWorkouts.push(...from.removedWatchWorkouts);
+  for (const table of from.changedTables) if (!into.changedTables.includes(table)) into.changedTables.push(table);
+  for (const key of from.changedSettingKeys) if (!into.changedSettingKeys.includes(key)) into.changedSettingKeys.push(key);
+  into.folded = into.folded || from.folded;
 }
 
 /**

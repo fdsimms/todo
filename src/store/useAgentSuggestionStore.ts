@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { CalendarRequest, CalendarRequestStatus } from '../types';
 import { dbGetAllCalendarRequests, dbInsertCalendarRequest, dbResolveCalendarRequest } from '../db/database';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 interface AgentSuggestionStore {
   /** Every calendar request row; `liveSuggestions` picks the ones to show. */
@@ -22,7 +23,7 @@ export const useAgentSuggestionStore = create<AgentSuggestionStore>((set, get) =
   requests: [],
 
   initialize() {
-    set({ requests: dbGetAllCalendarRequests() });
+    set(state => keepUnchanged(state, { requests: dbGetAllCalendarRequests() }));
   },
 
   insert(request) {

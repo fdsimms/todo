@@ -14,7 +14,14 @@
  * This is only safe because store state is treated as immutable: a kept object
  * is one the store was already serving. It understands what the stores hold:
  * primitives, arrays, plain objects, and Map, Set and Date. Anything else (a
- * class instance, a function) is taken fresh, never compared.
+ * class instance, a function) is taken fresh, never compared. 0 and -0 count
+ * as the same number.
+ *
+ * It is not free. Walking a row costs about what reading it from SQLite did,
+ * which is a good trade for a list of hundreds and a poor one for the whole
+ * task table: `useTaskStore.initialize` sends the tasks through it only when
+ * the reload re-read a few rows, where the rest are already the same objects
+ * and are passed over at a glance.
  */
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -53,6 +60,8 @@ function reuseArray(prev: readonly unknown[], next: readonly unknown[]): unknown
   for (let i = 0; i < next.length; i++) {
     const fresh = next[i];
     let old: unknown = i < prev.length ? prev[i] : undefined;
+    // The row the list already held, in place: the whole of an unchanged list.
+    if (old === fresh && fresh !== undefined) continue;
     const id = idOf(fresh);
     if (id !== null && idOf(old) !== id) {
       byId ??= indexById(prev);
@@ -65,17 +74,31 @@ function reuseArray(prev: readonly unknown[], next: readonly unknown[]): unknown
   return same ? prev : out ?? next;
 }
 
+const hasOwn = Object.prototype.hasOwnProperty;
+
 function reuseObject(prev: Record<string, unknown>, next: Record<string, unknown>): unknown {
   const keys = Object.keys(next);
   let out: Record<string, unknown> | null = null;
-  let same = keys.length === Object.keys(prev).length;
-  for (const key of keys) {
-    const had = Object.prototype.hasOwnProperty.call(prev, key);
+  let same = true;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
     const fresh = next[key];
-    const kept = had ? reuseUnchanged(prev[key], fresh) : fresh;
+    const old = prev[key];
+    // Most of a row is strings, numbers and nulls that didn't change, so that
+    // case is settled here without a call. An undefined on both sides could be
+    // a key `prev` doesn't have, which only the slower path below can tell.
+    if (old === fresh && fresh !== undefined) continue;
+    if (old === undefined && !hasOwn.call(prev, key)) {
+      same = false;
+      continue;
+    }
+    const kept = reuseUnchanged(old, fresh);
     if (!Object.is(kept, fresh)) (out ??= { ...next })[key] = kept;
-    if (same && (!had || !Object.is(kept, prev[key]))) same = false;
+    if (same && !Object.is(kept, old)) same = false;
   }
+  // A key `prev` has and `next` dropped: every key of `next` matched, so the
+  // counts differ exactly when there is one.
+  if (same && keys.length !== Object.keys(prev).length) same = false;
   return same ? prev : out ?? next;
 }
 
@@ -125,11 +148,19 @@ export function reuseUnchanged<T>(prev: unknown, next: T): T {
  * where nothing in it changed: `set(s => keepUnchanged(s, { rows: dbGetRows() }))`.
  * Per key rather than over the whole state, so the actions and the keys a patch
  * doesn't name are never walked.
+ *
+ * When no key changed at all it returns `state` itself, which Zustand takes as
+ * "nothing to do": no new state object and no subscriber called. That matters
+ * past React, since a few caches are keyed on a whole store's state (the task
+ * lenses, on the category, project and people stores).
  */
-export function keepUnchanged<S extends object, P extends Partial<S>>(state: S, patch: P): P {
-  const out = {} as P;
-  for (const key of Object.keys(patch) as (keyof P & keyof S)[]) {
-    out[key] = reuseUnchanged(state[key], patch[key]);
+export function keepUnchanged<S extends object>(state: S, patch: Partial<S>): S | Partial<S> {
+  const out: Partial<S> = {};
+  let changed = false;
+  for (const key of Object.keys(patch) as (keyof S)[]) {
+    const kept = reuseUnchanged(state[key], patch[key]) as S[keyof S];
+    out[key] = kept;
+    if (!changed && !(Object.prototype.hasOwnProperty.call(state, key) && Object.is(kept, state[key]))) changed = true;
   }
-  return out;
+  return changed ? out : state;
 }

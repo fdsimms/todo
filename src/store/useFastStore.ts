@@ -4,6 +4,7 @@ import { dbDeleteFast, dbGetAllFasts, dbInsertFast, dbUpdateFast } from '../db/d
 import { generateId } from '../utils/id';
 import { activeFast, clampFastGoalHours, fastGoalAt, fastStartProblem } from '../utils/fasting';
 import { cancelFastGoal, scheduleFastGoal } from '../utils/notifications';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * Fasts, started and ended by hand on the Food log. The rules are
@@ -41,7 +42,7 @@ export const useFastStore = create<FastStore>((set, get) => ({
 
   initialize() {
     const fasts = dbGetAllFasts();
-    set({ fasts, initialized: true });
+    set(state => keepUnchanged(state, { fasts, initialized: true }));
     // Fasts sync, so one started or ended on another device is only known
     // here once it is read in; re-aiming the notice on every load keeps it
     // from ringing about a fast that ended somewhere else.

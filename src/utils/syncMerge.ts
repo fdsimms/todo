@@ -315,6 +315,22 @@ export interface ApplyReport {
    * `removedMealEvents` is.
    */
   removedWatchWorkouts: RemovedWatchWorkout[];
+  /**
+   * Every table the apply changed a row of, for the reload that follows: a
+   * store none of whose tables are named here is left as it is (#4267,
+   * `syncReloadScope.ts`). Wider than the payload's own tables where the apply
+   * writes past them: a deleted session's sets, and the on-list columns of an
+   * item whose list entry moved.
+   */
+  changedTables: string[];
+  /** The `settings` rows among those, by key, since most stores over that table read one key. */
+  changedSettingKeys: string[];
+  /**
+   * A fold ran (`foldAway`), which repoints every row that named the loser, in
+   * whichever tables hold one, and rewrites settings that did. Those writes
+   * are not in `changedTables`, so a reader of it treats this as "everything".
+   */
+  folded: boolean;
 }
 
 export function emptyApplyReport(): ApplyReport {
@@ -330,6 +346,9 @@ export function emptyApplyReport(): ApplyReport {
     taskIds: [],
     removedTaskEvents: [],
     removedWatchWorkouts: [],
+    changedTables: [],
+    changedSettingKeys: [],
+    folded: false,
   };
 }
 

@@ -35,6 +35,7 @@ import { useMedicationStore } from './useMedicationStore';
 import { dueTemplateRun, schedulesEqual } from '../utils/templateSchedule';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { useSettingsStore } from './useSettingsStore';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /** Everything the apply sheet collects beyond the item selection and anchors. */
 export interface ApplyTemplateOptions {
@@ -164,7 +165,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
 
   initialize() {
     const templates = dbGetAllTemplates();
-    set({ templates, initialized: true });
+    set(state => keepUnchanged(state, { templates, initialized: true }));
   },
 
   addTemplate(name) {

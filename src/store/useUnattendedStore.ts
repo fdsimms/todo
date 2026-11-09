@@ -10,6 +10,7 @@ import { derivedId, spawnSeed } from '../utils/syncIds';
 import { getLogicalDayKey } from '../utils/dateUtils';
 import { ledgerCutoff, selectPurgeableUnattendedIds } from '../utils/retention';
 import { useSettingsStore } from './useSettingsStore';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * The write half of the unattended ledger — see `src/utils/unattendedLedger.ts`
@@ -88,7 +89,7 @@ export const useUnattendedStore = create<UnattendedStore>((set, get) => ({
   initialized: false,
 
   initialize() {
-    set({ entries: dbGetUnattendedLog(), initialized: true });
+    set(state => keepUnchanged(state, { entries: dbGetUnattendedLog(), initialized: true }));
   },
 
   record(entry) {
