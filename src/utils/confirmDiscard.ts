@@ -6,6 +6,8 @@ interface ConfirmDiscardOptions {
   message?: string;
   /** For a sheet that has to put something back when the answer is no (a dragged sheet snapping back up). */
   onKeepEditing?: () => void;
+  /** What was edited, already worded ("title, notes and date"), shown above the message. */
+  changed?: string;
 }
 
 const DISCARD_TITLE = 'Discard changes?';
@@ -24,9 +26,9 @@ const DISCARD_MESSAGE = 'Your changes haven’t been saved yet. If you leave now
  */
 export function confirmDiscard(
   onDiscard: () => void,
-  { title = DISCARD_TITLE, message = DISCARD_MESSAGE, onKeepEditing }: ConfirmDiscardOptions = {},
+  { title = DISCARD_TITLE, message = DISCARD_MESSAGE, onKeepEditing, changed }: ConfirmDiscardOptions = {},
 ): void {
-  Alert.alert(title, message, [
+  Alert.alert(title, changed ? `Changed: ${changed}.\n${message}` : message, [
     { text: 'Keep editing', style: 'cancel', onPress: onKeepEditing },
     { text: 'Discard', style: 'destructive', onPress: onDiscard },
   ]);

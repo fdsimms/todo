@@ -203,6 +203,7 @@ import { useSavedLinks } from '../hooks/useSavedLinks';
 import { LinkFieldActions, SavedLinksHint } from './SavedLinkParts';
 import { capitalize } from '../utils/capitalize';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedEditorFields, listChanges } from '../utils/editorChangeSummary';
 import { useFilterField } from '../hooks/useFilterField';
 import { TextField } from './TextField';
 import { TaskCheckbox } from './TaskCheckbox';
@@ -3300,13 +3301,17 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   }
   if (dirtyCheckRef) dirtyCheckRef.current = hasUnsavedChanges;
 
+  // What differs, in the editor's own words, for the alerts below to name.
+  const changedSummary = () => listChanges(changedEditorFields(initialStateRef.current, currentSnapshot()));
+  const changedLine = () => { const c = changedSummary(); return c ? `Changed: ${c}.\n` : ''; };
+
   // Completing or reopening from here closes the sheet, which takes any edits
   // not yet saved with it, so that is asked before it goes through.
   const confirmBeforeTick = (proceed: () => void) => {
     if (!hasUnsavedChanges()) { proceed(); return; }
     Alert.alert(
       'Complete without your changes?',
-      'Your changes here haven’t been saved, so they’ll be lost. Cancel and tap Save to keep them.',
+      `${changedLine()}Your changes here haven’t been saved, so they’ll be lost. Cancel and tap Save to keep them.`,
       [
         { text: BUTTON_LABEL.cancel, style: 'cancel' },
         { text: 'Complete anyway', onPress: proceed },
@@ -3316,7 +3321,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
 
   const handleCancel = () => {
     if (hasUnsavedChanges()) {
-      confirmDiscard(onClose);
+      confirmDiscard(onClose, { changed: changedSummary() });
     } else {
       onClose();
     }

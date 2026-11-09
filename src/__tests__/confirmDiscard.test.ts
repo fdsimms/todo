@@ -41,4 +41,11 @@ describe('confirmDiscard', () => {
     expect(title).toBe('Discard this project?');
     expect(message).toBe('This project hasn’t been saved yet. If you leave now, it’ll be lost.');
   });
+
+  it('names what changed above the shared message', () => {
+    confirmDiscard(jest.fn(), { changed: 'title and notes' });
+
+    const message = (Alert.alert as jest.Mock).mock.calls[0][1];
+    expect(message).toBe('Changed: title and notes.\nYour changes haven’t been saved yet. If you leave now, they’ll be lost.');
+  });
 });
