@@ -30,6 +30,7 @@ import {
   type TaskSettingsSpec,
 } from '../utils/generatedTaskSettings';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedSlots } from '../utils/editorChangeSummary';
 import type { GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, TimeOfDay } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
@@ -94,6 +95,8 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
   // What the sheet opened with, so Cancel only asks when something changed.
   const opened = useRef('');
 
+  // What each slot of `snapshot` holds, in the same order, for the discard alert.
+  const SNAPSHOT_LABELS = ['category', 'task defaults', 'tags', 'time of day', 'question on completion', 'choices'] as const;
   const snapshot = (c: string | null, d: TaskFieldDefaults | null, e: GeneratedTaskExtras, o: string) =>
     JSON.stringify([c, d, e.tags, e.timeSegments, e.deliverableKind, e.deliverableKind === 'choice' ? o : '']);
 
@@ -111,11 +114,11 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, kind]);
 
-  const dirty = snapshot(draftCategory, defaults, extras, optionsText) !== opened.current;
+  const changed = changedSlots(SNAPSHOT_LABELS, opened.current, snapshot(draftCategory, defaults, extras, optionsText));
 
   const handleCancel = () => {
-    if (!dirty) { onClose(); return; }
-    confirmDiscard(onClose);
+    if (!changed) { onClose(); return; }
+    confirmDiscard(onClose, { changed });
   };
 
   const handleSave = () => {

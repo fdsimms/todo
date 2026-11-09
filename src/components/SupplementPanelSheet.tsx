@@ -20,7 +20,7 @@ import {
   emptyIngredientForm,
   invalidSupplementFields,
   servingFromLabelText,
-  supplementFormDirty,
+  supplementFormChanges,
   supplementFormFrom,
   type SupplementForm,
 } from '../utils/supplementDose';
@@ -232,8 +232,9 @@ export function SupplementPanelSheet({ visible, name, panel, onClose, onSave }: 
   };
 
   const handleCancel = () => {
-    if (!supplementFormDirty(form, baseline.current)) { Keyboard.dismiss(); onClose(); return; }
-    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
+    const changed = supplementFormChanges(form, baseline.current);
+    if (!changed) { Keyboard.dismiss(); onClose(); return; }
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); }, { changed });
   };
 
   return (

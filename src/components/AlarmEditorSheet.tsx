@@ -18,6 +18,7 @@ import { describeRepeat } from '../utils/alarms';
 import { soundChoiceFrom } from '../utils/alarmSounds';
 import { MISSION_GIVE_UP_HOLD_MS, MISSION_REARM_SECONDS } from '../utils/missions';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedList } from '../utils/editorChangeSummary';
 import { confirmDelete } from '../utils/confirmDelete';
 import { haptics } from '../utils/haptics';
 import { BUTTON_LABEL } from '../copy/shared';
@@ -52,12 +53,14 @@ function draftFor(alarm: Alarm | null): Draft {
   return { hour: 7, minute: 0, label: '', repeatDays: [], mission: null, sound: null, soundPool: [] };
 }
 
-const sameDraft = (a: Draft, b: Draft) =>
-  a.hour === b.hour && a.minute === b.minute && a.label.trim() === b.label.trim()
-  && [...a.repeatDays].sort().join() === [...b.repeatDays].sort().join()
-  && JSON.stringify(a.mission) === JSON.stringify(b.mission)
-  && a.sound === b.sound
-  && a.soundPool.join() === b.soundPool.join();
+/** What differs between two drafts, in the editor's own words. Empty when nothing does. */
+const changedDraft = (a: Draft, b: Draft) => changedList([
+  ['time', a.hour !== b.hour || a.minute !== b.minute],
+  ['label', a.label.trim() !== b.label.trim()],
+  ['repeat days', [...a.repeatDays].sort().join() !== [...b.repeatDays].sort().join()],
+  ['mission', JSON.stringify(a.mission) !== JSON.stringify(b.mission)],
+  ['sound', a.sound !== b.sound || a.soundPool.join() !== b.soundPool.join()],
+]);
 
 /**
  * Adds or edits an alarm of its own (utils/alarms.ts): the time, the label,
@@ -87,11 +90,12 @@ export function AlarmEditorSheet({ visible, alarm, onClose }: Props) {
   const dayOrder = [0, 1, 2, 3, 4, 5, 6].map(i => (i + weekStartsOn) % 7);
 
   const handleCancel = () => {
-    if (sameDraft(draft, opened)) {
+    const changed = changedDraft(draft, opened);
+    if (!changed) {
       onClose();
       return;
     }
-    confirmDiscard(onClose);
+    confirmDiscard(onClose, { changed });
   };
 
   const handleSave = () => {

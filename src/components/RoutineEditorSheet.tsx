@@ -51,6 +51,7 @@ import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors }
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedSlots } from '../utils/editorChangeSummary';
 import { confirmDelete } from '../utils/confirmDelete';
 import { generateId } from '../utils/id';
 import { buildCatalog, catalogExercise } from '../utils/exerciseCatalog';
@@ -128,6 +129,8 @@ const toRows = (items: readonly WorkoutRoutineItem[]): Row[] => items.map(item =
 /** What Save writes: the exercises, with any superset left holding fewer than two let go. */
 const savedItems = (rows: readonly Row[]): WorkoutRoutineItem[] =>
   normalizeSupersets(rows.filter(r => !r.open).map(r => r.item));
+/** What each slot of `snapshotOf` holds, in the same order, for the discard alert. */
+const SNAPSHOT_LABELS = ['name', 'notes', 'exercises'] as const;
 const snapshotOf = (name: string, notes: string, rows: readonly Row[]) =>
   JSON.stringify([name.trim(), notes.trim(), savedItems(rows)]);
 const viewsOf = (rows: readonly Row[]): SupersetRowView[] =>
@@ -380,7 +383,11 @@ export function RoutineEditorSheet({ visible, routineId, newInGroup = null, onSa
 
   const handleCancel = () => {
     if (!dirty && !pendingCell.current) { onClose(); return; }
-    confirmDiscard(onClose, routine ? {} : {
+    const changed = [
+      changedSlots(SNAPSHOT_LABELS, baseline.current, snapshotOf(name, notes, rows)),
+      pendingCell.current ? 'the exercise being edited' : '',
+    ].filter(Boolean).join(' and ');
+    confirmDiscard(onClose, routine ? { changed } : {
       title: 'Discard this routine?',
       message: 'It hasn’t been saved yet. If you leave now, it will be lost.',
     });

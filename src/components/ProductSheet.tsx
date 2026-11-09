@@ -25,6 +25,7 @@ import { describeFoodPanel } from '../utils/foodNutrition';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedList } from '../utils/editorChangeSummary';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { NutritionPanelSheet } from './NutritionPanelSheet';
 import { PillGroup, type PillGroupOption } from './PillGroup';
@@ -236,12 +237,14 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
   // Pantry pills write immediately and are deliberately not part of this —
   // they're already saved by the time the sheet could be dismissed.
   const handleCancel = () => {
-    const dirty = brand.trim() !== (editing?.brand ?? '')
-      || variant.trim() !== (editing?.variant ?? '')
-      || note !== (editing?.note ?? '')
-      || rating !== (editing?.rating ?? null);
-    if (!dirty) { Keyboard.dismiss(); onClose(); return; }
-    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
+    const changed = changedList([
+      ['brand', brand.trim() !== (editing?.brand ?? '')],
+      ['variant', variant.trim() !== (editing?.variant ?? '')],
+      ['note', note !== (editing?.note ?? '')],
+      ['rating', rating !== (editing?.rating ?? null)],
+    ]);
+    if (!changed) { Keyboard.dismiss(); onClose(); return; }
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); }, { changed });
   };
 
   const handleDelete = () => {

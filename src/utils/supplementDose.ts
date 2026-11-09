@@ -1,3 +1,4 @@
+import { changedList } from './editorChangeSummary';
 import type { FoodLogEntry, FoodNutrition, MedicationLog, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import { formatDose } from './medicationLog';
@@ -237,17 +238,24 @@ export function buildSupplementPanel(form: SupplementForm): SupplementPanel | nu
   };
 }
 
-/** Whether the form differs from the panel it opened with, for the discard guard. */
-export function supplementFormDirty(form: SupplementForm, original: SupplementPanel | null | undefined): boolean {
+/** What differs from the panel the form opened with, in words for the discard alert; '' when nothing does. */
+export function supplementFormChanges(form: SupplementForm, original: SupplementPanel | null | undefined): string {
   const base = supplementFormFrom(original);
-  if (form.servingAmount.trim() !== base.servingAmount.trim() || form.servingUnit !== base.servingUnit) return true;
-  if (NUTRIENT_KEYS.some(key => form.amounts[key].trim() !== base.amounts[key].trim())) return true;
   // Rows with nothing typed don't count: adding one and not filling it in is not an edit.
   const typed = (rows: IngredientForm[]) => rows.filter(r => !ingredientRowBlank(r));
   const now = typed(form.others);
   const was = typed(base.others);
-  return now.length !== was.length
-    || now.some((r, i) => r.name.trim() !== was[i].name.trim() || r.amount.trim() !== was[i].amount.trim() || r.unit !== was[i].unit);
+  return changedList([
+    ['serving', form.servingAmount.trim() !== base.servingAmount.trim() || form.servingUnit !== base.servingUnit],
+    ['nutrients', NUTRIENT_KEYS.some(key => form.amounts[key].trim() !== base.amounts[key].trim())],
+    ['other ingredients', now.length !== was.length
+      || now.some((r, i) => r.name.trim() !== was[i].name.trim() || r.amount.trim() !== was[i].amount.trim() || r.unit !== was[i].unit)],
+  ]);
+}
+
+/** Whether the form differs from the panel it opened with, for the discard guard. */
+export function supplementFormDirty(form: SupplementForm, original: SupplementPanel | null | undefined): boolean {
+  return supplementFormChanges(form, original) !== '';
 }
 
 // ==== Describing a panel ====

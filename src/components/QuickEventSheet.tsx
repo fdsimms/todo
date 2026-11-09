@@ -132,6 +132,7 @@ import { TITLE_MAX_LENGTH, type QuickEventSeed } from '../types';
 import { TextField } from './TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedSlots } from '../utils/editorChangeSummary';
 
 const EVENT_TOKEN_ACCESSORY_ID = 'quickEventTitleTokenAccessory';
 /** Long enough that a word being typed is one request, not one per letter. */
@@ -1339,6 +1340,10 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
 
   // Everything this sheet stages before Add. The line, the two text fields and
   // each chip's pick all count, so a swipe can't quietly drop any of them.
+  const STAGED_LABELS = [
+    'event', 'location', 'notes or link', 'calendar', 'alert', 'availability', 'duration', 'repeat',
+    'start time', 'all day', 'travel mode', 'arrive early', 'travel starting point', 'skip travel', 'place', 'people',
+  ] as const;
   const stagedSignature = JSON.stringify([
     text, location, notesOrLink, calendarPick, alertPick, availabilityPick, durationPick,
     repeatPick, startOverride?.getTime() ?? null, allDay, travelModePick, arriveEarlyPick,
@@ -1356,7 +1361,7 @@ export function QuickEventSheet({ visible, onClose, seed, editing, onSaved, onDe
   });
   const handleCancel = () => {
     if (baseline.current === null || baseline.current === stagedSignature) { dismiss(); return; }
-    confirmDiscard(dismiss);
+    confirmDiscard(dismiss, { changed: changedSlots(STAGED_LABELS, baseline.current, stagedSignature) });
   };
 
   const canSubmit = !busy && draft.title.trim().length > 0 && (!isEditing || original !== null);

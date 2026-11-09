@@ -57,6 +57,12 @@ export const EDITOR_CLOSED: EditorSheetState = { visible: false, task: null, dra
 
 /** Each editor store's way of asking its open form whether it holds unsaved edits. */
 const dirtyChecks = new WeakMap<StoreApi<EditorSheetState>, () => boolean>();
+const changedSummaries = new WeakMap<StoreApi<EditorSheetState>, () => string>();
+
+/** What the open editor has changed, in words for the discard alert ('' when it can't say). */
+export function editorChangedSummary(store: StoreApi<EditorSheetState>): string {
+  return changedSummaries.get(store)?.() ?? '';
+}
 
 /**
  * Whether the editor open in this store has edits it hasn't saved. Only the inline
@@ -79,9 +85,11 @@ export const EditorSheetHost = React.memo(function EditorSheetHost({
 }) {
   const { visible, task, draft } = useStore(store, useShallow(st => st));
   const dirtyCheckRef = useRef<(() => boolean) | null>(null);
+  const changedSummaryRef = useRef<(() => string) | null>(null);
   if (inline) {
     dirtyChecks.set(store, () => dirtyCheckRef.current?.() ?? false);
-    return <TaskEditor inline visible={visible} task={task} initialDraft={draft} onClose={onClose} dirtyCheckRef={dirtyCheckRef} />;
+    changedSummaries.set(store, () => changedSummaryRef.current?.() ?? '');
+    return <TaskEditor inline visible={visible} task={task} initialDraft={draft} onClose={onClose} dirtyCheckRef={dirtyCheckRef} changedSummaryRef={changedSummaryRef} />;
   }
   return (
     <LazySheet open={visible} warm>

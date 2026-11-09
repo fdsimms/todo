@@ -12,6 +12,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedList } from '../utils/editorChangeSummary';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { describeEventLength } from '../utils/eventLength';
 import { sameMinute, shiftDays, spanMinutes, withClock, workoutTimesProblem } from '../utils/workoutTimes';
@@ -83,12 +84,12 @@ export function WorkoutTimesSheet({ visible, start, end, initial, healthLimited,
   const active = which === 'start' ? draftStart : draftEnd;
   const setActive = (next: Date) => (which === 'start' ? setDraftStart(next) : setDraftEnd(next));
   const problem = workoutTimesProblem(draftStart, draftEnd, { now, healthLimited });
-  const dirty = !sameMinute(draftStart, start) || !sameMinute(draftEnd, end);
+  const changed = changedList([['start time', !sameMinute(draftStart, start)], ['end time', !sameMinute(draftEnd, end)]]);
   const minutes = spanMinutes(draftStart, draftEnd);
 
   const handleCancel = (close: (after?: () => void) => void) => {
-    if (!dirty) { close(); return; }
-    confirmDiscard(() => close());
+    if (!changed) { close(); return; }
+    confirmDiscard(() => close(), { changed });
   };
 
   const stepDay = (days: number) => {

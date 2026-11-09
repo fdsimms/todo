@@ -170,6 +170,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/dumbbellLoad.ts` — DumbbellEntry, dumbbellsUsed, entryFor, weightScale, shownKg, storedKgFromTyped, storedKgFromShown, formatScaledWeight, weightHeadingSuffix, DUMBBELL_ENTRY_LABELS, +1 more
 - `src/utils/dumbbellRack.ts` — cleanRack, snapToRack, rackAbove, rackBelow
 - `src/utils/editedTaskMove.ts` — TodayView, editedTaskMove
+- `src/utils/editorChangeSummary.ts` — changedEditorFields, listChanges, changedList, changedSlots
 - `src/utils/editorJump.ts` — ScrollMetrics, ACTIVE_THRESHOLD, JUMP_PAD, JUMP_HOLD_MS, SectionOffset, activeSectionKey, scrollTargetFor, JumpSnapshot, EditorJumpTracker
 - `src/utils/editorSearch.ts` — EditorSearchable, editorSearchTerms, matchesEditorQuery, filterEditorRows
 - `src/utils/effort.ts` — MeasuredTimeUpdate, applyMeasuredTime, formatStopwatch, EFFORT_MINUTES, effortToMinutes, minutesToEffort, effortRangeLabel, ESTIMATE_PRESET_MINUTES, estimatePatchForMinutes, nearestPresetMinutes, +13 more
@@ -377,7 +378,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nutrientLog.ts` — isNutrientOnlyEntry, nutrientOnlyKey, nutrientOnlyEntryOf, NutrientHelping, nutrientHelping
 - `src/utils/nutrientTaskBar.ts` — NutrientTaskBar, nutrientTaskBar, NutrientTaskLine, nutrientTaskLine, nutrientsCoveredByTasks
 - `src/utils/nutritionEstimate.ts` — ESTIMATE_DESCRIPTION_MAX_LENGTH, ESTIMATE_AMOUNT_MAX_LENGTH, MAX_ESTIMATE_QUESTIONS, ESTIMATE_REQUEST_MAX_LENGTH, EstimateBasis, EstimateContextFood, MAX_CONTEXT_FOODS, EstimateConfidence, EstimateQuestion, EstimateIngredient, +8 more
-- `src/utils/nutritionPanelForm.ts` — PanelForm, NovaGroupText, novaGroupFromText, novaGroupToText, PanelFieldKey, emptyPanelForm, panelFormFrom, readPanelNumber, invalidPanelFields, ServingWeightUnit, +8 more
+- `src/utils/nutritionPanelForm.ts` — PanelForm, NovaGroupText, novaGroupFromText, novaGroupToText, PanelFieldKey, emptyPanelForm, panelFormFrom, readPanelNumber, invalidPanelFields, ServingWeightUnit, +9 more
 - `src/utils/nutritionParse.ts` — NutrientSourceUnit, NUTRIENT_STORED_UNIT, SALT_TO_SODIUM, readSourceUnit, readSourceNumber, convertNutrientAmount, readOffNutrition, readFdcNutrition, readFdcPortions
 - `src/utils/nutritionSanity.ts` — PanelWarning, panelWarnings
 - `src/utils/nutritionStats.ts` — NutritionCounts, NutrientAverage, LoggedFood, SourceMix, EMPTY_NUTRITION_COUNTS, EMPTY_SOURCE_MIX, nutritionCounts, ProduceAverage, produceAverage, nutrientAverages, +13 more
@@ -612,7 +613,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/stripScale.ts` — countStripScale
 - `src/utils/substituteSuggestions.ts` — MAX_SUGGESTED_SUBSTITUTES, SuggestedSubstitute, RawSuggestedSubstitute, dedupeSuggestedSubstitutes
 - `src/utils/sunTimes.ts` — SunEvent, SunAnchor, SunLocation, SUN_OFFSET_LIMIT, SUN_OFFSET_STEP, parseSunAnchor, formatSunAnchor, clampSunOffset, describeSunAnchor, shortSunAnchor, +12 more
-- `src/utils/supplementDose.ts` — DOSE_SOURCE_PREFIX, doseSourceId, supplementDoseIdOf, isSupplementEntry, supplementServings, SupplementHelping, supplementHelping, entryForDose, SupplementForm, IngredientForm, +13 more
+- `src/utils/supplementDose.ts` — DOSE_SOURCE_PREFIX, doseSourceId, supplementDoseIdOf, isSupplementEntry, supplementServings, SupplementHelping, supplementHelping, entryForDose, SupplementForm, IngredientForm, +14 more
 - `src/utils/supplementDoseSync.ts` — installSupplementDoseEffects
 - `src/utils/supply.ts` — MAX_SUPPLY_COUNT, DEFAULT_SUPPLY_REORDER_AT, MAX_SUPPLY_REORDER_TASKS, clampSupplyCount, clampSupplyReorderAt, clampSupplyLeadDays, clampSupplyRefillCount, SupplySource, isSupplyTask, canHoldSupply, +20 more
 - `src/utils/swipeArm.ts` — SwipeArmSides, swipeArmDistance, nextSwipeArm

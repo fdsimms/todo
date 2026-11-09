@@ -38,6 +38,7 @@ import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors }
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedSlots } from '../utils/editorChangeSummary';
 import { confirmDelete } from '../utils/confirmDelete';
 import { generateId } from '../utils/id';
 import { catalogExercise } from '../utils/exerciseCatalog';
@@ -67,6 +68,8 @@ const SCHEME_OPTIONS: SegmentOption<ProgressionScheme | null>[] = (
 ).map(value => ({ value, label: PROGRESSION_LABELS[value] }));
 
 const toSlots = (ids: readonly string[]): Slot[] => ids.map(routineId => ({ id: generateId(), routineId }));
+/** What each slot of `snapshotOf` holds, in the same order, for the discard alert. */
+const SNAPSHOT_LABELS = ['name', 'rotation', 'progression', 'length', 'starting weights'] as const;
 const snapshotOf = (name: string, slots: readonly Slot[], scheme: ProgressionScheme | null, weeks: number | null, maxes: Record<string, number | null>) =>
   JSON.stringify([name.trim(), slots.map(s => s.routineId), scheme, weeks, Object.entries(maxes).filter(([, kg]) => kg !== null).sort()]);
 
@@ -205,7 +208,8 @@ export function ProgramEditorSheet({ visible, programId, onClose }: Props) {
 
   const handleCancel = () => {
     if (!dirty) { onClose(); return; }
-    confirmDiscard(onClose, program ? {} : {
+    const changed = changedSlots(SNAPSHOT_LABELS, baseline.current, snapshotOf(name, slots, scheme, weeks, maxes));
+    confirmDiscard(onClose, program ? { changed } : {
       title: 'Discard this program?',
       message: 'It hasn’t been saved yet. If you leave now, it will be lost.',
     });

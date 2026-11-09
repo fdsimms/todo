@@ -39,6 +39,7 @@ import { suggestSubstitutes, describeAIError } from '../services/aiSuggestions';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedList } from '../utils/editorChangeSummary';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
 import { SheetHeader } from './SheetHeader';
@@ -407,19 +408,21 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
   // mid-edit would otherwise drop it with no dialog. Compared against the
   // baseline the seeding effect stamped, so reseeding on open/reviewingId
   // change doesn't itself falsely read as user work about to be lost.
-  const isDirty = () => {
+  const changedFields = () => {
     const baseline = baselineRef.current;
-    return pickedId !== baseline.pickedId
-      || note !== baseline.note
-      || bothWays !== baseline.bothWays
-      || standing !== baseline.standing
-      || either !== baseline.either
-      || ratioFrom !== baseline.ratioFrom
-      || ratioTo !== baseline.ratioTo;
+    return changedList([
+      ['substitute', pickedId !== baseline.pickedId],
+      ['note', note !== baseline.note],
+      ['both ways', bothWays !== baseline.bothWays],
+      ['standing swap', standing !== baseline.standing],
+      ['either', either !== baseline.either],
+      ['ratio', ratioFrom !== baseline.ratioFrom || ratioTo !== baseline.ratioTo],
+    ]);
   };
   const handleCancel = () => {
-    if (!isDirty()) { Keyboard.dismiss(); onClose(); return; }
-    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
+    const changed = changedFields();
+    if (!changed) { Keyboard.dismiss(); onClose(); return; }
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); }, { changed });
   };
 
   // Back out of a substitute opened from the list above, rather than out of
@@ -435,8 +438,9 @@ export function SubstituteSheet({ visible, itemId: liveItemId, editingSubItemId 
       setReviewingId(null);
       setPickedId(null);
     };
-    if (!isDirty()) { back(); return; }
-    confirmDiscard(back);
+    const changed = changedFields();
+    if (!changed) { back(); return; }
+    confirmDiscard(back, { changed });
   };
 
   // ==== swap and remove ====

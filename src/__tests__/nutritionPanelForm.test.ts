@@ -7,6 +7,7 @@ import {
   gramsToServingWeight,
   labelColumnFieldCount,
   invalidPanelFields,
+  panelFormChanges,
   panelFormDirty,
   panelFormFrom,
   readPanelNumber,
@@ -31,6 +32,11 @@ describe('the processing group on the form', () => {
   it('counts a change of group as dirty', () => {
     expect(panelFormDirty(withGroup('4'), withGroup(''))).toBe(true);
     expect(panelFormDirty(withGroup('4'), withGroup('4'))).toBe(false);
+  });
+
+  it('names what changed for the discard alert', () => {
+    expect(panelFormChanges(withGroup('4'), withGroup(''))).toBe('NOVA group');
+    expect(panelFormChanges(withGroup('4'), withGroup('4'))).toBe('');
   });
 
   it('lets a scan that states a group set it, and one that does not leave what was typed', () => {
