@@ -6179,7 +6179,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             node: (
               <>
             <EditorRow
-              icon={reminderKind === 'persistent' ? 'repeat' : reminderKind === 'alarm' ? 'alarm' : 'notifications'}
+              icon={reminderKind === 'persistent' ? 'repeat-outline' : reminderKind === 'alarm' ? 'alarm-outline' : 'notifications-outline'}
               label="Remind me"
               hint={
                 reminderKind === 'persistent'
