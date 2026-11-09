@@ -3507,6 +3507,12 @@ export function BackfillScreen() {
     (draftBrand !== null || draftVariant !== null) &&
     (draftBrand !== (recordedBox?.brand ?? null) || draftVariant !== (recordedBox?.variant ?? null));
   const renameReady = nameChanged || productDirty;
+  // The same lookup applyRename makes, so the note under the field and the
+  // merge offer after the tap can't disagree about what counts as a match.
+  const renameClash =
+    currentItem && nameChanged
+      ? groceryItems.find(i => i.id !== currentItem.id && i.nameKey === groceryNameKey(renameText.trim()))
+      : undefined;
   const ratingBoxes = currentItem
     ? (fromScratch
         ? productsForItem(currentItem.id, itemProducts, currentItem.preferredProductId)
@@ -3645,6 +3651,11 @@ export function BackfillScreen() {
                   onSubmitEditing={() => (nameChanged ? applyRename(renameText) : undefined)}
                   accessibilityLabel={`New name for ${currentItem.name}`}
                 />
+                {renameClash && (
+                  <Text style={styles.renameHint} accessibilityLiveRegion="polite">
+                    You already have an item called “{renameClash.name}”. Renaming will offer to merge this item into it.
+                  </Text>
+                )}
                 <Text style={styles.renameHint}>
                   Add the brand and product if they are not in the name. Either one is enough.
                 </Text>
