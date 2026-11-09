@@ -4741,13 +4741,9 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 <SegmentedControl
                   label="Kind"
                   value={kind}
-                  onChange={next => {
-                    applyKind(next);
-                    // Any other kind's own set-up appears below once this folds
-                    // up. A standard task's Goal sits right under the control,
-                    // so picking Standard leaves it open.
-                    if (next !== 'task') closeField('kind');
-                  }}
+                  // Stays open after a pick, so the kind can be changed again
+                  // without reopening the row.
+                  onChange={applyKind}
                   columns={2}
                   options={kindSegmentsFor(simpleMode, kind)}
                 />
