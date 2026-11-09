@@ -8,10 +8,12 @@ import {
   reviewChanged,
   reviewedCalories,
   reviewedItems,
+  reviewStockState,
   reviewLinesFor,
   sameItems,
   toggleRemoved,
 } from '../utils/savedMealReview';
+import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import type { FoodNutrition, SavedMeal, SavedMealItem } from '../types';
 
 function panel(overrides: Partial<FoodNutrition> = {}): FoodNutrition {
@@ -206,5 +208,28 @@ describe('itemFromPick', () => {
     const kept = itemFromPick({ label: 'Rice', quantity: '1 cup', grams: 158, nutrition: panel(), sourcePanel: panel(), itemId: 'i1' });
     expect(kept.itemId).toBe('i1');
     expect(kept.sourcePanel).toBeTruthy();
+  });
+});
+
+describe('reviewStockState', () => {
+  const linked = { item: { itemId: 'i1' } as SavedMealItem, removed: false };
+  const row = { onHandUntil: null };
+
+  it('offers nothing for a food with no catalog row', () => {
+    expect(reviewStockState({ item: { itemId: null } as SavedMealItem, removed: false }, row, false)).toBeNull();
+    expect(reviewStockState(linked, undefined, false)).toBeNull();
+  });
+
+  it('offers nothing for a food left out of the log', () => {
+    expect(reviewStockState({ ...linked, removed: true }, row, false)).toBeNull();
+  });
+
+  it('reads the row as it stands', () => {
+    expect(reviewStockState(linked, row, false)).toEqual({ out: false, listed: false });
+    expect(reviewStockState(linked, { onHandUntil: OUT_OF_IT_UNTIL }, true)).toEqual({ out: true, listed: true });
+  });
+
+  it('does not read a lapsed "Got it" as out', () => {
+    expect(reviewStockState(linked, { onHandUntil: '2020-01-01T00:00:00.000Z' }, false)?.out).toBe(false);
   });
 });
