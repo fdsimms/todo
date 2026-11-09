@@ -4060,6 +4060,17 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
           right={
             <View style={styles.headerRight}>
+              {task && (
+                <TouchableOpacity
+                  onPress={handleDelete}
+                  hitSlop={8}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={opensAsListItem ? 'Delete item' : 'Delete task'}
+                >
+                  <Ionicons name="trash-outline" size={iconSize.sm} color={colors.red} />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 onPress={toggleSearch}
                 hitSlop={8}
