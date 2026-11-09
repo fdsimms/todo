@@ -6315,18 +6315,22 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               <TouchableOpacity
                 style={styles.optionRow}
                 onPress={async () => {
-                  if (!savedEstimateMinutes) return;
                   haptics.tap();
+                  // No saved length yet: take them to the Effort field, which
+                  // is the thing the hint tells them to go and set.
+                  if (!savedEstimateMinutes) { openFromSummary('effort'); return; }
                   const plan = await planTimeBlock(task.id);
                   if (!plan) return;
                   setTimeBlockPlan(plan);
                   setTimeBlockOpen(true);
                 }}
                 activeOpacity={interaction.activeOpacity}
-                disabled={!savedEstimateMinutes}
                 accessibilityRole="button"
-                accessibilityLabel={timeBlockEventId ? 'Edit the calendar time block' : 'Put this task on my calendar'}
-                accessibilityState={{ disabled: !savedEstimateMinutes }}
+                accessibilityLabel={
+                  !savedEstimateMinutes
+                    ? 'Set an estimate or effort for this task'
+                    : timeBlockEventId ? 'Edit the calendar time block' : 'Put this task on my calendar'
+                }
               >
                 <Ionicons
                   name="calendar-number-outline"
@@ -6339,7 +6343,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   </Text>
                   <Text style={styles.optionHint}>
                     {!savedEstimateMinutes
-                      ? 'Set an estimate or effort first. A block needs a length'
+                      ? 'A block needs a length. Tap to set an estimate or effort, then save'
                       : timeBlockEventId
                       ? 'Move, resize or delete the event'
                       : `Blocks out ${formatDuration(savedEstimateMinutes)} in your calendar to do this`}

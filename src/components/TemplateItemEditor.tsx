@@ -2043,13 +2043,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <View style={styles.optionContent}>
               <Text style={styles.optionLabel}>Remind me</Text>
               {dueOffsetDays === null ? (
-                <Text style={styles.optionHint}>Set a due date first</Text>
+                <Text style={styles.optionHint}>Needs a due date, so Set adds one too</Text>
               ) : reminderOffsetMinutes === null ? (
                 <Text style={styles.optionHint}>Minutes before the due date</Text>
               ) : null}
             </View>
-            {dueOffsetDays !== null && (
-              reminderOffsetMinutes !== null ? (
+            {(
+              dueOffsetDays !== null && reminderOffsetMinutes !== null ? (
                 <TouchableOpacity
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => setReminderOffsetMinutes(null)}
@@ -2063,7 +2063,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 <TouchableOpacity
                   activeOpacity={interaction.activeOpacity}
                   style={styles.setBtn}
-                  onPress={() => { haptics.tap(); setReminderOffsetMinutes(60); }}
+                  onPress={() => {
+                    haptics.tap();
+                    // A reminder is measured from the due date, so a row with
+                    // none gets the same one the Due date row's Set gives.
+                    if (dueOffsetDays === null) setDueOffsetDays(0);
+                    setReminderOffsetMinutes(60);
+                  }}
                   hitSlop={8}
                   accessibilityRole="button"
                   accessibilityLabel="Set a reminder"
