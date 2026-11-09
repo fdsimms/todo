@@ -34,6 +34,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { DetailHeader } from '../components/DetailHeader';
 import {
@@ -1718,20 +1719,45 @@ export function BackfillScreen() {
   // goes through the answer queue, as it does from its own row. `completeTask`
   // registers its own shake-to-undo entry, and no session line is filed because
   // no field was answered.
+  //
+  // **The card stays until what the completion raises has been dealt with.**
+  // The question or mission (the queue) and the prompts `completeTask` points
+  // at (the use-up alert and sheet, "finished the leftovers?") all open over
+  // this screen, so advancing first left the next card showing behind them, and
+  // a cancelled question moved past a task that was never completed. The id is
+  // held in `heldAdvanceId` and released by the effect below once none of them
+  // is open. Only the prompts whose pending id always clears on every button
+  // are waited on; the meal-log ones can be pending with nothing on screen, and
+  // waiting on one would hold the card for good.
   const { enqueue: enqueueCompletion, queueProps: completionQueueProps } = useAnswerFirstCompletion();
+  const [heldAdvanceId, setHeldAdvanceId] = useState<string | null>(null);
+  const useUpItemPending = useGroceryStore(s => s.pendingUseUpItemId !== null);
+  const useUpLeftoverPending = useLeftoverStore(s => s.pendingUseUpLeftoverId !== null);
+  const finishLeftoverPending = useLeftoverStore(s => s.pendingFinishLeftoverId !== null);
+  const heldAdvanceQueued = heldAdvanceId !== null && completionQueueProps.ids.includes(heldAdvanceId);
+  useEffect(() => {
+    if (heldAdvanceId === null) return;
+    if (heldAdvanceQueued || useUpItemPending || useUpLeftoverPending || finishLeftoverPending) return;
+    const id = heldAdvanceId;
+    setHeldAdvanceId(null);
+    // Cancelling the question leaves the task open, and the card with it.
+    if (!useTaskStore.getState().tasks.find(t => t.id === id)?.completed) return;
+    if (currentId === id) recordVisited();
+    animateLayout();
+    advance(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heldAdvanceId, heldAdvanceQueued, useUpItemPending, useUpLeftoverPending, finishLeftoverPending]);
   const markComplete = () => {
     if (!currentTask) return;
-    recordVisited();
     setManualCurrentId(null);
-    advance(currentTask.id);
     if (completesThroughQueue(currentTask)) {
       haptics.tap();
       enqueueCompletion([currentTask.id]);
-      return;
+    } else {
+      haptics.success();
+      completeTask(currentTask.id);
     }
-    haptics.success();
-    animateLayout();
-    completeTask(currentTask.id);
+    setHeldAdvanceId(currentTask.id);
   };
 
   // Unlike skip, this is a written, permanent decision about the item —
