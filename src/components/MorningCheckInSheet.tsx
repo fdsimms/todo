@@ -41,6 +41,8 @@ interface Answer {
   groupKey: string;
   groupLabel: string;
   kind: AnswerKind;
+  /** A skip rewrites the whole row, so taking it back puts this copy back. Unused by the other three. */
+  before: Task | null;
 }
 
 /** The section a task sits under in the list and in the review: its stack, else its category. */
@@ -76,8 +78,8 @@ const ANSWER_DISPLAY: Record<AnswerKind, { label: string; icon: React.ComponentP
  * task (CompletionOptionsMenu), so a task is never offered fewer here.
  *
  * Once the last one is answered the list gives way to a review of the answers
- * given in this opening (read-only: each one is already in the store, and is
- * changed from the task itself, the way a backfill review's rows are).
+ * given in this opening. Each row has an Undo that reopens the task, which
+ * brings it back into the list above the rest.
  *
  * Every tap commits straight through to the store, the same reasoning
  * RuleListSheet gives for skipping an unsaved-changes guard: there's nothing
@@ -89,6 +91,8 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const markMissed = useTaskStore(s => s.markMissed);
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
+  const uncompleteTask = useTaskStore(s => s.uncompleteTask);
+  const updateTask = useTaskStore(s => s.updateTask);
   const groups = useTaskGroupStore(s => s.groups);
 
   // Answers given since the sheet last opened. Cleared on open rather than on
@@ -98,12 +102,32 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
     if (visible) setAnswers([]);
   }, [visible]);
 
-  const record = (task: Task, kind: AnswerKind) => {
+  const record = (task: Task, kind: AnswerKind, before: Task | null = null) => {
     const { key, label } = groupOfTask(task, groups);
     setAnswers(prev => [
       ...prev.filter(a => a.taskId !== task.id),
-      { taskId: task.id, title: task.title, groupKey: key, groupLabel: label, kind },
+      { taskId: task.id, title: task.title, groupKey: key, groupLabel: label, kind, before },
     ]);
+  };
+
+  // Takes one answer back through the same store actions the row's own undo
+  // uses, and drops it from the review only if the task actually reopened:
+  // uncompleteTask refuses once a later occurrence exists, and claiming an
+  // undo that didn't happen would be worse than leaving the row listed.
+  // The task is back in `tasks` afterward, so the list reappears under it.
+  const undoAnswer = (answer: Answer) => {
+    haptics.tap();
+    if (answer.kind === 'skip') {
+      if (!answer.before) return;
+      animateLayout();
+      updateTask(answer.taskId, answer.before);
+    } else {
+      uncompleteTask(answer.taskId);
+      const reopened = useTaskStore.getState().tasks.find(t => t.id === answer.taskId);
+      if (!reopened || reopened.completed) return;
+      animateLayout();
+    }
+    setAnswers(prev => prev.filter(a => a.taskId !== answer.taskId));
   };
 
   const sheetGroups = useMemo(() => {
@@ -150,8 +174,9 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
   const answerSkip = (task: Task) => {
     haptics.tap();
     animateLayout();
+    const before = useTaskStore.getState().tasks.find(t => t.id === task.id) ?? task;
     skipNextRecurrence(task.id);
-    record(task, 'skip');
+    record(task, 'skip', { ...before });
   };
 
   const answerMissed = (task: Task) => {
@@ -205,13 +230,24 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
                 <Text style={styles.groupLabel}>{group.label}</Text>
                 <View style={styles.card}>
                   {group.answers.map((a, i) => (
-                    <View key={a.taskId} accessible accessibilityLabel={`${a.title}: ${ANSWER_DISPLAY[a.kind].label}`}>
-                      <View style={styles.row}>
-                        <Text style={styles.rowTitle}>{a.title}</Text>
-                        <View style={styles.answerLine}>
-                          <Ionicons name={ANSWER_DISPLAY[a.kind].icon} size={iconSize.sm} color={answerTint(a.kind)} />
-                          <Text style={styles.answerText}>{ANSWER_DISPLAY[a.kind].label}</Text>
+                    <View key={a.taskId}>
+                      <View style={styles.answeredRow}>
+                        <View style={styles.answeredBody}>
+                          <Text style={styles.rowTitle}>{a.title}</Text>
+                          <View style={styles.answerLine}>
+                            <Ionicons name={ANSWER_DISPLAY[a.kind].icon} size={iconSize.sm} color={answerTint(a.kind)} />
+                            <Text style={styles.answerText}>{ANSWER_DISPLAY[a.kind].label}</Text>
+                          </View>
                         </View>
+                        <TouchableOpacity
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => undoAnswer(a)}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Undo “${ANSWER_DISPLAY[a.kind].label}” for ${a.title}`}
+                        >
+                          <Text style={styles.undoText}>Undo</Text>
+                        </TouchableOpacity>
                       </View>
                       {i < group.answers.length - 1 && <View style={styles.sep} />}
                     </View>
@@ -297,6 +333,15 @@ function makeStyles(colors: Colors) {
     },
     rowTitle: { color: colors.text, fontSize: font.md },
     choice: { flexDirection: 'row', gap: spacing.sm },
+    answeredRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.smd,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+    },
+    answeredBody: { flex: 1, minWidth: 0, gap: spacing.xs },
+    undoText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.semibold },
     answerLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm },
     answerText: { color: colors.textSecondary, fontSize: font.sm },
     choiceBtn: {
