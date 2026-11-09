@@ -655,6 +655,11 @@ export type GeneratedKind =
   // writeGeneratedOptOut has nothing to write for it either, and what stops a
   // swiped-away row coming straight back is weekendNudgeLastWeekendKey.
   | 'weekendNudge'
+  // One row per Backfill pool once that pool has a lot waiting — see
+  // src/utils/backfillTasks.ts. Its source id is the pool's name, and the
+  // "don't hand it straight back" mark is settings-level
+  // (`backfillLastDayKeys`), the position pantryReview is in.
+  | 'backfill'
   // A stretch with no weigh-in recorded becomes a task to record one — see
   // src/utils/weightTasks.ts. Its source id is the day key the request was
   // raised on, the same "square on the calendar, not a row" position moodLog

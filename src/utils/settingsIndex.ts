@@ -367,6 +367,7 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   // instead of what the setting does.
   pantryReview: ['cupboard', 'stock', 'take stock', 'swipe', 'deck', 'still have', 'grocery',
     'kitchen', 'generated', 'automatic'],
+  backfill: ['backfill', 'queue', 'backlog', 'incomplete', 'generated', 'automatic'],
   screenTime: ['phone', 'usage', 'distraction', 'social media', 'doomscroll', 'limit', 'apps'],
   blockOffer: ['blocking', 'rewards', 'screen time', 'apps', 'focus', 'phone', 'detox', 'earn'],
   health: ['apple health', 'steps', 'sleep', 'walk', 'fitness', 'activity', 'rest'],
@@ -938,6 +939,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'moodNudgeAfterDays', requires: 'gen:moodNudge', groupId: 'generated', label: 'Low days before the task', section: 'Nudge after low days',
     keywords: ['mood', 'run', 'streak', 'how many days', 'threshold', 'sensitivity', 'fewer', 'less often'] },
+  { id: 'backfillThreshold', requires: 'gen:backfill', groupId: 'generated', label: 'Cards before the task', section: 'Fill in missing details',
+    keywords: ['backfill', 'threshold', 'how many', 'queue', 'backlog'] },
   { id: 'weekendNudgeLeadDays', requires: 'gen:weekendNudge', groupId: 'generated', label: 'Show the task', section: 'Nudge for an empty weekend',
     keywords: ['weekend', 'thursday', 'friday', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'weekendNudgePlanThreshold', requires: 'gen:weekendNudge', groupId: 'generated', label: 'How much counts as open', section: 'Nudge for an empty weekend',

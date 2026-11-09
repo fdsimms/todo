@@ -171,6 +171,8 @@ import { describeDisposalHistory, wantsShelfLifePrompt } from '../utils/itemDisp
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
 import { upcomingWeekend } from '../utils/weekendTasks';
 import { wantedPantryChecks } from '../utils/pantryCheckTasks';
+import { backfillAreaOf } from '../utils/backfillTasks';
+import { backfillFieldCounts } from '../utils/fieldBackfill';
 import { buildPantryReviewDeck } from '../utils/pantryReview';
 import { MIN_PANTRY_REVIEW_CARDS, stalePantryReviewTasks } from '../utils/pantryReviewTasks';
 import { mealShortfallRows, staleMealShortfallTasks } from '../utils/mealShortfallTasks';
@@ -4930,6 +4932,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // And the stale pass agrees, so the first foreground sweep doesn't clear
     // the seeded row as describing a cupboard nobody needs to look at.
     expect(stalePantryReviewTasks(tasks, deck)).toEqual([]);
+  });
+
+  it('seeds the Backfill offer, over a task pool that has cards waiting', () => {
+    const { tasks } = useTaskStore.getState();
+    const row = tasks.find(t => t.generatedKind === 'backfill');
+    expect(row).toBeDefined();
+    expect(row!.title).toBe('Fill in missing task details');
+    expect(row!.linkUrl).toBe('dundundun://backfill?area=task');
+    expect(backfillAreaOf(row!)).toBe('task');
+    // Not stale: the pool the row names has something to fill in, so the first
+    // foreground sweep leaves it alone rather than reading it as ready.
+    const counts = backfillFieldCounts(tasks, useCategoryStore.getState().categories);
+    expect(Object.values(counts).reduce((n, c) => n + c, 0)).toBeGreaterThan(0);
   });
 
   it('seeds a meal the kitchen cannot make, and the task that says so', () => {

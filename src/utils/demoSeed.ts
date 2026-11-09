@@ -96,6 +96,7 @@ import { describeProduct } from './groceryProduct';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
+import { BACKFILL_TITLES, backfillLinkUrl } from './backfillTasks';
 import { PANTRY_REVIEW_LINK_URL, PANTRY_REVIEW_TITLE } from './pantryReviewTasks';
 import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
 import { waitingFollowUpTitle } from './waitingFollowUpTasks';
@@ -5944,6 +5945,19 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     linkUrl: PANTRY_REVIEW_LINK_URL,
     category: 'Groceries',
     ...generatedBy('pantryReview', dayKeyOf(today)),
+  });
+
+  // The offer to fill in a Backfill pool (see utils/backfillTasks.ts), seeded by
+  // hand for the review row's reason: the real generator fires on a cadence and
+  // a demo database is seconds old. The task pool is the one with cards waiting
+  // here, since the seeded tasks mostly have no estimate or priority.
+  useSettingsStore.getState().setBackfillTaskCategory('Personal');
+  addTask({
+    title: BACKFILL_TITLES.task,
+    dueDate: today.toISOString(),
+    linkUrl: backfillLinkUrl('task'),
+    category: 'Personal',
+    ...generatedBy('backfill', 'task'),
   });
 
   // --- A supply stocked from the shopping list -----------------------------

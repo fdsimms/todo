@@ -83,6 +83,13 @@ import {
 } from '../utils/nutritionTargets';
 import { parseAutoSlips } from '../utils/limitWarningTasks';
 import {
+  BACKFILL_THRESHOLD_DEFAULT,
+  clampBackfillThreshold,
+  parseBackfillLastDayKeys,
+  type BackfillArea,
+  type BackfillLastDayKeys,
+} from '../utils/backfillTasks';
+import {
   DEFAULT_CURRENCY_SYMBOL,
   CURRENCY_SYMBOL_MAX_LENGTH,
   MEAL_SLOTS,
@@ -2022,6 +2029,18 @@ interface SettingsStore {
   // source row to stamp a decline onto and without it a swiped-away row would
   // come straight back on the next foreground.
   weekendNudgeLastWeekendKey: string | null;
+  // Whether a Backfill pool with a lot waiting adds a task that opens it. Off by
+  // default, like every generator that adds a surface. See src/utils/backfillTasks.ts.
+  backfillTasks: boolean;
+  backfillTaskCategory: string | null;
+  // How many cards a pool needs before it raises a row. Its own setting for
+  // weekendNudgePlanThreshold's reason: how big a backlog is worth a row is the
+  // person's call.
+  backfillThreshold: number;
+  // Per-pool day key of the last offer, as JSON. The whole of the "once a week"
+  // promise: there is no source row to stamp a decline onto, so it is written
+  // before the pool is judged (pantryReviewLastDayKey's position).
+  backfillLastDayKeys: BackfillLastDayKeys;
   // Whether a stretch with no weigh-in recorded adds a task to record one. Off
   // by default, like every generator that adds a surface rather than replacing
   // one. See src/utils/weightTasks.ts.
@@ -2589,6 +2608,10 @@ interface SettingsStore {
   setMoodNudgeLastDayKey: (dayKey: string | null) => void;
   setWeekendNudgeTasks: (on: boolean) => void;
   setWeekendNudgeTaskCategory: (category: string | null) => void;
+  setBackfillTasks: (on: boolean) => void;
+  setBackfillTaskCategory: (category: string | null) => void;
+  setBackfillThreshold: (count: number) => void;
+  setBackfillLastDayKey: (area: BackfillArea, dayKey: string) => void;
   setWeekendNudgeLeadDays: (days: number) => void;
   setWeekendNudgePlanThreshold: (count: number) => void;
   setWeekendNudgeLastWeekendKey: (weekendKey: string | null) => void;
@@ -3416,6 +3439,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   weekendNudgeLeadDays: WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
   weekendNudgePlanThreshold: WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT,
   weekendNudgeLastWeekendKey: null,
+  backfillTasks: false,
+  backfillTaskCategory: null,
+  backfillThreshold: BACKFILL_THRESHOLD_DEFAULT,
+  backfillLastDayKeys: {},
   weighInTasks: false,
   waterShortfallTasks: false,
   waterShortfallTaskCategory: null,
@@ -4018,6 +4045,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       ? Math.max(WEEKEND_NUDGE_PLAN_THRESHOLD_MIN, Math.min(WEEKEND_NUDGE_PLAN_THRESHOLD_MAX, storedWeekendPlanThreshold))
       : WEEKEND_NUDGE_PLAN_THRESHOLD_DEFAULT;
     const weekendNudgeLastWeekendKey = dbGetSetting('weekendNudgeLastWeekendKey') || null;
+    const backfillTasks = dbGetSetting('backfillTasks') === 'true';
+    const backfillTaskCategory = dbGetSetting('backfillTaskCategory') || null;
+    // Clamped on read as well as on write, weekendNudgeLeadDays' reason.
+    const storedBackfillThreshold = parseInt(dbGetSetting('backfillThreshold') ?? '', 10);
+    const backfillThreshold = Number.isFinite(storedBackfillThreshold)
+      ? clampBackfillThreshold(storedBackfillThreshold)
+      : BACKFILL_THRESHOLD_DEFAULT;
+    const backfillLastDayKeys = parseBackfillLastDayKeys(dbGetSetting('backfillLastDayKeys'));
     const weighInTasks = dbGetSetting('weighInTasks') === 'true';
     const waterShortfallTasks = dbGetSetting('waterShortfallTasks') === 'true';
     const waterShortfallTaskCategory = dbGetSetting('waterShortfallTaskCategory') || null;
@@ -4191,6 +4226,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       appLockGraceSeconds,
       autoCompleteProjectsOnDone,
       autoRemoveExpiredTasks,
+      backfillLastDayKeys,
+      backfillTaskCategory,
+      backfillTasks,
+      backfillThreshold,
       backgroundRefreshEnabled,
       beatLastDayKey,
       beatSoundEnabled,
@@ -5565,6 +5604,28 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     );
     dbSetSetting('weekendNudgePlanThreshold', String(clamped));
     set({ weekendNudgePlanThreshold: clamped });
+  },
+
+  setBackfillTasks(on: boolean) {
+    dbSetSetting('backfillTasks', String(on));
+    set({ backfillTasks: on });
+  },
+
+  setBackfillTaskCategory(category: string | null) {
+    dbSetSetting('backfillTaskCategory', category ?? '');
+    set({ backfillTaskCategory: category });
+  },
+
+  setBackfillThreshold(count: number) {
+    const clamped = clampBackfillThreshold(count);
+    dbSetSetting('backfillThreshold', String(clamped));
+    set({ backfillThreshold: clamped });
+  },
+
+  setBackfillLastDayKey(area: BackfillArea, dayKey: string) {
+    const next = { ...get().backfillLastDayKeys, [area]: dayKey };
+    dbSetSetting('backfillLastDayKeys', JSON.stringify(next));
+    set({ backfillLastDayKeys: next });
   },
 
   setWeekendNudgeLastWeekendKey(weekendKey: string | null) {

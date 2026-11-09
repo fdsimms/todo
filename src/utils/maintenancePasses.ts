@@ -157,6 +157,9 @@ export function catchUpPasses(): MaintenanceStep[] {
     // would let both fire in the same sweep the first time a cupboard goes
     // doubtful enough for the bulk offer.
     ['check pantry reviews', () => tasks().checkPantryReviewTasks()],
+    // A Backfill pool's backlog grows as rows are added and shrinks as cards are
+    // answered, so it is re-judged with the other day-keyed offers.
+    ['check backfill tasks', () => tasks().checkBackfillTasks()],
     ['check pantry checks', () => tasks().checkPantryCheckTasks()],
     // And the weekly restock of vegetables and fruit, off the same catalog.
     ['check produce floor', () => tasks().checkProduceFloorTasks()],
