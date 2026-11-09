@@ -21,6 +21,7 @@ import { spacing, radius, font, fontWeight, border, animation, interaction, shee
 import { haptics } from '../utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
+import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -273,6 +274,32 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
     })
   ).current;
 
+  /**
+   * Waiting on / Blocks can make the task they're about to link, so a
+   * prerequisite that doesn't exist yet needs no trip out of the editor. The
+   * new task takes the editor's project and category, since a step toward this
+   * one usually lives beside it, and it is linked through the same `onSelect`
+   * a picked row uses, so the editor's own staging and loop checks apply.
+   */
+  const canCreate = relation === 'waitingOn' || relation === 'blocks';
+  const newTitle = query.trim();
+  const titleExists = useMemo(
+    () => candidates.some(t => displayTitleFor(t).trim().toLowerCase() === newTitle.toLowerCase()),
+    [candidates, newTitle],
+  );
+  const showCreate = canCreate && newTitle.length > 0 && !titleExists;
+
+  const handleCreate = () => {
+    if (!newTitle) return;
+    haptics.success();
+    const created = useTaskStore.getState().addTask({
+      title: newTitle,
+      ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+      ...(ctx.category ? { category: ctx.category } : {}),
+    });
+    dismiss(() => onSelect(created.id));
+  };
+
   const handleSelect = (task: Task) => {
     haptics.tap();
     dismiss(() => onSelect(task.id));
@@ -310,7 +337,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
             <TextField
               style={styles.searchInput}
               {...filterField}
-              placeholder="Search tasks"
+              placeholder={canCreate ? 'Search or add a task' : 'Search tasks'}
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}
               spellCheck={false}
@@ -319,8 +346,29 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
             <FieldClearButton query={query} onClear={clearQuery} />
           </View>
 
+          {showCreate && (
+            <>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={handleCreate}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Create ${newTitle} and ${relation === 'waitingOn' ? 'wait on it' : 'block it'}`}
+              >
+                <View style={[styles.rowIcon, { backgroundColor: colors.accent + '22' }]}>
+                  <Ionicons name="add" size={18} color={colors.accent} />
+                </View>
+                <View style={styles.rowInfo}>
+                  <Text style={styles.rowName} numberOfLines={1}>{`Create "${newTitle}"`}</Text>
+                  <Text style={styles.rowHint} numberOfLines={1}>New task</Text>
+                </View>
+              </TouchableOpacity>
+              {candidates.length > 0 && <View style={styles.inlineSep} />}
+            </>
+          )}
+
           {candidates.length === 0 ? (
-            <View style={styles.emptyWrap}>
+            showCreate ? null : <View style={styles.emptyWrap}>
               <EmptyState
                 icon="hourglass-outline"
                 title={query.trim() ? 'No matches' : copy.emptyTitle}
