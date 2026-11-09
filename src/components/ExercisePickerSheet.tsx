@@ -350,7 +350,9 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
             <SheetHeader
               title={choosingLike ? 'Most like' : 'Add exercise'}
               left={<SheetHeaderButton label={choosingLike ? 'Back' : BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} minWidth={64} />}
-              right={<View style={styles.headerSpacer} />}
+              right={multi && !choosingLike && staged.length > 0
+                ? <SheetHeaderButton label={`Add ${staged.length}`} onPress={addStaged} minWidth={64} accessibilityLabel={`Add ${staged.length} ${staged.length === 1 ? 'exercise' : 'exercises'}`} />
+                : <View style={styles.headerSpacer} />}
             />
             <SearchField
               field={search}
