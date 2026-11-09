@@ -1201,6 +1201,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const subtaskTitleEditRef = useRef<TextInput>(null);
   const newSubtaskInputRef = useRef<TextInput>(null);
   const initialStateRef = useRef<string>('');
+  // The `draftLoadedFor` the baseline in `initialStateRef` was last taken for.
+  const baselineKeyRef = useRef<object | null>(null);
 
   /**
    * What each kind was last configured with, so switching between them is a
@@ -1508,157 +1510,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
     setDurationText(''); setDurationUnit('min');
     setStreakEditorOpen(false); setStreakDraft(task?.streakCount ?? 0);
-    initialStateRef.current = JSON.stringify({
-      title: task ? task.title : (initialDraft?.title ?? ''),
-      notes: task ? task.notes : (initialDraft?.notes ?? ''),
-      category: task ? (task.category ?? null) : (initialDraft?.category ?? null),
-      projectId: task ? (task.projectId ?? null) : (initialDraft?.projectId ?? null),
-      tags: task ? task.tags : (initialDraft?.tags ?? []),
-      // Key order matters: this is compared against `current` as a JSON string,
-      // so a field added to one has to sit in the same place in the other.
-      personIds: task ? task.personIds : (initialDraft?.personIds ?? []),
-      dueDate: task ? (task.dueDate ?? null) : (initialDraft?.dueDate?.toISOString() ?? null),
-      deadline: task
-        ? (task.deadlineOffsetDays !== null && task.deadlineOffsetDays !== undefined && task.dueDate
-            ? getDeadlineFromOffset(new Date(task.dueDate), task.deadlineOffsetDays).toISOString()
-            : task.deadlineMonthDay !== null && task.deadlineMonthDay !== undefined && task.dueDate
-            ? getDeadlineFromMonthDay(new Date(task.dueDate), task.deadlineMonthDay).toISOString()
-            : task.deadline ?? null)
-        : (initialDraft?.deadline?.toISOString() ?? null),
-      deadlineOffsetDays: task?.deadlineOffsetDays ?? null,
-      deadlineMonthDay: task?.deadlineMonthDay ?? null,
-      deadlineOnCalendar: task?.deadlineOnCalendar ?? false,
-      deadlineTime: task?.deadlineTime ?? null,
-      logCompletionToCalendar: task?.logCompletionToCalendar ?? false,
-      timeSegments: task ? (task.timeSegments ?? []) : (initialDraft?.timeSegments ?? []),
-      windowStart: task ? (task.windowStart ?? null) : (initialDraft?.windowStart ?? null),
-      windowEnd: task ? (task.windowEnd ?? null) : (initialDraft?.windowEnd ?? null),
-      windowStartSun: task ? (task.windowStartSun ?? null) : (initialDraft?.windowStartSun ?? null),
-      windowEndSun: task ? (task.windowEndSun ?? null) : (initialDraft?.windowEndSun ?? null),
-      penaltyMinutes: task ? (task.penaltyMinutes ?? null) : (initialDraft?.penaltyMinutes ?? null),
-      gatesApps: task ? (task.gatesApps ?? false) : (initialDraft?.gatesApps ?? false),
-      gateGroupId: task ? (task.gateGroupId ?? null) : (initialDraft?.gateGroupId ?? null),
-      penaltyCutoffTime: task ? (task.penaltyCutoffTime ?? null) : (initialDraft?.penaltyCutoffTime ?? null),
-      targetCount: task ? (proratedFrom(task) ?? task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
-      prorateFirstWeek: true,
-      targetUnit: normalizeTargetUnit(task ? task.targetUnit : initialDraft?.targetUnit),
-      allowOvershoot: task ? (task.allowOvershoot ?? false) : (initialDraft?.allowOvershoot ?? false),
-      coinsPerTap: task ? (task.coinsPerTap ?? false) : (initialDraft?.coinsPerTap ?? false),
-      quotaIntervalMinutes: task ? (task.quotaIntervalMinutes ?? null) : (initialDraft?.quotaIntervalMinutes ?? null),
-      quotaReminders: task ? (task.quotaReminders ?? false) : (initialDraft?.quotaReminders ?? false),
-      quotaPlaceIds: task ? (task.quotaPlaceIds ?? []) : (initialDraft?.quotaPlaceIds ?? []),
-      quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
-      quotaRestAfterLog: task ? (task.quotaRestAfterLog ?? false) : (initialDraft?.quotaRestAfterLog ?? false),
-      followWaterTarget: task ? (task.followWaterTarget ?? false) : (initialDraft?.followWaterTarget ?? false),
-      quotaPeriod: task ? (task.quotaPeriod ?? 'day') : (initialDraft?.quotaPeriod ?? 'day'),
-      quotaRampStep: task ? (task.quotaRampStep ?? null) : null,
-      quotaRampEvery: task ? (task.quotaRampStep ? (task.quotaRampEvery ?? 1) : null) : null,
-      quotaRampGoal: task ? (task.quotaRampStep ? (task.quotaRampGoal ?? null) : null) : null,
-      supplyCount: task ? (task.supplyCount ?? null) : null,
-      supplyUnit: task ? (task.supplyUnit ?? '') : '',
-      supplyRefillCount: task ? (task.supplyRefillCount ?? null) : null,
-      supplyReorderAt: task ? (task.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT) : DEFAULT_SUPPLY_REORDER_AT,
-      supplyLeadDays: task ? (task.supplyLeadDays ?? null) : null,
-      supplyGroceryItemId: task ? (task.supplyGroceryItemId ?? null) : null,
-      deferUntil: task?.deferUntil ?? null,
-      reminderTime: task ? (task.reminderTime ?? null) : (initialDraft?.reminderTime?.toISOString() ?? null),
-      reminderKind: task?.reminderKind ?? 'notification',
-      alarmSound: task?.reminderKind === 'alarm' || task?.reminderKind === 'persistent' ? (task.alarmSound ?? null) : null,
-      alarmSoundPool: task?.reminderKind === 'alarm' || task?.reminderKind === 'persistent' ? (task.alarmSoundPool ?? []) : [],
-      reminderOffsetDays: task?.reminderOffsetDays ?? null,
-      reminderTracksVisibility: task?.reminderTracksVisibility ?? false,
-      reminderTimeAnchor: task?.reminderTimeAnchor ?? 'wallClock',
-      // Recomputed from the same instant reminderTime state is seeded with
-      // (getTimezoneOffset of that Date), rather than read off
-      // task.reminderUtcOffsetMinutes directly — a legacy row migrated
-      // before that column existed stores null there even though it has a
-      // reminderTime, and reading it verbatim would make this baseline
-      // disagree with handleCancel's live snapshot (which always recomputes
-      // the same way) on every such task, reporting it dirty on open with
-      // nothing actually changed.
-      reminderUtcOffsetMinutes: task?.reminderTime
-        ? new Date(task.reminderTime).getTimezoneOffset()
-        : (initialDraft?.reminderTime ? initialDraft.reminderTime.getTimezoneOffset() : null),
-      recurrenceType: task ? task.recurrenceType : (initialDraft?.recurrenceType ?? 'none'),
-      recurrenceInterval: task ? task.recurrenceInterval : (initialDraft?.recurrenceInterval ?? 1),
-      recurrenceDays: task ? (task.recurrenceDays ?? []) : (initialDraft?.recurrenceDays ?? []),
-      recurrenceMonthDay: task ? (task.recurrenceMonthDay ?? null) : (initialDraft?.recurrenceMonthDay ?? null),
-      recurrenceMonth: task ? (task.recurrenceMonth ?? null) : (initialDraft?.recurrenceMonth ?? null),
-      recurrenceWeekOrdinal: task ? (task.recurrenceWeekOrdinal ?? null) : (initialDraft?.recurrenceWeekOrdinal ?? null),
-      recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
-      recurrenceHolidays: task ? (task.recurrenceHolidays ?? null) : (initialDraft?.recurrenceHolidays ?? null),
-      rainSkipMm: task ? (task.rainSkipMm ?? null) : (initialDraft?.rainSkipMm ?? null),
-      recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : (initialDraft?.recurrenceEndDate?.toISOString() ?? null),
-      recurrenceCount: task ? (task.recurrenceCount ?? null) : (initialDraft?.recurrenceCount ?? null),
-      priority: task ? task.priority : (initialDraft?.priority ?? 0),
-      effort: task ? task.effort : (initialDraft?.effort ?? 0),
-      estimatedMinutes: task ? (task.estimatedMinutes ?? null) : (initialDraft?.estimatedMinutes ?? null),
-      actualMinutes: task?.actualMinutes ?? null,
-      timedMinutes: task ? (task.timedMinutes ?? null) : (initialDraft?.timedMinutes ?? null),
-      healthMetric: task?.healthMetric ?? null,
-      healthTarget: task?.healthTarget ?? null,
-      healthFollowGoal: task?.healthFollowGoal ?? false,
-      pinned: task?.pinned ?? false,
-      pinEachOccurrence: task ? (task.recurrenceType !== 'none' && (task.pinEachOccurrence ?? false)) : false,
-      chainEnabled: task ? task.chainEnabled : (initialDraft?.chainEnabled ?? false),
-      chainItems: task ? task.chainItems : (initialDraft?.chainItems ?? []),
-      rotationItems: task ? task.rotationItems : (initialDraft?.rotationItems ?? []),
-      chainIndex: task?.chainIndex ?? 0,
-      chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
-      vacationPause: task?.vacationPause ?? false,
-      excludeFromSuggestions: task?.excludeFromSuggestions ?? false,
-      weatherWait: task ? (task.weatherWait ?? null) : (initialDraft?.weatherWait ?? null),
-      difficulty: task ? (task.difficulty ?? null) : (initialDraft?.difficulty ?? null),
-      slotIn: task ? (task.slotIn ?? null) : (initialDraft?.slotIn ?? null),
-      bounty: task ? isBountyLive(task) : false,
-      polarity: task ? (task.polarity ?? 'positive') : (initialDraft?.polarity ?? 'positive'),
-      slipAllowance: task ? (task.slipAllowance ?? null) : null,
-      showStreak: task ? (task.showStreak ?? false) : initialDraft?.polarity === 'negative',
-      streakRequiresWindow: task?.streakRequiresWindow ?? false,
-      streakCountsUnits: task?.streakCountsUnits ?? false,
-      linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
-      alarmLink: task?.alarmLink ?? null,
-      alarmLinkLeavesOpen: task?.alarmLinkLeavesOpen ?? false,
-      templateId: task?.templateId ?? null,
-      completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
-      completionTimerNote: task ? (task.completionTimerNote ?? null) : (initialDraft?.completionTimerNote ?? null),
-      mission: task ? normalizeMission(task.mission) : null,
-      logHealthMetric: task ? (task.logHealthMetric ?? null) : (initialDraft?.logHealthMetric ?? null),
-      logHealthAmount: task ? (task.logHealthAmount ?? null) : (initialDraft?.logHealthAmount ?? null),
-      medicationName: task ? (task.medicationName ?? null) : (initialDraft?.medicationName ?? null),
-      // The string the field holds, not the number the task stores, so this
-      // compares like for like against handleCancel's live snapshot below.
-      medicationAmount: (() => {
-        const stored = task ? task.medicationAmount : (initialDraft?.medicationAmount ?? null);
-        return stored !== null && stored !== undefined ? String(stored) : '';
-      })(),
-      medicationUnit: task ? (task.medicationUnit ?? null) : (initialDraft?.medicationUnit ?? null),
-      medicationExtras: serializeExtraRows(extraRowsFrom(task?.medicationExtras)),
-      logMealSlot: task ? (task.logMealSlot ?? null) : (initialDraft?.logMealSlot ?? null),
-      logSavedMealId: task ? (task.logSavedMealId ?? null) : (initialDraft?.logSavedMealId ?? null),
-      logMealSlotByTime: task ? (task.logMealSlotByTime ?? false) : (initialDraft?.logMealSlotByTime ?? false),
-      workoutRoutineId: task ? (task.workoutRoutineId ?? null) : (initialDraft?.workoutRoutineId ?? null),
-      workoutProgramId: task ? (task.workoutProgramId ?? null) : (initialDraft?.workoutProgramId ?? null),
-      phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
-      emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
-      location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
-      blockerIds: task ? blockerIdsOf(task) : (initialDraft?.blockerIds ?? []),
-      waitForSeriesEnd: task?.waitForSeriesEnd ?? false,
-      answerGate: task?.answerGate ?? null,
-      waitingOnPersonId: task?.waitingOnPersonId ?? null,
-      followUpOn: task?.followUpOn ?? null,
-      deliverableKind: task?.deliverableKind ?? null,
-      deliverableOptionsText: (task?.deliverableOptions ?? []).join(', '),
-      deliverableSetsAway: task?.deliverableSetsAway ?? false,
-      followUpTaskEveryN: task?.followUpTaskEveryN ?? null,
-      followUpTaskTitle: task?.followUpTaskTitle ?? '',
-      followUpTaskDraft: task?.followUpTaskDraft ?? null,
-      followUpTaskOneAtATime: task?.followUpTaskOneAtATime ?? false,
-      followUpTaskAtEnd: task?.followUpTaskAtEnd ?? false,
-      attachments: task?.attachments ?? [],
-      reminderPlaceId: task?.reminderPlaceId ?? null,
-      reminderPlaceOn: task?.reminderPlaceId ? (task.reminderPlaceOn ?? 'arrive') : 'arrive',
-    });
+    // The unsaved-changes baseline is not built here. It is taken from the live
+    // snapshot (`currentSnapshot`) on the first render after this load, so the
+    // two can never disagree about a field: a hand-written mirror of it did, and
+    // reported a task as edited the moment it opened.
+    initialStateRef.current = '';
   }
 
   // Relative deadline ("N days before due" or "day of month") tracks the Date
@@ -3321,15 +3177,17 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     if (recurrenceCount === null) setRecurrenceCount(5);
   };
 
-  // Whether the form differs from what it opened with.
-  const hasUnsavedChanges = (): boolean => JSON.stringify({
+  // The form as it stands, as one string. The baseline it is compared against is
+  // this same function's output right after a load, never a second hand-written
+  // copy of it. `deadlineNow` is only for that capture (see below).
+  const currentSnapshot = (deadlineNow: Date | null = deadline): string => JSON.stringify({
       title, notes, category, projectId: project, tags, personIds,
       dueDate: dueDate?.toISOString() ?? null,
-      deadline: deadline?.toISOString() ?? null,
+      deadline: deadlineNow?.toISOString() ?? null,
       deadlineOffsetDays,
       deadlineMonthDay,
       deadlineOnCalendar,
-      deadlineTime: deadline ? deadlineTime : null,
+      deadlineTime: deadlineNow ? deadlineTime : null,
       logCompletionToCalendar,
       timeSegments,
       windowStart, windowEnd,
@@ -3422,7 +3280,24 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       attachments,
       reminderPlaceId,
       reminderPlaceOn: reminderPlaceId ? reminderPlaceOn : 'arrive',
-    }) !== initialStateRef.current;
+    });
+
+  // Whether the form differs from what it opened with.
+  const hasUnsavedChanges = (): boolean => currentSnapshot() !== initialStateRef.current;
+
+  // Take the baseline on the first render after a load. The render that runs
+  // loadDraft still holds the previous state (React re-runs it with the loaded
+  // one), and by then `draftLoadedFor` has a new identity, so that is the pass
+  // that captures. A relative deadline is recomputed from the date by an effect
+  // after the commit, so the baseline uses the value that effect will settle on.
+  if (draftLoadedFor.visible && baselineKeyRef.current !== draftLoadedFor) {
+    baselineKeyRef.current = draftLoadedFor;
+    initialStateRef.current = currentSnapshot(
+      deadlineOffsetDays !== null && dueDate ? getDeadlineFromOffset(dueDate, deadlineOffsetDays)
+        : deadlineMonthDay !== null && dueDate ? getDeadlineFromMonthDay(dueDate, deadlineMonthDay)
+        : deadline,
+    );
+  }
   if (dirtyCheckRef) dirtyCheckRef.current = hasUnsavedChanges;
 
   // Completing or reopening from here closes the sheet, which takes any edits
@@ -4060,6 +3935,17 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           left={<SheetHeaderButton label={BUTTON_LABEL.cancel} role="cancel" onPress={handleCancel} />}
           right={
             <View style={styles.headerRight}>
+              {task && (
+                <TouchableOpacity
+                  onPress={handleDelete}
+                  hitSlop={8}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={opensAsListItem ? 'Delete item' : 'Delete task'}
+                >
+                  <Ionicons name="trash-outline" size={iconSize.sm} color={colors.red} />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 onPress={toggleSearch}
                 hitSlop={8}
@@ -4224,6 +4110,34 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               title="Deadline"
               showTimeOfDay={false}
               showSuggest={false}
+              // A repeating task's deadline has three meanings, so the sheet asks which first.
+              // Fixed date stays here; the other two commit and hand over to the stepper under the row.
+              header={recurrenceType !== 'none' ? (
+                <View style={{ marginHorizontal: spacing.md, marginBottom: spacing.smd }}>
+                  <FieldLabel inCard>How it repeats</FieldLabel>
+                  <SegmentedControl
+                    label="Deadline on repeat"
+                    surface="card"
+                    value="fixed"
+                    options={[
+                      { value: 'fixed', label: 'Fixed date' },
+                      { value: 'offset', label: 'Days from due' },
+                      ...(recurrenceType === 'monthly' ? [{ value: 'monthDay', label: 'Day of month' }] : []),
+                    ]}
+                    onChange={mode => {
+                      if (mode === 'offset') {
+                        setDeadlineMonthDay(null);
+                        setDeadlineOffsetDays(deadline && dueDate ? (differenceInCalendarDays(dueDate, deadline) || 1) : 1);
+                      } else if (mode === 'monthDay') {
+                        setDeadlineOffsetDays(null);
+                        setDeadlineMonthDay(-1);
+                      } else return;
+                      setShowDeadlinePicker(false);
+                    }}
+                  />
+                  <HelpText>Fixed date is the same day on every repeat. The others move with each due date.</HelpText>
+                </View>
+              ) : undefined}
               onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
               onClear={() => { setDeadline(null); setDeadlineTime(null); setShowDeadlinePicker(false); }}
               onCancel={() => setShowDeadlinePicker(false)}

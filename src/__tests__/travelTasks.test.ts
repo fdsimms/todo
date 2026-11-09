@@ -1,6 +1,7 @@
 import type { SavedPlace } from '../utils/savedPlaces';
 import type { BusyEvent } from '../utils/calendarBusy';
 import {
+  travelOriginLabel,
   clampTravelLeadMinutes,
   clampTravelWalkUnder,
   travelWalkUnderFor,
@@ -751,5 +752,14 @@ describe('travelArrivePickerOptions', () => {
     expect(opts[0]).toEqual({ key: 'default', label: 'Settings default (10 min early)' });
     expect(opts.slice(1).map(o => o.key)).toEqual(['30', '15', '10', '5', '0', '-5', '-10', '-15']);
     expect(opts.find(o => o.key === '0')?.label).toBe('On time');
+  });
+});
+
+describe('travelOriginLabel', () => {
+  it('names the saved place a trip starts from', () => {
+    expect(travelOriginLabel({ name: 'Home', latitude: 1, longitude: 2 })).toBe('From Home:');
+  });
+  it('says current location when the trip starts at the phone', () => {
+    expect(travelOriginLabel(null)).toBe('From current location:');
   });
 });

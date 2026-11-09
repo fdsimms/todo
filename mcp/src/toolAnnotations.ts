@@ -98,6 +98,7 @@ export const READ_TOOLS: Record<string, string> = {
  * client a retry after a timeout is safe.
  */
 export const WRITE_TOOLS: Record<string, { title: string; destructive: boolean; idempotent: boolean }> = {
+  confirm_change: { title: 'Make a previewed change', destructive: true, idempotent: false },
   create_task: { title: 'Create a task', destructive: false, idempotent: false },
   batch_update_tasks: { title: 'Change several tasks', destructive: true, idempotent: false },
   quick_add: { title: 'Quick add tasks', destructive: false, idempotent: false },

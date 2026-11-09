@@ -37,7 +37,7 @@ import Reanimated, {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { describePlaceReminder } from '../utils/placeReminders';
-import { savedPlaceName } from '../utils/savedPlaces';
+import { savedPlaceName, readSavedPlaces } from '../utils/savedPlaces';
 import { TaskAttachmentStrip } from './TaskAttachmentStrip';
 import { PinIcon } from './PinIcon';
 import { LockedTaskRow } from './LockedTaskRow';
@@ -109,7 +109,7 @@ import { openExternalUrl } from '../utils/openExternalUrl';
 import { claudeChatUrl, taskChatPrompt } from '../utils/askClaude';
 import { eventCoordinate } from '../utils/calendarSync';
 import { SegmentedControl } from './SegmentedControl';
-import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, TRAVEL_MODES, TRAVEL_MODE_LABELS, travelSourceStart, travelWalkUnderFor, type TravelChoice } from '../utils/travelTasks';
+import { travelDisruptionNote, travelEventOf, travelModeFor, travelArrivalNote, travelChoices, describeTravelEstimate, travelRowEstimate, travelSourceEventId, TRAVEL_MODES, TRAVEL_MODE_LABELS, travelSourceStart, travelWalkUnderFor, travelOriginForEvent, travelOriginLabel, type TravelChoice } from '../utils/travelTasks';
 import { setTravelModeForEvent } from '../utils/travelModeWrite';
 import { TravelModeSheet } from './TravelModeSheet';
 import { TravelArriveSheet } from './TravelArriveSheet';
@@ -854,6 +854,15 @@ const TaskItemRow = React.memo(function TaskItem({
   // The other ways of getting there, when Compare ways to get there is on.
   const travelCompareModes = useSettingsStore(s => s.travelCompareModes);
   const travelOptions = travelCompareModes ? travelChoices(travelHeld) : [];
+  // Where the compared trips start from, named above the strip. Resolved the
+  // way the estimate's own origin is, so the line matches the numbers.
+  const travelOriginPlaceId = useSettingsStore(s => s.travelOriginPlaceId);
+  const travelOriginText = useMemo(() => {
+    if (travelOptions.length === 0 || !task.generatedSourceId) return null;
+    const eventId = localTravelEventId(task.generatedSourceId);
+    if (!eventId) return null;
+    return travelOriginLabel(travelOriginForEvent(eventId, travelEventPrefs, travelOriginPlaceId, readSavedPlaces()));
+  }, [travelOptions.length, task.generatedSourceId, travelEventPrefs, travelOriginPlaceId]);
   const [showTravelPicker, setShowTravelPicker] = useState(false);
   const mountTravelPicker = useSheetMount(showTravelPicker);
   const [showArrivePicker, setShowArrivePicker] = useState(false);
@@ -4815,6 +4824,9 @@ const TaskItemRow = React.memo(function TaskItem({
           the full width of the card under the checkbox, title and buttons. */}
       {travelOptions.length > 0 && (
         <View style={styles.travelStrip} pointerEvents={selectionMode ? 'none' : 'auto'}>
+          {travelOriginText !== null && (
+            <Text style={styles.travelOriginLabel}>{travelOriginText}</Text>
+          )}
           <SegmentedControl
             label="Way of getting there"
             fit
@@ -6507,6 +6519,11 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
     flexBasis: '100%',
     paddingLeft: spacing.md,
     paddingTop: spacing.xs,
+  },
+  travelOriginLabel: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    paddingBottom: spacing.xs,
   },
   travelDisruptionLabel: {
     color: colors.warningText,

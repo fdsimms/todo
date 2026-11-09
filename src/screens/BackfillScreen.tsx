@@ -131,6 +131,9 @@ import { TextField } from '../components/TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from '../components/FieldLabel';
 import { useClockTimeToken } from '../hooks/useClockTimeToken';
+import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
+import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
+import { completesThroughQueue } from '../utils/bulkCompletion';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -419,6 +422,7 @@ export function BackfillScreen() {
 
   const tasks = useWithoutLockedTasks(useTaskStore(useShallow(s => s.tasks)));
   const updateTask = useTaskStore(s => s.updateTask);
+  const completeTask = useTaskStore(s => s.completeTask);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
   const categories = useCategoryStore(useShallow(s => s.categories));
@@ -1274,13 +1278,18 @@ export function BackfillScreen() {
       : projectId ? useProjectStore.getState().getProjectById(projectId)?.taskDefaults : null;
     if (!defaultsDiffer(current, answer)) return;
     const name = scopeLabelFor(scope) ?? 'this group';
+    // A generated task is one task the app makes again each time it comes
+    // due, not a group people add to, so "new tasks in <name>" reads wrong.
+    const generated = scope.kind === 'generated';
     Alert.alert(
-      `Set ${setting} for new tasks in “${name}”?`,
-      'New tasks added there will start with this answer, so they won’t show up in Backfill. You can undo it right after, or clear it later from “Defaults you’ve set” at the top of Backfill.',
+      generated ? `Set ${setting} every time “${name}” is created?` : `Set ${setting} for new tasks in “${name}”?`,
+      generated
+        ? 'Each new one will start with this answer, so it won’t show up in Backfill. You can undo it right after, or clear it later from “Defaults you’ve set” at the top of Backfill.'
+        : 'New tasks added there will start with this answer, so they won’t show up in Backfill. You can undo it right after, or clear it later from “Defaults you’ve set” at the top of Backfill.',
       [
         { text: 'Not now', style: 'cancel' },
         {
-          text: 'Use for new tasks',
+          text: generated ? 'Use every time' : 'Use for new tasks',
           onPress: () => {
             const next: TaskFieldDefaults = { ...NO_TASK_FIELD_DEFAULTS, ...(current ?? {}), ...answer };
             const write = (value: TaskFieldDefaults | null) => {
@@ -1702,6 +1711,28 @@ export function BackfillScreen() {
     recordVisited();
     setManualCurrentId(null);
     advance(currentId);
+  };
+
+  // The card can surface a task that was done and never checked off, so it can be
+  // completed here instead of in the editor. One task only: the other dates of a
+  // series are separate occurrences. A task that asks a question or has a mission
+  // goes through the answer queue, as it does from its own row. `completeTask`
+  // registers its own shake-to-undo entry, and no session line is filed because
+  // no field was answered.
+  const { enqueue: enqueueCompletion, queueProps: completionQueueProps } = useAnswerFirstCompletion();
+  const markComplete = () => {
+    if (!currentTask) return;
+    recordVisited();
+    setManualCurrentId(null);
+    advance(currentTask.id);
+    if (completesThroughQueue(currentTask)) {
+      haptics.tap();
+      enqueueCompletion([currentTask.id]);
+      return;
+    }
+    haptics.success();
+    animateLayout();
+    completeTask(currentTask.id);
   };
 
   // Unlike skip, this is a written, permanent decision about the item —
@@ -2645,6 +2676,16 @@ export function BackfillScreen() {
                 <Text style={styles.skipText}>{dismissLabel}</Text>
               </PressableScale>
             </View>
+            <View style={styles.actionRow}>
+              <PressableScale
+                style={styles.skipButton}
+                onPress={markComplete}
+                accessibilityRole="button"
+                accessibilityLabel="Mark this task complete"
+              >
+                <Text style={styles.skipText}>Mark complete</Text>
+              </PressableScale>
+            </View>
           </ScrollView>
         ) : sessionLog.length > 0 ? (
           <SessionReview
@@ -2678,6 +2719,7 @@ export function BackfillScreen() {
           onConfirm={applyReminder}
           onCancel={() => setReminderPickerOpen(false)}
         />
+        <DeliverablePromptQueue {...completionQueueProps} />
         <NumberPadAccessory />
       </View>
     );

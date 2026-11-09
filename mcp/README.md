@@ -51,7 +51,7 @@ crash-looping the machine.
 which is deliberate: the alternative default is a server that serves an entire task history to
 anyone who asks. The shared secrets are for Claude Code and curl; the Claude chat signs in with
 OAuth instead, which is on when `MCP_OAUTH_PASSWORD` (16+ characters) and `PUBLIC_URL` are set
-(`OAUTH_STORE_PATH` keeps its connections across restarts). See `src/oauth.ts` and DEPLOY.md.
+(`OAUTH_STORE_PATH` keeps its connections across restarts; `CONFIRM_STORE_PATH` keeps write previews across them). See `src/oauth.ts` and DEPLOY.md.
 
 ## Tools
 

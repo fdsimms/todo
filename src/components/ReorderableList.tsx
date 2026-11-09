@@ -33,7 +33,7 @@ import type { DragScroller } from '../utils/fabDrop';
 import { useTheme } from '../theme/ThemeContext';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useScrollToTopVisibility } from '../hooks/useScrollToTopVisibility';
-import { strandedScrollOffset } from '../utils/scrollClamp';
+import { maxRestingOffset, strandedScrollOffset } from '../utils/scrollClamp';
 import { haptics } from '../utils/haptics';
 import { ScrollToTopButton, SCROLL_TO_TOP_SIZE } from './ScrollToTopButton';
 import { spacing } from '../theme';
@@ -501,6 +501,13 @@ export function ReorderableList<T>({
   // tab (FreezeWhenBlurred) collapses the list to nothing and the offset reads
   // 0 afterwards, so this is what the list is put back to when it returns.
   const lastShownOffsetRef = useRef(0);
+  // An offset being put back after a hidden tab returned, and when to give up
+  // on it. The restore fires from the viewport's onLayout, which can land before
+  // the rows have laid out again; the native scrollTo then clamps to 0 and the
+  // list reads as jumped to the top. Held until the content is tall enough to
+  // take it (onContentSizeChange), and meanwhile the clamped 0 it causes is not
+  // allowed to overwrite lastShownOffsetRef.
+  const pendingRestoreRef = useRef<{ y: number; until: number } | null>(null);
   const scrollOffsetAtStartRef = useRef(0);
   const viewportHeightRef = useRef(0);
   const contentHeightRef = useRef(0);
@@ -1235,7 +1242,12 @@ export function ReorderableList<T>({
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement, contentInset } = e.nativeEvent;
     scrollOffsetRef.current = contentOffset.y;
-    if (layoutMeasurement.height > 0 && contentSize.height > 0) lastShownOffsetRef.current = contentOffset.y;
+    const restore = pendingRestoreRef.current;
+    if (restore && Date.now() > restore.until) pendingRestoreRef.current = null;
+    else if (restore && Math.abs(contentOffset.y - restore.y) <= 1) pendingRestoreRef.current = null;
+    if (layoutMeasurement.height > 0 && contentSize.height > 0 && !pendingRestoreRef.current) {
+      lastShownOffsetRef.current = contentOffset.y;
+    }
     keyboardScroll.noteScroll(e);
     // The net under every way the offset can be moved without a finger on the
     // list: the header anchoring above shifting it in the same transaction as
@@ -1296,11 +1308,24 @@ export function ReorderableList<T>({
           if (wasHidden && viewportHeightRef.current > 0 && scrollOffsetRef.current === 0 && lastShownOffsetRef.current > 0) {
             const y = lastShownOffsetRef.current;
             scrollOffsetRef.current = y;
+            pendingRestoreRef.current = { y, until: Date.now() + 1500 };
             scrollRef.current?.scrollTo({ y, animated: false });
           }
         }}
         onContentSizeChange={(_w, h) => {
           contentHeightRef.current = h;
+          // A restore the layout pass couldn't land yet (see pendingRestoreRef):
+          // retry once the content is tall enough, and not once the person has
+          // taken the list into their own hands.
+          const restore = pendingRestoreRef.current;
+          if (restore) {
+            if (userScrollingRef.current || Date.now() > restore.until) {
+              pendingRestoreRef.current = null;
+            } else if (maxRestingOffset(h, viewportHeightRef.current) >= restore.y) {
+              scrollOffsetRef.current = restore.y;
+              scrollRef.current?.scrollTo({ y: restore.y, animated: false });
+            }
+          }
           // Same clamp as the data-empty case above, for shrinks that leave
           // some rows (not zero) but fewer than the current scroll offset can
           // show. Through strandedScrollOffset rather than a bare
