@@ -18276,6 +18276,36 @@ describe('blocking', () => {
     expect(useTaskStore.getState().blockedTasksOf('blocker').map(t => t.id)).toEqual(['now']);
   });
 
+  // A task created waiting on another used to register nothing, so the next
+  // shake undid whatever edit came before it (an unrelated task's).
+  it('undoes a just-created task that waits on another, not the edit before it', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'edited', dueDate: null, title: 'Disclosure' }),
+        makeTask({ id: 'blocker', dueDate: null, title: 'Return DK' }),
+      ],
+      undoStack: [], redoStack: [], lastAction: null,
+    });
+    const s = () => useTaskStore.getState();
+    s().updateTask('edited', { title: 'Disclosure Day' });
+    s().setLastAction({ label: 'Edit saved', undo: () => s().updateTask('edited', { title: 'Disclosure' }) });
+
+    const created = s().addTask({ title: 'Beat DK', blockedById: 'blocker', blockedByIds: [] });
+    s().registerTaskAdded(created.id);
+    expect(s().lastAction?.label).toBe('Task added');
+
+    s().undoLastAction();
+    expect(s().tasks.find(t => t.id === created.id)).toBeUndefined();
+    expect(s().tasks.find(t => t.id === 'edited')!.title).toBe('Disclosure Day');
+
+    s().redoLastUndone();
+    expect(s().tasks.find(t => t.id === created.id)?.blockedById).toBe('blocker');
+
+    s().undoLastAction();
+    s().undoLastAction();
+    expect(s().tasks.find(t => t.id === 'edited')!.title).toBe('Disclosure');
+  });
+
   it('leaves a completed waiter pointing at what held it up', () => {
     useTaskStore.setState({
       tasks: [
