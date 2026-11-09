@@ -74,6 +74,23 @@ export interface TaskSummaryInput {
   asks?: DeliverableKind;
   /** The mission to do before it can be checked off, described ("20 pushups"). See Task.mission. */
   mission?: string;
+  /** A "don't do this" habit (Task.polarity 'negative'): there is nothing to check off. */
+  avoid?: boolean;
+  /** A daily or weekly target's count with its unit ("8 glasses", "3×"). */
+  target?: string;
+  targetPeriod?: 'day' | 'week';
+  /** The forecast the task is held for, as the row labels it ("Sunny"). */
+  weather?: string;
+  /** A chain task's current step, one-based, out of how many. Only said for two or more steps. */
+  chainStep?: { step: number; total: number };
+  /** Checking it off writes to Health. */
+  logsHealth?: boolean;
+  /** Checking it off logs a dose: the medication's name. */
+  dose?: string;
+  /** Checking it off logs food. `text` names what, and `offers` is a task that only offers to log. */
+  meal?: { text: string; offers: boolean };
+  /** Checking it off adds an event to the calendar. */
+  logsCalendar?: boolean;
 }
 
 const PROPER_FIRST_WORD = new Set([
@@ -175,6 +192,18 @@ function reminderSentence(i: TaskSummaryInput): Clause[] {
   return clauses;
 }
 
+function kindSentence(i: TaskSummaryInput): Clause[] {
+  const clauses: Clause[] = [];
+  if (i.avoid) clauses.push([w('a habit to '), v('avoid', 'kind')]);
+  if (i.target) {
+    clauses.push([w('aims for '), v(i.target, 'dailyTarget'), w(i.targetPeriod === 'week' ? ' a week' : ' a day')]);
+  }
+  if (i.chainStep && i.chainStep.total > 1) {
+    clauses.push([w('runs as a chain, on '), v(`step ${i.chainStep.step} of ${i.chainStep.total}`, 'chain')]);
+  }
+  return clauses;
+}
+
 function repeatSentence(i: TaskSummaryInput): Clause[] {
   if (!i.repeat) return [];
   return [[w('repeats '), v(inSentence(i.repeat), 'repeat')]];
@@ -207,6 +236,7 @@ function waitsSentence(i: TaskSummaryInput): Clause[] {
   const parts: SummaryPart[] = [];
   if (i.waitingOn) parts.push(w('waits for '), v(i.waitingOn, 'waitingOn'));
   if (i.waitingOnPerson) parts.push(w(parts.length ? ' and ' : 'waits for '), v(i.waitingOnPerson, 'waitingOnPerson'));
+  if (i.weather) parts.push(w(parts.length ? ' and a ' : 'waits for a '), v(inSentence(i.weather), 'weatherWait'), w(' day'));
   return parts.length ? [parts] : [];
 }
 
@@ -235,6 +265,22 @@ function finishSentence(i: TaskSummaryInput): Clause[] {
   return i.asks ? [[w('asks for '), v(ASKS[i.asks], 'deliverable'), w(' when you check it off')]] : [];
 }
 
+/** What checking it off writes somewhere else: Health, a dose, the food log, the calendar. */
+function logsSentence(i: TaskSummaryInput): Clause[] {
+  const items: Clause[] = [];
+  if (i.logsHealth) items.push([w('logs to '), v('Health', 'logHealthValue')]);
+  if (i.dose) items.push([w('logs a dose of '), v(i.dose, 'medication')]);
+  if (i.meal) items.push([w(i.meal.offers ? 'offers to log ' : 'logs '), v(i.meal.text, 'logMealSlot')]);
+  if (i.logsCalendar) items.push([w('adds an event to your '), v('calendar', 'logCompletionToCalendar')]);
+  if (items.length === 0) return [];
+  const parts: SummaryPart[] = [w('when you check it off, it ')];
+  items.forEach((c, n) => {
+    if (n > 0) parts.push(w(n === items.length - 1 ? ' and ' : ', '));
+    parts.push(...c);
+  });
+  return [parts];
+}
+
 /** A sentence from its clauses: commas between, a capital at the front, a period at the end. */
 function sentence(clauses: Clause[]): SummaryPart[] {
   const parts: SummaryPart[] = [];
@@ -256,8 +302,8 @@ function sentence(clauses: Clause[]): SummaryPart[] {
 export function buildTaskSummary(input: TaskSummaryInput): SummaryPart[] {
   const sentences = [
     optionalSentence(input), whenSentence(input), hiddenSentence(input), deadlineSentence(input), reminderSentence(input),
-    repeatSentence(input), streakSentence(input), prioritySentence(input), filedSentence(input),
-    waitsSentence(input), whoSentence(input), opensSentence(input), finishSentence(input),
+    kindSentence(input), repeatSentence(input), streakSentence(input), prioritySentence(input), filedSentence(input),
+    waitsSentence(input), whoSentence(input), opensSentence(input), finishSentence(input), logsSentence(input),
   ].filter(s => s.length > 0).map(sentence);
   const out: SummaryPart[] = [];
   sentences.forEach((s, n) => {

@@ -3752,6 +3752,13 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       ? workoutRoutines.find(r => r.id === workoutRoutineId)?.name ?? 'A deleted routine'
       : undefined;
 
+  const summaryMeal = (() => {
+    if (!logMealSlot) return undefined;
+    const saved = logSavedMealId ? savedMeals.find(m => m.id === logSavedMealId) : undefined;
+    if (saved) return { text: saved.name, offers: false };
+    return { text: logMealSlot === 'other' ? 'food' : LOG_MEAL_SLOT_LABELS[logMealSlot].toLowerCase(), offers: true };
+  })();
+
   const summaryParts = buildTaskSummary({
     date: dueDate ? formatScheduledDate(dueDate.toISOString()) : undefined,
     waitsIfFull: slotInAllowed && slotInShown,
@@ -3780,6 +3787,15 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     email: emailAddress ?? undefined,
     asks: deliverableKind ?? undefined,
     mission: mission ? describeMission(mission) : undefined,
+    avoid: polarity === 'negative',
+    target: kind === 'target' && targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined,
+    targetPeriod: quotaPeriod,
+    weather: weatherWait && weatherWaitAllowed ? weatherConditionLabel(weatherWait) : undefined,
+    chainStep: kind === 'chain' ? { step: chainIndex + 1, total: chainItems.length } : undefined,
+    logsHealth: logHealthMetric !== null && logHealthAmount !== null,
+    dose: medicationName ?? undefined,
+    meal: summaryMeal,
+    logsCalendar: logCompletionToCalendar,
   });
 
   const openField = (key: FieldKey) => {
@@ -3817,6 +3833,13 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     email: () => { setEmailText(emailAddress ?? ''); setShowEmailField(true); },
     deliverable: () => openField('deliverable'),
     mission: () => openField('mission'),
+    kind: () => openField('kind'),
+    dailyTarget: () => { animateLayout(); setShowTargetCount(true); },
+    chain: () => openField('chainSteps'),
+    weatherWait: () => { animateLayout(); setWeatherWaitOpen(true); },
+    logHealthValue: () => openField('logHealthValue'),
+    medication: () => openField('medication'),
+    logMealSlot: () => openField('logMealSlot'),
   };
   const openFromSummary = (key: string) => {
     setRowsMounted(true);

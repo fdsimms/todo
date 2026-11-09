@@ -159,4 +159,42 @@ describe('the place reminder clause', () => {
     expect(text(parts)).toBe('Reminds you at 9:00 AM, and again when leaving Office.');
     expect(parts.find(p => p.key === 'remindAtPlace')?.text).toBe('leaving Office');
   });
+
+  it('says a streak as its own sentence', () => {
+    expect(text(buildTaskSummary({ repeat: 'Every day', streak: 4 }))).toBe('Repeats every day. Current streak: 4.');
+  });
+
+  it('says what kind of task it is, each part opening its own row', () => {
+    expect(text(buildTaskSummary({ avoid: true }))).toBe('A habit to avoid.');
+    expect(values(buildTaskSummary({ avoid: true }))).toEqual([['kind', 'avoid']]);
+    expect(text(buildTaskSummary({ target: '8 glasses' }))).toBe('Aims for 8 glasses a day.');
+    expect(text(buildTaskSummary({ target: '3×', targetPeriod: 'week' }))).toBe('Aims for 3× a week.');
+    expect(values(buildTaskSummary({ target: '8 glasses' }))).toEqual([['dailyTarget', '8 glasses']]);
+    expect(text(buildTaskSummary({ chainStep: { step: 2, total: 4 } }))).toBe('Runs as a chain, on step 2 of 4.');
+    expect(values(buildTaskSummary({ chainStep: { step: 2, total: 4 } }))).toEqual([['chain', 'step 2 of 4']]);
+  });
+
+  it('leaves out a chain with fewer than two steps', () => {
+    expect(buildTaskSummary({ chainStep: { step: 1, total: 1 } })).toEqual([]);
+  });
+
+  it('says it waits for a forecast, alone or after a task', () => {
+    expect(text(buildTaskSummary({ weather: 'Sunny' }))).toBe('Waits for a sunny day.');
+    expect(text(buildTaskSummary({ waitingOn: 'Buy paint', weather: 'Rainy' }))).toBe('Waits for Buy paint and a rainy day.');
+    expect(values(buildTaskSummary({ weather: 'Sunny' }))).toEqual([['weatherWait', 'sunny']]);
+  });
+
+  it('says what checking it off logs, in one sentence', () => {
+    expect(text(buildTaskSummary({ logsHealth: true }))).toBe('When you check it off, it logs to Health.');
+    expect(text(buildTaskSummary({ dose: 'Vitamin D', logsCalendar: true })))
+      .toBe('When you check it off, it logs a dose of Vitamin D and adds an event to your calendar.');
+    const parts = buildTaskSummary({
+      logsHealth: true, dose: 'Vitamin D', meal: { text: 'breakfast', offers: true }, logsCalendar: true,
+    });
+    expect(text(parts)).toBe(
+      'When you check it off, it logs to Health, logs a dose of Vitamin D, offers to log breakfast and adds an event to your calendar.',
+    );
+    expect(values(parts).map(([k]) => k)).toEqual(['logHealthValue', 'medication', 'logMealSlot', 'logCompletionToCalendar']);
+    expect(text(buildTaskSummary({ meal: { text: 'Oatmeal', offers: false } }))).toBe('When you check it off, it logs Oatmeal.');
+  });
 });
