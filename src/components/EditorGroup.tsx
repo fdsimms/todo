@@ -40,8 +40,7 @@ export interface EditorGroupRow {
 interface Props {
   /**
    * Uppercase group heading — WHEN, FILED UNDER, … Left out for a card whose
-   * one row already names it (the task editor's Kind), which then needs a
-   * `groupKey`.
+   * one row already names it, which then needs a `groupKey`.
    */
   label?: string;
   rows: EditorGroupRow[];

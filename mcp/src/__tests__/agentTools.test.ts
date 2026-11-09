@@ -165,21 +165,6 @@ describe('quickAdd and the sun', () => {
     expect(row.window).toMatchObject({ startFollows: 'sunset', start: expect.stringMatching(/^\d{2}:\d{2}$/) });
   });
 
-  it('reads "unless it rains" after the repeat it skips, and says when weather is off', () => {
-    const { rows } = quickAdd(replica, { lines: ['Water the garden every 2 days unless it rains 10mm #home'], apply: true });
-    expect(rows[0].title).toBe('Water the garden');
-    expect(rows[0].repeat).toMatchObject({ every: 'day', interval: 2, skipAfterRainMm: 10 });
-    expect(rows[0].notes?.join(' ')).toMatch(/Weather is switched off/);
-    expect(replica.tasks().find(t => t.title === 'Water the garden')).toMatchObject({ rainSkipMm: 10 });
-    // A bare phrase takes the default in the person's unit (inches, off metric).
-    const [bare] = quickAdd(replica, { lines: ['Water the pots every day unless it rains'] }).rows;
-    expect(bare.repeat).toMatchObject({ skipAfterRainMm: 6.35 });
-    // With no repeat there is nothing to skip, so the words stay in the title
-    // and the date ahead of them is still read.
-    const [once] = quickAdd(replica, { lines: ['Water the lawn tomorrow unless it rains'] }).rows;
-    expect(once.title).toBe('Water the lawn unless it rains');
-    expect(once.dueDate).toBeDefined();
-  });
 });
 
 describe('planDay', () => {

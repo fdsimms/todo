@@ -23,6 +23,7 @@ import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { mostUsedExerciseIds } from '../utils/exerciseUsage';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { catalogExercise, describeExercise, exerciseName, searchExercises, type ExerciseSearchResult } from '../utils/exerciseCatalog';
 import {
@@ -91,6 +92,17 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
   const added = useMemo(() => new Set(addedIds), [addedIds]);
   const filter = useExerciseFilters();
   const narrowed = filter.narrowed;
+  // Whether the list is open to pick an exercise to copy, in place of picking one to add.
+  const [choosingLike, setChoosingLike] = useState(false);
+  const sessions = useWorkoutStore(s => s.sessions);
+  const allSets = useWorkoutStore(s => s.allSets);
+  // What the person does most, read only while the sheet is up. Keyed on `sessions`, which changes whenever a workout's sets can.
+  const usedIds = useMemo(
+    () => (visible ? mostUsedExerciseIds(allSets(), new Date()) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [visible, sessions, allSets],
+  );
+  const hasSuggestions = !!suggestedIds && suggestedIds.length > 0;
   const results = useMemo(() => {
     if (!visible) return [];
     const found = searchExercises(exercises, search.query, filter.filters);
@@ -102,6 +114,16 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
       ...found.filter(r => !rank.has(r.exercise.id)),
     ];
   }, [visible, exercises, search.query, suggestedIds, filter.filters, narrowed]);
+
+  // "Most used" tops the plain list only: nothing typed, no filter, and no swap suggestions already leading it.
+  const { popular, rest } = useMemo(() => {
+    if (choosingLike || hasSuggestions || narrowed || search.query.trim() !== '' || usedIds.length === 0) return { popular: [], rest: results };
+    const rank = new Map(usedIds.map((id, i) => [id, i]));
+    return {
+      popular: results.filter(r => rank.has(r.exercise.id)).sort((a, b) => rank.get(a.exercise.id)! - rank.get(b.exercise.id)!),
+      rest: results.filter(r => !rank.has(r.exercise.id)),
+    };
+  }, [results, usedIds, choosingLike, hasSuggestions, narrowed, search.query]);
 
   // The multi-select's staged exercises in tap order, and the superset switch.
   const [staged, setStaged] = useState<string[]>([]);
@@ -118,7 +140,6 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
   // A third view of this sheet rather than a sheet over it (two can't present at once),
   // and the form's staged state stays put underneath it.
   const [likeId, setLikeId] = useState<string | null>(null);
-  const [choosingLike, setChoosingLike] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>({ ownsSheet: true });
   // The results sit under the search field, so without this the keyboard
@@ -376,7 +397,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
             <FlatList
               {...pickerScroll.props}
               ref={pickerScroll.ref}
-              data={results}
+              data={rest}
               keyExtractor={r => r.exercise.id}
               renderItem={renderRow}
               style={styles.flex}
@@ -384,7 +405,14 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               initialNumToRender={20}
-              ListEmptyComponent={
+              ListHeaderComponent={popular.length > 0 ? (
+                <View>
+                  <Text style={styles.sectionLabel}>Most used</Text>
+                  {popular.map(item => <React.Fragment key={item.exercise.id}>{renderRow({ item })}</React.Fragment>)}
+                  {rest.length > 0 && <Text style={styles.sectionLabel}>All exercises</Text>}
+                </View>
+              ) : null}
+              ListEmptyComponent={results.length > 0 ? null : (
                 <EmptyNote icon="search-outline">
                   {narrowed
                     ? 'No exercise matches these filters. Remove one to see more.'
@@ -392,7 +420,7 @@ export function ExercisePickerSheet({ visible, onClose, onPick, addedIds = [], a
                       ? `No exercise matches “${typed}”.`
                       : `No exercise matches “${typed}”. Create it with the button above.`}
                 </EmptyNote>
-              }
+              )}
             />
             {multi && !choosingLike && staged.length > 0 && (
               <View style={styles.footer}>
@@ -439,6 +467,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.smd,
     backgroundColor: colors.bgSecondary, paddingHorizontal: spacing.md, paddingVertical: spacing.smd,
     minHeight: 52, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+  },
+  sectionLabel: {
+    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase', letterSpacing: 0.8, marginTop: spacing.md, marginBottom: spacing.sm, marginHorizontal: spacing.xs,
   },
   rowAdded: { opacity: 0.6 },
   rowText: { flex: 1 },

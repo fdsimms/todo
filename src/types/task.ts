@@ -1018,15 +1018,6 @@ export interface Task {
    * dates the rule picks.
    */
   recurrenceHolidays?: HolidayRule | null;
-  // Skip this occurrence when it has rained enough: a threshold in
-  // millimetres over yesterday and today, read from the forecast the weather
-  // switch already fetches. Null = never. Repeating tasks only (not 'hours').
-  // See src/utils/rainSkip.ts.
-  rainSkipMm?: number | null;
-  // The day key the app last skipped this row for rain. The pass's mark: it
-  // never skips a row twice on one day, so pulling a skipped occurrence back
-  // onto Today sticks.
-  rainSkippedOn?: string | null;
 
   // Quota — a habit logged N times a day (8 glasses of water) rather than done
   // once. Deliberately not N tasks, N subtasks, or N taps on an ever-present
@@ -1206,7 +1197,7 @@ export interface Task {
    * Ramp up — a plain daily or weekly target that raises its own `targetCount`
    * ("add 1 after every 7 days you hit it, up to 20"). The rule is
    * `src/utils/quotaRamp.ts`; `completeTask` applies it when it spawns the next
-   * occurrence. All four are optional and absent reads as off, like `rainSkipMm`.
+   * occurrence. All four are optional and absent reads as off.
    *
    * `quotaRampStep` is the amount added (null/0 = no ramp). `quotaRampEvery` is
    * how many occurrences that met the target it takes, counted in the task's own

@@ -20,8 +20,6 @@ const base: TitleSuggestionContext = {
   weatherWait: null,
   polarity: 'positive',
   windowEnd: null,
-  hasRainSkip: false,
-  rainUnit: 'mm',
   sunClock: () => '19:30',
 };
 
@@ -89,14 +87,6 @@ describe('pickTitleSuggestion', () => {
     expect(kindOf('porch lights after sunset', { sunClock: () => null })).toBeNull();
   });
 
-  it('skips for rain only on a repeat with the weather switch on', () => {
-    const line = 'water the garden every 2 days unless it rains';
-    expect(kindOf('water the garden unless it rains', { recurrenceType: 'daily' })).toBe('rain');
-    expect(kindOf('water the garden unless it rains')).toBeNull();
-    expect(kindOf('water the garden unless it rains', { recurrenceType: 'daily', weatherTasksOn: false })).toBeNull();
-    expect(line).toContain('rains');
-  });
-
   it('reads waiting on, subtasks and avoid last', () => {
     expect(kindOf('file taxes after get W-2')).toBe('waiting');
     expect(kindOf('pack: socks, charger, passport')).toBe('subtasks');
@@ -107,8 +97,8 @@ describe('pickTitleSuggestion', () => {
   it('carries an "until 4pm" into the avoid suggestion and its pill', () => {
     const s = pickTitleSuggestion("Don't eat until 4pm", base)!;
     expect(s.kind).toBe('avoid');
-    expect(describeTitleSuggestion(s, 'mm', h => `@${h}`).label).toBe('Avoid this habit · clean at @16:00');
-    expect(describeTitleSuggestion(pickTitleSuggestion("Don't check Twitter", base)!, 'mm', h => h).label).toBe('Avoid this habit');
+    expect(describeTitleSuggestion(s, h => `@${h}`).label).toBe('Avoid this habit · clean at @16:00');
+    expect(describeTitleSuggestion(pickTitleSuggestion("Don't check Twitter", base)!, h => h).label).toBe('Avoid this habit');
   });
 
   it('offers just the closing time to a habit already set to don\'t-do', () => {
@@ -116,7 +106,7 @@ describe('pickTitleSuggestion', () => {
     const s = pickTitleSuggestion('Skip breakfast until 10am', { ...base, ...neg })!;
     expect(s.kind).toBe('avoid');
     if (s.kind === 'avoid') expect(s.hit).toMatchObject({ endsAt: '10:00', already: true });
-    expect(describeTitleSuggestion(s, 'mm', h => `@${h}`).label).toBe('Clean at @10:00');
+    expect(describeTitleSuggestion(s, h => `@${h}`).label).toBe('Clean at @10:00');
     expect(suggestionMatch('Skip breakfast until 10am', s).matchedText).toBe('until 10am');
     // Not again once the window end holds it, and not for a title with no closing time.
     expect(kindOf('Skip breakfast until 10am', { ...neg, windowEnd: '10:00' })).toBeNull();
@@ -141,13 +131,13 @@ describe('suggestionMatch and describeTitleSuggestion', () => {
     const match = suggestionMatch(title, s);
     expect(match.matchedText).toBe('https://example.com');
     expect(title.slice(match.matchStart, match.matchStart + match.matchedText.length)).toBe('https://example.com');
-    expect(describeTitleSuggestion(s, 'mm', h => h)).toEqual({ icon: 'link-outline', label: 'https://example.com' });
+    expect(describeTitleSuggestion(s, h => h)).toEqual({ icon: 'link-outline', label: 'https://example.com' });
   });
 
   it('marks a chain as the whole line', () => {
     const title = 'a -> b';
     const s = pickTitleSuggestion(title, base)!;
     expect(suggestionMatch(title, s).wholeLine).toBe(true);
-    expect(describeTitleSuggestion(s, 'mm', h => h).label).toBe('Chain · 2 steps');
+    expect(describeTitleSuggestion(s, h => h).label).toBe('Chain · 2 steps');
   });
 });
