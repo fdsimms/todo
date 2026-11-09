@@ -20,6 +20,7 @@ import { border, font, fontWeight, iconSize, interaction, radius, spacing, type 
 import { useGroceryStore } from '../store/useGroceryStore';
 import { nutritionFor } from '../utils/foodNutrition';
 import { haptics } from '../utils/haptics';
+import { entryFor } from '../utils/groceryLists';
 import {
   ESTIMATE_CHOICES,
   appendLine,
@@ -31,6 +32,7 @@ import {
   reviewedCalories,
   reviewedItems,
   reviewLinesFor,
+  reviewStockState,
   toggleRemoved,
   type ReviewLine,
 } from '../utils/savedMealReview';
@@ -138,6 +140,10 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
   const amountOperators = useAmountOperators();
   const groceryItems = useGroceryStore(s => s.items);
   const itemProducts = useGroceryStore(s => s.itemProducts);
+  const listEntries = useGroceryStore(s => s.listEntries);
+  const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
+  const dismissDisposalOffer = useGroceryStore(s => s.dismissDisposalOffer);
+  const addExistingMany = useGroceryStore(s => s.addExistingMany);
 
   const [lines, setLines] = useState<ReviewLine[]>(() => reviewLinesFor(meal));
   /** Amount text typed but not yet applied, by line key. */
@@ -285,6 +291,24 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
     setDrafts({});
     setErrors({});
     return current;
+  };
+
+  /**
+   * "Out of it" and "Add to list" write at once, not on Log: they are a fact
+   * about the pantry, not an edit to what is eaten, so Cancel doesn't take them
+   * back (the pill's check is the confirmation). A single-row `markOutOfMany`
+   * raises a "how did it go?" question that only Kitchen and the item sheet
+   * show, and nobody has said how it went, so it is dismissed rather than left
+   * to surface later. The list is named, since this isn't the grocery screen.
+   */
+  const markOut = (itemId: string) => {
+    haptics.tap();
+    markOutOfMany([itemId]);
+    dismissDisposalOffer();
+  };
+  const addToList = (itemId: string) => {
+    haptics.tap();
+    addExistingMany([itemId], { listId: null });
   };
 
   const kept = lines.filter(l => !l.removed);
@@ -590,6 +614,35 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
                     variant="neutral"
                     onPress={() => removeLine(line.key)}
                   />
+                  {(() => {
+                    const itemId = line.item.itemId;
+                    const stock = reviewStockState(
+                      line,
+                      itemId ? groceryItems.find(i => i.id === itemId) : null,
+                      !!itemId && !!entryFor(listEntries, itemId, null)
+                    );
+                    if (!stock || !itemId) return null;
+                    return (
+                      <>
+                        <InlineAction
+                          label={stock.out ? 'Marked out' : 'Out of it'}
+                          icon={stock.out ? 'checkmark' : 'remove-circle-outline'}
+                          variant="neutral"
+                          disabled={stock.out}
+                          onPress={() => markOut(itemId)}
+                          accessibilityLabel={stock.out ? `${line.item.label} is marked as not on hand` : `Out of ${line.item.label}, mark as not on hand`}
+                        />
+                        <InlineAction
+                          label={stock.listed ? 'On your list' : 'Add to list'}
+                          icon={stock.listed ? 'checkmark' : 'cart-outline'}
+                          variant="neutral"
+                          disabled={stock.listed}
+                          onPress={() => addToList(itemId)}
+                          accessibilityLabel={stock.listed ? `${line.item.label} is on your grocery list` : `Add ${line.item.label} to your grocery list`}
+                        />
+                      </>
+                    );
+                  })()}
                 </View>
               </View>
             );

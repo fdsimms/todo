@@ -35,7 +35,7 @@ own headers apply one bar, and a new feature has to be sorted against it:
    numbers or switches the app is waiting on.
 4. **It does not depend on a sibling being set first.** `autoSchedule`, `servingsMax` and
    `streakRequiresWindow` are all meaningless until another field is on.
-5. **A feature the person has to opt into is not "unanswered".** Rain skip, time windows,
+5. **A feature the person has to opt into is not "unanswered".** Time windows,
    usage meters, app gating, penalties and a quota ramp all read as "not using it" when empty,
    so the card would ask everyone to consider a feature most of them have no use for.
 
@@ -48,8 +48,7 @@ start there. Both answers are written onto
 the task, since `false` has to outrank a category set to wait, and the dismissal ("Leave as
 usual") leaves it following its category. A whole-category answer offers to turn the category on.
 
-Considered and left out under the rules above, so they are not re-derived: rain skip
-(`rainSkipMm`), time-window sun anchors, deadline time, usage meters, app gating, medications as
+Considered and left out under the rules above, so they are not re-derived: time-window sun anchors, deadline time, usage meters, app gating, medications as
 a pool (a scheduled medication has no limit to ask for), `groupOnToday` and `hideNextStep` on
 projects, a recipe's `mealType`, a person's contact lines (Fill from contacts does that in one
 tap), and a store's `receiptStyle`.
