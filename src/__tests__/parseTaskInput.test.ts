@@ -1441,6 +1441,15 @@ describe('parseTargetInput', () => {
 
   it('reads a glued-on x the way the app renders a target', () => {
     expect(parseTargetInput('pushups 3x')).toMatchObject({ count: 3, cleanTitle: 'pushups' });
+    expect(parseTargetInput('Do Learned League repeat 25 times')).toMatchObject({ count: 25, cleanTitle: 'Do Learned League' });
+    expect(parseTargetInput('Do Learned League repeat 25x')).toMatchObject({ count: 25, cleanTitle: 'Do Learned League' });
+    expect(parseTargetInput('Do Learned League repeated 25 times')).toMatchObject({ count: 25, cleanTitle: 'Do Learned League' });
+    expect(parseTargetInput('stretch repeat twice a day')).toMatchObject({ count: 2, cleanTitle: 'stretch' });
+    // "repeat" with no count after it is just a word in the title.
+    expect(parseTargetInput('repeat the chorus 3 times')).toMatchObject({ count: 3, cleanTitle: 'repeat the chorus' });
+    // "for N times" stays the recurrence end condition.
+    expect(parseTargetInput('walk repeat for 5 times')).toBeNull();
+    expect(parseTargetInput('walk repeat every day 3 times')).toMatchObject({ count: 3, cleanTitle: 'walk repeat every day' });
     expect(parseTargetInput('pushups 3× a day')).toMatchObject({ count: 3, cleanTitle: 'pushups' });
   });
 
