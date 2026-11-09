@@ -4,6 +4,7 @@ import {
   retentionCutoff,
   retentionLabel,
   selectPurgeableTaskIds,
+  projectsKeptFromPurge,
   selectPurgeableFocusSessionIds,
   retentionDeletionSummary,
   ledgerCutoff,
@@ -210,6 +211,42 @@ describe('retentionCutoff', () => {
     // 1:00 AM on the 1st with a 2 AM reset is still the 31st's logical day.
     const cutoff = retentionCutoff(90, new Date(2026, 5, 1, 1, 0), '02:00');
     expect(cutoff).toEqual(new Date(2026, 2, 2, 2, 0, 0, 0));
+  });
+});
+
+describe('keeping a project one-off tasks for its bonus', () => {
+  const cutoff = new Date('2026-01-01T00:00:00.000Z');
+  const old = '2025-01-01T00:00:00.000Z';
+  const row = (id: string, projectId: string | null, recurrenceType: string) => ({
+    id, parentId: null, completed: true, archived: false, completedAt: old, projectId, recurrenceType,
+    deliverableKind: null, deliverableValue: null, chainEnabled: false, chainItems: [], chainIndex: 0,
+  });
+  const tasks = [
+    row('one-off', 'live', 'none'),
+    row('habit', 'live', 'daily'),
+    row('done-project', 'finished', 'none'),
+    row('filed', 'gone', 'none'),
+    row('plain', null, 'none'),
+  ] as unknown as Task[];
+  const projects = [
+    { id: 'live', ongoing: false, list: false, archived: false },
+    { id: 'finished', ongoing: false, list: false, archived: false },
+    { id: 'gone', ongoing: false, list: false, archived: true },
+  ];
+
+  it('keeps one-off tasks of projects that are not archived, and purges the rest', () => {
+    const kept = projectsKeptFromPurge(projects);
+    expect(selectPurgeableTaskIds(tasks, cutoff, kept.keep, kept.keepOneOffs)).toEqual(['habit', 'filed', 'plain']);
+  });
+
+  it('leaves repeating tasks to purge, since their tombstones are what accumulate', () => {
+    const kept = projectsKeptFromPurge(projects);
+    expect(selectPurgeableTaskIds([tasks[1]], cutoff, kept.keep, kept.keepOneOffs)).toEqual(['habit']);
+  });
+
+  it('keeps every row of an ongoing project or list', () => {
+    const kept = projectsKeptFromPurge([{ id: 'live', ongoing: true, list: false, archived: false }]);
+    expect(kept.keep.has('live')).toBe(true);
   });
 });
 

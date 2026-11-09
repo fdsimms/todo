@@ -145,6 +145,11 @@ export const spawnSeed = {
    */
   coinMeal: (dayKey: string, slot: string) => `coin-meal:${dayKey}#${slot}`,
   /**
+   * The bonus for finishing a project (`projectBonusFor`), keyed by the project
+   * so completing it on two phones, or again after reopening it, is one row.
+   */
+  coinProject: (projectId: string) => `coin-project:${projectId}`,
+  /**
    * A meal marked skipped from the meal strip (`MealSkip`). Keyed by the day
    * and the meal, so skipping the same breakfast on two phones is one row and
    * un-skipping on either removes it from both.

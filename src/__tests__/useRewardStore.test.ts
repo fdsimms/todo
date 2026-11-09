@@ -540,3 +540,48 @@ describe('savings for the goal', () => {
     expect(state().entries.find(e => e.taskId === 't1')?.saved ?? 0).toBe(0);
   });
 });
+
+describe('finishing a project', () => {
+  const ids = new Set(['a', 'b']);
+
+  it('pays a share of what the project tasks earned, under the project id', () => {
+    state().recordEarn('a', 8, 'One', AT);
+    state().recordEarn('b', 4, 'Two', AT);
+    state().recordEarn('other', 40, 'Elsewhere', AT);
+    const entry = state().recordProjectBonus('p1', ids, 'Project complete: Party', AT);
+    expect(entry).toMatchObject({ kind: 'earn', amount: 3, taskId: null });
+    expect(entry!.id).toBe(derivedId(spawnSeed.coinProject('p1')));
+    expect(state().balance()).toBe(8 + 4 + 40 + 3);
+  });
+
+  it('writes one row however many times the project is completed', () => {
+    state().recordEarn('a', 8, 'One', AT);
+    state().recordProjectBonus('p1', ids, 'Done', AT);
+    state().recordProjectBonus('p1', ids, 'Done', AT);
+    expect(state().entries.filter(e => e.id === derivedId(spawnSeed.coinProject('p1')))).toHaveLength(1);
+  });
+
+  it('does not count its own row, so completing again cannot compound', () => {
+    state().recordEarn('a', 8, 'One', AT);
+    state().recordProjectBonus('p1', new Set(['a', 'x']), 'Done', AT);
+    expect(state().balance()).toBe(10);
+  });
+
+  it('pays nothing for a project that earned nothing, or while rewards are off', () => {
+    expect(state().recordProjectBonus('p1', ids, 'Done', AT)).toBeNull();
+    state().recordEarn('a', 8, 'One', AT);
+    settings.rewardsEnabled = false;
+    expect(state().recordProjectBonus('p1', ids, 'Done', AT)).toBeNull();
+    expect(state().entries).toHaveLength(1);
+  });
+
+  it('takes the bonus back when the project is reopened, even with rewards off', () => {
+    state().recordEarn('a', 8, 'One', AT);
+    state().recordProjectBonus('p1', ids, 'Done', AT);
+    settings.rewardsEnabled = false;
+    const taken = state().takeBackProjectBonus('p1');
+    expect(taken).toHaveLength(1);
+    expect(state().balance()).toBe(8);
+    expect(state().takeBackProjectBonus('p1')).toEqual([]);
+  });
+});

@@ -2404,6 +2404,8 @@ describe('demo seed — people', () => {
     expect(rewards.some(r => r.oneTime && !r.taskId)).toBe(true);
     expect(rewards.some(r => r.claimEveryDays === 7)).toBe(true);
     expect(rewards.some(r => r.glyph)).toBe(true);
+    // The finished hallway project paid its bonus on top of its tasks.
+    expect(entries.some(e => e.label === 'Project complete: Repaint the hallway' && e.amount > 0)).toBe(true);
     expect(rewards.some(r => r.priceMinor !== null && r.taxable)).toBe(true);
     expect(useSettingsStore.getState().rewardSalesTaxPercent).not.toBeNull();
     const listId = useSettingsStore.getState().rewardListProjectId;

@@ -8215,7 +8215,16 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (Object.keys(fields).length > 0) {
           store.updateProject(id, { ...fields, ...(fields.title ? { title: fields.title.trim() } : {}) });
         }
-        if (completed !== undefined) useProjectStore.getState().applyProjectCompleted(id, completed);
+        if (completed !== undefined) {
+          const wasCompleted = !!useProjectStore.getState().getProjectById(id)?.completed;
+          useProjectStore.getState().applyProjectCompleted(id, completed);
+          // The same bonus the phone pays, through the same function, so the
+          // replica's completion and the app's can't disagree (rewards.md, "Finishing a project").
+          const bonus = require('../../src/utils/projectBonus') as typeof import('../../src/utils/projectBonus'); // eslint-disable-line @typescript-eslint/no-require-imports
+          const current = useProjectStore.getState().getProjectById(id);
+          if (completed && !wasCompleted && current) bonus.payProjectBonus(current, tasks());
+          else if (!completed && wasCompleted) bonus.takeBackProjectBonus(id);
+        }
         if (archived !== undefined) useProjectStore.getState().applyProjectArchived(id, archived);
       });
       refresh();

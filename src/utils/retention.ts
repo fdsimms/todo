@@ -20,8 +20,9 @@
 
 import { subDays } from 'date-fns/subDays';
 import { getDayStart } from './dateUtils';
-import type { Task } from '../types';
+import type { Project, Task } from '../types';
 import { deliverableKindFor } from './deliverables';
+import { isOpenEnded } from './listMode';
 
 /**
  * How long completed tasks are kept, in days. `null` = forever, the default.
@@ -113,12 +114,20 @@ export function selectPurgeableTaskIds(
    * everyday tasks would delete it.
    */
   keepProjectIds: ReadonlySet<string> = new Set(),
+  /**
+   * Projects whose finished one-off tasks are kept, though their repeating ones
+   * still purge: the projects still on the list (`projectsKeptFromPurge`). A
+   * project's bonus is a share of what its tasks earned, read off the ledger by
+   * task, so a purged task's coins would quietly shrink it.
+   */
+  keepOneOffProjectIds: ReadonlySet<string> = new Set(),
 ): string[] {
   return tasks
     .filter(
       t =>
         !t.parentId &&
         !(t.projectId !== null && keepProjectIds.has(t.projectId)) &&
+        !(t.projectId !== null && t.recurrenceType === 'none' && keepOneOffProjectIds.has(t.projectId)) &&
         t.completed &&
         !t.archived &&
         !(deliverableKindFor(t) !== null && t.deliverableValue !== null) &&
@@ -126,6 +135,28 @@ export function selectPurgeableTaskIds(
         new Date(t.completedAt).getTime() < cutoff.getTime()
     )
     .map(t => t.id);
+}
+
+/**
+ * The two project sets `selectPurgeableTaskIds` keeps. Every caller builds them
+ * here, so the purge and the confirmation that counts what it will take can't
+ * disagree.
+ *
+ * - `keep`: ongoing projects and lists, whose finished tasks are the record.
+ * - `keepOneOffs`: every project not archived, so the one-off tasks that earned
+ *   its completion bonus (`projectBonusFor`) are still there to count, including
+ *   after a reopen and a second completion. Repeating tasks are left out, since
+ *   their tombstones are the ones that pile up and a habit in a project never
+ *   finishes it. An archived project's rows are exempt as archived rows already are.
+ */
+export function projectsKeptFromPurge(projects: readonly Pick<Project, 'id' | 'ongoing' | 'list' | 'archived'>[]): {
+  keep: Set<string>;
+  keepOneOffs: Set<string>;
+} {
+  return {
+    keep: new Set(projects.filter(isOpenEnded).map(p => p.id)),
+    keepOneOffs: new Set(projects.filter(p => !p.archived).map(p => p.id)),
+  };
 }
 
 /**
