@@ -74,13 +74,6 @@ tap), and a store's `receiptStyle`.
   never completed, so it is not asked for a time estimate or a difficulty; a one-off and an
   every-N-hours task are not asked for a holiday rule, in a redo as well as in the normal queue
   (`fieldApplies`).
-- **A partial nutrition panel is a different question from no panel.** `nutrition` queues an
-  item with no figures; `nutritionDetail` queues an item whose saved panel has none of trans
-  fat, cholesterol or added sugars. Any one present means the source already carried the later
-  lines, so the others being absent is its answer. That is what keeps an apple, which has sugars
-  and no added sugars, from queueing for ever. An estimate is excluded because it was never read
-  off a label. Absent stays absent: nothing here writes a zero, and a food with none to add is
-  left with **Nothing more to add**.
 - **Brand, product and rating read `ItemProduct`, not the item.** `product` queues an item with
   no box and `rating` queues one with an unrated box, so both take the products list
   (`isItemFieldMissing`'s last argument, `itemBackfillFieldCounts`' last). A frozen portion is

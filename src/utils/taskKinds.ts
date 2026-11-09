@@ -186,7 +186,7 @@ export const COUNTDOWN_LADDER: readonly number[] = [
   0.25, 0.5, 0.75, ...Array.from({ length: 180 }, (_, i) => i + 1),
 ];
 
-export const TIMED_MINUTE_OPTIONS = [5, 10, 15, 25, 30, 60] as const;
+export const TIMED_MINUTE_OPTIONS = [5, 10, 15, 30, 60] as const;
 /**
  * Range of the daily target stepper, shared with the editor's own Daily target
  * row. A target of 1 isn't a quota, so 2 is the floor; the ceiling is only

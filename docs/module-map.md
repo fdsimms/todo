@@ -198,6 +198,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/exerciseImages.ts` — EXERCISE_IMAGE_BASE_URL, ExercisePhotos, PHOTOGRAPHED_SLUGS, exercisePhotos
 - `src/utils/exerciseLibrary.ts` — LibraryExercise, LIBRARY_ID_PREFIX, EXERCISE_LIBRARY, libraryExercise, isLibraryId
 - `src/utils/exerciseSwap.ts` — swappableSets, swapKindsMatch, swapCandidates, preferredFirst
+- `src/utils/exerciseUsage.ts` — MOST_USED_DAYS, MOST_USED_MIN_SESSIONS, MOST_USED_LIMIT, mostUsedExerciseIds
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabAnchor.ts` — FabMenuAnchor, fabMenuAnchorFor
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
@@ -275,7 +276,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/ingredientGrounding.ts` — ungroundedIngredientIndexes
 - `src/utils/ingredientPrintout.ts` — IngredientPrintInput, ALLERGEN_CAVEAT, ingredientPageHtml, ingredientCardHtml, ingredientFileName
 - `src/utils/itemAliases.ts` — otherNameKeysOf, aliasIndex, itemKeyIndex, itemForOtherName, OtherNamesResult, cleanOtherNames, describeOtherNames
-- `src/utils/itemBackfill.ts` — ItemBackfillFieldId, LATER_LABEL_NUTRIENTS, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, unratedBoxesOf, isItemFieldMissing, isItemFieldApplicable, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, +1 more
+- `src/utils/itemBackfill.ts` — ItemBackfillFieldId, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, unratedBoxesOf, isItemFieldMissing, isItemFieldApplicable, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, dismissItemBackfillField
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
 - `src/utils/itemEither.ts` — UNANSWERED, eitherPairKey, parseItemPicks, pickFor, withItemPick, withoutItemPick, hasUndecidedItem, EitherPairInUse, eitherPairsInUse, describeEitherPair, +2 more
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstituteLink, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
