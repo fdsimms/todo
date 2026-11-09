@@ -18,7 +18,6 @@
  * phone. docs/arch/mcp-server.md has the reasoning.
  */
 import express, { type Request, type Response } from 'express';
-import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { McpServer, type RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
@@ -99,6 +98,7 @@ import { DEFAULT_SUGGESTION_LIMIT, unusedFeatures } from './adoptionTools';
 import { SERVER_INSTRUCTIONS } from './instructions';
 import { annotationsFor } from './toolAnnotations';
 import { createConfirmTokens, describeEffects, type ConfirmTokens } from './confirmWrites';
+import { confirmByElicitation } from './elicitConfirm';
 import type { AgentLedgerEntry } from './agentLedger';
 import { PROMPTS } from './prompts';
 import { forget, remember } from './memoryTools';
@@ -202,40 +202,6 @@ function parseToolText(out: { content: { type: string; text?: string }[] }): unk
   } catch {
     return undefined;
   }
-}
-
-/**
- * Asks the person through the client's own prompt (MCP elicitation) instead of
- * the token round trip, when the client supports it. The prompt carries the
- * server's `willDo` lines, so the description is the server's, as with the
- * token flow. Accept writes now; decline or cancel leaves the preview unspent.
- * Anything else (no elicitation capability, a transport that cannot ask, an
- * error) returns the preview untouched, so the confirmToken flow still works.
- */
-export async function confirmByElicitation(
-  low: Server,
-  tokens: ConfirmTokens,
-  previewed: { content: { type: 'text'; text: string }[] },
-  write: () => Promise<{ content: { type: 'text'; text: string }[] }>,
-) {
-  const details = parseToolText(previewed) as { preview?: boolean; willDo?: string[]; confirmToken?: string } | undefined;
-  if (!details?.preview || !Array.isArray(details.willDo) || typeof details.confirmToken !== 'string') return previewed;
-  if (!low.getClientCapabilities()?.elicitation) return previewed;
-  let answer: Awaited<ReturnType<Server['elicitInput']>>;
-  try {
-    answer = await low.elicitInput({
-      message: details.willDo.join('\n'),
-      requestedSchema: { type: 'object', properties: { confirm: { type: 'boolean', title: 'Make this change', default: true } } },
-    });
-  } catch {
-    return previewed;
-  }
-  if (answer.action !== 'accept' || answer.content?.confirm === false) {
-    return json({ declined: true, next: 'The person said no. Nothing was changed. Do not retry this change; ask what they would like instead.' });
-  }
-  const taken = tokens.take(details.confirmToken, details.willDo);
-  if (!taken.ok) return json({ error: taken.reason });
-  return write();
 }
 
 /**

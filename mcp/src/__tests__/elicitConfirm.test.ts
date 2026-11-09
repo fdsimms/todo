@@ -1,4 +1,4 @@
-import { confirmByElicitation } from '../server';
+import { confirmByElicitation } from '../elicitConfirm';
 import { createConfirmTokens } from '../confirmWrites';
 
 const text = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(v) }] });
