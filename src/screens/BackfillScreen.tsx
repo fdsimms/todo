@@ -264,7 +264,7 @@ const ENTITY_KIND_SEGMENTS = [
   { value: 'category' as const, label: 'Categories' },
   { value: 'project' as const, label: 'Projects' },
   { value: 'person' as const, label: 'People' },
-  { value: 'item' as const, label: 'Items' },
+  { value: 'item' as const, label: 'Groceries' },
   { value: 'recipe' as const, label: 'Recipes' },
 ];
 
