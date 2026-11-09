@@ -672,7 +672,7 @@ function HeldBackSection({
         <View key={group.kind}>
           {headings && (
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionHeaderText}>{HELD_BACK_COPY[group.kind].heading} {group.tasks.length}</Text>
+              <Text style={styles.sectionHeaderText}>{HELD_BACK_COPY[group.kind].heading} ({group.tasks.length})</Text>
               <SpotlightScrim />
             </View>
           )}
