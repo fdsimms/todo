@@ -419,8 +419,8 @@ const SLOT_IN_SEGMENTS: SegmentOption<boolean>[] = [
 ];
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
-// spans, including the 25-minute pomodoro.
-const DURATION_PRESETS = [5, 10, 15, 25, 30, 45, 60] as const;
+// spans. Six fit on one row at the editor's width; a seventh wraps.
+const DURATION_PRESETS = [5, 10, 15, 30, 45, 60] as const;
 
 // Matches the inline subtask checkbox in TaskItem, so a subtask looks the same
 // whether it's read in the expanded row or in this editor.
@@ -6179,7 +6179,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             node: (
               <>
             <EditorRow
-              icon={reminderKind === 'persistent' ? 'repeat' : reminderKind === 'alarm' ? 'alarm' : 'notifications'}
+              icon={reminderKind === 'persistent' ? 'repeat-outline' : reminderKind === 'alarm' ? 'alarm-outline' : 'notifications-outline'}
               label="Remind me"
               hint={
                 reminderKind === 'persistent'
