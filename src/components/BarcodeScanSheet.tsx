@@ -218,6 +218,14 @@ const CONTEXT_COPY: Record<ScanContext, {
    */
   typedNames: boolean;
   manualPlaceholder: string;
+  /**
+   * The button beside the typed field. It looks the code up and puts a row in
+   * the list; it is never the screen's confirm, so no confirm may share its
+   * word. The log can only take a barcode, so it names this "Look up"; the
+   * others take names too, so "Add" is accurate and their confirm differs.
+   */
+  manualActionLabel: string;
+  manualActionIcon: 'add' | 'search';
 }> = {
   shopping: {
     // The confirm is named for what it does: the scanned rows go in the cart
@@ -231,14 +239,20 @@ const CONTEXT_COPY: Record<ScanContext, {
     freezer: true,
     typedNames: true,
     manualPlaceholder: 'e.g. bananas, or a barcode number',
+    manualActionLabel: 'Add',
+    manualActionIcon: 'add',
   },
   pantry: {
     title: 'Scan into pantry',
     emptySubtitle: 'Scan a barcode to add it to the pantry. Type anything without a barcode below.',
-    confirmLabel: 'Add',
+    // "Done", not "Add": the typed field's button is "Add", and two buttons
+    // with one word read the header as another way to put a row in the list.
+    confirmLabel: BUTTON_LABEL.done,
     freezer: true,
     typedNames: true,
     manualPlaceholder: 'e.g. bananas, or a barcode number',
+    manualActionLabel: 'Add',
+    manualActionIcon: 'add',
   },
   log: {
     title: 'Scan to log',
@@ -249,6 +263,8 @@ const CONTEXT_COPY: Record<ScanContext, {
     freezer: false,
     typedNames: false,
     manualPlaceholder: 'Type a barcode number',
+    manualActionLabel: 'Look up',
+    manualActionIcon: 'search',
   },
 };
 
@@ -1488,15 +1504,15 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                 <PressableScale
                   haptic
                   onPress={handleManualAdd}
-                  accessibilityLabel="Add"
+                  accessibilityLabel={CONTEXT_COPY[context].manualActionLabel}
                   style={styles.manualAddGlass}
                 >
-                  <Ionicons name="add" size={iconSize.sm} color={colors.onAccent} />
-                  <Text style={styles.manualAddText}>Add</Text>
+                  <Ionicons name={CONTEXT_COPY[context].manualActionIcon} size={iconSize.sm} color={colors.onAccent} />
+                  <Text style={styles.manualAddText}>{CONTEXT_COPY[context].manualActionLabel}</Text>
                 </PressableScale>
               </AccessoryCapsule>
             ) : (
-              <InlineAction label="Add" icon="add" onPress={handleManualAdd} />
+              <InlineAction label={CONTEXT_COPY[context].manualActionLabel} icon={CONTEXT_COPY[context].manualActionIcon} onPress={handleManualAdd} />
             )}
           </View>
         </View>
