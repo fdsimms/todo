@@ -1374,7 +1374,8 @@ const TARGET_MIN = 2;
 const TARGET_MAX = 99;
 
 // "8 times", "8 times a day", "eight times daily", "8x", "twice a day",
-// "3 times a week", "twice weekly".
+// "3 times a week", "twice weekly". A leading "repeat"/"repeated" is part of
+// the phrase ("repeat 25 times", "repeat 25x"), so it leaves the title with it.
 //
 // "times" (or a glued-on "x"/"×", which is how the app itself renders a daily
 // target: see formatQuotaTarget) is what turns a number into a count of
@@ -1385,7 +1386,7 @@ const TARGET_MAX = 99;
 // grammar's own end condition (extractEndCondition), and reading it here would
 // turn "stop after five" into "five a day".
 const TARGET_PATTERN = new RegExp(
-  `(?<!\\bfor\\s+)(?<!\\w)(?:(\\d{1,3}|${NUMBER_WORD_ALT})\\s+times|(\\d{1,3})[x×]|(twice|thrice))`
+  `(?<!\\bfor\\s+)(?<!\\w)(?:repeat(?:ed)?\\s+)?(?:(\\d{1,3}|${NUMBER_WORD_ALT})\\s+times|(\\d{1,3})[x×]|(twice|thrice))`
     + `(?:\\s+(?:a|per|each)\\s+(day|week)|\\s+(daily|weekly))?(?!\\w)`,
   'i',
 );
