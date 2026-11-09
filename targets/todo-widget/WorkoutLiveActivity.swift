@@ -113,9 +113,21 @@ private struct WorkoutClockView: View {
                     // Signed the way workout mode's footer signs it. An HStack
                     // rather than `Text("+") + Text(_:style:)`: a date-style Text
                     // renders specially and doesn't survive concatenation.
+                    //
+                    // A timer-style Text reserves room for its widest reading
+                    // (hours included) and right-aligns the digits inside it, so
+                    // as a plain sibling the "+" sat far left of the figure. A
+                    // hidden "00:00" sets the width the "+" sits against, and the
+                    // timer is drawn over it at its own width, trailing-aligned,
+                    // so any spare width is blank space left of the "+" instead.
                     HStack(spacing: 0) {
                         Text("+")
-                        Text(end, style: .timer)
+                        Text("00:00")
+                            .hidden()
+                            .overlay(alignment: .trailing) {
+                                Text(end, style: .timer)
+                                    .fixedSize()
+                            }
                     }
                 } else {
                     // Re-sorted defensively even though workoutLiveActivity.ts
