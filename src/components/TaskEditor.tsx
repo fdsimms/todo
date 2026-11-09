@@ -4110,6 +4110,34 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               title="Deadline"
               showTimeOfDay={false}
               showSuggest={false}
+              // A repeating task's deadline has three meanings, so the sheet asks which first.
+              // Fixed date stays here; the other two commit and hand over to the stepper under the row.
+              header={recurrenceType !== 'none' ? (
+                <View style={{ marginHorizontal: spacing.md, marginBottom: spacing.smd }}>
+                  <FieldLabel inCard>How it repeats</FieldLabel>
+                  <SegmentedControl
+                    label="Deadline on repeat"
+                    surface="card"
+                    value="fixed"
+                    options={[
+                      { value: 'fixed', label: 'Fixed date' },
+                      { value: 'offset', label: 'Days from due' },
+                      ...(recurrenceType === 'monthly' ? [{ value: 'monthDay', label: 'Day of month' }] : []),
+                    ]}
+                    onChange={mode => {
+                      if (mode === 'offset') {
+                        setDeadlineMonthDay(null);
+                        setDeadlineOffsetDays(deadline && dueDate ? (differenceInCalendarDays(dueDate, deadline) || 1) : 1);
+                      } else if (mode === 'monthDay') {
+                        setDeadlineOffsetDays(null);
+                        setDeadlineMonthDay(-1);
+                      } else return;
+                      setShowDeadlinePicker(false);
+                    }}
+                  />
+                  <HelpText>Fixed date is the same day on every repeat. The others move with each due date.</HelpText>
+                </View>
+              ) : undefined}
               onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
               onClear={() => { setDeadline(null); setDeadlineTime(null); setShowDeadlinePicker(false); }}
               onCancel={() => setShowDeadlinePicker(false)}

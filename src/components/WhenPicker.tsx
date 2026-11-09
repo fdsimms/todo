@@ -122,6 +122,8 @@ interface Props {
   onClear?: () => void;
   onCancel: () => void;
   title?: string;
+  /** Content shown above everything else in the body, for a caller whose date has a mode to choose first (a repeating task's deadline). */
+  header?: React.ReactNode;
   // Hides the "Time of day" section and the "Suggest" button — used when
   // there's no single task to anchor them to, e.g. rescheduling a whole group.
   showTimeOfDay?: boolean;
@@ -223,7 +225,7 @@ export function WhenPicker({
   visible, value, timeSegments: initialSegments,
   taskId, taskTitle, taskNotes, taskTags, taskCategory, taskPriority, taskEffort, taskEstimatedMinutes,
   onConfirm, onClear, onCancel,
-  title = 'When?', showTimeOfDay = true, showSuggest = true, allowPast = true, allowFuture = true,
+  title = 'When?', header, showTimeOfDay = true, showSuggest = true, allowPast = true, allowFuture = true,
   postponeTaskId, onBreakUp, nlEnabled,
   projectAnchor = null,
 }: Props) {
@@ -647,6 +649,7 @@ export function WhenPicker({
           </View>
 
           <ScrollView style={styles.body} bounces={false} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {header}
           {/* Natural language input */}
           {nlEnabled && (
             <>
