@@ -131,6 +131,9 @@ import { TextField } from '../components/TextField';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from '../components/FieldLabel';
 import { useClockTimeToken } from '../hooks/useClockTimeToken';
+import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
+import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
+import { completesThroughQueue } from '../utils/bulkCompletion';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -419,6 +422,7 @@ export function BackfillScreen() {
 
   const tasks = useWithoutLockedTasks(useTaskStore(useShallow(s => s.tasks)));
   const updateTask = useTaskStore(s => s.updateTask);
+  const completeTask = useTaskStore(s => s.completeTask);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
   const categories = useCategoryStore(useShallow(s => s.categories));
@@ -1704,6 +1708,28 @@ export function BackfillScreen() {
     advance(currentId);
   };
 
+  // The card can surface a task that was done and never checked off, so it can be
+  // completed here instead of in the editor. One task only: the other dates of a
+  // series are separate occurrences. A task that asks a question or has a mission
+  // goes through the answer queue, as it does from its own row. `completeTask`
+  // registers its own shake-to-undo entry, and no session line is filed because
+  // no field was answered.
+  const { enqueue: enqueueCompletion, queueProps: completionQueueProps } = useAnswerFirstCompletion();
+  const markComplete = () => {
+    if (!currentTask) return;
+    recordVisited();
+    setManualCurrentId(null);
+    advance(currentTask.id);
+    if (completesThroughQueue(currentTask)) {
+      haptics.tap();
+      enqueueCompletion([currentTask.id]);
+      return;
+    }
+    haptics.success();
+    animateLayout();
+    completeTask(currentTask.id);
+  };
+
   // Unlike skip, this is a written, permanent decision about the item —
   // "this one genuinely doesn't need a time estimate" — so it goes through
   // updateTask/the category and project stores rather than the session-only
@@ -2645,6 +2671,16 @@ export function BackfillScreen() {
                 <Text style={styles.skipText}>{dismissLabel}</Text>
               </PressableScale>
             </View>
+            <View style={styles.actionRow}>
+              <PressableScale
+                style={styles.skipButton}
+                onPress={markComplete}
+                accessibilityRole="button"
+                accessibilityLabel="Mark this task complete"
+              >
+                <Text style={styles.skipText}>Mark complete</Text>
+              </PressableScale>
+            </View>
           </ScrollView>
         ) : sessionLog.length > 0 ? (
           <SessionReview
@@ -2678,6 +2714,7 @@ export function BackfillScreen() {
           onConfirm={applyReminder}
           onCancel={() => setReminderPickerOpen(false)}
         />
+        <DeliverablePromptQueue {...completionQueueProps} />
         <NumberPadAccessory />
       </View>
     );
