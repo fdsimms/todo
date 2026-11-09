@@ -21,6 +21,7 @@ import {
   renamedContextTags,
   seededContextTags,
   severityLabel,
+  cycleSymptom,
   symptomKey,
   symptomVocabulary,
   withContextTag,
@@ -99,6 +100,30 @@ describe('building a symptom set', () => {
   it('removes one, matching case-insensitively', () => {
     const set = withSymptom([], 'Headache', 1);
     expect(withoutSymptom(set, 'HEADACHE')).toEqual([]);
+  });
+});
+
+describe('tapping a symptom', () => {
+  it('starts at Mild, then steps up, then clears after Severe', () => {
+    let set = cycleSymptom([], 'Brain fog');
+    expect(set).toEqual([{ name: 'Brain fog', severity: 1 }]);
+    set = cycleSymptom(set, 'Brain fog');
+    expect(set).toEqual([{ name: 'Brain fog', severity: 2 }]);
+    set = cycleSymptom(set, 'Brain fog');
+    expect(set).toEqual([{ name: 'Brain fog', severity: 3 }]);
+    expect(cycleSymptom(set, 'Brain fog')).toEqual([]);
+  });
+
+  it('matches the name the way the rest of the set does, and leaves other symptoms alone', () => {
+    const set = [{ name: 'Brain fog', severity: 1 as const }, { name: 'Fatigue', severity: 3 as const }];
+    expect(cycleSymptom(set, 'BRAIN FOG')).toEqual([
+      { name: 'Brain fog', severity: 2 },
+      { name: 'Fatigue', severity: 3 },
+    ]);
+  });
+
+  it('ignores a blank name', () => {
+    expect(cycleSymptom([], '  ')).toEqual([]);
   });
 });
 
