@@ -177,9 +177,13 @@ function reminderSentence(i: TaskSummaryInput): Clause[] {
 
 function repeatSentence(i: TaskSummaryInput): Clause[] {
   if (!i.repeat) return [];
-  const clauses: Clause[] = [[w('repeats '), v(inSentence(i.repeat), 'repeat')]];
-  if (i.streak && i.streak > 0) clauses.push([w('on a streak of '), v(String(i.streak), 'streak')]);
-  return clauses;
+  return [[w('repeats '), v(inSentence(i.repeat), 'repeat')]];
+}
+
+/** Its own sentence: tacked onto the repeat clause with a comma it read as a fragment. */
+function streakSentence(i: TaskSummaryInput): Clause[] {
+  if (!i.repeat || !i.streak || i.streak <= 0) return [];
+  return [[w('current streak: '), v(String(i.streak), 'streak')]];
 }
 
 function prioritySentence(i: TaskSummaryInput): Clause[] {
@@ -252,7 +256,7 @@ function sentence(clauses: Clause[]): SummaryPart[] {
 export function buildTaskSummary(input: TaskSummaryInput): SummaryPart[] {
   const sentences = [
     optionalSentence(input), whenSentence(input), hiddenSentence(input), deadlineSentence(input), reminderSentence(input),
-    repeatSentence(input), prioritySentence(input), filedSentence(input),
+    repeatSentence(input), streakSentence(input), prioritySentence(input), filedSentence(input),
     waitsSentence(input), whoSentence(input), opensSentence(input), finishSentence(input),
   ].filter(s => s.length > 0).map(sentence);
   const out: SummaryPart[] = [];

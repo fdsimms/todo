@@ -31,7 +31,7 @@ describe('buildTaskSummary', () => {
     });
     expect(text(parts)).toBe(
       'Shows up today in the morning. Reminds you on due date, 9:00 AM. '
-      + 'Repeats every week on Sun, on a streak of 6. Medium priority. Filed in Home, tagged chores.',
+      + 'Repeats every week on Sun. Current streak: 6. Medium priority. Filed in Home, tagged chores.',
     );
   });
 
