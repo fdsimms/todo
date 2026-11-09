@@ -111,8 +111,6 @@ export interface RepeatInput {
   fromCompletion?: boolean;
   /** An occurrence the rule lands on a holiday: left out, or moved to the next day. */
   holidays?: 'skip' | 'move' | null;
-  /** Skip an occurrence after this much rain over yesterday and today, in millimetres. Not hourly. */
-  skipAfterRainMm?: number | null;
   endDate?: string | null;
   count?: number | null;
 }
@@ -387,7 +385,6 @@ const NO_REPEAT: Partial<Task> = {
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceHolidays: null,
-  rainSkipMm: null,
   chainStepOnSchedule: false,
 };
 
@@ -428,10 +425,6 @@ function repeatFields(r: RepeatInput, errors: string[]): Partial<Task> {
   if (r.endDate != null && !isIsoDate(r.endDate)) errors.push('repeat.endDate must be an ISO date.');
   if (r.count != null && !inRange(r.count, LIMITS.count)) errors.push(`repeat.count must be ${LIMITS.count[0]} to ${LIMITS.count[1]}.`);
   if (r.holidays != null && r.every === 'hours') errors.push('An hourly repeat has no days to skip, so it cannot take repeat.holidays.');
-  if (r.skipAfterRainMm != null) {
-    if (r.every === 'hours') errors.push('An hourly repeat has no days to skip, so it cannot take repeat.skipAfterRainMm.');
-    else if (!(r.skipAfterRainMm > 0 && r.skipAfterRainMm <= 200)) errors.push('repeat.skipAfterRainMm must be more than 0 and at most 200 millimetres, or null.');
-  }
 
   return {
     recurrenceType: type,
@@ -449,7 +442,6 @@ function repeatFields(r: RepeatInput, errors: string[]): Partial<Task> {
     recurrenceEndDate: r.endDate == null ? null : localDateInput(r.endDate),
     recurrenceCount: r.count ?? null,
     recurrenceHolidays: r.every === 'hours' ? null : r.holidays ?? null,
-    rainSkipMm: r.every === 'hours' ? null : r.skipAfterRainMm ?? null,
   };
 }
 
@@ -1125,7 +1117,6 @@ export function describeRepeat(t: Task): RepeatInput | null {
   if (t.recurrenceEndDate) out.endDate = t.recurrenceEndDate;
   if (t.recurrenceCount != null) out.count = t.recurrenceCount;
   if (t.recurrenceHolidays) out.holidays = t.recurrenceHolidays;
-  if (t.rainSkipMm) out.skipAfterRainMm = t.rainSkipMm;
   return out;
 }
 

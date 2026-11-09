@@ -105,9 +105,8 @@ export interface WeatherSnapshot {
    */
   forecast: ForecastDay[] | null;
   /**
-   * Rain (and melted snow) over yesterday and today, in millimetres, for a
-   * repeating task that skips a day it rained (`Task.rainSkipMm`, see
-   * `rainSkip.ts`). Yesterday's is the model's record of the day just gone;
+   * Rain (and melted snow) over yesterday and today, in millimetres, which
+   * the mood day's "Rain" tag reads (`moodDayContext.ts`). Yesterday's is the model's record of the day just gone;
    * today's is the whole day's forecast, so before evening it is partly a
    * prediction. Null when the response didn't carry a figure, which a reader
    * takes as "don't know", never as dry.
@@ -253,8 +252,8 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    // precipitation_sum and one past day feed a repeating task that skips a
-    // day it rained (rainSkip.ts): the same request, two more fields.
+    // precipitation_sum and one past day feed the mood day's rain tag
+    // (moodDayContext.ts): the same request, two more fields.
     const url = `${FORECAST_URL}?latitude=${location.latitude}&longitude=${location.longitude}` +
       '&current=temperature_2m,weather_code,is_day' +
       '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum' +

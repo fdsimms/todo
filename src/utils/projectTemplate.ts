@@ -133,7 +133,6 @@ export function freshCopyDraft(task: Task, projectId: string, groupId: string | 
     recurrenceMonth: task.recurrenceMonth,
     recurrenceFromCompletion: task.recurrenceFromCompletion,
     recurrenceHolidays: task.recurrenceHolidays ?? null,
-    rainSkipMm: task.rainSkipMm ?? null,
     chainEnabled: task.chainEnabled,
     chainItems: task.chainItems,
     // The whole question, not just its kind: a guest's Yes/No/Maybe
@@ -230,7 +229,6 @@ export function templateFromProject(
     recurrenceMonth: task.recurrenceMonth,
     recurrenceFromCompletion: task.recurrenceFromCompletion,
     recurrenceHolidays: task.recurrenceHolidays ?? null,
-    rainSkipMm: task.rainSkipMm ?? null,
     vacationPause: task.vacationPause,
     excludeFromSuggestions: task.excludeFromSuggestions,
     slotIn: task.slotIn ?? null,

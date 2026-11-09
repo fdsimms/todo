@@ -23,7 +23,7 @@ const LABELS: Record<string, string> = {
   alarmLink: 'reminder', alarmLinkLeavesOpen: 'reminder',
   recurrenceType: 'repeat', recurrenceInterval: 'repeat', recurrenceDays: 'repeat', recurrenceMonthDay: 'repeat',
   recurrenceMonth: 'repeat', recurrenceWeekOrdinal: 'repeat', recurrenceFromCompletion: 'repeat',
-  recurrenceHolidays: 'repeat', rainSkipMm: 'repeat', recurrenceEndDate: 'repeat', recurrenceCount: 'repeat',
+  recurrenceHolidays: 'repeat', recurrenceEndDate: 'repeat', recurrenceCount: 'repeat',
   priority: 'priority', effort: 'effort', estimatedMinutes: 'effort', actualMinutes: 'effort', difficulty: 'difficulty',
   slotIn: 'slot in',
   timedMinutes: 'timer', completionTimerMinutes: 'timer', completionTimerNote: 'timer',

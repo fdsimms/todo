@@ -94,8 +94,7 @@ import { HighlightedText } from './HighlightedText';
 import { suggestTitles, type TitleSuggestion } from '../utils/titleSuggestions';
 import { againFields, describeAgainFields } from '../utils/taskAgain';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, describeSchedule, scheduleHint, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, contactForMention, findAmbiguousMention, getMentionSuggestions, getPhraseMentionSuggestion, unconfirmedPhraseMentions, phraseOverrideKey, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
-import { canSkipForRain, formatRain, rainUnitFor } from '../utils/rainSkip';
+import { parseTaskInput, scheduleClockInstant, describeSchedule, scheduleHint, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, contactForMention, findAmbiguousMention, getMentionSuggestions, getPhraseMentionSuggestion, unconfirmedPhraseMentions, phraseOverrideKey, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
 import { pickTitleSuggestion, describeTitleSuggestion, linkLabel } from '../utils/titleSuggestion';
@@ -557,9 +556,6 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // "on the next sunny day" off the title tooltip (Task.weatherWait).
   const [weatherWait, setWeatherWait] = useState<WeatherCondition | null>(null);
   const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
-  // Task.rainSkipMm from "unless it rains", in millimetres.
-  const [titleRainSkipMm, setTitleRainSkipMm] = useState<number | null>(null);
-  const rainUnit = rainUnitFor(useSettingsStore(s => s.unitSystem));
   // Read for the re-render alone: the sun tooltip resolves through
   // sunLocationOn, which reads the setting itself.
   const sunLocationSetting = useSettingsStore(s => s.sunLocation);
@@ -678,7 +674,6 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     setTargetCount(initialType === 'target' ? DEFAULT_TARGET_COUNT : null);
     setQuotaPeriod('day');
     setWeatherWait(null);
-    setTitleRainSkipMm(null);
     setTitleWindowStart(null);
     setTitleWindowStartSun(null);
     setTitleSeries(null);
@@ -920,10 +915,8 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // phrase is highlighted in the input and described in a tooltip; nothing is
   // applied until the user taps the tooltip.
   // ==== parsing the typed line: date, category/tags, link, phone, email, duration ====
-  // Read past a trailing "unless it rains" (parseTaskInputAheadOfRainSkip),
-  // which would otherwise block the repeat it needs.
   const parsed = useMemo(
-    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date(), dayResetTime, polarity === 'negative') : null),
+    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime), new Date(), dayResetTime, polarity === 'negative') : null),
     [title, dayResetTime, polarity]
   );
   // "pay rent tmrw #home #errand" — one or more "#word" tokens, the first
@@ -983,7 +976,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   }, [candidateRowKey]);
   // Everything a typed line can say after the schedule phrase, the "#word"
   // token and the "@name" mention: priority, project, chain, link, phone, email,
-  // timer, supply, target, estimate, weather wait, sun window, rain skip,
+  // timer, supply, target, estimate, weather wait, sun window,
   // waiting on, subtasks, avoid. One suggestion at a time, in that order,
   // through pickTitleSuggestion (src/utils/titleSuggestion.ts), which the task
   // editor reads too so the two can't disagree about what a line means. Each
@@ -1038,17 +1031,15 @@ export const QuickAddModal = React.memo(function QuickAddModal({
         weatherWait,
         polarity,
         windowEnd: titleWindowEnd,
-        hasRainSkip: titleRainSkipMm !== null,
-        rainUnit,
         sunClock: anchor => sunAnchorHHMM(anchor, sunDayStart, sunLocationOn(sunDayStart)),
       })
       : null),
     // sunLocation is a dep for the re-read alone: sunLocationOn reads it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, type, recurrenceType, recurrenceInterval, recurrenceDays, titleSeries, chainItems, intoProjectId, liveProjects, waitCandidates, weatherTasksOn, weatherWait, polarity, titleWindowEnd, titleRainSkipMm, rainUnit, sunDayStart.getTime(), sunLocationSetting]
+    [title, parsed, categoryTagsParsed, ambiguousMention, mentionSuggestion, type, recurrenceType, recurrenceInterval, recurrenceDays, titleSeries, chainItems, intoProjectId, liveProjects, waitCandidates, weatherTasksOn, weatherWait, polarity, titleWindowEnd, sunDayStart.getTime(), sunLocationSetting]
   );
   const titleSuggestionDescription = titleSuggestion
-    ? describeTitleSuggestion(titleSuggestion, rainUnit, hhmm => formatHHMM(hhmm), savedLinks.saved)
+    ? describeTitleSuggestion(titleSuggestion, hhmm => formatHHMM(hhmm), savedLinks.saved)
     : null;
   const priorityParsed = titleSuggestion?.kind === 'priority' ? titleSuggestion.hit : null;
   const difficultyParsed = titleSuggestion?.kind === 'difficulty' ? titleSuggestion.hit : null;
@@ -1063,7 +1054,6 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const estimateParsed = titleSuggestion?.kind === 'estimate' ? titleSuggestion.hit : null;
   const weatherParsed = titleSuggestion?.kind === 'weather' ? titleSuggestion.hit : null;
   const sunParsed = titleSuggestion?.kind === 'sun' ? titleSuggestion.hit : null;
-  const rainParsed = titleSuggestion?.kind === 'rain' ? titleSuggestion.hit : null;
   const waitingParsed = titleSuggestion?.kind === 'waiting' ? titleSuggestion.hit : null;
   const subtasksParsed = titleSuggestion?.kind === 'subtasks' ? titleSuggestion.hit : null;
   const avoidParsed = titleSuggestion?.kind === 'avoid' ? titleSuggestion.hit : null;
@@ -1139,11 +1129,6 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                       ? {
                           matchStart: sunParsed.matchStart,
                           matchedText: title.slice(sunParsed.matchStart, sunParsed.matchEnd),
-                        }
-                    : rainParsed
-                      ? {
-                          matchStart: rainParsed.matchStart,
-                          matchedText: title.slice(rainParsed.matchStart, rainParsed.matchEnd),
                         }
                     : waitingParsed
                       ? {
@@ -1663,17 +1648,6 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     }
   };
 
-  // Skips a day it rained. The applied line says how much rain counts.
-  const applyRain = () => {
-    if (!rainParsed) return;
-    haptics.success();
-    animateLayout();
-    const nextTitle = withTrailingSpace(rainParsed.cleanTitle);
-    setTitle(nextTitle);
-    titleCaret.moveCaret(nextTitle);
-    setTitleRainSkipMm(rainParsed.mm);
-  };
-
   const applyProject = () => {
     if (!projectParsed) return;
     haptics.success();
@@ -1743,7 +1717,6 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     else if (estimateParsed) applyEstimate();
     else if (weatherParsed) applyWeather();
     else if (sunParsed) applySun();
-    else if (rainParsed) applyRain();
     else if (waitingParsed) applyWaiting();
     else if (subtasksParsed) applySubtasks();
     else if (avoidParsed) applyAvoid();
@@ -1814,7 +1787,6 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const weatherWaitHere = weatherWait !== null && type === 'task' && recurrenceType === 'none' && seriesExtraDates.length === 0 && chainItems.length === 0;
   // The repeat it skips has to survive too: a later switch to a one-off or an
   // hourly repeat drops it, the editor's rule on save.
-  const rainSkipHere = titleRainSkipMm !== null && type === 'task' && canSkipForRain({ recurrenceType, polarity });
 
   const typeValues: TypeValues = {
     // Always empty here, for the same reason healthMetric is null: quick add
@@ -1974,7 +1946,6 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       ...(titleWindowEnd ? { windowEnd: titleWindowEnd, windowEndSun: titleWindowEndSun } : {}),
       ...(weatherWaitHere ? { weatherWait } : {}),
       ...(titleSlotIn && dueDate ? { slotIn: true } : {}),
-      ...(rainSkipHere ? { rainSkipMm: titleRainSkipMm } : {}),
       // Plain kind only, the editor's rule: every other kind is a way of
       // completing something, and an avoid-task is never completed.
       ...(avoidsHere ? { polarity: 'negative' as const, showStreak: true } : {}),
@@ -2245,7 +2216,6 @@ export const QuickAddModal = React.memo(function QuickAddModal({
       windowStartSun: titleWindowStart ? titleWindowStartSun : null,
       weatherWait: weatherWaitHere ? weatherWait : null,
       slotIn: titleSlotIn && dueDate ? true : null,
-      rainSkipMm: rainSkipHere ? titleRainSkipMm : null,
       blockerIds,
       subtaskTitles,
       windowEnd: titleWindowEnd,
@@ -2944,12 +2914,6 @@ parsed
             `Waiting for a ${weatherWait} day`,
             'Stop waiting for weather',
             () => setWeatherWait(null),
-          )}
-          {rainSkipHere && titleRainSkipMm !== null && appliedLine(
-            'rainy-outline',
-            `Skips a day after ${formatRain(titleRainSkipMm, rainUnit)} of rain`,
-            'Stop skipping for rain',
-            () => setTitleRainSkipMm(null),
           )}
           {blockerIds.length > 0 && appliedLine(
             'hourglass-outline',
