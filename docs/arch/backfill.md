@@ -54,22 +54,33 @@ a pool (a scheduled medication has no limit to ask for), `groupOnToday` and `hid
 projects, a recipe's `mealType`, a person's contact lines (Fill from contacts does that in one
 tap), and a store's `receiptStyle`.
 
-## All fields (tasks)
+## All fields
 
-The Tasks picker's first row walks every field with a gap at once, task by task, instead of one
-field across every task. `backfillMultiQueue` (`fieldBackfill.ts`) builds the queue: one entry per
-task, holding each selected field it is still missing. The screen keeps `activeField` (what the
-person chose) and derives `active` from it, swapping in the field the current task is on, so every
-task handler, the card and the dismiss label keep reading one `active`.
+The first row of every pool's picker (shown when two or more of its fields have a gap) walks
+every field with a gap at once, row by row, instead of one field across every row. It opens
+`AllFieldsSheet`, a card that lists the pool's fields with a toggle each (every field with a gap
+starts on), and Start begins the walk over the fields left on. The queue is
+`backfillMultiEntries` (`src/utils/backfillMulti.ts`): one entry per row, holding each selected
+field it is still missing. Tasks wrap it as `backfillMultiQueue` so a series stays one entry.
 
-- **Skips are step-aware.** `skippedIds` holds a plain task id to skip a whole task ("Skip this
-  task") and a `backfillStepKey` (`id|field`) to skip one field ("Skip for now"). `stepIdFor` files
-  `advance`, history and session lines under the step key in this mode, so one task's answers don't
-  replace each other in the review and Previous returns to the right field.
-- **No redo, no AI suggestions.** A redo is a different question about one field, and a suggestion
-  batch is asked for one field's whole queue while this mode changes the field card by card.
-- **The field set is fixed at the start:** every field the picker offers that has a task missing it.
-  There is no field chooser yet.
+The screen keeps `activeField` (what the person chose, which also names the pool) and derives
+`active` from it, swapping in the field the current row is on. Every handler, card, dismiss label
+and batch toggle keeps reading one `active`, which is why the walk needed no new card.
+
+- **Skips are step-aware.** `skippedIds` holds a plain row id to skip a whole row (the step row's
+  "Skip task") and a `backfillStepKey` (`id|field`) to skip one field ("Skip for now").
+  `stepIdFor` files `advance` and history under the step key in this mode, so Previous returns to
+  the right field.
+- **The session review stamps itself.** `logSession` files each line under its step key and
+  prefixes the field ("Priority: High"), so a row's answers don't replace each other and each
+  keeps its own Undo. Handlers keep passing the row's own id; a saved default is left alone.
+- **A pool's live "missing" filter does the advancing.** An answered or dismissed field drops out
+  of that row's entry on its own, so only a skip needs a key.
+- **No redo.** A redo asks whether one field's value is still right, which is another question.
+- **AI suggestions are keyed by field.** `suggestions` and `suggestAskedIds` are keyed by
+  `backfillStepKey(taskId, field)`, so a reply for estimate can't be offered on the category card,
+  and one that lands after the field changed is simply held for when that field comes up. A reply
+  asked for before `clearSuggestions` is dropped (`suggestEpochRef`).
 - **A series is one entry.** When two fields would queue different dates of it, the first wins and
   the other date comes up once that one is finished.
 

@@ -1,7 +1,7 @@
 import {
   isFieldMissing, isBackfillDismissed, backfillCandidates, backfillFieldCounts,
   dismissBackfillField, estimatePatchFor, BACKFILL_FIELDS, backfillFieldsFor, backfillSeriesPeers,
-  backfillMultiQueue, backfillStepKey, splitBackfillStepKey,
+  backfillMultiQueue,
 } from '../utils/fieldBackfill';
 import type { Task, Category } from '../types';
 
@@ -655,7 +655,7 @@ describe('backfillMultiQueue', () => {
   });
 
   it('skips one field of a task without skipping the task', () => {
-    const skipped = new Set([backfillStepKey('both', 'estimate')]);
+    const skipped = new Set(['both|estimate']);
     const steps = backfillMultiQueue(tasks, ['estimate', 'priority'], { skipped });
     expect(steps.find(s => s.task.id === 'both')!.fields).toEqual(['priority']);
   });
@@ -681,12 +681,5 @@ describe('backfillMultiQueue', () => {
     expect(steps.map(s => [s.task.id, s.fields])).toEqual([['d1', ['estimate']]]);
     const answered = series.map(t => ({ ...t, estimatedMinutes: 30 }));
     expect(backfillMultiQueue(answered, ['estimate', 'priority']).map(s => [s.task.id, s.fields])).toEqual([['d2', ['priority']]]);
-  });
-});
-
-describe('backfillStepKey', () => {
-  it('round-trips, and reads a plain id as a whole task', () => {
-    expect(splitBackfillStepKey(backfillStepKey('abc123', 'priority'))).toEqual({ id: 'abc123', field: 'priority' });
-    expect(splitBackfillStepKey('abc123')).toEqual({ id: 'abc123', field: null });
   });
 });

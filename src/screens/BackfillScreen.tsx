@@ -50,6 +50,7 @@ import { PillGroup } from '../components/PillGroup';
 import { InlineAction } from '../components/InlineAction';
 import { LazySheet } from '../components/LazySheet';
 import { SavedDefaultsSheet } from '../components/SavedDefaultsSheet';
+import { AllFieldsSheet, type AllFieldsOption } from '../components/AllFieldsSheet';
 import { SubstituteSheet } from '../components/SubstituteSheet';
 import { NutritionPanelSheet } from '../components/NutritionPanelSheet';
 import { NutritionSearchSheet, navigateToFoodSearchSettings } from '../components/NutritionSearchSheet';
@@ -77,9 +78,9 @@ import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
 import { hasAnyHolidays } from '../utils/holidays';
 import {
   BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, backfillSeriesPeers, dismissBackfillField,
-  isFieldMissing, backfillFieldsFor, backfillMultiQueue, backfillStepKey, splitBackfillStepKey,
-  type BackfillFieldId,
+  isFieldMissing, backfillFieldsFor, backfillMultiQueue, type BackfillFieldId,
 } from '../utils/fieldBackfill';
+import { backfillMultiEntries, backfillStepKey, splitBackfillStepKey, type MultiEntry } from '../utils/backfillMulti';
 import {
   isSuggestibleBackfillField, suggestionTasks, suggestionExamples, type BackfillSuggestion,
 } from '../utils/backfillSuggest';
@@ -369,6 +370,18 @@ type ActiveField =
   | { kind: 'item'; id: ItemBackfillFieldId }
   | { kind: 'recipe'; id: RecipeBackfillFieldId };
 
+/** The name of the field a step is asking about, for the session review. */
+function activeFieldLabel(field: ActiveField): string {
+  switch (field.kind) {
+    case 'task': return BACKFILL_FIELDS.find(f => f.id === field.id)!.label;
+    case 'category': return CATEGORY_BACKFILL_FIELDS.find(f => f.id === field.id)!.label;
+    case 'project': return PROJECT_BACKFILL_FIELDS.find(f => f.id === field.id)!.label;
+    case 'person': return PERSON_BACKFILL_FIELDS.find(f => f.id === field.id)!.shortLabel;
+    case 'item': return ITEM_BACKFILL_FIELDS.find(f => f.id === field.id)!.label;
+    case 'recipe': return RECIPE_BACKFILL_FIELDS.find(f => f.id === field.id)!.label;
+  }
+}
+
 /** What the dismiss button for this step says, by pool and field. */
 function dismissLabelFor(field: ActiveField): string {
   switch (field.kind) {
@@ -470,10 +483,11 @@ export function BackfillScreen() {
   // an all-fields walk (`multiFields`) swaps in whichever of its fields the
   // current task is on, so every handler keeps reading one `active` field.
   const [activeField, setActive] = useState<ActiveField | null>(null);
-  // The fields of an "All fields" walk over tasks, or null in an ordinary
-  // single-field run. Set once by startAllFields and never edited: a task's
-  // own gaps decide which of them it is asked about.
-  const [multiFields, setMultiFields] = useState<BackfillFieldId[] | null>(null);
+  // The fields of an "All fields" walk over one pool (its kind is
+  // `activeField.kind`), or null in an ordinary single-field run. Set once by
+  // startAllFields and never edited: a row's own gaps decide which of them it
+  // is asked about.
+  const [multiFields, setMultiFields] = useState<string[] | null>(null);
   // Redo-from-scratch (task fields only): widens the queue to every live
   // task for the field instead of just the ones missing a value — see
   // confirmStartOver.
@@ -499,39 +513,62 @@ export function BackfillScreen() {
   // field is (re)chosen. See SessionEntry's doc comment.
   const [sessionLog, setSessionLog] = useState<SessionEntry[]>([]);
 
-  // ==== all-fields walk: the queue, the current task and which field it is on ====
-  // One entry per task missing any selected field. Session skips ride in the
-  // same `skippedIds` set the single-field queue uses: a plain id skips the
-  // whole task and a step key (`backfillStepKey`) skips one field of it.
+  // ==== all-fields walk: the queue, the current row and which field it is on ====
+  // One entry per row missing any selected field, for whichever pool the walk
+  // is over. Session skips ride in the same `skippedIds` set the single-field
+  // queue uses: a plain id skips the whole row and a step key
+  // (`backfillStepKey`) skips one field of it.
+  const multiEntriesFor = (kind: EntityKind, fields: string[], skipped?: ReadonlySet<string>) => {
+    const plain = <T extends { id: string }>(entries: MultiEntry<T, string>[]) =>
+      entries.map(e => ({ id: e.row.id, fields: e.fields }));
+    switch (kind) {
+      case 'task':
+        return backfillMultiQueue(tasks, fields as BackfillFieldId[], { categories, skipped })
+          .map(step => ({ id: step.task.id, fields: step.fields as string[] }));
+      case 'category':
+        return plain(backfillMultiEntries(fields, f => categoryBackfillCandidates(categories, f as CategoryBackfillFieldId), { skipped }));
+      case 'project':
+        return plain(backfillMultiEntries(fields, f => projectBackfillCandidates(projects, f as ProjectBackfillFieldId), { skipped }));
+      case 'person':
+        return plain(backfillMultiEntries(fields, f => personBackfillCandidates(people, f as PersonBackfillFieldId), { skipped }));
+      case 'item':
+        return plain(backfillMultiEntries(
+          fields,
+          f => itemBackfillCandidates(groceryItems, f as ItemBackfillFieldId, itemSubs, nonFoodAisles, {}, itemProducts),
+          { skipped },
+        ));
+      case 'recipe':
+        return plain(backfillMultiEntries(fields, f => recipeBackfillCandidates(recipes, f as RecipeBackfillFieldId), { skipped }));
+    }
+  };
   const multiQueue = useMemo(
-    () => multiFields ? backfillMultiQueue(tasks, multiFields, { categories, skipped: skippedIds }) : [],
-    [multiFields, tasks, categories, skippedIds]
+    () => multiFields && activeField ? multiEntriesFor(activeField.kind, multiFields, skippedIds) : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- multiEntriesFor reads exactly the pools listed
+    [multiFields, activeField?.kind, skippedIds, tasks, categories, projects, people, groceryItems, itemSubs, nonFoodAisles, itemProducts, recipes]
   );
   // The card on screen: the front of the queue, or the step Previous went back
   // to (whose key names the field, so the card can show it again).
   const multiCurrent = useMemo(() => {
-    if (!multiFields) return null;
+    if (!multiFields || !activeField) return null;
     if (manualCurrentId) {
       const { id, field } = splitBackfillStepKey(manualCurrentId);
-      const task = tasks.find(t => t.id === id);
-      if (task && field && multiFields.includes(field)) {
-        const queued = multiQueue.find(s => s.task.id === id);
-        return { task, field, remaining: queued?.fields ?? [field] };
+      if (field && multiFields.includes(field) && multiEntriesFor(activeField.kind, [field]).some(e => e.id === id)) {
+        return { id, field, remaining: multiQueue.find(e => e.id === id)?.fields ?? [field] };
       }
     }
     const front = multiQueue[0];
-    return front ? { task: front.task, field: front.fields[0], remaining: front.fields } : null;
-  }, [multiFields, manualCurrentId, tasks, multiQueue]);
+    return front ? { id: front.id, field: front.fields[0], remaining: front.fields } : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [multiFields, activeField?.kind, manualCurrentId, multiQueue]);
   const multiField = multiCurrent?.field ?? null;
   const active = useMemo<ActiveField | null>(
-    () => multiField ? { kind: 'task', id: multiField } : activeField,
+    () => multiField && activeField ? ({ kind: activeField.kind, id: multiField } as ActiveField) : activeField,
     [multiField, activeField]
   );
-  // The key a skip, an answer's session line and a history step are filed under:
-  // the task's id, or in an all-fields walk that id plus the field, since one
-  // task is on screen for several of them.
-  const stepIdFor = (id: string) =>
-    multiFields && active?.kind === 'task' ? backfillStepKey(id, active.id) : id;
+  // The key a skip and a history step are filed under: the row's id, or in an
+  // all-fields walk that id plus the field, since one row is on screen for
+  // several of them.
+  const stepIdFor = (id: string) => multiFields && active ? backfillStepKey(id, active.id) : id;
 
   const [defaultsOpen, setDefaultsOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
@@ -587,6 +624,12 @@ export function BackfillScreen() {
   // here rather than on the task: a suggestion is something offered while you
   // are looking at the card, and a stale one written to the row would outlive
   // both the queue and any reason to trust it.
+  //
+  // Everything here is keyed by `backfillStepKey(taskId, field)`, never by the
+  // task alone. A suggestion answers one question, and the screen's field can
+  // change under it (the next field in an all-fields walk, or a reply landing
+  // after you moved on): category suggestions once sat in a map keyed by task
+  // while the estimate field was on screen, and were offered as estimates.
   const [suggestions, setSuggestions] = useState<Map<string, BackfillSuggestion>>(new Map());
   // Tasks a request has actually covered, which is *not* the key set above:
   // the model is told to leave out anything it can't place honestly, so a
@@ -594,23 +637,23 @@ export function BackfillScreen() {
   // would offer to fetch a suggestion it has already been refused, and asking
   // again would spend a request to be refused identically.
   const [suggestAskedIds, setSuggestAskedIds] = useState<Set<string>>(new Set());
-  const [suggestLoading, setSuggestLoading] = useState(false);
-  const [suggestError, setSuggestError] = useState<string | null>(null);
-  // Which field is open right now, for a request that comes back after the
-  // person has moved on: `chooseTaskField` clears the suggestions for the
-  // field being left, but a batch already in flight landed after that clear,
-  // so category suggestions sat in the map while the estimate field was on
-  // screen (and were offered as estimates). Read after the await and compared
-  // with the field the request was for.
-  const activeRef = useRef(active);
-  useEffect(() => { activeRef.current = active; }, [active]);
+  // The field a request is out for, and the last one that failed or came back
+  // empty, so another field's card doesn't show either.
+  const [suggestLoadingField, setSuggestLoadingField] = useState<string | null>(null);
+  const [suggestErrorState, setSuggestErrorState] = useState<{ field: string; message: string } | null>(null);
+  // Bumped by clearSuggestions: a reply that was asked for before the slate was
+  // wiped (a redo, a new field, back to the picker) is no longer about this one.
+  const suggestEpochRef = useRef(0);
 
   const clearSuggestions = () => {
+    suggestEpochRef.current += 1;
     setSuggestions(new Map());
     setSuggestAskedIds(new Set());
-    setSuggestLoading(false);
-    setSuggestError(null);
+    setSuggestLoadingField(null);
+    setSuggestErrorState(null);
   };
+  const suggestLoading = suggestLoadingField !== null && suggestLoadingField === active?.id;
+  const suggestError = suggestErrorState && suggestErrorState.field === active?.id ? suggestErrorState.message : null;
 
   // Read here rather than inside the service so the entry point can't exist
   // for a call that would only apologise — the pairing `useAiRoute`'s own doc
@@ -687,47 +730,39 @@ export function BackfillScreen() {
     [tasks, active, fromScratch, skippedIds, categories, slotInDayLoadOf]
   );
   const categoryQueue = useMemo(
-    () => active?.kind === 'category' ? categoryBackfillCandidates(categories, active.id, { fromScratch }).filter(c => !skippedIds.has(c.id)) : [],
+    () => active?.kind === 'category' ? categoryBackfillCandidates(categories, active.id, { fromScratch }).filter(c => !skippedIds.has(c.id) && !skippedIds.has(backfillStepKey(c.id, active.id))) : [],
     [categories, active, fromScratch, skippedIds]
   );
   const projectQueue = useMemo(
-    () => active?.kind === 'project' ? projectBackfillCandidates(projects, active.id, { fromScratch }).filter(p => !skippedIds.has(p.id)) : [],
+    () => active?.kind === 'project' ? projectBackfillCandidates(projects, active.id, { fromScratch }).filter(p => !skippedIds.has(p.id) && !skippedIds.has(backfillStepKey(p.id, active.id))) : [],
     [projects, active, fromScratch, skippedIds]
   );
-  const currentTask = multiFields
-    ? (multiCurrent?.task ?? null)
-    : active?.kind === 'task'
-    ? (manualCurrentId ? tasks.find(t => t.id === manualCurrentId) ?? (taskQueue[0] ?? null) : (taskQueue[0] ?? null))
-    : null;
-  const currentCategory = active?.kind === 'category'
-    ? (manualCurrentId ? categories.find(c => c.id === manualCurrentId) ?? (categoryQueue[0] ?? null) : (categoryQueue[0] ?? null))
-    : null;
+  // The row on screen: the walk's own current row, or in a single-field run the
+  // one Previous went back to, else the front of the queue.
+  const currentRowOf = <T extends { id: string }>(pool: T[], queue: T[]): T | null =>
+    multiFields
+      ? pool.find(r => r.id === multiCurrent?.id) ?? null
+      : manualCurrentId ? pool.find(r => r.id === manualCurrentId) ?? (queue[0] ?? null) : (queue[0] ?? null);
+  const currentTask = active?.kind === 'task' ? currentRowOf(tasks, taskQueue) : null;
+  const currentCategory = active?.kind === 'category' ? currentRowOf(categories, categoryQueue) : null;
   const personQueue = useMemo(
-    () => active?.kind === 'person' ? personBackfillCandidates(people, active.id, { fromScratch }).filter(p => !skippedIds.has(p.id)) : [],
+    () => active?.kind === 'person' ? personBackfillCandidates(people, active.id, { fromScratch }).filter(p => !skippedIds.has(p.id) && !skippedIds.has(backfillStepKey(p.id, active.id))) : [],
     [people, active, fromScratch, skippedIds]
   );
   const itemQueue = useMemo(
     () => active?.kind === 'item'
-      ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles, { fromScratch }, itemProducts).filter(i => !skippedIds.has(i.id))
+      ? itemBackfillCandidates(groceryItems, active.id, itemSubs, nonFoodAisles, { fromScratch }, itemProducts).filter(i => !skippedIds.has(i.id) && !skippedIds.has(backfillStepKey(i.id, active.id)))
       : [],
     [groceryItems, active, fromScratch, skippedIds, itemSubs, nonFoodAisles, itemProducts]
   );
   const recipeQueue = useMemo(
-    () => active?.kind === 'recipe' ? recipeBackfillCandidates(recipes, active.id, { fromScratch }).filter(r => !skippedIds.has(r.id)) : [],
+    () => active?.kind === 'recipe' ? recipeBackfillCandidates(recipes, active.id, { fromScratch }).filter(r => !skippedIds.has(r.id) && !skippedIds.has(backfillStepKey(r.id, active.id))) : [],
     [recipes, active, fromScratch, skippedIds]
   );
-  const currentProject = active?.kind === 'project'
-    ? (manualCurrentId ? projects.find(p => p.id === manualCurrentId) ?? (projectQueue[0] ?? null) : (projectQueue[0] ?? null))
-    : null;
-  const currentPerson = active?.kind === 'person'
-    ? (manualCurrentId ? people.find(p => p.id === manualCurrentId) ?? (personQueue[0] ?? null) : (personQueue[0] ?? null))
-    : null;
-  const currentItem = active?.kind === 'item'
-    ? (manualCurrentId ? groceryItems.find(i => i.id === manualCurrentId) ?? (itemQueue[0] ?? null) : (itemQueue[0] ?? null))
-    : null;
-  const currentRecipe = active?.kind === 'recipe'
-    ? (manualCurrentId ? recipes.find(r => r.id === manualCurrentId) ?? (recipeQueue[0] ?? null) : (recipeQueue[0] ?? null))
-    : null;
+  const currentProject = active?.kind === 'project' ? currentRowOf(projects, projectQueue) : null;
+  const currentPerson = active?.kind === 'person' ? currentRowOf(people, personQueue) : null;
+  const currentItem = active?.kind === 'item' ? currentRowOf(groceryItems, itemQueue) : null;
+  const currentRecipe = active?.kind === 'recipe' ? currentRowOf(recipes, recipeQueue) : null;
   // Every arm is tested, including the last: this used to fall through to the
   // item queue, which was right only for as long as items were the final kind
   // and would have read a stale length for the pool added after them.
@@ -749,8 +784,8 @@ export function BackfillScreen() {
   // the request drops out of the count on its own — the same reason the
   // queues themselves are recomputed every render rather than snapshotted.
   const suggestedQueue = useMemo(
-    () => taskQueue.filter(t => suggestions.has(t.id)),
-    [taskQueue, suggestions]
+    () => active?.kind === 'task' ? taskQueue.filter(t => suggestions.has(backfillStepKey(t.id, active.id))) : [],
+    [taskQueue, suggestions, active]
   );
 
   // "Use this answer for everything in this set": a project, a category, a
@@ -792,11 +827,11 @@ export function BackfillScreen() {
   };
   const groupLabel = activeBatch ? scopeLabelFor(activeBatch.scope) : null;
   useEffect(() => { setBatchScopeKey(null); }, [currentId, active?.kind, active?.id]);
-  // Off in an all-fields walk: a suggestion batch is asked for one field's
-  // whole queue, and that field changes under it from card to card.
-  const canSuggest = active?.kind === 'task' && !multiFields && isSuggestibleBackfillField(active.id)
+  const canSuggest = active?.kind === 'task' && isSuggestibleBackfillField(active.id)
     && suggestRoute !== 'unavailable';
-  const currentSuggestion = currentTask ? suggestions.get(currentTask.id) ?? null : null;
+  const currentSuggestion = currentTask && active?.kind === 'task'
+    ? suggestions.get(backfillStepKey(currentTask.id, active.id)) ?? null
+    : null;
 
   // ==== cadence offers and per-card draft resets ====
   /**
@@ -849,7 +884,7 @@ export function BackfillScreen() {
     setSubSheetOpen(false);
     setNutritionSearchOpen(false);
     setNutritionPanelOpen(false);
-  }, [currentId, active?.kind === 'task' ? active.id : null]);
+  }, [currentId, active?.id ?? null]);
 
   // Whatever the recipe already says, so the Previous button doesn't hand back
   // a blank stepper for a value that was just set — the same call the person
@@ -928,31 +963,34 @@ export function BackfillScreen() {
     setSessionTotal(backfillCandidates(tasks, id, { categories }).length);
   };
 
-  // The fields an "All fields" walk covers: every one the picker offers that
-  // still has a task missing it, so a field nobody needs doesn't sit in the loop.
-  const allFieldIds = useMemo(
-    () => taskFields.filter(f => taskCounts[f.id] > 0).map(f => f.id),
-    [taskFields, taskCounts]
-  );
-  // How many tasks the walk would visit; the picker row says it.
-  const allFieldsCount = useMemo(
-    () => backfillMultiQueue(tasks, allFieldIds, { categories }).length,
-    [tasks, allFieldIds, categories]
-  );
+  // The fields a pool's "All fields" walk can cover, as the picker lists them,
+  // each with how many rows are missing it.
+  const walkFieldsFor = (kind: EntityKind): AllFieldsOption[] => {
+    switch (kind) {
+      case 'task': return taskFields.map(f => ({ id: f.id, label: f.label, count: taskCounts[f.id] }));
+      case 'category': return CATEGORY_BACKFILL_FIELDS.map(f => ({ id: f.id, label: f.label, count: categoryCounts[f.id] }));
+      case 'project': return PROJECT_BACKFILL_FIELDS.map(f => ({ id: f.id, label: f.label, count: projectCounts[f.id] }));
+      case 'person': return PERSON_BACKFILL_FIELDS.map(f => ({ id: f.id, label: f.label, count: personCounts[f.id] }));
+      case 'item': return ITEM_BACKFILL_FIELDS.map(f => ({ id: f.id, label: f.label, count: itemCounts[f.id] }));
+      case 'recipe': return RECIPE_BACKFILL_FIELDS.map(f => ({ id: f.id, label: f.label, count: recipeCounts[f.id] }));
+    }
+  };
+  // Which pool's chooser card is open, if any.
+  const [walkChooser, setWalkChooser] = useState<EntityKind | null>(null);
 
-  const startAllFields = () => {
-    if (allFieldIds.length === 0) return;
+  const startAllFields = (kind: EntityKind, fieldIds: string[]) => {
+    if (fieldIds.length === 0) return;
     haptics.tap();
     animateLayout();
-    setMultiFields(allFieldIds);
-    setActive({ kind: 'task', id: allFieldIds[0] });
+    setMultiFields(fieldIds);
+    setActive({ kind, id: fieldIds[0] } as ActiveField);
     setFromScratch(false);
     setSkippedIds(new Set());
     setHistory([]);
     setManualCurrentId(null);
     setSessionLog([]);
     clearSuggestions();
-    setSessionTotal(allFieldsCount);
+    setSessionTotal(multiEntriesFor(kind, fieldIds).length);
   };
 
   const chooseCategoryField = (id: CategoryBackfillFieldId) => {
@@ -1137,8 +1175,16 @@ export function BackfillScreen() {
   // Records or replaces this item's row in the session review — replaces
   // rather than appends so re-answering an item (through Previous) updates
   // its one line instead of leaving the earlier answer sitting above it.
+  //
+  // In an all-fields walk a row has several lines in the review, one per field,
+  // so each is filed under its step key and names its field ("Priority: High").
+  // Stamped here rather than at every call site, which is why the handlers keep
+  // passing the row's own id. A saved default belongs to no field of the row.
   const logSession = (entry: SessionEntry) => {
-    setSessionLog(prev => [...prev.filter(e => e.itemId !== entry.itemId), entry]);
+    const stamped = multiFields && active && !entry.isDefault
+      ? { ...entry, itemId: backfillStepKey(entry.itemId, active.id), valueText: `${activeFieldLabel(active)}: ${entry.valueText}` }
+      : entry;
+    setSessionLog(prev => [...prev.filter(e => e.itemId !== stamped.itemId), stamped]);
   };
 
   // What every answer outside the task pool files: a line in the session review
@@ -1170,11 +1216,6 @@ export function BackfillScreen() {
   };
 
   // ==== applying a task field (series peers, group and kind defaults, slot-in) ====
-  // In an all-fields walk a task has several lines in the review, so each one
-  // names its field ("Priority: High"); a single-field run's lines are all the
-  // same field and stay as they were.
-  const sessionValueText = (fieldLabel: string, valueText: string) =>
-    multiFields ? `${fieldLabel}: ${valueText}` : valueText;
   // A tap here commits immediately and advances the queue, with no per-row
   // confirm — registering the snapshot with setLastAction, same as
   // TaskEditor's save, is what makes a mis-tap recoverable via shake-to-undo
@@ -1228,9 +1269,9 @@ export function BackfillScreen() {
       redo: redoRestoringRows(snapshots.map(row => row.id)),
     });
     logSession({
-      itemId: stepIdFor(currentTask.id),
+      itemId: currentTask.id,
       title: displayTitleFor(currentTask),
-      valueText: sessionValueText(fieldLabel, valueText),
+      valueText,
       undo,
     });
     advance(currentTask.id);
@@ -1263,9 +1304,9 @@ export function BackfillScreen() {
       redo: redoRestoringRows(snapshots.map(row => row.id)),
     });
     logSession({
-      itemId: stepIdFor(currentTask.id),
+      itemId: currentTask.id,
       title: displayTitleFor(currentTask),
-      valueText: sessionValueText(fieldLabel, 'Cleared'),
+      valueText: 'Cleared',
       undo,
     });
     advance(currentTask.id);
@@ -1322,9 +1363,9 @@ export function BackfillScreen() {
         if (stepId) useSettingsStore.getState().setMealSlotStepEstimate(stepId, patch.estimatedMinutes);
       }
       logSession({
-        itemId: stepIdFor(task.id),
+        itemId: task.id,
         title: displayTitleFor(task),
-        valueText: sessionValueText(fieldLabel, valueText),
+        valueText,
         undo: restoreRows(rowSnapshots),
       });
     });
@@ -1464,37 +1505,41 @@ export function BackfillScreen() {
     const batch = suggestionTasks(taskQueue, displayTitleFor);
     if (batch.length === 0) return;
     haptics.tap();
-    setSuggestLoading(true);
-    setSuggestError(null);
-    // Still on the field this batch was asked for. Anything else (another
-    // field, back at the pool list) has already cleared its own slate, and a
-    // reply merged into it now would be answers to a different question.
-    const stillHere = () => activeRef.current?.kind === 'task' && activeRef.current.id === field;
+    const epoch = suggestEpochRef.current;
+    setSuggestLoadingField(field);
+    setSuggestErrorState(null);
+    // The slate wasn't wiped while this was out. A reply for another field is
+    // still welcome (it is filed under its own field), a reply into a slate that
+    // has since been cleared is not.
+    const stillHere = () => suggestEpochRef.current === epoch;
     try {
       const asking = new Set(batch.map(t => t.id));
       const examples = suggestionExamples(tasks, field, displayTitleFor, asking);
       const result = await suggestBackfillValues(field, batch, examples, categories.map(c => c.name));
       if (!stillHere()) return;
       animateLayout();
-      setSuggestions(prev => new Map([...prev, ...result]));
-      setSuggestAskedIds(prev => new Set([...prev, ...asking]));
+      setSuggestions(prev => new Map([
+        ...prev,
+        ...[...result].map(([id, value]) => [backfillStepKey(id, field), value] as const),
+      ]));
+      setSuggestAskedIds(prev => new Set([...prev, ...[...asking].map(id => backfillStepKey(id, field))]));
       if (result.size === 0) {
         // Not an error — the model was told to leave out anything it couldn't
         // place, and every task in a small batch being unplaceable is a real
         // answer. Said in the error slot because it is the only slot that says
         // anything, and saying nothing would read as a button that did nothing.
-        setSuggestError('No suggestions for these. Fill them in yourself.');
+        setSuggestErrorState({ field, message: 'No suggestions for these. Fill them in yourself.' });
       } else {
         haptics.success();
       }
     } catch (e) {
       if (!stillHere()) return;
       haptics.error();
-      setSuggestError(describeAIError(e));
+      setSuggestErrorState({ field, message: describeAIError(e) });
     } finally {
-      // Left alone when the field changed: clearSuggestions already lowered
-      // it, and the new field may have a request of its own under way.
-      if (stillHere()) setSuggestLoading(false);
+      // Left alone when the slate was cleared: clearSuggestions already lowered
+      // it, and a request of the new slate's own may be under way.
+      if (stillHere()) setSuggestLoadingField(prev => (prev === field ? null : prev));
     }
   };
 
@@ -1521,7 +1566,7 @@ export function BackfillScreen() {
     // the whole array back, each session-review row puts its own one back.
     const snapshots: Task[] = [];
     batch.forEach(task => {
-      const suggestion = suggestions.get(task.id)!;
+      const suggestion = suggestions.get(backfillStepKey(task.id, active.id))!;
       let rowSnapshots: Task[];
       let valueText: string;
       if (suggestion.field === 'category') {
@@ -1538,9 +1583,9 @@ export function BackfillScreen() {
       }
       snapshots.push(...rowSnapshots);
       logSession({
-        itemId: stepIdFor(task.id),
+        itemId: task.id,
         title: displayTitleFor(task),
-        valueText: sessionValueText(fieldLabel, valueText),
+        valueText,
         undo: restoreRows(rowSnapshots),
       });
     });
@@ -1698,7 +1743,7 @@ export function BackfillScreen() {
     // Missing again, so any row this person already has in the review no
     // longer describes anything real — drop it rather than leave a stale
     // "set" line for a value that was just taken back off.
-    setSessionLog(prev => prev.filter(e => e.itemId !== personId));
+    setSessionLog(prev => prev.filter(e => e.itemId !== stepIdFor(personId)));
   };
 
   // Never is a real answer to "how long before a reminder", but it is the
@@ -1787,7 +1832,7 @@ export function BackfillScreen() {
     });
     commit(targets.length > 1 ? `Location set for ${targets.length} people` : 'Location set', entries);
     if (targets.length > 1) {
-      setSkippedIds(prev => new Set([...prev, ...targets.map(p => p.id)]));
+      setSkippedIds(prev => new Set([...prev, ...targets.map(p => stepIdFor(p.id))]));
     }
   };
 
@@ -1802,16 +1847,16 @@ export function BackfillScreen() {
     advance(currentId);
   };
 
-  // An all-fields walk's way past a whole task: `skip` only moves on from the
-  // field on screen, and the task's other fields would come straight back.
-  const skipTask = () => {
-    if (!currentTask) return;
+  // An all-fields walk's way past a whole row, under its plain id (a step key
+  // skips one field; see `backfillStepKey`).
+  const skipRow = () => {
+    if (!currentId) return;
     haptics.tap();
     setBatchScopeKey(null);
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
-    setSkippedIds(prev => new Set(prev).add(currentTask.id));
+    setSkippedIds(prev => new Set(prev).add(currentId));
   };
 
   // The card can surface a task that was done and never checked off, so it can be
@@ -1865,12 +1910,9 @@ export function BackfillScreen() {
         redo: redoRestoringRows(snapshots.map(row => row.id)),
       });
       logSession({
-        itemId: stepIdFor(currentTask.id),
+        itemId: currentTask.id,
         title: displayTitleFor(currentTask),
-        valueText: sessionValueText(
-          BACKFILL_FIELDS.find(f => f.id === fieldId)!.label,
-          wasMissing ? dismissedText : KEEP_AS_IS_LABEL,
-        ),
+        valueText: wasMissing ? dismissedText : KEEP_AS_IS_LABEL,
         undo: restoreRows(snapshots),
       });
       advance(currentTask.id);
@@ -1932,7 +1974,7 @@ export function BackfillScreen() {
       }
       if (entries.length === 0) return;
       commit(entries.length > 1 ? `${dismissedText} for ${entries.length}` : dismissedText, entries);
-      if (entries.length > 1) setSkippedIds(prev => new Set([...prev, ...entries.map(e => e.itemId)]));
+      if (entries.length > 1) setSkippedIds(prev => new Set([...prev, ...entries.map(e => stepIdFor(e.itemId))]));
     }
   };
 
@@ -2324,6 +2366,55 @@ export function BackfillScreen() {
   };
 
   // ==== render: the field picker, then a branch per pool ====
+  // The picker's first row for a pool: opens the card that picks the fields for
+  // an "All fields" walk. Shown only when two or more fields have a gap,
+  // because with one it would be that field's own row again.
+  const ROW_NOUN: Record<EntityKind, { one: string; many: string }> = {
+    task: { one: 'task', many: 'tasks' },
+    category: { one: 'category', many: 'categories' },
+    project: { one: 'project', many: 'projects' },
+    person: { one: 'person', many: 'people' },
+    item: { one: 'item', many: 'items' },
+    recipe: { one: 'recipe', many: 'recipes' },
+  };
+  const allFieldsRow = (kind: EntityKind) => {
+    const withGaps = walkFieldsFor(kind).filter(f => f.count > 0).map(f => f.id);
+    if (withGaps.length < 2) return null;
+    const rows = multiEntriesFor(kind, withGaps).length;
+    const noun = rows === 1 ? ROW_NOUN[kind].one : ROW_NOUN[kind].many;
+    return (
+      <TouchableOpacity
+        style={[styles.fieldRow, shadows.card]}
+        onPress={() => { haptics.tap(); setWalkChooser(kind); }}
+        activeOpacity={interaction.activeOpacity}
+        accessibilityRole="button"
+        accessibilityLabel={`All fields, ${rows} ${noun} missing something`}
+      >
+        <View style={styles.fieldIcon}>
+          <Ionicons name="layers-outline" size={iconSize.md} color={colors.accent} />
+        </View>
+        <View style={styles.fieldBody}>
+          <Text style={styles.fieldLabel}>All fields</Text>
+          <Text style={styles.fieldHint}>{`Fill in everything a ${ROW_NOUN[kind].one} is missing before moving to the next one.`}</Text>
+          <Text style={styles.fieldCount}>{`${rows} ${noun} missing something`}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+      </TouchableOpacity>
+    );
+  };
+  const chooserKind = walkChooser ?? shownEntityKind;
+  const allFieldsSheet = (
+    <LazySheet open={walkChooser !== null}>
+      <AllFieldsSheet
+        visible={walkChooser !== null}
+        rowNoun={ROW_NOUN[chooserKind].one}
+        fields={walkFieldsFor(chooserKind)}
+        rowCountFor={ids => multiEntriesFor(chooserKind, ids).length}
+        onStart={ids => startAllFields(chooserKind, ids)}
+        onClose={() => setWalkChooser(null)}
+      />
+    </LazySheet>
+  );
   if (!active) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -2339,6 +2430,7 @@ export function BackfillScreen() {
         <LazySheet open={defaultsOpen}>
           <SavedDefaultsSheet visible={defaultsOpen} onClose={() => setDefaultsOpen(false)} />
         </LazySheet>
+        {allFieldsSheet}
         <View style={styles.entitySwitch}>
           <SegmentedControl
             label="What to fill in"
@@ -2351,27 +2443,7 @@ export function BackfillScreen() {
         </View>
         {shownEntityKind === 'task' && (
           <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
-            {allFieldIds.length > 1 && (
-              <TouchableOpacity
-                style={[styles.fieldRow, shadows.card]}
-                onPress={startAllFields}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={`All fields, ${allFieldsCount} ${allFieldsCount === 1 ? 'task needs' : 'tasks need'} something`}
-              >
-                <View style={styles.fieldIcon}>
-                  <Ionicons name="layers-outline" size={iconSize.md} color={colors.accent} />
-                </View>
-                <View style={styles.fieldBody}>
-                  <Text style={styles.fieldLabel}>All fields</Text>
-                  <Text style={styles.fieldHint}>Fill in everything a task is missing before moving to the next one.</Text>
-                  <Text style={styles.fieldCount}>
-                    {`${allFieldsCount} ${allFieldsCount === 1 ? 'task needs' : 'tasks need'} something`}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
-              </TouchableOpacity>
-            )}
+            {allFieldsRow('task')}
             {taskFields.map(field => {
               const count = taskCounts[field.id];
               return (
@@ -2401,6 +2473,7 @@ export function BackfillScreen() {
         )}
         {shownEntityKind === 'category' && (
           <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
+            {allFieldsRow('category')}
             {CATEGORY_BACKFILL_FIELDS.map(field => {
               const count = categoryCounts[field.id];
               return (
@@ -2430,6 +2503,7 @@ export function BackfillScreen() {
         )}
         {shownEntityKind === 'project' && (
           <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
+            {allFieldsRow('project')}
             {PROJECT_BACKFILL_FIELDS.map(field => {
               const count = projectCounts[field.id];
               return (
@@ -2460,6 +2534,7 @@ export function BackfillScreen() {
         {shownEntityKind === 'person' && (
           people.some(p => !p.archived) ? (
             <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
+              {allFieldsRow('person')}
               {PERSON_BACKFILL_FIELDS.map(field => {
                 const count = personCounts[field.id];
                 // Phrased about the field rather than about the people: "6
@@ -2509,6 +2584,7 @@ export function BackfillScreen() {
         {shownEntityKind === 'item' && (
           groceryItems.length > 0 ? (
             <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
+              {allFieldsRow('item')}
               {ITEM_BACKFILL_FIELDS.map(field => {
                 const count = itemCounts[field.id];
                 return (
@@ -2549,6 +2625,7 @@ export function BackfillScreen() {
         {shownEntityKind === 'recipe' && (
           recipes.length > 0 ? (
             <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
+              {allFieldsRow('recipe')}
               {RECIPE_BACKFILL_FIELDS.map(field => {
                 const count = recipeCounts[field.id];
                 return (
@@ -2602,7 +2679,7 @@ export function BackfillScreen() {
     : active.kind === 'person' ? PERSON_BACKFILL_FIELDS.find(f => f.id === active.id)!.shortLabel
     : active.kind === 'item' ? ITEM_BACKFILL_FIELDS.find(f => f.id === active.id)!.label
     : RECIPE_BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
-  const redoButton = (
+  const redoButton = multiFields ? undefined : (
     <TouchableOpacity
       activeOpacity={interaction.activeOpacity}
       onPress={confirmStartOver}
@@ -2613,6 +2690,30 @@ export function BackfillScreen() {
       <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
     </TouchableOpacity>
   );
+
+  // The all-fields walk's own line, shared by every pool's page: how many fields
+  // the row has left and a way past the whole row. `skip` only moves on from the
+  // field on screen, so a row's other fields would come straight back.
+  const headerTitle = (label: string) => multiFields && !currentId ? 'All fields' : label;
+  const rowNoun = active.kind;
+  const multiStepRow = multiFields && multiCurrent ? (
+    <View style={styles.stepRow}>
+      <Text style={styles.stepLine}>
+        {multiCurrent.remaining.length > 1
+          ? `${multiCurrent.remaining.length} fields left on this ${rowNoun}`
+          : `Last field for this ${rowNoun}`}
+      </Text>
+      {multiCurrent.remaining.length > 1 && (
+        <InlineAction
+          label={`Skip ${rowNoun}`}
+          variant="neutral"
+          surface="page"
+          onPress={skipRow}
+          accessibilityLabel={`Skip the rest of this ${rowNoun} for now`}
+        />
+      )}
+    </View>
+  ) : null;
 
   // One row per set the card can be answered for, the same on every pool that
   // has any (see `backfillBatch.ts`). Tapping a row arms that set and tapping
@@ -2679,10 +2780,10 @@ export function BackfillScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <DetailHeader
-          title={multiFields && !currentTask ? 'All fields' : field.label}
+          title={headerTitle(field.label)}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
-          actions={multiFields ? undefined : redoButton}
+          actions={redoButton}
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
@@ -2711,13 +2812,7 @@ export function BackfillScreen() {
             )}
           </View>
         )}
-        {multiFields && !!multiCurrent && (
-          <Text style={styles.stepLine}>
-            {multiCurrent.remaining.length > 1
-              ? `${multiCurrent.remaining.length} fields left on this task`
-              : 'Last field for this task'}
-          </Text>
-        )}
+        {multiStepRow}
 
         {currentTask ? (
           <ScrollView
@@ -2750,7 +2845,7 @@ export function BackfillScreen() {
             {canSuggest && (
               <SuggestionBar
                 suggestionText={currentSuggestion ? describeSuggestion(currentSuggestion) : null}
-                asked={suggestAskedIds.has(currentTask.id)}
+                asked={suggestAskedIds.has(backfillStepKey(currentTask.id, active.id))}
                 loading={suggestLoading}
                 error={suggestError}
                 applyAllCount={suggestedQueue.length}
@@ -2809,16 +2904,6 @@ export function BackfillScreen() {
               </PressableScale>
             </View>
             <View style={styles.actionRow}>
-              {!!multiCurrent && multiCurrent.remaining.length > 1 && (
-                <PressableScale
-                  style={styles.skipButton}
-                  onPress={skipTask}
-                  accessibilityRole="button"
-                  accessibilityLabel="Skip the rest of this task for now"
-                >
-                  <Text style={styles.skipText}>Skip this task</Text>
-                </PressableScale>
-              )}
               <PressableScale
                 style={styles.skipButton}
                 onPress={markComplete}
@@ -2879,7 +2964,7 @@ export function BackfillScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <DetailHeader
-          title={categoryField.label}
+          title={headerTitle(categoryField.label)}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
           actions={redoButton}
@@ -2911,6 +2996,8 @@ export function BackfillScreen() {
             )}
           </View>
         )}
+
+        {multiStepRow}
 
         {currentCategory ? (
           <ScrollView
@@ -2977,8 +3064,8 @@ export function BackfillScreen() {
             tabBarHeight={tabBarHeight}
             colors={colors}
             styles={styles}
-            itemWord="category"
-            itemWordPlural="categories"
+            itemWord={multiFields ? 'answer' : 'category'}
+            itemWordPlural={multiFields ? 'answers' : 'categories'}
           />
         ) : (
           <EmptyState
@@ -3004,7 +3091,7 @@ export function BackfillScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <DetailHeader
-          title={personField.shortLabel}
+          title={headerTitle(personField.shortLabel)}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
           actions={redoButton}
@@ -3036,6 +3123,8 @@ export function BackfillScreen() {
             )}
           </View>
         )}
+
+        {multiStepRow}
 
         {currentPerson ? (
           <ScrollView
@@ -3285,8 +3374,8 @@ export function BackfillScreen() {
             tabBarHeight={tabBarHeight}
             colors={colors}
             styles={styles}
-            itemWord="person"
-            itemWordPlural="people"
+            itemWord={multiFields ? 'answer' : 'person'}
+            itemWordPlural={multiFields ? 'answers' : 'people'}
           />
         ) : (
           <EmptyState
@@ -3320,7 +3409,7 @@ export function BackfillScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <DetailHeader
-          title={projectField.label}
+          title={headerTitle(projectField.label)}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
           actions={redoButton}
@@ -3352,6 +3441,8 @@ export function BackfillScreen() {
             )}
           </View>
         )}
+
+        {multiStepRow}
 
         {currentProject ? (
           <ScrollView
@@ -3458,8 +3549,8 @@ export function BackfillScreen() {
             tabBarHeight={tabBarHeight}
             colors={colors}
             styles={styles}
-            itemWord="project"
-            itemWordPlural="projects"
+            itemWord={multiFields ? 'answer' : 'project'}
+            itemWordPlural={multiFields ? 'answers' : 'projects'}
           />
         ) : (
           <EmptyState
@@ -3483,7 +3574,7 @@ export function BackfillScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <DetailHeader
-          title={recipeField.label}
+          title={headerTitle(recipeField.label)}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
           actions={redoButton}
@@ -3515,6 +3606,8 @@ export function BackfillScreen() {
             )}
           </View>
         )}
+
+        {multiStepRow}
 
         {currentRecipe ? (
           <ScrollView
@@ -3611,8 +3704,8 @@ export function BackfillScreen() {
             tabBarHeight={tabBarHeight}
             colors={colors}
             styles={styles}
-            itemWord="recipe"
-            itemWordPlural="recipes"
+            itemWord={multiFields ? 'answer' : 'recipe'}
+            itemWordPlural={multiFields ? 'answers' : 'recipes'}
           />
         ) : (
           <EmptyState
@@ -3691,7 +3784,7 @@ export function BackfillScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <DetailHeader
-        title={itemField.label}
+        title={headerTitle(itemField.label)}
         onBack={backToFields}
         backAccessibilityLabel="Back to fields"
         actions={redoButton}
@@ -3723,6 +3816,8 @@ export function BackfillScreen() {
           )}
         </View>
       )}
+
+      {multiStepRow}
 
       {currentItem ? (
         <ScrollView
@@ -3935,8 +4030,8 @@ export function BackfillScreen() {
           tabBarHeight={tabBarHeight}
           colors={colors}
           styles={styles}
-          itemWord="item"
-          itemWordPlural="items"
+          itemWord={multiFields ? 'answer' : 'item'}
+          itemWordPlural={multiFields ? 'answers' : 'items'}
         />
       ) : (
         <EmptyState
@@ -4522,11 +4617,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   fieldCount: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.xxs },
   fieldCountDone: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
 
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingTop: spacing.xsm,
+    paddingHorizontal: spacing.md,
+  },
   stepLine: {
     color: colors.textSecondary,
     fontSize: font.xs,
-    textAlign: 'center',
-    marginTop: spacing.xxs,
   },
   progress: {
     color: colors.textTertiary,
