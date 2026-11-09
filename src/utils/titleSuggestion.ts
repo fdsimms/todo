@@ -2,10 +2,9 @@ import type { Difficulty, Priority } from '../types';
 import {
   parsePriorityInput, parseDifficultyInput, parseProjectInput, parseChainInput, parseLinkInput, parsePhoneInput, parseEmailInput,
   parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput,
-  parseSunWindowInput, parseRainSkipInput, parseWaitingOnInput, parseSubtasksInput,
+  parseSunWindowInput, parseWaitingOnInput, parseSubtasksInput,
   parseAvoidInput, parseAvoidEnd,
 } from './parseTaskInput';
-import { canSkipForRain, defaultRainSkipMm, formatRain, type RainUnit } from './rainSkip';
 import { formatDuration } from './effort';
 import { formatQuotaTarget } from './quotaUnit';
 import { formatSupplyLeft } from './supply';
@@ -15,7 +14,7 @@ import { linkAppLabel } from '../constants/linkApps';
  * The part of the title-reading chain that comes after the schedule phrase,
  * the "#category/#tag" token and the "@name" suggestion: priority, project,
  * chain, link, phone, email, timer, supply, target, estimate, weather wait,
- * sun window, rain skip, waiting on, subtasks, avoid.
+ * sun window, waiting on, subtasks, avoid.
  *
  * Quick add and the task editor both read a title for these and offer one
  * suggestion at a time, in this order, so the two can't disagree about what
@@ -45,9 +44,6 @@ export interface TitleSuggestionContext {
   polarity: 'positive' | 'negative';
   /** The task's window end, so a closing time it already has isn't offered again. */
   windowEnd: string | null;
-  /** The task already skips for rain. */
-  hasRainSkip: boolean;
-  rainUnit: RainUnit;
   /** Start of the day a sun bound resolves on, and where that day's sun is. */
   sunClock: (anchor: string) => string | null;
 }
@@ -68,7 +64,6 @@ export type TitleSuggestion =
   | { kind: 'estimate'; hit: Hit<typeof parseEstimateInput> }
   | { kind: 'weather'; hit: Hit<typeof parseWeatherWaitInput> }
   | { kind: 'sun'; hit: Hit<typeof parseSunWindowInput> & { clock: string } }
-  | { kind: 'rain'; hit: Hit<typeof parseRainSkipInput> & { mm: number } }
   | { kind: 'waiting'; hit: Hit<typeof parseWaitingOnInput> }
   | { kind: 'subtasks'; hit: Hit<typeof parseSubtasksInput> }
   | { kind: 'avoid'; hit: Hit<typeof parseAvoidInput> & { already: boolean } };
@@ -122,12 +117,6 @@ export function pickTitleSuggestion(title: string, ctx: TitleSuggestionContext):
     const clock = ctx.sunClock(sun.anchor);
     if (clock) return { kind: 'sun', hit: { ...sun, clock } };
   }
-
-  // Rain needs the weather switch (nothing reads rainfall otherwise) and a repeat to skip a day of.
-  const rain = ctx.weatherTasksOn && ctx.plainKind && !ctx.hasRainSkip
-    && canSkipForRain({ recurrenceType: ctx.recurrenceType as never, polarity: ctx.polarity })
-    ? parseRainSkipInput(title) : null;
-  if (rain) return { kind: 'rain', hit: { ...rain, mm: rain.mm ?? defaultRainSkipMm(ctx.rainUnit) } };
 
   const waiting = parseWaitingOnInput(title, ctx.waitCandidates);
   if (waiting) return { kind: 'waiting', hit: waiting };
@@ -194,7 +183,6 @@ const DIFFICULTY_LABELS_SHORT: Record<Difficulty, string> = {
 /** The pill's icon and wording for one suggestion. */
 export function describeTitleSuggestion(
   s: TitleSuggestion,
-  rainUnit: RainUnit,
   /** How a clock time reads, which follows the 12/24-hour setting. */
   formatClock: (hhmm: string) => string,
   /** The person's saved links, so a link suggestion reads "Payroll" rather than its URL. */
@@ -220,7 +208,6 @@ export function describeTitleSuggestion(
       icon: s.hit.anchor === 'sunrise' ? 'sunny-outline' : 'moon-outline',
       label: `${s.hit.bound === 'start' ? 'Hidden until' : 'Expires at'} ${s.hit.anchor} · ${formatClock(s.hit.clock)} that day`,
     };
-    case 'rain': return { icon: 'rainy-outline', label: `Skip after ${formatRain(s.hit.mm, rainUnit)} of rain` };
     case 'waiting': return { icon: 'hourglass-outline', label: `Waiting on · ${s.hit.title}` };
     case 'subtasks': return { icon: 'list-outline', label: `${s.hit.subtasks.length} subtasks` };
     case 'avoid': return {

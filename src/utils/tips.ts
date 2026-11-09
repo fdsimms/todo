@@ -258,8 +258,8 @@ export const TIPS: Tip[] = [
     area: 'today',
     icon: 'partly-sunny-outline',
     title: 'Let the weather decide when',
-    body: '“leave books out on the next sunny day” waits for the forecast, “water the garden every day unless it rains” skips rainy days.',
-    keywords: ['weather', 'rain', 'forecast', 'sunny', 'syntax'],
+    body: '“leave books out on the next sunny day” waits until the forecast has one.',
+    keywords: ['weather', 'forecast', 'sunny', 'syntax'],
   },
   {
     id: 'expand-row',

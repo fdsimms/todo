@@ -69,11 +69,6 @@ export const QUICK_ADD_PHRASES: readonly QuickAddPhraseSection[] = [
       { example: 'walk the dog after sunset', means: 'Shows once the sun is down, with a saved location', reads: 'title', kind: 'sun' },
       { example: 'leave books out on the next sunny day', means: 'Waits for that weather, with weather turned on', reads: 'title', kind: 'weather' },
       {
-        example: 'water the garden unless it rains',
-        means: 'On a repeating task, skips a day it rained',
-        reads: 'title', kind: 'rain', context: { recurrenceType: 'daily' },
-      },
-      {
         example: 'replace filter 6 filters left',
         means: 'On a repeating task, counts down what’s left',
         reads: 'title', kind: 'supply', context: { recurrenceType: 'monthly' },

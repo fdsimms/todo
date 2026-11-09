@@ -128,7 +128,7 @@ import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakR
 import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate, getCurrentLogicalDayKey } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, stripRemindPrefix, describeSchedule, scheduleHint, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { parseTaskInput, scheduleClockInstant, stripRemindPrefix, describeSchedule, scheduleHint, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
@@ -179,7 +179,6 @@ import { QuickEventSheet } from './QuickEventSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { blockerFields, blockerIdsOf, describeBlocks, resolverFor, canBeBlockerOf } from '../utils/blocking';
 import { pickTitleSuggestion, suggestionMatch, describeTitleSuggestion } from '../utils/titleSuggestion';
-import { rainUnitFor } from '../utils/rainSkip';
 import { clampSupplyCount } from '../utils/supply';
 import { displayTitleFor, getVisibleAt, onLogicalDay, isQuotaTask, sunLocationOn } from '../utils/visibilityUtils';
 import { firstWeekAnchor, proratedFrom, proratedWeeklyTarget, quotaProrationPatch, weekDaysLeft } from '../utils/quotaSchedule';
@@ -302,8 +301,6 @@ export interface TaskDraft {
   recurrenceWeekOrdinal: number | null;
   recurrenceFromCompletion: boolean;
   recurrenceHolidays?: HolidayRule | null;
-  // Task.rainSkipMm, from quick add's "unless it rains" or a duplicate.
-  rainSkipMm?: number | null;
   recurrenceEndDate: Date | null;
   recurrenceCount: number | null;
   /** Carried over when the draft already names a specific time — an imported event's appointment time, for instance. */
@@ -829,8 +826,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceHolidays, setRecurrenceHolidays] = useState<HolidayRule | null>(null);
-  // See Task.rainSkipMm: millimetres, whatever unit the picker shows.
-  const [rainSkipMm, setRainSkipMm] = useState<number | null>(null);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
@@ -1032,7 +1027,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [weatherWait, setWeatherWait] = useState<WeatherCondition | null>(null);
   const [weatherWaitOpen, setWeatherWaitOpen] = useState(false);
   const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
-  const rainUnit = rainUnitFor(useSettingsStore(s => s.unitSystem));
   // Every task, for "after <task>" in the title to name one. Read only while open.
   const allTasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
   // Whether "follow the water target" can mean anything for this task right
@@ -1348,7 +1342,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setRecurrenceWeekOrdinal(task.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceHolidays(task.recurrenceHolidays ?? null);
-      setRainSkipMm(task.rainSkipMm ?? null);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
       setPriorityTouched(true); setEffortTouched(true);
@@ -1431,7 +1424,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setRecurrenceWeekOrdinal(initialDraft?.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceHolidays(initialDraft?.recurrenceHolidays ?? null);
-      setRainSkipMm(initialDraft?.rainSkipMm ?? null);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
       setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
       setPriorityTouched(initialDraft?.priority !== undefined);
@@ -1536,7 +1528,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // same way the quick-add modal does. The phrase is highlighted and
   // described in a banner below the title; nothing is applied until tapped.
   const parsedSchedule = useMemo(
-    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date(), dayResetTime, polarity === 'negative') : null),
+    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime), new Date(), dayResetTime, polarity === 'negative') : null),
     [title, dayResetTime, polarity]
   );
   // The banner's own ✕ answers "not a date" for this one phrase — comparing
@@ -1632,8 +1624,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       weatherWait,
       polarity,
       windowEnd,
-      hasRainSkip: rainSkipMm !== null,
-      rainUnit,
       sunClock: anchor => sunAnchorHHMM(anchor, titleSunDayStart, titleSunLocation),
     });
     // titleSunLocation is read through sunLocationOn, whose input is the saved
@@ -1642,7 +1632,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   }, [
     title, activeParsedSchedule, activeCategoryTags, titleMentionSuggestion, titleKind, recurrenceType,
     recurrenceInterval, recurrenceDays, extraDates, chainItems, projects, titleWaitCandidates, weatherTasksOn,
-    weatherWait, polarity, windowEnd, rainSkipMm, rainUnit, titleSunDayStart.getTime(),
+    weatherWait, polarity, windowEnd, titleSunDayStart.getTime(),
     titleSunLocation,
   ]);
   const titleSuggestionMatch = titleSuggestion ? suggestionMatch(title, titleSuggestion) : null;
@@ -1653,7 +1643,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     ? null
     : titleSuggestion;
   const activeSuggestionMatch = activeTitleSuggestion ? titleSuggestionMatch : null;
-  const titleSuggestionDescription = activeTitleSuggestion ? describeTitleSuggestion(activeTitleSuggestion, rainUnit, hhmm => formatHHMM(hhmm, use24HourTime), savedLinks.saved) : null;
+  const titleSuggestionDescription = activeTitleSuggestion ? describeTitleSuggestion(activeTitleSuggestion, hhmm => formatHHMM(hhmm, use24HourTime), savedLinks.saved) : null;
 
   const titleHighlightRanges = useMemo(() => {
     const ranges: [number, number][] = [];
@@ -1945,10 +1935,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           setWindowEnd(s.hit.clock);
           applyDerivedTargetCount({ windowEnd: s.hit.clock, windowEndSun: s.hit.anchor });
         }
-        break;
-      case 'rain':
-        strip(s.hit.cleanTitle);
-        setRainSkipMm(s.hit.mm);
         break;
       case 'waiting':
         strip(s.hit.cleanTitle);
@@ -2266,7 +2252,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       recurrenceFromCompletion,
       // Only a rule with days to land on can skip one.
       recurrenceHolidays: recurrenceType !== 'none' && recurrenceType !== 'hours' ? recurrenceHolidays : null,
-      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       sortOrder: task?.sortOrder ?? 0,
       pinned, priority, effort, estimatedMinutes, actualMinutes, timedMinutes,
       // Cleared with the schedule: it only means anything on a repeating task.
@@ -3230,7 +3215,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceHolidays,
-      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget,
@@ -4472,7 +4456,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       )}
 
       {/* Everything else a title can say — priority, project, link, phone,
-          email, timer, supply, target, estimate, weather, sun, rain,
+          email, timer, supply, target, estimate, weather, sun,
           waiting on, subtasks, avoid. One at a time; tap to apply, or ✕ to
           say it is just part of the title. */}
       {titleVisible && activeTitleSuggestion && titleSuggestionDescription && (
@@ -6462,8 +6446,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 onChangeFromCompletion={setRecurrenceFromCompletion}
                 recurrenceHolidays={recurrenceHolidays}
                 onChangeHolidays={setRecurrenceHolidays}
-                rainSkipMm={rainSkipMm}
-                onChangeRainSkip={setRainSkipMm}
                 recurrenceCount={recurrenceCount}
                 onChangeCount={setRecurrenceCount}
                 weekOrdinal={{

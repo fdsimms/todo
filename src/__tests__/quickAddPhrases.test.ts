@@ -22,8 +22,6 @@ const base: TitleSuggestionContext = {
   weatherWait: null,
   polarity: 'positive',
   windowEnd: null,
-  hasRainSkip: false,
-  rainUnit: 'mm',
   sunClock: () => '19:30',
 };
 
