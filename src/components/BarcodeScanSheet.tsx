@@ -220,10 +220,9 @@ const CONTEXT_COPY: Record<ScanContext, {
   manualPlaceholder: string;
   /**
    * The button beside the typed field. It looks the code up and puts a row in
-   * the list; it is never the screen's confirm. Where the header's confirm is
-   * also "Add" (the pantry), both buttons are one word and the bottom one gets
-   * read as the save, so the log, whose confirm is "Next", names this for what
-   * it does instead.
+   * the list; it is never the screen's confirm, so no confirm may share its
+   * word. The log can only take a barcode, so it names this "Look up"; the
+   * others take names too, so "Add" is accurate and their confirm differs.
    */
   manualActionLabel: string;
   manualActionIcon: 'add' | 'search';
@@ -246,7 +245,9 @@ const CONTEXT_COPY: Record<ScanContext, {
   pantry: {
     title: 'Scan into pantry',
     emptySubtitle: 'Scan a barcode to add it to the pantry. Type anything without a barcode below.',
-    confirmLabel: 'Add',
+    // "Done", not "Add": the typed field's button is "Add", and two buttons
+    // with one word read the header as another way to put a row in the list.
+    confirmLabel: BUTTON_LABEL.done,
     freezer: true,
     typedNames: true,
     manualPlaceholder: 'e.g. bananas, or a barcode number',
