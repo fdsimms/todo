@@ -1,14 +1,15 @@
 /**
  * Every write is shown before it happens.
  *
- * A write tool called without `apply: true` does not write. It runs the real
- * write inside a transaction that is rolled back (`replica.dryRun`), collects
- * the Activity entries the write would have made, and answers with those in
- * plain words and a one-time `confirmToken`. Only a second call with that token
- * writes. The description comes from the server rather than from the model's
+ * A write tool never writes when called. It runs the real write inside a
+ * transaction that is rolled back (`replica.dryRun`), collects the Activity
+ * entries the write would have made, and answers with those in plain words and
+ * a one-time `confirmToken`. Only `confirm_change` writes, and it takes just
+ * the token and the description, not the arguments again: the server kept the
+ * request. The description comes from the server rather than from the model's
  * summary of it, and the confirming call has to repeat it (`willDo`), because
  * a client's approval prompt shows a call's arguments and nothing else. The
- * preview itself is the read-only `preview_change` tool, so only the write
+ * preview itself is the read-only `preview_change` tool, so only the confirm
  * asks for approval.
  *
  * Why a dry run rather than a description each tool writes for itself: the
@@ -17,65 +18,61 @@
  * title rule refiles a new task). Running it and reading back what changed is
  * the only description that cannot disagree with the write.
  *
- * **The token binds the exact request.** It is issued for one tool and one set
- * of arguments, used once, and expires; a confirm with anything changed is
- * refused, so what runs is what was shown.
+ * **The token is the request.** It is issued for one tool and one set of
+ * arguments, used once, and expires, so what runs is what was shown.
  */
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import BetterSqlite3 from 'better-sqlite3';
 import type { AgentLedgerEntry } from './agentLedger';
 
 /** How long a preview stays confirmable. Long enough to ask a person; short enough not to act on stale state. */
 export const CONFIRM_TTL_MS = 15 * 60_000;
 
-/** Arguments in a fixed key order, so the same request hashes the same however it was written. */
-function stable(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.keys(value as object).sort().map(k => [k, stable((value as Record<string, unknown>)[k])]));
-  }
-  return value;
-}
-
-export function requestHash(tool: string, args: Record<string, unknown>): string {
-  return createHash('sha256').update(JSON.stringify([tool, stable(args)])).digest('hex');
-}
+export type TakenChange = { ok: true; tool: string; args: Record<string, unknown>; summary: string[] } | { ok: false; reason: string };
 
 export interface ConfirmTokens {
   issue(tool: string, args: Record<string, unknown>, summary: string[]): string;
   /**
-   * The summary the token was issued with, or the reason it cannot be used.
-   * Spends the token, except when `echoed` is given and differs from the
-   * summary: that is refused without spending it, so the caller can repeat the
-   * call with the right lines.
+   * The previewed tool, its arguments and summary, or the reason the token
+   * cannot be used. Spends the token, except when `echoed` is given and differs
+   * from the summary: that is refused without spending it, so the caller can
+   * repeat the call with the right lines.
    */
-  redeem(token: string, tool: string, args: Record<string, unknown>, echoed?: readonly string[]): { ok: true; summary: string[] } | { ok: false; reason: string };
+  take(token: string, echoed?: readonly string[]): TakenChange;
 }
 
-export function createConfirmTokens(now: () => number = Date.now): ConfirmTokens {
-  const issued = new Map<string, { hash: string; tool: string; expires: number; summary: string[] }>();
-  const sweep = () => {
-    const t = now();
-    for (const [k, v] of issued) if (v.expires < t) issued.delete(k);
-  };
+/**
+ * Kept in SQLite (`path`, `:memory:` for tests) rather than in a Map: a restart
+ * or crash between a preview and its confirm lost every outstanding token, and
+ * the agent saw "expired" for what was not. A spent token stays until it would
+ * have expired, so a second use reads as "already used" and not as unknown.
+ */
+export function createConfirmTokens(now: () => number = Date.now, path = ':memory:'): ConfirmTokens {
+  const db = new BetterSqlite3(path);
+  db.pragma('journal_mode = WAL');
+  db.exec('CREATE TABLE IF NOT EXISTS confirm_tokens (token TEXT PRIMARY KEY, tool TEXT NOT NULL, args TEXT NOT NULL, summary TEXT NOT NULL, expires INTEGER NOT NULL, spent INTEGER NOT NULL DEFAULT 0)');
+  const sweep = () => { db.prepare('DELETE FROM confirm_tokens WHERE expires < ?').run(now() - CONFIRM_TTL_MS); };
   return {
     issue(tool, args, summary) {
       sweep();
       const token = randomBytes(9).toString('base64url');
-      issued.set(token, { hash: requestHash(tool, args), tool, expires: now() + CONFIRM_TTL_MS, summary });
+      db.prepare('INSERT INTO confirm_tokens (token, tool, args, summary, expires) VALUES (?, ?, ?, ?, ?)')
+        .run(token, tool, JSON.stringify(args), JSON.stringify(summary), now() + CONFIRM_TTL_MS);
       return token;
     },
-    redeem(token, tool, args, echoed) {
+    take(token, echoed) {
       sweep();
-      const entry = issued.get(token);
-      if (!entry) return { ok: false, reason: 'That confirmToken has expired or was already used. Preview again with preview_change.' };
-      if (entry.tool !== tool || entry.hash !== requestHash(tool, args)) {
-        return { ok: false, reason: 'That confirmToken was issued for a different request. Preview this exact request first, show it, then confirm it unchanged.' };
+      const row = db.prepare('SELECT tool, args, summary, expires, spent FROM confirm_tokens WHERE token = ?').get(token) as
+        { tool: string; args: string; summary: string; expires: number; spent: number } | undefined;
+      if (!row) return { ok: false, reason: 'No preview has that confirmToken (it may be mistyped, or too old). Nothing was changed. Call preview_change again and use the confirmToken it returns; do not make one up.' };
+      if (row.spent) return { ok: false, reason: 'That confirmToken was already used, so the change was already made. Nothing more was changed.' };
+      if (row.expires < now()) return { ok: false, reason: 'That preview is more than 15 minutes old, so it is no longer valid. Nothing was changed. Call preview_change again.' };
+      const summary = JSON.parse(row.summary) as string[];
+      if (echoed !== undefined && JSON.stringify(echoed) !== JSON.stringify(summary)) {
+        return { ok: false, reason: `willDo must repeat the preview's lines exactly, so the approval prompt shows what will happen. Nothing was changed and the confirmToken still works. The lines are: ${JSON.stringify(summary)}` };
       }
-      if (echoed !== undefined && JSON.stringify(echoed) !== JSON.stringify(entry.summary)) {
-        return { ok: false, reason: `willDo must repeat the preview's lines exactly, so the approval prompt shows what will happen. Nothing was changed and the confirmToken still works. The lines are: ${JSON.stringify(entry.summary)}` };
-      }
-      issued.delete(token);
-      return { ok: true, summary: entry.summary };
+      db.prepare('UPDATE confirm_tokens SET spent = 1 WHERE token = ?').run(token);
+      return { ok: true, tool: row.tool, args: JSON.parse(row.args) as Record<string, unknown>, summary };
     },
   };
 }

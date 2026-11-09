@@ -15,7 +15,7 @@ function setup(action: string, caps: unknown = { elicitation: {} }, throws = fal
   const write = jest.fn(async () => text({ applied: true }));
   return { tokens, request, previewed, low, write };
 }
-const run = (s: ReturnType<typeof setup>) => confirmByElicitation(s.low as never, s.tokens, 'update_task', s.request, s.previewed, s.write);
+const run = (s: ReturnType<typeof setup>) => confirmByElicitation(s.low as never, s.tokens, s.previewed, s.write);
 
 describe('confirmByElicitation', () => {
   it('writes after the person accepts', async () => {

@@ -1,36 +1,36 @@
-import { createConfirmTokens, describeEffects, requestHash, CONFIRM_TTL_MS } from '../confirmWrites';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createConfirmTokens, describeEffects, CONFIRM_TTL_MS } from '../confirmWrites';
 
 describe('confirm tokens', () => {
-  it('confirm exactly the request that was previewed, once', () => {
+  it('hand back the previewed request, once', () => {
     const tokens = createConfirmTokens();
-    const token = tokens.issue('update_task', { id: 't1', title: 'A', tags: ['x'] }, ['Change "A"']);
-    // Key order is not part of the request.
-    expect(tokens.redeem(token, 'update_task', { tags: ['x'], title: 'A', id: 't1' })).toEqual({ ok: true, summary: ['Change "A"'] });
-    expect(tokens.redeem(token, 'update_task', { id: 't1', title: 'A', tags: ['x'] })).toMatchObject({ ok: false, reason: expect.stringMatching(/already used/) });
+    const token = tokens.issue('update_task', { id: 't1', title: 'A' }, ['Change "A"']);
+    expect(tokens.take(token)).toEqual({ ok: true, tool: 'update_task', args: { id: 't1', title: 'A' }, summary: ['Change "A"'] });
+    expect(tokens.take(token)).toMatchObject({ ok: false, reason: expect.stringMatching(/already used/) });
   });
 
-  it('refuse a changed request, another tool, and an expired preview', () => {
+  it('tell an expired preview from one that never existed', () => {
     let now = 0;
     const tokens = createConfirmTokens(() => now);
     const a = tokens.issue('complete_task', { id: 't1' }, []);
-    expect(tokens.redeem(a, 'complete_task', { id: 't2' })).toMatchObject({ ok: false, reason: expect.stringMatching(/different request/) });
-    const b = tokens.issue('complete_task', { id: 't1' }, []);
-    expect(tokens.redeem(b, 'defer_task', { id: 't1' })).toMatchObject({ ok: false });
-    const c = tokens.issue('complete_task', { id: 't1' }, []);
+    expect(tokens.take('made-up')).toMatchObject({ ok: false, reason: expect.stringMatching(/do not make one up/) });
     now = CONFIRM_TTL_MS + 1;
-    expect(tokens.redeem(c, 'complete_task', { id: 't1' })).toMatchObject({ ok: false, reason: expect.stringMatching(/expired/) });
+    expect(tokens.take(a)).toMatchObject({ ok: false, reason: expect.stringMatching(/15 minutes/) });
+  });
+
+  it('survive a restart: a token issued by one instance is taken by another on the same file', () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'confirm-')), 'confirm.db');
+    const token = createConfirmTokens(Date.now, path).issue('complete_task', { id: 't1' }, ['Complete "A"']);
+    expect(createConfirmTokens(Date.now, path).take(token, ['Complete "A"'])).toMatchObject({ ok: true, tool: 'complete_task' });
   });
 
   it('refuse a confirm that does not repeat the previewed lines, without spending the token', () => {
     const tokens = createConfirmTokens();
     const token = tokens.issue('complete_task', { id: 't1' }, ['Complete the task "A"']);
-    expect(tokens.redeem(token, 'complete_task', { id: 't1' }, [])).toMatchObject({ ok: false, reason: expect.stringContaining('Complete the task \\"A\\"') });
-    expect(tokens.redeem(token, 'complete_task', { id: 't1' }, ['Complete the task "A"'])).toEqual({ ok: true, summary: ['Complete the task "A"'] });
-  });
-
-  it('hash nested arguments independent of key order', () => {
-    expect(requestHash('x', { a: { b: 1, c: 2 } })).toBe(requestHash('x', { a: { c: 2, b: 1 } }));
-    expect(requestHash('x', { a: [1, 2] })).not.toBe(requestHash('x', { a: [2, 1] }));
+    expect(tokens.take(token, [])).toMatchObject({ ok: false, reason: expect.stringContaining('Complete the task \\"A\\"') });
+    expect(tokens.take(token, ['Complete the task "A"'])).toMatchObject({ ok: true, summary: ['Complete the task "A"'] });
   });
 });
 

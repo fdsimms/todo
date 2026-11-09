@@ -180,7 +180,7 @@ const confirmTokensByReplica = new WeakMap<Replica, ConfirmTokens>();
 function confirmTokensFor(replica: Replica): ConfirmTokens {
   let tokens = confirmTokensByReplica.get(replica);
   if (!tokens) {
-    tokens = createConfirmTokens();
+    tokens = createConfirmTokens(Date.now, process.env.CONFIRM_STORE_PATH ?? ':memory:');
     confirmTokensByReplica.set(replica, tokens);
   }
   return tokens;
@@ -191,7 +191,7 @@ function confirmTokensFor(replica: Replica): ConfirmTokens {
  * full flow is in the server instructions and in preview_change, and a
  * paragraph repeated on 158 tools was a quarter of the whole tools/list.
  */
-const CONFIRM_NOTE = 'Preview with preview_change first (see the server instructions).';
+const CONFIRM_NOTE = 'Never writes by itself: it returns a preview. Confirm with confirm_change (see the server instructions).';
 
 /** A tool result's JSON back as a value, or undefined when it is not JSON. */
 function parseToolText(out: { content: { type: string; text?: string }[] }): unknown {
@@ -215,8 +215,6 @@ function parseToolText(out: { content: { type: string; text?: string }[] }): unk
 export async function confirmByElicitation(
   low: Server,
   tokens: ConfirmTokens,
-  name: string,
-  request: Record<string, unknown>,
   previewed: { content: { type: 'text'; text: string }[] },
   write: () => Promise<{ content: { type: 'text'; text: string }[] }>,
 ) {
@@ -235,8 +233,8 @@ export async function confirmByElicitation(
   if (answer.action !== 'accept' || answer.content?.confirm === false) {
     return json({ declined: true, next: 'The person said no. Nothing was changed. Do not retry this change; ask what they would like instead.' });
   }
-  const redeemed = tokens.redeem(details.confirmToken, name, request, details.willDo);
-  if (!redeemed.ok) return json({ error: redeemed.reason });
+  const taken = tokens.take(details.confirmToken, details.willDo);
+  if (!taken.ok) return json({ error: taken.reason });
   return write();
 }
 
@@ -257,6 +255,29 @@ function withoutIds(value: unknown): unknown {
     );
   }
   return value;
+}
+
+/** The most rows of a list a preview's details show. `willDo` is what the person is asked about, so details only has to let the agent sanity-check it. */
+const PREVIEW_LIST_CAP = 8;
+const PREVIEW_DETAILS_MAX_CHARS = 4000;
+
+/**
+ * A preview's result cut down: a write whose result is a whole list (an add to
+ * a 60-item wish list answers with all 60) made every preview slow to send and
+ * to read. Long arrays keep their first rows and say how many were left out,
+ * and a result still large after that is replaced by a note.
+ */
+function cappedDetails(value: unknown): unknown {
+  const cut = (v: unknown): unknown => {
+    if (Array.isArray(v)) {
+      const rows = v.slice(0, PREVIEW_LIST_CAP).map(cut);
+      return v.length > PREVIEW_LIST_CAP ? [...rows, `and ${v.length - PREVIEW_LIST_CAP} more not shown`] : rows;
+    }
+    if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, cut(x)]));
+    return v;
+  };
+  const out = cut(value);
+  return JSON.stringify(out).length > PREVIEW_DETAILS_MAX_CHARS ? 'Too long to show here. willDo lists the change.' : out;
 }
 
 function syncGateFor(replica: Replica): SyncGate {
@@ -1398,9 +1419,9 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       return json({
         preview: true,
         willDo,
-        ...(details !== undefined ? { details: withoutIds(details) } : {}),
+        ...(details !== undefined ? { details: cappedDetails(withoutIds(details)) } : {}),
         confirmToken: tokens.issue(name, request, willDo),
-        next: `Nothing has changed yet. Tell the person, in plain words, what willDo says, and wait for a yes. Then call ${name} with exactly the same arguments, apply: true, this confirmToken and willDo repeated exactly.`,
+        next: 'Nothing has changed yet. Tell the person, in plain words, what willDo says, and wait for a yes. Then call confirm_change with this confirmToken and willDo repeated exactly. No other arguments.',
       });
     };
     const guarded = (
@@ -1410,27 +1431,18 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
       cb: WriteCallback,
     ) => {
       writes.set(name, { shape, cb });
+      // A tool's own `apply` (batch_update_tasks and a few more) is the guard's
+      // job here, so it is not offered: the schema has no apply, confirmToken
+      // or willDo, and a call that still sends them has them ignored.
+      const { apply: _own, ...visible } = shape;
       return plain(
         name,
         `${description} ${CONFIRM_NOTE}`,
-        {
-          ...shape,
-          apply: z.boolean().optional().describe('true, with confirmToken and willDo, to make the change.'),
-          confirmToken: z.string().optional().describe('From the preview.'),
-          willDo: z.array(z.string()).optional().describe("The preview's willDo lines, exactly."),
-        },
+        visible,
         async (args: Record<string, unknown>, extra: unknown) => {
-          const { apply, confirmToken, willDo, ...request } = args;
-          if (!apply) {
-            const previewed = await preview(name, request, cb, extra);
-            return confirmByElicitation(server.server, tokens, name, request, previewed, () => cb({ ...request, apply: true }, extra));
-          }
-          if (typeof confirmToken !== 'string') {
-            return json({ error: 'Preview first: call preview_change with this tool and its arguments, show the person what willDo says, then confirm with the confirmToken it returns.' });
-          }
-          const redeemed = tokens.redeem(confirmToken, name, request, Array.isArray(willDo) ? willDo as string[] : []);
-          if (!redeemed.ok) return json({ error: redeemed.reason });
-          return cb({ ...request, apply: true }, extra);
+          const { apply: _a, confirmToken: _c, willDo: _w, ...request } = args;
+          const previewed = await preview(name, request, cb, extra);
+          return confirmByElicitation(server.server, tokens, previewed, () => cb({ ...request, apply: true }, extra));
         },
       );
     };
@@ -1441,10 +1453,10 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     // so looking at a change does not ask for the approval the change does.
     server.tool(
       'preview_change',
-      'Shows what a write tool would change, in plain words, without changing anything. Pass the write tool\'s name and the arguments you would give it (no apply). Returns willDo and a confirmToken. Show the person willDo and wait for their yes, then call the write tool itself with the same arguments plus apply: true, the confirmToken and willDo repeated exactly.',
+      'Shows what a write tool would change, in plain words, without changing anything. Pass the write tool\'s name and the arguments you would give it (no apply). Returns willDo and a confirmToken. Show the person willDo and wait for their yes, then call confirm_change with the confirmToken and willDo repeated exactly.',
       {
         tool: z.string().describe('The name of a write tool, such as update_task or complete_task.'),
-        arguments: z.record(z.unknown()).optional().describe('The arguments you would pass that tool, without apply, confirmToken or willDo.'),
+        arguments: z.record(z.unknown()).optional().describe('The arguments you would pass that tool.'),
       },
       async ({ tool, arguments: raw }, extra: unknown) => {
         const target = writes.get(tool);
@@ -1453,6 +1465,21 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         const parsed = z.object(target.shape).safeParse(given);
         if (!parsed.success) return json({ error: `Those are not valid arguments for ${tool}: ${parsed.error.issues.map(i => `${i.path.join('.') || 'arguments'}: ${i.message}`).join('; ')}` });
         return preview(tool, parsed.data as Record<string, unknown>, target.cb, extra);
+      },
+    );
+    server.tool(
+      'confirm_change',
+      'Makes the change a preview described, after the person has said yes. Pass the confirmToken from preview_change and its willDo lines exactly; nothing else, because the server kept the request. Refused if the token is spent or expired, or willDo differs from the preview.',
+      {
+        confirmToken: z.string().describe('From preview_change.'),
+        willDo: z.array(z.string()).describe("The preview's willDo lines, exactly."),
+      },
+      async ({ confirmToken, willDo }, extra: unknown) => {
+        const taken = tokens.take(confirmToken, willDo);
+        if (!taken.ok) return json({ error: taken.reason });
+        const target = writes.get(taken.tool);
+        if (!target) return json({ error: `${taken.tool} is no longer available. Preview again.` });
+        return target.cb({ ...taken.args, apply: true }, extra);
       },
     );
   }

@@ -21,6 +21,8 @@ primary_region = "ewr"
   # puts in its metadata and binds tokens to. Change it with the app name.
   PUBLIC_URL = "https://dundundun-mcp.fly.dev"
   OAUTH_STORE_PATH = "/data/oauth.db"
+  # Outstanding write previews, so a restart between preview and confirm loses none.
+  CONFIRM_STORE_PATH = "/data/confirm.db"
 
 # Both SQLite files live here. One volume means one machine, which is the
 # only shape that works: SQLite can't be shared between machines.
