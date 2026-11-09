@@ -64,6 +64,8 @@ interface ListProps {
   maxHeight?: number;
   /** Placeholder on the find-or-add field. Defaults to the create-aware wording. */
   searchPlaceholder?: string;
+  /** Focus the field when the list mounts, raising the keyboard. For a list in its own sheet. */
+  autoFocus?: boolean;
 }
 
 /** Rows are 44pt; this is a little over four of them, so the fifth peeks. */
@@ -95,6 +97,7 @@ export function CategoryPickerList({
   allowCreate = true,
   maxHeight,
   searchPlaceholder,
+  autoFocus,
 }: ListProps) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -212,6 +215,7 @@ export function CategoryPickerList({
           placeholder={searchPlaceholder ?? (allowCreate ? 'Find or add a category…' : 'Find a category…')}
           placeholderTextColor={colors.textTertiary}
           returnKeyType="done"
+          autoFocus={autoFocus}
           onSubmitEditing={handleSubmit}
           autoCorrect={false}
           autoCapitalize="words"
@@ -268,9 +272,9 @@ interface SheetProps extends Omit<ListProps, 'maxHeight'> {
  * which is the arrangement the relation picker and `WhenPicker` already ship
  * from the task editor.
  *
- * The search field is deliberately **not** autofocused. The picker exists so
- * the answer can be recognised rather than remembered, and a keyboard on open
- * would cover half the list to serve the typists who can already tap the field.
+ * The search field is autofocused: the sheet lifts above the keyboard and caps
+ * its list to the space left, so the keyboard doesn't hide the rows, and
+ * tapping the field first was a step every use of the sheet paid.
  */
 export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSelect, ...listProps }: SheetProps) {
   return (
@@ -278,6 +282,7 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
       {choose => (
         <CategoryPickerList
           {...listProps}
+          autoFocus
           maxHeight={SHEET_LIST_MAX_HEIGHT}
           onSelect={name => choose(() => onSelect(name))}
         />
