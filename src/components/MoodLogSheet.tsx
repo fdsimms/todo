@@ -496,7 +496,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       <View style={styles.card}>
         <Text style={styles.groupLabel}>SYMPTOMS</Text>
         <HelpText style={styles.hint}>
-          Whatever you want to keep track of. Add your own names for them.
+          Pick any you have today. To track something that isn’t listed, type its name to add it.
         </HelpText>
         <PillGroup
           noun="symptom"
