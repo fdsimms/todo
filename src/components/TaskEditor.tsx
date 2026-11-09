@@ -3817,7 +3817,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     email: () => { setEmailText(emailAddress ?? ''); setShowEmailField(true); },
     deliverable: () => openField('deliverable'),
     mission: () => openField('mission'),
-    kind: () => openField('kind'),
     dailyTarget: () => { animateLayout(); setShowTargetCount(true); },
     chain: () => openField('chainSteps'),
     weatherWait: () => { animateLayout(); setWeatherWaitOpen(true); },

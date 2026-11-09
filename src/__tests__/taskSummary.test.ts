@@ -166,7 +166,7 @@ describe('the place reminder clause', () => {
 
   it('says what kind of task it is, each part opening its own row', () => {
     expect(text(buildTaskSummary({ avoid: true }))).toBe('A habit to avoid.');
-    expect(values(buildTaskSummary({ avoid: true }))).toEqual([['kind', 'avoid']]);
+    expect(values(buildTaskSummary({ avoid: true }))).toEqual([['polarity', 'avoid']]);
     expect(text(buildTaskSummary({ target: '8 glasses' }))).toBe('Aims for 8 glasses a day.');
     expect(text(buildTaskSummary({ target: '3×', targetPeriod: 'week' }))).toBe('Aims for 3× a week.');
     expect(values(buildTaskSummary({ target: '8 glasses' }))).toEqual([['dailyTarget', '8 glasses']]);

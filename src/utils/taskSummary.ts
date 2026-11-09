@@ -194,7 +194,7 @@ function reminderSentence(i: TaskSummaryInput): Clause[] {
 
 function kindSentence(i: TaskSummaryInput): Clause[] {
   const clauses: Clause[] = [];
-  if (i.avoid) clauses.push([w('a habit to '), v('avoid', 'kind')]);
+  if (i.avoid) clauses.push([w('a habit to '), v('avoid', 'polarity')]);
   if (i.target) {
     clauses.push([w('aims for '), v(i.target, 'dailyTarget'), w(i.targetPeriod === 'week' ? ' a week' : ' a day')]);
   }
