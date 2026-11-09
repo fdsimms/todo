@@ -91,7 +91,7 @@ import {
   HEALTH_TARGET_LABELS, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES, describeHealthGoalAmount, followsRingGoal,
 } from '../utils/healthTarget';
 import type { AlarmMission, HealthTargetMetric } from '../types';
-import { editorRowShown, featureShown, hiddenResultsNote, taskKindsForMode } from '../utils/simpleMode';
+import { featureShown, hiddenResultsNote, taskKindsForMode } from '../utils/simpleMode';
 import { QUOTA_RAMP_MAX_EVERY, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_TARGET, canRampQuota, describeQuotaRamp } from '../utils/quotaRamp';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -409,7 +409,7 @@ function serializeExtraRows(rows: readonly MedicationExtraRow[]): string {
     .map(r => [r.name.trim(), r.amount.trim(), r.unit]));
 }
 
-type FieldKey = 'kind' | 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'mission' | 'logHealthValue' | 'medication' | 'logMealSlot' | 'slotIn' | 'placeReminder';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'mission' | 'logHealthValue' | 'medication' | 'logMealSlot' | 'slotIn' | 'placeReminder';
 
 // "If the day is full" (Task.slotIn). Keep the date first: it is what every
 // task does unless told otherwise.
@@ -4701,16 +4701,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           the answer. */}
       {!searching && <TaskSummaryCard parts={summaryParts} onPressPart={openFromSummary} />}
 
-      {/* Kind — what shape of task this is, as one row naming the current kind.
-          This used to be the whole six-way control, open, because a timed
-          task, a daily target and a chain were each one folded row in a
-          different section and nothing said they were a choice. A row labelled
-          Kind with the kind as its value does say so, and it opens the same
-          control in place. Left open, it cost most of the first screen for a
-          choice most tasks never change. Goal (do this or avoid this) opens
-          with it, since it only applies to a standard task.
-
-          No group label: KIND above a row reading Kind is the same name twice.
+      {/* Kind — what shape of task this is. Always open: a timed task, a
+          daily target and a chain are each one folded row in a different
+          section, and the control is what says they are a choice, so it is
+          never folded away itself. Goal (do this or avoid this) sits under it,
+          since it only applies to a standard task.
 
           The kind is read back off the fields (`taskKindOf`) rather than
           stored, and picking one goes through `bakedFields` — the same call
@@ -4718,7 +4713,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           editor held them independently and would save a chain that was also
           a daily target. */}
       <EditorGroup
-        groupKey="Kind"
+        label="Kind"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
@@ -4726,46 +4721,24 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             key: 'kind', label: 'Kind', set: kind !== 'task',
             keywords: ['type', 'shape', 'timed', 'timer', 'quota', 'chain'],
             node: (
-              <>
-            <EditorRow
-              icon={polarity === 'negative' ? 'shield-checkmark-outline' : kindMeta.icon}
-              label="Kind"
-              value={polarity === 'negative' ? 'Avoid this' : kindMeta.label}
-              expanded={fieldOpen('kind')}
-              onPress={() => { animateLayout(); toggleField('kind'); }}
-            />
-            {fieldOpen('kind') && (
               <View style={styles.kindBlock}>
                 {/* Two columns: "Daily target" alongside an icon has no
                     one-row spelling at four across. */}
                 <SegmentedControl
                   label="Kind"
                   value={kind}
-                  onChange={next => {
-                    applyKind(next);
-                    // Any other kind's own set-up appears below once this folds
-                    // up. A standard task's Goal sits right under the control,
-                    // so picking Standard leaves it open.
-                    if (next !== 'task') closeField('kind');
-                  }}
+                  onChange={applyKind}
                   columns={2}
                   options={kindSegmentsFor(simpleMode, kind)}
                 />
                 {!!kindMeta.hint && <HelpText style={styles.kindHint}>{kindMeta.hint}</HelpText>}
               </View>
-            )}
-              </>
             ),
           },
           // Only on a plain task: every other kind is a shape for completing
           // something, and an avoid-task is never completed (see applyKind,
-          // which resets this when the kind moves away). It opens with the
-          // Kind row, whose value already says "Avoid this" when it's set, and
-          // is in the list while searching so a search for it can find it.
-          // Simplified mode hides the Kind row on a standard task, and then
-          // this is a row of its own, as it always was: nothing else there
-          // could open it.
-          ...(kind === 'task' && (fieldOpen('kind') || searching || !editorRowShown('kind', simpleMode, false)) ? [{
+          // which resets this when the kind moves away).
+          ...(kind === 'task' ? [{
             key: 'polarity', label: 'Goal', set: polarity === 'negative',
             keywords: ['avoid', 'negative', 'quit', 'stop', 'habit', 'dont', 'abstain', 'streak'],
             node: (
