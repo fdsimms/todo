@@ -91,7 +91,7 @@ import {
   HEALTH_TARGET_LABELS, HEALTH_TARGET_METRICS, HEALTH_TARGET_RANGES, describeHealthGoalAmount, followsRingGoal,
 } from '../utils/healthTarget';
 import type { AlarmMission, HealthTargetMetric } from '../types';
-import { editorRowShown, featureShown, hiddenResultsNote, taskKindsForMode } from '../utils/simpleMode';
+import { featureShown, hiddenResultsNote, taskKindsForMode } from '../utils/simpleMode';
 import { QUOTA_RAMP_MAX_EVERY, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_TARGET, canRampQuota, describeQuotaRamp } from '../utils/quotaRamp';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -128,7 +128,7 @@ import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakR
 import { formatDeadlineDate, formatDeadlineLabel, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, describeReminderTracksVisibility, getTaskDayStart, getCurrentDayStart, getLogicalNow, getLogicalToday, seriesMonthDaysFrom, getNextDueDate, dayKeyOf, dayKeyToDate, getCurrentLogicalDayKey } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInputAheadOfRainSkip, scheduleClockInstant, stripRemindPrefix, describeSchedule, scheduleHint, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { parseTaskInput, scheduleClockInstant, stripRemindPrefix, describeSchedule, scheduleHint, detectContactIntent, matchPersonMentions, getEditorMentionSuggestions, withTrailingSpace, parseCategoryAndTagsInput, type MentionSuggestionCandidate, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
@@ -179,7 +179,6 @@ import { QuickEventSheet } from './QuickEventSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { blockerFields, blockerIdsOf, describeBlocks, resolverFor, canBeBlockerOf } from '../utils/blocking';
 import { pickTitleSuggestion, suggestionMatch, describeTitleSuggestion } from '../utils/titleSuggestion';
-import { rainUnitFor } from '../utils/rainSkip';
 import { clampSupplyCount } from '../utils/supply';
 import { displayTitleFor, getVisibleAt, onLogicalDay, isQuotaTask, sunLocationOn } from '../utils/visibilityUtils';
 import { firstWeekAnchor, proratedFrom, proratedWeeklyTarget, quotaProrationPatch, weekDaysLeft } from '../utils/quotaSchedule';
@@ -302,8 +301,6 @@ export interface TaskDraft {
   recurrenceWeekOrdinal: number | null;
   recurrenceFromCompletion: boolean;
   recurrenceHolidays?: HolidayRule | null;
-  // Task.rainSkipMm, from quick add's "unless it rains" or a duplicate.
-  rainSkipMm?: number | null;
   recurrenceEndDate: Date | null;
   recurrenceCount: number | null;
   /** Carried over when the draft already names a specific time — an imported event's appointment time, for instance. */
@@ -409,7 +406,7 @@ function serializeExtraRows(rows: readonly MedicationExtraRow[]): string {
     .map(r => [r.name.trim(), r.amount.trim(), r.unit]));
 }
 
-type FieldKey = 'kind' | 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'mission' | 'logHealthValue' | 'medication' | 'logMealSlot' | 'slotIn' | 'placeReminder';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'difficulty' | 'duration' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'mission' | 'logHealthValue' | 'medication' | 'logMealSlot' | 'slotIn' | 'placeReminder';
 
 // "If the day is full" (Task.slotIn). Keep the date first: it is what every
 // task does unless told otherwise.
@@ -419,8 +416,8 @@ const SLOT_IN_SEGMENTS: SegmentOption<boolean>[] = [
 ];
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
-// spans, including the 25-minute pomodoro.
-const DURATION_PRESETS = [5, 10, 15, 25, 30, 45, 60] as const;
+// spans. Six fit on one row at the editor's width; a seventh wraps.
+const DURATION_PRESETS = [5, 10, 15, 30, 45, 60] as const;
 
 // Matches the inline subtask checkbox in TaskItem, so a subtask looks the same
 // whether it's read in the expanded row or in this editor.
@@ -829,8 +826,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceHolidays, setRecurrenceHolidays] = useState<HolidayRule | null>(null);
-  // See Task.rainSkipMm: millimetres, whatever unit the picker shows.
-  const [rainSkipMm, setRainSkipMm] = useState<number | null>(null);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
@@ -1032,7 +1027,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const [weatherWait, setWeatherWait] = useState<WeatherCondition | null>(null);
   const [weatherWaitOpen, setWeatherWaitOpen] = useState(false);
   const weatherTasksOn = useSettingsStore(s => s.weatherTasks);
-  const rainUnit = rainUnitFor(useSettingsStore(s => s.unitSystem));
   // Every task, for "after <task>" in the title to name one. Read only while open.
   const allTasks = useTaskStore(s => (visible ? s.tasks : NO_TASKS));
   // Whether "follow the water target" can mean anything for this task right
@@ -1348,7 +1342,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setRecurrenceWeekOrdinal(task.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceHolidays(task.recurrenceHolidays ?? null);
-      setRainSkipMm(task.rainSkipMm ?? null);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
       setPriorityTouched(true); setEffortTouched(true);
@@ -1431,7 +1424,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       setRecurrenceWeekOrdinal(initialDraft?.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceHolidays(initialDraft?.recurrenceHolidays ?? null);
-      setRainSkipMm(initialDraft?.rainSkipMm ?? null);
       setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
       setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
       setPriorityTouched(initialDraft?.priority !== undefined);
@@ -1536,7 +1528,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   // same way the quick-add modal does. The phrase is highlighted and
   // described in a banner below the title; nothing is applied until tapped.
   const parsedSchedule = useMemo(
-    () => (title.trim() ? parseTaskInputAheadOfRainSkip(title, getLogicalNow(dayResetTime), new Date(), dayResetTime, polarity === 'negative') : null),
+    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime), new Date(), dayResetTime, polarity === 'negative') : null),
     [title, dayResetTime, polarity]
   );
   // The banner's own ✕ answers "not a date" for this one phrase — comparing
@@ -1632,8 +1624,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       weatherWait,
       polarity,
       windowEnd,
-      hasRainSkip: rainSkipMm !== null,
-      rainUnit,
       sunClock: anchor => sunAnchorHHMM(anchor, titleSunDayStart, titleSunLocation),
     });
     // titleSunLocation is read through sunLocationOn, whose input is the saved
@@ -1642,7 +1632,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   }, [
     title, activeParsedSchedule, activeCategoryTags, titleMentionSuggestion, titleKind, recurrenceType,
     recurrenceInterval, recurrenceDays, extraDates, chainItems, projects, titleWaitCandidates, weatherTasksOn,
-    weatherWait, polarity, windowEnd, rainSkipMm, rainUnit, titleSunDayStart.getTime(),
+    weatherWait, polarity, windowEnd, titleSunDayStart.getTime(),
     titleSunLocation,
   ]);
   const titleSuggestionMatch = titleSuggestion ? suggestionMatch(title, titleSuggestion) : null;
@@ -1653,7 +1643,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     ? null
     : titleSuggestion;
   const activeSuggestionMatch = activeTitleSuggestion ? titleSuggestionMatch : null;
-  const titleSuggestionDescription = activeTitleSuggestion ? describeTitleSuggestion(activeTitleSuggestion, rainUnit, hhmm => formatHHMM(hhmm, use24HourTime), savedLinks.saved) : null;
+  const titleSuggestionDescription = activeTitleSuggestion ? describeTitleSuggestion(activeTitleSuggestion, hhmm => formatHHMM(hhmm, use24HourTime), savedLinks.saved) : null;
 
   const titleHighlightRanges = useMemo(() => {
     const ranges: [number, number][] = [];
@@ -1945,10 +1935,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           setWindowEnd(s.hit.clock);
           applyDerivedTargetCount({ windowEnd: s.hit.clock, windowEndSun: s.hit.anchor });
         }
-        break;
-      case 'rain':
-        strip(s.hit.cleanTitle);
-        setRainSkipMm(s.hit.mm);
         break;
       case 'waiting':
         strip(s.hit.cleanTitle);
@@ -2266,7 +2252,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       recurrenceFromCompletion,
       // Only a rule with days to land on can skip one.
       recurrenceHolidays: recurrenceType !== 'none' && recurrenceType !== 'hours' ? recurrenceHolidays : null,
-      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       sortOrder: task?.sortOrder ?? 0,
       pinned, priority, effort, estimatedMinutes, actualMinutes, timedMinutes,
       // Cleared with the schedule: it only means anything on a repeating task.
@@ -3230,7 +3215,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceMonth, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceHolidays,
-      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget,
@@ -3752,6 +3736,13 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       ? workoutRoutines.find(r => r.id === workoutRoutineId)?.name ?? 'A deleted routine'
       : undefined;
 
+  const summaryMeal = (() => {
+    if (!logMealSlot) return undefined;
+    const saved = logSavedMealId ? savedMeals.find(m => m.id === logSavedMealId) : undefined;
+    if (saved) return { text: saved.name, offers: false };
+    return { text: logMealSlot === 'other' ? 'food' : LOG_MEAL_SLOT_LABELS[logMealSlot].toLowerCase(), offers: true };
+  })();
+
   const summaryParts = buildTaskSummary({
     date: dueDate ? formatScheduledDate(dueDate.toISOString()) : undefined,
     waitsIfFull: slotInAllowed && slotInShown,
@@ -3780,6 +3771,15 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     email: emailAddress ?? undefined,
     asks: deliverableKind ?? undefined,
     mission: mission ? describeMission(mission) : undefined,
+    avoid: polarity === 'negative',
+    target: kind === 'target' && targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined,
+    targetPeriod: quotaPeriod,
+    weather: weatherWait && weatherWaitAllowed ? weatherConditionLabel(weatherWait) : undefined,
+    chainStep: kind === 'chain' ? { step: chainIndex + 1, total: chainItems.length } : undefined,
+    logsHealth: logHealthMetric !== null && logHealthAmount !== null,
+    dose: medicationName ?? undefined,
+    meal: summaryMeal,
+    logsCalendar: logCompletionToCalendar,
   });
 
   const openField = (key: FieldKey) => {
@@ -3817,6 +3817,12 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     email: () => { setEmailText(emailAddress ?? ''); setShowEmailField(true); },
     deliverable: () => openField('deliverable'),
     mission: () => openField('mission'),
+    dailyTarget: () => { animateLayout(); setShowTargetCount(true); },
+    chain: () => openField('chainSteps'),
+    weatherWait: () => { animateLayout(); setWeatherWaitOpen(true); },
+    logHealthValue: () => openField('logHealthValue'),
+    medication: () => openField('medication'),
+    logMealSlot: () => openField('logMealSlot'),
   };
   const openFromSummary = (key: string) => {
     setRowsMounted(true);
@@ -4472,7 +4478,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
       )}
 
       {/* Everything else a title can say — priority, project, link, phone,
-          email, timer, supply, target, estimate, weather, sun, rain,
+          email, timer, supply, target, estimate, weather, sun,
           waiting on, subtasks, avoid. One at a time; tap to apply, or ✕ to
           say it is just part of the title. */}
       {titleVisible && activeTitleSuggestion && titleSuggestionDescription && (
@@ -4701,16 +4707,11 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           the answer. */}
       {!searching && <TaskSummaryCard parts={summaryParts} onPressPart={openFromSummary} />}
 
-      {/* Kind — what shape of task this is, as one row naming the current kind.
-          This used to be the whole six-way control, open, because a timed
-          task, a daily target and a chain were each one folded row in a
-          different section and nothing said they were a choice. A row labelled
-          Kind with the kind as its value does say so, and it opens the same
-          control in place. Left open, it cost most of the first screen for a
-          choice most tasks never change. Goal (do this or avoid this) opens
-          with it, since it only applies to a standard task.
-
-          No group label: KIND above a row reading Kind is the same name twice.
+      {/* Kind — what shape of task this is. Always open: a timed task, a
+          daily target and a chain are each one folded row in a different
+          section, and the control is what says they are a choice, so it is
+          never folded away itself. Goal (do this or avoid this) sits under it,
+          since it only applies to a standard task.
 
           The kind is read back off the fields (`taskKindOf`) rather than
           stored, and picking one goes through `bakedFields` — the same call
@@ -4718,7 +4719,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           editor held them independently and would save a chain that was also
           a daily target. */}
       <EditorGroup
-        groupKey="Kind"
+        label="Kind"
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
@@ -4726,46 +4727,24 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             key: 'kind', label: 'Kind', set: kind !== 'task',
             keywords: ['type', 'shape', 'timed', 'timer', 'quota', 'chain'],
             node: (
-              <>
-            <EditorRow
-              icon={polarity === 'negative' ? 'shield-checkmark-outline' : kindMeta.icon}
-              label="Kind"
-              value={polarity === 'negative' ? 'Avoid this' : kindMeta.label}
-              expanded={fieldOpen('kind')}
-              onPress={() => { animateLayout(); toggleField('kind'); }}
-            />
-            {fieldOpen('kind') && (
               <View style={styles.kindBlock}>
                 {/* Two columns: "Daily target" alongside an icon has no
                     one-row spelling at four across. */}
                 <SegmentedControl
                   label="Kind"
                   value={kind}
-                  onChange={next => {
-                    applyKind(next);
-                    // Any other kind's own set-up appears below once this folds
-                    // up. A standard task's Goal sits right under the control,
-                    // so picking Standard leaves it open.
-                    if (next !== 'task') closeField('kind');
-                  }}
+                  onChange={applyKind}
                   columns={2}
                   options={kindSegmentsFor(simpleMode, kind)}
                 />
                 {!!kindMeta.hint && <HelpText style={styles.kindHint}>{kindMeta.hint}</HelpText>}
               </View>
-            )}
-              </>
             ),
           },
           // Only on a plain task: every other kind is a shape for completing
           // something, and an avoid-task is never completed (see applyKind,
-          // which resets this when the kind moves away). It opens with the
-          // Kind row, whose value already says "Avoid this" when it's set, and
-          // is in the list while searching so a search for it can find it.
-          // Simplified mode hides the Kind row on a standard task, and then
-          // this is a row of its own, as it always was: nothing else there
-          // could open it.
-          ...(kind === 'task' && (fieldOpen('kind') || searching || !editorRowShown('kind', simpleMode, false)) ? [{
+          // which resets this when the kind moves away).
+          ...(kind === 'task' ? [{
             key: 'polarity', label: 'Goal', set: polarity === 'negative',
             keywords: ['avoid', 'negative', 'quit', 'stop', 'habit', 'dont', 'abstain', 'streak'],
             node: (
@@ -6179,7 +6158,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             node: (
               <>
             <EditorRow
-              icon={reminderKind === 'persistent' ? 'repeat' : reminderKind === 'alarm' ? 'alarm' : 'notifications'}
+              icon={reminderKind === 'persistent' ? 'repeat-outline' : reminderKind === 'alarm' ? 'alarm-outline' : 'notifications-outline'}
               label="Remind me"
               hint={
                 reminderKind === 'persistent'
@@ -6358,18 +6337,22 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
               <TouchableOpacity
                 style={styles.optionRow}
                 onPress={async () => {
-                  if (!savedEstimateMinutes) return;
                   haptics.tap();
+                  // No saved length yet: take them to the Effort field, which
+                  // is the thing the hint tells them to go and set.
+                  if (!savedEstimateMinutes) { openFromSummary('effort'); return; }
                   const plan = await planTimeBlock(task.id);
                   if (!plan) return;
                   setTimeBlockPlan(plan);
                   setTimeBlockOpen(true);
                 }}
                 activeOpacity={interaction.activeOpacity}
-                disabled={!savedEstimateMinutes}
                 accessibilityRole="button"
-                accessibilityLabel={timeBlockEventId ? 'Edit the calendar time block' : 'Put this task on my calendar'}
-                accessibilityState={{ disabled: !savedEstimateMinutes }}
+                accessibilityLabel={
+                  !savedEstimateMinutes
+                    ? 'Set an estimate or effort for this task'
+                    : timeBlockEventId ? 'Edit the calendar time block' : 'Put this task on my calendar'
+                }
               >
                 <Ionicons
                   name="calendar-number-outline"
@@ -6382,7 +6365,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                   </Text>
                   <Text style={styles.optionHint}>
                     {!savedEstimateMinutes
-                      ? 'Set an estimate or effort first. A block needs a length'
+                      ? 'A block needs a length. Tap to set an estimate or effort, then save'
                       : timeBlockEventId
                       ? 'Move, resize or delete the event'
                       : `Blocks out ${formatDuration(savedEstimateMinutes)} in your calendar to do this`}
@@ -6462,8 +6445,6 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
                 onChangeFromCompletion={setRecurrenceFromCompletion}
                 recurrenceHolidays={recurrenceHolidays}
                 onChangeHolidays={setRecurrenceHolidays}
-                rainSkipMm={rainSkipMm}
-                onChangeRainSkip={setRainSkipMm}
                 recurrenceCount={recurrenceCount}
                 onChangeCount={setRecurrenceCount}
                 weekOrdinal={{

@@ -35,7 +35,7 @@ own headers apply one bar, and a new feature has to be sorted against it:
    numbers or switches the app is waiting on.
 4. **It does not depend on a sibling being set first.** `autoSchedule`, `servingsMax` and
    `streakRequiresWindow` are all meaningless until another field is on.
-5. **A feature the person has to opt into is not "unanswered".** Rain skip, time windows,
+5. **A feature the person has to opt into is not "unanswered".** Time windows,
    usage meters, app gating, penalties and a quota ramp all read as "not using it" when empty,
    so the card would ask everyone to consider a feature most of them have no use for.
 
@@ -48,8 +48,7 @@ start there. Both answers are written onto
 the task, since `false` has to outrank a category set to wait, and the dismissal ("Leave as
 usual") leaves it following its category. A whole-category answer offers to turn the category on.
 
-Considered and left out under the rules above, so they are not re-derived: rain skip
-(`rainSkipMm`), time-window sun anchors, deadline time, usage meters, app gating, medications as
+Considered and left out under the rules above, so they are not re-derived: time-window sun anchors, deadline time, usage meters, app gating, medications as
 a pool (a scheduled medication has no limit to ask for), `groupOnToday` and `hideNextStep` on
 projects, a recipe's `mealType`, a person's contact lines (Fill from contacts does that in one
 tap), and a store's `receiptStyle`.
@@ -105,13 +104,6 @@ and batch toggle keeps reading one `active`, which is why the walk needed no new
   never completed, so it is not asked for a time estimate or a difficulty; a one-off and an
   every-N-hours task are not asked for a holiday rule, in a redo as well as in the normal queue
   (`fieldApplies`).
-- **A partial nutrition panel is a different question from no panel.** `nutrition` queues an
-  item with no figures; `nutritionDetail` queues an item whose saved panel has none of trans
-  fat, cholesterol or added sugars. Any one present means the source already carried the later
-  lines, so the others being absent is its answer. That is what keeps an apple, which has sugars
-  and no added sugars, from queueing for ever. An estimate is excluded because it was never read
-  off a label. Absent stays absent: nothing here writes a zero, and a food with none to add is
-  left with **Nothing more to add**.
 - **Brand, product and rating read `ItemProduct`, not the item.** `product` queues an item with
   no box and `rating` queues one with an unrated box, so both take the products list
   (`isItemFieldMissing`'s last argument, `itemBackfillFieldCounts`' last). A frozen portion is
