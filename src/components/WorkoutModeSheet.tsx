@@ -15,7 +15,7 @@
 // in docs/arch/workouts-mocks/workout-mode.png.
 import { format } from 'date-fns/format';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Keyboard, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Keyboard, ScrollView, StyleProp, StyleSheet, Text, TextStyle, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useKeepAwake } from 'expo-keep-awake';
@@ -125,6 +125,25 @@ const SET_KIND_HELP: Record<WorkoutSetKind, string> = {
   drop: 'A lighter set right after a working set. Counts toward records and volume.',
   amrap: 'To failure. Counts toward records and volume.',
 };
+
+/**
+ * An exercise name that shrinks its box to its widest line once it wraps. A wrapped `Text` otherwise
+ * keeps the full available width, which strands the chevron after it at the far edge of the row.
+ */
+function ExerciseName({ name, style }: { name: string; style: StyleProp<TextStyle> }) {
+  const [width, setWidth] = useState<number | null>(null);
+  return (
+    <Text
+      style={[style, width !== null && { width, maxWidth: '100%' }]}
+      onTextLayout={e => {
+        const widest = Math.ceil(Math.max(...e.nativeEvent.lines.map(l => l.width), 0)) + 1;
+        setWidth(prev => (prev === widest ? prev : widest));
+      }}
+    >
+      {name}
+    </Text>
+  );
+}
 
 function SetKindSegment({ kind, label, selected }: { kind: WorkoutSetKind; label: string; selected: boolean }) {
   const colors = useColors();
@@ -1209,9 +1228,10 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                     accessibilityRole="button"
                     accessibilityLabel={`${viewedInfo?.name ?? 'Unknown exercise'}, open its history and records`}
                   >
-                    <Text style={styles.exName}>{viewedInfo?.name ?? 'Unknown exercise'}</Text>
+                    <ExerciseName name={viewedInfo?.name ?? 'Unknown exercise'} style={styles.exName} />
                     <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
                   </TouchableOpacity>
+                  <View style={styles.exTitleSpacer} />
                   <TouchableOpacity
                     style={styles.exMenuButton}
                     hitSlop={8}
@@ -2028,7 +2048,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Collapsed, the summary line is the last thing in the card, so the bottom padding matches the top.
   exHeadCollapsed: { paddingBottom: spacing.md },
   exTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  exNameRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  exNameRow: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  exTitleSpacer: { flex: 1 },
   exMenuButton: { padding: spacing.xs },
   exName: { flexShrink: 1, color: colors.text, fontSize: font.xl, fontWeight: fontWeight.bold },
   exActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.smd },
