@@ -352,7 +352,7 @@ import {
 } from '../utils/visibilityUtils';
 import { openTasksOf } from '../utils/openTasks';
 import { isProjectHidden, useProjectLockStore } from './useProjectLockStore';
-import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
+import { projectsKeptFromPurge, retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
   postponeOutcome,
@@ -3871,8 +3871,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // about tasks and is what the caller reports.
     useFocusStore.getState().purgeHistoryBefore(cutoff);
 
-    const ongoingIds = new Set(useProjectStore.getState().projects.filter(isOpenEnded).map(p => p.id));
-    const ids = selectPurgeableTaskIds(get().tasks, cutoff, ongoingIds);
+    const kept = projectsKeptFromPurge(useProjectStore.getState().projects);
+    const ids = selectPurgeableTaskIds(get().tasks, cutoff, kept.keep, kept.keepOneOffs);
     if (ids.length === 0) return 0;
     const idSet = new Set(ids);
 

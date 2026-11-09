@@ -21,7 +21,7 @@ import { readStoredFileBase64, writeStoredFile } from '../../utils/recipePhoto';
 import { collectStoredFiles, restoreStoredFiles } from '../../utils/storedFileBackup';
 import {
   RETENTION_OPTIONS, retentionCutoff, retentionDeletionSummary, retentionLabel,
-  selectPurgeableFocusSessionIds, selectPurgeableTaskIds, type RetentionDays,
+  projectsKeptFromPurge, selectPurgeableFocusSessionIds, selectPurgeableTaskIds, type RetentionDays,
 } from '../../utils/retention';
 import { useFocusStore } from '../../store/useFocusStore';
 import { selectSyncsAnywhere, useSyncStore } from '../../store/useSyncStore';
@@ -33,7 +33,6 @@ import { StorageSettings } from './StorageSettings';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { BUTTON_LABEL } from '../../copy/shared';
-import { isOpenEnded } from '../../utils/listMode';
 
 /**
  * Recipe photos are the one thing in a backup that isn't a table row (see the
@@ -218,10 +217,10 @@ export function DataResetSettings() {
   const onPickRetention = (days: RetentionDays) => {
     if (days === completedRetentionDays) return;
     const cutoff = retentionCutoff(days, new Date(), dayResetTime);
-    // The same exemption the purge applies, or the count here would name
-    // tasks in an ongoing project that the purge then keeps.
-    const ongoingIds = new Set(useProjectStore.getState().projects.filter(isOpenEnded).map(p => p.id));
-    const doomed = cutoff ? selectPurgeableTaskIds(allTasks, cutoff, ongoingIds) : [];
+    // The same exemptions the purge applies, or the count here would name
+    // tasks the purge then keeps.
+    const kept = projectsKeptFromPurge(useProjectStore.getState().projects);
+    const doomed = cutoff ? selectPurgeableTaskIds(allTasks, cutoff, kept.keep, kept.keepOneOffs) : [];
     // Finished focus sessions ride the same window, so they have to be in the
     // count too. The dialog is this feature's whole safety mechanism, and one
     // that named only the tasks would understate what the tap deletes.

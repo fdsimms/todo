@@ -101,8 +101,11 @@ Every path that completes one goes through it: `completeProject` and the auto-co
 - **Reopening takes it back** (`takeBackProjectBonus`, not gated on `rewardsEnabled`), and each undo
   writes back or removes exactly that row. Complete, reopen, complete cannot collect twice.
 - **Ongoing projects and lists pay none** (`isOpenEnded`): they have no finish line.
-- **Tasks the retention window has purged no longer count**, since the ledger names a task but the
-  project's membership is read from live rows.
+- **The retention window keeps a project's finished one-off tasks** (`projectsKeptFromPurge`,
+  `src/utils/retention.ts`) for every project that isn't archived, because the bonus finds a project's
+  coins by task id and a purged task's coins would drop out of it. Repeating tasks still purge: their
+  tombstones are the ones that pile up, and a habit in a project never finishes it. An archived
+  project's rows are exempt from the purge already.
 
 ## Paying per tap
 
