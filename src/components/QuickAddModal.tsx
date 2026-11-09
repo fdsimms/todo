@@ -296,6 +296,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   const addTask = useTaskStore(s => s.addTask);
   const applyTaskDates = useTaskStore(s => s.applyTaskDates);
   const addSubtask = useTaskStore(s => s.addSubtask);
+  const registerTaskAdded = useTaskStore(s => s.registerTaskAdded);
   const updateTask = useTaskStore(s => s.updateTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const allTags = useTaskStore(useShallow(s => (visible ? s.allTags() : NO_TAGS)));
@@ -2003,6 +2004,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // subtasks do (proceedWithSave): applyTaskDates has already run, so the
     // set's other dates don't get copies of them.
     subtaskTitles.forEach(t => addSubtask(task.id, t));
+    // After every write above, and before the keepOpen return below, so a
+    // shake takes this task back rather than whatever was done before it.
+    registerTaskAdded(task.id);
     // Files the task exactly as before either way; the setting only decides
     // whether the sheet hands off straight into the full editor for it
     // (postCreateTask, rendered below) instead of just closing. Deferred

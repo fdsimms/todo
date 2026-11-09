@@ -2104,6 +2104,15 @@ interface TaskStore extends UndoHistoryActions {
    */
   restoreTasks: (rows: Task[]) => void;
   /**
+   * Files the undo for a task a person just created (quick add, the editor's
+   * New task), so a shake takes it back instead of undoing whatever came
+   * before it. Call it once every write of the creation is done: it covers the
+   * row, the other dates of its series, its subtasks and the tasks it blocks.
+   * `addTask` itself registers nothing, because generators, sync and imports
+   * call it unattended and must not arm shake-to-undo.
+   */
+  registerTaskAdded: (id: string) => void;
+  /**
    * `deliverableValue` records the answer a decision task was completed with
    * (see Task.deliverableKind). Omitting it completes with no answer, which
    * every non-interactive caller does and is always allowed — bulk complete,
@@ -4509,6 +4518,33 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     });
     set(s => ({ tasks: [...s.tasks, ...back] }));
+  },
+
+  registerTaskAdded(id) {
+    const row = get().tasks.find(t => t.id === id);
+    if (!row) return;
+    const ids = row.seriesId ? get().seriesRowsOf(row.seriesId).map(t => t.id) : [id];
+    // Who waits on the new rows, taken now: the undo releases them (a deleted
+    // blocker would otherwise leave them pointing at nothing) and the redo
+    // points them back.
+    const waiters = new Map(ids.map(i => [i, get().blockedTasksOf(i).map(t => t.id)]));
+    let removed: Task[] = [];
+    get().setLastAction({
+      label: 'Task added',
+      undo: () => {
+        // Read at undo time so subtasks and edits made since are what a redo
+        // puts back.
+        removed = get().tasks.filter(t => ids.includes(t.id) || (t.parentId != null && ids.includes(t.parentId)));
+        ids.forEach(i => {
+          get().setBlockedTasks(i, []);
+          get().deleteTask(i, { skipGeneratedOptOut: true, ignoreUnlockLock: true });
+        });
+      },
+      redo: () => {
+        get().restoreTasks(removed);
+        waiters.forEach((w, i) => { if (w.length > 0) get().setBlockedTasks(i, w); });
+      },
+    });
   },
 
   markMissed(id, options) {

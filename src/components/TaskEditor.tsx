@@ -570,6 +570,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const slotInWaitLimit = slotInMaxWaitDays === 1 ? '1 day' : `${slotInMaxWaitDays} days`;
   const setLastAction = useTaskStore(s => s.setLastAction);
   const addSubtask = useTaskStore(s => s.addSubtask);
+  const registerTaskAdded = useTaskStore(s => s.registerTaskAdded);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const deleteSubtask = useTaskStore(s => s.deleteSubtask);
   const planTimeBlock = useTaskStore(s => s.planTimeBlock);
@@ -2615,6 +2616,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           // names a row, and a set has no single row to point at — the same
           // call the fan-out in updateTask makes about a shared blocker.
           if (rows[0] && blocksIds.length > 0) setBlockedTasks(rows[0].id, blocksIds);
+          if (rows[0]) registerTaskAdded(rows[0].id);
         } else {
           // skipTitleRules: this form shows every field a rule could fill, so
           // one left empty here is an answer rather than an unanswered
@@ -2635,6 +2637,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             // else, so it lands as a follow-up write.
             if (d.timedMinutes != null) updateTask(row.id, { timedMinutes: d.timedMinutes });
           });
+          registerTaskAdded(created.id);
         }
       }
       onClose();
