@@ -1,5 +1,6 @@
 import type { WorkoutSet } from '../types';
 import {
+  supersetColor, supersetColorIndexes,
   afterLog,
   copyLastSet,
   joinedSuperset,
@@ -514,5 +515,23 @@ describe('exerciseBlocks', () => {
 
   it('is empty for no sets', () => {
     expect(exerciseBlocks([])).toEqual([]);
+  });
+});
+
+describe('supersetColorIndexes', () => {
+  it('numbers each run of neighbours sharing a key in order, and -1 for the rest', () => {
+    expect(supersetColorIndexes(['a', 'a', null, 'b', 'b', 'b', undefined])).toEqual([0, 0, -1, 1, 1, 1, -1]);
+  });
+  it('gives a key held by one item, or by two separate runs, no shared run', () => {
+    expect(supersetColorIndexes(['a', null, 'b'])).toEqual([-1, -1, -1]);
+    expect(supersetColorIndexes(['a', 'a', 'x', 'a', 'a'])).toEqual([0, 0, -1, 1, 1]);
+  });
+});
+
+describe('supersetColor', () => {
+  it('wraps round the palette and is null for no superset', () => {
+    expect(supersetColor(['r', 'g'], 0)).toBe('r');
+    expect(supersetColor(['r', 'g'], 3)).toBe('g');
+    expect(supersetColor(['r', 'g'], -1)).toBeNull();
   });
 });

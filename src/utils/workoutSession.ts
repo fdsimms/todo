@@ -101,6 +101,32 @@ export function walkOrder(sets: readonly WorkoutSet[]): WorkoutSet[] {
 }
 
 /**
+ * Which superset each item belongs to, numbered 0, 1, 2... in the order the
+ * supersets appear, and -1 for an item in none. Only a run of neighbours
+ * sharing a key is a superset (as in `supersetGroup`). Screens turn the number
+ * into a colour with `supersetColor`, so two supersets are told apart.
+ */
+export function supersetColorIndexes(keys: readonly (string | null | undefined)[]): number[] {
+  const out: number[] = [];
+  let next = 0;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (!key) { out.push(-1); continue; }
+    const joinsBefore = i > 0 && keys[i - 1] === key;
+    const joinsAfter = i < keys.length - 1 && keys[i + 1] === key;
+    if (joinsBefore) out.push(out[i - 1]);
+    else if (joinsAfter) out.push(next++);
+    else out.push(-1);
+  }
+  return out;
+}
+
+/** The colour of the nth superset: the theme's tag palette, wrapping round. */
+export function supersetColor(palette: readonly string[], index: number): string | null {
+  return index < 0 || palette.length === 0 ? null : palette[index % palette.length];
+}
+
+/**
  * The session's exercise order with one exercise moved a place up or down,
  * for `reorderExercises`: the Apple Watch's list moves a row this way. An
  * exercise in a superset moves with its partners, as one block past the

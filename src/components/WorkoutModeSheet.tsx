@@ -101,7 +101,7 @@ import {
   finishPlan, formatDistance, formatSetLine, collapsedSetSummary, exerciseBlocks, matchPreviousByPosition, movedExerciseOrder, movedWithinSuperset, nextSet, previousBadge,
   columnLabel, fieldLabel, sessionExercises, sessionSummary, setBadge, setFieldsFor, setLabels, setName, valuesFromLastDone,
   type SetField,
-  restSecondsFor, supersetGroup,
+  restSecondsFor, supersetColor, supersetColorIndexes, supersetGroup,
 } from '../utils/workoutSession';
 import { tickSet, type TickValues } from '../utils/workoutTick';
 import type { SessionExercise } from '../utils/workoutSession';
@@ -254,6 +254,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
   }, [session, routine, routineVersions]);
   const oldVersion = versionInfo?.old ?? null;
   const exercises = useMemo(() => sessionExercises(sets), [sets]);
+  const supersetColorIdx = useMemo(() => supersetColorIndexes(exercises.map(e => e.supersetKey)), [exercises]);
   // Numbered within each exercise: its working sets read 1, 2, 3.
   const labels = useMemo(
     () => new Map(exercises.flatMap(e => [...setLabels(e.sets).entries()])),
@@ -1081,10 +1082,11 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                       const names = row.block.map(e => catalogExercise(exerciseRows, e.exerciseId)?.name ?? 'Unknown exercise');
                       const all = row.block.flatMap(e => e.sets);
                       const done = all.filter(s => s.completedAt !== null).length;
+                      const reorderColor = row.block.length > 1 ? supersetColor(colors.tagPalette, supersetColorIdx[exercises.findIndex(e => e.exerciseId === row.block[0].exerciseId)]) : null;
                       const detail = `${row.block.length > 1 ? 'Superset · ' : ''}${all.length} ${all.length === 1 ? 'set' : 'sets'} · ${done} done`;
                       return (
                         <TouchableOpacity
-                          style={[styles.reorderRow, index > 0 && styles.reorderRowSep, row.block.length > 1 && styles.reorderSuperset, isActive && styles.reorderActive]}
+                          style={[styles.reorderRow, index > 0 && styles.reorderRowSep, row.block.length > 1 && styles.reorderSuperset, row.block.length > 1 && reorderColor !== null && { borderLeftColor: reorderColor }, isActive && styles.reorderActive]}
                           onLongPress={drag}
                           delayLongPress={interaction.delayLongPress}
                           activeOpacity={interaction.activeOpacity}
@@ -1154,6 +1156,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
               const viewedGroup = supersetGroup(exercises, viewed.exerciseId);
               // Where this card sits in its superset: partners close up into one accent-edged block.
               const pairPos = viewedGroup.length > 1 ? viewedGroup.findIndex(e => e.exerciseId === viewed.exerciseId) : -1;
+              const pairColor = pairPos >= 0 ? supersetColor(colors.tagPalette, supersetColorIdx[exercises.findIndex(e => e.exerciseId === viewed.exerciseId)]) : null;
               const restChip = session && viewedGroup[viewedGroup.length - 1]?.exerciseId === viewed.exerciseId
                 ? {
                     seconds: restSecondsFor(startedPlan, viewed.exerciseId, defaultRestSeconds, session.restOverrides),
@@ -1190,6 +1193,7 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                   styles.card,
                   cardIndex > 0 && (pairPos > 0 ? styles.cardPaired : styles.cardStacked),
                   pairPos >= 0 && styles.cardSuperset,
+                  pairColor !== null && { borderLeftColor: pairColor },
                   pairPos > 0 && styles.cardSupersetJoinedTop,
                   pairPos >= 0 && pairPos < viewedGroup.length - 1 && styles.cardSupersetJoinedBottom,
                 ]}
@@ -1197,8 +1201,8 @@ export function WorkoutModeSheet({ visible, onClose, onSaved }: Props) {
                 <View style={[styles.exHead, collapsed && styles.exHeadCollapsed]}>
                   {pairPos >= 0 && (
                     <View style={styles.supersetTag} accessible accessibilityLabel={`Superset, exercise ${pairPos + 1} of ${viewedGroup.length}`}>
-                      <Ionicons name="repeat" size={iconSize.sm} color={colors.accent} />
-                      <Text style={styles.supersetTagText}>{`Superset · ${pairPos + 1} of ${viewedGroup.length}`}</Text>
+                      <Ionicons name="repeat" size={iconSize.sm} color={pairColor ?? colors.accent} />
+                      <Text style={[styles.supersetTagText, pairColor !== null && { color: pairColor }]}>{`Superset · ${pairPos + 1} of ${viewedGroup.length}`}</Text>
                     </View>
                   )}
                   <View style={styles.exTitleRow}>
