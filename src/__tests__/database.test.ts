@@ -1998,7 +1998,6 @@ describe('Templates', () => {
     recurrenceMonth: null,
     recurrenceFromCompletion: false,
     recurrenceHolidays: null,
-    rainSkipMm: null,
     quotaRampStep: null,
     quotaRampEvery: null,
     quotaRampGoal: null,

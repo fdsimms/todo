@@ -32,7 +32,7 @@ import { resetToWeightGoal } from '../../navigation/navigationRef';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { RAIN_TAG_MM, type MoodContextSources } from '../../utils/moodContextSources';
-import { formatRain, rainUnitFor, type RainUnit } from '../../utils/rainSkip';
+import { formatRain, rainUnitFor, type RainUnit } from '../../utils/rainUnits';
 import { MoodEventTagsSheet } from '../../components/MoodEventTagsSheet';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';

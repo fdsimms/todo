@@ -1,4 +1,4 @@
-import type { GroceryItem, ItemProduct, ItemSubLink, NutrientKey } from '../types';
+import type { GroceryItem, ItemProduct, ItemSubLink } from '../types';
 import { isPortionBox } from '../types';
 import { substitutesFor } from './itemSubs';
 import { isNonFoodAisle } from './groceryAisles';
@@ -42,15 +42,7 @@ import { isNonFoodAisle } from './groceryAisles';
  * what makes a walk-through worth it.
  */
 export type ItemBackfillFieldId =
-  | 'variety' | 'substitutes' | 'nutrition' | 'nutritionDetail' | 'scannedName' | 'product' | 'rating';
-
-/**
- * The three label lines the app began recording after it had already saved
- * panels without them. An absent key is unknown and never a zero (see
- * `FoodNutrition.amounts`), so a panel saved earlier cannot say whether its
- * food has none of these or the app simply did not ask.
- */
-export const LATER_LABEL_NUTRIENTS: readonly NutrientKey[] = ['transFatG', 'cholesterolMg', 'addedSugarG'];
+  | 'variety' | 'substitutes' | 'nutrition' | 'scannedName' | 'product' | 'rating';
 
 export interface ItemBackfillFieldDef {
   id: ItemBackfillFieldId;
@@ -85,11 +77,6 @@ export const ITEM_BACKFILL_FIELDS: ItemBackfillFieldDef[] = [
     id: 'nutrition',
     label: 'Nutrition',
     hint: 'What this food is made of, so a recipe or a logged meal can be counted.',
-  },
-  {
-    id: 'nutritionDetail',
-    label: 'Fat and sugar detail',
-    hint: 'Foods saved before trans fat, cholesterol and added sugars were recorded. Add them from the label, or say there are none.',
   },
   {
     id: 'product',
@@ -144,12 +131,6 @@ export function isItemFieldMissing(
     // hide a real gap behind an answer to a different question.
     case 'nutrition':
       return item.nutrition == null && !isNonFoodAisle(item.aisle, nonFoodAisles);
-    // A saved panel with none of the three later lines. One of them present
-    // means the figures came from a source that already carried them, so the
-    // rest being absent is that source's answer rather than an old save, which
-    // is what keeps an apple (sugars, no added sugars) from queueing forever.
-    case 'nutritionDetail':
-      return needsLaterLabelLines(item) && !isNonFoodAisle(item.aisle, nonFoodAisles);
     // Not a missing value at all but a name nobody has chosen — see
     // `GroceryItem.nameFromScan`, and note that `renameItem` clearing the flag
     // is what takes a row out of this queue.
@@ -177,20 +158,7 @@ export function isItemFieldApplicable(
   products: readonly ItemProduct[] = []
 ): boolean {
   if (fieldId === 'rating') return boxesOf(item.id, products).length > 0;
-  if (fieldId === 'nutritionDetail') return item.nutrition != null && item.nutrition.source !== 'estimated' && !isNonFoodAisle(item.aisle, nonFoodAisles);
   return fieldId !== 'nutrition' || !isNonFoodAisle(item.aisle, nonFoodAisles);
-}
-
-/**
- * Whether the item's panel was typed or looked up and carries none of
- * `LATER_LABEL_NUTRIENTS`. An estimate is left out: it was never read off a
- * label, and a model's guess is replaced by estimating again, not by typing
- * figures into it.
- */
-function needsLaterLabelLines(item: GroceryItem): boolean {
-  const panel = item.nutrition;
-  if (!panel || panel.source === 'estimated') return false;
-  return LATER_LABEL_NUTRIENTS.every(key => panel.amounts[key] === undefined);
 }
 
 /**
@@ -232,7 +200,7 @@ export function itemBackfillFieldCounts(
   products: readonly ItemProduct[] = []
 ): Record<ItemBackfillFieldId, number> {
   const counts = {
-    variety: 0, substitutes: 0, nutrition: 0, nutritionDetail: 0, scannedName: 0, product: 0, rating: 0,
+    variety: 0, substitutes: 0, nutrition: 0, scannedName: 0, product: 0, rating: 0,
   } as Record<ItemBackfillFieldId, number>;
   for (const i of items) {
     for (const field of ITEM_BACKFILL_FIELDS) {

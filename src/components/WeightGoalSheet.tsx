@@ -167,8 +167,9 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
    * (the target follows it), so a reopened sheet opens on what was saved.
    */
   const [basis, setBasis] = useState<'activity' | 'health' | 'log'>('activity');
-  // Set by "Hold at current weight" to move a saved Maintain goal's anchor.
-  const [reanchor, setReanchor] = useState(false);
+  // The weight a Maintain goal holds, as typed (display unit). Null until
+  // edited, when the field shows `defaultHoldKg`.
+  const [holdText, setHoldText] = useState<string | null>(null);
   const measuredBasis = basis === 'health';
   /**
    * Whether the Apple Health figure adds the energy spent digesting food. On by
@@ -246,7 +247,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
       ? storedGoal.maintenanceBasis
       : 'activity');
     setCountDigestion(storedGoal?.countDigestion !== false);
-    setReanchor(false);
+    setHoldText(null);
     setRaiseBusyDays(activeEnergyBoost !== null);
 
     if (storedGoal) {
@@ -283,16 +284,28 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
    * **A Maintain goal that is already saved keeps its own weight**, though.
    * Re-anchoring on every open made a later save (to change anything else)
    * quietly move what was being held to whatever the latest weigh-in was.
-   * `reanchor` is the explicit way to move it.
+   * The weight is a field, seeded with the held weight (or the latest
+   * weigh-in when there is no Maintain goal yet), so moving it is typing.
    */
-  const keepsStoredHold =
-    maintaining && !reanchor && storedGoal !== null && goalDirection(storedGoal) === 'maintain';
-  const startKg = keepsStoredHold
+  const storedHold = storedGoal !== null && goalDirection(storedGoal) === 'maintain'
     ? storedGoal.startKg
-    : maintaining
-      ? (currentKg ?? storedGoal?.startKg ?? null)
-      : (storedGoal?.startKg ?? currentKg);
+    : null;
+  const defaultHoldKg = storedHold ?? currentKg ?? storedGoal?.startKg ?? null;
+  const typedHoldKg = holdText === null ? defaultHoldKg : parseWeightInput(holdText, unit);
+  // Typing back the weight already held (to the precision shown) is no change,
+  // so unit rounding can't restart the goal's day.
+  const holdKg = typedHoldKg !== null && storedHold !== null
+    && formatWeight(typedHoldKg, unit) === formatWeight(storedHold, unit)
+    ? storedHold
+    : typedHoldKg;
+  const keepsStoredHold = maintaining && storedHold !== null && holdKg === storedHold;
+  const startKg = maintaining
+    ? holdKg
+    : (storedGoal?.startKg ?? currentKg);
   const targetKg = maintaining ? startKg : parseWeightInput(targetText, unit);
+  // Non-null whenever there is any weight to anchor to, even while the Maintain
+  // field is blank, so the form doesn't swap to the "record a weight" notice.
+  const baseKg = startKg ?? defaultHoldKg;
   const rateKg = rate === null ? null : unitToKg(rate, unit);
   // A start that isn't the stored one is a new phase, so the pace line restarts
   // from today rather than from whenever the previous goal began.
@@ -498,7 +511,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
         />
       }
     >
-      {startKg === null ? (
+      {baseKg === null ? (
         <>
           <Text style={styles.footnote}>
             Record a weight first. A goal is measured from your
@@ -541,7 +554,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                       onChangeText={setTargetText}
                       keyboardType="decimal-pad"
                       inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-                      placeholder={`e.g. ${suggestPlaceholder(startKg, direction, unit)}`}
+                      placeholder={`e.g. ${suggestPlaceholder(baseKg, direction, unit)}`}
                       placeholderTextColor={colors.textTertiary}
                       accessibilityLabel={`Target weight in ${unit === 'kg' ? 'kilograms' : 'pounds'}`}
                       selectTextOnFocus
@@ -570,21 +583,40 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
               </>
             )}
 
+            {maintaining && (
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Weight to maintain</Text>
+                <View style={styles.inputRow}>
+                  <TextField
+                    style={styles.input}
+                    value={holdText ?? (defaultHoldKg === null ? '' : kgToUnit(defaultHoldKg, unit).toFixed(1))}
+                    onChangeText={setHoldText}
+                    keyboardType="decimal-pad"
+                    inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                    placeholder={`e.g. ${kgToUnit(baseKg, unit).toFixed(0)}`}
+                    placeholderTextColor={colors.textTertiary}
+                    accessibilityLabel={`Weight to maintain in ${unit === 'kg' ? 'kilograms' : 'pounds'}`}
+                    selectTextOnFocus
+                  />
+                  <Text style={styles.unit}>{unit}</Text>
+                </View>
+              </View>
+            )}
             <Text style={styles.help}>
-              {keepsStoredHold && storedGoal
-                ? `Holding ${formatWeight(startKg, unit)}, set ${format(dayKeyToDate(storedGoal.startDayKey), 'MMM d')}.`
-                : maintaining
-                  ? `Holding ${formatWeight(startKg, unit)}, your latest weigh-in.`
-                  : `Measured from ${formatWeight(startKg, unit)}${restarting ? ', your latest weigh-in.' : ', where this goal started.'}`}
+              {maintaining
+                ? keepsStoredHold && storedGoal
+                  ? `Holding since ${format(dayKeyToDate(storedGoal.startDayKey), 'MMM d')}.`
+                  : 'Holding starts today at this weight.'
+                : `Measured from ${formatWeight(baseKg, unit)}${restarting ? ', your latest weigh-in.' : ', where this goal started.'}`}
             </Text>
-            {keepsStoredHold && currentKg !== null && formatWeight(currentKg, unit) !== formatWeight(startKg, unit) && (
+            {maintaining && currentKg !== null && formatWeight(currentKg, unit) !== formatWeight(holdKg ?? currentKg, unit) && (
               <View style={styles.field}>
                 <InlineAction
                   variant="neutral"
                   surface="card"
                   icon="locate-outline"
-                  label={`Hold at ${formatWeight(currentKg, unit)} instead`}
-                  onPress={() => { haptics.tap(); setReanchor(true); }}
+                  label={`Use latest weigh-in, ${formatWeight(currentKg, unit)}`}
+                  onPress={() => { haptics.tap(); setHoldText(kgToUnit(currentKg, unit).toFixed(1)); }}
                 />
               </View>
             )}
@@ -593,7 +625,7 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
           {!canSave && !maintaining && targetKg !== null && (
             <Text style={styles.warning}>
               A target to {direction} has to be {direction === 'lose' ? 'below' : 'above'}{' '}
-              {formatWeight(startKg, unit)}.
+              {formatWeight(baseKg, unit)}.
             </Text>
           )}
 
@@ -915,9 +947,9 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                       onPress={() => { haptics.tap(); setRaiseBusyDays(on => !on); }}
                       accessibilityRole="switch"
                       accessibilityState={{ checked: raiseBusyDays }}
-                      accessibilityLabel="Raise the target on busy days"
+                      accessibilityLabel="Add extra calories on active days"
                     >
-                      <Text style={styles.toggleLabel}>Raise the target on busy days</Text>
+                      <Text style={styles.toggleLabel}>Add extra calories on active days</Text>
                       <Toggle value={raiseBusyDays} />
                     </TouchableOpacity>
                     <HelpText style={styles.help}>
