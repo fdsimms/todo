@@ -134,6 +134,11 @@ private struct WorkoutClockView: View {
         .font(font)
         .foregroundColor(color)
         .multilineTextAlignment(.trailing)
+        // A timer-style Text sizes itself for its widest reading (hours
+        // included), so beside the "+" it overflowed the caller's maxWidth and
+        // wrapped to "2:" over "15". One line, shrunk to fit instead.
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
     }
 }
 
@@ -245,7 +250,7 @@ private struct WorkoutLockScreenView: View {
                         : .system(size: 15, weight: .semibold).monospacedDigit(),
                     color: over ? palette.orange : (resting ? palette.text : palette.textSecondary)
                 )
-                .frame(maxWidth: 96, alignment: .trailing)
+                .frame(maxWidth: 112, alignment: .trailing)
             }
 
             if workoutHasButtons(state, over: over) {
