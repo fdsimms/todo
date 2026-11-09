@@ -288,6 +288,11 @@ export function travelOriginForEvent(
   return travelOriginFor(pick, places) ?? travelOriginFor(defaultPlaceId, places);
 }
 
+/** The line above the ways of getting there: "From home:", or "From current location:" when the trip starts at the phone. */
+export function travelOriginLabel(origin: TravelOrigin | null): string {
+  return origin ? `From ${origin.name}:` : 'From current location:';
+}
+
 /** What an estimate is filed under: moving the starting point (or the pin) changes it, a rename doesn't. */
 export function travelOriginKey(origin: TravelOrigin | null): string {
   return origin ? `at:${origin.latitude.toFixed(5)},${origin.longitude.toFixed(5)}` : TRAVEL_ORIGIN_CURRENT;
