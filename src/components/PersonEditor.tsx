@@ -23,7 +23,8 @@ import { useTextScale } from '../hooks/useTextScale';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
-import { birthdayInYear, hasBirthday } from '../utils/birthdayTasks';
+import { hasBirthday } from '../utils/birthdayTasks';
+import { describeBirthday } from '../utils/personFields';
 import { useTasksWhileOpen } from '../hooks/useTasksWhileOpen';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl } from './SegmentedControl';
@@ -52,20 +53,6 @@ interface Props {
   /** Titles the sheet "New Person" — set when arriving from the list's add field. */
   isNew?: boolean;
   onClose: () => void;
-}
-
-/**
- * "March 14", or "March 14, 1992" once a year is on file — the way the
- * birthday row reads back what's on file.
- */
-function describeBirthday(month: number | null, day: number | null, year: number | null): string | undefined {
-  if (month === null || day === null) return undefined;
-  const date = birthdayInYear({ birthdayMonth: month, birthdayDay: day }, year ?? 2024);
-  if (!date) return undefined;
-  return date.toLocaleDateString(
-    undefined,
-    year ? { month: 'long', day: 'numeric', year: 'numeric' } : { month: 'long', day: 'numeric' }
-  );
 }
 
 /**
