@@ -18,6 +18,7 @@
  * phone. docs/arch/mcp-server.md has the reasoning.
  */
 import express, { type Request, type Response } from 'express';
+import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { McpServer, type RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { mcpAuthRouter, getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/server/auth/router.js';
@@ -201,6 +202,42 @@ function parseToolText(out: { content: { type: string; text?: string }[] }): unk
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Asks the person through the client's own prompt (MCP elicitation) instead of
+ * the token round trip, when the client supports it. The prompt carries the
+ * server's `willDo` lines, so the description is the server's, as with the
+ * token flow. Accept writes now; decline or cancel leaves the preview unspent.
+ * Anything else (no elicitation capability, a transport that cannot ask, an
+ * error) returns the preview untouched, so the confirmToken flow still works.
+ */
+export async function confirmByElicitation(
+  low: Server,
+  tokens: ConfirmTokens,
+  name: string,
+  request: Record<string, unknown>,
+  previewed: { content: { type: 'text'; text: string }[] },
+  write: () => Promise<{ content: { type: 'text'; text: string }[] }>,
+) {
+  const details = parseToolText(previewed) as { preview?: boolean; willDo?: string[]; confirmToken?: string } | undefined;
+  if (!details?.preview || !Array.isArray(details.willDo) || typeof details.confirmToken !== 'string') return previewed;
+  if (!low.getClientCapabilities()?.elicitation) return previewed;
+  let answer: Awaited<ReturnType<Server['elicitInput']>>;
+  try {
+    answer = await low.elicitInput({
+      message: details.willDo.join('\n'),
+      requestedSchema: { type: 'object', properties: { confirm: { type: 'boolean', title: 'Make this change', default: true } } },
+    });
+  } catch {
+    return previewed;
+  }
+  if (answer.action !== 'accept' || answer.content?.confirm === false) {
+    return json({ declined: true, next: 'The person said no. Nothing was changed. Do not retry this change; ask what they would like instead.' });
+  }
+  const redeemed = tokens.redeem(details.confirmToken, name, request, details.willDo);
+  if (!redeemed.ok) return json({ error: redeemed.reason });
+  return write();
 }
 
 /**
@@ -1384,7 +1421,10 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
         },
         async (args: Record<string, unknown>, extra: unknown) => {
           const { apply, confirmToken, willDo, ...request } = args;
-          if (!apply) return preview(name, request, cb, extra);
+          if (!apply) {
+            const previewed = await preview(name, request, cb, extra);
+            return confirmByElicitation(server.server, tokens, name, request, previewed, () => cb({ ...request, apply: true }, extra));
+          }
           if (typeof confirmToken !== 'string') {
             return json({ error: 'Preview first: call preview_change with this tool and its arguments, show the person what willDo says, then confirm with the confirmToken it returns.' });
           }
