@@ -7,6 +7,7 @@ import {
   savedMealCalories,
   wholeEstimate,
 } from './foodLog';
+import { OUT_OF_IT_UNTIL } from './grocerySuggest';
 
 /**
  * Looking over a saved meal before it is logged: change an amount, drop a food,
@@ -222,4 +223,24 @@ export function itemFromPick(pick: {
     nutrition: pick.nutrition,
     ...(pick.sourcePanel ? { sourcePanel: pick.sourcePanel } : {}),
   };
+}
+
+/**
+ * What a review line offers about stock. Only a food linked to a catalog row
+ * (`itemId`) has a pantry to speak to, and only while it is still in the log:
+ * a food left out of this meal has nothing to say about the cupboard.
+ *
+ * `out` and `listed` are what the row says now, so a pill reads "Marked out" or
+ * "On your list" when the sheet opens on a row that already is. Both are
+ * one-way here: neither pill clears what it set (the list has several owners,
+ * see `setRunningLow`, and a mis-tap is undone with the shake that follows the
+ * write).
+ */
+export function reviewStockState(
+  line: Pick<ReviewLine, 'item' | 'removed'>,
+  row: { onHandUntil: string | null } | null | undefined,
+  homeListed: boolean
+): { out: boolean; listed: boolean } | null {
+  if (line.removed || !line.item.itemId || !row) return null;
+  return { out: row.onHandUntil === OUT_OF_IT_UNTIL, listed: homeListed };
 }

@@ -543,7 +543,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/savedEventTasks.ts` — BOOK_LEAD_DAYS, bookSourceId, bookEventSourceOf, bookDueDay, wantsBookTask, bookTaskTitle, bookTaskNotes
 - `src/utils/savedEvents.ts` — SAVED_EVENTS_KEY, BOOK_EVERY_MONTHS_MAX, SavedEvent, SavedEventFields, parseSavedEvents, readSavedEvents, writeSavedEvents, findSavedEvent, sortedSavedEvents, saveEventAs, +11 more
 - `src/utils/savedLinks.ts` — SAVED_LINKS_KEY, SAVED_LINKS_LIMIT, SavedLink, savedLinkKey, parseSavedLinks, isChipUrl, canSaveLink, suggestLinkName, addSavedLink, renameSavedLink, +7 more
-- `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, appendLine, +6 more
+- `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, appendLine, +7 more
 - `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, savedPlaceNameTaken, +8 more
 - `src/utils/scanItemType.ts` — itemTypeFromCategory, cleanModelItemType, catalogSpellingOf, ItemTypeMove, itemTypeMoveFor
 - `src/utils/scanPermission.ts` — scanPermissionMessage
