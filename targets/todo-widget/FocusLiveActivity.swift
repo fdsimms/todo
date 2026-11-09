@@ -112,6 +112,10 @@ private struct FocusClockView: View {
         .font(font)
         .foregroundColor(color)
         .multilineTextAlignment(.center)
+        // A timer-style Text sizes itself for its widest reading, so beside the
+        // "+" it can wrap onto two lines. One line, shrunk to fit instead.
+        .lineLimit(1)
+        .minimumScaleFactor(0.6)
     }
 }
 
