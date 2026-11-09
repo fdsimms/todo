@@ -178,6 +178,15 @@ export function EditorSheet({
     return () => { scrollToRef.current = null; };
   }, [scrollToRef, keyboardScroll.ref]);
   const report = () => onScrollMetrics?.({ ...metrics.current });
+  // A sheet that closes unmounts its ScrollView and the next one opens at the
+  // top, but no scroll event says so, so the offset left from the last visit
+  // would keep the jump bar highlighting the card you had scrolled to.
+  useEffect(() => {
+    if (visible) return;
+    metrics.current.offset = 0;
+    onScrollMetrics?.({ ...metrics.current });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
   const trackScroll = dragScrollRef || onScrollMetrics
     ? {
         scrollEventThrottle: 16,
