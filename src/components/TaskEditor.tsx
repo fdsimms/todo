@@ -382,6 +382,8 @@ interface Props {
    * beside a live list, where the next click is one tap away.
    */
   dirtyCheckRef?: React.MutableRefObject<(() => boolean) | null>;
+  /** Set alongside `dirtyCheckRef`: what differs, in words for the discard alert ('' when nothing does). */
+  changedSummaryRef?: React.MutableRefObject<(() => string) | null>;
 }
 
 type PickerMode = 'none' | 'reminder';
@@ -552,7 +554,7 @@ const WINDOW_KIND_OPTIONS: SegmentOption<'time' | SunEvent>[] = [
 
 const NO_TASKS: Task[] = [];
 
-function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inline = false, dirtyCheckRef }: Props) {
+function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inline = false, dirtyCheckRef, changedSummaryRef }: Props) {
   // ==== the task on screen ====
   // Duplicate swaps the open sheet onto the copy it made, so the copy can be
   // changed at once; the host's own task is what it shows again next time.
@@ -3300,6 +3302,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
     );
   }
   if (dirtyCheckRef) dirtyCheckRef.current = hasUnsavedChanges;
+  if (changedSummaryRef) changedSummaryRef.current = () => listChanges(changedEditorFields(initialStateRef.current, currentSnapshot()));
 
   // What differs, in the editor's own words, for the alerts below to name.
   const changedSummary = () => listChanges(changedEditorFields(initialStateRef.current, currentSnapshot()));

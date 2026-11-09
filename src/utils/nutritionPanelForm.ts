@@ -1,3 +1,4 @@
+import { changedList } from './editorChangeSummary';
 import type { FoodNutrition, NovaGroup, NutrientKey } from '../types';
 import type { LabelColumn, LabelReading } from './labelOcr';
 import { NUTRIENT_KEYS } from '../types';
@@ -176,16 +177,23 @@ export function gramsToServingWeight(grams: string, unit: ServingWeightUnit): st
   return String(Math.round((value / GRAMS_PER_OUNCE) * 100) / 100);
 }
 
+/** What the form no longer says compared with what it opened saying, in words for the discard alert. */
+export function panelFormChanges(form: PanelForm, baseline: PanelForm): string {
+  return changedList([
+    ['basis', form.basis !== baseline.basis],
+    ['serving size', form.servingText.trim() !== baseline.servingText.trim()],
+    ['serving weight', form.servingGrams.trim() !== baseline.servingGrams.trim()],
+    ['package weight', form.packageGrams.trim() !== baseline.packageGrams.trim()],
+    ['NOVA group', form.novaGroup !== baseline.novaGroup],
+    ['cooked weight', form.cookedPerRaw.trim() !== baseline.cookedPerRaw.trim()
+      || (form.cookedPerRaw.trim() !== '' && form.cookedState !== baseline.cookedState)],
+    ['nutrients', NUTRIENT_KEYS.some(k => form.amounts[k].trim() !== baseline.amounts[k].trim())],
+  ]);
+}
+
 /** Whether the form still says what it opened saying, for the unsaved-changes guard. */
 export function panelFormDirty(form: PanelForm, baseline: PanelForm): boolean {
-  if (form.basis !== baseline.basis) return true;
-  if (form.servingText.trim() !== baseline.servingText.trim()) return true;
-  if (form.servingGrams.trim() !== baseline.servingGrams.trim()) return true;
-  if (form.packageGrams.trim() !== baseline.packageGrams.trim()) return true;
-  if (form.novaGroup !== baseline.novaGroup) return true;
-  if (form.cookedPerRaw.trim() !== baseline.cookedPerRaw.trim()) return true;
-  if (form.cookedPerRaw.trim() !== '' && form.cookedState !== baseline.cookedState) return true;
-  return NUTRIENT_KEYS.some(k => form.amounts[k].trim() !== baseline.amounts[k].trim());
+  return panelFormChanges(form, baseline) !== '';
 }
 
 /**

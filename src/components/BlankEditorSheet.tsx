@@ -14,6 +14,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedList } from '../utils/editorChangeSummary';
 import { FOOD_KINDS, FOOD_KIND_LABELS } from '../utils/foodKinds';
 import { RECIPE_BLANK_LABEL_MAX_LENGTH } from '../utils/recipeBlanks';
 import { GROCERY_QUANTITY_MAX_LENGTH, type FoodKind } from '../types';
@@ -104,16 +105,18 @@ export function BlankEditorSheet({ visible, recipeId, blankId, onClose }: Props)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, blankId]);
 
-  const dirty = kind !== opened.current.kind
-    || count !== opened.current.count
-    || quantity !== opened.current.quantity
-    || label !== opened.current.label
-    || options !== opened.current.options
-    || excluded !== opened.current.excluded;
+  const changed = changedList([
+    ['kind', kind !== opened.current.kind],
+    ['count', count !== opened.current.count],
+    ['quantity', quantity !== opened.current.quantity],
+    ['label', label !== opened.current.label],
+    ['options', options !== opened.current.options],
+    ['excluded options', excluded !== opened.current.excluded],
+  ]);
 
   const handleCancel = () => {
-    if (!dirty) { onClose(); return; }
-    confirmDiscard(onClose);
+    if (!changed) { onClose(); return; }
+    confirmDiscard(onClose, { changed });
   };
 
   const fieldKind = kind === 'options' ? null : kind;

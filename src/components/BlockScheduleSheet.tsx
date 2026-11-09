@@ -26,6 +26,7 @@ import {
 } from '../utils/blockSchedule';
 import { SettingsSegments } from '../screens/settings/SettingsSegments';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedSlots } from '../utils/editorChangeSummary';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -64,6 +65,8 @@ const NEW_DRAFT: Draft = {
   allowWindow: false,
 };
 
+/** What each slot of `draftKey` holds, in the same order, for the discard alert. */
+const DRAFT_LABELS = ['name', 'apps', 'days', 'all day', 'start time', 'end time', 'allow window'] as const;
 const draftKey = (d: Draft) => JSON.stringify([d.name.trim(), [...d.groupIds].sort(), [...d.days].sort(), d.allDay, d.allDay ? 0 : d.startMinutes, d.allDay ? 0 : d.endMinutes, d.allowWindow]);
 
 function minutesToDate(minutes: number): Date {
@@ -122,15 +125,15 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
     : draft.groupIds.length === 0 ? 'apps'
     : draft.days.length === 0 ? 'days'
     : 'time';
-  const dirty = draftKey(draft) !== baseline.current;
+  const changed = changedSlots(DRAFT_LABELS, baseline.current, draftKey(draft));
   const orderedDays = useMemo(
     () => Array.from({ length: 7 }, (_, i) => (i + weekStartsOn) % 7),
     [weekStartsOn],
   );
 
   const handleCancel = () => {
-    if (!dirty) { onClose(); return; }
-    confirmDiscard(onClose);
+    if (!changed) { onClose(); return; }
+    confirmDiscard(onClose, { changed });
   };
 
   // The row refuses to open a live schedule, but a window can start while the

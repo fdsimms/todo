@@ -13,6 +13,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { font, fontWeight, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedList } from '../utils/editorChangeSummary';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { sameMinute, shiftDays, withClock } from '../utils/workoutTimes';
 import {
@@ -86,13 +87,13 @@ export function FastSheet({ visible, fast, lastMealAt, onClose }: Props) {
     fast?.endedAt ? new Date(fast.endedAt) : null,
     fast ? new Date(fast.startedAt) : null
   );
-  const dirty = fast
-    ? !sameMinute(start, new Date(fast.startedAt)) || goal !== fast.goalHours
-    : false;
+  const changed = fast
+    ? changedList([['start time', !sameMinute(start, new Date(fast.startedAt))], ['goal', goal !== fast.goalHours]])
+    : '';
 
   const handleCancel = (close: (after?: () => void) => void) => {
-    if (!dirty) { close(); return; }
-    confirmDiscard(() => close());
+    if (!changed) { close(); return; }
+    confirmDiscard(() => close(), { changed });
   };
 
   const save = (close: (after?: () => void) => void) => {

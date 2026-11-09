@@ -46,6 +46,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { joinNames } from '../utils/shoppingTrip';
 import { continueListOnEnter, journalPlainText, toggleLinePrefix, toggleWrap } from '../utils/journalMarkdown';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedList } from '../utils/editorChangeSummary';
 import { useJournalStore } from '../store/useJournalStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -400,7 +401,14 @@ export function JournalEntrySheet({ visible, kind, editing = null, dictateOnOpen
     // What this sitting added is named by nothing once it closes unsaved.
     const discardAdded = () => { deleteJournalPhotos(addedPhotos.current); addedPhotos.current = []; };
     if (!dirty) { if (!editing) clearJournalDraft(kind); discardAdded(); onClose(); return; }
-    confirmDiscard(() => { if (!editing) clearJournalDraft(kind); discardAdded(); onClose(); });
+    // Naming what changed only fits a page that already existed; a new one just hasn't been saved.
+    const changed = editing ? changedList([
+      ['text', text.trim() !== editing.text],
+      ['tags', !sameList(tags, editing.tags ?? [])],
+      ['people', !sameList(personIds, editing.personIds ?? [])],
+      ['photos', !sameList(photos, editing.photos ?? [])],
+    ]) : '';
+    confirmDiscard(() => { if (!editing) clearJournalDraft(kind); discardAdded(); onClose(); }, { changed });
   };
 
   const requestDelete = () => {

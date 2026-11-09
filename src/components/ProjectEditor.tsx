@@ -57,6 +57,7 @@ import { haptics } from '../utils/haptics';
 import { openExternalUrl } from '../utils/openExternalUrl';
 import { claudeChatUrl, projectChatPrompt } from '../utils/askClaude';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedList } from '../utils/editorChangeSummary';
 import { useProjectLockStore, isProjectHidden } from '../store/useProjectLockStore';
 import { unlockProjects } from '../hooks/useProjectAccess';
 import { scheduleTaskReminder } from '../utils/notifications';
@@ -524,42 +525,41 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const displayTitle = () => title.trim() || project?.title || 'this project';
 
   /**
-   * Whether anything on the sheet differs from what the project holds. Read
-   * against the stored project rather than a snapshot, since nothing else
-   * writes these fields while the sheet is open.
+   * What on the sheet differs from what the project holds, in the sheet's own
+   * words ("title and deadline"), or '' when nothing does. Read against the
+   * stored project rather than a snapshot, since nothing else writes these
+   * fields while the sheet is open.
    */
-  const isDirty = (): boolean => {
-    if (!project) return false;
+  const changedFields = (): string => {
+    if (!project) return '';
     const iso = (d: Date | null) => (d ? d.toISOString() : null);
     const nudge = nudgeFieldsFor(nudgeMode, nudgeCadenceDays);
-    return (
-      title.trim() !== project.title ||
-      notes !== project.notes ||
-      category !== project.category ||
-      defaultTaskCategory !== project.defaultTaskCategory ||
-      JSON.stringify(hasTaskFieldDefaults(taskDefaults) ? taskDefaults : null) !== JSON.stringify(hasTaskFieldDefaults(project.taskDefaults) ? project.taskDefaults : null) ||
-      iso(deadline) !== (project.deadline ? new Date(project.deadline).toISOString() : null) ||
-      (eventDate ? awayNoonIso(eventDate) : null) !== (project.eventDate ?? null) ||
-      (awayStart ? awayNoonIso(awayStart) : null) !== project.awayStart ||
-      (awayStart && awayEnd ? awayNoonIso(awayEnd) : null) !== project.awayEnd ||
-      (awayStart !== null && awayPauses) !== project.awayPauses ||
-      (awayStart !== null ? awayListId : null) !== project.awayListId ||
-      (awayStart !== null && destination.trim() ? destination.trim() : null) !== project.destination ||
-      nudge.nudgeOptIn !== project.nudgeOptIn ||
-      nudge.nudgeCadenceDays !== project.nudgeCadenceDays ||
-      (nudgeMode === 'scheduled' && autoSchedule) !== project.autoSchedule ||
-      ongoing !== project.ongoing ||
-      list !== !!project.list ||
-      weekendSource !== project.weekendSource ||
-      pausedUntilKey() !== project.pausedUntil ||
-      personIds.join() !== (project.personIds ?? []).join() ||
-      JSON.stringify(links) !== JSON.stringify(project.links ?? []) ||
-      linkDraft.trim() !== '' ||
-      inOrder !== (project.inOrder ?? false) ||
-      hideNextStep !== (project.hideNextStep ?? false) ||
-      groupOnToday !== (project.groupOnToday ?? false)
-    );
+    return changedList([
+      ['title', title.trim() !== project.title],
+      ['notes', notes !== project.notes],
+      ['category', category !== project.category],
+      ['default task category', defaultTaskCategory !== project.defaultTaskCategory],
+      ['task defaults', JSON.stringify(hasTaskFieldDefaults(taskDefaults) ? taskDefaults : null) !== JSON.stringify(hasTaskFieldDefaults(project.taskDefaults) ? project.taskDefaults : null)],
+      ['deadline', iso(deadline) !== (project.deadline ? new Date(project.deadline).toISOString() : null)],
+      ['event date', (eventDate ? awayNoonIso(eventDate) : null) !== (project.eventDate ?? null)],
+      ['away dates', (awayStart ? awayNoonIso(awayStart) : null) !== project.awayStart
+        || (awayStart && awayEnd ? awayNoonIso(awayEnd) : null) !== project.awayEnd
+        || (awayStart !== null && awayPauses) !== project.awayPauses
+        || (awayStart !== null ? awayListId : null) !== project.awayListId
+        || (awayStart !== null && destination.trim() ? destination.trim() : null) !== project.destination],
+      ['reminders', nudge.nudgeOptIn !== project.nudgeOptIn || nudge.nudgeCadenceDays !== project.nudgeCadenceDays
+        || (nudgeMode === 'scheduled' && autoSchedule) !== project.autoSchedule],
+      ['ongoing', ongoing !== project.ongoing],
+      ['list', list !== !!project.list],
+      ['weekend source', weekendSource !== project.weekendSource],
+      ['pause', pausedUntilKey() !== project.pausedUntil],
+      ['people', personIds.join() !== (project.personIds ?? []).join()],
+      ['links', JSON.stringify(links) !== JSON.stringify(project.links ?? []) || linkDraft.trim() !== ''],
+      ['order', inOrder !== (project.inOrder ?? false) || hideNextStep !== (project.hideNextStep ?? false)
+        || groupOnToday !== (project.groupOnToday ?? false)],
+    ]);
   };
+  const isDirty = (): boolean => changedFields() !== '';
 
   // Same confirm, in the same words, as TaskEditor's own Cancel.
   //
@@ -572,7 +572,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     if (!isDirty()) { leave(); return; }
     confirmDiscard(leave, isNew
       ? { title: 'Discard this project?', message: 'This project hasn’t been saved yet. If you leave now, it’ll be lost.' }
-      : undefined);
+      : { changed: changedFields() });
   };
 
   const {

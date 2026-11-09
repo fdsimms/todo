@@ -17,6 +17,7 @@ import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedSlots } from '../utils/editorChangeSummary';
 import { catalogExercise, describeExercise } from '../utils/exerciseCatalog';
 import { libraryExercise } from '../utils/exerciseLibrary';
 import { DUMBBELL_ENTRY_LABELS, dumbbellsUsed } from '../utils/dumbbellLoad';
@@ -46,6 +47,8 @@ const REFUSED: Record<string, string> = {
 /** The bar weight steps by half a kilogram, or a pound: bars come in odd weights. */
 const BAR_STEP = { kg: 0.5, lb: 1 } as const;
 
+/** What each slot of `snapshotOf` holds, in the same order, for the discard alert. */
+const SNAPSHOT_LABELS = ['name', 'other names', 'kind', 'equipment', 'primary muscles', 'secondary muscles', 'bar weight', 'dumbbells', 'load entry', 'bodyweight share', 'notes'] as const;
 const snapshotOf = (v: Staged) => JSON.stringify([v.name.trim(), cleanOtherNames(parseOtherNames(v.otherNames), v.name), v.kind, v.equipment, v.primary, v.secondary, v.barKg, v.dumbbells, v.loadEntry, v.bodyweightPercent, v.notes.trim()]);
 
 interface Staged {
@@ -122,10 +125,10 @@ export function ExerciseEditorSheet({ visible, exerciseId, onClose }: Props) {
   const patch = (change: Partial<Staged>) => { setV(prev => ({ ...prev, ...change })); setRefusal(null); };
   const toggle = (list: MuscleGroup[], m: MuscleGroup) => (list.includes(m) ? list.filter(x => x !== m) : [...list, m]);
 
-  const dirty = visible && snapshotOf(v) !== baseline.current;
+  const changed = visible ? changedSlots(SNAPSHOT_LABELS, baseline.current, snapshotOf(v)) : '';
   const handleCancel = () => {
-    if (!dirty) { onClose(); return; }
-    confirmDiscard(onClose);
+    if (!changed) { onClose(); return; }
+    confirmDiscard(onClose, { changed });
   };
 
   const save = () => {

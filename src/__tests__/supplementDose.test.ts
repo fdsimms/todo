@@ -16,6 +16,7 @@ import {
   servingFromLabelText,
   supplementDoseIdOf,
   supplementFieldCount,
+  supplementFormChanges,
   supplementFormDirty,
   supplementFormFrom,
   supplementHelping,
@@ -202,6 +203,7 @@ describe('the panel form', () => {
     form.amounts.zincMg = '12';
     expect(supplementFormDirty(form, multi)).toBe(true);
     expect(supplementFormDirty(supplementFormFrom(null), null)).toBe(false);
+    expect(supplementFormChanges(supplementFormFrom(null), null)).toBe('');
   });
 });
 

@@ -120,6 +120,7 @@ import type { PendingEstimate } from '../utils/estimateQueue';
 import { useFoodDatabaseSearch } from '../hooks/useFoodDatabaseSearch';
 import type { RankedFood } from '../utils/foodSearchMatch';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedList } from '../utils/editorChangeSummary';
 import { confirmLargeAmount } from '../utils/confirmLargeAmount';
 import { EstimateAmountSheet } from './EstimateAmountSheet';
 import { ContainerShareSheet } from './ContainerShareSheet';
@@ -1986,7 +1987,15 @@ export function FoodLogEntrySheet({
         ? amount.trim() !== pickedAmountRef.current.trim() || answeredExtra || alcohol !== null
         : !!amount.trim() || estimateOpen || isDescriptionDraft(query);
     if (!dirty) { Keyboard.dismiss(); onClosed(); return; }
-    confirmDiscard(() => { Keyboard.dismiss(); onClosed(); });
+    // Only an entry that already existed has changes to name; a new one just hasn't been logged.
+    const changed = seeded ? changedList([
+      ['food', (picked?.key ?? null) !== seeded.key],
+      ['amount', amount.trim() !== seeded.amount],
+      ['meal', chosenSlot !== seeded.slot],
+      ['extra answers', answeredExtra],
+      ['alcohol', !!editing && Math.abs(alcoholGrams - alcoholGramsOf(editing.nutrition)) > 0.05],
+    ]) : '';
+    confirmDiscard(() => { Keyboard.dismiss(); onClosed(); }, { changed });
   };
 
   const handleCancel = () => requestClose(onClose);

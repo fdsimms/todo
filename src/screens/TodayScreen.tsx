@@ -116,7 +116,7 @@ import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
 import { MealStrip } from '../components/MealStrip';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from 'zustand';
-import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, editorHasUnsavedChanges, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
+import { EDITOR_CLOSED, EditorSheetHost, QUICK_ADD_CLOSED, QuickAddSheetHost, editorChangedSummary, editorHasUnsavedChanges, useSheetStore, type EditorSheetState, type QuickAddSheetState } from '../components/SheetHosts';
 import { confirmDiscard } from '../utils/confirmDiscard';
 import { nextLayoutHold } from '../utils/twoPane';
 import { runningOnMac } from '../utils/runningOnMac';
@@ -1065,7 +1065,7 @@ export function TodayScreen() {
   twoPaneRef.current = twoPane;
   const switchEditor = useCallback((open: () => void) => {
     if (twoPaneRef.current && editorHasUnsavedChanges(editorStore)) {
-      confirmDiscard(open);
+      confirmDiscard(open, { changed: editorChangedSummary(editorStore) });
       return;
     }
     open();

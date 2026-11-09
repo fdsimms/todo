@@ -22,7 +22,7 @@ import {
   gramsToServingWeight,
   invalidPanelFields,
   labelColumnFieldCount,
-  panelFormDirty,
+  panelFormChanges,
   panelFormFrom,
   readPanelNumber,
   servingWeightToGrams,
@@ -606,8 +606,9 @@ export function NutritionPanelSheet({ visible, foodName, scopeNote, nutrition, o
   );
 
   const handleCancel = () => {
-    if (!panelFormDirty(form, baseline.current)) { Keyboard.dismiss(); onClose(); return; }
-    confirmDiscard(() => { Keyboard.dismiss(); onClose(); });
+    const changed = panelFormChanges(form, baseline.current);
+    if (!changed) { Keyboard.dismiss(); onClose(); return; }
+    confirmDiscard(() => { Keyboard.dismiss(); onClose(); }, { changed });
   };
 
   return (

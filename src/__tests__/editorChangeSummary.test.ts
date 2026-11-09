@@ -37,3 +37,26 @@ describe('listChanges', () => {
     expect(listChanges(['title', 'notes', 'date', 'repeat', 'tags'])).toBe('title, notes, date and 2 more');
   });
 });
+
+import { changedList, changedSlots } from '../utils/editorChangeSummary';
+
+describe('changedList', () => {
+  it('lists each changed label once, in order', () => {
+    expect(changedList([['a', true], ['b', false], ['a', true], ['c', true]])).toBe('a and c');
+    expect(changedList([['a', false]])).toBe('');
+  });
+});
+
+describe('changedSlots', () => {
+  const labels = ['name', 'days', 'start'];
+  it('names the slots that differ', () => {
+    expect(changedSlots(labels, '["a",[1],5]', '["b",[1],6]')).toBe('name and start');
+    expect(changedSlots(labels, '["a",[1],5]', '["a",[1],5]')).toBe('');
+  });
+  it('compares nested values by content', () => {
+    expect(changedSlots(labels, '["a",[1,2],5]', '["a",[1,3],5]')).toBe('days');
+  });
+  it('is empty for unreadable input', () => {
+    expect(changedSlots(labels, 'x', '[]')).toBe('');
+  });
+});

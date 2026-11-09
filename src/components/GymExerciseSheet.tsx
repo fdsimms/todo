@@ -20,6 +20,7 @@ import {
 } from '../utils/workoutData';
 import { BUTTON_LABEL } from '../copy/shared';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedList } from '../utils/editorChangeSummary';
 
 export interface GymExerciseSubject {
   gymId: string;
@@ -73,10 +74,14 @@ export function GymExerciseSheet({ visible, subject: liveSubject, onClose }: Pro
   if (!subject) return null;
   // The note and the two numbers wait for Save, so leaving with them changed asks first.
   const saved = settings.find(s => s.id === key);
-  const dirty = notes !== (saved?.notes ?? '') || barKg !== (saved?.barKg ?? null) || incrementKg !== (saved?.incrementKg ?? null);
+  const changed = changedList([
+    ['notes', notes !== (saved?.notes ?? '')],
+    ['bar weight', barKg !== (saved?.barKg ?? null)],
+    ['increment', incrementKg !== (saved?.incrementKg ?? null)],
+  ]);
   const handleCancel = () => {
-    if (!dirty) { finish(); return; }
-    confirmDiscard(() => finish());
+    if (!changed) { finish(); return; }
+    confirmDiscard(() => finish(), { changed });
   };
   const gym = gyms.find(g => g.id === subject.gymId);
   const info = catalogExercise(exercises, subject.exerciseId);

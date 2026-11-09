@@ -84,3 +84,33 @@ export function listChanges(labels: string[], max = 3): string {
   const rest = labels.length - max;
   return `${labels.slice(0, max).join(', ')} and ${rest} more`;
 }
+
+/**
+ * For a sheet whose dirty check is a handful of separate comparisons: pass each
+ * field's label with whether it differs, get the text `confirmDiscard`'s
+ * `changed` option takes ("title and notes"). Labels repeat freely (two fields
+ * on one row) and are listed once.
+ */
+export function changedList(entries: ReadonlyArray<readonly [label: string, changed: boolean]>): string {
+  const labels: string[] = [];
+  for (const [label, changed] of entries) if (changed && !labels.includes(label)) labels.push(label);
+  return listChanges(labels);
+}
+
+/**
+ * For a sheet whose baseline is a JSON array (`snapshotOf`): `labels[i]` names
+ * what slot `i` of the array holds, and the result is the text for
+ * `confirmDiscard`'s `changed` option. Keep the two lists in one place, next to
+ * the snapshot function, so a slot added to one is added to the other.
+ */
+export function changedSlots(labels: readonly string[], baseline: string, current: string): string {
+  let before: unknown[];
+  let after: unknown[];
+  try {
+    before = JSON.parse(baseline) as unknown[];
+    after = JSON.parse(current) as unknown[];
+  } catch {
+    return '';
+  }
+  return changedList(labels.map((label, i) => [label, JSON.stringify(before[i]) !== JSON.stringify(after[i])] as const));
+}

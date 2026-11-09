@@ -20,6 +20,7 @@ import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors }
 import type { DumbbellRack, ExerciseEquipment } from '../types';
 import { haptics } from '../utils/haptics';
 import { confirmDiscard } from '../utils/confirmDiscard';
+import { changedSlots } from '../utils/editorChangeSummary';
 import { alertPermissionOff } from '../utils/permissionAlert';
 import { getCurrentLocation, requestLocationPermission } from '../utils/weatherLocation';
 import { exerciseName } from '../utils/exerciseCatalog';
@@ -76,6 +77,8 @@ interface Staged {
 
 const EMPTY: Staged = { name: '', equipment: [], dumbbells: null, placeText: '', pin: null, radiusM: GYM_DEFAULT_RADIUS_M };
 
+/** What each slot of `snapshotOf` holds, in the same order, for the discard alert. */
+const SNAPSHOT_LABELS = ['name', 'equipment', 'dumbbells', 'place', 'pin', 'radius'] as const;
 const snapshotOf = (v: Staged) => JSON.stringify([v.name.trim(), v.equipment, v.dumbbells, v.placeText.trim(), v.pin, v.radiusM]);
 
 /**
@@ -141,10 +144,10 @@ export function GymEditorSheet({ visible, subject, onClose }: Props) {
     setV(prev => ({ ...prev, equipment: prev.equipment.includes(e) ? prev.equipment.filter(x => x !== e) : [...prev.equipment, e] }));
   };
 
-  const dirty = visible && snapshotOf(v) !== baseline.current;
+  const changed = visible ? changedSlots(SNAPSHOT_LABELS, baseline.current, snapshotOf(v)) : '';
   const handleCancel = () => {
-    if (!dirty) { onClose(); return; }
-    confirmDiscard(onClose);
+    if (!changed) { onClose(); return; }
+    confirmDiscard(onClose, { changed });
   };
 
   const useHere = async () => {
