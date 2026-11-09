@@ -33,8 +33,20 @@ export interface PillGroupOption extends OverflowPill {
    * and `negative` wins if a caller ever sets both.
    */
   negative?: boolean;
+  /**
+   * A level the pill carries once it is selected, drawn as `of` ascending bars
+   * at the end of the label with `value` of them lit. A selected pill's width
+   * is the same at every level, so cycling through them never reflows the
+   * grid; selecting one adds the bars' width once.
+   */
+  level?: { value: number; of: number };
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  /** What a screen reader says after the label, for a pill that holds a value ("Moderate"). */
+  accessibilityValue?: string;
+  /** Extra VoiceOver actions on the pill, for what a long press does. */
+  accessibilityActions?: { name: string; label: string }[];
+  onAccessibilityAction?: (name: string) => void;
   /** Opt in per option; a grid with none of its options carrying this has no long-press at all. */
   onLongPress?: () => void;
   onPress: () => void;
@@ -249,32 +261,53 @@ export function PillGroup({
             accessibilityState={{ selected: !!option.selected && !option.negative }}
             accessibilityLabel={option.accessibilityLabel ?? option.label}
             accessibilityHint={option.accessibilityHint}
+            accessibilityValue={option.accessibilityValue ? { text: option.accessibilityValue } : undefined}
+            accessibilityActions={option.accessibilityActions}
+            onAccessibilityAction={option.onAccessibilityAction
+              ? e => option.onAccessibilityAction?.(e.nativeEvent.actionName)
+              : undefined}
           >
             {/* The pill is sized by an invisible copy of its label at the
                 selected weight, with the real label laid over it. Selecting
                 a pill bolds its text, and without the reserved width that made
                 it grow a few points, which was enough to reflow the wrap and
                 shuffle every pill after it on each tap. */}
-            <View>
-              <Text
-                style={[styles.pillText, styles.pillTextSizer]}
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-              >
-                {option.label}
-                {option.suffix}
-              </Text>
-              <Text
-                style={[
-                  styles.pillText,
-                  styles.pillTextOverlay,
-                  option.selected && !option.negative && styles.pillTextActive,
-                  option.negative && styles.pillTextNegative,
-                ]}
-              >
-                {option.label}
-                {option.suffix}
-              </Text>
+            <View style={styles.pillRow}>
+              <View>
+                <Text
+                  style={[styles.pillText, styles.pillTextSizer]}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                >
+                  {option.label}
+                  {option.suffix}
+                </Text>
+                <Text
+                  style={[
+                    styles.pillText,
+                    styles.pillTextOverlay,
+                    option.selected && !option.negative && styles.pillTextActive,
+                    option.negative && styles.pillTextNegative,
+                  ]}
+                >
+                  {option.label}
+                  {option.suffix}
+                </Text>
+              </View>
+              {option.selected && !option.negative && option.level && (
+                <View style={styles.levelBars} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                  {Array.from({ length: option.level.of }, (_, i) => (
+                    <View
+                      key={i}
+                      style={[
+                        styles.levelBar,
+                        { height: 4 + 3 * (i + 1) },
+                        i >= option.level!.value && styles.levelBarOff,
+                      ]}
+                    />
+                  ))}
+                </View>
+              )}
             </View>
           </TouchableOpacity>
         ))}
@@ -393,6 +426,12 @@ const makeStyles = (colors: Colors, surface: Surface) => {
       paddingVertical: spacing.sm,
     },
     pillActive: { backgroundColor: colors.accentFill },
+    pillRow: { flexDirection: 'row', alignItems: 'center' },
+    // Ascending bars on the picked pill, like signal strength. Ink or white by
+    // theme through `onAccent`; the unlit ones stay visible so the scale reads.
+    levelBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, marginLeft: spacing.sm, height: 13 },
+    levelBar: { width: 3, borderRadius: 1.5, backgroundColor: colors.onAccent },
+    levelBarOff: { opacity: 0.3 },
     // Tinted rather than filled: a filled red pill in a grid where filled means
     // "picked" reads as an emphatic selection, which is the wrong half of the
     // meaning. The strike-through on the label is what carries "ruled out".

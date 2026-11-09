@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
-import type { LoggedSymptom, MoodChange, MoodLevel, MoodLog, SymptomSeverity } from '../types';
+import type { LoggedSymptom, MoodChange, MoodLevel, MoodLog } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -18,10 +18,12 @@ import {
   describeChangeAnchor,
   SYMPTOM_SEVERITIES,
   contextTagVocabulary,
+  cycleSymptom,
   contextTagKey,
   moodLabel,
   renamedContextTags,
   seededContextTags,
+  severityLabel,
   symptomKey,
   symptomVocabulary,
   withContextTag,
@@ -332,20 +334,16 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     setContextTags(current => withContextTag(current, trimmed));
   };
 
-  const toggleSymptom = (name: string) => {
+  const cycleSymptomPill = (name: string) => {
     haptics.tap();
     animateLayout();
-    setSymptoms(current =>
-      current.some(s => symptomKey(s.name) === symptomKey(name))
-        ? withoutSymptom(current, name)
-        // Mild is the floor rather than the middle: it is the least a logged
-        // symptom can mean, so an untouched severity never overstates one.
-        : withSymptom(current, name, 1)
-    );
+    setSymptoms(current => cycleSymptom(current, name));
   };
 
-  const setSeverity = (name: string, severity: SymptomSeverity) => {
-    setSymptoms(current => withSymptom(current, name, severity));
+  const removeSymptom = (name: string) => {
+    haptics.tap();
+    animateLayout();
+    setSymptoms(current => withoutSymptom(current, name));
   };
 
   const createSymptom = (name: string): string | null | void => {
@@ -496,7 +494,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
       <View style={styles.card}>
         <Text style={styles.groupLabel}>SYMPTOMS</Text>
         <HelpText style={styles.hint}>
-          Whatever you want to keep track of. Add your own names for them.
+          Whatever you want to keep track of. Add your own names for them. Tap again to change how bad it was, or hold to remove it.
         </HelpText>
         <PillGroup
           noun="symptom"
@@ -509,22 +507,17 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
               key: symptomKey(name),
               label: name,
               selected: !!picked,
-              accessibilityLabel: picked ? `${name}, logged` : name,
-              onPress: () => toggleSymptom(name),
+              level: picked ? { value: picked.severity, of: SYMPTOM_SEVERITIES.length } : undefined,
+              accessibilityLabel: name,
+              accessibilityValue: picked ? severityLabel(picked.severity) : undefined,
+              accessibilityHint: 'Tap again to change how bad it was. Hold to remove.',
+              accessibilityActions: picked ? [{ name: 'remove', label: 'Remove' }] : undefined,
+              onAccessibilityAction: () => removeSymptom(name),
+              onPress: () => cycleSymptomPill(name),
+              onLongPress: picked ? () => removeSymptom(name) : undefined,
             };
           })}
         />
-        {symptoms.map(symptom => (
-          <View key={symptomKey(symptom.name)} style={styles.severityRow}>
-            <Text style={styles.severityLabel} numberOfLines={1}>{symptom.name}</Text>
-            <SegmentedControl
-              options={SYMPTOM_SEVERITIES.map(s => ({ value: s.value, label: s.label }))}
-              value={symptom.severity}
-              onChange={value => setSeverity(symptom.name, value)}
-              label={`How bad was ${symptom.name}`}
-            />
-          </View>
-        ))}
       </View>
 
       <View style={styles.card}>
@@ -665,13 +658,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // marginTop clears the pill grid above; marginBottom is its own, so the next
   // severity row isn't jammed against it. Both sides, per the spacing note in
   // CLAUDE.md.
-  severityRow: { marginTop: spacing.md },
-  severityLabel: {
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
   noteInput: {
     fontSize: font.md,
     color: colors.text,

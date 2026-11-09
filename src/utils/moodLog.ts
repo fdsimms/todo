@@ -180,6 +180,23 @@ export function withSymptom(
   return [...symptoms, { name: trimmed, severity }];
 }
 
+/**
+ * What tapping a symptom's pill does: off to Mild, then up a step at a time,
+ * and off again after Severe. Mild comes first for the reason `toggleSymptom`
+ * always gave: an untouched severity should never overstate a symptom.
+ */
+export function cycleSymptom(
+  symptoms: readonly LoggedSymptom[],
+  name: string,
+): LoggedSymptom[] {
+  const key = symptomKey(name);
+  const existing = symptoms.find(s => symptomKey(s.name) === key);
+  if (!existing) return withSymptom(symptoms, name, 1);
+  const highest = SYMPTOM_SEVERITIES[SYMPTOM_SEVERITIES.length - 1].value;
+  if (existing.severity >= highest) return withoutSymptom(symptoms, name);
+  return withSymptom(symptoms, name, (existing.severity + 1) as SymptomSeverity);
+}
+
 export function withoutSymptom(
   symptoms: readonly LoggedSymptom[],
   name: string,
