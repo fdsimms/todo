@@ -206,7 +206,6 @@ const ITEM_FIELD_ICONS: Record<ItemBackfillFieldId, keyof typeof Ionicons.glyphM
   substitutes: 'swap-horizontal-outline',
   variety: 'layers-outline',
   nutrition: 'nutrition-outline',
-  nutritionDetail: 'water-outline',
   product: 'cube-outline',
   rating: 'thumbs-up-outline',
 };
@@ -3507,6 +3506,12 @@ export function BackfillScreen() {
     (draftBrand !== null || draftVariant !== null) &&
     (draftBrand !== (recordedBox?.brand ?? null) || draftVariant !== (recordedBox?.variant ?? null));
   const renameReady = nameChanged || productDirty;
+  // The same lookup applyRename makes, so the note under the field and the
+  // merge offer after the tap can't disagree about what counts as a match.
+  const renameClash =
+    currentItem && nameChanged
+      ? groceryItems.find(i => i.id !== currentItem.id && i.nameKey === groceryNameKey(renameText.trim()))
+      : undefined;
   const ratingBoxes = currentItem
     ? (fromScratch
         ? productsForItem(currentItem.id, itemProducts, currentItem.preferredProductId)
@@ -3645,6 +3650,11 @@ export function BackfillScreen() {
                   onSubmitEditing={() => (nameChanged ? applyRename(renameText) : undefined)}
                   accessibilityLabel={`New name for ${currentItem.name}`}
                 />
+                {renameClash && (
+                  <Text style={styles.renameHint} accessibilityLiveRegion="polite">
+                    You already have an item called “{renameClash.name}”. Renaming will offer to merge this item into it.
+                  </Text>
+                )}
                 <Text style={styles.renameHint}>
                   Add the brand and product if they are not in the name. Either one is enough.
                 </Text>
@@ -3735,25 +3745,6 @@ export function BackfillScreen() {
               >
                 <Ionicons name="create-outline" size={iconSize.md} color={colors.text} />
                 <Text style={styles.neutralButtonText}>Add nutrition info</Text>
-              </PressableScale>
-            </View>
-          )}
-
-          {active.id === 'nutritionDetail' && (
-            <View style={styles.nutritionField}>
-              <Text style={styles.renameHint}>
-                Saved figures stay as they are. Open the panel to add trans fat,
-                cholesterol or added sugars from the label. A food with none of them
-                stays in this list until you choose Nothing more to add.
-              </Text>
-              <PressableScale
-                style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
-                onPress={() => { haptics.tap(); setNutritionPanelOpen(true); }}
-                accessibilityRole="button"
-                accessibilityLabel={`Add fat and sugar detail for ${currentItem.name}`}
-              >
-                <Ionicons name="create-outline" size={iconSize.md} color={colors.onAccent} />
-                <Text style={styles.toggleButtonText}>Open nutrition panel</Text>
               </PressableScale>
             </View>
           )}

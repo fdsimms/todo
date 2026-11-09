@@ -2406,8 +2406,9 @@ function runInitDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN meter_due_at REAL',
     'ALTER TABLE tasks ADD COLUMN meter_limit_months INTEGER',
     'ALTER TABLE tasks ADD COLUMN meter_held_until TEXT',
-    // Skip an occurrence after rain (Task.rainSkipMm); NULL on every existing
-    // row, which never skips.
+    // LEGACY, unread since the rain skip was removed: a threshold for skipping
+    // an occurrence after rain. Kept declared because the migration list is
+    // append-only and a column can't be dropped.
     'ALTER TABLE tasks ADD COLUMN rain_skip_mm REAL',
     'ALTER TABLE tasks ADD COLUMN rain_skipped_on TEXT',
     // Ramp up a daily or weekly target (Task.quotaRampStep and friends). NULL
@@ -4428,8 +4429,6 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceCount: (row.recurrence_count as number | null) ?? null,
     recurrenceFromCompletion: Boolean(row.recurrence_from_completion),
     recurrenceHolidays: row.recurrence_holidays === 'skip' || row.recurrence_holidays === 'move' ? row.recurrence_holidays : null,
-    rainSkipMm: (row.rain_skip_mm as number | null) ?? null,
-    rainSkippedOn: (row.rain_skipped_on as string | null) ?? null,
     slotIn: row.slot_in === null || row.slot_in === undefined ? null : Boolean(row.slot_in),
     slotDecidedOn: (row.slot_decided_on as string | null) ?? null,
     slotWaitingSince: (row.slot_waiting_since as string | null) ?? null,
@@ -4699,11 +4698,10 @@ export function dbInsertTask(task: Task): void {
       reminder_tracks_visibility, recurrence_month,
       blocked_by_ids, deliverable_options, deliverable_sets_away, follow_up_on, extra_task_source_id,
       pin_each_occurrence, bounty_pushes, difficulty, answer_gate, deliverable_why, deliverable_revisit_if, extra_task_at_end, weather_wait, wait_for_series_end, rotation_plan, slip_allowance, done_by_other_at, window_start_sun, window_end_sun, recurrence_holidays,
-      rain_skip_mm, rain_skipped_on,
       quota_ramp_step, quota_ramp_every, quota_ramp_goal, quota_ramp_hits, streak_counts_units, log_saved_meal_id, coins_per_tap, log_meal_slot_by_time, quota_place_ids, gate_group_id, workout_routine_id, workout_program_id, generated_ready_at,
       slot_in, slot_decided_on, slot_waiting_since, quota_rest_after_log, quota_logged_day_key, quota_tap_times, medication_extras, attachments, reminder_place_id, reminder_place_on,
       mission, alarm_sound, alarm_link, alarm_link_leaves_open, alarm_sound_pool, template_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deadlineTime ?? null, task.deferUntil,
@@ -4831,8 +4829,6 @@ export function dbInsertTask(task: Task): void {
       task.doneByOtherAt ?? null,
       task.windowStartSun ?? null, task.windowEndSun ?? null,
       task.recurrenceHolidays ?? null,
-      task.rainSkipMm ?? null,
-      task.rainSkippedOn ?? null,
       task.quotaRampStep ?? null,
       task.quotaRampEvery ?? null,
       task.quotaRampGoal ?? null,
@@ -4899,7 +4895,6 @@ export function dbUpdateTask(task: Task): void {
       reminder_tracks_visibility=?, recurrence_month=?,
       blocked_by_ids=?, deliverable_options=?, deliverable_sets_away=?, follow_up_on=?, extra_task_source_id=?,
       pin_each_occurrence=?, bounty_pushes=?, difficulty=?, answer_gate=?, deliverable_why=?, deliverable_revisit_if=?, extra_task_at_end=?, weather_wait=?, wait_for_series_end=?, rotation_plan=?, slip_allowance=?, done_by_other_at=?, window_start_sun=?, window_end_sun=?, recurrence_holidays=?,
-      rain_skip_mm=?, rain_skipped_on=?,
       quota_ramp_step=?, quota_ramp_every=?, quota_ramp_goal=?, quota_ramp_hits=?, streak_counts_units=?, log_saved_meal_id=?, coins_per_tap=?, log_meal_slot_by_time=?, quota_place_ids=?, gate_group_id=?, workout_routine_id=?, workout_program_id=?, generated_ready_at=?,
       slot_in=?, slot_decided_on=?, slot_waiting_since=?, quota_rest_after_log=?, quota_logged_day_key=?, quota_tap_times=?, medication_extras=?, attachments=?, reminder_place_id=?, reminder_place_on=?,
       mission=?, alarm_sound=?, alarm_link=?, alarm_link_leaves_open=?, alarm_sound_pool=?, template_id=?
@@ -5031,8 +5026,6 @@ export function dbUpdateTask(task: Task): void {
       task.doneByOtherAt ?? null,
       task.windowStartSun ?? null, task.windowEndSun ?? null,
       task.recurrenceHolidays ?? null,
-      task.rainSkipMm ?? null,
-      task.rainSkippedOn ?? null,
       task.quotaRampStep ?? null,
       task.quotaRampEvery ?? null,
       task.quotaRampGoal ?? null,
