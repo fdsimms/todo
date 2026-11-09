@@ -23,6 +23,14 @@ import { useProjectStore } from '../store/useProjectStore';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
+import { EditorRow } from '../components/EditorRow';
+import { ActionMenu } from '../components/ActionMenu';
+import { BirthdayPicker } from '../components/BirthdayPicker';
+import { PersonFieldSheet, type PersonFieldRequest } from '../components/PersonFieldSheet';
+import {
+  filledPersonFields, addablePersonFields, personFieldValue, personFieldPatch,
+  type PersonFieldKey,
+} from '../utils/personFields';
 import { PersonEditor } from '../components/PersonEditor';
 import { PersonHistorySheet } from '../components/PersonHistorySheet';
 import { PersonNoteSheet } from '../components/PersonNoteSheet';
@@ -49,10 +57,6 @@ import { telUrl, smsUrl } from '../utils/phone';
 import { personContactActions } from '../utils/peopleList';
 import { type ReachOutKind } from '../utils/reachOutIntent';
 import { tasksNaming } from '../utils/peopleRegistry';
-import {
-  hasBirthday,
-  nextBirthday,
-} from '../utils/birthdayTasks';
 import { nextPersonDate } from '../utils/personDateTasks';
 import { openExternalUrl, type ExternalKind } from '../utils/openExternalUrl';
 import {
@@ -130,6 +134,10 @@ export function PersonDetailScreen() {
   // when the store replaces its array.
   const allTasks = useWithoutLockedTasks(useTaskStore(useShallow(s => s.tasks)));
   const [editing, setEditing] = useState(false);
+  // The details card edits one field at a time, in a short card of its own.
+  const [fieldRequest, setFieldRequest] = useState<PersonFieldRequest | null>(null);
+  const [birthdayOpen, setBirthdayOpen] = useState(false);
+  const [addDetailOpen, setAddDetailOpen] = useState(false);
 
   const personId = route.params.personId;
   const returnTo = route.params.returnTo;
@@ -284,7 +292,16 @@ export function PersonDetailScreen() {
   }
 
   const name = displayNameOf(person);
-  const birthday = hasBirthday(person) ? nextBirthday(person, today) : null;
+  const addableFields = addablePersonFields(person);
+
+  const editField = (key: PersonFieldKey) => {
+    if (key === 'birthday') { setBirthdayOpen(true); return; }
+    setFieldRequest({
+      field: key,
+      initial: personFieldValue(person, key) ?? '',
+      onSave: typed => updatePerson(person.id, personFieldPatch(key, typed)),
+    });
+  };
 
   const planSomething = () => {
     haptics.tap();
@@ -463,13 +480,6 @@ export function PersonDetailScreen() {
           </View>
         )}
 
-        {person.address && person.address.trim().length > 0 && (
-          <View style={styles.summary}>
-            <Text style={styles.summaryLabel}>Address</Text>
-            <Text style={styles.summaryValue}>{person.address}</Text>
-          </View>
-        )}
-
         {person.location && person.location.trim().length > 0 && (
           <View style={styles.summary}>
             <Text style={styles.summaryLabel}>Location</Text>
@@ -493,15 +503,6 @@ export function PersonDetailScreen() {
           </View>
         )}
 
-        {birthday && (
-          <View style={styles.summary}>
-            <Text style={styles.summaryLabel}>Birthday</Text>
-            <Text style={styles.summaryValue}>
-              {birthday.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
-            </Text>
-          </View>
-        )}
-
         {/* A person's other dates, the same line as the birthday's and the
             same rule: the date, never a countdown (docs/arch/people.md). */}
         {(person.dates ?? []).map(date => {
@@ -520,6 +521,36 @@ export function PersonDetailScreen() {
         {person.notes.trim().length > 0 && (
           <View style={styles.notesCard}>
             <Text style={styles.notes} selectable>{person.notes}</Text>
+          </View>
+        )}
+
+        {/* Name and the other details, editable where they are read. Only the
+            ones with a value are listed, so a person with nothing filled in
+            costs one row; "Add detail" offers the rest. Type, dates, group,
+            check-in cadence and archive stay in the sheet behind the "…". */}
+        <Text style={styles.groupLabel}>DETAILS</Text>
+        <View style={styles.card}>
+          {filledPersonFields(person).map((field, i) => (
+            <React.Fragment key={field.key}>
+              {i > 0 && <View style={styles.sep} />}
+              <EditorRow
+                icon={field.icon}
+                label={field.label}
+                value={personFieldValue(person, field.key)}
+                onPress={() => editField(field.key)}
+              />
+            </React.Fragment>
+          ))}
+        </View>
+        {addableFields.length > 0 && (
+          <View style={styles.addRow}>
+            <InlineAction
+              icon="add"
+              label="Add detail"
+              variant="neutral"
+              surface="page"
+              onPress={() => { haptics.tap(); setAddDetailOpen(true); }}
+            />
           </View>
         )}
 
@@ -847,6 +878,35 @@ export function PersonDetailScreen() {
         </View>
       </ScrollView>
 
+      <LazySheet open={fieldRequest !== null}>
+        <PersonFieldSheet request={fieldRequest} onClose={() => setFieldRequest(null)} />
+      </LazySheet>
+      <LazySheet open={birthdayOpen}>
+        <BirthdayPicker
+          visible={birthdayOpen}
+          month={person.birthdayMonth}
+          day={person.birthdayDay}
+          year={person.birthYear}
+          onConfirm={(month, day, year) => {
+            updatePerson(person.id, { birthdayMonth: month, birthdayDay: day, birthYear: year });
+            setBirthdayOpen(false);
+          }}
+          // All three together: a year with no month and day has nothing to attach to.
+          onClear={() => {
+            updatePerson(person.id, { birthdayMonth: null, birthdayDay: null, birthYear: null });
+            setBirthdayOpen(false);
+          }}
+          onCancel={() => setBirthdayOpen(false)}
+        />
+      </LazySheet>
+      <ActionMenu
+        visible={addDetailOpen}
+        title="Add detail"
+        actions={addableFields.map(f => ({
+          key: f.key, label: f.label, icon: f.icon as never, onPress: () => editField(f.key),
+        }))}
+        onClose={() => setAddDetailOpen(false)}
+      />
       <LazySheet open={editing}>
         <PersonEditor visible={editing} person={person} onClose={() => setEditing(false)} />
       </LazySheet>
