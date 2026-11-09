@@ -915,9 +915,9 @@ export function WeightGoalSheet({ visible, onClose, currentKg, onLogWeight }: Pr
                       onPress={() => { haptics.tap(); setRaiseBusyDays(on => !on); }}
                       accessibilityRole="switch"
                       accessibilityState={{ checked: raiseBusyDays }}
-                      accessibilityLabel="Raise the target on busy days"
+                      accessibilityLabel="Raise the target on high-activity days"
                     >
-                      <Text style={styles.toggleLabel}>Raise the target on busy days</Text>
+                      <Text style={styles.toggleLabel}>Raise the target on high-activity days</Text>
                       <Toggle value={raiseBusyDays} />
                     </TouchableOpacity>
                     <HelpText style={styles.help}>
