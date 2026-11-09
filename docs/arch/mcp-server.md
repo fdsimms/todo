@@ -347,25 +347,32 @@ field of that row, so it won the next merge and undid it.
 
 What the server can guarantee is that a change was described before it was made; it cannot see
 whether the model showed the description to the person. The Claude apps' per-tool approval
-(driven by the annotations) is the guarantee on that side. Elicitation, where the server would ask
-the person itself, needs session-based transport and is supported by Claude Code but not
-documented for the Claude apps, so it is not used yet.
+(driven by the annotations) is the guarantee on that side. Elicitation, where the server asks the
+person itself, is used when the client advertises it (`confirmByElicitation`) and is otherwise
+skipped; it is not documented for the Claude mobile app, so assume the token flow below is the one
+that runs.
 
-**The preview is its own read-only tool, and the confirming call carries its text.** A write tool
-called without `apply` is still a write tool to the client (`readOnlyHint: false`), so a preview
-through it asked for the same approval the change does. `preview_change` (in `READ_TOOLS`, registered
-beside the write tools from the same table the guard fills) takes a write tool's name and arguments,
-validates them against that tool's own schema and runs the same dry run, so only the write asks. A
-client's approval prompt shows a call's arguments and nothing else, so the write has to repeat the
-preview's `willDo` lines (`redeem`'s `echoed`): a call that does not is refused without spending the
-token, with the lines to copy. Calling a write tool without `apply` still previews, for a client that
-does not know `preview_change`.
+**A write tool never writes; `confirm_change` does.** Calling a write tool previews (it is still a
+write tool to the client, `readOnlyHint: false`, so a preview through it asks for approval), and
+`preview_change` (in `READ_TOOLS`) does the same read-only, validating against the tool's own schema.
+The confirming call is `confirm_change { confirmToken, willDo }`: the server kept the request with
+the token, so the arguments are not sent again (a long batch resent word for word was both slow and
+a way to be refused for a stray difference). A client's approval prompt shows a call's arguments and
+nothing else, so the confirm has to repeat the preview's `willDo` lines (`take`'s `echoed`): a call
+that does not is refused without spending the token, with the lines to copy. Write tools carry no
+`apply`, `confirmToken` or `willDo` parameters.
+
+**Tokens live in SQLite (`CONFIRM_STORE_PATH`), not memory.** A restart or crash between preview and
+confirm used to lose every token, and the agent was told "expired". A spent token stays until it
+would have expired, so the refusal can say "already used", "older than 15 minutes" or "no preview
+has that token" and tell the agent to preview again rather than invent one. **A preview's `details`
+is capped** (`cappedDetails`): a write that answers with a whole list made every preview slow.
 
 ### Keep `tools/list` small
 
 A write-scoped connection sends every tool's description and input schema in front of the first message, so their size is a cost on every conversation: the server was about 490 KB (around 120k tokens) at 213 tools. Two rules keep it from growing back.
 
-- **Say the confirm flow once.** The full explanation is in the server instructions and `preview_change`. A write tool's description ends with the one-line `CONFIRM_NOTE`, and its `apply` / `confirmToken` / `willDo` parameters have one-line descriptions. They sit on 158 tools, so a sentence added to either is paid 158 times.
+- **Say the confirm flow once.** The full explanation is in the server instructions and `preview_change`. A write tool's description ends with the one-line `CONFIRM_NOTE`. It sits on 158 tools, so a sentence added to it is paid 158 times.
 - **A task nested inside another tool takes `coreTaskFieldsShape`, not `taskFieldsShape`.** A project step and a batch `update` hold a task, and the whole-object fields (repeat, target, chain, rotation, follow-up, supply, health target, timed, reminder and deadline rules, medication, onlyIfAnswer) are about 30 KB of schema that each tool would repeat. Those are set with `update_task`. The nested objects are `.strict()`, so naming one is an error that says so rather than a field quietly dropped. Only `create_task` and `update_task` take the full shape.
 
 To measure a change, run the server with `MCP_AUTH_TOKEN`, `MCP_WRITE_TOKEN` and `TODO_DB_PATH` set and POST `tools/list` to `/mcp` with the write token.
