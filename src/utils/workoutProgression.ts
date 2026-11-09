@@ -306,6 +306,20 @@ export interface SetProposal {
   reps: number | null;
 }
 
+/** How one set of last time's workout compares with the reps a rise in weight asks for. */
+export type LastSetState = 'hit' | 'short' | 'missing';
+
+/**
+ * What a `same` proposal is waiting on before it adds weight, set by set: the
+ * card draws one chip per entry. A planned set last time's workout never did is
+ * `missing` with no reps, which is what "2 of 3 sets" looks like.
+ */
+export interface ProposalGoal {
+  lastSets: { reps: number | null; state: LastSetState }[];
+  /** "9 on all 3 sets", or "9 reps" for a single set. */
+  toGoUp: string;
+}
+
 export interface Proposal {
   exerciseId: string;
   scheme: ProgressionScheme;
@@ -326,6 +340,8 @@ export interface Proposal {
   lastKg: number | null;
   /** The training max the sets were read off, for `percent`. */
   trainingMaxKg?: number;
+  /** Why a `same` proposal didn't move up, as chips; absent where the reason isn't about last time's reps. */
+  goal?: ProposalGoal;
 }
 
 export interface ProposalInput {
@@ -391,6 +407,25 @@ export function joinAnd(parts: readonly string[]): string {
 
 const repsList = (sets: readonly WorkoutSet[]) => joinAnd(sets.map(s => String(s.reps ?? 0)));
 
+/**
+ * The `same` outcome of a rep-target scheme: last time's sets set against the
+ * reps that would have moved the weight up, as chips and as one plain sentence.
+ * Fewer sets than planned is said first, since "9 and 9" alone reads as a hit.
+ */
+function sameWeightGoal(last: PastSession, planned: number, target: number): { goal: ProposalGoal; reason: string } {
+  const lastSets: ProposalGoal['lastSets'] = last.sets.map(s => ({
+    reps: s.reps ?? 0,
+    state: (s.reps ?? 0) >= target ? 'hit' : 'short',
+  }));
+  while (lastSets.length < planned) lastSets.push({ reps: null, state: 'missing' });
+  const toGoUp = planned === 1 ? `${target} reps` : `${target} on all ${planned} sets`;
+  const did = last.sets.length;
+  const reason = did < planned
+    ? `Same weight. You did ${did} of ${planned} ${planned === 1 ? 'set' : 'sets'} last time (${repsList(last.sets)}). Hit ${target} on all ${planned} to go up.`
+    : `Same weight. Last time: ${repsList(last.sets)}. Hit ${target} on all ${planned} sets to go up.`;
+  return { goal: { lastSets, toGoUp }, reason };
+}
+
 /** "2.5 kg", "5 lb": the difference between two loads as the person reads it. */
 function deltaText(from: number, to: number, unit: WeightUnit, scale = 1): string {
   const d = Math.abs(weightToDisplay(to * scale, unit) - weightToDisplay(from * scale, unit));
@@ -448,9 +483,10 @@ export function proposeNext(input: ProposalInput): Proposal | null {
         brief: `All sets hit ${max} last time`,
       };
     }
+    const same = sameWeightGoal(last, planned, max);
     return {
       ...base, move: 'same', sets: sets(lastKg, max), repsMin: min, repsMax: max, lastKg,
-      reason: `Same weight. Last time: ${repsList(last.sets)}.`,
+      reason: same.reason, goal: same.goal,
       brief: `Aim for ${max} on every set`,
     };
   }
@@ -494,10 +530,11 @@ export function proposeNext(input: ProposalInput): Proposal | null {
         brief: `Short of ${reps} reps ${misses} times in a row`,
       };
     }
+    const same = sameWeightGoal(last, planned, reps);
     return {
       ...base, move: 'same', sets: sets(lastKg, reps), repsMin: reps, repsMax: reps, lastKg,
-      reason: `Same weight. A set fell short of ${reps} last time.`,
-      brief: `A set fell short of ${reps} last time`,
+      reason: same.reason, goal: same.goal,
+      brief: last.sets.length < planned ? `Only ${last.sets.length} of ${planned} sets last time` : `A set fell short of ${reps} last time`,
     };
   }
 

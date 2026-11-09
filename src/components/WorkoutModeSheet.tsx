@@ -1830,12 +1830,44 @@ function SuggestionCard({ proposal, unit, scale, offer, onUse, styles }: {
   styles: ReturnType<typeof makeStyles>;
 }) {
   const headline = proposalHeadline(proposal, unit, scale);
+  const goal = proposal.goal;
   return (
     <View style={styles.suggest}>
-      <Text style={styles.suggestText}>
-        {headline && <Text style={styles.suggestHead}>{`${headline} `}</Text>}
-        {proposal.reason}
-      </Text>
+      {goal ? (
+        // The weight is staying, and why is last time's sets against the reps
+        // that would raise it: one chip each, so a set not done shows as a gap.
+        <View accessible accessibilityLabel={`${headline ?? ''} ${proposal.reason}`.trim()}>
+          <Text style={styles.suggestText}>
+            {headline && <Text style={styles.suggestHead}>{`${headline} `}</Text>}
+            Same weight.
+          </Text>
+          <View style={styles.goalRow}>
+            <Text style={styles.goalKey}>Last time</Text>
+            <View style={styles.goalChips}>
+              {goal.lastSets.map((s, i) => (
+                <View
+                  key={i}
+                  style={[styles.goalChip, s.state === 'missing' && styles.goalChipMissing, s.state === 'short' && styles.goalChipShort]}
+                >
+                  <Text style={[styles.goalChipText, s.state === 'missing' && styles.goalChipTextMissing]}>
+                    {s.reps ?? '–'}
+                  </Text>
+                  {s.state === 'hit' && <Ionicons name="checkmark" size={iconSize.xs} color={styles.goalCheck.color} />}
+                </View>
+              ))}
+            </View>
+          </View>
+          <View style={styles.goalRow}>
+            <Text style={styles.goalKey}>To go up</Text>
+            <Text style={styles.suggestText}>{goal.toGoUp}</Text>
+          </View>
+        </View>
+      ) : (
+        <Text style={styles.suggestText}>
+          {headline && <Text style={styles.suggestHead}>{`${headline} `}</Text>}
+          {proposal.reason}
+        </Text>
+      )}
       {offer && headline && (
         <View style={styles.suggestActions}>
           <InlineAction
@@ -2025,6 +2057,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   suggest: { backgroundColor: colors.bgTertiary, borderRadius: radius.md, padding: spacing.smd, marginTop: spacing.smd, gap: spacing.sm },
   suggestText: { color: colors.text, fontSize: font.sm },
   suggestHead: { fontWeight: fontWeight.semibold },
+  goalRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.smd },
+  goalKey: { width: 76, color: colors.textSecondary, fontSize: font.xxs, fontWeight: fontWeight.semibold, letterSpacing: 0.8, textTransform: 'uppercase' },
+  goalChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xsm, flex: 1 },
+  goalChip: { flexDirection: 'row', alignItems: 'center', gap: spacing.xxs, minWidth: 28, justifyContent: 'center', paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, borderRadius: radius.sm, backgroundColor: colors.bgQuaternary },
+  goalChipShort: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.done },
+  goalChipMissing: { backgroundColor: 'transparent', borderWidth: 1, borderStyle: 'dashed', borderColor: colors.textSecondary },
+  goalChipText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
+  goalChipTextMissing: { color: colors.textSecondary, fontWeight: fontWeight.regular },
+  goalCheck: { color: colors.done },
   suggestActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   setHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingTop: spacing.smd, paddingBottom: spacing.xsm },
   headCell: {
