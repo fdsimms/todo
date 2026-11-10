@@ -1286,6 +1286,22 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     if (!titleChips) return;
     haptics.tap();
     const next = applyTokenChip(title, titleChips, chip);
+    // A "#word" that names a real category or tag is applied and stripped by
+    // the effect under applyCategoryTags, one commit after the title changes.
+    // Writing it into the title first showed that commit: the tooltip and the
+    // bar's confirm checkmark flashed for a frame. Resolving it here puts the
+    // stripped title and the category/tags in the same update.
+    const resolved = titleChips.kind === 'category'
+      ? parseCategoryAndTagsInput(next, categories.map(c => c.name), allTags)
+      : null;
+    if (resolved) {
+      const nextTitle = withTrailingSpace(resolved.cleanTitle);
+      setTitle(nextTitle);
+      titleCaret.moveCaret(nextTitle);
+      if (resolved.category) setCategory(resolved.category);
+      if (resolved.tags.length > 0) setTags(prev => [...new Set([...prev, ...resolved.tags])]);
+      return;
+    }
     setTitle(next);
     titleCaret.moveCaret(next);
   };
