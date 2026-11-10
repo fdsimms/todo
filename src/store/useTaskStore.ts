@@ -93,6 +93,17 @@ import {
 } from '../utils/pantryCheckTasks';
 import { buildPantryReviewDeck } from '../utils/pantryReview';
 import {
+  BACKFILL_AREAS,
+  BACKFILL_TITLES,
+  backfillAreaCounts,
+  backfillAreaOf,
+  backfillCadenceElapsed,
+  backfillLinkUrl,
+  staleBackfillTasks,
+  wantsBackfillTask,
+} from '../utils/backfillTasks';
+import { hasAnyHolidays } from '../utils/holidays';
+import {
   PANTRY_REVIEW_LINK_URL,
   PANTRY_REVIEW_TITLE,
   pantryReviewCadenceElapsed,
@@ -957,6 +968,10 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       // evening, since a shortfall before then is not a shortfall yet.
       return;
     case 'pantryReview':
+      return;
+    case 'backfill':
+      // A pool's name is a queue, not a row. backfillLastDayKeys is the mark,
+      // spent when the offer is raised.
       return;
     // A settings stamp for the week, since a week names no row: deleting this
     // week's restock task means "not this week". `null` is the undo path.
@@ -2451,6 +2466,12 @@ interface TaskStore extends UndoHistoryActions {
    * See src/utils/pantryReviewTasks.ts.
    */
   checkPantryReviewTasks: () => void;
+  /**
+   * Once a week per Backfill pool, and only when that pool has the configured
+   * number of cards waiting, a task that opens Backfill on it.
+   * See src/utils/backfillTasks.ts.
+   */
+  checkBackfillTasks: () => void;
   /** The `produceFloor` pass, called from the catch-up sweep. */
   checkProduceFloorTasks: () => void;
   /**
@@ -7617,6 +7638,74 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...generatedBy('produceFloor', weekKey),
       }),
     });
+  },
+
+  checkBackfillTasks() {
+    const settings = useSettingsStore.getState();
+    if (generatorPausedForVacation('backfill', settings.vacationMode)) return;
+    const creating = settings.backfillTasks;
+    const tasks = get().tasks;
+    if (!creating && liveGeneratedTasksOfKind(tasks, 'backfill').length === 0) return;
+
+    const grocery = useGroceryStore.getState();
+    const counts = backfillAreaCounts({
+      tasks,
+      categories: useCategoryStore.getState().categories,
+      projects: useProjectStore.getState().projects,
+      people: usePersonStore.getState().people,
+      items: grocery.items,
+      itemSubs: grocery.itemSubs,
+      nonFoodAisles: grocery.nonFoodAisles,
+      itemProducts: grocery.itemProducts,
+      recipes: useRecipeStore.getState().recipes,
+      simpleMode: settings.simpleMode,
+      rewardsEnabled: settings.rewardsEnabled,
+      holidaysConfigured: hasAnyHolidays({ set: settings.holidaySet, custom: settings.customHolidays }),
+      kitchenEnabled: settings.kitchenEnabled,
+    });
+
+    // Clear first, create second. An emptied queue is what the row asked for, so
+    // it stays, ready; nothing here is ever deleted.
+    settleReadyMarks(
+      liveGeneratedTasksOfKind(tasks, 'backfill'),
+      staleBackfillTasks(tasks, counts),
+    );
+    if (!creating) return;
+
+    const todayStart = getCurrentDayStart();
+    const todayKey = dayKeyOf(todayStart);
+    for (const area of BACKFILL_AREAS) {
+      if (!backfillCadenceElapsed(settings.backfillLastDayKeys[area], todayStart)) continue;
+      // One per pool at a time: a row from last week still sitting there means
+      // the offer was ignored or deferred, and a second is the pile-up every
+      // generator here has a rule against.
+      if (get().tasks.some(t => t.generatedKind === 'backfill' && !t.completed && !t.archived && backfillAreaOf(t) === area)) continue;
+      if (!wantsBackfillTask(counts[area], settings.backfillThreshold)) continue;
+      // Spent when the offer is raised, not before the pool is judged (unlike
+      // pantryReview): the count is the one cheap, user-visible number, so a pool
+      // that crosses the threshold on day two is offered then rather than a week
+      // later, and a swiped-away row still cannot return before the cadence is up.
+      useSettingsStore.getState().setBackfillLastDayKey(area, todayKey);
+
+      ensureGeneratedTaskCategory('backfill');
+      const category = useSettingsStore.getState().backfillTaskCategory;
+      // Noon today, the landing every other unattended writer picks.
+      const dueDate = getCurrentDayStart();
+      dueDate.setHours(12, 0, 0, 0);
+      reconcileGeneratedTask({
+        kind: 'backfill',
+        sourceId: area,
+        wanted: true,
+        drift: () => null,
+        draft: () => ({
+          title: BACKFILL_TITLES[area],
+          dueDate: dueDate.toISOString(),
+          linkUrl: backfillLinkUrl(area),
+          category,
+          ...generatedBy('backfill', area),
+        }),
+      });
+    }
   },
 
   checkPantryReviewTasks() {

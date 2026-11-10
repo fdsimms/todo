@@ -14,7 +14,9 @@ import { useWithoutLockedTasks } from '../hooks/useWithoutLockedTasks';
 import { View, Text, TouchableOpacity, ScrollView, FlatList, StyleSheet, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { useRouteArrival } from '../hooks/useRouteArrival';
+import { isBackfillArea } from '../utils/backfillTasks';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { NamedIcon } from '../components/CoinIcon';
 import { useShallow } from 'zustand/react/shallow';
@@ -474,6 +476,7 @@ export function BackfillScreen() {
 
   // ==== local state (queue navigation, history, per-card drafts, AI suggestions) ====
   const [entityKind, setEntityKind] = useState<EntityKind>('task');
+
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const rewardsEnabled = useSettingsStore(s => s.rewardsEnabled);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
@@ -488,6 +491,17 @@ export function BackfillScreen() {
   // startAllFields and never edited: a row's own gaps decide which of them it
   // is asked about.
   const [multiFields, setMultiFields] = useState<string[] | null>(null);
+  // A "Fill in missing details" task opens the screen on its own pool
+  // (`dundundun://backfill?area=…`, see resetToBackfill).
+  const route = useRoute<{ key: string; name: string; params?: { area?: string; areaStamp?: number } }>();
+  useRouteArrival(route.params?.areaStamp, () => {
+    const area = route.params?.area;
+    if (isBackfillArea(area)) {
+      setActive(null);
+      setMultiFields(null);
+      setEntityKind(area);
+    }
+  });
   // Redo-from-scratch (task fields only): widens the queue to every live
   // task for the field instead of just the ones missing a value — see
   // confirmStartOver.

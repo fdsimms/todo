@@ -1249,6 +1249,13 @@ export interface Replica {
 
   /** See `ReplicaSettings`. Read fresh from the settings store, so it follows a sync. */
   settings(): ReplicaSettings;
+  /**
+   * How many cards each Backfill pool has waiting, as the phone's field picker
+   * counts them (`backfillAreaCounts`). A method on the replica rather than a
+   * call from `insightTools`, because the count reaches `database.ts` and the
+   * one rule above forbids importing it for its value.
+   */
+  backfillCounts(): Record<import('../../src/utils/backfillAreas').BackfillArea, number>;
   /** Every setting `SETTINGS_SPEC` names, as stored now. */
   settingValues(): Record<string, unknown>;
   /** The links saved as chips in the app's Link picker, by name. A task's `link` is one of these when its URL matches. */
@@ -4584,6 +4591,27 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       refresh();
       const after = replica.settingValues();
       return Object.keys(changes).map(key => ({ key, before: before[key], after: after[key] }));
+    },
+
+    backfillCounts() {
+      const { backfillAreaCounts } = require('../../src/utils/backfillTasks') as typeof import('../../src/utils/backfillTasks');
+      const { hasAnyHolidays } = require('../../src/utils/holidays') as typeof import('../../src/utils/holidays');
+      const s = useSettingsStore.getState();
+      return backfillAreaCounts({
+        tasks: replica.tasks(),
+        categories: replica.categories(),
+        projects: replica.projects(),
+        people: replica.people(),
+        items: replica.groceryItems(),
+        itemSubs: replica.itemSubLinks(),
+        nonFoodAisles: replica.nonFoodAisles(),
+        itemProducts: replica.itemProducts(),
+        recipes: replica.recipes(),
+        simpleMode: s.simpleMode,
+        rewardsEnabled: s.rewardsEnabled,
+        holidaysConfigured: hasAnyHolidays({ set: s.holidaySet, custom: s.customHolidays }),
+        kitchenEnabled: s.kitchenEnabled,
+      });
     },
 
     settings(): ReplicaSettings {

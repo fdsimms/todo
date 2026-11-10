@@ -102,6 +102,7 @@ export function useForegroundCatchUp(): void {
       // passing, and stops needing an answer the moment the user gives one
       // from the sheet this task links to.
       useTaskStore.getState().checkPantryReviewTasks();
+      useTaskStore.getState().checkBackfillTasks();
       useTaskStore.getState().checkPantryCheckTasks();
       // A meal comes into shopping range purely by time passing, and stops
       // wanting a shop the moment the plan changes under it — re-planned,

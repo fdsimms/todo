@@ -263,7 +263,9 @@ model.
 **The cross-cutting reads are projections of readers the app already has** (`insightTools.ts`):
 
 - `get_overview` is where an agent starts: the zone, the logical today, counts per lens, categories
-  with their hours, tags, projects, which areas are switched off, and whether health logs arrive.
+  with their hours, tags, projects, which areas are switched off, whether health logs arrive, and the
+  Backfill card count per area (`replica.backfillCounts`, the phone's `backfillAreaCounts`; a method on
+  the replica because it reaches `database.ts`, which `insightTools` may not import for its value).
 - `get_agenda` is `buildLookAhead`, the same window the app's look-ahead reads, so a recurring
   task's future occurrences are projected by `projectOccurrences` and its refusals rather than by a
   second walk. The calendar is unknown here and the result says so in words, since a day with no

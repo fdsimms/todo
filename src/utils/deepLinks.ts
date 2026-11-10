@@ -1,3 +1,4 @@
+import { isBackfillArea, type BackfillArea } from './backfillAreas';
 import { useEffect } from 'react';
 import { Linking } from 'react-native';
 import { alertKeyScanResult } from './keyScanAlert';
@@ -28,6 +29,7 @@ import {
   resetToKitchen,
   resetToPeople,
   resetToMood,
+  resetToBackfill,
   resetToJournal,
   resetToFoodLog,
   resetToMedications,
@@ -519,6 +521,24 @@ export function isPeopleUrl(url: string): boolean {
   return typeof url === 'string' && PEOPLE_RE.test(url.trim());
 }
 
+// `dundundun://backfill[?area=recipe]` — what a "Fill in missing details" task
+// carries, so the row opens the Backfill screen on the pool it is about. The
+// bare link opens the screen as it always was.
+const BACKFILL_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?backfill\\/?(?:\\?(.*))?$`, 'i');
+
+export function isBackfillUrl(url: string): boolean {
+  return typeof url === 'string' && BACKFILL_RE.test(url.trim());
+}
+
+/** The pool a backfill link names, or null for the bare link or an unknown value. */
+export function backfillUrlArea(url: string): BackfillArea | null {
+  if (typeof url !== 'string') return null;
+  const match = BACKFILL_RE.exec(url.trim());
+  if (!match) return null;
+  const value = (parseQuery(match[1] ?? '').area ?? '').trim().toLowerCase();
+  return isBackfillArea(value) ? value : null;
+}
+
 // `dundundun://mood[?log=1]` — what the daily check-in task carries, so the
 // row asking how you're doing opens the sheet that answers it rather than only
 // offering a tick box. The bare link lands on the history.
@@ -913,6 +933,7 @@ export function linkIconFor(url: string | null | undefined): string {
   if (isKitchenUrl(url)) return 'nutrition-outline';
   if (isGroceriesUrl(url)) return 'cart-outline';
   if (isPeopleUrl(url)) return 'people-outline';
+  if (isBackfillUrl(url)) return 'albums-outline';
   if (isMoodUrl(url)) return 'happy-outline';
   if (isFoodLogUrl(url)) return 'fast-food-outline';
   if (isMedicationsUrl(url)) return 'medkit-outline';
@@ -983,6 +1004,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isPeopleUrl(url)) {
     resetToPeople(peopleUrlPersonId(url));
+    return true;
+  }
+  if (isBackfillUrl(url)) {
+    resetToBackfill(backfillUrlArea(url));
     return true;
   }
   if (isMoodUrl(url)) {

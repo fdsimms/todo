@@ -23,6 +23,7 @@
  */
 import type { Category, Project, Task } from '../../src/types';
 import type { Replica } from './replica';
+import type { BackfillArea } from '../../src/utils/backfillAreas';
 import { serializeTask, serializeTasks, type SerializedTask } from './serialize';
 import { listProjects, resolveRange, type DayRange, type LogRangeInput } from './tools';
 import { activeTimeZone } from './timeZone';
@@ -122,6 +123,14 @@ export interface Overview {
   logSync: LogSync;
   completedTasksKeptForDays: number | 'forever';
   /**
+   * How many cards each Backfill pool has waiting: details the app is asking
+   * for (a task's estimate, a recipe's cook time, a person's birthday), counted
+   * the way the phone's Backfill field picker counts them. The kitchen pools
+   * read 0 while that area is off. Ask before offering to fill them in, and
+   * never fill one in by guessing.
+   */
+  backfill: Record<BackfillArea, number>;
+  /**
    * What the person has asked Claude to keep in mind, in their own words. Follow
    * them. They can read and edit these in Settings › Data & reset › Sync.
    */
@@ -215,6 +224,7 @@ export function getOverview(replica: Replica, access: 'read' | 'write' = 'read')
       ...(healthNote ? { note: healthNote } : {}),
     },
     logSync,
+    backfill: replica.backfillCounts(),
     completedTasksKeptForDays: settings.completedRetentionDays ?? 'forever',
     notesForClaude: replica.agentNotes().map(n => ({ id: n.id, text: n.text })),
     ...(synced ? { lastSyncedAt: synced } : {}),

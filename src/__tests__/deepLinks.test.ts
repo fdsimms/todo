@@ -21,6 +21,7 @@ const mockResetToBloodPressure = jest.fn();
 const mockResetToWeight = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockResetToDeload = jest.fn();
+const mockResetToBackfill = jest.fn();
 const mockResetToTask = jest.fn();
 const mockResetToLocateTask = jest.fn();
 const mockResetToProject = jest.fn();
@@ -119,6 +120,7 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToProjectPull: (...args: unknown[]) => mockResetToProjectPull(...args),
   resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
   resetToDeload: (...args: unknown[]) => mockResetToDeload(...args),
+  resetToBackfill: (...args: unknown[]) => mockResetToBackfill(...args),
   resetToTask: (...args: unknown[]) => mockResetToTask(...args),
   resetToLocateTask: (...args: unknown[]) => mockResetToLocateTask(...args),
   resetToProject: (...args: unknown[]) => mockResetToProject(...args),
@@ -197,6 +199,8 @@ import {
   taskUrlWantsLocate,
   isProjectUrl,
   projectUrlId,
+  isBackfillUrl,
+  backfillUrlArea,
   appUrlFromUniversalLink,
   UNIVERSAL_LINK_HOSTS,
 } from '../utils/deepLinks';
@@ -1355,5 +1359,24 @@ describe('workout links', () => {
     expect(openInAppUrl('dundundun://workout')).toBe(true);
     expect(mockApplyWorkoutLink).toHaveBeenLastCalledWith({ verb: null, sessionId: null, setId: null, restId: null });
     expect(mockResetToToday).not.toHaveBeenCalled();
+  });
+});
+
+describe('backfill link', () => {
+  it('recognises the link and reads the pool it names', () => {
+    expect(isBackfillUrl('dundundun://backfill')).toBe(true);
+    expect(isBackfillUrl('dundundun://mood')).toBe(false);
+    expect(backfillUrlArea('dundundun://backfill?area=recipe')).toBe('recipe');
+    expect(backfillUrlArea('dundundun://backfill?area=RECIPE')).toBe('recipe');
+    expect(backfillUrlArea('dundundun://backfill')).toBeNull();
+    expect(backfillUrlArea('dundundun://backfill?area=nope')).toBeNull();
+  });
+
+  it('opens Backfill on the named pool, or bare', () => {
+    mockResetToBackfill.mockClear();
+    expect(openInAppUrl('dundundun://backfill?area=person')).toBe(true);
+    expect(mockResetToBackfill).toHaveBeenLastCalledWith('person');
+    expect(openInAppUrl('dundundun://backfill')).toBe(true);
+    expect(mockResetToBackfill).toHaveBeenLastCalledWith(null);
   });
 });

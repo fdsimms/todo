@@ -414,7 +414,7 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealSlot', 'mealPlanNudge', 'mealShortfall', 'mealThaw', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'blockOffer', 'health', 'eventTask', 'travel', 'wakeUp', 'moodLog', 'moodNudge', 'weekendNudge', 'weighIn', 'bloodPressureLog', 'waterShortfall', 'snackNudge', 'produceNudge', 'produceFloor', 'limitWarning', 'goalTarget', 'bookEvent', 'journalLog', 'dreamLog', 'wanikani', 'ynab']);
+      .toEqual(['groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealSlot', 'mealPlanNudge', 'mealShortfall', 'mealThaw', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'blockOffer', 'health', 'eventTask', 'travel', 'wakeUp', 'moodLog', 'moodNudge', 'weekendNudge', 'backfill', 'weighIn', 'bloodPressureLog', 'waterShortfall', 'snackNudge', 'produceNudge', 'produceFloor', 'limitWarning', 'goalTarget', 'bookEvent', 'journalLog', 'dreamLog', 'wanikani', 'ynab']);
   });
 
   it('marks exactly the two day-shaped questions, the leave reminder and the wake-up task as notices', () => {

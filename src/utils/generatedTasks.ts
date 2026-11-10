@@ -169,6 +169,10 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // groceryUseUp are: one is about a project going quiet and the other about a
   // weekend going empty, and somebody meeting one has not half-met the other.
   'weekendNudge',
+  // Beside pantryReview's family of "go through a pile" offers rather than at
+  // the end: it is the same shape (a threshold over a queue, one row that opens
+  // the pass), over the Backfill screen's pools.
+  'backfill',
   // The twentieth, appended beside the mood pair rather than beside `health`.
   // It shares a *store* with `health` and nothing else: that one reacts to a
   // reading, this one asks for one, and the switch a person is looking for
@@ -275,6 +279,7 @@ export type GeneratedEnabledKey =
   | 'moodLogTasks'
   | 'moodNudgeTasks'
   | 'weekendNudgeTasks'
+  | 'backfillTasks'
   | 'weighInTasks'
   | 'bloodPressureTasks'
   | 'waterShortfallTasks'
@@ -997,6 +1002,29 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Health',
+  },
+  // Ships off, like pantryReview: it adds a surface rather than replacing one.
+  // One row per Backfill pool, so a pool with a small queue never raises one.
+  backfill: {
+    kind: 'backfill',
+    pausedOnVacation: true,
+    enabledKey: 'backfillTasks',
+    label: 'Fill in missing details',
+    onHint: 'Adds a task to fill in details once a Backfill area has a lot waiting',
+    offHint: 'No task for a large Backfill backlog',
+    icon: 'albums-outline',
+    // Its source id is the pool's name, which names a queue rather than a row
+    // anything could be written back to, so writeGeneratedOptOut has nothing to
+    // write for it. What stops a swiped-away row coming straight back is
+    // backfillLastDayKeys.
+    sourced: false,
+    notice: false,
+    // Mixed: the item and recipe pools belong to the kitchen area, but the
+    // task, category, project and people pools do not. The pass skips the
+    // kitchen pools itself when the area is off, so the generator stays visible.
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Personal',
   },
   // Ships off, like every generator that adds a surface rather than replacing
   // one already on screen. It has a second gate of its own besides — the

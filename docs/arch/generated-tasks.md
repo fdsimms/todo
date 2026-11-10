@@ -1929,6 +1929,29 @@ target rose at 5.
   the rest. Rules are in `src/utils/waterShortfallTasks.ts` and the target
   arithmetic in `src/utils/waterTargetUnits.ts`.
 
+## `backfill`: a row per Backfill pool once it has a lot waiting
+
+`src/utils/backfillTasks.ts` (rules) + `checkBackfillTasks` in `useTaskStore`. `pantryReview`'s shape, once per pool:
+the source id is the pool's name (`task`, `category`, `project`, `person`, `item`, `recipe`), so each pool has at most
+one live row, its own threshold check and its own mark.
+
+- **The count is the Backfill field picker's own.** `backfillAreaCounts` sums `backfillFieldCounts` and its five
+  siblings over the fields the screen offers (difficulty with rewards off, holidays with none set, and simple-mode
+  hides are left out; the kitchen pools read 0 with the area off), so a row can't promise a queue that opens empty.
+  A row missing two fields counts twice, as on the picker.
+- **The threshold is `backfillThreshold`** (default 10, 3 to 200, one number for every pool).
+- **The mark is `backfillLastDayKeys`, one day key per pool, weekly.** Unlike `pantryReview` it is spent when the
+  offer is *raised*, not before the pool is judged: the count is cheap and visible, so a pool that crosses the
+  threshold on day two is offered then, and a swiped-away row still can't return before the week is up. The user's
+  delete writes nothing (`writeGeneratedOptOut` returns).
+- **A row goes stale only when its pool is empty** (`staleBackfillTasks`), never because answering cards dropped it
+  under the threshold; the empty queue leaves it ready (`settleReadyMarks`) rather than deleting it.
+- **The link is `dundundun://backfill?area=<pool>`**, parsed in `deepLinks.ts` (`backfillAreas.ts` holds the pool
+  names so the parser needs no store) and landed by `resetToBackfill`, which stamps `areaStamp` for
+  `BackfillScreen`'s `useRouteArrival`.
+- `kitchen: false` in the registry although two pools are kitchen ones: the pass skips those pools itself when
+  `kitchenEnabled` is off, so the Settings row stays visible for the others.
+
 ## `snackNudge`: a snack suggestion when the food log runs low
 
 From 3 PM by default, if today's food log states under half of the calorie

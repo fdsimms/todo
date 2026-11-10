@@ -5474,6 +5474,95 @@ describe('checkPantryCheckTasks', () => {
   });
 });
 
+// ─── checkBackfillTasks ─────────────────────────────────────────────────────
+
+describe('checkBackfillTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const setBackfillLastDayKey = jest.fn();
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    kitchenEnabled: true,
+    simpleMode: false,
+    rewardsEnabled: false,
+    holidaySet: 'us',
+    customHolidays: [],
+    backfillTasks: true,
+    backfillTaskCategory: 'Personal',
+    backfillThreshold: 3,
+    backfillLastDayKeys: {},
+    setBackfillLastDayKey,
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const backfillRows = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'backfill' && !t.completed && !t.archived);
+  // Tasks with no estimate, priority or category: each is a card on the task pool.
+  const seedTasks = (n: number) =>
+    useTaskStore.setState({ tasks: Array.from({ length: n }, (_, i) => makeTask({ id: `bf-${i}`, title: `Plain ${i}` })) });
+
+  beforeEach(() => {
+    setBackfillLastDayKey.mockClear();
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    // Earlier suites leave rows in the real grocery, recipe, project and people
+    // stores, and each is a pool of its own: only the task pool is under test.
+    useGroceryStore.setState({ items: [] });
+    useRecipeStore.setState({ recipes: [] });
+    useProjectStore.setState({ projects: [] });
+    usePersonStore.setState({ people: [] });
+  });
+
+  it('adds one row for a pool at its threshold, linked to that pool', () => {
+    seedTasks(3);
+    useTaskStore.getState().checkBackfillTasks();
+    const rows = backfillRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].title).toBe('Fill in missing task details');
+    expect(rows[0].linkUrl).toBe('dundundun://backfill?area=task');
+    expect(rows[0].generatedSourceId).toBe('task');
+    expect(setBackfillLastDayKey).toHaveBeenCalledWith('task', expect.any(String));
+  });
+
+  it('stands down below the threshold and spends no mark', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ backfillThreshold: 200 }));
+    seedTasks(3);
+    useTaskStore.getState().checkBackfillTasks();
+    expect(backfillRows()).toHaveLength(0);
+    expect(setBackfillLastDayKey).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op while the setting is off, and while on vacation', () => {
+    seedTasks(3);
+    useSettingsStore.getState.mockReturnValue(settings({ backfillTasks: false }));
+    useTaskStore.getState().checkBackfillTasks();
+    useSettingsStore.getState.mockReturnValue(settings({ vacationMode: true }));
+    useTaskStore.getState().checkBackfillTasks();
+    expect(backfillRows()).toHaveLength(0);
+  });
+
+  it('does not raise a second row for a pool while one is live', () => {
+    seedTasks(3);
+    useTaskStore.getState().checkBackfillTasks();
+    useSettingsStore.getState.mockReturnValue(settings({ backfillLastDayKeys: {} }));
+    useTaskStore.getState().checkBackfillTasks();
+    expect(backfillRows()).toHaveLength(1);
+  });
+
+  it('waits out the weekly cadence after an offer', () => {
+    seedTasks(3);
+    useSettingsStore.getState.mockReturnValue(settings({ backfillLastDayKeys: { task: dayKeyOf(new Date()) } }));
+    useTaskStore.getState().checkBackfillTasks();
+    expect(backfillRows()).toHaveLength(0);
+  });
+});
+
 // ─── checkPantryReviewTasks ─────────────────────────────────────────────────
 
 describe('checkPantryReviewTasks', () => {
