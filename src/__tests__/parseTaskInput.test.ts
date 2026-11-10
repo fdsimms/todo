@@ -19,6 +19,17 @@ describe('parseTaskInput — one-off dates', () => {
     expect(r.schedule.timeSegments).toEqual([]);
   });
 
+  it('reads a bare trailing numeric date without "on"', () => {
+    const r = parseTaskInput('RSVP to Dustin’s birthday 12/11', NOW)!;
+    expect(r.cleanTitle).toBe('RSVP to Dustin’s birthday');
+    expect(r.matchedText).toBe('12/11');
+    expectDay(r.schedule.dueDate, 2025, 11, 11);
+  });
+
+  it('still refuses a trailing number pair that is no date', () => {
+    expect(parseTaskInput('mix 13/13', NOW)).toBeNull();
+  });
+
   it('parses a bare trailing "tomorrow"', () => {
     const r = parseTaskInput('call mom tomorrow', NOW)!;
     expect(r.cleanTitle).toBe('call mom');
