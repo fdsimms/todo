@@ -3083,7 +3083,6 @@ export function FoodLogEntrySheet({
                 multiline
                 submitBehavior="blurAndSubmit"
                 placeholder={canEstimate ? 'A food, a recipe, or what you ate' : 'Search foods and recipes'}
-                inputAccessoryViewID={NUMBER_PAD_ACCESSORY_ID}
                 placeholderTextColor={colors.textTertiary}
                 autoCorrect
                 spellCheck
