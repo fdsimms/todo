@@ -96,6 +96,12 @@ describe('confirmSegmentScope', () => {
     expect(proceed).toHaveBeenCalledWith('occurrence');
   });
 
+  it('says "these tasks" when several repeating tasks change', () => {
+    const proceed = jest.fn();
+    confirmSegmentScope([task({ id: 'a', timeSegments: [] }), task({ id: 'b', timeSegments: [] })], ['evening'], proceed);
+    expect(buttons().map(b => b.text)).toEqual(['These tasks', 'These and future tasks', 'Cancel']);
+  });
+
   it('does nothing on Cancel', () => {
     const proceed = jest.fn();
     confirmSegmentScope([task({ timeSegments: [] })], ['evening'], proceed);

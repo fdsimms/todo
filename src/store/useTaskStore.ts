@@ -2782,7 +2782,7 @@ interface TaskStore extends UndoHistoryActions {
   bulkSetDifficulty: (ids: string[], difficulty: Difficulty | null, options?: { scope?: 'occurrence' | 'series' }) => void;
   bulkTogglePin: (ids: string[]) => void;
   bulkDefer: (ids: string[], until: Date) => void;
-  bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[], options?: { restartSchedules?: boolean; scope?: 'occurrence' | 'series' }) => void;
+  bulkSetWhen: (ids: string[], date: Date | null | undefined, timeSegments: TimeOfDay[], options?: { restartSchedules?: boolean; scope?: 'occurrence' | 'series' }) => void;
   bulkSetCategory: (ids: string[], category: string | null, options?: { scope?: 'occurrence' | 'series' }) => void;
   bulkAddTags: (ids: string[], tags: string[], options?: { scope?: 'occurrence' | 'series' }) => void;
   addTag: (tag: string) => void;
@@ -12170,11 +12170,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       snapshots.forEach(snapshot => {
         const prev = getEffectiveTaskDate(snapshot, dayResetTime);
         const prevDay = prev ? getTaskDayStart(new Date(prev), dayResetTime).getTime() : null;
-        const moved = snapshot.pinned && prevDay !== newDay;
+        // `undefined` is a time-of-day change with no day picked: every row
+        // keeps its own date (and its pin), where `null` clears the date.
+        const moved = date !== undefined && snapshot.pinned && prevDay !== newDay;
         get().updateTask(
           snapshot.id,
           {
-            ...scheduleMoveUpdates(snapshot, date, dayResetTime, { restartSchedule: options?.restartSchedules }),
+            ...(date === undefined ? {} : scheduleMoveUpdates(snapshot, date, dayResetTime, { restartSchedule: options?.restartSchedules })),
             timeSegments,
             ...(moved ? { pinned: false } : {}),
           },

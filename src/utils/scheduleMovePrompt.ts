@@ -93,23 +93,27 @@ export function confirmSegmentScope(
         : 'This task repeats. Apply the new time of day to this task only, or to it and all future repeats?'
       : `${asked.length} of these repeat. Apply the new time of day to just these tasks, or to them and every future repeat?`,
     [
-      { text: isSeries ? 'This date' : 'This task', onPress: () => proceed('occurrence') },
-      { text: isSeries ? 'This and later dates' : 'This and future tasks', onPress: () => proceed('series') },
+      { text: isSeries ? 'This date' : one ? 'This task' : 'These tasks', onPress: () => proceed('occurrence') },
+      { text: isSeries ? 'This and later dates' : one ? 'This and future tasks' : 'These and future tasks', onPress: () => proceed('series') },
       { text: BUTTON_LABEL.cancel, style: 'cancel' },
     ],
   );
 }
 
-/** The bulk bar's When: asks as above, then re-dates the selection and calls `onDone`. */
+/**
+ * The bulk bar's When: asks as above, then re-dates the selection and calls
+ * `onDone`. `date` of `null` clears every date; `undefined` leaves each task on
+ * its own day and changes only the time of day.
+ */
 export function confirmBulkSetWhen(
   ids: string[],
-  date: Date | null,
+  date: Date | null | undefined,
   timeSegments: TimeOfDay[],
   onDone: () => void,
 ): void {
   const { tasks, bulkSetWhen } = useTaskStore.getState();
   const selected = tasks.filter(t => ids.includes(t.id));
-  confirmScheduleMove(selected, date, restart => {
+  confirmScheduleMove(selected, date ?? null, restart => {
     confirmSegmentScope(selected, timeSegments, scope => {
       bulkSetWhen(ids, date, timeSegments, { restartSchedules: restart, scope });
       onDone();
