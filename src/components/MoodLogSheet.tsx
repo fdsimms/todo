@@ -55,11 +55,15 @@ import { BUTTON_LABEL } from '../copy/shared';
 const NOTE_MAX_LENGTH = 500;
 
 /** Noon on a picked day — see the note at the call site. */
-/** Green, orange, red for mild, moderate and severe: the `…Fill` hues, so white text stays readable on each. */
-function severityFill(severity: number, colors: Colors): string {
+/**
+ * Accent, orange, red for mild, moderate and severe. Mild keeps the accent every
+ * picked pill has (undefined), since the theme has no neutral-warm colour and
+ * green reads as "good". The `…Fill` hues keep white text readable.
+ */
+function severityFill(severity: number, colors: Colors): string | undefined {
   if (severity >= 3) return colors.redFill;
   if (severity === 2) return colors.orangeFill;
-  return colors.greenFill;
+  return undefined;
 }
 
 function noonOn(day: Date): Date {
