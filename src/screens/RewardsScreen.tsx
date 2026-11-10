@@ -1308,50 +1308,52 @@ export function RewardsScreen() {
         <Text style={styles.sectionHint}>
           Set what you would spend on rewards in a week. Dollar prices convert at your weekly earning divided by that amount and update as it changes.
         </Text>
-        <View style={styles.bountyLimit}>
-          <Text style={styles.historyLabel}>Weekly reward budget</Text>
-          <View style={[styles.priceField, styles.budgetInput]}>
-            <Text style={styles.priceSymbol}>{currencySymbol}</Text>
-            <TextField
-              style={styles.priceInput}
-              value={budgetText}
-              onChangeText={setBudgetText}
-              onEndEditing={() => {
-                const minor = parsePriceInput(budgetText);
-                setBudgetMinor(minor);
-                setBudgetText(minor === null ? '' : priceToInput(minor));
-              }}
-              placeholder="e.g. 20"
-              placeholderTextColor={colors.textTertiary}
-              keyboardType="decimal-pad"
-              inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-              returnKeyType="done"
-              accessibilityLabel="Weekly reward budget"
-              selectTextOnFocus
-            />
+        <View style={styles.historyCard}>
+          <View style={styles.budgetRow}>
+            <Text style={styles.historyLabel}>Weekly reward budget</Text>
+            <View style={[styles.priceField, styles.budgetInput]}>
+              <Text style={styles.priceSymbol}>{currencySymbol}</Text>
+              <TextField
+                style={styles.priceInput}
+                value={budgetText}
+                onChangeText={setBudgetText}
+                onEndEditing={() => {
+                  const minor = parsePriceInput(budgetText);
+                  setBudgetMinor(minor);
+                  setBudgetText(minor === null ? '' : priceToInput(minor));
+                }}
+                placeholder="e.g. 20"
+                placeholderTextColor={colors.textTertiary}
+                keyboardType="decimal-pad"
+                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                returnKeyType="done"
+                accessibilityLabel="Weekly reward budget"
+                selectTextOnFocus
+              />
+            </View>
           </View>
-        </View>
-        <View style={styles.bountyLimit}>
-          <Text style={styles.historyLabel}>Sales tax</Text>
-          <View style={[styles.priceField, styles.budgetInput]}>
-            <TextField
-              style={styles.priceInput}
-              value={taxText}
-              onChangeText={setTaxText}
-              onEndEditing={() => {
-                const percent = parseSalesTaxPercent(taxText.replace('%', '').trim());
-                setTaxPercent(percent);
-                setTaxText(percent === null ? '' : String(percent));
-              }}
-              placeholder="e.g. 8.875"
-              placeholderTextColor={colors.textTertiary}
-              keyboardType="decimal-pad"
-              inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
-              returnKeyType="done"
-              accessibilityLabel="Sales tax percent"
-              selectTextOnFocus
-            />
-            <Text style={styles.priceSymbol}>%</Text>
+          <View style={[styles.budgetRow, styles.historyDivider]}>
+            <Text style={styles.historyLabel}>Sales tax</Text>
+            <View style={[styles.priceField, styles.budgetInput]}>
+              <TextField
+                style={styles.priceInput}
+                value={taxText}
+                onChangeText={setTaxText}
+                onEndEditing={() => {
+                  const percent = parseSalesTaxPercent(taxText.replace('%', '').trim());
+                  setTaxPercent(percent);
+                  setTaxText(percent === null ? '' : String(percent));
+                }}
+                placeholder="e.g. 8.875"
+                placeholderTextColor={colors.textTertiary}
+                keyboardType="decimal-pad"
+                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                returnKeyType="done"
+                accessibilityLabel="Sales tax percent"
+                selectTextOnFocus
+              />
+              <Text style={styles.priceSymbol}>%</Text>
+            </View>
           </View>
         </View>
         <HelpText style={[styles.sectionHint, styles.budgetHint]}>
@@ -1749,6 +1751,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   priceInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
   budgetInput: {
     minWidth: 120,
+  },
+  // One row inside the historyCard that holds the exchange-rate fields, so the pair shares one set of rounded corners.
+  budgetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.smd,
   },
   bountyLimit: {
     flexDirection: 'row',
