@@ -35,7 +35,7 @@ own headers apply one bar, and a new feature has to be sorted against it:
    numbers or switches the app is waiting on.
 4. **It does not depend on a sibling being set first.** `autoSchedule`, `servingsMax` and
    `streakRequiresWindow` are all meaningless until another field is on.
-5. **A feature the person has to opt into is not "unanswered".** Rain skip, time windows,
+5. **A feature the person has to opt into is not "unanswered".** Time windows,
    usage meters, app gating, penalties and a quota ramp all read as "not using it" when empty,
    so the card would ask everyone to consider a feature most of them have no use for.
 
@@ -48,11 +48,40 @@ start there. Both answers are written onto
 the task, since `false` has to outrank a category set to wait, and the dismissal ("Leave as
 usual") leaves it following its category. A whole-category answer offers to turn the category on.
 
-Considered and left out under the rules above, so they are not re-derived: rain skip
-(`rainSkipMm`), time-window sun anchors, deadline time, usage meters, app gating, medications as
+Considered and left out under the rules above, so they are not re-derived: time-window sun anchors, deadline time, usage meters, app gating, medications as
 a pool (a scheduled medication has no limit to ask for), `groupOnToday` and `hideNextStep` on
 projects, a recipe's `mealType`, a person's contact lines (Fill from contacts does that in one
 tap), and a store's `receiptStyle`.
+
+## All fields
+
+The first row of every pool's picker (shown when two or more of its fields have a gap) walks
+every field with a gap at once, row by row, instead of one field across every row. It opens
+`AllFieldsSheet`, a card that lists the pool's fields with a toggle each (every field with a gap
+starts on), and Start begins the walk over the fields left on. The queue is
+`backfillMultiEntries` (`src/utils/backfillMulti.ts`): one entry per row, holding each selected
+field it is still missing. Tasks wrap it as `backfillMultiQueue` so a series stays one entry.
+
+The screen keeps `activeField` (what the person chose, which also names the pool) and derives
+`active` from it, swapping in the field the current row is on. Every handler, card, dismiss label
+and batch toggle keeps reading one `active`, which is why the walk needed no new card.
+
+- **Skips are step-aware.** `skippedIds` holds a plain row id to skip a whole row (the step row's
+  "Skip task") and a `backfillStepKey` (`id|field`) to skip one field ("Skip for now").
+  `stepIdFor` files `advance` and history under the step key in this mode, so Previous returns to
+  the right field.
+- **The session review stamps itself.** `logSession` files each line under its step key and
+  prefixes the field ("Priority: High"), so a row's answers don't replace each other and each
+  keeps its own Undo. Handlers keep passing the row's own id; a saved default is left alone.
+- **A pool's live "missing" filter does the advancing.** An answered or dismissed field drops out
+  of that row's entry on its own, so only a skip needs a key.
+- **No redo.** A redo asks whether one field's value is still right, which is another question.
+- **AI suggestions are keyed by field.** `suggestions` and `suggestAskedIds` are keyed by
+  `backfillStepKey(taskId, field)`, so a reply for estimate can't be offered on the category card,
+  and one that lands after the field changed is simply held for when that field comes up. A reply
+  asked for before `clearSuggestions` is dropped (`suggestEpochRef`).
+- **A series is one entry.** When two fields would queue different dates of it, the first wins and
+  the other date comes up once that one is finished.
 
 ## Rules that are easy to break
 
@@ -75,13 +104,6 @@ tap), and a store's `receiptStyle`.
   never completed, so it is not asked for a time estimate or a difficulty; a one-off and an
   every-N-hours task are not asked for a holiday rule, in a redo as well as in the normal queue
   (`fieldApplies`).
-- **A partial nutrition panel is a different question from no panel.** `nutrition` queues an
-  item with no figures; `nutritionDetail` queues an item whose saved panel has none of trans
-  fat, cholesterol or added sugars. Any one present means the source already carried the later
-  lines, so the others being absent is its answer. That is what keeps an apple, which has sugars
-  and no added sugars, from queueing for ever. An estimate is excluded because it was never read
-  off a label. Absent stays absent: nothing here writes a zero, and a food with none to add is
-  left with **Nothing more to add**.
 - **Brand, product and rating read `ItemProduct`, not the item.** `product` queues an item with
   no box and `rating` queues one with an unrated box, so both take the products list
   (`isItemFieldMissing`'s last argument, `itemBackfillFieldCounts`' last). A frozen portion is

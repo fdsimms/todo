@@ -977,14 +977,6 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
-  it('seeds a repeating task that skips after rain', () => {
-    useDemoStore.getState().enterDemoMode();
-    const garden = useTaskStore.getState().tasks.find(t => t.title === 'Water the garden' && !t.completed);
-    expect(garden?.rainSkipMm).toBe(5);
-    expect(garden?.recurrenceType).toBe('daily');
-    useDemoStore.getState().exitDemoMode();
-  });
-
   it('seeds a task that reminds on arriving at a saved place', () => {
     useDemoStore.getState().enterDemoMode();
     const task = useTaskStore.getState().tasks.find(t => t.title === 'Take the recycling out');

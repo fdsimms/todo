@@ -21,7 +21,7 @@ import type { Day } from 'date-fns';
  *   "tomorrow", "tomorrow at 3pm", "today at 5", "tonight"
  *   "next monday", "friday 9am", "this weekend"
  *   "in 2 weeks", "in 3 days", "in 1 hour", "in 30 min"
- *   "next week", "next month", "next year"
+ *   "next week", "next month", "next year", "in december"
  *   "noon", "midnight", "tomorrow morning", "friday night at 8:30"
  *   "jun 15", "june 15 2026", "15 jun", "12/25", "2026-12-25"
  *
@@ -292,6 +292,18 @@ export function parseDatePart(input: string, now: Date, clockNow: Date = now): D
   // "in a week", "in an hour"
   if ((m = text.match(new RegExp(`^in\\s+an?\\s+(${UNIT_WORD_SINGULAR})$`)))) {
     return relativeUnit(m[1], 1, now, clockNow);
+  }
+
+  // "in december", "in dec 2027": a whole month, read as its first day. Only
+  // with the "in": a bare month word ("may", "march") ends ordinary titles far
+  // too often to be a date. The month the person is already in is today, not
+  // the same month next year.
+  if ((m = text.match(/^in\s+([a-z]+)\.?(?:\s+(\d{4}))?$/))) {
+    const month = MONTHS[m[1]];
+    if (month !== undefined) {
+      if (!m[2] && month === now.getMonth()) return { date: startOfDay(now), explicitTime: false };
+      return monthDay(month, 1, m[2] ? parseInt(m[2], 10) : null, now);
+    }
   }
 
   // "45 days from now", "two weeks from now"

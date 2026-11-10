@@ -201,10 +201,6 @@ export function catchUpPasses(): MaintenanceStep[] {
     // works in a background run; moving a hold to a new day waits for a
     // snapshot, and useWeatherWaitSync re-runs it when one lands.
     ['apply weather waits', () => tasks().applyWeatherWaits()],
-    // Rain skips read the same snapshot, and refuse on its day key the same
-    // way: at cold launch, before the first fetch, they do nothing, and the
-    // weather sync runs them again once a reading for today lands.
-    ['apply rain skips', () => tasks().applyRainSkips()],
     // Beside it, and unlike the weather passes above it this one *can* do real work at
     // cold launch: the window it reads is whatever useCalendarSync last left
     // behind, exactly as checkCalendarReviewTasks' is, and it refuses on

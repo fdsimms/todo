@@ -63,6 +63,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/backfillAreas.ts` — BackfillArea, BACKFILL_AREAS, isBackfillArea
 - `src/utils/backfillBatch.ts` — BatchScopeKind, BatchScope, BatchOption, batchOptionsFor, taskBatchScopes, personBatchScopes, itemBatchScopes, recipeBatchScopes, canBatchApply, canBatchDismiss, +1 more
 - `src/utils/backfillDismissCopy.ts` — MAX_DISMISS_LABEL_LENGTH, KEEP_AS_IS_LABEL, TASK_DISMISS_LABELS, CATEGORY_DISMISS_LABELS, PROJECT_DISMISS_LABELS, PERSON_DISMISS_LABELS, ITEM_DISMISS_LABELS, RECIPE_DISMISS_LABELS
+- `src/utils/backfillMulti.ts` — backfillStepKey, splitBackfillStepKey, MultiEntry, backfillMultiEntries
 - `src/utils/backfillSuggest.ts` — SuggestibleBackfillFieldId, SUGGESTIBLE_BACKFILL_FIELDS, isSuggestibleBackfillField, MAX_SUGGESTION_TASKS, MAX_SUGGESTION_EXAMPLES, SUGGESTION_NOTES_MAX_CHARS, SuggestionTask, SuggestionExample, BackfillSuggestion, TitleOf, +4 more
 - `src/utils/backfillTasks.ts` — BACKFILL_KITCHEN_AREAS, BACKFILL_TITLES, BACKFILL_THRESHOLD_MIN, BACKFILL_THRESHOLD_MAX, BACKFILL_THRESHOLD_DEFAULT, BACKFILL_CADENCE_DAYS, BACKFILL_LINK_URL, backfillLinkUrl, backfillAreaOf, BackfillLastDayKeys, +7 more
 - `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runBackgroundYnab, runWatchWork, useBackgroundRefresh, APP_REFRESH_INTERVAL_MINUTES, +1 more
@@ -200,11 +201,12 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/exerciseImages.ts` — EXERCISE_IMAGE_BASE_URL, ExercisePhotos, PHOTOGRAPHED_SLUGS, exercisePhotos
 - `src/utils/exerciseLibrary.ts` — LibraryExercise, LIBRARY_ID_PREFIX, EXERCISE_LIBRARY, libraryExercise, isLibraryId
 - `src/utils/exerciseSwap.ts` — swappableSets, swapKindsMatch, swapCandidates, preferredFirst
+- `src/utils/exerciseUsage.ts` — MOST_USED_DAYS, MOST_USED_MIN_SESSIONS, MOST_USED_LIMIT, mostUsedExerciseIds
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabAnchor.ts` — FabMenuAnchor, fabMenuAnchorFor
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
 - `src/utils/fasting.ts` — DEFAULT_FAST_GOAL_HOURS, MIN_FAST_GOAL_HOURS, MAX_FAST_GOAL_HOURS, MAX_FAST_START_AGE_HOURS, clampFastGoalHours, activeFast, lastEndedFast, pastFasts, formatFastLengthShort, fastElapsedMs, +8 more
-- `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, backfillFieldsFor, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, backfillSeriesPeers, backfillFieldCounts, +3 more
+- `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, backfillFieldsFor, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, BackfillStep, backfillMultiQueue, +5 more
 - `src/utils/firstRun.ts` — FirstRunAnswers, FIRST_RUN_DEFAULTS, FirstRunSettings, firstRunSettings, FirstRunState, shouldOfferFirstRun
 - `src/utils/focusLiveActivity.ts` — FocusRun, buildFocusRun, useFocusLiveActivitySync
 - `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, plannedTaskMinutes, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, +19 more
@@ -277,7 +279,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/ingredientGrounding.ts` — ungroundedIngredientIndexes
 - `src/utils/ingredientPrintout.ts` — IngredientPrintInput, ALLERGEN_CAVEAT, ingredientPageHtml, ingredientCardHtml, ingredientFileName
 - `src/utils/itemAliases.ts` — otherNameKeysOf, aliasIndex, itemKeyIndex, itemForOtherName, OtherNamesResult, cleanOtherNames, describeOtherNames
-- `src/utils/itemBackfill.ts` — ItemBackfillFieldId, LATER_LABEL_NUTRIENTS, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, unratedBoxesOf, isItemFieldMissing, isItemFieldApplicable, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, +1 more
+- `src/utils/itemBackfill.ts` — ItemBackfillFieldId, ItemBackfillFieldDef, ITEM_BACKFILL_FIELDS, unratedBoxesOf, isItemFieldMissing, isItemFieldApplicable, isItemBackfillDismissed, itemBackfillCandidates, itemBackfillFieldCounts, dismissItemBackfillField
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
 - `src/utils/itemEither.ts` — UNANSWERED, eitherPairKey, parseItemPicks, pickFor, withItemPick, withoutItemPick, hasUndecidedItem, EitherPairInUse, eitherPairsInUse, describeEitherPair, +2 more
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstituteLink, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
@@ -403,7 +405,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/pantryStanding.ts` — PantryStanding, pantryStanding
 - `src/utils/pantryWrite.ts` — onHandRow, markedOutRow, disposalRow, thawedPortionsOf, frozenRow, openedRow, reviewedRow, runningLowRow, productOnHandRow, reviewedBoxRow, +17 more
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, clockBesideDayPart, dayPartBesideClock, DatePart, NUMBER_WORDS, +5 more
-- `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +58 more
+- `src/utils/parseTaskInput.ts` — withTrailingSpace, ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, +55 more
 - `src/utils/pastWorkout.ts` — PastSetText, PastExerciseDraft, PAST_WORKOUT_DEFAULT_MINUTES, PAST_WORKOUT_MIN_MINUTES, PAST_WORKOUT_MAX_MINUTES, PastWorkoutProblem, nextSetText, newSupersetKey, withoutPastExercise, joinPastSuperset, +5 more
 - `src/utils/pastedLines.ts` — cleanPastedLines
 - `src/utils/patchNotes.ts` — PatchNote
@@ -420,6 +422,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/perfReport.ts` — savePerfRun, collectDeviceMetrics, perfReportText
 - `src/utils/permissionAlert.ts` — alertPermissionOff, alertFailedWithSettings
 - `src/utils/personDateTasks.ts` — PERSON_DATE_PRESETS, MAX_PERSON_DATES, PERSON_DATE_LABEL_MAX_LENGTH, personDateSourceId, parsePersonDateSource, isWholePersonDate, personDateInYear, nextPersonDate, personDateTitle, PersonDateWant, +5 more
+- `src/utils/personFields.ts` — PersonFieldKey, PersonFieldSpec, PERSON_FIELDS, describeBirthday, personFieldValue, filledPersonFields, addablePersonFields, personFieldPatch
 - `src/utils/personHistory.ts` — HistoryEntry, personHistory, UpcomingEntry, personUpcoming, UndatedEntry, personUndated, WaitingEntry, personWaiting, lastTogether, describeLastTogether, +2 more
 - `src/utils/personNotes.ts` — PERSON_NOTE_LABELS, PERSON_NOTE_HEADINGS, PERSON_NOTE_HINTS, isLiveNote, isStaleNote, notesOfKind, notesFor, describeNoteDay, giftIdeasText
 - `src/utils/phone.ts` — phoneDigits, telUrl, isDialable, smsUrl, formatPhoneInput, looksLikePhoneNumber
@@ -470,7 +473,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/quotaRamp.ts` — QUOTA_RAMP_MAX_TARGET, QUOTA_RAMP_MAX_STEP, QUOTA_RAMP_MAX_EVERY, canRampQuota, hasQuotaRamp, quotaRampAtGoal, QuotaRampResult, advanceQuotaRamp, describeQuotaRamp
 - `src/utils/quotaSchedule.ts` — QuotaSpan, QuotaSpanInput, quotaRunSpan, quotaWeekStart, quotaWeekSpan, proratedFrom, weekDaysLeft, proratedWeeklyTarget, quotaProrationPatch, firstWeekAnchor, +5 more
 - `src/utils/quotaUnit.ts` — MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit, formatQuotaProgress, formatQuotaCatchUp, formatQuotaTarget
-- `src/utils/rainSkip.ts` — RAIN_SKIP_PRESETS_MM, RAIN_SKIP_PRESETS_IN, RainUnit, rainUnitFor, rainPresetToMm, formatRain, rainSkipOptions, defaultRainSkipMm, canSkipForRain, recentRainMm, +2 more
+- `src/utils/rainUnits.ts` — RainUnit, rainUnitFor, formatRain
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring, MatchExcerpt, matchExcerpt
 - `src/utils/reachOutIntent.ts` — ReachOutKind, PendingReachOut, REACH_OUT_PROMPT_WINDOW_MS, serializePendingReachOut, parsePendingReachOut, isReachOutPromptLive, isStampFromEarlierLaunch, reachOutHistoryTitle, reachOutPromptMessage
 - `src/utils/reachOutTasks.ts` — REACH_OUT_DECLINE_DAYS, declineHoldDays, declinedRecently, offerDeclinedRecently, reachOutPersonId, reachOutNamedPeopleIds, CATCH_UP_PROMPT, reachOutTitle, reachOutsHandledRecently, ReachOutWant, +12 more
@@ -544,7 +547,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/savedEventTasks.ts` — BOOK_LEAD_DAYS, bookSourceId, bookEventSourceOf, bookDueDay, wantsBookTask, bookTaskTitle, bookTaskNotes
 - `src/utils/savedEvents.ts` — SAVED_EVENTS_KEY, BOOK_EVERY_MONTHS_MAX, SavedEvent, SavedEventFields, parseSavedEvents, readSavedEvents, writeSavedEvents, findSavedEvent, sortedSavedEvents, saveEventAs, +11 more
 - `src/utils/savedLinks.ts` — SAVED_LINKS_KEY, SAVED_LINKS_LIMIT, SavedLink, savedLinkKey, parseSavedLinks, isChipUrl, canSaveLink, suggestLinkName, addSavedLink, renameSavedLink, +7 more
-- `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, appendLine, +6 more
+- `src/utils/savedMealReview.ts` — ReviewLine, reviewLinesFor, ItemAmountEdit, itemAmountEdit, ESTIMATE_CHOICES, ItemChange, itemAtAmount, itemAtEstimateFactor, replaceLine, appendLine, +7 more
 - `src/utils/savedPlaces.ts` — SAVED_PLACES_KEY, SAVED_PLACES_LIMIT, SAVED_PLACE_SUGGEST_MIN_LENGTH, SavedPlace, savedPlaceKey, parseSavedPlaces, SavedPlaceInput, addSavedPlace, renameSavedPlace, savedPlaceNameTaken, +8 more
 - `src/utils/scanItemType.ts` — itemTypeFromCategory, cleanModelItemType, catalogSpellingOf, ItemTypeMove, itemTypeMoveFor
 - `src/utils/scanPermission.ts` — scanPermissionMessage

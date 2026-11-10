@@ -318,7 +318,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [recurrenceMonth, setRecurrenceMonth] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceHolidays, setRecurrenceHolidays] = useState<HolidayRule | null>(null);
-  const [rainSkipMm, setRainSkipMm] = useState<number | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [targetCount, setTargetCount] = useState<number | null>(null);
@@ -430,7 +429,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setRecurrenceMonth(item?.recurrenceMonth ?? draft?.recurrenceMonth ?? null);
     setRecurrenceFromCompletion(item?.recurrenceFromCompletion ?? draft?.recurrenceFromCompletion ?? false);
     setRecurrenceHolidays(item?.recurrenceHolidays ?? draft?.recurrenceHolidays ?? null);
-    setRainSkipMm(item?.rainSkipMm ?? draft?.rainSkipMm ?? null);
     setRecurrenceCount(item?.recurrenceCount ?? draft?.recurrenceCount ?? null);
     setRecurrenceWeekOrdinal(item?.recurrenceWeekOrdinal ?? draft?.recurrenceWeekOrdinal ?? null);
     setTargetCount(item?.targetCount ?? draft?.targetCount ?? null);
@@ -759,7 +757,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceMonth: recurrenceType === 'yearly' ? recurrenceMonth : null,
       recurrenceFromCompletion,
       recurrenceHolidays: recurrenceType !== 'none' && recurrenceType !== 'hours' ? recurrenceHolidays : null,
-      rainSkipMm: recurrenceType !== 'none' && recurrenceType !== 'hours' ? rainSkipMm : null,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       deliverableKind,
       deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(deliverableOptionsText) : [],
@@ -2046,13 +2043,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <View style={styles.optionContent}>
               <Text style={styles.optionLabel}>Remind me</Text>
               {dueOffsetDays === null ? (
-                <Text style={styles.optionHint}>Set a due date first</Text>
+                <Text style={styles.optionHint}>Needs a due date, so Set adds one too</Text>
               ) : reminderOffsetMinutes === null ? (
                 <Text style={styles.optionHint}>Minutes before the due date</Text>
               ) : null}
             </View>
-            {dueOffsetDays !== null && (
-              reminderOffsetMinutes !== null ? (
+            {(
+              dueOffsetDays !== null && reminderOffsetMinutes !== null ? (
                 <TouchableOpacity
                   activeOpacity={interaction.activeOpacity}
                   onPress={() => setReminderOffsetMinutes(null)}
@@ -2066,7 +2063,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 <TouchableOpacity
                   activeOpacity={interaction.activeOpacity}
                   style={styles.setBtn}
-                  onPress={() => { haptics.tap(); setReminderOffsetMinutes(60); }}
+                  onPress={() => {
+                    haptics.tap();
+                    // A reminder is measured from the due date, so a row with
+                    // none gets the same one the Due date row's Set gives.
+                    if (dueOffsetDays === null) setDueOffsetDays(0);
+                    setReminderOffsetMinutes(60);
+                  }}
                   hitSlop={8}
                   accessibilityRole="button"
                   accessibilityLabel="Set a reminder"
@@ -2308,8 +2311,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               recurrenceFromCompletion={recurrenceFromCompletion}
               recurrenceHolidays={recurrenceHolidays}
               onChangeHolidays={setRecurrenceHolidays}
-              rainSkipMm={rainSkipMm}
-              onChangeRainSkip={setRainSkipMm}
               onChangeFromCompletion={setRecurrenceFromCompletion}
               recurrenceCount={recurrenceCount}
               onChangeCount={setRecurrenceCount}

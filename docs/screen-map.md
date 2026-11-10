@@ -24,7 +24,7 @@ components below.
 
 - `src/screens/ArchivedScreen.tsx` — EmptyState, HubPills, LazySheet, PaintSelection, ScreenHeader, ScrollToTopButton, SearchField, SelectionDot, SimpleBulkBar, TaskEditor
 - `src/screens/AutomationsScreen.tsx` — GeneratedTasksSection, PressableScale, ScreenHeader, SearchField, SettingsFocus
-- `src/screens/BackfillScreen.tsx` — BirthdayPicker, CategoryPicker, CoinIcon, CountStepper, DeliverablePromptQueue, DetailHeader, EmptyState, FieldLabel, InlineAction, LazySheet, NumberPadAccessory, NutritionPanelSheet, +9 more
+- `src/screens/BackfillScreen.tsx` — AllFieldsSheet, BirthdayPicker, CategoryPicker, CoinIcon, CountStepper, DeliverablePromptQueue, DetailHeader, EmptyState, FieldLabel, InlineAction, LazySheet, NumberPadAccessory, +10 more
 - `src/screens/BloodPressureScreen.tsx` — BloodPressureChart, EmptyState, HubPills, LogBloodPressureSheet, ScreenHeader, ScreenSettingsSheet, SegmentedControl
 - `src/screens/CalendarScreen.tsx` — CalendarAgenda, DayTimeline, DeliverablePromptQueue, EmptyNote, LazySheet, MultiDayTimeline, PeriodNav, QuickAddModal, QuickEventSheet, ScreenHeader, ScreenSettingsSheet, TaskEditor, +2 more
 - `src/screens/CategoriesScreen.tsx` — CategoryEditor, EmptyState, Fab, HubPills, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet, WhichToUseSheet
@@ -43,7 +43,7 @@ components below.
 - `src/screens/MoodHistoryScreen.tsx` — ChipFilterSheet, DetailHeader, EmptyState, MoodEntryRow, MoodLogSheet, ScrollToTopButton, SearchField
 - `src/screens/MoodScreen.tsx` — AnimatedBarFill, ChartGuides, ContrastBars, CsvExportSheet, EmptyState, HubPills, InlineAction, LazySheet, MilestoneSheet, MoodEntryRow, MoodFace, MoodLogSheet, +5 more
 - `src/screens/PeopleScreen.tsx` — ContactPickerSheet, EmptyState, Fab, FabDropZones, HubPills, LazySheet, PaintSelection, PersonEditor, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet, +5 more
-- `src/screens/PersonDetailScreen.tsx` — DetailHeader, EmptyState, InlineAction, JournalDaySheet, LazySheet, PersonEditor, PersonHistorySheet, PersonNoteSheet, PinIcon, QuickEventSheet, ScrollToTopButton, TaskEditor
+- `src/screens/PersonDetailScreen.tsx` — ActionMenu, BirthdayPicker, DetailHeader, EditorRow, EmptyState, InlineAction, JournalDaySheet, LazySheet, PersonEditor, PersonFieldSheet, PersonHistorySheet, PersonNoteSheet, +4 more
 - `src/screens/ProjectDetailScreen.tsx` — AddGuestsSheet, ApplyTemplateSheet, BulkActionBar, CardSheet, DeliverablePromptQueue, DeliverablePromptSheet, DetailHeader, EmptyState, Fab, FabDropZones, GroupDropTarget, InlineAction, +32 more
 - `src/screens/ProjectsScreen.tsx` — CardSheet, EmbeddedRoute, EmptyState, Fab, FabDropZones, LazySheet, ListBulkBar, PaintSelection, PointerView, ProgressBar, ProjectCategoriesSheet, ProjectDetailScreen, +12 more
 - `src/screens/RecipeDetailScreen.tsx` — BlankEditorSheet, ComponentChoiceSheet, CookModeSheet, CookwareWeighIn, CountStepper, DetailHeader, EmptyState, FadeInImage, HelpText, IngredientCatalogMatchSheet, InlineAction, LazySheet, +30 more
@@ -89,6 +89,7 @@ Where each component can appear.
 - `src/components/AlarmSoundRows.tsx` — on RemindersScreen
 - `src/components/AlarmsSection.tsx` — on RemindersScreen
 - `src/components/AllClearMark.tsx` — on TodayScreen
+- `src/components/AllFieldsSheet.tsx` — on BackfillScreen
 - `src/components/AmountUnitField.tsx` — on BackfillScreen, GroceryScreen, KitchenScreen, MealPlanScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/AnimatedBarFill.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, KitchenScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, MoodScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, +14 more
 - `src/components/AnimatedCollapsible.tsx` — on FoodLogScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, StuckScreen, TodayScreen
@@ -330,6 +331,7 @@ Where each component can appear.
 - `src/components/PeriodNav.tsx` — on CalendarScreen, MealPlanScreen
 - `src/components/PersonDateRows.tsx` — on PeopleScreen, PersonDetailScreen
 - `src/components/PersonEditor.tsx` — on PeopleScreen, PersonDetailScreen
+- `src/components/PersonFieldSheet.tsx` — on PersonDetailScreen
 - `src/components/PersonGroupEditor.tsx` — on PeopleScreen, PersonDetailScreen
 - `src/components/PersonHistorySheet.tsx` — on PersonDetailScreen
 - `src/components/PersonNoteSheet.tsx` — on PersonDetailScreen

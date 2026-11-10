@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseRainSkipInput, parseTaskInputAheadOfRainSkip, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, parseAvoidEnd, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseDifficultyInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, getPhraseMentionSuggestion, unconfirmedPhraseMentions, phraseOverrideKey, parseFromCompletionSuffix, scheduleClockInstant, scheduleHint, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, contactForMention, parseDurationInput, parseSupplyInput, parseTargetInput, parseEstimateInput, parseWeatherWaitInput, parseSunWindowInput, parseProjectInput, parseWaitingOnInput, parseSubtasksInput, parseAvoidInput, parseAvoidEnd, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseDifficultyInput, parseChainInput, matchPersonMentions, findAmbiguousMention, getMentionSuggestions, getEditorMentionSuggestions, applyMentionOverrides, getPhraseMentionSuggestion, unconfirmedPhraseMentions, phraseOverrideKey, parseFromCompletionSuffix, scheduleClockInstant, scheduleHint, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -52,6 +52,17 @@ describe('parseTaskInput — one-off dates', () => {
     const r = parseTaskInput('pay bills jun 15', NOW)!;
     expect(r.cleanTitle).toBe('pay bills');
     expectDay(r.schedule.dueDate, 2025, 5, 15);
+  });
+
+  it('parses "in <month>" at the end of a title', () => {
+    const r = parseTaskInput('Check Met Opera lotteries in December', NOW)!;
+    expect(r.cleanTitle).toBe('Check Met Opera lotteries');
+    expect(r.schedule.dueDate!.getMonth()).toBe(11);
+    expect(r.schedule.dueDate!.getDate()).toBe(1);
+  });
+
+  it('leaves a bare trailing month in the title', () => {
+    expect(parseTaskInput('Remember what happened in the march', NOW)).toBeNull();
   });
 
   it('parses "in N units"', () => {
@@ -2389,52 +2400,6 @@ describe('parseAvoidInput', () => {
     expect(said('no morning meetings')).toBeNull();
     expect(said("don't forget to call mom")).toBeNull();
     expect(said('call mom, never mind')).toBeNull();
-  });
-});
-
-describe('parseRainSkipInput', () => {
-  it('reads a bare "unless it rains", leaving the amount to the caller', () => {
-    expect(parseRainSkipInput('water the garden unless it rains')).toEqual({
-      mm: null, cleanTitle: 'water the garden', matchStart: 17, matchEnd: 32,
-    });
-    expect(parseRainSkipInput("water the lawn unless it's rained")).toMatchObject({ mm: null, cleanTitle: 'water the lawn' });
-    expect(parseRainSkipInput('water the pots skip if it rains')).toMatchObject({ mm: null, cleanTitle: 'water the pots' });
-  });
-
-  it('reads an amount in millimetres, centimetres or inches, stored as millimetres', () => {
-    expect(parseRainSkipInput('water the garden unless it rains 10mm')).toMatchObject({ mm: 10, cleanTitle: 'water the garden' });
-    expect(parseRainSkipInput('water the garden unless it has rained at least 1 cm')).toMatchObject({ mm: 10 });
-    expect(parseRainSkipInput('water the garden unless it rained more than 0.5 in today'))
-      .toMatchObject({ mm: 12.7, cleanTitle: 'water the garden today' });
-  });
-
-  it('refuses an amount past what a threshold can be', () => {
-    expect(parseRainSkipInput('water the garden unless it rains 300 mm')).toBeNull();
-    expect(parseRainSkipInput('water the garden unless it rains 0 mm')).toBeNull();
-  });
-
-  it('leaves rain that is part of the task alone', () => {
-    expect(parseRainSkipInput('buy a rain jacket')).toBeNull();
-    expect(parseRainSkipInput('bring the chairs in if it rains')).toBeNull();
-    expect(parseRainSkipInput('unless it rains')).toBeNull();
-  });
-
-  it('lets the schedule parse read the repeat ahead of it, and keeps the phrase for afterwards', () => {
-    const now = new Date(2026, 7, 12, 9);
-    // The plain parse can't: the schedule phrase has to reach the end.
-    expect(parseTaskInput('water the garden every 2 days unless it rains', now)).toBeNull();
-    const parsed = parseTaskInputAheadOfRainSkip('water the garden every 2 days unless it rains', now);
-    expect(parsed).toMatchObject({ matchedText: 'every 2 days', matchStart: 17, cleanTitle: 'water the garden unless it rains' });
-    expect(parsed?.schedule).toMatchObject({ recurrenceType: 'daily', recurrenceInterval: 2 });
-    expect(parseRainSkipInput(parsed!.cleanTitle)).toMatchObject({ cleanTitle: 'water the garden' });
-  });
-
-  it('reads a one-off date past it too, leaving the phrase in the title', () => {
-    const now = new Date(2026, 7, 12, 9);
-    expect(parseTaskInputAheadOfRainSkip('water the garden tomorrow unless it rains', now))
-      .toMatchObject({ matchedText: 'tomorrow', cleanTitle: 'water the garden unless it rains' });
-    expect(parseTaskInputAheadOfRainSkip('check the gutters unless it rains every 2 days', now))
-      .toMatchObject({ cleanTitle: 'check the gutters unless it rains' });
   });
 });
 
