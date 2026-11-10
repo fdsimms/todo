@@ -306,6 +306,10 @@ registerSyncReload(applied => {
   // Each reload is narrowed to what the sync wrote (#4267, syncReloadScope.ts):
   // a store none of whose tables changed is not re-read, and the settings are
   // re-read only when a setting arrived.
+  // Narrowed, and deliberately not delayed until a screen transition has
+  // finished (`runAfterTransition`), which #4267 also proposed. A store left
+  // stale for any stretch writes its whole copy of a row back on the next
+  // edit, over what the peer just sent: `onApplied` in runSync.
   timed('sync reload: tasks', () => useTaskStore.getState().initialize({ reload: true, applied }));
   if (reloadReachesSettings(syncReloadScope(applied))) {
     timed('sync reload: settings', () => useSettingsStore.getState().initialize());
