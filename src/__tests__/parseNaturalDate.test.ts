@@ -246,6 +246,34 @@ describe('parseNaturalDate', () => {
     });
   });
 
+  describe('"in <month>"', () => {
+    it('reads a later month as its first day', () => {
+      const d = parse('in december')!;
+      expect([d.getFullYear(), d.getMonth(), d.getDate()]).toEqual([2025, 11, 1]);
+      expect(parse('in dec')!.getMonth()).toBe(11);
+    });
+
+    it('rolls an earlier month to next year', () => {
+      const d = parse('in march')!;
+      expect([d.getFullYear(), d.getMonth(), d.getDate()]).toEqual([2026, 2, 1]);
+    });
+
+    it('reads the current month as today', () => {
+      const d = parse('in june')!;
+      expect([d.getMonth(), d.getDate()]).toEqual([5, 10]);
+    });
+
+    it('takes an explicit year', () => {
+      const d = parse('in december 2027')!;
+      expect([d.getFullYear(), d.getMonth(), d.getDate()]).toEqual([2027, 11, 1]);
+    });
+
+    it('does not read a bare month or a non-month as a date', () => {
+      expect(parse('december')).toBeNull();
+      expect(parse('in the garden')).toBeNull();
+    });
+  });
+
   describe('weekdays', () => {
     it('parses upcoming "thursday" (2 days ahead)', () => {
       // Tuesday → Thursday is +2
