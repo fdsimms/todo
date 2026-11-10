@@ -174,8 +174,10 @@ const LEADING_DAY_PART = /^(?:morning|afternoon|evening|night)\s/;
 // a couple of them double as ordinary words ("sun", "wed", "sat") — a title
 // ending in one of those bare is rare enough that the worst case is an
 // unwanted date suggestion the user dismisses, not a silent wrong schedule.
+// A numeric "12/11" is accepted for the same reason, though "1/2" or "3/4" ending a
+// title (a fraction) reads as a date too; parseDatePart still refuses an impossible one.
 const SINGLE_WORD_SAFE =
-  /^(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|(?:sun|mon|tues|wednes|thurs|fri|satur)days|today|tomorrow|tonight|tmrw|tmr|daily|weekly|monthly|yearly|annually|\d{1,2}(?::\d{2})?(?:am|pm|a\.m\.?|p\.m\.?))$/;
+  /^(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|(?:sun|mon|tues|wednes|thurs|fri|satur)days|today|tomorrow|tonight|tmrw|tmr|daily|weekly|monthly|yearly|annually|\d{1,2}(?::\d{2})?(?:am|pm|a\.m\.?|p\.m\.?)|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)$/;
 
 /**
  * Which part of the day an hour falls in. Fixed boundaries rather than the
