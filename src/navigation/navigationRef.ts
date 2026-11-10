@@ -393,6 +393,17 @@ export function resetToJournal(
 }
 
 /**
+ * Where `dundundun://backfill[?area=…]` lands: the Backfill screen, on the pool
+ * the link names. Stamped like the other handoffs so the same link tapped twice
+ * re-opens the pool rather than reading as no change.
+ */
+export function resetToBackfill(area?: string | null): void {
+  runWhenReady(() => {
+    navigateToTab('Backfill', area ? { area, areaStamp: Date.now() } : undefined);
+  });
+}
+
+/**
  * `prefill` opens a new entry with a mood or symptom already picked (search's
  * "feeling tired"), offered exactly as if it had been tapped, so it comes back
  * off with one more tap.

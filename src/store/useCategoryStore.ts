@@ -389,6 +389,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'ynabTaskCategory', current: s.ynabTaskCategory, assign: s.setYnabTaskCategory };
     case 'moodNudge':
       return { key: 'moodNudgeTaskCategory', current: s.moodNudgeTaskCategory, assign: s.setMoodNudgeTaskCategory };
+    case 'backfill':
+      return { key: 'backfillTaskCategory', current: s.backfillTaskCategory, assign: s.setBackfillTaskCategory };
     case 'weekendNudge':
       return { key: 'weekendNudgeTaskCategory', current: s.weekendNudgeTaskCategory, assign: s.setWeekendNudgeTaskCategory };
     case 'weighIn':

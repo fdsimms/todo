@@ -428,6 +428,15 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
       { key: 'notes', label: 'Notes', summary: 'How many low days in a row', hint: 'Counts only the days you logged.' },
     ],
   },
+  backfill: {
+    example: 'Fill in missing recipe details',
+    noun: 'Backfill task',
+    owned: () => [
+      { key: 'title', label: 'Title', summary: 'Fill in missing (area) details' },
+      { key: 'date', label: 'Date', summary: 'Today', hint: 'Added once an area has the number of cards set above waiting, at most once a week per area.' },
+      { key: 'link', label: 'Link', summary: 'Opens Backfill on that area' },
+    ],
+  },
   weekendNudge: {
     example: 'Make plans for the weekend',
     noun: 'Weekend nudge',

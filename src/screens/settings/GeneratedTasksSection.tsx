@@ -1,3 +1,4 @@
+import { BACKFILL_THRESHOLD_DEFAULT, BACKFILL_THRESHOLD_MAX, BACKFILL_THRESHOLD_MIN } from '../../utils/backfillTasks';
 import React, { useMemo, useState } from 'react';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Alert, Platform, StyleSheet, TouchableOpacity, View } from 'react-native';
@@ -420,6 +421,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'wanikani': return s.wanikaniTaskCategory;
       case 'ynab': return s.ynabTaskCategory;
       case 'weekendNudge': return s.weekendNudgeTaskCategory;
+      case 'backfill': return s.backfillTaskCategory;
       case 'weighIn': return s.weighInTaskCategory;
       case 'bloodPressureLog': return s.bloodPressureTaskCategory;
       case 'waterShortfall': return s.waterShortfallTaskCategory;
@@ -466,6 +468,7 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'wanikani': s.setWanikaniTaskCategory(category); break;
       case 'ynab': s.setYnabTaskCategory(category); break;
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
+      case 'backfill': s.setBackfillTaskCategory(category); break;
       case 'weighIn': s.setWeighInTaskCategory(category); break;
       case 'bloodPressureLog': s.setBloodPressureTaskCategory(category); break;
       case 'waterShortfall': s.setWaterShortfallTaskCategory(category); break;
@@ -733,6 +736,32 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
               the task's deadline, so changing this never moves anybody's
               birthday, and it deliberately doesn't re-date a row already on the
               list — see birthdayDrift. */}
+        </>
+      );
+    }
+
+    if (kind === 'backfill') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="backfillThreshold"
+            icon="albums-outline"
+            label="Cards before the task"
+            hint="Each Backfill area adds its own task once it has this many cards waiting, at most once a week."
+            value={`${s.backfillThreshold}`}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.backfillThreshold}
+              onChange={next => s.setBackfillThreshold(next ?? BACKFILL_THRESHOLD_DEFAULT)}
+              min={BACKFILL_THRESHOLD_MIN}
+              max={BACKFILL_THRESHOLD_MAX}
+              label="Cards waiting"
+              describeValue={n => `${n ?? BACKFILL_THRESHOLD_DEFAULT} cards`}
+            />
+          </View>
         </>
       );
     }

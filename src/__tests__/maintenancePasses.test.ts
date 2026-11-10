@@ -50,6 +50,7 @@ describe('the three maintenance groups', () => {
       'check project review tasks',
       'check meal slot tasks',
       'check pantry reviews',
+      'check backfill tasks',
       'check pantry checks',
       'check produce floor',
       'check meal shortfall tasks',
