@@ -147,12 +147,27 @@ describe('initialize', () => {
       if (key === 'appFontPool') return JSON.stringify(['outfit']);
       return null;
     });
-    useSettingsStore.getState().initialize();
+    useSettingsStore.getState().initialize({ coldStart: true });
     expect(useSettingsStore.getState().appFont).toBe('outfit');
     // Written back so every other reader of the 'appFont' key — widget sync,
     // sync tracking, the next preload — sees the pick without knowing
     // randomization exists.
     expect(dbSetSetting).toHaveBeenCalledWith('appFont', 'outfit');
+  });
+
+  // 'appFont' syncs, and this load also runs after every sync that brings a
+  // setting: picking again there changed the font mid-session and sent the
+  // pick to the other devices, which picked again and sent theirs back.
+  it('picks only on the load that opens the app, never on a later re-read', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => {
+      if (key === 'appFont') return 'nunito';
+      if (key === 'appFontRandomize') return 'true';
+      if (key === 'appFontPool') return JSON.stringify(['outfit']);
+      return null;
+    });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().appFont).toBe('nunito');
+    expect(dbSetSetting).not.toHaveBeenCalledWith('appFont', expect.anything());
   });
 
   it('leaves appFont as stored when randomize is on but the pool is empty', () => {
@@ -162,7 +177,7 @@ describe('initialize', () => {
       if (key === 'appFontPool') return null;
       return null;
     });
-    useSettingsStore.getState().initialize();
+    useSettingsStore.getState().initialize({ coldStart: true });
     expect(useSettingsStore.getState().appFont).toBe('nunito');
     expect(dbSetSetting).not.toHaveBeenCalledWith('appFont', expect.anything());
   });
@@ -173,7 +188,7 @@ describe('initialize', () => {
       if (key === 'appFontPool') return JSON.stringify(['outfit', 'retired-font']);
       return null;
     });
-    useSettingsStore.getState().initialize();
+    useSettingsStore.getState().initialize({ coldStart: true });
     expect(useSettingsStore.getState().appFontPool).toEqual(['outfit']);
     expect(useSettingsStore.getState().appFont).toBe('outfit');
   });

@@ -350,7 +350,8 @@ interface SettingsStore {
   appFont: AppFont; // typeface for the whole app — see src/theme/fonts.ts
   // Pick a new appFont from appFontPool at random every cold start, instead of
   // keeping whatever was last selected. See pickRandomAppFont in
-  // src/theme/fonts.ts and its call in initialize() below.
+  // src/theme/fonts.ts and its call in initialize() below, which makes the
+  // pick only when it is told the load is a cold start.
   appFontRandomize: boolean;
   // The fonts eligible for appFontRandomize's pick. Kept out of
   // DEFAULT_SETTINGS/resetToDefaults for the same mechanical reason
@@ -2243,7 +2244,14 @@ interface SettingsStore {
   // Recent row and which screen a hub row opens.
   recentScreens: readonly string[];
   initialized: boolean;
-  initialize: () => void;
+  /**
+   * Reads every setting from the database. `coldStart` is for the load that
+   * opens the app on screen (App.tsx), the only one that picks a new random
+   * font. Every other load is a re-read of the same session (after a sync, a
+   * restore, leaving demo mode), has no screen (a background launch) or isn't
+   * the app at all (the MCP replica), and takes the font as stored.
+   */
+  initialize: (opts?: { coldStart?: boolean }) => void;
   /** Loads the keychain-backed settings. Call after initialize(). */
   initializeSecrets: () => Promise<void>;
   setDayResetTime: (time: string) => void;
@@ -3465,7 +3473,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   recentScreens: [],
   initialized: false,
 
-  initialize() {
+  initialize(opts) {
     // Every read below goes through one SELECT of the whole settings table
     // rather than one per key: this runs on the synchronous startup path and
     // there are ~180 of them, which was ~180 round trips through the bridge
@@ -3490,7 +3498,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const appFontRandomize = dbGetSetting('appFontRandomize') === 'true';
     const appFontPool = parseAppFontPool(dbGetSetting('appFontPool'));
     let appFont = isAppFont(storedFont) ? storedFont : DEFAULT_APP_FONT;
-    if (appFontRandomize) {
+    // Only on the load that opens the app. This also runs after every sync
+    // that brings a setting, and 'appFont' is a synced setting: picking again
+    // there changed the font mid-session and sent the pick to the other
+    // devices, each of which picked again on receiving it and sent its own
+    // back. The MCP replica runs this too, and has no font to pick.
+    if (appFontRandomize && opts?.coldStart) {
       // Written back to 'appFont' itself, not just held in memory — every
       // other reader (widget sync, sync tracking, the next preloadAppFont
       // call) reads that one key and must not need to know randomization

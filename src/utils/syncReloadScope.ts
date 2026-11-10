@@ -16,6 +16,18 @@
  */
 import type { ApplyReport } from './syncMerge';
 
+/**
+ * What a store's `initialize` is told about the load. `reload` is a re-read of
+ * the database the store already holds (the reload after a sync), under a
+ * screen somebody may be using: what they were in the middle of (an open
+ * prompt, the days they had scrolled to) stays, wherever the row it is about
+ * is still there. Without it the database itself may have been swapped (a
+ * launch, demo mode, a restore) and all of that goes back to nothing.
+ */
+export interface StoreLoadOptions {
+  reload?: boolean;
+}
+
 /** What one part of the reload reads from the database. */
 export interface ReloadReads {
   /** Tables, by name. Never `settings`, which is named by key below. */

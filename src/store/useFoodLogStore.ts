@@ -34,6 +34,7 @@ import {
   undoHistoryActions,
 } from '../utils/undoHistory';
 import { keepUnchanged } from '../utils/structuralSharing';
+import type { StoreLoadOptions } from '../utils/syncReloadScope';
 
 /**
  * The food log — what was eaten, and when.
@@ -254,7 +255,8 @@ interface FoodLogStore extends UndoHistoryActions {
    */
   totalCount: number;
   initialized: boolean;
-  initialize: () => void;
+  /** `reload` (after a sync) re-reads the days already loaded; see `StoreLoadOptions`. */
+  initialize: (opts?: StoreLoadOptions) => void;
   /** Replaces `entries` with the inclusive run of logical days between the keys. */
   loadRange: (startKey: string, endKey: string) => void;
   /**
@@ -731,14 +733,27 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   redoStack: [],
   ...undoHistoryActions(set, get),
 
-  initialize() {
+  initialize(opts) {
     // The current logical day, because that is what a day view opens on and it
     // is one small read. Anything wider is the screen's own loadRange call.
     const todayKey = dayKeyOf(getCurrentDayStart());
+    // After a sync, the days each screen had loaded are read again where they
+    // are. The day view used to snap back to today, and the two wider windows
+    // (Stats, Mood) kept showing what they held until their tab was focused
+    // again, without the entries the sync had just brought.
+    const held = opts?.reload && get().initialized ? get() : null;
+    const rangeStart = held?.rangeStart ?? todayKey;
+    const rangeEnd = held?.rangeEnd ?? todayKey;
     set(state => keepUnchanged(state, {
-      entries: dbGetFoodLogEntries(todayKey, todayKey),
-      rangeStart: todayKey,
-      rangeEnd: todayKey,
+      entries: dbGetFoodLogEntries(rangeStart, rangeEnd),
+      rangeStart,
+      rangeEnd,
+      ...(held?.windowStart && held.windowEnd
+        ? { windowEntries: dbGetFoodLogEntries(held.windowStart, held.windowEnd) }
+        : {}),
+      ...(held?.insightStart && held.insightEnd
+        ? { insightEntries: dbGetFoodLogEntries(held.insightStart, held.insightEnd) }
+        : {}),
       totalCount: dbCountFoodLogEntries(),
       initialized: true,
     }));

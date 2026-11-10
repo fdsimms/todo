@@ -627,7 +627,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
 - `src/utils/syncLocal.ts` — databaseSyncLocal
 - `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, MAX_SYNC_IMAGE_CHARS, isSyncImageName, ParsedPayload, buildPayload, buildImagePayload, serializePayload, +9 more
-- `src/utils/syncReloadScope.ts` — ReloadReads, STORE_RELOAD_READS, ReloadPart, SyncReloadScope, AppliedChanges, syncReloadScope, scopeReaches, reloadReaches, reloadReachesSettings
+- `src/utils/syncReloadScope.ts` — StoreLoadOptions, ReloadReads, STORE_RELOAD_READS, ReloadPart, SyncReloadScope, AppliedChanges, syncReloadScope, scopeReaches, reloadReaches, reloadReachesSettings
 - `src/utils/syncStatus.ts` — describeLastSynced
 - `src/utils/tabFreeze.ts` — shouldFreezeTab, isTabFocused, TAB_FREEZE_DELAY_MS
 - `src/utils/tabHubMenu.ts` — HUB_MENU_ROW_HEIGHT, HUB_MENU_PADDING, HUB_MENU_WIDTH, HUB_MENU_EDGE, HUB_MENU_ARROW_SIZE, HUB_MENU_ARROW_TIP, HUB_MENU_TIP_GAP, HUB_MENU_HIT_SLACK, hubMenuItems, HubMenuLayout, +6 more

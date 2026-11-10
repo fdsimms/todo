@@ -3634,6 +3634,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const part = (name: ReloadPart, load: () => void): void => {
       if (reloadReaches(scope, name)) timedPart(name, load);
     };
+    // For the stores that hold something a screen is in the middle of: a sync
+    // re-reads the database they already have, so that stays (StoreLoadOptions).
+    const sameDatabase = { reload: opts?.reload === true && get().initialized };
     part('Category', () => useCategoryStore.getState().initialize());
     // After the categories load, because it may add one: an install that
     // already had the calendar read on predates events having a section to
@@ -3713,7 +3716,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Beside the mood log and for the identical reason, with the same stakes:
     // a food log left pointed at the previous database would show a demo
     // session's invented meals as somebody's own record of what they ate.
-    part('FoodLog', () => useFoodLogStore.getState().initialize());
+    part('FoodLog', () => useFoodLogStore.getState().initialize(sameDatabase));
     // Beside the food log it's built from, for the same demo-mode stakes: a
     // saved meal left pointed at the previous database would offer a demo
     // session's invented combination as something to log again for real.
@@ -3737,7 +3740,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // the database file. A store initialized outside it would keep its
     // in-memory rows pointed at the previous database while every other
     // surface showed the new one — i.e. your real groceries on a demo phone.
-    part('Grocery', () => useGroceryStore.getState().initialize());
+    part('Grocery', () => useGroceryStore.getState().initialize(sameDatabase));
     // Same reasoning, and the same swap-the-database hazard: recipes bridge to
     // the catalog by name_key, so a stale recipe list next to a fresh catalog
     // would match nothing.
@@ -3749,7 +3752,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     part('MealSkip', () => useMealSkipStore.getState().initialize());
     // What's in the fridge — pointed at by the plan the same way recipes are,
     // and on the same swap-the-database hazard.
-    part('Leftover', () => useLeftoverStore.getState().initialize());
+    part('Leftover', () => useLeftoverStore.getState().initialize(sameDatabase));
     // Read from the settings table the same way, and on the same
     // swap-the-database hazard: a reminder set in one database (real or
     // demo) is meaningless once the file underneath has changed.

@@ -174,6 +174,7 @@ jest.mock('../utils/healthBridge', () => ({
 import { initDatabase, dbApplySyncChanges } from '../db/database';
 import { SYNC_TRACKED_TABLES, isSyncedSettingKey } from '../db/syncTracking';
 import { useDemoStore } from '../store/useDemoStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useMedicationStore } from '../store/useMedicationStore';
@@ -256,6 +257,27 @@ function editFromPeer(table: string, where: string, changes: Record<string, unkn
   };
   return dbApplySyncChanges(payload);
 }
+
+const nextPeerStamp = (): string => `2099-01-01T00:00:${String(++peerClock).padStart(2, '0')}.000Z`;
+
+function applyFromPeer(change: Pick<SyncPayload, 'tables' | 'deletions'>): ApplyReport {
+  return dbApplySyncChanges({ format: SYNC_FORMAT, deviceId: 'peer-device', since: null, until: nextPeerStamp(), ...change });
+}
+
+/** A peer's deletion of one row. */
+function deleteFromPeer(table: string, rowKey: string): ApplyReport {
+  return applyFromPeer({ tables: {}, deletions: [{ table, rowKey, deletedAt: nextPeerStamp() }] });
+}
+
+/** A row a peer added: a copy of one that is here, under a new id. */
+function addFromPeer(table: string, where: string, changes: Record<string, unknown>): ApplyReport {
+  const row = liveDb().prepare(`SELECT * FROM "${table}" WHERE ${where} LIMIT 1`).get() as Record<string, unknown>;
+  expect(row).toBeDefined();
+  return applyFromPeer({ tables: { [table]: [{ ...row, ...changes, updated_at: nextPeerStamp() }] }, deletions: [] });
+}
+
+/** The reload a sync runs for `report`. */
+const reloadFor = (report: ApplyReport): void => useTaskStore.getState().initialize({ reload: true, applied: report });
 
 /** The state object of every store, to compare after a reload. */
 const snapshotStores = (): Record<string, unknown>[] => allStores().map(s => s.getState());
@@ -465,6 +487,97 @@ describe('a sync that changed one task', () => {
     expect(useGroceryStore.getState().pendingUseUpItemId).toBe(itemId);
     useLeftoverStore.setState({ pendingFinishLeftoverId: null });
     useGroceryStore.setState({ pendingUseUpItemId: null });
+  });
+});
+
+describe('what a screen was in the middle of', () => {
+  afterEach(() => {
+    useGroceryStore.setState({ pendingUseUpItemId: null, disposalOffer: null, ratingOffer: null, cartHoldIds: [] });
+    useLeftoverStore.setState({ pendingFinishLeftoverId: null, pendingUseUpLeftoverId: null });
+  });
+
+  it('stays through a sync that brought grocery rows, while its own item is still here', () => {
+    const [asked, offered, ticked, edited] = useGroceryStore.getState().items.slice(10, 14).map(i => i.id);
+    useGroceryStore.setState({
+      pendingUseUpItemId: asked,
+      disposalOffer: { itemId: offered, stage: 'ask' },
+      cartHoldIds: [ticked],
+    });
+
+    const report = editFromPeer('grocery_items', `id = '${edited}'`, { note: 'Edited elsewhere' });
+    expect(report.changedTables).toEqual(['grocery_items']);
+    reloadFor(report);
+
+    const now = useGroceryStore.getState();
+    expect(now.items.find(i => i.id === edited)?.note).toBe('Edited elsewhere');
+    expect(now.pendingUseUpItemId).toBe(asked);
+    expect(now.disposalOffer).toEqual({ itemId: offered, stage: 'ask' });
+    expect(now.cartHoldIds).toEqual([ticked]);
+  });
+
+  it('goes when the sync deleted the item it was about, and only then', () => {
+    const [asked, offered, ticked] = useGroceryStore.getState().items.slice(14, 17).map(i => i.id);
+    useGroceryStore.setState({
+      pendingUseUpItemId: asked,
+      disposalOffer: { itemId: offered, stage: 'ask' },
+      cartHoldIds: [ticked, asked],
+    });
+
+    const report = deleteFromPeer('grocery_items', asked);
+    expect(report.deleted).toBe(1);
+    reloadFor(report);
+
+    const now = useGroceryStore.getState();
+    expect(now.items.some(i => i.id === asked)).toBe(false);
+    expect(now.pendingUseUpItemId).toBeNull();
+    expect(now.disposalOffer).toEqual({ itemId: offered, stage: 'ask' });
+    expect(now.cartHoldIds).toEqual([ticked]);
+  });
+
+  it('keeps a leftover prompt through an edit to that leftover, and drops it when the leftover is deleted', () => {
+    const leftover = useLeftoverStore.getState().leftovers[0];
+    useLeftoverStore.setState({ pendingFinishLeftoverId: leftover.id });
+
+    reloadFor(editFromPeer('leftovers', `id = '${leftover.id}'`, { title: 'Renamed elsewhere' }));
+    expect(useLeftoverStore.getState().leftovers.find(l => l.id === leftover.id)?.title).toBe('Renamed elsewhere');
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBe(leftover.id);
+
+    reloadFor(deleteFromPeer('leftovers', leftover.id));
+    expect(useLeftoverStore.getState().leftovers.some(l => l.id === leftover.id)).toBe(false);
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
+  });
+
+  it('is cleared by a load that may be over another database', () => {
+    const itemId = useGroceryStore.getState().items[0].id;
+    useGroceryStore.setState({ pendingUseUpItemId: itemId, cartHoldIds: [itemId] });
+    useGroceryStore.getState().initialize();
+    expect(useGroceryStore.getState().pendingUseUpItemId).toBeNull();
+    expect(useGroceryStore.getState().cartHoldIds).toEqual([]);
+  });
+
+  it('keeps the food log on the days each screen had loaded, with what the sync brought', () => {
+    const row = liveDb().prepare('SELECT id, day_key FROM food_logs ORDER BY day_key ASC LIMIT 1').get() as { id: string; day_key: string };
+    expect(row).toBeDefined();
+    const store = useFoodLogStore.getState();
+    // A day view scrolled back to an earlier day, and the two wider windows.
+    store.loadRange(row.day_key, row.day_key);
+    store.loadWindow(row.day_key, row.day_key);
+    store.loadInsightWindow(row.day_key, row.day_key);
+    const before = useFoodLogStore.getState();
+    expect(before.entries.length).toBeGreaterThan(0);
+
+    const report = addFromPeer('food_logs', `id = '${row.id}'`, { id: 'peer-food-log-1' });
+    expect(report.inserted).toBe(1);
+    reloadFor(report);
+
+    const now = useFoodLogStore.getState();
+    expect([now.rangeStart, now.rangeEnd]).toEqual([row.day_key, row.day_key]);
+    for (const list of [now.entries, now.windowEntries, now.insightEntries]) {
+      expect(list.map(e => e.id)).toContain('peer-food-log-1');
+      expect(list).toHaveLength(before.entries.length + 1);
+    }
+    // And the rows that were already there are the objects they were.
+    expect(now.entries.filter(e => !before.entries.includes(e)).map(e => e.id)).toEqual(['peer-food-log-1']);
   });
 });
 
