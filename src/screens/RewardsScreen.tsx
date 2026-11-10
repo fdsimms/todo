@@ -1760,11 +1760,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.smd,
   },
+  // Follows the bounty or suggestion card, so it carries its own gap; two cards touching pinch their corners together.
   bountyLimit: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.smd,
     borderRadius: radius.md,
