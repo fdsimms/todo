@@ -329,6 +329,23 @@ async function configuredTransports(state: SyncConfig): Promise<SyncTransport[]>
 
 // See syncNow: claimed synchronously, so two calls can't both reach runSyncAll.
 let syncInFlight = false;
+// When the claim above was taken, or null when whoever holds it must not be
+// abandoned (`eraseAndJoin`, which deletes rows). Read only by `syncNow`.
+let syncClaimedAt: number | null = null;
+// Which claim is current. A run that was abandoned (below) finishes later and
+// must not release, or overwrite the phase of, the run that replaced it.
+let syncClaimId = 0;
+/**
+ * How long a sync may hold the claim before the next `syncNow` stops waiting
+ * for it. Every request the HTTP transport makes gives up after
+ * `SYNC_REQUEST_TIMEOUT_MS`, but a CloudKit call has no timeout of its own, and
+ * iOS can suspend the app mid-call so that it never answers. Without this the
+ * claim is held for the rest of the process: the foreground return, the
+ * 15-second tick and the unsent-changes probe all see a sync "running" and
+ * return, and only a cold start clears it. Generous on purpose, since a run
+ * abandoned while it is merely slow overlaps the one that replaces it.
+ */
+export const SYNC_CLAIM_STALE_MS = 3 * 60_000;
 // A sync asked for while one was running. That run may already have read its
 // push window, so an edit that prompted the ask would otherwise wait for the
 // next tick; the running call goes round once more instead.
@@ -495,6 +512,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
       return { status: 'failed', reason: 'A sync is already running. Try again in a moment.' };
     }
     syncInFlight = true;
+    syncClaimedAt = null;
+    const claimId = ++syncClaimId;
     set({ phase: 'syncing', problem: null });
     // The photo files the erased recipes used, deleted once the join has
     // brought back whichever ones the other devices still point at.
@@ -546,10 +565,12 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       outcome = await run;
     } finally {
-      syncInFlight = false;
-      syncAgain = false;
-      currentRun = null;
-      set({ phase: 'idle' });
+      if (claimId === syncClaimId) {
+        syncInFlight = false;
+        syncAgain = false;
+        currentRun = null;
+        set({ phase: 'idle' });
+      }
       refreshServerHeld();
     }
     if (outcome.status === 'joined') {
@@ -565,8 +586,18 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
   syncNow: async () => {
     if (get().phase === 'syncing' || syncInFlight) {
-      syncAgain = true;
-      return null;
+      const stuck = syncClaimedAt !== null && Date.now() - syncClaimedAt > SYNC_CLAIM_STALE_MS;
+      if (!stuck) {
+        syncAgain = true;
+        return null;
+      }
+      // The holder has not settled in `SYNC_CLAIM_STALE_MS`: let go of it and
+      // carry on. Its `finally` checks `syncClaimId`, so it can't release ours.
+      syncClaimId++;
+      syncInFlight = false;
+      syncAgain = false;
+      currentRun = null;
+      set({ phase: 'idle' });
     }
     // Claimed before the first await rather than by `phase`, which is only set
     // once the transports are known: the keychain read in between left a window
@@ -574,13 +605,15 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     // and ran runSyncAll twice, interleaved, which is what running the
     // transports sequentially exists to prevent.
     syncInFlight = true;
+    syncClaimedAt = Date.now();
+    const claimId = ++syncClaimId;
     const run = (async () => {
       let summary: SyncSummary | null = null;
       for (let round = 0; round < MAX_SYNC_ROUNDS; round++) {
         syncAgain = false;
         const { enabled, serverUrl, serverHealthLogs, serverJournal } = get();
-        summary = await syncOnce({ enabled, serverUrl, serverHealthLogs, serverJournal });
-        if (!syncAgain) break;
+        summary = await syncOnce({ enabled, serverUrl, serverHealthLogs, serverJournal }, claimId);
+        if (claimId !== syncClaimId || !syncAgain) break;
       }
       return summary;
     })();
@@ -588,9 +621,11 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     try {
       return await run;
     } finally {
-      syncInFlight = false;
-      syncAgain = false;
-      currentRun = null;
+      if (claimId === syncClaimId) {
+        syncInFlight = false;
+        syncAgain = false;
+        currentRun = null;
+      }
     }
   },
 }));
@@ -616,7 +651,7 @@ async function joinTransport(destination: SyncDestination, state: SyncConfig): P
   return serverTransport(config, state);
 }
 
-async function syncOnce(state: SyncConfig): Promise<SyncSummary | null> {
+async function syncOnce(state: SyncConfig, claimId: number): Promise<SyncSummary | null> {
   const set = useSyncStore.setState;
 
   // No longer gated on `enabled` alone: that flag is iCloud's, and a device
@@ -666,7 +701,8 @@ async function syncOnce(state: SyncConfig): Promise<SyncSummary | null> {
 
     return summary;
   } finally {
-    set({ phase: 'idle' });
+    // Not when this run was abandoned: the run that replaced it owns the phase.
+    if (claimId === syncClaimId) set({ phase: 'idle' });
   }
 }
 
