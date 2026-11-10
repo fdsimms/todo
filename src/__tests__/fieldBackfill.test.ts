@@ -1,6 +1,7 @@
 import {
   isFieldMissing, isBackfillDismissed, backfillCandidates, backfillFieldCounts,
   dismissBackfillField, estimatePatchFor, BACKFILL_FIELDS, backfillFieldsFor, backfillSeriesPeers,
+  backfillMultiQueue,
 } from '../utils/fieldBackfill';
 import type { Task, Category } from '../types';
 
@@ -623,5 +624,62 @@ describe('the slotIn queue order', () => {
   it('stays alphabetical without a reading, and for every other field', () => {
     expect(backfillCandidates(tasks, 'slotIn', { categories: [] }).map(t => t.id)).toEqual(['a', 'b', 'c', 'd']);
     expect(backfillCandidates(tasks, 'priority', { dayLoadOf: t => minutes[t.id] }).map(t => t.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+});
+
+describe('backfillMultiQueue', () => {
+  const tasks: Task[] = [
+    { ...baseTask, id: 'both', title: 'Both missing' },
+    { ...baseTask, id: 'onlyPriority', title: 'Has estimate', estimatedMinutes: 30 },
+    { ...baseTask, id: 'onlyEstimate', title: 'Has priority', priority: 2 },
+    { ...baseTask, id: 'neither', title: 'All set', estimatedMinutes: 30, priority: 2 },
+  ];
+  const ids = (steps: { task: Task }[]) => steps.map(s => s.task.id);
+
+  it('holds one entry per task with every selected field it is missing, in field order', () => {
+    const steps = backfillMultiQueue(tasks, ['estimate', 'priority']);
+    expect(ids(steps)).toEqual(['both', 'onlyEstimate', 'onlyPriority']);
+    expect(steps.find(s => s.task.id === 'both')!.fields).toEqual(['estimate', 'priority']);
+    expect(steps.find(s => s.task.id === 'onlyEstimate')!.fields).toEqual(['estimate']);
+    expect(steps.find(s => s.task.id === 'onlyPriority')!.fields).toEqual(['priority']);
+  });
+
+  it('only counts the selected fields', () => {
+    expect(ids(backfillMultiQueue(tasks, ['priority']))).toEqual(['both', 'onlyPriority']);
+  });
+
+  it('drops a field a task was dismissed for, and the task once nothing is left', () => {
+    const dismissed = tasks.map(t => (t.id === 'both' ? { ...t, ...dismissBackfillField(t, 'priority') } : t));
+    expect(backfillMultiQueue(dismissed, ['estimate', 'priority']).find(s => s.task.id === 'both')!.fields).toEqual(['estimate']);
+    expect(ids(backfillMultiQueue(dismissed, ['priority']))).toEqual(['onlyPriority']);
+  });
+
+  it('skips one field of a task without skipping the task', () => {
+    const skipped = new Set(['both|estimate']);
+    const steps = backfillMultiQueue(tasks, ['estimate', 'priority'], { skipped });
+    expect(steps.find(s => s.task.id === 'both')!.fields).toEqual(['priority']);
+  });
+
+  it('skips a whole task with its plain id', () => {
+    const steps = backfillMultiQueue(tasks, ['estimate', 'priority'], { skipped: new Set(['both']) });
+    expect(ids(steps)).toEqual(['onlyEstimate', 'onlyPriority']);
+  });
+
+  it('is empty when nothing is missing or no field is selected', () => {
+    expect(backfillMultiQueue(tasks, [])).toEqual([]);
+    expect(backfillMultiQueue([tasks[3]], ['estimate', 'priority'])).toEqual([]);
+  });
+
+  it('keeps a series to one entry and brings its other date up after', () => {
+    const day = (d: number) => new Date(2025, 0, d).toISOString();
+    const series: Task[] = [
+      { ...baseTask, id: 'd1', title: 'Walk', seriesId: 's', dueDate: day(10), priority: 2 },
+      { ...baseTask, id: 'd2', title: 'Walk', seriesId: 's', dueDate: day(15) },
+    ];
+    // Priority queues d2 (d1 has one) and estimate queues d1 (the earliest).
+    const steps = backfillMultiQueue(series, ['estimate', 'priority']);
+    expect(steps.map(s => [s.task.id, s.fields])).toEqual([['d1', ['estimate']]]);
+    const answered = series.map(t => ({ ...t, estimatedMinutes: 30 }));
+    expect(backfillMultiQueue(answered, ['estimate', 'priority']).map(s => [s.task.id, s.fields])).toEqual([['d2', ['priority']]]);
   });
 });

@@ -54,6 +54,17 @@ describe('parseTaskInput — one-off dates', () => {
     expectDay(r.schedule.dueDate, 2025, 5, 15);
   });
 
+  it('parses "in <month>" at the end of a title', () => {
+    const r = parseTaskInput('Check Met Opera lotteries in December', NOW)!;
+    expect(r.cleanTitle).toBe('Check Met Opera lotteries');
+    expect(r.schedule.dueDate!.getMonth()).toBe(11);
+    expect(r.schedule.dueDate!.getDate()).toBe(1);
+  });
+
+  it('leaves a bare trailing month in the title', () => {
+    expect(parseTaskInput('Remember what happened in the march', NOW)).toBeNull();
+  });
+
   it('parses "in N units"', () => {
     const r = parseTaskInput('dentist in 2 weeks', NOW)!;
     expect(r.cleanTitle).toBe('dentist');
