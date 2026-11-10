@@ -1843,13 +1843,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
   },
   inputWrap: { position: 'relative' },
-  input: { fontSize: font.xl, fontWeight: fontWeight.semibold, color: colors.text, paddingVertical: spacing.smd },
+  input: { fontSize: font.xl, color: colors.text, paddingVertical: spacing.smd },
   inputOverlay: { position: 'absolute', top: 0, left: 0, right: 0 },
   inputHidden: { color: 'transparent' },
-  inputHighlight: { color: colors.accent, fontWeight: fontWeight.semibold, backgroundColor: colors.accentSubtle },
-  inputMention: { color: colors.accent, fontWeight: fontWeight.semibold },
+  // No fontWeight on the title input or anything drawn over it. The app's fonts are
+  // static faces, so a nested overlay segment doesn't pick up the input's weight:
+  // the plain words rendered lighter than the real field, the caret (placed by the
+  // field) drifted right of the overlay text, and a title long enough to drop the
+  // overlay jumped to bold. Same as QuickAddModal.
+  inputHighlight: { color: colors.accent, backgroundColor: colors.accentSubtle },
+  inputMention: { color: colors.accent },
   measureWrap: { position: 'absolute', top: 0, left: 0, opacity: 0 },
-  measureText: { fontSize: font.xl, fontWeight: fontWeight.semibold },
+  measureText: { fontSize: font.xl },
   // Wide enough that the title never wraps while it's being measured, with the
   // text shrink-wrapped so its reported width is the line's own.
   measureWide: { width: 10000 },
