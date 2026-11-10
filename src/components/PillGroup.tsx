@@ -37,9 +37,11 @@ export interface PillGroupOption extends OverflowPill {
    * A level the pill carries once it is selected, drawn as `of` ascending bars
    * at the end of the label with `value` of them lit. A selected pill's width
    * is the same at every level, so cycling through them never reflows the
-   * grid; selecting one adds the bars' width once.
+   * grid; selecting one adds the bars' width once. `fill` replaces the accent
+   * the pill is filled with (and puts `onFill` text and bars on it), for a
+   * level whose colour is part of what it says.
    */
-  level?: { value: number; of: number };
+  level?: { value: number; of: number; fill?: string };
   accessibilityLabel?: string;
   accessibilityHint?: string;
   /** What a screen reader says after the label, for a pill that holds a value ("Moderate"). */
@@ -251,6 +253,7 @@ export function PillGroup({
             style={[
               styles.pill,
               option.selected && !option.negative && styles.pillActive,
+              option.selected && !option.negative && option.level?.fill ? { backgroundColor: option.level.fill } : null,
               option.negative && styles.pillNegative,
             ]}
             activeOpacity={interaction.activeOpacity}
@@ -287,6 +290,7 @@ export function PillGroup({
                     styles.pillText,
                     styles.pillTextOverlay,
                     option.selected && !option.negative && styles.pillTextActive,
+                    option.selected && !option.negative && option.level?.fill ? { color: colors.onFill } : null,
                     option.negative && styles.pillTextNegative,
                   ]}
                 >
@@ -302,6 +306,7 @@ export function PillGroup({
                       style={[
                         styles.levelBar,
                         { height: 4 + 3 * (i + 1) },
+                        option.level!.fill ? { backgroundColor: colors.onFill } : null,
                         i >= option.level!.value && styles.levelBarOff,
                       ]}
                     />

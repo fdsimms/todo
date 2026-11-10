@@ -55,6 +55,13 @@ import { BUTTON_LABEL } from '../copy/shared';
 const NOTE_MAX_LENGTH = 500;
 
 /** Noon on a picked day — see the note at the call site. */
+/** Green, orange, red for mild, moderate and severe: the `…Fill` hues, so white text stays readable on each. */
+function severityFill(severity: number, colors: Colors): string {
+  if (severity >= 3) return colors.redFill;
+  if (severity === 2) return colors.orangeFill;
+  return colors.greenFill;
+}
+
 function noonOn(day: Date): Date {
   const at = new Date(day);
   at.setHours(12, 0, 0, 0);
@@ -507,7 +514,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
               key: symptomKey(name),
               label: name,
               selected: !!picked,
-              level: picked ? { value: picked.severity, of: SYMPTOM_SEVERITIES.length } : undefined,
+              level: picked ? { value: picked.severity, of: SYMPTOM_SEVERITIES.length, fill: severityFill(picked.severity, colors) } : undefined,
               accessibilityLabel: name,
               accessibilityValue: picked ? severityLabel(picked.severity) : undefined,
               accessibilityHint: 'Tap again to change how bad it was. Hold to remove.',
