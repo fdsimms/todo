@@ -31,6 +31,7 @@ function stub(tasks: Task[], over: Partial<Replica> = {}): Replica {
     tasks: () => tasks,
     taskById: (id: string) => tasks.find(t => t.id === id) ?? null,
     projects: () => [],
+    backfillCounts: () => ({ task: 0, category: 0, project: 0, person: 0, item: 0, recipe: 0 }),
     projectProgress: () => ({ done: 0, total: 0 }),
     awaySpan: () => null,
     categories: () => [],
@@ -129,6 +130,8 @@ describe('getOverview', () => {
     expect(overview.features).toEqual({ kitchen: false, simplifiedMode: false, rewards: true, workouts: false, calendarRequests: false });
     expect(overview.completedTasksKeptForDays).toBe(90);
     expect(overview.access).toBe('write');
+    // The stub has no Backfill pools; the real counts come from `replica.backfillCounts`.
+    expect(overview.backfill).toEqual({ task: 0, category: 0, project: 0, person: 0, item: 0, recipe: 0 });
   });
 
   it('says why the health logs might be empty rather than calling it a quiet month', () => {

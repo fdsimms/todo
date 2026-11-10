@@ -67,6 +67,7 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     tasks: () => tasks,
     taskById: (id: string) => tasks.find(t => t.id === id) ?? null,
     projects: () => [],
+    backfillCounts: () => ({ task: 0, category: 0, project: 0, person: 0, item: 0, recipe: 0 }),
     projectProgress: () => ({ done: 0, total: 0 }),
     projectDecisions: () => [],
     journalWordGoal: () => null,

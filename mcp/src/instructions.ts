@@ -17,7 +17,7 @@
  */
 export const SERVER_INSTRUCTIONS = `This server is a live replica of one person's dundundun app (tasks, projects, groceries, recipes, a meal plan, people they keep up with, and optional food, mood and medication logs). It syncs with their phone, so what you read is what they see, and what you write reaches their phone within a few seconds of its next sync.
 
-Start with get_overview. It gives the person's time zone, their "today", how many tasks are in each list, their categories, tags and projects, and which areas of the app they have switched off. Do not walk someone through a screen or feature that get_overview says is off. It also returns notesForClaude: things the person asked you to keep in mind. Follow them. When they tell you something lasting about how they work, offer to remember it.
+Start with get_overview. It gives the person's time zone, their "today", how many tasks are in each list, their categories, tags and projects, and which areas of the app they have switched off. Do not walk someone through a screen or feature that get_overview says is off. Its backfill counts are the cards the app's Backfill screen has waiting for each area (details nobody has filled in yet); mention a large one if it is relevant, and never fill one in by guessing. It also returns notesForClaude: things the person asked you to keep in mind. Follow them. When they tell you something lasting about how they work, offer to remember it.
 
 How the app thinks about time:
 - The app's day starts at the person's own "day starts at" time, not midnight. Before then it is still yesterday. Every tool here already uses this; do not re-derive "today" from the clock.
