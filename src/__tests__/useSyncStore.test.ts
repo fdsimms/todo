@@ -13,6 +13,7 @@ import {
   NOTHING_OWED,
   SERVER_HEALTH_RESEND_KEY,
   SYNC_EPOCH,
+  SYNC_CLAIM_STALE_MS,
 } from '../store/useSyncStore';
 import { dbEraseForSyncJoin, dbGetSetting, dbGetSyncCursor, dbHasOwnSyncData, dbSetSetting, dbSetSyncCursor } from '../db/database';
 import { HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES } from '../db/syncTracking';
@@ -429,6 +430,77 @@ describe('syncNow', () => {
 
     expect(runSyncAll).toHaveBeenCalledTimes(3);
     (runSyncAll as jest.Mock).mockReset().mockResolvedValue([]);
+  });
+
+  // A CloudKit call has no timeout, and iOS can suspend the app mid-call, so a
+  // sync can hold the claim forever. Only a cold start used to clear it.
+  describe('a sync that never settles', () => {
+    afterEach(async () => {
+      jest.restoreAllMocks();
+      (runSyncAll as jest.Mock).mockReset().mockResolvedValue([]);
+      // The claim is module state: a case that left a hung run behind would
+      // hand the next one a sync that is already "running".
+      const later = jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 10 * SYNC_CLAIM_STALE_MS);
+      await useSyncStore.getState().syncNow();
+      later.mockRestore();
+    });
+
+    it('is left alone until it has held the claim for the stale window', async () => {
+      const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      (runSyncAll as jest.Mock).mockImplementation(() => new Promise(() => {}));
+      withServer();
+
+      void useSyncStore.getState().syncNow();
+      await Promise.resolve();
+      now.mockReturnValue(1_000_000 + SYNC_CLAIM_STALE_MS - 1);
+      const early = await useSyncStore.getState().syncNow();
+
+      expect(early).toBeNull();
+      expect(runSyncAll).toHaveBeenCalledTimes(1);
+    });
+
+    it('is abandoned by the next syncNow, which then runs', async () => {
+      const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      (runSyncAll as jest.Mock).mockImplementationOnce(() => new Promise(() => {}));
+      (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
+      withServer();
+
+      void useSyncStore.getState().syncNow();
+      await Promise.resolve();
+      now.mockReturnValue(1_000_000 + SYNC_CLAIM_STALE_MS + 1);
+      await useSyncStore.getState().syncNow();
+
+      expect(runSyncAll).toHaveBeenCalledTimes(2);
+      expect(useSyncStore.getState().phase).toBe('idle');
+    });
+
+    it('does not release the claim of the run that replaced it when it finally finishes', async () => {
+      const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      let finishLate: (v: unknown) => void = () => {};
+      let finishSecond: (v: unknown) => void = () => {};
+      (runSyncAll as jest.Mock)
+        .mockImplementationOnce(() => new Promise(r => { finishLate = r; }))
+        .mockImplementationOnce(() => new Promise(r => { finishSecond = r; }));
+      withServer();
+
+      const late = useSyncStore.getState().syncNow();
+      await Promise.resolve();
+      now.mockReturnValue(1_000_000 + SYNC_CLAIM_STALE_MS + 1);
+      const second = useSyncStore.getState().syncNow();
+      await new Promise(r => setImmediate(r));
+
+      finishLate(runs(okResult()));
+      await late;
+      await new Promise(r => setImmediate(r));
+      // The replacement is still running, so a third call must not start one.
+      expect(await useSyncStore.getState().syncNow()).toBeNull();
+      expect(useSyncStore.getState().phase).toBe('syncing');
+      expect(runSyncAll).toHaveBeenCalledTimes(2);
+
+      finishSecond(runs(okResult()));
+      await second;
+      expect(useSyncStore.getState().phase).toBe('idle');
+    });
   });
 
   // The reload runs as each transport's rows land (runSync's onApplied), so
