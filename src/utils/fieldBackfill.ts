@@ -3,6 +3,7 @@ import { EFFORT_MINUTES } from './effort';
 import { activeChainStep } from './chain';
 import { featureHidden, type SimpleFeatureId } from './simpleMode';
 import { canSlotIn, slotInFromCategory } from './slotIn';
+import { backfillMultiEntries } from './backfillMulti';
 
 /** A field this screen can walk the task list and fill in, one task at a time. */
 export type BackfillFieldId = 'estimate' | 'priority' | 'difficulty' | 'category' | 'streak' | 'vacation' | 'holidays' | 'slotIn' | 'reminder' | 'suggestions';
@@ -318,6 +319,30 @@ export function backfillCandidates(
       || a.title.localeCompare(b.title));
   }
   return rows.sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/** One task in an "all fields" walk, with the selected fields it is still missing, in field order. */
+export interface BackfillStep {
+  task: Task;
+  fields: BackfillFieldId[];
+}
+
+/**
+ * The queue for walking several task fields at once (`backfillMultiEntries`
+ * holds the rules). A series is one entry, like a single field's queue: when
+ * two fields would queue different dates of it, the first wins and the other
+ * date comes up once that one is finished.
+ */
+export function backfillMultiQueue(
+  tasks: Task[],
+  fields: BackfillFieldId[],
+  opts: { categories?: Category[]; skipped?: ReadonlySet<string> } = {}
+): BackfillStep[] {
+  return backfillMultiEntries(
+    fields,
+    fieldId => backfillCandidates(tasks, fieldId, { categories: opts.categories }),
+    { skipped: opts.skipped, groupOf: task => task.seriesId }
+  ).map(entry => ({ task: entry.row, fields: entry.fields }));
 }
 
 /**
