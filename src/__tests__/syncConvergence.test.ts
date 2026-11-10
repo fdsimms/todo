@@ -64,6 +64,55 @@ interface Device {
   local: SyncLocal;
 }
 
+/** Tables the apply keeps for itself, which no store reads. */
+const SYNC_BOOKKEEPING = new Set(['sync_deletions', 'sync_received', 'sync_aliases']);
+
+/** Every table's rows as text, so two dumps say which tables a write changed. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function dumpTables(raw: any): Map<string, string> {
+  const names = (raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[])
+    .map(r => r.name)
+    .filter(n => !SYNC_BOOKKEEPING.has(n));
+  return new Map(names.map(n => [n, JSON.stringify(raw.prepare(`SELECT * FROM "${n}" ORDER BY rowid`).all())]));
+}
+
+/** How many applies the check below has looked at, so it can't pass by never running. */
+let appliesChecked = 0;
+
+/**
+ * `dbApplySyncChanges`, held to what its report says it wrote (#4267): the
+ * reload after a sync re-reads only the stores whose tables the report names,
+ * so a table the apply changed without naming is a store left stale. Wrapped
+ * around every apply in this file, since these scenarios are the ones that
+ * reach the writes past the payload's own tables (a fold, a session's sets,
+ * an item's on-list mirror).
+ */
+function applyChecked(db: DatabaseModule, raw: unknown): SyncLocal['apply'] {
+  return (payload, transport) => {
+    const before = dumpTables(raw);
+    const report = db.dbApplySyncChanges(payload, transport);
+    const after = dumpTables(raw);
+    appliesChecked++;
+    const changed = [...after.keys()].filter(n => after.get(n) !== before.get(n));
+    // A fold says "everything" instead of listing tables, and is believed.
+    if (!report.folded) {
+      expect({ unreported: changed.filter(n => !report.changedTables.includes(n)) }).toEqual({ unreported: [] });
+      if (changed.includes('settings')) {
+        const keysOf = (dump: string) => new Map((JSON.parse(dump) as { key: string }[]).map(r => [r.key, JSON.stringify(r)]));
+        const was = keysOf(before.get('settings') ?? '[]');
+        const now = keysOf(after.get('settings') ?? '[]');
+        const changedKeys = [...new Set([...was.keys(), ...now.keys()])].filter(k => was.get(k) !== now.get(k));
+        expect({ unreported: changedKeys.filter(k => !report.changedSettingKeys.includes(k)) }).toEqual({ unreported: [] });
+      }
+    }
+    return report;
+  };
+}
+
+afterAll(() => {
+  expect(appliesChecked).toBeGreaterThan(20);
+});
+
 /** A fresh install: its own database file, initialized the way App.tsx does. */
 function newDevice(name: string): Device {
   let db!: DatabaseModule;
@@ -79,7 +128,7 @@ function newDevice(name: string): Device {
     deviceId: db.dbGetDeviceId,
     isSyncable: db.isSyncableDatabase,
     changesSince: db.dbSyncChangesSince,
-    apply: db.dbApplySyncChanges,
+    apply: applyChecked(db, raw),
     getCursor: db.dbGetSyncCursor,
     setCursor: db.dbSetSyncCursor,
   };

@@ -617,6 +617,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/streakRecord.ts` — nextStreakRecord, bestStreakOf, isStreakAtRecord, streakHint
 - `src/utils/streakUnits.ts` — countsUnits
 - `src/utils/stripScale.ts` — countStripScale
+- `src/utils/structuralSharing.ts` — reuseUnchanged, keepUnchanged
 - `src/utils/substituteSuggestions.ts` — MAX_SUGGESTED_SUBSTITUTES, SuggestedSubstitute, RawSuggestedSubstitute, dedupeSuggestedSubstitutes
 - `src/utils/sunTimes.ts` — SunEvent, SunAnchor, SunLocation, SUN_OFFSET_LIMIT, SUN_OFFSET_STEP, parseSunAnchor, formatSunAnchor, clampSunOffset, describeSunAnchor, shortSunAnchor, +12 more
 - `src/utils/supplementDose.ts` — DOSE_SOURCE_PREFIX, doseSourceId, supplementDoseIdOf, isSupplementEntry, supplementServings, SupplementHelping, supplementHelping, entryForDose, SupplementForm, IngredientForm, +14 more
@@ -629,6 +630,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/syncIds.ts` — derivedId, isDerivedId, spawnSeed
 - `src/utils/syncLocal.ts` — databaseSyncLocal
 - `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, MAX_SYNC_IMAGE_CHARS, isSyncImageName, ParsedPayload, buildPayload, buildImagePayload, serializePayload, +9 more
+- `src/utils/syncReloadScope.ts` — StoreLoadOptions, ReloadReads, STORE_RELOAD_READS, ReloadPart, SyncReloadScope, AppliedChanges, syncReloadScope, scopeReaches, reloadReaches, reloadReachesSettings
 - `src/utils/syncStatus.ts` — describeLastSynced
 - `src/utils/tabFreeze.ts` — shouldFreezeTab, isTabFocused, TAB_FREEZE_DELAY_MS
 - `src/utils/tabHubMenu.ts` — HUB_MENU_ROW_HEIGHT, HUB_MENU_PADDING, HUB_MENU_WIDTH, HUB_MENU_EDGE, HUB_MENU_ARROW_SIZE, HUB_MENU_ARROW_TIP, HUB_MENU_TIP_GAP, HUB_MENU_HIT_SLACK, hubMenuItems, HubMenuLayout, +6 more
@@ -727,7 +729,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/widgetCalendar.ts` — WidgetCalendarEvent, WidgetCalendarTask, WidgetCalendarDay, WidgetHiddenEvent, WidgetCalendar, MAX_WIDGET_CALENDAR_EVENTS, MAX_WIDGET_CALENDAR_TASKS, WidgetCalendarDayInput, WidgetCalendarInput, buildWidgetCalendar
 - `src/utils/widgetQuietTaps.ts` — QuietTap, QuietTapKind, WATCH_NOTE_MAX, WatchTickValues, WatchDoneSet, QuietTapAction, QuietTapWorkouts, WidgetNeedsAppReason, widgetTapNeedsAppReason, WatchQuestion, +12 more
 - `src/utils/widgetSnapshot.ts` — SnapshotCaps, WIDGET_CAPS, WATCH_CAPS, WidgetTask, WidgetUpcomingTask, WidgetGroceryList, WidgetGroceryRow, WidgetGroceries, WidgetMeal, WidgetKitchenItem, +19 more
-- `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, useWidgetSync
+- `src/utils/widgetSync.ts` — drainWatchQueues, writeWidgetSnapshotNow, scheduleWidgetSnapshotWrite, useWidgetSync
 - `src/utils/workoutBodyweight.ts` — WORKOUT_BODYWEIGHT_RANGE_KG, parseWorkoutBodyweightKg
 - `src/utils/workoutCell.ts` — setFieldMax, parseRepsTarget, parseSetCell, typedTickValues
 - `src/utils/workoutCsv.ts` — ImportSource, ImportedSet, ImportedSession, CsvParseResult, SkippedRows, describeSkipped, ParseOptions, parseCsv, readCsv, parseImportDate, +35 more
@@ -818,7 +820,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useSyncStore.ts` — SERVER_HEALTH_LOGS_KEY, SERVER_HEALTH_RESEND_KEY, NOTHING_OWED, SERVER_JOURNAL_KEY, SERVER_JOURNAL_RESEND_KEY, SYNC_EPOCH, withholdingFor, reportServerSharing, markHealthLogsWithheld, settleHealthLogResend, +15 more
 - `src/store/useTabHubMenuStore.ts` — TabHubMenu, useTabHubMenuStore
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
-- `src/store/useTaskStore.ts` — offerMealLog, TimeBlockPlan, writeEditToFollowUpSource, hasEstimateSource, redoRestoringRows, captureFollowUpDrafts, useTaskStore
+- `src/store/useTaskStore.ts` — InitializeOptions, offerMealLog, TimeBlockPlan, writeEditToFollowUpSource, hasEstimateSource, redoRestoringRows, captureFollowUpDrafts, useTaskStore
 - `src/store/useTemplateCategoryStore.ts` — useTemplateCategoryStore
 - `src/store/useTemplateStore.ts` — ApplyTemplateOptions, useTemplateStore
 - `src/store/useTransitStore.ts` — TRANSIT_SNAPSHOT_STALE_MS, transitReadWanted, useTransitStore

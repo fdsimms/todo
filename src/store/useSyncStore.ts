@@ -362,7 +362,10 @@ export function whenSyncIdle(): Promise<void> {
  * Handed what the sync applied, for the work a reload alone can't do: a meal's
  * calendar event, and a task's deadline event and time block, live on this
  * device and only this device can move or delete them (#2950,
- * `reconcileSyncedEvents` in useMealPlanStore and useTaskStore).
+ * `reconcileSyncedEvents` in useMealPlanStore and useTaskStore). The same
+ * report is what keeps the reload small: it names the tables the sync wrote,
+ * and only the stores that read one of them are re-read (#4267,
+ * `syncReloadScope.ts`).
  */
 let reloadAfterSync: (applied: ApplyReport) => void = () => {};
 export function registerSyncReload(reload: (applied: ApplyReport) => void): void {

@@ -120,6 +120,7 @@ import {
   readTrainingMaxes,
   WORKOUT_EFFORT,
 } from '../utils/workoutData';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * Workouts: custom exercises, routines, programs, and the sessions and sets
@@ -1332,7 +1333,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
       const sessions = dbGetAllWorkoutSessions().sort(byStartedDesc);
       const live = sessions.find(s => s.endedAt === null);
       const exercises = dbGetAllExercises();
-      set({
+      set(state => keepUnchanged(state, {
         exercises,
         routines: dbGetAllWorkoutRoutines(),
         routineGroups: readRoutineGroups(dbGetSetting(ROUTINE_GROUPS_KEY)),
@@ -1347,7 +1348,7 @@ export const useWorkoutStore = create<WorkoutStore>((set, get) => {
         volumeKgBySession: volumeBySession(exercises),
         bodyweightVolumeKgBySession: bodyweightVolumeBySession(exercises, sessions),
         initialized: true,
-      });
+      }));
     },
 
     addExercise(input) {

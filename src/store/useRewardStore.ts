@@ -43,6 +43,7 @@ import {
 import type { NegativeHabitFields } from '../utils/negativeHabits';
 import { getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * Coins and rewards — see `src/utils/rewards.ts` for every rule, including
@@ -285,7 +286,7 @@ export const useRewardStore = create<RewardStore>((set, get) => {
     lastChange: null,
 
     initialize() {
-      set({ entries: dbGetAllCoinEntries(), rewards: dbGetAllRewards(), initialized: true });
+      set(state => keepUnchanged(state, { entries: dbGetAllCoinEntries(), rewards: dbGetAllRewards(), initialized: true }));
     },
 
     balance() {

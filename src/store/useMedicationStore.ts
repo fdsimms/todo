@@ -43,6 +43,7 @@ import {
   type UsualDose,
 } from '../utils/medicationSettings';
 import { parseSchedule, type MedicationSchedule } from '../utils/medicationSchedule';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /** When a summary for a visit was last shared (synced, health-scoped). */
 export const SUMMARY_LAST_SETTING_KEY = 'medication_summary_last';
@@ -268,7 +269,7 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
     const settings = parseMedicationSettings(dbGetSetting(MEDICATION_SETTINGS_KEY));
     const lastSummary = dbGetSetting(SUMMARY_LAST_SETTING_KEY);
     const milestoneDismissed = parseArchivedMedications(dbGetSetting(MILESTONE_DISMISSED_SETTING_KEY));
-    set({
+    set(state => keepUnchanged(state, {
       milestoneDismissed,
       logs,
       archived,
@@ -276,7 +277,7 @@ export const useMedicationStore = create<MedicationStore>((set, get) => ({
       settings,
       lastSummaryAt: lastSummary && !Number.isNaN(Date.parse(lastSummary)) ? lastSummary : null,
       initialized: true,
-    });
+    }));
   },
 
   setLimit(name, limit) {

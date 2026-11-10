@@ -9,6 +9,7 @@ import { EXERCISE_EQUIPMENT, cleanWorkoutName } from '../utils/workoutData';
 import {
   GYM_DEFAULT_RADIUS_M, GYM_MAX_RADIUS_M, GYM_MIN_RADIUS_M, gymExerciseId, isEmptyGymSetting,
 } from '../utils/gyms';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * The places the person trains, and what differs about an exercise at each
@@ -78,7 +79,7 @@ export const useGymStore = create<GymStore>((set, get) => ({
   initialized: false,
 
   initialize() {
-    set({ gyms: dbGetAllGyms(), settings: dbGetAllGymExercises(), initialized: true });
+    set(state => keepUnchanged(state, { gyms: dbGetAllGyms(), settings: dbGetAllGymExercises(), initialized: true }));
   },
 
   activeGyms() {

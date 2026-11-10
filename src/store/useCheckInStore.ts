@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { CheckIn, CheckInAnswer } from '../types';
 import { dbGetAllCheckIns, dbInsertCheckIn, dbUpdateCheckIn, dbDeleteCheckIn } from '../db/database';
 import { generateId } from '../utils/id';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * Check-ins (`src/utils/checkIns.ts`): rows only. Scheduling the notification
@@ -35,7 +36,7 @@ export const useCheckInStore = create<CheckInStore>((set, get) => ({
   initialized: false,
 
   initialize() {
-    set({ checkIns: dbGetAllCheckIns(), initialized: true });
+    set(state => keepUnchanged(state, { checkIns: dbGetAllCheckIns(), initialized: true }));
   },
 
   add(input) {

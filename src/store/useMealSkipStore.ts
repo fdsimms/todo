@@ -4,6 +4,7 @@ import { dbDeleteMealSkip, dbGetMealSkipsInRange, dbGetMealSkipsSince, dbInsertM
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import { shiftDayKey } from '../utils/mealPlan';
 import { derivedId, spawnSeed } from '../utils/syncIds';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * Meals the person said they skipped (`MealSkip`), set from the meal strip on
@@ -50,7 +51,7 @@ export const useMealSkipStore = create<MealSkipStore>((set, get) => ({
 
   initialize() {
     const from = shiftDayKey(dayKeyOf(getLogicalToday()), -LOAD_DAYS_BACK);
-    set({ skips: dbGetMealSkipsSince(from), initialized: true });
+    set(state => keepUnchanged(state, { skips: dbGetMealSkipsSince(from), initialized: true }));
   },
 
   skipsInRange(startKey, endKey) {

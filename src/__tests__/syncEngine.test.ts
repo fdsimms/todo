@@ -715,6 +715,21 @@ describe('summarizeRuns', () => {
     expect(summary.applied.removedTaskEvents).toEqual([{ eventId: 'evt-1', externalId: null }, { eventId: 'evt-2', externalId: null }]);
   });
 
+  // #4267: the reload after a sync reads these to decide which stores to
+  // re-read, so each table and setting is named once and a fold on either
+  // store is a fold.
+  it('names every store\'s changed tables and settings once, and keeps a fold', () => {
+    const summary = summarizeRuns([
+      run('fake', { applied: { ...emptyApplyReport(), updated: 2, changedTables: ['tasks', 'settings'], changedSettingKeys: ['dayResetTime'] } }),
+      run('server', {
+        applied: { ...emptyApplyReport(), updated: 2, changedTables: ['settings', 'recipes'], changedSettingKeys: ['dayResetTime', 'weekStartsOn'], folded: true },
+      }),
+    ]);
+    expect(summary.applied.changedTables).toEqual(['tasks', 'settings', 'recipes']);
+    expect(summary.applied.changedSettingKeys).toEqual(['dayResetTime', 'weekStartsOn']);
+    expect(summary.applied.folded).toBe(true);
+  });
+
   it('names the transport in a failure, because "Sync failed" is unactionable with two', () => {
     const summary = summarizeRuns([
       run('server', { status: 'failed', reason: 'The sync server did not respond.' }),

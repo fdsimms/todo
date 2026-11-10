@@ -7,6 +7,7 @@ import {
   dbDeleteCopyFlag,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * TEMPORARY dev tooling (see `CopyFlag`): lines of copy marked as needing a
@@ -29,7 +30,7 @@ export const useCopyFlagStore = create<CopyFlagStore>((set, get) => ({
   initialized: false,
 
   initialize() {
-    set({ flags: dbGetAllCopyFlags(), initialized: true });
+    set(state => keepUnchanged(state, { flags: dbGetAllCopyFlags(), initialized: true }));
   },
 
   addFlag(text, screen, note) {

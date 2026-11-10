@@ -44,6 +44,7 @@ import { sectionsOf } from '../utils/recipeSections';
 import { makeBlank, normalizeBlank } from '../utils/recipeBlanks';
 import { pageAfterCookbookLink } from '../utils/cookbookRecipes';
 import { cleanOvenTemp, type OvenTempUnit } from '../utils/ovenTemp';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * The recipe library.
@@ -611,13 +612,13 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   initialized: false,
 
   initialize() {
-    set({
+    set(state => keepUnchanged(state, {
       // In memory only: a group of one saved before dropLoneChoiceGroups existed
       // reads as free from the first frame, and the next save writes it back.
       recipes: dbGetAllRecipes().map(dropLoneChoiceGroups),
       cookbooks: dbGetAllCookbooks(),
       initialized: true,
-    });
+    }));
   },
 
   addRecipe(name, cookbookId = null) {

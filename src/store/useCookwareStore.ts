@@ -10,6 +10,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { clampCookwareWeight, parseRecentCookware, pushRecentCookware } from '../utils/cookware';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * The pots, pans and tubs a dish can be weighed in. CRUD only: the subtraction
@@ -41,11 +42,11 @@ export const useCookwareStore = create<CookwareStore>((set, get) => ({
   initialized: false,
 
   initialize() {
-    set({
+    set(state => keepUnchanged(state, {
       cookware: dbGetAllCookware(),
       recentIds: parseRecentCookware(dbGetSetting(RECENT_COOKWARE_SETTING)),
       initialized: true,
-    });
+    }));
   },
 
   // Refuses a blank name or a weight that isn't one; the sheet says why before

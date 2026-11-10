@@ -36,10 +36,12 @@ function loadedFields(): string[] {
   const anchor = lines.findIndex(l => l.includes('One field per line and sorted'));
   expect(anchor).toBeGreaterThan(-1);
 
-  const open = lines.findIndex((l, i) => i > anchor && l.trim() === 'set({');
+  // The object goes through keepUnchanged, so a reload keeps the identity of
+  // every setting that came back the same.
+  const open = lines.findIndex((l, i) => i > anchor && l.trim() === 'set(state => keepUnchanged(state, {');
   expect(open).toBeGreaterThan(anchor);
 
-  const close = lines.findIndex((l, i) => i > open && l.trim() === '});');
+  const close = lines.findIndex((l, i) => i > open && l.trim() === '}));');
   expect(close).toBeGreaterThan(open);
 
   return lines.slice(open + 1, close).map(l => l.trim().split(':')[0].replace(/,$/, ''));

@@ -23,6 +23,7 @@ import {
   type FocusPlanOptions,
 } from '../utils/focusPlan';
 import { cancelFocusMeetingHeadsUp, cancelFocusStepAlarm, scheduleFocusMeetingHeadsUp, scheduleFocusStepAlarm } from '../utils/notifications';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * The one focus session in flight.
@@ -160,19 +161,22 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
 
   initialize(tasks) {
     const stored = dbGetFocusSession();
-    set({ session: stored, history: dbGetFocusSessionLog(), initialized: true });
+    set(state => keepUnchanged(state, { session: stored, history: dbGetFocusSessionLog(), initialized: true }));
     if (stored === null) {
       void cancelFocusStepAlarm();
       void cancelFocusMeetingHeadsUp();
       return;
     }
+    // What the store holds for it now: `stored`, or the equal object it already
+    // had, which keepUnchanged leaves in place.
+    const held = get().session;
     // Reconciled rather than trusted: the app may have been shut for a day,
     // and the tasks it was pointing at completed or deleted from anywhere.
     get().syncWithTasks(tasks);
     // syncWithTasks only writes when something changed, so a session that came
     // back intact still needs its alarm put back — the pending notification
     // did not survive whatever ended the last run.
-    if (get().session === stored) {
+    if (get().session === held) {
       void scheduleFocusStepAlarm(stored);
       void scheduleFocusMeetingHeadsUp(stored);
     }

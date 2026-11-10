@@ -10,6 +10,7 @@ import { generateId } from '../utils/id';
 import { registerPersonGroupSource } from '../utils/peopleRegistry';
 import { usePersonStore } from './usePersonStore';
 import { undoHistoryActions, type UndoHistoryActions, type UndoHistoryState } from '../utils/undoHistory';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * Couples and households — see the "Groups" section of `docs/arch/people.md`.
@@ -44,7 +45,7 @@ export const usePersonGroupStore = create<PersonGroupStore>((set, get) => ({
   ...undoHistoryActions(set, get),
 
   initialize() {
-    set({ groups: dbGetAllPersonGroups(), initialized: true });
+    set(state => keepUnchanged(state, { groups: dbGetAllPersonGroups(), initialized: true }));
   },
 
   createGroup(name) {

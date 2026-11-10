@@ -8,6 +8,7 @@ import {
   withEventTasks,
 } from '../utils/eventTaskLinks';
 import { dbGetSetting, dbSetSetting } from '../db/database';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * Device-local for `calendarHistoryHandled`'s reason: it names EventKit ids. Out
@@ -42,7 +43,7 @@ export const useEventTaskLinkStore = create<EventTaskLinkState>((set, get) => ({
       new Date()
     );
     persist(pruned);
-    set({ links: pruned, loaded: true });
+    set(state => keepUnchanged(state, { links: pruned, loaded: true }));
   },
 
   addTasks: (event, taskIds) => {

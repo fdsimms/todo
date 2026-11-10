@@ -9,6 +9,7 @@ import {
   dbRenameProjectCategory,
   dbBatchUpdateProjectCategorySortOrders,
 } from '../db/database';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * The project-grouping vocabulary, which the user builds and now also edits.
@@ -53,7 +54,7 @@ export const useProjectCategoryStore = create<ProjectCategoryStore>((set, get) =
 
   initialize() {
     const categories = dbGetAllProjectCategories();
-    set({ categories, initialized: true });
+    set(state => keepUnchanged(state, { categories, initialized: true }));
   },
 
   addCategory(rawName) {

@@ -23,6 +23,7 @@ import {
 import { registerPersonSource } from '../utils/peopleRegistry';
 import { usePersonNoteStore } from './usePersonNoteStore';
 import { undoHistoryActions, type UndoHistoryActions, type UndoHistoryState } from '../utils/undoHistory';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * The people you want to keep track of — see `docs/arch/people.md`.
@@ -163,7 +164,7 @@ export const usePersonStore = create<PersonStore>((set, get) => ({
   ...undoHistoryActions(set, get),
 
   initialize() {
-    set({ people: dbGetAllPeople(), initialized: true });
+    set(state => keepUnchanged(state, { people: dbGetAllPeople(), initialized: true }));
   },
 
   activePeople() {

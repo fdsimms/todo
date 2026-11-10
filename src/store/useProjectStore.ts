@@ -17,6 +17,7 @@ import { PLANNING_PAUSE_KEY, notifyPauseEnded, pauseEndedByChange, registerPause
 import { destinationPinFields, registerAwayProjectSource } from '../utils/awayDates';
 import { deliverableKindFor, deliverableOptionsFor } from '../utils/deliverables';
 import { blockerIdsOf, isNotNeeded, resolverFor, type TaskResolver } from '../utils/blocking';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * What one member of a project is, as far as counting goes: a task, not a row.
@@ -424,7 +425,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   initialize() {
     const projects = dbGetAllProjects();
-    set({ projects, initialized: true });
+    set(state => keepUnchanged(state, { projects, initialized: true }));
   },
 
   createProject(title, options = {}) {

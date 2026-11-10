@@ -195,6 +195,8 @@ import {
   UndoHistoryActions,
   undoHistoryActions,
 } from '../utils/undoHistory';
+import { keepUnchanged } from '../utils/structuralSharing';
+import type { StoreLoadOptions } from '../utils/syncReloadScope';
 
 // One shared timer, re-armed by each tap, exactly like armCompletionCollapse
 // in useTaskStore — so a burst of checks sinks together instead of dribbling
@@ -592,7 +594,8 @@ interface GroceryStore extends UndoHistoryActions {
   undoStack: UndoableAction[];
   redoStack: UndoableAction[];
 
-  initialize: () => void;
+  /** `reload` (after a sync) keeps the open prompt and the cart hold; see `StoreLoadOptions`. */
+  initialize: (opts?: StoreLoadOptions) => void;
 
   /**
    * Parse a typed line and put it on the list — creating the catalog row only
@@ -2091,7 +2094,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   redoStack: [],
   ...undoHistoryActions(set, get),
 
-  initialize() {
+  initialize(opts) {
     const items = dbGetAllGroceryItems();
     // Repaired at read time and deliberately NOT written back: shipping a
     // bigger DEFAULT_AISLES later then needs no migration, and can't clobber
@@ -2135,11 +2138,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const listEntries = dbGetAllGroceryListEntries();
     const storedList = dbGetGroceryActiveList();
     const activeListId = lists.some(l => l.id === storedList) ? storedList : null;
-    if (cartHoldTimer) {
+    // After a sync this is the same database under a screen that may be in
+    // use, so what is session-only stays wherever its item is still here: a
+    // prompt being answered, and the rows just ticked that are holding their
+    // place (with the timer that lets them go). It used to close the prompt
+    // and drop the hold whenever a sync brought any grocery row.
+    const held = opts?.reload && get().initialized ? get() : null;
+    const itemIds = held ? new Set(items.map(i => i.id)) : null;
+    const stillHere = (id: string | null | undefined): boolean => !!id && !!itemIds && itemIds.has(id);
+    if (!held && cartHoldTimer) {
       clearTimeout(cartHoldTimer);
       cartHoldTimer = null;
     }
-    set({
+    set(state => keepUnchanged(state, {
       items,
       aisleOrder,
       hiddenAisles,
@@ -2154,16 +2165,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       tripShopId,
       tripStartedAt,
       tripBudgetMinor,
-      cartHoldIds: [],
+      cartHoldIds: held ? held.cartHoldIds.filter(stillHere) : [],
       groceryGroupBy: dbGetGroceryGroupBy(),
       lists,
       listEntries,
       activeListId,
-      pendingUseUpItemId: null,
-      disposalOffer: null,
-      ratingOffer: null,
+      pendingUseUpItemId: held && stillHere(held.pendingUseUpItemId) ? held.pendingUseUpItemId : null,
+      disposalOffer: held && stillHere(held.disposalOffer?.itemId) ? held.disposalOffer : null,
+      ratingOffer:
+        held && stillHere(held.ratingOffer?.itemId) && itemProducts.some(p => p.id === held.ratingOffer?.productId)
+          ? held.ratingOffer
+          : null,
       initialized: true,
-    });
+    }));
   },
 
   setGroceryGroupBy(groupBy) {

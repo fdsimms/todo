@@ -9,6 +9,7 @@ import {
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import { contextTagKey, renamedContextTags, symptomKey } from '../utils/moodLog';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * The mood/symptom log — see `src/utils/moodLog.ts` for every rule and
@@ -77,7 +78,7 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
   initialized: false,
 
   initialize() {
-    set({ logs: dbGetAllMoodLogs(), initialized: true });
+    set(state => keepUnchanged(state, { logs: dbGetAllMoodLogs(), initialized: true }));
   },
 
   addLog(mood, symptoms, note = null, at, contextTags = [], change = null) {

@@ -15,6 +15,7 @@ import {
 import { cancelPlayTimeUp, schedulePlayTimeUp } from '../utils/notifications';
 import { getLogicalDayKey } from '../utils/dateUtils';
 import { useSettingsStore } from './useSettingsStore';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * Unlocks: treats opened by the day's work rather than bought with coins.
@@ -84,7 +85,7 @@ export const useUnlockStore = create<UnlockStore>((set, get) => {
 
     initialize() {
       const unlocks = dbGetAllRewardUnlocks();
-      set({ unlocks, initialized: true });
+      set(state => keepUnchanged(state, { unlocks, initialized: true }));
       // A timer started on another device, or by the MCP server, arrives here
       // with no notice scheduled on this one; one stopped elsewhere leaves a
       // notice to cancel. Both are settled from the rows as loaded.

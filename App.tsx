@@ -174,7 +174,7 @@ function AppGate() {
     let cancelled = false;
     (async () => {
       runStartupStep('initialize tasks', () => useTaskStore.getState().initialize());
-      runStartupStep('load settings', () => useSettingsStore.getState().initialize());
+      runStartupStep('load settings', () => useSettingsStore.getState().initialize({ coldStart: true }));
       // Shared with a cold background launch, which needs the same stores.
       for (const [name, load] of STANDALONE_STORE_LOADS) runStartupStep(name, load);
       // Puts every alarm back on the device as well: AlarmKit keeps what was

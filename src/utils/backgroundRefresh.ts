@@ -130,7 +130,8 @@ import { runStartupSequence, runStartupStep } from './startup';
 import { timed } from './perfLog';
 import { savePerfRun } from './perfReport';
 import { catchUpPasses, rebuildNotificationQueue } from './maintenancePasses';
-import { drainWatchQueues, writeWidgetSnapshotNow } from './widgetSync';
+import { drainWatchQueues, scheduleWidgetSnapshotWrite, writeWidgetSnapshotNow } from './widgetSync';
+import { reloadReachesSettings, syncReloadScope } from './syncReloadScope';
 import { syncWorkoutLiveActivityNow } from '../hooks/useWorkoutLiveActivitySync';
 import { widgetBridge } from './widgetBridge';
 import { reconcileAppShield } from './appShieldReconcile';
@@ -302,8 +303,17 @@ registerSyncReload(applied => {
   // Timed per piece but not saved: a write here would land in the middle of a
   // sync, so these wait in memory and show up in the copied report's
   // "since the last saved run" section.
-  timed('sync reload: tasks', () => useTaskStore.getState().initialize({ reload: true, changedTaskIds: applied.taskIds }));
-  timed('sync reload: settings', () => useSettingsStore.getState().initialize());
+  // Each reload is narrowed to what the sync wrote (#4267, syncReloadScope.ts):
+  // a store none of whose tables changed is not re-read, and the settings are
+  // re-read only when a setting arrived.
+  // Narrowed, and deliberately not delayed until a screen transition has
+  // finished (`runAfterTransition`), which #4267 also proposed. A store left
+  // stale for any stretch writes its whole copy of a row back on the next
+  // edit, over what the peer just sent: `onApplied` in runSync.
+  timed('sync reload: tasks', () => useTaskStore.getState().initialize({ reload: true, applied }));
+  if (reloadReachesSettings(syncReloadScope(applied))) {
+    timed('sync reload: settings', () => useSettingsStore.getState().initialize());
+  }
   timed('sync reload: task events', () => useTaskStore.getState().reconcileSyncedEvents(applied));
   timed('sync reload: meal events', () => useMealPlanStore.getState().reconcileSyncedEvents(applied));
   // A workout the Apple Watch measured, deleted on another device: only this
@@ -319,6 +329,13 @@ registerSyncReload(applied => {
   // runPendingHealthFoodWrites.
   runPendingHealthFoodWrites();
   runPendingHealthWorkoutWrites();
+  // The widget follows each store slice by identity, and it used to be
+  // rewritten after every sync only because every reload handed every slice a
+  // new one. Now that an unchanged slice keeps its identity, asked for by
+  // name. Written at once when the app isn't in front: a background run has no
+  // subscription and may not live long enough for a debounce to fire.
+  if (AppState.currentState === 'active') scheduleWidgetSnapshotWrite();
+  else writeWidgetSnapshotNow();
 });
 
 TaskManager.defineTask(BACKGROUND_REFRESH_TASK, async () => {

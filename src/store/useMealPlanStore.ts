@@ -88,6 +88,7 @@ import {
   undoHistoryActions,
   withReplay,
 } from '../utils/undoHistory';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 export interface MealPlanDraft {
   date: string;
@@ -869,26 +870,26 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // Both readers refresh on focus, so the cost of clearing them is one render
     // with no section rather than one render of the wrong rows.
     if (rangeStart && rangeEnd) {
-      set({
+      set(state => keepUnchanged(state, {
         entries: sortMealEntries(dbGetMealPlanEntries(rangeStart, rangeEnd)),
         addedToListAt,
         cookingCounts: null,
         cookHistory: null,
         pool: dbGetAllWeekPoolEntries(),
         initialized: true,
-      });
+      }));
       return;
     }
     // Nothing has asked for a window yet, so there is nothing to hold. The
     // screen loads its own on mount.
-    set({
+    set(state => keepUnchanged(state, {
       entries: [],
       addedToListAt,
       cookingCounts: null,
       cookHistory: null,
       pool: dbGetAllWeekPoolEntries(),
       initialized: true,
-    });
+    }));
   },
 
   loadRange(startKey, endKey) {

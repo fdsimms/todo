@@ -17,6 +17,7 @@ import {
 } from '../utils/estimateQueue';
 import { estimateToPanel, type EstimateContextFood } from '../utils/nutritionEstimate';
 import { useFoodLogStore } from './useFoodLogStore';
+import { keepUnchanged } from '../utils/structuralSharing';
 
 /**
  * The offline food log queue: meals described with no connection, estimated
@@ -92,7 +93,7 @@ export const usePendingEstimateStore = create<PendingEstimateStore>((set, get) =
     draining: false,
 
     initialize() {
-      set({ pending: sortPending(dbGetPendingEstimates()), initialized: true, draining: false });
+      set(state => keepUnchanged(state, { pending: sortPending(dbGetPendingEstimates()), initialized: true, draining: false }));
     },
 
     enqueue(draft) {

@@ -33,6 +33,8 @@ import {
   UndoHistoryActions,
   undoHistoryActions,
 } from '../utils/undoHistory';
+import { keepUnchanged } from '../utils/structuralSharing';
+import type { StoreLoadOptions } from '../utils/syncReloadScope';
 
 export type { LeftoverDraft };
 
@@ -102,7 +104,8 @@ interface LeftoverStore extends UndoHistoryActions {
    * file, and a store initialized outside it would keep showing rows from the
    * previous database — i.e. your real fridge on a demo phone.
    */
-  initialize: () => void;
+  /** `reload` (after a sync) keeps the open prompt; see `StoreLoadOptions`. */
+  initialize: (opts?: StoreLoadOptions) => void;
 
   /** Null when the title is empty. Blank titles are the only thing refused. */
   logLeftover: (draft: LeftoverDraft) => Leftover | null;
@@ -299,13 +302,20 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
   redoStack: [],
   ...undoHistoryActions(set, get),
 
-  initialize() {
-    set({
-      leftovers: sortLeftovers(dbGetAllLeftovers()),
-      pendingUseUpLeftoverId: null,
-      pendingFinishLeftoverId: null,
+  initialize(opts) {
+    const leftovers = sortLeftovers(dbGetAllLeftovers());
+    // After a sync, a prompt being answered stays open while the container it
+    // is about is still here. It used to close on any sync that brought a
+    // leftover.
+    const held = opts?.reload && get().initialized ? get() : null;
+    const stillHere = (id: string | null): string | null =>
+      held && id && leftovers.some(l => l.id === id) ? id : null;
+    set(state => keepUnchanged(state, {
+      leftovers,
+      pendingUseUpLeftoverId: stillHere(held?.pendingUseUpLeftoverId ?? null),
+      pendingFinishLeftoverId: stillHere(held?.pendingFinishLeftoverId ?? null),
       initialized: true,
-    });
+    }));
   },
 
   setPendingUseUpLeftover(id) {
