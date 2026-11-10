@@ -24,11 +24,12 @@ import WidgetKit
 
 /// The picker's own "don't filter" row.
 ///
-/// A sentinel rather than an absent value because the confirmed
-/// `@Parameter(title:optionsProvider:)` form takes a non-optional. A category
-/// genuinely named this would collide, and the cost of that collision is that
-/// the widget shows every task — which is what the row says it does, so the
-/// user gets what they picked either way.
+/// Still offered as a row so the picker has an explicit "don't filter" choice,
+/// but the parameters are optional (`String?`): an intent conforming to
+/// `WidgetConfigurationIntent` must have only optional parameters or the
+/// AppIntents metadata export fails the archive. Nil and this row mean the
+/// same thing. A category genuinely named this would collide, and the cost is
+/// that the widget shows every task, which is what the row says it does.
 let allCategoriesOption = "All categories"
 /// Likewise for the grocery list picker: follow whichever list the app has
 /// open rather than pinning one.
@@ -52,7 +53,7 @@ struct TodayWidgetIntent: WidgetConfigurationIntent {
     static var description = IntentDescription("Pick which tasks this widget shows.")
 
     @Parameter(title: "Category", optionsProvider: CategoryOptionsProvider())
-    var category: String
+    var category: String?
 
     @Parameter(title: "Pinned only", default: false)
     var pinnedOnly: Bool
@@ -78,7 +79,8 @@ struct TodayWidgetIntent: WidgetConfigurationIntent {
 
     /// Nil means "every category", which is what the sentinel above stands for.
     var categoryFilter: String? {
-        category.isEmpty || category == allCategoriesOption ? nil : category
+        guard let category, !category.isEmpty, category != allCategoriesOption else { return nil }
+        return category
     }
 }
 
@@ -87,11 +89,12 @@ struct GroceryWidgetIntent: WidgetConfigurationIntent {
     static var description = IntentDescription("Pick which shopping list this widget shows.")
 
     @Parameter(title: "List", optionsProvider: GroceryListOptionsProvider())
-    var list: String
+    var list: String?
 
     /// Nil means "whichever list the app is on", which the snapshot writes first.
     var listFilter: String? {
-        list.isEmpty || list == activeListOption ? nil : list
+        guard let list, !list.isEmpty, list != activeListOption else { return nil }
+        return list
     }
 }
 
