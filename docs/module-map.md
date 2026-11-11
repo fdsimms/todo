@@ -208,6 +208,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/fasting.ts` — DEFAULT_FAST_GOAL_HOURS, MIN_FAST_GOAL_HOURS, MAX_FAST_GOAL_HOURS, MAX_FAST_START_AGE_HOURS, clampFastGoalHours, activeFast, lastEndedFast, pastFasts, formatFastLengthShort, fastElapsedMs, +8 more
 - `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, backfillFieldsFor, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, BackfillStep, backfillMultiQueue, +5 more
 - `src/utils/firstRun.ts` — FirstRunAnswers, FIRST_RUN_DEFAULTS, FirstRunSettings, firstRunSettings, FirstRunState, shouldOfferFirstRun
+- `src/utils/floatingNumberPad.ts` — NUMBER_PAD_ACCESSORY_ID, numberPadBarFloats, NumberPadBarProps, setNumberPadFocus, numberPadFocused, publishNumberPadBar, withdrawNumberPadBar, topNumberPadBar, isTopNumberPadBar, subscribeNumberPadBar, +1 more
 - `src/utils/focusLiveActivity.ts` — FocusRun, buildFocusRun, useFocusLiveActivitySync
 - `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, plannedTaskMinutes, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, +19 more
 - `src/utils/focusSettings.ts` — FOCUS_WORK_CAP_MIN, FOCUS_WORK_CAP_MAX, FOCUS_REST_MIN, FOCUS_REST_MAX, FOCUS_REST_AFTER_TASKS_MAX, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_LONG_REST_EVERY_MIN, FOCUS_LONG_REST_EVERY_MAX, FOCUS_WINDOW_MIN, +19 more

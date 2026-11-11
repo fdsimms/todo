@@ -13,6 +13,12 @@ import {
 } from '../utils/accessoryStack';
 import { AccessoryBar, AccessoryCapsule, AccessoryDoneButton, accessoryFill } from './AccessoryBar';
 import { glassSupported } from './GlassLayer';
+import {
+  NUMBER_PAD_ACCESSORY_ID,
+  numberPadBarFloats,
+  publishNumberPadBar,
+  withdrawNumberPadBar,
+} from '../utils/floatingNumberPad';
 
 /**
  * Every number-pad TextInput in the app points its `inputAccessoryViewID` at
@@ -20,7 +26,7 @@ import { glassSupported } from './GlassLayer';
  * keyboard — regardless of which field is focused, so one bar per screen is
  * enough even when several number-pad fields share it.
  */
-export const NUMBER_PAD_ACCESSORY_ID = 'numberPadAccessory';
+export { NUMBER_PAD_ACCESSORY_ID };
 
 /**
  * iOS's number-pad keyboard has no return key, so there's otherwise no way
@@ -45,6 +51,11 @@ export const NUMBER_PAD_ACCESSORY_ID = 'numberPadAccessory';
  * `onOperator`, when given, adds + − × buttons at the leading edge for an
  * amount that takes a sum (`resolveAmountMath`). The host passes it only while
  * that field is focused (`useAmountOperators`).
+ *
+ * Where the bar floats (glass on a phone, `numberPadBarFloats`) this draws
+ * nothing itself: it publishes what the bar should carry and the window-level
+ * host (`FloatingNumberPadBar`, mounted by `KeyboardDoneAccessory`) draws it, so
+ * the transparent gaps between the capsules pass taps through.
  */
 export function NumberPadAccessory({ onNext, onOperator }: {
   onNext?: () => void;
@@ -69,37 +80,64 @@ export function NumberPadAccessory({ onNext, onOperator }: {
     () => false,
   );
 
-  if (!ios || !isTop) return null;
+  const floats = numberPadBarFloats(glassSupported(), Platform.OS, Platform.OS === 'ios' && Platform.isPad);
+  // After every render, since `onNext` and `onOperator` are closures over the
+  // host's current state and the floating bar has to call the latest ones.
+  useEffect(() => {
+    if (!ios || !floats) return;
+    publishNumberPadBar(instanceId, { onNext, onOperator });
+  });
+  useEffect(() => {
+    if (!ios || !floats) return;
+    return () => withdrawNumberPadBar(instanceId);
+  }, [ios, floats, instanceId]);
 
+  if (!ios || !isTop || floats) return null;
+
+  return (
+    <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor={accessoryFill(colors)}>
+      <NumberPadBar onNext={onNext} onOperator={onOperator} />
+    </InputAccessoryView>
+  );
+}
+
+/**
+ * The bar's content, drawn inside the native view or, where it floats, by
+ * `FloatingNumberPadBar` with `passThrough`.
+ */
+export function NumberPadBar({ onNext, onOperator, passThrough }: {
+  onNext?: () => void;
+  onOperator?: (op: AmountOperator) => void;
+  passThrough?: boolean;
+}) {
+  const colors = useColors();
   const styles = makeStyles(colors);
   const glass = glassSupported();
   const textCapsule = glass ? styles.textCapsule : undefined;
   return (
-    <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor={accessoryFill(colors)}>
-      <AccessoryBar style={[styles.bar, onNext && styles.barWithNext]}>
-        {onNext && (
-          <AccessoryCapsule style={textCapsule}>
-            <SheetHeaderButton label="Next" role="cancel" onPress={onNext} />
-          </AccessoryCapsule>
-        )}
-        {onOperator && (
-          <AccessoryCapsule style={styles.operators}>
-            {AMOUNT_OPERATORS.map(({ op, glyph, label }) => (
-              <PressableScale
-                key={op}
-                style={[styles.operator, glass && styles.operatorOnGlass]}
-                haptic
-                onPress={() => onOperator(op)}
-                accessibilityLabel={label}
-              >
-                <Text style={styles.operatorGlyph}>{glyph}</Text>
-              </PressableScale>
-            ))}
-          </AccessoryCapsule>
-        )}
-        <AccessoryDoneButton />
-      </AccessoryBar>
-    </InputAccessoryView>
+    <AccessoryBar passThrough={passThrough} style={[styles.bar, onNext && styles.barWithNext]}>
+      {onNext && (
+        <AccessoryCapsule style={textCapsule}>
+          <SheetHeaderButton label="Next" role="cancel" onPress={onNext} />
+        </AccessoryCapsule>
+      )}
+      {onOperator && (
+        <AccessoryCapsule style={styles.operators}>
+          {AMOUNT_OPERATORS.map(({ op, glyph, label }) => (
+            <PressableScale
+              key={op}
+              style={[styles.operator, glass && styles.operatorOnGlass]}
+              haptic
+              onPress={() => onOperator(op)}
+              accessibilityLabel={label}
+            >
+              <Text style={styles.operatorGlyph}>{glyph}</Text>
+            </PressableScale>
+          ))}
+        </AccessoryCapsule>
+      )}
+      <AccessoryDoneButton />
+    </AccessoryBar>
   );
 }
 

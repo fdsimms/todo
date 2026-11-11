@@ -11,6 +11,14 @@ import {
   unregisterAccessory,
 } from '../utils/accessoryStack';
 import { DONE_ACCESSORY_ID, floatingDoneWanted, subscribeFloatingDone } from '../utils/keyboardDone';
+import {
+  numberPadBarFloats,
+  numberPadFocused,
+  subscribeNumberPadBar,
+  topNumberPadBar,
+} from '../utils/floatingNumberPad';
+import { NumberPadBar } from './NumberPadAccessory';
+import { glassSupported } from './GlassLayer';
 
 const FLOATING_STACK_ID = 'keyboardDoneFloating';
 
@@ -53,6 +61,7 @@ export function KeyboardDoneAccessory() {
     <>
       <DoneBar />
       <FloatingDone />
+      <FloatingNumberPadBar />
     </>
   );
 }
@@ -80,6 +89,26 @@ function FloatingDone() {
   );
 }
 
+/**
+ * The number pad's bar where it floats (`src/utils/floatingNumberPad.ts`): drawn
+ * here, in the window the field is in, because a native accessory view would
+ * take the touches in the gaps between its capsules. `NumberPadAccessory` only
+ * says what it wants on it.
+ */
+function FloatingNumberPadBar() {
+  const floats = numberPadBarFloats(glassSupported(), Platform.OS, Platform.OS === 'ios' && Platform.isPad);
+  const focused = useSyncExternalStore(subscribeNumberPadBar, numberPadFocused, () => false);
+  const bar = useSyncExternalStore(subscribeNumberPadBar, topNumberPadBar, () => null);
+  const wanted = floats && focused && bar !== null;
+  const keyboardHeight = useKeyboardHeight(wanted);
+  if (!wanted || keyboardHeight <= 0) return null;
+  return (
+    <View pointerEvents="box-none" style={[styles.numberPadHost, { bottom: keyboardHeight }]}>
+      <NumberPadBar onNext={bar.onNext} onOperator={bar.onOperator} passThrough />
+    </View>
+  );
+}
+
 const makeStyles = (colors: Colors) => StyleSheet.create({
   bar: {
     flexDirection: 'row',
@@ -93,4 +122,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
 
 const styles = StyleSheet.create({
   floatingHost: { position: 'absolute', right: spacing.md, alignItems: 'flex-end' },
+  numberPadHost: { position: 'absolute', left: 0, right: 0 },
 });

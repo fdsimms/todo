@@ -33,15 +33,26 @@ export function accessoryFill(colors: Colors): string {
  * over the keyboard's rounded top the way iOS 26's own toolbars do.
  *
  * `style` is the content row's own layout (direction, spacing, padding).
+ *
+ * `passThrough` is for a bar drawn as a floating view rather than an
+ * `InputAccessoryView`: its two full-width wrappers then let touches fall
+ * through to what is behind them, so only the capsules take a tap
+ * (`src/utils/floatingNumberPad.ts`).
  */
-export function AccessoryBar({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+export function AccessoryBar({ children, style, passThrough }: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  passThrough?: boolean;
+}) {
   const colors = useColors();
   const glass = glassSupported();
+  const pointerEvents = passThrough ? 'box-none' : undefined;
   return (
     <View
+      pointerEvents={pointerEvents}
       style={glass ? undefined : [styles.strip, { backgroundColor: colors.bgSecondary, borderTopColor: colors.separator }]}
     >
-      <View style={[styles.column, style]}>{children}</View>
+      <View pointerEvents={pointerEvents} style={[styles.column, style]}>{children}</View>
     </View>
   );
 }

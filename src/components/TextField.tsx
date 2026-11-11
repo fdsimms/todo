@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useRef } from 'react';
 import {
+  Platform,
   StyleSheet,
   TextInput,
   codegenNativeCommands,
@@ -9,6 +10,8 @@ import {
   type TextInputProps,
 } from 'react-native';
 import { DONE_ACCESSORY_ID, doneBarKind, setFloatingDoneFocus } from '../utils/keyboardDone';
+import { NUMBER_PAD_ACCESSORY_ID, numberPadBarFloats, setNumberPadFocus } from '../utils/floatingNumberPad';
+import { glassSupported } from './GlassLayer';
 import { fieldChanged, fieldText, initialFieldSync, nextFieldSync, styleKeyOf, type FieldSync } from '../utils/textFieldSync';
 
 /**
@@ -96,23 +99,34 @@ export function TextField({
   const fieldId = useId();
   const barKind = doneBarKind({ multiline: rest.multiline, ownAccessoryId: inputAccessoryViewID, dismissBar });
   const floats = barKind === 'floating';
+  // A number-pad field's bar floats too where that is worth it
+  // (`src/utils/floatingNumberPad.ts`): the field then names no native accessory,
+  // and reports its focus so the window's host knows when to draw the bar.
+  const padFloats = inputAccessoryViewID === NUMBER_PAD_ACCESSORY_ID
+    && numberPadBarFloats(glassSupported(), Platform.OS, Platform.OS === 'ios' && Platform.isPad);
   useEffect(() => {
     if (!floats) return;
     return () => setFloatingDoneFocus(fieldId, false);
   }, [floats, fieldId]);
+  useEffect(() => {
+    if (!padFloats) return;
+    return () => setNumberPadFocus(fieldId, false);
+  }, [padFloats, fieldId]);
   const handleFocus = useCallback(
     (e: Parameters<NonNullable<TextInputProps['onFocus']>>[0]) => {
       if (floats) setFloatingDoneFocus(fieldId, true);
+      if (padFloats) setNumberPadFocus(fieldId, true);
       onFocus?.(e);
     },
-    [floats, fieldId, onFocus],
+    [floats, padFloats, fieldId, onFocus],
   );
   const handleBlur = useCallback(
     (e: Parameters<NonNullable<TextInputProps['onBlur']>>[0]) => {
       if (floats) setFloatingDoneFocus(fieldId, false);
+      if (padFloats) setNumberPadFocus(fieldId, false);
       onBlur?.(e);
     },
-    [floats, fieldId, onBlur],
+    [floats, padFloats, fieldId, onBlur],
   );
 
   const inputRef = useRef<TextInput | null>(null);
@@ -204,7 +218,9 @@ export function TextField({
   return (
     <TextInput
       {...rest}
-      inputAccessoryViewID={barKind === 'accessory' ? DONE_ACCESSORY_ID : inputAccessoryViewID}
+      inputAccessoryViewID={
+        barKind === 'accessory' ? DONE_ACCESSORY_ID : padFloats ? undefined : inputAccessoryViewID
+      }
       onFocus={handleFocus}
       onBlur={handleBlur}
       onSelectionChange={handleSelectionChange}
