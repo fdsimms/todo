@@ -1917,7 +1917,15 @@ function patchInRange(
   entry: MealPlanEntry
 ): void {
   const { rangeStart, rangeEnd } = get();
-  if (!rangeStart || !rangeEnd || !isKeyInRange(entry.date, rangeStart, rangeEnd)) return;
+  if (!rangeStart || !rangeEnd || !isKeyInRange(entry.date, rangeStart, rangeEnd)) {
+    // Outside the window nothing is added, but subscribers still need to hear
+    // about the write: Today's meal strip reads its day through
+    // `entriesForDayLive` (SQLite) and re-reads only when `entries` changes, so
+    // a silent return left a meal planned for today showing "Choose" until the
+    // next minute tick. A new array with the same rows is that signal.
+    set(s => ({ entries: [...s.entries] }));
+    return;
+  }
   set(s => ({ entries: sortMealEntries([...s.entries, entry]) }));
 }
 
