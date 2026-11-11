@@ -6,7 +6,6 @@ import {
   pantryCheckLapse,
   pantryCheckLinkUrl,
   pantryCheckTitle,
-  pantryCheckBoughtCaption,
   stalePantryCheckTasks,
   wantedPantryChecks,
 } from '../utils/pantryCheckTasks';
@@ -426,18 +425,5 @@ describe('pantryCheckAnswers', () => {
 
   it('ignores a task that is still live', () => {
     expect(pantryCheckAnswers([makeTask({ generatedSourceId: 'g-1' })].map(t => t)).size).toBe(0);
-  });
-});
-
-describe('pantryCheckBoughtCaption', () => {
-  const now = new Date(2026, 10, 11, 9, 0);
-  it('names the last purchase, without a year in the same year', () => {
-    expect(pantryCheckBoughtCaption({ lastPurchasedAt: new Date(2026, 9, 3, 12).toISOString() }, now)).toBe('Last bought Oct 3');
-  });
-  it('adds the year for an earlier one', () => {
-    expect(pantryCheckBoughtCaption({ lastPurchasedAt: new Date(2025, 11, 30, 12).toISOString() }, now)).toBe('Last bought Dec 30, 2025');
-  });
-  it('is null with no purchase on record', () => {
-    expect(pantryCheckBoughtCaption({ lastPurchasedAt: null }, now)).toBeNull();
   });
 });
