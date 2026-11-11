@@ -32,6 +32,9 @@ function fakeReplica(opts: {
   people?: unknown[];
   moodLogs?: number;
   milestones?: unknown[];
+  experiments?: unknown[];
+  /** Mood check-ins carrying a symptom, one per day. */
+  symptomDays?: number;
   medications?: unknown[];
   rewards?: boolean;
   recipeRows?: unknown[];
@@ -55,7 +58,11 @@ function fakeReplica(opts: {
     todayKey: () => '2026-10-05',
     shiftDayKey: (k: string) => k,
     people: () => opts.people ?? [],
-    allMoodLogs: () => Array.from({ length: opts.moodLogs ?? 0 }),
+    allMoodLogs: () => [
+      ...Array.from({ length: opts.moodLogs ?? 0 }, (_, i) => ({ dayKey: `m${i}`, symptoms: [] })),
+      ...Array.from({ length: opts.symptomDays ?? 0 }, (_, i) => ({ dayKey: `s${i}`, symptoms: [{ name: 'Headache', severity: 1 }] })),
+    ],
+    experiments: () => opts.experiments ?? [],
     milestones: () => opts.milestones ?? [],
     medicationSettings: () => opts.medications ?? [],
     agentNotes: () => (opts.notes ?? []).map((text, i) => ({ id: String(i), text })),
@@ -149,6 +156,12 @@ describe('kitchen, people and mood checks', () => {
     const person = (birthdayMonth: number | null) => ({ archived: false, kind: 'individual', birthdayMonth });
     expect(ids(fakeReplica({ people: [person(null), person(null), person(null)] }))).toContain('birthdays');
     expect(ids(fakeReplica({ people: [person(null), person(null), person(4)] }))).not.toContain('birthdays');
+  });
+
+  it('suggests experiments only to someone logging symptoms who has never tried one', () => {
+    expect(ids(fakeReplica({ symptomDays: 12 }))).toContain('experiments');
+    expect(ids(fakeReplica({ symptomDays: 12, experiments: [{}] }))).not.toContain('experiments');
+    expect(ids(fakeReplica({ symptomDays: 4, moodLogs: 30 }))).not.toContain('experiments');
   });
 
   it('suggests milestones only once there are enough mood check-ins to compare', () => {

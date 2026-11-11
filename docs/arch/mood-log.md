@@ -6,7 +6,9 @@ Read this before changing anything under `src/utils/moodLog.ts`,
 `src/utils/moodTasks.ts`, `src/store/useMoodStore.ts`, `src/store/useMilestoneStore.ts`,
 `src/screens/MoodScreen.tsx`, `src/screens/MoodHistoryScreen.tsx`,
 `src/screens/SymptomDetailScreen.tsx`, `src/components/MoodLogSheet.tsx`,
-`src/components/MilestoneSheet.tsx`, `src/utils/medicationLog.ts`,
+`src/components/MilestoneSheet.tsx`, `src/utils/experiments.ts`,
+`src/store/useExperimentStore.ts`, `src/screens/ExperimentDetailScreen.tsx`,
+`src/components/ExperimentSheet.tsx`, `src/utils/medicationLog.ts`,
 `src/store/useMedicationStore.ts`, `src/screens/MedicationScreen.tsx`,
 `src/screens/MedicationDetailScreen.tsx`, `src/components/MedicationLogSheet.tsx`,
 `src/utils/medicationSettings.ts`, `src/utils/medicationSummary.ts`,
@@ -1194,6 +1196,72 @@ regardless of whether the data behind it has caught up, the same reasoning
 `symptomStats`' directory exists beside the gated `symptomMoodContrasts`
 rows.
 
+## Experiments — a bounded stretch against the one before it
+
+`Experiment` answers "I'm going to try this for four weeks: does it help?",
+which a milestone can't: a milestone is one split point whose "after" runs to
+today, so it has no end, no baseline of its own, and nothing to say about
+symptoms. The read is `experimentResult` (`src/utils/experiments.ts`), and the
+app's experiment page and the MCP's `list_experiments` both call it.
+
+**Its own entity, not a milestone with an end date.** It carries a start, an
+end, the symptoms it is meant to change and what is expected, and it has a
+state (not started, running, finished) that drives the Mood screen's list and
+the page. Folding that into `Milestone` would have made every milestone
+reader ask which kind it is holding. Same shape otherwise: its own table
+(`experiments`), CRUD-only store (`useExperimentStore`), tracked for sync and
+in `HEALTH_SYNC_TABLES` beside milestones, for the same reasons.
+
+**The baseline is the same number of days, ending the day before it starts.**
+There is no setting for it. Equal stretches compare like with like (a
+four-week experiment against a fortnight would weigh a quieter or busier
+patch twice as heavily on one side) and leave nothing to choose in the sheet.
+The length is a preset (1, 2, 4 or 8 weeks) or a picked last day, and is
+stored as the last day.
+
+**Same three rules as `moodInsights.ts`.** Only days with an entry count on
+either side; mood needs days with a mood. Nothing is compared below
+`MIN_CONTRAST_DAYS` on each side and `MIN_PAIRED_DAYS` across both. A
+symptom is counted only from the first day it was ever logged, as
+`contrastsFor` does: the days before that are days it wasn't being recorded,
+not days without it. A symptom is read as the share of logged days it was on,
+at each day's worst severity (`daySymptoms`' rule), with the usual severity in
+words beside it.
+
+**Symptoms picked in advance are shown apart from the rest, and that split is
+the point.** Comparing a dozen symptoms after the fact will turn up one that
+moved by chance, and naming in advance what the change should affect is what
+makes it a test rather than a search. The unpicked ones are still shown, under
+OTHER SYMPTOMS with a caption saying so, because an effect nobody predicted is
+worth seeing too. Only the comparable ones that turned up in either stretch are
+listed there; a picked one is always listed, with why it can't be compared yet.
+
+**Everything else that changed in those days is named on the page**
+(`overlappingChanges`): a milestone dated in the baseline or the experiment,
+and any other experiment overlapping it. The comparison is between two
+stretches of time and can't separate this change from the others in them.
+
+**Deleting an experiment touches nothing else.** It points at no entries, and
+no entry points at it.
+
+**A finished one shows its result on the Mood screen** (`experimentSummary`):
+mood, then up to two picked symptoms that can be compared, as the share of
+logged days each was on. Unpicked symptoms stay on the page, beside the
+caption about chance; a list row has no room for that caveat.
+
+**Ending early is setting the last day to today** ("End it today" in the
+sheet, `canEndToday`; `update_experiment` with today's date over MCP). The
+baseline shortens with it, since it is always the same length.
+
+**The finish notice fires the morning after the last day**
+(`experimentNoticeAt`): the start of active hours on that logical day, pushed
+past quiet hours. It names the experiment and says where to look, never a
+result, which keeps changing as late entries come in. Experiments sync, so
+each phone schedules its own from the rows it holds (`syncExperimentNotices`,
+run by the app-level `useExperimentNotices` on every change to the rows or
+the settings that place it), and it sends nothing in demo mode. A tap opens
+the experiment's page.
+
 ## It syncs, and it hides
 
 `mood_logs` is in `SYNC_TRACKED_TABLES`. Half a person's health record on each
@@ -1203,7 +1271,7 @@ tracked beside it for the same reason: a before/after split has to read the
 same on every phone, or it isn't a fact about the person, just about which
 device answered.
 
-**But not through iCloud.** `mood_logs`, `milestones`, `medication_logs` and
+**But not through iCloud.** `mood_logs`, `milestones`, `experiments`, `medication_logs` and
 `food_logs` are in `HEALTH_SYNC_TABLES`, which iCloud never receives (App Review
 5.1.3(ii): no personal health information in iCloud), and which a sync server
 receives only with "Include health logs" on. So for somebody syncing through

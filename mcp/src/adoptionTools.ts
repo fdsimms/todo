@@ -275,6 +275,19 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'experiments',
+    title: 'Experiments',
+    benefit: 'Trying a change for a set number of days (no caffeine after noon, an earlier bedtime) lets the Mood screen compare your mood and the symptoms you pick during it with the same number of days before.',
+    advanced: true,
+    since: '2026-11-11',
+    evidence: ({ replica }) => {
+      const symptomDays = new Set(replica.allMoodLogs().filter(l => l.symptoms.length > 0).map(l => l.dayKey)).size;
+      return symptomDays >= 10 && replica.experiments().length === 0
+        ? `Symptoms are logged on ${symptomDays} days and no experiment has been tried.`
+        : null;
+    },
+  },
+  {
     id: 'workout_task_link',
     title: 'Workouts on the schedule',
     benefit: 'A task can name a workout routine. Its row then starts the workout, and finishing the workout completes the task, with its streak and coins.',

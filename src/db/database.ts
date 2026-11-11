@@ -17,6 +17,7 @@ import type {
   RewardUnlock,
   UnlockIgnoreList,
   Milestone,
+  Experiment,
   Cookware,
   CopyFlag,
   TaskAttachment,
@@ -578,6 +579,19 @@ function runInitDatabase(): void {
       id TEXT PRIMARY KEY NOT NULL,
       label TEXT NOT NULL,
       date TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    -- A change tried for a set stretch of days — see Experiment in
+    -- types/wellbeing.ts and docs/arch/mood-log.md. Rare, hand-entered rows
+    -- like milestones, so no index. symptoms is a JSON array of names.
+    CREATE TABLE IF NOT EXISTS experiments (
+      id TEXT PRIMARY KEY NOT NULL,
+      label TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      symptoms TEXT NOT NULL DEFAULT '[]',
+      note TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -3028,6 +3042,8 @@ export const BACKUP_TABLES = [
   'mood_logs',
   // Also points at nothing, for the same reason and beside the same neighbor.
   'milestones',
+  // Experiments point at nothing either; beside the milestones they're read with.
+  'experiments',
   // Copy flags point at nothing.
   'copy_flags',
   // Fasts point at nothing either.
@@ -8212,6 +8228,57 @@ export function dbUpdateMilestone(milestone: Milestone): void {
 
 export function dbDeleteMilestone(id: string): void {
   db.runSync('DELETE FROM milestones WHERE id = ?', [id]);
+}
+
+/** One experiment, mapped off its row. A malformed symptoms column reads as none rather than throwing. */
+function rowToExperiment(row: Record<string, unknown>): Experiment {
+  let symptoms: string[] = [];
+  try {
+    const parsed = JSON.parse((row.symptoms as string) ?? '[]');
+    if (Array.isArray(parsed)) symptoms = parsed.filter((s): s is string => typeof s === 'string');
+  } catch { /* keep none */ }
+  return {
+    id: row.id as string,
+    label: row.label as string,
+    startDate: row.start_date as string,
+    endDate: row.end_date as string,
+    symptoms,
+    note: (row.note as string | null) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
+/** Every experiment, by start date, oldest first. */
+export function dbGetAllExperiments(): Experiment[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM experiments ORDER BY start_date ASC'
+  );
+  return rows.map(rowToExperiment);
+}
+
+export function dbInsertExperiment(experiment: Experiment): void {
+  db.runSync(
+    `INSERT INTO experiments (id, label, start_date, end_date, symptoms, note, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      experiment.id, experiment.label, experiment.startDate, experiment.endDate,
+      JSON.stringify(experiment.symptoms), experiment.note, experiment.createdAt,
+    ]
+  );
+}
+
+export function dbUpdateExperiment(experiment: Experiment): void {
+  db.runSync(
+    `UPDATE experiments SET label=?, start_date=?, end_date=?, symptoms=?, note=? WHERE id=?`,
+    [
+      experiment.label, experiment.startDate, experiment.endDate,
+      JSON.stringify(experiment.symptoms), experiment.note, experiment.id,
+    ]
+  );
+}
+
+export function dbDeleteExperiment(id: string): void {
+  db.runSync('DELETE FROM experiments WHERE id = ?', [id]);
 }
 
 function rowToCookware(row: Record<string, unknown>): Cookware {

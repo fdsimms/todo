@@ -1626,6 +1626,12 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   ("Milestone"), never by its label, for the reason a mood entry is: "Started sertraline" is health
   content, and the Activity list is about the app. Each milestone is its own split and the tools
   never pair a start with a later stop; the contrast itself is `mood_insights`' to report.
+- **Experiments go through `useExperimentStore`'s own actions** (`experimentTools.ts`), with the
+  refusal checked first through `experimentRefusal`, the function the store and the sheet use, so
+  a blank name or an end before the start comes back as a message rather than a null. The read is
+  the app's own `experimentResult`, so `list_experiments` says what the phone's experiment page
+  says, under the same gates, with the unpicked symptoms apart and every milestone or experiment
+  in the same days named. Titled by kind ("Experiment") in Activity, for the milestone's reason.
 - **Cookware goes through `useCookwareStore`'s own actions** (`cookwareTools.ts`), so a blank name
   or a weight at or below zero is refused as the sheet refuses it. It is a convenience for typing a
   dish's weight and nothing points at it: `cookedWeightG` and a leftover's weight are the food
@@ -1726,8 +1732,8 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
 ### The health logs have their own switch, and iCloud never gets them
 
 Decided, and built. `HEALTH_SYNC_TABLES` (`src/db/syncTracking.ts`) names the mood, medication and
-food logs, the workout sessions and their sets (`docs/arch/workouts.md`), plus the milestones read
-against the mood log ("started sertraline" is a common one), and
+food logs, the workout sessions and their sets (`docs/arch/workouts.md`), plus the milestones and
+experiments read against the mood log ("started sertraline" is a common one), and
 `HEALTH_SYNC_SETTING_KEYS` adds `medication_archived`, a list of medicine names. A
 transport can withhold tables (`SyncTransport.withhold`, applied by `withholdChanges` in
 `syncEngine.ts`), and two transports do:

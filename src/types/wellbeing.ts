@@ -226,6 +226,36 @@ export interface Milestone {
 }
 
 /**
+ * A change tried for a set stretch of days — "No caffeine after noon" for four
+ * weeks — read by `src/utils/experiments.ts` against the same number of days
+ * just before it started. See `docs/arch/mood-log.md`, "Experiments".
+ *
+ * Its own entity rather than a milestone with an end date: a milestone is one
+ * split point that runs to today, and this is a bounded stretch with a
+ * baseline, a list of symptoms it was set up to change, and a state (not
+ * started, running, finished) a milestone has no use for.
+ *
+ * `symptoms` are the ones picked in advance, matched by `symptomKey`. Every
+ * other symptom is still read, but shown apart as not what the experiment was
+ * set up to test: pick a dozen after the fact and one will look different by
+ * chance, which is the whole reason naming them first matters.
+ */
+export interface Experiment {
+  id: string;
+  /** What is being tried, in your own words — "No caffeine after noon". */
+  label: string;
+  /** The first day of it. Noon on the picked day, as `Milestone.date` is anchored. */
+  startDate: string;
+  /** The last day of it, inclusive, never before `startDate`. Noon-anchored the same way. */
+  endDate: string;
+  /** Symptom names picked to watch, as typed; matched by `symptomKey`. Empty means mood only. */
+  symptoms: string[];
+  /** What you expect it to change, or null. */
+  note: string | null;
+  createdAt: string;
+}
+
+/**
  * One dose of something taken — see `src/utils/medicationLog.ts` and
  * `docs/arch/mood-log.md`.
  *

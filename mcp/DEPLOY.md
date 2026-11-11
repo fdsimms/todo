@@ -82,7 +82,7 @@ In the app: **Settings → Data & reset → Sync**.
 - **Sync server:** `https://dundundun-mcp.fly.dev`
 - **Sync server token:** the phone sync token from step 3
 - **Include health logs:** leave it off unless you want Claude to see your mood, medication and
-  food logs and your milestones.
+  food logs, your milestones and your experiments.
 
 Then tap **Sync now**. The first sync sends your whole database, so it can take a moment.
 

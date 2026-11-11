@@ -3,7 +3,7 @@ import { isProjectLockedAtAll, maskedOutsideApp } from './projectLock';
 import { placeGateAllows, placeTrustedUntil, readPlaceFix } from './placeGate';
 import type { PermissionResponse } from 'expo-modules-core';
 import { AppState, Platform } from 'react-native';
-import type { CheckIn, RestTimer, StepTimer, Task } from '../types';
+import type { CheckIn, Experiment, RestTimer, StepTimer, Task } from '../types';
 import { CHECK_IN_ACTIONS, CHECK_IN_ANSWERS, answerLabel, checkInQuestion, checkInTitle } from './checkIns';
 import type { FocusSession } from '../types';
 import { isTimedTask, isTimerRunning, timerRemaining } from './timer';
@@ -34,6 +34,8 @@ import { nudgeReminderPastMeeting } from './reminderNudge';
 import { isAlarmKitAvailable, requestAlarmAuthorization, scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, stepTimerAlarmUuid, taskAlarmUuid } from './alarmChain';
 import { isDemoModeActive } from './demoState';
+import { experimentNoticeContent, experimentNoticeDayKey } from './experiments';
+import { onLogicalDay, taskDayStart } from './clockTime';
 import { quotaRunSpan, quotaDueTimesAfter } from './quotaSchedule';
 import { addDays } from 'date-fns/addDays';
 import { dayKeyOf, formatTimeOfDay, getCurrentDayStart, getDayStart } from './dateUtils';
@@ -511,6 +513,69 @@ export async function scheduleCheckIn(checkIn: CheckIn): Promise<void> {
 export async function cancelCheckIn(id: string): Promise<void> {
   if (isDemoModeActive()) return;
   await Notifications.cancelScheduledNotificationAsync(checkInNotificationId(id)).catch(() => {});
+}
+
+// ─── Experiment finish notices ───────────────────────────────────────────────
+
+/** Every finish notice's identifier starts with this, so a sync can find the ones it no longer wants. */
+export const EXPERIMENT_NOTICE_PREFIX = 'experiment-end:';
+
+/**
+ * When an experiment's finish notice fires, or null when that has passed:
+ * the start of your active hours on the logical day after its last day, pushed
+ * past quiet hours. That morning is the first moment the whole stretch can be
+ * read, and the start of active hours is when you are up to read it.
+ */
+export function experimentNoticeAt(
+  experiment: Pick<Experiment, 'startDate' | 'endDate'>,
+  now: Date,
+  settings: { dayResetTime: string; activeHoursStart: string; quietHoursStart: string | null; quietHoursEnd: string | null },
+): Date | null {
+  const dayStart = taskDayStart(new Date(`${experimentNoticeDayKey(experiment)}T00:00:00`), settings.dayResetTime);
+  const at = deferPastQuietHours(
+    onLogicalDay(dayStart, settings.activeHoursStart),
+    settings.quietHoursStart,
+    settings.quietHoursEnd,
+  );
+  return at.getTime() > now.getTime() ? at : null;
+}
+
+/**
+ * Lays down one finish notice per experiment still to finish, and cancels
+ * every other one this kind scheduled: a deleted experiment, one moved
+ * earlier, or one that came in by sync from another phone. The experiments
+ * sync, so each phone schedules its own from the rows it holds rather than
+ * relying on the phone it was started on.
+ *
+ * Not counted against `MAX_PENDING_REMINDERS`, like a check-in: one per
+ * experiment, and there are a handful.
+ */
+export async function syncExperimentNotices(experiments: readonly Experiment[]): Promise<void> {
+  // A demo session's experiments are fiction; a notice about one would be a
+  // claim about the real person's health on their lock screen.
+  if (isDemoModeActive()) return;
+  const { dayResetTime, activeHoursStart, quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+  const now = new Date();
+  const wanted = new Set<string>();
+  for (const experiment of experiments) {
+    const identifier = `${EXPERIMENT_NOTICE_PREFIX}${experiment.id}`;
+    await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => {});
+    const at = experimentNoticeAt(experiment, now, { dayResetTime, activeHoursStart, quietHoursStart, quietHoursEnd });
+    if (!at) continue;
+    wanted.add(identifier);
+    const { title, body } = experimentNoticeContent(experiment.label);
+    await Notifications.scheduleNotificationAsync({
+      identifier,
+      content: { title, body, data: { experimentId: experiment.id }, sound: true },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at },
+    }).catch(() => {});
+  }
+  const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+  for (const request of pending) {
+    if (request.identifier.startsWith(EXPERIMENT_NOTICE_PREFIX) && !wanted.has(request.identifier)) {
+      await Notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => {});
+    }
+  }
 }
 
 export async function cancelMedicationOkAgain(key: string): Promise<void> {

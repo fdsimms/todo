@@ -105,6 +105,8 @@ import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useExperimentStore } from '../store/useExperimentStore';
+import { experimentResult, experimentSummary } from '../utils/experiments';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { effectiveCookwareType } from '../utils/cookware';
 import { useJournalStore } from '../store/useJournalStore';
@@ -2780,6 +2782,17 @@ describe('demo seed — people', () => {
     const days = buildMoodDays(useMoodStore.getState().logs, [], '00:00');
     const contrast = milestoneMoodContrast(days, dayKeyOf(new Date(milestones[0].date)));
     expect(contrast).not.toBeNull();
+  });
+
+  it('seeds a running experiment with comparisons to draw, and a finished one with a result line', () => {
+    const logs = useMoodStore.getState().logs;
+    const todayKey = dayKeyOf(new Date());
+    const results = useExperimentStore.getState().experiments.map(e => experimentResult(e, logs, todayKey));
+    const running = results.find(r => r.status === 'running');
+    expect(running?.mood).not.toBeNull();
+    expect(running?.picked.some(p => p.comparable)).toBe(true);
+    const finished = results.find(r => r.status === 'finished');
+    expect(finished && experimentSummary(finished)).toMatch(/^Mood .* Poor sleep on/);
   });
 
   it('seeds a couple of nutrition targets, so the totals read against something', () => {

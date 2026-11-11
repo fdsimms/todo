@@ -74,6 +74,9 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // differently on each phone, and a milestone is written once and rarely
   // edited, so last-writer-wins is a no-op on almost every row.
   { name: 'milestones', key: ['id'] },
+  // Experiments — a stretch of days read against the one before it. Same
+  // reasoning as milestones: the read has to come out the same on every phone.
+  { name: 'experiments', key: ['id'] },
   // Copy flags (CopyFlag): temporary dev tooling. They have to travel so the
   // MCP server can read what the phone flagged and resolve it.
   { name: 'copy_flags', key: ['id'] },
@@ -932,6 +935,8 @@ export interface ServerSharing {
  *
  * `milestones` are here because they exist to be read against the mood log,
  * and "started sertraline" is as common a one as "new job".
+ * `experiments` sit beside them for the same reason: "Cut out dairy" with the
+ * symptoms it is watching says as much as the symptom log itself.
  * `journal_entries` are not here but in `JOURNAL_SYNC_TABLES` below, with a
  * switch of their own.
  * `medication_archived` and `medication_registered` are here because they are lists of medicine names, which
@@ -952,7 +957,7 @@ export interface ServerSharing {
  * a peer on an older build that still sends them does no harm.
  */
 export const HEALTH_SYNC_TABLES: readonly string[] = [
-  'mood_logs', 'milestones', 'medication_logs', 'check_ins', 'food_logs', 'workout_sessions', 'workout_sets',
+  'mood_logs', 'milestones', 'experiments', 'medication_logs', 'check_ins', 'food_logs', 'workout_sessions', 'workout_sets',
   // A fast is a record of what a body did, beside the food log it is read with.
   'fasts',
 ];

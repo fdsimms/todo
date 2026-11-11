@@ -9,7 +9,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { speakAgenda } from './agendaSpeech';
 import { runOrHoldForDemo } from './demoHold';
 import { answerCheckIn, askCheckIn } from './checkInRecording';
-import { resetToMedications } from '../navigation/navigationRef';
+import { resetToExperiment, resetToMedications } from '../navigation/navigationRef';
 
 // Tapping a reminder (or a fired AlarmKit alarm, which launches the app the
 // same way a notification tap does) used to do nothing app-specific — the
@@ -88,6 +88,10 @@ export function useNotificationTapSync(): void {
           if (route.answer) answerCheckIn(route.checkInId, route.answer);
           else askCheckIn(route.checkInId);
           resetToMedications();
+          return;
+        case 'experiment':
+          // "Experiment finished": its page, with the whole stretch to read.
+          resetToExperiment(route.experimentId);
           return;
         case 'open':
           resetToToday();

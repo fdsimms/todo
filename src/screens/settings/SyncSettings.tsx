@@ -194,7 +194,7 @@ export function SyncSettings() {
         title: 'How sync works',
         paragraphs: [
           'Changes sync when you open the app on each device.',
-          'iCloud stores them in your private iCloud database and doesn’t receive your mood, medication or food logs, workouts, journal, dreams or milestones.',
+          'iCloud stores them in your private iCloud database and doesn’t receive your mood, medication or food logs, workouts, journal, dreams, milestones or experiments.',
           'A sync server holds a full copy of everything else except recipe photos, plus your health logs if you include them, on the machine you point it at. Set one up only if you want that copy.',
         ],
       }}
@@ -285,7 +285,7 @@ export function SyncSettings() {
         icon="heart-outline"
         iconColor={serverHealthLogs ? colors.accent : undefined}
         label="Include health logs"
-        hint="Sends your mood, medication and food logs, your workouts and your milestones to the sync server. Turning this off stops sending new entries. Entries already sent stay on the server, and the server is told this is off so Claude knows they may be incomplete."
+        hint="Sends your mood, medication and food logs, your workouts, your milestones and your experiments to the sync server. Turning this off stops sending new entries. Entries already sent stay on the server, and the server is told this is off so Claude knows they may be incomplete."
         toggle={serverHealthLogs}
         value={serverHealthLogs ? 'On' : 'Off'}
         onPress={() => setServerHealthLogs(!serverHealthLogs)}

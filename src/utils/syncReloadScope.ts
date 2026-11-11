@@ -52,6 +52,7 @@ export const STORE_RELOAD_READS = {
   PersonGroup: { tables: ['person_groups'] },
   Mood: { tables: ['mood_logs'] },
   Milestone: { tables: ['milestones'] },
+  Experiment: { tables: ['experiments'] },
   Cookware: { tables: ['cookware'], settings: ['cookware_recent'] },
   CopyFlag: { tables: ['copy_flags'] },
   Fast: { tables: ['fasts'] },

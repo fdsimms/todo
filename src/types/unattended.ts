@@ -61,6 +61,8 @@ export type UnattendedSubject =
   // A milestone on the mood log (`Milestone`). Titled by kind, never by its label, for the
   // reason a mood entry is: the Activity list is about the app, not somebody's health.
   | 'milestone'
+  // An experiment on the mood log (`Experiment`). Titled by kind, never by its label, for the same reason.
+  | 'experiment'
   // A restaurant dish rating. The feature is gone; kept so older entries still read.
   | 'dish'
   // A journal or dream entry (`JournalEntry`). Titled by kind, never by its text, for the same reason.

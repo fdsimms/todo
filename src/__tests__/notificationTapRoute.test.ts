@@ -18,6 +18,10 @@ describe('routeNotificationTap', () => {
     expect(routeNotificationTap({}, 'complete')).toEqual({ kind: 'none' });
   });
 
+  it('opens an experiment from its finish notice', () => {
+    expect(routeNotificationTap({ experimentId: 'e1' }, TAP)).toEqual({ kind: 'experiment', experimentId: 'e1' });
+  });
+
   it('opens Today for a plain tap on a task reminder', () => {
     expect(routeNotificationTap({ taskId: 't1' }, TAP)).toEqual({ kind: 'open', taskId: 't1' });
   });

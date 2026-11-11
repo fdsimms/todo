@@ -17,6 +17,7 @@ import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useExperimentStore } from '../store/useExperimentStore';
 import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { useFastStore } from '../store/useFastStore';
@@ -2533,6 +2534,7 @@ export function seedDemoData(): void {
   // the pass would show the feature only to somebody who had already found it.
   seedMoodTasks(today);
   seedMilestone(today);
+  seedExperiment(today);
   seedSuggestions(today);
   seedCookware();
   seedFast();
@@ -3848,6 +3850,38 @@ function seedMilestone(today: Date): void {
   const date = subDays(today, 9);
   date.setHours(12, 0, 0, 0);
   addMilestone('Started a magnesium supplement', date);
+}
+
+/**
+ * Two experiments, so the Mood screen shows both kinds of row. One is a week
+ * into two, watching the two symptoms the seeded log carries, so it lists with
+ * its progress and its page has a mood and a symptom comparison to draw (its
+ * baseline holds the seeded low patch and the milestone above, so "Also
+ * changed in this stretch" shows too). The other finished yesterday, so its
+ * row carries the one-line result a finished experiment shows. They overlap,
+ * which each page names. Through `addExperiment`, so the rows can't drift from
+ * the type.
+ */
+function seedExperiment(today: Date): void {
+  const { addExperiment } = useExperimentStore.getState();
+  const start = subDays(today, 7);
+  start.setHours(12, 0, 0, 0);
+  addExperiment({
+    label: 'No caffeine after noon',
+    startDate: start,
+    endDate: addDays(start, 13),
+    symptoms: ['Headache', 'Poor sleep'],
+    note: 'Fewer headaches, and falling asleep sooner.',
+  });
+  const finishedStart = subDays(today, 8);
+  finishedStart.setHours(12, 0, 0, 0);
+  addExperiment({
+    label: 'Screens off by 10pm',
+    startDate: finishedStart,
+    endDate: addDays(finishedStart, 7),
+    symptoms: ['Poor sleep'],
+    note: null,
+  });
 }
 
 /**
