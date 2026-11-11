@@ -712,6 +712,16 @@ describe('planMeal', () => {
     expect(getEntries()).toEqual([planned]);
   });
 
+  it('notifies subscribers when the meal lands outside the loaded window, without adding it', () => {
+    loadWeek();
+    const before = useMealPlanStore.getState().entries;
+    useMealPlanStore.getState().planMeal({ date: '2026-09-20', slot: 'dinner', recipeId: 'r1', title: 'Ragù' });
+
+    // A new array (what Today's meal strip re-reads on), still without the row.
+    expect(useMealPlanStore.getState().entries).not.toBe(before);
+    expect(getEntries()).toEqual([]);
+  });
+
   it('takes a planned recipe off Up Next, and the undo puts it back in its place', () => {
     loadWeek();
     mockRecipeState.recipes = [{ id: 'r1', name: 'Ragù', upNext: true, upNextOrder: 3 } as unknown as Recipe];
