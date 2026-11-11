@@ -55,6 +55,17 @@ import { BUTTON_LABEL } from '../copy/shared';
 const NOTE_MAX_LENGTH = 500;
 
 /** Noon on a picked day — see the note at the call site. */
+/**
+ * Accent, orange, red for mild, moderate and severe. Mild keeps the accent every
+ * picked pill has (undefined), since the theme has no neutral-warm colour and
+ * green reads as "good". The `…Fill` hues keep white text readable.
+ */
+function severityFill(severity: number, colors: Colors): string | undefined {
+  if (severity >= 3) return colors.redFill;
+  if (severity === 2) return colors.orangeFill;
+  return undefined;
+}
+
 function noonOn(day: Date): Date {
   const at = new Date(day);
   at.setHours(12, 0, 0, 0);
@@ -507,7 +518,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
               key: symptomKey(name),
               label: name,
               selected: !!picked,
-              level: picked ? { value: picked.severity, of: SYMPTOM_SEVERITIES.length } : undefined,
+              level: picked ? { value: picked.severity, of: SYMPTOM_SEVERITIES.length, fill: severityFill(picked.severity, colors) } : undefined,
               accessibilityLabel: name,
               accessibilityValue: picked ? severityLabel(picked.severity) : undefined,
               accessibilityHint: 'Tap again to change how bad it was. Hold to remove.',
