@@ -17,6 +17,7 @@ import { useSavedMealsStore } from '../store/useSavedMealsStore';
 import { usePendingEstimateStore } from '../store/usePendingEstimateStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useExperimentStore } from '../store/useExperimentStore';
 import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { useFastStore } from '../store/useFastStore';
@@ -2533,6 +2534,7 @@ export function seedDemoData(): void {
   // the pass would show the feature only to somebody who had already found it.
   seedMoodTasks(today);
   seedMilestone(today);
+  seedExperiment(today);
   seedSuggestions(today);
   seedCookware();
   seedFast();
@@ -3848,6 +3850,25 @@ function seedMilestone(today: Date): void {
   const date = subDays(today, 9);
   date.setHours(12, 0, 0, 0);
   addMilestone('Started a magnesium supplement', date);
+}
+
+/**
+ * One experiment, a week into two, watching the two symptoms the seeded log
+ * carries, so the Mood screen lists it with its progress and its page has a
+ * mood and a symptom comparison to draw. The baseline it reads holds the
+ * seeded low patch and the milestone above, so "Also changed in this stretch"
+ * shows too. Through `addExperiment`, so the row can't drift from the type.
+ */
+function seedExperiment(today: Date): void {
+  const start = subDays(today, 7);
+  start.setHours(12, 0, 0, 0);
+  useExperimentStore.getState().addExperiment({
+    label: 'No caffeine after noon',
+    startDate: start,
+    endDate: addDays(start, 13),
+    symptoms: ['Headache', 'Poor sleep'],
+    note: 'Fewer headaches, and falling asleep sooner.',
+  });
 }
 
 /**

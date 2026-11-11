@@ -111,6 +111,7 @@ import { listErrors, MAX_ERRORS } from './errorTools';
 import { storageReport } from './storageTools';
 import { DEFAULT_PATTERN_DAYS, focusHistory, habitPatterns, moodInsights } from './patternTools';
 import { addMilestone, deleteMilestone, listMilestones, updateMilestone } from './milestoneTools';
+import { addExperiment, deleteExperiment, listExperiments, updateExperiment } from './experimentTools';
 import { addCookware, deleteCookware, listCookware, updateCookware } from './cookwareTools';
 import { listCopyFlags, resolveCopyFlag } from './copyFlagTools';
 import { DEFAULT_FAST_LIMIT, MAX_FAST_LIMIT, listFasts } from './fastTools';
@@ -639,6 +640,13 @@ export function buildMcpServer(replica: Replica, scope: AuthScope = 'read'): Mcp
     'The days something changed in the person\'s life that they have marked on the mood log ("Started sertraline", "New job"), each with its date. mood_insights reads mood before and after each one, under its own minimum-days rules; a start and a later stop are two milestones and are never paired. Empty unless the person has turned on Include health logs for the sync server on their phone.',
     {},
     async () => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listMilestones(replica))))
+  );
+
+  server.tool(
+    'list_experiments',
+    'Changes the person is trying for a set stretch of days ("No caffeine after noon" for 4 weeks), each with its days, how far along it is, and their mood and symptoms during it against the same number of days just before it: the same read the phone\'s experiment page shows, under its minimum-days rules. Symptoms they picked in advance are under watched; the rest are apart because one can differ by chance. A difference never shows the experiment caused it. Empty unless the person has turned on Include health logs for the sync server on their phone.',
+    {},
+    async () => json(await withFresh(() => withLogSyncNote(replica, 'healthLogs', listExperiments(replica))))
   );
 
   server.tool(
@@ -2543,6 +2551,59 @@ function registerWriteTools(
         return json(await withWrite(() => resolveCopyFlag(replica, id, resolution)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not resolve the flag.' });
+      }
+    }
+  );
+
+  server.tool(
+    'add_experiment',
+    'Start an experiment: a change the person will try for a set stretch of days, which the mood log compares with the same number of days just before it. Only what they tell you, in their words. Give endDate or days (default 28); startDate defaults to today. symptoms are the ones they expect it to change; use the names they already log (list_mood_logs shows them).',
+    {
+      label: z.string().min(1).max(200).describe('What they are trying, in a few words.'),
+      startDate: dayKey.optional().describe('The first day, YYYY-MM-DD. Default today.'),
+      endDate: dayKey.optional().describe('The last day, YYYY-MM-DD, included.'),
+      days: z.number().int().min(1).max(365).optional().describe('How many days it lasts, counting the first. Used when endDate is not given. Default 28.'),
+      symptoms: z.array(z.string().min(1).max(60)).max(20).optional().describe('Symptoms to watch, as the person names them.'),
+      expected: z.string().min(1).max(300).optional().describe('What they expect it to change, in their words.'),
+    },
+    async input => {
+      try {
+        return json(await withWrite(() => addExperiment(replica, input)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not start the experiment.' });
+      }
+    }
+  );
+
+  server.tool(
+    'update_experiment',
+    'Change an experiment by its id from list_experiments: its name, first or last day, the symptoms it watches (the list given replaces the old one) or what is expected (null clears it). Only what you name changes. To end one early, set endDate to today.',
+    {
+      id: z.string().min(1),
+      label: z.string().min(1).max(200).optional(),
+      startDate: dayKey.optional().describe('YYYY-MM-DD.'),
+      endDate: dayKey.optional().describe('YYYY-MM-DD, the last day, included.'),
+      symptoms: z.array(z.string().min(1).max(60)).max(20).optional(),
+      expected: z.string().max(300).nullable().optional(),
+    },
+    async ({ id, ...patch }) => {
+      try {
+        return json(await withWrite(() => updateExperiment(replica, id, patch)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not change the experiment.' });
+      }
+    }
+  );
+
+  server.tool(
+    'delete_experiment',
+    'Delete an experiment by its id from list_experiments. The mood and symptom entries are untouched; only the experiment goes, and it cannot be restored from here.',
+    { id: z.string().min(1) },
+    async ({ id }) => {
+      try {
+        return json(await withWrite(() => deleteExperiment(replica, id)));
+      } catch (e) {
+        return json({ error: e instanceof Error ? e.message : 'Could not delete the experiment.' });
       }
     }
   );

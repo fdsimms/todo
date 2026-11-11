@@ -131,6 +131,7 @@ export function MilestoneSheet({ visible, milestone, onClose }: Props) {
       }
     >
       <TextField
+        ref={labelInputRef}
         style={styles.textInput}
         value={label}
         onChangeText={setLabel}

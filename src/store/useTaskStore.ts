@@ -230,6 +230,7 @@ import { usePendingRecipeEstimateStore } from './usePendingRecipeEstimateStore';
 import { useMoodStore } from './useMoodStore';
 import { useJournalStore } from './useJournalStore';
 import { useMilestoneStore } from './useMilestoneStore';
+import { useExperimentStore } from './useExperimentStore';
 import { useMealSkipStore } from './useMealSkipStore';
 import { useCookwareStore } from './useCookwareStore';
 import { useCopyFlagStore } from './useCopyFlagStore';
@@ -3699,6 +3700,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // milestones are read against it, so a device swap that left them out of
     // step would date a before/after split against the wrong person's phone.
     part('Milestone', () => useMilestoneStore.getState().initialize());
+    // Read against the mood log for the same reason milestones are.
+    part('Experiment', () => useExperimentStore.getState().initialize());
     // Pot weights are read while typing a dish's weight, so they swap with the
     // database the recipes came from.
     part('Cookware', () => useCookwareStore.getState().initialize());

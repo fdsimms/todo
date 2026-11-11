@@ -13,7 +13,7 @@ export * from './focus'; // focus sessions and their steps
 export * from './unattended'; // the record of what the app did unattended
 export * from './project'; // Project, ProjectLink
 export * from './people'; // Person, PersonDate, PersonGroup, PersonNote
-export * from './wellbeing'; // mood, symptoms, journal, fasts, milestones, medication doses
+export * from './wellbeing'; // mood, symptoms, journal, fasts, milestones, experiments, medication doses
 export * from './workouts'; // exercises, routines, programs, sessions, sets, gyms
 export * from './copyFlags'; // CopyFlag (temporary dev tooling)
 export * from './rewards'; // coins and rewards

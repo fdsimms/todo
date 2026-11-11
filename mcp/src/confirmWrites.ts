@@ -158,7 +158,7 @@ function collapse(lines: string[]): string[] {
 
 const SUBJECT_NOUN: Record<string, string> = {
   task: 'task', project: 'project', template: 'template', recipe: 'recipe', meal: 'meal',
-  milestone: 'milestone', dish: 'dish', cookware: 'cookware', journal: 'journal entry', view: 'saved view', setting: 'setting',
+  milestone: 'milestone', experiment: 'experiment', dish: 'dish', cookware: 'cookware', journal: 'journal entry', view: 'saved view', setting: 'setting',
   routine: 'routine', program: 'program', gym: 'gym', workout: 'workout',
 };
 

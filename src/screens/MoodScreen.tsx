@@ -1,5 +1,5 @@
 // The mood and symptom log and what it says against your tasks, Health, food,
-// workouts and milestones, each comparison with its sample size beside it (see
+// workouts, milestones and experiments, each comparison with its sample size beside it (see
 // docs/arch/mood-log.md). One component of ~1,000 lines, so grep a landmark
 // rather than reading it start to finish:
 //
@@ -23,6 +23,7 @@ import { useJournalAccess } from '../hooks/useJournalAccess';
 import { useRouteArrival } from '../hooks/useRouteArrival';
 import { journalPlainText } from '../utils/journalMarkdown';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useExperimentStore } from '../store/useExperimentStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, HEALTH_HISTORY_DAYS } from '../store/useHealthStore';
@@ -90,6 +91,8 @@ import { MoodFace } from '../components/MoodFace';
 import { PressableScale } from '../components/PressableScale';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { MilestoneSheet } from '../components/MilestoneSheet';
+import { ExperimentSheet } from '../components/ExperimentSheet';
+import { describeLength, experimentProgress, experimentSpan, experimentStatus, sortExperimentsForList } from '../utils/experiments';
 import { ContrastBars } from '../components/ContrastBars';
 import { capitalize } from '../utils/capitalize';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
@@ -137,6 +140,7 @@ export function MoodScreen() {
   // ==== store reads, and the Health and food windows loaded on demand ====
   const logs = useMoodStore(s => s.logs);
   const milestones = useMilestoneStore(s => s.milestones);
+  const experiments = useExperimentStore(s => s.experiments);
   const tasks = useTaskStore(s => s.tasks);
   // Apple Health's trailing window, read on demand rather than on the app's
   // foreground triggers: it is a wider query than the Today reading and only
@@ -187,6 +191,7 @@ export function MoodScreen() {
   const [editing, setEditing] = useState<MoodLog | null>(null);
   const [milestoneSheetOpen, setMilestoneSheetOpen] = useState(false);
   const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null);
+  const [experimentSheetOpen, setExperimentSheetOpen] = useState(false);
 
   // ==== opening the log sheet from a link ====
   // `dundundun://mood?log=1` — the daily check-in task's link button. Stamped
@@ -409,6 +414,23 @@ export function MoodScreen() {
     [days, milestones],
   );
 
+  // Experiments as a directory, like milestones: every one is listed whatever
+  // its data says, and its read lives on its own page (ExperimentDetailScreen).
+  const experimentRows = useMemo(
+    () => sortExperimentsForList(experiments, todayKey).map(experiment => {
+      const status = experimentStatus(experiment, todayKey);
+      const span = experimentSpan(experiment);
+      const progress = experimentProgress(experiment, todayKey);
+      const meta = status === 'running'
+        ? `Day ${progress.day} of ${progress.of} · ends ${format(dayKeyToDate(span.endKey), 'MMM d')}`
+        : status === 'upcoming'
+          ? `Starts ${format(dayKeyToDate(span.startKey), 'MMM d')} · ${describeLength(span.lengthDays)}`
+          : `Finished ${format(dayKeyToDate(span.endKey), 'MMM d')} · ${describeLength(span.lengthDays)}`;
+      return { experiment, status, progress, meta };
+    }),
+    [experiments, todayKey],
+  );
+
   // Same key-to-casing resolution as symptomNames, for the same reason: a
   // contrast is keyed on the lowercased match, not what the user typed.
   const contextTagNames = useMemo(() => {
@@ -503,6 +525,7 @@ export function MoodScreen() {
     setMilestoneSheetOpen(true);
   };
   const closeMilestoneSheet = () => { setMilestoneSheetOpen(false); setEditingMilestone(null); };
+  const openNewExperiment = () => { haptics.tap(); setExperimentSheetOpen(true); };
 
   const daysToGo = Math.max(0, MIN_PAIRED_DAYS - completion.dayCount);
 
@@ -1124,6 +1147,48 @@ export function MoodScreen() {
             </View>
           </>
 
+          <>
+            <Text style={styles.sectionTitle}>EXPERIMENTS</Text>
+            <View style={styles.card}>
+              {experimentRows.length === 0 ? (
+                <Text style={[styles.pending, styles.milestoneAddSpacing]}>
+                  Try a change for a set number of days (cutting out caffeine, an earlier
+                  bedtime) and compare your mood and symptoms during it with the same number
+                  of days before it.
+                </Text>
+              ) : (
+                <View style={styles.milestoneAddSpacing}>
+                  {experimentRows.map(({ experiment, status, progress, meta }, i) => (
+                    <TouchableOpacity
+                      key={experiment.id}
+                      style={[styles.linkRow, i > 0 && styles.milestoneRowGap]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => { haptics.tap(); navigation.navigate('ExperimentDetail', { experimentId: experiment.id }); }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${experiment.label}, ${meta}`}
+                    >
+                      <View style={styles.linkBody}>
+                        <Text style={styles.linkLabel} numberOfLines={2}>{experiment.label}</Text>
+                        <Text style={styles.linkMeta}>{meta}</Text>
+                        {status === 'running' && (
+                          <View style={styles.experimentTrack}>
+                            <View style={[styles.experimentFill, { width: `${(progress.day / progress.of) * 100}%` }]} />
+                          </View>
+                        )}
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              <InlineAction
+                label="New experiment"
+                onPress={openNewExperiment}
+                variant={experimentRows.length > 0 ? 'neutral' : 'accent'}
+              />
+            </View>
+          </>
+
           <WideSpan>
             {recent.length > 0 && <Text style={styles.sectionTitle}>RECENT ENTRIES</Text>}
             {recent.map(log => (
@@ -1177,6 +1242,13 @@ export function MoodScreen() {
           visible={milestoneSheetOpen}
           milestone={editingMilestone}
           onClose={closeMilestoneSheet}
+        />
+      </LazySheet>
+      <LazySheet open={experimentSheetOpen}>
+        <ExperimentSheet
+          visible={experimentSheetOpen}
+          experiment={null}
+          onClose={() => setExperimentSheetOpen(false)}
         />
       </LazySheet>
       <ScrollToTopButton {...scrollTop.buttonProps} />
@@ -1307,6 +1379,15 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   // Between one pending milestone row and the next — ContrastBars rows carry
   // their own gap, but a plain TouchableOpacity row needs its own.
   milestoneRowGap: { marginTop: spacing.md },
+  // A running experiment's progress, under its meta line.
+  experimentTrack: {
+    height: 4,
+    borderRadius: radius.full,
+    backgroundColor: colors.separator,
+    marginTop: spacing.xsm,
+    overflow: 'hidden',
+  },
+  experimentFill: { height: 4, borderRadius: radius.full, backgroundColor: colors.accent },
   seeAllRow: {
     flexDirection: 'row',
     alignItems: 'center',

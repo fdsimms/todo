@@ -126,6 +126,7 @@ jest.mock('../db/database', () => ({
   dbDeleteMoodLog: jest.fn(),
   // Milestones ride the same fan-out immediately after the mood log.
   dbGetAllMilestones: jest.fn().mockReturnValue([]),
+  dbGetAllExperiments: jest.fn().mockReturnValue([]),
   dbGetMealSkipsSince: jest.fn().mockReturnValue([]),
   dbGetAllCookware: jest.fn().mockReturnValue([]),
   dbGetAllCopyFlags: jest.fn().mockReturnValue([]),
@@ -150,6 +151,9 @@ jest.mock('../db/database', () => ({
   dbInsertMilestone: jest.fn(),
   dbUpdateMilestone: jest.fn(),
   dbDeleteMilestone: jest.fn(),
+  dbInsertExperiment: jest.fn(),
+  dbUpdateExperiment: jest.fn(),
+  dbDeleteExperiment: jest.fn(),
   // Event people links ride the same fan-out (useEventPeopleStore).
   dbGetAllEventPeopleLinks: jest.fn().mockReturnValue([]),
   dbUpsertEventPeopleLink: jest.fn(),

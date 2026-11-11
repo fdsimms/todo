@@ -1491,6 +1491,34 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return milestone;
     },
 
+    // An experiment's label and symptoms are health content, so the recorded
+    // title is the kind, as a milestone's is. The preview names it.
+    addExperiment(draft) {
+      const experiment = replica.addExperiment(draft);
+      log({ action: 'created', subject: 'experiment', title: 'Experiment', taskId: null, recordId: experiment.id, note: `Start the experiment "${experiment.label}", ${replica.logicalDayKeyOf(experiment.startDate)} to ${replica.logicalDayKeyOf(experiment.endDate)}` });
+      return experiment;
+    },
+
+    updateExperiment(id, patch) {
+      const before = replica.experiments().find(e => e.id === id);
+      const experiment = replica.updateExperiment(id, patch);
+      const changes = [
+        ...(before && before.label !== experiment.label ? [`name from "${before.label}" to "${experiment.label}"`] : []),
+        ...(before && before.startDate !== experiment.startDate ? [`first day from ${replica.logicalDayKeyOf(before.startDate)} to ${replica.logicalDayKeyOf(experiment.startDate)}`] : []),
+        ...(before && before.endDate !== experiment.endDate ? [`last day from ${replica.logicalDayKeyOf(before.endDate)} to ${replica.logicalDayKeyOf(experiment.endDate)}`] : []),
+        ...(before && before.symptoms.join('\n') !== experiment.symptoms.join('\n') ? [`symptoms to watch to ${experiment.symptoms.length ? experiment.symptoms.join(', ') : 'none'}`] : []),
+        ...(before && before.note !== experiment.note ? ['what is expected'] : []),
+      ];
+      log({ action: 'edited', subject: 'experiment', title: 'Experiment', taskId: null, recordId: experiment.id, note: changes.length ? `Change the experiment "${before!.label}": ${changes.join('; ')}` : `Leave the experiment "${experiment.label}" as it is` });
+      return experiment;
+    },
+
+    deleteExperiment(id) {
+      const experiment = replica.deleteExperiment(id);
+      log({ action: 'cleared', subject: 'experiment', title: 'Experiment', taskId: null, recordId: experiment.id, note: `Delete the experiment "${experiment.label}". The mood log is untouched. It cannot be restored from here.` });
+      return experiment;
+    },
+
     // Routines are plans, named by their own names. A workout is health
     // content, so the recorded title is the kind, as a mood entry's is; the
     // preview names it, for the person, before the write.

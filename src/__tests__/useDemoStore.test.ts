@@ -105,6 +105,8 @@ import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useAgentSuggestionStore } from '../store/useAgentSuggestionStore';
 import { useMilestoneStore } from '../store/useMilestoneStore';
+import { useExperimentStore } from '../store/useExperimentStore';
+import { experimentResult } from '../utils/experiments';
 import { useCookwareStore } from '../store/useCookwareStore';
 import { effectiveCookwareType } from '../utils/cookware';
 import { useJournalStore } from '../store/useJournalStore';
@@ -2780,6 +2782,15 @@ describe('demo seed — people', () => {
     const days = buildMoodDays(useMoodStore.getState().logs, [], '00:00');
     const contrast = milestoneMoodContrast(days, dayKeyOf(new Date(milestones[0].date)));
     expect(contrast).not.toBeNull();
+  });
+
+  it('seeds a running experiment whose page has a mood and a symptom comparison to draw', () => {
+    const [experiment] = useExperimentStore.getState().experiments;
+    expect(experiment).toBeDefined();
+    const result = experimentResult(experiment, useMoodStore.getState().logs, dayKeyOf(new Date()));
+    expect(result.status).toBe('running');
+    expect(result.mood).not.toBeNull();
+    expect(result.picked.some(p => p.comparable)).toBe(true);
   });
 
   it('seeds a couple of nutrition targets, so the totals read against something', () => {

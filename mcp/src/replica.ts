@@ -49,6 +49,7 @@ import type {
   GeneratedKind,
   HealthRule,
   Milestone,
+  Experiment,
   Cookware,
   CookwareType,
   CopyFlag,
@@ -1308,6 +1309,15 @@ export interface Replica {
   addMilestone(label: string, date: Date): Milestone;
   updateMilestone(id: string, patch: { label?: string; date?: Date }): Milestone;
   deleteMilestone(id: string): Milestone;
+  experiments(): Experiment[];
+  /**
+   * Experiments through `useExperimentStore`'s own actions, so a blank name or
+   * an end before the start is refused as the sheet refuses it. Dates are any
+   * time on the day; the store anchors them at noon.
+   */
+  addExperiment(draft: import('../../src/store/useExperimentStore').ExperimentDraft): Experiment;
+  updateExperiment(id: string, patch: import('../../src/store/useExperimentStore').ExperimentPatch): Experiment;
+  deleteExperiment(id: string): Experiment;
   /** Every saved pot, pan, lid and tub in the person's order. See src/utils/cookware.ts. */
   cookware(): Cookware[];
   /**
@@ -4785,6 +4795,46 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       if (!milestone) throw new Error(`No milestone with id ${id}. list_milestones names them.`);
       store.removeMilestone(id);
       return milestone;
+    },
+    experiments: () => db.dbGetAllExperiments(),
+    // Loaded and hydrated per write, like the milestone store above.
+    addExperiment(draft) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useExperimentStore } = require('../../src/store/useExperimentStore') as typeof import('../../src/store/useExperimentStore');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { experimentRefusal } = require('../../src/utils/experiments') as typeof import('../../src/utils/experiments');
+      const store = useExperimentStore.getState();
+      store.initialize();
+      const refusal = experimentRefusal(draft);
+      if (refusal) throw new Error(refusal);
+      return store.addExperiment(draft)!;
+    },
+    updateExperiment(id, patch) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useExperimentStore } = require('../../src/store/useExperimentStore') as typeof import('../../src/store/useExperimentStore');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { experimentRefusal } = require('../../src/utils/experiments') as typeof import('../../src/utils/experiments');
+      const store = useExperimentStore.getState();
+      store.initialize();
+      const existing = store.experiments.find(e => e.id === id);
+      if (!existing) throw new Error(`No experiment with id ${id}. list_experiments names them.`);
+      const refusal = experimentRefusal({
+        label: patch.label ?? existing.label,
+        startDate: patch.startDate ?? new Date(existing.startDate),
+        endDate: patch.endDate ?? new Date(existing.endDate),
+      });
+      if (refusal) throw new Error(refusal);
+      return store.updateExperiment(id, patch)!;
+    },
+    deleteExperiment(id) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { useExperimentStore } = require('../../src/store/useExperimentStore') as typeof import('../../src/store/useExperimentStore');
+      const store = useExperimentStore.getState();
+      store.initialize();
+      const experiment = store.experiments.find(e => e.id === id);
+      if (!experiment) throw new Error(`No experiment with id ${id}. list_experiments names them.`);
+      store.removeExperiment(id);
+      return experiment;
     },
     cookware: () => db.dbGetAllCookware(),
     // Hydrated per write, like the milestone store above, so a dry run's
