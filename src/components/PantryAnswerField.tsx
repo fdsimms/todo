@@ -96,6 +96,7 @@ export function PantryAnswerField({ itemId, value, onChange, addToList, onAddToL
         label={label}
         surface={surface}
       />
+      {standing?.boughtCaption && <Text style={styles.bought}>{standing.boughtCaption}</Text>}
       {(shown === 'low' || shown === 'out') && onAddToListChange && (onHomeList ? (
         <Text style={styles.switchLabel}>Already on the grocery list</Text>
       ) : (
@@ -132,6 +133,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   status: { flexDirection: 'row', alignItems: 'center', gap: spacing.xsm, flexShrink: 1 },
   dot: { width: 7, height: 7, borderRadius: 4 },
   statusText: { color: colors.text, fontSize: font.xs, fontWeight: fontWeight.medium, flexShrink: 1 },
+  bought: { color: colors.textSecondary, fontSize: font.xs },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.smd },
   switchLabel: { color: colors.text, fontSize: font.sm, flexShrink: 1 },
 });

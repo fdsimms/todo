@@ -7,7 +7,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, interaction, border, iconSize, lineHeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { pantryCheckBoughtCaption } from '../utils/pantryCheckTasks';
+import { pantryBoughtCaption } from '../utils/pantryStanding';
 
 interface Props {
   visible: boolean;
@@ -98,7 +98,7 @@ export function PantryCheckSheet({ visible, itemId, onClose }: Props) {
   const name = useGroceryStore(s => s.itemById(itemId)?.name ?? null);
   const lastPurchasedAt = useGroceryStore(s => s.itemById(itemId)?.lastPurchasedAt ?? null);
   const bought = useMemo(
-    () => pantryCheckBoughtCaption({ lastPurchasedAt }, new Date()),
+    () => pantryBoughtCaption({ lastPurchasedAt }, new Date()),
     [lastPurchasedAt, visible],
   );
 
