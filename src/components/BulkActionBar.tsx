@@ -39,7 +39,8 @@ interface Props {
    */
   completableCount?: number;
   onDelete: () => void;
-  onSetWhen: (date: Date | null, timeSegments: TimeOfDay[]) => void;
+  /** `null` clears the dates; `undefined` keeps each task's own date and sets only the time of day. */
+  onSetWhen: (date: Date | null | undefined, timeSegments: TimeOfDay[]) => void;
   /** Where to move the selection. `null` clears the category. Creating a new one happens in the picker. */
   onSetCategory: (category: string | null) => void;
   onAddTags: (tags: string[]) => void;
@@ -151,9 +152,12 @@ export function BulkActionBar({
   const allSelected = selectedCount === totalCount;
   const none = selectedCount === 0;
 
+  // Save with no day picked changes only the time of day. `null` would clear
+  // every selected task's date, which only Clear means.
   const handleConfirmWhen = (date: Date | null, segs: TimeOfDay[]) => {
     setWhenVisible(false);
-    onSetWhen(date, segs);
+    if (date) onSetWhen(date, segs);
+    else if (segs.length > 0) onSetWhen(undefined, segs);
   };
 
   const handleTagToggle = (tag: string) => {
@@ -602,7 +606,7 @@ export function BulkActionBar({
         visible={whenVisible}
         value={null}
         onConfirm={handleConfirmWhen}
-        onClear={() => handleConfirmWhen(null, [])}
+        onClear={() => { setWhenVisible(false); onSetWhen(null, []); }}
         onCancel={() => setWhenVisible(false)}
       />
       {/* No `value`: the selection can span categories, so there's nothing to

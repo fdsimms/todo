@@ -57,6 +57,10 @@ describe('describeReschedule', () => {
     expect(describeReschedule([task('A', 22)], null, [], '00:00')).toBe('Took the date off “A”');
     expect(describeReschedule([task('A', 22), task('B', 22)], null, [], '00:00')).toBe('Took the date off 2 tasks');
   });
+  it('names the time of day when no day was picked', () => {
+    expect(describeReschedule([task('A', 22), task('B', 23)], undefined, ['morning'], '00:00'))
+      .toBe('Moved 2 tasks to morning');
+  });
   it('lowercases today and tomorrow only', () => {
     expect(movedDayLabel(day(22), '00:00')).toBe('today');
     expect(movedDayLabel(day(23), '00:00')).toBe('tomorrow');

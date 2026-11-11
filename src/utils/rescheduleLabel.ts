@@ -16,11 +16,13 @@ export function movedDayLabel(date: Date, dayResetTime?: string): string {
  */
 export function describeReschedule(
   tasks: Pick<Task, 'title' | 'dueDate' | 'deferUntil' | 'timeSegments'>[],
-  date: Date | null,
+  date: Date | null | undefined,
   timeSegments: TimeOfDay[],
   dayResetTime?: string,
 ): string {
   const subject = tasks.length === 1 ? `“${tasks[0].title}”` : `${tasks.length} tasks`;
+  // `undefined` is a time-of-day change with no day picked: the dates stay.
+  if (date === undefined) return `Moved ${subject} to ${timeSegments.join(', ') || 'any time of day'}`;
   if (!date) return `Took the date off ${subject}`;
   const pickedDay = getTaskDayStart(date, dayResetTime).getTime();
   const staysOnDay = tasks.every(t => {

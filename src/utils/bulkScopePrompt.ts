@@ -40,8 +40,8 @@ export function confirmBulkScope(
         : `This task repeats. Apply ${what} to this task only, or to it and all future repeats?`
       : `${asked.length} of these repeat. Apply ${what} to just these tasks, or to them and every future repeat?`,
     [
-      { text: isSeries ? 'This date' : 'This task', onPress: () => proceed('occurrence') },
-      { text: isSeries ? 'This and later dates' : 'This and future tasks', onPress: () => proceed('series') },
+      { text: isSeries ? 'This date' : one ? 'This task' : 'These tasks', onPress: () => proceed('occurrence') },
+      { text: isSeries ? 'This and later dates' : one ? 'This and future tasks' : 'These and future tasks', onPress: () => proceed('series') },
       { text: BUTTON_LABEL.cancel, style: 'cancel' },
     ],
   );
@@ -63,8 +63,8 @@ export function confirmFollowUpScope(
       ? `A repeating task adds this one. Apply ${what} to this task only, or to it and the ones added later?`
       : `A repeating task adds each of these. Apply ${what} to just these tasks, or to them and the ones added later?`,
     [
-      { text: 'This task', onPress: () => proceed('occurrence') },
-      { text: 'This and future tasks', onPress: () => proceed('series') },
+      { text: count === 1 ? 'This task' : 'These tasks', onPress: () => proceed('occurrence') },
+      { text: count === 1 ? 'This and future tasks' : 'These and future tasks', onPress: () => proceed('series') },
       { text: BUTTON_LABEL.cancel, style: 'cancel', onPress: onCancel },
     ],
   );
