@@ -1,3 +1,4 @@
+import { format } from 'date-fns/format';
 import type { GroceryItem, ItemProduct } from '../types';
 import { FROZEN_REASON, RUNNING_LOW_REASON } from '../types';
 import { onHandAssertion, probablyHaveReason } from './grocerySuggest';
@@ -23,6 +24,29 @@ export interface PantryStanding {
    * nothing.
    */
   answer: PantryReviewAnswer | null;
+  /**
+   * "Last bought Oct 3", or null when there is nothing to add: no purchase on
+   * record, or `text` already names the date (the purchase reading does).
+   */
+  boughtCaption: string | null;
+}
+
+/**
+ * The "Last bought Oct 3" line the pantry check card and the pantry answer field show: when this was last bought, so the
+ * person can tell whether "Bought more" is news. Null when no purchase is on
+ * record (a row that only ever got a "Got it"), so the card shows nothing
+ * rather than a date that was never a purchase. The year appears only when it
+ * isn't this one.
+ */
+export function pantryBoughtCaption(
+  item: Pick<GroceryItem, 'lastPurchasedAt'>,
+  now: Date
+): string | null {
+  if (!item.lastPurchasedAt) return null;
+  const at = new Date(item.lastPurchasedAt);
+  if (Number.isNaN(at.getTime())) return null;
+  const pattern = at.getFullYear() === now.getFullYear() ? 'MMM d' : 'MMM d, yyyy';
+  return `Last bought ${format(at, pattern)}`;
 }
 
 const capitalized = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -32,6 +56,16 @@ export function pantryStanding(
   now: Date,
   products: readonly ItemProduct[] = []
 ): PantryStanding {
+  const base = standingOf(item, now, products);
+  const caption = base.text.includes('last on ') ? null : pantryBoughtCaption(item, now);
+  return { ...base, boughtCaption: caption };
+}
+
+function standingOf(
+  item: GroceryItem,
+  now: Date,
+  products: readonly ItemProduct[]
+): Omit<PantryStanding, 'boughtCaption'> {
   const reason = probablyHaveReason(item, now, products);
   const asserted = onHandAssertion(item, now);
 

@@ -1,4 +1,3 @@
-import { format } from 'date-fns/format';
 import type { GroceryItem, ItemProduct, Task } from '../types';
 import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
 import {
@@ -99,24 +98,6 @@ export const PANTRY_CHECK_GRACE_DAYS = 14;
  */
 export function pantryCheckTitle(item: Pick<GroceryItem, 'name'>): string {
   return `Check if you still have ${item.name}`;
-}
-
-/**
- * The line under the check card's title: when this was last bought, so the
- * person can tell whether "Bought more" is news. Null when no purchase is on
- * record (a row that only ever got a "Got it"), so the card shows nothing
- * rather than a date that was never a purchase. The year appears only when it
- * isn't this one.
- */
-export function pantryCheckBoughtCaption(
-  item: Pick<GroceryItem, 'lastPurchasedAt'>,
-  now: Date
-): string | null {
-  if (!item.lastPurchasedAt) return null;
-  const at = new Date(item.lastPurchasedAt);
-  if (Number.isNaN(at.getTime())) return null;
-  const pattern = at.getFullYear() === now.getFullYear() ? 'MMM d' : 'MMM d, yyyy';
-  return `Last bought ${format(at, pattern)}`;
 }
 
 /**

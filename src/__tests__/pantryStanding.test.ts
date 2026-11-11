@@ -1,4 +1,4 @@
-import { pantryStanding } from '../utils/pantryStanding';
+import { pantryStanding, pantryBoughtCaption } from '../utils/pantryStanding';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { GroceryItem } from '../types';
@@ -25,33 +25,53 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
 describe('pantryStanding', () => {
   it('reads running low as the "low" answer', () => {
     const s = pantryStanding(makeItem({ name: 'Rice', runningLowAt: daysAgo(1) }), NOW);
-    expect(s).toEqual({ text: 'Running low', tone: 'warn', answer: 'low' });
+    expect(s).toEqual({ text: 'Running low', tone: 'warn', answer: 'low', boughtCaption: null });
   });
 
   it('reads the Out of it sentinel as "out", not as nothing recorded', () => {
     const s = pantryStanding(makeItem({ name: 'Butter', onHandUntil: OUT_OF_IT_UNTIL }), NOW);
-    expect(s).toEqual({ text: 'Out of it', tone: 'bad', answer: 'out' });
+    expect(s).toEqual({ text: 'Out of it', tone: 'bad', answer: 'out', boughtCaption: null });
   });
 
   it('reads a live Got it as "have"', () => {
     const s = pantryStanding(makeItem({ name: 'Flour', onHandUntil: daysAhead(5) }), NOW);
-    expect(s).toEqual({ text: 'Marked as on hand', tone: 'good', answer: 'have' });
+    expect(s).toEqual({ text: 'Marked as on hand', tone: 'good', answer: 'have', boughtCaption: null });
   });
 
   it('gives a purchase guess its own words and no answer', () => {
     const item = makeItem({ name: 'Tahini', purchaseCount: 1, createdAt: daysAgo(3), lastPurchasedAt: daysAgo(3) });
-    expect(pantryStanding(item, NOW)).toEqual({ text: 'Bought once · last on Aug 4', tone: 'good', answer: null });
+    expect(pantryStanding(item, NOW)).toEqual({ text: 'Bought once · last on Aug 4', tone: 'good', answer: null, boughtCaption: null });
+  });
+
+  it('adds the last purchase when an answer hides it from the status', () => {
+    const item = makeItem({ name: 'Bread', purchaseCount: 3, lastPurchasedAt: daysAgo(30), onHandUntil: daysAhead(5) });
+    const s = pantryStanding(item, NOW);
+    expect(s.text).toBe('Marked as on hand');
+    expect(s.boughtCaption).toBe('Last bought Jul 8');
   });
 
   it('gives the freezer and a staple no answer', () => {
     expect(pantryStanding(makeItem({ name: 'Peas', frozenAt: daysAgo(2) }), NOW).answer).toBeNull();
     const staple = pantryStanding(makeItem({ name: 'Salt', isStaple: true }), NOW);
-    expect(staple).toEqual({ text: 'Always have it', tone: 'good', answer: null });
+    expect(staple).toEqual({ text: 'Always have it', tone: 'good', answer: null, boughtCaption: null });
   });
 
   it('says nothing is recorded for a row with no standing at all', () => {
     expect(pantryStanding(makeItem({ name: 'Saffron' }), NOW)).toEqual({
-      text: 'Nothing recorded', tone: 'none', answer: null,
+      text: 'Nothing recorded', tone: 'none', answer: null, boughtCaption: null,
     });
+  });
+});
+
+describe('pantryBoughtCaption', () => {
+  const now = new Date(2026, 10, 11, 9, 0);
+  it('names the last purchase, without a year in the same year', () => {
+    expect(pantryBoughtCaption({ lastPurchasedAt: new Date(2026, 9, 3, 12).toISOString() }, now)).toBe('Last bought Oct 3');
+  });
+  it('adds the year for an earlier one', () => {
+    expect(pantryBoughtCaption({ lastPurchasedAt: new Date(2025, 11, 30, 12).toISOString() }, now)).toBe('Last bought Dec 30, 2025');
+  });
+  it('is null with no purchase on record', () => {
+    expect(pantryBoughtCaption({ lastPurchasedAt: null }, now)).toBeNull();
   });
 });
