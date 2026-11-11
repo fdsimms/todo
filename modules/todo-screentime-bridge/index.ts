@@ -86,7 +86,7 @@ interface TodoScreenTimeNativeModule {
   startMonitoring(rulesJson: string, dayKey: string): Promise<boolean>;
   stopMonitoring(): boolean;
   drainCrossings(): Promise<string>;
-  armSpeedBumps(bumpsJson: string, dayKey: string): Promise<boolean>;
+  armSpeedBumps(bumpsJson: string, dayKey: string, resetHours: number): Promise<boolean>;
   stopSpeedBumps(): boolean;
   readSpeedBump(): string;
   clearSpeedBump(): boolean;
@@ -443,10 +443,12 @@ export interface ScreenTimeSpeedBump {
  * `startMonitoring`, so arming either never disarms the other. The day key is
  * stamped here for the reason `startMonitoring`'s is: the extension cannot work
  * out the person's day, and it uses the key to fire each rung at most once.
+ * `resetHours` cuts the day into windows of that many hours from midnight, each
+ * counting use from zero (0 is one window, the whole day).
  * False on a build that predates speed bumps.
  */
-export function armSpeedBumps(bumps: readonly ScreenTimeSpeedBump[], dayKey: string): Promise<boolean> {
-  return degradeOnReject(() => nativeModule!.armSpeedBumps(JSON.stringify(bumps), dayKey), false);
+export function armSpeedBumps(bumps: readonly ScreenTimeSpeedBump[], dayKey: string, resetHours = 0): Promise<boolean> {
+  return degradeOnReject(() => nativeModule!.armSpeedBumps(JSON.stringify(bumps), dayKey, resetHours), false);
 }
 
 export function stopSpeedBumps(): boolean {

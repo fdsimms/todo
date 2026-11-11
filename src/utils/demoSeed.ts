@@ -1937,6 +1937,7 @@ export function seedDemoData(): void {
     },
   ]);
   useSettingsStore.getState().setSpeedBumpWarnMinutes(5);
+  useSettingsStore.getState().setSpeedBumpResetHours(6);
 
   // A block offer, seeded directly for screenTime's reason: accepting one
   // starts a real block, which demo mode refuses, so checkBlockOfferTasks

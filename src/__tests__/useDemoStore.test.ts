@@ -5289,6 +5289,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(rule).toMatchObject({ title: 'Wind down after Social', thresholdMinutes: 45, repeatEveryMinutes: 30, maxTimes: 3, blockMinutes: 15, days: [1, 2, 3, 4, 5], enabled: true });
     expect(weekend).toMatchObject({ title: 'Weekend wind down', thresholdMinutes: 90, days: [0, 6], enabled: true });
     expect(useSettingsStore.getState().speedBumpWarnMinutes).toBe(5);
+    expect(useSettingsStore.getState().speedBumpResetHours).toBe(6);
   });
 
   it('seeds a health rule whose task logs a dose when completed', () => {

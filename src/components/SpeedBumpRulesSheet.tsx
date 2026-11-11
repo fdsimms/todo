@@ -17,6 +17,7 @@ import {
   SPEED_BUMP_THRESHOLD_DEFAULT,
   SPEED_BUMP_TIMES_MAX,
   SPEED_BUMP_TITLE_MAX_LENGTH,
+  SPEED_BUMP_RESET_CHOICES,
   SPEED_BUMP_WARN_CHOICES,
   describeSpeedBump,
   newSpeedBumpRule,
@@ -63,6 +64,8 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
   const setRules = useSettingsStore(s => s.setSpeedBumpRules);
   const warnMinutes = useSettingsStore(s => s.speedBumpWarnMinutes);
   const setWarnMinutes = useSettingsStore(s => s.setSpeedBumpWarnMinutes);
+  const resetHours = useSettingsStore(s => s.speedBumpResetHours);
+  const setResetHours = useSettingsStore(s => s.setSpeedBumpResetHours);
 
   const customGroups = useAppGroupStore(s => s.groups);
   const groupsMeta = useAppGroupStore(s => s.meta);
@@ -276,6 +279,20 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
               options={SPEED_BUMP_WARN_CHOICES.map(m => ({ value: m, label: m === 0 ? 'Off' : `${m} min` }))}
               value={warnMinutes}
               onChange={minutes => { haptics.tap(); setWarnMinutes(minutes); }}
+            />
+          </View>
+          <View style={[styles.warnCard, { backgroundColor: colors.bgSecondary }]}>
+            <Text style={[styles.warnTitle, { color: colors.text }]}>Start counting over</Text>
+            <HelpText style={[styles.warnHint, { color: colors.textSecondary }]}>
+              {resetHours === 0
+                ? 'Use adds up across the whole day.'
+                : `Use is counted in ${resetHours}-hour blocks starting at midnight, so time from an earlier block doesn’t count toward a speed bump.`}
+            </HelpText>
+            <SegmentedControl<number>
+              label="Start counting over"
+              options={SPEED_BUMP_RESET_CHOICES.map(h => ({ value: h, label: h === 0 ? 'Daily' : `${h} hr` }))}
+              value={resetHours}
+              onChange={hours => { haptics.tap(); setResetHours(hours); }}
             />
           </View>
         </>

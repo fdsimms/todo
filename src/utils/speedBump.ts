@@ -24,6 +24,10 @@ import { SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_MIN } from './screenTi
  *   Group, raises the shield and arms the window that lifts it. The app only
  *   reads that record back (`liveSpeedBump`) and treats it as one more reason
  *   for the shield; it never starts one.
+ * - **The count can start over during the day.** iOS counts from the start of a
+ *   monitoring interval, so `resetHours` cuts the day into windows that each
+ *   count on their own (`clampBumpReset`). Without it, 25 minutes in the
+ *   morning plus 6 in the evening is 31.
  * - **It counts one group and blocks another.** `groupId` is what is timed,
  *   `blockGroupId` what is blocked, and a missing block group means the timed
  *   one.
@@ -85,6 +89,25 @@ export function clampBumpWarn(minutes: number): number {
 
 export function parseBumpWarn(raw: string | null | undefined): number {
   return clampBumpWarn(Number(raw));
+}
+
+/**
+ * How often the day's use count starts over, in hours; 0 is once a day. iOS
+ * counts use from the start of a monitoring interval, so the count restarts
+ * only where an interval does: the day is cut into equal windows from midnight
+ * (6 hours is midnight, 6 AM, noon and 6 PM), each its own monitored activity.
+ * Every window is one of the twenty activities iOS allows, so the finest choice
+ * is four of them. The choices divide 24, which keeps the windows equal.
+ */
+export const SPEED_BUMP_RESET_CHOICES: readonly number[] = [0, 12, 8, 6];
+
+/** A stored reset interval, or once a day for anything that is not one of the choices. */
+export function clampBumpReset(hours: number): number {
+  return SPEED_BUMP_RESET_CHOICES.includes(hours) ? hours : 0;
+}
+
+export function parseBumpReset(raw: string | null | undefined): number {
+  return clampBumpReset(Number(raw));
 }
 
 /**

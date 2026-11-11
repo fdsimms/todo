@@ -95,7 +95,7 @@ export const useScreenTimeStore = create<ScreenTimeState>((set, get) => ({
       dayStart.getDay(),
     );
     if (bumps.length === 0) bridge.stopSpeedBumps();
-    else await bridge.armSpeedBumps(bumps, dayKey);
+    else await bridge.armSpeedBumps(bumps, dayKey, settings.speedBumpResetHours);
     const rules = armableRules(settings.screenTimeRules, id => resolveGroupNow(id ?? DEFAULT_GROUP_ID));
     if (!settings.screenTimeTasks || rules.length === 0) {
       bridge.stopMonitoring();
