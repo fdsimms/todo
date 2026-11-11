@@ -22,6 +22,19 @@ import { eventTaskStartOf } from './eventTasks';
  * a destination — that judgement belongs to whichever planner is calling.
  */
 
+/**
+ * Whether moving this task to another day should also drop its time of day.
+ * A one-off snoozed to "Evening" and pushed again would otherwise stay
+ * evening-only on the new day, when the reason for the evening hold (not
+ * getting to it before then) says nothing about the next day. A repeating task
+ * or a dated series keeps its segment: it belongs to the schedule, and
+ * clearing it would ask "apply to future repeats?" on every push
+ * (`confirmSegmentScope`).
+ */
+export function dropsTimeOfDayOnMove(task: Pick<Task, 'recurrenceType' | 'seriesId'>): boolean {
+  return task.recurrenceType === 'none' && !task.seriesId;
+}
+
 /** Why a task is blocked outright, or merely unchecked by default. */
 export type DeloadBlocker =
   | 'pinned'

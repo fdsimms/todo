@@ -63,7 +63,7 @@ import { formatDeadlineLabel, isDeadlineTimePassed, formatScheduledDate, formatT
 import { isNegativeTask, isFailedToday, slipsToday, slipAllowanceOf } from '../utils/negativeHabits';
 import { negativeHoldNow, negativeHoldOffered } from '../utils/negativeHold';
 import type { NegativeHold } from '../utils/negativeHabits';
-import { scheduleMoveUpdates } from '../utils/taskMoves';
+import { dropsTimeOfDayOnMove, scheduleMoveUpdates } from '../utils/taskMoves';
 import { confirmScheduleMove, confirmSegmentScope } from '../utils/scheduleMovePrompt';
 import { describeReschedule } from '../utils/rescheduleLabel';
 import { formatDuration, formatStopwatch } from '../utils/effort';
@@ -5914,6 +5914,7 @@ const TaskItemRow = React.memo(function TaskItem({
           // The row's reschedule is the main way a task gets pushed, so this is
           // the picker the postpone check most needs to be on.
           postponeTaskId={task.id}
+          resetTimeOfDayOnMove={dropsTimeOfDayOnMove(task)}
           onBreakUp={handleBreakUp}
           taskTitle={task.title}
           taskNotes={task.notes}

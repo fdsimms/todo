@@ -10,6 +10,7 @@ jest.mock('../store/useSettingsStore', () => ({
 import {
   SOFT_DELOAD_BLOCKERS,
   deloadBlockerFor,
+  dropsTimeOfDayOnMove,
   isDateAnchored,
   pullForwardChoice,
   scheduleMoveUpdates,
@@ -157,6 +158,17 @@ describe('isDateAnchored', () => {
 
   it('is false for an ordinary task, which can just be rescheduled', () => {
     expect(isDateAnchored(task())).toBe(false);
+  });
+});
+
+describe('dropsTimeOfDayOnMove', () => {
+  it('is true for a one-off, whose evening hold was about the day it was snoozed from', () => {
+    expect(dropsTimeOfDayOnMove(task())).toBe(true);
+  });
+
+  it('is false for a repeating task or a dated series, whose time of day belongs to the schedule', () => {
+    expect(dropsTimeOfDayOnMove(task({ recurrenceType: 'daily' }))).toBe(false);
+    expect(dropsTimeOfDayOnMove(task({ seriesId: 's1' }))).toBe(false);
   });
 });
 
