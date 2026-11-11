@@ -170,12 +170,14 @@ export function BirthdayPicker({
           </TouchableOpacity>
 
           <View style={styles.sectionGap} />
-          <TouchableOpacity style={styles.saveBtn} onPress={confirm} activeOpacity={interaction.activeOpacity}>
-            <Text style={styles.saveLabel}>{BUTTON_LABEL.save}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity}>
-            <Text style={styles.clearLabel}>Clear</Text>
-          </TouchableOpacity>
+          <View style={styles.footerRow}>
+            <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+              <Text style={styles.clearLabel}>Clear</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.saveBtn} onPress={confirm} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+              <Text style={styles.saveLabel}>{BUTTON_LABEL.save}</Text>
+            </TouchableOpacity>
+          </View>
         </Animated.View>
       </View>
     </SheetModal>
@@ -238,9 +240,14 @@ const makeStyles = (colors: Colors, windowWidth: number) => {
   sectionGap: {
     height: spacing.sm,
   },
-  saveBtn: {
+  footerRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
     marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  saveBtn: {
+    flex: 2,
     backgroundColor: colors.accentFill,
     borderRadius: radius.md,
     paddingVertical: 13,
@@ -251,18 +258,18 @@ const makeStyles = (colors: Colors, windowWidth: number) => {
     fontSize: font.md,
     fontWeight: fontWeight.semibold,
   },
+  // Quiet on purpose: Clear removes the date, so it must not out-shout Save.
   clearBtn: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.md,
-    backgroundColor: colors.redFill,
+    flex: 1,
+    backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,
     paddingVertical: 13,
     alignItems: 'center',
   },
   clearLabel: {
-    color: colors.onFill,
+    color: colors.redText,
     fontSize: font.md,
-    fontWeight: fontWeight.semibold,
+    fontWeight: fontWeight.medium,
   },
 });
 };

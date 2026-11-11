@@ -983,15 +983,18 @@ export function WhenPicker({
             </View>
           </View>
 
-          {/* Clear button */}
-          {onClear && (
-            <>
-              <View style={styles.sectionGap} />
-              <TouchableOpacity style={styles.clearBtn} onPress={() => { Keyboard.dismiss(); onClear(); }} activeOpacity={interaction.activeOpacity}>
+          {/* Footer: Save is the primary button and takes the width; Clear is the quieter one beside it. */}
+          <View style={styles.sectionGap} />
+          <View style={styles.footerRow}>
+            {onClear && (
+              <TouchableOpacity style={styles.clearBtn} onPress={() => { Keyboard.dismiss(); onClear(); }} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
                 <Text style={styles.clearLabel}>Clear</Text>
               </TouchableOpacity>
-            </>
-          )}
+            )}
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
+              <Text style={styles.saveLabel}>{BUTTON_LABEL.save}</Text>
+            </TouchableOpacity>
+          </View>
           </ScrollView>
         </Animated.View>
       </View>
@@ -1351,18 +1354,36 @@ const makeStyles = (colors: Colors, windowWidth: number, windowHeight: number) =
     color: colors.purpleText,
     fontWeight: fontWeight.semibold,
   },
-  clearBtn: {
+  footerRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
     marginHorizontal: spacing.md,
     marginBottom: spacing.md,
-    backgroundColor: colors.redFill,
+  },
+  saveBtn: {
+    flex: 2,
+    backgroundColor: colors.accentFill,
+    borderRadius: radius.md,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  saveLabel: {
+    color: colors.onAccent,
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
+  },
+  // Quiet on purpose: Clear removes the date, so it must not out-shout Save.
+  clearBtn: {
+    flex: 1,
+    backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,
     paddingVertical: 13,
     alignItems: 'center',
   },
   clearLabel: {
-    color: colors.onFill,
+    color: colors.redText,
     fontSize: font.md,
-    fontWeight: fontWeight.semibold,
+    fontWeight: fontWeight.medium,
   },
 });
 };
