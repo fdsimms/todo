@@ -10,6 +10,7 @@ import {
   limitTodayItems,
   laterVisibleOrder,
   laterTaskForDay,
+  laterStripDays,
   laterTodaySections,
   categorySpan,
   applyCategoryCollapse,
@@ -1439,5 +1440,33 @@ describe('laterTaskForDay', () => {
     const early = [{ task: makeTask({ id: 'x' }), visibleAt: new Date(2030, 0, 12, 1) }];
     expect(laterTaskForDay(early, '2030-01-12', '04:00')).toBeNull();
     expect(laterTaskForDay(early, '2030-01-11', '04:00')?.id).toBe('x');
+  });
+});
+
+describe('laterStripDays', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2030, 0, 10, 12));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const at = (id: string, visibleAt: Date) => ({ task: makeTask({ id }), visibleAt });
+
+  it('lists seven days from today with the tasks surfacing on each', () => {
+    const days = laterStripDays(
+      [at('a', new Date(2030, 0, 10, 19)), at('b', new Date(2030, 0, 12, 9)), at('c', new Date(2030, 0, 12, 18))],
+      '00:00',
+    );
+    expect(days.map(d => d.dayKey)).toEqual([
+      '2030-01-10', '2030-01-11', '2030-01-12', '2030-01-13', '2030-01-14', '2030-01-15', '2030-01-16',
+    ]);
+    expect(days.map(d => d.count)).toEqual([1, 0, 2, 0, 0, 0, 0]);
+    expect(days[0].isToday).toBe(true);
+    expect(days[1].isToday).toBe(false);
+  });
+
+  it('ignores tasks past the seventh day', () => {
+    const days = laterStripDays([at('far', new Date(2030, 1, 20, 9))], '00:00');
+    expect(days.every(d => d.count === 0)).toBe(true);
   });
 });

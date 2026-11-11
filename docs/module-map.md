@@ -649,7 +649,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskFilePick.ts` — PickedTaskFile, pickTaskDocument, openTaskFile
 - `src/utils/taskFileSync.ts` — routeStoredFileName, taskFileNames, readTaskFileForSync, hasTaskFileForSync, writeTaskFileFromSync
 - `src/utils/taskFiles.ts` — TASK_FILE_FOLDER, TASK_FILE_PREFIX, MAX_TASK_ATTACHMENTS, MAX_TASK_FILE_BYTES, isTaskFileName, taskFileNamesInUse, unreferencedTaskFiles, taskFileProblem, taskAttachmentsOnDevice, attachmentBadge, +1 more
-- `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, orderTravelRowsByTime, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, LATER_STACK_FOLD_MIN, +25 more
+- `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, orderTravelRowsByTime, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, LATER_STACK_FOLD_MIN, +27 more
 - `src/utils/taskHome.ts` — TaskHome, taskHomeFor, landingFor
 - `src/utils/taskImport.ts` — ImportCandidate, candidatesFromExtracted, candidatesToAdd, draftFromCandidate
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances, taskForTitleKey

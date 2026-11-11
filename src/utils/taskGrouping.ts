@@ -1,6 +1,7 @@
 import type { ContextRow, Task, TaskGroup } from '../types';
 import { beginVisibleAtPass, getVisibleAt, windowBoundsFor } from './visibilityUtils';
-import { formatGroupHeader, formatHHMM, getDayStart, getLogicalDayKey } from './dateUtils';
+import { addDays } from 'date-fns/addDays';
+import { dayKeyOf, formatGroupHeader, formatHHMM, getDayStart, getLogicalDayKey, getLogicalToday } from './dateUtils';
 import { isSlotWaiting } from './slotIn';
 import type { DropZone, ScheduleInfo } from './fabDrop';
 
@@ -582,6 +583,43 @@ export function laterTaskForDay(
   const hit = order.find(o =>
     !isSlotWaiting(o.task, todayKey) && getLogicalDayKey(o.visibleAt, dayResetTime) >= dayKey);
   return hit?.task ?? null;
+}
+
+/** One day in the strip at the top of Later. */
+export interface LaterStripDay {
+  /** The logical day's key, what `laterTaskForDay` takes. */
+  dayKey: string;
+  /** The calendar date, for the weekday and day number. */
+  date: Date;
+  isToday: boolean;
+  /** How many tasks surface on this day. A day with none has nothing to scroll to. */
+  count: number;
+}
+
+/**
+ * The next `days` logical days starting today, each with how many Later tasks
+ * surface on it. Counted the way `laterTaskForDay` finds a day's first task
+ * (a task waiting for a lighter day is in its own section and skipped), so a
+ * day with a count always has a task to jump to.
+ */
+export function laterStripDays(
+  order: readonly LaterOrderedTask[],
+  dayResetTime?: string,
+  days = 7,
+): LaterStripDay[] {
+  const today = getLogicalToday(dayResetTime);
+  const todayKey = getLogicalDayKey(new Date(), dayResetTime);
+  const counts = new Map<string, number>();
+  for (const { task, visibleAt } of order) {
+    if (isSlotWaiting(task, todayKey)) continue;
+    const key = getLogicalDayKey(visibleAt, dayResetTime);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return Array.from({ length: days }, (_, i) => {
+    const date = addDays(today, i);
+    const dayKey = dayKeyOf(date);
+    return { dayKey, date, isToday: i === 0, count: counts.get(dayKey) ?? 0 };
+  });
 }
 
 /** The Later section the tasks waiting for a lighter day sit in, ahead of the dated ones. */
