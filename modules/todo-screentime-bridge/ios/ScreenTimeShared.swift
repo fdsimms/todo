@@ -142,6 +142,15 @@ enum ScreenTimeShared {
   /// The usage monitor for speed bumps. Its own activity, so arming or stopping
   /// it never disarms the task rules' monitor.
   static let speedBumpMonitorName = "todo.speedBumps"
+  /// The monitors after the first when the day is cut into windows
+  /// (`speedBumpMonitorName(window:)`). Matched by this prefix to stop them all.
+  static let speedBumpMonitorWindowPrefix = "todo.speedBumps."
+
+  /// The monitor for window `window` of the day; window 0 keeps the original
+  /// name, so a build that never cuts the day arms exactly what it always did.
+  static func speedBumpMonitorName(window: Int) -> String {
+    window == 0 ? speedBumpMonitorName : "\(speedBumpMonitorWindowPrefix)\(window)"
+  }
   /// The one-shot window whose end lifts a speed bump block. Its own activity,
   /// like the penalty's and the manual block's.
   static let speedBumpWindowName = "todo.speedBumpWindow"
@@ -260,6 +269,9 @@ struct SpeedBumpShared: Codable {
 struct SpeedBumpArmedShared: Codable {
   let dayKey: String
   let bumps: String
+  /// Hours per counting window, 0 for the whole day. Absent from a file an older
+  /// build wrote, which reads as the whole day.
+  let resetHours: Int?
 }
 
 /// A speed bump block that is running. The extension is the writer.

@@ -5,6 +5,9 @@ import {
   clampBumpBlockMinutes,
   clampBumpWarn,
   parseBumpWarn,
+  parseBumpReset,
+  clampBumpReset,
+  SPEED_BUMP_RESET_CHOICES,
   speedBumpWarnRungs,
   speedBumpWarnText,
   describeSpeedBump,
@@ -253,5 +256,18 @@ describe('speed bump heads-ups', () => {
   it('arms no heads-ups unless asked', () => {
     const [bump] = armableSpeedBumps([rule()]);
     expect(bump.warnRungs).toEqual([0]);
+  });
+
+  it('reads the reset interval back, and anything else as once a day', () => {
+    expect(SPEED_BUMP_RESET_CHOICES).toEqual([0, 12, 8, 6]);
+    expect(parseBumpReset('6')).toBe(6);
+    expect(parseBumpReset('8')).toBe(8);
+    expect(parseBumpReset('5')).toBe(0);
+    expect(parseBumpReset('')).toBe(0);
+    expect(parseBumpReset(null)).toBe(0);
+    expect(clampBumpReset(12)).toBe(12);
+    expect(clampBumpReset(NaN)).toBe(0);
+    // Every choice cuts 24 hours into equal windows.
+    for (const h of SPEED_BUMP_RESET_CHOICES.filter(h => h > 0)) expect(24 % h).toBe(0);
   });
 });

@@ -196,7 +196,7 @@ import {
 } from '../utils/wanikaniTasks';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseBlockOfferRules, serializeBlockOfferRules } from '../utils/blockOfferTasks';
-import { clampBumpWarn, parseBumpWarn, parseSpeedBumpRules, serializeSpeedBumpRules } from '../utils/speedBump';
+import { clampBumpReset, clampBumpWarn, parseBumpReset, parseBumpWarn, parseSpeedBumpRules, serializeSpeedBumpRules } from '../utils/speedBump';
 import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
 import { parseReminderCaptures, serializeReminderCaptures } from '../utils/reminderCaptures';
 import {
@@ -1911,6 +1911,8 @@ interface SettingsStore {
   speedBumpRules: SpeedBumpRule[];
   // Minutes before a speed bump block that a notification warns of it; 0 is off.
   speedBumpWarnMinutes: number;
+  // Hours between the use count starting over for every speed bump; 0 is once a day.
+  speedBumpResetHours: number;
   // The daily "log how you're feeling" task (see src/utils/moodTasks.ts). Off
   // by default, the same call pantryCheck and birthdayGift make: it adds a
   // surface nobody had, and there is no recorded intent to point at — nobody
@@ -2580,6 +2582,7 @@ interface SettingsStore {
   setBlockOfferRules: (rules: BlockOfferRule[]) => void;
   setSpeedBumpRules: (rules: SpeedBumpRule[]) => void;
   setSpeedBumpWarnMinutes: (minutes: number) => void;
+  setSpeedBumpResetHours: (hours: number) => void;
   setMoodLogTasks: (on: boolean) => void;
   setMoodLogTaskCategory: (category: string | null) => void;
   setMoodLogLastDayKey: (dayKey: string | null) => void;
@@ -3409,6 +3412,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   blockOfferRules: [],
   speedBumpRules: [],
   speedBumpWarnMinutes: 0,
+  speedBumpResetHours: 0,
   moodLogTasks: false,
   moodLogTaskCategory: null,
   moodLogLastDayKey: null,
@@ -4120,6 +4124,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const blockOfferRules = parseBlockOfferRules(dbGetSetting('blockOfferRules'));
     const speedBumpRules = parseSpeedBumpRules(dbGetSetting('speedBumpRules'));
     const speedBumpWarnMinutes = parseBumpWarn(dbGetSetting('speedBumpWarnMinutes'));
+    const speedBumpResetHours = parseBumpReset(dbGetSetting('speedBumpResetHours'));
     // Same TEXT-column parse as every other numeric setting here: an
     // unparseable or missing row (a fresh install, or one that predates this
     // setting) reads back as 0 — never nudge — matching DEFAULT_NUDGE_CADENCE_DAYS.
@@ -4500,6 +4505,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       snackNudgeTaskCategory,
       snackNudgeTasks,
       sortOption,
+      speedBumpResetHours,
       speedBumpRules,
       speedBumpWarnMinutes,
       standardDrinkGrams,
@@ -5400,6 +5406,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const next = clampBumpWarn(minutes);
     dbSetSetting('speedBumpWarnMinutes', String(next));
     set({ speedBumpWarnMinutes: next });
+  },
+
+  setSpeedBumpResetHours(hours: number) {
+    const next = clampBumpReset(hours);
+    dbSetSetting('speedBumpResetHours', String(next));
+    set({ speedBumpResetHours: next });
   },
 
   setMoodLogTasks(on: boolean) {

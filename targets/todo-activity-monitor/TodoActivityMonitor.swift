@@ -45,11 +45,11 @@ class TodoActivityMonitor: DeviceActivityMonitor {
 
     let raw = event.rawValue
     if raw.hasPrefix(ScreenTimeShared.speedBumpWarnEventPrefix) {
-      warnSpeedBump(event: raw)
+      warnSpeedBump(event: raw, activity: activity)
       return
     }
     if raw.hasPrefix(ScreenTimeShared.speedBumpEventPrefix) {
-      raiseSpeedBump(event: raw)
+      raiseSpeedBump(event: raw, activity: activity)
       return
     }
     guard raw.hasPrefix(Self.eventPrefix) else { return }
@@ -68,7 +68,7 @@ class TodoActivityMonitor: DeviceActivityMonitor {
   ///
   /// A local notification and nothing else, so it can be wrong in only one
   /// direction (a warning for a block that does not come), and every guard here
-  /// is there to keep that rare: it fires once per rung per day (the same record
+  /// is there to keep that rare: it fires once per rung per window (the same record
   /// the block itself uses, under the heads-up's own event name), and not while
   /// a speed bump block is already running, since use during one is not counted
   /// and the next rung is further off than the text would say. Needs the app's
@@ -77,7 +77,7 @@ class TodoActivityMonitor: DeviceActivityMonitor {
   ///
   /// Not verified without a device: that an extension can post a notification
   /// through `UNUserNotificationCenter.current().add` from this callback.
-  private func warnSpeedBump(event raw: String) {
+  private func warnSpeedBump(event raw: String, activity: DeviceActivityName) {
     let body = String(raw.dropFirst(ScreenTimeShared.speedBumpWarnEventPrefix.count))
     guard let split = body.lastIndex(of: ":") else { return }
     let ruleId = String(body[..<split])
@@ -87,7 +87,7 @@ class TodoActivityMonitor: DeviceActivityMonitor {
           let dayKey = ScreenTimeShared.readDayKey()
     else { return }
 
-    guard ScreenTimeShared.recordSpeedBumpFired(dayKey: dayKey, event: raw) else { return }
+    guard ScreenTimeShared.recordSpeedBumpFired(dayKey: dayKey, event: "\(activity.rawValue)|\(raw)") else { return }
     if !ScreenTimeShared.activeSpeedBumpGroupIds(now: Date()).isEmpty { return }
 
     let content = UNMutableNotificationContent()
@@ -110,8 +110,10 @@ class TodoActivityMonitor: DeviceActivityMonitor {
   ///
   /// Four rules keep it from blocking more than it should:
   ///
-  /// - **A rung fires once a day.** iOS can report an event more than once, and a
-  ///   duplicate would start a second block when the first has ended.
+  /// - **A rung fires once a window.** iOS can report an event more than once, and
+  ///   a duplicate would start a second block when the first has ended. The record
+  ///   is keyed by the activity as well as the event, because each counting
+  ///   window of the day carries the same events and fires them on its own.
   /// - **A running block is left alone.** A rung crossed during one is ignored,
   ///   not queued or extended, so blocks never stack into a long one.
   /// - **No day, no block.** It uses the day the app stamped when it armed the
@@ -123,7 +125,7 @@ class TodoActivityMonitor: DeviceActivityMonitor {
   /// window from inside the extension (Apple's documentation says an extension
   /// may call it), and that iOS accepts an interval starting at the current
   /// second, which the manual block's window already relies on.
-  private func raiseSpeedBump(event raw: String) {
+  private func raiseSpeedBump(event raw: String, activity: DeviceActivityName) {
     #if canImport(FamilyControls)
     if #available(iOS 16.0, *) {
       let body = String(raw.dropFirst(ScreenTimeShared.speedBumpEventPrefix.count))
@@ -137,7 +139,7 @@ class TodoActivityMonitor: DeviceActivityMonitor {
 
       // Recorded before anything is raised, so a duplicate wake stops here even
       // if the rest fails.
-      guard ScreenTimeShared.recordSpeedBumpFired(dayKey: dayKey, event: raw) else { return }
+      guard ScreenTimeShared.recordSpeedBumpFired(dayKey: dayKey, event: "\(activity.rawValue)|\(raw)") else { return }
 
       let now = Date()
       if !ScreenTimeShared.activeSpeedBumpGroupIds(now: now).isEmpty { return }

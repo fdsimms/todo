@@ -711,7 +711,12 @@ public class TodoScreenTimeBridgeModule: Module {
     /// does not restart the monitor: this runs on every foreground, and starting
     /// the activity again may start the day's count over, which would let a day
     /// of short sessions never reach a rung.
-    AsyncFunction("armSpeedBumps") { (bumpsJson: String, dayKey: String) -> Bool in
+    ///
+    /// `resetHours` cuts the day into windows of that many hours from midnight
+    /// (0 is the whole day). iOS counts use from the start of a monitoring
+    /// interval, so each window is its own activity carrying the same events and
+    /// a count that starts over where the window does.
+    AsyncFunction("armSpeedBumps") { (bumpsJson: String, dayKey: String, resetHours: Int) -> Bool in
       #if canImport(DeviceActivity) && canImport(FamilyControls)
       if #available(iOS 16.0, *) {
         var started = false
@@ -722,10 +727,13 @@ public class TodoScreenTimeBridgeModule: Module {
           else { return }
 
           let center = DeviceActivityCenter()
-          let name = DeviceActivityName(ScreenTimeShared.speedBumpMonitorName)
+          // Only divisors of 24 make equal windows; anything else is the whole day.
+          let hours = [6, 8, 12].contains(resetHours) ? resetHours : 0
+          let windows = hours > 0 ? 24 / hours : 1
+          let names = (0..<windows).map { DeviceActivityName(ScreenTimeShared.speedBumpMonitorName(window: $0)) }
           if let armed = ScreenTimeShared.readSpeedBumpsArmed(),
-             armed.dayKey == dayKey, armed.bumps == bumpsJson,
-             center.activities.contains(name) {
+             armed.dayKey == dayKey, armed.bumps == bumpsJson, (armed.resetHours ?? 0) == hours,
+             names.allSatisfy({ center.activities.contains($0) }) {
             started = true
             return
           }
@@ -757,20 +765,31 @@ public class TodoScreenTimeBridgeModule: Module {
               }
             }
           }
+          // Whatever was armed before, including windows a larger split left behind.
+          let armedBefore = center.activities.filter {
+            $0.rawValue == ScreenTimeShared.speedBumpMonitorName
+              || $0.rawValue.hasPrefix(ScreenTimeShared.speedBumpMonitorWindowPrefix)
+          }
+          // An empty list means "stop everything" to iOS, so never pass one.
+          if !armedBefore.isEmpty { center.stopMonitoring(Array(armedBefore)) }
           guard !events.isEmpty else {
-            center.stopMonitoring([name])
             ScreenTimeShared.remove(ScreenTimeShared.speedBumpsArmedFileName)
             return
           }
 
-          let schedule = DeviceActivitySchedule(
-            intervalStart: DateComponents(hour: 0, minute: 0),
-            intervalEnd: DateComponents(hour: 23, minute: 59),
-            repeats: true
-          )
-          center.stopMonitoring([name])
-          try? center.startMonitoring(name, during: schedule, events: events)
-          ScreenTimeShared.writeSpeedBumpsArmed(SpeedBumpArmedShared(dayKey: dayKey, bumps: bumpsJson))
+          // Window k runs from k*hours:00 to its last minute, so the count
+          // starts over at each start. Every window carries every event.
+          for (index, name) in names.enumerated() {
+            let startHour = index * (hours > 0 ? hours : 24)
+            let endHour = hours > 0 ? startHour + hours - 1 : 23
+            let schedule = DeviceActivitySchedule(
+              intervalStart: DateComponents(hour: startHour, minute: 0),
+              intervalEnd: DateComponents(hour: endHour, minute: 59),
+              repeats: true
+            )
+            try? center.startMonitoring(name, during: schedule, events: events)
+          }
+          ScreenTimeShared.writeSpeedBumpsArmed(SpeedBumpArmedShared(dayKey: dayKey, bumps: bumpsJson, resetHours: hours))
           started = true
         }
         return started
@@ -786,7 +805,13 @@ public class TodoScreenTimeBridgeModule: Module {
       if #available(iOS 16.0, *) {
         var stopped = false
         TodoScreenTimeExceptionCatcher.runCatchingExceptions {
-          DeviceActivityCenter().stopMonitoring([DeviceActivityName(ScreenTimeShared.speedBumpMonitorName)])
+          let center = DeviceActivityCenter()
+          let armed = center.activities.filter {
+            $0.rawValue == ScreenTimeShared.speedBumpMonitorName
+              || $0.rawValue.hasPrefix(ScreenTimeShared.speedBumpMonitorWindowPrefix)
+          }
+          // An empty list means "stop everything" to iOS, so never pass one.
+          if !armed.isEmpty { center.stopMonitoring(Array(armed)) }
           ScreenTimeShared.remove(ScreenTimeShared.speedBumpsFileName)
           ScreenTimeShared.remove(ScreenTimeShared.speedBumpsArmedFileName)
           stopped = true
