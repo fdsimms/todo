@@ -7,6 +7,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, interaction, border, iconSize, lineHeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { pantryCheckBoughtCaption } from '../utils/pantryCheckTasks';
 
 interface Props {
   visible: boolean;
@@ -95,6 +96,11 @@ export function PantryCheckSheet({ visible, itemId, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
   const name = useGroceryStore(s => s.itemById(itemId)?.name ?? null);
+  const lastPurchasedAt = useGroceryStore(s => s.itemById(itemId)?.lastPurchasedAt ?? null);
+  const bought = useMemo(
+    () => pantryCheckBoughtCaption({ lastPurchasedAt }, new Date()),
+    [lastPurchasedAt, visible],
+  );
 
   const answer = (key: Row['key']) => {
     const groceries = useGroceryStore.getState();
@@ -123,6 +129,7 @@ export function PantryCheckSheet({ visible, itemId, onClose }: Props) {
     >
       <View style={styles.header}>
         <Text style={styles.title}>{name ? `Do you still have ${name}?` : 'Do you still have this?'}</Text>
+        {bought && <Text style={styles.subtitle}>{bought}</Text>}
       </View>
       {ROWS.map(row => (
         <Fragment key={row.key}>
@@ -161,6 +168,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.lg,
     fontWeight: fontWeight.semibold,
+  },
+  subtitle: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    lineHeight: lineHeight.sm,
+    marginTop: spacing.xxs,
+    fontWeight: fontWeight.regular,
   },
   optionRow: {
     flexDirection: 'row',
