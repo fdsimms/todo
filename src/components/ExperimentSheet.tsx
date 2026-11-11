@@ -14,15 +14,17 @@ import { WhenPicker } from './WhenPicker';
 import { SegmentedControl } from './SegmentedControl';
 import { PillGroup } from './PillGroup';
 import { FieldError } from './FieldError';
+import { InlineAction } from './InlineAction';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { getLogicalToday } from '../utils/dateUtils';
+import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import { symptomKey, symptomVocabulary } from '../utils/moodLog';
 import {
   DEFAULT_EXPERIMENT_DAYS,
   EXPERIMENT_LABEL_MAX_LENGTH,
   EXPERIMENT_LENGTH_PRESETS,
+  canEndToday,
   cleanExperimentSymptoms,
   describeLength,
   experimentRefusal,
@@ -105,6 +107,10 @@ export function ExperimentSheet({ visible, experiment, onClose }: Props) {
   }, [visible, experiment]);
 
   const lengthDays = experimentSpan({ startDate: start.toISOString(), endDate: end.toISOString() }).lengthDays;
+  // Only for one already running, and only while its last day is still ahead:
+  // a new one ending today is a length, not an early end.
+  const showEndToday = experiment !== null
+    && canEndToday({ startDate: start.toISOString(), endDate: end.toISOString() }, dayKeyOf(getLogicalToday()));
   const refusal = experimentRefusal({ label, startDate: start, endDate: end });
   // A new experiment nobody named is not one to warn about: closing just
   // doesn't make it, the way an unnamed milestone isn't made.
@@ -262,6 +268,16 @@ export function ExperimentSheet({ visible, experiment, onClose }: Props) {
           />
         </View>
       </View>
+      {showEndToday && (
+        <View style={styles.endToday}>
+          <InlineAction
+            label="End it today"
+            icon="stop-circle-outline"
+            variant="neutral"
+            onPress={() => { haptics.tap(); setEnd(noonOfToday()); }}
+          />
+        </View>
+      )}
       {datesRefused && <FieldError style={styles.error}>{refusal}</FieldError>}
       <HelpText style={styles.hint}>
         Compared with the same number of days just before it starts.
@@ -342,6 +358,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginLeft: spacing.md,
   },
   lengths: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
+  endToday: { marginTop: spacing.sm, alignItems: 'flex-start' },
   error: { marginTop: spacing.sm, paddingHorizontal: spacing.sm },
   hint: {
     color: colors.textTertiary,

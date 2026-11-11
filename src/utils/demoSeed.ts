@@ -3853,21 +3853,34 @@ function seedMilestone(today: Date): void {
 }
 
 /**
- * One experiment, a week into two, watching the two symptoms the seeded log
- * carries, so the Mood screen lists it with its progress and its page has a
- * mood and a symptom comparison to draw. The baseline it reads holds the
- * seeded low patch and the milestone above, so "Also changed in this stretch"
- * shows too. Through `addExperiment`, so the row can't drift from the type.
+ * Two experiments, so the Mood screen shows both kinds of row. One is a week
+ * into two, watching the two symptoms the seeded log carries, so it lists with
+ * its progress and its page has a mood and a symptom comparison to draw (its
+ * baseline holds the seeded low patch and the milestone above, so "Also
+ * changed in this stretch" shows too). The other finished yesterday, so its
+ * row carries the one-line result a finished experiment shows. They overlap,
+ * which each page names. Through `addExperiment`, so the rows can't drift from
+ * the type.
  */
 function seedExperiment(today: Date): void {
+  const { addExperiment } = useExperimentStore.getState();
   const start = subDays(today, 7);
   start.setHours(12, 0, 0, 0);
-  useExperimentStore.getState().addExperiment({
+  addExperiment({
     label: 'No caffeine after noon',
     startDate: start,
     endDate: addDays(start, 13),
     symptoms: ['Headache', 'Poor sleep'],
     note: 'Fewer headaches, and falling asleep sooner.',
+  });
+  const finishedStart = subDays(today, 8);
+  finishedStart.setHours(12, 0, 0, 0);
+  addExperiment({
+    label: 'Screens off by 10pm',
+    startDate: finishedStart,
+    endDate: addDays(finishedStart, 7),
+    symptoms: ['Poor sleep'],
+    note: null,
   });
 }
 

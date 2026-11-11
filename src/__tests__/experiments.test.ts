@@ -1,12 +1,16 @@
 import type { Experiment, Milestone, MoodLog, LoggedSymptom } from '../types';
 import {
+  canEndToday,
   cleanExperimentSymptoms,
   describeLength,
   experimentProgress,
+  experimentNoticeContent,
+  experimentNoticeDayKey,
   experimentRefusal,
   experimentResult,
   experimentSpan,
   experimentStatus,
+  experimentSummary,
   overlappingChanges,
   roundedSeverity,
   sortExperimentsForList,
@@ -305,5 +309,52 @@ describe('sortExperimentsForList', () => {
       experiment({ id: 'recent', start: '2026-10-01', end: '2026-10-20' }),
     ], '2026-11-11');
     expect(list.map(e => e.id)).toEqual(['now', 'next', 'recent', 'old']);
+  });
+});
+
+describe('experimentSummary', () => {
+  const headache = (severity: 1 | 2 | 3): LoggedSymptom => ({ name: 'Headache', severity });
+
+  it('gives mood, then each comparable picked symptom as a share of logged days', () => {
+    const e = experiment({ start: '2026-11-01', end: '2026-11-14', symptoms: ['Headache', 'Nausea'] });
+    const logs = [
+      ...run('2026-10-18', 10, (i, k) => log(k, 3, i < 5 ? [headache(2)] : [])),
+      ...run('2026-11-01', 10, (i, k) => log(k, 4, i < 1 ? [headache(1)] : [])),
+    ];
+    expect(experimentSummary(experimentResult(e, logs, '2026-11-20')))
+      .toBe('Mood 3.0 before, 4.0 during. Headache on 50% of days before, 10% during.');
+  });
+
+  it('says how many more picked symptoms there are past the first two', () => {
+    const names = ['A', 'B', 'C', 'D'];
+    const e = experiment({ start: '2026-11-01', end: '2026-11-14', symptoms: names });
+    const all = names.map(name => ({ name, severity: 1 as const }));
+    const logs = [
+      ...run('2026-10-18', 10, (_, k) => log(k, null, all)),
+      ...run('2026-11-01', 10, (_, k) => log(k, null, all)),
+    ];
+    expect(experimentSummary(experimentResult(e, logs, '2026-11-20'))).toMatch(/^A on 100% .*B on 100% .*\. 2 more on its page\.$/);
+  });
+
+  it('is null when nothing can be compared', () => {
+    const e = experiment({ symptoms: ['Headache'] });
+    expect(experimentSummary(experimentResult(e, [log('2026-11-02', 3)], '2026-11-20'))).toBeNull();
+  });
+});
+
+describe('canEndToday', () => {
+  const e = experiment({ start: '2026-11-01', end: '2026-11-28' });
+  it('applies only while it runs and its last day is still ahead', () => {
+    expect(canEndToday(e, '2026-10-31')).toBe(false);
+    expect(canEndToday(e, '2026-11-10')).toBe(true);
+    expect(canEndToday(e, '2026-11-28')).toBe(false);
+    expect(canEndToday(e, '2026-12-01')).toBe(false);
+  });
+});
+
+describe('the finish notice', () => {
+  it('is for the day after the last day, and names the experiment', () => {
+    expect(experimentNoticeDayKey(experiment({ start: '2026-11-01', end: '2026-11-30' }))).toBe('2026-12-01');
+    expect(experimentNoticeContent('No dairy').body).toMatch(/^No dairy is over\./);
   });
 });

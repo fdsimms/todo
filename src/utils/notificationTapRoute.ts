@@ -15,6 +15,7 @@ export interface NotificationTapData {
   completionTimer?: boolean;
   activeTripReminder?: boolean;
   checkInId?: string;
+  experimentId?: string;
 }
 
 /** Where a tap on a notification lands, and what it does on the way. */
@@ -29,6 +30,8 @@ export type NotificationTapRoute =
   | { kind: 'completionTimer'; taskId: string }
   /** A check-in notification: a button answers it, a plain tap asks in the app. */
   | { kind: 'checkIn'; checkInId: string; answer: CheckInAnswer | null }
+  /** An experiment's finish notice: its page. */
+  | { kind: 'experiment'; experimentId: string }
   /** The Complete button on a task reminder. */
   | { kind: 'complete'; taskId: string }
   /** The Snooze button on a task reminder. */
@@ -54,6 +57,7 @@ export function routeNotificationTap(
   if (data?.activeTripReminder) return { kind: 'activeTrip' };
   if (data?.dailyAgenda) return { kind: 'agenda', spokenLine: data.agendaSpoken ? data.agendaSpoken : null };
   if (data?.checkInId) return { kind: 'checkIn', checkInId: data.checkInId, answer: answerForAction(actionIdentifier) };
+  if (data?.experimentId) return { kind: 'experiment', experimentId: data.experimentId };
   const taskId = data?.taskId;
   if (!taskId) return { kind: 'none' };
   if (data?.completionTimer) return { kind: 'completionTimer', taskId };

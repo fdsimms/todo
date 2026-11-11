@@ -141,6 +141,9 @@ import {
   scheduleCheckIn,
   cancelCheckIn,
   CHECK_IN_CATEGORY,
+  EXPERIMENT_NOTICE_PREFIX,
+  experimentNoticeAt,
+  syncExperimentNotices,
 } from '../utils/notifications';
 import { registerLockedProjectSource } from '../utils/projectLock';
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
@@ -2597,5 +2600,71 @@ describe('a task in a locked project', () => {
   it('still names a task whose project is not locked', async () => {
     await scheduleCompletionTimer(makeTask({ projectId: 'open', title: SECRET_TITLE, completionTimerMinutes: 30 }));
     expect(sentText()).toContain(SECRET_TITLE);
+  });
+});
+
+describe('experiment finish notices', () => {
+  const noonOf = (key: string) => new Date(`${key}T12:00:00`).toISOString();
+  const experiment = (id: string, start: string, end: string) => ({
+    id, label: `Experiment ${id}`, startDate: noonOf(start), endDate: noonOf(end),
+    symptoms: [], note: null, createdAt: '2026-10-01T09:00:00',
+  });
+  const placement = { dayResetTime: '00:00', activeHoursStart: '08:00', quietHoursStart: null, quietHoursEnd: null };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('lands at the start of active hours on the day after the last day', () => {
+    const at = experimentNoticeAt(experiment('a', '2026-11-01', '2026-11-28'), new Date('2026-11-10T09:00:00'), placement);
+    expect(at).toEqual(new Date('2026-11-29T08:00:00'));
+  });
+
+  it('is pushed past quiet hours and keeps a clock time before the day reset on that logical day', () => {
+    const quiet = experimentNoticeAt(experiment('a', '2026-11-01', '2026-11-28'), new Date('2026-11-10T09:00:00'),
+      { ...placement, quietHoursStart: '22:00', quietHoursEnd: '09:30' });
+    expect(quiet).toEqual(new Date('2026-11-29T09:30:00'));
+    const lateReset = experimentNoticeAt(experiment('a', '2026-11-01', '2026-11-28'), new Date('2026-11-10T09:00:00'),
+      { ...placement, dayResetTime: '10:00' });
+    // 08:00 is before a 10:00 reset, so it belongs to the end of that logical day.
+    expect(lateReset).toEqual(new Date('2026-11-30T08:00:00'));
+  });
+
+  it('is null once that moment has passed', () => {
+    expect(experimentNoticeAt(experiment('a', '2026-11-01', '2026-11-28'), new Date('2026-11-29T08:30:00'), placement)).toBeNull();
+  });
+
+  it('schedules the ones still to finish, with the id the tap opens, and cancels its own strays', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-10T09:00:00'));
+    try {
+      (Notifications.getAllScheduledNotificationsAsync as jest.Mock).mockResolvedValueOnce([
+        { identifier: `${EXPERIMENT_NOTICE_PREFIX}deleted` },
+        { identifier: `${EXPERIMENT_NOTICE_PREFIX}running` },
+        { identifier: 'task-1' },
+      ]);
+      await syncExperimentNotices([
+        experiment('running', '2026-11-01', '2026-11-28'),
+        experiment('done', '2026-10-01', '2026-10-14'),
+      ]);
+      const scheduled = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(c => c[0]);
+      expect(scheduled).toHaveLength(1);
+      expect(scheduled[0].identifier).toBe(`${EXPERIMENT_NOTICE_PREFIX}running`);
+      expect(scheduled[0].content.data).toEqual({ experimentId: 'running' });
+      expect(scheduled[0].content.body).toMatch(/^Experiment running is over\./);
+      const cancelled = (Notifications.cancelScheduledNotificationAsync as jest.Mock).mock.calls.map(c => c[0]);
+      expect(cancelled).toContain(`${EXPERIMENT_NOTICE_PREFIX}deleted`);
+      expect(cancelled).not.toContain('task-1');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does nothing in demo mode', async () => {
+    setDemoModeActive(true);
+    try {
+      await syncExperimentNotices([experiment('a', '2099-01-01', '2099-01-28')]);
+      expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+      expect(Notifications.getAllScheduledNotificationsAsync).not.toHaveBeenCalled();
+    } finally {
+      setDemoModeActive(false);
+    }
   });
 });

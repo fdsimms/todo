@@ -202,7 +202,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/exerciseLibrary.ts` — LibraryExercise, LIBRARY_ID_PREFIX, EXERCISE_LIBRARY, libraryExercise, isLibraryId
 - `src/utils/exerciseSwap.ts` — swappableSets, swapKindsMatch, swapCandidates, preferredFirst
 - `src/utils/exerciseUsage.ts` — MOST_USED_DAYS, MOST_USED_MIN_SESSIONS, MOST_USED_LIMIT, mostUsedExerciseIds
-- `src/utils/experiments.ts` — EXPERIMENT_LENGTH_PRESETS, describeLength, DEFAULT_EXPERIMENT_DAYS, EXPERIMENT_LABEL_MAX_LENGTH, ExperimentStatus, experimentDayKey, ExperimentSpan, experimentSpan, experimentStatus, experimentProgress, +12 more
+- `src/utils/experiments.ts` — EXPERIMENT_LENGTH_PRESETS, describeLength, DEFAULT_EXPERIMENT_DAYS, EXPERIMENT_LABEL_MAX_LENGTH, ExperimentStatus, experimentDayKey, ExperimentSpan, experimentSpan, experimentStatus, experimentProgress, +16 more
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/fabAnchor.ts` — FabMenuAnchor, fabMenuAnchorFor
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
@@ -378,7 +378,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/nicknames.ts` — nicknamesOf, primaryNickname
 - `src/utils/notificationTapRoute.ts` — NotificationTapData, NotificationTapRoute, routeNotificationTap
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
-- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, isRedundantInForeground, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, CHECK_IN_CATEGORY, requestNotificationPermissions, NotificationPermission, +45 more
+- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, isRedundantInForeground, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, CHECK_IN_CATEGORY, requestNotificationPermissions, NotificationPermission, +48 more
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — NudgeMode, NUDGE_MODES, nudgeModeOf, nudgeFieldsFor, FALLBACK_CADENCE_DAYS, NUDGE_MODE_LABEL, describeNudge, CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, +7 more
 - `src/utils/nutrientLog.ts` — isNutrientOnlyEntry, nutrientOnlyKey, nutrientOnlyEntryOf, NutrientHelping, nutrientHelping
@@ -862,6 +862,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useEventTaskContext.ts` — useEventTaskContext
 - `src/hooks/useEventTaskSync.ts` — useEventTaskSync
 - `src/hooks/useEventTravelNote.ts` — useEventTravelNote
+- `src/hooks/useExperimentNotices.ts` — useExperimentNotices
 - `src/hooks/useFilterField.ts` — FilterField, useFilterField
 - `src/hooks/useFocusRefreshedRead.ts` — useFocusRefreshedRead
 - `src/hooks/useFocusSession.ts` — useFocusSession, useFocusStepDoneHaptic, useFocusPlanReconcile

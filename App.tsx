@@ -54,6 +54,7 @@ import { useReminderMeetingResync } from './src/hooks/useReminderMeetingResync';
 import { usePlaceGateRefresh } from './src/hooks/usePlaceGateRefresh';
 import { useReminderWithholdSync } from './src/hooks/useReminderWithholdSync';
 import { useForegroundCatchUp } from './src/hooks/useForegroundCatchUp';
+import { useExperimentNotices } from './src/hooks/useExperimentNotices';
 import { useScreenTimeSync } from './src/store/useScreenTimeStore';
 import { useHealthSync } from './src/store/useHealthStore';
 import { useAppShieldSync } from './src/hooks/useAppShieldSync';
@@ -468,6 +469,10 @@ function AppRoot() {
 
   // Keeps the pending daily agenda's count matching the tasks it describes.
   useDailyAgendaSync();
+
+  // An experiment's "finished" notice, kept in step with the rows (which sync)
+  // and with the settings that place it.
+  useExperimentNotices();
 
   // Navigates to Today when a reminder/alarm notification is tapped.
   useNotificationTapSync();

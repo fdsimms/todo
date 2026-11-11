@@ -370,3 +370,55 @@ export function sortExperimentsForList(experiments: readonly Experiment[], today
     return a.startDate.localeCompare(b.startDate);
   });
 }
+
+function percent(fraction: number): string {
+  return `${Math.round(fraction * 100)}%`;
+}
+
+/** How many picked symptoms a summary line names before it says how many more there are. */
+const SUMMARY_SYMPTOMS = 2;
+
+/**
+ * A finished experiment's result in one line, for its row on the Mood screen:
+ * mood before and during, then the picked symptoms that can be compared, as
+ * the share of logged days each was on. Unpicked symptoms stay on the page,
+ * where the caption about chance sits beside them. Null when nothing can be
+ * compared, so the row can say that instead.
+ */
+export function experimentSummary(result: ExperimentResult): string | null {
+  const parts: string[] = [];
+  if (result.mood) {
+    parts.push(`Mood ${result.mood.moodBefore.toFixed(1)} before, ${result.mood.moodDuring.toFixed(1)} during`);
+  }
+  const symptoms = result.picked.filter(r => r.comparable);
+  for (const row of symptoms.slice(0, SUMMARY_SYMPTOMS)) {
+    parts.push(`${row.name} on ${percent(symptomRate(row.before))} of days before, ${percent(symptomRate(row.during))} during`);
+  }
+  if (parts.length === 0) return null;
+  const more = symptoms.length - SUMMARY_SYMPTOMS;
+  return `${parts.join('. ')}.${more > 0 ? ` ${more} more on its page.` : ''}`;
+}
+
+/**
+ * Whether "End today" applies: it is running and its last day is still ahead.
+ * On its last day it already ends today, so there is nothing to offer.
+ */
+export function canEndToday(
+  experiment: Pick<Experiment, 'startDate' | 'endDate'>,
+  todayKey: string,
+): boolean {
+  return experimentStatus(experiment, todayKey) === 'running' && experimentSpan(experiment).endKey > todayKey;
+}
+
+/** The day its finish notice is for: the morning after the last day, when the whole stretch can be read. */
+export function experimentNoticeDayKey(experiment: Pick<Experiment, 'startDate' | 'endDate'>): string {
+  return shiftKey(experimentSpan(experiment).endKey, 1);
+}
+
+/** The finish notice's words. Says where to look rather than a result, which keeps changing as late entries come in. */
+export function experimentNoticeContent(label: string): { title: string; body: string } {
+  return {
+    title: 'Experiment finished',
+    body: `${label} is over. See how your mood and symptoms compared with the days before it.`,
+  };
+}

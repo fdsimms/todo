@@ -92,7 +92,7 @@ import { PressableScale } from '../components/PressableScale';
 import { CsvExportSheet } from '../components/CsvExportSheet';
 import { MilestoneSheet } from '../components/MilestoneSheet';
 import { ExperimentSheet } from '../components/ExperimentSheet';
-import { describeLength, experimentProgress, experimentSpan, experimentStatus, sortExperimentsForList } from '../utils/experiments';
+import { describeLength, experimentProgress, experimentResult, experimentSpan, experimentStatus, experimentSummary, sortExperimentsForList } from '../utils/experiments';
 import { ContrastBars } from '../components/ContrastBars';
 import { capitalize } from '../utils/capitalize';
 import { useListScrollToTop } from '../hooks/useListScrollToTop';
@@ -426,9 +426,15 @@ export function MoodScreen() {
         : status === 'upcoming'
           ? `Starts ${format(dayKeyToDate(span.startKey), 'MMM d')} · ${describeLength(span.lengthDays)}`
           : `Finished ${format(dayKeyToDate(span.endKey), 'MMM d')} · ${describeLength(span.lengthDays)}`;
-      return { experiment, status, progress, meta };
+      // A finished one says how it came out, so the list answers "did it help"
+      // without a tap. The page still has the rest: the other symptoms and the
+      // changes in the same days.
+      const summary = status === 'finished'
+        ? experimentSummary(experimentResult(experiment, logs, todayKey)) ?? 'Not enough days logged to compare.'
+        : null;
+      return { experiment, status, progress, meta, summary };
     }),
-    [experiments, todayKey],
+    [experiments, logs, todayKey],
   );
 
   // Same key-to-casing resolution as symptomNames, for the same reason: a
@@ -1158,18 +1164,19 @@ export function MoodScreen() {
                 </Text>
               ) : (
                 <View style={styles.milestoneAddSpacing}>
-                  {experimentRows.map(({ experiment, status, progress, meta }, i) => (
+                  {experimentRows.map(({ experiment, status, progress, meta, summary }, i) => (
                     <TouchableOpacity
                       key={experiment.id}
                       style={[styles.linkRow, i > 0 && styles.milestoneRowGap]}
                       activeOpacity={interaction.activeOpacity}
                       onPress={() => { haptics.tap(); navigation.navigate('ExperimentDetail', { experimentId: experiment.id }); }}
                       accessibilityRole="button"
-                      accessibilityLabel={`${experiment.label}, ${meta}`}
+                      accessibilityLabel={`${experiment.label}, ${meta}${summary ? `. ${summary}` : ''}`}
                     >
                       <View style={styles.linkBody}>
                         <Text style={styles.linkLabel} numberOfLines={2}>{experiment.label}</Text>
                         <Text style={styles.linkMeta}>{meta}</Text>
+                        {summary && <Text style={styles.experimentSummary}>{summary}</Text>}
                         {status === 'running' && (
                           <View style={styles.experimentTrack}>
                             <View style={[styles.experimentFill, { width: `${(progress.day / progress.of) * 100}%` }]} />
@@ -1379,6 +1386,8 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   // Between one pending milestone row and the next — ContrastBars rows carry
   // their own gap, but a plain TouchableOpacity row needs its own.
   milestoneRowGap: { marginTop: spacing.md },
+  // A finished experiment's result, under its meta line.
+  experimentSummary: { fontSize: font.xs, color: colors.text, marginTop: spacing.xs, lineHeight: 17 },
   // A running experiment's progress, under its meta line.
   experimentTrack: {
     height: 4,

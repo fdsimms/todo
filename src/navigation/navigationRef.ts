@@ -134,6 +134,15 @@ export function resetToFoodLog(openAdd = false): void {
 }
 
 // Where `dundundun://medications` lands: the Medications widget's own tap.
+// Where an experiment's finish notice lands: its page, over the Mood screen,
+// so the back chevron goes to the list it lives in.
+export function resetToExperiment(experimentId: string): void {
+  runWhenReady(() => {
+    navigateToTab('Mood');
+    navigationRef.navigate({ name: 'ExperimentDetail', params: { experimentId } });
+  });
+}
+
 export function resetToMedications(): void {
   runWhenReady(() => navigateToTab('Medications'));
 }

@@ -1244,6 +1244,24 @@ stretches of time and can't separate this change from the others in them.
 **Deleting an experiment touches nothing else.** It points at no entries, and
 no entry points at it.
 
+**A finished one shows its result on the Mood screen** (`experimentSummary`):
+mood, then up to two picked symptoms that can be compared, as the share of
+logged days each was on. Unpicked symptoms stay on the page, beside the
+caption about chance; a list row has no room for that caveat.
+
+**Ending early is setting the last day to today** ("End it today" in the
+sheet, `canEndToday`; `update_experiment` with today's date over MCP). The
+baseline shortens with it, since it is always the same length.
+
+**The finish notice fires the morning after the last day**
+(`experimentNoticeAt`): the start of active hours on that logical day, pushed
+past quiet hours. It names the experiment and says where to look, never a
+result, which keeps changing as late entries come in. Experiments sync, so
+each phone schedules its own from the rows it holds (`syncExperimentNotices`,
+run by the app-level `useExperimentNotices` on every change to the rows or
+the settings that place it), and it sends nothing in demo mode. A tap opens
+the experiment's page.
+
 ## It syncs, and it hides
 
 `mood_logs` is in `SYNC_TRACKED_TABLES`. Half a person's health record on each
