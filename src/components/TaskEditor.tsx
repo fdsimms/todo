@@ -1124,6 +1124,14 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
   const setCompletionCalendarId = useSettingsStore(s => s.setCompletionCalendarId);
   const healthWriteEnabled = useSettingsStore(s => s.healthWriteEnabled);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
+  // When the task was added, under the action card. Not a row: it is read-only,
+  // and a row among Archive and Delete reads as tappable.
+  const addedCaption = (() => {
+    const at = task ? new Date(task.createdAt) : null;
+    return at && !isNaN(at.getTime())
+      ? `Added ${format(at, 'MMM d, yyyy')} at ${formatTimeOfDay(at, use24HourTime)}`
+      : null;
+  })();
   const activeHoursStart = useSettingsStore(s => s.activeHoursStart);
   const activeHoursEnd = useSettingsStore(s => s.activeHoursEnd);
   const calendarEvents = useCalendarStore(s => s.events);
@@ -8953,6 +8961,7 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
           saved task can be archived, and every other entry point already
           allowed it. */}
       {dangerVisible && (
+        <>
         <View style={[styles.optionsCard, { marginTop: spacing.xl }]}>
                 <TouchableOpacity
                   style={styles.optionRow}
@@ -9015,6 +9024,8 @@ function TaskEditorSheet({ visible, task: taskProp, initialDraft, onClose, inlin
             </View>
           </TouchableOpacity>
         </View>
+        {addedCaption && <Text style={styles.addedCaption}>{addedCaption}</Text>}
+        </>
       )}
       </EditorRowFilterContext.Provider>
     </EditorSheet>
@@ -9390,6 +9401,10 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1 },
+  addedCaption: {
+    color: colors.textSecondary, fontSize: font.xs, textAlign: 'center',
+    marginTop: spacing.md,
+  },
   placeLimit: { paddingHorizontal: spacing.md, paddingVertical: spacing.smd, gap: spacing.xsm },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md + 18 + spacing.md },
   intervalRow: {
