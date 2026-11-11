@@ -94,7 +94,7 @@ import { HighlightedText } from './HighlightedText';
 import { suggestTitles, type TitleSuggestion } from '../utils/titleSuggestions';
 import { againFields, describeAgainFields } from '../utils/taskAgain';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, scheduleClockInstant, describeSchedule, scheduleHint, stripRemindPrefix, parseCategoryAndTagsInput, matchPersonMentions, contactForMention, findAmbiguousMention, getMentionSuggestions, getPhraseMentionSuggestion, unconfirmedPhraseMentions, phraseOverrideKey, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
+import { parseTaskInput, scheduleClockInstant, describeSchedule, scheduleHint, stripRemindPrefix, parseCategoryAndTagsInput, parsePriorityInput, parseDifficultyInput, parseProjectInput, parseEstimateInput, matchPersonMentions, contactForMention, findAmbiguousMention, getMentionSuggestions, getPhraseMentionSuggestion, unconfirmedPhraseMentions, phraseOverrideKey, applyMentionOverrides, withTrailingSpace, type ParsedCategoryAndTags, type ParsedTaskInput, type MentionSuggestionCandidate } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { aimTooltip } from '../utils/tooltipAim';
 import { pickTitleSuggestion, describeTitleSuggestion, linkLabel } from '../utils/titleSuggestion';
@@ -1291,16 +1291,43 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // Writing it into the title first showed that commit: the tooltip and the
     // bar's confirm checkmark flashed for a frame. Resolving it here puts the
     // stripped title and the category/tags in the same update.
-    const resolved = titleChips.kind === 'category'
-      ? parseCategoryAndTagsInput(next, categories.map(c => c.name), allTags)
-      : null;
-    if (resolved) {
-      const nextTitle = withTrailingSpace(resolved.cleanTitle);
+    // The other sigils (! ^ + ~) are not applied by an effect, so left in the
+    // title they sat behind a tooltip and the checkmark waiting for a second
+    // tap on what the chip already said. They resolve here the same way.
+    const settle = (cleanTitle: string, apply: () => void) => {
+      const nextTitle = withTrailingSpace(cleanTitle);
       setTitle(nextTitle);
       titleCaret.moveCaret(nextTitle);
-      if (resolved.category) setCategory(resolved.category);
-      if (resolved.tags.length > 0) setTags(prev => [...new Set([...prev, ...resolved.tags])]);
-      return;
+      apply();
+    };
+    if (titleChips.kind === 'category') {
+      const hit = parseCategoryAndTagsInput(next, categories.map(c => c.name), allTags);
+      if (hit) {
+        settle(hit.cleanTitle, () => {
+          if (hit.category) setCategory(hit.category);
+          if (hit.tags.length > 0) setTags(prev => [...new Set([...prev, ...hit.tags])]);
+        });
+        return;
+      }
+    } else if (titleChips.kind === 'priority') {
+      const hit = parsePriorityInput(next);
+      if (hit) { settle(hit.cleanTitle, () => setPriority(hit.priority)); return; }
+    } else if (titleChips.kind === 'difficulty') {
+      const hit = parseDifficultyInput(next);
+      if (hit) { settle(hit.cleanTitle, () => setDifficulty(hit.difficulty)); return; }
+    } else if (titleChips.kind === 'project' && !intoProjectId) {
+      const hit = parseProjectInput(next, liveProjects);
+      if (hit) { settle(hit.cleanTitle, () => setProjectId(hit.projectId)); return; }
+    } else if (titleChips.kind === 'estimate' && isChipVisible(type, 'effort')) {
+      const hit = parseEstimateInput(next);
+      if (hit) {
+        settle(hit.cleanTitle, () => {
+          setEstimatedMinutes(hit.minutes);
+          setEffort(minutesToEffort(hit.minutes));
+          setCustomEffortText(ESTIMATE_PRESET_MINUTES.includes(hit.minutes) ? '' : String(hit.minutes));
+        });
+        return;
+      }
     }
     setTitle(next);
     titleCaret.moveCaret(next);

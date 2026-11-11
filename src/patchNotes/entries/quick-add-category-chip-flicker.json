@@ -1,1 +1,1 @@
-{ "message": "Tapping a category or tag suggestion above the keyboard in quick add no longer flashes the confirm checkmark before the bar returns to normal.", "date": "2026-11-10" }
+{ "message": "Tapping a suggestion above the keyboard in quick add (category, tag, priority, difficulty, project or estimate) now applies it right away, with no confirm checkmark flashing first.", "date": "2026-11-11" }
