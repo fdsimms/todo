@@ -51,6 +51,7 @@ import {
   laterVisibleOrder,
   laterTaskForDay,
   laterDaySections,
+  laterStripDays,
   limitTodayItems,
   laterDropZones,
   laterTodaySections as computeLaterTodaySections,
@@ -137,6 +138,7 @@ import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
 import { LaterStackRow, LATER_STACK_PREVIEW } from '../components/LaterStackRow';
+import { LaterDayStrip } from '../components/LaterDayStrip';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList, type RowScroller, type DropCapture } from '../components/ReorderableList';
 import { ScrollToTopButton } from '../components/ScrollToTopButton';
@@ -4924,6 +4926,12 @@ export function TodayScreen() {
   // used to run over everything and be truncated afterwards, so the budget
   // bounded how many rows mounted but not what it cost to work out which.
   const laterOrder = useMemo(() => laterVisibleOrder(deferredTasks), [deferredTasks]);
+  // The day chips under the pills. Read off the clock, so the days roll over
+  // with the list whenever the tasks change; the strip only renders on Later.
+  const laterStrip = useMemo(
+    () => (viewMode === 'later' ? laterStripDays(laterOrder, dayResetTime) : []),
+    [viewMode, laterOrder, dayResetTime],
+  );
 
   // The render that shows Later already holds its tasks (deferredTasksAll is
   // read for the lens on show), so the day is settled on that pass whether or
@@ -5402,6 +5410,16 @@ export function TodayScreen() {
           switchChannel={viewSwitchChannel}
           styles={styles}
         />
+
+        {viewMode === 'later' && (
+          <LaterDayStrip
+            days={laterStrip}
+            onSelect={day => {
+              const task = laterTaskForDay(laterOrder, day.dayKey, dayResetTime);
+              if (task) jumpToLaterTask(task);
+            }}
+          />
+        )}
 
         {workloadLine && <Text style={styles.workloadLine}>{workloadLine}</Text>}
 
