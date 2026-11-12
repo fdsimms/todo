@@ -498,13 +498,6 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       return stack;
     },
 
-    renameStack(id, title) {
-      const before = replica.stacks().find(s => s.id === id);
-      const stack = replica.renameStack(id, title);
-      log({ action: 'edited', subject: 'stack', title: stack.title, taskId: null, note: `Rename the stack ${before ? `"${before.title}" ` : ''}to "${stack.title}"` });
-      return stack;
-    },
-
     // The stack's own fields are a record; each member it re-filed is a task
     // edit with its way back.
     updateStack(id, patch) {

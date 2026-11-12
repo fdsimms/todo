@@ -81,12 +81,12 @@ import {
   type TaskFieldsInput,
 } from './taskFields';
 import type { DeliverableKind, ExerciseEquipment, ExerciseKind, MealSlot, MuscleGroup, TimeOfDay } from '../../src/types';
-import { assignToStack, createStack, deleteStack, listStacks, renameStack, updateStack } from './stackTools';
+import { assignToStack, createStack, deleteStack, listStacks, updateStack } from './stackTools';
 import { claimReward, createReward, createUnlock, deleteReward, deleteUnlock, getRewards, markMissed, setBounty, setRewardGoal, setSlip, setUnlockPlay, unclaimReward, updateReward, updateUnlock } from './rewardTools';
 import { addProjectSteps, createProject, deleteProject, getProject, nextInProject, saveProjectAsTemplate, saveProjectCategory, startFreshProject, updateProject, type CreateProjectInput, type ProjectPlanStepInput } from './projectTools';
-import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, catalogAudit, listBrands, mergeGroceryItems, mergeGroceryItemsMany, updateGroceryItems, renameBrand, renameBrands, renameGroceryList, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanel, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
+import { addChoiceToList, addIngredientsToList, clearGroceryList, createGroceryList, deleteGroceryItem, deleteGroceryList, finishGroceryTrip, getGroceryItem, grocerySetup, importReceipt, markUnavailable, matchReceipt, catalogAudit, listBrands, mergeGroceryItems, mergeGroceryItemsMany, updateGroceryItems, renameBrand, renameBrands, renameGroceryList, resolveList, saveAisle, saveGroceryBox, saveStore, setNutritionPanels, setShoppingTrip, settleChoice, swapForSubstitute, updateGroceryItem, updateStore } from './groceryTools';
 import { PANTRY_FILTERS, addToPantry, answerPantryReview, getPantryItem, listPantry, logLeftover, pantryReview, deleteLeftover, splitLeftover, updateLeftover, updatePantryBox, updatePantryItem, useUpRecipes } from './pantryTools';
-import { deleteCookbook, listCookbooks, logCookTime, mergeCookbooks, renameCookbook } from './recipeTools';
+import { deleteCookbook, listCookbooks, logCookTime, mergeCookbooks, updateCookbook } from './recipeTools';
 import { lintRecipes } from './recipeLint';
 import { DEFAULT_PLAN_DAYS, MAX_PLAN_DAYS, MEAL_SLOTS as KITCHEN_MEAL_SLOTS, addToWeekPool, copyMeals, getRecipe, listMealPlan, listRecipes, placePoolMeal, planMeal, removeMeal, removePoolMeal, saveMealAsRecipe, setMealCooked, setMealSkipped, updateMeal } from './kitchenTools';
 import { DEFAULT_BIRTHDAY_DAYS, MAX_BIRTHDAY_DAYS, addPersonHistory, addPersonNote, createPerson, deletePerson, deletePersonNote, savePersonGroup, updatePerson, updatePersonNote, getPerson, listPeople, upcomingBirthdays } from './peopleTools';
@@ -1927,7 +1927,7 @@ function registerWriteTools(
     }
   );
 
-  // The fields save_recipe and update_recipe share.
+  // The fields create_recipe and update_recipe share.
   const recipeFields = {
     ingredients: z.array(z.object({
       text: z.string().min(1),
@@ -1982,7 +1982,7 @@ function registerWriteTools(
   };
 
   server.tool(
-    'save_recipe',
+    'create_recipe',
     'Save a recipe to the app: from a page, a photo, or a conversation. Give ingredients as the lines a recipe prints ("2 cloves garlic, minced"), one per entry; the app reads the amount, the name and the prep out of each. Put a heading in section ("For the sauce"), and give lines that are alternatives ("serrano or jalapeño") the same alternativeGroup, one line each, never one line with "or". Refused if a recipe with that name is already in that cookbook. The result counts the ingredient lines the app could read.',
     {
       name: z.string().min(1),
@@ -2000,7 +2000,7 @@ function registerWriteTools(
 
   server.tool(
     'update_recipe',
-    'Change a saved recipe (ids from list_recipes). Only what you name changes. ingredients, steps, components and prepTasks each replace the whole list, so send the full set, in the same form as save_recipe (one line per ingredient, alternatives sharing an alternativeGroup); a step whose text is unchanged keeps its timer, note and the cook questions asked about it. cookbook moves it to another book by title (made if new), or null takes it out of one; a move clears a page that belonged to the old book. When two books share a title, naming the title of the book the recipe is in keeps it there, and naming a shared title for any other recipe is refused until one book is renamed. A rename or move is refused if that cookbook already has a recipe of that name; planned meals made from it are retitled. For a small edit (one step, one note, one ingredient) use patch_recipe instead: this tool rewrites whole lists. An ingredient line that is still wanted (same name, heading, prep and purpose) keeps its row, so the choices planned meals made still point at it.',
+    'Change a saved recipe (ids from list_recipes). Only what you name changes. ingredients, steps, components and prepTasks each replace the whole list, so send the full set, in the same form as create_recipe (one line per ingredient, alternatives sharing an alternativeGroup); a step whose text is unchanged keeps its timer, note and the cook questions asked about it. cookbook moves it to another book by title (made if new), or null takes it out of one; a move clears a page that belonged to the old book. When two books share a title, naming the title of the book the recipe is in keeps it there, and naming a shared title for any other recipe is refused until one book is renamed. A rename or move is refused if that cookbook already has a recipe of that name; planned meals made from it are retitled. For a small edit (one step, one note, one ingredient) use patch_recipe instead: this tool rewrites whole lists. An ingredient line that is still wanted (same name, heading, prep and purpose) keeps its row, so the choices planned meals made still point at it.',
     {
       id: z.string().min(1),
       name: z.string().min(1).optional(),
@@ -2046,18 +2046,18 @@ function registerWriteTools(
   );
 
   server.tool(
-    'rename_cookbook',
+    'update_cookbook',
     'Rename a cookbook or change its author. Every recipe in it takes the new title and author. Refused when another book already has that title and author; merge_cookbooks joins two copies of one book.',
     {
       id: z.string().min(1),
-      title: z.string().min(1),
+      title: z.string().min(1).optional().describe('Leave out to keep the title.'),
       author: z.string().nullable().optional().describe('Leave out to keep the author; null to clear it.'),
     },
     async ({ id, title, author }) => {
       try {
-        return json(await withWrite(() => renameCookbook(replica, id, title, author)));
+        return json(await withWrite(() => updateCookbook(replica, id, title, author)));
       } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not rename that cookbook.' });
+        return json({ error: e instanceof Error ? e.message : 'Could not change that cookbook.' });
       }
     }
   );
@@ -2716,6 +2716,7 @@ function registerWriteTools(
         skipInSuggestions: z.boolean().nullable().optional(),
         tags: z.array(z.string()).nullable().optional().describe('Added to every new task of this kind. Replaces the list; null or [] clears it.'),
         timeOfDay: z.enum(['morning', 'afternoon', 'evening', 'night']).nullable().optional().describe('Keeps these tasks off Today until that part of the day.'),
+        remindAt: z.string().nullable().optional().describe('A 24-hour time like "09:00": send a notification then on the day the task appears (none if it appears after that time). Only birthdays, birthday gifts, thaw reminders and use-up tasks offer it; null turns it off.'),
         askOnCompletion: z.object({
           kind: z.enum(['text', 'date', 'dateRange', 'people', 'number', 'yesno', 'choice']),
           options: z.array(z.string()).optional().describe('For choice: at least two.'),
@@ -3175,7 +3176,7 @@ function registerWriteTools(
   );
 
   server.tool(
-    'remove_medication',
+    'delete_medication',
     'Take a medicine off the list, with its limit and supply, as Remove on its page does. Only one with no recorded doses: doses are the person\'s record, so a medicine that has any is refused (delete_medication_log removes a dose; archive_medication moves it out of "what you take"). Use it to put right an add_medication.',
     { name: z.string().min(1) },
     async ({ name }) => {
@@ -3753,27 +3754,28 @@ function registerWriteTools(
   );
 
   server.tool(
-    'set_nutrition_panels',
-    `Set the nutrition panels of several grocery items at once, one preview and one approval for the lot (set_nutrition_panel is one item per call). Each entry is an item and a panel as set_nutrition_panel takes it, per 100g, per 100ml or per serving, keyed ${NUTRIENT_KEY_LIST.join(', ')}. All or none: every panel is checked and every item found before the first write. An item not in the catalog is refused unless its entry says create: true, which adds a bare catalog row (on no list, not in the pantry). Each replaces that item's figures, so read get_grocery_item first for any that may already have some. Set estimated when the figures are yours rather than a label's, and send portions so a recipe line in tablespoons or a count can be weighed. Portions merge by label, so an old one stays beside a new one: an existing "cup" and your "cup, packed" that disagree on density stop the app weighing any volume. The result lists the figures replaced (with their source) and the portions the item will have, so check both in the preview; overwrite a wrong portion by sending its exact label.`,
+    'set_nutrition_panel',
+    `Set what grocery items are made of (their nutrition panels), as the app's panel editor does: one item or a whole recipe's worth in one call, with one preview and one approval. Each entry is an item, or one of its brands (boxId), and a panel; panel null removes it. Figures are keyed ${NUTRIENT_KEY_LIST.join(', ')}, per 100g, per 100ml (a drink), or per serving. Leave out any the label does not state: absent is unknown, not zero. All or none: every panel is checked and every item found before the first write. An item not in the catalog is refused unless its entry says create: true, which adds a bare catalog row (on no list, not in the pantry). Set estimated when the figures are yours rather than read off a label. For a food weighed raw and cooked (rice, pasta, meat), send cooking with the ratio the person gave or weighed; never guess one. Recipes and the food log read it; a recipe counts a line written in a volume or a count only when the item has a portion weighing it, so send portions too. Each entry replaces that item's figures, so read get_grocery_item first for any that may already have some. Portions merge by label, so an old one stays beside a new one: an existing "cup" and your "cup, packed" that disagree on density stop the app weighing any volume. The result lists the figures replaced (with their source) and the portions the item will have, so check both in the preview; overwrite a wrong portion by sending its exact label.`,
     {
       panels: z.array(z.object({
         item: z.string().min(1),
+        boxId: z.string().optional().describe('A brand of the item (an id from get_grocery_item): set its panel instead of the item\'s.'),
         create: z.boolean().optional(),
         panel: z.object({
           basis: z.enum(['per100g', 'per100ml', 'perServing']),
           amounts: z.record(z.number()),
           servingGrams: z.number().nullable().optional(),
-          servingText: z.string().nullable().optional(),
+          servingText: z.string().nullable().optional().describe('As the label prints it: "1 cup (240ml)".'),
           estimated: z.boolean().optional(),
           novaGroup: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable().optional().describe('NOVA processing group, 1 unprocessed to 4 ultra-processed. Omit to keep the current one; null clears it. Only set what you know, never a guess from the name.'),
           packageGrams: z.number().nullable().optional().describe('What the whole package weighs in grams, as the label prints it. Omit to keep the current one; null clears it. Leave out for a pack sold by volume.'),
-        cooking: z.object({ panelState: z.enum(['raw', 'cooked']), cookedPerRaw: z.number() }).nullable().optional().describe('Which state the figures describe and cooked grams per raw gram (white rice about 2.8, raw chicken about 0.75). Lets a log amount like "100 g cooked" be converted. Omit to keep the current one; null clears it. Only set a ratio the person gave or weighed.'),
+          cooking: z.object({ panelState: z.enum(['raw', 'cooked']), cookedPerRaw: z.number() }).nullable().optional().describe('Which state the figures describe and cooked grams per raw gram (white rice about 2.8, raw chicken about 0.75). Lets a log amount like "100 g cooked" be converted. Omit to keep the current one; null clears it. Only set a ratio the person gave or weighed.'),
           portions: z.array(z.object({
             label: z.string().min(1),
             grams: z.number(),
             amount: z.number().optional(),
-          })).optional().describe('What an amount of this food weighs ("tbsp" 13.5, "cup, shredded" 113). Merged into the existing table by label.'),
-        }),
+          })).optional().describe('What an amount of this food weighs ("tbsp" 13.5, "cup, shredded" 113), so a recipe line in tablespoons or cloves can be counted. Merged into the existing table by label; omit to leave it alone.'),
+        }).nullable(),
       })).min(1).max(60),
     },
     async input => {
@@ -3781,37 +3783,6 @@ function registerWriteTools(
         return json(await withWrite(() => setNutritionPanels(replica, input)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not set the panels.' });
-      }
-    }
-  );
-
-  server.tool(
-    'set_nutrition_panel',
-    `Set what a grocery item is made of (its nutrition panel), or one of its brands' (boxId), as the app's panel editor does; panel null removes it. Figures are keyed ${NUTRIENT_KEY_LIST.join(', ')}, per 100g, per 100ml (a drink), or per serving. Leave out any the label does not state: absent is unknown, not zero. Set estimated when the figures are yours rather than read off a label. For a food weighed raw and cooked (rice, pasta, meat), send cooking with the ratio the person gave or weighed; never guess one. Recipes and the food log read it; a recipe counts a line written in a volume or a count only when the item has a portion weighing it, so send portions too. Check get_grocery_item first: this replaces the figures it shows. Portions merge by label, so an old one stays beside a new one: an existing "cup" and your "cup, packed" that disagree on density stop the app weighing any volume. The result lists the figures replaced (with their source) and the portions the item will have, so check both in the preview; overwrite a wrong portion by sending its exact label.`,
-    {
-      item: z.string().min(1),
-      boxId: z.string().optional(),
-      panel: z.object({
-        basis: z.enum(['per100g', 'per100ml', 'perServing']),
-        amounts: z.record(z.number()),
-        servingGrams: z.number().nullable().optional(),
-        servingText: z.string().nullable().optional().describe('As the label prints it: "1 cup (240ml)".'),
-        estimated: z.boolean().optional(),
-        novaGroup: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable().optional().describe('NOVA processing group, 1 unprocessed to 4 ultra-processed. Omit to keep the current one; null clears it. Only set what you know, never a guess from the name.'),
-        packageGrams: z.number().nullable().optional().describe('What the whole package weighs in grams, as the label prints it. Omit to keep the current one; null clears it. Leave out for a pack sold by volume.'),
-        cooking: z.object({ panelState: z.enum(['raw', 'cooked']), cookedPerRaw: z.number() }).nullable().optional().describe('Which state the figures describe and cooked grams per raw gram (white rice about 2.8, raw chicken about 0.75). Lets a log amount like "100 g cooked" be converted. Omit to keep the current one; null clears it. Only set a ratio the person gave or weighed.'),
-        portions: z.array(z.object({
-          label: z.string().min(1),
-          grams: z.number(),
-          amount: z.number().optional(),
-        })).optional().describe('What an amount of this food weighs ("tbsp" 13.5, "cup, shredded" 113), so a recipe line in tablespoons or cloves can be counted. Merged into the existing table by label; omit to leave it alone.'),
-      }).nullable(),
-    },
-    async input => {
-      try {
-        return json(await withWrite(() => setNutritionPanel(replica, input)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not set the panel.' });
       }
     }
   );
@@ -3924,8 +3895,8 @@ function registerWriteTools(
   );
 
   server.tool(
-    'rename_grocery_list',
-    'Rename a separate grocery list (by name or id).',
+    'update_grocery_list',
+    'Rename a separate grocery list (by name or id). The name is the only thing about a list that can change.',
     { list: z.string().min(1), name: z.string().min(1) },
     async ({ list, name }) => {
       try {
@@ -4151,19 +4122,6 @@ function registerWriteTools(
         return json(await withWrite(() => assignToStack(replica, stackId, taskIds)));
       } catch (e) {
         return json({ error: e instanceof Error ? e.message : 'Could not file the tasks.' });
-      }
-    }
-  );
-
-  server.tool(
-    'rename_stack',
-    "Rename a stack (ids from list_stacks). Only the title: its category and members are not touched. update_stack changes the rest.",
-    { id: z.string().min(1), title: z.string().min(1) },
-    async ({ id, title }) => {
-      try {
-        return json(await withWrite(() => renameStack(replica, id, title)));
-      } catch (e) {
-        return json({ error: e instanceof Error ? e.message : 'Could not rename the stack.' });
       }
     }
   );
@@ -4612,7 +4570,7 @@ function registerWriteTools(
   );
 
   server.tool(
-    'remove_pool_meal',
+    'delete_pool_meal',
     'Take a meal out of a week\'s pool without planning it (ids from list_meal_plan\'s pool).',
     { id: z.string().min(1) },
     async ({ id }) => {
@@ -4662,7 +4620,7 @@ function registerWriteTools(
   );
 
   server.tool(
-    'remove_meal',
+    'delete_meal',
     'Take a meal off the plan. Not undoable from here. A meal marked cooked is refused: it is history and feeds the cooking stats.',
     { id: z.string().min(1) },
     async ({ id }) => {

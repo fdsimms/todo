@@ -34,6 +34,10 @@ import { changedSlots } from '../utils/editorChangeSummary';
 import type { GeneratedKind, GeneratedTaskExtras, TaskFieldDefaults, TimeOfDay } from '../types';
 import { BUTTON_LABEL } from '../copy/shared';
 import { FieldLabel } from './FieldLabel';
+import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
+import { InlineAction } from './InlineAction';
+import { hhmmToDate, dateToHHMM } from '../utils/clockTime';
+import { formatTimeOfDay } from '../utils/dateUtils';
 
 interface Props {
   visible: boolean;
@@ -48,7 +52,7 @@ interface Props {
   onClose: () => void;
 }
 
-type FieldKey = 'category' | 'tags' | 'time' | 'priority' | 'deliverable';
+type FieldKey = 'category' | 'tags' | 'time' | 'reminder' | 'priority' | 'deliverable';
 
 const TIME_OPTIONS: SegmentOption<TimeOfDay | null>[] = [
   { value: null, label: 'Any' },
@@ -96,9 +100,9 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
   const opened = useRef('');
 
   // What each slot of `snapshot` holds, in the same order, for the discard alert.
-  const SNAPSHOT_LABELS = ['category', 'task defaults', 'tags', 'time of day', 'question on completion', 'choices'] as const;
+  const SNAPSHOT_LABELS = ['category', 'task defaults', 'tags', 'time of day', 'question on completion', 'choices', 'reminder'] as const;
   const snapshot = (c: string | null, d: TaskFieldDefaults | null, e: GeneratedTaskExtras, o: string) =>
-    JSON.stringify([c, d, e.tags, e.timeSegments, e.deliverableKind, e.deliverableKind === 'choice' ? o : '']);
+    JSON.stringify([c, d, e.tags, e.timeSegments, e.deliverableKind, e.deliverableKind === 'choice' ? o : '', e.reminderTime ?? null]);
 
   useEffect(() => {
     if (!visible) return;
@@ -128,6 +132,7 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
     const finalExtras: GeneratedTaskExtras = {
       ...extras,
       timeSegments: (spec.locks ?? []).includes('time') ? [] : extras.timeSegments,
+      reminderTime: spec.remindable ? extras.reminderTime ?? null : null,
       deliverableKind,
       deliverableOptions: deliverableKind === 'choice' ? parseDeliverableOptions(optionsText) : [],
     };
@@ -143,6 +148,9 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
   const owned = spec.owned({ groceryUseUpLeadDays, birthdayLeadDays, birthdayGiftLeadDays, mealShortfallLeadDays });
   const categoryName = draftCategory ? categoryLabel(draftCategory, categories) : null;
   const timeSummary = describeTimeSegments(extras.timeSegments);
+  // The spinner's own staging: only Set writes it into `extras`.
+  const [reminderDraft, setReminderDraft] = useState(() => hhmmToDate('09:00'));
+  const reminderSummary = extras.reminderTime ? formatTimeOfDay(hhmmToDate(extras.reminderTime)) : undefined;
   const defaultsSummary = describeTaskFieldDefaults(defaults);
   const tagOptions = [...extras.tags, ...allTags.filter(t => !extras.tags.includes(t))];
   const toggleTag = (tag: string) => setExtras(prev => ({
@@ -254,9 +262,9 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
             </CollapsibleField>
           </View>
 
-          {!locks.includes('time') && <Text style={styles.groupLabel}>Schedule</Text>}
-          {!locks.includes('time') && <View style={styles.card}>
-            <CollapsibleField
+          {(!locks.includes('time') || spec.remindable) && <Text style={styles.groupLabel}>Schedule</Text>}
+          {(!locks.includes('time') || spec.remindable) && <View style={styles.card}>
+            {!locks.includes('time') && <CollapsibleField
               label="Time of day"
               summary={timeSummary ?? undefined}
               emptySummary="Any"
@@ -271,7 +279,34 @@ export function GeneratedTaskSettingsSheet({ visible, kind, spec, generatorLabel
                 columns={3}
                 options={TIME_OPTIONS}
               />
-            </CollapsibleField>
+            </CollapsibleField>}
+            {spec.remindable && (
+              <CollapsibleField
+                label="Remind me at"
+                summary={reminderSummary}
+                emptySummary="Off"
+                hint="Sends a notification at this time on the day the task appears. If the task appears after that time, there is no reminder for it. Reminders you change or clear on a task stay as you set them."
+                expanded={open === 'reminder'}
+                onToggle={() => {
+                  if (open !== 'reminder' && extras.reminderTime) setReminderDraft(hhmmToDate(extras.reminderTime));
+                  toggle('reminder');
+                }}
+              >
+                <InlineTimePicker
+                  value={reminderDraft}
+                  onChange={setReminderDraft}
+                  onCancel={() => setOpen(null)}
+                  onConfirm={() => { setExtras(prev => ({ ...prev, reminderTime: dateToHHMM(reminderDraft) })); setOpen(null); }}
+                />
+                {extras.reminderTime && (
+                  <InlineAction
+                    label="Turn off"
+                    variant="neutral"
+                    onPress={() => { setExtras(prev => ({ ...prev, reminderTime: null })); setOpen(null); }}
+                  />
+                )}
+              </CollapsibleField>
+            )}
           </View>}
 
           <Text style={styles.groupLabel}>Priority & effort</Text>

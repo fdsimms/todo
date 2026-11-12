@@ -1,7 +1,7 @@
 /**
  * Cookbooks, the Up next shelf and a logged cook time: the
  * recipe library's own writes past a single recipe's fields (those are
- * `save_recipe` / `update_recipe` in logTools.ts). Each goes through the recipe
+ * `create_recipe` / `update_recipe` in logTools.ts). Each goes through the recipe
  * store's own action, which the replica loads (see `Replica.renameCookbook`).
  */
 import type { Replica } from './replica';
@@ -14,8 +14,10 @@ export function listCookbooks(replica: Replica) {
   };
 }
 
-export function renameCookbook(replica: Replica, id: string, title: string, author?: string | null) {
-  const book = replica.renameCookbook(id, title, author);
+export function updateCookbook(replica: Replica, id: string, title?: string, author?: string | null) {
+  const current = replica.cookbookSummaries().find(c => c.id === id);
+  if (!current) throw new Error(`No cookbook with id ${id}.`);
+  const book = replica.renameCookbook(id, title ?? current.title, author);
   return { cookbook: { id: book.id, title: book.title, ...(book.author ? { author: book.author } : {}) } };
 }
 

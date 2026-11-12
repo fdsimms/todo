@@ -182,7 +182,7 @@ describe('update_recipe and line identity', () => {
 });
 
 describe('update_recipe and conditional steps', () => {
-  it('lets save_recipe write a conditional step by option name', () => {
+  it('lets create_recipe write a conditional step by option name', () => {
     const r = saveRecipe(replica, {
       name: 'Rice bowl',
       ingredients: [{ text: '1 cup rice', alternativeGroup: 'Base' }, { text: '1 cup quinoa', alternativeGroup: 'Base' }],

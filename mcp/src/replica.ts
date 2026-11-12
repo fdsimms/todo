@@ -2186,8 +2186,6 @@ export interface Replica {
    * files its members under nothing in particular.
    */
   createStack(title: string, category: string | null, projectId?: string | null): TaskGroup;
-  /** Rename a stack. Its category and members are untouched. */
-  renameStack(id: string, title: string): TaskGroup;
   /**
    * Change a stack as its editor does. A new category re-files every live
    * member with it, as the editor's save does (`applyGroupCategory`): the stack
@@ -2840,7 +2838,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       const by = matches.map(c => (c.author ? `one by ${c.author}` : 'one with no author')).join(', ');
       throw new Error(
         `There are ${matches.length} cookbooks called "${matches[0].title}" (${by}). `
-        + 'Rename one with rename_cookbook so the title says which, then try again.',
+        + 'Rename one with update_cookbook so the title says which, then try again.',
       );
     }
     return matches[0] ?? null;
@@ -2890,7 +2888,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       throw new Error(`A page is at most ${lib.types.RECIPE_PAGE_MAX_LENGTH} characters, as printed ("142", "112-115").`);
     }
     if (f.author !== undefined && inBook) {
-      throw new Error('A recipe in a cookbook takes its author from the book. rename_cookbook changes the book\'s author for every recipe in it.');
+      throw new Error('A recipe in a cookbook takes its author from the book. update_cookbook changes the book\'s author for every recipe in it.');
     }
     for (const step of f.steps ?? []) {
       const t = step.timerSeconds;
@@ -8702,16 +8700,6 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       };
       db.dbInsertTemplate(template);
       return template;
-    },
-
-    renameStack(id: string, title: string): TaskGroup {
-      const name = title.trim();
-      if (!name) throw new Error('A stack needs a title.');
-      const group = db.dbGetAllTaskGroups().find(g => g.id === id);
-      if (!group) throw new Error(`No stack with id ${id}.`);
-      useTaskGroupStore.getState().updateGroup(id, { title: name });
-      refresh();
-      return { ...group, title: name };
     },
 
     setTaskStack(taskId: string, stackId: string | null): Task {

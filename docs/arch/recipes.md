@@ -148,7 +148,7 @@ It is per line, not per catalog item, because the same ingredient is eaten in on
 (kombu in a stock, a bay leaf in a stew). `isUsuallyRemovedBeforeEating` (`removedBeforeEating.ts`) is a closed list
 of whole phrases, never a pattern, that makes the nutrition sheet say so on a counted line and offer "Don't count
 this"; nothing is excluded until the person taps. It is all or nothing: excluding kombu also drops whatever it gave
-the broth. The MCP sets it with `excludeFromNutrition` on `update_recipe`/`save_recipe` lines and
+the broth. The MCP sets it with `excludeFromNutrition` on `update_recipe`/`create_recipe` lines and
 `setIngredientNutrition` in `patch_recipe`, and `get_recipe` shows `notCountedInNutrition`.
 
 **A cooking fat cooked in a pan counts at part of its written amount (`panOil.ts`, `RecipeIngredient.cookedInPan`).**

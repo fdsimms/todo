@@ -1563,8 +1563,8 @@ export function seedDemoData(): void {
   // The same idea for a kind of task the app writes itself.
   useSettingsStore.getState().setGeneratedTaskDefaults('birthdayGift', { priority: 2, difficulty: null, effort: 3, showStreak: null, vacationPause: null, excludeFromSuggestions: null });
   // And the rest of a kind's Task settings: a birthday reminder that asks,
-  // when it's done, whether you got in touch.
-  useSettingsStore.getState().setGeneratedTaskExtras('birthday', { tags: ['people'], timeSegments: [], deliverableKind: 'yesno', deliverableOptions: [] });
+  // when it's done, whether you got in touch, with a push at 9 AM.
+  useSettingsStore.getState().setGeneratedTaskExtras('birthday', { tags: ['people'], timeSegments: [], deliverableKind: 'yesno', deliverableOptions: [], reminderTime: '09:00' });
 
   // A project parked for a season (Project.pausedUntil): a weekly routine and a
   // one-off, both held off Today until the pause lifts in three weeks. Without

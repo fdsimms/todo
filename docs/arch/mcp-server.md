@@ -323,6 +323,11 @@ and week, clean up a project, and how do I. They exist because the useful things
 app are sequences, and each puts "show me first" where it cannot be skipped. `prompts.test.ts`
 fails on a script naming a tool the server does not register.
 
+**Tool names say what a call does.** `create_*` adds and refuses a duplicate, `update_*` changes what
+exists (a rename is an `update_*` with the title, not its own tool), and `save_*` is an upsert (a store,
+an aisle, a rule). `delete_*` removes the row for good; `remove_*` is the gentle kind that leaves the
+thing itself alone (`remove_from_grocery_list` takes an item off the list but keeps it in the catalog).
+
 ### Every write is previewed, and confirmed by the person, before it happens
 
 `mcp/src/confirmWrites.ts`, wired in `server.ts` the way the annotations are, so a write tool cannot
@@ -421,7 +426,7 @@ nothing and has no batch. Entries written before the column existed have none.
 
 ### Recording: a recipe, food, mood and a dose
 
-`save_recipe`, `log_food`, `log_mood` and `log_medication` (`mcp/src/logTools.ts`) each build
+`create_recipe`, `log_food`, `log_mood` and `log_medication` (`mcp/src/logTools.ts`) each build
 their row with the app's own code. A recipe goes through `useRecipeStore` (`addRecipe` and the
 setters the create sheet calls, ingredient lines through `makeIngredient`), loaded only when one is
 saved. Mood and doses go through their stores, with a symptom, tag or medicine matched to the
@@ -520,7 +525,8 @@ completion (`generatedTaskExtras`). A patch, field by field, with `null` clearin
 what the sheet locks for that kind (`TaskSettingsSpec.locks`): a time of day for a generator that
 sets its own, a question on one whose tasks are never completed. `list_automations` returns each
 kind's `taskSettings` and `setByApp`, the sheet's locked rows as text, so an agent can say what the
-automation writes before suggesting a change to the rest.
+automation writes before suggesting a change to the rest. `remindAt` ("HH:MM") is the "Remind me at"
+row, only for the kinds marked `remindable`; any other kind refuses it.
 
 `delete_category` (`mcp/src/categoryTools.ts`) is the app's delete without its shake-to-undo, and it
 asks where the tasks go: `moveTo`, or `uncategorize: true`, and a category holding open work with
@@ -1242,7 +1248,7 @@ has the rules; two decisions are specific to the server.
 ### The catalog: edits, delete with a snapshot, separate lists and receipts
 
 `grocery_setup`, `get_grocery_item`, `match_receipt` and the writes `update_grocery_item`, `update_grocery_items`,
-`save_grocery_box`, `catalog_audit`, `list_brands`, `rename_brand`, `save_store`, `delete_grocery_item`, `create_grocery_list`, `rename_grocery_list`,
+`save_grocery_box`, `catalog_audit`, `list_brands`, `rename_brand`, `save_store`, `delete_grocery_item`, `create_grocery_list`, `update_grocery_list`,
 `delete_grocery_list`, `finish_grocery_trip` and `import_receipt` (`mcp/src/groceryTools.ts`), with a `list`
 argument on the list tools. The row rules are `src/utils/groceryItemWrite.ts` (price, boxes, rename, store and
 substitute links, list names, aliases, finishing a trip), shared with `useGroceryStore` the way `pantryWrite.ts`
@@ -1295,7 +1301,7 @@ is. Decisions specific to the server:
   label replaces, others stay, including ones the person weighed); a recipe counts a line in tablespoons or
   cloves only when such a portion exists, which is why a panel without one leaves those lines uncounted.
   `get_grocery_item` returns the panel and its portions, so a write can be checked against what it replaces.
-  **`set_nutrition_panels` is the same write for many items, so a recipe's worth is one preview and one
+  **`set_nutrition_panel` takes a list of entries, so a recipe's worth is one preview and one
   approval** rather than a prompt per ingredient (every write tool is guarded by the preview/confirm flow, so
   a batch has to be one tool to be one approval). All or none: every panel is built and every item found
   before the first write, so a bad figure in the thirtieth entry writes nothing. An item missing from the
@@ -1369,7 +1375,7 @@ the per-meal answers for its shopping task, thaw task and log offer. A swap is t
 here, since the replace also reconciles its container's use-up task. Whether a meal gets a cook task
 stays on the phone: the app writes or removes that task as the answer changes, which is task-store
 work. `plan_meal` takes a `leftoverId` for a leftover night, titled by its container as the fridge
-drag titles one, and takes a planned recipe off Up next as the app's `planMeal` does. `remove_meal` takes a meal off. These write only the entry row: the slot's task and
+drag titles one, and takes a planned recipe off Up next as the app's `planMeal` does. `delete_meal` takes a meal off. These write only the entry row: the slot's task and
 the calendar event are device work that catches up on the phone. A meal already marked cooked is not
 removable here, since it is history behind the cooking stats.
 
@@ -1407,7 +1413,7 @@ can name any day. `list_meal_plan` returns the range's skips as `skipped`. Its l
 screen can remove.
 
 `save_meal_as_recipe` is the meal sheet's "Save as recipe" (the recipe already called that, else a
-new empty one). `add_to_week_pool`, `place_pool_meal` and `remove_pool_meal` are the weekly pool (`WeekPoolEntry`, a meal chosen for a week with no day), which `list_meal_plan` returns as `pool`; placing one writes the planned meal through `planMeal` and deletes the pool row, as the app does in one undo step. `copy_meals` is the plan's three copies (`weekCopyDrafts`, `slotCopyDrafts`,
+new empty one). `add_to_week_pool`, `place_pool_meal` and `delete_pool_meal` are the weekly pool (`WeekPoolEntry`, a meal chosen for a week with no day), which `list_meal_plan` returns as `pool`; placing one writes the planned meal through `planMeal` and deletes the pool row, as the app does in one undo step. `copy_meals` is the plan's three copies (`weekCopyDrafts`, `slotCopyDrafts`,
 `mealCopyDraft`): a whole week only into a week with nothing planned, one slot only into a week
 without it (`slotsToCopy`), one meal onto other days skipping a day that already has it. Weeks are
 named by any day in them and start on the person's `weekStartsOn`. Each copied meal is its own
@@ -1438,16 +1444,16 @@ notes (`deletedPersonRevert`) so Activity can restore both. History is still `ad
 ### Changing and deleting a recipe
 
 `update_recipe` changes scalar fields and replaces `ingredients`, `steps`, `components` and
-`prepTasks` as whole lists, using the same line parsing as `save_recipe` (so a line the app cannot
+`prepTasks` as whole lists, using the same line parsing as `create_recipe` (so a line the app cannot
 read is counted, not silently kept). A step whose text is unchanged keeps its id, so its timer, its
 note and the cook questions filed under it (`CookQuestion.stepId`) survive an edit to the steps
 around it. The wider fields (vote, Up next, author, page, yield, prep time, leftover keep days, a
-serving range) go through the recipe store's own setters, and `save_recipe` takes all of them too.
+serving range) go through the recipe store's own setters, and `create_recipe` takes all of them too.
 Each is checked first against the range the editor allows (a step timer within `stepTimers.ts`'
 bounds, a prep task within `PREP_OFFSET_MIN`..`MAX`), and a component that would make a cycle is
 refused through `wouldCreateRecipeCycle`. An author on a recipe in a cookbook is refused: the book's
 author is mirrored onto it, and the store's `setAuthor` unlinks the book on a change, so
-`rename_cookbook` is the way to say it.
+`update_cookbook` is the way to say it.
 
 **`patch_recipe` is the tool for a small edit, and `update_recipe` is the wrong one for it.** Replacing
 a whole list means resending every line (a typo in a line nobody meant to touch is a silent
@@ -1472,7 +1478,7 @@ Everything that can refuse (a name clash in the destination book, a bad value) i
 first write, and the writes are one transaction. `delete_recipe` leaves planned meals as the app does
 (title kept, link gone) and reports how many; their Today tasks and events catch up on the phone.
 
-Cookbooks are `list_cookbooks`, `rename_cookbook`, `merge_cookbooks` (the store's own, which
+Cookbooks are `list_cookbooks`, `update_cookbook`, `merge_cookbooks` (the store's own, which
 re-mirror every recipe in the book) and `delete_cookbook` (which unlinks its recipes, keeping the
 source mirrored onto them). `reorder` with kind `up_next` orders the shelf and `log_cook_time`
 records a cook timed on the person's own clock, the timer's `applyMeasuredCookTime`.
@@ -1574,7 +1580,7 @@ left the device they were set on, and `set_automation`'s `category` never reache
 all. They are on the list now. `nutritionTargets` syncs with the health record
 (`HEALTH_SYNC_SETTING_KEYS`), since a calorie target says something about a body.
 
-`set_medication_limit` and `set_medication_supply` are the page's Limit and Left fields (`useMedicationStore.setLimit`/`setSupply`). A limit is the person's own (`docs/arch/mood-log.md`), so the tool descriptions say it is set only from figures they gave, and the notify switch is left alone because turning it on needs the phone's notification permission. `add_medication`, `remove_medication` (only with no doses, as in the app) and `set_medication_profile` are the app's Add medication and the page's How you take it and Usual amounts (`useMedicationStore.addMedication`/`setAsNeeded`/`setUsualDose`), plus `setStrength` for what one capsule holds and `setSchedule` for the days it is taken on (`medicationSchedule.ts`; `list_medication_logs` reports `schedule` and `scheduleStatus`); a task completed through the replica records the usual amount when it names none, the same `useUsualDose` rule as the phone; a medicine added by name lives in `medication_registered`, so the replica's name lookups union it with the logged names. A task taking several medicines together is `medication.also` on `create_task`/`update_task` (`Task.medicationExtras`; `get_task` reports it as `onCompletion.alsoLogsMedication`). `archive_medication` is the medicines list's own archive (`medication_archived`, which already
+`set_medication_limit` and `set_medication_supply` are the page's Limit and Left fields (`useMedicationStore.setLimit`/`setSupply`). A limit is the person's own (`docs/arch/mood-log.md`), so the tool descriptions say it is set only from figures they gave, and the notify switch is left alone because turning it on needs the phone's notification permission. `add_medication`, `delete_medication` (only with no doses, as in the app) and `set_medication_profile` are the app's Add medication and the page's How you take it and Usual amounts (`useMedicationStore.addMedication`/`setAsNeeded`/`setUsualDose`), plus `setStrength` for what one capsule holds and `setSchedule` for the days it is taken on (`medicationSchedule.ts`; `list_medication_logs` reports `schedule` and `scheduleStatus`); a task completed through the replica records the usual amount when it names none, the same `useUsualDose` rule as the phone; a medicine added by name lives in `medication_registered`, so the replica's name lookups union it with the logged names. A task taking several medicines together is `medication.also` on `create_task`/`update_task` (`Task.medicationExtras`; `get_task` reports it as `onCompletion.alsoLogsMedication`). `archive_medication` is the medicines list's own archive (`medication_archived`, which already
 synced with the health record), and `rename_mood_tag` renames a context tag across every mood
 entry that carries it, through the mood store's own `renameContextTag`, as the Mood screen does. `rename_medication` is the medication page's Rename (`useMedicationStore.renameMedication`, rules in `docs/arch/mood-log.md`), with the tasks and templates that record the medicine rewritten through `db` as the rest of the replica writes; naming an existing medicine combines the two. Gates and penalties stay read-only: they decide what the phone blocks, and that is the
 person's to set on the phone.

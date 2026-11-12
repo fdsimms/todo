@@ -2,6 +2,7 @@ import type { DeliverableKind, GeneratedTaskExtras, TaskDraft, TaskFieldDefaults
 import type { GeneratedKind } from './generatedTasks';
 import { describeTaskFieldDefaults } from './taskFieldDefaults';
 import { capitalize } from './capitalize';
+import { logicalDayStart, onLogicalDay } from './clockTime';
 
 /**
  * A kind of generated task's "Task settings": one sheet in Settings showing a
@@ -34,11 +35,14 @@ export const NO_GENERATED_TASK_EXTRAS: GeneratedTaskExtras = {
   deliverableOptions: [],
 };
 
+/** "HH:MM", 24-hour. */
+export const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 const SEGMENTS: readonly TimeOfDay[] = ['morning', 'afternoon', 'evening', 'night'];
 const KINDS: readonly DeliverableKind[] = ['text', 'date', 'number', 'yesno', 'choice'];
 
 export function hasGeneratedTaskExtras(e: GeneratedTaskExtras | null | undefined): e is GeneratedTaskExtras {
-  return !!e && (e.tags.length > 0 || e.timeSegments.length > 0 || e.deliverableKind !== null);
+  return !!e && (e.tags.length > 0 || e.timeSegments.length > 0 || e.deliverableKind !== null || !!e.reminderTime);
 }
 
 const stringList = (raw: unknown): string[] =>
@@ -61,6 +65,7 @@ export function parseGeneratedTaskExtrasValue(raw: unknown): GeneratedTaskExtras
     timeSegments: stringList(o.timeSegments).filter((s): s is TimeOfDay => SEGMENTS.includes(s as TimeOfDay)),
     deliverableKind,
     deliverableOptions: deliverableKind === 'choice' ? stringList(o.deliverableOptions) : [],
+    ...(typeof o.reminderTime === 'string' && CLOCK_TIME.test(o.reminderTime) ? { reminderTime: o.reminderTime } : {}),
   };
   return hasGeneratedTaskExtras(result) ? result : null;
 }
@@ -114,6 +119,31 @@ export function generatedExtrasFill(
   };
 }
 
+/**
+ * The reminder a new task of a kind gets from its "Remind me at" setting, as an
+ * ISO instant, or null for none: the setting is off, the kind doesn't offer it
+ * (`remindable`), the draft already names a reminder, it has no date to remind
+ * on, or that time has already passed on its day. A passed time is skipped
+ * rather than moved: a push for a task that appeared at 3pm saying "9am" would
+ * fire never or at the wrong time, and the row is on Today either way.
+ *
+ * The time is placed on the draft's own logical day (`onLogicalDay`), so a
+ * 1 AM reminder on a 4 AM day reset lands at the end of that day.
+ */
+export function generatedReminderFill(
+  kind: GeneratedKind,
+  draft: { dueDate?: string | null; reminderTime?: string | null },
+  extras: GeneratedTaskExtras | null | undefined,
+  now: Date,
+  dayResetTime: string,
+): string | null {
+  const hhmm = extras?.reminderTime;
+  if (!hhmm || !TASK_SETTINGS_SPECS[kind]?.remindable) return null;
+  if (draft.reminderTime || !draft.dueDate) return null;
+  const at = onLogicalDay(logicalDayStart(new Date(draft.dueDate), dayResetTime), hhmm);
+  return at.getTime() > now.getTime() ? at.toISOString() : null;
+}
+
 /** One field the generator writes, as the sheet shows it. */
 export interface OwnedTaskField {
   key: string;
@@ -153,6 +183,12 @@ export interface TaskSettingsSpec {
    */
   locks?: readonly LockableField[];
   /**
+   * Offers the "Remind me at" row: a time of day the task's own date gets a
+   * reminder at (`generatedReminderFill`). Only for a kind whose generator
+   * writes no reminder of its own.
+   */
+  remindable?: true;
+  /**
    * The category row's hint, for a kind whose rules can name their own
    * category, so the setting is only the fallback.
    */
@@ -186,6 +222,7 @@ const RULE_ESTIMATE: OwnedTaskField = {
 
 export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec>> = {
   groceryUseUp: {
+    remindable: true,
     example: 'Use up spinach',
     noun: 'Use-up task',
     owned: ctx => [
@@ -214,6 +251,7 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
     ],
   },
   leftoverUseUp: {
+    remindable: true,
     example: 'Use up chili',
     noun: 'Use-up task',
     owned: () => [
@@ -253,6 +291,7 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
     ],
   },
   mealThaw: {
+    remindable: true,
     example: 'Take chicken out of the freezer (Thursday dinner)',
     noun: 'Freezer reminder',
     owned: () => [
@@ -302,6 +341,7 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
     ],
   },
   birthdayGift: {
+    remindable: true,
     example: 'Get Sam’s birthday gift',
     noun: 'Gift task',
     owned: ctx => [
@@ -558,6 +598,7 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
     ],
   },
   birthday: {
+    remindable: true,
     example: 'Sam’s birthday',
     noun: 'Birthday task',
     owned: ctx => [

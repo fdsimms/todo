@@ -12,7 +12,7 @@ import {
   listCookbooks,
   logCookTime,
   mergeCookbooks,
-  renameCookbook,
+  updateCookbook,
   reorderUpNext,
 } from '../recipeTools';
 
@@ -136,7 +136,7 @@ describe('update_recipe', () => {
     saveRecipe(replica, { name: 'Soup', cookbook: 'Dinner' });
     const r = saveRecipe(replica, { name: 'Dal', cookbook: 'Dinner (other)', sourcePage: '42' });
     const other = listCookbooks(replica).cookbooks.find(c => c.title === 'Dinner (other)')!;
-    renameCookbook(replica, other.id, 'Dinner', 'Meera Sodha');
+    updateCookbook(replica, other.id, 'Dinner', 'Meera Sodha');
 
     // Sent back with the title it was read with: no move, page kept.
     const out = updateRecipe(replica, r.id, { cookbook: 'Dinner', notes: 'x' });
@@ -172,7 +172,7 @@ describe('update_recipe', () => {
 
   it('refuses an author on a recipe in a cookbook, and writes nothing from a refused edit', () => {
     const r = saveRecipe(replica, { name: 'Pie', cookbook: 'Baking' });
-    expect(() => updateRecipe(replica, r.id, { author: 'Sam' })).toThrow(/rename_cookbook/);
+    expect(() => updateRecipe(replica, r.id, { author: 'Sam' })).toThrow(/update_cookbook/);
     expect(() => updateRecipe(replica, r.id, { vote: 'liked', components: [{ recipeId: 'nope' }] })).toThrow(/No recipe/);
     expect(stored(r.id).vote).toBeNull();
   });
@@ -223,9 +223,9 @@ describe('cookbooks', () => {
     saveRecipe(replica, { name: 'Gazpacho', cookbook: 'Summer' });
     const book = listCookbooks(replica).cookbooks.find(c => c.title === 'Weeknights')!;
     expect(book.recipes).toBe(1);
-    renameCookbook(replica, book.id, 'Weeknight Dinners', 'Ana');
+    updateCookbook(replica, book.id, 'Weeknight Dinners', 'Ana');
     expect(stored(r.id)).toMatchObject({ source: 'Weeknight Dinners', author: 'Ana' });
-    expect(() => renameCookbook(replica, book.id, 'Summer', null)).toThrow(/merge_cookbooks/);
+    expect(() => updateCookbook(replica, book.id, 'Summer', null)).toThrow(/merge_cookbooks/);
   });
 
   it('merges one book into another', () => {

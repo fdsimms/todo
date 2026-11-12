@@ -137,6 +137,8 @@ export function MenuPanel({ variant, onScreen, activeTab, onNavigate, onOpenSett
       recipes: [],
       groceryItems: [],
       onListIds: new Set(),
+      journalEntries: [],
+      moodLogs: [],
       now: new Date(),
     }, query).goTo.filter((r): r is Extract<ElsewhereResult, { kind: 'setting' }> => r.kind === 'setting')
       .filter(r => !offAreas.some(a => a.settingId === r.entry.id))

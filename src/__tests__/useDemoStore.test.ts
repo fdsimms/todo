@@ -5198,7 +5198,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(dad!.backfillDismissedFields).toContain('priority');
     expect(dad!.excludeFromSuggestions).toBe(true);
     expect(useSettingsStore.getState().generatedTaskDefaults.birthdayGift).toEqual({ priority: 2, difficulty: null, effort: 3, showStreak: null, vacationPause: null, excludeFromSuggestions: null });
-    expect(useSettingsStore.getState().generatedTaskExtras.birthday).toEqual({ tags: ['people'], timeSegments: [], deliverableKind: 'yesno', deliverableOptions: [] });
+    expect(useSettingsStore.getState().generatedTaskExtras.birthday).toEqual({ tags: ['people'], timeSegments: [], deliverableKind: 'yesno', deliverableOptions: [], reminderTime: '09:00' });
   });
 
   it('seeds a weather task and the rules alongside it', () => {

@@ -3,6 +3,7 @@ import {
   TASK_SETTINGS_SPECS,
   describeGeneratedTaskSettings,
   generatedExtrasFill,
+  generatedReminderFill,
   hasGeneratedTaskExtras,
   hasTaskSettingsSheet,
   leadDaysPhrase,
@@ -149,5 +150,51 @@ describe('describeGeneratedTaskSettings', () => {
       { priority: 2, difficulty: null, effort: null, showStreak: null, vacationPause: null, excludeFromSuggestions: null },
       extras({ tags: ['cooking'], timeSegments: ['evening'], deliverableKind: 'yesno' }),
     )).toBe('Groceries · Medium · #cooking · Evening · Asks on completion');
+  });
+});
+
+describe('the "Remind me at" setting', () => {
+  const nine = extras({ reminderTime: '09:00' });
+  const reset = '04:00';
+  const before = new Date(2026, 10, 12, 7, 0);
+
+  it('counts as a setting, and survives a round trip', () => {
+    expect(hasGeneratedTaskExtras(nine)).toBe(true);
+    expect(parseGeneratedTaskExtras(JSON.stringify({ birthday: nine }))).toEqual({ birthday: nine });
+  });
+
+  it('drops a time that is not HH:MM', () => {
+    for (const bad of ['9:00', '24:00', '09:60', 'noon', 900, null]) {
+      expect(parseGeneratedTaskExtrasValue({ tags: ['a'], reminderTime: bad })?.reminderTime).toBeUndefined();
+    }
+  });
+
+  it('is on exactly the kinds that offer it and write no reminder of their own', () => {
+    const offered = Object.entries(TASK_SETTINGS_SPECS).filter(([, s]) => s?.remindable).map(([k]) => k).sort();
+    expect(offered).toEqual(['birthday', 'birthdayGift', 'groceryUseUp', 'leftoverUseUp', 'mealThaw']);
+  });
+
+  it('puts the time on the day the task is dated', () => {
+    const due = new Date(2026, 10, 12, 4).toISOString();
+    expect(generatedReminderFill('mealThaw', { dueDate: due }, nine, before, reset)).toBe(new Date(2026, 10, 12, 9, 0).toISOString());
+  });
+
+  it('puts a small-hours time at the end of the logical day', () => {
+    const due = new Date(2026, 10, 12, 4).toISOString();
+    expect(generatedReminderFill('mealThaw', { dueDate: due }, extras({ reminderTime: '01:30' }), before, reset))
+      .toBe(new Date(2026, 10, 13, 1, 30).toISOString());
+  });
+
+  it('sets none when the time has already passed that day', () => {
+    const due = new Date(2026, 10, 12, 4).toISOString();
+    expect(generatedReminderFill('mealThaw', { dueDate: due }, nine, new Date(2026, 10, 12, 15, 0), reset)).toBeNull();
+  });
+
+  it('sets none when off, undated, already reminding, or for a kind that does not offer it', () => {
+    const due = new Date(2026, 10, 12, 4).toISOString();
+    expect(generatedReminderFill('mealThaw', { dueDate: due }, NO_GENERATED_TASK_EXTRAS, before, reset)).toBeNull();
+    expect(generatedReminderFill('mealThaw', { dueDate: null }, nine, before, reset)).toBeNull();
+    expect(generatedReminderFill('mealThaw', { dueDate: due, reminderTime: '2026-11-12T10:00:00.000Z' }, nine, before, reset)).toBeNull();
+    expect(generatedReminderFill('travel', { dueDate: due }, nine, before, reset)).toBeNull();
   });
 });

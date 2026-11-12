@@ -104,6 +104,14 @@ export interface GeneratedTaskExtras {
   deliverableKind: DeliverableKind | null;
   /** `Task.deliverableOptions`, for a `'choice'` kind only. */
   deliverableOptions: string[];
+  /**
+   * "HH:MM": remind at this time on the day the task is dated, for the kinds
+   * that offer it (`remindable` in `TASK_SETTINGS_SPECS`). Used only when the
+   * draft names no reminder, and only at creation, so a reminder the person
+   * changes or clears on the row is theirs from then on. Optional so a stored
+   * object from before this field reads as none.
+   */
+  reminderTime?: string | null;
 }
 
 /**

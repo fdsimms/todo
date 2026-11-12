@@ -64,7 +64,7 @@ export const NUTRIENT_KEY_LIST = NUTRIENT_KEYS as readonly NutrientKey[];
 export const ESTIMATE_KEY_LIST = EXTERNAL_NUTRIENT_KEYS;
 
 // ---------------------------------------------------------------------------
-// save_recipe
+// create_recipe
 // ---------------------------------------------------------------------------
 
 export type SaveRecipeInput = RecipeInput;

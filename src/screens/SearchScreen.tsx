@@ -61,6 +61,7 @@ import { useEventTaskContext } from '../hooks/useEventTaskContext';
 import { format } from 'date-fns/format';
 import { useFilterField } from '../hooks/useFilterField';
 import { useElsewhereSearch } from '../hooks/useElsewhereSearch';
+import { SearchSnippet } from '../components/SearchSnippet';
 import { useSearchActionReceipts, useSearchActions } from '../hooks/useSearchActions';
 import { SearchActionRow } from '../components/SearchActionRow';
 import { openMoodLogFor } from '../utils/searchActionRun';
@@ -365,13 +366,19 @@ const ElsewhereResultItem = React.memo(function ElsewhereResultItem({ result, on
   colors: Colors;
 }) {
   const described = describeElsewhere(result);
+  // Written text: only the matched word is shown, and the row says nothing
+  // else aloud either (SearchSnippet).
+  const written = result.kind === 'journal' || result.kind === 'mood' ? result : null;
+  const label = written
+    ? `${described.accessibilityKind}${written.snippet ? `, contains ${written.snippet.match}` : ''}`
+    : `${result.title}, ${described.accessibilityKind}`;
   return (
     <TouchableOpacity
       style={styles.resultRow}
       onPress={() => onPress(result)}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
-      accessibilityLabel={`${result.title}, ${described.accessibilityKind}`}
+      accessibilityLabel={label}
     >
       <View style={styles.statusIcon}>
         <View style={[styles.stackIcon, { backgroundColor: colors.accentSubtle }]}>
@@ -379,13 +386,17 @@ const ElsewhereResultItem = React.memo(function ElsewhereResultItem({ result, on
         </View>
       </View>
       <View style={styles.resultContent}>
-        <HighlightedText
-          text={result.title}
-          ranges={result.ranges}
-          style={styles.resultTitle}
-          highlightStyle={styles.highlight}
-          numberOfLines={2}
-        />
+        {written ? (
+          <SearchSnippet snippet={written.snippet} />
+        ) : (
+          <HighlightedText
+            text={result.title}
+            ranges={result.ranges}
+            style={styles.resultTitle}
+            highlightStyle={styles.highlight}
+            numberOfLines={2}
+          />
+        )}
         {described.sectionMeta.length > 0 && (
           <View style={styles.resultMeta}>
             <Text style={styles.metaText} numberOfLines={1}>{described.sectionMeta}</Text>
@@ -633,7 +644,7 @@ export function SearchScreen() {
     setExpandedSections(prev => new Set(prev).add(section));
   }, []);
   const elsewhereCount = elsewhere.goTo.length + elsewhere.people.length
-    + elsewhere.recipes.length + elsewhere.groceries.length;
+    + elsewhere.recipes.length + elsewhere.groceries.length + elsewhere.diary.length;
 
   // ==== actions from the query ====
   // Things the query can do rather than find ("take aleve", "buy milk"); see
@@ -714,6 +725,7 @@ export function SearchScreen() {
     pushSection('people', 'People');
     pushSection('recipes', 'Recipes');
     pushSection('groceries', 'Groceries');
+    pushSection('diary', 'Journal and mood notes');
     if (notNeededResults.length > 0) {
       items.push({ type: 'sectionHeader', label: 'Not needed' });
       notNeededResults.forEach(r => items.push({ type: 'result', result: r }));

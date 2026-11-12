@@ -123,15 +123,15 @@ only the fallback until the first sync.
 | `set_vacation_mode` | **Write.** Turn vacation mode on or off as the Settings switch does, optionally with the day it turns itself off. On hides every task marked for vacation pause and every hide-on-vacation category; off brings them back and forgives their streaks. |
 | `plan_day` | A proposed timeline for today around busy blocks you pass in, and what does not fit. Writes nothing. |
 | `rebalance_week` | Proposed moves that bring heavy days under the busy line. Writes nothing. |
-| `save_recipe` | **Write.** A recipe from a page, a photo or a conversation, ingredients as printed lines. |
+| `create_recipe` | **Write.** A recipe from a page, a photo or a conversation, ingredients as printed lines. |
 | `list_cookbooks` | The cookbooks, with how many recipes each holds. |
-| `rename_cookbook` / `merge_cookbooks` / `delete_cookbook` | **Write.** Renames a cookbook on every recipe in it, joins two copies of one book, or deletes one (its recipes stay). |
+| `update_cookbook` / `merge_cookbooks` / `delete_cookbook` | **Write.** Renames a cookbook on every recipe in it, joins two copies of one book, or deletes one (its recipes stay). |
 | `log_cook_time` | **Write.** Records how long cooking a recipe took. |
 | `log_food` | **Write.** Something eaten, with estimated nutrition, and optionally a `breakdown` of the parts it named (kept on the entry, and refused if it does not add up to the total; `update_food_entry` takes one too when it restates amounts). Previews unless `apply: true`; marked estimated; written to Apple Health by the phone on its next foreground, not by the server. Refuses water, which is `log_water`'s. |
 | `log_water` | **Write.** A glass of water, in ml or fl oz, added onto the day's single water entry the way the app's stepper does. Reports the day's total in the person's own unit. Written to Apple Health by the phone on its next foreground, not by the server. |
 | `log_mood` / `log_medication` | **Write.** A mood check-in, or a dose taken, in the spellings already in the log. |
 | `archive_medication` / `rename_medication` / `rename_mood_tag` | **Write.** Archive or restore a medicine in the medicines list; rename a medicine on every dose and in its limit, supply and tasks (naming an existing medicine combines the two); rename a mood context tag on every check-in that has it. |
-| `add_medication` / `remove_medication` / `set_medication_profile` | **Write.** Add a medicine to the list by name before any dose (an archived one is brought back); remove one that has no doses; set whether it is taken as needed, on a schedule, or read off the doses, and the amounts usually taken (a list, the first being the default), what one capsule or tablet contains (`strength`, stamped on doses recorded after it), and the days it is taken (`schedule`: every N days or certain weekdays; no task or reminder is made). `list_medication_logs` reports all of them (with where the schedule stands today), and medicines with no dose yet. |
+| `add_medication` / `delete_medication` / `set_medication_profile` | **Write.** Add a medicine to the list by name before any dose (an archived one is brought back); remove one that has no doses; set whether it is taken as needed, on a schedule, or read off the doses, and the amounts usually taken (a list, the first being the default), what one capsule or tablet contains (`strength`, stamped on doses recorded after it), and the days it is taken (`schedule`: every N days or certain weekdays; no task or reminder is made). `list_medication_logs` reports all of them (with where the schedule stands today), and medicines with no dose yet. |
 | `set_medication_limit` / `set_medication_supply` | **Write.** The limit the person gave for a medicine (hours apart, doses in 24 hours, a total amount in 24 hours; clear or change one cap at a time) and how many they have (counted from now; it then goes down with each dose). Only from figures the person gave; the notify switch stays on the phone. |
 | `set_supplement_nutrients` | **Write.** What one serving of a supplement contains, from its label (or cleared). Each later dose adds those vitamins and minerals to the day's food log. Herbs, amino acids and omega-3s the label lists go in `otherIngredients`: shown with each dose, never logged. |
 | `list_automations` | Every automation, whether it is on, what it needs on the phone, what its tasks start with and which fields it writes itself, and every rule written for them. |
@@ -187,7 +187,7 @@ only the fallback until the first sync.
 | `plan_meal` | **Write.** Puts a recipe, a leftover, or just a title, on the meal plan. |
 | `set_meal_cooked` | **Write.** Marks a planned meal cooked (counting it, opening what it used and completing its task), or not. |
 | `set_meal_skipped` | **Write.** Marks one meal of one day skipped, or not, as the meal strip on Today does. `list_meal_plan` lists the skips under `skipped`. |
-| `add_to_week_pool` / `place_pool_meal` / `remove_pool_meal` | **Write.** The "Not on a day yet" card: chooses a meal for a week with no day or meal, gives one a day and meal later, or drops it. `list_meal_plan` shows each week's `pool`. |
+| `add_to_week_pool` / `place_pool_meal` / `delete_pool_meal` | **Write.** The "Not on a day yet" card: chooses a meal for a week with no day or meal, gives one a day and meal later, or drops it. `list_meal_plan` shows each week's `pool`. |
 | `save_meal_as_recipe` / `copy_meals` | **Write.** Saves a typed meal as a recipe; copies a week, a slot of a week, or one meal onto other days. |
 | `add_person_history` | **Write.** Records something done with someone, as the app's "Add to history" does: a completed task naming them. The only write to the people section. |
 | `complete_task` | **Write.** Ticks one off, spawning whatever that spawns: the next occurrence, the next chain step, the next set of a dated series. |
@@ -215,13 +215,12 @@ only the fallback until the first sync.
 | `set_completion_date` | **Write.** Corrects when a completed task was done, as the Logbook's date edit does. |
 | `reopen_task` | **Write.** Reopens a completed or missed task and takes back what its completion did. Needs `MCP_WRITE_TOKEN`. |
 | `update_meal` | **Write.** Moves a planned meal, swaps or renames it, sets a recipe's scale, answers its either/or choices, says which of two interchangeable items it used (`picks`, for a pair set as either one), uses something else for this one cooking (`replacements`: a line or used recipe swapped for another ingredient, or left out; the recipe is not edited), or sets its shopping, thaw and log answers. |
-| `remove_meal` | **Write.** Takes a meal off the plan. |
+| `delete_meal` | **Write.** Takes a meal off the plan. |
 | `create_person` | **Write.** Adds a person: name, nickname (several, comma-separated), notes, birthday, contact details (phone, fax, email, link), location (free text), group, archived, birthday task opt-outs. Never a cadence or nudge. |
 | `delete_person` | **Write.** Deletes a person and the notes about them; tasks naming them stay. Restorable from Activity. |
 | `save_person_group` | **Write.** The People screen's groups (add, rename, delete, catch up one at a time). |
 | `add_person_note` / `update_person_note` / `delete_person_note` | **Write.** Gift ideas and other notes about someone, optionally about a day. |
 | `update_person` | **Write.** Changes those same fields on a person. |
-| `rename_stack` | **Write.** Renames a stack. Its category and members are untouched. |
 | `update_stack` | **Write.** A stack's title, notes, tags, checklist, the project page it is a section of, or its category (which re-files its open tasks). |
 | `delete_stack` | **Write.** Deletes a stack, taking its tasks out of it, or with `deleteTasks` deleting its open tasks too. Restorable from Activity. |
 | `create_category` | **Write.** Adds an empty task category, with its emoji and settings if given. `set_automation` and `save_rule` need the category to exist first. |
@@ -264,13 +263,12 @@ only the fallback until the first sync.
 | `clear_grocery_list` | **Write.** Empties a list as the app's Clear list does, and ends a trip. |
 | `set_shopping_trip` | **Write.** Starts a trip at a store with an optional budget, changes the budget, or ends it. |
 | `mark_unavailable` | **Write.** A store doesn't carry an item, or its preferred brand; or does again. |
-| `set_nutrition_panels` | **Write.** Many items' panels in one call (one preview, one approval): the same panels as `set_nutrition_panel`, all or none, with `create: true` on an entry to add a catalog item that is not there yet (on no list, not in the pantry). |
-| `set_nutrition_panel` | **Write.** An item's or a brand's nutrition panel, with optional `portions` (what a tablespoon, cup or clove weighs) merged into its table by label, and optional `packageGrams` (what the whole package weighs). A recipe counts a volume or count line only when the item has a portion weighing it. |
+| `set_nutrition_panel` | **Write.** Nutrition panels for one item or many in one call (one preview, one approval, all or none). Each entry is an item or one of its brands (`boxId`), with optional `portions` (what a tablespoon, cup or clove weighs) merged into its table by label, and optional `packageGrams` (what the whole package weighs); `panel: null` removes one, and `create: true` adds a catalog item that is not there yet (on no list, not in the pantry). A recipe counts a volume or count line only when the item has a portion weighing it. |
 | `merge_grocery_items` | **Write.** Merges one item into another, with everything recorded on it, or up to 50 pairs (`merges`) under one confirmation, applied in order. Not undoable from Activity. |
 | `delete_grocery_item` | **Write.** Deletes an item with everything attached. Restorable from Activity. |
 | `catalog_audit` | Read-only. Catalog names that look wrong: a brand in the name, a package title, capitals, a size, two rows with the same words (and, on request, possible kind-of pairs). Names the fixing tool; changes nothing. |
 | `list_brands` / `rename_brand` | `list_brands` is read-only: every brand once with its variant count, items and the spellings in use. **`rename_brand` writes:** one spelling onto every variant of a brand, or a `renames` list of up to 50 under one confirmation. |
-| `create_grocery_list` / `rename_grocery_list` / `delete_grocery_list` | **Write.** Separate lists (a trip away). The grocery tools take a `list`. |
+| `create_grocery_list` / `update_grocery_list` / `delete_grocery_list` | **Write.** Separate lists (a trip away). The grocery tools take a `list`. |
 | `finish_grocery_trip` | **Write.** Records the checked-off items as bought and removes them from the list. |
 | `import_receipt` | **Write.** The in-app receipt flow, from lines Claude read. |
 | `update_pantry_item` | **Write.** One item's pantry state: on hand, out (with how it went), staple, frozen, opened, running low, use-by day, shelf life, use-up task. Several fields per call. |

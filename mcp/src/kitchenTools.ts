@@ -111,7 +111,7 @@ export interface RecipeDetail extends SerializedRecipe {
   uses?: string[];
   /** The same, by recipe id; ones sharing a choiceGroup are alternatives (cook one). */
   components?: { recipeId: string; name: string; choiceGroup?: string; amountUsed?: string }[];
-  /** Blanks filled from the kitchen at each cooking; see save_recipe's blanks. */
+  /** Blanks filled from the kitchen at each cooking; see create_recipe's blanks. */
   blanks?: { label: string; kind?: string; pick: 'one' | 'any' | number; amount?: string; suggestions?: string[]; neverOffer?: string[] }[];
   /** Tasks written ahead of a planned meal of it, days before the meal (negative) or on the day (0). */
   prepTasks?: { title: string; offsetDays: number; reminderOffsetMinutes?: number }[];
