@@ -3658,6 +3658,76 @@ describe('checkAwayVacation', () => {
   });
 });
 
+describe('checkScheduledVacation', () => {
+  const dayOffset = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    d.setHours(12, 0, 0, 0);
+    return d.toISOString();
+  };
+
+  const settings = (over: Record<string, unknown> = {}) => {
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+    const setVacationMode = jest.fn();
+    const setVacationEnd = jest.fn();
+    const setVacationScheduledStart = jest.fn();
+    useSettingsStore.getState.mockReturnValue({
+      dayResetTime: '00:00',
+      vacationMode: false,
+      vacationEnd: null,
+      vacationScheduledStart: null,
+      setVacationMode, setVacationEnd, setVacationScheduledStart,
+      ...over,
+    });
+    return { setVacationMode, setVacationEnd, setVacationScheduledStart };
+  };
+
+  it('does nothing with no start date', () => {
+    const { setVacationMode } = settings();
+    useTaskStore.getState().checkScheduledVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('waits for a start date that is still ahead', () => {
+    const { setVacationMode, setVacationScheduledStart } = settings({ vacationScheduledStart: dayOffset(3) });
+    useTaskStore.getState().checkScheduledVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+    expect(setVacationScheduledStart).not.toHaveBeenCalled();
+  });
+
+  it('turns vacation on from the start day, handing on the end date', () => {
+    const { setVacationMode } = settings({ vacationScheduledStart: dayOffset(0), vacationEnd: dayOffset(5) });
+    useTaskStore.getState().checkScheduledVacation();
+    expect(setVacationMode).toHaveBeenCalledWith(true, dayOffset(5));
+  });
+
+  it('still starts when the app was closed through the start day', () => {
+    const { setVacationMode } = settings({ vacationScheduledStart: dayOffset(-2), vacationEnd: dayOffset(5) });
+    useTaskStore.getState().checkScheduledVacation();
+    expect(setVacationMode).toHaveBeenCalledWith(true, dayOffset(5));
+  });
+
+  it('drops a vacation whose whole span passed while the app was closed', () => {
+    const { setVacationMode, setVacationScheduledStart, setVacationEnd } = settings({
+      vacationScheduledStart: dayOffset(-9), vacationEnd: dayOffset(-2),
+    });
+    useTaskStore.getState().checkScheduledVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+    expect(setVacationScheduledStart).toHaveBeenCalledWith(null);
+    expect(setVacationEnd).toHaveBeenCalledWith(null);
+  });
+
+  it('clears the start date when vacation is already on, and leaves its end alone', () => {
+    const { setVacationMode, setVacationScheduledStart, setVacationEnd } = settings({
+      vacationMode: true, vacationScheduledStart: dayOffset(0), vacationEnd: dayOffset(4),
+    });
+    useTaskStore.getState().checkScheduledVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+    expect(setVacationEnd).not.toHaveBeenCalled();
+    expect(setVacationScheduledStart).toHaveBeenCalledWith(null);
+  });
+});
+
 // ─── forgivePausedProjectStreaks ────────────────────────────────────────────
 
 // A paused project's daily habit read as broken the morning the pause lifted,

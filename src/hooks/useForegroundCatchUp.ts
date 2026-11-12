@@ -36,6 +36,8 @@ export function useForegroundCatchUp(): void {
       // this is for, and a trip ending as another starts must resolve in
       // that order.
       useTaskStore.getState().checkAwayVacation();
+      // And the day set in Settings for vacation to begin, after the trip's.
+      useTaskStore.getState().checkScheduledVacation();
       // The device's time zone can change while the app sits backgrounded
       // (a flight lands mid-trip), and a phone left closed never sees a cold
       // start, so this is the chance to move wall-clock reminders before the
