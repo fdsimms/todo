@@ -22,6 +22,7 @@ const KIND_AWARE: Record<string, string> = {
   'components/JournalEntrySheet.tsx': 'works on the kind it was opened for',
   'components/JournalMonthSheet.tsx': 'takes the kind it was opened for and filters by it',
   'components/JournalPhotoStrip.tsx': 'photos belong to an entry whatever its kind',
+  'hooks/useElsewhereSearch.ts': 'searches each kind, and only while its own screen is on',
   'hooks/useNavMenuOptions.ts': 'counts each kind separately',
   'hooks/useRecordTaskReady.ts': 'only answers a journal or dream reminder; notes have none',
   'navigation/AppNavigator.tsx': 'counts each kind separately',

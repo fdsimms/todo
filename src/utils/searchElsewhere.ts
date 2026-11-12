@@ -1,5 +1,5 @@
 import { nicknamesOf, primaryNickname } from './nicknames';
-import { format } from 'date-fns';
+import { format } from 'date-fns/format';
 import type { GroceryItem, JournalEntry, JournalKind, MoodLog, Person, Recipe } from '../types';
 import { menuSearchTerms, searchMenu, type NavSearchResult } from './navHubs';
 import { searchSettings } from './settingsSearch';

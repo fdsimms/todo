@@ -569,6 +569,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/searchCollapse.ts` — SearchOccurrence, CollapsedOccurrence, occurrenceFamilyKey, collapseOccurrences, formatOccurrenceCount
 - `src/utils/searchElsewhere.ts` — ElsewhereKind, ElsewhereResult, ElsewhereSources, ElsewhereSections, QUICK_ELSEWHERE_LIMIT, nameTier, termRanges, searchPeople, searchElsewhere, ElsewhereDescription, +6 more
 - `src/utils/searchPantryRun.ts` — runPantry
+- `src/utils/searchSnippet.ts` — HiddenSnippet, SNIPPET_CONTEXT, hiddenSnippet
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/sectionRegistry.ts` — registerSectionSource, sectionsNow, isChecklistRow
 - `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, SYNC_TOKEN_READABLE_LOCKED_SETTING, WANIKANI_TOKEN_SECURE_KEY, YNAB_TOKEN_SECURE_KEY, +3 more
