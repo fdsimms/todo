@@ -1862,10 +1862,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Zero height with the bubble overflowing it: a popover over the fields, not a
   // row that pushes them down. Inset by the title card's padding so the bubble's
   // x positions line up with the text field's own.
-  tooltipRow: { height: 0, marginHorizontal: spacing.md + spacing.md, marginTop: 2, zIndex: 2, overflow: 'visible' },
+  tooltipRow: { height: 0, marginHorizontal: spacing.md + spacing.md, zIndex: 2, overflow: 'visible' },
   // Absolute so the bubble sizes itself rather than being laid out inside the
-  // row's zero height, which squashed its content to a sliver.
-  tooltipAnchor: { position: 'absolute', top: 0, left: 0 },
+  // row's zero height, which squashed its content to a sliver. Offset by `top`,
+  // not a margin on the row, so the rows below never move when it appears.
+  tooltipAnchor: { position: 'absolute', top: 2, left: 0 },
   tooltipCaret: {
     width: 0,
     height: 0,
