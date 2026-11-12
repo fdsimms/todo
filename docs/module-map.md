@@ -231,7 +231,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodRecall.ts` — RECALL_MIN_QUERY, RECALL_LIMIT, RecalledFood, describedGrams, estimateWholeGrams, describedEstimateFactor, descriptionClauses, recallWeight, recallFoods, recallMeasuringPanel, +14 more
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/frameWidth.ts` — MAX_CONTENT_WIDTH, LIST_CONTENT_WIDTH, DASHBOARD_CONTENT_WIDTH, DASHBOARD_TWO_COLUMN_MIN_WIDTH, MAX_DRAWER_WIDTH, SIDEBAR_MIN_WINDOW_WIDTH, SIDEBAR_WIDTH, sidebarWidthFor, frameWidthFor, frameLeftFor, +12 more
-- `src/utils/frankiTasks.ts` — FrankiReadListen, FrankiSnapshot, FRANKI_REVIEW_THRESHOLD_DEFAULT, FRANKI_REVIEW_THRESHOLD_MIN, FRANKI_REVIEW_THRESHOLD_MAX, FRANKI_REVIEW_URL, FRANKI_READ_URL, clampFrankiReviewThreshold, frankiStatusUrl, frankiReviewSourceId, +8 more
+- `src/utils/frankiStudy.ts` — FrankiStudyDay, studySeconds, studyDayAt, minutesStudiedToday, minutesReadToday, formatStudyMinutes, FrankiWeekBar, FrankiWeek, frankiWeek, describeFrankiWeek
+- `src/utils/frankiTasks.ts` — FrankiReadListen, FrankiSnapshot, FrankiReviewMode, FRANKI_REVIEW_MODE_DEFAULT, parseFrankiReviewMode, FRANKI_GOAL_MINUTES_DEFAULT, FRANKI_GOAL_MINUTES_MIN, FRANKI_GOAL_MINUTES_MAX, FRANKI_GOAL_MINUTES_STEP, clampFrankiGoalMinutes, +25 more
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
 - `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, bulkSetCategoryOffering, offerFollowUpWriteBack
@@ -667,7 +668,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/templateGrouping.ts` — TemplateListItem, groupTemplatesByCategory, TemplateDropResolution, resolveTemplateDrop, templateMatchesQuery
 - `src/utils/templateLink.ts` — TemplateLinkState, templateLinkState, runTemplateLabel, linkedTaskCounts, linkedTasksNote, anchorsForRun
 - `src/utils/templateMatch.ts` — matchTemplate
-- `src/utils/templateQuestions.ts` — questionsForTree, answerFromDates, defaultAnswer, resolveAnswers, placeholderValuesFor, toggleAnswer, displayOptions, liveConditions, numberInRange, applyItemVariant, +16 more
+- `src/utils/templateQuestions.ts` — WeatherGearTicks, questionsForTree, answerFromDates, defaultAnswer, resolveAnswers, placeholderValuesFor, toggleAnswer, displayOptions, liveConditions, numberInRange, +17 more
 - `src/utils/templateRunDestination.ts` — TemplateRunView, TemplateRunDestination, templateRunDestination, templateRunDestinationLabel
 - `src/utils/templateSchedule.ts` — TemplateRunDue, DEFAULT_TEMPLATE_SCHEDULE_TIME, defaultTemplateSchedule, schedulesEqual, periodKeyFor, triggerDayFor, scheduledRunName, dueTemplateRun, ordinal, describeTemplateSchedule
 - `src/utils/templateUtils.ts` — TemplateAnchors, normalizeTemplateItem, normalizeTemplateQuestion, placeItemAtDrop, resolveOffsetDate, formatMinutesOffset, buildDraftsFromTemplate, formatOffsetLabel, anchorLabel, formatOffsetWithAnchor, +33 more
@@ -692,7 +693,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/travelModeWrite.ts` — setTravelModeForEvent, setArriveEarlyForEvent
 - `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, LEAVE_WINDOW_MINUTES_DEFAULT, LEAVE_WINDOW_MINUTES_MIN, LEAVE_WINDOW_MINUTES_MAX, LEAVE_WINDOW_MINUTES_STEP, describeLeaveWindow, clampLeaveWindowMinutes, +64 more
 - `src/utils/tripEvents.ts` — spansDays, tripSpanOf, awayFieldsFromEvent, DESTINATION_MAX_LENGTH, destinationFromEvent, projectForTripEvent
-- `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
+- `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, WeatherGearInputs, WeatherGearVerdict, weatherGearVerdict, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
 - `src/utils/twoPane.ts` — TWO_PANE_MIN_WINDOW_WIDTH, TWO_PANE_LIST_WIDTH, TWO_PANE_LIST_MAX_WIDTH, twoPaneListWidthFor, TWO_PANE_ROUTES, twoPaneFor, nextLayoutHold, floatingLayerInsetFor, columnUncappedFor
 - `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, AGENT_SOURCE, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, +5 more
@@ -719,7 +720,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/waterLog.ts` — WaterUnit, WATER_STEP_ML, WATER_MIN_ML, WATER_MAX_ML, WATER_STEP_FL_OZ, WATER_MIN_FL_OZ, WATER_MAX_FL_OZ, isWaterEntry, waterEntryOf, waterTotalMl, +10 more
 - `src/utils/waterShortfallTasks.ts` — waterShortfallTitle, WATER_SHORTFALL_NOTES, waterShortfallMl, followedWaterTaskDoneOn
 - `src/utils/waterTargetUnits.ts` — followedWaterTargetCount
-- `src/utils/weatherCondition.ts` — classifyWeather, weatherIconFor, weatherConditionAdjective, conditionNoun, weatherConditionNoun, canWaitForWeather
+- `src/utils/weatherCondition.ts` — classifyWeather, weatherIconFor, weatherConditionAdjective, conditionNoun, weatherConditionNoun, isWeatherCondition, canWaitForWeather
 - `src/utils/weatherHeaderCache.ts` — CachedWeather, parseCachedWeather
 - `src/utils/weatherLocation.ts` — LocationPermission, getLocationPermission, requestLocationPermission, DeviceLocation, getCurrentLocation
 - `src/utils/weatherTasks.ts` — WEATHER_LINK_URL, WEATHER_RULE_TITLE_MAX_LENGTH, WEATHER_CONDITIONS, WEATHER_AHEAD_FROM_HOUR, weatherConditionLabel, defaultWeatherRules, clearWeatherMarksOnEdit, parseWeatherRules, weatherSourceId, parseWeatherSourceId, +7 more

@@ -4370,6 +4370,11 @@ function seedTemplates(): void {
       category: 'Home',
       conditions: [{ questionId: tripType.id, values: ['Work'] }],
     },
+    // Weather gear: starts checked when the destination forecast has that
+    // weather, and when there is no forecast to check; unchecked only when a
+    // forecast that covers the whole trip has none. The row says why.
+    { title: 'Pack an umbrella', dueOffsetDays: -1, category: 'Home', weatherGear: 'rainy' },
+    { title: 'Pack a warm coat', dueOffsetDays: -1, category: 'Home', weatherGear: 'cold' },
     // Anchored to the end date instead, and optional — the two item settings
     // that are otherwise only described in the editor's own hints.
     { title: 'Unpack and start a load of laundry', anchor: 'end', dueOffsetDays: 1, optional: true },

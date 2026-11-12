@@ -10,7 +10,7 @@ them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (13.0k), `db/database.ts` (10.6k), `mcp/src/replica.ts` (9.7k),
 `components/TaskEditor.tsx` (9.6k), `components/TaskItem.tsx` (7.1k),
-`store/useSettingsStore.ts` (7.0k), `utils/demoSeed.ts` (6.8k),
+`store/useSettingsStore.ts` (7.1k), `utils/demoSeed.ts` (6.8k),
 `screens/TodayScreen.tsx` (6.6k), `store/useGroceryStore.ts` (5.9k),
 `mcp/src/server.ts` (5.1k).
 
@@ -23,5 +23,5 @@ one component holding most of the file is owed a header map and banners (CLAUDE.
 
 `components/RecipeToListSheet.tsx`, `screens/PersonDetailScreen.tsx`.
 
-The suite is **854 test files**, and `npm test` runs all of them in about a minute.
+The suite is **855 test files**, and `npm test` runs all of them in about a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists.

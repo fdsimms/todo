@@ -25,6 +25,11 @@ const statusBody = {
   decks: [{ name: 'Languages::Polski', reviews: 30, learning: 2 }],
   day_ends_at: new Date(2026, 9, 19, 4).toISOString(),
   read_and_listen: { language: 'pl', name: 'Polish', waiting: 3, last_read_at: null },
+  study_days: [
+    { starts_at: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answer_seconds: 600, reading_seconds: 120 },
+    { starts_at: new Date(2026, 9, 17, 4).toISOString(), cards: 12, answer_seconds: 300, reading_seconds: 0 },
+  ],
+  franki: { due: 30, new: 8, reported_at: later(9) },
 };
 
 describe('frankiSnapshotFrom', () => {
@@ -35,7 +40,19 @@ describe('frankiSnapshotFrom', () => {
       upcoming: [{ at: later(10, 45), count: 1 }, { at: later(11, 5), count: 3 }],
       dayEndsAt: new Date(2026, 9, 19, 4).toISOString(),
       readListen: { language: 'pl', name: 'Polish', waiting: 3, lastReadAt: null },
+      frankiNew: 8,
+      studyDays: [
+        { startsAt: new Date(2026, 9, 17, 4).toISOString(), cards: 12, answerSeconds: 300, readingSeconds: 0 },
+        { startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answerSeconds: 600, readingSeconds: 120 },
+      ],
     });
+  });
+
+  it('reads an older server with no study days or Franki report as unknown, not zero', () => {
+    const { franki: _f, study_days: _d, ...older } = statusBody;
+    void _f; void _d;
+    expect(frankiSnapshotFrom(older, FETCHED)).toMatchObject({ frankiNew: null, studyDays: [] });
+    expect(frankiSnapshotFrom({ ...statusBody, franki: null }, FETCHED)?.frankiNew).toBeNull();
   });
 
   it('reads a server without Read & Listen, and refuses a body that is not a status', () => {

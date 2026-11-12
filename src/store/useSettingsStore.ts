@@ -194,7 +194,14 @@ import {
   parseWaniKaniReviewState,
   type WaniKaniReviewState,
 } from '../utils/wanikaniTasks';
-import { clampFrankiReviewThreshold, FRANKI_REVIEW_THRESHOLD_DEFAULT } from '../utils/frankiTasks';
+import {
+  clampFrankiGoalMinutes,
+  clampFrankiReviewThreshold,
+  FRANKI_REVIEW_MODE_DEFAULT,
+  FRANKI_REVIEW_THRESHOLD_DEFAULT,
+  parseFrankiReviewMode,
+  type FrankiReviewMode,
+} from '../utils/frankiTasks';
 import { REVIEW_WAVE_INITIAL_STATE, parseReviewWaveState, type ReviewWaveState } from '../utils/reviewQueue';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseBlockOfferRules, serializeBlockOfferRules } from '../utils/blockOfferTasks';
@@ -1994,10 +2001,12 @@ interface SettingsStore {
   // The Franki tasks (src/utils/frankiTasks.ts): a reviews task from the
   // person's flashcards and a daily Read & Listen task, read from their own
   // Franki server. Off by default, and inert without the server's address and
-  // its status key in the keychain (useFrankiStore). The threshold is how many
-  // cards have to be due; frankiReadTasks is the Read & Listen task's own
-  // switch inside it. The review state and the day mark are this device's own
-  // and never sync.
+  // its status key in the keychain (useFrankiStore). The reviews task is once
+  // a day or in waves (frankiReviewMode); the threshold is how many cards a
+  // wave needs. frankiReadTasks is the Read & Listen task's own switch,
+  // frankiGoalMinutes the study-time goal (null for none) and
+  // frankiCountReading whether Read & Listen time counts toward it. The review
+  // state and the day marks are this device's own and never sync.
   frankiTasks: boolean;
   frankiTaskCategory: string | null;
   frankiServer: string;
@@ -2005,6 +2014,11 @@ interface SettingsStore {
   frankiReadTasks: boolean;
   frankiReviewState: ReviewWaveState;
   frankiReadLastDayKey: string | null;
+  frankiReviewMode: FrankiReviewMode;
+  frankiGoalMinutes: number | null;
+  frankiCountReading: boolean;
+  frankiDailyLastDayKey: string | null;
+  frankiGoalLastDayKey: string | null;
   // The person's YNAB plan (src/services/ynab.ts). Two features read it, each
   // off by default and inert without a token in the keychain (useYnabStore):
   // the transactions task (`ynabTasks`, the `ynab` generator, with the
@@ -2637,6 +2651,11 @@ interface SettingsStore {
   setFrankiReadTasks: (on: boolean) => void;
   setFrankiReviewState: (state: ReviewWaveState) => void;
   setFrankiReadLastDayKey: (key: string | null) => void;
+  setFrankiReviewMode: (mode: FrankiReviewMode) => void;
+  setFrankiGoalMinutes: (minutes: number | null) => void;
+  setFrankiCountReading: (on: boolean) => void;
+  setFrankiDailyLastDayKey: (key: string | null) => void;
+  setFrankiGoalLastDayKey: (key: string | null) => void;
   setYnabTasks: (on: boolean) => void;
   setYnabTaskCategory: (category: string | null) => void;
   setYnabOverspentTasks: (on: boolean) => void;
@@ -3475,6 +3494,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   frankiReadTasks: true,
   frankiReviewState: REVIEW_WAVE_INITIAL_STATE,
   frankiReadLastDayKey: null,
+  frankiReviewMode: FRANKI_REVIEW_MODE_DEFAULT,
+  frankiGoalMinutes: null,
+  frankiCountReading: true,
+  frankiDailyLastDayKey: null,
+  frankiGoalLastDayKey: null,
   ynabTasks: false,
   ynabTaskCategory: null,
   ynabOverspentTasks: false,
@@ -4082,6 +4106,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const frankiReadTasks = dbGetSetting('frankiReadTasks') !== 'false';
     const frankiReviewState = parseReviewWaveState(dbGetSetting('frankiReviewState'));
     const frankiReadLastDayKey = dbGetSetting('frankiReadLastDayKey') || null;
+    const frankiReviewMode = parseFrankiReviewMode(dbGetSetting('frankiReviewMode'));
+    const storedFrankiGoal = parseInt(dbGetSetting('frankiGoalMinutes') ?? '', 10);
+    const frankiGoalMinutes = clampFrankiGoalMinutes(Number.isFinite(storedFrankiGoal) ? storedFrankiGoal : null);
+    const frankiCountReading = dbGetSetting('frankiCountReading') !== 'false';
+    const frankiDailyLastDayKey = dbGetSetting('frankiDailyLastDayKey') || null;
+    const frankiGoalLastDayKey = dbGetSetting('frankiGoalLastDayKey') || null;
     const ynabTasks = dbGetSetting('ynabTasks') === 'true';
     const ynabTaskCategory = dbGetSetting('ynabTaskCategory') || null;
     const ynabOverspentTasks = dbGetSetting('ynabOverspentTasks') === 'true';
@@ -4386,8 +4416,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       focusShieldEnabled,
       focusWorkCapMinutes,
       foodLogPinnedNutrients,
+      frankiCountReading,
+      frankiDailyLastDayKey,
+      frankiGoalLastDayKey,
+      frankiGoalMinutes,
       frankiReadLastDayKey,
       frankiReadTasks,
+      frankiReviewMode,
       frankiReviewState,
       frankiReviewThreshold,
       frankiServer,
@@ -5646,6 +5681,33 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setFrankiReadLastDayKey(key: string | null) {
     dbSetSetting('frankiReadLastDayKey', key ?? '');
     set({ frankiReadLastDayKey: key });
+  },
+
+  setFrankiReviewMode(mode: FrankiReviewMode) {
+    const parsed = parseFrankiReviewMode(mode);
+    dbSetSetting('frankiReviewMode', parsed);
+    set({ frankiReviewMode: parsed });
+  },
+
+  setFrankiGoalMinutes(minutes: number | null) {
+    const clamped = clampFrankiGoalMinutes(minutes);
+    dbSetSetting('frankiGoalMinutes', clamped === null ? '' : String(clamped));
+    set({ frankiGoalMinutes: clamped });
+  },
+
+  setFrankiCountReading(on: boolean) {
+    dbSetSetting('frankiCountReading', on ? 'true' : 'false');
+    set({ frankiCountReading: on });
+  },
+
+  setFrankiDailyLastDayKey(key: string | null) {
+    dbSetSetting('frankiDailyLastDayKey', key ?? '');
+    set({ frankiDailyLastDayKey: key });
+  },
+
+  setFrankiGoalLastDayKey(key: string | null) {
+    dbSetSetting('frankiGoalLastDayKey', key ?? '');
+    set({ frankiGoalLastDayKey: key });
   },
 
   setYnabTasks(on: boolean) {

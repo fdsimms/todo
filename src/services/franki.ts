@@ -1,6 +1,7 @@
 import { isDemoModeActive } from '../utils/demoState';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { frankiStatusUrl, type FrankiReadListen, type FrankiSnapshot } from '../utils/frankiTasks';
+import type { FrankiStudyDay } from '../utils/frankiStudy';
 
 /**
  * The person's own Franki server (their Anki sync server, with Read & Listen
@@ -57,13 +58,39 @@ function readListenFrom(body: unknown): FrankiReadListen | null {
   };
 }
 
+function studyDaysFrom(body: unknown): FrankiStudyDay[] {
+  if (!Array.isArray(body)) return [];
+  const days: FrankiStudyDay[] = [];
+  for (const item of body) {
+    const d = item as { starts_at?: unknown; cards?: unknown; answer_seconds?: unknown; reading_seconds?: unknown } | null;
+    const startsAt = instant(d?.starts_at);
+    if (!startsAt) continue;
+    days.push({
+      startsAt,
+      cards: count(d?.cards),
+      answerSeconds: count(d?.answer_seconds),
+      readingSeconds: count(d?.reading_seconds),
+    });
+  }
+  return days.sort((a, c) => Date.parse(a.startsAt) - Date.parse(c.startsAt));
+}
+
+/** Franki's own new-card count, when it reported one today; null otherwise (`frankiNew`). */
+function frankiNewFrom(body: unknown): number | null {
+  const n = (body as { new?: unknown } | null)?.new;
+  return typeof n === 'number' && Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+}
+
 /**
  * The status route's answer as a snapshot: reviews and learning cards due now
  * are one count, and the learning cards coming due later are the forecast,
  * merged by instant. Null when the body isn't a status at all.
  */
 export function frankiSnapshotFrom(body: unknown, fetchedAt: string): FrankiSnapshot | null {
-  const b = body as { reviews?: unknown; learning?: unknown; learning_later?: unknown; day_ends_at?: unknown; read_and_listen?: unknown } | null;
+  const b = body as {
+    reviews?: unknown; learning?: unknown; learning_later?: unknown; day_ends_at?: unknown;
+    read_and_listen?: unknown; franki?: unknown; study_days?: unknown;
+  } | null;
   if (!b || typeof b !== 'object' || typeof b.reviews !== 'number') return null;
   const byInstant = new Map<string, number>();
   if (Array.isArray(b.learning_later)) {
@@ -82,6 +109,8 @@ export function frankiSnapshotFrom(body: unknown, fetchedAt: string): FrankiSnap
     upcoming,
     dayEndsAt: instant(b.day_ends_at),
     readListen: readListenFrom(b.read_and_listen),
+    frankiNew: frankiNewFrom(b.franki),
+    studyDays: studyDaysFrom(b.study_days),
   };
 }
 

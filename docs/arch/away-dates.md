@@ -590,12 +590,16 @@ between runs.
 `weatherLookup.ts` calls Open-Meteo's `/v1/forecast` (no key) for both today's
 reading and the destination's `daily=` forecast. Three rules hold it:
 
-- **It is a sentence, not a rule.** "Nov 3 to 10 in Tokyo, 4 to 11°C, rain on the
-  5th." Not weather-conditioned packing items — that would mean extending template
-  conditions, which gate on choice questions only, and would stake packing
-  decisions on a ten-day forecast. `lookAhead`'s own rule is the right one here:
-  *a cue may rank; a sentence may only state.* Let the reader draw the conclusion
-  and the reliability objection disappears.
+- **The line is a sentence, not a rule.** "Nov 3 to 10 in Tokyo, 4 to 11°C, rain on the
+  5th." It does not tick anything, and it is not a condition: a ten-day forecast is a
+  poor thing to stake a packing decision on. `lookAhead`'s own rule is the right one
+  here: *a cue may rank; a sentence may only state.* Let the reader draw the
+  conclusion and the reliability objection disappears. **The one exception is a
+  weather gear item** (`TemplateItem.weatherGear`, `weatherGearVerdict`), which is
+  built so a wrong forecast costs a line and never a coat: it starts ticked when
+  the forecast has that weather *and* whenever the forecast cannot say, starts
+  unticked only when the forecast covers every day and none has it, and always
+  says why on its row. See `docs/arch/template-questions.md`, "Weather gear".
 - **A template question can ask for the line** (`TemplateQuestion.showForecast`), so the forecast is
   on screen where "What's the weather like?" is answered. Same sentence, same rule: it states and
   never answers. See `docs/arch/template-questions.md`; both readers use `useDestinationForecast`.

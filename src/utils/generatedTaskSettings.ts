@@ -623,14 +623,14 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
     ],
   },
   franki: {
-    example: 'Franki: 30 reviews',
+    example: 'Franki: 42 cards left',
     noun: 'Franki task',
     locks: ['time'],
     owned: () => [
-      { key: 'title', label: 'Title', summary: 'Franki: (number) reviews, or Read & Listen: (language)', hint: 'The count follows the cards due in Franki and is left off when none are.' },
-      { key: 'date', label: 'Date', summary: 'The day cards are due', hint: 'Today when cards are due, otherwise held until enough learning cards come due.' },
-      { key: 'time', label: 'Time window', summary: 'Starts when enough cards are due', hint: 'Held on Later until then. It moves if you study in Franki or Anki first.' },
-      { key: 'link', label: 'Link', summary: 'Opens Franki', hint: 'The deck list on a reviews task, Read & Listen on a reading task.' },
+      { key: 'title', label: 'Title', summary: 'Franki: (number) cards left, (minutes) of (goal) min, or Read & Listen: (language)', hint: 'The counts follow Franki and update as you study.' },
+      { key: 'date', label: 'Date', summary: 'Today', hint: 'One task a day of each kind. In waves, a reviews task can wait for the day enough learning cards come due.' },
+      { key: 'time', label: 'Time window', summary: 'Starts when enough cards are due (waves only)', hint: 'Held on Later until then. It moves if you study in Franki or Anki first.' },
+      { key: 'link', label: 'Link', summary: 'Opens Franki', hint: 'The deck list on a cards or goal task, Read & Listen on a reading task.' },
     ],
   },
   ynab: {

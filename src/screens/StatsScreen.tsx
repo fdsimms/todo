@@ -118,6 +118,9 @@ import { ScrollToTopButton } from '../components/ScrollToTopButton';
 import { ProgressBar } from '../components/ProgressBar';
 import { AnimatedBarFill } from '../components/AnimatedBarFill';
 import { WorkoutMusclesCard, WorkoutRecordsCard, WorkoutWeeksCard } from '../components/WorkoutStatsCards';
+import { FrankiStudyCard } from '../components/FrankiStudyCard';
+import { useFrankiStore } from '../store/useFrankiStore';
+import { frankiWeek } from '../utils/frankiStudy';
 import { WORKOUT_STATS_WEEKS, useWorkoutStats } from '../hooks/useWorkoutStats';
 
 const BAR_HEIGHT = 96;
@@ -620,6 +623,16 @@ export function StatsScreen() {
   const workoutUnit = useSettingsStore(s => s.workoutUnit);
   const workoutStats = useWorkoutStats(workoutsEnabled, todayKey);
   const hasWorkoutData = workoutStats !== null;
+  // FLASHCARDS: the last read of the person's Franki server, while its
+  // automation is on. Nothing is stored, so it is absent until a read lands.
+  const frankiTasks = useSettingsStore(s => s.frankiTasks);
+  const frankiCountReading = useSettingsStore(s => s.frankiCountReading);
+  const frankiSnapshot = useFrankiStore(s => s.snapshot);
+  const frankiStudy = useMemo(
+    () => (frankiTasks && frankiSnapshot ? frankiWeek(frankiSnapshot.studyDays, new Date(), frankiCountReading) : null),
+    [frankiTasks, frankiSnapshot, frankiCountReading],
+  );
+  const hasFrankiData = frankiStudy !== null;
   const focusStagger = hasTaskData ? 9 : 0;
   const cookingStagger = focusStagger + (hasFocusData ? 2 : 0);
   // The same argument the cooking gate above already makes, one area further
@@ -629,7 +642,8 @@ export function StatsScreen() {
   // Two blocks when there is eating to describe, so everything below it keeps
   // its place in the cascade rather than every index being rewritten.
   const workoutStagger = cookingStagger + 2 + (hasEating ? 2 : 0);
-  const peopleStagger = workoutStagger + (hasWorkoutData ? 3 : 0);
+  const frankiStagger = workoutStagger + (hasWorkoutData ? 3 : 0);
+  const peopleStagger = frankiStagger + (hasFrankiData ? 1 : 0);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -637,7 +651,7 @@ export function StatsScreen() {
       <ScreenSettingsSheet {...screenSettings.sheet} />
       <HubPills hub="history" active="Stats" />
 
-      {!hasTaskData && !hasCooking && !hasEating && !hasProjectData && !hasFocusData && !hasWorkoutData ? (
+      {!hasTaskData && !hasCooking && !hasEating && !hasProjectData && !hasFocusData && !hasWorkoutData && !hasFrankiData ? (
         <EmptyState
           icon="bar-chart-outline"
           title="No data yet"
@@ -1382,6 +1396,15 @@ export function StatsScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>RECENT PERSONAL RECORDS</Text>
               <WorkoutRecordsCard records={workoutStats.records} unit={workoutUnit} />
+            </View>
+            </StaggerIn>
+          )}
+
+          {frankiStudy !== null && (
+            <StaggerIn index={frankiStagger}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>FLASHCARDS, LAST 7 DAYS</Text>
+              <FrankiStudyCard week={frankiStudy} />
             </View>
             </StaggerIn>
           )}

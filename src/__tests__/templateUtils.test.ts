@@ -93,6 +93,13 @@ describe('normalizeTemplateItem', () => {
     expect(item.rotationItems).toEqual([{ id: 'a', title: 'Cardio', linkUrl: null }, { id: 'b', title: 'Lift', linkUrl: null }]);
   });
 
+  it('keeps a known weatherGear and reads anything else as none', () => {
+    expect(normalizeTemplateItem({ weatherGear: 'cold' }).weatherGear).toBe('cold');
+    expect(normalizeTemplateItem({}).weatherGear).toBeNull();
+    expect(normalizeTemplateItem({ weatherGear: 'foggy' as never }).weatherGear).toBeNull();
+    expect(normalizeTemplateItem({ weatherGear: true as never }).weatherGear).toBeNull();
+  });
+
   it('fills every default for an empty object', () => {
     const item = normalizeTemplateItem({});
     expect(item.id).toBeTruthy();

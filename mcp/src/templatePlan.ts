@@ -586,6 +586,9 @@ function rangeErrors(item: ItemPlan, label: string): string[] {
   if (item.weatherWait != null && !['sunny', 'rainy', 'snowy', 'cold', 'hot'].includes(item.weatherWait)) {
     errors.push(`item "${label}" weatherWait must be sunny, rainy, snowy, cold or hot.`);
   }
+  if (item.weatherGear != null && !['sunny', 'rainy', 'snowy', 'cold', 'hot'].includes(item.weatherGear)) {
+    errors.push(`item "${label}" weatherGear must be sunny, rainy, snowy, cold or hot.`);
+  }
 
   if (item.recurrenceWeekOrdinal != null) {
     if (![1, 2, 3, 4, -1].includes(item.recurrenceWeekOrdinal)) errors.push(`item "${label}" recurrenceWeekOrdinal must be 1 to 4, or -1 for the last.`);
