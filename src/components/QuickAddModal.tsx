@@ -143,6 +143,9 @@ import { overlayCard } from '../utils/frameWidth';
 /** How long a draft left by tapping outside quick add waits to be picked up. */
 const QUICK_ADD_KEEP_DRAFT_MS = 10 * 60 * 1000;
 
+/** How long a phrase found in the title must stay unchanged before its tooltip shows. */
+const MATCH_REVEAL_DELAY_MS = 350;
+
 const TITLE_TOKEN_ACCESSORY_ID = 'quickAddTitleTokenAccessory';
 
 interface Props {
@@ -1161,6 +1164,22 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // When it's present it's always rawMatch (it outranks everything but
   // `parsed`, which excludes it), so matchDismissed is about this token.
   const categoryTagsKept = matchDismissed ? null : categoryTagsParsed;
+  // A phrase is offered only once it has stayed the same for a moment, so
+  // typing "Monika" quickly doesn't flash a "Mon" -> Monday bubble on the way.
+  // Once it's showing it follows the typing with no delay, and it goes the
+  // moment the phrase does. Only what is shown waits: Add still takes the
+  // active match, as before.
+  const [matchRevealed, setMatchRevealed] = useState(false);
+  useEffect(() => {
+    if (!activeMatch) {
+      setMatchRevealed(false);
+      return;
+    }
+    if (matchRevealed) return;
+    const timer = setTimeout(() => setMatchRevealed(true), MATCH_REVEAL_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [activeMatch?.matchStart, activeMatch?.matchedText, matchRevealed]);
+  const shownMatch = matchRevealed ? activeMatch : null;
   const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
   // "beach with @gideon @tessa sat" — every "@name" token that resolves to
@@ -1210,9 +1229,9 @@ export const QuickAddModal = React.memo(function QuickAddModal({
     // is a wrapping Text drawn over a single-line input that scrolls sideways,
     // so on a long line the two disagree about where the text is and the caret
     // ends up off the visible text. The tooltip still points at it.
-    if (activeMatch && !activeMatch.wholeLine) ranges.push([activeMatch.matchStart, matchEnd]);
+    if (shownMatch && !shownMatch.wholeLine) ranges.push([shownMatch.matchStart, matchEnd]);
     return mergeRanges(ranges);
-  }, [activeMatch, matchEnd]);
+  }, [shownMatch, matchEnd]);
   // The overlay is a wrapping Text laid over a single-line input that scrolls
   // sideways, so it can only stand in for the input while the whole line fits.
   // Past that the two disagree about where the text is, and the caret lands off
@@ -1340,13 +1359,13 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // is in: a spring that starts on mount is already visible at the unmeasured
   // resting spot (the left edge) when the real position arrives.
   useEffect(() => {
-    if (activeMatch) return;
+    if (shownMatch) return;
     setPrefixW(null);
     setMatchW(null);
     setBubbleW(0);
     setTooltipRowW(0);
-  }, [activeMatch]);
-  const tooltipReady = activeMatch != null && prefixW != null && matchW != null && bubbleW > 0 && tooltipRowW > 0;
+  }, [shownMatch]);
+  const tooltipReady = shownMatch != null && prefixW != null && matchW != null && bubbleW > 0 && tooltipRowW > 0;
 
   // Pop the tooltip in once it is measured and placed (not on every keystroke
   // that merely extends the phrase).
@@ -1363,7 +1382,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
   // Tooltip geometry: center the bubble under the highlighted phrase and aim
   // the caret at it, clamped to the row. The bubble stays at opacity 0 (see
   // tooltipReady) until every width here is known.
-  const { bubbleLeft, caretLeft } = activeMatch
+  const { bubbleLeft, caretLeft } = shownMatch
     ? aimTooltip({ prefixW, matchW, inputW, bubbleW, rowW: tooltipRowW, candidateLayouts })
     : { bubbleLeft: 0, caretLeft: 14 };
 
@@ -2728,14 +2747,14 @@ export const QuickAddModal = React.memo(function QuickAddModal({
                   </Text>
                 </View>
               )}
-              {activeMatch && (
+              {shownMatch && (
                 <View style={styles.measureWrap} pointerEvents="none">
                   <Text style={styles.measureText} onLayout={e => setPrefixW(e.nativeEvent.layout.width)}>
-                    {title.slice(0, activeMatch.matchStart)}
+                    {title.slice(0, shownMatch.matchStart)}
                   </Text>
                   <Text style={styles.measureText} onLayout={e => setMatchW(e.nativeEvent.layout.width)}>
-                    {title.slice(0, activeMatch.matchStart)}
-                    <Text style={styles.inputHighlight}>{title.slice(activeMatch.matchStart, matchEnd)}</Text>
+                    {title.slice(0, shownMatch.matchStart)}
+                    <Text style={styles.inputHighlight}>{title.slice(shownMatch.matchStart, matchEnd)}</Text>
                   </Text>
                 </View>
               )}
@@ -2788,7 +2807,7 @@ export const QuickAddModal = React.memo(function QuickAddModal({
           )}
 
           {/* Schedule/link tooltip — points at the highlighted phrase; tap to apply */}
-          {activeMatch && (
+          {shownMatch && (
             <Animated.View
               style={[styles.tooltipRow, {
                 opacity: tooltipAnim,
@@ -4279,9 +4298,11 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   reminderAccept: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
   // Zero height with the bubble overflowing it: a popover over what's below, not
   // a row that pushes it down.
+  // No margin of its own: a margin here shifted everything below up by that
+  // much whenever a tooltip appeared, so the bubble is nudged with `top` on the
+  // anchor instead and the rows around it never move.
   tooltipRow: {
     height: 0,
-    marginTop: -4,
     zIndex: 2,
     overflow: 'visible',
   },
@@ -4289,7 +4310,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number, textScaleFactor = 1)
   // row's zero height, which squashed its content to a sliver.
   tooltipAnchor: {
     position: 'absolute',
-    top: 0,
+    top: -4,
     left: 0,
   },
   tooltipCaret: {
