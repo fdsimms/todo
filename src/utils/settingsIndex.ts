@@ -417,6 +417,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'automatic'],
   ynab: ['you need a budget', 'budget', 'money', 'finance', 'bank', 'approve', 'categorize',
     'overspent', 'spending', 'generated', 'automatic'],
+  franki: ['anki deck', 'srs', 'reviews', 'cards due', 'study', 'language', 'vocabulary',
+    'read and listen', 'reading', 'generated', 'automatic'],
 };
 
 /**
@@ -995,6 +997,16 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['budget', 'which budget', 'account', 'you need a budget'] },
   { id: 'ynabOverspentTasks', requires: 'gen:ynab', groupId: 'generated', label: 'Overspent categories', section: 'YNAB transactions',
     keywords: ['overspending', 'over budget', 'negative', 'cover', 'money', 'budget', 'you need a budget'] },
+  { id: 'frankiServer', requires: 'gen:franki', groupId: 'generated', label: 'Server', section: 'Franki flashcards',
+    keywords: ['address', 'url', 'anki', 'sync server', 'domain', 'host'] },
+  { id: 'frankiToken', requires: 'gen:franki', groupId: 'generated', label: 'Status key', section: 'Franki flashcards',
+    keywords: ['token', 'secret', 'password', 'connect', 'anki', 'reader status token'] },
+  { id: 'frankiTokenPrivacy', groupId: 'privacyAi', label: 'Status key', section: 'Franki',
+    keywords: ['token', 'secret', 'password', 'connect', 'anki', 'flashcards'] },
+  { id: 'frankiReviewThreshold', requires: 'gen:franki', groupId: 'generated', label: 'Add the task at', section: 'Franki flashcards',
+    keywords: ['cards due', 'reviews waiting', 'how many', 'number', 'anki', 'flashcards'] },
+  { id: 'frankiReadTasks', requires: 'gen:franki', groupId: 'generated', label: 'Read & Listen', section: 'Franki flashcards',
+    keywords: ['reading', 'listening', 'text', 'story', 'language', 'daily'] },
   { id: 'ynabTokenPrivacy', groupId: 'privacyAi', label: 'Personal access token', section: 'YNAB',
     keywords: ['key', 'secret', 'password', 'account', 'connect', 'sign in', 'budget', 'you need a budget'] },
   // Spans both use-up generators, so it sits below the loop rather than inside

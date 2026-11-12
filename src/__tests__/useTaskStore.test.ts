@@ -432,6 +432,9 @@ jest.mock('../store/useWaniKaniStore', () => ({
 jest.mock('../store/useYnabStore', () => ({
   useYnabStore: { getState: jest.fn(() => ({ snapshot: null })) },
 }));
+jest.mock('../store/useFrankiStore', () => ({
+  useFrankiStore: { getState: jest.fn(() => ({ snapshot: null })) },
+}));
 jest.mock('../store/useTravelTimeStore', () => ({
   useTravelTimeStore: { getState: jest.fn(() => ({ estimates: {} })) },
   travelOriginOfEvent: jest.fn(() => null),
@@ -23320,5 +23323,150 @@ describe('checkYnabTasks', () => {
       check();
       expect(live('overspent:')).toHaveLength(0);
     });
+  });
+});
+
+// ─── checkFrankiTasks ───────────────────────────────────────────────────────
+
+describe('checkFrankiTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { useFrankiStore } = jest.requireMock('../store/useFrankiStore') as {
+    useFrankiStore: { getState: jest.Mock };
+  };
+
+  // Oct 18 2026, 10:20 local, with 4 learning cards coming due at 11:05.
+  const NOW = new Date(2026, 9, 18, 10, 20);
+  const snap = (overrides: Record<string, unknown> = {}) => ({
+    fetchedAt: NOW.toISOString(),
+    reviewsNow: 12,
+    upcoming: [{ at: new Date(2026, 9, 18, 11, 5).toISOString(), count: 4 }],
+    dayEndsAt: new Date(2026, 9, 19, 4, 0).toISOString(),
+    readListen: { language: 'th', name: 'Thai', waiting: 2, lastReadAt: null },
+    ...overrides,
+  });
+
+  let current: Record<string, unknown>;
+  const setSettings = (overrides: Record<string, unknown> = {}) => {
+    current = {
+      dayResetTime: '00:00',
+      vacationMode: false,
+      newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+      titleRules: [],
+      collapsedCategories: [],
+      frankiTasks: true,
+      frankiTaskCategory: 'Study',
+      frankiReviewThreshold: 10,
+      frankiReadTasks: true,
+      frankiReviewState: { baseline: 0, openSourceId: null },
+      frankiReadLastDayKey: null,
+      setFrankiReviewState: jest.fn((state: unknown) => { current.frankiReviewState = state; }),
+      setFrankiReadLastDayKey: jest.fn((key: unknown) => { current.frankiReadLastDayKey = key; }),
+      ...overrides,
+    };
+  };
+  const setSnapshot = (overrides: Record<string, unknown> = {}) =>
+    useFrankiStore.getState.mockReturnValue({ snapshot: snap(overrides) });
+  const check = () => useTaskStore.getState().checkFrankiTasks();
+  const live = (prefix: string) =>
+    useTaskStore.getState().tasks.filter(t =>
+      t.generatedKind === 'franki' && !t.completed && !t.archived && t.generatedSourceId?.startsWith(prefix));
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    setSettings();
+    useSettingsStore.getState.mockImplementation(() => current);
+    setSnapshot();
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    useFrankiStore.getState.mockReturnValue({ snapshot: null });
+  });
+
+  it('writes a reviews task for today once enough cards are due, opening Franki', () => {
+    check();
+    const [task] = live('reviews:');
+    expect(task.title).toBe('Franki: 12 reviews');
+    expect(task.category).toBe('Study');
+    expect(task.linkUrl).toBe('franki://');
+    expect(task.windowStart).toBeNull();
+    expect(new Date(task.dueDate!)).toEqual(new Date(2026, 9, 18, 12, 0));
+    expect(task.vacationPause).toBe(true);
+    expect(current.frankiReviewState).toEqual({ baseline: 0, openSourceId: task.generatedSourceId });
+  });
+
+  it('holds the task until the learning cards the forecast needs come due', () => {
+    setSettings({ frankiReviewThreshold: 15 });
+    check();
+    const [task] = live('reviews:');
+    expect(task.title).toBe('Franki: 16 reviews');
+    expect(task.windowStart).toBe('11:05');
+  });
+
+  it('writes no reviews task while too few cards are due, and none without a read', () => {
+    setSnapshot({ reviewsNow: 3, upcoming: [] });
+    check();
+    expect(live('reviews:')).toHaveLength(0);
+    useTaskStore.setState({ tasks: [] });
+    useFrankiStore.getState.mockReturnValue({ snapshot: null });
+    check();
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+
+  it('keeps a task on Today and only follows the count down as cards are studied', () => {
+    check();
+    setSnapshot({ reviewsNow: 0, upcoming: [] });
+    check();
+    const [task] = live('reviews:');
+    expect(task.title).toBe('Franki reviews');
+  });
+
+  it('writes nothing while switched off or on vacation', () => {
+    setSettings({ frankiTasks: false });
+    check();
+    setSettings({ vacationMode: true });
+    check();
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+
+  it('writes the Read & Listen task once a day while a text is waiting and none was read', () => {
+    check();
+    const [task] = live('read:');
+    expect(task.title).toBe('Read & Listen: Thai');
+    expect(task.linkUrl).toBe('franki://read');
+    expect(task.generatedSourceId).toBe('read:2026-10-18');
+    expect(current.frankiReadLastDayKey).toBe('2026-10-18');
+
+    // Deleted by the person: the day is spent, so it doesn't come back today.
+    useTaskStore.setState({ tasks: useTaskStore.getState().tasks.filter(t => t.id !== task.id) });
+    check();
+    expect(live('read:')).toHaveLength(0);
+  });
+
+  it('writes no Read & Listen task once a text was read today, with none waiting, or switched off', () => {
+    setSnapshot({ readListen: { language: 'th', name: 'Thai', waiting: 2, lastReadAt: new Date(2026, 9, 18, 8).toISOString() } });
+    check();
+    expect(live('read:')).toHaveLength(0);
+    setSnapshot({ readListen: { language: 'th', name: 'Thai', waiting: 0, lastReadAt: null } });
+    check();
+    expect(live('read:')).toHaveLength(0);
+    setSnapshot();
+    setSettings({ frankiReadTasks: false });
+    check();
+    expect(live('read:')).toHaveLength(0);
+    expect(current.frankiReadLastDayKey).toBeNull();
+  });
+
+  it('clears yesterday’s Read & Listen task at the first pass of a new day', () => {
+    check();
+    expect(live('read:')).toHaveLength(1);
+    jest.setSystemTime(new Date(2026, 9, 19, 9, 0));
+    setSnapshot({ readListen: { language: 'th', name: 'Thai', waiting: 0, lastReadAt: null } });
+    check();
+    expect(live('read:')).toHaveLength(0);
   });
 });

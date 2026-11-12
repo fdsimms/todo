@@ -194,6 +194,8 @@ import {
   parseWaniKaniReviewState,
   type WaniKaniReviewState,
 } from '../utils/wanikaniTasks';
+import { clampFrankiReviewThreshold, FRANKI_REVIEW_THRESHOLD_DEFAULT } from '../utils/frankiTasks';
+import { REVIEW_WAVE_INITIAL_STATE, parseReviewWaveState, type ReviewWaveState } from '../utils/reviewQueue';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import { parseBlockOfferRules, serializeBlockOfferRules } from '../utils/blockOfferTasks';
 import { clampBumpReset, clampBumpWarn, parseBumpReset, parseBumpWarn, parseSpeedBumpRules, serializeSpeedBumpRules } from '../utils/speedBump';
@@ -1981,6 +1983,20 @@ interface SettingsStore {
   wanikaniClientLink: string;
   wanikaniReviewState: WaniKaniReviewState;
   wanikaniLessonsLastDayKey: string | null;
+  // The Franki tasks (src/utils/frankiTasks.ts): a reviews task from the
+  // person's flashcards and a daily Read & Listen task, read from their own
+  // Franki server. Off by default, and inert without the server's address and
+  // its status key in the keychain (useFrankiStore). The threshold is how many
+  // cards have to be due; frankiReadTasks is the Read & Listen task's own
+  // switch inside it. The review state and the day mark are this device's own
+  // and never sync.
+  frankiTasks: boolean;
+  frankiTaskCategory: string | null;
+  frankiServer: string;
+  frankiReviewThreshold: number;
+  frankiReadTasks: boolean;
+  frankiReviewState: ReviewWaveState;
+  frankiReadLastDayKey: string | null;
   // The person's YNAB plan (src/services/ynab.ts). Two features read it, each
   // off by default and inert without a token in the keychain (useYnabStore):
   // the transactions task (`ynabTasks`, the `ynab` generator, with the
@@ -2605,6 +2621,13 @@ interface SettingsStore {
   setWanikaniClientLink: (link: string) => void;
   setWanikaniReviewState: (state: WaniKaniReviewState) => void;
   setWanikaniLessonsLastDayKey: (key: string | null) => void;
+  setFrankiTasks: (on: boolean) => void;
+  setFrankiTaskCategory: (category: string | null) => void;
+  setFrankiServer: (address: string) => void;
+  setFrankiReviewThreshold: (count: number) => void;
+  setFrankiReadTasks: (on: boolean) => void;
+  setFrankiReviewState: (state: ReviewWaveState) => void;
+  setFrankiReadLastDayKey: (key: string | null) => void;
   setYnabTasks: (on: boolean) => void;
   setYnabTaskCategory: (category: string | null) => void;
   setYnabOverspentTasks: (on: boolean) => void;
@@ -3435,6 +3458,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   wanikaniClientLink: '',
   wanikaniReviewState: WANIKANI_INITIAL_REVIEW_STATE,
   wanikaniLessonsLastDayKey: null,
+  frankiTasks: false,
+  frankiTaskCategory: null,
+  frankiServer: '',
+  frankiReviewThreshold: FRANKI_REVIEW_THRESHOLD_DEFAULT,
+  frankiReadTasks: true,
+  frankiReviewState: REVIEW_WAVE_INITIAL_STATE,
+  frankiReadLastDayKey: null,
   ynabTasks: false,
   ynabTaskCategory: null,
   ynabOverspentTasks: false,
@@ -4031,6 +4061,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const wanikaniClientLink = dbGetSetting('wanikaniClientLink') ?? '';
     const wanikaniReviewState = parseWaniKaniReviewState(dbGetSetting('wanikaniReviewState'));
     const wanikaniLessonsLastDayKey = dbGetSetting('wanikaniLessonsLastDayKey') || null;
+    const frankiTasks = dbGetSetting('frankiTasks') === 'true';
+    const frankiTaskCategory = dbGetSetting('frankiTaskCategory') || null;
+    const frankiServer = dbGetSetting('frankiServer') ?? '';
+    const storedFrankiThreshold = parseInt(dbGetSetting('frankiReviewThreshold') ?? '', 10);
+    const frankiReviewThreshold = clampFrankiReviewThreshold(
+      Number.isFinite(storedFrankiThreshold) ? storedFrankiThreshold : undefined);
+    // On unless switched off: the Read & Listen task is half of what the switch above turns on.
+    const frankiReadTasks = dbGetSetting('frankiReadTasks') !== 'false';
+    const frankiReviewState = parseReviewWaveState(dbGetSetting('frankiReviewState'));
+    const frankiReadLastDayKey = dbGetSetting('frankiReadLastDayKey') || null;
     const ynabTasks = dbGetSetting('ynabTasks') === 'true';
     const ynabTaskCategory = dbGetSetting('ynabTaskCategory') || null;
     const ynabOverspentTasks = dbGetSetting('ynabOverspentTasks') === 'true';
@@ -4335,6 +4375,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       focusShieldEnabled,
       focusWorkCapMinutes,
       foodLogPinnedNutrients,
+      frankiReadLastDayKey,
+      frankiReadTasks,
+      frankiReviewState,
+      frankiReviewThreshold,
+      frankiServer,
+      frankiTaskCategory,
+      frankiTasks,
       gateShieldEnabled,
       generatedTaskDefaults,
       generatedTaskExtras,
@@ -5539,6 +5586,46 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWanikaniLessonsLastDayKey(key: string | null) {
     dbSetSetting('wanikaniLessonsLastDayKey', key ?? '');
     set({ wanikaniLessonsLastDayKey: key });
+  },
+
+  setFrankiTasks(on: boolean) {
+    dbSetSetting('frankiTasks', on ? 'true' : 'false');
+    if (on) dbSetSetting('frankiReviewState', JSON.stringify(REVIEW_WAVE_INITIAL_STATE));
+    set(on
+      ? { frankiTasks: on, frankiReviewState: REVIEW_WAVE_INITIAL_STATE }
+      : { frankiTasks: on });
+  },
+
+  setFrankiTaskCategory(category: string | null) {
+    dbSetSetting('frankiTaskCategory', category ?? '');
+    set({ frankiTaskCategory: category });
+  },
+
+  setFrankiServer(address: string) {
+    const trimmed = address.trim();
+    dbSetSetting('frankiServer', trimmed);
+    set({ frankiServer: trimmed });
+  },
+
+  setFrankiReviewThreshold(count: number) {
+    const clamped = clampFrankiReviewThreshold(count);
+    dbSetSetting('frankiReviewThreshold', String(clamped));
+    set({ frankiReviewThreshold: clamped });
+  },
+
+  setFrankiReadTasks(on: boolean) {
+    dbSetSetting('frankiReadTasks', on ? 'true' : 'false');
+    set({ frankiReadTasks: on });
+  },
+
+  setFrankiReviewState(state: ReviewWaveState) {
+    dbSetSetting('frankiReviewState', JSON.stringify(state));
+    set({ frankiReviewState: state });
+  },
+
+  setFrankiReadLastDayKey(key: string | null) {
+    dbSetSetting('frankiReadLastDayKey', key ?? '');
+    set({ frankiReadLastDayKey: key });
   },
 
   setYnabTasks(on: boolean) {

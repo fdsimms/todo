@@ -48,6 +48,7 @@ import { useSlotInSync } from './src/hooks/useSlotInSync';
 import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
 import { useWakeUpTaskSync } from './src/hooks/useWakeUpTaskSync';
 import { useWaniKaniSync } from './src/hooks/useWaniKaniSync';
+import { useFrankiSync } from './src/hooks/useFrankiSync';
 import { useYnabSync } from './src/hooks/useYnabSync';
 import { useEventTaskSync } from './src/hooks/useEventTaskSync';
 import { useReminderMeetingResync } from './src/hooks/useReminderMeetingResync';
@@ -217,6 +218,7 @@ function afterFirstFrame(task: () => void): () => void {
 function AppRoot() {
   const backgroundRefreshEnabled = useSettingsStore(s => s.backgroundRefreshEnabled);
   const wanikaniTasks = useSettingsStore(s => s.wanikaniTasks);
+  const frankiTasks = useSettingsStore(s => s.frankiTasks);
   const initSecrets = useSettingsStore(s => s.initializeSecrets);
 
   useEffect(() => {
@@ -395,6 +397,9 @@ function AppRoot() {
   // when a read lands.
   useWaniKaniSync();
   useYnabSync();
+  // Reads the person's Franki server the same way (inert until the Franki task
+  // is switched on with an address and a key).
+  useFrankiSync();
   // Re-runs the event rule sweep when the calendar windows land (including the
   // wider one the "after the event" rules read) or the rules change.
   useEventTaskSync();
@@ -430,8 +435,9 @@ function AppRoot() {
   // punctuality. See src/utils/backgroundRefresh.ts.
   useBackgroundRefresh(backgroundRefreshEnabled);
   // Short daytime refreshes on top of it, which run the same task. Asked for
-  // only while something in the day is worth reading: today, WaniKani's queue.
-  useAppRefresh(backgroundRefreshEnabled && wanikaniTasks);
+  // only while something in the day is worth reading: WaniKani's queue and
+  // Franki's cards.
+  useAppRefresh(backgroundRefreshEnabled && (wanikaniTasks || frankiTasks));
 
   // Collects recipe pages saved from another app's share sheet (targets/todo-share)
   // into the queue the Recipes screen offers. Same ordering requirement as the

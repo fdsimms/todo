@@ -82,8 +82,8 @@
  * gives overnight on the charger. `modules/todo-app-refresh` adds short app
  * refreshes (about thirty seconds, a few times a day, at times iOS picks) that
  * run this same task through the same task service. `useAppRefresh` asks for
- * them only while something in the day is worth reading, which today is only
- * WaniKani. Nothing here can tell the two apart, and nothing needs to: every
+ * them only while something in the day is worth reading, which today is
+ * WaniKani's queue and Franki's cards. Nothing here can tell the two apart, and nothing needs to: every
  * step was already safe to run twice.
  *
  * ## A watch tap is the other way in
@@ -137,6 +137,7 @@ import { widgetBridge } from './widgetBridge';
 import { reconcileAppShield } from './appShieldReconcile';
 import { STANDALONE_STORE_LOADS } from './standaloneStores';
 import { useWaniKaniStore } from '../store/useWaniKaniStore';
+import { useFrankiStore } from '../store/useFrankiStore';
 import { useYnabStore } from '../store/useYnabStore';
 
 /**
@@ -281,6 +282,21 @@ export async function runBackgroundYnab(): Promise<void> {
   writeWidgetSnapshotNow();
 }
 
+/**
+ * Reads the Franki server and runs its task check, while the app is closed:
+ * `runBackgroundWaniKani`'s shape, for its reasons (see "The WaniKani read is
+ * the second" above, which holds for this read too).
+ */
+export async function runBackgroundFranki(): Promise<void> {
+  if (isDemoModeActive()) return;
+  if (!useSettingsStore.getState().frankiTasks) return;
+  const before = useFrankiStore.getState().snapshot;
+  await useFrankiStore.getState().refresh();
+  if (useFrankiStore.getState().snapshot === before) return;
+  useTaskStore.getState().checkFrankiTasks();
+  writeWidgetSnapshotNow();
+}
+
 // Registered at module scope, which is what makes a *cold* background launch
 // work at all: iOS starts the app with no UI, the bundle evaluates, and this is
 // what has to already exist by the time the native task looks for its handler.
@@ -355,6 +371,7 @@ TaskManager.defineTask(BACKGROUND_REFRESH_TASK, async () => {
       // Isolated, so a failed read can't cost the sync after it.
       await runBackgroundWaniKani().catch(error => console.error('Background WaniKani read failed', error));
       await runBackgroundYnab().catch(error => console.error('Background YNAB read failed', error));
+      await runBackgroundFranki().catch(error => console.error('Background Franki read failed', error));
       await runBackgroundSync();
     }
     return BackgroundTask.BackgroundTaskResult.Success;

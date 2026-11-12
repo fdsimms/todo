@@ -93,6 +93,7 @@ const mockTaskState = {
   checkMoodTasks: mockRecord('checkMoodTasks'),
   checkJournalTasks: mockRecord('checkJournalTasks'),
   checkWaniKaniTasks: mockRecord('checkWaniKaniTasks'),
+  checkFrankiTasks: mockRecord('checkFrankiTasks'),
   checkYnabTasks: mockRecord('checkYnabTasks'),
   checkWeekendNudgeTasks: mockRecord('checkWeekendNudgeTasks'),
   // Sync-shaped like every other mock here even though the real pass is
@@ -127,6 +128,14 @@ const mockWaniKaniState: { snapshot: object | null; refresh: () => Promise<void>
     return Promise.resolve();
   },
 };
+const mockFrankiState: { snapshot: object | null; refresh: () => Promise<void> } = {
+  snapshot: null,
+  refresh: () => {
+    mockCalls.push('frankiRefresh');
+    mockFrankiState.snapshot = {};
+    return Promise.resolve();
+  },
+};
 const mockYnabState: { snapshot: object | null; refresh: () => Promise<void> } = {
   snapshot: null,
   refresh: () => {
@@ -153,6 +162,9 @@ jest.mock('../store/useWaniKaniStore', () => ({
 }));
 jest.mock('../store/useYnabStore', () => ({
   useYnabStore: { getState: () => mockYnabState },
+}));
+jest.mock('../store/useFrankiStore', () => ({
+  useFrankiStore: { getState: () => mockFrankiState },
 }));
 jest.mock('../store/useTemplateStore', () => ({
   useTemplateStore: { getState: () => ({ checkScheduledTemplates: mockRecord('checkScheduledTemplates') }) },
@@ -248,7 +260,7 @@ jest.mock('../utils/appShieldReconcile', () => ({
 
 import * as TaskManager from 'expo-task-manager';
 import { emptyApplyReport } from '../utils/syncMerge';
-import { runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runBackgroundYnab, runWatchWork, BACKGROUND_REFRESH_TASK } from '../utils/backgroundRefresh';
+import { runBackgroundFranki, runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runBackgroundYnab, runWatchWork, BACKGROUND_REFRESH_TASK } from '../utils/backgroundRefresh';
 import { catchUpPasses, retentionPasses, expiryPasses } from '../utils/maintenancePasses';
 
 beforeEach(() => {
@@ -259,6 +271,8 @@ beforeEach(() => {
   mockSettingsState.wanikaniTasks = false;
   mockWaniKaniState.snapshot = null;
   mockSettingsState.ynabTasks = false;
+  mockSettingsState.frankiTasks = false;
+  mockFrankiState.snapshot = null;
   mockSettingsState.ynabGroceryBudget = false;
   mockYnabState.snapshot = null;
   mockAppState = 'active';
@@ -298,7 +312,7 @@ describe('runBackgroundRefresh', () => {
       'checkMealThawTasks', 'checkMealLogNudgeTasks',
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'applyWeatherWaits', 'checkEventTasks',
       'checkTravelTasks', 'checkWakeUpTasks', 'rerollSounds', 'checkScreenTimeTasks', 'checkBlockOfferTasks', 'checkHealthTasks',
-      'checkMoodTasks', 'checkJournalTasks', 'checkWaniKaniTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks', 'checkBloodPressureTasks',
+      'checkMoodTasks', 'checkJournalTasks', 'checkWaniKaniTasks', 'checkFrankiTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks', 'checkBloodPressureTasks',
       'checkBirthdayTasks', 'checkPersonDateTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'checkWaitingFollowUpTasks',
       'reconcileAllUseUpTasks', 'checkScheduledTemplates',
@@ -461,6 +475,35 @@ describe('runBackgroundWaniKani', () => {
   });
 });
 
+describe('runBackgroundFranki', () => {
+  it('reads the server, runs the check and rewrites the widget when a read lands', async () => {
+    mockSettingsState.frankiTasks = true;
+    await runBackgroundFranki();
+    expect(mockCalls).toEqual(['frankiRefresh', 'checkFrankiTasks', 'writeWidgetSnapshot']);
+  });
+
+  it('stops at the read when nothing new landed', async () => {
+    mockSettingsState.frankiTasks = true;
+    mockFrankiState.snapshot = {};
+    const refresh = mockFrankiState.refresh;
+    mockFrankiState.refresh = () => { mockCalls.push('frankiRefresh'); return Promise.resolve(); };
+    try {
+      await runBackgroundFranki();
+    } finally {
+      mockFrankiState.refresh = refresh;
+    }
+    expect(mockCalls).toEqual(['frankiRefresh']);
+  });
+
+  it('reads nothing switched off or in demo mode', async () => {
+    await runBackgroundFranki();
+    mockSettingsState.frankiTasks = true;
+    setDemoModeActive(true);
+    await runBackgroundFranki();
+    expect(mockCalls).toEqual([]);
+  });
+});
+
 describe('the background task executor', () => {
   const executor = () =>
     (TaskManager.defineTask as jest.Mock).mock.calls.find(
@@ -479,6 +522,21 @@ describe('the background task executor', () => {
     await executor()();
     expect(mockCalls.indexOf('wanikaniRefresh')).toBeGreaterThan(mockCalls.indexOf('reconcileAppShield'));
     expect(mockCalls.indexOf('syncNow')).toBeGreaterThan(mockCalls.indexOf('wanikaniRefresh'));
+  });
+
+  it('reads Franki before the sync, and still syncs when that read throws', async () => {
+    mockSettingsState.frankiTasks = true;
+    await executor()();
+    expect(mockCalls.indexOf('syncNow')).toBeGreaterThan(mockCalls.indexOf('frankiRefresh'));
+    mockCalls.length = 0;
+    const refresh = mockFrankiState.refresh;
+    mockFrankiState.refresh = () => Promise.reject(new Error('offline'));
+    try {
+      await executor()();
+    } finally {
+      mockFrankiState.refresh = refresh;
+    }
+    expect(mockCalls).toContain('syncNow');
   });
 
   it('still syncs when the WaniKani read throws', async () => {

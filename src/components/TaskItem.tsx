@@ -146,6 +146,8 @@ import type { BusyEvent } from '../utils/calendarBusy';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useWaniKaniStore } from '../store/useWaniKaniStore';
 import { isWaniKaniTaskReady } from '../utils/wanikaniTasks';
+import { useFrankiStore } from '../store/useFrankiStore';
+import { isFrankiTaskReady } from '../utils/frankiTasks';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { recipeMap } from '../utils/recipeComponents';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -1490,6 +1492,14 @@ const TaskItemRow = React.memo(function TaskItem({
     isWaniKaniTask &&
     !task.completed &&
     isWaniKaniTaskReady(task, s.snapshot, wanikaniLessonsPerDay, new Date(), useSettingsStore.getState().dayResetTime)
+  );
+  // A Franki row, the same way: ready once no cards are due, or a text was
+  // read today.
+  const isFrankiTask = task.generatedKind === 'franki';
+  const frankiReady = useFrankiStore(s =>
+    isFrankiTask &&
+    !task.completed &&
+    isFrankiTaskReady(task, s.snapshot, new Date(), getCurrentDayStart(), useSettingsStore.getState().dayResetTime)
   );
 
   // Which meal an auto-generated meal task is for (mealSlotOf, off the row's
@@ -3489,7 +3499,7 @@ const TaskItemRow = React.memo(function TaskItem({
                       ? `${task.title}, health target reached, complete`
                     : mealPlanReady
                       ? `${task.title}, all ${mealPlanNudgeSlotCount} meals planned, complete`
-                    : pantryCheckReady || pantryReviewReady || deloadReady || mealShortfallReady || wanikaniReady
+                    : pantryCheckReady || pantryReviewReady || deloadReady || mealShortfallReady || wanikaniReady || frankiReady
                       ? `${task.title}, ready, complete`
                     : mealSlotChooseSource
                       ? `${task.title}, pick a meal`
@@ -3546,7 +3556,8 @@ const TaskItemRow = React.memo(function TaskItem({
               deloadReady ||
               mealShortfallReady ||
               generatedReady ||
-              wanikaniReady) &&
+              wanikaniReady ||
+              frankiReady) &&
             styles.circleReady,
           !completing && hoursLoggable && styles.circleReady,
           (quotaMeterVisible || quotaPartial) && styles.circleQuota,

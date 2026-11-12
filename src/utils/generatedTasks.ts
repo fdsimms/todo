@@ -217,6 +217,9 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // Appended: the second, the person's YNAB plan (transactions waiting, and
   // overspent categories). See src/utils/ynabTasks.ts.
   'ynab',
+  // Appended: the person's own Franki flashcards (cards due, and a Read &
+  // Listen text waiting). See src/utils/frankiTasks.ts.
+  'franki',
 ];
 
 /**
@@ -292,7 +295,8 @@ export type GeneratedEnabledKey =
   | 'journalLogTasks'
   | 'dreamLogTasks'
   | 'wanikaniTasks'
-  | 'ynabTasks';
+  | 'ynabTasks'
+  | 'frankiTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -1311,6 +1315,23 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Personal',
+  },
+  franki: {
+    kind: 'franki',
+    // Studying is work, so it stands down, the way WaniKani's reviews do.
+    // Anki keeps the cards due; the first read after the trip picks them up.
+    pausedOnVacation: true,
+    enabledKey: 'frankiTasks',
+    label: 'Franki flashcards',
+    onHint: 'Adds a task when cards are due in Franki, and one to read in Read & Listen',
+    offHint: 'Franki adds no tasks',
+    icon: 'albums-outline',
+    // Its source id names a wave of reviews or a day, not a row.
+    sourced: false,
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Study',
   },
 };
 

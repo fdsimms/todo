@@ -2147,7 +2147,9 @@ person's WaniKani summary (reviews waiting now, and how many arrive in each of t
 with a token they paste in (read-only is enough; it lives in the keychain as
 `WANIKANI_TOKEN_SECURE_KEY` and never syncs). `useWaniKaniStore` holds the read in memory,
 `useWaniKaniSync` reads on mount, on foreground and every ten minutes while the app is open, and
-calls `checkWaniKaniTasks` when a read lands. The rules are in `src/utils/wanikaniTasks.ts`.
+calls `checkWaniKaniTasks` when a read lands. The rules are in `src/utils/wanikaniTasks.ts`; the
+reviews task's (the forecast, the wave, the hold) moved to `src/utils/reviewQueue.ts` when `franki`
+needed them too, and `wanikaniTasks.ts` keeps its names for them.
 Doing reviews in the app itself is a separate, unbuilt piece (#3875).
 
 **It also reads while the app is closed, when iOS allows.** The background run
@@ -2227,6 +2229,38 @@ service is gated on either feature being on, and the plan is one setting both sh
 - Pauses on vacation, refuses in demo mode (the service, the store and the pass each check), and
   files under its own category setting (default Personal). Nothing read from YNAB is sent to
   Claude.
+
+## `franki`: cards due, and a Read & Listen text waiting, from the person's own Franki server
+
+The person's flashcards (Franki, their Anki collection) read from their own Franki server: the
+Anki sync server with Read & Listen beside it (fdsimms/flashcards, `server/reader`).
+`src/services/franki.ts` reads `GET /reader/api/status` with the server's address (`frankiServer`,
+synced) and its status key (`READER_STATUS_TOKEN` on the server, a key that opens that one route;
+keychain, `FRANKI_TOKEN_SECURE_KEY`, readable while locked, never synced). `useFrankiStore` holds
+the read in memory, `useFrankiSync` reads on mount, on foreground and every ten minutes,
+`runBackgroundFranki` reads before the background sync, and `checkFrankiTasks` runs when a read
+lands. The rules are in `src/utils/frankiTasks.ts`.
+
+- **The reviews task is WaniKani's, rule for rule** (`src/utils/reviewQueue.ts`): a wave measured
+  from the last task's close, held until the forecast gets there, only its count moving once it is
+  on Today, ready rather than completed. The count is every card due now, reviews and learning
+  cards together; the forecast is the learning cards Anki says come due later in its study day.
+  Unlike WaniKani's, a whole day's reviews arrive at once when Anki's day turns, which no forecast
+  covers, so a snapshot older than the server's `day_ends_at` is stale and the next trigger reads.
+  No reminder: nothing about a deck's queue is urgent to the minute.
+- **The counts are Anki's own**, computed on the server with Anki's scheduler (review limits
+  included), never a lookalike here. New cards are left out: Franki's progress gate is its own,
+  so Anki's new count can differ from what Franki's deck list says. The server works out the study
+  day in its `TZ` setting, so it can be off by the time difference while the person travels.
+- **The Read & Listen task is day-keyed**: once a day (`read:<day>`, the mark
+  `frankiReadLastDayKey`, per device), only while a text is waiting in the language being read
+  and nothing was read to the end since the logical day began, spent by writing it. It reads ready
+  once a text is read, and yesterday's goes at the first pass of the new day. `frankiReadTasks`
+  switches it off inside the generator.
+- **Each opens Franki** (`franki://` for the deck list, `franki://read` for Read & Listen).
+- Pauses on vacation, refuses in demo mode, and files under its own category setting (default
+  Study). A delete writes nothing: the reviews close is the decision, and the reading task's day is
+  already spent.
 
 ## A rule's own category
 

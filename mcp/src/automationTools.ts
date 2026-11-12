@@ -47,6 +47,7 @@ const NEEDS_ON_PHONE: Partial<Record<GeneratedKind, string>> = {
   weighIn: 'Apple Health access',
   bloodPressureLog: 'Apple Health access',
   wanikani: 'their WaniKani API token, saved on the phone (it never syncs, so it can\u2019t be set from here); the phone reads WaniKani only while the app is open',
+  franki: 'their Franki server\u2019s status key, saved on the phone (it never syncs, so it can\u2019t be set from here), and the server\u2019s address (frankiServer); the phone reads the server, and nothing it reads reaches this server',
   ynab: 'their YNAB personal access token and a plan chosen, both on the phone (the token never syncs, so it can\u2019t be set from here); the phone reads YNAB, and nothing it reads reaches this server',
   blockOffer: 'Rewards switched on, Screen Time access, and apps chosen in the rule\u2019s app group on the phone (the phone starts the block when its task is checked, and groups exist only there, so a rule\u2019s groupId can be read and kept but not set from here)',
   screenTime: 'Screen Time access, and the apps chosen in each rule\u2019s app group on the phone (a rule\u2019s groupId names the group; groups exist only on the phone, so it can be read and kept but not set from here)',

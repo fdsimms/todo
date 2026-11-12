@@ -66,7 +66,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/backfillMulti.ts` — backfillStepKey, splitBackfillStepKey, MultiEntry, backfillMultiEntries
 - `src/utils/backfillSuggest.ts` — SuggestibleBackfillFieldId, SUGGESTIBLE_BACKFILL_FIELDS, isSuggestibleBackfillField, MAX_SUGGESTION_TASKS, MAX_SUGGESTION_EXAMPLES, SUGGESTION_NOTES_MAX_CHARS, SuggestionTask, SuggestionExample, BackfillSuggestion, TitleOf, +4 more
 - `src/utils/backfillTasks.ts` — BACKFILL_KITCHEN_AREAS, BACKFILL_TITLES, BACKFILL_THRESHOLD_MIN, BACKFILL_THRESHOLD_MAX, BACKFILL_THRESHOLD_DEFAULT, BACKFILL_CADENCE_DAYS, BACKFILL_LINK_URL, backfillLinkUrl, backfillAreaOf, BackfillLastDayKeys, +7 more
-- `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runBackgroundYnab, runWatchWork, useBackgroundRefresh, APP_REFRESH_INTERVAL_MINUTES, +1 more
+- `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runBackgroundYnab, runBackgroundFranki, runWatchWork, useBackgroundRefresh, +2 more
 - `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, isDeviceLocalSetting, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, +4 more
 - `src/utils/backupFile.ts` — writeExportFile, canShare, shareExportFile, shareBackupFile, shareCsvFile, shareMarkdownFile, writePdfFile, sharePdfFile, discardBackupFile, pickBackupFile
 - `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
@@ -231,6 +231,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodRecall.ts` — RECALL_MIN_QUERY, RECALL_LIMIT, RecalledFood, describedGrams, estimateWholeGrams, describedEstimateFactor, descriptionClauses, recallWeight, recallFoods, recallMeasuringPanel, +14 more
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/frameWidth.ts` — MAX_CONTENT_WIDTH, LIST_CONTENT_WIDTH, DASHBOARD_CONTENT_WIDTH, DASHBOARD_TWO_COLUMN_MIN_WIDTH, MAX_DRAWER_WIDTH, SIDEBAR_MIN_WINDOW_WIDTH, SIDEBAR_WIDTH, sidebarWidthFor, frameWidthFor, frameLeftFor, +12 more
+- `src/utils/frankiTasks.ts` — FrankiReadListen, FrankiSnapshot, FRANKI_REVIEW_THRESHOLD_DEFAULT, FRANKI_REVIEW_THRESHOLD_MIN, FRANKI_REVIEW_THRESHOLD_MAX, FRANKI_REVIEW_URL, FRANKI_READ_URL, clampFrankiReviewThreshold, frankiStatusUrl, frankiReviewSourceId, +8 more
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
 - `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, bulkSetCategoryOffering, offerFollowUpWriteBack
@@ -525,6 +526,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/resumeDate.ts` — ResumeDate, hasStaleDate, resumeDueDateFor
 - `src/utils/resumePrompt.ts` — confirmResume, resumeTasks
 - `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, projectsKeptFromPurge, selectPurgeableFocusSessionIds, LEDGER_MAX_DAYS, ledgerCutoff, +2 more
+- `src/utils/reviewQueue.ts` — ReviewQueue, ReviewWaveState, REVIEW_WAVE_INITIAL_STATE, parseReviewWaveState, hourKeyOf, reviewQueueAt, reviewQueueDueAt, reviewHoldFields, reviewHeldUntil, ReviewWaveAction, +2 more
 - `src/utils/rewardGuard.ts` — GuardedSlip, canGuard, isGuardableHabit, guardingReward, planGuardedSlip, guardChargeSeed, claimedSince, guardedSlipPrompt, describeGuard
 - `src/utils/rewardSavings.ts` — GoalPlan, MIN_SAVINGS_SHARE, MAX_SAVINGS_SHARE, DEFAULT_SAVINGS_SHARE, GOAL_DATE_PRESETS, cleanSavingsShare, parseGoalPlan, serializeGoalPlan, activeGoalPlan, splitsEntry, +11 more
 - `src/utils/rewardUnlocks.ts` — DEFAULT_UNLOCK_SHARE, MIN_UNLOCK_SHARE, MAX_UNLOCK_SHARE, UNLOCK_SHARE_STEP, MAX_PLAY_HOURS, PLAY_EXTRA_MINUTES, cleanUnlockSharePct, cleanPlayMinutes, cleanIgnoreAfter, cleanIgnoreList, +30 more
@@ -572,7 +574,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/searchSnippet.ts` — HiddenSnippet, SNIPPET_CONTEXT, hiddenSnippet
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/sectionRegistry.ts` — registerSectionSource, sectionsNow, isChecklistRow
-- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, SYNC_TOKEN_READABLE_LOCKED_SETTING, WANIKANI_TOKEN_SECURE_KEY, YNAB_TOKEN_SECURE_KEY, +3 more
+- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, SYNC_TOKEN_READABLE_LOCKED_SETTING, WANIKANI_TOKEN_SECURE_KEY, YNAB_TOKEN_SECURE_KEY, +4 more
 - `src/utils/segmentColumns.ts` — segmentRows
 - `src/utils/settingsActiveRows.ts` — SettingsGateState, SyncGateState, activeSettingsEntryIds, searchableSettingsEntries
 - `src/utils/settingsFocusScroll.ts` — SETTINGS_FOCUS_PADDING, settingsFocusScrollTarget
@@ -709,7 +711,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/waitingFollowUpTasks.ts` — MAX_WAITING_FOLLOW_UP_TASKS, WAITING_FOLLOW_UP_DECLINE_DAYS, WAITING_FOLLOW_UP_THRESHOLD_DAYS, waitingFollowUpTaskId, waitingFollowUpTitle, waitingFollowUpsHandledRecently, followUpDue, WaitingFollowUpWant, wantedWaitingFollowUps, staleWaitingFollowUpTasks
 - `src/utils/wakeUpAlarm.ts` — syncWakeUpAlarm
 - `src/utils/wakeUpTasks.ts` — WAKE_UP_DEFAULT_USUAL_MINUTES, WAKE_UP_DEFAULT_GET_READY_MINUTES, WAKE_UP_ROUND_MINUTES, clampWakeUpMinutes, WakeUpSettings, wakeUpInputs, WakeUpPrefs, wakeUpTitle, wakeUpSourceId, wakeUpSourceOf, +10 more
-- `src/utils/wanikaniTasks.ts` — WaniKaniSnapshot, WaniKaniReviewState, WANIKANI_INITIAL_REVIEW_STATE, WANIKANI_REVIEW_THRESHOLD_DEFAULT, WANIKANI_REVIEW_THRESHOLD_MIN, WANIKANI_REVIEW_THRESHOLD_MAX, WANIKANI_LESSONS_PER_DAY_MIN, WANIKANI_LESSONS_PER_DAY_MAX, WANIKANI_LESSONS_ALL, WANIKANI_APPRENTICE_CAP_DEFAULT, +28 more
+- `src/utils/wanikaniTasks.ts` — WaniKaniSnapshot, WaniKaniReviewState, WANIKANI_INITIAL_REVIEW_STATE, WANIKANI_REVIEW_THRESHOLD_DEFAULT, WANIKANI_REVIEW_THRESHOLD_MIN, WANIKANI_REVIEW_THRESHOLD_MAX, WANIKANI_LESSONS_PER_DAY_MIN, WANIKANI_LESSONS_PER_DAY_MAX, WANIKANI_LESSONS_ALL, WANIKANI_APPRENTICE_CAP_DEFAULT, +26 more
 - `src/utils/watchHealthWorkout.ts` — WATCH_HEALTH_REQUESTS_SETTING, WATCH_RETRACT_LIMIT, WATCH_DROP_HOURS, RECENTLY_FINISHED_HOURS, RECENTLY_FINISHED_LIMIT, WatchHealthRequest, WatchHealthRequests, NO_WATCH_HEALTH_REQUESTS, parseWatchHealthRequests, withRetractions, +9 more
 - `src/utils/watchWorkout.ts` — MAX_WATCH_ROUTINES, MAX_WATCH_PLAN_SETS, MAX_WATCH_LIVE_SETS, MAX_WATCH_RECENT, WATCH_RECENT_DAYS, WatchSuggestion, WatchWorkoutExercise, WatchRecentExercise, WatchWorkoutSet, WatchLiveWorkout, +10 more
 - `src/utils/watchWorkoutClash.ts` — WatchClash, WATCH_CLASHES_SETTING, MAX_PENDING_CLASHES, overlappingSessions, parseWatchClashes, withClash, withoutClash, ClashToAsk, nextClash, ClashChoice, +3 more
@@ -787,6 +789,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useFocusStore.ts` — useFocusStore
 - `src/store/useFocusedRouteStore.ts` — useFocusedRouteStore
 - `src/store/useFoodLogStore.ts` — FOOD_INSIGHT_DAYS, FoodLogDraft, PendingMealLog, PendingManualMealLog, FoodLogPatch, FoodLogPlacement, sameEntries, useFoodLogStore
+- `src/store/useFrankiStore.ts` — FRANKI_SNAPSHOT_STALE_MS, useFrankiStore
 - `src/store/useGroceryStore.ts` — subscribeCartHoldRelease, PlannedRow, PlanAddResult, describePlanAdd, swapLabel, useGroceryStore
 - `src/store/useGymStore.ts` — GymRefusal, GymInput, GymPatch, GymExercisePatch, useGymStore
 - `src/store/useHealthStore.ts` — HealthDay, EXERCISE_LIVE_WINDOW_DAYS, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, BLOOD_PRESSURE_HISTORY_DAYS, SLEEP_HISTORY_DAYS, sameHealthHistory, useHealthStore, useHealthSync
@@ -870,6 +873,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useFoodDatabaseSearch.ts` — FoodDatabaseSearch, useFoodDatabaseSearch
 - `src/hooks/useForegroundCatchUp.ts` — useForegroundCatchUp
 - `src/hooks/useFrameWidth.ts` — useFrameWidth
+- `src/hooks/useFrankiSync.ts` — useFrankiSync
 - `src/hooks/useGroupSelectionCounts.ts` — useGroupSelectionCounts
 - `src/hooks/useHealthWorkoutHistory.ts` — useHealthWorkoutHistory
 - `src/hooks/useJournalAccess.ts` — useJournalAccess
@@ -959,6 +963,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 
 - `src/services/aiSuggestions.ts` — forgetToolChoiceRefusals, describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, suggestBackfillValues, MAX_RECIPE_CHARS, +31 more
 - `src/services/foodSearch.ts` — FoodSearchHit, searchFoods, fetchFoodPortions, describeFoodSearchError, foodSearchErrorSettingsEntryId
+- `src/services/franki.ts` — FrankiProblem, FrankiRead, frankiSnapshotFrom, fetchFranki
 - `src/services/geocode.ts` — GeocodedPlace, geocodePlace
 - `src/services/onDeviceModel.ts` — isOnDeviceReady, onDeviceAvailability, describeOnDeviceAvailability, isOnDeviceErrorMessage, describeOnDeviceError, runOnDevice
 - `src/services/placeSearch.ts` — searchPlaces

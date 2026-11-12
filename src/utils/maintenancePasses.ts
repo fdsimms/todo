@@ -246,6 +246,9 @@ export function catchUpPasses(): MaintenanceStep[] {
     // launch or background run can do is let a held task's hour pass: a task
     // left undone overnight keeps its window, which gates every day.
     ['check WaniKani tasks', () => tasks().checkWaniKaniTasks()],
+    // The Franki tasks, the same way: fed by useFrankiSync's read, so a launch
+    // or background run only lets a held task's moment pass.
+    ['check Franki tasks', () => tasks().checkFrankiTasks()],
     // Beside it, same trigger: which weekend is next rolls over purely by time
     // passing. After useSettingsStore.initialize for the reason the meal pass is — which day
     // is Friday is a question about the logical day. It reads the calendar
