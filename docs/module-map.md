@@ -654,7 +654,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/taskImport.ts` — ImportCandidate, candidatesFromExtracted, candidatesToAdd, draftFromCandidate
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances, taskForTitleKey
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, COUNTDOWN_LADDER, +12 more
-- `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, dailyRepeatBlocker, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, pullForwardChoice
+- `src/utils/taskMoves.ts` — dropsTimeOfDayOnMove, DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, dailyRepeatBlocker, deloadUpdates, scheduleMoveUpdates, PullForwardChoice, +1 more
 - `src/utils/taskReopen.ts` — reopenedTask, reopenBlockedByLater
 - `src/utils/taskSkip.ts` — reminderOnto, deadlineOnto, skipPatch
 - `src/utils/taskSummary.ts` — SummaryPart, TaskSummaryInput, inSentence, buildTaskSummary

@@ -34,7 +34,7 @@ import {
   canPageToPreviousMonth, clampMonthToEarliest, isDayBefore,
   canPageToNextMonth, clampMonthToLatest, isDayAfter,
 } from '../utils/calendarGrid';
-import { dayKeyOf, getLogicalNow, getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
+import { dayKeyOf, getTaskDayStart, getLogicalNow, getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { projectDateShortcuts, type ProjectDateAnchor } from '../utils/projectDateShortcuts';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
 import { generateId } from '../utils/id';
@@ -169,6 +169,13 @@ interface Props {
    */
   postponeTaskId?: string;
   /**
+   * Picking a different day than `value` commits no time of day, unless the
+   * person touched the time-of-day pills in this opening. For a one-off task
+   * snoozed to Evening and pushed again, where the evening wasn't meant for the
+   * new day (`dropsTimeOfDayOnMove`). Saving without changing the day keeps it.
+   */
+  resetTimeOfDayOnMove?: boolean;
+  /**
    * "Break it up" — closes the picker and hands over to the host, which opens
    * the AI breakdown sheet or the editor. The pill is hidden when this is
    * absent, so a host with nowhere to send the user doesn't offer it.
@@ -226,7 +233,7 @@ export function WhenPicker({
   taskId, taskTitle, taskNotes, taskTags, taskCategory, taskPriority, taskEffort, taskEstimatedMinutes,
   onConfirm, onClear, onCancel,
   title = 'When?', header, showTimeOfDay = true, showSuggest = true, allowPast = true, allowFuture = true,
-  postponeTaskId, onBreakUp, nlEnabled,
+  postponeTaskId, resetTimeOfDayOnMove = false, onBreakUp, nlEnabled,
   projectAnchor = null,
 }: Props) {
   // ==== theme, and the task and calendar stores ====
@@ -270,6 +277,7 @@ export function WhenPicker({
   const cardScale = useRef(new Animated.Value(0.92)).current;
   const enterAnim = useRef(new Animated.Value(0)).current;
   const pendingRef = useRef(false);
+  const segmentsTouchedRef = useRef(false);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ==== date bounds (today, tomorrow, the past and future limits) ====
@@ -310,6 +318,7 @@ export function WhenPicker({
       // dayResetTime, the calendar's month doesn't hold the day being lived.
       setDisplayMonth(clampMonthToLatest(clampMonthToEarliest(value ?? getLogicalToday(dayResetTime), earliestDay), latestDay));
       setSegments(initialSegments ?? []);
+      segmentsTouchedRef.current = false;
       setNlText('');
       setPendingKey(null);
       setPendingFromGrid(false);
@@ -409,6 +418,7 @@ export function WhenPicker({
 
   // ==== picking a day or a time of day ====
   const toggleSegment = (seg: TimeOfDay) => {
+    segmentsTouchedRef.current = true;
     setSegments(prev =>
       prev.includes(seg) ? [] : [seg]
     );
@@ -432,7 +442,9 @@ export function WhenPicker({
       useNativeDriver: true,
       ...animation.spring.bouncy,
     }).start();
-    confirmTimer.current = setTimeout(() => onConfirm(date, segments), CONFIRM_DELAY_MS);
+    const movedDay = !!date && (!value || getTaskDayStart(date).getTime() !== getTaskDayStart(value).getTime());
+    const committed = resetTimeOfDayOnMove && movedDay && !segmentsTouchedRef.current ? [] : segments;
+    confirmTimer.current = setTimeout(() => onConfirm(date, committed), CONFIRM_DELAY_MS);
   };
 
   const handleDayPress = (day: Date) => {
