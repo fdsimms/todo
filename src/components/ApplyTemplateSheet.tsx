@@ -454,6 +454,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
       asProject,
       planning: createsProject && planning,
       personIds: [...new Set([...(extraPersonIds ?? []), ...personIdsForAnswers(questions, answers)])],
+      registerUndo: true,
     });
     // Waits for the sheet to be fully gone — a caller opening the task editor
     // straight off this callback would stack two Modals mid-animation, the

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { renameInTagList } from '../utils/tagRename';
 import type { ProjectTemplateDraft } from '../utils/projectTemplate';
-import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule } from '../types';
+import type { Project, Task, TaskGroup, TaskTemplate, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule } from '../types';
 import {
   dbGetAllTemplates,
   dbInsertTemplate,
@@ -81,6 +81,13 @@ export interface ApplyTemplateOptions {
    * applied by hand is theirs, and running it twice means two copies.
    */
   idSeed?: { templateId: string; periodKey: string };
+  /**
+   * File one undo entry that takes the whole run back: its tasks and subtasks,
+   * its stack or project, and any dates it filled in on a project it landed
+   * in. Set by the apply sheet only, since a scheduled run is unattended and
+   * must not arm shake-to-undo (see `registerTaskAdded`).
+   */
+  registerUndo?: boolean;
 }
 
 interface TemplateStore {
@@ -516,6 +523,15 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const projects = useProjectStore.getState();
     const groups = useTaskGroupStore.getState();
     let createdTasks: Task[] = [];
+    // Everything the run wrote, for the undo entry below. The stack as it was
+    // before the run, so the one entry replaces anything the writes registered.
+    const historyBefore = tasks.undoStack;
+    const madeTaskIds = new Set<string>();
+    const madeGroups: TaskGroup[] = [];
+    let madeProject: Project | null = null;
+    const touchedProject = options?.targetProjectId
+      ? projects.getProjectById(options.targetProjectId) ?? null
+      : null;
     // What "your medicines" means on the day of the run, for an item marked
     // medicationChecklist. Read here rather than by each caller so the apply
     // sheet and a scheduled run agree.
@@ -535,28 +551,43 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         // this one, so it is reused rather than inserted a second time.
         addTask: draft => {
           const id = idFor('task');
-          if (!id) return tasks.addTask(draft);
-          return useTaskStore.getState().tasks.find(t => t.id === id) ?? tasks.addTask(draft, id);
+          const task = !id
+            ? tasks.addTask(draft)
+            : useTaskStore.getState().tasks.find(t => t.id === id) ?? tasks.addTask(draft, id);
+          madeTaskIds.add(task.id);
+          return task;
         },
         addSubtask: (parentId, title) => {
           const id = idFor('subtask');
-          if (!id) return tasks.addSubtask(parentId, title);
-          return useTaskStore.getState().tasks.find(t => t.id === id) ?? tasks.addSubtask(parentId, title, id);
+          const sub = !id
+            ? tasks.addSubtask(parentId, title)
+            : useTaskStore.getState().tasks.find(t => t.id === id) ?? tasks.addSubtask(parentId, title, id);
+          madeTaskIds.add(sub.id);
+          return sub;
         },
         createStack: (title, category) => {
           const id = idFor('stack');
-          if (!id) return groups.createGroup(title, category);
-          return groups.getGroupById(id) ?? groups.createGroup(title, category, null, id);
+          const group = !id
+            ? groups.createGroup(title, category)
+            : groups.getGroupById(id) ?? groups.createGroup(title, category, null, id);
+          madeGroups.push(group);
+          return group;
         },
         groupTasks: (ids, title, category) => {
           const id = idFor('stack');
-          if (!id) return tasks.groupTasks(ids, title, category);
-          return groups.getGroupById(id) ?? tasks.groupTasks(ids, title, category, id);
+          const group = !id
+            ? tasks.groupTasks(ids, title, category)
+            : groups.getGroupById(id) ?? tasks.groupTasks(ids, title, category, id);
+          madeGroups.push(group);
+          return group;
         },
         createProject: (title, opts) => {
           const id = idFor('project');
-          if (!id) return projects.createProject(title, opts);
-          return projects.getProjectById(id) ?? projects.createProject(title, { ...opts, id });
+          const project = !id
+            ? projects.createProject(title, opts)
+            : projects.getProjectById(id) ?? projects.createProject(title, { ...opts, id });
+          madeProject = project;
+          return project;
         },
         getProject: id => projects.getProjectById(id) ?? undefined,
         updateProject: (id, patch) => projects.updateProject(id, patch),
@@ -565,6 +596,36 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         setBlockers: (taskId, ids) => tasks.updateTask(taskId, blockerFields(ids)),
       });
     });
+    if (options?.registerUndo && madeTaskIds.size > 0) {
+      // Rows are read when the undo runs, so a subtask or an edit made since
+      // is what a redo puts back. A stack row is kept as made: it holds no
+      // state a person edits between the run and the undo that matters here.
+      let removed: Task[] = [];
+      const project = madeProject as Project | null;
+      tasks.setLastAction({
+        label: 'Template applied',
+        redo: () => {
+          if (project) useProjectStore.getState().restoreProject(project);
+          madeGroups.forEach(g => useTaskGroupStore.getState().restoreGroup(g));
+          useTaskStore.getState().restoreTasks(removed);
+        },
+        undo: () => {
+          const store = useTaskStore.getState();
+          removed = store.tasks.filter(t => madeTaskIds.has(t.id) || (t.parentId != null && madeTaskIds.has(t.parentId)));
+          removed.forEach(t => store.deleteTask(t.id, { skipGeneratedOptOut: true, ignoreUnlockLock: true }));
+          madeGroups.forEach(g => useTaskGroupStore.getState().removeGroupRow(g.id));
+          if (project) useProjectStore.getState().removeProjectRow(project.id);
+          // Dates the run filled in on a project that was already there.
+          if (touchedProject) {
+            useProjectStore.getState().updateProject(touchedProject.id, {
+              awayStart: touchedProject.awayStart,
+              awayEnd: touchedProject.awayEnd,
+              deadline: touchedProject.deadline,
+            });
+          }
+        },
+      }, { replacing: historyBefore });
+    }
     return createdTasks;
   },
 
