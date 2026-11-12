@@ -26,7 +26,7 @@ beside it.
 - **A number's answer can come off the anchor dates**, which is the whole of "if I say a trip is 7
   days". `fromDates` is `days` or `nights` rather than one "length" because the 3rd to the 10th is
   both — 7 nights, 8 days — and which one you mean depends on whether you're counting hotel nights
-  or shirts. A typed answer always wins; an emptied field hands it back to the dates.
+  or shirts. A typed answer wins until the dates change; an emptied field, or a picked or cleared date, hands it back to the dates (`ApplyTemplateSheet` drops the typed answer when an anchor moves), since the form is filled top to bottom and a length typed before the dates would otherwise outlive them.
 - **Titles can do one sum on a blank** — `{nights}`, `{nights - 2}`, `{nights / 2}` — and
   deliberately no more. One operator and a literal number, no parentheses and no blank on the
   right: what a title needs is a multiple of the one number the run is about, and everything past

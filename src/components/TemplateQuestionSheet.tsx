@@ -60,8 +60,8 @@ const SOURCE_OPTIONS: { value: TemplateQuestionSource; label: string }[] = [
 
 const SOURCE_NOTES: Record<TemplateQuestionSource, string> = {
   none: 'The answer is typed in every time.',
-  nights: 'Starts at the number of nights between the run’s start and end dates. The 3rd to the 10th is 7. You can still type over it.',
-  days: 'Starts at the number of days between the run’s start and end dates, counting both. The 3rd to the 10th is 8. You can still type over it.',
+  nights: 'Starts at the number of nights between the run’s start and end dates. The 3rd to the 10th is 7. You can still type over it, until the dates change.',
+  days: 'Starts at the number of days between the run’s start and end dates, counting both. The 3rd to the 10th is 8. You can still type over it, until the dates change.',
 };
 
 /**

@@ -300,6 +300,20 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     setSelectedIds(prev => reselectForAnswers(tree, questions, answers, prev));
   }, [answersKey, visible, tree]);
 
+  // Picking or clearing a date hands a date-driven number back to the dates,
+  // so a length typed before the dates were picked (the form is filled top to
+  // bottom) can't outlive them. Typing after the dates still wins.
+  const anchorsKey = `${startAnchor?.getTime() ?? ''}|${endAnchor?.getTime() ?? ''}`;
+  useEffect(() => {
+    setTypedAnswers(prev => {
+      const stale = questions.filter(q => q.kind === 'number' && q.fromDates !== 'none' && q.id in prev);
+      if (stale.length === 0) return prev;
+      const next = { ...prev };
+      for (const q of stale) delete next[q.id];
+      return next;
+    });
+  }, [anchorsKey]);
+
   // ==== exits and gestures: dismiss, open the template, the calendar, swipe-down ====
   const dismiss = (onDismissed?: () => void) => {
     Keyboard.dismiss();
