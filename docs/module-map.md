@@ -668,7 +668,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/templateGrouping.ts` — TemplateListItem, groupTemplatesByCategory, TemplateDropResolution, resolveTemplateDrop, templateMatchesQuery
 - `src/utils/templateLink.ts` — TemplateLinkState, templateLinkState, runTemplateLabel, linkedTaskCounts, linkedTasksNote, anchorsForRun
 - `src/utils/templateMatch.ts` — matchTemplate
-- `src/utils/templateQuestions.ts` — WeatherGearTicks, questionsForTree, answerFromDates, defaultAnswer, resolveAnswers, placeholderValuesFor, toggleAnswer, displayOptions, liveConditions, numberInRange, +16 more
+- `src/utils/templateQuestions.ts` — WeatherGearTicks, questionsForTree, answerFromDates, defaultAnswer, resolveAnswers, placeholderValuesFor, toggleAnswer, displayOptions, liveConditions, numberInRange, +17 more
 - `src/utils/templateRunDestination.ts` — TemplateRunView, TemplateRunDestination, templateRunDestination, templateRunDestinationLabel
 - `src/utils/templateSchedule.ts` — TemplateRunDue, DEFAULT_TEMPLATE_SCHEDULE_TIME, defaultTemplateSchedule, schedulesEqual, periodKeyFor, triggerDayFor, scheduledRunName, dueTemplateRun, ordinal, describeTemplateSchedule
 - `src/utils/templateUtils.ts` — TemplateAnchors, normalizeTemplateItem, normalizeTemplateQuestion, placeItemAtDrop, resolveOffsetDate, formatMinutesOffset, buildDraftsFromTemplate, formatOffsetLabel, anchorLabel, formatOffsetWithAnchor, +33 more

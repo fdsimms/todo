@@ -61,6 +61,7 @@ import {
   type WeatherGearTicks,
   placeholderValuesFor,
   initialLeafSelection,
+  sortCheckedFirst,
   reselectForAnswers,
   questionLabel,
   displayOptions,
@@ -205,6 +206,8 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   // Leaf item ids the user has checked — the only ids the checklist UI
   // itself needs to track; ref-item ids are derived at apply time.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Bumped whenever the selection is decided by the template or its answers (not by a tap), which re-sorts the list.
+  const [sortStamp, setSortStamp] = useState(0);
   const [collapsedRefIds, setCollapsedRefIds] = useState<Set<string>>(new Set());
   const [startAnchor, setStartAnchor] = useState<Date | null>(null);
   const [endAnchor, setEndAnchor] = useState<Date | null>(null);
@@ -309,6 +312,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
         freshQuestions,
         resolveAnswers(freshQuestions, {}, { start: null, end: null }),
       ));
+      setSortStamp(n => n + 1);
       setCollapsedRefIds(new Set());
       // Applying into a project that already holds a trip: its dates are the
       // anchors, so `{nights}` and every offset come out right without them
@@ -345,6 +349,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     // Keyed on the serialization rather than on `answers` itself, which is a
     // fresh object every render and would re-run this on every keystroke.
     setSelectedIds(prev => reselectForAnswers(tree, questions, answers, prev, gearTicks));
+    setSortStamp(n => n + 1);
   }, [answersKey, visible, tree, gearTicksKey]);
 
   // Picking or clearing a date hands a date-driven number back to the dates,
@@ -452,6 +457,9 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     });
   };
 
+  // Pre-checked items first. Deliberately read only when `sortStamp` moves, so ticking a row doesn't move it.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const displayTree = useMemo(() => sortCheckedFirst(tree, selectedIds), [tree, sortStamp]);
   const flatLeaves = flattenApplyTree(tree);
   const selectedCount = flatLeaves.filter(l => selectedIds.has(l.item.id)).length;
   // A selected item that counts days from a date nobody has set would be
@@ -853,7 +861,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
           {/* Item checklist, including any nested templates' items indented beneath their ref row */}
           {onItems && (
             <View>
-              {renderApplyTreeNodes(tree, 0)}
+              {renderApplyTreeNodes(displayTree, 0)}
             </View>
           )}
 

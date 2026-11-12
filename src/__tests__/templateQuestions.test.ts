@@ -7,6 +7,7 @@ import {
   liveConditions,
   itemMatchesAnswers,
   initialLeafSelection,
+  sortCheckedFirst,
   reselectForAnswers,
   toggleItemCondition,
   questionLabel,
@@ -678,5 +679,28 @@ describe('displayOptions', () => {
   it('leaves every other set in the author\'s order', () => {
     expect(displayOptions(makeQuestion({ options: ['No', 'Maybe'] }))).toEqual(['No', 'Maybe']);
     expect(displayOptions(makeQuestion({ options: ['Work', 'Beach', 'City'] }))).toEqual(['Work', 'Beach', 'City']);
+  });
+});
+
+describe('sortCheckedFirst', () => {
+  const a = makeItem({ id: 'a', title: 'A', optional: true });
+  const b = makeItem({ id: 'b', title: 'B' });
+  const c = makeItem({ id: 'c', title: 'C', optional: true });
+  const d = makeItem({ id: 'd', title: 'D' });
+  const { tree } = treeOf([makeTemplate({ items: [a, b, c, d] })], 'tpl');
+  const ids = (nodes: { item: { id: string } }[]) => nodes.map(n => n.item.id);
+
+  it('puts checked items first and keeps template order within each half', () => {
+    expect(ids(sortCheckedFirst(tree, new Set(['b', 'd'])))).toEqual(['b', 'd', 'a', 'c']);
+  });
+
+  it('leaves the order alone when nothing, or everything, is checked', () => {
+    expect(ids(sortCheckedFirst(tree, new Set()))).toEqual(['a', 'b', 'c', 'd']);
+    expect(ids(sortCheckedFirst(tree, new Set(['a', 'b', 'c', 'd'])))).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('does not mutate the tree it was given', () => {
+    sortCheckedFirst(tree, new Set(['d']));
+    expect(ids(tree)).toEqual(['a', 'b', 'c', 'd']);
   });
 });
