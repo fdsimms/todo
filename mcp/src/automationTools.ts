@@ -87,6 +87,8 @@ export interface TaskSettingsView {
   tags?: string[];
   timeOfDay?: TimeOfDay;
   askOnCompletion?: { kind: DeliverableKind; options?: string[] };
+  /** "HH:MM": a reminder at this time on the day the task appears. Only for kinds that offer it. */
+  remindAt?: string;
 }
 
 /** The patch set_automation takes: a field set to null clears it, a field left out stays. */
@@ -105,6 +107,7 @@ function taskSettingsView(defaults: TaskFieldDefaults | null, extras: GeneratedT
       ? { kind: 'choice', options: extras.deliverableOptions }
       : { kind: extras.deliverableKind };
   }
+  if (extras?.reminderTime) view.remindAt = extras.reminderTime;
   return Object.keys(view).length > 0 ? view : undefined;
 }
 
@@ -148,6 +151,13 @@ function applyTaskSettingsPatch(
   if (patch.timeOfDay !== undefined) {
     if (patch.timeOfDay !== null && !SEGMENTS.includes(patch.timeOfDay)) throw new Error(`taskSettings.timeOfDay is one of ${SEGMENTS.join(', ')}, or null.`);
     e.timeSegments = patch.timeOfDay ? [patch.timeOfDay] : [];
+  }
+  if (patch.remindAt !== undefined) {
+    if (patch.remindAt !== null) {
+      if (!lib.generatedTaskSettings.TASK_SETTINGS_SPECS[kind]?.remindable) throw new Error('This automation does not offer a reminder (taskSettings.remindAt).');
+      if (typeof patch.remindAt !== 'string' || !lib.generatedTaskSettings.CLOCK_TIME.test(patch.remindAt)) throw new Error('taskSettings.remindAt is a 24-hour time like "09:00", or null.');
+    }
+    e.reminderTime = patch.remindAt;
   }
   if (patch.askOnCompletion !== undefined) {
     const ask = patch.askOnCompletion;

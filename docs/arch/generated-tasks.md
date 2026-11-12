@@ -900,6 +900,13 @@ person can see how the automation works, not only switch it on.
   builder; `generatedTaskSettings.test.ts` fails until every listed kind has one. A generator that
   writes a time of day or a question itself (or whose task is never completed) lists it in `locks`,
   and the sheet and the MCP server both leave that row out.
+- **"Remind me at" is a time of day, off by default, for the kinds marked `remindable`** (birthday,
+  birthday gift, thaw, grocery use-up, leftover use-up: the ones whose generator writes no reminder of
+  its own). It is `GeneratedTaskExtras.reminderTime`, placed on the task's own logical day when the
+  row is created (`generatedReminderFill`, called from `newTaskFromDraft`), so it is **never
+  reconciled**: a reminder the person changes or clears on a row stays theirs. A time already past on
+  that day sets none, rather than moving to a time the person didn't pick. A kind added to the list
+  must be one whose draft sets no `reminderTime`, or the fill is skipped for it.
 - **Rule kinds' category is a fallback.** A rule can name its own category, which wins; the sheet's
   hint says so (`categoryHint`).
 - **The MCP server reads and writes all of it** through `set_automation`'s `taskSettings` (see

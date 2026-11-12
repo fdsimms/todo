@@ -525,7 +525,8 @@ completion (`generatedTaskExtras`). A patch, field by field, with `null` clearin
 what the sheet locks for that kind (`TaskSettingsSpec.locks`): a time of day for a generator that
 sets its own, a question on one whose tasks are never completed. `list_automations` returns each
 kind's `taskSettings` and `setByApp`, the sheet's locked rows as text, so an agent can say what the
-automation writes before suggesting a change to the rest.
+automation writes before suggesting a change to the rest. `remindAt` ("HH:MM") is the "Remind me at"
+row, only for the kinds marked `remindable`; any other kind refuses it.
 
 `delete_category` (`mcp/src/categoryTools.ts`) is the app's delete without its shake-to-undo, and it
 asks where the tasks go: `moveTo`, or `uncategorize: true`, and a category holding open work with

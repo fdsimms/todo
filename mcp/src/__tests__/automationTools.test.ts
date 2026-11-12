@@ -169,6 +169,14 @@ function categoryNamed(kind: string): string | null {
 }
 
 describe('task settings', () => {
+  it('sets and clears a reminder time only on a kind that offers one', () => {
+    const set = setAutomation(replica, 'mealThaw', { taskSettings: { remindAt: '17:30' } });
+    expect(set.taskSettings).toEqual({ remindAt: '17:30' });
+    expect(setAutomation(replica, 'mealThaw', { taskSettings: { remindAt: null } }).taskSettings).toBeUndefined();
+    expect(() => setAutomation(replica, 'mealThaw', { taskSettings: { remindAt: '5:30pm' } })).toThrow(/24-hour time/);
+    expect(() => setAutomation(replica, 'moodLog', { taskSettings: { remindAt: '09:00' } })).toThrow(/does not offer a reminder/);
+  });
+
   it('sets what each new task of a kind starts with, and reads it back', () => {
     const result = setAutomation(replica, 'groceryUseUp', {
       taskSettings: { priority: 2, tags: ['cooking', ' cooking '], timeOfDay: 'evening', askOnCompletion: { kind: 'choice', options: ['Ate it', 'Froze it'] } },

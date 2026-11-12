@@ -2716,6 +2716,7 @@ function registerWriteTools(
         skipInSuggestions: z.boolean().nullable().optional(),
         tags: z.array(z.string()).nullable().optional().describe('Added to every new task of this kind. Replaces the list; null or [] clears it.'),
         timeOfDay: z.enum(['morning', 'afternoon', 'evening', 'night']).nullable().optional().describe('Keeps these tasks off Today until that part of the day.'),
+        remindAt: z.string().nullable().optional().describe('A 24-hour time like "09:00": send a notification then on the day the task appears (none if it appears after that time). Only birthdays, birthday gifts, thaw reminders and use-up tasks offer it; null turns it off.'),
         askOnCompletion: z.object({
           kind: z.enum(['text', 'date', 'dateRange', 'people', 'number', 'yesno', 'choice']),
           options: z.array(z.string()).optional().describe('For choice: at least two.'),

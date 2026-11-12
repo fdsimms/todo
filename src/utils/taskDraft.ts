@@ -27,7 +27,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { resolveFieldDefaults, seedTaskFields } from './taskFieldDefaults';
-import { generatedExtrasFill } from './generatedTaskSettings';
+import { generatedExtrasFill, generatedReminderFill } from './generatedTaskSettings';
 import { resolveTitleRules } from './titleRules';
 import { taskKindOf, MIN_TARGET_COUNT, MAX_TARGET_COUNT } from './taskKinds';
 import {
@@ -182,7 +182,12 @@ export function newTaskFromDraft(
   // the draft up front so every line below reads one draft.
   if (draft.generatedKind) {
     const extras = useSettingsStore.getState().generatedTaskExtras?.[draft.generatedKind];
-    if (extras) draft = { ...draft, ...generatedExtrasFill(draft, extras) };
+    if (extras) {
+      const kind = draft.generatedKind;
+      draft = { ...draft, ...generatedExtrasFill(draft, extras) };
+      const remindAt = generatedReminderFill(kind, draft, extras, new Date(), useSettingsStore.getState().dayResetTime);
+      if (remindAt) draft = { ...draft, reminderTime: remindAt };
+    }
   }
   const defaults = useSettingsStore.getState().newTaskDefaults;
   // A project's own default (Project.defaultTaskCategory) outranks Settings'
