@@ -23344,6 +23344,8 @@ describe('checkFrankiTasks', () => {
     upcoming: [{ at: new Date(2026, 9, 18, 11, 5).toISOString(), count: 4 }],
     dayEndsAt: new Date(2026, 9, 19, 4, 0).toISOString(),
     readListen: { language: 'th', name: 'Thai', waiting: 2, lastReadAt: null },
+    frankiNew: null,
+    studyDays: [],
     ...overrides,
   });
 
@@ -23361,8 +23363,16 @@ describe('checkFrankiTasks', () => {
       frankiReadTasks: true,
       frankiReviewState: { baseline: 0, openSourceId: null },
       frankiReadLastDayKey: null,
+      // The wave tests below set waves; the once-a-day ones set daily.
+      frankiReviewMode: 'waves',
+      frankiGoalMinutes: null,
+      frankiCountReading: true,
+      frankiDailyLastDayKey: null,
+      frankiGoalLastDayKey: null,
       setFrankiReviewState: jest.fn((state: unknown) => { current.frankiReviewState = state; }),
       setFrankiReadLastDayKey: jest.fn((key: unknown) => { current.frankiReadLastDayKey = key; }),
+      setFrankiDailyLastDayKey: jest.fn((key: unknown) => { current.frankiDailyLastDayKey = key; }),
+      setFrankiGoalLastDayKey: jest.fn((key: unknown) => { current.frankiGoalLastDayKey = key; }),
       ...overrides,
     };
   };
@@ -23459,6 +23469,72 @@ describe('checkFrankiTasks', () => {
     check();
     expect(live('read:')).toHaveLength(0);
     expect(current.frankiReadLastDayKey).toBeNull();
+  });
+
+  it('writes one cards task a day in once-a-day mode, counting Franki’s new cards and the learning to come', () => {
+    setSettings({ frankiReviewMode: 'daily' });
+    setSnapshot({ frankiNew: 8 });
+    check();
+    expect(live('reviews:')).toHaveLength(0);
+    const [task] = live('day:');
+    expect(task.title).toBe('Franki: 24 cards left');
+    expect(task.generatedSourceId).toBe('day:2026-10-18');
+    expect(task.linkUrl).toBe('franki://');
+    expect(current.frankiDailyLastDayKey).toBe('2026-10-18');
+
+    // The count follows the cards as they're done; the task stays until it's checked off.
+    setSnapshot({ frankiNew: 0, reviewsNow: 0, upcoming: [] });
+    check();
+    expect(live('day:')[0].title).toBe('Franki: today’s cards');
+
+    // Deleted by the person: the day is spent.
+    useTaskStore.setState({ tasks: [] });
+    setSnapshot({ frankiNew: 8 });
+    check();
+    expect(live('day:')).toHaveLength(0);
+  });
+
+  it('switching to once a day takes an open wave away, and back takes the day’s task away', () => {
+    check();
+    expect(live('reviews:')).toHaveLength(1);
+    setSettings({ frankiReviewMode: 'daily' });
+    check();
+    expect(live('reviews:')).toHaveLength(0);
+    expect(live('day:')).toHaveLength(1);
+    setSettings({ frankiReviewMode: 'waves', frankiDailyLastDayKey: '2026-10-18' });
+    check();
+    expect(live('day:')).toHaveLength(0);
+  });
+
+  it('writes the study-time goal task while today’s minutes are under it', () => {
+    const studyDays = [{ startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answerSeconds: 600, readingSeconds: 180 }];
+    setSettings({ frankiGoalMinutes: 20 });
+    setSnapshot({ studyDays });
+    check();
+    const [task] = live('goal:');
+    expect(task.title).toBe('Franki: 13 of 20 min');
+    expect(current.frankiGoalLastDayKey).toBe('2026-10-18');
+
+    // Reading time left out: only the answers count.
+    setSettings({ frankiGoalMinutes: 20, frankiCountReading: false, frankiGoalLastDayKey: '2026-10-18' });
+    check();
+    expect(live('goal:')[0].title).toBe('Franki: 10 of 20 min');
+
+    // Goal turned off: today's goes.
+    setSettings({ frankiGoalMinutes: null });
+    check();
+    expect(live('goal:')).toHaveLength(0);
+  });
+
+  it('writes no goal task once it is met, or without a read of today', () => {
+    setSettings({ frankiGoalMinutes: 5 });
+    setSnapshot({ studyDays: [{ startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 40, answerSeconds: 600, readingSeconds: 0 }] });
+    check();
+    expect(live('goal:')).toHaveLength(0);
+    setSnapshot({ studyDays: [] });
+    check();
+    expect(live('goal:')).toHaveLength(0);
+    expect(current.frankiGoalLastDayKey).toBeNull();
   });
 
   it('clears yesterday’s Read & Listen task at the first pass of a new day', () => {

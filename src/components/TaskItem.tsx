@@ -147,7 +147,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useWaniKaniStore } from '../store/useWaniKaniStore';
 import { isWaniKaniTaskReady } from '../utils/wanikaniTasks';
 import { useFrankiStore } from '../store/useFrankiStore';
-import { isFrankiTaskReady } from '../utils/frankiTasks';
+import { frankiRowMinutes, isFrankiTaskReady } from '../utils/frankiTasks';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { recipeMap } from '../utils/recipeComponents';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -1496,10 +1496,18 @@ const TaskItemRow = React.memo(function TaskItem({
   // A Franki row, the same way: ready once no cards are due, or a text was
   // read today.
   const isFrankiTask = task.generatedKind === 'franki';
+  const frankiGoalMinutes = useSettingsStore(s => (isFrankiTask ? s.frankiGoalMinutes : null));
+  const frankiCountReading = useSettingsStore(s => (isFrankiTask ? s.frankiCountReading : true));
   const frankiReady = useFrankiStore(s =>
     isFrankiTask &&
     !task.completed &&
-    isFrankiTaskReady(task, s.snapshot, new Date(), getCurrentDayStart(), useSettingsStore.getState().dayResetTime)
+    isFrankiTaskReady(task, s.snapshot, new Date(), getCurrentDayStart(), useSettingsStore.getState().dayResetTime,
+      { minutes: frankiGoalMinutes, countReading: frankiCountReading })
+  );
+  // "18 min studied today" under a Franki row, from the same read. A string
+  // out of the selector, so a read that changes nothing re-renders nothing.
+  const frankiMinutes = useFrankiStore(s =>
+    isFrankiTask && !task.completed ? frankiRowMinutes(task, s.snapshot, new Date(), frankiCountReading) : null
   );
 
   // Which meal an auto-generated meal task is for (mealSlotOf, off the row's
@@ -3345,7 +3353,7 @@ const TaskItemRow = React.memo(function TaskItem({
   // markers. The notes icon alone is a bare glyph, so it never takes a line
   // of its own (see `notesStayInTitle`).
   const penaltyLabel = penaltyChipLabel(task, penaltyShieldEnabled);
-  const hasOtherMeta = penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || (travelNote !== null && travelOptions.length === 0) || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
+  const hasOtherMeta = penaltyLabel !== null || morning !== null || isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || eventTaskContext !== null || windowActive || windowExpired || (showStreakChip && !nutrientRow) || isDrifting || bountyCoins > 0 || guardTitle !== null || waitingCount > 0 || !!blockerTitle || notNeeded || !!waitingPersonName || autoScheduled || scheduledIso !== null || weatherWaitText !== null || slotInText !== null || reminderTimeLabel !== null || (travelNote !== null && travelOptions.length === 0) || frankiMinutes !== null || travelDisruption !== null || leavePrep !== null || hoursUnlockTime !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || !!chainName || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.generatedKind === 'calendarReview' || placeReminderLabel !== null;
   const deadlineOnMeta = markersOnMeta && deadlineDays !== null;
   // A task the app wrote by itself says so on its row, in a tab on the card's
   // top-left corner (see `autoTab` in the styles). Only a small sparkle inside
@@ -4289,6 +4297,14 @@ const TaskItemRow = React.memo(function TaskItem({
                 <Ionicons name="navigate-outline" size={iconSize.xs} color={colors.textTertiary} />
                 <Text style={[styles.scheduledLabel, { color: colors.textTertiary }]} numberOfLines={1}>
                   Checking travel time
+                </Text>
+              </View>
+            )}
+            {frankiMinutes !== null && (
+              <View style={styles.metaChip} accessibilityLabel={frankiMinutes}>
+                <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.scheduledLabel} numberOfLines={1}>
+                  {frankiMinutes}
                 </Text>
               </View>
             )}

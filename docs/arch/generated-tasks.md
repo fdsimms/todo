@@ -2230,7 +2230,7 @@ service is gated on either feature being on, and the plan is one setting both sh
   files under its own category setting (default Personal). Nothing read from YNAB is sent to
   Claude.
 
-## `franki`: cards due, and a Read & Listen text waiting, from the person's own Franki server
+## `franki`: today's cards, a Read & Listen text and a study goal, from the person's own Franki server
 
 The person's flashcards (Franki, their Anki collection) read from their own Franki server: the
 Anki sync server with Read & Listen beside it (fdsimms/flashcards, `server/reader`).
@@ -2241,7 +2241,15 @@ the read in memory, `useFrankiSync` reads on mount, on foreground and every ten 
 `runBackgroundFranki` reads before the background sync, and `checkFrankiTasks` runs when a read
 lands. The rules are in `src/utils/frankiTasks.ts`.
 
-- **The reviews task is WaniKani's, rule for rule** (`src/utils/reviewQueue.ts`): a wave measured
+- **The reviews task works one of two ways** (`frankiReviewMode`). **Once a day** (the default):
+  "Franki: 42 cards left" (`day:<day>`, the mark `frankiDailyLastDayKey`), written at the first
+  read of the day with anything left, counting cards due now, the learning cards still to come
+  today and the new cards left. New cards come only from **Franki's own report** (`frankiNew`, its
+  deck list's totals, progress gates included, which Franki sends while its "Share today's counts"
+  setting is on): Anki's new count on the server can't see the gates. Without a report from today
+  the count leaves new cards out and the row never reads ready, since unknown is not none.
+  Switching modes takes the other mode's open task away quietly.
+- **In waves, the reviews task is WaniKani's, rule for rule** (`src/utils/reviewQueue.ts`): a wave measured
   from the last task's close, held until the forecast gets there, only its count moving once it is
   on Today, ready rather than completed. The count is every card due now, reviews and learning
   cards together; the forecast is the learning cards Anki says come due later in its study day.
@@ -2257,6 +2265,14 @@ lands. The rules are in `src/utils/frankiTasks.ts`.
   and nothing was read to the end since the logical day began, spent by writing it. It reads ready
   once a text is read, and yesterday's goes at the first pass of the new day. `frankiReadTasks`
   switches it off inside the generator.
+- **The study-time goal** (`frankiGoalMinutes`, null for none): "Franki: 12 of 20 min" once a day
+  (`goal:<day>`, `frankiGoalLastDayKey`) while today's minutes are read and under it, ready once
+  met. Minutes come from the server's `study_days` (`src/utils/frankiStudy.ts`): the time Anki
+  logged answering on every device, capped per answer by each preset, plus Read & Listen's time
+  while `frankiCountReading` is on. A read that doesn't cover today knows nothing about it, so no
+  goal task is written from it. The same minutes are the line under a Franki row ("18 min studied
+  today", `frankiRowMinutes`) and the FLASHCARDS week on Stats (`FrankiStudyCard`, absent until a
+  read lands).
 - **Each opens Franki** (`franki://` for the deck list, `franki://read` for Read & Listen).
 - Pauses on vacation, refuses in demo mode, and files under its own category setting (default
   Study). A delete writes nothing: the reviews close is the decision, and the reading task's day is

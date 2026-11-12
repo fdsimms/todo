@@ -231,7 +231,8 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/foodRecall.ts` — RECALL_MIN_QUERY, RECALL_LIMIT, RecalledFood, describedGrams, estimateWholeGrams, describedEstimateFactor, descriptionClauses, recallWeight, recallFoods, recallMeasuringPanel, +14 more
 - `src/utils/foodSearchMatch.ts` — FoodCandidate, FoodMatchTier, RankedFood, rankFoodCandidates, unambiguousFood
 - `src/utils/frameWidth.ts` — MAX_CONTENT_WIDTH, LIST_CONTENT_WIDTH, DASHBOARD_CONTENT_WIDTH, DASHBOARD_TWO_COLUMN_MIN_WIDTH, MAX_DRAWER_WIDTH, SIDEBAR_MIN_WINDOW_WIDTH, SIDEBAR_WIDTH, sidebarWidthFor, frameWidthFor, frameLeftFor, +12 more
-- `src/utils/frankiTasks.ts` — FrankiReadListen, FrankiSnapshot, FRANKI_REVIEW_THRESHOLD_DEFAULT, FRANKI_REVIEW_THRESHOLD_MIN, FRANKI_REVIEW_THRESHOLD_MAX, FRANKI_REVIEW_URL, FRANKI_READ_URL, clampFrankiReviewThreshold, frankiStatusUrl, frankiReviewSourceId, +8 more
+- `src/utils/frankiStudy.ts` — FrankiStudyDay, studySeconds, studyDayAt, minutesStudiedToday, minutesReadToday, formatStudyMinutes, FrankiWeekBar, FrankiWeek, frankiWeek, describeFrankiWeek
+- `src/utils/frankiTasks.ts` — FrankiReadListen, FrankiSnapshot, FrankiReviewMode, FRANKI_REVIEW_MODE_DEFAULT, parseFrankiReviewMode, FRANKI_GOAL_MINUTES_DEFAULT, FRANKI_GOAL_MINUTES_MIN, FRANKI_GOAL_MINUTES_MAX, FRANKI_GOAL_MINUTES_STEP, clampFrankiGoalMinutes, +25 more
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, ranksAsActive, ProjectSearchResult, searchProjects, GroupSearchResult, searchGroups
 - `src/utils/generatedCategoryPrompt.ts` — offerGeneratedCategoryWriteBack, bulkSetCategoryOffering, offerFollowUpWriteBack
