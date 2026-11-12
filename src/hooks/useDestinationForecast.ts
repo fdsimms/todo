@@ -14,7 +14,7 @@ export interface DestinationForecastLines {
   line: string | null;
   /** The caveat for a forecast that stops short of the span, or null. */
   gap: string | null;
-  /** The reading behind the line, for a caller that decides something from it (`rainGearVerdict`). Null whenever `line` is. */
+  /** The reading behind the line, for a caller that decides something from it (`weatherGearVerdict`). Null whenever `line` is. */
   summary: TripForecast | null;
   /** A request is in flight. False once it has answered, or when nothing is being asked. */
   loading: boolean;

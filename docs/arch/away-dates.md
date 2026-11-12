@@ -595,11 +595,11 @@ reading and the destination's `daily=` forecast. Three rules hold it:
   poor thing to stake a packing decision on. `lookAhead`'s own rule is the right one
   here: *a cue may rank; a sentence may only state.* Let the reader draw the
   conclusion and the reliability objection disappears. **The one exception is a
-  rain gear item** (`TemplateItem.rainGear`, `rainGearVerdict`), which is built so a
-  wrong forecast costs a line and never a coat: it starts ticked on rain or snow
-  *and* whenever the forecast cannot say, starts unticked only when the forecast
-  covers every day and none is wet, and always says why on its row. See
-  `docs/arch/template-questions.md`, "Rain gear".
+  weather gear item** (`TemplateItem.weatherGear`, `weatherGearVerdict`), which is
+  built so a wrong forecast costs a line and never a coat: it starts ticked when
+  the forecast has that weather *and* whenever the forecast cannot say, starts
+  unticked only when the forecast covers every day and none has it, and always
+  says why on its row. See `docs/arch/template-questions.md`, "Weather gear".
 - **A template question can ask for the line** (`TemplateQuestion.showForecast`), so the forecast is
   on screen where "What's the weather like?" is answered. Same sentence, same rule: it states and
   never answers. See `docs/arch/template-questions.md`; both readers use `useDestinationForecast`.

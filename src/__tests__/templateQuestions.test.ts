@@ -403,33 +403,38 @@ describe('initialLeafSelection', () => {
     expect(initialLeafSelection(t, questions, { 'q-type': 'Work' })).toEqual(new Set());
   });
 
-  describe('rain gear', () => {
-    // Optional on purpose: rain gear replaces `optional`, as conditions do.
-    const umbrella = makeItem({ id: 'umbrella', rainGear: true, optional: true });
-    const { tree: rainTree } = treeOf([makeTemplate({ items: [socks, umbrella], questions })], 'tpl');
+  describe('weather gear', () => {
+    // Optional on purpose: weather gear replaces `optional`, as conditions do.
+    const umbrella = makeItem({ id: 'umbrella', weatherGear: 'rainy', optional: true });
+    const coat = makeItem({ id: 'coat', weatherGear: 'cold' });
+    const { tree: gearTree } = treeOf([makeTemplate({ items: [socks, umbrella, coat], questions })], 'tpl');
 
     it('starts ticked when the forecast says to, whatever optional says', () => {
-      expect(initialLeafSelection(rainTree, questions, {}, true)).toEqual(new Set(['socks', 'umbrella']));
+      expect(initialLeafSelection(gearTree, questions, {}, { rainy: true, cold: true }))
+        .toEqual(new Set(['socks', 'umbrella', 'coat']));
     });
 
-    it('starts unticked only when the forecast says it is dry', () => {
-      expect(initialLeafSelection(rainTree, questions, {}, false)).toEqual(new Set(['socks']));
+    it('starts unticked only for the weather the forecast says is absent', () => {
+      expect(initialLeafSelection(gearTree, questions, {}, { rainy: false, cold: true }))
+        .toEqual(new Set(['socks', 'coat']));
+      expect(initialLeafSelection(gearTree, questions, {}, { rainy: true, cold: false }))
+        .toEqual(new Set(['socks', 'umbrella']));
     });
 
     it('is ticked by default, which is what a caller with no forecast gets', () => {
-      expect(initialLeafSelection(rainTree, questions, {})).toEqual(new Set(['socks', 'umbrella']));
+      expect(initialLeafSelection(gearTree, questions, {})).toEqual(new Set(['socks', 'umbrella', 'coat']));
     });
 
     it('still needs its conditions to match', () => {
       const conditioned = makeItem({
         id: 'poncho',
-        rainGear: true,
+        weatherGear: 'rainy',
         conditions: [{ questionId: 'q-type', values: ['Outdoors'] }],
       });
       const { tree: t } = treeOf([makeTemplate({ items: [conditioned], questions })], 'tpl');
-      expect(initialLeafSelection(t, questions, { 'q-type': 'Work' }, true)).toEqual(new Set());
-      expect(initialLeafSelection(t, questions, { 'q-type': 'Outdoors' }, true)).toEqual(new Set(['poncho']));
-      expect(initialLeafSelection(t, questions, { 'q-type': 'Outdoors' }, false)).toEqual(new Set());
+      expect(initialLeafSelection(t, questions, { 'q-type': 'Work' }, { rainy: true })).toEqual(new Set());
+      expect(initialLeafSelection(t, questions, { 'q-type': 'Outdoors' }, { rainy: true })).toEqual(new Set(['poncho']));
+      expect(initialLeafSelection(t, questions, { 'q-type': 'Outdoors' }, { rainy: false })).toEqual(new Set());
     });
 
     it('is suppressed under an optional nested-template block like everything else', () => {
@@ -439,7 +444,7 @@ describe('initialLeafSelection', () => {
         items: [makeItem({ id: 'ref', optional: true, refTemplateId: 'inner', refTemplateName: 'Rain kit' })],
       });
       const { tree: t } = treeOf([outer, inner], 'outer');
-      expect(initialLeafSelection(t, questions, {}, true)).toEqual(new Set());
+      expect(initialLeafSelection(t, questions, {}, { rainy: true })).toEqual(new Set());
     });
   });
 });
@@ -465,14 +470,14 @@ describe('reselectForAnswers', () => {
     expect(reselectForAnswers(tree, questions, { 'q-type': 'Work' }, picked).has('snorkel')).toBe(true);
   });
 
-  it('re-decides a rain gear item when the forecast settles, and leaves the rest alone', () => {
-    const umbrella = makeItem({ id: 'umbrella', rainGear: true });
+  it('re-decides a weather gear item when the forecast settles, and leaves the rest alone', () => {
+    const umbrella = makeItem({ id: 'umbrella', weatherGear: 'rainy' });
     const { tree: t } = treeOf([makeTemplate({ items: [umbrella, snorkel], questions })], 'tpl');
     const start = new Set(['umbrella', 'snorkel']);
-    const dry = reselectForAnswers(t, questions, {}, start, false);
+    const dry = reselectForAnswers(t, questions, {}, start, { rainy: false });
     expect(dry.has('umbrella')).toBe(false);
     expect(dry.has('snorkel')).toBe(true);
-    expect(reselectForAnswers(t, questions, {}, dry, true).has('umbrella')).toBe(true);
+    expect(reselectForAnswers(t, questions, {}, dry, { rainy: true }).has('umbrella')).toBe(true);
   });
 });
 

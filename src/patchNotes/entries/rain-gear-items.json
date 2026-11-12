@@ -1,1 +1,0 @@
-{ "message": "A template item can now be marked as rain gear. When you apply the template, it starts checked if rain or snow is in the destination forecast for your trip, or if the forecast can't be checked, and the row says why. It starts unchecked only when the forecast covers the whole trip and has no rain or snow.", "date": "2026-11-12" }

@@ -383,17 +383,27 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
-    id: 'rain_gear',
-    title: 'Rain gear in a packing template',
-    benefit: 'An item marked as rain gear starts checked when rain or snow is in the destination forecast for the trip, or when there is no forecast to check, and says why on the row. It starts unchecked only when the forecast covers the whole trip and has none. It uses the destination forecast setting.',
+    id: 'weather_gear',
+    title: 'Weather gear in a packing template',
+    benefit: 'An item marked with a kind of weather (an umbrella for rainy, a warm coat for cold) starts checked when the destination forecast has that weather during the trip, or when there is no forecast to check, and says why on the row. It starts unchecked only when the forecast covers the whole trip and has none. It uses the destination forecast setting.',
     since: '2026-11-12',
     advanced: true,
     evidence: ({ replica }) => {
-      const wet = /umbrella|rain ?(coat|jacket|boots|gear)|poncho|waterproof/i;
+      const gear: [RegExp, string][] = [
+        [/umbrella|rain ?(coat|jacket|boots|gear)|poncho|waterproof/i, 'rainy'],
+        [/snow ?(boots|pants|gear)|ski (jacket|pants)/i, 'snowy'],
+        [/sunscreen|sun ?(hat|block)|sunglasses/i, 'sunny'],
+        [/(warm|winter|heavy) (coat|jacket)|gloves|scarf|beanie|thermal/i, 'cold'],
+      ];
       const unmarked = replica.templates().flatMap(t =>
-        t.items.filter(i => i.refTemplateId === null && !i.rainGear && wet.test(i.title)).map(i => `"${i.title}" in "${t.name}"`));
+        t.items
+          .filter(i => i.refTemplateId === null && !i.weatherGear)
+          .flatMap(i => {
+            const match = gear.find(([pattern]) => pattern.test(i.title));
+            return match ? [`"${i.title}" in "${t.name}" (${match[1]})`] : [];
+          }));
       return unmarked.length > 0
-        ? `${unmarked.slice(0, 3).join(', ')} ${unmarked.length === 1 ? 'is' : 'are'} not marked as rain gear.`
+        ? `${unmarked.slice(0, 3).join(', ')} ${unmarked.length === 1 ? 'is' : 'are'} not marked with a kind of weather.`
         : null;
     },
   },

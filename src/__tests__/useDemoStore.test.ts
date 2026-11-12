@@ -1417,7 +1417,7 @@ describe('demo mode', () => {
     expect(asking.questions.some(q => q.kind === 'choice' && q.showForecast)).toBe(true);
 
     // And an item that decides its own tick from that forecast.
-    expect(asking.items.some(i => i.rainGear === true)).toBe(true);
+    expect(asking.items.filter(i => i.weatherGear).map(i => i.weatherGear)).toEqual(['rainy', 'cold']);
 
     // And a people question — no name to fill a blank with, no options, no
     // default: normalizeTemplateQuestion forces all three empty for this kind.

@@ -2,9 +2,9 @@ import type { ForecastDay } from '../services/weatherLookup';
 import {
   describeForecastGap,
   describeTripForecast,
-  rainGearVerdict,
+  weatherGearVerdict,
   summarizeTripForecast,
-  type RainGearInputs,
+  type WeatherGearInputs,
 } from '../utils/tripForecast';
 
 const day = (over: Partial<ForecastDay> = {}): ForecastDay => ({
@@ -115,73 +115,130 @@ describe('describeForecastGap', () => {
   });
 });
 
-describe('rainGearVerdict', () => {
-  const forecast = (codes: number[]) => summarizeTripForecast(codes.map(weatherCode => day({ weatherCode })));
-  const ask = (over: Partial<RainGearInputs> = {}): ReturnType<typeof rainGearVerdict> =>
-    rainGearVerdict({
+describe('summarizeTripForecast, for weather gear', () => {
+  it('counts cold days by their high, hot days by theirs, and clear days by their sky', () => {
+    const f = summarizeTripForecast([
+      day({ highF: 40, weatherCode: 3 }),
+      day({ highF: 45, weatherCode: 0 }),
+      day({ highF: 60, weatherCode: 1 }),
+      day({ highF: 85, weatherCode: 0 }),
+      day({ highF: 95, weatherCode: 61 }),
+    ])!;
+    expect(f.coldDays).toBe(2);
+    expect(f.hotDays).toBe(2);
+    expect(f.sunnyDays).toBe(3);
+  });
+});
+
+describe('weatherGearVerdict', () => {
+  const forecast = (codes: number[], high = 65) =>
+    summarizeTripForecast(codes.map(weatherCode => day({ weatherCode, highF: high })));
+  const ask = (condition: Parameters<typeof weatherGearVerdict>[0], over: Partial<WeatherGearInputs> = {}) =>
+    weatherGearVerdict(condition, {
       enabled: true,
       hasPlace: true,
       hasDates: true,
       loading: false,
-      forecast: forecast([0, 0, 0]),
+      forecast: forecast([3, 3, 3]),
       spanDays: 3,
       ...over,
     });
 
-  it('ticks, and says how many days have rain', () => {
-    expect(ask({ forecast: forecast([0, 61, 0, 63, 0, 0, 0]), spanDays: 7 })).toEqual({
-      tick: true,
-      note: 'Ticked because rain is forecast on 2 of 7 days.',
+  describe('rainy', () => {
+    it('ticks, and says how many days have rain', () => {
+      expect(ask('rainy', { forecast: forecast([3, 61, 3, 63, 3, 3, 3]), spanDays: 7 })).toEqual({
+        tick: true,
+        note: 'Ticked because rain is forecast on 2 of 7 days.',
+      });
+    });
+
+    it('says every day when all of them are wet', () => {
+      expect(ask('rainy', { forecast: forecast([61, 63]), spanDays: 2 }).note).toBe('Ticked because rain is forecast every day.');
+    });
+
+    it('names snow, and both when a trip has each, so a snowy forecast is never read as dry', () => {
+      expect(ask('rainy', { forecast: forecast([71, 3, 3]) }).note).toBe('Ticked because snow is forecast on 1 of 3 days.');
+      expect(ask('rainy', { forecast: forecast([71, 61, 3]) }).note).toBe('Ticked because rain or snow is forecast on 2 of 3 days.');
+    });
+
+    it('counts only the days the forecast reached when rain is in a partial forecast', () => {
+      expect(ask('rainy', { forecast: forecast([61, 3, 3]), spanDays: 9 }).note).toBe(
+        'Ticked because rain is forecast on 1 of the first 3 days.',
+      );
+    });
+
+    it('starts unticked only when the forecast covers every day and none is wet', () => {
+      expect(ask('rainy')).toEqual({ tick: false, note: 'Not ticked because no rain or snow is forecast for these dates.' });
+    });
+
+    it('stays ticked when a dry forecast stops short of the trip', () => {
+      expect(ask('rainy', { spanDays: 9 })).toEqual({
+        tick: true,
+        note: 'Ticked in case it rains. The forecast covers only the first 3 of 9 days.',
+      });
     });
   });
 
-  it('says every day when all of them are wet', () => {
-    expect(ask({ forecast: forecast([61, 63]), spanDays: 2 }).note).toBe('Ticked because rain is forecast every day.');
-  });
+  describe('the other conditions', () => {
+    it('snowy ignores rain', () => {
+      expect(ask('snowy', { forecast: forecast([61, 63, 3]) }).tick).toBe(false);
+      expect(ask('snowy', { forecast: forecast([71, 3, 3]) }).note).toBe('Ticked because snow is forecast on 1 of 3 days.');
+    });
 
-  it('names snow, and both when a trip has each', () => {
-    expect(ask({ forecast: forecast([71, 0, 0]) }).note).toBe('Ticked because snow is forecast on 1 of 3 days.');
-    expect(ask({ forecast: forecast([71, 61, 0]) }).note).toBe('Ticked because rain or snow is forecast on 2 of 3 days.');
-  });
+    it('sunny counts clear and mainly clear days', () => {
+      expect(ask('sunny', { forecast: forecast([0, 1, 3]) }).note).toBe('Ticked because sunny weather is forecast on 2 of 3 days.');
+      expect(ask('sunny')).toEqual({ tick: false, note: 'Not ticked because no sunny weather is forecast for these dates.' });
+    });
 
-  it('counts only the days the forecast reached when rain is in a partial forecast', () => {
-    expect(ask({ forecast: forecast([61, 0, 0]), spanDays: 9 }).note).toBe(
-      'Ticked because rain is forecast on 1 of the first 3 days.',
-    );
-  });
+    it('cold goes by each day\'s high and names the threshold', () => {
+      expect(ask('cold', { forecast: forecast([3, 3, 3], 40) }).note).toBe(
+        'Ticked because highs of 45°F or below are forecast every day.',
+      );
+      expect(ask('cold')).toEqual({ tick: false, note: 'Not ticked because no highs of 45°F or below are forecast for these dates.' });
+    });
 
-  it('starts unticked only when the forecast covers every day and none is wet', () => {
-    expect(ask()).toEqual({ tick: false, note: 'Not ticked because no rain or snow is forecast for these dates.' });
-  });
+    it('hot goes by each day\'s high and names the threshold', () => {
+      expect(ask('hot', { forecast: forecast([3, 3, 3], 90) }).note).toBe(
+        'Ticked because highs of 85°F or above are forecast every day.',
+      );
+      expect(ask('hot')).toEqual({ tick: false, note: 'Not ticked because no highs of 85°F or above are forecast for these dates.' });
+    });
 
-  it('stays ticked when a dry forecast stops short of the trip', () => {
-    expect(ask({ spanDays: 9 })).toEqual({
-      tick: true,
-      note: 'Ticked in case it rains. The forecast covers only the first 3 of 9 days.',
+    it('gives the threshold in Celsius when asked for metric', () => {
+      expect(ask('cold', { forecast: forecast([3, 3, 3], 40), metric: true }).note).toBe(
+        'Ticked because highs of 7°C or below are forecast every day.',
+      );
+    });
+
+    it('says what it is ticked in case of, for a partial dry forecast', () => {
+      expect(ask('cold', { spanDays: 5 }).note).toBe('Ticked in case it is cold. The forecast covers only the first 3 of 5 days.');
+      expect(ask('hot', { spanDays: 5 }).note).toBe('Ticked in case it is hot. The forecast covers only the first 3 of 5 days.');
+      expect(ask('sunny', { spanDays: 5 }).note).toBe('Ticked in case it is sunny. The forecast covers only the first 3 of 5 days.');
+      expect(ask('snowy', { spanDays: 5 }).note).toBe('Ticked in case it snows. The forecast covers only the first 3 of 5 days.');
     });
   });
 
   it('stays ticked while the forecast is on its way', () => {
-    expect(ask({ loading: true, forecast: null })).toEqual({ tick: true, note: 'Checking the forecast for rain.' });
+    expect(ask('rainy', { loading: true, forecast: null })).toEqual({ tick: true, note: 'Checking the forecast.' });
   });
 
   describe('with no forecast, it is ticked and says what is missing', () => {
     const none = { forecast: null, spanDays: null };
     it('the setting is off', () => {
-      expect(ask({ ...none, enabled: false }).note).toBe(
+      expect(ask('rainy', { ...none, enabled: false }).note).toBe(
         'Ticked in case it rains. Turn on Destination forecast in Settings to check.',
       );
     });
     it('there is no destination', () => {
-      expect(ask({ ...none, hasPlace: false }).note).toBe('Ticked in case it rains. Add a destination to check the forecast.');
+      expect(ask('cold', { ...none, hasPlace: false }).note).toBe('Ticked in case it is cold. Add a destination to check the forecast.');
     });
     it('there are no dates', () => {
-      expect(ask({ ...none, hasDates: false }).note).toBe('Ticked in case it rains. Pick dates to check the forecast.');
+      expect(ask('hot', { ...none, hasDates: false }).note).toBe('Ticked in case it is hot. Pick dates to check the forecast.');
     });
     it('everything is set and nothing came back', () => {
-      expect(ask({ ...none, spanDays: 3 })).toEqual({
+      expect(ask('sunny', { ...none, spanDays: 3 })).toEqual({
         tick: true,
-        note: 'Ticked in case it rains. No forecast was found for these dates.',
+        note: 'Ticked in case it is sunny. No forecast was found for these dates.',
       });
     });
   });

@@ -249,13 +249,14 @@ export interface TemplateItem {
   slotIn?: boolean | null;
   // Seeds Task.pinEachOccurrence on the task this item creates.
   pinEachOccurrence?: boolean;
-  // Rain gear: the apply sheet starts this item ticked when rain or snow is
-  // forecast for the run's dates, and also whenever the forecast can't say, and
-  // starts it unticked only when the forecast covers every day and none has
-  // any. It replaces `optional` the way conditions do, and says why on the
-  // row. Only where the item *starts*: the person can tick it either way. See
-  // `rainGearVerdict` in tripForecast.ts. Absent reads as false.
-  rainGear?: boolean;
+  // Weather gear: the kind of weather this item is for (an umbrella for rainy,
+  // a warm coat for cold). The apply sheet starts it ticked when the destination
+  // forecast has that weather during the run, and also whenever the forecast
+  // can't say, and starts it unticked only when the forecast covers every day
+  // and none has it. It replaces `optional` the way conditions do, and says why
+  // on the row. Only where the item *starts*: the person can tick it either way.
+  // See `weatherGearVerdict` in tripForecast.ts. Null (and absent) means none.
+  weatherGear?: WeatherCondition | null;
   // Adds one subtask per medication you currently take, read from the
   // medication log when the template runs, after the item's own subtasks. The
   // list is never stored on the item: it is whatever "what you take" is on the
