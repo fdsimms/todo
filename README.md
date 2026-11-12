@@ -85,6 +85,14 @@ eas build --platform ios --profile preview
 
 The `.ipa` uploads to App Store Connect automatically. Add yourself as an internal TestFlight tester and install via the TestFlight app.
 
+### Local build
+
+```bash
+npm run build:ios   # eas build --local with the production profile, run on this Mac
+```
+
+The `.ipa` goes to `~/Builds` (or `$IOS_BUILDS_DIR`) as `<date>_<time>_dundundun.ipa`, the same folder and naming Franki's build uses, so the newest build of either app sorts last. Extra flags pass through: `npm run build:ios -- --clear-cache`.
+
 ### Clean build
 
 If you've changed native dependencies (updated `package.json`, switched SDK version, etc.), force EAS to ignore its remote cache:
