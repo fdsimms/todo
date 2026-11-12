@@ -27,6 +27,7 @@ import {
   expandTemplateItems,
   majorityCategory,
   resolveApplyContainer,
+  runContainerName,
   substituteDraftPlaceholders,
   substitutePlaceholders,
   type TemplateAnchors,
@@ -36,7 +37,9 @@ import {
 export interface TemplateRunOptions {
   /**
    * Names this run. Non-blank is what turns the template's applyContainer on:
-   * an unnamed run creates loose tasks exactly as it always did.
+   * an unnamed run creates loose tasks exactly as it always did, except a run
+   * whose item groups would scatter into loose stacks, which makes a project
+   * named after the template (`runContainerName`).
    */
   runName?: string;
   /** Values for `{name}` tokens in item titles/notes. `run` is bound to runName automatically. */
@@ -142,11 +145,14 @@ export function applyTemplateRun(
   const drafts = buildDraftsFromTemplateTree(expanded, anchors)
     .map(d => substituteDraftPlaceholders(d, placeholders));
 
-  // An unnamed run has nothing to call a container, so it stays loose.
-  let container = runName
+  // An unnamed run has nothing to call a container, so it stays loose, unless
+  // its groups would scatter into loose stacks (runContainerName). The fallback
+  // names the container only: `{run}` above stays what the person typed.
+  const containerName = runContainerName(runName, template, expanded, templatesById, options?.targetProjectId);
+  let container = containerName
     ? resolveApplyContainer(template.applyContainer, expanded, templatesById)
     : 'none';
-  if (options?.asProject && runName) container = 'project';
+  if (options?.asProject && containerName) container = 'project';
   if (options?.targetProjectId && container === 'project') container = 'stack';
 
   // The run stack's (and run task's) category is majorityCategory's read of its
@@ -157,7 +163,7 @@ export function applyTemplateRun(
   const runCategory = (container === 'stack' || container === 'task')
     ? majorityCategory(drafts.map(d => d.category ?? null))
     : null;
-  const runGroup = container === 'stack' ? sink.createStack(runName, runCategory) : null;
+  const runGroup = container === 'stack' ? sink.createStack(containerName, runCategory) : null;
 
   // A trip's anchors are the days it is away, so they fill in the span the start
   // anchor used to have nowhere to go into (TaskTemplate.anchorsAreAway). Its
@@ -166,7 +172,7 @@ export function applyTemplateRun(
   // put in front of anybody packing. An end with no start is dropped rather than
   // stored, matching what `awaySpanOf` would read it as anyway.
   const runProject = (!options?.targetProjectId && container === 'project')
-    ? sink.createProject(runName, {
+    ? sink.createProject(containerName, {
         ...(template.anchorsAreAway
           ? (anchors.start
               ? { awayStart: awayNoonIso(anchors.start), awayEnd: anchors.end ? awayNoonIso(anchors.end) : null }
@@ -200,7 +206,7 @@ export function applyTemplateRun(
   // A 'task' container's parent is a real Task, created up front so its id can
   // ride in on the item drafts as parentId.
   const runTask = container === 'task'
-    ? sink.addTask({ title: runName, category: runCategory, ...(projectId ? { projectId } : {}) } as RunDraft)
+    ? sink.addTask({ title: containerName, category: runCategory, ...(projectId ? { projectId } : {}) } as RunDraft)
     : null;
 
   const createdTasks = drafts.map(d => sink.addTask({

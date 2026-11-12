@@ -157,6 +157,44 @@ describe('applyTemplateRun', () => {
       expect(calls.homeSection).toEqual([{ sectionId: 'section-1', projectId: 'project-1', checklist: true }]);
     });
 
+    it('names an unnamed run\'s project after the template rather than scattering its groups into loose stacks', () => {
+      const grouped = { items: [item('a', 'Passport', { groupId: 'g1' }), item('b', 'Charger', { groupId: 'g2' })],
+        itemGroups: [{ id: 'g1', title: 'Documents', sortOrder: 0 }, { id: 'g2', title: 'Electronics', sortOrder: 1 }] };
+      for (const applyContainer of ['stack', 'project'] as const) {
+        const tpl = makeTemplate({ ...grouped, name: 'Packing List', applyContainer, list: true });
+        const { sink, calls } = makeSink();
+        applyTemplateRun(tpl, byId(tpl), select('a', 'b'), NO_ANCHORS, { runName: ' ' }, sink);
+        expect(calls.createProject).toEqual([{ title: 'Packing List', options: { deadline: null, list: true } }]);
+        expect(calls.addTask.map(d => d.projectId)).toEqual(['project-1', 'project-1']);
+        expect(calls.homeSection.map(h => h.projectId)).toEqual(['project-1', 'project-1']);
+        // The fallback names the container only: {run} is still what was typed.
+        expect(calls.addTask.map(d => d.title)).toEqual(['Passport', 'Charger']);
+      }
+    });
+
+    it('leaves an unnamed run loose when its groups would not make a project', () => {
+      const tpl = makeTemplate({
+        items: [item('a', 'Passport', { groupId: 'g1' })],
+        itemGroups: [{ id: 'g1', title: 'Documents', sortOrder: 0 }],
+        applyContainer: 'none',
+      });
+      const { sink, calls } = makeSink();
+      applyTemplateRun(tpl, byId(tpl), select('a'), NO_ANCHORS, {}, sink);
+      expect(calls.createProject).toEqual([]);
+      // Ungrouped, a project template's unnamed run stays loose as before.
+      const plain = makeTemplate({ items: [item('a', 'Pack')], applyContainer: 'project' });
+      const loose = makeSink();
+      applyTemplateRun(plain, byId(plain), select('a'), NO_ANCHORS, {}, loose.sink);
+      expect(loose.calls.createProject).toEqual([]);
+      // Run into an existing project, the groups are homed there with no name needed.
+      const into = makeSink({ 'proj-9': { awayStart: null, deadline: null } });
+      const grouped = makeTemplate({ ...tpl, applyContainer: 'stack' });
+      applyTemplateRun(grouped, byId(grouped), select('a'), NO_ANCHORS, { targetProjectId: 'proj-9' }, into.sink);
+      expect(into.calls.createProject).toEqual([]);
+      expect(into.calls.createStack).toEqual([]);
+      expect(into.calls.homeSection).toEqual([{ sectionId: 'section-1', projectId: 'proj-9', checklist: false }]);
+    });
+
     it('gives a trip project its away span and no deadline', () => {
       const tpl = makeTemplate({ items: [item('a', 'Pack')], applyContainer: 'project', anchorsAreAway: true });
       const start = new Date(2026, 7, 10);

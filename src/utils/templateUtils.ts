@@ -1223,6 +1223,32 @@ export function resolveApplyContainer(
 }
 
 /**
+ * The name a run's container is created under, or '' for a run that makes none.
+ *
+ * A run left unnamed normally makes no container and its tasks stay loose. That
+ * is fine for loose tasks, but a template's item groups still become stacks, so
+ * an unnamed run of a grouped template scattered one loose stack per group across
+ * Today and Inbox (a packing list became eight of them). When the run would make
+ * a project anyway (its own container, or a stack upgraded by
+ * `resolveApplyContainer`), it is named after the template instead. Only for a
+ * run that makes its own project: run into an existing project, the groups are
+ * already homed there as sections.
+ */
+export function runContainerName(
+  runName: string,
+  template: Pick<TaskTemplate, 'name' | 'applyContainer'>,
+  expanded: ExpandedTemplateItem[],
+  templatesById: Map<string, TaskTemplate>,
+  targetProjectId?: string | null,
+): string {
+  const named = runName.trim();
+  if (named || targetProjectId) return named;
+  const groupsScatter = usesItemGroups(expanded, templatesById)
+    && resolveApplyContainer(template.applyContainer, expanded, templatesById) === 'project';
+  return groupsScatter ? template.name.trim() : '';
+}
+
+/**
  * The category a new run stack should take: whichever category its members
  * most often carry, ties going to whichever appeared first (insertion order
  * = item order) — the same "most common, ties to first" rule the bulk

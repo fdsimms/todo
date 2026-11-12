@@ -46,6 +46,7 @@ import {
   substitutePlaceholders,
   declaresRunPlaceholder,
   resolveApplyContainer,
+  runContainerName,
   RUN_PLACEHOLDER,
   placeholderKey,
   type TemplateAnchors,
@@ -136,12 +137,14 @@ function itemSublabel(item: TemplateItem, anchors: TemplateAnchors, away = false
 }
 
 /** What the run name will do, given the container this apply resolves to. Doubles as the field's only in-app documentation. */
-function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceholders: boolean): string {
+function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceholders: boolean, blankName: string): string {
   const fills = hasPlaceholders ? ' The name also fills in the blanks below.' : '';
+  // runContainerName: a grouped run left blank still makes its project.
+  const blank = blankName ? ` Left blank, the project is named “${blankName}”.` : '';
   if (container === 'project') {
     return upgraded
-      ? `Optional. Names the project these tasks land in. This template’s groups become stacks inside it.${fills}`
-      : `Optional. Names the project these tasks land in, dated by the start and end dates above.${fills}`;
+      ? `Optional. Names the project these tasks land in. This template’s groups become stacks inside it.${blank}${fills}`
+      : `Optional. Names the project these tasks land in, dated by the start and end dates above.${blank}${fills}`;
   }
   if (container === 'stack') return `Optional. Names the stack these tasks land in.${fills}`;
   if (container === 'task') return `Optional. Names the task these become subtasks of.${fills}`;
@@ -439,8 +442,10 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   const showRunField = container !== 'none' || declaresRunPlaceholder(selectedLeafItems);
 
   const values = { ...placeholderValues, ...answerValues, [RUN_PLACEHOLDER]: runName.trim() };
-  // A project is created only for a named run whose container is a project.
-  const createsProject = container === 'project' && runName.trim() !== '';
+  // A project is created only for a named run whose container is a project,
+  // or an unnamed one whose groups would otherwise scatter (runContainerName).
+  const blankRunName = runContainerName('', template, flatLeaves, templatesById, projectId);
+  const createsProject = container === 'project' && (runName.trim() !== '' || blankRunName !== '');
 
   const handleApply = () => {
     if (!canApply) return;
@@ -629,7 +634,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
                 returnKeyType="done"
               />
               <Text style={styles.runHint}>
-                {runNameHint(container, containerUpgraded, placeholderNames.length > 0)}
+                {runNameHint(container, containerUpgraded, placeholderNames.length > 0, blankRunName)}
               </Text>
               {createsProject && (
                 <TouchableOpacity
