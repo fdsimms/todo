@@ -23,7 +23,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { startOfDay } from 'date-fns/startOfDay';
 import type { TaskTemplate, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateQuestion } from '../types';
 import type { ApplyTreeNode, TemplateAnchors } from './templateUtils';
-import { placeholderKey, answerValues, encodeAnswerValues } from './templateUtils';
+import { placeholderKey, answerValues, encodeAnswerValues, leafIdsUnder } from './templateUtils';
 
 export { answerValues, encodeAnswerValues };
 
@@ -342,6 +342,27 @@ export function initialLeafSelection(
   };
   nodes.forEach(node => visit(node, false));
   return selected;
+}
+
+/**
+ * The apply tree with every pre-checked item above the unchecked ones, so the
+ * sheet opens on what will be added and the optional extras sit below.
+ *
+ * Stable at every level: siblings keep their template order within each half.
+ * A nested-template block counts as checked when any leaf under it is, and
+ * only siblings swap places, so a block's items never leave it. `checkedIds`
+ * is the selection when the sheet loaded (or the answers last moved), not the
+ * live one, or a row would jump out from under the finger on every tap.
+ */
+export function sortCheckedFirst(nodes: ApplyTreeNode[], checkedIds: ReadonlySet<string>): ApplyTreeNode[] {
+  const isChecked = (node: ApplyTreeNode): boolean =>
+    !node.broken && (node.item.refTemplateId !== null
+      ? leafIdsUnder(node).some(id => checkedIds.has(id))
+      : checkedIds.has(node.item.id));
+  const sorted = nodes.map(node => (node.children.length > 0
+    ? { ...node, children: sortCheckedFirst(node.children, checkedIds) }
+    : node));
+  return [...sorted.filter(isChecked), ...sorted.filter(n => !isChecked(n))];
 }
 
 /**
