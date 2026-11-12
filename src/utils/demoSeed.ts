@@ -125,6 +125,7 @@ import { TRAVEL_LEAD_MINUTES_DEFAULT, travelSourceId, travelTaskTitle } from './
 import { healthSourceId, defaultHealthRules } from './healthRules';
 import { WAKE_UP_DEFAULT_GET_READY_MINUTES, wakeUpSourceId, wakeUpTitle } from './wakeUpTasks';
 import { WANIKANI_REVIEW_URL, wanikaniReviewSourceId, wanikaniReviewTitle } from './wanikaniTasks';
+import { FRANKI_READ_URL, frankiReadSourceId, frankiReadTitle } from './frankiTasks';
 import { YNAB_APP_URL, ynabQueueSourceId, ynabQueueTitle } from './ynabTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
@@ -2128,6 +2129,20 @@ export function seedDemoData(): void {
     category: 'Study',
     linkUrl: WANIKANI_REVIEW_URL,
     ...generatedBy('wanikani', wanikaniReviewSourceId(demoReviewsAt)),
+  });
+
+  // A Franki Read & Listen task, seeded directly for WaniKani's reason: the
+  // read (useFrankiStore) and the pass (checkFrankiTasks) both refuse in demo
+  // mode, and there is no server. The switch stays off, so nothing reads. The
+  // reading task rather than a reviews one, since WaniKani's above already
+  // shows what a review queue looks like as a task.
+  useSettingsStore.getState().setFrankiTaskCategory('Study');
+  addTask({
+    title: frankiReadTitle({ name: 'Polish' }),
+    dueDate: today.toISOString(),
+    category: 'Study',
+    linkUrl: FRANKI_READ_URL,
+    ...generatedBy('franki', frankiReadSourceId(dayKeyOf(today))),
   });
 
   // A YNAB transactions task, seeded directly for WaniKani's reason: the read

@@ -146,6 +146,12 @@ export const WANIKANI_TOKEN_SECURE_KEY = 'wanikaniApiToken';
  * write the whole plan, which is one more reason it stays off the sync.
  */
 export const YNAB_TOKEN_SECURE_KEY = 'ynabApiToken';
+/**
+ * The key for Franki's status route (`src/services/franki.ts`): the
+ * `READER_STATUS_TOKEN` set on the person's own Franki server, which opens
+ * what's due and nothing else. Device-local for the WaniKani token's reason.
+ */
+export const FRANKI_TOKEN_SECURE_KEY = 'frankiStatusToken';
 
 export async function loadSecureKey(name: string): Promise<string> {
   try {

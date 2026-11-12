@@ -174,6 +174,18 @@ import {
   wantsWaniKaniLessonsTask,
 } from '../utils/wanikaniTasks';
 import {
+  FRANKI_READ_URL,
+  FRANKI_REVIEW_URL,
+  frankiReadDayKey,
+  frankiReadSourceId,
+  frankiReadTitle,
+  frankiReviewSourceId,
+  frankiReviewTitle,
+  frankiTaskKind,
+  wantsFrankiReadTask,
+} from '../utils/frankiTasks';
+import { decideReviewWave, reviewHeldUntil, reviewHoldFields } from '../utils/reviewQueue';
+import {
   YNAB_APP_URL,
   wantsYnabQueueTask,
   ynabOverspentCategories,
@@ -520,6 +532,7 @@ import { datesAnchorStep, datesReconcile } from '../utils/taskDates';
 import { duplicateRows } from '../utils/taskDuplicate';
 import { useTransitStore } from './useTransitStore';
 import { useWaniKaniStore } from './useWaniKaniStore';
+import { useFrankiStore } from './useFrankiStore';
 import { useYnabStore } from './useYnabStore';
 import { travelOriginOfEvent, useTravelTimeStore } from './useTravelTimeStore';
 import { useScreenTimeStore } from './useScreenTimeStore';
@@ -2558,6 +2571,11 @@ interface TaskStore extends UndoHistoryActions {
    * person's account (useWaniKaniStore). See src/utils/wanikaniTasks.ts.
    */
   checkWaniKaniTasks: () => void;
+  /**
+   * The Franki reviews and Read & Listen tasks, from the last read of the
+   * person's Franki server (useFrankiStore). See src/utils/frankiTasks.ts.
+   */
+  checkFrankiTasks: () => void;
   /**
    * The YNAB transactions and overspent-category tasks, from the last read of
    * the person's plan (useYnabStore). See src/utils/ynabTasks.ts.
@@ -9638,6 +9656,150 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Spent only by writing it, so a checked-off or deleted one stays gone today.
     if (!liveLessons && liveGeneratedTask(get().tasks, 'wanikani', lessonsSourceId)) {
       settings.setWanikaniLessonsLastDayKey(todayKey);
+    }
+  },
+
+  /**
+   * The Franki tasks. The reviews task is WaniKani's rule for rule
+   * (`src/utils/reviewQueue.ts`); the Read & Listen task's rules are in
+   * `src/utils/frankiTasks.ts`. This reads the last snapshot, applies them and
+   * writes. It never fetches: `useFrankiSync` reads the server and calls this
+   * when the read lands, and the background run does the same. The launch and
+   * foreground passes call it too, for the one step that needs no read
+   * (releasing a hold whose moment has come).
+   */
+  checkFrankiTasks() {
+    const settings = useSettingsStore.getState();
+    // A demo session's tasks are fiction; the real flashcards don't belong in them.
+    if (isDemoModeActive()) return;
+
+    const now = new Date();
+    const reset = settings.dayResetTime;
+    // A held task gives up its window once its moment has come, WaniKani's rule.
+    liveGeneratedTasksOfKind(get().tasks, 'franki').forEach(task => {
+      const heldUntil = reviewHeldUntil(task, reset);
+      if (heldUntil && heldUntil.getTime() <= now.getTime()) {
+        get().updateTask(task.id, { windowStart: null }, { skipPostponeCount: true });
+      }
+    });
+
+    if (!settings.frankiTasks) return;
+    if (!settings.frankiTaskCategory) return;
+    // At the top and spending nothing, so the first pass after a trip picks
+    // the cards up as they stand then.
+    if (generatorPausedForVacation('franki', settings.vacationMode)) return;
+    const snapshot = useFrankiStore.getState().snapshot;
+    // An unread queue is not an empty one, so without a read nothing moves.
+    if (!snapshot) return;
+
+    const dayStart = getCurrentDayStart();
+    const todayKey = dayKeyOf(dayStart);
+    const category = settings.frankiTaskCategory;
+    const todayNoon = new Date(dayStart);
+    todayNoon.setHours(12, 0, 0, 0);
+
+    // ==== reviews ====
+    const liveReviews = liveGeneratedTasksOfKind(get().tasks, 'franki')
+      .filter(task => frankiTaskKind(task) === 'reviews')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    // Only one wave is ever open; the older keeps any edits made to it.
+    liveReviews.slice(1).forEach(task => deleteGeneratedTaskQuietly(task.id));
+    const open = liveReviews[0] ?? null;
+    const decision = decideReviewWave({
+      queue: snapshot,
+      now,
+      threshold: settings.frankiReviewThreshold,
+      live: open && open.generatedSourceId
+        ? { sourceId: open.generatedSourceId, heldUntil: reviewHeldUntil(open, reset) }
+        : null,
+      state: settings.frankiReviewState,
+      sourceIdFor: frankiReviewSourceId,
+    });
+    const action = decision.action;
+    if (action.type === 'drop' && open) deleteGeneratedTaskQuietly(open.id);
+    if (action.type === 'write') {
+      const title = frankiReviewTitle(action.count);
+      const hold = action.holdUntil ? reviewHoldFields(action.holdUntil, reset) : null;
+      reconcileGeneratedTask({
+        kind: 'franki',
+        sourceId: action.sourceId,
+        wanted: true,
+        // WaniKani's drift: the title follows the queue, and while the task is
+        // still held its moment follows the forecast. Once it is on Today,
+        // nothing but the count moves.
+        drift: existing => {
+          const patch: Partial<Task> = {};
+          if (existing.title !== title) patch.title = title;
+          if (existing.linkUrl !== FRANKI_REVIEW_URL) patch.linkUrl = FRANKI_REVIEW_URL;
+          const heldUntil = reviewHeldUntil(existing, reset);
+          const isHeld = heldUntil !== null && heldUntil.getTime() > now.getTime();
+          if (hold) {
+            if (existing.dueDate !== hold.dueDate) patch.dueDate = hold.dueDate;
+            if (existing.windowStart !== hold.windowStart) patch.windowStart = hold.windowStart;
+          } else if (isHeld) {
+            // The cards came due before the moment it was held for.
+            patch.dueDate = todayNoon.toISOString();
+            patch.windowStart = null;
+          }
+          return Object.keys(patch).length > 0 ? patch : null;
+        },
+        draft: () => ({
+          title,
+          dueDate: hold ? hold.dueDate : todayNoon.toISOString(),
+          windowStart: hold ? hold.windowStart : null,
+          category,
+          linkUrl: FRANKI_REVIEW_URL,
+          ...generatedBy('franki', action.sourceId),
+        }),
+      });
+    }
+    // A task counts as open only once it exists, so a create the reconcile
+    // refused can't read as a close on the next pass and move the baseline.
+    const nextState = decision.state.openSourceId !== null
+      && !liveGeneratedTask(get().tasks, 'franki', decision.state.openSourceId)
+      ? { ...decision.state, openSourceId: null }
+      : decision.state;
+    if (nextState.baseline !== settings.frankiReviewState.baseline
+      || nextState.openSourceId !== settings.frankiReviewState.openSourceId) {
+      settings.setFrankiReviewState(nextState);
+    }
+
+    // ==== Read & Listen ====
+    // A day's reading is that day's: yesterday's unfinished task makes way.
+    liveGeneratedTasksOfKind(get().tasks, 'franki')
+      .filter(task => frankiTaskKind(task) === 'read' && frankiReadDayKey(task) !== todayKey)
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+    if (!settings.frankiReadTasks) return;
+    const readSourceId = frankiReadSourceId(todayKey);
+    const liveRead = liveGeneratedTask(get().tasks, 'franki', readSourceId);
+    if (!liveRead && !wantsFrankiReadTask({
+      snapshot,
+      todayKey,
+      dayStart,
+      lastDayKey: settings.frankiReadLastDayKey,
+    })) return;
+    const readTitle = frankiReadTitle(snapshot.readListen);
+    reconcileGeneratedTask({
+      kind: 'franki',
+      sourceId: readSourceId,
+      wanted: true,
+      drift: existing => {
+        const patch: Partial<Task> = {};
+        if (existing.title !== readTitle) patch.title = readTitle;
+        if (existing.linkUrl !== FRANKI_READ_URL) patch.linkUrl = FRANKI_READ_URL;
+        return Object.keys(patch).length > 0 ? patch : null;
+      },
+      draft: () => ({
+        title: readTitle,
+        dueDate: todayNoon.toISOString(),
+        category,
+        linkUrl: FRANKI_READ_URL,
+        ...generatedBy('franki', readSourceId),
+      }),
+    });
+    // Spent only by writing it, so a checked-off or deleted one stays gone today.
+    if (!liveRead && liveGeneratedTask(get().tasks, 'franki', readSourceId)) {
+      settings.setFrankiReadLastDayKey(todayKey);
     }
   },
 

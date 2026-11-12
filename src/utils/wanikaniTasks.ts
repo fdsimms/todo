@@ -1,6 +1,17 @@
 import type { Task } from '../types';
-import { dateToHHMM, logicalDayStart, onLogicalDay, taskDayStart } from './clockTime';
 import { generatedSourceOf } from './generatedTasks';
+import {
+  REVIEW_WAVE_INITIAL_STATE,
+  decideReviewWave,
+  hourKeyOf,
+  parseReviewWaveState,
+  reviewHeldUntil,
+  reviewHoldFields,
+  reviewQueueAt,
+  reviewQueueDueAt,
+  type ReviewWaveDecision,
+  type ReviewWaveState,
+} from './reviewQueue';
 
 /**
  * The `wanikani` generator: "WaniKani: 42 reviews" when the person's WaniKani
@@ -9,8 +20,9 @@ import { generatedSourceOf } from './generatedTasks';
  *
  * Everything here is pure. `useWaniKaniStore` holds the last read of the
  * person's account (`src/services/wanikani.ts` makes it) and
- * `checkWaniKaniTasks` in `useTaskStore` is the plumbing. Four rules live
- * here, and each was a choice:
+ * `checkWaniKaniTasks` in `useTaskStore` is the plumbing. The reviews task's
+ * four rules moved to `reviewQueue.ts` when Franki's task needed them too, and
+ * the names below are kept for WaniKani's callers. As written for WaniKani:
  *
  * - **A forecast places the task, not a poll.** WaniKani's summary says how
  *   many reviews arrive in each of the next 24 hours, and the app can't fetch
@@ -51,18 +63,10 @@ export interface WaniKaniSnapshot {
   apprentice: number | null;
 }
 
-/**
- * Where the next review task stands, kept per device. `openSourceId` is the
- * live task this device last saw, so a pass can tell that it has since been
- * checked off or deleted; `baseline` is the lowest the queue has been since
- * the last one closed.
- */
-export interface WaniKaniReviewState {
-  baseline: number;
-  openSourceId: string | null;
-}
+/** Where the next reviews task stands, kept per device (`reviewQueue.ts`). */
+export type WaniKaniReviewState = ReviewWaveState;
 
-export const WANIKANI_INITIAL_REVIEW_STATE: WaniKaniReviewState = { baseline: 0, openSourceId: null };
+export const WANIKANI_INITIAL_REVIEW_STATE: WaniKaniReviewState = REVIEW_WAVE_INITIAL_STATE;
 
 export const WANIKANI_REVIEW_THRESHOLD_DEFAULT = 10;
 export const WANIKANI_REVIEW_THRESHOLD_MIN = 1;
@@ -138,31 +142,12 @@ export function clampWaniKaniApprenticeCap(value: unknown): number | null {
 }
 
 /** A stored review state back into its shape, or the initial one when it doesn't parse. */
-export function parseWaniKaniReviewState(raw: string | null): WaniKaniReviewState {
-  if (!raw) return WANIKANI_INITIAL_REVIEW_STATE;
-  try {
-    const parsed = JSON.parse(raw);
-    const baseline = typeof parsed?.baseline === 'number' && parsed.baseline >= 0 ? parsed.baseline : 0;
-    const openSourceId = typeof parsed?.openSourceId === 'string' ? parsed.openSourceId : null;
-    return { baseline, openSourceId };
-  } catch {
-    return WANIKANI_INITIAL_REVIEW_STATE;
-  }
-}
+export const parseWaniKaniReviewState = parseReviewWaveState;
 
 // ==== source ids ====
 
 const REVIEWS_PREFIX = 'reviews:';
 const LESSONS_PREFIX = 'lessons:';
-
-/** The local hour an instant falls in, as `YYYY-MM-DDTHH`. Local, never `toISOString`. */
-function hourKeyOf(at: Date): string {
-  const y = at.getFullYear();
-  const m = String(at.getMonth() + 1).padStart(2, '0');
-  const d = String(at.getDate()).padStart(2, '0');
-  const h = String(at.getHours()).padStart(2, '0');
-  return `${y}-${m}-${d}T${h}`;
-}
 
 /** A wave of reviews is named by the hour its task was placed at. */
 export function wanikaniReviewSourceId(at: Date): string {
@@ -200,145 +185,29 @@ export function wanikaniLessonTitle(count: number): string {
   return `WaniKani: ${count} ${count === 1 ? 'lesson' : 'lessons'}`;
 }
 
-// ==== the queue ====
+// ==== the queue, the hold and the wave (reviewQueue.ts) ====
 
-/**
- * How many reviews the read says are waiting at `at`: what was there when it
- * landed plus every later hour that has arrived since. Past the read's own
- * 24 hours it stops growing, so it is a floor rather than a guess.
- */
-export function wanikaniQueueAt(snapshot: WaniKaniSnapshot, at: Date): number {
-  const atMs = at.getTime();
-  let total = snapshot.reviewsNow;
-  for (const hour of snapshot.upcoming) {
-    if (Date.parse(hour.at) <= atMs) total += hour.count;
-  }
-  return total;
-}
+/** How many reviews the read says are waiting at `at`. */
+export const wanikaniQueueAt = reviewQueueAt;
 
-/**
- * The first moment from `now` on at which the queue stands `threshold` above
- * `baseline`: `now` itself when it already does, the hour the forecast gets
- * there, or null when the next 24 hours never do.
- */
-export function wanikaniReviewsDueAt(
-  snapshot: WaniKaniSnapshot,
-  baseline: number,
-  threshold: number,
-  now: Date,
-): Date | null {
-  if (wanikaniQueueAt(snapshot, now) - baseline >= threshold) return now;
-  const nowMs = now.getTime();
-  const later = snapshot.upcoming
-    .map(hour => ({ ms: Date.parse(hour.at), count: hour.count }))
-    .filter(hour => Number.isFinite(hour.ms) && hour.ms > nowMs)
-    .sort((a, b) => a.ms - b.ms);
-  let total = wanikaniQueueAt(snapshot, now);
-  for (const hour of later) {
-    total += hour.count;
-    if (total - baseline >= threshold) return new Date(hour.ms);
-  }
-  return null;
-}
+/** The first moment from `now` on at which the queue stands `threshold` above `baseline`, or null. */
+export const wanikaniReviewsDueAt = reviewQueueDueAt;
 
-// ==== placing a held task ====
+/** The fields that hold a task until `at`. */
+export const wanikaniHoldFields = reviewHoldFields;
 
-/**
- * The fields that hold a task until `at`: the logical day `at` falls on (at
- * noon, the anchor the other day-keyed generators use) and `at`'s clock time
- * as the window's start. `onLogicalDay` reads them back to the same instant,
- * including an hour after midnight but before the day's reset.
- */
-export function wanikaniHoldFields(at: Date, dayResetTime: string): { dueDate: string; windowStart: string } {
-  const due = logicalDayStart(at, dayResetTime);
-  due.setHours(12, 0, 0, 0);
-  return { dueDate: due.toISOString(), windowStart: dateToHHMM(at) };
-}
+/** When a task is held until, or null when it is already on Today. */
+export const wanikaniHeldUntil = reviewHeldUntil;
 
-/**
- * When a task is held until, or null when it is already on Today: read from
- * its own `dueDate` and `windowStart`, the two fields the visibility gate
- * reads, so the answer can't disagree with where the row actually is.
- */
-export function wanikaniHeldUntil(
-  task: Pick<Task, 'dueDate' | 'windowStart'>,
-  dayResetTime: string,
-): Date | null {
-  if (!task.dueDate || !task.windowStart) return null;
-  const due = new Date(task.dueDate);
-  if (Number.isNaN(due.getTime())) return null;
-  return onLogicalDay(taskDayStart(due, dayResetTime), task.windowStart);
-}
-
-// ==== deciding ====
-
-/** What the pass should do with the reviews task. */
-export type WaniKaniReviewAction =
-  | { type: 'none' }
-  /** Take the held task away quietly: the forecast no longer gets there. */
-  | { type: 'drop' }
-  /**
-   * Write the task for `sourceId`, creating it if there's none: `count` is
-   * its title's number and `holdUntil` the hour it waits for, or null for now.
-   */
-  | { type: 'write'; sourceId: string; count: number; holdUntil: Date | null };
-
-export interface WaniKaniReviewDecision {
-  action: WaniKaniReviewAction;
-  state: WaniKaniReviewState;
-}
-
-/**
- * The reviews task's whole rule. `live` is the open task, if there is one, and
- * when it is held until; `state` is what the last pass left.
- */
+/** The reviews task's whole rule, with WaniKani's source ids. */
 export function decideWaniKaniReviews(input: {
   snapshot: WaniKaniSnapshot;
   now: Date;
   threshold: number;
   live: { sourceId: string; heldUntil: Date | null } | null;
   state: WaniKaniReviewState;
-}): WaniKaniReviewDecision {
-  const { snapshot, now, threshold, live } = input;
-  const queueNow = wanikaniQueueAt(snapshot, now);
-
-  if (live) {
-    const state = { ...input.state, openSourceId: live.sourceId };
-    // On Today already: only its count follows the queue.
-    if (live.heldUntil === null || live.heldUntil.getTime() <= now.getTime()) {
-      return { state, action: { type: 'write', sourceId: live.sourceId, count: queueNow, holdUntil: null } };
-    }
-    const dueAt = wanikaniReviewsDueAt(snapshot, state.baseline, threshold, now);
-    if (dueAt === null) {
-      // Not a close: nobody checked it off, the forecast just stopped getting
-      // there (reviews done on the website). The baseline still follows the queue down.
-      return {
-        state: { baseline: Math.min(state.baseline, queueNow), openSourceId: null },
-        action: { type: 'drop' },
-      };
-    }
-    const holdUntil = dueAt.getTime() > now.getTime() ? dueAt : null;
-    return {
-      state,
-      action: { type: 'write', sourceId: live.sourceId, count: wanikaniQueueAt(snapshot, dueAt), holdUntil },
-    };
-  }
-
-  // The task this device last saw has gone, checked off or deleted, so a new
-  // wave starts from wherever the queue is now.
-  const baseline = input.state.openSourceId !== null
-    ? queueNow
-    : Math.min(input.state.baseline, queueNow);
-  const dueAt = wanikaniReviewsDueAt(snapshot, baseline, threshold, now);
-  if (dueAt === null) {
-    return { state: { baseline, openSourceId: null }, action: { type: 'none' } };
-  }
-  const sourceId = wanikaniReviewSourceId(dueAt);
-  const holdUntil = dueAt.getTime() > now.getTime() ? dueAt : null;
-  return {
-    state: { baseline, openSourceId: sourceId },
-    action: { type: 'write', sourceId, count: wanikaniQueueAt(snapshot, dueAt), holdUntil },
-  };
+}): ReviewWaveDecision {
+  return decideReviewWave({ ...input, queue: input.snapshot, sourceIdFor: wanikaniReviewSourceId });
 }
 
 /**

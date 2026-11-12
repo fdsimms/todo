@@ -622,6 +622,17 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
       { key: 'link', label: 'Link', summary: 'Opens WaniKani', hint: 'The review page on a reviews task, the lesson page on a lessons task.' },
     ],
   },
+  franki: {
+    example: 'Franki: 30 reviews',
+    noun: 'Franki task',
+    locks: ['time'],
+    owned: () => [
+      { key: 'title', label: 'Title', summary: 'Franki: (number) reviews, or Read & Listen: (language)', hint: 'The count follows the cards due in Franki and is left off when none are.' },
+      { key: 'date', label: 'Date', summary: 'The day cards are due', hint: 'Today when cards are due, otherwise held until enough learning cards come due.' },
+      { key: 'time', label: 'Time window', summary: 'Starts when enough cards are due', hint: 'Held on Later until then. It moves if you study in Franki or Anki first.' },
+      { key: 'link', label: 'Link', summary: 'Opens Franki', hint: 'The deck list on a reviews task, Read & Listen on a reading task.' },
+    ],
+  },
   ynab: {
     example: 'Approve 4 transactions in YNAB',
     noun: 'YNAB task',

@@ -163,6 +163,8 @@ export function useForegroundCatchUp(): void {
       // Lets a held WaniKani task's hour pass; useWaniKaniSync reads the
       // account on the same foreground and runs the rest when it lands.
       useTaskStore.getState().checkWaniKaniTasks();
+      // And a held Franki task's, the same way (useFrankiSync reads the server).
+      useTaskStore.getState().checkFrankiTasks();
       // And the weigh-in, which shares the mood check-in's shape: a day
       // rolling over is its whole trigger, so a phone that stays open for
       // days would otherwise never be asked. Async (it takes its own

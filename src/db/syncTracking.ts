@@ -480,6 +480,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'bookEventTasks',
   'wanikaniTasks',
   'ynabTasks',
+  'frankiTasks',
 
   // Behaviour.
   'newTaskDefaults',
@@ -672,6 +673,13 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'ynabPlanId',
   'ynabGroceryCategoryId',
   'ynabOverspentDeclined',
+  // The Franki tasks' options and the server's address. The key is the
+  // keychain's and never syncs, and neither do the review state or the Read &
+  // Listen day mark, which say what this device has seen.
+  'frankiTaskCategory',
+  'frankiServer',
+  'frankiReviewThreshold',
+  'frankiReadTasks',
   'waterShortfallTaskCategory',
   'weatherTaskCategory',
   'weekendNudgeTaskCategory',

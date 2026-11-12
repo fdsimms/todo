@@ -22,6 +22,7 @@ import { useOnDeviceAvailability } from '../../hooks/useOnDeviceAi';
 import { TextField } from '../../components/TextField';
 import { BUTTON_LABEL } from '../../copy/shared';
 import { WaniKaniTokenRows } from './WaniKaniTokenRows';
+import { FrankiTokenRows } from './FrankiTokenRows';
 import { YnabAccountRows } from './YnabAccountRows';
 
 interface Props {
@@ -536,6 +537,15 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
         footer="Used for the WaniKani task in Automations. The token stays in this device’s keychain and is sent only to WaniKani."
       >
         <WaniKaniTokenRows entryId="wanikaniTokenPrivacy" />
+      </SettingsSection>
+
+      {/* The same key row Automations shows under the Franki task, so it is
+          findable among the other keys. Both write one keychain entry. */}
+      <SettingsSection
+        label="Franki"
+        footer="Used for the Franki task in Automations. The key stays in this device’s keychain and is sent only to your own Franki server, which answers with how many cards are due and whether a Read & Listen text is waiting."
+      >
+        <FrankiTokenRows entryId="frankiTokenPrivacy" />
       </SettingsSection>
 
       {/* The same token row Automations and Kitchen show, so it is findable

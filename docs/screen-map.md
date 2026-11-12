@@ -565,6 +565,8 @@ Where each component can appear.
 - `src/screens/settings/DeadlineCalendarSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/FeatureAreasSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/FocusSettings.tsx` — on SettingsGroupScreen
+- `src/screens/settings/FrankiSettingsRows.tsx` — on AutomationsScreen
+- `src/screens/settings/FrankiTokenRows.tsx` — on AutomationsScreen, SettingsGroupScreen
 - `src/screens/settings/GeneratedTasksSection.tsx` — on AutomationsScreen
 - `src/screens/settings/HealthSettings.tsx` — on SettingsGroupScreen
 - `src/screens/settings/InlineTimePicker.tsx` — on ArchivedScreen, AutomationsScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, +10 more

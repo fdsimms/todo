@@ -388,6 +388,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'wanikaniTaskCategory', current: s.wanikaniTaskCategory, assign: s.setWanikaniTaskCategory };
     case 'ynab':
       return { key: 'ynabTaskCategory', current: s.ynabTaskCategory, assign: s.setYnabTaskCategory };
+    case 'franki':
+      return { key: 'frankiTaskCategory', current: s.frankiTaskCategory, assign: s.setFrankiTaskCategory };
     case 'moodNudge':
       return { key: 'moodNudgeTaskCategory', current: s.moodNudgeTaskCategory, assign: s.setMoodNudgeTaskCategory };
     case 'backfill':

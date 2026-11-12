@@ -731,7 +731,13 @@ export type GeneratedKind =
   // overspent category — see src/utils/ynabTasks.ts. Fed by a fetch of their
   // own plan (src/services/ynab.ts). Sourced by the day (`queue:<day>`) or the
   // category and month (`overspent:<month>:<category>`), with no source row.
-  | 'ynab';
+  | 'ynab'
+  // "Franki: 30 reviews" when the person's flashcards have that many cards due,
+  // and "Read & Listen: Thai" once a day while a text is waiting — see
+  // src/utils/frankiTasks.ts. Fed by a fetch of their own Franki server
+  // (src/services/franki.ts). Sourced by the wave (`reviews:<hour>`) or the day
+  // (`read:<day>`), with no source row; deleting one writes nothing.
+  | 'franki';
 
 /** "Only if <question> is answered one of <answers>" — see `Task.answerGate`. */
 export interface AnswerGate {
