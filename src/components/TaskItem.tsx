@@ -1862,6 +1862,10 @@ const TaskItemRow = React.memo(function TaskItem({
   // reminder is its own fact about the task, the same way a deadline badge
   // renders regardless of whether the scheduled chip is showing.
   const reminderTimeLabel = task.reminderTime ? formatTimeOfDay(new Date(task.reminderTime)) : null;
+  // On a "Leave for X" row the reminder is the leave time itself, so the chip
+  // says so: a bell with a bare time read as "a notification at 4:55", not
+  // "leave at 4:55", and only the arrival line below it was labelled.
+  const isTravelRow = task.generatedKind === 'travel';
   // The same fact for a reminder at a place: where, and arriving or leaving.
   const placeReminderLabel = task.reminderPlaceId
     ? describePlaceReminder(task.reminderPlaceOn, savedPlaceName(task.reminderPlaceId) ?? 'a saved place')
@@ -4233,11 +4237,11 @@ const TaskItemRow = React.memo(function TaskItem({
             {reminderTimeLabel !== null && (
               <View
                 style={styles.metaChip}
-                accessibilityLabel={`Reminder at ${reminderTimeLabel}`}
+                accessibilityLabel={isTravelRow ? `Leave at ${reminderTimeLabel}` : `Reminder at ${reminderTimeLabel}`}
               >
-                <Ionicons name="notifications-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.scheduledLabel} numberOfLines={1}>
-                  {reminderTimeLabel}
+                <Ionicons name={isTravelRow ? 'walk-outline' : 'notifications-outline'} size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={isTravelRow ? styles.leaveTimeLabel : styles.scheduledLabel} numberOfLines={1}>
+                  {isTravelRow ? `Leave at ${reminderTimeLabel}` : reminderTimeLabel}
                 </Text>
               </View>
             )}
@@ -6510,6 +6514,11 @@ const makeStyles = (colors: Colors, trayRaised: boolean) => {
   scheduledLabel: {
     color: colors.textSecondary,
     fontSize: font.xs,
+  },
+  leaveTimeLabel: {
+    color: colors.text,
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
   },
   travelDisruptionChip: {
     flexBasis: '100%',
