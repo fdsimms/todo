@@ -1182,8 +1182,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                     })
                   : null;
                 const shownName = rowItem && !row.nameTyped ? rowItem.name : row.name;
-                const shownBrand = rowItem ? row.brandEdit ?? boxChoice?.brand ?? '' : newBox.brand ?? '';
-                const shownVariant = rowItem ? row.variantEdit ?? boxChoice?.variant ?? '' : newBox.variant ?? '';
+                // The raw edit wins over `newBox`, which trims: showing the trimmed
+                // value would strip the space the moment it is typed.
+                const shownBrand = row.brandEdit ?? (rowItem ? boxChoice?.brand : newBox.brand) ?? '';
+                const shownVariant = row.variantEdit ?? (rowItem ? boxChoice?.variant : newBox.variant) ?? '';
 
                 const needsName = !rowItem && !row.name.trim();
                 // A food with no figures can't be logged, so in a log the row says
