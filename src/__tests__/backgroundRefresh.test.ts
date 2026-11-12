@@ -63,6 +63,7 @@ const mockTaskState = {
   checkVacationExpiry: mockRecord('checkVacationExpiry'),
   forgivePausedProjectStreaks: mockRecord('forgivePausedProjectStreaks'),
   checkAwayVacation: mockRecord('checkAwayVacation'),
+  checkScheduledVacation: mockRecord('checkScheduledVacation'),
   rolloverQuotas: mockRecord('rolloverQuotas'),
   sweepOvershootQuotas: mockRecord('sweepOvershootQuotas'),
   syncWaterQuotaTasks: mockRecord('syncWaterQuotaTasks'),
@@ -302,7 +303,7 @@ describe('runBackgroundRefresh', () => {
     const passNames = [
       'recordDeviceTimeZone',
       'reanchorWallClockReminders',
-      'checkVacationExpiry', 'forgivePausedProjectStreaks', 'checkAwayVacation', 'checkAwayGroceryList',
+      'checkVacationExpiry', 'forgivePausedProjectStreaks', 'checkAwayVacation', 'checkScheduledVacation', 'checkAwayGroceryList',
       'rolloverQuotas', 'sweepOvershootQuotas', 'syncWaterQuotaTasks',
       'syncSnackNudgeTasks', 'syncLimitWarningTasks', 'syncGoalTargetTasks',
       'checkBookEventTasks',
