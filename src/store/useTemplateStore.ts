@@ -41,7 +41,8 @@ import { keepUnchanged } from '../utils/structuralSharing';
 export interface ApplyTemplateOptions {
   /**
    * Names this run. Non-blank is what turns the template's applyContainer on —
-   * an unnamed run creates loose tasks exactly as it always did.
+   * an unnamed run creates loose tasks exactly as it always did, unless its
+   * item groups would scatter (`runContainerName` in templateUtils).
    */
   runName?: string;
   /** Values for `{name}` tokens in item titles/notes. `run` is bound to runName automatically. */
