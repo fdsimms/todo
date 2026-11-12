@@ -511,6 +511,21 @@ describe('setVacationMode', () => {
     expect(state.vacationEnd).toBeNull();
   });
 
+  it('clears a scheduled start when switched on, by hand or by its day arriving', () => {
+    useSettingsStore.getState().setVacationScheduledStart('2025-07-01T12:00:00.000Z');
+    expect(useSettingsStore.getState().vacationScheduledStart).toBe('2025-07-01T12:00:00.000Z');
+    useSettingsStore.getState().setVacationMode(true);
+    expect(useSettingsStore.getState().vacationScheduledStart).toBeNull();
+  });
+
+  it('restores a stored vacationScheduledStart on initialize', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'vacationScheduledStart' ? '2025-08-01T12:00:00.000Z' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().vacationScheduledStart).toBe('2025-08-01T12:00:00.000Z');
+  });
+
   it('restores a stored vacationEnd on initialize', () => {
     (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
       key === 'vacationEnd' ? '2025-08-01T23:59:59.999Z' : null,

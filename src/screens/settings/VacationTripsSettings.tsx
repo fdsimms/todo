@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, TouchableOpacity } from 'react-native';
+import { View, TouchableOpacity, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -25,6 +25,8 @@ export function VacationTripsSettings() {
   const setVacationMode = useSettingsStore(s => s.setVacationMode);
   const vacationStart = useSettingsStore(s => s.vacationStart);
   const vacationEnd = useSettingsStore(s => s.vacationEnd);
+  const vacationScheduledStart = useSettingsStore(s => s.vacationScheduledStart);
+  const setVacationScheduledStart = useSettingsStore(s => s.setVacationScheduledStart);
   const destinationForecastEnabled = useSettingsStore(s => s.destinationForecastEnabled);
   const setDestinationForecastEnabled = useSettingsStore(s => s.setDestinationForecastEnabled);
   const setVacationEnd = useSettingsStore(s => s.setVacationEnd);
@@ -35,6 +37,7 @@ export function VacationTripsSettings() {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
+  const [showVacationStartPicker, setShowVacationStartPicker] = useState(false);
 
   return (
     <>
@@ -50,12 +53,16 @@ export function VacationTripsSettings() {
       {(!simpleMode || vacationMode) && (
       <SettingsSection
         label="Vacation"
-        footer={`${vacationMode && vacationStart ? `On since ${format(new Date(vacationStart), 'MMM d')}. ` : ''}While on, tasks set to pause on vacation are hidden and their streaks are protected.`}
+        footer={`${vacationMode && vacationStart
+          ? `On since ${format(new Date(vacationStart), 'MMM d')}. `
+          : !vacationMode && vacationScheduledStart
+            ? `Turns on ${format(new Date(vacationScheduledStart), 'MMM d')}${vacationEnd ? ` and off ${format(new Date(vacationEnd), 'MMM d')}` : ''}. `
+            : ''}While on, tasks set to pause on vacation are hidden and their streaks are protected.`}
       explain={{
         title: 'How vacation mode works',
         paragraphs: [
           'While on, tasks with “Vacation pause” turned on are hidden everywhere and their streaks are protected. Tasks in categories set to “Hide on vacation” are hidden too.',
-          'Turning it off, manually or on the end date, forgives streaks.',
+          'Set a start date to turn it on by itself that day. Turning it off, manually or on the end date, forgives streaks.',
         ],
       }}
       >
@@ -70,7 +77,8 @@ export function VacationTripsSettings() {
               forgivVacationStreaks();
               setVacationMode(false);
             } else {
-              setVacationMode(true);
+              // Keeps an end date already chosen while it was off.
+              setVacationMode(true, vacationEnd);
             }
             // Any calendar in vacationHiddenCalendarIds joins or leaves the
             // read right on the toggle, rather than waiting on the next
@@ -78,7 +86,35 @@ export function VacationTripsSettings() {
             void useCalendarStore.getState().refresh();
           }}
         />
-        {vacationMode && (
+        {!vacationMode && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="vacationStart"
+              icon="play-outline"
+              label="Start date"
+              hint={vacationScheduledStart
+                ? 'Turns on automatically on this day'
+                : 'Optional. Turns on automatically on this day'}
+              value={vacationScheduledStart ? format(new Date(vacationScheduledStart), 'MMM d, yyyy') : 'None'}
+              onPress={() => setShowVacationStartPicker(true)}
+              accessibilityLabel="Vacation start date"
+              trailing={vacationScheduledStart ? (
+                <TouchableOpacity
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => setVacationScheduledStart(null)}
+                  hitSlop={8}
+                  style={{ marginLeft: spacing.xs }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear vacation start date"
+                >
+                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              ) : undefined}
+            />
+          </>
+        )}
+        {(vacationMode || vacationScheduledStart) && (
           <>
             <View style={styles.sep} />
             <SettingsRow
@@ -142,7 +178,15 @@ export function VacationTripsSettings() {
         showTimeOfDay={false}
         showSuggest={false}
         onConfirm={date => {
-          setVacationEnd(date ? getTaskDayStart(date).toISOString() : null);
+          const end = date ? getTaskDayStart(date) : null;
+          // The same refusal the pass would otherwise act on silently: an end
+          // before the start would drop the vacation the day it begins.
+          if (end && !vacationMode && vacationScheduledStart && end < getTaskDayStart(new Date(vacationScheduledStart))) {
+            setShowVacationEndPicker(false);
+            Alert.alert('End date is before the start date', 'Pick an end date on or after the start date.');
+            return;
+          }
+          setVacationEnd(end ? end.toISOString() : null);
           setShowVacationEndPicker(false);
         }}
         onClear={() => {
@@ -150,6 +194,28 @@ export function VacationTripsSettings() {
           setShowVacationEndPicker(false);
         }}
         onCancel={() => setShowVacationEndPicker(false)}
+      />
+      <WhenPicker
+        visible={showVacationStartPicker}
+        value={vacationScheduledStart ? new Date(vacationScheduledStart) : null}
+        title="Vacation start date"
+        showTimeOfDay={false}
+        showSuggest={false}
+        allowPast={false}
+        onConfirm={date => {
+          const start = date ? getTaskDayStart(date) : null;
+          setShowVacationStartPicker(false);
+          if (start && vacationEnd && getTaskDayStart(new Date(vacationEnd)) < start) {
+            Alert.alert('Start date is after the end date', 'Pick a start date on or before the end date, or change the end date first.');
+            return;
+          }
+          setVacationScheduledStart(start ? start.toISOString() : null);
+        }}
+        onClear={() => {
+          setVacationScheduledStart(null);
+          setShowVacationStartPicker(false);
+        }}
+        onCancel={() => setShowVacationStartPicker(false)}
       />
     </>
   );

@@ -161,10 +161,11 @@ const GEAR_ICONS: Record<WeatherCondition, React.ComponentProps<typeof Ionicons>
 };
 
 /**
- * Bottom sheet for applying a template: answer whatever it asks, pick an
- * optional anchor date, toggle which items to include (optional items start
- * unchecked, including whole nested-template blocks; a conditioned one starts
- * on what the answers say), then create them all as real tasks.
+ * Bottom sheet for applying a template, in two screens. First what the run is
+ * about: answer whatever it asks, pick the anchor dates. Then which items to
+ * include (optional items start unchecked, including whole nested-template
+ * blocks; a conditioned one starts on what the answers say), then create them
+ * all as real tasks. A template with nothing to ask opens on the items.
  */
 export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, projectId, asProject = false, onApplied, initialAnchors, initialRunName, extraPersonIds }: Props) {
   // ==== store bindings and the template tree ====
@@ -218,6 +219,10 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   // number question keeps following the anchor dates as they're picked, which
   // is the whole point of asking a trip's length by asking its dates.
   const [typedAnswers, setTypedAnswers] = useState<Record<string, string>>({});
+  // Which screen of the run is showing: what it's about (name, questions,
+  // blanks, dates), then which items to create. A template with nothing to ask
+  // skips the first (`onItems` below).
+  const [step, setStep] = useState<'details' | 'items'>('details');
   const anchors: TemplateAnchors = { start: startAnchor, end: endAnchor };
 
   const questions = useMemo(() => questionsForTree(tree, templatesById), [tree, templatesById]);
@@ -324,6 +329,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
       setPlanning(false);
       setPlaceholderValues({});
       setTypedAnswers({});
+      setStep('details');
       sheet.show();
     }
   }, [visible, template]);
@@ -340,6 +346,20 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     // fresh object every render and would re-run this on every keystroke.
     setSelectedIds(prev => reselectForAnswers(tree, questions, answers, prev, gearTicks));
   }, [answersKey, visible, tree, gearTicksKey]);
+
+  // Picking or clearing a date hands a date-driven number back to the dates,
+  // so a length typed before the dates were picked (the form is filled top to
+  // bottom) can't outlive them. Typing after the dates still wins.
+  const anchorsKey = `${startAnchor?.getTime() ?? ''}|${endAnchor?.getTime() ?? ''}`;
+  useEffect(() => {
+    setTypedAnswers(prev => {
+      const stale = questions.filter(q => q.kind === 'number' && q.fromDates !== 'none' && q.id in prev);
+      if (stale.length === 0) return prev;
+      const next = { ...prev };
+      for (const q of stale) delete next[q.id];
+      return next;
+    });
+  }, [anchorsKey]);
 
   // ==== exits and gestures: dismiss, open the template, the calendar, swipe-down ====
   const dismiss = (onDismissed?: () => void) => {
@@ -445,6 +465,11 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
       && (i.dueOffsetDays !== null || i.deferOffsetDays !== null)));
   const anchorless = missingAnchors.length > 0;
   const canApply = selectedCount > 0 && !anchorless;
+  const allSelected = flatLeaves.length > 0 && selectedCount === flatLeaves.length;
+  const toggleAll = () => {
+    haptics.tap();
+    setSelectedIds(allSelected ? new Set() : new Set(flatLeaves.map(l => l.item.id)));
+  };
 
   // A date row is asked for only when something reads it: an item counting days
   // from that anchor, a number question worked out from the two dates, or the
@@ -478,12 +503,22 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   const containerUpgraded = !asProject && container !== template.applyContainer;
   // Nothing to name when the run has no container and no `{run}` to fill.
   const showRunField = container !== 'none' || declaresRunPlaceholder(selectedLeafItems);
+  // Everything judged over the whole tree, so a template either has a details
+  // screen or doesn't, and ticking items can't add or remove it.
+  const hasDetails = showRunField || placeholderNames.length > 0 || visibleQuestions.length > 0 || showStartRow || showEndRow;
+  const onItems = !hasDetails || step === 'items';
+  // On the items screen an unset date sends the button back to the details
+  // (`handleApply`), so it stays live there instead of reading as dead.
+  const applyDisabled = onItems && !canApply && !(anchorless && hasDetails);
 
   const values = { ...placeholderValues, ...answerValues, [RUN_PLACEHOLDER]: runName.trim() };
   // A project is created only for a named run whose container is a project.
   const createsProject = container === 'project' && runName.trim() !== '';
 
   const handleApply = () => {
+    // A date an item needs is set on the details screen, so the button
+    // goes back there rather than sitting dead.
+    if (anchorless && hasDetails) { haptics.tap(); setStep('details'); return; }
     if (!canApply) return;
     haptics.success();
     const flatSelection = expandSelectionWithAncestors(tree, selectedIds);
@@ -495,6 +530,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
       asProject,
       planning: createsProject && planning,
       personIds: [...new Set([...(extraPersonIds ?? []), ...personIdsForAnswers(questions, answers)])],
+      registerUndo: true,
     });
     // Waits for the sheet to be fully gone — a caller opening the task editor
     // straight off this callback would stack two Modals mid-animation, the
@@ -654,8 +690,18 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
 
         <View style={styles.card}>
           <View style={styles.titleRow}>
-            <Text style={styles.sheetTitle} numberOfLines={2}>{template.name}</Text>
-            {!onTemplateScreen && (
+            {onItems && hasDetails && (
+              <InlineAction
+                label="Back"
+                icon="chevron-back"
+                variant="neutral"
+                surface="card"
+                onPress={() => setStep('details')}
+                accessibilityLabel="Back to details"
+              />
+            )}
+            <Text style={styles.sheetTitle} numberOfLines={2}>{onItems && hasDetails ? 'Choose items' : template.name}</Text>
+            {!onItems && !onTemplateScreen && (
               <InlineAction
                 label="Edit template"
                 icon="create-outline"
@@ -667,9 +713,27 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
             )}
           </View>
 
+          {/* The count and select-all stay put above the list, so they're
+              reachable from any row of a long checklist. */}
+          {onItems && (
+            <>
+              <View style={styles.selectRow}>
+                <Text style={styles.selectCount}>{selectedCount} of {flatLeaves.length} selected</Text>
+                <InlineAction
+                  label={allSelected ? 'Deselect all' : 'Select all'}
+                  variant="neutral"
+                  surface="card"
+                  onPress={toggleAll}
+                />
+              </View>
+              <View style={styles.inlineSep} />
+            </>
+          )}
+
           {/* Title and the Add button stay put; everything between scrolls, so
               a template with many questions can still reach its checklist. */}
           <ScrollView style={styles.body} bounces={false} keyboardShouldPersistTaps="handled">
+          {!onItems && (<>
           {/* What this run is about — the one field that carries the context
               the item titles leave out. Optional: blank means loose, unnamed
               tasks, exactly as before it existed. */}
@@ -784,14 +848,16 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
             />
           )}
 
-          {(showStartRow || showEndRow) && <View style={styles.inlineSep} />}
+          </>)}
 
           {/* Item checklist, including any nested templates' items indented beneath their ref row */}
-          <View>
-            {renderApplyTreeNodes(tree, 0)}
-          </View>
+          {onItems && (
+            <View>
+              {renderApplyTreeNodes(tree, 0)}
+            </View>
+          )}
 
-          {anchorless && (
+          {onItems && anchorless && (
             <Text style={styles.anchorlessHint}>
               Some tasks count days from {missingAnchors.map(anchorName).join(' and ')}, which isn’t set yet.
             </Text>
@@ -799,19 +865,21 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
           </ScrollView>
 
           <TouchableOpacity
-            style={[styles.applyBtn, !canApply && styles.applyBtnDisabled]}
-            onPress={handleApply}
-            disabled={!canApply}
+            style={[styles.applyBtn, applyDisabled && styles.applyBtnDisabled]}
+            onPress={onItems ? handleApply : () => { haptics.tap(); Keyboard.dismiss(); setStep('items'); }}
+            disabled={applyDisabled}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
-            accessibilityState={{ disabled: !canApply }}
+            accessibilityState={{ disabled: applyDisabled }}
           >
-            <Text style={[styles.applyBtnText, !canApply && styles.applyBtnTextDisabled]}>
-              {selectedCount === 0
-                ? 'No tasks selected'
-                : anchorless
-                  ? `Set ${missingAnchors.map(anchorName).join(' and ')} first`
-                  : `Add ${selectedCount} task${selectedCount === 1 ? '' : 's'}`}
+            <Text style={[styles.applyBtnText, applyDisabled && styles.applyBtnTextDisabled]}>
+              {!onItems
+                ? 'Next: choose items'
+                : selectedCount === 0
+                  ? 'No tasks selected'
+                  : anchorless
+                    ? `Set ${missingAnchors.map(anchorName).join(' and ')} first`
+                    : `Add ${selectedCount} task${selectedCount === 1 ? '' : 's'}`}
             </Text>
           </TouchableOpacity>
         </View>
@@ -996,6 +1064,17 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   },
   // The title takes the row and the action keeps its own width, so a long
   // template name wraps rather than pushing the button off the card.
+  selectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  selectCount: {
+    color: colors.textSecondary,
+    fontSize: font.md,
+  },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
