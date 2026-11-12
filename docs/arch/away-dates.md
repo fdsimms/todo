@@ -814,3 +814,9 @@ afterwards the way a user would.
 *(The `createProject` signature and the sweep/arm ordering were both here and
 are now resolved — see "createProject takes an options object" below, and the
 ordering bullet under "Scheduled vacation mode".)*
+
+---
+
+## A start date set by hand
+
+Settings, Vacation has a Start date beside End date (`vacationScheduledStart`). It is not a project's span and does not touch `vacationDrivenBy`: `checkScheduledVacation` runs right after `checkAwayVacation` in both pass lists and calls `setVacationMode(true, vacationEnd)` on the start day, which also clears the start. A trip's own switch-on is never overwritten, and a vacation switched on any other way clears a pending start. A span that passed entirely while the app was closed is dropped rather than started. Turning vacation off by hand never re-arms, because the start is gone once it has fired.

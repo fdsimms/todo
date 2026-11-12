@@ -810,6 +810,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'vacationMode',
   'vacationStart',
   'vacationEnd',
+  'vacationScheduledStart',
   'vacationEndedAt',
   // Which trip switched it on, so a peer doesn't read a mode it can see as one
   // nobody owns and turn it off. Rides with the three above for the same
