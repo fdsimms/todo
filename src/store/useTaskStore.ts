@@ -2786,6 +2786,7 @@ interface TaskStore extends UndoHistoryActions {
    * shipped — see this action's own doc for the four rules it holds to.
    */
   checkAwayVacation: () => void;
+  checkScheduledVacation: () => void;
   resetAllStreaks: () => void;
   bulkCompleteTasks: (ids: string[]) => void;
   bulkUncompleteTasks: (ids: string[]) => void;
@@ -12019,6 +12020,33 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (vacationDrivenBy === driver.id && vacationEnd !== driver.awayEnd) {
       settings.setVacationEnd(driver.awayEnd);
     }
+  },
+
+  /**
+   * Switch vacation mode on once the day set in Settings (`vacationScheduledStart`)
+   * arrives. The "on" half only, like checkAwayVacation: checkVacationExpiry
+   * turns it off at `vacationEnd`. Run straight after checkAwayVacation, so a
+   * project's trip that already switched the mode on is not overwritten.
+   */
+  checkScheduledVacation() {
+    const settings = useSettingsStore.getState();
+    const { vacationMode, vacationEnd, vacationScheduledStart } = settings;
+    if (!vacationScheduledStart) return;
+    // Already on (by hand, or a trip's): nothing left to schedule.
+    if (vacationMode) {
+      settings.setVacationScheduledStart(null);
+      return;
+    }
+    const today = getCurrentDayStart();
+    if (today < getTaskDayStart(new Date(vacationScheduledStart))) return;
+    // The whole span passed while the app was closed: dropped, not started
+    // only to be turned off by the next expiry pass.
+    if (vacationEnd && today >= getTaskDayStart(new Date(vacationEnd))) {
+      settings.setVacationScheduledStart(null);
+      settings.setVacationEnd(null);
+      return;
+    }
+    settings.setVacationMode(true, vacationEnd);
   },
 
   resetAllStreaks() {

@@ -21,11 +21,17 @@ const mockAddTask = jest.fn();
 const mockUpdateTask = jest.fn();
 const mockAddSubtask = jest.fn();
 const mockGroupTasks = jest.fn();
+const mockSetLastAction = jest.fn();
+const mockDeleteTask = jest.fn();
+const mockRestoreTasks = jest.fn();
 // Rows already in the task store, for a scheduled run's reuse of a derived id.
 let mockExistingTasks: Array<{ id: string; title: string }> = [];
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: {
-    getState: () => ({ tasks: mockExistingTasks, addTask: mockAddTask, addSubtask: mockAddSubtask, groupTasks: mockGroupTasks, updateTask: mockUpdateTask }),
+    getState: () => ({
+      tasks: mockExistingTasks, undoStack: [], addTask: mockAddTask, addSubtask: mockAddSubtask, groupTasks: mockGroupTasks,
+      updateTask: mockUpdateTask, setLastAction: mockSetLastAction, deleteTask: mockDeleteTask, restoreTasks: mockRestoreTasks,
+    }),
   },
 }));
 
@@ -36,20 +42,26 @@ jest.mock('../store/useUnattendedStore', () => ({
 
 const mockCreateGroup = jest.fn();
 const mockUpdateGroup = jest.fn();
+const mockRemoveGroupRow = jest.fn();
+const mockRestoreGroup = jest.fn();
 jest.mock('../store/useTaskGroupStore', () => ({
-  useTaskGroupStore: { getState: () => ({ createGroup: mockCreateGroup, updateGroup: mockUpdateGroup, getGroupById: () => null }) },
+  useTaskGroupStore: { getState: () => ({ createGroup: mockCreateGroup, updateGroup: mockUpdateGroup, getGroupById: () => null, removeGroupRow: mockRemoveGroupRow, restoreGroup: mockRestoreGroup }) },
 }));
 
 import { awayNoonIso } from '../utils/awayDates';
 
 const mockCreateProject = jest.fn();
 const mockUpdateProject = jest.fn();
+const mockRemoveProjectRow = jest.fn();
+const mockRestoreProject = jest.fn();
 let mockTargetProject: { id: string; awayStart: string | null; deadline: string | null } | null = null;
 jest.mock('../store/useProjectStore', () => ({
   useProjectStore: {
     getState: () => ({
       createProject: mockCreateProject,
       updateProject: mockUpdateProject,
+      removeProjectRow: mockRemoveProjectRow,
+      restoreProject: mockRestoreProject,
       getProjectById: (id: string) => (mockTargetProject?.id === id ? mockTargetProject : null),
     }),
   },
@@ -297,6 +309,52 @@ describe('applyTemplate', () => {
     expect(mockAddTask).toHaveBeenCalledTimes(2);
     expect(created).toHaveLength(2);
     expect(mockAddTask.mock.calls.map(([d]) => d.title)).toEqual(['Pack', 'Trash']);
+  });
+
+  describe('undo', () => {
+    const twoItems = () => useTemplateStore.setState({
+      templates: [makeTemplate({
+        applyContainer: 'stack',
+        items: [makeItem({ id: 'a', title: 'Pack', subtasks: [{ id: 's', title: 'Socks' }] }), makeItem({ id: 'b', title: 'Trash' })],
+      })],
+    });
+    const run = (registerUndo?: boolean) =>
+      useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a', 'b']), { start: null, end: null }, { runName: 'Trip', registerUndo });
+
+    it('files nothing unless asked, so a scheduled run never arms shake-to-undo', () => {
+      twoItems();
+      run();
+      expect(mockSetLastAction).not.toHaveBeenCalled();
+    });
+
+    it('files one entry that deletes the tasks, subtasks and stack the run made', () => {
+      twoItems();
+      mockExistingTasks = [
+        { id: 'task-Pack', title: 'Pack' }, { id: 'task-Trash', title: 'Trash' },
+        { id: 'sub-Socks', title: 'Socks', parentId: 'task-Pack' },
+        { id: 'other', title: 'Unrelated' },
+      ] as never;
+      run(true);
+      expect(mockSetLastAction).toHaveBeenCalledTimes(1);
+      const entry = mockSetLastAction.mock.calls[0][0];
+      expect(entry.label).toBe('Template applied');
+      entry.undo();
+      expect(mockDeleteTask.mock.calls.map(c => c[0]).sort()).toEqual(['sub-Socks', 'task-Pack', 'task-Trash']);
+      expect(mockRemoveGroupRow).toHaveBeenCalledWith('group-Trip');
+      mockExistingTasks = [];
+    });
+
+    it('puts the rows back on redo', () => {
+      twoItems();
+      mockExistingTasks = [{ id: 'task-Pack', title: 'Pack' }, { id: 'task-Trash', title: 'Trash' }] as never;
+      run(true);
+      const entry = mockSetLastAction.mock.calls[0][0];
+      entry.undo();
+      entry.redo();
+      expect(mockRestoreGroup).toHaveBeenCalledWith(expect.objectContaining({ id: 'group-Trip' }));
+      expect(mockRestoreTasks.mock.calls[0][0].map((t: { id: string }) => t.id).sort()).toEqual(['task-Pack', 'task-Trash']);
+      mockExistingTasks = [];
+    });
   });
 
   it('runs its writes inside a single db transaction', () => {

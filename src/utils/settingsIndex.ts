@@ -864,6 +864,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['window', 'delete'], simple: true },
   { id: 'vacationMode', groupId: 'dayTime', label: 'Vacation mode', section: 'Vacation',
     keywords: ['holiday', 'pause', 'away', 'streaks'], simple: true },
+  { id: 'vacationStart', groupId: 'dayTime', label: 'Start date', section: 'Vacation',
+    keywords: ['vacation start', 'schedule', 'scheduled vacation', 'leave', 'trip'], simple: true },
   { id: 'vacationEnd', requires: 'vacationMode', groupId: 'dayTime', label: 'End date', section: 'Vacation',
     keywords: ['vacation end', 'return'], simple: true },
   // Settings that live only on their own screen, found here by search and

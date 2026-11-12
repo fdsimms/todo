@@ -503,6 +503,14 @@ interface SettingsStore {
   vacationMode: boolean;
   vacationStart: string | null;
   vacationEnd: string | null; // optional ISO date — vacation mode auto-turns-off once this passes
+  /**
+   * A day vacation mode is set to turn itself on, or null. Cleared once it has
+   * fired and when vacation mode is switched on any other way, so it only ever
+   * describes a vacation that hasn't started. `vacationEnd` may be set beside it
+   * while the mode is still off: the pass that fires this hands it on.
+   * See checkScheduledVacation in useTaskStore.
+   */
+  vacationScheduledStart: string | null;
   // When vacation mode last turned off (ISO instant). State, not a preference:
   // the morning check-in skips tasks whose day fell before it, since vacation
   // hid them and nobody could have done them. Null until a vacation has ended.
@@ -2367,6 +2375,7 @@ interface SettingsStore {
   setJournalLockEnabled: (on: boolean) => void;
   setVacationMode: (on: boolean, endDate?: string | null) => void;
   setVacationEnd: (endDate: string | null) => void;
+  setVacationScheduledStart: (startDate: string | null) => void;
   setVacationDrivenBy: (projectId: string | null) => void;
   setActiveListDrivenBy: (projectId: string | null) => void;
   setDestinationForecastEnabled: (on: boolean) => void;
@@ -3229,6 +3238,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   vacationMode: false,
   vacationStart: null,
   vacationEnd: null,
+  vacationScheduledStart: null,
   vacationEndedAt: null,
   vacationDrivenBy: null,
   activeListDrivenBy: null,
@@ -3645,6 +3655,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
+    const vacationScheduledStart = dbGetSetting('vacationScheduledStart') || null;
     const vacationEndedAt = dbGetSetting('vacationEndedAt') || null;
     const vacationDrivenBy = dbGetSetting('vacationDrivenBy') || null;
     const activeListDrivenBy = dbGetSetting('activeListDrivenBy') || null;
@@ -4624,6 +4635,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       vacationEndedAt,
       vacationHiddenCalendarIds,
       vacationMode,
+      vacationScheduledStart,
       vacationStart,
       waitingFollowUpTaskCategory,
       waitingFollowUpTasks,
@@ -4936,7 +4948,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       dbSetSetting('vacationMode', 'true');
       dbSetSetting('vacationStart', start);
       dbSetSetting('vacationEnd', end ?? '');
-      set({ vacationMode: true, vacationStart: start, vacationEnd: end });
+      // Switched on, by hand or by the scheduled day arriving: either way
+      // there is no vacation left to schedule.
+      dbSetSetting('vacationScheduledStart', '');
+      set({ vacationMode: true, vacationStart: start, vacationEnd: end, vacationScheduledStart: null });
     } else {
       // Stamped only on an actual on-to-off change, so a redundant off call
       // (a peer's sync, an expiry check) can't push the end later.
@@ -4951,6 +4966,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setVacationEnd(endDate: string | null) {
     dbSetSetting('vacationEnd', endDate ?? '');
     set({ vacationEnd: endDate });
+  },
+
+  setVacationScheduledStart(startDate: string | null) {
+    dbSetSetting('vacationScheduledStart', startDate ?? '');
+    set({ vacationScheduledStart: startDate });
   },
 
   setDestinationForecastEnabled(on: boolean) {

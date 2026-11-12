@@ -99,6 +99,9 @@ export function catchUpPasses(): MaintenanceStep[] {
     // one trip ending and another starting on the same day has to resolve in
     // that order, or the arm is undone by the pass that follows it.
     ['check away vacation', () => tasks().checkAwayVacation()],
+    // And the start day set in Settings, after the trip's so a trip's own
+    // switch-on is never overwritten.
+    ['check scheduled vacation', () => tasks().checkScheduledVacation()],
     // And put the screen on that trip's shopping list, or take it off again now
     // it is over. Straight after the pass above because they read the same span
     // and are the same shape; separate opt-ins because a trip that pauses your
