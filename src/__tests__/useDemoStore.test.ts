@@ -1416,6 +1416,9 @@ describe('demo mode', () => {
     expect(choice.multiple).toBe(true);
     expect(asking.questions.some(q => q.kind === 'choice' && q.showForecast)).toBe(true);
 
+    // And an item that decides its own tick from that forecast.
+    expect(asking.items.some(i => i.rainGear === true)).toBe(true);
+
     // And a people question — no name to fill a blank with, no options, no
     // default: normalizeTemplateQuestion forces all three empty for this kind.
     const who = asking.questions.find(q => q.kind === 'people')!;

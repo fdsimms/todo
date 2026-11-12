@@ -96,6 +96,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     slotIn: raw.slotIn ?? null,
     pinEachOccurrence: raw.pinEachOccurrence ?? false,
     medicationChecklist: raw.medicationChecklist ?? false,
+    rainGear: raw.rainGear === true,
     penaltyMinutes: raw.penaltyMinutes ?? null,
     penaltyCutoffTime: raw.penaltyCutoffTime ?? null,
     gatesApps: raw.gatesApps ?? false,

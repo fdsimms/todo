@@ -402,6 +402,46 @@ describe('initialLeafSelection', () => {
     const { tree: t } = treeOf([outer, nested], 'outer');
     expect(initialLeafSelection(t, questions, { 'q-type': 'Work' })).toEqual(new Set());
   });
+
+  describe('rain gear', () => {
+    // Optional on purpose: rain gear replaces `optional`, as conditions do.
+    const umbrella = makeItem({ id: 'umbrella', rainGear: true, optional: true });
+    const { tree: rainTree } = treeOf([makeTemplate({ items: [socks, umbrella], questions })], 'tpl');
+
+    it('starts ticked when the forecast says to, whatever optional says', () => {
+      expect(initialLeafSelection(rainTree, questions, {}, true)).toEqual(new Set(['socks', 'umbrella']));
+    });
+
+    it('starts unticked only when the forecast says it is dry', () => {
+      expect(initialLeafSelection(rainTree, questions, {}, false)).toEqual(new Set(['socks']));
+    });
+
+    it('is ticked by default, which is what a caller with no forecast gets', () => {
+      expect(initialLeafSelection(rainTree, questions, {})).toEqual(new Set(['socks', 'umbrella']));
+    });
+
+    it('still needs its conditions to match', () => {
+      const conditioned = makeItem({
+        id: 'poncho',
+        rainGear: true,
+        conditions: [{ questionId: 'q-type', values: ['Outdoors'] }],
+      });
+      const { tree: t } = treeOf([makeTemplate({ items: [conditioned], questions })], 'tpl');
+      expect(initialLeafSelection(t, questions, { 'q-type': 'Work' }, true)).toEqual(new Set());
+      expect(initialLeafSelection(t, questions, { 'q-type': 'Outdoors' }, true)).toEqual(new Set(['poncho']));
+      expect(initialLeafSelection(t, questions, { 'q-type': 'Outdoors' }, false)).toEqual(new Set());
+    });
+
+    it('is suppressed under an optional nested-template block like everything else', () => {
+      const inner = makeTemplate({ id: 'inner', items: [umbrella], questions });
+      const outer = makeTemplate({
+        id: 'outer',
+        items: [makeItem({ id: 'ref', optional: true, refTemplateId: 'inner', refTemplateName: 'Rain kit' })],
+      });
+      const { tree: t } = treeOf([outer, inner], 'outer');
+      expect(initialLeafSelection(t, questions, {}, true)).toEqual(new Set());
+    });
+  });
 });
 
 describe('reselectForAnswers', () => {
@@ -423,6 +463,16 @@ describe('reselectForAnswers', () => {
   it('keeps a hand-ticked item that no question governs', () => {
     const picked = new Set(['snorkel']);
     expect(reselectForAnswers(tree, questions, { 'q-type': 'Work' }, picked).has('snorkel')).toBe(true);
+  });
+
+  it('re-decides a rain gear item when the forecast settles, and leaves the rest alone', () => {
+    const umbrella = makeItem({ id: 'umbrella', rainGear: true });
+    const { tree: t } = treeOf([makeTemplate({ items: [umbrella, snorkel], questions })], 'tpl');
+    const start = new Set(['umbrella', 'snorkel']);
+    const dry = reselectForAnswers(t, questions, {}, start, false);
+    expect(dry.has('umbrella')).toBe(false);
+    expect(dry.has('snorkel')).toBe(true);
+    expect(reselectForAnswers(t, questions, {}, dry, true).has('umbrella')).toBe(true);
   });
 });
 

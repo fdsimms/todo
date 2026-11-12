@@ -383,6 +383,21 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'rain_gear',
+    title: 'Rain gear in a packing template',
+    benefit: 'An item marked as rain gear starts checked when rain or snow is in the destination forecast for the trip, or when there is no forecast to check, and says why on the row. It starts unchecked only when the forecast covers the whole trip and has none. It uses the destination forecast setting.',
+    since: '2026-11-12',
+    advanced: true,
+    evidence: ({ replica }) => {
+      const wet = /umbrella|rain ?(coat|jacket|boots|gear)|poncho|waterproof/i;
+      const unmarked = replica.templates().flatMap(t =>
+        t.items.filter(i => i.refTemplateId === null && !i.rainGear && wet.test(i.title)).map(i => `"${i.title}" in "${t.name}"`));
+      return unmarked.length > 0
+        ? `${unmarked.slice(0, 3).join(', ')} ${unmarked.length === 1 ? 'is' : 'are'} not marked as rain gear.`
+        : null;
+    },
+  },
+  {
     id: 'bounty',
     title: 'Bounty on a task you keep putting off',
     benefit: 'A bounty pays extra coins when a task is done and shrinks each time it is moved to a later day. It is turned on in the task editor, one at a time.',

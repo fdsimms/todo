@@ -31,6 +31,8 @@ import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { rainGearVerdict } from '../utils/tripForecast';
 import { awaySpanOf, awayNights } from '../utils/awayDates';
 import { useDestinationForecast, type DestinationForecastLines } from '../hooks/useDestinationForecast';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
@@ -220,17 +222,18 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   // The forecast line under a question that asks for it ("What's the weather
   // like?"). Where: the project this lands in, else a `{destination}` blank
   // the run answers. When: the two dates picked above, else that project's
-  // away span. It only states the forecast, and answers nothing (see
-  // TemplateQuestion.showForecast). Nothing is fetched unless a question asks.
-  const wantsForecast = visibleQuestions.some(q => q.showForecast);
+  // away span. The line only states the forecast, and answers nothing (see
+  // TemplateQuestion.showForecast). Nothing is fetched unless a question asks
+  // or an item is rain gear, which decides its own tick from it below.
+  const hasRainGear = useMemo(() => flattenApplyTree(tree).some(l => l.item.rainGear === true), [tree]);
+  const wantsForecast = visibleQuestions.some(q => q.showForecast) || hasRainGear;
+  const forecastEnabled = useSettingsStore(s => s.destinationForecastEnabled);
   const destinationBlank = placeholderKey('destination');
   const typedDestination = (
     placeholderValuesFor(questions, answers)[destinationBlank] ?? placeholderValues[destinationBlank] ?? ''
   ).trim();
-  const forecastPlace = useDebouncedValue(
-    wantsForecast ? (targetProject?.destination?.trim() || typedDestination || null) : null,
-    600,
-  );
+  const placeNow = wantsForecast ? (targetProject?.destination?.trim() || typedDestination || null) : null;
+  const forecastPlace = useDebouncedValue(placeNow, 600);
   const targetSpan = targetProject ? awaySpanOf(targetProject) : null;
   const forecastStart = startAnchor ?? targetSpan?.start ?? null;
   const forecastEnd = endAnchor ?? (startAnchor ? null : targetSpan?.end ? addDays(targetSpan.end, -1) : null);
@@ -240,6 +243,17 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     forecastStart ? dayKeyOf(forecastEnd ?? forecastStart) : null,
     forecastStart && forecastEnd ? differenceInCalendarDays(forecastEnd, forecastStart) : null,
   );
+  // Whether rain gear items start ticked, and the line each shows saying why.
+  // A place still being typed counts as loading, so the row doesn't flash "no
+  // forecast was found" for a destination that hasn't been asked about yet.
+  const rain = rainGearVerdict({
+    enabled: forecastEnabled,
+    hasPlace: placeNow !== null,
+    hasDates: forecastStart !== null,
+    loading: forecast.loading || placeNow !== forecastPlace,
+    forecast: forecast.summary,
+    spanDays: forecastStart ? differenceInCalendarDays(forecastEnd ?? forecastStart, forecastStart) + 1 : null,
+  });
 
   const sheet = useSheetMotion(visible);
   const { translateY, backdropOpacity } = sheet;
@@ -291,14 +305,15 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   // Re-decide the conditioned items whenever an answer moves — including when
   // it moves because the dates did. Items with no conditions are left exactly
   // as ticked (see reselectForAnswers), so answering a question late never
-  // undoes the extra thing you added by hand.
+  // undoes the extra thing you added by hand. Rain gear items are re-decided
+  // when the forecast settles them, by the same rule.
   const answersKey = JSON.stringify(answers);
   useEffect(() => {
     if (!visible || !template) return;
     // Keyed on the serialization rather than on `answers` itself, which is a
     // fresh object every render and would re-run this on every keystroke.
-    setSelectedIds(prev => reselectForAnswers(tree, questions, answers, prev));
-  }, [answersKey, visible, tree]);
+    setSelectedIds(prev => reselectForAnswers(tree, questions, answers, prev, rain.tick));
+  }, [answersKey, visible, tree, rain.tick]);
 
   // ==== exits and gestures: dismiss, open the template, the calendar, swipe-down ====
   const dismiss = (onDismissed?: () => void) => {
@@ -539,6 +554,11 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
     // Shown substituted so the checklist is a live preview of the titles that
     // will actually be created, blanks and all.
     const title = substitutePlaceholders(applyItemVariant(node.item, answers).title, values);
+    // Why a rain gear item started the way it did. Only while the row is still
+    // on that default: once it's been changed by hand (or held off by a
+    // condition), "ticked because rain is forecast" would describe a row that
+    // isn't ticked.
+    const whyRain = node.item.rainGear === true && checked === rain.tick ? rain.note : null;
     return (
       <TouchableOpacity
         style={[styles.itemRow, indent]}
@@ -546,6 +566,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="checkbox"
         accessibilityLabel={title}
+        accessibilityHint={whyRain ?? undefined}
         accessibilityState={{ checked }}
       >
         <Ionicons
@@ -558,6 +579,12 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
             {title}
           </Text>
           {sublabel && <Text style={styles.itemSub} numberOfLines={1}>{sublabel}</Text>}
+          {whyRain && (
+            <View style={styles.itemWhy}>
+              <Ionicons name="rainy-outline" size={13} color={colors.textSecondary} style={styles.itemWhyIcon} />
+              <Text style={styles.itemWhyText}>{whyRain}</Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -1078,6 +1105,16 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
   itemSub: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  // The reason a rain gear item started ticked or unticked. textSecondary, not
+  // the sublabel's tertiary: it says why the row is the way it is.
+  itemWhy: { flexDirection: 'row', alignItems: 'flex-start', gap: 5, marginTop: 1 },
+  itemWhyIcon: { marginTop: 2 },
+  itemWhyText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    lineHeight: lineHeight.xs,
   },
   inlineSep: {
     height: border.hairline,

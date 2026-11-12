@@ -6,6 +6,7 @@ import {
   describeForecastGap,
   describeTripForecast,
   summarizeTripForecast,
+  type TripForecast,
 } from '../utils/tripForecast';
 
 export interface DestinationForecastLines {
@@ -13,7 +14,13 @@ export interface DestinationForecastLines {
   line: string | null;
   /** The caveat for a forecast that stops short of the span, or null. */
   gap: string | null;
+  /** The reading behind the line, for a caller that decides something from it (`rainGearVerdict`). Null whenever `line` is. */
+  summary: TripForecast | null;
+  /** A request is in flight. False once it has answered, or when nothing is being asked. */
+  loading: boolean;
 }
+
+const NO_FORECAST: DestinationForecastLines = { line: null, gap: null, summary: null, loading: false };
 
 /**
  * The destination forecast sentence for a span of days, fetched on mount and
@@ -47,26 +54,38 @@ export function useDestinationForecast(
 ): DestinationForecastLines {
   const onPlaceRef = useRef(onPlace);
   onPlaceRef.current = onPlace;
-  const [lines, setLines] = useState<DestinationForecastLines>({ line: null, gap: null });
+  const [lines, setLines] = useState<DestinationForecastLines>(NO_FORECAST);
   const enabled = useSettingsStore(s => s.destinationForecastEnabled);
   const unitSystem = useSettingsStore(s => s.unitSystem);
 
   useEffect(() => {
-    setLines({ line: null, gap: null });
     const place = destination?.trim();
-    if (!enabled || !place || !startKey || !endKey) return;
+    if (!enabled || !place || !startKey || !endKey) {
+      setLines(NO_FORECAST);
+      return;
+    }
+    setLines({ ...NO_FORECAST, loading: true });
     let live = true;
     void (async () => {
-      const found = await geocodePlace(place);
-      if (!live || !found) return;
-      if (destination) onPlaceRef.current?.(found, destination);
-      const days = await fetchDestinationForecast(found, startKey, endKey);
-      if (!live || !days) return;
-      const summary = summarizeTripForecast(days);
-      setLines({
-        line: describeTripForecast(summary, found.name, unitSystem === 'metric'),
-        gap: describeForecastGap(summary, spanDays),
-      });
+      // Every way out of a request that is still wanted ends the loading state,
+      // so a caller waiting on it never waits on an answer that is not coming.
+      const settle = (next: DestinationForecastLines) => { if (live) setLines(next); };
+      try {
+        const found = await geocodePlace(place);
+        if (!live || !found) return settle(NO_FORECAST);
+        if (destination) onPlaceRef.current?.(found, destination);
+        const days = await fetchDestinationForecast(found, startKey, endKey);
+        if (!live || !days) return settle(NO_FORECAST);
+        const summary = summarizeTripForecast(days);
+        settle({
+          line: describeTripForecast(summary, found.name, unitSystem === 'metric'),
+          gap: describeForecastGap(summary, spanDays),
+          summary,
+          loading: false,
+        });
+      } catch {
+        settle(NO_FORECAST);
+      }
     })();
     return () => { live = false; };
   }, [enabled, destination, startKey, endKey, spanDays, unitSystem]);

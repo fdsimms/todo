@@ -2,7 +2,9 @@ import type { ForecastDay } from '../services/weatherLookup';
 import {
   describeForecastGap,
   describeTripForecast,
+  rainGearVerdict,
   summarizeTripForecast,
+  type RainGearInputs,
 } from '../utils/tripForecast';
 
 const day = (over: Partial<ForecastDay> = {}): ForecastDay => ({
@@ -110,5 +112,77 @@ describe('describeForecastGap', () => {
     // Open-Meteo forecasts about a fortnight out, so a trip further away is
     // answered in part and the reader has to be told which part.
     expect(describeForecastGap(f, 9)).toBe('Forecast reaches the first 5 of 9 days.');
+  });
+});
+
+describe('rainGearVerdict', () => {
+  const forecast = (codes: number[]) => summarizeTripForecast(codes.map(weatherCode => day({ weatherCode })));
+  const ask = (over: Partial<RainGearInputs> = {}): ReturnType<typeof rainGearVerdict> =>
+    rainGearVerdict({
+      enabled: true,
+      hasPlace: true,
+      hasDates: true,
+      loading: false,
+      forecast: forecast([0, 0, 0]),
+      spanDays: 3,
+      ...over,
+    });
+
+  it('ticks, and says how many days have rain', () => {
+    expect(ask({ forecast: forecast([0, 61, 0, 63, 0, 0, 0]), spanDays: 7 })).toEqual({
+      tick: true,
+      note: 'Ticked because rain is forecast on 2 of 7 days.',
+    });
+  });
+
+  it('says every day when all of them are wet', () => {
+    expect(ask({ forecast: forecast([61, 63]), spanDays: 2 }).note).toBe('Ticked because rain is forecast every day.');
+  });
+
+  it('names snow, and both when a trip has each', () => {
+    expect(ask({ forecast: forecast([71, 0, 0]) }).note).toBe('Ticked because snow is forecast on 1 of 3 days.');
+    expect(ask({ forecast: forecast([71, 61, 0]) }).note).toBe('Ticked because rain or snow is forecast on 2 of 3 days.');
+  });
+
+  it('counts only the days the forecast reached when rain is in a partial forecast', () => {
+    expect(ask({ forecast: forecast([61, 0, 0]), spanDays: 9 }).note).toBe(
+      'Ticked because rain is forecast on 1 of the first 3 days.',
+    );
+  });
+
+  it('starts unticked only when the forecast covers every day and none is wet', () => {
+    expect(ask()).toEqual({ tick: false, note: 'Not ticked because no rain or snow is forecast for these dates.' });
+  });
+
+  it('stays ticked when a dry forecast stops short of the trip', () => {
+    expect(ask({ spanDays: 9 })).toEqual({
+      tick: true,
+      note: 'Ticked in case it rains. The forecast covers only the first 3 of 9 days.',
+    });
+  });
+
+  it('stays ticked while the forecast is on its way', () => {
+    expect(ask({ loading: true, forecast: null })).toEqual({ tick: true, note: 'Checking the forecast for rain.' });
+  });
+
+  describe('with no forecast, it is ticked and says what is missing', () => {
+    const none = { forecast: null, spanDays: null };
+    it('the setting is off', () => {
+      expect(ask({ ...none, enabled: false }).note).toBe(
+        'Ticked in case it rains. Turn on Destination forecast in Settings to check.',
+      );
+    });
+    it('there is no destination', () => {
+      expect(ask({ ...none, hasPlace: false }).note).toBe('Ticked in case it rains. Add a destination to check the forecast.');
+    });
+    it('there are no dates', () => {
+      expect(ask({ ...none, hasDates: false }).note).toBe('Ticked in case it rains. Pick dates to check the forecast.');
+    });
+    it('everything is set and nothing came back', () => {
+      expect(ask({ ...none, spanDays: 3 })).toEqual({
+        tick: true,
+        note: 'Ticked in case it rains. No forecast was found for these dates.',
+      });
+    });
   });
 });

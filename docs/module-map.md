@@ -692,7 +692,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/travelModeWrite.ts` — setTravelModeForEvent, setArriveEarlyForEvent
 - `src/utils/travelTasks.ts` — TRAVEL_LEAD_MINUTES_DEFAULT, TRAVEL_LEAD_MINUTES_MIN, TRAVEL_LEAD_MINUTES_MAX, TRAVEL_LEAD_MINUTES_STEP, LEAVE_WINDOW_MINUTES_DEFAULT, LEAVE_WINDOW_MINUTES_MIN, LEAVE_WINDOW_MINUTES_MAX, LEAVE_WINDOW_MINUTES_STEP, describeLeaveWindow, clampLeaveWindowMinutes, +64 more
 - `src/utils/tripEvents.ts` — spansDays, tripSpanOf, awayFieldsFromEvent, DESTINATION_MAX_LENGTH, destinationFromEvent, projectForTripEvent
-- `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
+- `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, RainGearInputs, RainGearVerdict, rainGearVerdict, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
 - `src/utils/twoPane.ts` — TWO_PANE_MIN_WINDOW_WIDTH, TWO_PANE_LIST_WIDTH, TWO_PANE_LIST_MAX_WIDTH, twoPaneListWidthFor, TWO_PANE_ROUTES, twoPaneFor, nextLayoutHold, floatingLayerInsetFor, columnUncappedFor
 - `src/utils/unattendedLedger.ts` — UnattendedActionSpec, UNATTENDED_ACTION_SPECS, AGENT_SOURCE, unattendedIcon, unattendedSource, describeUnattendedEntry, UnattendedDay, unattendedDays, unattendedDayLabel, unattendedSummary, +5 more

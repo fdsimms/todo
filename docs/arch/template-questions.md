@@ -163,6 +163,31 @@ only rows that did not exist before the apply, because a derived id the other de
 wrote comes back from `applyTemplate` too and is that device's entry. Subtasks are not listed, so a
 template that writes dozens of them does not bury the one line that says it ran.
 
+## Rain gear
+
+`TemplateItem.rainGear` marks an item (an umbrella, a rain coat) whose starting tick follows the
+destination forecast. `rainGearVerdict` (`tripForecast.ts`) returns both the tick and the sentence
+the row shows under the item, so they cannot disagree.
+
+- **Ticked unless the forecast says dry.** Ticked when rain or snow is forecast, and also when the
+  forecast cannot be checked: the setting is off, no destination, no dates, nothing came back, a trip
+  past the forecast's reach, or only part of the trip covered. Unticked only when the forecast reached
+  every day of the run and none has rain or snow. Forgetting a coat costs more than carrying one, so
+  silence never leaves it behind. Snow counts as wet, so a snowy forecast is never read as dry.
+- **It replaces `optional`, as conditions do.** Its own conditions, if it has any, still have to match
+  (`initialLeafSelection`). A caller with no forecast to consult (a scheduled run, the MCP) passes
+  nothing and gets it ticked.
+- **The row says why, and only while the row is still on that default.** Once someone ticks or unticks
+  it by hand, or a condition holds it off, "Ticked because rain is forecast" would describe a row that
+  isn't, so the line is dropped. Every way it can't check has its own wording, so a flag that does
+  nothing never does it silently.
+- **A forecast that settles later re-decides it** (`reselectForAnswers`, keyed on the verdict's tick),
+  the way an answer re-decides a conditioned item. A tick set by hand before that is replaced once.
+- **It asks for the forecast itself.** The apply sheet requests it when any item is rain gear, not
+  only when a question has `showForecast`, through the same hook and the same
+  `destinationForecastEnabled` switch. No new call.
+- **Still a sentence elsewhere.** `showForecast` and the project page's line never tick anything.
+
 ## An item that becomes your medicines
 
 `TemplateItem.medicationChecklist` makes a run add one subtask per medicine you currently take, after

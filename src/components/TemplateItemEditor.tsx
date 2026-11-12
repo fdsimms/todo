@@ -246,6 +246,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const readableTitle = useMemo(() => describePlaceholderTokens(title), [title]);
   const [notes, setNotes] = useState('');
   const [optional, setOptional] = useState(false);
+  const [rainGear, setRainGear] = useState(false);
   const [conditions, setConditions] = useState<TemplateItemCondition[]>([]);
   const [conditionsMatch, setConditionsMatch] = useState<'all' | 'any'>('all');
   const [variants, setVariants] = useState<TemplateItemVariant[]>([]);
@@ -378,6 +379,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setTitle(item?.title ?? draft?.title ?? '');
     setNotes(item?.notes ?? draft?.notes ?? '');
     setOptional(item?.optional ?? draft?.optional ?? false);
+    setRainGear(item?.rainGear ?? draft?.rainGear ?? false);
     setConditions(item?.conditions ?? draft?.conditions ?? []);
     setConditionsMatch(item?.conditionsMatch ?? 'all');
     setVariants(item?.variants ?? draft?.variants ?? []);
@@ -693,6 +695,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       title: resolvePendingTitle(title.trim()),
       notes,
       optional,
+      rainGear,
       conditions,
       conditionsMatch,
       variants,
@@ -1234,6 +1237,27 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <Text style={styles.optionHint}>Starts unchecked when the template is applied, so it’s skipped by default</Text>
           </View>
           <Toggle value={optional} />
+        </TouchableOpacity>
+        <View style={styles.sep} />
+        {/* Its own tick rule, replacing Optional's: the apply sheet checks the
+            destination forecast and says on the row why it started the way it
+            did (`rainGearVerdict`). */}
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setRainGear(!rainGear); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Rain gear"
+          accessibilityState={{ checked: rainGear }}
+        >
+          <Ionicons name="rainy-outline" size={18} color={rainGear ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Rain gear</Text>
+            <Text style={styles.optionHint}>
+              Starts checked if rain or snow is forecast for the trip, or if the forecast can’t be checked. Starts unchecked only when the forecast covers the whole trip and has none. Used instead of Optional.
+            </Text>
+          </View>
+          <Toggle value={rainGear} />
         </TouchableOpacity>
       </View>
 

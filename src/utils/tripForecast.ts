@@ -9,12 +9,20 @@ import type { ForecastDay } from '../services/weatherLookup';
  * is the tested half. Same split `weatherCondition.ts` makes beside
  * `weatherLookup.ts`, and for the same reason.
  *
- * **It is a sentence, and a sentence may only state.** `lookAhead`'s own rule,
- * one feature over. This never conditions a packing item, never ticks anything,
- * and never becomes a rule a task can match: a ten-day-out forecast is not
- * something to stake "pack a coat" on, and the reader drawing their own
+ * **The forecast line is a sentence, and a sentence may only state.**
+ * `lookAhead`'s own rule, one feature over. `describeTripForecast` never ticks
+ * anything and never becomes a rule a task can match: a ten-day-out forecast is
+ * not something to stake "pack a coat" on, and the reader drawing their own
  * conclusion from a plain range is both more useful and more honest than the
  * app drawing it for them.
+ *
+ * **The one exception is `rainGearVerdict`, and it is built so the cost of being
+ * wrong stays small.** A template item marked as rain gear starts ticked in the
+ * apply sheet when the forecast has rain or snow, and also whenever the forecast
+ * cannot say (off, no place, no dates, too far out, only part of the trip). It
+ * starts unticked only when the forecast covers every day and none has rain or
+ * snow. It only sets where the item *starts*, the row always says why, and the
+ * person can tick it either way. It still never claims a trip is clear.
  *
  * **It never says a trip will be fine.** A span the forecast does not reach
  * says nothing about those days rather than implying they are unremarkable,
@@ -99,6 +107,65 @@ export function describeTripForecast(
   else if (low >= (metric ? toC(HOT_THRESHOLD_F) : HOT_THRESHOLD_F)) parts.push('hot throughout');
 
   return parts.join(', ');
+}
+
+/** What `rainGearVerdict` is told about the forecast it was able (or unable) to get. */
+export interface RainGearInputs {
+  /** The Destination forecast setting. */
+  enabled: boolean;
+  /** A destination to ask about: the project's, or the run's `{destination}`. */
+  hasPlace: boolean;
+  /** At least a start date to ask for. */
+  hasDates: boolean;
+  /** A request is still in flight. */
+  loading: boolean;
+  forecast: TripForecast | null;
+  /** Days the run covers with both ends counted, or null with no dates. */
+  spanDays: number | null;
+}
+
+export interface RainGearVerdict {
+  /** Whether a rain gear item starts ticked. */
+  tick: boolean;
+  /** Why, in a sentence the row shows under the item. */
+  note: string;
+}
+
+/**
+ * Whether an item marked as rain gear starts ticked, and the sentence that says
+ * why. One function for both, so the tick and the line under it cannot disagree.
+ *
+ * Ticked unless the forecast reached every day of the run and none has rain or
+ * snow. Anything it could not check leaves the item ticked: forgetting a coat
+ * costs more than carrying one. Snow counts as wet here, so a snowy forecast
+ * never reads as dry. The wording follows `describeTripForecast`: it counts the
+ * days the forecast reached and does not describe the ones it could not see.
+ */
+export function rainGearVerdict(input: RainGearInputs): RainGearVerdict {
+  const inCase = 'Ticked in case it rains.';
+  if (input.loading) return { tick: true, note: 'Checking the forecast for rain.' };
+
+  const f = input.forecast;
+  if (!f) {
+    if (!input.enabled) return { tick: true, note: `${inCase} Turn on Destination forecast in Settings to check.` };
+    if (!input.hasPlace) return { tick: true, note: `${inCase} Add a destination to check the forecast.` };
+    if (!input.hasDates) return { tick: true, note: `${inCase} Pick dates to check the forecast.` };
+    return { tick: true, note: `${inCase} No forecast was found for these dates.` };
+  }
+
+  const reachedAll = input.spanDays !== null && f.dayCount >= input.spanDays;
+  const wetDays = f.rainDays + f.snowDays;
+  if (wetDays > 0) {
+    const what = f.rainDays > 0 && f.snowDays > 0 ? 'rain or snow' : f.snowDays > 0 ? 'snow' : 'rain';
+    // The count is of days the forecast reached, so a partial answer says "the first N".
+    const days = reachedAll || input.spanDays === null ? `${f.dayCount}` : `the first ${f.dayCount}`;
+    const spoken = reachedAll && wetDays >= f.dayCount ? `${what} is forecast every day.` : `${what} is forecast on ${wetDays} of ${days} day${f.dayCount === 1 ? '' : 's'}.`;
+    return { tick: true, note: `Ticked because ${spoken}` };
+  }
+
+  if (reachedAll) return { tick: false, note: 'Not ticked because no rain or snow is forecast for these dates.' };
+  const of = input.spanDays === null ? '' : ` of ${input.spanDays}`;
+  return { tick: true, note: `${inCase} The forecast covers only the first ${f.dayCount}${of} days.` };
 }
 
 /** "rain on 2 of 7 days", or "rain every day" when it is all of them. */
