@@ -1108,7 +1108,7 @@ asked for in so many words (`newCategory: true`), and is created inside the writ
 `quick_add` does not go through `taskPatch`, so it asks the same question of the task a line would
 create (`categoryForDraft`, which also counts the new-task default) and sends a line with no answer
 back as a problem row. The settings that file things under a name (`limitsTodayCategory`,
-`newTaskDefaults.category`) are checked the same way, and `rewardListProjectId` against the real
+`groceryUseUpTaskCategory`, `leftoverUseUpTaskCategory`, `newTaskDefaults.category`) are checked the same way, and `rewardListProjectId` against the real
 projects, before anything is stored.
 `list_categories` is what the model chooses from, with a few open tasks per category so it can
 judge what belongs where. A checklist item is exempt: it has no section of its own.

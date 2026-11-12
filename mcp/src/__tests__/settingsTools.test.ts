@@ -68,6 +68,14 @@ describe('settings', () => {
       expect(replica.settingValues().limitsTodayCategory).toBe('Home');
     });
 
+    it('files use-up tasks under a real category, in the spelling it was made in', () => {
+      updateSettings(replica, { groceryUseUpTaskCategory: 'HOME', leftoverUseUpTaskCategory: 'home', groceryUseUpTasks: true });
+      expect(replica.settingValues()).toMatchObject({ groceryUseUpTaskCategory: 'Home', leftoverUseUpTaskCategory: 'Home', groceryUseUpTasks: true });
+      expect(() => updateSettings(replica, { groceryUseUpTaskCategory: 'Bogus' })).toThrow(/groceryUseUpTaskCategory/);
+      updateSettings(replica, { groceryUseUpTaskCategory: null });
+      expect(replica.settingValues().groceryUseUpTaskCategory).toBeNull();
+    });
+
     it('refuses a wish-list project that does not exist, whole call included', () => {
       updateSettings(replica, { weekStartsOn: 1 });
       expect(() => updateSettings(replica, { weekStartsOn: 0, rewardListProjectId: 'nope' })).toThrow(/no project with id "nope"/);
