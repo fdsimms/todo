@@ -21,11 +21,23 @@
  */
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { startOfDay } from 'date-fns/startOfDay';
-import type { TaskTemplate, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateQuestion } from '../types';
+import type { TaskTemplate, TemplateItem, TemplateItemCondition, TemplateItemVariant, TemplateQuestion, WeatherCondition } from '../types';
 import type { ApplyTreeNode, TemplateAnchors } from './templateUtils';
 import { placeholderKey, answerValues, encodeAnswerValues } from './templateUtils';
 
 export { answerValues, encodeAnswerValues };
+
+/**
+ * Whether the forecast says each kind of weather's gear starts ticked, as
+ * `weatherGearVerdict` decided it. A condition left out counts as ticked, which
+ * is what a caller with no forecast to consult (a scheduled run, the MCP) gets.
+ */
+export type WeatherGearTicks = Partial<Record<WeatherCondition, boolean>>;
+
+/** Whether an item's weather gear rule leaves it ticked: always, unless the forecast says that weather is absent. */
+function gearTicks(item: TemplateItem, ticks: WeatherGearTicks): boolean {
+  return !item.weatherGear || ticks[item.weatherGear] !== false;
+}
 
 /**
  * Every question asked by a run of this tree, in the order it should be shown:
@@ -321,11 +333,19 @@ export function itemMatchesAnswers(
  * nested-template block still suppresses everything under it: its items answer
  * to their own template's questions, and "this whole block is off unless I say
  * so" is the more specific statement about them.
+ *
+ * **A weather gear item (`TemplateItem.weatherGear`) is decided by `ticks`**
+ * (`weatherGearVerdict`), replacing `optional` the way conditions do: unticked
+ * only when the forecast says that weather is absent, ticked otherwise. Its
+ * conditions, if it has any, still have to match. With no `ticks` it is ticked,
+ * which is what a caller with no forecast to consult (a scheduled run, the MCP)
+ * gets: forgetting a coat costs more than carrying one.
  */
 export function initialLeafSelection(
   nodes: ApplyTreeNode[],
   questions: readonly TemplateQuestion[],
   answers: Record<string, string>,
+  ticks: WeatherGearTicks = {},
 ): Set<string> {
   const selected = new Set<string>();
   const visit = (node: ApplyTreeNode, ancestorOptional: boolean) => {
@@ -335,9 +355,10 @@ export function initialLeafSelection(
       return;
     }
     const conditioned = liveConditions(node.item.conditions, questions).length > 0;
-    const included = conditioned
-      ? itemMatchesAnswers(node.item, questions, answers) && !ancestorOptional
-      : !node.item.optional && !ancestorOptional;
+    const base = conditioned
+      ? itemMatchesAnswers(node.item, questions, answers)
+      : !!node.item.weatherGear || !node.item.optional;
+    const included = base && !ancestorOptional && gearTicks(node.item, ticks);
     if (included) selected.add(node.item.id);
   };
   nodes.forEach(node => visit(node, false));
@@ -354,12 +375,17 @@ export function initialLeafSelection(
  * answers stop working as soon as you touch anything. Items with no conditions
  * are never touched, so ticking one extra thing on is safe whatever gets
  * answered afterwards.
+ *
+ * Weather gear items are re-decided the same way, by `ticks`, so a forecast
+ * that arrives or changes (new dates, a new destination) settles them like an
+ * answer does.
  */
 export function reselectForAnswers(
   nodes: ApplyTreeNode[],
   questions: readonly TemplateQuestion[],
   answers: Record<string, string>,
   previous: ReadonlySet<string>,
+  ticks: WeatherGearTicks = {},
 ): Set<string> {
   const selected = new Set(previous);
   const visit = (node: ApplyTreeNode, ancestorOptional: boolean) => {
@@ -368,8 +394,10 @@ export function reselectForAnswers(
       node.children.forEach(child => visit(child, ancestorOptional || node.item.optional));
       return;
     }
-    if (liveConditions(node.item.conditions, questions).length === 0) return;
-    const included = itemMatchesAnswers(node.item, questions, answers) && !ancestorOptional;
+    const conditioned = liveConditions(node.item.conditions, questions).length > 0;
+    if (!conditioned && !node.item.weatherGear) return;
+    const matches = !conditioned || itemMatchesAnswers(node.item, questions, answers);
+    const included = matches && !ancestorOptional && gearTicks(node.item, ticks);
     if (included) selected.add(node.item.id);
     else selected.delete(node.item.id);
   };

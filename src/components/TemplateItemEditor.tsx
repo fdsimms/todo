@@ -123,7 +123,7 @@ const MEDICATION_NAME_MAX_LENGTH = 60;
 /** Matches TaskEditor's own cap on the completion timer's note. */
 const COMPLETION_TIMER_NOTE_MAX_LENGTH = 120;
 
-type FieldKey = 'blanks' | 'conditions' | 'variants' | 'answerGate' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location' | 'weatherWait' | 'target' | 'phone' | 'email' | 'waitsOn' | 'slotIn';
+type FieldKey = 'blanks' | 'conditions' | 'variants' | 'answerGate' | 'category' | 'tags' | 'priority' | 'effort' | 'difficulty' | 'subtasks' | 'chainSteps' | 'rotationSet' | 'deliverable' | 'completionTimer' | 'penalty' | 'medication' | 'logMealSlot' | 'link' | 'location' | 'weatherWait' | 'target' | 'phone' | 'email' | 'waitsOn' | 'slotIn' | 'weatherGear';
 
 interface Props {
   visible: boolean;
@@ -246,6 +246,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const readableTitle = useMemo(() => describePlaceholderTokens(title), [title]);
   const [notes, setNotes] = useState('');
   const [optional, setOptional] = useState(false);
+  const [weatherGear, setWeatherGear] = useState<WeatherCondition | null>(null);
   const [conditions, setConditions] = useState<TemplateItemCondition[]>([]);
   const [conditionsMatch, setConditionsMatch] = useState<'all' | 'any'>('all');
   const [variants, setVariants] = useState<TemplateItemVariant[]>([]);
@@ -378,6 +379,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setTitle(item?.title ?? draft?.title ?? '');
     setNotes(item?.notes ?? draft?.notes ?? '');
     setOptional(item?.optional ?? draft?.optional ?? false);
+    setWeatherGear(item?.weatherGear ?? draft?.weatherGear ?? null);
     setConditions(item?.conditions ?? draft?.conditions ?? []);
     setConditionsMatch(item?.conditionsMatch ?? 'all');
     setVariants(item?.variants ?? draft?.variants ?? []);
@@ -693,6 +695,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       title: resolvePendingTitle(title.trim()),
       notes,
       optional,
+      weatherGear,
       conditions,
       conditionsMatch,
       variants,
@@ -1235,6 +1238,28 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           </View>
           <Toggle value={optional} />
         </TouchableOpacity>
+      </View>
+
+      {/* Its own tick rule, used instead of Optional's: the apply sheet checks the
+          destination forecast and says on the row why the item started the way
+          it did (`weatherGearVerdict`). Tapping the chosen segment again turns it
+          off, the way Wait for weather does. */}
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Weather gear"
+          summary={weatherGear ? weatherConditionLabel(weatherGear) : undefined}
+          emptySummary="Off"
+          hint="Starts checked if the forecast has this weather during the trip, or can’t be checked. Starts unchecked only when the forecast covers the whole trip and has none. Used instead of Optional."
+          expanded={fieldOpen('weatherGear')}
+          onToggle={() => toggleField('weatherGear')}
+        >
+          <SegmentedControl
+            label="Bring it for a trip that has"
+            value={weatherGear}
+            onChange={next => setWeatherGear(next === weatherGear ? null : next)}
+            options={WEATHER_CONDITIONS.map(c => ({ value: c, label: weatherConditionLabel(c) }))}
+          />
+        </CollapsibleField>
       </View>
 
       {/* Subtasks, under the title and the run's questions about it, the way

@@ -6,7 +6,7 @@
 import { canRampQuota } from './quotaRamp';
 import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import { canWaitForWeather } from './weatherCondition';
+import { canWaitForWeather, isWeatherCondition } from './weatherCondition';
 import { startOfDay } from 'date-fns/startOfDay';
 import type {
   TemplateAnswerGate,
@@ -96,6 +96,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     slotIn: raw.slotIn ?? null,
     pinEachOccurrence: raw.pinEachOccurrence ?? false,
     medicationChecklist: raw.medicationChecklist ?? false,
+    weatherGear: isWeatherCondition(raw.weatherGear) ? raw.weatherGear : null,
     penaltyMinutes: raw.penaltyMinutes ?? null,
     penaltyCutoffTime: raw.penaltyCutoffTime ?? null,
     gatesApps: raw.gatesApps ?? false,

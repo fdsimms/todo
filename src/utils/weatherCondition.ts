@@ -118,6 +118,13 @@ export function weatherConditionNoun(weatherCode: number): string {
   return 'Clouds';
 }
 
+const WEATHER_CONDITION_SET: ReadonlySet<string> = new Set(['sunny', 'rainy', 'snowy', 'cold', 'hot']);
+
+/** Whether a stored value is one of the five conditions, for a reader that must not trust what it parsed. */
+export function isWeatherCondition(value: unknown): value is WeatherCondition {
+  return typeof value === 'string' && WEATHER_CONDITION_SET.has(value);
+}
+
 /**
  * Whether a task is one this feature may act on: a plain one-off. A repeating
  * task, a chain step or a member of a series has a schedule of its own, and a

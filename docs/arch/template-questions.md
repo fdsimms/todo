@@ -163,6 +163,36 @@ only rows that did not exist before the apply, because a derived id the other de
 wrote comes back from `applyTemplate` too and is that device's entry. Subtasks are not listed, so a
 template that writes dozens of them does not bury the one line that says it ran.
 
+## Weather gear
+
+`TemplateItem.weatherGear` (one of `WeatherCondition`: sunny, rainy, snowy, cold, hot) marks an item
+(an umbrella, a warm coat, sunscreen) whose starting tick follows the destination forecast.
+`weatherGearVerdict` (`tripForecast.ts`) returns both the tick and the sentence the row shows under
+the item, so they cannot disagree.
+
+- **Ticked unless the forecast says that weather is absent.** Ticked when the forecast has it, and
+  also when the forecast cannot be checked: the setting is off, no destination, no dates, nothing came
+  back, a trip past the forecast's reach, or only part of the trip covered. Unticked only when the
+  forecast reached every day of the run and none has it. Forgetting a coat costs more than carrying
+  one, so silence never leaves it behind.
+- **What counts as a day with that weather.** Rainy counts rain *and* snow, so a snowy forecast is
+  never read as dry; snowy is snow only; sunny is a clear or mainly clear sky; cold and hot go by the
+  day's high against 45°F and 85°F, the same thresholds the forecast line uses, and the row names the
+  threshold ("highs of 45°F or below") so the reason is checkable.
+- **It replaces `optional`, as conditions do.** Its own conditions, if it has any, still have to match
+  (`initialLeafSelection`). A caller with no forecast to consult (a scheduled run, the MCP) passes no
+  ticks and gets it ticked.
+- **The row says why, and only while the row is still on that default.** Once someone ticks or unticks
+  it by hand, or a condition holds it off, "Ticked because rain is forecast" would describe a row that
+  isn't, so the line is dropped. Every way it can't check has its own wording, so a field that is
+  shown never silently does nothing.
+- **A forecast that settles later re-decides it** (`reselectForAnswers`, keyed on the ticks), the way
+  an answer re-decides a conditioned item. A tick set by hand before that is replaced once.
+- **It asks for the forecast itself.** The apply sheet requests it when any item has a `weatherGear`,
+  not only when a question has `showForecast`, through the same hook and the same
+  `destinationForecastEnabled` switch. No new call.
+- **Still a sentence elsewhere.** `showForecast` and the project page's line never tick anything.
+
 ## An item that becomes your medicines
 
 `TemplateItem.medicationChecklist` makes a run add one subtask per medicine you currently take, after

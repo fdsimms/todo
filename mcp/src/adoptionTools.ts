@@ -383,6 +383,31 @@ export const ADOPTION_CHECKS: readonly AdoptionCheck[] = [
     },
   },
   {
+    id: 'weather_gear',
+    title: 'Weather gear in a packing template',
+    benefit: 'An item marked with a kind of weather (an umbrella for rainy, a warm coat for cold) starts checked when the destination forecast has that weather during the trip, or when there is no forecast to check, and says why on the row. It starts unchecked only when the forecast covers the whole trip and has none. It uses the destination forecast setting.',
+    since: '2026-11-12',
+    advanced: true,
+    evidence: ({ replica }) => {
+      const gear: [RegExp, string][] = [
+        [/umbrella|rain ?(coat|jacket|boots|gear)|poncho|waterproof/i, 'rainy'],
+        [/snow ?(boots|pants|gear)|ski (jacket|pants)/i, 'snowy'],
+        [/sunscreen|sun ?(hat|block)|sunglasses/i, 'sunny'],
+        [/(warm|winter|heavy) (coat|jacket)|gloves|scarf|beanie|thermal/i, 'cold'],
+      ];
+      const unmarked = replica.templates().flatMap(t =>
+        t.items
+          .filter(i => i.refTemplateId === null && !i.weatherGear)
+          .flatMap(i => {
+            const match = gear.find(([pattern]) => pattern.test(i.title));
+            return match ? [`"${i.title}" in "${t.name}" (${match[1]})`] : [];
+          }));
+      return unmarked.length > 0
+        ? `${unmarked.slice(0, 3).join(', ')} ${unmarked.length === 1 ? 'is' : 'are'} not marked with a kind of weather.`
+        : null;
+    },
+  },
+  {
     id: 'bounty',
     title: 'Bounty on a task you keep putting off',
     benefit: 'A bounty pays extra coins when a task is done and shrinks each time it is moved to a later day. It is turned on in the task editor, one at a time.',
