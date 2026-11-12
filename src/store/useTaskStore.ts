@@ -570,13 +570,22 @@ import {
   UndoHistoryActions,
   undoHistoryActions,
 } from '../utils/undoHistory';
-import { isOpenEnded } from '../utils/listMode';
+import { isOpenEnded, listItemFinder } from '../utils/listMode';
 import { payProjectBonus, takeBackProjectBonus } from '../utils/projectBonus';
 import { describeReschedule } from '../utils/rescheduleLabel';
 import { timedPart } from '../utils/perfLog';
 import { mergeTaskDelta } from '../utils/taskDeltaReload';
 import { keepUnchanged } from '../utils/structuralSharing';
 import { reloadReaches, syncReloadScope, type ReloadPart, type SyncReloadScope } from '../utils/syncReloadScope';
+
+/**
+ * `taskEarnsCoins` with the list rule filled in from the live stacks and
+ * projects: an item on a list (a packing list, a wish list) earns nothing.
+ */
+function earnsCoins(task: Task): boolean {
+  const isListItem = listItemFinder(useTaskGroupStore.getState().groups, useProjectStore.getState().projects)(task);
+  return taskEarnsCoins(task, isListItem);
+}
 
 
 /**
@@ -4792,7 +4801,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // run on its own, which nobody did, so it moves nothing either way. The
     // streak read is the one this completion just wrote, so the occurrence
     // that reaches a bonus step is the first to be paid it.
-    if (!neutral && taskEarnsCoins(task)) {
+    if (!neutral && earnsCoins(task)) {
       const rewards = useRewardStore.getState();
       const label = displayTitleFor(task);
       // Declining an offer is not failing a task, so a block offer costs nothing to miss.
@@ -5764,7 +5773,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Paid per tap (Task.coinsPerTap): this tap's share of the base coins now,
     // the rest at the completion. The tap that reaches the target took the
     // branch above, so this is never the completing one.
-    if (task.coinsPerTap && taskEarnsCoins(task) && updated.targetCount) {
+    if (task.coinsPerTap && earnsCoins(task) && updated.targetCount) {
       useRewardStore.getState().recordTap(
         id, updated.progressCount, coinsForTap(task, updated.progressCount, updated.targetCount), displayTitleFor(task),
       );
