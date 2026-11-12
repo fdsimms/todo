@@ -1,11 +1,11 @@
 import {
-  nameTier, termRanges, searchPeople, searchElsewhere, quickElsewhere, leadingElsewhere, describeElsewhere, sectionPreview,
+  nameTier, termRanges, searchPeople, searchElsewhere, quickElsewhere, leadingElsewhere, describeElsewhere, sectionPreview, allElsewhere,
   QUICK_ELSEWHERE_LIMIT, type ElsewhereSources,
 } from '../utils/searchElsewhere';
 import { menuDestinations, type NavMenuOptions } from '../utils/navHubs';
 import { visibleSettingsEntries, settingsGroup } from '../utils/settingsIndex';
 import { groceryNameKey } from '../utils/groceryParse';
-import type { GroceryItem, Person, Recipe } from '../types';
+import type { GroceryItem, JournalEntry, MoodLog, Person, Recipe } from '../types';
 
 // rankRecipes reaches the settings store through mealPlan.ts → dateUtils.ts,
 // which nothing here needs. Same mock as recipeUtils.test.ts.
@@ -45,6 +45,8 @@ function sources(extra: Partial<ElsewhereSources> = {}): ElsewhereSources {
     recipes: [],
     groceryItems: [],
     onListIds: new Set(),
+    journalEntries: [],
+    moodLogs: [],
     now: new Date(2026, 9, 3, 12),
     ...extra,
   };
@@ -52,6 +54,16 @@ function sources(extra: Partial<ElsewhereSources> = {}): ElsewhereSources {
 
 const screenRoutes = (query: string, src = sources()) =>
   searchElsewhere(src, query).goTo.filter(r => r.kind === 'screen').map(r => r.kind === 'screen' ? r.destination.route : '');
+
+function entry(id: string, text: string, extra: Partial<JournalEntry> = {}): JournalEntry {
+  return { id, kind: 'journal', loggedAt: '2026-10-02T09:00:00', dayKey: '2026-10-02', text, ...extra };
+}
+
+function moodLog(id: string, note: string | null, extra: Partial<MoodLog> = {}): MoodLog {
+  return {
+    id, loggedAt: '2026-10-01T20:00:00', dayKey: '2026-10-01', mood: 3, symptoms: [], contextTags: [], change: null, note, ...extra,
+  };
+}
 
 describe('nameTier', () => {
   it('ranks a title the query starts ahead of a word it starts, ahead of a substring', () => {
@@ -94,7 +106,7 @@ describe('searchPeople', () => {
 describe('searchElsewhere', () => {
   it('finds nothing for an empty query', () => {
     const empty = searchElsewhere(sources({ people: [person('a', 'Ann')] }), '   ');
-    expect(empty).toEqual({ goTo: [], people: [], recipes: [], groceries: [] });
+    expect(empty).toEqual({ goTo: [], people: [], recipes: [], groceries: [], diary: [] });
   });
 
   it('finds a hub member by name, naming its hub', () => {
@@ -205,5 +217,51 @@ describe('sectionPreview', () => {
     expect(sectionPreview(rows, false, 5)).toEqual({ shown: [1, 2, 3, 4, 5], hidden: 2 });
     expect(sectionPreview(rows, true, 5)).toEqual({ shown: rows, hidden: 0 });
     expect(sectionPreview([1, 2], false, 5)).toEqual({ shown: [1, 2], hidden: 0 });
+  });
+});
+
+describe('journal and mood notes', () => {
+  const src = sources({
+    journalEntries: [
+      entry('old', 'A long walk by the river', { loggedAt: '2026-09-01T09:00:00', dayKey: '2026-09-01' }),
+      entry('dream', 'I was walking on the moon', { kind: 'dream' }),
+      entry('quiet', 'Nothing about exercise'),
+    ],
+    moodLogs: [moodLog('m', 'Slow walk home'), moodLog('bare', null)],
+  });
+
+  it('finds entries and mood notes holding every word, newest first, each as its own kind', () => {
+    const { diary } = searchElsewhere(src, 'walk');
+    expect(diary.map(r => r.key)).toEqual(['journal:dream', 'mood:m', 'journal:old']);
+    expect(diary.map(r => r.title)).toEqual(['Oct 2, 2026', 'Oct 1, 2026', 'Sep 1, 2026']);
+  });
+
+  it('shows only the matched word with hidden context around it', () => {
+    const old = searchElsewhere(src, 'walk').diary.find(r => r.key === 'journal:old');
+    expect(old?.kind === 'journal' && old.snippet).toEqual({ before: 'A long ', match: 'walk', after: ' by the river' });
+  });
+
+  it('shows no text for a word that only a spoiler holds', () => {
+    const spoiled = sources({ journalEntries: [entry('s', 'I told ||Sam about the surprise|| today')] });
+    const [hit] = searchElsewhere(spoiled, 'surprise').diary;
+    expect(hit.kind === 'journal' && hit.snippet).toBeNull();
+  });
+
+  it('finds nothing in a mood log with no note, or when none are handed over', () => {
+    expect(searchElsewhere(src, 'bare').diary).toEqual([]);
+    expect(searchElsewhere(sources(), 'walk').diary).toEqual([]);
+  });
+
+  it('is never offered on the quick-search card', () => {
+    const sections = searchElsewhere(src, 'walk');
+    expect(allElsewhere(sections).some(r => r.kind === 'journal')).toBe(true);
+    expect(quickElsewhere(sections, 10).some(r => r.kind === 'journal' || r.kind === 'mood')).toBe(false);
+  });
+
+  it('describes each kind by its day', () => {
+    const [dream, mood] = searchElsewhere(src, 'walk').diary;
+    expect(describeElsewhere(dream).sectionMeta).toBe('Dream · Oct 2, 2026');
+    expect(describeElsewhere(mood).sectionMeta).toBe('Mood note · Oct 1, 2026');
+    expect(describeElsewhere(dream).accessibilityKind).toBe('dream from Oct 2, 2026');
   });
 });

@@ -40,6 +40,14 @@ it holds nothing, for the reason Mood is).
   "a day without a dream".
 - **Search is `textMatchesQuery`**, the mood note search's own rule: every
   word, plain substring.
+- **The main Search screen finds written text too** (`searchDiary` in `searchElsewhere.ts`), under
+  "Journal and mood notes", and a hit shows only the word that matched: the text around it is a solid
+  block (`SearchSnippet`), because results are in plain view. It goes through `openEntries` and the
+  journal lock (`useElsewhereSearch`), so a sealed note is not found and nothing is searched while the
+  journal is locked; a kind whose screen is switched off is not searched either. A word held only by a
+  spoiler is matched but never shown (`journalPlainText` replaces it before the snippet is cut). The
+  quick-search card never offers these. A journal hit opens its own screen's sheet, a mood note its
+  day's page.
 - **They have their own sync switch** (`JOURNAL_SYNC_TABLES`): never sent to
   iCloud, and sent to a sync server only with "Include journal, dreams and notes" on,
   separate from "Include health logs". The server is what the MCP server reads,

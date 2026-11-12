@@ -1,6 +1,6 @@
 import type { ElsewhereResult } from '../utils/searchElsewhere';
 import { navigateToSettingsEntry } from './openSettings';
-import { navigateToTab } from './navigationRef';
+import { navigateToTab, resetToJournal } from './navigationRef';
 
 interface Navigator {
   navigate: (...args: any[]) => void;
@@ -9,7 +9,8 @@ interface Navigator {
 /**
  * Where a non-task search result opens, for the quick-search card and the
  * Search screen alike, so a recipe found in one can't open somewhere different
- * from the same recipe found in the other.
+ * from the same recipe found in the other. A journal entry opens in its own
+ * screen's sheet and a mood note on its day's page.
  *
  * Both callers are tabs, so a card (a recipe, a person, a setting) is pushed
  * on top of the search and back returns to it. A grocery item opens its sheet
@@ -31,6 +32,13 @@ export function openElsewhereResult(navigation: Navigator, result: ElsewhereResu
       return;
     case 'grocery':
       navigateToTab('Groceries', { openItem: result.item.id, openItemStamp: Date.now() });
+      return;
+    case 'journal':
+      // Its own screen's sheet, which is behind the journal lock.
+      resetToJournal(result.entry.kind, true, result.entry.id);
+      return;
+    case 'mood':
+      navigation.navigate('MoodDay', { dayKey: result.log.dayKey });
       return;
   }
 }
