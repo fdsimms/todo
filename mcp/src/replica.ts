@@ -4575,8 +4575,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
       // one that creates a missing category, as the app's own setting does.
       const refusals: string[] = [];
       const given: Record<string, unknown> = { ...changes };
-      if (typeof given.limitsTodayCategory === 'string') {
-        given.limitsTodayCategory = categoryNamed(given.limitsTodayCategory, false, refusals, 'limitsTodayCategory') ?? given.limitsTodayCategory;
+      for (const key of ['limitsTodayCategory', 'groceryUseUpTaskCategory', 'leftoverUseUpTaskCategory']) {
+        const value = given[key];
+        if (typeof value === 'string') given[key] = categoryNamed(value, false, refusals, key) ?? value;
       }
       const defaults = given.newTaskDefaults;
       if (defaults && typeof defaults === 'object' && typeof (defaults as { category?: unknown }).category === 'string') {
