@@ -9,7 +9,7 @@ import { isWaterEntry } from './waterLog';
 import { mealHelping, weighedHelping, type DishFigures } from './mealLog';
 import { isNutrientOnlyEntry } from './nutrientLog';
 import { panelGramsFor, stateAmountHint, stateUnitLabel, takesStateAmount } from './cookedState';
-import { gramsForLine, hasKnownDensity, panelMultiplier } from './ingredientGrams';
+import { gramsForLine, hasKnownDensity, panelMultiplier, portionsWithServing } from './ingredientGrams';
 import { formatQuantityAmount, inflectUnit, parseQuantity, rationalToNumber } from './quantity';
 import { measureParsedQuantity, unitBase } from './unitConvert';
 
@@ -483,7 +483,9 @@ const NUTRIENT_UNIT_OPTIONS: Array<FoodUnitOption & { nutrient: NutrientTarget['
  * serving) and for any other basis that states a `servingGrams` weight to
  * scale by. A `per100ml` panel gets `VOLUME_UNIT_OPTIONS` — the fixed table
  * above, rather than anything drawn from the panel, since a per100ml basis
- * resolves any of them without needing the food's own data — and a `g` pill
+ * resolves any of them without needing the food's own data; any other panel
+ * gets the same table once a stated portion (or the serving) is a weighed
+ * volume, since that density answers every volume — and a `g` pill
  * too once `hasKnownDensity` says a volume has actually been weighed onto
  * its table, at which point `panelMultiplier` can read that same density
  * back to answer a mass line.
@@ -522,7 +524,10 @@ export function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
   if (panel.basis === 'perServing' || panel.servingGrams !== null) {
     out.push({ key: 'serving', label: 'serving', suffix: ' serving' });
   }
-  if (panel.basis === 'per100ml') {
+  // Any other panel measures a volume through a weighed volume in its own
+  // portions ("1 tbsp = 15g"), the way `panelMultiplier` reads it, so a food
+  // with one is offered every volume, not only the ones it happens to state.
+  if (panel.basis === 'per100ml' || hasKnownDensity(portionsWithServing(panel))) {
     for (const unit of VOLUME_UNIT_OPTIONS) {
       if (seen.has(unit.key)) continue;
       seen.add(unit.key);

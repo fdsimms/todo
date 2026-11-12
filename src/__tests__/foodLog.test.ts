@@ -1337,12 +1337,22 @@ describe('largeAmountWarning', () => {
 
 describe('foodUnitOptionsFor', () => {
   it('offers the food\'s own portions, plus grams, for a per-100g panel', () => {
-    expect(foodUnitOptionsFor(bare())).toEqual([
-      { key: 'cup', label: 'cup', suffix: ' cup' },
+    expect(foodUnitOptionsFor(bare({ portions: [{ amount: 1, label: 'scoop', grams: 30 }] }))).toEqual([
+      { key: 'scoop', label: 'scoop', suffix: ' scoop' },
       { key: 'g', label: 'g', suffix: 'g' },
       { key: 'oz', label: 'oz', suffix: ' oz' },
       { key: 'lb', label: 'lb', suffix: ' lb' },
     ]);
+  });
+
+  it('offers every volume once a stated portion is a weighed volume', () => {
+    const keys = foodUnitOptionsFor(bare({ portions: [{ amount: 1, label: 'tbsp', grams: 15 }, { amount: 1, label: 'cup', grams: 240 }] })).map(o => o.key);
+    expect(keys).toEqual(['tbsp', 'cup', 'g', 'oz', 'lb', 'tsp', 'fl oz', 'ml']);
+  });
+
+  it('offers volumes off a serving that is a weighed volume, with no portions', () => {
+    const keys = foodUnitOptionsFor(bare({ portions: [], servingGrams: 46, servingText: '3 Tbsp (46g)' })).map(o => o.key);
+    expect(keys).toEqual(['g', 'oz', 'lb', 'serving', 'cup', 'tbsp', 'tsp', 'fl oz', 'ml']);
   });
 
   it('offers grams and a serving pill for a perServing panel with a known weight', () => {
@@ -1361,8 +1371,8 @@ describe('foodUnitOptionsFor', () => {
   });
 
   it('offers a serving pill for a per-100g panel that also states a serving weight', () => {
-    expect(foodUnitOptionsFor(bare({ servingGrams: 25 }))).toEqual([
-      { key: 'cup', label: 'cup', suffix: ' cup' },
+    expect(foodUnitOptionsFor(bare({ servingGrams: 25, portions: [{ amount: 1, label: 'scoop', grams: 30 }] }))).toEqual([
+      { key: 'scoop', label: 'scoop', suffix: ' scoop' },
       { key: 'g', label: 'g', suffix: 'g' },
       { key: 'oz', label: 'oz', suffix: ' oz' },
       { key: 'lb', label: 'lb', suffix: ' lb' },
