@@ -1,7 +1,17 @@
 import {
   FRANKI_REVIEW_THRESHOLD_DEFAULT,
+  clampFrankiGoalMinutes,
   clampFrankiReviewThreshold,
-  frankiReadDayKey,
+  frankiCardsLeft,
+  frankiDailySourceId,
+  frankiDailyTitle,
+  frankiGoalSourceId,
+  frankiGoalTitle,
+  frankiRowMinutes,
+  parseFrankiReviewMode,
+  wantsFrankiDailyTask,
+  wantsFrankiGoalTask,
+  frankiTaskDayKey,
   frankiReadSince,
   frankiReadSourceId,
   frankiReadTitle,
@@ -23,6 +33,8 @@ const snapshot = (overrides: Partial<FrankiSnapshot> = {}): FrankiSnapshot => ({
   upcoming: [],
   dayEndsAt: null,
   readListen: { language: 'pl', name: 'Polish', waiting: 2, lastReadAt: null },
+  frankiNew: null,
+  studyDays: [],
   ...overrides,
 });
 
@@ -69,8 +81,8 @@ describe('source ids and titles', () => {
     expect(frankiTaskKind(row('reviews:2026-10-18T09'))).toBe('reviews');
     expect(frankiTaskKind(row('read:2026-10-18'))).toBe('read');
     expect(frankiTaskKind({ generatedKind: 'wanikani', generatedSourceId: 'reviews:2026-10-18T09' })).toBeNull();
-    expect(frankiReadDayKey(row('read:2026-10-18'))).toBe('2026-10-18');
-    expect(frankiReadDayKey(row('reviews:2026-10-18T09'))).toBeNull();
+    expect(frankiTaskDayKey(row('read:2026-10-18'))).toBe('2026-10-18');
+    expect(frankiTaskDayKey(row('reviews:2026-10-18T09'))).toBeNull();
   });
 
   it('counts cards in the title and names the language', () => {
@@ -117,5 +129,94 @@ describe('isFrankiTaskReady', () => {
     const held = row('reviews:2026-10-18T15', { dueDate: new Date(2026, 9, 18, 12).toISOString(), windowStart: '15:00' });
     expect(isFrankiTaskReady(held, snapshot(), NOW, DAY_START)).toBe(false);
     expect(isFrankiTaskReady(row('reviews:2026-10-18T09'), null, NOW, DAY_START)).toBe(false);
+  });
+});
+
+describe('the once-a-day cards task', () => {
+  it('counts what is due now, the learning still to come today and Franki’s new cards', () => {
+    const snap = snapshot({ reviewsNow: 12, upcoming: [{ at: new Date(2026, 9, 18, 11).toISOString(), count: 3 }], frankiNew: 8 });
+    expect(frankiCardsLeft(snap)).toEqual({ count: 23, newKnown: true });
+    expect(frankiCardsLeft(snapshot({ reviewsNow: 5 }))).toEqual({ count: 5, newKnown: false });
+  });
+
+  it('is wanted once a day while cards are left', () => {
+    const input = { todayKey: '2026-10-18', lastDayKey: null };
+    expect(wantsFrankiDailyTask({ ...input, snapshot: snapshot({ reviewsNow: 1 }) })).toBe(true);
+    expect(wantsFrankiDailyTask({ ...input, snapshot: snapshot({ frankiNew: 0 }) })).toBe(false);
+    expect(wantsFrankiDailyTask({ ...input, lastDayKey: '2026-10-18', snapshot: snapshot({ reviewsNow: 1 }) })).toBe(false);
+  });
+
+  it('names the day, and says how many are left', () => {
+    expect(frankiDailySourceId('2026-10-18')).toBe('day:2026-10-18');
+    expect(frankiTaskKind(row('day:2026-10-18'))).toBe('day');
+    expect(frankiTaskDayKey(row('day:2026-10-18'))).toBe('2026-10-18');
+    expect(frankiDailyTitle(42)).toBe('Franki: 42 cards left');
+    expect(frankiDailyTitle(1)).toBe('Franki: 1 card left');
+    expect(frankiDailyTitle(0)).toBe('Franki: today’s cards');
+  });
+
+  it('is ready only once nothing is left and Franki has said how many new cards are', () => {
+    expect(isFrankiTaskReady(row('day:2026-10-18'), snapshot({ frankiNew: 0 }), NOW, DAY_START)).toBe(true);
+    expect(isFrankiTaskReady(row('day:2026-10-18'), snapshot({ frankiNew: 3 }), NOW, DAY_START)).toBe(false);
+    // No report from Franki today: the new cards left aren't known.
+    expect(isFrankiTaskReady(row('day:2026-10-18'), snapshot(), NOW, DAY_START)).toBe(false);
+  });
+
+  it('defaults to once a day, and reads anything unknown as that', () => {
+    expect(parseFrankiReviewMode('waves')).toBe('waves');
+    expect(parseFrankiReviewMode(null)).toBe('daily');
+    expect(parseFrankiReviewMode('hourly')).toBe('daily');
+  });
+});
+
+describe('the study-time goal', () => {
+  const today = (answerMinutes: number, readingMinutes = 0) => [{
+    startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 30, answerSeconds: answerMinutes * 60, readingSeconds: readingMinutes * 60,
+  }];
+
+  it('is wanted once a day while a goal is set and today’s minutes are under it', () => {
+    const base = { todayKey: '2026-10-18', lastDayKey: null, goal: 20, countReading: true, now: NOW };
+    expect(wantsFrankiGoalTask({ ...base, snapshot: snapshot({ studyDays: today(10, 5) }) })).toBe(true);
+    expect(wantsFrankiGoalTask({ ...base, snapshot: snapshot({ studyDays: today(15, 5) }) })).toBe(false);
+    expect(wantsFrankiGoalTask({ ...base, goal: null, snapshot: snapshot({ studyDays: today(1) }) })).toBe(false);
+    expect(wantsFrankiGoalTask({ ...base, lastDayKey: '2026-10-18', snapshot: snapshot({ studyDays: today(1) }) })).toBe(false);
+    // An unread day is not a day with nothing studied.
+    expect(wantsFrankiGoalTask({ ...base, snapshot: snapshot() })).toBe(false);
+  });
+
+  it('is ready once the goal is met, counting reading only when it counts', () => {
+    const task = row('goal:2026-10-18');
+    const snap = snapshot({ studyDays: today(15, 5) });
+    expect(isFrankiTaskReady(task, snap, NOW, DAY_START, '00:00', { minutes: 20, countReading: true })).toBe(true);
+    expect(isFrankiTaskReady(task, snap, NOW, DAY_START, '00:00', { minutes: 20, countReading: false })).toBe(false);
+  });
+
+  it('names the day and says the minutes', () => {
+    expect(frankiGoalSourceId('2026-10-18')).toBe('goal:2026-10-18');
+    expect(frankiTaskKind(row('goal:2026-10-18'))).toBe('goal');
+    expect(frankiGoalTitle(12, 20)).toBe('Franki: 12 of 20 min');
+  });
+
+  it('keeps the stepper’s range in steps of five, with none kept as none', () => {
+    expect(clampFrankiGoalMinutes(null)).toBeNull();
+    expect(clampFrankiGoalMinutes(1)).toBe(5);
+    expect(clampFrankiGoalMinutes(22)).toBe(20);
+    expect(clampFrankiGoalMinutes(900)).toBe(240);
+  });
+});
+
+describe('the minutes line on a row', () => {
+  const snap = snapshot({ studyDays: [{ startsAt: new Date(2026, 9, 18, 4).toISOString(), cards: 30, answerSeconds: 720, readingSeconds: 360 }] });
+
+  it('says the time studied on the cards tasks and the time read on Read & Listen', () => {
+    expect(frankiRowMinutes(row('day:2026-10-18'), snap, NOW, true)).toBe('18 min studied today');
+    expect(frankiRowMinutes(row('reviews:2026-10-18T09'), snap, NOW, false)).toBe('12 min studied today');
+    expect(frankiRowMinutes(row('read:2026-10-18'), snap, NOW, true)).toBe('6 min read today');
+  });
+
+  it('says nothing on the goal task, before anything is studied, or without a read of today', () => {
+    expect(frankiRowMinutes(row('goal:2026-10-18'), snap, NOW, true)).toBeNull();
+    expect(frankiRowMinutes(row('day:2026-10-18'), snapshot(), NOW, true)).toBeNull();
+    expect(frankiRowMinutes(row('day:2026-10-18'), null, NOW, true)).toBeNull();
   });
 });

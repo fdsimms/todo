@@ -1323,7 +1323,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     pausedOnVacation: true,
     enabledKey: 'frankiTasks',
     label: 'Franki flashcards',
-    onHint: 'Adds a task when cards are due in Franki, and one to read in Read & Listen',
+    onHint: 'Adds a task for the cards due in Franki each day, and one to read in Read & Listen',
     offHint: 'Franki adds no tasks',
     icon: 'albums-outline',
     // Its source id names a wave of reviews or a day, not a row.

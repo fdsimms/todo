@@ -58,7 +58,7 @@ components below.
 - `src/screens/SleepScreen.tsx` — EmptyState, HubPills, InlineAction, PressableScale, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SegmentedControl, SleepChart, SleepGoalSheet, WideScroll
 - `src/screens/StackDetailScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, Fab, LazySheet, PaintSelection, QuickAddModal, ScrollToTopButton, SpotlightOverlay, TaskEditor, TaskGroupEditor, +1 more
 - `src/screens/StacksScreen.tsx` — CategoryPicker, EmptyState, Fab, HubPills, InlineNameField, ListBulkBar, PaintSelection, PointerView, ScreenHeader, ScrollToTopButton, SelectionDot, SwipeActionButtons, +2 more
-- `src/screens/StatsScreen.tsx` — AnimatedBarFill, ChartGuides, EmptyState, HubPills, LazySheet, NutrientDayChart, PillGroup, PressableScale, ProgressBar, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, +4 more
+- `src/screens/StatsScreen.tsx` — AnimatedBarFill, ChartGuides, EmptyState, FrankiStudyCard, HubPills, LazySheet, NutrientDayChart, PillGroup, PressableScale, ProgressBar, ScreenHeader, ScreenSettingsSheet, +5 more
 - `src/screens/StuckScreen.tsx` — DeliverablePromptQueue, DeliverablePromptSheet, EmptyState, LazySheet, PostponeCheckBanner, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, TaskBreakdownSheet, TaskEditor, TaskGroupTray
 - `src/screens/SymptomDetailScreen.tsx` — ChartGuides, ContrastBars, DetailHeader, EmptyState, HelpText, MoodEntryRow, MoodLogSheet, ScrollToTopButton
 - `src/screens/TagsScreen.tsx` — BulkActionBar, DeliverablePromptQueue, DetailHeader, EmptyState, Fab, HubPills, LazySheet, NameSheet, PaintSelection, QuickAddModal, QuickAddNameSheet, ScreenHeader, +6 more
@@ -215,6 +215,7 @@ Where each component can appear.
 - `src/components/FoodCameraSheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +6 more
 - `src/components/FoodLogEntrySheet.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +6 more
 - `src/components/FormField.tsx` — on RewardsScreen
+- `src/components/FrankiStudyCard.tsx` — on StatsScreen
 - `src/components/FreezeWhenBlurred.tsx` — on app shell
 - `src/components/FridgeHistorySheet.tsx` — on MealPlanScreen
 - `src/components/GeneratedTaskSettingsSheet.tsx` — on AutomationsScreen
