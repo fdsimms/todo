@@ -557,13 +557,13 @@ describe('the replica', () => {
     });
   });
 
-  it('renames a stack without touching its category', () => {
+  it('renames a stack through updateStack without touching its category', () => {
     const stack = replica.createStack('Morning', 'Home');
-    const renamed = replica.renameStack(stack.id, ' Mornings ');
+    const { stack: renamed } = replica.updateStack(stack.id, { title: ' Mornings ' });
     expect(renamed).toMatchObject({ id: stack.id, title: 'Mornings', category: 'Home' });
     expect(replica.stacks().find(s => s.id === stack.id)!.title).toBe('Mornings');
-    expect(() => replica.renameStack(stack.id, ' ')).toThrow(/needs a title/);
-    expect(() => replica.renameStack('nope', 'x')).toThrow(/No stack/);
+    expect(() => replica.updateStack(stack.id, { title: ' ' })).toThrow(/needs a title/);
+    expect(() => replica.updateStack('nope', { title: 'x' })).toThrow(/No stack/);
   });
 
   describe('changing and deleting a recipe', () => {

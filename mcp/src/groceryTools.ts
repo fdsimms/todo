@@ -803,34 +803,18 @@ function panelChange(previous: FoodNutrition | null, next: FoodNutrition | null)
   };
 }
 
-export function setNutritionPanel(replica: Replica, input: { item: string; boxId?: string; panel: NutritionPanelInput | null }) {
-  const item = itemByIdOrName(replica, input.item);
-  let panel: FoodNutrition | null = null;
-  let previous: FoodNutrition | null = null;
-  if (input.panel) {
-    const box = input.boxId ? replica.itemProducts().find(p => p.id === input.boxId) : null;
-    previous = (input.boxId ? box?.nutrition : item.nutrition) ?? null;
-    panel = buildPanel(input.panel, previous);
-  }
-  replica.setNutritionPanel(item.id, input.boxId ?? null, panel);
-  return {
-    item: item.name,
-    ...(input.boxId ? { boxId: input.boxId } : {}),
-    panel: panel ? describeFoodPanel(panel) : null,
-    ...panelChange(previous, panel),
-  };
-}
-
 /**
- * Many items' panels in one call, so one preview and one approval cover a whole
- * recipe's worth. All or none: every panel is checked, and every item found,
- * before the first write. An item that is not in the catalog is refused unless
- * the entry says `create`, which makes a bare catalog row (not on a list, not in
- * the pantry) so the figures have somewhere to live.
+ * One or many items' panels in one call, so one preview and one approval cover
+ * a whole recipe's worth. All or none: every panel is checked, and every item
+ * found, before the first write. An entry with a `boxId` sets that brand's
+ * panel instead of the item's, and `panel: null` removes it. An item that is
+ * not in the catalog is refused unless the entry says `create`, which makes a
+ * bare catalog row (not on a list, not in the pantry) so the figures have
+ * somewhere to live.
  */
 export function setNutritionPanels(
   replica: Replica,
-  input: { panels: { item: string; create?: boolean; panel: NutritionPanelInput }[] },
+  input: { panels: { item: string; boxId?: string; create?: boolean; panel: NutritionPanelInput | null }[] },
 ) {
   if (input.panels.length === 0) throw new Error('Name at least one panel.');
   const seen = new Set<string>();
@@ -842,23 +826,26 @@ export function setNutritionPanels(
       if (!existing && !entry.create) {
         throw new Error('There is no item by that name in the catalog. Pass create: true to add it (it is not put on a list or in the pantry).');
       }
+      if (entry.boxId && !existing) throw new Error('A brand\'s panel is set on an item that already exists.');
       if (!existing && !replica.lib().groceryParse.parseGroceryInput(entry.item).name.trim()) throw new Error('Give a name.');
-      const key = existing ? existing.id : entry.item.trim().toLowerCase();
+      const key = `${existing ? existing.id : entry.item.trim().toLowerCase()}|${entry.boxId ?? ''}`;
       if (seen.has(key)) throw new Error('This item is already in the call.');
       seen.add(key);
-      return { entry, existing, panel: buildPanel(entry.panel, existing?.nutrition ?? null) };
+      const previous = (entry.boxId ? replica.itemProducts().find(p => p.id === entry.boxId)?.nutrition : existing?.nutrition) ?? null;
+      return { entry, existing, previous, panel: entry.panel ? buildPanel(entry.panel, previous) : null };
     } catch (e) {
       throw new Error(`${where}: ${e instanceof Error ? e.message : 'could not be set.'}`);
     }
   });
   const items = planned.map(p => {
     const item = p.existing ?? replica.createCatalogItem(p.entry.item).item;
-    replica.setNutritionPanel(item.id, null, p.panel);
+    replica.setNutritionPanel(item.id, p.entry.boxId ?? null, p.panel);
     return {
       item: item.name,
+      ...(p.entry.boxId ? { boxId: p.entry.boxId } : {}),
       ...(p.existing ? {} : { created: true }),
-      panel: describeFoodPanel(p.panel),
-      ...panelChange(p.existing?.nutrition ?? null, p.panel),
+      panel: p.panel ? describeFoodPanel(p.panel) : null,
+      ...panelChange(p.previous, p.panel),
     };
   });
   return { set: items.length, items };

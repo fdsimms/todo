@@ -5,7 +5,7 @@
  * function the Activity screen uses.
  */
 import { openShimDatabase, type ShimDatabase } from '../expoSqliteShim';
-import { openReplica } from '../replica';
+import { openReplica, type Replica } from '../replica';
 import {
   createGroceryList,
   deleteGroceryItem,
@@ -27,7 +27,6 @@ import {
   clearGroceryList,
   setShoppingTrip,
   markUnavailable,
-  setNutritionPanel,
   setNutritionPanels,
   saveAisle,
   reorderAisles,
@@ -50,6 +49,11 @@ jest.mock('expo-sqlite', () => {
   mockRaw = openShimDatabase(':memory:');
   return { openDatabaseSync: () => mockRaw };
 });
+
+/** One entry through the one tool that sets panels: the first item of its result. */
+function setNutritionPanel(replica: Replica, entry: Parameters<typeof setNutritionPanels>[1]['panels'][number]) {
+  return setNutritionPanels(replica, { panels: [entry] }).items[0];
+}
 
 describe('the catalog tools', () => {
   let replica: ReturnType<typeof openReplica>;

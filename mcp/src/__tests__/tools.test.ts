@@ -171,7 +171,6 @@ function stubReplica(over: Partial<Replica> = {}): Replica {
     removeFromWeekPool: () => { throw new Error('not stubbed'); },
     createPerson: () => { throw new Error('not stubbed'); },
     updatePerson: () => { throw new Error('not stubbed'); },
-    renameStack: () => { throw new Error('not stubbed'); },
     reorderTemplates: () => { throw new Error('not stubbed'); },
     createTask: () => { throw new Error('not stubbed'); },
     categoryForDraft: () => { throw new Error('not stubbed'); },
