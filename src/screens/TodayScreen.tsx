@@ -171,6 +171,8 @@ import { QuickSearchModal } from '../components/QuickSearchModal';
 import { EventImportSheet } from '../components/EventImportSheet';
 import { TaskImportSheet } from '../components/TaskImportSheet';
 import { SharedImageBanner } from '../components/SharedImageBanner';
+import { SyncProblemBanner } from '../components/SyncProblemBanner';
+import { useSyncStore, selectSyncBannerProblem } from '../store/useSyncStore';
 import { isDemoModeActive } from '../utils/demoState';
 import { useSharedImageStore } from '../store/useSharedImageStore';
 import {
@@ -266,7 +268,7 @@ import { openEventDirections, openEventJoinLink } from '../utils/eventDirections
 import { useEventTravelNote } from '../hooks/useEventTravelNote';
 import { openElsewhereResult } from '../navigation/openSearchResult';
 import type { ElsewhereResult } from '../utils/searchElsewhere';
-import { navigateToSettingsEntry } from '../navigation/openSettings';
+import { navigateToSettingsEntry, openSettingsGroup } from '../navigation/openSettings';
 import { useScreenSettings } from '../hooks/useScreenSettings';
 import { completesThroughQueue, stackCompletionScope } from '../utils/bulkCompletion';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -863,6 +865,8 @@ export function TodayScreen() {
   if (nextHold !== layoutHold) setLayoutHold(nextHold);
   const twoPane = layoutHold ?? roomForTwoPane;
   const navigation = useNavigation();
+  const syncProblem = useSyncStore(selectSyncBannerProblem);
+  const dismissSyncProblem = useSyncStore(s => s.dismissProblem);
   // A task row's category chip opens that category's page. Stable, because
   // TaskItem is memoized.
   const handleOpenCategory = useCallback((category: string) => {
@@ -5432,6 +5436,14 @@ export function TodayScreen() {
             sub-view that has no banner (see newTasksSource). */}
         {newTasks.length > 0 && (
           <NewTasksBanner tasks={newTasks} onJumpToTask={jumpToTask} onDismiss={dismissNewTasksBanner} />
+        )}
+
+        {syncProblem !== null && !isDemoModeActive() && (
+          <SyncProblemBanner
+            message={syncProblem}
+            onOpen={() => openSettingsGroup(navigation, 'dataReset', 'syncEnabled')}
+            onDismiss={dismissSyncProblem}
+          />
         )}
 
         {sharedImageNames.length > 0 && !isDemoModeActive() && (
