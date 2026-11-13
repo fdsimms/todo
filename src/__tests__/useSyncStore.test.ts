@@ -14,6 +14,7 @@ import {
   SERVER_HEALTH_RESEND_KEY,
   SYNC_EPOCH,
   SYNC_CLAIM_STALE_MS,
+  selectSyncBannerProblem,
 } from '../store/useSyncStore';
 import { dbEraseForSyncJoin, dbGetSetting, dbGetSyncCursor, dbHasOwnSyncData, dbSetSetting, dbSetSyncCursor } from '../db/database';
 import { HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES } from '../db/syncTracking';
@@ -566,6 +567,25 @@ describe('syncNow', () => {
     (runSyncAll as jest.Mock).mockResolvedValue(runs(okResult()));
     await useSyncStore.getState().syncNow();
     expect(useSyncStore.getState().recipeImagesVersion).toBe(1);
+  });
+
+  it('says a missing CloudKit schema will not retry, and shows a problem on Today until dismissed', async () => {
+    (runSyncAll as jest.Mock).mockResolvedValue(
+      runs({ ...okResult(), imageProblem: 'Cannot create new type RecipeImage in production schema' })
+    );
+    useSyncStore.setState({ enabled: true, dismissedProblem: null });
+    await useSyncStore.getState().syncNow();
+    const { problem } = useSyncStore.getState();
+    expect(problem).toContain('Retrying won’t fix this');
+    expect(problem).not.toContain('retry on the next sync');
+    expect(selectSyncBannerProblem(useSyncStore.getState())).toBe(problem);
+
+    useSyncStore.getState().dismissProblem();
+    expect(selectSyncBannerProblem(useSyncStore.getState())).toBeNull();
+
+    // A different problem shows again after an earlier one was dismissed.
+    useSyncStore.setState({ problem: 'Couldn’t check your iCloud account.' });
+    expect(selectSyncBannerProblem(useSyncStore.getState())).toBe('Couldn’t check your iCloud account.');
   });
 
   it('names photos that did not send, without calling a sync whose rows went a failure', async () => {

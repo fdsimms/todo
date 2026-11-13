@@ -223,6 +223,14 @@ interface SyncState {
   lastSyncedAt: string | null;
   /** Why the last attempt failed, or why sync can't run. Null when fine. */
   problem: string | null;
+  /**
+   * The `problem` text the person dismissed from Today's banner. In memory
+   * only, so a problem that is still there after a relaunch is shown again,
+   * and a different problem shows even in the same session (`selectSyncBannerProblem`).
+   */
+  dismissedProblem: string | null;
+  /** Hides Today's banner for the current problem. Settings still shows it. */
+  dismissProblem: () => void;
   /** What the last successful sync brought in, for the status line. */
   lastSummary: string | null;
   /**
@@ -396,6 +404,8 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   phase: 'idle',
   lastSyncedAt: null,
   problem: null,
+  dismissedProblem: null,
+  dismissProblem: () => set(s => ({ dismissedProblem: s.problem })),
   lastSummary: null,
   recipeImagesVersion: 0,
 
@@ -630,6 +640,27 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   },
 }));
 
+/**
+ * The Today banner's text, or null when there is nothing to show: no problem,
+ * or one the person already dismissed. Keyed on the text so a new problem
+ * shows even after an earlier one was dismissed.
+ */
+export const selectSyncBannerProblem = (s: Pick<SyncState, 'problem' | 'dismissedProblem'>): string | null =>
+  s.problem !== null && s.problem !== s.dismissedProblem ? s.problem : null;
+
+/**
+ * Why recipe photos didn't send, and whether trying again helps. A missing
+ * record type in CloudKit's Production schema never fixes itself, so it must not
+ * promise a retry (the type is deployed in the CloudKit Dashboard, see
+ * docs/arch/recipes.md).
+ */
+export function describeImageProblem(detail: string): string {
+  if (/production schema/i.test(detail)) {
+    return `Recipe photos can’t send because their record type isn’t in the CloudKit Production schema (${detail}). Deploy it in the CloudKit Dashboard. Retrying won’t fix this.`;
+  }
+  return `Some recipe photos didn’t send (${detail}). They’ll retry on the next sync.`;
+}
+
 /** Recomputes `serverHeld` from what is stored now. */
 function refreshServerHeld(): void {
   const { serverUrl, hasServerToken } = useSyncStore.getState();
@@ -687,9 +718,7 @@ async function syncOnce(state: SyncConfig, claimId: number): Promise<SyncSummary
           ?? (summary.unreadable > 0 ? 'Some changes need a newer version of the app.' : null)
           // Last, and only when the rows went: a photo that didn't send is
           // retried on its own, so this names it without calling the sync failed.
-          ?? (summary.imageProblem
-            ? `Some recipe photos didn’t send (${summary.imageProblem}). They’ll retry on the next sync.`
-            : null),
+          ?? (summary.imageProblem ? describeImageProblem(summary.imageProblem) : null),
         lastSummary: describeApply(summary.applied),
       });
     } else if (summary.problem !== null) {

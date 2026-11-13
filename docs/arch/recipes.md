@@ -604,7 +604,7 @@ the bytes beside the rows (`Backup.images`), and sync now does the same.
   photo the server hands back (one pushed before this) is still written.
 - **A photo push that fails is not a failed sync.** The rows went, and a store that refuses photo
   payloads outright must not stop this device pulling, so `pushImages` failing sets `imageProblem`
-  rather than `status: 'failed'`, and the photos go again next time. The settings line names it.
+  rather than `status: 'failed'`, and the photos go again next time. The settings line names it, and so does Today's sync banner (`SyncProblemBanner`), since a line only Settings shows goes unseen. A missing Production schema is the one cause that won't clear on a retry, and its text says so (`describeImageProblem`).
 - **A photo arrives whether or not its row is here yet**, and is never written over a file of the
   same name, which can only be the same photo. A store need not return payloads in push order, and
   a photo refused for arriving early would never be offered again.

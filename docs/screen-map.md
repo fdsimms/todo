@@ -65,7 +65,7 @@ components below.
 - `src/screens/TemplateDetailScreen.tsx` — ApplyTemplateSheet, DetailHeader, EmptyState, Fab, FabDropZones, LazySheet, NestedTemplatePicker, PaintSelection, ReorderableList, RotatingChevron, SelectionDot, SwipeActionButtons, +7 more
 - `src/screens/TemplatesScreen.tsx` — ApplyTemplateSheet, EmptyState, Fab, FabDropZones, HubPills, ListBulkBar, PaintSelection, QuickAddNameSheet, ReorderableList, ScreenHeader, ScreenSettingsSheet, SearchField, +6 more
 - `src/screens/TipsScreen.tsx` — EmptyState, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SearchField, TipHost
-- `src/screens/TodayScreen.tsx` — AddTaskFab, AgentSuggestionCards, AllClearMark, AnimatedCollapsible, AnimatedNumber, ApplyTemplateSheet, BulkActionBar, CardSheet, CategoryOrderSheet, CoinIcon, CompletionCollapse, CreatedTaskToast, +52 more
+- `src/screens/TodayScreen.tsx` — AddTaskFab, AgentSuggestionCards, AllClearMark, AnimatedCollapsible, AnimatedNumber, ApplyTemplateSheet, BulkActionBar, CardSheet, CategoryOrderSheet, CoinIcon, CompletionCollapse, CreatedTaskToast, +53 more
 - `src/screens/UnattendedLogScreen.tsx` — ActivitySourceSheet, EmptyState, HubPills, InlineAction, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton
 - `src/screens/WeightScreen.tsx` — EmptyState, HubPills, LogWeightSheet, ProgressBar, ScreenHeader, ScreenSettingsSheet, ScrollToTopButton, SegmentedControl, WeightChart, WeightGoalSheet
 - `src/screens/WorkoutsScreen.tsx` — ActionMenu, CardSheet, CsvExportSheet, EmptyNote, EmptyState, ExerciseDetailSheet, ExerciseFilterBar, Fab, GroupNameSheet, GymWorkoutParts, GymsSheet, HelpText, +16 more
@@ -481,6 +481,7 @@ Where each component can appear.
 - `src/components/SwipeActionButtons.tsx` — on CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, +6 more
 - `src/components/SwipeDismiss.tsx` — on GroceryScreen, MealPlanScreen, MedicationDetailScreen, MedicationScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, TemplateDetailScreen, TemplatesScreen, TodayScreen, app shell
 - `src/components/SwipeableRow.tsx` — on CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, MedicationScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen, +6 more
+- `src/components/SyncProblemBanner.tsx` — on TodayScreen
 - `src/components/TabHubMenu.tsx` — on app shell
 - `src/components/TabSlotPickerSheet.tsx` — on SettingsGroupScreen
 - `src/components/TargetIcon.tsx` — on ArchivedScreen, AutomationsScreen, BackfillScreen, BloodPressureScreen, CalendarScreen, CategoriesScreen, CategoryDetailScreen, CookbookDetailScreen, CookbooksScreen, ExperimentDetailScreen, FoodLogScreen, GroceryScreen, +35 more
