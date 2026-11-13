@@ -454,6 +454,12 @@ fan that out — one Explore agent per layer, run in parallel — rather than re
 sequentially yourself; the layers are independent to read even though the change across them
 isn't.
 
+**Recommend the best option.** When there's a choice between several ways to do something,
+recommend the best one, even if another option would be simpler. Don't steer toward the simpler
+one just because it's less work. The exception is a choice with a real tradeoff, such as a
+security or privacy risk, data going to a third party, a cost, or something the owner has to keep
+running. In that case, name the tradeoff next to the recommendation so the owner can weigh it.
+
 **Stay in scope.** Fix what was asked, in the pattern the surrounding file already uses.
 Adjacent code that looks improvable isn't the task; don't rewrite it. If it's a real bug, or a
 follow-up worth doing, ask (see "Bugs found in passing" and "Follow-up and out-of-scope work").
