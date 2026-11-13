@@ -431,14 +431,23 @@ function StatusChip({
  * whole width.
  */
 function FieldInput({
-  styles, label, style, ...input
+  styles, label, style, accessory, ...input
 }: {
   styles: ReturnType<typeof makeStyles>;
   label: string;
+  /** Sits at the right end of the label line (the Flavor field's swap button). */
+  accessory?: React.ReactNode;
 } & React.ComponentProps<typeof TextField>) {
   return (
     <View>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      {accessory ? (
+        <View style={styles.fieldLabelRow}>
+          <Text style={[styles.fieldLabel, styles.fieldLabelInRow]}>{label}</Text>
+          {accessory}
+        </View>
+      ) : (
+        <Text style={styles.fieldLabel}>{label}</Text>
+      )}
       <TextField
         style={[styles.fieldInput, style]}
         // Shelf words, not prose: see the name field below.
@@ -1242,6 +1251,17 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         .slice(0, 3)
                     : [];
                 const matchWarning = matchWarningFor(row, rowItemId);
+                // For a scan read the wrong way round ("Classic Lemonade" as the item,
+                // "lemonade" as the flavor). Goes through the same patch as typing in
+                // Item, so the row is marked named and resolves like a typed name.
+                const canSwap = nameable && shownVariant.trim().length > 0;
+                const swapItemAndFlavor = () =>
+                  patchRow(row.key, {
+                    name: shownVariant.trim().slice(0, GROCERY_NAME_MAX_LENGTH),
+                    nameTyped: true,
+                    included: true,
+                    variantEdit: shownName.trim().slice(0, GROCERY_VARIANT_MAX_LENGTH),
+                  });
 
                 // The way out of a code nothing has heard of: the packet is in hand and
                 // its figures are printed on it, so offer to read them off the label.
@@ -1415,6 +1435,17 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         <FieldInput
                           styles={styles}
                           label="FLAVOR"
+                          accessory={
+                            <InlineAction
+                              icon="swap-vertical"
+                              variant="neutral"
+                              disabled={!canSwap}
+                              onPress={swapItemAndFlavor}
+                              haptic
+                              accessibilityLabel="Swap Item and Flavor"
+                              style={styles.swapPill}
+                            />
+                          }
                           value={shownVariant}
                           placeholder="e.g. Chili lime"
                           placeholderTextColor={colors.textTertiary}
@@ -1683,6 +1714,9 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
       marginBottom: spacing.sm,
     },
+    fieldLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
+    fieldLabelInRow: { marginBottom: 0 },
+    swapPill: { alignSelf: 'center' },
     fieldInput: {
       color: colors.text,
       fontSize: font.md,
