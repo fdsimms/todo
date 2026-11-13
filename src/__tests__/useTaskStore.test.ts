@@ -22535,6 +22535,26 @@ describe('coins', () => {
     expect(balance()).toBe(5);
   });
 
+  it('pays nothing for checking off a list item, a list project\'s or a list section\'s', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'trip', list: true }), makeProject({ id: 'work' })] });
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'packing', projectId: 'work', checklist: true })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'socks', estimatedMinutes: 90, projectId: 'trip' }),
+        makeTask({ id: 'charger', estimatedMinutes: 90, projectId: 'work', groupId: 'packing' }),
+        makeTask({ id: 'report', estimatedMinutes: 90, projectId: 'work' }),
+      ],
+    });
+    useTaskStore.getState().completeTask('socks');
+    useTaskStore.getState().completeTask('charger');
+    expect(balance()).toBe(0);
+    // An ordinary step of the same project still pays.
+    useTaskStore.getState().completeTask('report');
+    expect(balance()).toBe(5);
+    useProjectStore.setState({ projects: [] });
+    useTaskGroupStore.setState({ groups: [] });
+  });
+
   it('adds the streak bonus from the streak this completion reaches', () => {
     useTaskStore.setState({
       tasks: [recurring({

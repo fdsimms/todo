@@ -17,7 +17,8 @@ default (`rewardsEnabled`), switched on from the Rewards screen (its own menu ro
 - **What earns:** a task's effort bucket (`COINS_BY_EFFORT`, read through `estimatedMinutesFor` so a
   chain pays for the live step) scaled by its difficulty (`DIFFICULTY_MULTIPLIER`), plus one coin per `STREAK_BONUS_EVERY` on the streak this completion
   reaches, capped at `STREAK_BONUS_CAP`. Subtasks earn nothing, or splitting a task would be the way
-  to earn more.
+  to earn more. Nor do list items (`listItemFinder`, a packing list or a wish list): checking one off
+  is keeping a list, not doing a task.
 - **Only a person moves it**, with one carve-out: the rollover collects clean days a person didn't
   collect ("Clean days" below), because it only pays for days the streak already counts. A generated
   task whose reason was satisfied (the goal reached, the water drunk, the meal logged) is ticked for the

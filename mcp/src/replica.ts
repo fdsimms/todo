@@ -111,7 +111,7 @@ import type {
 } from '../../src/types';
 import type { ExerciseInput, ExercisePatch, FinishedSessionInput, ProgramInput, SessionPatch, SetInput } from '../../src/store/useWorkoutStore';
 import { parseTaskFieldDefaults } from '../../src/utils/taskFieldDefaults';
-import { sectionListPatch } from '../../src/utils/listMode';
+import { listItemFinder, sectionListPatch } from '../../src/utils/listMode';
 import { rotationItemFromInput, rotationMemberTitle, rotationMembers } from '../../src/utils/rotation';
 import { programVersionsOf, routineVersionsOf } from '../../src/utils/routineVersions';
 import { sunAnchorHHMM } from '../../src/utils/sunTimes';
@@ -4088,7 +4088,9 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
     // reads the same answer the phone does).
     // A neutral completion is the app closing something on its own account, so
     // it moves no coins either way (a claimed wish-list item is the one use).
-    if (mode !== 'neutral' && mode !== 'other' && rewards.taskEarnsCoins(task)) {
+    // A list item (a packing list, a wish list) earns nothing, as on the phone.
+    const isListItem = listItemFinder(useTaskGroupStore.getState().groups, projects())(task);
+    if (mode !== 'neutral' && mode !== 'other' && rewards.taskEarnsCoins(task, isListItem)) {
       const store = useRewardStore.getState();
       const title = visibility.displayTitleFor(task);
       const at = new Date().toISOString();

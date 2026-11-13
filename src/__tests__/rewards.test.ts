@@ -208,6 +208,11 @@ describe('taskEarnsCoins', () => {
     expect(taskEarnsCoins({ parentId: null })).toBe(true);
     expect(taskEarnsCoins({ parentId: 'p' })).toBe(false);
   });
+
+  it('leaves list items out', () => {
+    expect(taskEarnsCoins({ parentId: null }, true)).toBe(false);
+    expect(taskEarnsCoins({ parentId: null }, false)).toBe(true);
+  });
 });
 
 describe('coinBalance', () => {

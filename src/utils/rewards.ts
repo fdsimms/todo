@@ -323,10 +323,13 @@ export function coinsForLoss(task: CoinSource): number {
 /**
  * Whether a task takes part at all. Subtasks don't: they are steps of the task
  * that pays, and paying for each would make splitting a task into ten
- * subtasks the way to earn more.
+ * subtasks the way to earn more. Nor do list items (`listItemFinder` in
+ * listMode.ts, which the caller reads since it needs the stacks and projects):
+ * ticking off a packed charger or a bought game is keeping a list, not doing
+ * a task, and a 70-item packing list would otherwise pay more than a day's work.
  */
-export function taskEarnsCoins(task: { parentId: string | null }): boolean {
-  return !task.parentId;
+export function taskEarnsCoins(task: { parentId: string | null }, isListItem = false): boolean {
+  return !task.parentId && !isListItem;
 }
 
 /** The label a balance reset's entry carries, and how the history spots one. */
