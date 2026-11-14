@@ -431,23 +431,14 @@ function StatusChip({
  * whole width.
  */
 function FieldInput({
-  styles, label, style, accessory, ...input
+  styles, label, style, ...input
 }: {
   styles: ReturnType<typeof makeStyles>;
   label: string;
-  /** Sits at the right end of the label line (the Flavor field's swap button). */
-  accessory?: React.ReactNode;
 } & React.ComponentProps<typeof TextField>) {
   return (
     <View>
-      {accessory ? (
-        <View style={styles.fieldLabelRow}>
-          <Text style={[styles.fieldLabel, styles.fieldLabelInRow]}>{label}</Text>
-          {accessory}
-        </View>
-      ) : (
-        <Text style={styles.fieldLabel}>{label}</Text>
-      )}
+      <Text style={styles.fieldLabel}>{label}</Text>
       <TextField
         style={[styles.fieldInput, style]}
         // Shelf words, not prose: see the name field below.
@@ -1366,7 +1357,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                   </View>
 
                   {/* The editor: only the open row, so the sheet reads as a short list
-                      with one form in it. Item, Brand and Flavor, pre-filled. */}
+                      with one form in it. Item, Flavor and Brand, pre-filled. */}
                   {open && (
                     <View style={styles.editor}>
                       {!!row.error && !!row.gtin && (
@@ -1421,38 +1412,37 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           </View>
                         )}
                       </View>
-                      {nutritionBlock}
-                      <View style={styles.fieldPair}>
-                        <FieldInput
-                          styles={styles}
-                          label="BRAND"
-                          value={shownBrand}
-                          placeholder="e.g. Biena"
-                          placeholderTextColor={colors.textTertiary}
-                          onChangeText={text => patchRow(row.key, { brandEdit: text.slice(0, GROCERY_BRAND_MAX_LENGTH) })}
-                          editable={nameable}
-                        />
-                        <FieldInput
-                          styles={styles}
-                          label="FLAVOR"
-                          accessory={
-                            <InlineAction
-                              icon="swap-vertical"
-                              variant="neutral"
-                              disabled={!canSwap}
-                              onPress={swapItemAndFlavor}
-                              haptic
-                              accessibilityLabel="Swap Item and Flavor"
-                              style={styles.swapPill}
-                            />
-                          }
-                          value={shownVariant}
-                          placeholder="e.g. Chili lime"
-                          placeholderTextColor={colors.textTertiary}
-                          onChangeText={text => patchRow(row.key, { variantEdit: text.slice(0, GROCERY_VARIANT_MAX_LENGTH) })}
-                          editable={nameable}
+                      {/* Flavor sits right under Item, with the swap between them, so the
+                          button can't read as swapping Brand. */}
+                      <View style={styles.swapRow}>
+                        <InlineAction
+                          icon="swap-vertical"
+                          variant="neutral"
+                          disabled={!canSwap}
+                          onPress={swapItemAndFlavor}
+                          haptic
+                          accessibilityLabel="Swap Item and Flavor"
                         />
                       </View>
+                      <FieldInput
+                        styles={styles}
+                        label="FLAVOR"
+                        value={shownVariant}
+                        placeholder="e.g. Chili lime"
+                        placeholderTextColor={colors.textTertiary}
+                        onChangeText={text => patchRow(row.key, { variantEdit: text.slice(0, GROCERY_VARIANT_MAX_LENGTH) })}
+                        editable={nameable}
+                      />
+                      {nutritionBlock}
+                      <FieldInput
+                        styles={styles}
+                        label="BRAND"
+                        value={shownBrand}
+                        placeholder="e.g. Biena"
+                        placeholderTextColor={colors.textTertiary}
+                        onChangeText={text => patchRow(row.key, { brandEdit: text.slice(0, GROCERY_BRAND_MAX_LENGTH) })}
+                        editable={nameable}
+                      />
 
                       {/* A price read off the shelf label the barcode was on.
                           Shown as its own line with a way out, because it is a
@@ -1706,7 +1696,6 @@ function makeStyles(colors: Colors) {
     // fields can share a line.
     // Stacked, not side by side: a flavor name ("Tortilla Style Protein Chips")
     // is longer than half a line, and the field is a single line.
-    fieldPair: { gap: spacing.smd },
     fieldLabel: {
       color: colors.textSecondary,
       fontSize: font.xs,
@@ -1714,9 +1703,7 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
       marginBottom: spacing.sm,
     },
-    fieldLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
-    fieldLabelInRow: { marginBottom: 0 },
-    swapPill: { alignSelf: 'center' },
+    swapRow: { alignItems: 'center' },
     fieldInput: {
       color: colors.text,
       fontSize: font.md,
