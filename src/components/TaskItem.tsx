@@ -85,7 +85,7 @@ import { asksOnCompletion, deliverableKindFor, isTentativeAnswer, type Deliverab
 import { offersMealLogOnCompletion } from '../utils/completionTap';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { activeChainStep, chainPreview, isChainFinish, chainStepAdvancesInPlace, nextChainStep } from '../utils/chain';
-import { isAnsweredByRecord, recordLogUrl, recordMicUrl } from '../utils/recordTasks';
+import { isAnsweredByRecord, recordGlyph, recordLogUrl, recordMicUrl } from '../utils/recordTasks';
 import { dictationSupported } from '../utils/speechSupport';
 import { offerBlockStart } from '../utils/blockOfferAccept';
 import { offersBlockStart } from '../utils/blockOfferTasks';
@@ -1583,6 +1583,9 @@ const TaskItemRow = React.memo(function TaskItem({
   // and only its *result* is subscribed to, so a task changing elsewhere in
   // the list doesn't re-render this row unless the day count itself moved.
   const reviewProjectId = projectReviewProjectId(task);
+  // The review task's checkbox opens its own link (the pull sheet), so that
+  // link's button would be a second control for one action.
+  const reviewOpensLink = !!reviewProjectId && !!rowLink;
   // A mood, journal, dream or weigh-in task: until its entry exists the checkbox
   // opens the sheet instead of completing; once it does the row is ready and the
   // tick completes it (see recordTasks.ts).
@@ -3708,7 +3711,7 @@ const TaskItemRow = React.memo(function TaskItem({
           {!completing && !isNegative && recurrenceNotYetDue && (
             <Ionicons name="repeat" size={iconSize.sm} color={colors.textSecondary} />
           )}
-          {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource || reviewProjectId || recordLog) && (
+          {!completing && !completionLocked && (asksOnComplete || reviewProjectId) && !recordLog && !reviewOpensLink && !mealSlotChooseSource && (
             // xs like the lock, not sm like the repeat: a "?" is tall where
             // the repeat glyph is wide and short, so the same nominal size
             // fills far more of a 20pt box and reads as crowded. Shared with
@@ -3716,6 +3719,23 @@ const TaskItemRow = React.memo(function TaskItem({
             // completes anything," which is exactly what happens here too —
             // a review task's tap opens the pull sheet instead of completing.
             <Ionicons name="help" size={iconSize.xs} color={colors.textSecondary} />
+          )}
+          {!completing && !completionLocked && mealSlotChooseSource && (
+            // "Choose lunch" opens the meal picker in place, so the box says
+            // it is about a meal rather than asking a question.
+            <Ionicons name="restaurant-outline" size={iconSize.xs} color={colors.accentText} />
+          )}
+          {!completing && !completionLocked && reviewOpensLink && (
+            // A project review's tap opens the pull sheet its link button
+            // opens, so the box wears that link's glyph and the button below
+            // steps aside, the same as a record task's box.
+            <Ionicons name={linkIconFor(rowLink) as never} size={iconSize.xs} color={colors.accentText} />
+          )}
+          {!completing && !completionLocked && recordLog && (
+            // The entry's own glyph in place of the "?", so the box is the
+            // button that opens the sheet and the row needs no second one at
+            // its trailing edge (see the link button below, which skips it).
+            <Ionicons name={recordGlyph(task) ?? 'help'} size={iconSize.xs} color={colors.accentText} />
           )}
           {!completing && !completionLocked && offersMealLog && (
             // A different glyph from "?" on purpose — see
@@ -4765,7 +4785,7 @@ const TaskItemRow = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && rowLink && rowLink !== peopleLink && (
+      {!selectionMode && showActions && rowLink && rowLink !== peopleLink && !(recordLog && rowLink === recordLog) && !reviewOpensLink && (
         <TouchableOpacity
           activeOpacity={interaction.activeOpacity}
           onPress={() => handleOpenLink()}

@@ -50,6 +50,22 @@ export function recordLogUrl(task: Pick<Task, 'generatedKind'>): string | null {
 }
 
 /**
+ * The glyph the checkbox shows while the entry is missing: the same face the
+ * row's own link button used to repeat at the far edge, so the box says what
+ * the tap opens rather than a bare "?". Null for any other task.
+ */
+export function recordGlyph(task: Pick<Task, 'generatedKind'>): 'happy-outline' | 'book-outline' | 'moon-outline' | 'scale-outline' | 'pulse-outline' | null {
+  switch (task.generatedKind) {
+    case 'moodLog': return 'happy-outline';
+    case 'journalLog': return 'book-outline';
+    case 'dreamLog': return 'moon-outline';
+    case 'weighIn': return 'scale-outline';
+    case 'bloodPressureLog': return 'pulse-outline';
+    default: return null;
+  }
+}
+
+/**
  * The link that opens a journal or dream task's sheet already listening, or
  * null for any other task. Only these two have a microphone: mood and weight
  * are answered with a tap on a scale, not with words.

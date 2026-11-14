@@ -24,7 +24,7 @@ jest.mock('../store/useSettingsStore', () => ({
   },
 }));
 
-import { isAnsweredByRecord, isRecordAnswered, recordLogUrl, recordMicUrl } from '../utils/recordTasks';
+import { isAnsweredByRecord, isRecordAnswered, recordGlyph, recordLogUrl, recordMicUrl } from '../utils/recordTasks';
 import type { Task } from '../types';
 
 const of = (generatedKind: Task['generatedKind']) => ({ generatedKind });
@@ -96,5 +96,14 @@ describe('isRecordAnswered', () => {
 
   it('is never true for another kind of task', () => {
     expect(isRecordAnswered(task('moodNudge', '2026-08-25'), none)).toBe(false);
+  });
+});
+
+describe('recordGlyph', () => {
+  it('gives every record task a glyph and every other task none', () => {
+    for (const kind of ['moodLog', 'journalLog', 'dreamLog', 'weighIn', 'bloodPressureLog'] as const) {
+      expect(recordGlyph({ generatedKind: kind })).not.toBeNull();
+    }
+    expect(recordGlyph({ generatedKind: null })).toBeNull();
   });
 });
