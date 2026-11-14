@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
+import { useAfterSheetDismiss } from '../hooks/useAfterSheetDismiss';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { PRIORITY_LABELS, PRIORITY_COLORS, type Difficulty, type Priority, type TimeOfDay } from '../types';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
@@ -158,18 +159,13 @@ export function BulkActionBar({
   // Every host exits selection right after the change, which unmounts this bar
   // and the picker's Modal inside it. Torn out in the commit that hides it, the
   // Modal never finishes dismissing and iOS leaves its dim layer over the
-  // screen. So a choice made in a sheet is held until that sheet's `onDismiss`
-  // (`runAfterSheet`) rather than run in the same tick.
-  const afterSheet = useRef<(() => void) | null>(null);
-  const runAfterSheet = () => {
-    const run = afterSheet.current;
-    afterSheet.current = null;
-    run?.();
-  };
+  // screen. So a choice made in a sheet is held until that sheet has dismissed
+  // (`useAfterSheetDismiss`) rather than run in the same tick.
+  const { hold: holdUntilSheetGone, onDismiss: runAfterSheet } = useAfterSheetDismiss();
   const handleConfirmWhen = (date: Date | null, segs: TimeOfDay[]) => {
     setWhenVisible(false);
-    if (date) afterSheet.current = () => onSetWhen(date, segs);
-    else if (segs.length > 0) afterSheet.current = () => onSetWhen(undefined, segs);
+    if (date) holdUntilSheetGone(() => onSetWhen(date, segs));
+    else if (segs.length > 0) holdUntilSheetGone(() => onSetWhen(undefined, segs));
   };
 
   const handleTagToggle = (tag: string) => {
@@ -618,7 +614,7 @@ export function BulkActionBar({
         visible={whenVisible}
         value={null}
         onConfirm={handleConfirmWhen}
-        onClear={() => { setWhenVisible(false); afterSheet.current = () => onSetWhen(null, []); }}
+        onClear={() => { setWhenVisible(false); holdUntilSheetGone(() => onSetWhen(null, [])); }}
         onCancel={() => setWhenVisible(false)}
         onDismiss={runAfterSheet}
       />
@@ -627,7 +623,7 @@ export function BulkActionBar({
       <CategoryPickerSheet
         visible={categoryVisible}
         title="Move to category"
-        onSelect={name => { afterSheet.current = () => onSetCategory(name); }}
+        onSelect={name => holdUntilSheetGone(() => onSetCategory(name))}
         onClose={() => setCategoryVisible(false)}
         onDismiss={runAfterSheet}
       />

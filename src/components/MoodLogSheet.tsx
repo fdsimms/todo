@@ -6,6 +6,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import type { LoggedSymptom, MoodChange, MoodLevel, MoodLog } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
+import { useAfterSheetDismiss } from '../hooks/useAfterSheetDismiss';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -121,6 +122,7 @@ export interface MoodLogPrefill {
 }
 
 export function MoodLogSheet({ visible, editing = null, prefill = null, onClose }: Props) {
+  const { hold: holdUntilDismissed, onDismiss } = useAfterSheetDismiss();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -395,7 +397,11 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     if (!canSave) return;
     haptics.success();
     if (editing) {
-      updateLog(editing.id, { mood, change: savedChange, symptoms, contextTags, note });
+      // Held until the sheet has dismissed: an edit that drops the last entry
+      // carrying a symptom makes the symptom page's "no longer exists" guard
+      // replace its tree under the presented sheet.
+      const id = editing.id;
+      holdUntilDismissed(() => updateLog(id, { mood, change: savedChange, symptoms, contextTags, note }));
     } else {
       // Today records the actual moment; a backdated day records noon on it.
       // Noon rather than midnight for the reason StuckScreen parks its dates
@@ -435,7 +441,11 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     confirmDelete({
       title: 'Delete this entry?',
       message: 'It will be removed from your history and from every number on the Mood screen.',
-      onConfirm: () => { haptics.warning(); animateLayout(); removeLog(id); onClose(); },
+      onConfirm: () => {
+        haptics.warning();
+        onClose();
+        holdUntilDismissed(() => { animateLayout(); removeLog(id); });
+      },
     });
   };
 
@@ -443,6 +453,7 @@ export function MoodLogSheet({ visible, editing = null, prefill = null, onClose 
     <EditorSheet
       visible={visible}
       onRequestClose={onClose}
+      onDismiss={onDismiss}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}

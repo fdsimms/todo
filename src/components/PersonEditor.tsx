@@ -41,6 +41,7 @@ import { personHistory } from '../utils/personHistory';
 import { describeObservedCadence, observedCadenceDays } from '../utils/reachOutTasks';
 import { TextField } from './TextField';
 import { useSheetSubject } from '../hooks/useSheetSubject';
+import { useAfterSheetDismiss } from '../hooks/useAfterSheetDismiss';
 import { usePlaceSuggestions } from '../hooks/usePlaceSuggestions';
 import { placeLocationText, placeRowTitle, placeSubtitle, type PlaceResult } from '../utils/places';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -69,6 +70,7 @@ interface Props {
  * what stops the feature reading as a filing system for your friends.
  */
 export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Props) {
+  const { hold: holdUntilDismissed, onDismiss } = useAfterSheetDismiss();
   // Held past the host clearing it, so the `return null` below can't tear the
   // presented sheet out of the tree while it is still closing: every host
   // clears the person in the same commit that lowers `visible`, and that
@@ -209,10 +211,12 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
 
   // No confirm: removePersonRow files an undo on the bar that puts back the
   // person and every note about them.
+  // Held until the sheet has dismissed: the host's "person is gone" guard
+  // replaces its whole tree, and a sheet torn out mid-dismiss leaves a dim layer.
   const handleDelete = () => {
     haptics.warning();
-    removePersonRow(person.id);
     onClose();
+    holdUntilDismissed(() => removePersonRow(person.id));
   };
 
   const toggleArchived = () => {
@@ -227,6 +231,7 @@ export function PersonEditor({ visible, person: livePerson, isNew, onClose }: Pr
     <EditorSheet
       visible={visible}
       onRequestClose={saveAndClose}
+      onDismiss={onDismiss}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
