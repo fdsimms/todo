@@ -15,6 +15,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
+import { useAfterSheetDismiss } from '../hooks/useAfterSheetDismiss';
 import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
 import { PRIORITY_LABELS, PRIORITY_COLORS, type Difficulty, type Priority, type TimeOfDay } from '../types';
 import { DIFFICULTY_SEGMENTS } from '../utils/rewards';
@@ -154,10 +155,17 @@ export function BulkActionBar({
 
   // Save with no day picked changes only the time of day. `null` would clear
   // every selected task's date, which only Clear means.
+  //
+  // Every host exits selection right after the change, which unmounts this bar
+  // and the picker's Modal inside it. Torn out in the commit that hides it, the
+  // Modal never finishes dismissing and iOS leaves its dim layer over the
+  // screen. So a choice made in a sheet is held until that sheet has dismissed
+  // (`useAfterSheetDismiss`) rather than run in the same tick.
+  const { hold: holdUntilSheetGone, onDismiss: runAfterSheet } = useAfterSheetDismiss();
   const handleConfirmWhen = (date: Date | null, segs: TimeOfDay[]) => {
     setWhenVisible(false);
-    if (date) onSetWhen(date, segs);
-    else if (segs.length > 0) onSetWhen(undefined, segs);
+    if (date) holdUntilSheetGone(() => onSetWhen(date, segs));
+    else if (segs.length > 0) holdUntilSheetGone(() => onSetWhen(undefined, segs));
   };
 
   const handleTagToggle = (tag: string) => {
@@ -606,16 +614,18 @@ export function BulkActionBar({
         visible={whenVisible}
         value={null}
         onConfirm={handleConfirmWhen}
-        onClear={() => { setWhenVisible(false); onSetWhen(null, []); }}
+        onClear={() => { setWhenVisible(false); holdUntilSheetGone(() => onSetWhen(null, [])); }}
         onCancel={() => setWhenVisible(false)}
+        onDismiss={runAfterSheet}
       />
       {/* No `value`: the selection can span categories, so there's nothing to
           tick — every row here is a destination. */}
       <CategoryPickerSheet
         visible={categoryVisible}
         title="Move to category"
-        onSelect={onSetCategory}
+        onSelect={name => holdUntilSheetGone(() => onSetCategory(name))}
         onClose={() => setCategoryVisible(false)}
+        onDismiss={runAfterSheet}
       />
     </>
   );

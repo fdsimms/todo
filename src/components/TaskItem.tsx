@@ -154,6 +154,7 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { mealShortfallEntryId, mealShortfallRows } from '../utils/mealShortfallTasks';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useSheetMount } from '../hooks/useSheetMount';
+import { useAfterSheetDismiss } from '../hooks/useAfterSheetDismiss';
 import { CompletionOptionsMenu } from './CompletionOptionsMenu';
 import { NegativeHoldMenu } from './NegativeHoldMenu';
 import { PantryCheckSheet } from './PantryCheckSheet';
@@ -1537,6 +1538,11 @@ const TaskItemRow = React.memo(function TaskItem({
   // every other sheet instead of being torn down mid-dismissal.
   const whenPickerOpen = !selectionMode && showWhenPicker;
   const mountWhenPicker = useSheetMount(whenPickerOpen);
+  // Moving a task usually takes this row off the list it is on, and the picker
+  // lives inside the row. The change is held until the picker has dismissed, or
+  // the row (and the picker's Modal with it) is torn out mid-dismiss and iOS
+  // leaves a dim layer over the screen.
+  const { hold: holdUntilWhenPickerGone, onDismiss: onWhenPickerDismiss } = useAfterSheetDismiss();
   const mountBreakdown = useSheetMount(showBreakdown);
   const mountDeliverablePrompt = useSheetMount(showDeliverablePrompt);
   const mountMission = useSheetMount(showMission);
@@ -1547,6 +1553,10 @@ const TaskItemRow = React.memo(function TaskItem({
   const missionSheet = useSheetSubject(mountMission ? taskMissionProps(task) : null);
   const mealPickerOpen = showMealPicker && mealSlotChooseSource !== null;
   const mountMealPicker = useSheetMount(mealPickerOpen);
+  // Held for the same reason as the mission's: planning a meal answers the
+  // slot's "Choose" step, which makes `mealSlotChooseSource` null, and gating
+  // the sheet on the live value took it out of the tree while it was presented.
+  const mealPickerSource = useSheetSubject(mealSlotChooseSource);
   const [showRotationPick, setShowRotationPick] = useState(false);
   const mountRotationPick = useSheetMount(showRotationPick);
   // Long-pressing the checkbox of a repeating task: skip, mark missed, or
@@ -5972,6 +5982,8 @@ const TaskItemRow = React.memo(function TaskItem({
           taskEffort={task.effort}
           taskEstimatedMinutes={task.estimatedMinutes}
           onConfirm={(date, segs) => confirmScheduleMove([task], date, restartSchedule => confirmSegmentScope([task], segs, segmentScope => {
+            setShowWhenPicker(false);
+            holdUntilWhenPickerGone(() => {
             const snapshot = { ...task };
             // A recurring task's dueDate is the anchor its whole future grid is
             // measured from, and a series member's was hand-picked out of a set
@@ -6023,27 +6035,30 @@ const TaskItemRow = React.memo(function TaskItem({
               undo: () => updateTask(snapshot.id, snapshot),
               redo: redoRestoringRows([task.id]),
             });
-            setShowWhenPicker(false);
+            });
           }))}
           onClear={() => {
-            const snapshot = { ...task };
-            updateTask(task.id, {
-              dueDate: null,
-              timeSegments: [],
-              // A don't-do habit's only date is its hold, so clearing means
-              // releasing it back onto Today.
-              ...(isNegative ? { deferUntil: null } : {}),
-              ...(task.pinned ? { pinned: false } : {}),
-            });
-            setLastAction({
-              label: `Took the date off “${task.title}”`,
-              announce: true,
-              undo: () => updateTask(snapshot.id, snapshot),
-              redo: redoRestoringRows([task.id]),
-            });
             setShowWhenPicker(false);
+            holdUntilWhenPickerGone(() => {
+              const snapshot = { ...task };
+              updateTask(task.id, {
+                dueDate: null,
+                timeSegments: [],
+                // A don't-do habit's only date is its hold, so clearing means
+                // releasing it back onto Today.
+                ...(isNegative ? { deferUntil: null } : {}),
+                ...(task.pinned ? { pinned: false } : {}),
+              });
+              setLastAction({
+                label: `Took the date off “${task.title}”`,
+                announce: true,
+                undo: () => updateTask(snapshot.id, snapshot),
+                redo: redoRestoringRows([task.id]),
+              });
+            });
           }}
           onCancel={() => setShowWhenPicker(false)}
+          onDismiss={onWhenPickerDismiss}
         />
       )}
       {mountBreakdown && (
@@ -6102,13 +6117,13 @@ const TaskItemRow = React.memo(function TaskItem({
           onClose={() => setShowMission(false)}
         />
       )}
-      {mountMealPicker && mealSlotChooseSource && (
+      {mountMealPicker && mealPickerSource && (
         <RecipePickerSheet
           visible={mealPickerOpen}
-          dayKey={mealSlotChooseSource.dayKey}
-          dayLabel={format(dayKeyToDate(mealSlotChooseSource.dayKey), 'EEEE')}
-          defaultSlot={mealSlotChooseSource.slot}
-          forceSlot={mealSlotChooseSource.slot}
+          dayKey={mealPickerSource.dayKey}
+          dayLabel={format(dayKeyToDate(mealPickerSource.dayKey), 'EEEE')}
+          defaultSlot={mealPickerSource.slot}
+          forceSlot={mealPickerSource.slot}
           onPlan={planMeal}
           // Same deferred offer the Meal Plan screen's own picker makes —
           // this sheet is the same component, just mounted from a task row

@@ -16,6 +16,7 @@ import { AnimatedCollapsible } from './AnimatedCollapsible';
 import { useTrayFold, useTrayRaised, useTrayRestKey, TRAY_PAD, STACK_EDGE_DEPTH } from './TaskGroupTray';
 import { PinIcon } from './PinIcon';
 import { useSheetMount } from '../hooks/useSheetMount';
+import { useAfterSheetDismiss } from '../hooks/useAfterSheetDismiss';
 import { useProjectStore } from '../store/useProjectStore';
 import { AnimatedNumber } from './AnimatedNumber';
 import { RotatingChevron } from './RotatingChevron';
@@ -163,6 +164,7 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
   // Mounted on first open and kept, so it closes through `visible` rather
   // than by leaving the tree. See useSheetMount.
   const mountDefer = useSheetMount(showDefer);
+  const { hold: holdUntilDismissed, onDismiss: onDeferDismiss } = useAfterSheetDismiss();
 
   const dueToday = useMemo(
     () => dueTodayOverride ?? groupRoster(allChildren).filter(isRelevantToGroupToday),
@@ -456,8 +458,12 @@ export const TaskGroupHeader = React.memo(function TaskGroupHeader({
           title="Reschedule"
           showTimeOfDay={false}
           showSuggest={false}
-          onConfirm={date => { setShowDefer(false); if (date) onDefer(group.id, date); }}
+          // Held until the picker has dismissed: deferring the stack's members
+          // takes the header off the list, and a picker torn out mid-dismiss
+          // leaves a dim layer over the screen.
+          onConfirm={date => { setShowDefer(false); if (date) holdUntilDismissed(() => onDefer(group.id, date)); }}
           onCancel={() => setShowDefer(false)}
+          onDismiss={onDeferDismiss}
         />
       )}
     </>

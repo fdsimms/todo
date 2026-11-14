@@ -17,6 +17,7 @@ import { FieldError } from './FieldError';
 import { InlineAction } from './InlineAction';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { useAfterSheetDismiss } from '../hooks/useAfterSheetDismiss';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, getLogicalToday } from '../utils/dateUtils';
 import { symptomKey, symptomVocabulary } from '../utils/moodLog';
@@ -72,6 +73,7 @@ interface Props {
  * store refuses on.
  */
 export function ExperimentSheet({ visible, experiment, onClose }: Props) {
+  const { hold: holdUntilDismissed, onDismiss } = useAfterSheetDismiss();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const addExperiment = useExperimentStore(s => s.addExperiment);
@@ -155,7 +157,9 @@ export function ExperimentSheet({ visible, experiment, onClose }: Props) {
     confirmDelete({
       title: 'Delete this experiment?',
       message: 'Your mood and symptom entries stay as they are.',
-      onConfirm: () => { removeExperiment(experiment.id); onClose(); },
+      // Held until the sheet has dismissed: the host's "experiment is gone"
+      // guard would otherwise replace its tree under the presented sheet.
+      onConfirm: () => { onClose(); holdUntilDismissed(() => removeExperiment(experiment.id)); },
     });
   };
 
@@ -195,6 +199,7 @@ export function ExperimentSheet({ visible, experiment, onClose }: Props) {
       // Only for a new one: the sheet stays mounted across opens, so a bare
       // `autoFocus` on the field would only ever fire once.
       onShow={() => { if (!experiment) labelInputRef.current?.focus(); }}
+      onDismiss={onDismiss}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}

@@ -23,6 +23,9 @@ interface Props {
   // visibility toggles (autoFocus only fires on mount, not on becoming
   // visible again), instead of guessing how long the animation takes.
   onShow?: () => void;
+  // Fires once the Modal has finished dismissing, for an editor whose delete
+  // must not run until it is gone (see `useAfterSheetDismiss`).
+  onDismiss?: () => void;
   // Kept per-file rather than folded into this component — root/scroll/
   // scrollContent (and the header row's own style) genuinely differ between
   // editors (e.g. scrollContent's bottom padding), so each caller passes its
@@ -121,6 +124,7 @@ export function EditorSheet({
   visible,
   onRequestClose,
   onShow,
+  onDismiss,
   rootStyle,
   headerStyle,
   scrollStyle,
@@ -257,6 +261,7 @@ export function EditorSheet({
       presentationStyle="fullScreen"
       onRequestClose={onRequestClose}
       onShow={onShow}
+      onDismiss={onDismiss}
     >
       {body}
     </SheetModal>

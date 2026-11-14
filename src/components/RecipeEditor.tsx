@@ -59,6 +59,7 @@ import { EditorSheet } from './EditorSheet';
 import { TextField } from './TextField';
 import { CookwareWeighIn } from './CookwareWeighIn';
 import { useWeighIn } from '../hooks/useWeighIn';
+import { useAfterSheetDismiss } from '../hooks/useAfterSheetDismiss';
 import { BUTTON_LABEL } from '../copy/shared';
 
 interface Props {
@@ -96,6 +97,9 @@ const ROW_CONTENT_INDENT = spacing.md + 18 + spacing.md;
  * as TemplateEditor — the rarely-changed rows sit under the name.
  */
 export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = false }: Props) {
+  // A delete makes the host's "recipe is gone" guard replace its whole tree, so
+  // it runs only once this sheet has dismissed.
+  const { hold: holdUntilDismissed, onDismiss } = useAfterSheetDismiss();
   // ==== theme and store actions ====
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -313,8 +317,8 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     // A draft closed with no name and nothing on it was never a recipe. One
     // that already has ingredients or steps keeps its placeholder name.
     if (draft && !name.trim() && recipe.ingredients.length === 0 && recipe.steps.length === 0) {
-      deleteRecipe(recipe.id);
-      onDeleted();
+      onClose();
+      holdUntilDismissed(() => { deleteRecipe(recipe.id); onDeleted(); });
       return;
     }
     // Nothing is written while the name is refused. The sheet stays open on the
@@ -419,9 +423,12 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
       title: 'Delete recipe',
       message,
       onConfirm: () => {
-        animateLayout();
-        deleteRecipe(recipe.id);
-        onDeleted();
+        onClose();
+        holdUntilDismissed(() => {
+          animateLayout();
+          deleteRecipe(recipe.id);
+          onDeleted();
+        });
       },
     });
   };
@@ -432,6 +439,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted, draft = fals
     <EditorSheet
       visible={visible}
       onRequestClose={saveAndClose}
+      onDismiss={onDismiss}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
