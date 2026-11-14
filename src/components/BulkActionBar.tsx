@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -154,10 +154,22 @@ export function BulkActionBar({
 
   // Save with no day picked changes only the time of day. `null` would clear
   // every selected task's date, which only Clear means.
+  //
+  // Every host exits selection right after the change, which unmounts this bar
+  // and the picker's Modal inside it. Torn out in the commit that hides it, the
+  // Modal never finishes dismissing and iOS leaves its dim layer over the
+  // screen. So a choice made in a sheet is held until that sheet's `onDismiss`
+  // (`runAfterSheet`) rather than run in the same tick.
+  const afterSheet = useRef<(() => void) | null>(null);
+  const runAfterSheet = () => {
+    const run = afterSheet.current;
+    afterSheet.current = null;
+    run?.();
+  };
   const handleConfirmWhen = (date: Date | null, segs: TimeOfDay[]) => {
     setWhenVisible(false);
-    if (date) onSetWhen(date, segs);
-    else if (segs.length > 0) onSetWhen(undefined, segs);
+    if (date) afterSheet.current = () => onSetWhen(date, segs);
+    else if (segs.length > 0) afterSheet.current = () => onSetWhen(undefined, segs);
   };
 
   const handleTagToggle = (tag: string) => {
@@ -606,16 +618,18 @@ export function BulkActionBar({
         visible={whenVisible}
         value={null}
         onConfirm={handleConfirmWhen}
-        onClear={() => { setWhenVisible(false); onSetWhen(null, []); }}
+        onClear={() => { setWhenVisible(false); afterSheet.current = () => onSetWhen(null, []); }}
         onCancel={() => setWhenVisible(false)}
+        onDismiss={runAfterSheet}
       />
       {/* No `value`: the selection can span categories, so there's nothing to
           tick — every row here is a destination. */}
       <CategoryPickerSheet
         visible={categoryVisible}
         title="Move to category"
-        onSelect={onSetCategory}
+        onSelect={name => { afterSheet.current = () => onSetCategory(name); }}
         onClose={() => setCategoryVisible(false)}
+        onDismiss={runAfterSheet}
       />
     </>
   );

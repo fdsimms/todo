@@ -121,6 +121,8 @@ interface Props {
   onConfirm: (date: Date | null, timeSegments: TimeOfDay[]) => void;
   onClear?: () => void;
   onCancel: () => void;
+  /** Runs once the picker is fully gone, for a host that unmounts itself on confirm (the bulk bar). */
+  onDismiss?: () => void;
   title?: string;
   /** Content shown above everything else in the body, for a caller whose date has a mode to choose first (a repeating task's deadline). */
   header?: React.ReactNode;
@@ -231,7 +233,7 @@ const noonOf = (d: Date) => {
 export function WhenPicker({
   visible, value, timeSegments: initialSegments,
   taskId, taskTitle, taskNotes, taskTags, taskCategory, taskPriority, taskEffort, taskEstimatedMinutes,
-  onConfirm, onClear, onCancel,
+  onConfirm, onClear, onCancel, onDismiss,
   title = 'When?', header, showTimeOfDay = true, showSuggest = true, allowPast = true, allowFuture = true,
   postponeTaskId, resetTimeOfDayOnMove = false, onBreakUp, nlEnabled,
   projectAnchor = null,
@@ -645,6 +647,7 @@ export function WhenPicker({
       animationType="none"
       transparent
       onRequestClose={cancel}
+      onDismiss={onDismiss}
     >
       <View style={styles.backdrop}>
         <Animated.View

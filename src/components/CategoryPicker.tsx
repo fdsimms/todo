@@ -259,6 +259,8 @@ export function CategoryPickerList({
 interface SheetProps extends Omit<ListProps, 'maxHeight'> {
   visible: boolean;
   onClose: () => void;
+  /** Runs once the sheet is fully gone, for a host that unmounts itself on select (the bulk bar). */
+  onDismiss?: () => void;
   /** Header title. "Category" unless the host is doing something more specific. */
   title?: string;
 }
@@ -276,9 +278,9 @@ interface SheetProps extends Omit<ListProps, 'maxHeight'> {
  * its list to the space left, so the keyboard doesn't hide the rows, and
  * tapping the field first was a step every use of the sheet paid.
  */
-export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSelect, ...listProps }: SheetProps) {
+export function CategoryPickerSheet({ visible, onClose, onDismiss, title = 'Category', onSelect, ...listProps }: SheetProps) {
   return (
-    <PickerSheet visible={visible} onClose={onClose} title={title}>
+    <PickerSheet visible={visible} onClose={onClose} onDismiss={onDismiss} title={title}>
       {choose => (
         <CategoryPickerList
           {...listProps}
@@ -301,9 +303,10 @@ export const PICKER_SHEET_LIST_MAX_HEIGHT = SHEET_LIST_MAX_HEIGHT;
  * `choose`, which animates the sheet away and then runs what was picked, so a
  * choice never lands under a sheet that's still on screen.
  */
-export function PickerSheet({ visible, onClose, title, children }: {
+export function PickerSheet({ visible, onClose, onDismiss, title, children }: {
   visible: boolean;
   onClose: () => void;
+  onDismiss?: () => void;
   title: string;
   children: (choose: (after: () => void) => void) => React.ReactNode;
 }) {
@@ -383,7 +386,7 @@ export function PickerSheet({ visible, onClose, title, children }: {
   ).current;
 
   return (
-    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
+    <SheetModal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()} onDismiss={onDismiss}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
