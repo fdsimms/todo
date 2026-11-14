@@ -1553,6 +1553,10 @@ const TaskItemRow = React.memo(function TaskItem({
   const missionSheet = useSheetSubject(mountMission ? taskMissionProps(task) : null);
   const mealPickerOpen = showMealPicker && mealSlotChooseSource !== null;
   const mountMealPicker = useSheetMount(mealPickerOpen);
+  // Held for the same reason as the mission's: planning a meal answers the
+  // slot's "Choose" step, which makes `mealSlotChooseSource` null, and gating
+  // the sheet on the live value took it out of the tree while it was presented.
+  const mealPickerSource = useSheetSubject(mealSlotChooseSource);
   const [showRotationPick, setShowRotationPick] = useState(false);
   const mountRotationPick = useSheetMount(showRotationPick);
   // Long-pressing the checkbox of a repeating task: skip, mark missed, or
@@ -6113,13 +6117,13 @@ const TaskItemRow = React.memo(function TaskItem({
           onClose={() => setShowMission(false)}
         />
       )}
-      {mountMealPicker && mealSlotChooseSource && (
+      {mountMealPicker && mealPickerSource && (
         <RecipePickerSheet
           visible={mealPickerOpen}
-          dayKey={mealSlotChooseSource.dayKey}
-          dayLabel={format(dayKeyToDate(mealSlotChooseSource.dayKey), 'EEEE')}
-          defaultSlot={mealSlotChooseSource.slot}
-          forceSlot={mealSlotChooseSource.slot}
+          dayKey={mealPickerSource.dayKey}
+          dayLabel={format(dayKeyToDate(mealPickerSource.dayKey), 'EEEE')}
+          defaultSlot={mealPickerSource.slot}
+          forceSlot={mealPickerSource.slot}
           onPlan={planMeal}
           // Same deferred offer the Meal Plan screen's own picker makes —
           // this sheet is the same component, just mounted from a task row
