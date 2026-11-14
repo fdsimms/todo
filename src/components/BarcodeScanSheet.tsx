@@ -1242,6 +1242,17 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                         .slice(0, 3)
                     : [];
                 const matchWarning = matchWarningFor(row, rowItemId);
+                // For a scan read the wrong way round ("Classic Lemonade" as the item,
+                // "lemonade" as the flavor). Goes through the same patch as typing in
+                // Item, so the row is marked named and resolves like a typed name.
+                const canSwap = nameable && shownVariant.trim().length > 0;
+                const swapItemAndFlavor = () =>
+                  patchRow(row.key, {
+                    name: shownVariant.trim().slice(0, GROCERY_NAME_MAX_LENGTH),
+                    nameTyped: true,
+                    included: true,
+                    variantEdit: shownName.trim().slice(0, GROCERY_VARIANT_MAX_LENGTH),
+                  });
 
                 // The way out of a code nothing has heard of: the packet is in hand and
                 // its figures are printed on it, so offer to read them off the label.
@@ -1346,7 +1357,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                   </View>
 
                   {/* The editor: only the open row, so the sheet reads as a short list
-                      with one form in it. Item, Brand and Flavor, pre-filled. */}
+                      with one form in it. Item, Flavor and Brand, pre-filled. */}
                   {open && (
                     <View style={styles.editor}>
                       {!!row.error && !!row.gtin && (
@@ -1401,27 +1412,37 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context, onPhotogr
                           </View>
                         )}
                       </View>
-                      {nutritionBlock}
-                      <View style={styles.fieldPair}>
-                        <FieldInput
-                          styles={styles}
-                          label="BRAND"
-                          value={shownBrand}
-                          placeholder="e.g. Biena"
-                          placeholderTextColor={colors.textTertiary}
-                          onChangeText={text => patchRow(row.key, { brandEdit: text.slice(0, GROCERY_BRAND_MAX_LENGTH) })}
-                          editable={nameable}
-                        />
-                        <FieldInput
-                          styles={styles}
-                          label="FLAVOR"
-                          value={shownVariant}
-                          placeholder="e.g. Chili lime"
-                          placeholderTextColor={colors.textTertiary}
-                          onChangeText={text => patchRow(row.key, { variantEdit: text.slice(0, GROCERY_VARIANT_MAX_LENGTH) })}
-                          editable={nameable}
+                      {/* Flavor sits right under Item, with the swap between them, so the
+                          button can't read as swapping Brand. */}
+                      <View style={styles.swapRow}>
+                        <InlineAction
+                          icon="swap-vertical"
+                          variant="neutral"
+                          disabled={!canSwap}
+                          onPress={swapItemAndFlavor}
+                          haptic
+                          accessibilityLabel="Swap Item and Flavor"
                         />
                       </View>
+                      <FieldInput
+                        styles={styles}
+                        label="FLAVOR"
+                        value={shownVariant}
+                        placeholder="e.g. Chili lime"
+                        placeholderTextColor={colors.textTertiary}
+                        onChangeText={text => patchRow(row.key, { variantEdit: text.slice(0, GROCERY_VARIANT_MAX_LENGTH) })}
+                        editable={nameable}
+                      />
+                      {nutritionBlock}
+                      <FieldInput
+                        styles={styles}
+                        label="BRAND"
+                        value={shownBrand}
+                        placeholder="e.g. Biena"
+                        placeholderTextColor={colors.textTertiary}
+                        onChangeText={text => patchRow(row.key, { brandEdit: text.slice(0, GROCERY_BRAND_MAX_LENGTH) })}
+                        editable={nameable}
+                      />
 
                       {/* A price read off the shelf label the barcode was on.
                           Shown as its own line with a way out, because it is a
@@ -1675,7 +1696,6 @@ function makeStyles(colors: Colors) {
     // fields can share a line.
     // Stacked, not side by side: a flavor name ("Tortilla Style Protein Chips")
     // is longer than half a line, and the field is a single line.
-    fieldPair: { gap: spacing.smd },
     fieldLabel: {
       color: colors.textSecondary,
       fontSize: font.xs,
@@ -1683,6 +1703,7 @@ function makeStyles(colors: Colors) {
       letterSpacing: 0.8,
       marginBottom: spacing.sm,
     },
+    swapRow: { alignItems: 'center' },
     fieldInput: {
       color: colors.text,
       fontSize: font.md,
