@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, Text } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { type Colors, font, fontWeight, radius } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -27,6 +27,7 @@ export function HoldToConfirmButton({ label, holdMs, onConfirm, disabled, access
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const fill = useRef(new Animated.Value(0)).current;
   const holding = useRef<Animated.CompositeAnimation | null>(null);
+  const [width, setWidth] = useState(0);
 
   const drain = () => {
     holding.current?.stop();
@@ -61,6 +62,7 @@ export function HoldToConfirmButton({ label, holdMs, onConfirm, disabled, access
       onPressIn={start}
       onPressOut={drain}
       disabled={disabled}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       style={[styles.button, disabled && styles.off, style]}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
@@ -73,6 +75,24 @@ export function HoldToConfirmButton({ label, holdMs, onConfirm, disabled, access
         ]}
       />
       <Text style={styles.text}>{label}</Text>
+      {/* The same label in white, clipped to the fill's width, so each letter
+          turns white exactly as the fill passes it. Its inner box is the
+          button's full width so the text lands on the one underneath. */}
+      {width > 0 && (
+        <Animated.View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[
+            styles.clip,
+            { width: fill.interpolate({ inputRange: [0, 1], outputRange: [0, width] }) },
+          ]}
+        >
+          <View style={[styles.clipInner, { width }]}>
+            <Text style={styles.textOnFill}>{label}</Text>
+          </View>
+        </Animated.View>
+      )}
     </Pressable>
   );
 }
@@ -94,8 +114,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     bottom: 0,
     backgroundColor: colors.redFill,
   },
+  clip: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    overflow: 'hidden',
+  },
+  clipInner: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   text: {
     color: colors.redText,
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
+  },
+  textOnFill: {
+    color: colors.onFill,
     fontSize: font.md,
     fontWeight: fontWeight.semibold,
   },
