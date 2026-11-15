@@ -8,7 +8,7 @@ import { screenTimeBridge } from './screenTimeBridge';
 import { lockedUnlockBlocksNow } from './unlockWorld';
 import { getLogicalDayKey } from './dateUtils';
 import type { Task } from '../types';
-import { nextScheduleBoundary, resolvedGroups } from './blockSchedule';
+import { nextScheduleBoundary, resolvedGroups, withVacationPause } from './blockSchedule';
 import { beginVisibleAtPass, getVisibleAt, isHiddenForVacation, isTaskVisible } from './visibilityUtils';
 import { allowGroupsNow, expandGroupNow, resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
@@ -106,7 +106,13 @@ export function liveGatesNow(): Task[] {
 function buildShieldState(now: Date): AppShieldState {
   const settings = useSettingsStore.getState();
   const tasks = useTaskStore.getState().tasks;
-  const schedules = useAppGroupStore.getState().schedules;
+  // Vacation pauses the schedules that opted in, here and nowhere else, so the
+  // shield, the Screen Time page and a release all read the same answer.
+  const schedules = withVacationPause(
+    useAppGroupStore.getState().schedules,
+    { on: settings.vacationMode, start: settings.vacationStart, end: settings.vacationEnd },
+    now,
+  );
   const { releases } = useShieldReleaseStore.getState();
   // A gate holds its own group when it names one, else the gate setting's.
   const settingGroup = resolvedAssignments().gate;

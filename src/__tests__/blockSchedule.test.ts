@@ -2,7 +2,7 @@ import {
   activeSchedules, armedActivityCount, currentWindowEnd, MAX_ARMED_ACTIVITIES, windowCovering, describeDays, describeWindow, formatMinutes, isAllDay, isScheduleActive,
   nativeScheduleWindows, nextScheduleBoundary, parseBlockSchedules, pauseActiveSchedules, scheduleProblem,
   serializeBlockSchedules,
-  windowLengthMinutes, type BlockSchedule,
+  windowLengthMinutes, withVacationPause, type BlockSchedule,
 } from '../utils/blockSchedule';
 
 const make = (over: Partial<BlockSchedule> = {}): BlockSchedule => ({
@@ -407,5 +407,38 @@ describe('an allow window', () => {
     const overnight = Array.from({ length: 8 }, (_, i) => make({ id: `s${i}`, startMinutes: 22 * 60, endMinutes: 6 * 60 }));
     expect(armedActivityCount(overnight)).toBe(MAX_ARMED_ACTIVITIES);
     expect(MAX_ARMED_ACTIVITIES + 4).toBe(20);
+  });
+});
+
+describe('vacation pause', () => {
+  const vacation = (startAt: Date, end: string | null = null) => ({ on: true, start: startAt.toISOString(), end });
+
+  it('changes nothing while vacation is off or the schedule did not opt in', () => {
+    const optIn = make({ pauseOnVacation: true });
+    expect(activeSchedules(withVacationPause([optIn], { on: false, start: null, end: null }, WED(10)), WED(10))).toHaveLength(1);
+    expect(activeSchedules(withVacationPause([make()], vacation(WED(8)), THU(10)), THU(10))).toHaveLength(1);
+  });
+
+  it('pauses an opted-in schedule whose window starts after vacation did', () => {
+    const out = withVacationPause([make({ pauseOnVacation: true })], vacation(WED(8)), THU(10));
+    expect(activeSchedules(out, THU(10))).toHaveLength(0);
+    expect(out[0].pausedUntil).not.toBeNull();
+  });
+
+  it('leaves a window that was already open when vacation began', () => {
+    const out = withVacationPause([make({ pauseOnVacation: true })], vacation(WED(10)), WED(11));
+    expect(activeSchedules(out, WED(11))).toHaveLength(1);
+  });
+
+  it('resumes on the end date', () => {
+    const end = new Date(2026, 7, 14).toISOString();
+    const out = withVacationPause([make({ pauseOnVacation: true })], vacation(WED(8), end), THU(10));
+    expect(out[0].pausedUntil).toBe(new Date(2026, 7, 14).toISOString());
+    expect(nativeScheduleWindows(out, id => id)[0].pausedUntilIso).toBe(out[0].pausedUntil);
+  });
+
+  it('survives parsing', () => {
+    const [parsed] = parseBlockSchedules(serializeBlockSchedules([make({ pauseOnVacation: true })]));
+    expect(parsed.pauseOnVacation).toBe(true);
   });
 });
