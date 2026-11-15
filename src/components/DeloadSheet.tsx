@@ -13,7 +13,7 @@ import { EmptyNote } from './EmptyNote';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, interaction, sheetBottomInset, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, interaction, iconSize, sheetBottomInset, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatDuration } from '../utils/effort';
@@ -60,8 +60,8 @@ interface Props {
  * bulk action: the previous take on this (#356) picked tasks with an AI call
  * and moved them all to tomorrow, leaving nothing to inspect beforehand and
  * only a blanket undo afterward. Every row here shows where the task is going
- * and why, blocked rows show what's holding them, and tapping a row opens the
- * normal date picker to override the destination by hand.
+ * and why, blocked rows show what's holding them, and the calendar button on a
+ * row opens the normal date picker to override the destination by hand.
  *
  * The Best day / Tomorrow switch is there because the engine's spread is the
  * right answer only some of the time: a day that got away from you is usually
@@ -126,9 +126,8 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
 
   // Slide the sheet away before showing the date picker — rendering both at
   // once causes touch conflicts (same choreography as ApplyTemplateSheet).
-  // A long press (its only call site), so it gets the long-press strength.
   const openPicker = (proposal: DeloadProposal) => {
-    haptics.impactMedium();
+    haptics.tap();
     sheet.slideOut(() => setPickerTarget(proposal));
   };
 
@@ -251,13 +250,10 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
         key={p.task.id}
         style={styles.row}
         onPress={() => toggle(p)}
-        onLongPress={() => openPicker(p)}
-        delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="checkbox"
         accessibilityState={{ checked }}
         accessibilityLabel={`${p.task.title}, move to ${dayLabel}${detail ? `, ${detail}` : ''}`}
-        accessibilityHint="Long press to pick a different day"
       >
         <Ionicons
           name={checked ? 'checkmark-circle' : 'ellipse-outline'}
@@ -274,6 +270,17 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
           </Text>
         </View>
         <Text style={styles.rowMinutes}>{formatDuration(p.minutes)}</Text>
+        {/* Inside the row's own tap target, so a near miss would toggle the row. */}
+        <TouchableOpacity
+          style={styles.scheduleBtn}
+          onPress={() => openPicker(p)}
+          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`Pick a different day for ${p.task.title}, currently ${dayLabel}`}
+        >
+          <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
+        </TouchableOpacity>
       </TouchableOpacity>
     );
   };
@@ -321,7 +328,7 @@ export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
                   options={MODES}
                 />
               </View>
-              <Text style={styles.hint}>Tap to include or skip. Long press to pick a different day.</Text>
+              <Text style={styles.hint}>Tap to include or skip. Use the calendar button to pick a different day.</Text>
             </>
           )}
 
@@ -479,6 +486,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowTitleBlocked: { color: colors.textTertiary },
   rowSub: { color: colors.textTertiary, fontSize: font.xs },
   rowDest: { color: colors.textSecondary, fontWeight: fontWeight.medium },
+  scheduleBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSubtle,
+  },
   rowMinutes: { color: colors.textTertiary, fontSize: font.xs },
   sectionLabel: {
     color: colors.textSecondary,
