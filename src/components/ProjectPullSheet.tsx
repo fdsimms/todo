@@ -84,10 +84,11 @@ interface Props {
  * row instead — see `expand` below — each independently selectable, so more
  * than one task can be pulled from the same project in one go.
  *
- * Gestures match DeloadSheet exactly: tap to include or skip, long press to
- * pick a different day. Cycling is the one thing this sheet does that that one
- * doesn't (outside the expanded case, which has no need for it), so it gets
- * its own visible affordance instead of a third gesture.
+ * Tap a row to include or skip it; the calendar button at its right edge picks
+ * a different day (a long press used to, but nothing on the row said so).
+ * Cycling is the other thing this sheet does that DeloadSheet doesn't
+ * (outside the expanded case, which has no need for it), and it has its own
+ * visible button for the same reason.
  */
 export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpenProject, onClose }: Props) {
   const colors = useColors();
@@ -185,9 +186,8 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
 
   // Slide the sheet away before showing the date picker — rendering both at
   // once causes touch conflicts (same choreography as DeloadSheet).
-  // A long press (both call sites), so it gets the long-press strength.
   const openPicker = (proposal: ProjectPullProposal, task: Task) => {
-    haptics.impactMedium();
+    haptics.tap();
     sheet.slideOut(() => setPickerTarget({ proposal, task }));
   };
 
@@ -332,6 +332,22 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
     setSelectedIds(initialSelectedIds(next));
   };
 
+  // The way to a different day. Sits inside the row's own tap target, so it
+  // carries the same hitSlop reasoning as the cycle pill: a near miss would
+  // toggle the row instead.
+  const scheduleButton = (p: ProjectPullProposal, task: Task, dayLabel: string) => (
+    <TouchableOpacity
+      style={styles.scheduleBtn}
+      onPress={() => openPicker(p, task)}
+      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={`Pick a different day for ${displayTitleFor(task)}, currently ${dayLabel}`}
+    >
+      <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
+    </TouchableOpacity>
+  );
+
   const renderRow = (p: ProjectPullProposal) => {
     const task = candidateFor(p);
     const dest = destinationFor(task, p);
@@ -346,13 +362,10 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
         key={p.project.id}
         style={styles.row}
         onPress={() => toggle(task.id)}
-        onLongPress={() => openPicker(p, task)}
-        delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="checkbox"
         accessibilityState={{ checked }}
         accessibilityLabel={`${displayTitleFor(task)}, from ${p.project.title}${p.quietDays > 0 ? `, ${describeQuietReason(p.quietDays)}` : ''}, schedule for ${dayLabel}`}
-        accessibilityHint="Long press to pick a different day"
       >
         <Ionicons
           name={checked ? 'checkmark-circle' : 'ellipse-outline'}
@@ -387,6 +400,7 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
             <Text style={styles.cycleText}>{index + 1}/{p.candidates.length}</Text>
           </TouchableOpacity>
         )}
+        {scheduleButton(p, task, dayLabel)}
       </TouchableOpacity>
     );
   };
@@ -407,13 +421,10 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
         key={task.id}
         style={styles.row}
         onPress={() => toggle(task.id)}
-        onLongPress={() => openPicker(p, task)}
-        delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="checkbox"
         accessibilityState={{ checked }}
         accessibilityLabel={`${displayTitleFor(task)}, from ${p.project.title}, schedule for ${dayLabel}`}
-        accessibilityHint="Long press to pick a different day"
       >
         <Ionicons
           name={checked ? 'checkmark-circle' : 'ellipse-outline'}
@@ -429,6 +440,7 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
             {dest.reason ? ` · ${dest.reason}` : ''}
           </Text>
         </View>
+        {scheduleButton(p, task, dayLabel)}
       </TouchableOpacity>
     );
   };
@@ -499,8 +511,8 @@ export function ProjectPullSheet({ visible, scopeProjectIds, landOnDayKey, onOpe
           ) : (
             <Text style={styles.hint}>
               {expand
-                ? `${plan.proposals[0].candidates.length} tasks waiting in ${plan.proposals[0].project.title}. Tap to include or skip. Long press to pick a different day.`
-                : 'Tap to include or skip. Long press to pick a different day.'}
+                ? `${plan.proposals[0].candidates.length} tasks waiting in ${plan.proposals[0].project.title}. Tap to include or skip. Use the calendar button to pick a different day.`
+                : 'Tap to include or skip. Use the calendar button to pick a different day.'}
             </Text>
           )}
 
@@ -682,6 +694,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minWidth: 52,
     minHeight: 44,
     paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSubtle,
+  },
+  scheduleBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 44,
+    height: 44,
     borderRadius: radius.md,
     backgroundColor: colors.accentSubtle,
   },
