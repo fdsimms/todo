@@ -3,7 +3,7 @@ import { outstandingGates } from '../utils/appGate';
 import { shieldReasons, type AppShieldState, type ShieldReasonEntry } from '../utils/appShield';
 import { canLock } from '../utils/nfcKey';
 import { isTaskVisible } from '../utils/visibilityUtils';
-import { nextScheduleBoundary, resolvedGroups } from '../utils/blockSchedule';
+import { nextScheduleBoundary, resolvedGroups, withVacationPause } from '../utils/blockSchedule';
 import { expandGroupNow, resolvedAssignments, resolveGroupNow, useAppGroupStore } from '../store/useAppGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useNfcKeyStore } from '../store/useNfcKeyStore';
@@ -60,8 +60,16 @@ export function useShieldReasons(): ShieldReasonEntry[] {
   const unlockKey = useTaskStore(() => JSON.stringify(lockedUnlockBlocksNow()));
   const groups = useAppGroupStore(s => s.groups);
   const assignments = useAppGroupStore(s => s.assignments);
-  const schedules = useAppGroupStore(s => s.schedules);
+  const storedSchedules = useAppGroupStore(s => s.schedules);
+  const vacationOn = useSettingsStore(s => s.vacationMode);
+  const vacationStart = useSettingsStore(s => s.vacationStart);
+  const vacationEnd = useSettingsStore(s => s.vacationEnd);
   const [now, setNow] = useState(() => new Date());
+  // The same pause `buildShieldState` applies, so the page agrees with the shield.
+  const schedules = useMemo(
+    () => withVacationPause(storedSchedules, { on: vacationOn, start: vacationStart, end: vacationEnd }, now),
+    [storedSchedules, vacationOn, vacationStart, vacationEnd, now],
+  );
   // Bumped by the timer below so the effect re-arms for the following boundary.
   const [tick, setTick] = useState(0);
 

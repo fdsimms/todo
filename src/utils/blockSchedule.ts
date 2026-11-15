@@ -87,6 +87,11 @@ export interface BlockSchedule {
    * `blockedArcs`. Absent means a plain blocking window.
    */
   allowWindow?: boolean;
+  /**
+   * Vacation mode switches this schedule off for as long as it lasts
+   * (`withVacationPause`). Absent means it keeps blocking on vacation.
+   */
+  pauseOnVacation?: boolean;
 }
 
 export const ALL_DAYS: readonly number[] = [0, 1, 2, 3, 4, 5, 6];
@@ -161,6 +166,7 @@ export function parseBlockSchedules(raw: string | null | undefined): BlockSchedu
       enabled: o.enabled !== false,
       pausedUntil: typeof o.pausedUntil === 'string' ? o.pausedUntil : null,
       ...(o.allowWindow === true ? { allowWindow: true } : {}),
+      ...(o.pauseOnVacation === true ? { pauseOnVacation: true } : {}),
     };
     if (scheduleProblem(schedule)) continue;
     seen.add(o.id);
@@ -347,6 +353,47 @@ export function isScheduleActive(s: BlockSchedule, now: Date): boolean {
     if (!Number.isNaN(until) && now.getTime() < until) return false;
   }
   return true;
+}
+
+/** The slice of the vacation settings that decides whether a schedule is paused. */
+export interface VacationWindow {
+  on: boolean;
+  /** ISO instant vacation mode was switched on. */
+  start: string | null;
+  /** Optional end date; vacation mode turns itself off when it arrives. */
+  end: string | null;
+}
+
+/**
+ * The schedules as the shield should read them while vacation mode is on:
+ * each one marked `pauseOnVacation` is paused until the vacation's end date
+ * (a year out when it has none; the app re-reads this whenever vacation
+ * changes, so the figure only matters to the monitor extension, which can't).
+ *
+ * **A window already open when vacation began is left alone.** Switching
+ * vacation on is not a way out of a block that is running, the same footing as
+ * the key lock needing a tag or the emergency button to end early
+ * (`releaseBlocks.ts`). Only windows that start after vacation did are paused,
+ * which covers every way vacation is switched on (by hand, a scheduled start,
+ * an away trip, the MCP) with no gate in any of them.
+ */
+export function withVacationPause(
+  schedules: readonly BlockSchedule[],
+  vacation: VacationWindow,
+  now: Date,
+): BlockSchedule[] {
+  if (!vacation.on || !schedules.some(s => s.pauseOnVacation)) return [...schedules];
+  const startMs = vacation.start ? new Date(vacation.start).getTime() : NaN;
+  const endMs = vacation.end ? new Date(vacation.end).getTime() : NaN;
+  const endDay = Number.isNaN(endMs) ? dayOffset(now, 366) : dayOffset(new Date(endMs), 0);
+  const until = endDay.toISOString();
+  return schedules.map(s => {
+    if (!s.pauseOnVacation) return s;
+    const open = windowCovering(s, now);
+    if (open && !Number.isNaN(startMs) && open.start.getTime() < startMs) return s;
+    if (s.pausedUntil && s.pausedUntil > until) return s;
+    return { ...s, pausedUntil: until };
+  });
 }
 
 export function activeSchedules(schedules: readonly BlockSchedule[], now: Date): BlockSchedule[] {

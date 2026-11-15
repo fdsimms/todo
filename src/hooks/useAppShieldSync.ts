@@ -96,6 +96,10 @@ export function useAppShieldSync(): void {
         state.penaltyShieldUntil !== prev.penaltyShieldUntil ||
         state.penaltyShieldReason !== prev.penaltyShieldReason ||
         state.gateShieldEnabled !== prev.gateShieldEnabled ||
+        // Vacation pauses the schedules that opted in (`withVacationPause`).
+        state.vacationMode !== prev.vacationMode ||
+        state.vacationStart !== prev.vacationStart ||
+        state.vacationEnd !== prev.vacationEnd ||
         state.initialized !== prev.initialized
       ) reconcile();
       // Rewards off, or vacation on, changes whether an unlock is locked.

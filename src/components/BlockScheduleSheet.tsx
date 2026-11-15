@@ -53,6 +53,8 @@ interface Draft {
   endMinutes: number;
   /** The times are when the apps are allowed, and they are blocked the rest of the time. */
   allowWindow: boolean;
+  /** Vacation mode switches it off while vacation lasts. */
+  pauseOnVacation: boolean;
 }
 
 const NEW_DRAFT: Draft = {
@@ -63,11 +65,12 @@ const NEW_DRAFT: Draft = {
   startMinutes: 9 * 60,
   endMinutes: 17 * 60,
   allowWindow: false,
+  pauseOnVacation: false,
 };
 
 /** What each slot of `draftKey` holds, in the same order, for the discard alert. */
-const DRAFT_LABELS = ['name', 'apps', 'days', 'all day', 'start time', 'end time', 'allow window'] as const;
-const draftKey = (d: Draft) => JSON.stringify([d.name.trim(), [...d.groupIds].sort(), [...d.days].sort(), d.allDay, d.allDay ? 0 : d.startMinutes, d.allDay ? 0 : d.endMinutes, d.allowWindow]);
+const DRAFT_LABELS = ['name', 'apps', 'days', 'all day', 'start time', 'end time', 'allow window', 'vacation pause'] as const;
+const draftKey = (d: Draft) => JSON.stringify([d.name.trim(), [...d.groupIds].sort(), [...d.days].sort(), d.allDay, d.allDay ? 0 : d.startMinutes, d.allDay ? 0 : d.endMinutes, d.allowWindow, d.pauseOnVacation]);
 
 function minutesToDate(minutes: number): Date {
   const d = new Date();
@@ -109,6 +112,7 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
         startMinutes: isAllDay(existing) ? NEW_DRAFT.startMinutes : existing.startMinutes,
         endMinutes: isAllDay(existing) ? NEW_DRAFT.endMinutes : existing.endMinutes,
         allowWindow: existing.allowWindow === true,
+        pauseOnVacation: existing.pauseOnVacation === true,
       }
       : NEW_DRAFT;
     setDraft(seed);
@@ -148,10 +152,11 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
   const handleSave = () => {
     if (problem) return;
     if (refuseWhileBlocked()) return;
-    const { allDay: _allDay, allowWindow, ...times } = stored;
+    const { allDay: _allDay, allowWindow, pauseOnVacation, ...times } = stored;
     const fields: Omit<BlockSchedule, 'id' | 'pausedUntil'> = {
       ...times,
       allowWindow: allowWindow || undefined,
+      pauseOnVacation: pauseOnVacation || undefined,
       name: draft.name,
       enabled: existing?.enabled ?? true,
     };
@@ -341,6 +346,15 @@ export function BlockScheduleSheet({ visible, onClose, scheduleId }: Props) {
             />
           </SettingsSection>
           {problemIn === 'apps' && <Text style={styles.problem}>{problem}</Text>}
+
+          <SettingsSection footer="Vacation mode switches this schedule off until the vacation ends. A block that is already running when vacation starts keeps going until it ends, or until you end it early on the Screen Time screen.">
+            <SettingsRow
+              icon="airplane-outline"
+              label="Pause during vacation"
+              toggle={draft.pauseOnVacation}
+              onPress={() => setDraft(d => ({ ...d, pauseOnVacation: !d.pauseOnVacation }))}
+            />
+          </SettingsSection>
 
           {scheduleId && (
             <SettingsSection>
