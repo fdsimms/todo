@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Pressable, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
@@ -248,15 +248,19 @@ export function PillGroup({
           when there's no field above it to sit under. */}
       <View style={[styles.pills, !filterable && styles.pillsSpaced]}>
         {visible.map(option => (
-          <TouchableOpacity
+          // A Pressable dimmed from its own `pressed` state, not a
+          // TouchableOpacity: that one runs a native opacity animation that
+          // can be cut off by the LayoutAnimation a tap starts, so two quick
+          // taps in a row left a pill stuck dim. `pressed` resets on release.
+          <Pressable
             key={option.key}
-            style={[
+            style={({ pressed }) => [
               styles.pill,
               option.selected && !option.negative && styles.pillActive,
               option.selected && !option.negative && option.level?.fill ? { backgroundColor: option.level.fill } : null,
               option.negative && styles.pillNegative,
+              pressed && { opacity: interaction.activeOpacity },
             ]}
-            activeOpacity={interaction.activeOpacity}
             onPress={option.onPress}
             onLongPress={option.onLongPress}
             delayLongPress={option.onLongPress ? interaction.delayLongPress : undefined}
@@ -314,7 +318,7 @@ export function PillGroup({
                 </View>
               )}
             </View>
-          </TouchableOpacity>
+          </Pressable>
         ))}
 
         {hiddenCount > 0 && (
