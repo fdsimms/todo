@@ -651,8 +651,8 @@ export interface TemplateRun {
   leaveOut?: string[];
   /** Run into this existing project instead of the template's own container. */
   projectId?: string;
-  /** Create the run's project in Planning. Only a run that creates a project reads it. */
-  planning?: boolean;
+  /** Create the run's project as a draft. Only a run that creates a project reads it. */
+  draft?: boolean;
 }
 
 export interface TemplateRunResult {
@@ -974,8 +974,8 @@ export interface ProjectPlan {
   ongoing?: boolean;
   /** A list (Project.list): items to check off rather than tasks to schedule. */
   list?: boolean;
-  /** Start in Planning: its tasks are held off every list until it is marked ready. */
-  planning?: boolean;
+  /** Start as a draft: its tasks are held off every list until it is marked ready. */
+  draft?: boolean;
   steps: ProjectPlanStep[];
 }
 
@@ -1017,8 +1017,8 @@ export interface ProjectPatch {
   destination?: string | null;
   /** The day (YYYY-MM-DD) a paused project comes back; its tasks are held until then. null resumes it. */
   pausedUntil?: string | null;
-  /** In Planning (a pause with no day, ended by marking it ready). false marks it ready. Not with pausedUntil. */
-  planning?: boolean;
+  /** In Draft (a pause with no day, ended by marking it ready). false marks it ready. Not with pausedUntil. */
+  draft?: boolean;
   /** Work the steps in page order: Pull and auto-schedule offer only the first open one. */
   inOrder?: boolean;
   /** Never finished on its own: the last task being done doesn't offer to complete it. */
@@ -6455,7 +6455,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         placeholders,
         answers,
         targetProjectId: run.projectId,
-        planning: run.planning === true,
+        draft: run.draft === true,
       }, c => { container = c; });
 
       // Why each offered item is off, in the order the apply sheet would ask.
@@ -8156,7 +8156,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
             category: plan.category ?? null,
             ongoing: plan.ongoing === true,
             list: plan.list === true,
-            planning: plan.planning === true,
+            draft: plan.draft === true,
           });
           ensureCategory(defaultTaskCategory);
           if (plan.notes || defaultTaskCategory) {
@@ -8256,7 +8256,7 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
           if (destination !== undefined) away.destination = destination === null || !destination.trim() ? null : destination.trim();
         }
       }
-      const { personIds, links, pausedUntil, planning, nudgeCadenceDays, ...plain } = contentRest as typeof contentRest & Pick<ProjectPatch, 'personIds' | 'links' | 'pausedUntil' | 'planning' | 'nudgeCadenceDays'>;
+      const { personIds, links, pausedUntil, draft, nudgeCadenceDays, ...plain } = contentRest as typeof contentRest & Pick<ProjectPatch, 'personIds' | 'links' | 'pausedUntil' | 'draft' | 'nudgeCadenceDays'>;
       const extra: Partial<Pick<Project, 'personIds' | 'links' | 'pausedUntil' | 'nudgeCadenceDays'>> = {};
       if (personIds !== undefined) {
         const known = new Set(people().map(p => p.id));
@@ -8269,12 +8269,12 @@ export function openReplica(path = process.env.TODO_DB_PATH ?? 'todo.db'): Repli
         if (bad) throw new Error('Each link needs a url.');
         extra.links = links.map(l => ({ id: generateId(), label: l.label?.trim() || l.url.trim(), url: l.url.trim() }));
       }
-      if (planning !== undefined && pausedUntil !== undefined) {
-        throw new Error('Pass planning or pausedUntil, not both: Planning is a pause with no day to come back on.');
+      if (draft !== undefined && pausedUntil !== undefined) {
+        throw new Error('Pass draft or pausedUntil, not both: Draft is a pause with no day to come back on.');
       }
-      if (planning === true) extra.pausedUntil = projectPause.PLANNING_PAUSE_KEY;
-      // Marking ready ends Planning only; a dated pause is left to pausedUntil.
-      else if (planning === false && projectPause.isPlanning(before)) extra.pausedUntil = null;
+      if (draft === true) extra.pausedUntil = projectPause.DRAFT_PAUSE_KEY;
+      // Marking ready ends Draft only; a dated pause is left to pausedUntil.
+      else if (draft === false && projectPause.isDraft(before)) extra.pausedUntil = null;
       if (pausedUntil !== undefined) {
         if (pausedUntil === null) extra.pausedUntil = null;
         else {

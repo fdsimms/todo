@@ -1589,7 +1589,7 @@ export interface ApplyTemplateInput {
   include?: string[];
   leaveOut?: string[];
   projectId?: string;
-  planning?: boolean;
+  draft?: boolean;
 }
 
 export interface ApplyTemplateResult {
@@ -1633,7 +1633,7 @@ export function applyTemplate(replica: Replica, ref: string, input: ApplyTemplat
     include: input.include,
     leaveOut: input.leaveOut,
     projectId: input.projectId,
-    planning: input.planning,
+    draft: input.draft,
   });
   // The preview of a run is this result with its ids removed, so it says
   // everything a person would check before saying yes: the dates, what each

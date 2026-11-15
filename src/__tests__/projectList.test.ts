@@ -1,4 +1,4 @@
-import { PLANNING_PAUSE_KEY } from '../utils/projectPause';
+import { DRAFT_PAUSE_KEY } from '../utils/projectPause';
 import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import {
@@ -116,9 +116,9 @@ describe('projectCardCaption', () => {
     expect(projectCardCaption(project, true, 'active')?.text).toBe('3d overdue');
   });
 
-  it('says Planning, never the sentinel day, ahead of the deadline', () => {
-    const project = makeProject({ deadline: noon(subDays(new Date(), 3)), pausedUntil: PLANNING_PAUSE_KEY });
-    expect(projectCardCaption(project, true, 'active')).toEqual({ text: 'Planning', overdue: false });
+  it('says Draft, never the sentinel day, ahead of the deadline', () => {
+    const project = makeProject({ deadline: noon(subDays(new Date(), 3)), pausedUntil: DRAFT_PAUSE_KEY });
+    expect(projectCardCaption(project, true, 'active')).toEqual({ text: 'Draft', overdue: false });
   });
 
   it('counts down to an event ahead of the deadline, and hands the slot back once it has passed', () => {

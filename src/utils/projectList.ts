@@ -2,7 +2,7 @@ import { format } from 'date-fns/format';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, ProjectSortOption, Task, TaskGroup } from '../types';
 import { dayKeyToDate, formatDeadlineDate, getCurrentDayStart, getDayStart as getLogicalDayStart, getEffectiveTaskDate, getLogicalDayKey, getTaskDayStart } from './dateUtils';
-import { isPausedOn, isPlanning } from './projectPause';
+import { isPausedOn, isDraft } from './projectPause';
 import { describeAwaySpan } from './awayDates';
 import { liveProjectSteps } from './projectOrder';
 import { listCountNote } from './listMode';
@@ -115,8 +115,8 @@ export function projectCardCaption(
     return { text: `Completed ${shortDate(new Date(project.completedAt), today)}`, overdue: false };
   }
   // A pause outranks the dates: nothing about the project moves until then.
-  // Planning is a pause with no day to name (see PLANNING_PAUSE_KEY).
-  if (isPlanning(project)) return { text: 'Planning', overdue: false };
+  // Draft is a pause with no day to name (see DRAFT_PAUSE_KEY).
+  if (isDraft(project)) return { text: 'Draft', overdue: false };
   if (project.pausedUntil && isPausedOn(project, getLogicalDayKey(new Date(), dayResetTime))) {
     return { text: `Paused until ${shortDate(dayKeyToDate(project.pausedUntil), today)}`, overdue: false };
   }

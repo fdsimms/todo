@@ -2942,7 +2942,7 @@ function registerWriteTools(
       include: z.array(z.string()).optional().describe('Item ids to switch on (e.g. an optional item). A nested template\'s own item id switches on everything inside it.'),
       leaveOut: z.array(z.string()).optional().describe('Item ids to switch off. A nested template\'s own item id switches off everything inside it.'),
       projectId: z.string().optional().describe('An existing project to put the tasks in.'),
-      planning: z.boolean().optional().describe('Create the run\'s project in Planning, its tasks held off every list until it is marked ready. Only for a named run whose container is a project.'),
+      draft: z.boolean().optional().describe('Create the run\'s project as a draft, its tasks held off every list until it is marked ready. Only for a named run whose container is a project.'),
     },
     async ({ template, ...input }) => {
       try {
@@ -4011,7 +4011,7 @@ function registerWriteTools(
       newCategory: z.boolean().optional().describe('Create defaultTaskCategory as a new category.'),
       ongoing: z.boolean().optional().describe('No finish line: finishing its last task does not offer to complete it, and it is never nudged. For a running collection like gift ideas or questions for the doctor.'),
       list: z.boolean().optional().describe('A list: steps are items to check off (a wish list, gift ideas, a bucket list) rather than tasks to schedule. It counts items instead of showing progress, is never nudged or offered as complete, and opens items in a shorter editor. Usually wanted with no dates on the steps.'),
-      planning: z.boolean().optional().describe('Start it in Planning: its steps, dated ones too, stay off every list until it is marked ready (update_project planning: false). For a plan the person is still working out.'),
+      draft: z.boolean().optional().describe('Start it as a draft: its steps, dated ones too, stay off every list until it is marked ready (update_project draft: false). For a plan the person is still working out.'),
       steps: z.array(planStep).optional(),
     },
     async input => {
@@ -4070,7 +4070,7 @@ function registerWriteTools(
       archived: z.boolean().optional(),
       archiveRemaining: z.boolean().optional().describe('With completed: true or archived: true, archive its open tasks too, as the app offers when a project is finished or archived with tasks left. Without it they stay on the person\'s lists. Ask the person first.'),
       pausedUntil: z.string().nullable().optional().describe('Pause it until a day (YYYY-MM-DD, after today): its tasks are held off every list until then, as "park the garden for winter". null resumes it now.'),
-      planning: z.boolean().optional().describe('true puts it in Planning: its tasks, dated ones too, are held off every list and it gets no nudges until it is marked ready, for a project still being set up. false marks it ready. Not with pausedUntil.'),
+      draft: z.boolean().optional().describe('true makes it a draft: its tasks, dated ones too, are held off every list and it gets no nudges until it is marked ready, for a project still being set up. false marks it ready. Not with pausedUntil.'),
       inOrder: z.boolean().optional().describe('Work the steps in page order: the app offers only the first open one.'),
       ongoing: z.boolean().optional().describe('Never finished: finishing its last task does not offer to complete it.'),
       list: z.boolean().optional().describe('Make it a list (items to check off, never nudged or offered as complete) or a task project again. Changes nothing else: no task, nudge or ongoing setting is touched, so it is safe to try.'),

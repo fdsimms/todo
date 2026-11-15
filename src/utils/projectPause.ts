@@ -14,23 +14,23 @@ import type { Project } from '../types';
 type PausableProject = Pick<Project, 'id' | 'pausedUntil' | 'archived' | 'completed'>;
 
 /**
- * The `pausedUntil` a project in Planning holds: a pause with no day to lift
+ * The `pausedUntil` a project in Draft holds: a pause with no day to lift
  * on, which only "Mark ready" ends. It is a day key no logical today reaches,
  * so every reader that already respects a pause (`isWithheld`, the nudges,
- * pull, the weekend offer) holds a planning project back with no change, and
+ * pull, the weekend offer) holds a draft project back with no change, and
  * there is no second flag for a new reader to forget.
  *
  * It is deliberately the same state as a pause rather than a column of its own:
- * a separate flag would let a project be paused *and* planning, and every
+ * a separate flag would let a project be paused *and* draft, and every
  * withholding check would have to learn both. Anything that shows the pause to
- * a person asks `isPlanning` first, since "Paused until Dec 31, 9999" is the one
+ * a person asks `isDraft` first, since "Paused until Dec 31, 9999" is the one
  * reading of this value that must never reach a screen.
  */
-export const PLANNING_PAUSE_KEY = '9999-12-31';
+export const DRAFT_PAUSE_KEY = '9999-12-31';
 
-/** Whether the project is in Planning: paused with no day to come back on. */
-export function isPlanning(project: Pick<Project, 'pausedUntil'>): boolean {
-  return project.pausedUntil === PLANNING_PAUSE_KEY;
+/** Whether the project is in Draft: paused with no day to come back on. */
+export function isDraft(project: Pick<Project, 'pausedUntil'>): boolean {
+  return project.pausedUntil === DRAFT_PAUSE_KEY;
 }
 
 /**
@@ -83,14 +83,14 @@ export function projectPausedUntil(projectId: string, todayKey: string): string 
 
 /**
  * The day a pause ended, for each project whose pause has run out by
- * `todayKey`: a dated `pausedUntil` on or before today. Planning never runs
+ * `todayKey`: a dated `pausedUntil` on or before today. Draft never runs
  * out by date, so it's left out. A pause stays stored once it has lifted, which
  * is what lets the streak pass find it at the next launch.
  */
 export function pauseEndsOn(projects: readonly Pick<Project, 'id' | 'pausedUntil'>[], todayKey: string): Map<string, string> {
   const ends = new Map<string, string>();
   for (const p of projects) {
-    if (p.pausedUntil === null || isPlanning(p) || isPausedOn(p, todayKey)) continue;
+    if (p.pausedUntil === null || isDraft(p) || isPausedOn(p, todayKey)) continue;
     ends.set(p.id, p.pausedUntil);
   }
   return ends;

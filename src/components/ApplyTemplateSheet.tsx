@@ -218,8 +218,8 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   // What this run of the template is about ("Camping w/ Dan"), and values for
   // any `{name}` blanks its items declare. Both empty = the original behavior.
   const [runName, setRunName] = useState('');
-  // Create the run's project in Planning. See TemplateRunOptions.planning.
-  const [planning, setPlanning] = useState(false);
+  // Create the run's project in Draft. See TemplateRunOptions.draft.
+  const [draft, setDraft] = useState(false);
   const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>({});
   // Only what's been answered by hand, keyed by question id — an untouched
   // number question keeps following the anchor dates as they're picked, which
@@ -333,7 +333,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
       );
       setCalendarTarget(null);
       setRunName(initialRunName ?? '');
-      setPlanning(false);
+      setDraft(false);
       setPlaceholderValues({});
       setTypedAnswers({});
       setStep('details');
@@ -384,7 +384,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
   const onTemplateScreen = route.name === 'TemplateDetail';
   const answeredAnything =
     runName !== (initialRunName ?? '')
-    || planning
+    || draft
     || Object.keys(typedAnswers).length > 0
     || Object.values(placeholderValues).some(v => v !== '');
 
@@ -541,7 +541,7 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
       answers,
       targetProjectId: projectId,
       asProject,
-      planning: createsProject && planning,
+      draft: createsProject && draft,
       personIds: [...new Set([...(extraPersonIds ?? []), ...personIdsForAnswers(questions, answers)])],
       registerUndo: true,
     });
@@ -766,20 +766,20 @@ export function ApplyTemplateSheet({ visible, template: liveTemplate, onClose, p
               </Text>
               {createsProject && (
                 <TouchableOpacity
-                  style={styles.planningRow}
+                  style={styles.draftRow}
                   activeOpacity={interaction.activeOpacity}
-                  onPress={() => { haptics.tap(); setPlanning(v => !v); }}
+                  onPress={() => { haptics.tap(); setDraft(v => !v); }}
                   accessibilityRole="switch"
-                  accessibilityState={{ checked: planning }}
-                  accessibilityLabel="Start in Planning"
+                  accessibilityState={{ checked: draft }}
+                  accessibilityLabel="Start as a draft"
                 >
-                  <View style={styles.planningText}>
-                    <Text style={styles.planningLabel}>Start in Planning</Text>
+                  <View style={styles.draftText}>
+                    <Text style={styles.draftLabel}>Start as a draft</Text>
                     <Text style={styles.runHint}>
                       Hides the project’s tasks, dated ones too, until you mark it ready.
                     </Text>
                   </View>
-                  <Toggle value={planning} />
+                  <Toggle value={draft} />
                 </TouchableOpacity>
               )}
             </View>
@@ -1124,17 +1124,17 @@ const makeStyles = (colors: Colors, textScaleFactor = 1) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
   },
-  planningRow: {
+  draftRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.smd,
     marginTop: spacing.xs,
   },
-  planningText: {
+  draftText: {
     flex: 1,
     gap: spacing.xxs,
   },
-  planningLabel: {
+  draftLabel: {
     color: colors.text,
     fontSize: font.sm,
   },
