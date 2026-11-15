@@ -276,17 +276,17 @@ describe('the project writes, against a real database', () => {
     expect(tools.updateProject(real, id, { groupOnToday: false }).project).not.toHaveProperty('groupOnToday');
   });
 
-  it('puts a project in Planning and marks it ready, reported by name rather than as its day', () => {
-    const created = tools.createProject(real, { title: 'Move', planning: true, steps: [{ title: 'Pack' }], defaultTaskCategory: 'Home' } as never);
-    expect(created.project).toMatchObject({ planning: true });
+  it('puts a project in Draft and marks it ready, reported by name rather than as its day', () => {
+    const created = tools.createProject(real, { title: 'Move', draft: true, steps: [{ title: 'Pack' }], defaultTaskCategory: 'Home' } as never);
+    expect(created.project).toMatchObject({ draft: true });
     expect(created.project).not.toHaveProperty('pausedUntil');
     const id = created.project.id;
-    expect(() => tools.updateProject(real, id, { planning: true, pausedUntil: null })).toThrow(/not both/);
-    expect(tools.updateProject(real, id, { planning: false }).project).not.toHaveProperty('planning');
+    expect(() => tools.updateProject(real, id, { draft: true, pausedUntil: null })).toThrow(/not both/);
+    expect(tools.updateProject(real, id, { draft: false }).project).not.toHaveProperty('draft');
     // Marking ready leaves a dated pause alone.
     tools.updateProject(real, id, { pausedUntil: '2099-01-01' });
-    expect(tools.updateProject(real, id, { planning: false, title: 'Move house' }).project).toMatchObject({ pausedUntil: '2099-01-01' });
-    expect(tools.updateProject(real, id, { planning: true }).project).toMatchObject({ planning: true });
+    expect(tools.updateProject(real, id, { draft: false, title: 'Move house' }).project).toMatchObject({ pausedUntil: '2099-01-01' });
+    expect(tools.updateProject(real, id, { draft: true }).project).toMatchObject({ draft: true });
   });
 
   it('completes a project and archives what is left when asked', () => {

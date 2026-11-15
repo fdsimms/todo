@@ -504,7 +504,7 @@ function ProjectsList() {
       deadline: draft.deadline,
       category: draft.category,
       awayStart: draft.awayStart ?? null,
-      planning: draft.planning,
+      draft: draft.draft,
     });
     const project = useProjectStore.getState().getProjectById(created.id) ?? created;
     newProjectIdRef.current = project.id;

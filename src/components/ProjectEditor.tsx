@@ -62,7 +62,7 @@ import { useProjectLockStore, isProjectHidden } from '../store/useProjectLockSto
 import { unlockProjects } from '../hooks/useProjectAccess';
 import { scheduleTaskReminder } from '../utils/notifications';
 import { animateLayout } from '../utils/layoutAnimation';
-import { PLANNING_PAUSE_KEY, isPlanning } from '../utils/projectPause';
+import { DRAFT_PAUSE_KEY, isDraft } from '../utils/projectPause';
 import {
   CADENCE_UNITS,
   CADENCE_UNIT_MAX,
@@ -210,9 +210,9 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const [weekendSource, setWeekendSource] = useState(false);
   // Project.pausedUntil, held as the day it comes back.
   const [pausedUntil, setPausedUntil] = useState<Date | null>(null);
-  // Planning is a pause with no day (PLANNING_PAUSE_KEY), held apart here so
+  // Draft is a pause with no day (DRAFT_PAUSE_KEY), held apart here so
   // the date row never shows the sentinel.
-  const [planning, setPlanning] = useState(false);
+  const [draft, setDraft] = useState(false);
   const [pickingPause, setPickingPause] = useState(false);
   const [personIds, setPersonIds] = useState<string[]>([]);
   const [peopleOpen, setPeopleOpen] = useState(false);
@@ -295,8 +295,8 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
     setOngoing(project.ongoing);
     setList(!!project.list);
     setWeekendSource(project.weekendSource);
-    setPlanning(isPlanning(project));
-    setPausedUntil(project.pausedUntil && !isPlanning(project) ? dayKeyToDate(project.pausedUntil) : null);
+    setDraft(isDraft(project));
+    setPausedUntil(project.pausedUntil && !isDraft(project) ? dayKeyToDate(project.pausedUntil) : null);
     setPickingPause(false);
     setPersonIds(project.personIds ?? []);
     setPeopleOpen(false);
@@ -321,7 +321,7 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
   const resolveCategory = () => category;
 
   const pausedUntilKey = (): string | null =>
-    planning ? PLANNING_PAUSE_KEY : pausedUntil ? dayKeyOf(pausedUntil) : null;
+    draft ? DRAFT_PAUSE_KEY : pausedUntil ? dayKeyOf(pausedUntil) : null;
 
   // ==== task defaults and the date shift ====
   /**
@@ -1200,33 +1200,33 @@ export function ProjectEditor({ visible, project: liveProject, isNew, onClose }:
             leaves its tasks (a weekly watering stays on Today all winter);
             this holds every one of them back until the day, then brings the
             lot back on its own. */}
-        {/* Planning: the same hold with no day on it, for a project still
+        {/* Draft: the same hold with no day on it, for a project still
             being set up. It replaces the date rather than sitting beside it,
-            since the two are one field (PLANNING_PAUSE_KEY). */}
+            since the two are one field (DRAFT_PAUSE_KEY). */}
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => {
             haptics.tap();
             animateLayout();
-            setPlanning(v => !v);
+            setDraft(v => !v);
             setPausedUntil(null);
           }}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="switch"
-          accessibilityLabel="Planning"
-          accessibilityState={{ checked: planning }}
+          accessibilityLabel="Draft"
+          accessibilityState={{ checked: draft }}
         >
-          <Ionicons name="construct-outline" size={18} color={planning ? colors.accent : colors.textSecondary} />
+          <Ionicons name="create-outline" size={18} color={draft ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Planning</Text>
+            <Text style={styles.optionLabel}>Draft</Text>
             <Text style={styles.optionHint}>
               Hides all of its tasks, dated ones too, and stops any nudges until you mark it ready
             </Text>
           </View>
-          <Toggle value={planning} />
+          <Toggle value={draft} />
         </TouchableOpacity>
         <View style={styles.sepIcon} />
-        {!planning && (
+        {!draft && (
           <>
             <EditorRow
               icon="pause-outline"

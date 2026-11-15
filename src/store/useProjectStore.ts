@@ -13,7 +13,7 @@ import {
   dbBatchUpdateProjectSortOrders,
 } from '../db/database';
 import { generateId } from '../utils/id';
-import { PLANNING_PAUSE_KEY, notifyPauseEnded, pauseEndedByChange, registerPausedProjectSource } from '../utils/projectPause';
+import { DRAFT_PAUSE_KEY, notifyPauseEnded, pauseEndedByChange, registerPausedProjectSource } from '../utils/projectPause';
 import { destinationPinFields, registerAwayProjectSource } from '../utils/awayDates';
 import { deliverableKindFor, deliverableOptionsFor } from '../utils/deliverables';
 import { blockerIdsOf, isNotNeeded, resolverFor, type TaskResolver } from '../utils/blocking';
@@ -408,8 +408,8 @@ export interface CreateProjectOptions {
   awayStart?: string | null;
   awayEnd?: string | null;
   destination?: string | null;
-  /** Start in Planning: held back until it's marked ready. See PLANNING_PAUSE_KEY. */
-  planning?: boolean;
+  /** Start in Draft: held back until it's marked ready. See DRAFT_PAUSE_KEY. */
+  draft?: boolean;
   /**
    * A fixed id, for a project the app makes unattended: a scheduled template
    * run derives one so two devices running it apart make one project, not two
@@ -491,7 +491,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // Project.awayListId.
       awayListId: null,
       awayListDeclinedFor: null,
-      pausedUntil: options.planning ? PLANNING_PAUSE_KEY : null,
+      pausedUntil: options.draft ? DRAFT_PAUSE_KEY : null,
       personIds: [],
       links: [],
       inOrder: false,

@@ -134,7 +134,7 @@ export type PullEmptyReason =
   | 'nudge-excluded'
   /** A list (Project.list): items to check off, never a project to pull from. */
   | 'list'
-  /** Paused until a day (Project.pausedUntil), or in Planning: left alone until then. */
+  /** Paused until a day (Project.pausedUntil), or a draft: left alone until then. */
   | 'paused'
   /** Set to “When I ask”: it belongs in this sheet, but never volunteers. */
   | 'cadence-off'
@@ -627,8 +627,8 @@ export function describePullEmpty(state: PullEmptyState): string {
         : `${projects(count)} of ${total} are lists, whose items are checked off rather than pulled in.${rest}`;
     case 'paused':
       return count === total
-        ? 'Every project is paused or in Planning. A paused one comes back on the day its pause ends, and one in Planning when you mark it ready.'
-        : `${projects(count)} of ${total} are paused or in Planning.${rest}`;
+        ? 'Every project is paused or a draft. A paused one comes back on the day its pause ends, and a draft when you mark it ready.'
+        : `${projects(count)} of ${total} are paused or drafts.${rest}`;
     // Only reachable from a 'nudge'-mode diagnosis: “When I ask” is exactly a
     // project that belongs in this sheet and nowhere else, so the sheet the
     // user opened themselves never refuses one for this reason.

@@ -1,4 +1,4 @@
-import { PLANNING_PAUSE_KEY, pauseSignature, isPausedOn, isPlanning, isProjectPaused, notifyPauseEnded, pauseEndedByChange, pauseEndsOn, projectPausedUntil, registerPauseEndListener, registerPausedProjectSource } from '../utils/projectPause';
+import { DRAFT_PAUSE_KEY, pauseSignature, isPausedOn, isDraft, isProjectPaused, notifyPauseEnded, pauseEndedByChange, pauseEndsOn, projectPausedUntil, registerPauseEndListener, registerPausedProjectSource } from '../utils/projectPause';
 
 afterEach(() => registerPausedProjectSource(null));
 
@@ -14,13 +14,13 @@ describe('isPausedOn', () => {
   });
 });
 
-describe('isPlanning', () => {
+describe('isDraft', () => {
   it('is a pause no day lifts, and only that pause', () => {
-    const planning = { pausedUntil: PLANNING_PAUSE_KEY };
-    expect(isPlanning(planning)).toBe(true);
-    expect(isPausedOn(planning, '2999-06-01')).toBe(true);
-    expect(isPlanning({ pausedUntil: '2026-03-01' })).toBe(false);
-    expect(isPlanning({ pausedUntil: null })).toBe(false);
+    const draft = { pausedUntil: DRAFT_PAUSE_KEY };
+    expect(isDraft(draft)).toBe(true);
+    expect(isPausedOn(draft, '2999-06-01')).toBe(true);
+    expect(isDraft({ pausedUntil: '2026-03-01' })).toBe(false);
+    expect(isDraft({ pausedUntil: null })).toBe(false);
   });
 });
 
@@ -55,12 +55,12 @@ describe('projectPausedUntil', () => {
 describe('when a pause ends', () => {
   const today = '2026-10-10';
 
-  it('finds every dated pause that has run out, and never Planning', () => {
+  it('finds every dated pause that has run out, and never Draft', () => {
     const ends = pauseEndsOn([
       { id: 'lifted', pausedUntil: '2026-10-10' },
       { id: 'long-ago', pausedUntil: '2026-01-05' },
       { id: 'still', pausedUntil: '2026-10-11' },
-      { id: 'planning', pausedUntil: PLANNING_PAUSE_KEY },
+      { id: 'draft', pausedUntil: DRAFT_PAUSE_KEY },
       { id: 'never', pausedUntil: null },
     ], today);
     expect([...ends]).toEqual([['lifted', '2026-10-10'], ['long-ago', '2026-01-05']]);
@@ -68,7 +68,7 @@ describe('when a pause ends', () => {
 
   it('ends a pause cut short today, and one that had already lifted on its own day', () => {
     expect(pauseEndedByChange('2026-10-20', null, today)).toBe(today);
-    expect(pauseEndedByChange(PLANNING_PAUSE_KEY, null, today)).toBe(today);
+    expect(pauseEndedByChange(DRAFT_PAUSE_KEY, null, today)).toBe(today);
     expect(pauseEndedByChange('2026-10-08', null, today)).toBe('2026-10-08');
     // Moved to a day still to come: not ended.
     expect(pauseEndedByChange('2026-10-20', '2026-10-25', today)).toBeNull();

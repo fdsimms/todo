@@ -37,7 +37,7 @@ import { bulkAddTagsAsking, bulkSetPriorityAsking, bulkSetDifficultyAsking } fro
 import { useProjectStore, projectDecisions, projectProgress, projectCompletedRows, isProjectPastWindow, projectAnswerTallies, answerTallyParts } from '../store/useProjectStore';
 import { AddGuestsSheet } from '../components/AddGuestsSheet';
 import { describeProjectActivity, overdueRoutines, projectActivity, projectCardCaption, projectMoveTargets, projectProgressNote } from '../utils/projectList';
-import { isPausedOn, isPlanning } from '../utils/projectPause';
+import { isPausedOn, isDraft } from '../utils/projectPause';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { LinkedText } from '../components/LinkedText';
 import { format } from 'date-fns/format';
@@ -1615,8 +1615,8 @@ function ProjectDetailContent() {
   // A pause that has run out on its own: its day has passed but the field is
   // still set, which is what lets the page offer its routines a new day once.
   const pauseEnded = !!project?.pausedUntil && !paused;
-  // Planning is a pause with no day (PLANNING_PAUSE_KEY), ended only by hand.
-  const planning = !!project && isPlanning(project);
+  // Draft is a pause with no day (DRAFT_PAUSE_KEY), ended only by hand.
+  const inDraft = !!project && isDraft(project);
   const routinesToCatchUp = useMemo(
     () => (pauseEnded ? overdueRoutines(projectId, allTasks, getCurrentDayStart(), dayResetTime) : []),
     [pauseEnded, projectId, allTasks, dayResetTime],
@@ -1631,12 +1631,12 @@ function ProjectDetailContent() {
   const endPause = () => {
     if (!project) return;
     const overdue = overdueRoutines(project.id, allTasks, getCurrentDayStart(), dayResetTime);
-    const wasPlanning = isPlanning(project);
+    const wasDraft = isDraft(project);
     updateProject(project.id, { pausedUntil: null });
     if (overdue.length === 0) return;
     Alert.alert(
       overdue.length === 1 ? 'Move the routine that came due?' : `Move ${overdue.length} routines that came due?`,
-      `They came due while the project was ${wasPlanning ? 'in Planning' : 'paused'}. Move each to its next day from today, or leave them overdue.`,
+      `They came due while the project was ${wasDraft ? 'a draft' : 'paused'}. Move each to its next day from today, or leave them overdue.`,
       [
         { text: 'Leave them', style: 'cancel' },
         { text: 'Move them', onPress: () => { animateLayout(); redateRoutines(overdue.map(t => t.id)); } },
@@ -1777,11 +1777,11 @@ function ProjectDetailContent() {
             <View style={styles.summaryActions}>
               {paused && (
                 <InlineAction
-                  icon={planning ? 'checkmark-circle-outline' : 'play-outline'}
-                  label={planning ? 'Mark ready' : 'Resume now'}
+                  icon={inDraft ? 'checkmark-circle-outline' : 'play-outline'}
+                  label={inDraft ? 'Mark ready' : 'Resume now'}
                   variant="neutral"
                   onPress={() => { haptics.tap(); endPause(); }}
-                  accessibilityLabel={planning
+                  accessibilityLabel={inDraft
                     ? 'Mark this project ready, so its tasks show up in your lists'
                     : 'Resume this project now'}
                 />

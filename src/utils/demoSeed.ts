@@ -1578,9 +1578,9 @@ export function seedDemoData(): void {
   addTask({ title: 'Water the beds', projectId: garden.id, recurrenceType: 'weekly', dueDate: today.toISOString() });
   addTask({ title: 'Build a raised bed', projectId: garden.id });
 
-  // A project still being planned (Planning, an open-ended pause): steps
+  // A project still being planned (Draft, an open-ended pause): steps
   // already dated, all held off every list until it's marked ready.
-  const housewarming = createProject('Housewarming party', { planning: true });
+  const housewarming = createProject('Housewarming party', { draft: true });
   addTask({ title: 'Send invitations', projectId: housewarming.id, dueDate: addDays(today, 3).toISOString() });
   addTask({ title: 'Order drinks', projectId: housewarming.id, dueDate: addDays(today, 10).toISOString() });
   addTask({ title: 'Make a playlist', projectId: housewarming.id });

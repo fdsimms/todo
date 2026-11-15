@@ -224,13 +224,13 @@ describe('applyTemplateRun', () => {
       expect(into.calls.createProject).toEqual([]);
     });
 
-    it('creates the run project in Planning when asked, and ignores the ask with no project to create', () => {
+    it('creates the run project in Draft when asked, and ignores the ask with no project to create', () => {
       const tpl = makeTemplate({ items: [item('a', 'Invite')], applyContainer: 'project' });
       const { sink, calls } = makeSink();
-      applyTemplateRun(tpl, byId(tpl), select('a'), { start: null, end: null }, { runName: 'Party', planning: true }, sink);
-      expect(calls.createProject).toEqual([{ title: 'Party', options: { deadline: null, planning: true } }]);
+      applyTemplateRun(tpl, byId(tpl), select('a'), { start: null, end: null }, { runName: 'Party', draft: true }, sink);
+      expect(calls.createProject).toEqual([{ title: 'Party', options: { deadline: null, draft: true } }]);
       const loose = makeSink();
-      applyTemplateRun(tpl, byId(tpl), select('a'), { start: null, end: null }, { planning: true }, loose.sink);
+      applyTemplateRun(tpl, byId(tpl), select('a'), { start: null, end: null }, { draft: true }, loose.sink);
       expect(loose.calls.createProject).toEqual([]);
     });
 

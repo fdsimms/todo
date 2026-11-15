@@ -46,8 +46,8 @@ export interface ProjectDraft {
   title: string;
   category: string | null;
   deadline: string | null;
-  /** The "Planning" chip was on: held back until it's marked ready. */
-  planning?: boolean;
+  /** The "Draft" chip was on: held back until it's marked ready. */
+  draft?: boolean;
   /** The "Trip" chip's departure, stored the way the editor stores it. */
   awayStart?: string | null;
 }
@@ -106,7 +106,7 @@ export function QuickAddProjectModal({
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
-  const [planning, setPlanning] = useState(false);
+  const [draft, setDraft] = useState(false);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [deadlinePickerVisible, setDeadlinePickerVisible] = useState(false);
   // A trip's departure. Offered here because the only date this sheet had was
@@ -170,7 +170,7 @@ export function QuickAddProjectModal({
     setDeadline(null);
     setLeaving(null);
     setLeavingPickerVisible(false);
-    setPlanning(false);
+    setDraft(false);
     setActivePanel(null);
     setDeadlinePickerVisible(false);
     setTemplatePickerVisible(false);
@@ -224,7 +224,7 @@ export function QuickAddProjectModal({
       deadline: deadline ? deadline.toISOString() : null,
       category: resolvedCategory,
       awayStart: leaving ? awayNoonIso(leaving) : null,
-      planning,
+      draft,
     });
     const project = useProjectStore.getState().getProjectById(created.id) ?? created;
     onCreated?.(project, seedActive);
@@ -311,7 +311,7 @@ export function QuickAddProjectModal({
       title: title.trim(),
       category: resolveCategory(),
       deadline: deadline ? deadline.toISOString() : null,
-      planning,
+      draft,
       awayStart: leaving ? awayNoonIso(leaving) : null,
     });
   };
@@ -460,15 +460,15 @@ export function QuickAddProjectModal({
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.toolChip, planning && styles.toolChipSet]}
-              onPress={() => { haptics.tap(); setPlanning(v => !v); }}
+              style={[styles.toolChip, draft && styles.toolChipSet]}
+              onPress={() => { haptics.tap(); setDraft(v => !v); }}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="switch"
-              accessibilityState={{ checked: planning }}
-              accessibilityLabel="Planning, with its tasks hidden until you mark it ready"
+              accessibilityState={{ checked: draft }}
+              accessibilityLabel="Draft, with its tasks hidden until you mark it ready"
             >
-              <Ionicons name="construct-outline" size={13} color={planning ? colors.accent : colors.textTertiary} />
-              <Text style={[styles.toolChipText, planning && styles.toolChipTextSet]} numberOfLines={1}>Planning</Text>
+              <Ionicons name="create-outline" size={13} color={draft ? colors.accent : colors.textTertiary} />
+              <Text style={[styles.toolChipText, draft && styles.toolChipTextSet]} numberOfLines={1}>Draft</Text>
             </TouchableOpacity>
 
             {templates.length > 0 && (

@@ -453,7 +453,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       const p = result.project;
       const extra = [
         `${plural(top, 'task')}${subs > 0 ? ` and ${plural(subs, 'checklist item')}` : ''}`,
-        plan.planning === true ? 'in Planning, so its tasks stay hidden until it is marked ready' : null,
+        plan.draft === true ? 'a draft, so its tasks stay hidden until it is marked ready' : null,
         p.deadline ? `deadline ${replica.dayKeyOf(p.deadline)}` : null,
         p.eventDate ? `event on ${replica.dayKeyOf(p.eventDate)}` : null,
       ].filter(Boolean).join(', ');
@@ -468,7 +468,7 @@ export function withAgentLedger(replica: Replica, record: (entries: AgentLedgerE
       // reopen it), so only a plain edit carries a revert.
       const dayish = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v) ? replica.dayKeyOf(v) : v ?? 'no date');
       const parts = Object.entries(patch as Record<string, unknown>).filter(([k, v]) => v !== undefined && k !== 'newCategory').map(([k, v]) => {
-        if (k === 'planning') return v ? 'put it in Planning (its tasks and reminders are hidden)' : 'mark it ready (its tasks appear)';
+        if (k === 'draft') return v ? 'make it a draft (its tasks and reminders are hidden)' : 'mark it ready (its tasks appear)';
         if (k === 'awayStart') return `away from ${dayish(v)}`;
         if (k === 'awayEnd') return `away until ${dayish(v)}`;
         if (k === 'pausedUntil') return v ? `held back until ${dayish(v)}` : 'no longer held back';
