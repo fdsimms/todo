@@ -1,10 +1,38 @@
 import React, { useEffect, useMemo } from 'react';
-import { Alert } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
+import { haptics } from '../utils/haptics';
 import { LeftoverSheet } from './LeftoverSheet';
+import { PantryAnswerSheet, type PantryAnswerRow } from './PantryAnswerSheet';
+
+type UseUpKey = 'usedUp' | 'froze' | 'spoiled';
+
+const USED_UP_ROW: PantryAnswerRow<UseUpKey> = {
+  key: 'usedUp',
+  icon: 'checkmark-circle-outline',
+  tone: 'accent',
+  label: 'Used it up',
+  detail: 'Takes it out of your pantry.',
+  feedback: haptics.success,
+};
+const FROZE_ROW: PantryAnswerRow<UseUpKey> = {
+  key: 'froze',
+  icon: 'snow-outline',
+  tone: 'accent',
+  label: 'Froze it',
+  detail: 'Keeps it in your pantry and pauses its use-by date.',
+  feedback: haptics.tap,
+};
+const WENT_BAD_ROW: PantryAnswerRow<UseUpKey> = {
+  key: 'spoiled',
+  icon: 'close-circle-outline',
+  tone: 'red',
+  label: 'Went bad',
+  detail: 'Takes it out of your pantry and records it as waste.',
+  feedback: haptics.tap,
+};
 
 /**
  * What completing a "Use up X" task actually resolves.
@@ -25,22 +53,25 @@ import { LeftoverSheet } from './LeftoverSheet';
  * screen actually asking "did you eat it or did it go bad?". A leftover
  * container's Finished it/Threw it out buttons are a real, if buried,
  * version of that question, so LeftoverSheet is left as it is; a grocery
- * item had no equivalent to lean on, so this asks directly instead — the
- * same "Used it up"/"Went bad" wording `ItemDisposalOffer` uses for the same
- * question elsewhere, as a native prompt rather than that offer's banner: a
- * dismissible banner can scroll away unanswered, and completing the task is
- * the one moment this question is actually about. `markOutOfMany` records
+ * item had no equivalent to lean on, so this asks directly instead, in the
+ * `PantryAnswerSheet` card "Do you still have X?" (`PantryCheckSheet`) is
+ * asked in, with the same "Used it up"/"Went bad" wording `ItemDisposalOffer`
+ * uses for the same question elsewhere. It was a native `Alert` first, which
+ * could only say what each answer does as one run-on paragraph; a card gives
+ * each answer its own line. It is not that offer's banner: a dismissible
+ * banner can scroll away unanswered, and completing the task is the one
+ * moment this question is actually about. `markOutOfMany` records
  * the answer with the outcome already known, so it never raises
  * `disposalOffer` — that banner stays the ✕ tap's own, unrelated to this.
  * "Froze it" is the third answer, and a common one to a use-up reminder:
  * it's `setFrozen`, the same write the item sheet's freezer pill and a
  * drag onto the Pantry's Freezer heading make, so the item stays on hand
  * with its use-by day paused rather than being marked out. Before it, the
- * only way to say so was "Not now" and a trip to the item's own sheet, while
- * a leftover's use-up (LeftoverSheet, below) already had a freezer toggle.
- * Skipping the prompt (or an item that's already out, or gone) leaves the
- * pantry untouched, same as closing the old sheet without touching the
- * Pantry field did.
+ * only way to say so was dismissing the prompt and a trip to the item's own
+ * sheet, while a leftover's use-up (LeftoverSheet, below) already had a
+ * freezer toggle. Dismissing the card (a tap outside it), or an item that's
+ * already out or gone, leaves the pantry untouched, same as closing the old
+ * sheet without touching the Pantry field did.
  *
  * **Mounted once, in AppNavigator beside DemoBanner/UndoBar,
  * not on any one screen.** Completion can land here from Today, Search,
@@ -58,45 +89,34 @@ export function UseUpResolveSheet() {
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
   const setFrozen = useGroceryStore(s => s.setFrozen);
 
+  const pendingItem = useMemo(
+    () => (pendingItemId ? items.find(i => i.id === pendingItemId) ?? null : null),
+    [items, pendingItemId]
+  );
+  // The item the card is open for. Resolve-or-shrug, same as everywhere else a
+  // pointer like this is read: deleted, or already resolved (e.g. from
+  // Kitchen), leaves nothing to ask.
+  const askable = pendingItem !== null && pendingItem.onHandUntil !== OUT_OF_IT_UNTIL;
+
   useEffect(() => {
-    if (!pendingItemId) return;
-    const item = items.find(i => i.id === pendingItemId);
-    // Resolve-or-shrug, same as everywhere else a pointer like this is read:
-    // deleted, or already resolved (e.g. from Kitchen), leaves nothing to ask.
-    if (!item || item.onHandUntil === OUT_OF_IT_UNTIL) {
-      setPendingUseUpItem(null);
-      return;
-    }
-    // Offered only while it isn't frozen already: an item in the freezer has
-    // nothing left for this answer to change.
-    const canFreeze = !item.frozenAt;
-    Alert.alert(
-      item.name,
-      canFreeze
-        ? 'Used it up, froze it, or went bad? Used it up and went bad remove it from the pantry. Went bad is also recorded as waste. Froze it keeps it in the pantry and pauses its use-by date.'
-        : 'Used it up or went bad? Either stops it counting as on hand; went bad is recorded as waste.',
-      [
-        { text: 'Not now', style: 'cancel', onPress: () => setPendingUseUpItem(null) },
-        {
-          text: 'Went bad',
-          onPress: () => { markOutOfMany([item.id], 'spoiled'); setPendingUseUpItem(null); },
-        },
-        ...(canFreeze
-          ? [{
-              text: 'Froze it',
-              onPress: () => { setFrozen(item.id, true); setPendingUseUpItem(null); },
-            }]
-          : []),
-        {
-          text: 'Used it up',
-          onPress: () => { markOutOfMany([item.id], 'usedUp'); setPendingUseUpItem(null); },
-        },
-      ]
-    );
-    // Fires once per id, not on every render the item list happens to
-    // update on — see FinishLeftoverPrompt's identical effect for why.
+    if (pendingItemId && !askable) setPendingUseUpItem(null);
+    // Fires when the pointer or its answerability changes, not on every render
+    // the item list happens to update on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingItemId]);
+  }, [pendingItemId, askable]);
+
+  // Offered only while it isn't frozen already: an item in the freezer has
+  // nothing left for this answer to change.
+  const rows = useMemo(
+    () => (pendingItem?.frozenAt ? [USED_UP_ROW, WENT_BAD_ROW] : [USED_UP_ROW, FROZE_ROW, WENT_BAD_ROW]),
+    [pendingItem?.frozenAt]
+  );
+
+  const answerItem = (key: UseUpKey) => {
+    if (!pendingItem) return;
+    if (key === 'froze') setFrozen(pendingItem.id, true);
+    else markOutOfMany([pendingItem.id], key);
+  };
 
   const pendingLeftoverId = useLeftoverStore(s => s.pendingUseUpLeftoverId);
   const setPendingUseUpLeftover = useLeftoverStore(s => s.setPendingUseUpLeftover);
@@ -119,6 +139,16 @@ export function UseUpResolveSheet() {
   );
 
   return (
+    <>
+    <PantryAnswerSheet
+      name="UseUpResolveSheet"
+      visible={askable}
+      title={pendingItem?.name ?? ''}
+      subtitle="What happened to it?"
+      rows={rows}
+      onAnswer={answerItem}
+      onClose={() => setPendingUseUpItem(null)}
+    />
     <LeftoverSheet
       visible={pendingLeftover !== null}
       leftover={pendingLeftover}
@@ -137,5 +167,6 @@ export function UseUpResolveSheet() {
       onClose={() => setPendingUseUpLeftover(null)}
       actionsOnly
     />
+    </>
   );
 }

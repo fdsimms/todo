@@ -327,6 +327,7 @@ Where each component can appear.
 - `src/components/OfferBanner.tsx` — on FoodLogScreen, GroceryScreen, KitchenScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, RecipesScreen
 - `src/components/PaintSelection.tsx` — on ArchivedScreen, CategoriesScreen, CategoryDetailScreen, FoodLogScreen, GroceryScreen, KitchenScreen, LogbookScreen, MealPlanScreen, PeopleScreen, ProjectDetailScreen, ProjectsScreen, RecipeDetailScreen, +9 more
 - `src/components/PantryAnswerField.tsx` — on ArchivedScreen, CalendarScreen, CategoryDetailScreen, FoodLogScreen, LogbookScreen, MedicationDetailScreen, MedicationScreen, PersonDetailScreen, ProjectDetailScreen, ProjectsScreen, RemindersScreen, SearchScreen, +6 more
+- `src/components/PantryAnswerSheet.tsx` — on CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, StackDetailScreen, TagsScreen, TodayScreen, app shell
 - `src/components/PantryCheckSheet.tsx` — on CategoryDetailScreen, ProjectDetailScreen, ProjectsScreen, StackDetailScreen, TagsScreen, TodayScreen
 - `src/components/PantryReviewSheet.tsx` — on KitchenScreen
 - `src/components/PatchNotesModal.tsx` — on SettingsGroupScreen

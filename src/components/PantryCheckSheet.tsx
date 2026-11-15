@@ -1,11 +1,7 @@
-import React, { Fragment, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { CardSheet, useCardSheet } from './CardSheet';
+import React, { useMemo } from 'react';
+import { PantryAnswerSheet, type PantryAnswerRow } from './PantryAnswerSheet';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
-import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, interaction, border, iconSize, lineHeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { pantryBoughtCaption } from '../utils/pantryStanding';
 
@@ -16,16 +12,9 @@ interface Props {
   onClose: () => void;
 }
 
-interface Row {
-  key: 'have' | 'new' | 'low' | 'low-list' | 'out' | 'out-list';
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  tone: 'accent' | 'red';
-  label: string;
-  detail: string;
-  feedback: () => void;
-}
+type RowKey = 'have' | 'new' | 'low' | 'low-list' | 'out' | 'out-list';
 
-const ROWS: Row[] = [
+const ROWS: PantryAnswerRow<RowKey>[] = [
   {
     key: 'have',
     icon: 'checkmark-circle-outline',
@@ -92,9 +81,6 @@ const ROWS: Row[] = [
  * tick still never claims "yes I still have it".
  */
 export function PantryCheckSheet({ visible, itemId, onClose }: Props) {
-  const colors = useColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-  const card = useCardSheet();
   const name = useGroceryStore(s => s.itemById(itemId)?.name ?? null);
   const lastPurchasedAt = useGroceryStore(s => s.itemById(itemId)?.lastPurchasedAt ?? null);
   const bought = useMemo(
@@ -102,7 +88,7 @@ export function PantryCheckSheet({ visible, itemId, onClose }: Props) {
     [lastPurchasedAt, visible],
   );
 
-  const answer = (key: Row['key']) => {
+  const answer = (key: RowKey) => {
     const groceries = useGroceryStore.getState();
     if (key === 'low' || key === 'low-list') {
       // Says the list choice outright, so the "Running low adds to the list"
@@ -119,87 +105,14 @@ export function PantryCheckSheet({ visible, itemId, onClose }: Props) {
   };
 
   return (
-    <CardSheet
+    <PantryAnswerSheet
       name="PantryCheckSheet"
       visible={visible}
-      controller={card}
+      title={name ? `Do you still have ${name}?` : 'Do you still have this?'}
+      subtitle={bought}
+      rows={ROWS}
+      onAnswer={answer}
       onClose={onClose}
-      onRequestClose={() => card.close()}
-      scrimLabel="Close"
-    >
-      <View style={styles.header}>
-        <Text style={styles.title}>{name ? `Do you still have ${name}?` : 'Do you still have this?'}</Text>
-        {bought && <Text style={styles.subtitle}>{bought}</Text>}
-      </View>
-      {ROWS.map(row => (
-        <Fragment key={row.key}>
-          <View style={styles.sep} />
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => { row.feedback(); card.close(() => answer(row.key)); }}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={`${row.label}. ${row.detail}`}
-          >
-            <Ionicons
-              name={row.icon}
-              size={iconSize.md}
-              color={row.tone === 'red' ? colors.redText : colors.accent}
-              style={styles.icon}
-            />
-            <View style={styles.text}>
-              <Text style={[styles.label, row.tone === 'red' && styles.redLabel]}>{row.label}</Text>
-              <Text style={styles.detail}>{row.detail}</Text>
-            </View>
-          </TouchableOpacity>
-        </Fragment>
-      ))}
-    </CardSheet>
+    />
   );
 }
-
-const makeStyles = (colors: Colors) => StyleSheet.create({
-  header: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.smd,
-  },
-  title: {
-    color: colors.text,
-    fontSize: font.lg,
-    fontWeight: fontWeight.semibold,
-  },
-  subtitle: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    lineHeight: lineHeight.sm,
-    marginTop: spacing.xxs,
-    fontWeight: fontWeight.regular,
-  },
-  optionRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.smd,
-    paddingVertical: spacing.smd,
-    paddingHorizontal: spacing.md,
-    minHeight: 56,
-  },
-  icon: { marginTop: spacing.xxs },
-  text: { flex: 1 },
-  label: {
-    color: colors.text,
-    fontSize: font.lg,
-  },
-  redLabel: { color: colors.redText },
-  detail: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    lineHeight: lineHeight.sm,
-    marginTop: spacing.xxs,
-    fontWeight: fontWeight.regular,
-  },
-  sep: {
-    height: border.hairline,
-    backgroundColor: colors.separator,
-  },
-});
