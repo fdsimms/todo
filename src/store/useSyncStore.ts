@@ -646,7 +646,18 @@ export const useSyncStore = create<SyncState>((set, get) => ({
  * shows even after an earlier one was dismissed.
  */
 export const selectSyncBannerProblem = (s: Pick<SyncState, 'problem' | 'dismissedProblem'>): string | null =>
-  s.problem !== null && s.problem !== s.dismissedProblem ? s.problem : null;
+  s.problem !== null && problemKey(s.problem) !== problemKey(s.dismissedProblem) ? s.problem : null;
+
+/**
+ * What a dismissal is matched on. A recipe photo problem embeds CloudKit's own
+ * error text, which carries record ids and changes on every sync, so comparing
+ * the whole message brought the banner back after each dismissal. For those
+ * messages only the part outside the parenthesized detail counts.
+ */
+function problemKey(problem: string | null): string | null {
+  if (problem === null || !/^(Recipe photos can’t send|Some recipe photos didn’t send)/.test(problem)) return problem;
+  return problem.replace(/ \(.*\)(?=\. )/s, '');
+}
 
 /**
  * Why recipe photos didn't send, and whether trying again helps. A missing

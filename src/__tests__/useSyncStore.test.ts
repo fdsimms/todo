@@ -15,6 +15,7 @@ import {
   SYNC_EPOCH,
   SYNC_CLAIM_STALE_MS,
   selectSyncBannerProblem,
+  describeImageProblem,
 } from '../store/useSyncStore';
 import { dbEraseForSyncJoin, dbGetSetting, dbGetSyncCursor, dbHasOwnSyncData, dbSetSetting, dbSetSyncCursor } from '../db/database';
 import { HEALTH_SYNC_TABLES, JOURNAL_SYNC_TABLES } from '../db/syncTracking';
@@ -582,6 +583,11 @@ describe('syncNow', () => {
     expect(selectSyncBannerProblem(useSyncStore.getState())).toBe(problem);
 
     useSyncStore.getState().dismissProblem();
+    expect(selectSyncBannerProblem(useSyncStore.getState())).toBeNull();
+
+    // The same photo problem with different CloudKit detail (record ids change
+    // every sync) stays dismissed.
+    useSyncStore.setState({ problem: describeImageProblem('Cannot create new type RecipeImage in production schema <CKRecord: 0xABC>') });
     expect(selectSyncBannerProblem(useSyncStore.getState())).toBeNull();
 
     // A different problem shows again after an earlier one was dismissed.
