@@ -96,11 +96,57 @@ function readPackageGramsField(value: unknown): { packageGrams: number } | Recor
   return grams === null ? {} : { packageGrams: grams };
 }
 
-/** A serving volume when the stored value is a positive number, else absent. */
-function readServingMlField(value: unknown): { servingMl: number } | Record<string, never> {
-  const ml = readServingGrams(value);
-  return ml === null ? {} : { servingMl: ml };
+/**
+ * A serving volume when the stored value is a positive number, else absent.
+ *
+ * **A record saved before the field existed gets it from its serving text**, so
+ * a drink scanned last month logs by the serving without being scanned again,
+ * and without a backfill pass writing every row (which would restamp each for
+ * sync). Only for a panel stating no serving weight, the case this exists for:
+ * a serving weighed in grams keeps answering through its weight. Nothing is
+ * written back here; the value is derived on each read and stored when the
+ * record is next saved.
+ */
+function readServingMlField(
+  value: unknown,
+  servingGrams: number | null,
+  servingText: string | null,
+): { servingMl: number } | Record<string, never> {
+  const stored = readServingGrams(value);
+  if (stored !== null) return { servingMl: stored };
+  if (servingGrams !== null) return {};
+  const derived = volumeInText(servingText);
+  return derived === null ? {} : { servingMl: derived };
 }
+
+const VOLUME_IN_TEXT = /(\d+(?:[.,]\d+)?)\s*(ml|l|liters?|litres?|fl\.?\s*oz)\b/gi;
+
+/**
+ * The volume a serving line states in a metric unit or fluid ounces, as
+ * millilitres ("12 fl oz (355 mL)" is 355, "330ml" is 330), or null. A metric
+ * figure wins over fluid ounces, since a packet prints the exact one beside the
+ * rounded US measure. Kept here, a dependency-free reader, because the general
+ * quantity parser (`scanPortion.servingMillilitres`, which calls this first and
+ * adds cups and spoons) imports this module. A weight or a count states none.
+ */
+export function volumeInText(text: string | null | undefined): number | null {
+  if (!text) return null;
+  let metric: number | null = null;
+  let fluidOunces: number | null = null;
+  for (const m of text.matchAll(VOLUME_IN_TEXT)) {
+    const amount = Number(m[1].replace(',', '.'));
+    if (!(amount > 0)) continue;
+    const unit = m[2].toLowerCase();
+    if (unit.startsWith('fl')) {
+      fluidOunces ??= amount * ML_PER_FL_OZ;
+    } else {
+      metric ??= unit === 'ml' ? amount : amount * 1000;
+    }
+  }
+  const ml = metric ?? fluidOunces;
+  return ml === null ? null : Math.round(ml * 100) / 100;
+}
+
 
 function readBreakdownField(value: unknown): { breakdown: FoodBreakdownLine[] } | Record<string, never> {
   if (!Array.isArray(value)) return {};
@@ -176,10 +222,12 @@ export function parseFoodNutrition(raw: string | null | undefined): FoodNutritio
     const amounts = readAmounts(parsed.amounts);
     if (Object.keys(amounts).length === 0) return null;
 
+    const servingGrams = readServingGrams(parsed.servingGrams);
+    const servingText = typeof parsed.servingText === 'string' ? parsed.servingText : null;
     return {
       basis,
-      servingGrams: readServingGrams(parsed.servingGrams),
-      servingText: typeof parsed.servingText === 'string' ? parsed.servingText : null,
+      servingGrams,
+      servingText,
       amounts,
       // A provenance this build can't explain is one it can't vouch for, so the
       // record is kept and demoted to the weakest claim rather than thrown away
@@ -198,7 +246,7 @@ export function parseFoodNutrition(raw: string | null | undefined): FoodNutritio
         : {}),
       ...readNovaField(parsed.novaGroup),
       ...readPackageGramsField(parsed.packageGrams),
-      ...readServingMlField(parsed.servingMl),
+      ...readServingMlField(parsed.servingMl, servingGrams, servingText),
       ...readBreakdownField(parsed.breakdown),
       ...readCookingField(parsed.cooking),
     };

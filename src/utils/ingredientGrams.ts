@@ -474,7 +474,8 @@ export function panelMultiplier(
   // A per-serving panel whose serving is a stated volume answers a volume line
   // straight off it ("8 fl oz" of a 12 fl oz serving), which the weight route
   // below cannot do for a drink with no serving weight.
-  if (nutrition.basis === 'perServing' && nutrition.servingMl && nutrition.servingMl > 0) {
+  if (nutrition.basis === 'perServing' && !(nutrition.servingGrams && nutrition.servingGrams > 0)
+    && nutrition.servingMl && nutrition.servingMl > 0) {
     const single = parsed.rangeMax ? { ...parsed, rangeMax: null } : parsed;
     const measured = measureLineAmount(single);
     if (measured?.dimension === 'volume') return measured.base / nutrition.servingMl;

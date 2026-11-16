@@ -221,7 +221,19 @@ export function scalePanelToAmount(
     : parsedQuantity.unit === 'serving' && parsedQuantity.amount !== null
       ? (panel.servingGrams !== null ? rationalToNumber(parsedQuantity.amount) * panel.servingGrams : null)
       : gramsForLine(parsedQuantity, prep, panel.portions);
-  const grams = rawGrams === null ? null : round(rawGrams);
+  // A volume against a per-100ml panel with no weighed density: water's, the
+  // same one the mass fallback above uses in the other direction. A weighed
+  // portion (`gramsForLine`) has already answered by this point and wins, and
+  // `approximate` keeps the sheets offering to weigh the real thing.
+  let weight = rawGrams;
+  if (weight === null && panel.basis === 'per100ml') {
+    const millilitres = volumeMillilitres(measured);
+    if (millilitres !== null && millilitres > 0) {
+      weight = millilitres;
+      approximate = true;
+    }
+  }
+  const grams = weight === null ? null : round(weight);
 
   return {
     grams,

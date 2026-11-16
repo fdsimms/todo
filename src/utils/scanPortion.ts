@@ -1,4 +1,5 @@
 import type { FoodNutrition } from '../types';
+import { volumeInText } from './foodNutrition';
 import { parseQuantity } from './quantity';
 import { measureParsedQuantity } from './unitConvert';
 
@@ -90,6 +91,8 @@ export function servingsPerPackage(
 export function servingMillilitres(servingText: string | null | undefined): number | null {
   const text = servingText?.trim();
   if (!text) return null;
+  const inText = volumeInText(text);
+  if (inText !== null) return inText;
   const candidates = [...text.matchAll(/\(([^)]*)\)/g)].map(m => m[1]);
   candidates.push(text);
   for (const candidate of candidates) {

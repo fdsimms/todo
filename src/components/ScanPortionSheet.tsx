@@ -454,7 +454,7 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
             // Offered once a typed amount resolves for nutrients but still has
             // no weight — a per-100ml panel's own volume math can do the
             // first without ever answering the second (see `weighableLine`).
-            const weighable = answer.trim() && (!outcome || outcome.grams === null)
+            const weighable = answer.trim() && (!outcome || outcome.grams === null || (panel.basis === 'per100ml' && outcome.approximate))
               ? weighableLine(answer, null, panel, food.label)
               : null;
             // The field itself is shown as soon as the unit is known — before
@@ -462,7 +462,8 @@ export function ScanPortionSheet({ visible, foods, slot, at, mealPlanEntryId, on
             // typing something first. Only `weighable` (which needs a typed,
             // unresolved amount) decides whether Save can actually be pressed.
             const weighUnitLabel = usingPills && panel.basis === 'per100ml' ? selectedUnit?.label ?? null : null;
-            const showWeighField = !!weighUnitLabel && (!outcome || outcome.grams === null);
+            // Also while the weight is only water's estimate, so a real one can still be entered.
+            const showWeighField = !!weighUnitLabel && (!outcome || outcome.grams === null || outcome.approximate);
             const amountNumber = amountNumbers[food.key] ?? (answers[food.key] === undefined ? defaultAmount?.number : undefined) ?? '';
             const changeAmount = (text: string) => {
               if (usingPills) {

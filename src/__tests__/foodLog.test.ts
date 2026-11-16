@@ -269,9 +269,9 @@ describe('scalePanelToAmount', () => {
     expect(built?.nutrition.portions).toEqual([]);
   });
 
-  it('answers a weightless helping where the panel is per volume', () => {
+  it('answers a helping where the panel is per volume, weighing it as water', () => {
     // A per-100ml panel is answered by a volume line, and nothing here knows a
-    // density, so the entry is real and its weight is genuinely unknown.
+    // density, so the weight is water's and says so.
     const built = scalePanelToAmount(
       panel({ basis: 'per100ml', portions: [], amounts: { calorieKcal: 42 } }),
       '250 ml',
@@ -279,7 +279,15 @@ describe('scalePanelToAmount', () => {
       NOW,
     );
     expect(built?.nutrition.amounts.calorieKcal).toBeCloseTo(105, 1);
-    expect(built?.grams).toBeNull();
+    expect(built?.grams).toBe(250);
+    expect(built?.approximate).toBe(true);
+  });
+
+  it('prefers a weighed density to water for a volume of a per-100ml panel', () => {
+    const weighed = panel({ basis: 'per100ml', amounts: { calorieKcal: 100 }, portions: [{ amount: 1, label: 'cup', grams: 300 }] });
+    const built = scalePanelToAmount(weighed, '1 cup', null, NOW);
+    expect(built?.grams).toBe(300);
+    expect(built?.approximate).toBe(false);
   });
 
   it('scales a per-serving panel by a typed serving count, with no portion table needed', () => {
@@ -348,7 +356,7 @@ describe('scalePanelToAmount', () => {
       expect(built?.grams).toBe(244);
     });
 
-    it('does not apply to a per-100ml panel, which already measures volume directly', () => {
+    it('needs no beverage name for a per-100ml panel, which measures volume directly and weighs as water', () => {
       const built = scalePanelToAmount(
         panel({ basis: 'per100ml', portions: [], amounts: { calorieKcal: 42 } }),
         '250 ml',
@@ -356,7 +364,8 @@ describe('scalePanelToAmount', () => {
         NOW,
         'Cola',
       );
-      expect(built?.approximate).toBe(false);
+      expect(built?.approximate).toBe(true);
+      expect(built?.grams).toBe(250);
     });
   });
 });

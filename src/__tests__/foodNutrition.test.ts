@@ -118,7 +118,9 @@ describe('parseFoodNutrition', () => {
         servingText: '250ml',
         amounts: { calorieKcal: 46, sugarG: 11, caffeineMg: 32 },
       });
-      expect(parseFoodNutrition(serializeFoodNutrition(drink))).toEqual(drink);
+      // A volume in the serving text is read into `servingMl` on the way back
+      // (a record saved before that field existed), and nothing else changes.
+      expect(parseFoodNutrition(serializeFoodNutrition(drink))).toEqual({ ...drink, servingMl: 250 });
     });
 
     it('reads a portion table back, and drops only the rows it cannot use', () => {
@@ -465,6 +467,26 @@ describe('serving volume', () => {
     const drink = nutrition({ basis: 'per100ml', servingGrams: null, servingMl: 355 });
     expect(parseFoodNutrition(serializeFoodNutrition(drink))!.servingMl).toBe(355);
     expect('servingMl' in parseFoodNutrition(serializeFoodNutrition(nutrition()))!).toBe(false);
+  });
+
+  it('reads one off the serving text of a record saved without it, when no serving weight is stated', () => {
+    const old = (over: Partial<FoodNutrition>) => parseFoodNutrition(serializeFoodNutrition(nutrition({ basis: 'per100ml', servingGrams: null, ...over })))!;
+    expect(old({ servingText: '12 fl oz (355 mL)' }).servingMl).toBe(355);
+    expect(old({ servingText: '1 can (330ml)' }).servingMl).toBe(330);
+    expect(old({ servingText: '12 fl oz' }).servingMl).toBeCloseTo(354.88, 1);
+    expect('servingMl' in old({ servingText: '1 can' })).toBe(false);
+    expect('servingMl' in old({ servingText: '2 cookies (30g)' })).toBe(false);
+    expect('servingMl' in old({ servingText: null })).toBe(false);
+  });
+
+  it('leaves a record with a serving weight to answer through it', () => {
+    const parsed = parseFoodNutrition(serializeFoodNutrition(nutrition({ servingGrams: 245, servingText: '1 cup (240ml)' })))!;
+    expect('servingMl' in parsed).toBe(false);
+  });
+
+  it('prefers a stored volume to the one in the text', () => {
+    const parsed = parseFoodNutrition(serializeFoodNutrition(nutrition({ servingGrams: null, servingMl: 330, servingText: '12 fl oz (355 mL)' })))!;
+    expect(parsed.servingMl).toBe(330);
   });
 
   it('drops one that is not a positive number', () => {
