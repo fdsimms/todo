@@ -88,10 +88,12 @@ class TodoActivityMonitor: DeviceActivityMonitor {
     else { return }
 
     guard ScreenTimeShared.recordSpeedBumpFired(dayKey: dayKey, event: "\(activity.rawValue)|\(raw)") else { return }
-    if !ScreenTimeShared.activeSpeedBumpGroupIds(now: Date()).isEmpty { return }
+    // A break reminder is not about a block, so a running block does not hold it back.
+    let isReminder = bump.remindOnly == true
+    if !isReminder && !ScreenTimeShared.activeSpeedBumpGroupIds(now: Date()).isEmpty { return }
 
     let content = UNMutableNotificationContent()
-    content.title = "Speed bump coming up"
+    content.title = isReminder ? "Time for a break" : "Speed bump coming up"
     content.body = text
     content.sound = UNNotificationSound.default
     // Keyed by the event, so a repeat of the same wake replaces rather than stacks.

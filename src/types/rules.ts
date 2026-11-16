@@ -165,6 +165,11 @@ export interface SpeedBumpRule {
    * the same groups with different days are how a weekend gets a looser limit.
    */
   days?: number[];
+  /**
+   * Send a break reminder at each crossing instead of blocking. The block fields
+   * stay on the rule but are unused while this is set.
+   */
+  remindOnly?: boolean;
   enabled: boolean;
 }
 

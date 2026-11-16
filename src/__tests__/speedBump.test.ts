@@ -18,6 +18,7 @@ import {
   speedBumpRunsOn,
   serializeSpeedBumpRules,
   speedBumpRungs,
+  BREAK_REMINDER_TEXT,
 } from '../utils/speedBump';
 
 const rule = (over: Partial<SpeedBumpRule> = {}): SpeedBumpRule => ({
@@ -269,5 +270,38 @@ describe('speed bump heads-ups', () => {
     expect(clampBumpReset(NaN)).toBe(0);
     // Every choice cuts 24 hours into equal windows.
     for (const h of SPEED_BUMP_RESET_CHOICES.filter(h => h > 0)) expect(24 % h).toBe(0);
+  });
+});
+
+describe('reminder-only rules', () => {
+  const reminder = (over: Partial<SpeedBumpRule> = {}) =>
+    rule({ remindOnly: true, thresholdMinutes: 20, repeatEveryMinutes: 20, maxTimes: 6, ...over });
+
+  it('arm with no group to block and the break message', () => {
+    const [bump] = armableSpeedBumps([reminder()], id => id ?? 'default', () => []);
+    expect(bump).toMatchObject({ remindOnly: true, blockGroupIds: [], rungs: [20, 40, 60, 80, 100, 120], warnText: BREAK_REMINDER_TEXT });
+  });
+
+  it('are not turned into a heads-up for a block, whatever the heads-up setting is', () => {
+    const [bump] = armableSpeedBumps([reminder()], undefined, () => [], { leadMinutes: 5, blockedName: () => 'Games' });
+    expect(bump.warnRungs).toEqual([]);
+    expect(bump.warnText).toBe(BREAK_REMINDER_TEXT);
+  });
+
+  it('are left out when disabled, like any other rule', () => {
+    expect(armableSpeedBumps([reminder({ enabled: false })], undefined, () => [])).toEqual([]);
+  });
+
+  it('survive a save and a read, and a block rule never gains the flag', () => {
+    const saved = parseSpeedBumpRules(serializeSpeedBumpRules([reminder(), rule({ id: 'r2' })]));
+    expect(saved[0].remindOnly).toBe(true);
+    expect(saved[1]).not.toHaveProperty('remindOnly');
+  });
+
+  it('are described as a reminder, not a block', () => {
+    expect(describeSpeedBump(reminder(), 'Default', 'Default'))
+      .toBe('After 20 min on Default, then every 20 min, up to 6 times a day: a break reminder.');
+    expect(describeSpeedBump(reminder({ repeatEveryMinutes: null, maxTimes: 1 }), 'Default', 'Default'))
+      .toBe('After 20 min on Default, a break reminder.');
   });
 });

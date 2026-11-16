@@ -10,6 +10,9 @@ import { haptics } from '../utils/haptics';
 import { screenTimeBridge } from '../utils/screenTimeBridge';
 import { allGroups, groupName, plainGroups, resolveGroupId } from '../utils/appGroups';
 import {
+  BREAK_REMINDER_MINUTES,
+  BREAK_REMINDER_TEXT,
+  BREAK_REMINDER_TIMES,
   SPEED_BUMP_BLOCK_CHOICES,
   SPEED_BUMP_REPEAT_DEFAULT,
   SPEED_BUMP_REPEAT_MAX,
@@ -42,6 +45,7 @@ interface Props {
 
 type Frequency = 'once' | 'repeat';
 type DaysChoice = 'every' | 'chosen';
+type Action = 'block' | 'remind';
 
 /** "15 min", "1 hr", "2 hr": the segment labels for a block length. */
 function blockLabel(minutes: number): string {
@@ -89,7 +93,7 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
       title="Speed bumps"
       caption={
         'When your total time today on a group of apps reaches the time you set, a group of apps is blocked '
-        + 'for a short while. A key tag or the emergency button ends the block early.'
+        + 'for a short while, or you get a break reminder. A key tag or the emergency button ends a block early.'
       }
       rules={rules}
       onChange={setRules}
@@ -101,7 +105,7 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
         if (groupIsEmpty(timedId(rule))) {
           return { text: `No apps picked in ${nameOf(rule.groupId)}, so this speed bump can’t fire.`, tone: 'warn' };
         }
-        if (groupIsEmpty(blockedId(rule))) {
+        if (!rule.remindOnly && groupIsEmpty(blockedId(rule))) {
           return { text: `No apps picked in ${nameOf(rule.blockGroupId ?? rule.groupId)}, so nothing would be blocked.`, tone: 'warn' };
         }
         return null;
@@ -110,6 +114,21 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
         const frequency: Frequency = rule.repeatEveryMinutes ? 'repeat' : 'once';
         return (
           <View style={styles.sections}>
+            <View style={styles.field}>
+              <RuleFieldLabel>When it fires</RuleFieldLabel>
+              <SegmentedControl<Action>
+                label="When it fires"
+                options={[{ value: 'block', label: 'Block apps' }, { value: 'remind', label: 'Remind me' }]}
+                value={rule.remindOnly ? 'remind' : 'block'}
+                onChange={next => {
+                  haptics.tap();
+                  // Remind me starts as the 20-20-20 rule; going back keeps those numbers as they are.
+                  update(next === 'remind'
+                    ? { remindOnly: true, thresholdMinutes: BREAK_REMINDER_MINUTES, repeatEveryMinutes: BREAK_REMINDER_MINUTES, maxTimes: BREAK_REMINDER_TIMES }
+                    : { remindOnly: undefined });
+                }}
+              />
+            </View>
             <CountStepper
               value={rule.thresholdMinutes}
               onChange={next => update({ thresholdMinutes: next ?? SPEED_BUMP_THRESHOLD_DEFAULT })}
@@ -134,6 +153,13 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
                 }))}
               />
             </View>
+            {rule.remindOnly ? (
+              <View style={styles.field}>
+                <RuleFieldLabel>Reminder</RuleFieldLabel>
+                <HelpText style={[styles.warnHint, { color: colors.textSecondary }]}>{BREAK_REMINDER_TEXT}</HelpText>
+              </View>
+            ) : (
+              <>
             <View style={styles.field}>
               <RuleFieldLabel>Then block</RuleFieldLabel>
               <PillGroup
@@ -165,6 +191,8 @@ export function SpeedBumpRulesSheet({ visible, onClose }: Props) {
                 onChange={minutes => { haptics.tap(); update({ blockMinutes: minutes }); }}
               />
             </View>
+              </>
+            )}
             <View style={styles.field}>
               <RuleFieldLabel>How often</RuleFieldLabel>
               <SegmentedControl<Frequency>
