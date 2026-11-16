@@ -43,7 +43,6 @@ export function setGeneratorEnabled(kind: GeneratedKind, next: boolean): void {
     case 'journalLog': s.setJournalLogTasks(next); break;
     case 'dreamLog': s.setDreamLogTasks(next); break;
     case 'wanikani': s.setWanikaniTasks(next); break;
-    case 'ynab': s.setYnabTasks(next); break;
     case 'franki': s.setFrankiTasks(next); break;
     case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
     case 'backfill': s.setBackfillTasks(next); break;

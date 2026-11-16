@@ -214,9 +214,6 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // Appended: the first generator fed by an account on another service (the
   // person's WaniKani reviews and lessons). See src/utils/wanikaniTasks.ts.
   'wanikani',
-  // Appended: the second, the person's YNAB plan (transactions waiting, and
-  // overspent categories). See src/utils/ynabTasks.ts.
-  'ynab',
   // Appended: the person's own Franki flashcards (cards due, and a Read &
   // Listen text waiting). See src/utils/frankiTasks.ts.
   'franki',
@@ -295,7 +292,6 @@ export type GeneratedEnabledKey =
   | 'journalLogTasks'
   | 'dreamLogTasks'
   | 'wanikaniTasks'
-  | 'ynabTasks'
   | 'frankiTasks';
 
 export interface GeneratedKindSpec {
@@ -1297,24 +1293,6 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Study',
-  },
-  ynab: {
-    kind: 'ynab',
-    // Approving transactions is chores, so it stands down on a trip, the way
-    // WaniKani's reviews do. YNAB keeps the queue; the first read after the
-    // trip picks it up.
-    pausedOnVacation: true,
-    enabledKey: 'ynabTasks',
-    label: 'YNAB transactions',
-    onHint: 'Adds a task when transactions in YNAB need approving or a category',
-    offHint: 'YNAB adds no tasks',
-    icon: 'wallet-outline',
-    // Its source id names a day or a category's month, not a row.
-    sourced: false,
-    notice: false,
-    kitchen: false,
-    categorized: true,
-    defaultCategory: 'Personal',
   },
   franki: {
     kind: 'franki',

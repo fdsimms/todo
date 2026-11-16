@@ -726,12 +726,6 @@ export type GeneratedKind =
   // Sourced by the wave (`reviews:<hour>`) or the day (`lessons:<day>`), with
   // no source row; deleting one closes that wave and writes nothing.
   | 'wanikani'
-  // "Approve 4 transactions in YNAB" while the person's YNAB plan has
-  // transactions waiting, and "Cover $12.40 overspending in Dining Out" per
-  // overspent category — see src/utils/ynabTasks.ts. Fed by a fetch of their
-  // own plan (src/services/ynab.ts). Sourced by the day (`queue:<day>`) or the
-  // category and month (`overspent:<month>:<category>`), with no source row.
-  | 'ynab'
   // "Franki: 30 reviews" when the person's flashcards have that many cards due,
   // and "Read & Listen: Thai" once a day while a text is waiting — see
   // src/utils/frankiTasks.ts. Fed by a fetch of their own Franki server

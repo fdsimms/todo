@@ -19,7 +19,7 @@
  * user pasted in months ago and no longer has.
  */
 
-import { dbDeleteSetting, dbGetSetting } from '../db/database';
+import { dbDeleteSetting, dbGetSetting, dbSetSetting } from '../db/database';
 import { isDemoModeActive } from './demoState';
 
 /**
@@ -141,12 +141,6 @@ export const SYNC_TOKEN_READABLE_LOCKED_SETTING = 'syncTokenReadableWhileLocked'
  */
 export const WANIKANI_TOKEN_SECURE_KEY = 'wanikaniApiToken';
 /**
- * The person's YNAB personal access token (`src/services/ynab.ts`), kept
- * device-local for the WaniKani token's reason. YNAB's tokens can read and
- * write the whole plan, which is one more reason it stays off the sync.
- */
-export const YNAB_TOKEN_SECURE_KEY = 'ynabApiToken';
-/**
  * The key for Franki's status route (`src/services/franki.ts`): the
  * `READER_STATUS_TOKEN` set on the person's own Franki server, which opens
  * what's due and nothing else. Device-local for the WaniKani token's reason.
@@ -229,4 +223,14 @@ export async function saveSecureKey(
   } catch {
     return false;
   }
+}
+
+/**
+ * One-time cleanup: the YNAB integration was removed, so the personal access
+ * token it kept in the keychain is deleted. Marked done only once the delete
+ * went through, so a failed one is tried again on the next launch.
+ */
+export async function removeLegacyYnabToken(): Promise<void> {
+  if (dbGetSetting('ynab_token_removed_done') === '1') return;
+  if (await saveSecureKey('ynabApiToken', '')) dbSetSetting('ynab_token_removed_done', '1');
 }

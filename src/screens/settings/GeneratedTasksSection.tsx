@@ -139,8 +139,6 @@ import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { WaniKaniSettingsRows } from './WaniKaniSettingsRows';
 import { FrankiSettingsRows } from './FrankiSettingsRows';
-import { YnabSettingsRows } from './YnabSettingsRows';
-import { useYnabStore } from '../../store/useYnabStore';
 import { useWaniKaniStore } from '../../store/useWaniKaniStore';
 import { useFrankiStore } from '../../store/useFrankiStore';
 import { useSettingsFocus } from './SettingsFocus';
@@ -231,7 +229,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
 
   const s = useSettingsStore();
   const wanikaniHasToken = useWaniKaniStore(state => state.hasToken);
-  const ynabHasToken = useYnabStore(state => state.hasToken);
   const frankiHasToken = useFrankiStore(state => state.hasToken);
   const navigation = useNavigation();
   const categories = useCategoryStore(useShallow(state => state.categories));
@@ -422,7 +419,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'journalLog': return s.journalLogTaskCategory;
       case 'dreamLog': return s.dreamLogTaskCategory;
       case 'wanikani': return s.wanikaniTaskCategory;
-      case 'ynab': return s.ynabTaskCategory;
       case 'franki': return s.frankiTaskCategory;
       case 'weekendNudge': return s.weekendNudgeTaskCategory;
       case 'backfill': return s.backfillTaskCategory;
@@ -470,7 +466,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
       case 'journalLog': s.setJournalLogTaskCategory(category); break;
       case 'dreamLog': s.setDreamLogTaskCategory(category); break;
       case 'wanikani': s.setWanikaniTaskCategory(category); break;
-      case 'ynab': s.setYnabTaskCategory(category); break;
       case 'franki': s.setFrankiTaskCategory(category); break;
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
       case 'backfill': s.setBackfillTaskCategory(category); break;
@@ -530,7 +525,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     }
     // On without a token reads nothing, so say what it is waiting for.
     if (spec.kind === 'wanikani' && !wanikaniHasToken) return 'Add an API token from WaniKani to start';
-    if (spec.kind === 'ynab' && !ynabHasToken) return 'Add a personal access token from YNAB to start';
     if (spec.kind === 'franki' && (!s.frankiServer || !frankiHasToken)) return 'Add your Franki server’s address and status key to start';
     if (spec.kind === 'journalLog' && s.journalLogTimeSegments.length > 0) {
       const segmentNames = s.journalLogTimeSegments.map(seg =>
@@ -1242,8 +1236,6 @@ export function GeneratedTasksSection({ query = '' }: { query?: string }) {
     }
 
     if (kind === 'wanikani') return <WaniKaniSettingsRows />;
-
-    if (kind === 'ynab') return <YnabSettingsRows />;
 
     if (kind === 'franki') return <FrankiSettingsRows />;
 

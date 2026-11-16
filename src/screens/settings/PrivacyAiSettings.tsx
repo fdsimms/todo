@@ -23,7 +23,6 @@ import { TextField } from '../../components/TextField';
 import { BUTTON_LABEL } from '../../copy/shared';
 import { WaniKaniTokenRows } from './WaniKaniTokenRows';
 import { FrankiTokenRows } from './FrankiTokenRows';
-import { YnabAccountRows } from './YnabAccountRows';
 
 interface Props {
   /** The host screen's scroll view, so focusing the key field can reveal it. */
@@ -546,15 +545,6 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
         footer="Used for the Franki task in Automations. The key stays in this device’s keychain and is sent only to your own Franki server, which answers with how many cards are due and whether a Read & Listen text is waiting."
       >
         <FrankiTokenRows entryId="frankiTokenPrivacy" />
-      </SettingsSection>
-
-      {/* The same token row Automations and Kitchen show, so it is findable
-          among the other keys. All three write one keychain entry. */}
-      <SettingsSection
-        label="YNAB"
-        footer="Used for the YNAB task in Automations and the trip budget in Kitchen. The token stays in this device’s keychain and is sent only to YNAB. The app only reads from YNAB, and nothing it reads is sent to Claude."
-      >
-        <YnabAccountRows tokenEntryId="ynabTokenPrivacy" />
       </SettingsSection>
     </>
   );
