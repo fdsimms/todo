@@ -9,6 +9,7 @@ import {
   reviewedCalories,
   reviewedItems,
   reviewStockState,
+  withoutMultipleLead,
   reviewLinesFor,
   sameItems,
   toggleRemoved,
@@ -231,5 +232,17 @@ describe('reviewStockState', () => {
 
   it('does not read a lapsed "Got it" as out', () => {
     expect(reviewStockState(linked, { onHandUntil: '2020-01-01T00:00:00.000Z' }, false)?.out).toBe(false);
+  });
+});
+
+describe('withoutMultipleLead', () => {
+  it('drops the multiplier a scaled estimate leads with', () => {
+    expect(withoutMultipleLead('twice 10 g (about 2 tablespoons)')).toBe('10 g (about 2 tablespoons)');
+    expect(withoutMultipleLead('half of 10 g')).toBe('10 g');
+    expect(withoutMultipleLead('150% of 10 g')).toBe('10 g');
+    expect(withoutMultipleLead('4 times 10 g')).toBe('10 g');
+  });
+  it('leaves an unscaled amount alone', () => {
+    expect(withoutMultipleLead('10 g (about 1 tablespoon)')).toBe('10 g (about 1 tablespoon)');
   });
 });

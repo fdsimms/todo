@@ -27,6 +27,7 @@ import {
   itemAmountEdit,
   itemAtAmount,
   itemAtEstimateFactor,
+  withoutMultipleLead,
   replaceLine,
   reviewChanged,
   reviewedCalories,
@@ -517,7 +518,9 @@ export function SavedMealReviewSheet({ visible, meal, slot, at, onLog, onSaveCha
                   </View>
                 ) : edit.kind === 'estimate' ? (
                   <View>
-                    <Text style={styles.meta}>{line.item.quantity}</Text>
+                    <Text style={styles.meta}>
+                      {estimateAsk(line.item).wholeGrams ? withoutMultipleLead(line.item.quantity) : line.item.quantity}
+                    </Text>
                     {(() => {
                       const { counted, wholeGrams } = estimateAsk(line.item);
                       const unit: AmountUnit = estimateUnits[line.key] ?? (wholeGrams ? 'grams' : 'percent');
