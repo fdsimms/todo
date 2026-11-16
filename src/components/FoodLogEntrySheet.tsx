@@ -1360,7 +1360,9 @@ export function FoodLogEntrySheet({
   // null. That's still a gap `weighableLine` will offer to close.
   const weighable = useMemo(() => {
     if (!picked || picked.kind !== 'food' || !picked.panel || !amount.trim()) return null;
-    if (built && built.grams !== null) return null;
+    // A weight that is only water's estimate (a volume of a per-100ml drink) is
+    // still a gap a scale can close.
+    if (built && built.grams !== null && !(picked.panel.basis === 'per100ml' && built.approximate)) return null;
     return weighableLine(amount, null, picked.panel, picked.label);
   }, [picked, built, amount]);
 

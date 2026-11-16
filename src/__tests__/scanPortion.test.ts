@@ -1,5 +1,5 @@
 import type { FoodNutrition } from '../types';
-import { packageChoices, packageFractions, packageHelping, packSizeGrams, servingDescription, servingsPerPackage } from '../utils/scanPortion';
+import { packageChoices, packageFractions, packageHelping, packSizeGrams, servingDescription, servingMillilitres, servingsPerPackage } from '../utils/scanPortion';
 
 function panel(over: Partial<FoodNutrition> = {}): FoodNutrition {
   return {
@@ -222,5 +222,54 @@ describe('packageFractions', () => {
 
   it('leaves off a part smaller than one serving', () => {
     expect(packageFractions({ ...whole, servings: 2 }).map(c => c.key)).toEqual(['half']);
+  });
+});
+
+describe('a drink whose serving is a volume', () => {
+  const drink = (over: Partial<FoodNutrition> = {}) =>
+    panel({ basis: 'per100ml', servingGrams: null, servingMl: 355, servingText: '12 fl oz (355 mL)', amounts: { calorieKcal: 42 }, ...over });
+
+  it('offers one serving though no weight is stated', () => {
+    expect(packageChoices(drink(), null).map(c => c.key)).toEqual(['serving']);
+  });
+
+  it('counts the servings in a volume pack by the serving\'s own volume', () => {
+    expect(servingsPerPackage(drink(), '710 ml')).toBe(2);
+    expect(servingsPerPackage(drink(), '1 L')).toBe(2.8);
+  });
+
+  it('still refuses a pack sold by weight, and a drink with no serving volume', () => {
+    expect(servingsPerPackage(drink(), '500 g')).toBeNull();
+    expect(servingsPerPackage(drink({ servingMl: null }), '710 ml')).toBeNull();
+  });
+
+  it('describes the serving by its volume when there is no text', () => {
+    expect(servingDescription(drink({ servingText: null }))).toBe('1 serving is 355ml');
+  });
+
+  it('scales a helping by the serving volume and carries it forward', () => {
+    const helping = packageHelping(drink(), 2, '2 servings')!;
+    expect(helping.amounts.calorieKcal).toBe(298.2);
+    expect(helping.servingMl).toBe(710);
+    expect(helping.servingGrams).toBeNull();
+  });
+});
+
+describe('servingMillilitres', () => {
+  it('reads the metric volume beside a US measure or a count', () => {
+    expect(servingMillilitres('12 fl oz (355 mL)')).toBe(355);
+    expect(servingMillilitres('1 can (330ml)')).toBe(330);
+    expect(servingMillilitres('250 ml')).toBe(250);
+  });
+
+  it('reads a bare US volume', () => {
+    expect(servingMillilitres('12 fl oz')).toBeCloseTo(354.88, 1);
+  });
+
+  it('gives null for a weight, a count, or nothing', () => {
+    expect(servingMillilitres('2 cookies (30g)')).toBeNull();
+    expect(servingMillilitres('1 bar')).toBeNull();
+    expect(servingMillilitres('')).toBeNull();
+    expect(servingMillilitres(null)).toBeNull();
   });
 });
