@@ -120,6 +120,15 @@ export function speedBumpWarnRungs(rungs: readonly number[], leadMinutes: number
   return rungs.map(at => (lead > 0 && at - lead >= 1 ? at - lead : 0));
 }
 
+/**
+ * What a reminder-only rule says. The 20-20-20 rule: every 20 minutes, look at
+ * something 20 feet away for 20 seconds.
+ */
+export const BREAK_REMINDER_TEXT = 'Look at something 20 feet away for 20 seconds.';
+/** A reminder-only rule starts as the 20-20-20 rule: every 20 minutes of use, up to 6 times. */
+export const BREAK_REMINDER_MINUTES = 20;
+export const BREAK_REMINDER_TIMES = 6;
+
 /** The notification text. "About" because iOS does not say when in the interval an event fires. */
 export function speedBumpWarnText(blockedName: string, leadMinutes: number): string {
   return `${blockedName} will be blocked in about ${leadMinutes} minutes.`;
@@ -189,6 +198,7 @@ export function parseSpeedBumpRules(raw: string | null | undefined): SpeedBumpRu
       repeatEveryMinutes: repeats ? clampBumpRepeat(rule.repeatEveryMinutes as number) : null,
       maxTimes: repeats ? clampBumpTimes(typeof rule.maxTimes === 'number' ? rule.maxTimes : SPEED_BUMP_TIMES_MIN) : SPEED_BUMP_TIMES_MIN,
       ...(days ? { days } : {}),
+      ...(rule.remindOnly === true ? { remindOnly: true } : {}),
       enabled: rule.enabled !== false,
     }];
   });
@@ -230,6 +240,11 @@ export interface NativeSpeedBump {
   warnRungs: number[];
   /** What the heads-up says; the extension knows no group names. */
   warnText: string;
+  /**
+   * A reminder-only rule: each rung is a notification and nothing is blocked
+   * (`blockGroupIds` is empty). Absent from a build's files before reminders.
+   */
+  remindOnly?: boolean;
 }
 
 /**
@@ -257,6 +272,18 @@ export function armableSpeedBumps(
     .map(rule => {
       const timed = resolveTimed(rule.groupId);
       const rungs = speedBumpRungs(rule);
+      if (rule.remindOnly) {
+        return {
+          id: rule.id,
+          groupId: timed,
+          blockGroupIds: [],
+          blockMinutes: clampBumpBlockMinutes(rule.blockMinutes),
+          rungs,
+          warnRungs: [],
+          warnText: BREAK_REMINDER_TEXT,
+          remindOnly: true,
+        };
+      }
       return {
         id: rule.id,
         groupId: timed,
@@ -267,7 +294,7 @@ export function armableSpeedBumps(
         warnText: clampBumpWarn(warn.leadMinutes) > 0 ? speedBumpWarnText(warn.blockedName(rule), clampBumpWarn(warn.leadMinutes)) : '',
       };
     })
-    .filter(bump => bump.rungs.length > 0 && bump.blockGroupIds.length > 0);
+    .filter(bump => bump.rungs.length > 0 && (bump.remindOnly || bump.blockGroupIds.length > 0));
 }
 
 /** The block the extension raised, as it left it in the App Group. */
@@ -302,6 +329,11 @@ export function liveSpeedBump(raw: string | null | undefined, now: Date): LiveSp
 export function describeSpeedBump(rule: SpeedBumpRule, timedName: string, blockedName: string): string {
   const rungs = speedBumpRungs(rule);
   const first = `After ${rule.thresholdMinutes} min on ${timedName}`;
+  if (rule.remindOnly) {
+    const when = rule.days && rule.days.length > 0 ? `${describeDays(rule.days)}: ` : '';
+    if (rungs.length <= 1) return `${when}${first}, a break reminder.`;
+    return `${when}${first}, then every ${rule.repeatEveryMinutes} min, up to ${rungs.length} times a day: a break reminder.`;
+  }
   const block = `${blockedName} blocked for ${describeDuration(rule.blockMinutes)}`;
   const days = rule.days && rule.days.length > 0 ? `${describeDays(rule.days)}: ` : '';
   if (rungs.length <= 1) return `${days}${first}, ${block}.`;

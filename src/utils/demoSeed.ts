@@ -1936,6 +1936,14 @@ export function seedDemoData(): void {
       blockMinutes: 15,
       days: [0, 6],
     },
+    // A break reminder: the 20-20-20 rule, which notifies and blocks nothing.
+    {
+      ...newSpeedBumpRule('Eye rest'),
+      thresholdMinutes: 20,
+      repeatEveryMinutes: 20,
+      maxTimes: 6,
+      remindOnly: true,
+    },
   ]);
   useSettingsStore.getState().setSpeedBumpWarnMinutes(5);
   useSettingsStore.getState().setSpeedBumpResetHours(6);

@@ -5286,9 +5286,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     });
   });
 
-  it('seeds a speed bump rule that repeats, and a looser one for weekends', () => {
-    const [rule, weekend, ...rest] = useSettingsStore.getState().speedBumpRules;
+  it('seeds a speed bump rule that repeats, a looser one for weekends and a break reminder', () => {
+    const [rule, weekend, eyeRest, ...rest] = useSettingsStore.getState().speedBumpRules;
     expect(rest).toEqual([]);
+    expect(eyeRest).toMatchObject({ title: 'Eye rest', thresholdMinutes: 20, repeatEveryMinutes: 20, maxTimes: 6, remindOnly: true, enabled: true });
     expect(rule).toMatchObject({ title: 'Wind down after Social', thresholdMinutes: 45, repeatEveryMinutes: 30, maxTimes: 3, blockMinutes: 15, days: [1, 2, 3, 4, 5], enabled: true });
     expect(weekend).toMatchObject({ title: 'Weekend wind down', thresholdMinutes: 90, days: [0, 6], enabled: true });
     expect(useSettingsStore.getState().speedBumpWarnMinutes).toBe(5);

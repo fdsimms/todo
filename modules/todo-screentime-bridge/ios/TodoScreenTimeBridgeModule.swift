@@ -706,7 +706,7 @@ public class TodoScreenTimeBridgeModule: Module {
     /// extension does with a crossing is `raiseSpeedBump` in
     /// `TodoActivityMonitor.swift`.
     ///
-    /// `bumpsJson` is `[{ id, groupId, blockGroupIds, blockMinutes, rungs, warnRungs, warnText }]`.
+    /// `bumpsJson` is `[{ id, groupId, blockGroupIds, blockMinutes, rungs, warnRungs, warnText, remindOnly? }]`.
     /// A call that changes nothing (same rules, same day, monitor still armed)
     /// does not restart the monitor: this runs on every foreground, and starting
     /// the activity again may start the day's count over, which would let a day
@@ -749,6 +749,17 @@ public class TodoScreenTimeBridgeModule: Module {
                   !(selection.applicationTokens.isEmpty && selection.categoryTokens.isEmpty)
             else { continue }
             for (index, minutes) in bump.rungs.prefix(6).enumerated() where minutes > 0 {
+              // A break reminder has no block: the rung itself is the
+              // notification, armed as the heads-up event the extension already
+              // answers with one, so nothing here can raise a shield.
+              if bump.remindOnly == true {
+                events[DeviceActivityEvent.Name("\(ScreenTimeShared.speedBumpWarnEventPrefix)\(bump.id):\(index)")] = DeviceActivityEvent(
+                  applications: selection.applicationTokens,
+                  categories: selection.categoryTokens,
+                  threshold: DateComponents(minute: minutes)
+                )
+                continue
+              }
               events[DeviceActivityEvent.Name("\(ScreenTimeShared.speedBumpEventPrefix)\(bump.id):\(index)")] = DeviceActivityEvent(
                 applications: selection.applicationTokens,
                 categories: selection.categoryTokens,

@@ -263,6 +263,9 @@ struct SpeedBumpShared: Codable {
   /// What the heads-up says. The extension knows no group names, so the app
   /// writes the sentence.
   let warnText: String?
+  /// A break reminder: each rung is a notification and nothing is blocked.
+  /// Absent from a file an older build armed, which reads as a block rule.
+  let remindOnly: Bool?
 }
 
 /// What the app last armed: the day and the rules exactly as handed over.
