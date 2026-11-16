@@ -747,3 +747,22 @@ describe('alcohol', () => {
     expect(read.amounts.alcoholG).toBe(3.9);
   });
 });
+
+describe('a serving stated as a volume', () => {
+  it('keeps Open Food Facts\' serving millilitres beside a null serving weight', () => {
+    const read = readOffNutrition(RED_BULL, 'x', RECORDED_AT)!;
+    expect(read.servingMl).toBe(250);
+    expect(read.servingGrams).toBeNull();
+  });
+
+  it('adds no key for a serving stated in grams', () => {
+    const read = readOffNutrition({ ...RED_BULL, serving_quantity_unit: 'g' }, 'x', RECORDED_AT)!;
+    expect('servingMl' in read).toBe(false);
+  });
+
+  it('keeps FoodData Central\'s millilitre serving, and none for a gram one', () => {
+    const base = { fdcId: 1, foodNutrients: [fdcNutrient(1008, 'KCAL', 45)] };
+    expect(readFdcNutrition({ ...base, servingSize: 355, servingSizeUnit: 'ml' }, RECORDED_AT)!.servingMl).toBe(355);
+    expect('servingMl' in readFdcNutrition({ ...base, servingSize: 30, servingSizeUnit: 'GRM' }, RECORDED_AT)!).toBe(false);
+  });
+});

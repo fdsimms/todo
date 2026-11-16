@@ -538,6 +538,7 @@ export function readOffNutrition(
   return {
     basis,
     servingGrams: readOffServingGrams(product),
+    ...servingMlField(readOffServingMilliliters(product)),
     servingText: readSourceText(product.serving_size),
     amounts,
     // Open Food Facts states no culinary portion table at all, so this is a
@@ -618,6 +619,18 @@ function readFdcServingGrams(food: Record<string, unknown>): number | null {
   return grams !== null && grams > 0 ? grams : null;
 }
 
+/** The same reading as `readFdcServingGrams`, for a serving stated in millilitres. */
+function readFdcServingMilliliters(food: Record<string, unknown>): number | null {
+  if (readSourceUnit(food.servingSizeUnit) !== 'ml') return null;
+  const ml = readSourceNumber(food.servingSize);
+  return ml !== null && ml > 0 ? ml : null;
+}
+
+/** `servingMl` when a source stated a volume serving, else no key at all. */
+function servingMlField(ml: number | null): { servingMl: number } | Record<string, never> {
+  return ml === null ? {} : { servingMl: ml };
+}
+
 /**
  * A FoodData Central search hit's nutrition, or null when it carried none.
  *
@@ -672,6 +685,7 @@ export function readFdcNutrition(
     // `ml` where a cereal's is `GRM`.
     basis: basisFor(readSourceUnit(food.servingSizeUnit)),
     servingGrams: readFdcServingGrams(food),
+    ...servingMlField(readFdcServingMilliliters(food)),
     servingText: readSourceText(food.householdServingFullText),
     amounts,
     // `foodPortions` lives on FoodData Central's *detail* endpoint, and the

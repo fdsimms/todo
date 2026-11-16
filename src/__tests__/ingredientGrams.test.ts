@@ -521,3 +521,33 @@ describe('measureLineAmount: a parenthesized container size', () => {
     expect(a).toEqual(b);
   });
 });
+
+describe('panelMultiplier with a serving stated as a volume', () => {
+  const drink = (over: Partial<FoodNutrition> = {}): FoodNutrition => ({
+    basis: 'per100ml',
+    servingGrams: null,
+    servingMl: 355,
+    servingText: '12 fl oz (355 mL)',
+    amounts: { calorieKcal: 42 },
+    portions: [],
+    source: 'openFoodFacts',
+    sourceId: '1',
+    recordedAt: '2026-09-01T00:00:00.000Z',
+    ...over,
+  });
+
+  it('answers servings off a per-100ml panel', () => {
+    expect(panelMultiplier('1 serving', null, drink())).toBeCloseTo(3.55);
+    expect(panelMultiplier('2 servings', null, drink())).toBeCloseTo(7.1);
+  });
+
+  it('still refuses a serving with no stated volume or weight', () => {
+    expect(panelMultiplier('1 serving', null, drink({ servingMl: null }))).toBeNull();
+  });
+
+  it('answers a volume against a per-serving panel with no serving weight', () => {
+    const perServing = drink({ basis: 'perServing', amounts: { calorieKcal: 150 } });
+    expect(panelMultiplier('355 ml', null, perServing)).toBeCloseTo(1);
+    expect(panelMultiplier('177.5 ml', null, perServing)).toBeCloseTo(0.5);
+  });
+});

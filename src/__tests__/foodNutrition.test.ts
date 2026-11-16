@@ -459,3 +459,17 @@ describe('panelLooksWrongFor', () => {
     expect(panelLooksWrongFor(panel('per100ml', 500), panel('per100g', 100))).toBe(false);
   });
 });
+
+describe('serving volume', () => {
+  it('keeps a stated one through a round trip, and adds no key without one', () => {
+    const drink = nutrition({ basis: 'per100ml', servingGrams: null, servingMl: 355 });
+    expect(parseFoodNutrition(serializeFoodNutrition(drink))!.servingMl).toBe(355);
+    expect('servingMl' in parseFoodNutrition(serializeFoodNutrition(nutrition()))!).toBe(false);
+  });
+
+  it('drops one that is not a positive number', () => {
+    for (const bad of [0, -5, 'abc', null]) {
+      expect('servingMl' in parseFoodNutrition(serializeFoodNutrition(nutrition({ servingMl: bad as never })))!).toBe(false);
+    }
+  });
+});

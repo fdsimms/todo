@@ -311,6 +311,20 @@ export interface FoodNutrition {
    */
   servingGrams: number | null;
   /**
+   * What one serving measures in millilitres, when the source stated the
+   * serving as a volume ("12 fl oz (355 mL)", Open Food Facts'
+   * `serving_quantity` with a `ml` unit). Absent is the ordinary case.
+   *
+   * **A volume the packet printed, not a weight and not a density.** It lets a
+   * per-100ml panel answer "1 serving" exactly (figures x mL / 100) and a
+   * per-serving panel answer a volume amount, neither of which needs to know
+   * what the drink weighs. `servingGrams` stays null for such a drink, and a
+   * weight is only ever worked out from this one by `scalePanelToAmount`'s
+   * water-density fallback, which says `approximate`. Nothing here converts it
+   * to grams.
+   */
+  servingMl?: number | null;
+  /**
    * The serving as the packet prints it — "1 cup (240ml)", "2 cookies".
    * Rendered, never parsed for arithmetic; `servingGrams` is the number
    * anything is allowed to compute with. Same split `Quantity.container`

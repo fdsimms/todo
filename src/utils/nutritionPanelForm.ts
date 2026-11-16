@@ -4,6 +4,7 @@ import type { LabelColumn, LabelReading } from './labelOcr';
 import { NUTRIENT_KEYS } from '../types';
 import { unitFactor } from './unitConvert';
 import { readCooking } from './cookedState';
+import { servingMillilitres } from './scanPortion';
 
 /**
  * Turning a printed label into a stored panel, and back into a form to edit.
@@ -32,7 +33,7 @@ import { readCooking } from './cookedState';
 /** One text field's worth of the form: what the person typed, verbatim. */
 export interface PanelForm {
   basis: FoodNutrition['basis'];
-  /** The serving as printed — "2 cookies (30g)". Rendered back, never computed with. */
+  /** The serving as printed — "2 cookies (30g)". Rendered back; a volume in it ("12 fl oz (355 mL)") is read once, on save, into `servingMl`. */
   servingText: string;
   /** What that serving weighs. Blank is ordinary; a product sold by volume has none. */
   servingGrams: string;
@@ -235,6 +236,13 @@ export function buildPanelNutrition(
   const grams = readPanelNumber(form.servingGrams);
   const servingText = form.servingText.trim();
   const pack = readPanelNumber(form.packageGrams);
+  // The volume the serving line states, so a drink with no weight can still be
+  // logged by the serving. A volume the person typed or a photo read into the
+  // serving line is honored here; a stored one is kept only while the line it
+  // came from is unchanged (a barcode source can state a volume its serving
+  // text doesn't repeat), so editing the line never leaves a stale volume.
+  const ml = servingMillilitres(servingText)
+    ?? (previous?.servingMl && previous.servingText?.trim() === servingText ? previous.servingMl : null);
   const ratio = readPanelNumber(form.cookedPerRaw);
   const cooking = typeof ratio === 'number' && form.basis !== 'per100ml'
     ? readCooking({ panelState: form.cookedState, cookedPerRaw: ratio })
@@ -242,6 +250,7 @@ export function buildPanelNutrition(
   return {
     basis: form.basis,
     servingGrams: typeof grams === 'number' && grams > 0 ? grams : null,
+    ...(ml !== null ? { servingMl: ml } : {}),
     servingText: servingText || null,
     amounts,
     source: 'manual',

@@ -461,3 +461,21 @@ describe('servingWeightToGrams / gramsToServingWeight', () => {
     expect(gramsToServingWeight('abt 30', 'oz')).toBe('abt 30');
   });
 });
+
+describe('the serving volume on the form', () => {
+  const typed = (servingText: string) => form({ basis: 'per100ml', servingText, amounts: { calorieKcal: '42' } });
+
+  it('reads the volume the serving line states into servingMl', () => {
+    expect(buildPanelNutrition(typed('12 fl oz (355 mL)'), null, NOW)?.servingMl).toBe(355);
+  });
+
+  it('adds no key for a serving line that states none', () => {
+    expect('servingMl' in buildPanelNutrition(typed('1 can'), null, NOW)!).toBe(false);
+  });
+
+  it('keeps a volume a source stated while the serving line is unchanged, and drops it once edited', () => {
+    const stored = panel({ basis: 'per100ml', servingText: '1 can', servingMl: 330 });
+    expect(buildPanelNutrition(typed('1 can'), stored, NOW)?.servingMl).toBe(330);
+    expect('servingMl' in buildPanelNutrition(typed('1 bottle'), stored, NOW)!).toBe(false);
+  });
+});

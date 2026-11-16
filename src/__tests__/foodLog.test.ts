@@ -1748,3 +1748,36 @@ describe('typedGrams', () => {
     expect(typedGrams('gum 10g')).toBeNull();
   });
 });
+
+describe('1 serving of a drink whose label states a volume and no weight', () => {
+  const drink = (over: Partial<FoodNutrition> = {}) =>
+    panel({ basis: 'per100ml', servingGrams: null, servingMl: 355, servingText: '12 fl oz (355 mL)', portions: [], amounts: { calorieKcal: 42 }, ...over });
+
+  it('is exact in calories and weighs as water, flagged approximate', () => {
+    const r = scalePanelToAmount(drink(), '1 serving', null);
+    expect(r?.nutrition.amounts.calorieKcal).toBe(149.1);
+    expect(r?.grams).toBe(355);
+    expect(r?.approximate).toBe(true);
+  });
+
+  it('scales a count of servings', () => {
+    const r = scalePanelToAmount(drink(), '2 servings', null);
+    expect(r?.nutrition.amounts.calorieKcal).toBe(298.2);
+    expect(r?.grams).toBe(710);
+  });
+
+  it('refuses a serving of a drink with no stated volume, as before', () => {
+    expect(scalePanelToAmount(drink({ servingMl: null }), '1 serving', null)).toBeNull();
+  });
+
+  it('keeps a stated serving weight in place of the water fallback', () => {
+    const r = scalePanelToAmount(drink({ servingGrams: 360 }), '1 serving', null);
+    expect(r?.approximate).toBe(false);
+  });
+
+  it('offers the serving unit and says so in the hint', () => {
+    expect(foodUnitOptionsFor(drink()).some(o => o.key === 'serving')).toBe(true);
+    expect(foodUnitOptionsFor(drink({ servingMl: null })).some(o => o.key === 'serving')).toBe(false);
+    expect(amountHint(drink())).toContain('or a number of servings');
+  });
+});

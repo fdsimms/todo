@@ -96,6 +96,12 @@ function readPackageGramsField(value: unknown): { packageGrams: number } | Recor
   return grams === null ? {} : { packageGrams: grams };
 }
 
+/** A serving volume when the stored value is a positive number, else absent. */
+function readServingMlField(value: unknown): { servingMl: number } | Record<string, never> {
+  const ml = readServingGrams(value);
+  return ml === null ? {} : { servingMl: ml };
+}
+
 function readBreakdownField(value: unknown): { breakdown: FoodBreakdownLine[] } | Record<string, never> {
   if (!Array.isArray(value)) return {};
   const lines: FoodBreakdownLine[] = [];
@@ -192,6 +198,7 @@ export function parseFoodNutrition(raw: string | null | undefined): FoodNutritio
         : {}),
       ...readNovaField(parsed.novaGroup),
       ...readPackageGramsField(parsed.packageGrams),
+      ...readServingMlField(parsed.servingMl),
       ...readBreakdownField(parsed.breakdown),
       ...readCookingField(parsed.cooking),
     };

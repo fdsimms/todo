@@ -178,6 +178,20 @@ export function scalePanelToAmount(
     }
   }
 
+  // "1 serving" of a drink whose label states the serving as a volume and no
+  // weight: the calories are already exact (`panelMultiplier` used the volume),
+  // and the weight is water's, 1 ml about 1 g, flagged approximate for the same
+  // reason as the two fallbacks above. A label that does state a serving weight
+  // never reaches this, and neither does a food with no stated volume.
+  if (factor !== null && fallbackGrams === null && panel.servingGrams === null
+    && panel.servingMl && panel.servingMl > 0) {
+    const asked = parseQuantity(measured);
+    if (asked.unit === 'serving' && asked.amount !== null) {
+      fallbackGrams = rationalToNumber(asked.amount) * panel.servingMl;
+      approximate = true;
+    }
+  }
+
   if (factor === null || !(factor > 0)) return null;
 
   const amounts: Partial<Record<NutrientKey, number>> = {};
@@ -353,11 +367,12 @@ function baseAmountHint(panel: FoodNutrition): string {
   if (panel.basis === 'per100ml') {
     const grams = hasKnownDensity(panel.portions);
     const weight = grams ? ', or a weight now that one has been weighed' : '';
-    return panel.servingGrams
+    return panel.servingGrams || (panel.servingMl ?? 0) > 0
       ? `A volume, like 250 ml or 1 cup${weight}, or a number of servings.`
       : `A volume, like 250 ml or 1 cup${weight}.`;
   }
   if (panel.basis === 'perServing' && panel.servingGrams === null) {
+    if ((panel.servingMl ?? 0) > 0) return 'A number of servings, like 1 serving, or a volume, like 250 ml.';
     return 'A number of servings, like 1 serving. This food has no weight per serving, so nothing else can be entered.';
   }
   const servings = panel.basis !== 'perServing' && panel.servingGrams !== null;
@@ -378,7 +393,7 @@ function baseAmountHint(panel: FoodNutrition): string {
  * added only when the text doesn't already carry one.
  */
 export function servingMeaning(panel: FoodNutrition): string | null {
-  if (panel.basis !== 'perServing' && panel.servingGrams === null) return null;
+  if (panel.basis !== 'perServing' && panel.servingGrams === null && !((panel.servingMl ?? 0) > 0)) return null;
   const text = panel.servingText?.trim().replace(/^per\s+/i, '') ?? '';
   if (!text) return null;
   const hasWeight = /\d\s*(g|grams?|oz|ml)\b/i.test(text);
@@ -422,7 +437,7 @@ export function amountExample(panel: FoodNutrition): string {
   const [first] = portionExamples(panel, 1);
   if (first) return first;
   if (panel.basis === 'per100ml') return '250ml';
-  if (panel.basis === 'perServing' && panel.servingGrams === null) return '1 serving';
+  if (panel.basis === 'perServing' && panel.servingGrams === null) return (panel.servingMl ?? 0) > 0 ? '250ml' : '1 serving';
   return '100g';
 }
 
@@ -521,7 +536,7 @@ export function foodUnitOptionsFor(panel: FoodNutrition): FoodUnitOption[] {
       }
     }
   }
-  if (panel.basis === 'perServing' || panel.servingGrams !== null) {
+  if (panel.basis === 'perServing' || panel.servingGrams !== null || (panel.servingMl ?? 0) > 0) {
     out.push({ key: 'serving', label: 'serving', suffix: ' serving' });
   }
   // Any other panel measures a volume through a weighed volume in its own

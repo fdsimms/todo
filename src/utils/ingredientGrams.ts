@@ -445,6 +445,11 @@ export function panelMultiplier(
     const servings = rationalToNumber(parsed.amount);
     if (!(servings > 0)) return null;
     if (nutrition.basis === 'perServing') return servings;
+    // A per-100ml panel whose serving the label gave as a volume: figures per
+    // 100 ml times the serving's own millilitres, exact and density-free.
+    if (nutrition.basis === 'per100ml' && nutrition.servingMl && nutrition.servingMl > 0) {
+      return (servings * nutrition.servingMl) / 100;
+    }
     if (nutrition.servingGrams !== null && nutrition.servingGrams > 0) {
       if (nutrition.basis === 'per100g') return (servings * nutrition.servingGrams) / 100;
       // `servingGrams` is a mass, and a per-100ml panel counts millilitres:
@@ -464,6 +469,15 @@ export function panelMultiplier(
     if (measured.dimension !== 'mass') return null;
     const millilitres = volumeFromMass(measured.base, portionsWithServing(nutrition), prep);
     return millilitres === null ? null : millilitres / 100;
+  }
+
+  // A per-serving panel whose serving is a stated volume answers a volume line
+  // straight off it ("8 fl oz" of a 12 fl oz serving), which the weight route
+  // below cannot do for a drink with no serving weight.
+  if (nutrition.basis === 'perServing' && nutrition.servingMl && nutrition.servingMl > 0) {
+    const single = parsed.rangeMax ? { ...parsed, rangeMax: null } : parsed;
+    const measured = measureLineAmount(single);
+    if (measured?.dimension === 'volume') return measured.base / nutrition.servingMl;
   }
 
   const grams = gramsForLine(parsed, prep, portionsWithServing(nutrition));

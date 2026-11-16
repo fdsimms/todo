@@ -49,6 +49,14 @@ export function servingsPerPackage(
   nutrition: FoodNutrition,
   packSize: string | null,
 ): number | null {
+  // A per-100ml drink's serving is a volume when the label stated one, and a
+  // volume pack divides by it directly: no weight, so no density, is involved.
+  const ml = nutrition.servingMl;
+  if (nutrition.basis === 'per100ml' && ml && ml > 0 && packSize?.trim()) {
+    const pack = measureParsedQuantity(parseQuantity(packSize));
+    if (pack?.dimension === 'volume') return servingsIn(pack.base, ml);
+  }
+
   const grams = nutrition.servingGrams;
   if (grams === null || !(grams > 0)) return null;
 
@@ -70,6 +78,27 @@ export function servingsPerPackage(
   if (measured.dimension === 'volume' && nutrition.basis !== 'per100ml') return null;
 
   return servingsIn(measured.base, grams);
+}
+
+/**
+ * A serving line's volume ("12 fl oz (355 mL)", "1 can (330ml)", "250 ml") as
+ * millilitres, or null when it states none. A parenthesized amount is read
+ * first, since that is where a packet puts the metric figure beside a count or
+ * a US measure, then the whole line. A mass or a count ("2 cookies (30g)") is
+ * not a volume and gives null: this never converts one to the other.
+ */
+export function servingMillilitres(servingText: string | null | undefined): number | null {
+  const text = servingText?.trim();
+  if (!text) return null;
+  const candidates = [...text.matchAll(/\(([^)]*)\)/g)].map(m => m[1]);
+  candidates.push(text);
+  for (const candidate of candidates) {
+    const measured = measureParsedQuantity(parseQuantity(candidate));
+    if (measured?.dimension === 'volume' && Number.isFinite(measured.base) && measured.base > 0) {
+      return Math.round(measured.base * 100) / 100;
+    }
+  }
+  return null;
 }
 
 /**
@@ -113,7 +142,7 @@ export function packageChoices(
   const grams = nutrition.servingGrams;
   const servingLabel = nutrition.servingText?.trim();
 
-  if (nutrition.basis === 'perServing' || grams !== null) {
+  if (nutrition.basis === 'perServing' || grams !== null || hasServingMl(nutrition)) {
     out.push({
       key: 'serving',
       // The packet's own words when it gave any, since that is what the person
@@ -180,7 +209,13 @@ export function servingDescription(nutrition: FoodNutrition): string | null {
   if (nutrition.servingGrams !== null && nutrition.servingGrams > 0) {
     return `1 serving is ${trim(nutrition.servingGrams)}g`;
   }
+  if (hasServingMl(nutrition)) return `1 serving is ${trim(nutrition.servingMl!)}ml`;
   return null;
+}
+
+/** Whether the panel states its serving as a volume. */
+export function hasServingMl(nutrition: FoodNutrition): boolean {
+  return !!nutrition.servingMl && nutrition.servingMl > 0;
 }
 
 /**
@@ -208,7 +243,9 @@ export function packageHelping(
     ? 1
     : nutrition.servingGrams !== null && nutrition.servingGrams > 0
       ? nutrition.servingGrams / 100
-      : null;
+      : nutrition.basis === 'per100ml' && hasServingMl(nutrition)
+        ? nutrition.servingMl! / 100
+        : null;
   if (perServing === null) return null;
 
   const amounts: FoodNutrition['amounts'] = {};
@@ -221,6 +258,7 @@ export function packageHelping(
   return {
     basis: 'perServing',
     servingGrams: nutrition.servingGrams === null ? null : round(nutrition.servingGrams * servings),
+    ...(hasServingMl(nutrition) ? { servingMl: round(nutrition.servingMl! * servings) } : {}),
     servingText: label,
     amounts,
     source: nutrition.source,
