@@ -656,7 +656,9 @@ export const selectSyncBannerProblem = (s: Pick<SyncState, 'problem' | 'dismisse
  */
 export function describeImageProblem(detail: string): string {
   if (/production schema/i.test(detail)) {
-    return `Recipe photos can’t send because their record type isn’t in the CloudKit Production schema (${detail}). Deploy it in the CloudKit Dashboard. Retrying won’t fix this.`;
+    // The raw CloudKit error is a record id and a zone name, which says nothing
+    // the sentence doesn't, so it isn't repeated here.
+    return 'Recipe photos aren’t syncing through iCloud. The RecipeImage record type hasn’t been deployed to Production yet, so retrying won’t help. Deploy it in the CloudKit Dashboard.';
   }
   return `Some recipe photos didn’t send (${detail}). They’ll retry on the next sync.`;
 }

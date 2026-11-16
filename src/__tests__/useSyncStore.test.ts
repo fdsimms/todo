@@ -571,12 +571,13 @@ describe('syncNow', () => {
 
   it('says a missing CloudKit schema will not retry, and shows a problem on Today until dismissed', async () => {
     (runSyncAll as jest.Mock).mockResolvedValue(
-      runs({ ...okResult(), imageProblem: 'Cannot create new type RecipeImage in production schema' })
+      runs({ ...okResult(), imageProblem: 'cloudkit: Error saving record <CKRecordID: 0x1; recordName=a.jpg> to server: Cannot create new type RecipeImage in production schema' })
     );
     useSyncStore.setState({ enabled: true, dismissedProblem: null });
     await useSyncStore.getState().syncNow();
     const { problem } = useSyncStore.getState();
-    expect(problem).toContain('Retrying won’t fix this');
+    expect(problem).toContain('retrying won’t help');
+    expect(problem).not.toContain('CKRecordID');
     expect(problem).not.toContain('retry on the next sync');
     expect(selectSyncBannerProblem(useSyncStore.getState())).toBe(problem);
 
