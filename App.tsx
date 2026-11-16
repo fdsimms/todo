@@ -49,7 +49,7 @@ import { useTravelTaskSync } from './src/hooks/useTravelTaskSync';
 import { useWakeUpTaskSync } from './src/hooks/useWakeUpTaskSync';
 import { useWaniKaniSync } from './src/hooks/useWaniKaniSync';
 import { useFrankiSync } from './src/hooks/useFrankiSync';
-import { useYnabSync } from './src/hooks/useYnabSync';
+import { removeLegacyYnabToken } from './src/utils/secureApiKey';
 import { useEventTaskSync } from './src/hooks/useEventTaskSync';
 import { useReminderMeetingResync } from './src/hooks/useReminderMeetingResync';
 import { usePlaceGateRefresh } from './src/hooks/usePlaceGateRefresh';
@@ -396,10 +396,10 @@ function AppRoot() {
   // the WaniKani task is switched on and has a token) and re-runs its check
   // when a read lands.
   useWaniKaniSync();
-  useYnabSync();
   // Reads the person's Franki server the same way (inert until the Franki task
   // is switched on with an address and a key).
   useFrankiSync();
+  useEffect(() => { void removeLegacyYnabToken(); }, []);
   // Re-runs the event rule sweep when the calendar windows land (including the
   // wider one the "after the event" rules read) or the rules change.
   useEventTaskSync();

@@ -2778,6 +2778,26 @@ function runInitDatabase(): void {
     dbSetSetting('dish_ratings_table_dropped_done', '1');
   }
 
+  // One-time cleanup: the YNAB integration was removed. Its open generated
+  // tasks are deleted (nothing would ever update or close them), a finished one
+  // stays as plain history with the generator link cleared, and its settings
+  // rows go. Without this, a row naming a generator that no longer exists would
+  // reach code that looks the kind up. The keychain token is cleared separately
+  // (`removeLegacyYnabToken`).
+  if (dbGetSetting('ynab_removed_done') !== '1') {
+    try {
+      db.runSync(`DELETE FROM tasks WHERE generated_kind = 'ynab' AND completed = 0`);
+      db.runSync(`UPDATE tasks SET generated_kind = NULL, generated_source_id = NULL WHERE generated_kind = 'ynab'`);
+    } catch (_) {}
+    for (const key of [
+      'ynabTasks', 'ynabTaskCategory', 'ynabOverspentTasks', 'ynabGroceryBudget', 'ynabPlanId',
+      'ynabGroceryCategoryId', 'ynabQueueLastDayKey', 'ynabOverspentDeclined',
+    ]) {
+      try { dbDeleteSetting(key); } catch (_) {}
+    }
+    dbSetSetting('ynab_removed_done', '1');
+  }
+
   // One-time migration: give existing categories a stable sort_order (their
   // prior alphabetical position) so introducing manual reordering doesn't
   // reshuffle everyone's existing category list.

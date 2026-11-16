@@ -138,7 +138,6 @@ import { reconcileAppShield } from './appShieldReconcile';
 import { STANDALONE_STORE_LOADS } from './standaloneStores';
 import { useWaniKaniStore } from '../store/useWaniKaniStore';
 import { useFrankiStore } from '../store/useFrankiStore';
-import { useYnabStore } from '../store/useYnabStore';
 
 /**
  * Namespaced to this app rather than reusing expo's own permitted identifier
@@ -267,22 +266,6 @@ export async function runBackgroundWaniKani(): Promise<void> {
 }
 
 /**
- * Reads the YNAB plan and runs its task check, while the app is closed:
- * `runBackgroundWaniKani`'s shape, for its reasons (see "The WaniKani read is
- * the second" above, which holds for this read too). Only for the tasks: the
- * grocery balance is read when a trip's banner is on screen.
- */
-export async function runBackgroundYnab(): Promise<void> {
-  if (isDemoModeActive()) return;
-  if (!useSettingsStore.getState().ynabTasks) return;
-  const before = useYnabStore.getState().snapshot;
-  await useYnabStore.getState().refresh();
-  if (useYnabStore.getState().snapshot === before) return;
-  useTaskStore.getState().checkYnabTasks();
-  writeWidgetSnapshotNow();
-}
-
-/**
  * Reads the Franki server and runs its task check, while the app is closed:
  * `runBackgroundWaniKani`'s shape, for its reasons (see "The WaniKani read is
  * the second" above, which holds for this read too).
@@ -370,7 +353,6 @@ TaskManager.defineTask(BACKGROUND_REFRESH_TASK, async () => {
     if (outcome.ran) {
       // Isolated, so a failed read can't cost the sync after it.
       await runBackgroundWaniKani().catch(error => console.error('Background WaniKani read failed', error));
-      await runBackgroundYnab().catch(error => console.error('Background YNAB read failed', error));
       await runBackgroundFranki().catch(error => console.error('Background Franki read failed', error));
       await runBackgroundSync();
     }

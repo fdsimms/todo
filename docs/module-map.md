@@ -66,7 +66,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/backfillMulti.ts` — backfillStepKey, splitBackfillStepKey, MultiEntry, backfillMultiEntries
 - `src/utils/backfillSuggest.ts` — SuggestibleBackfillFieldId, SUGGESTIBLE_BACKFILL_FIELDS, isSuggestibleBackfillField, MAX_SUGGESTION_TASKS, MAX_SUGGESTION_EXAMPLES, SUGGESTION_NOTES_MAX_CHARS, SuggestionTask, SuggestionExample, BackfillSuggestion, TitleOf, +4 more
 - `src/utils/backfillTasks.ts` — BACKFILL_KITCHEN_AREAS, BACKFILL_TITLES, BACKFILL_THRESHOLD_MIN, BACKFILL_THRESHOLD_MAX, BACKFILL_THRESHOLD_DEFAULT, BACKFILL_CADENCE_DAYS, BACKFILL_LINK_URL, backfillLinkUrl, backfillAreaOf, BackfillLastDayKeys, +7 more
-- `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runBackgroundYnab, runBackgroundFranki, runWatchWork, useBackgroundRefresh, +2 more
+- `src/utils/backgroundRefresh.ts` — BACKGROUND_REFRESH_TASK, BACKGROUND_REFRESH_INTERVAL_MINUTES, BackgroundRefreshOutcome, runBackgroundRefresh, runBackgroundSync, runBackgroundWaniKani, runBackgroundFranki, runWatchWork, useBackgroundRefresh, APP_REFRESH_INTERVAL_MINUTES, +1 more
 - `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, isDeviceLocalSetting, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, +4 more
 - `src/utils/backupFile.ts` — writeExportFile, canShare, shareExportFile, shareBackupFile, shareCsvFile, shareMarkdownFile, writePdfFile, sharePdfFile, discardBackupFile, pickBackupFile
 - `src/utils/beatMark.ts` — BeatMarkGeometry, beatMarkGeometry, BEAT_STEP_MS
@@ -248,7 +248,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/groceryMerge.ts` — laterOf, pickPriceFields, MergeRows, MergePlan, planMergeItems
 - `src/utils/groceryParse.ts` — groceryNameKey, itemNameKey, parseGroceryInput, LEADING_PREP_PRODUCTS, splitQuantityNote, splitPrep, splitPurpose, splitExample, suggestShorterCatalogName, splitAlternativeNames, +5 more
 - `src/utils/groceryPlural.ts` — pluralKeyVariants, resolvePluralKey, catalogItemForKey
-- `src/utils/groceryPrice.ts` — parsePriceInput, formatPrice, priceToInput, formatPriceInput, describePriceAge, describePriceContext, describeShopPrices, ShopPrice, shopPricesFor, Comparable, +20 more
+- `src/utils/groceryPrice.ts` — parsePriceInput, formatPrice, priceToInput, formatPriceInput, describePriceAge, describePriceContext, describeShopPrices, ShopPrice, shopPricesFor, Comparable, +19 more
 - `src/utils/groceryProduct.ts` — productKeyFor, canonicalBrand, describeProduct, describeProductOfItem, describeCatalogItem, productsForItem, brandForNewBox, productForGtin, preferredProductOf, describePreferredProduct, +5 more
 - `src/utils/groceryReminderMirror.ts` — GroceryReminderLink, GroceryLinkIndex, parseGroceryLinks, serializeGroceryLinks, withGroceryLinks, MirrorItem, MirrorReminder, mirrorNote, mirrorTitleFor, normalizeMirrorTitle, +2 more
 - `src/utils/groceryReorder.ts` — GroceryDropRow, GroceryPlacement, resolveGroceryDrop, KeyedGroceryDropRow, placeNewGroceryItems, groceryDragRange
@@ -575,7 +575,7 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/searchSnippet.ts` — HiddenSnippet, SNIPPET_CONTEXT, hiddenSnippet
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/sectionRegistry.ts` — registerSectionSource, sectionsNow, isChecklistRow
-- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, SYNC_TOKEN_READABLE_LOCKED_SETTING, WANIKANI_TOKEN_SECURE_KEY, YNAB_TOKEN_SECURE_KEY, +4 more
+- `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, SYNC_TOKEN_SECURE_KEY, SYNC_TOKEN_READABLE_LOCKED_SETTING, WANIKANI_TOKEN_SECURE_KEY, FRANKI_TOKEN_SECURE_KEY, +4 more
 - `src/utils/segmentColumns.ts` — segmentRows
 - `src/utils/settingsActiveRows.ts` — SettingsGateState, SyncGateState, activeSettingsEntryIds, searchableSettingsEntries
 - `src/utils/settingsFocusScroll.ts` — SETTINGS_FOCUS_PADDING, settingsFocusScrollTarget
@@ -758,8 +758,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/utils/workoutTask.ts` — WorkoutTaskEffect, rotationPickFor, workoutTaskEffect, linkedTaskLine, routineMergePatch
 - `src/utils/workoutTick.ts` — TickRest, TickOutcome, restLabelFor, tickOutcome, TickValues, tickSet
 - `src/utils/workoutTimes.ts` — withClock, shiftDays, spanMinutes, sameMinute, workoutTimesProblem
-- `src/utils/ynabPlan.ts` — ynabMinorFromMilliunits, ynabMonthKey, YnabPlan, YnabCategory, YnabQueue, YnabSnapshot, ynabPlansFrom, mergeYnabCategories, ynabTransactionIdsFrom, ynabQueueFrom, +2 more
-- `src/utils/ynabTasks.ts` — YNAB_APP_URL, YNAB_TOKEN_URL, ynabQueueSourceId, ynabOverspentSourceId, ynabTaskKind, ynabOverspentMonthOf, ynabOverspentCategoryOf, ynabQueueTitle, ynabOverspentTitle, wantsYnabQueueTask, +1 more
 
 ## `src/store`
 
@@ -842,7 +840,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/store/useWidgetCompletionStore.ts` — TAP_CLAIM_WINDOW_MS, useWidgetCompletionStore
 - `src/store/useWorkoutModeStore.ts` — useWorkoutModeStore
 - `src/store/useWorkoutStore.ts` — ExerciseInput, ExercisePatch, RoutinePatch, ProgramInput, ProgramPatch, VersionMode, RoutineSaveOptions, RoutineAddOptions, StartSessionInput, SessionPatch, +10 more
-- `src/store/useYnabStore.ts` — YNAB_SNAPSHOT_STALE_MS, YNAB_RATE_LIMIT_BACKOFF_MS, resetYnabBackoffForTests, useYnabStore
 
 ## `src/hooks`
 
@@ -954,7 +951,6 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/hooks/useWorkoutHeartRate.ts` — useWorkoutHeartRate
 - `src/hooks/useWorkoutLiveActivitySync.ts` — syncWorkoutLiveActivityNow, useWorkoutLiveActivitySync
 - `src/hooks/useWorkoutStats.ts` — WORKOUT_STATS_WEEKS, WorkoutStatsRecord, WorkoutStats, useWorkoutStats
-- `src/hooks/useYnabSync.ts` — useYnabSync
 
 ## `src/db`
 
@@ -975,4 +971,3 @@ name cannot say is where a component appears, and that is `docs/screen-map.md`.
 - `src/services/travelTime.ts` — estimateTravelMinutes
 - `src/services/wanikani.ts` — WaniKaniProblem, WaniKaniUser, WaniKaniRead, WaniKaniReadOptions, waniKaniSummaryFrom, waniKaniUserFrom, lessonsStartedSince, fetchWaniKani
 - `src/services/weatherLookup.ts` — WeatherHour, WeatherSnapshot, snapshotFromResponse, fetchWeatherSnapshot, ForecastDay, fetchDestinationForecast
-- `src/services/ynab.ts` — YnabProblem, YnabPlansRead, YnabRead, YnabReadOptions, ynabProblemForStatus, ynabWanted, fetchYnabPlans, fetchYnab
