@@ -89,6 +89,20 @@ export function itemAmountEdit(item: SavedMealItem): ItemAmountEdit {
   return { kind: 'none', reason: 'This food has no record to measure a new amount against. Remove it or replace it.' };
 }
 
+/**
+ * An estimated item's amount without the multiplier it was scaled by ("twice
+ * 10 g (about 2 tablespoons)" reads "10 g (about 2 tablespoons)"). For a row
+ * whose amount field already says how much, where the multiplier is noise.
+ */
+export function withoutMultipleLead(quantity: string): string {
+  const leads = ESTIMATE_AMOUNTS.map(a => a.words).filter(Boolean);
+  const lower = quantity.toLowerCase();
+  for (const lead of leads) {
+    if (lower.startsWith(lead + ' ')) return quantity.slice(lead.length + 1);
+  }
+  return quantity.replace(/^(\d+(?:\.\d+)?% of|\d+(?:\.\d+)? times) /i, '');
+}
+
 /** The estimate multiples an estimated item offers, the closed set "Change amount" uses. */
 export const ESTIMATE_CHOICES = ESTIMATE_AMOUNTS;
 
