@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useSyncExternalStore } from 'react';
-import { InputAccessoryView, Platform, StyleSheet, Text } from 'react-native';
+import { InputAccessoryView, Platform, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { AMOUNT_OPERATORS, type AmountOperator } from '../utils/amountMath';
@@ -92,7 +92,16 @@ export function NumberPadAccessory({ onNext, onOperator }: {
     return () => withdrawNumberPadBar(instanceId);
   }, [ios, floats, instanceId]);
 
-  if (!ios || !isTop || floats) return null;
+  if (!ios || !isTop) return null;
+  // Floating: the bar is drawn by `FloatingNumberPadBar`. This view is empty and
+  // zero-height, only there so iOS 26 sees an accessory and adds no Done of its own.
+  if (floats) {
+    return (
+      <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor="transparent">
+        <View style={{ height: 0 }} />
+      </InputAccessoryView>
+    );
+  }
 
   return (
     <InputAccessoryView nativeID={NUMBER_PAD_ACCESSORY_ID} backgroundColor={accessoryFill(colors)}>

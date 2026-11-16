@@ -219,7 +219,10 @@ export function TextField({
     <TextInput
       {...rest}
       inputAccessoryViewID={
-        barKind === 'accessory' ? DONE_ACCESSORY_ID : padFloats ? undefined : inputAccessoryViewID
+        // A floating number-pad bar still names the id, which `NumberPadAccessory` then
+        // backs with an empty view: a number pad with no accessory at all gets iOS 26's
+        // own Done, a second one beside ours.
+        barKind === 'accessory' ? DONE_ACCESSORY_ID : inputAccessoryViewID
       }
       onFocus={handleFocus}
       onBlur={handleBlur}
