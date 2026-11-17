@@ -5,6 +5,7 @@
  * session takes its sets with it, and that a renumber after a delete lands in
  * the database and not only in memory.
  */
+import { ALL_RESTS_OFF_KEY } from '../utils/workoutSession';
 import { initDatabase, dbGetWorkoutSets, dbGetAllExercises, dbGetWorkoutSession, dbSaveWorkoutSession } from '../db/database';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { WATCH_FINISH_SKEW_MS } from '../utils/watchHealthWorkout';
@@ -983,6 +984,16 @@ describe('a session from a routine', () => {
     expect(state().setSessionRest(s.id, fly, null)).toBe(true);
     expect(dbGetWorkoutSession(s.id)).not.toHaveProperty('restOverrides');
     expect(state().setSessionRest('nope', bench, 30)).toBe(false);
+  });
+
+  it('turns every rest off for this workout through the reserved key, keeping the per-exercise ones, and back on', () => {
+    const s = ok(state().startSession());
+    expect(state().setSessionRest(s.id, bench, 45)).toBe(true);
+    expect(state().setSessionRest(s.id, ALL_RESTS_OFF_KEY, 0)).toBe(true);
+    expect(state().setSessionRest(s.id, ALL_RESTS_OFF_KEY, 0)).toBe(false);
+    expect(dbGetWorkoutSession(s.id)?.restOverrides).toEqual({ [bench]: 45, [ALL_RESTS_OFF_KEY]: 0 });
+    expect(state().setSessionRest(s.id, ALL_RESTS_OFF_KEY, null)).toBe(true);
+    expect(dbGetWorkoutSession(s.id)?.restOverrides).toEqual({ [bench]: 45 });
   });
 
   it('refuses a rest on a workout that is over', () => {

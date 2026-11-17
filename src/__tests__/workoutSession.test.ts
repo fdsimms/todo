@@ -22,6 +22,8 @@ import {
   previousSets,
   repeatedSets,
   restSecondsFor,
+  restsAreOff,
+  ALL_RESTS_OFF_KEY,
   sessionExercises,
   sessionMinutes,
   sessionSummary,
@@ -252,6 +254,17 @@ describe('restSecondsFor', () => {
     expect(restSecondsFor(null, 'squat', 90, { squat: 45 })).toBe(45);
     expect(restSecondsFor(routine, 'bench', 90, { fly: 30 })).toBe(150);
     expect(restSecondsFor(routine, 'bench', 90, null)).toBe(150);
+  });
+
+  it('gives no rest for any exercise while the workout has its rest timers off, and keeps the per-exercise ones underneath', () => {
+    const off = { [ALL_RESTS_OFF_KEY]: 0, bench: 60 };
+    expect(restsAreOff(off)).toBe(true);
+    expect(restSecondsFor(routine, 'bench', 90, off)).toBe(0);
+    expect(restSecondsFor(routine, 'fly', 90, off)).toBe(0);
+    expect(restSecondsFor(null, 'squat', 90, off)).toBe(0);
+    expect(restsAreOff({ bench: 60 })).toBe(false);
+    expect(restsAreOff(null)).toBe(false);
+    expect(restSecondsFor(routine, 'bench', 90, { bench: 60 })).toBe(60);
   });
 });
 

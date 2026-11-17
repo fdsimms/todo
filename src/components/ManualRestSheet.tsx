@@ -5,6 +5,7 @@ import { CountStepper } from './CountStepper';
 import { HelpText } from './HelpText';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { Toggle } from './Toggle';
 import { REST_PRESETS } from './ExerciseRestSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
@@ -16,6 +17,9 @@ interface Props {
   visible: boolean;
   /** Where the length starts each time the card opens: the default rest setting. */
   initialSeconds: number;
+  /** Whether logging a set starts a rest in this workout. Off drops the one running. */
+  restsOn: boolean;
+  onRestsOnChange: (on: boolean) => void;
   /** Starts the timer. The card closes after it. */
   onStart: (seconds: number) => void;
   onClose: () => void;
@@ -25,9 +29,11 @@ interface Props {
  * A timer started by hand, from workout mode's header: for a rest the sets
  * didn't start (a warm-up, a superset swap, a break between exercises). It
  * runs as the workout's rest, so it shows in the same strip, replaces the rest
- * going and rings the same way. A short card because it is one number.
+ * going and rings the same way. A short card because it is one number, with
+ * the switch that turns every rest off for the workout (a trainer sets the
+ * rests) above it.
  */
-export function ManualRestSheet({ visible, initialSeconds, onStart, onClose }: Props) {
+export function ManualRestSheet({ visible, initialSeconds, restsOn, onRestsOnChange, onStart, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const card = useCardSheet();
@@ -48,6 +54,25 @@ export function ManualRestSheet({ visible, initialSeconds, onStart, onClose }: P
           <Text style={styles.heading}>Timer</Text>
           <View style={styles.headerSpacer} />
         </View>
+        <TouchableOpacity
+          style={styles.switchRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); onRestsOnChange(!restsOn); }}
+          accessibilityRole="switch"
+          accessibilityLabel="Rest timers"
+          accessibilityState={{ checked: restsOn }}
+        >
+          <View style={styles.switchText}>
+            <Text style={styles.switchLabel}>Rest timers</Text>
+            <HelpText style={styles.switchHint}>
+              {restsOn
+                ? 'Logging a set starts a rest. Turn off to skip them for this workout.'
+                : 'Off: logging a set starts no rest for the rest of this workout.'}
+            </HelpText>
+          </View>
+          <Toggle value={restsOn} />
+        </TouchableOpacity>
+        <View style={styles.divider} />
         <HelpText style={styles.sub}>Counts down like a rest between sets and replaces the one that’s running.</HelpText>
 
         <View style={styles.stepper}>
@@ -110,6 +135,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.lg,
     fontWeight: fontWeight.semibold,
   },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.md, paddingTop: spacing.md, minHeight: 44 },
+  switchText: { flex: 1 },
+  switchLabel: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  switchHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.xxs },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginHorizontal: spacing.md, marginTop: spacing.smd },
   sub: { color: colors.textTertiary, fontSize: font.xs, paddingHorizontal: spacing.md, paddingTop: spacing.xs, textAlign: 'center' },
   stepper: { alignItems: 'center', paddingTop: spacing.md, paddingHorizontal: spacing.md },
   presets: { flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.md, paddingTop: spacing.md },
