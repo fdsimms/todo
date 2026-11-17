@@ -354,6 +354,7 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   supplyReorder: ['supply', 'stock', 'restock', 'order more', 'refill', 'running low', 'run out',
     'consumable', 'filter', 'cartridge', 'generated', 'automatic'],
   calendarReview: ['events', 'agenda', 'schedule', 'generated', 'automatic'],
+  eventDetails: ['calendar', 'people', 'person', 'location', 'place', 'with', 'where', 'generated', 'automatic'],
   birthday: ['people', 'person', 'friend', 'family', 'age', 'gift', 'present', 'card', 'generated',
     'automatic'],
   birthdayGift: ['people', 'person', 'friend', 'family', 'present', 'shopping', 'buy', 'generated',

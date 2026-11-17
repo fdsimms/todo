@@ -591,6 +591,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // calendarReviewLastDayKey is deliberately not here — state, not a
   // preference, like mealPlanNudgeLastFiredWeekKey beside it.
   'calendarReviewTasks',
+  // Its day mark and skipped record are state and stay off, like calendarReview's.
+  'eventDetailsTasks',
   // Each generator's "File them under" and its own settings. These were
   // missing from the allowlist, the same gap as mealSlotsEnabled above: every
   // one is a preference the person set in Settings, so a category picked for
@@ -605,6 +607,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'bookEventTaskCategory',
   'calendarReviewTaskCategory',
   'calendarReviewTimeSegment',
+  'eventDetailsTaskCategory',
   'dreamLogTaskCategory',
   'eventTaskCategory',
   'healthCategory',

@@ -414,17 +414,17 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealSlot', 'mealPlanNudge', 'mealShortfall', 'mealThaw', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'blockOffer', 'health', 'eventTask', 'travel', 'wakeUp', 'moodLog', 'moodNudge', 'weekendNudge', 'backfill', 'weighIn', 'bloodPressureLog', 'waterShortfall', 'snackNudge', 'produceNudge', 'produceFloor', 'limitWarning', 'goalTarget', 'bookEvent', 'journalLog', 'dreamLog', 'wanikani', 'franki']);
+      .toEqual(['groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealSlot', 'mealPlanNudge', 'mealShortfall', 'mealThaw', 'mealLogNudge', 'projectReview', 'supplyReorder', 'calendarReview', 'eventDetails', 'birthday', 'birthdayGift', 'reachOut', 'waitingFollowUp', 'weather', 'screenTime', 'blockOffer', 'health', 'eventTask', 'travel', 'wakeUp', 'moodLog', 'moodNudge', 'weekendNudge', 'backfill', 'weighIn', 'bloodPressureLog', 'waterShortfall', 'snackNudge', 'produceNudge', 'produceFloor', 'limitWarning', 'goalTarget', 'bookEvent', 'journalLog', 'dreamLog', 'wanikani', 'franki']);
   });
 
-  it('marks exactly the two day-shaped questions, the leave reminder and the wake-up task as notices', () => {
+  it('marks exactly the day-shaped questions, the event details offer, the leave reminder and the wake-up task as notices', () => {
     // A notice is a row with nothing to decide about it: it says what it is
     // about, you tick it, and that is the whole interaction (see
     // GeneratedKindSpec.notice). The first two are day-keyed with a title that
     // never varies; the third is pinned to an event's start, and leaving for
     // the dentist on Thursday instead is not a thing a reschedule could mean.
     expect(GENERATED_KIND_LIST.filter(s => s.notice).map(s => s.kind))
-      .toEqual(['mealPlanNudge', 'calendarReview', 'travel', 'wakeUp']);
+      .toEqual(['mealPlanNudge', 'calendarReview', 'eventDetails', 'travel', 'wakeUp']);
     // The retired kind answers too, since a legacy row still carries it.
     expect(GENERATED_KIND_SPECS.mealCook.notice).toBe(false);
   });

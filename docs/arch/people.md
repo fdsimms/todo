@@ -177,9 +177,14 @@ may notice that a past event's title contains the name of somebody already in
 your list, and it may *offer* that as history on that person's own screen. It
 may not decide it happened, and it may not extract a person it does not already
 know about. That is `probablyHaveReason` and `pantryCheck` again: guess what you
-cannot verify, carry the reason, and ask. It is a pull surface on a screen you
-navigated to on purpose, never a prompt on Today, for the same reason the day
-count is allowed in exactly one place.
+cannot verify, carry the reason, and ask. An offer about the *past* (this
+evening happened, with them) is a pull surface on a screen you navigated to on
+purpose, never a prompt on Today, for the same reason the day count is allowed
+in exactly one place. An offer about a *plan* is different, and may be a task
+on Today once it is switched on (`eventDetails`, "Add details to events" in
+Automations, off by default): it asks who an upcoming event is with, which the
+title already says, and it claims nothing about what happened. It is still an
+offer, a tap per person, and still only for people already on the list.
 
 ## The link is an array on the task, not a join table
 
@@ -665,7 +670,11 @@ events sheet, or by starting the event from a person's page ("Plan something").
   address, and reading attendees back is on the Never list. Nothing about the
   link is written to the event.
 - **A title match is offered, not applied.** The picker lists people the title
-  names first, and each is still a tap. Same bar as the history offer.
+  names first, and each is still a tap. Same bar as the history offer. The
+  event details task (`src/utils/eventDetailTasks.ts`, see
+  `docs/arch/generated-tasks.md`) makes the same offer from Today for upcoming
+  events, reading only the names after "with" or "w/", the quick-add card's own
+  read (`peopleAfterWith`).
 - **The picker never lays out the whole list.** `eventPeopleChoices` offers the
   people the title names, then the first few in the user's own order, and a find
   field searches everybody else. Linked people sit above it as filled chips. The

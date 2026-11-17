@@ -110,6 +110,9 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   'projectReview',
   'supplyReorder',
   'calendarReview',
+  // Beside calendarReview: both read the calendar window and ask about events
+  // rather than being a piece of work, and they file under one category.
+  'eventDetails',
   'birthday',
   // Beside its pair, the same way pantryCheck sits beside groceryUseUp: to the
   // person reading Settings, marking a birthday and shopping for it are one
@@ -264,6 +267,7 @@ export type GeneratedEnabledKey =
   | 'projectReviewTasks'
   | 'supplyReorderTasks'
   | 'calendarReviewTasks'
+  | 'eventDetailsTasks'
   | 'birthdayTasks'
   | 'birthdayGiftTasks'
   | 'reachOutTasks'
@@ -785,6 +789,22 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     sourced: false,
     // A notice, for the reason the nudge is one: it asks about a day rather
     // than being a piece of work, and it answers itself in the row.
+    notice: true,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Calendar Events',
+  },
+  eventDetails: {
+    kind: 'eventDetails',
+    pausedOnVacation: false,
+    enabledKey: 'eventDetailsTasks',
+    label: 'Add details to events',
+    onHint: 'Offers to add the person and place an event’s title names',
+    offHint: 'No task offering to add people and places to events',
+    icon: 'person-add-outline',
+    // calendarReview's position: its source id is a day key, not a row.
+    sourced: false,
+    // A notice for calendarReview's reason: it answers itself in the row.
     notice: true,
     kitchen: false,
     categorized: true,
@@ -1409,7 +1429,7 @@ export type GeneratedEnabledFlags =
  * `generatedTasks.test.ts` reads `useTaskStore.ts` and fails if a pass gains
  * or loses that refusal without this list following.
  */
-export const CALENDAR_READ_KINDS: readonly GeneratedKind[] = ['calendarReview', 'eventTask', 'travel', 'wakeUp'];
+export const CALENDAR_READ_KINDS: readonly GeneratedKind[] = ['calendarReview', 'eventDetails', 'eventTask', 'travel', 'wakeUp'];
 
 /**
  * What a generator needs turned on before its own switch can mean anything,

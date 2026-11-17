@@ -1247,6 +1247,45 @@ way: where that one reacts to use, this one asks for a block. Rules in
 - **A rule with no apps in its group says so** on its row rather than offering a task that could
   not start a block; the check at the tap is what actually prevents paying for an empty block.
 
+## `eventDetails`: the people and place an event's title names
+
+`src/utils/eventDetailTasks.ts` (the rules) + `checkEventDetailsTasks` in `useTaskStore` +
+`src/store/eventDetailActions.ts` (Add and Skip) + `EventDetailsPanel` (the row's panel). One task,
+"Add details to 3 events", while upcoming events' titles name somebody on the list after "with" or
+"w/" ("Dinner with Kristen") or a place after "at" or "@" ("at Zatar", "@ Zatar") that the event
+doesn't carry yet. Expanded, each event lists those as rows with an Add, and a ✕ skips the event.
+
+- **It offers and never writes on its own.** This is the one generator that reads words out of a
+  title, which `eventTask` deliberately doesn't (below), and it gets away with it on the people
+  note's terms: a title may be noticed and asked about, never acted on. Every write is a tap: a
+  person is the app's own link (`useEventPeopleStore.setPeople`, never an attendee), a place is
+  the event's location (`setEventLocationDirect`). The reads are the quick-add card's own:
+  `peopleAfterWith` (only people already on the list, ambiguity names nobody) and `placeInTitle`,
+  which refuses a time ("at 7"), a word that names no address ("home", "work") and a person
+  ("at Kristen's").
+- **It is day-keyed like `calendarReview`, and its mark is spent the same way.**
+  `eventDetailsLastDayKey` is written before the events are judged, so a row swiped away stays
+  gone until tomorrow. Its source id is that day key, so `writeGeneratedOptOut` has nothing to
+  write.
+- **Unlike `calendarReview` the row asks about the events as they stand, not about one day.** The
+  panel and the check both read `eventDetailEntries` over the live stores, so an answer shows at
+  once and the title's count follows on the next check. A row is kept while something is left to
+  ask; yesterday's is replaced by today's, **except one the person deferred**, which keeps its
+  date. Only events still ahead are listed, so a deferred row that comes back after its events
+  have passed has nothing to ask and goes.
+- **Answering the last one marks the row ready** (`markGeneratedReady`), which completes it since
+  the person did it in the app. A row emptied any other way (answered on another device, or its
+  events passed) is deleted quietly; a ready row is left for its tick.
+- **Skip is a device-local record** (`eventDetailsSkipped`), keyed by occurrence and valued by its
+  end so it prunes itself, `eventTaskHandled`'s shape and reason. The adds need no record: a linked
+  person or a set location is what makes a row read as answered.
+- **A place found in Apple Maps is shown before it is written**, and only with
+  `placeSuggestionsEnabled` on, since the search sends the words to Apple (`searchPlaces`). Off,
+  the place is written as the title spelled it.
+- **Nothing in demo mode**, check and panel alike: the window is the real calendar, and matching it
+  against the demo's invented people is the leak `docs/arch/people.md`'s history offer is gated
+  against. There is no demo seed for the same reason: the row has nothing honest to list.
+
 ## `eventTask` — a rule the user wrote, cued by text
 
 "When something on my calendar says *flight*, add a task to pack, two days before."
@@ -1264,7 +1303,8 @@ events at once, where every other rule generator asks one question a day.**
   *offer*. Nothing is inferred here: the user wrote the word and the task, so the app's whole
   contribution is noticing the word is present. That is exactly where `weather` and `screenTime`
   already stand, and it is why this one may write a row.
-- **It deliberately does not parse.** No date, no duration, no category and no priority is read out
+- **It deliberately does not parse.** (`eventDetails` is the one reader that does, and only to
+  offer a person or place for a tap; see its section.) No date, no duration, no category and no priority is read out
   of a title, and `parseTaskInput` is not reached for. That parser is built for text typed into this
   app behind a sigil ("#home", "!high", "tmrw 5p"), and `calendarHistory.ts` already writes down the
   asymmetry: a deliberate sigil earns a low bar, a title somebody wrote for another purpose gets the

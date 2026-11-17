@@ -192,6 +192,8 @@ export function catchUpPasses(): MaintenanceStep[] {
     // the window is always unread: it refuses on `!calendar.loaded` rather
     // than reading an empty window as "tomorrow is free".
     ['check calendar review tasks', () => tasks().checkCalendarReviewTasks()],
+    // Beside it, on the same window and for the same reasons.
+    ['check event details tasks', () => tasks().checkEventDetailsTasks()],
     // Beside it, same trigger again — this rarely does anything at
     // cold-launch time either, since the snapshot it reads is only ever
     // populated by useWeatherSync's own effect. A background run never has

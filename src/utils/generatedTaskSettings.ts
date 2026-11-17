@@ -340,6 +340,14 @@ export const TASK_SETTINGS_SPECS: Partial<Record<GeneratedKind, TaskSettingsSpec
       { key: 'time', label: 'Time of day', summary: 'The part of the day set above', hint: 'Any time when none is set.' },
     ],
   },
+  eventDetails: {
+    example: 'Add details to 2 events',
+    noun: 'Event details task',
+    owned: () => [
+      { key: 'title', label: 'Title', summary: 'Add details to (count) events', hint: 'Counts the events still waiting for an answer.' },
+      { key: 'date', label: 'Date', summary: 'Today', hint: 'Only when an upcoming event’s title names a person or place to add.' },
+    ],
+  },
   birthdayGift: {
     remindable: true,
     example: 'Get Sam’s birthday gift',

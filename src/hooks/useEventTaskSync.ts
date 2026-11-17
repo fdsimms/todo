@@ -4,8 +4,8 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 
 /**
- * Re-runs `checkEventTasks` whenever the calendar windows it reads land or its
- * rules change. Call once from the root component.
+ * Re-runs `checkEventTasks` (and `checkEventDetailsTasks`, which reads the
+ * same window) whenever the calendar windows it reads land or its rules change. Call once from the root component.
  *
  * The same reason `useTravelTaskSync` gives for its own check: the foreground
  * sweep fires on the AppState change that starts the calendar read, so it
@@ -20,7 +20,13 @@ import { useTaskStore } from '../store/useTaskStore';
  */
 export function useEventTaskSync(): void {
   useEffect(() => {
-    const check = () => useTaskStore.getState().checkEventTasks();
+    // The event details task reads the same window, so it rides along. It
+    // also re-runs when its switch flips, so turning it on doesn't wait for
+    // the next foreground.
+    const check = () => {
+      useTaskStore.getState().checkEventTasks();
+      useTaskStore.getState().checkEventDetailsTasks();
+    };
 
     const unsubscribeCalendar = useCalendarStore.subscribe((state, prev) => {
       if (
@@ -37,6 +43,7 @@ export function useEventTaskSync(): void {
         state.eventTasks !== prev.eventTasks
         || state.eventRules !== prev.eventRules
         || state.eventTaskCategory !== prev.eventTaskCategory
+        || state.eventDetailsTasks !== prev.eventDetailsTasks
       ) {
         check();
       }

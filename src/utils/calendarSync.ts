@@ -881,6 +881,36 @@ export async function updateEventDirect(
 }
 
 /**
+ * Writes one event's location (one occurrence of a repeating one), and the
+ * map pin when a place was picked from Apple Maps: the event details task's
+ * Add. Through `rewriteEvent`, so everything else on the event is sent back as
+ * it was. Resolves the event's id, or null on any failure or in demo mode.
+ */
+export async function setEventLocationDirect(
+  eventId: string,
+  location: string,
+  place?: { latitude: number; longitude: number } | null,
+  occurrenceStart?: string | null,
+): Promise<string | null> {
+  if (Platform.OS !== 'ios' || isDemoModeActive() || !location.trim()) return null;
+  try {
+    if (!(await requestCalendarPermission())) return null;
+    const id = (await rewriteEvent(eventId, { location }, occurrenceOptions(occurrenceStart))) || eventId;
+    if (place) {
+      try {
+        const bridge = require('todo-eventkit-bridge') as typeof import('todo-eventkit-bridge');
+        await bridge.setStructuredLocation(id, location, place.latitude, place.longitude);
+      } catch {
+        // No bridge (an older build): the location text alone.
+      }
+    }
+    return id;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Moves an event, or one occurrence of a repeating one, to new times: the
  * Day view's drag and resize. Through `rewriteEvent`, so the location, notes
  * and alerts the save would otherwise reset are sent back; the title is sent
