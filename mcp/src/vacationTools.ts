@@ -56,6 +56,8 @@ export interface SetVacationInput {
 export interface SetVacationResult extends VacationState {
   /** Set on the way off: the protected streaks re-dated so the pause reads as no gap. */
   forgivenStreaks?: number;
+  /** Set on the way off: weekly targets scaled to the days of the week that weren't vacation. */
+  scaledTargets?: number;
   note: string;
 }
 
@@ -86,11 +88,12 @@ export function setVacationMode(replica: Replica, input: SetVacationInput): SetV
     note = `Vacation mode is on${state.until ? ` and turns itself off on ${state.until}` : ' until it is turned off'}. It hides ${hides(outcome.hiddenTasks, outcome.hiddenCategories)}, and protects their streaks; everything else stays where it was.`;
   } else {
     note = `Vacation mode is off. ${hides(outcome.hiddenTasks, outcome.hiddenCategories)} ${outcome.hiddenTasks === 1 ? 'is' : 'are'} back on their lists, and ${outcome.forgivenStreaks} protected ${outcome.forgivenStreaks === 1 ? 'streak was' : 'streaks were'} forgiven so the pause reads as no gap.`;
+    if (outcome.scaledTargets > 0) note += ` ${outcome.scaledTargets} weekly ${outcome.scaledTargets === 1 ? 'target was' : 'targets were'} scaled to the days of this week that were not vacation, the way the app does when vacation ends.`;
     if (driver) note += ` The trip "${driver.title}" had switched it on; the phone records this as turned off for that trip, so the trip does not switch it back on tomorrow.`;
   }
   return {
     ...state,
-    ...(input.on ? {} : { forgivenStreaks: outcome.forgivenStreaks }),
+    ...(input.on ? {} : { forgivenStreaks: outcome.forgivenStreaks, scaledTargets: outcome.scaledTargets }),
     note,
   };
 }

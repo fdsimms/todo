@@ -1729,7 +1729,10 @@ Three areas had no MCP read or write, and the shape of each answer follows from 
   forgiven first or a paused daily habit reads as broken the moment the pause lifts, was lifted out
   of `useTaskStore.forgivVacationStreaks` into `vacationStreaks.ts`, because the store imports
   `useFocusStore` and so `expo-notifications`, which the server cannot load; the store and the
-  server now call one function. What the mode hides is counted by `isHiddenForVacation`, never
+  server now call one function. Weekly targets are scaled to the days that weren't vacation on
+  the same path (`planVacationEndQuotas` in `src/utils/quotaRollover.ts`, lifted out of the store's
+  `rolloverQuotas` for the same reason); the server writes the rows it returns and the phone
+  schedules their reminders once they sync. What the mode hides is counted by `isHiddenForVacation`, never
   re-derived. `vacationDrivenBy` is left alone on the way off: `checkAwayVacation` reads "mode off
   while a trip still names it" as the person declining that trip, and clearing it from here would
   make the trip arm the mode again tomorrow. `get_overview`'s `vacation` carries the same state
