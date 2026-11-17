@@ -18,7 +18,7 @@ import type { GroceryItem } from '../types';
  * (`ReminderRemoval.checkedAt`), falling back to the removal only when no
  * check time is known.
  *
- * **Confirmed, never assumed.** A deleted reminder is either a list cleared
+ * **Confirmed, never assumed** (unless `groceryImportAutoBought` is on, which records the in-cart rows at once). A deleted reminder is either a list cleared
  * after a shop or a thing that stopped being wanted, and only the person
  * knows which. So nothing here writes a purchase: it holds the rows until
  * `ReminderRemovalsCard` asks, and the answer goes through `finishShopping`,

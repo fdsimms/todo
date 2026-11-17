@@ -1026,6 +1026,13 @@ interface SettingsStore {
   // the moment it's read leaves nothing to mirror and every row would be
   // written back out on the next pass, for ever.
   groceryImportTwoWay: boolean;
+  // Whether a reminder that was checked off in Reminders and then deleted is
+  // recorded as bought without asking (`reminderRemovals.ts`). On by default,
+  // since checking an item off is the signal; turn it off to have the
+  // "Cleared in Reminders" card ask about every removal. Only rows that
+  // were in the cart count; a row deleted unchecked is still asked about.
+  // Device-local, like the rest of the `groceryImport*` family.
+  groceryImportAutoBought: boolean;
   // Whether the schedule an import parses out of a reminder — its due date,
   // repeat, and alarm — waits on the Inbox row as a suggestion the user taps
   // to accept, or is simply applied. On by default: applying is what takes a
@@ -2428,6 +2435,7 @@ interface SettingsStore {
   setGroceryImportConfirmedListId: (id: string | null) => void;
   setGroceryImportDelete: (on: boolean) => void;
   setGroceryImportTwoWay: (on: boolean) => void;
+  setGroceryImportAutoBought: (on: boolean) => void;
   setRemindersImportReview: (on: boolean) => void;
   setCalendarReadEnabled: (on: boolean) => void;
   setHealthReadEnabled: (on: boolean) => void;
@@ -2843,6 +2851,7 @@ const DEFAULT_SETTINGS = {
   groceryImportEnabled: false,
   groceryImportDelete: true,
   groceryImportTwoWay: false,
+  groceryImportAutoBought: true,
   remindersImportReview: true,
   calendarReadEnabled: false,
   healthReadEnabled: false,
@@ -3325,6 +3334,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   groceryImportConfirmedListId: null,
   groceryImportDelete: true,
   groceryImportTwoWay: false,
+  groceryImportAutoBought: true,
   remindersImportReview: true,
   reminderCaptures: [],
   calendarReadEnabled: false,
@@ -3805,6 +3815,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const groceryImportConfirmedListId = dbGetSetting('groceryImportConfirmedListId') || null;
     const groceryImportDelete = dbGetSetting('groceryImportDelete') !== 'false';
     const groceryImportTwoWay = dbGetSetting('groceryImportTwoWay') === 'true';
+    const groceryImportAutoBought = dbGetSetting('groceryImportAutoBought') !== 'false';
     const reminderCaptures = parseReminderCaptures(dbGetSetting('reminderCaptures'));
     const calendarReadEnabled = dbGetSetting('calendarReadEnabled') === 'true';
     const calendarIds = parseCalendarIds(dbGetSetting('calendarIds'));
@@ -4395,6 +4406,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       goalTargetDeclined,
       goalTargetTaskCategory,
       goalTargetTasks,
+      groceryImportAutoBought,
       groceryImportConfirmedListId,
       groceryImportDelete,
       groceryImportEnabled,
@@ -6428,6 +6440,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       dbSetSetting('groceryImportDelete', 'false');
       set({ groceryImportDelete: false });
     }
+  },
+
+  setGroceryImportAutoBought(on: boolean) {
+    dbSetSetting('groceryImportAutoBought', on ? 'true' : 'false');
+    set({ groceryImportAutoBought: on });
   },
 
   setRemindersImportReview(on: boolean) {
